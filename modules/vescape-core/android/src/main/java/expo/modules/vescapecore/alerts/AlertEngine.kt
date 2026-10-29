@@ -75,15 +75,15 @@ internal fun renderAlertMessageTemplate(
     alert: FiredAlert,
     batteryPercent: Double?,
     onDiagnostic: ((String, Map<String, Any?>) -> Unit)? = null,
-    unitSystem: String = "metric",
+    distanceUnit: String = "km",
 ): String {
     // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `renderAlertMessageTemplate`
     val isBattery = alert.controlId == "battery"
-    fun format(value: Double) = if (alert.controlId == "speed") UnitPresentation.formatSpokenSpeed(value, unitSystem) else formatAlertValue(value, alert.controlId)
+    fun format(value: Double) = if (alert.controlId == "speed") UnitPresentation.formatSpokenSpeed(value, distanceUnit) else formatAlertValue(value, alert.controlId)
     var text = template
     text = text.replace("{value}", format(alert.value))
     text = text.replace("{threshold}", format(alert.threshold))
-    text = text.replace("{unit}", if (alert.controlId == "speed") UnitPresentation.speedUnit(unitSystem) else alertControlUnit(alert.controlId))
+    text = text.replace("{unit}", if (alert.controlId == "speed") UnitPresentation.speedUnit(distanceUnit) else alertControlUnit(alert.controlId))
     if (isBattery) {
         text = text.replace("{voltage}", formatAlertValue(alert.value, alert.controlId))
         if (batteryPercent != null) {
@@ -1086,13 +1086,13 @@ internal class AlertFeedback(
             return
         }
         parseVoiceAlertSound(spec)?.let { sound ->
-            val unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem }
-            speakVoice(voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = unitSystem))
+            val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
+            speakVoice(voiceAnnouncement(sound, null, null, percentAvailable = true, distanceUnit = settings.distanceUnit, temperatureUnit = settings.temperatureUnit))
             return
         }
         val tts = parseTtsAlertSound(spec)
         if (tts != null) {
-            val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, unitSystem = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().unitSystem })
+            val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, distanceUnit = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().distanceUnit })
             if (text.isNotEmpty()) speakAfterSeverity(tts.severity, text)
             return
         }
@@ -1318,12 +1318,12 @@ internal class AlertFeedback(
             val handler = Handler(contextMainLooper())
             val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
             parseVoiceAlertSound(spec)?.let { sound ->
-                previewVoice(context, voiceAnnouncement(sound, null, null, percentAvailable = true, unitSystem = settings.unitSystem), source)
+                previewVoice(context, voiceAnnouncement(sound, null, null, percentAvailable = true, distanceUnit = settings.distanceUnit, temperatureUnit = settings.temperatureUnit), source)
                 return
             }
             val tts = parseTtsAlertSound(spec)
             if (tts != null) {
-                val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, unitSystem = settings.unitSystem)
+                val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, distanceUnit = settings.distanceUnit)
                 if (text.isEmpty()) return
                 // Speech waits for both the engine and the severity sound, whichever is later. Both
                 // callbacks land on the main looper, so the flags need no locking.

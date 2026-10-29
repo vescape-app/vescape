@@ -1,7 +1,7 @@
 appId: ${APP_ID}
 ---
 - runFlow: _launch.yaml
-- openLink: 'vescape://settings/components/modals'
+- openLink: 'vescape://settings/components/drawers'
 - scrollUntilVisible:
     element:
       id: edge-drawer-focus-open
@@ -13,3 +13,67 @@ appId: ${APP_ID}
     timeout: 5000
 - assertVisible:
     id: edge-drawer-focused-row
+- tapOn: Close automatically
+- extendedWaitUntil:
+    notVisible: Focused list expanded
+    timeout: 5000
+- tapOn:
+    id: edge-drawer-focus-open
+- extendedWaitUntil:
+    visible: Focused list expanded
+    timeout: 5000
+- assertVisible:
+    id: edge-drawer-focused-row
+- tapOn: Close automatically
+- extendedWaitUntil:
+    notVisible: Focused list expanded
+    timeout: 5000
+
+# FlatList must bring a row outside its initial render window onto the screen.
+- scrollUntilVisible:
+    element: Open at row 80
+    direction: UP
+- tapOn: Open at row 80
+- extendedWaitUntil:
+    visible: Virtualized row 80
+    timeout: 5000
+- tapOn:
+    id: history-tab-favorites
+- assertVisible: Virtualized row 1
+- assertNotVisible: Virtualized row 80
+- tapOn:
+    id: history-tab-history
+- assertVisible: Virtualized row 1
+- back
+
+# Rows arrive after the opening position was chosen. Emptying and refilling the
+# list must return to the same rendered height and opacity, with working tabs.
+- scrollUntilVisible:
+    element: Open short list
+    direction: DOWN
+- tapOn: Open short list
+- extendedWaitUntil:
+    visible: Virtualized row 3
+    timeout: 5000
+# This static preview can settle fully; no live telemetry keeps it animating.
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot:
+    path: drawer-late-rows-open
+    cropOn:
+      id: edge-drawer-late-rows
+- tapOn:
+    id: history-tab-favorites
+- assertNotVisible: Virtualized row 1
+- tapOn:
+    id: history-tab-history
+- assertVisible: Virtualized row 3
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertScreenshot:
+    path: drawer-late-rows-open.png
+    cropOn:
+      id: edge-drawer-late-rows
+    thresholdPercentage: 99
+    label: Late rows stay fully present after an empty page
+- back

@@ -52,6 +52,11 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/telemetry/FavoriteSummaryBuilder.kt",
       "expo/modules/vescapecore/telemetry/TelemetryRangeSubtraction.kt",
       "expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt",
+      "expo/modules/vescapecore/telemetry/WeatherObservations.kt",
+      "expo/modules/vescapecore/telemetry/DatabaseReplacementFence.kt",
+      "expo/modules/vescapecore/telemetry/MaintenanceJobs.kt",
+      "expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt",
+      "expo/modules/vescapecore/weather/Weather.kt",
     ).forEach { relative ->
       val source = productionRoot.file(relative).asFile.readText()
       output.resolve(relative).apply { parentFile.mkdirs(); writeText(source) }

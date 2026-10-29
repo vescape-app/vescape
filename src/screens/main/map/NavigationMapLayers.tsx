@@ -12,7 +12,6 @@ import {
   getMapPointKindIcon,
   getPlaceCategoryIcon,
 } from '@/modules/map-points/constants/mapPointIcons'
-import { getPlaceCategoryIconKey } from '@/modules/map-points/constants/placeCategoryIcon'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { navigationPathShape } from '@/modules/map/lib/navigationPath'
@@ -79,10 +78,6 @@ function getNavigationTargetIcon(target: MapSelection | null) {
   return getMapPointKindIcon('direction')
 }
 
-function getNavigationTargetIconKey(target: MapSelection | null) {
-  return target?.type === 'place' ? getPlaceCategoryIconKey(target.category) : 'direction'
-}
-
 /** The computed path, the Direction Point pin, and the not-yet-confirmed target pin. */
 export function NavigationMapLayers({
   directionPoint,
@@ -140,34 +135,33 @@ export function NavigationMapLayers({
 
   return (
     <>
-      {showDirectionPoint &&
-        navigationShape && (
-          // Passed and remaining sections are split at native's projection, see navigationPath.ts.
-          <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
-            <LineLayer
-              id="center-navigation-casing"
-              style={{
-                lineOpacity: ['get', 'opacity'],
-                lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
-                lineWidth: NAVIGATION_CASING_WIDTH,
-                lineCap: 'round',
-                lineJoin: 'round',
-                lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
-              }}
-            />
-            <LineLayer
-              id="center-navigation-line"
-              style={{
-                lineOpacity: ['get', 'opacity'],
-                lineColor: routeColor,
-                lineWidth: MAP_DEFAULTS.navigationWidth,
-                lineCap: 'round',
-                lineJoin: 'round',
-                lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
-              }}
-            />
-          </ShapeSource>
-        )}
+      {showDirectionPoint && navigationShape && (
+        // Passed and remaining sections are split at native's projection, see navigationPath.ts.
+        <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
+          <LineLayer
+            id="center-navigation-casing"
+            style={{
+              lineOpacity: ['get', 'opacity'],
+              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
+              lineWidth: NAVIGATION_CASING_WIDTH,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
+            }}
+          />
+          <LineLayer
+            id="center-navigation-line"
+            style={{
+              lineOpacity: ['get', 'opacity'],
+              lineColor: routeColor,
+              lineWidth: MAP_DEFAULTS.navigationWidth,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
+            }}
+          />
+        </ShapeSource>
+      )}
       {connector && showDirectionPoint && (
         <ShapeSource id="navigation-projection-source" shape={connector}>
           <LineLayer
@@ -178,9 +172,6 @@ export function NavigationMapLayers({
       )}
       {showDirectionPoint && (
         <MapPin
-          // Color in the key: PointAnnotation snapshots its children natively, so a
-          // rider-color or icon change must remount the pin to re-render.
-          key={`center-direction-position-${pinColor}-${navigationFailed ? 'failed' : getNavigationTargetIconKey(activeNavigationTarget)}`}
           id="center-direction-position"
           coordinate={[directionPoint.longitude, directionPoint.latitude]}
           color={pinColor}

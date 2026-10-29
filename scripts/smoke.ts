@@ -5,7 +5,7 @@
  * It boots the same way the store screenshot run does — a Release build, a restored fixture
  * database, a Debug Recording replayed through the telemetry pipeline (`scripts/screenshots.ts`,
  * ADR 0024) — and then asserts instead of photographing. That shared boot is the point:
- * `EXPO_PUBLIC_E2E` reroutes board and telemetry reads to `e2eFake`, so the existing E2E suite
+ * `EXPO_PUBLIC_E2E` reroutes board and telemetry reads to `e2eFake`, so the fake-board phone suite
  * cannot catch a native regression at all. This run can, because nothing between the recorded BLE
  * chunks and the rendered gauge is faked.
  *

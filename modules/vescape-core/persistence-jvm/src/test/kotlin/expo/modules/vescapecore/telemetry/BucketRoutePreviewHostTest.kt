@@ -53,7 +53,7 @@ class BucketRoutePreviewHostTest {
     assertEquals(8, session.routePoints.size)
     assertEquals(listOf(5), session.routePoints.mapIndexedNotNull { i, p -> i.takeIf { p.breakBefore } })
     // Existing maintenance is the explicit backfill, and must produce the same geometry.
-    TelemetryMaintenancePersistence(db.telemetryDao()).rebuild(MetricSanitizerConfig())
+    rebuildRideSummaries(db.telemetryDao())
     assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreview })
     db.close()
     BundledSQLiteDriver().open(path.toString()).use { sql ->

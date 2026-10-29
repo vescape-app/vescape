@@ -103,6 +103,7 @@ import expo.modules.vescapecore.watch.offsetMeters
 import expo.modules.vescapecore.watch.toWatchSettings
 import expo.modules.vescapecore.buildLiveState
 import expo.modules.vescapecore.telemetry.encodeBmsSeriesColumns
+import expo.modules.vescapecore.telemetry.weatherObservationRecorder
 import expo.modules.vescapecore.service.foregroundServiceTypeForConnectedDevicePromotion
 import expo.modules.vescapecore.protocol.parseBmsValues
 import expo.modules.vescapecore.protocol.parseFwVersion
@@ -396,6 +397,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         speak = { line -> alertFeedback.speakAdvisory(line.voiceAnnouncement()) },
     )
     private var weatherUnsubscribe: (() -> Unit)? = null
+    private var weatherObservationUnsubscribe: (() -> Unit)? = null
     private val watchMoveRelay by lazy {
         WatchMoveRelay(
             scheduler = scheduler,
@@ -824,6 +826,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // this service owns GPS/navigation even when no board is selected or connected.
         watchMirror.start()
         weatherUnsubscribe = weatherCoordinator.addChangeListener(::onWeatherChanged)
+        // Listeners fire only on a successful refresh; the replay below is not one and stores nothing.
+        weatherObservationUnsubscribe = weatherCoordinator.addChangeListener(::storeWeatherObservation)
         // The forecast survives a service restart, so replay what is already known rather than
         // leaving the wrist blank until the rider moves a kilometre.
         weatherCoordinator.current?.let(::onWeatherChanged)
@@ -993,6 +997,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
     fun onServiceDestroy() {
         weatherUnsubscribe?.invoke()
         weatherUnsubscribe = null
+        weatherObservationUnsubscribe?.invoke()
+        weatherObservationUnsubscribe = null
         watchMirror.stop()
         watchMoveRelay.cancel()
         autoCloseHandle?.cancel()
@@ -3343,6 +3349,27 @@ internal class BoardSessionController(private val service: CoreForegroundService
      *
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendWeather`
      */
+    /**
+     * Ride weather (#604): every successful refresh offers its current conditions to the store,
+     * off the main thread. The ticket is taken here, so a Restore or Clear all that starts before
+     * the write lands drops it.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `storeWeatherObservation`
+     */
+    private fun storeWeatherObservation(weather: Weather?) {
+        val observation = weather?.observation() ?: return
+        val recorder = weatherObservationRecorder(service.applicationContext)
+        val ticket = recorder.ticket()
+        CoreForegroundService.appDataScope.launch {
+            try {
+                recorder.record(observation, ticket)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                RecordingStorageFailure.report("weather_observations", "write_failed", error)
+            }
+        }
+    }
+
     private fun onWeatherChanged(weather: Weather?) {
         if (weather == null) return
         emitEvent("onWeather", mapOf("weather" to weather.toMap()))
@@ -3608,7 +3635,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         recordingCoordinator.applySettings(settings)
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L
         connectionSoundsEnabled = settings.connectionSoundsEnabled
-        alertCoordinator.unitSystem = settings.unitSystem
+        alertCoordinator.distanceUnit = settings.distanceUnit
+        alertCoordinator.temperatureUnit = settings.temperatureUnit
         alertFeedback.setSoundSettings(settings)
         weatherAlerts.settings = WeatherAlertSettings.of(
             settings.weatherRainAlertLevel,

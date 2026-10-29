@@ -248,7 +248,8 @@ let maintenanceFavoriteStore = FavoriteStore(dbWriter: maintenanceQueue!)
 try maintenanceFavoriteStore.insert(.init(id: "pin", boardId: "board-b", name: nil, startMs: Int64(int(favoriteRange["fromMs"])), endMs: Int64(int(favoriteRange["toMs"])), createdAtMs: 4_000, updatedAtMs: 4_000, summary: .init()))
 let pins = try maintenanceFavoriteStore.list().map { expandTelemetryRangeToBuckets(.init(startMs: $0.startMs, endMs: $0.endMs)) }
 try maintenance.clear(protectedRanges: pins)
-let rebuilt = try maintenance.rebuild(config: .init(), onProgress: { _, _ in })
+try rebuildRideSummaries(maintenanceQueue!)
+let rebuilt = try maintenanceQueue!.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM telemetry_minute_buckets") ?? 0 }
 try require(rebuilt == 1, "maintenance rebuild count")
 try maintenanceQueue!.write { db in
   for at in [Int64(245_000), 305_000] {
@@ -517,11 +518,11 @@ try boardPersistence.upsertBoard(
 try boardPersistence.saveSetting(PersistedAppSetting(key: settingValues["key"] as! String, valueJson: settingValues["updatedValueJson"] as! String, updatedAt: contractCreatedAt + 1))
 let unitFixture = boardFixture["units"] as! [String: Any]
 let metricDefault = unitFixture["default"] as! String
-try require(validUnitSystem(nil) ?? "metric" == metricDefault, "units metric default")
+try require(validDistanceUnit(nil) ?? "km" == metricDefault, "units metric default")
 for invalid in unitFixture["invalid"] as! [Any] {
-  try require(validUnitSystem(invalid) == nil, "invalid units accepted")
+  try require(validDistanceUnit(invalid) == nil, "invalid units accepted")
 }
-try boardPersistence.saveSetting(.init(key: "unitSystem", valueJson: "\"\(validUnitSystem(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
+try boardPersistence.saveSetting(.init(key: "distanceUnit", valueJson: "\"\(validDistanceUnit(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
 let rerouteFixture = boardFixture["navigationReroute"] as! [String: Any]
 let rerouteKey = rerouteFixture["key"] as! String
 let rerouteDefault = rerouteFixture["default"] as! Double
@@ -543,11 +544,11 @@ try require(reopenedTrail[trailKey] as? Bool == trailFixture["selected"] as? Boo
 try boardPersistence.deleteSetting(trailKey)
 let defaultTrail = try boardPersistence.settings(defaults: [trailKey: trailDefault])
 try require(defaultTrail[trailKey] as? Bool == trailDefault, "watch trail returns to enabled default")
-let reopenedUnits = try boardPersistence.settings(defaults: ["unitSystem": metricDefault])
-try require(reopenedUnits["unitSystem"] as? String == unitFixture["selected"] as? String, "units survive reopen")
-try boardPersistence.deleteSetting("unitSystem")
-let defaultUnits = try boardPersistence.settings(defaults: ["unitSystem": metricDefault])
-try require(defaultUnits["unitSystem"] as? String == metricDefault, "units return to metric default")
+let reopenedUnits = try boardPersistence.settings(defaults: ["distanceUnit": metricDefault])
+try require(reopenedUnits["distanceUnit"] as? String == unitFixture["selected"] as? String, "units survive reopen")
+try boardPersistence.deleteSetting("distanceUnit")
+let defaultUnits = try boardPersistence.settings(defaults: ["distanceUnit": metricDefault])
+try require(defaultUnits["distanceUnit"] as? String == metricDefault, "units return to metric default")
 let reopenedBoards = try boardPersistence.liveBoards()
 let reopenedBoardSettings = try boardPersistence.boardSettings(ids: [contractBoardId])
 let reopenedSettings = try boardPersistence.settings()
@@ -1331,8 +1332,12 @@ try? FileManager.default.removeItem(at: clearanceURL)
 try runAlertPresetContract()
 try runRideExportContract()
 try runRideCsvContract()
+try runRideFloatyContract()
 try runBucketRoutePreviewContract()
 try runRecordingFlushTimerContract()
+try runWeatherObservationContract()
+try runMaintenanceJobsContract()
+try runRideWeatherBackfillContract()
 
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 

@@ -13,15 +13,26 @@ appId: ${APP_ID}
     timeout: 15000
 - tapOn: E2E VESC Board
 
-- assertVisible: Name your board
+- scrollUntilVisible:
+    element:
+      id: add-board-link-save
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: add-board-link-save
+- extendedWaitUntil:
+    visible:
+      id: add-board-name-input
+    timeout: 15000
 - tapOn:
     id: add-board-name-input
-- eraseText
+    # The suggested name is editable in place. Put the cursor at its end before erasing.
+    point: '95%,50%'
+- eraseText: 50
 - inputText: E2E Board
-- hideKeyboard
-- tapOn:
-    id: add-board-description-input
-- inputText: Created by Maestro
+- assertVisible:
+    id: add-board-name-input
+    text: E2E Board
 - hideKeyboard
 - tapOn:
     id: add-board-name-next
@@ -32,11 +43,30 @@ appId: ${APP_ID}
 - tapOn:
     id: add-board-battery-next
 
+- extendedWaitUntil:
+    visible:
+      id: add-board-skip-alerts
+    timeout: 15000
+- tapOn:
+    id: add-board-skip-alerts
+
 - assertVisible: Review & save
 - assertVisible: E2E Board
-- assertVisible: E2E VESC Board
+- assertVisible: 'E2E VESC Board · Direct.*'
 - tapOn:
     id: add-board-save
 
 - assertVisible: E2E Board
-- assertVisible: Connecting…
+# Selection in the E2E fake does not run native auto-connect. Connect the saved board explicitly.
+- extendedWaitUntil:
+    visible:
+      id: floating-bar-connect
+    timeout: 15000
+- tapOn:
+    id: floating-bar-connect
+- extendedWaitUntil:
+    visible:
+      id: board-disconnect-button
+    timeout: 15000
+- assertVisible:
+    id: battery-bar

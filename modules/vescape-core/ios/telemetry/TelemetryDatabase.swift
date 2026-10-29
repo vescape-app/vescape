@@ -960,6 +960,10 @@ enum TelemetryDatabase {
       try foldBucketsWithoutRecordingId(db)
       try db.execute(sql: "DROP TABLE IF EXISTS ride_recordings")
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_52_53`
+    migrator.registerMigration("v53_weather_observations") { db in
+      try PersistenceSchema.createWeatherObservations(db)
+    }
 
     return migrator
   }

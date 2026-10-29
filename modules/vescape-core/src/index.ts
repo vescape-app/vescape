@@ -70,9 +70,7 @@ export type AccessoryCapabilityType = 'ground_clearance' | 'brake_light'
  * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryCompatibility`
  */
 export type AccessoryCompatibility =
-  | 'supported'
-  | 'unsupported-version'
-  | 'unsupported-capabilities'
+  'supported' | 'unsupported-version' | 'unsupported-capabilities'
 
 /**
  * One capability an Accessory declares. `supported` is native's verdict, not a re-derivation
@@ -365,12 +363,7 @@ export interface AccessoryInspection {
  * @parity /modules/vescape-core/ios/accessory/AccessoryLink.swift `AccessoryLinkPhase`
  */
 export type AccessoryLinkPhase =
-  | 'idle'
-  | 'connecting'
-  | 'handshaking'
-  | 'connected'
-  | 'unavailable'
-  | 'incompatible'
+  'idle' | 'connecting' | 'handshaking' | 'connected' | 'unavailable' | 'incompatible'
 
 /**
  * One enrolled Accessory, as native currently sees it: the durable row plus whatever the live
@@ -771,12 +764,7 @@ export interface PrivacyZone {
  * Mirrors vescape-server `src/mapPoints/protocol.ts` `MapPointCategorySchema`.
  */
 export type MapPointCategory =
-  | 'drop'
-  | 'bonk'
-  | 'nose_slide'
-  | 'trail_entry'
-  | 'viewpoint'
-  | 'charging'
+  'drop' | 'bonk' | 'nose_slide' | 'trail_entry' | 'viewpoint' | 'charging'
 
 export type MapPointReaction = 'up' | 'down'
 
@@ -1316,6 +1304,8 @@ export interface Favorite {
   batteryUsedWh: number
   /** Native coarse route projection; available without loading the surrounding History page. */
   routePoints: RideRoutePoint[]
+  /** Weather over the pinned range, or null when no stored observation applies. */
+  weather: RideWeather | null
 }
 
 /**
@@ -1492,6 +1482,26 @@ export interface RideHistorySession {
   maxLongitude: number | null
   boundaryBefore: TelemetryMinuteBucket['boundaryBefore']
   routePoints: RideRoutePoint[]
+  /** Weather over the ride, or null when no stored observation applies. */
+  weather: RideWeather | null
+}
+
+/**
+ * Weather of a ride or Favorite, folded natively from stored Weather Observations. Approximate by
+ * design: the conditions the app last fetched, not a measurement on the Board.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/WeatherObservations.kt `RideWeather`
+ * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `RideWeather`
+ */
+export interface RideWeather {
+  /** Time-dominant condition; the night form when most of the ride was after dark. */
+  icon: WeatherIconSlug
+  minTemperatureC: number
+  maxTemperatureC: number
+  /** Strongest gust, km/h in 5 km/h steps; null when no observation carried one. */
+  maxGustKmh: number | null
+  /** Minutes under a rain, drizzle or storm code. */
+  rainMinutes: number
 }
 
 /**
@@ -1514,6 +1524,20 @@ export interface LegalPolicyReference {
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `weatherAlertLevelSettings`
  */
 export type WeatherAlertLevelSetting = 'off' | WeatherAlertLevel
+
+/**
+ * Speed and distance display unit: `km` shows km/h, km, and m; `mi` shows mph, mi, and ft.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validDistanceUnit`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validDistanceUnit`
+ */
+export type DistanceUnit = 'km' | 'mi'
+
+/**
+ * Stored Temperature Unit setting.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validTemperatureUnit`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validTemperatureUnit`
+ */
+export type TemperatureUnit = 'celsius' | 'fahrenheit'
 export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
 
 /**
@@ -1542,7 +1566,9 @@ export interface AppSettings {
    */
   rideSplitGapMinutes: number
   /** App appearance source. `sun` resolves from local daylight at the last GPS fix. */
-  unitSystem: 'metric' | 'imperial'
+  distanceUnit: DistanceUnit
+  /** Temperature display and spoken-alert unit; independent of `distanceUnit`. */
+  temperatureUnit: TemperatureUnit
   themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   /** Use the custom satellite overlay style instead of the stock satellite style. */
@@ -1762,9 +1788,36 @@ export interface LocalDiagnosticEvent {
   propertiesJson: string
 }
 
-export interface TelemetryRebuildProgressEvent {
-  current: number
+/**
+ * One Maintenance Job's runner state. Native owns it; run history is per process, the durable truth
+ * is the job's done fingerprint.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `MaintenanceJobState`
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `MaintenanceJobState`
+ */
+export interface MaintenanceJobState {
+  /** Declared job id, e.g. `rideSummaries`. */
+  id: string
+  /** `pending`: not checked yet, or stale until a ride closes or the next launch. */
+  status: 'pending' | 'running' | 'done' | 'waitingForNetwork' | 'failed'
+  /** Items handled in the current or last run, in the job's own unit (hours for ride summaries). */
+  done: number
   total: number
+  lastRunAtMs: number | null
+  lastDurationMs: number | null
+  lastError: string | null
+}
+
+/**
+ * The Maintenance Job runner, as JS renders it.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `buildSnapshot`
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `buildSnapshot`
+ */
+export interface MaintenanceState {
+  running: boolean
+  /** Bumped, throttled, after committed chunks changed Ride History; open history views re-read. */
+  historyRevision: number
+  /** Every declared job, in run order. */
+  jobs: MaintenanceJobState[]
 }
 
 export interface DatabaseBackupResult {
@@ -1922,11 +1975,7 @@ export interface GroupRideRider {
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `emitConnection`
  */
 export type GroupRideConnectionState =
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'disconnected'
-  | 'blocked'
+  'idle' | 'connecting' | 'connected' | 'disconnected' | 'blocked'
 
 export interface GroupRideConnectionEvent {
   state: GroupRideConnectionState
@@ -2625,12 +2674,7 @@ export interface DeviceCredentialStatus {
 }
 
 export type CriticalRideNotificationPermissionStatus =
-  | 'not-determined'
-  | 'denied'
-  | 'authorized'
-  | 'provisional'
-  | 'ephemeral'
-  | 'unknown'
+  'not-determined' | 'denied' | 'authorized' | 'provisional' | 'ephemeral' | 'unknown'
 
 /**
  * Event names must match the native `Events(...)` declarations exactly — a name only listed here
@@ -2654,7 +2698,7 @@ type VescapeCoreEvents = {
   onBms: (event: BmsEvent) => void
   onBmsSeries: (event: NativeBmsSeriesEvent) => void
   onLocation: (event: LocationEvent) => void
-  onTelemetryRebuildProgress: (event: TelemetryRebuildProgressEvent) => void
+  onMaintenanceState: (event: MaintenanceState) => void
   onBoardProbeProgress: (event: BoardProbeProgressEvent) => void
   /** Observe WebSocket connection state to the Group Ride relay. */
   onGroupRideConnection: (event: GroupRideConnectionEvent) => void
@@ -2844,6 +2888,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   }): Promise<TelemetrySample[]>
   exportRideGpx(options: RideExportOptions): Promise<RideExportFile>
   exportRideCsv(options: RideExportOptions): Promise<RideExportFile>
+  exportRideFloaty(options: RideExportOptions): Promise<RideExportFile>
   exportLiveTelemetryCsv(): Promise<RideExportFile>
   getHistoryRange(options: {
     fromMs: number
@@ -2916,7 +2961,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<TuneProfile>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
   getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
-  rebuildTelemetryBuckets(): Promise<number>
+  getMaintenanceState(): MaintenanceState
   deleteTelemetryBefore(beforeMs: number): Promise<number>
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
   clearTelemetryHistory(): Promise<void>
@@ -2930,7 +2975,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     spec: string,
     topSpeedKmh: number,
     hasBatteryConfig: boolean,
-    speedUnitSystem: 'metric' | 'imperial',
+    distanceUnit: DistanceUnit,
   ): AlertTestRule[]
   applyAlertPreset(
     boardId: string,
@@ -3715,6 +3760,15 @@ export async function exportRideCsv(options: RideExportOptions): Promise<RideExp
 }
 
 /**
+ * Floaty 3 session JSON (`schemaVersion` 2), importable from Floaty's Sessions list.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideFloaty`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideFloaty`
+ */
+export async function exportRideFloaty(options: RideExportOptions): Promise<RideExportFile> {
+  return native.exportRideFloaty(options)
+}
+
+/**
  * Live telemetry, every frame at full rate, as a CSV in the ride export's columns. Rejects when the
  * window is empty.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`
@@ -4091,8 +4145,13 @@ export async function getProfileStatsSnapshot(
   return native.getProfileStatsSnapshot(options ?? {})
 }
 
-export async function rebuildTelemetryBuckets(): Promise<number> {
-  return native.rebuildTelemetryBuckets()
+/**
+ * The Maintenance Job runner's current state; pushes follow on `onMaintenanceState`.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMaintenanceState`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMaintenanceState`
+ */
+export function getMaintenanceState(): MaintenanceState {
+  return native.getMaintenanceState()
 }
 
 export async function deleteTelemetryBefore(beforeMs: number): Promise<number> {
@@ -4149,9 +4208,7 @@ export type AlertPresetLevel = 'off' | 'safe' | 'normal' | 'minimal'
 
 /** One change to a metric's preset row: its level, its geiger tick level, or board-config match. */
 export type AlertPresetIntent =
-  | { level: AlertPresetLevel }
-  | { geiger: 'soft' | 'mid' | 'hard' }
-  | { match: boolean }
+  { level: AlertPresetLevel } | { geiger: 'soft' | 'mid' | 'hard' } | { match: boolean }
 
 /**
  * Expand an unsaved draft preset `spec` with the same native expander saved rows use.
@@ -4165,7 +4222,7 @@ export function previewAlertPreset(
   options: {
     topSpeedKmh: number
     hasBatteryConfig: boolean
-    speedUnitSystem?: 'metric' | 'imperial'
+    distanceUnit?: DistanceUnit
   },
 ): AlertTestRule[] {
   return native.previewAlertPreset(
@@ -4173,7 +4230,7 @@ export function previewAlertPreset(
     spec,
     options.topSpeedKmh,
     options.hasBatteryConfig,
-    options.speedUnitSystem ?? 'metric',
+    options.distanceUnit ?? 'km',
   )
 }
 
@@ -4582,10 +4639,10 @@ export function setWatchRouteSpanM(spanM: number | null): void {
   native.setWatchRouteSpanM(spanM)
 }
 
-export function addTelemetryRebuildProgressListener(
-  cb: (event: TelemetryRebuildProgressEvent) => void,
+export function addMaintenanceStateListener(
+  cb: (event: MaintenanceState) => void,
 ): EventSubscription {
-  return emitter.addListener('onTelemetryRebuildProgress', cb)
+  return emitter.addListener('onMaintenanceState', cb)
 }
 
 export function addBoardProbeProgressListener(

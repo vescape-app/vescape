@@ -1,6 +1,6 @@
 import legalPolicies from '../../../../shared/data/legal-policies.json'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { formatSpeedKmh, formatSpeedValue, speedUnit, type UnitSystem } from '@/helpers/units'
+import { formatSpeedKmh, formatSpeedValue, speedUnit, type DistanceUnit } from '@/helpers/units'
 import type { LegalRoadStatus } from '@/modules/legal/lib/types'
 
 export interface LegalLimitCountry {
@@ -421,11 +421,13 @@ export function legalCountryFilterExpression() {
   ]
 }
 
-export function legalReferenceSpeedLabel(kmh: number | null, units: UnitSystem): string {
-  return kmh == null ? 'N/A' : formatSpeedKmh(kmh, units, units === 'imperial' ? 1 : 0)
+export function legalReferenceSpeedLabel(kmh: number | null, distanceUnit: DistanceUnit): string {
+  return kmh == null ? 'N/A' : formatSpeedKmh(kmh, distanceUnit, distanceUnit === 'mi' ? 1 : 0)
 }
 
-export function legalLimitLabelShape(units: UnitSystem): GeoJSON.FeatureCollection<GeoJSON.Point> {
+export function legalLimitLabelShape(
+  distanceUnit: DistanceUnit,
+): GeoJSON.FeatureCollection<GeoJSON.Point> {
   return {
     type: 'FeatureCollection',
     features: LEGAL_LIMIT_COUNTRIES.map((country) => ({
@@ -436,8 +438,8 @@ export function legalLimitLabelShape(units: UnitSystem): GeoJSON.FeatureCollecti
         label:
           country.referenceSpeedKmh == null
             ? 'N/A'
-            : formatSpeedValue(country.referenceSpeedKmh, units, 1),
-        subtitle: country.referenceSpeedKmh == null ? '' : speedUnit(units),
+            : formatSpeedValue(country.referenceSpeedKmh, distanceUnit, 1),
+        subtitle: country.referenceSpeedKmh == null ? '' : speedUnit(distanceUnit),
         speedLimitBasis: country.speedLimitBasis,
         status: LEGAL_ROAD_STATUS_LABELS[country.status],
       },

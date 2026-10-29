@@ -35,6 +35,7 @@ function favorite(overrides: Partial<Favorite>): Favorite {
     maxSpeedKmh: 0,
     batteryUsedWh: 0,
     routePoints: [],
+    weather: null,
     ...overrides,
   }
 }

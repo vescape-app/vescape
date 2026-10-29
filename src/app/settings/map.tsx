@@ -25,7 +25,7 @@ const { minMeters, maxMeters } = NAVIGATION_REROUTE_DISTANCE
 export default function MapSettingsScreen() {
   const {
     navigationRerouteDistanceMeters,
-    unitSystem,
+    distanceUnit,
     satelliteOverlayEnabled,
     satelliteImageryOpacity,
     satelliteMapImageryOpacity,
@@ -35,7 +35,7 @@ export default function MapSettingsScreen() {
   } = useSettingsStore(
     useShallow((s) => ({
       navigationRerouteDistanceMeters: s.navigationRerouteDistanceMeters,
-      unitSystem: s.unitSystem,
+      distanceUnit: s.distanceUnit,
       satelliteOverlayEnabled: s.satelliteOverlayEnabled,
       satelliteImageryOpacity: s.satelliteImageryOpacity,
       satelliteMapImageryOpacity: s.satelliteMapImageryOpacity,
@@ -80,18 +80,18 @@ export default function MapSettingsScreen() {
             hint="Distance from the path before finding a new way to your Direction Point"
             right={
               <Stepper
-                value={Math.round(lengthFromMeters(navigationRerouteDistanceMeters, unitSystem))}
-                unit={lengthUnit(unitSystem)}
-                min={Math.ceil(lengthFromMeters(minMeters, unitSystem))}
-                max={Math.floor(lengthFromMeters(maxMeters, unitSystem))}
-                step={unitSystem === 'imperial' ? 25 : 10}
+                value={Math.round(lengthFromMeters(navigationRerouteDistanceMeters, distanceUnit))}
+                unit={lengthUnit(distanceUnit)}
+                min={Math.ceil(lengthFromMeters(minMeters, distanceUnit))}
+                max={Math.floor(lengthFromMeters(maxMeters, distanceUnit))}
+                step={distanceUnit === 'mi' ? 25 : 10}
                 onChange={(value) =>
                   void set(
                     'navigationRerouteDistanceMeters',
                     lengthInputToMeters(
                       value,
                       navigationRerouteDistanceMeters,
-                      unitSystem,
+                      distanceUnit,
                       minMeters,
                       maxMeters,
                     ),

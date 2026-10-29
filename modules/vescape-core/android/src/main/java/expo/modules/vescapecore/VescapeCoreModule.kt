@@ -67,6 +67,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.vescapecore.mappoints.MapPointApi
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DatabaseBackupManager
+import expo.modules.vescapecore.telemetry.MaintenanceRunner
 import expo.modules.vescapecore.telemetry.ProfileStatsRepository
 import expo.modules.vescapecore.telemetry.RideExport
 import expo.modules.vescapecore.telemetry.RideHistoryRepository
@@ -185,7 +186,7 @@ class VescapeCoreModule : Module() {
       "onBms",
       "onBmsSeries",
       "onLocation",
-      "onTelemetryRebuildProgress",
+      "onMaintenanceState",
       "onBoardProbeProgress",
       "onGroupRideConnection",
       "onGroupRideSnapshot",
@@ -315,8 +316,11 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onBmsSeries") { stopObserving("onBmsSeries") }
     OnStartObserving("onLocation") { startObserving("onLocation") }
     OnStopObserving("onLocation") { stopObserving("onLocation") }
-    OnStartObserving("onTelemetryRebuildProgress") { startObserving("onTelemetryRebuildProgress") }
-    OnStopObserving("onTelemetryRebuildProgress") { stopObserving("onTelemetryRebuildProgress") }
+    OnStartObserving("onMaintenanceState") {
+      startObserving("onMaintenanceState")
+      emitMaintenanceState(MaintenanceRunner.snapshot())
+    }
+    OnStopObserving("onMaintenanceState") { stopObserving("onMaintenanceState") }
     OnStartObserving("onBoardProbeProgress") { startObserving("onBoardProbeProgress") }
     OnStopObserving("onBoardProbeProgress") { stopObserving("onBoardProbeProgress") }
     OnStartObserving("onGroupRideConnection") { startObserving("onGroupRideConnection") }
@@ -419,6 +423,8 @@ class VescapeCoreModule : Module() {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.get(context).refresh()
+      MaintenanceRunner.onChange = ::emitMaintenanceState
+      MaintenanceRunner.start(context.applicationContext)
     }
 
     OnActivityEntersForeground {
@@ -427,6 +433,8 @@ class VescapeCoreModule : Module() {
       CompanionRestartGate.clear(context.applicationContext)
       CoreForegroundService.setAppVisible(context.applicationContext, true)
       AppStatusCoordinator.get(context).refresh()
+      // Emits were gated while hidden; the screen must not keep a stale running state.
+      emitMaintenanceState(MaintenanceRunner.snapshot())
     }
     OnActivityEntersBackground {
       frontendActive = false
@@ -439,6 +447,7 @@ class VescapeCoreModule : Module() {
       companionPresence.onActivityResult(result.requestCode, result.resultCode)
     }
     OnDestroy {
+      MaintenanceRunner.onChange = null
       RecordingStorageFailure.observeOutage(null)
       frontendActive = false
       observedEvents.clear()
@@ -849,6 +858,14 @@ class VescapeCoreModule : Module() {
       catch (error: CancellationException) { throw error }
       catch (error: Exception) { throw CodedException("ERR_RIDE_EXPORT", "Could not export ride", error) }
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideFloaty`
+    // @parity /modules/vescape-core/src/index.ts `exportRideFloaty`
+    AsyncFunction("exportRideFloaty") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
+      try { TelemetryRepository.get(context.applicationContext).exportRideFloaty(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) { throw CodedException("ERR_RIDE_EXPORT", "Could not export ride", error) }
+    }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportLiveTelemetryCsv`
     // @parity /modules/vescape-core/src/index.ts `exportLiveTelemetryCsv`
     AsyncFunction("exportLiveTelemetryCsv") Coroutine { ->
@@ -1032,7 +1049,11 @@ class VescapeCoreModule : Module() {
     }
     AsyncFunction("restoreDatabase") Coroutine { uri: String ->
       stopNativeWorkForDatabaseRestore()
-      DatabaseBackupManager.restoreBackup(context.applicationContext, uri)
+      try {
+        DatabaseBackupManager.restoreBackup(context.applicationContext, uri)
+      } finally {
+        MaintenanceRunner.onDatabaseReplaced()
+      }
       WatchLastBatteryPusher.push(context)
     }
     AsyncFunction("getRefloatConfigSnapshot") { promise: Promise ->
@@ -1221,34 +1242,16 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.requireAvailable()
       TelemetryRepository.get(context.applicationContext).deleteRange(options)
     }
-    AsyncFunction("rebuildTelemetryBuckets") { promise: Promise ->
-      RecordingStorageFailure.requireAvailable()
-      CoroutineScope(Dispatchers.IO).launch {
-        try {
-          val appContext = context.applicationContext
-          val repository = TelemetryRepository.get(appContext)
-          repository.applySettings(AppDataRepository.get(appContext).getTypedSettings())
-          val count = repository.rebuildBuckets { current, total ->
-            if (shouldEmitToFrontend("onTelemetryRebuildProgress")) {
-              mainHandler.post {
-                if (shouldEmitToFrontend("onTelemetryRebuildProgress")) {
-                  sendEvent(
-                    "onTelemetryRebuildProgress",
-                    mapOf("current" to current, "total" to total),
-                  )
-                }
-              }
-            }
-          }
-          promise.resolve(count)
-        } catch (e: Exception) {
-          promise.reject("ERR_REBUILD", e.message, e)
-        }
-      }
-    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMaintenanceState`
+    // @parity /modules/vescape-core/src/index.ts `getMaintenanceState`
+    Function("getMaintenanceState") { MaintenanceRunner.snapshot() }
     AsyncFunction("clearTelemetryHistory") {
       RecordingStorageFailure.requireAvailable()
-      runBlocking { TelemetryRepository.get(context.applicationContext).clearAll() }
+      try {
+        runBlocking { TelemetryRepository.get(context.applicationContext).clearAll() }
+      } finally {
+        MaintenanceRunner.onDatabaseReplaced()
+      }
     }
     AsyncFunction("getBoards") {
       RecordingStorageFailure.requireAvailable()
@@ -1284,8 +1287,8 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `previewAlertPreset`
     // @parity /modules/vescape-core/src/index.ts `previewAlertPreset`
-    Function("previewAlertPreset") { metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, speedUnitSystem: String ->
-      AlertPresetPersistence.preview(metric, spec, topSpeedKmh, hasBatteryConfig, speedUnitSystem).map { rule ->
+    Function("previewAlertPreset") { metric: String, spec: String, topSpeedKmh: Double, hasBatteryConfig: Boolean, distanceUnit: String ->
+      AlertPresetPersistence.preview(metric, spec, topSpeedKmh, hasBatteryConfig, distanceUnit).map { rule ->
         mapOf(
           "id" to rule.id,
           "controlId" to rule.controlId,
@@ -1483,14 +1486,19 @@ class VescapeCoreModule : Module() {
       if (key == "navigationRerouteDistanceMeters") {
         NavigationController.get(context.applicationContext).reloadRerouteDistance()
       }
-      if (key == "unitSystem") {
+      if (key == "distanceUnit") {
         CoreForegroundService.reloadAlertRules(context.applicationContext)
-        val units = AppDataRepository.get(context.applicationContext).getTypedSettings().unitSystem
-        mainHandler.post { alertTestCoordinator?.unitSystem = units }
+        val units = AppDataRepository.get(context.applicationContext).getTypedSettings().distanceUnit
+        mainHandler.post { alertTestCoordinator?.distanceUnit = units }
+      }
+      if (key == "temperatureUnit") {
+        val unit = AppDataRepository.get(context.applicationContext).getTypedSettings().temperatureUnit
+        mainHandler.post { alertTestCoordinator?.temperatureUnit = unit }
       }
       if (key == "liveHistoryLimit") {
         CoreForegroundService.setLiveHistoryLimit(value as? Number)
       }
+      MaintenanceRunner.onSettingChanged(key)
       if (
         key == "movingSpeedThresholdKmh" ||
         key == "avgSpeedCutoffKmh" ||
@@ -1510,7 +1518,8 @@ class VescapeCoreModule : Module() {
         key == "voice" ||
         key == "voiceLevel" ||
         key == "weatherRainAlertLevel" ||
-        key == "weatherWindAlertLevel"
+        key == "weatherWindAlertLevel" ||
+        key == "temperatureUnit"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
@@ -1559,7 +1568,8 @@ class VescapeCoreModule : Module() {
     // A test sounds like the real rule: same effects pack, same output.
     feedback.setSoundSettings(settings)
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
-    coordinator.unitSystem = settings.unitSystem
+    coordinator.distanceUnit = settings.distanceUnit
+    coordinator.temperatureUnit = settings.temperatureUnit
     coordinator.replaceRules(rules)
     alertTestFeedback = feedback
     alertTestCoordinator = coordinator
@@ -1572,6 +1582,17 @@ class VescapeCoreModule : Module() {
     alertTestControlId = null
     alertTestFeedback?.release()
     alertTestFeedback = null
+  }
+
+  /**
+   * Called from the maintenance thread; hops to main like every other JS emit.
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `emitMaintenanceState`
+   */
+  private fun emitMaintenanceState(state: Map<String, Any?>) {
+    if (!shouldEmitToFrontend("onMaintenanceState")) return
+    mainHandler.post {
+      if (shouldEmitToFrontend("onMaintenanceState")) sendEvent("onMaintenanceState", state)
+    }
   }
 
   private fun shouldEmitToFrontend(name: String): Boolean = frontendActive && observedEvents.contains(name)

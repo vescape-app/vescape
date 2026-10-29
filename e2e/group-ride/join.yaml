@@ -1,0 +1,26 @@
+appId: ${APP_ID}
+---
+- extendedWaitUntil:
+    visible: No board
+    timeout: 180000
+- tapOn:
+    id: social-drawer-trigger
+    waitToSettleTimeoutMs: 1000
+- tapOn:
+    text: Edit
+    waitToSettleTimeoutMs: 1000
+- inputText: E2E
+- tapOn:
+    text: Save
+    waitToSettleTimeoutMs: 1000
+- extendedWaitUntil:
+    visible: E2E Group Ride
+    timeout: 60000
+- tapOn:
+    text: Join nearest group ride
+    waitToSettleTimeoutMs: 1000
+- extendedWaitUntil:
+    visible: Peer
+    timeout: 30000
+- assertVisible: E2E Board Alpha
+- assertVisible: Leave group ride

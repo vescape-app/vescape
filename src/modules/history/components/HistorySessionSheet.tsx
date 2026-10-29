@@ -103,6 +103,7 @@ export function HistorySessionSheet({
             routePoints={session.routePoints}
             selected={selected}
             accent={favorite ? theme.palette.amber.color : undefined}
+            weather={session.weather}
             onPress={() => onSelectSession(session)}
           />
         </View>
@@ -146,6 +147,7 @@ export function HistorySessionSheet({
       header={
         <HistoryTabs tab={favoriteMode ? 'favorites' : 'history'} onSelectTab={onSelectTab} />
       }
+      contentPageKey={favoriteMode ? 'favorites' : 'history'}
       onClose={onClose}
       backdropTestID="history-session-sheet-backdrop"
       virtualizedContent={{

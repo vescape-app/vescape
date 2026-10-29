@@ -15,11 +15,7 @@ export const MAX_PITCH_INPUT_DEGREES = 3
 export const MAX_PITCH_INPUT_RATE_DEGREES_PER_SECOND = 130
 
 export type TunePreviewMotorPresetId =
-  | 'hypercore'
-  | 'superflux-hs'
-  | 'superflux-ht'
-  | 'cannoncore-v2'
-  | 'cannoncore-v3'
+  'hypercore' | 'superflux-hs' | 'superflux-ht' | 'cannoncore-v2' | 'cannoncore-v3'
 
 export interface TunePreviewAdvancedPhysics {
   motorPresetId: TunePreviewMotorPresetId

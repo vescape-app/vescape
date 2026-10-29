@@ -23,6 +23,7 @@ export function FavoriteRideCard({ favorite, routePoints, onPress }: FavoriteRid
       subtitle={formatRideDetails(favorite.movingDurationMs, favorite.distanceM, null)}
       routePoints={routePoints}
       color={theme.palette.amber.color}
+      weather={favorite.weather}
       onPress={onPress}
     />
   )

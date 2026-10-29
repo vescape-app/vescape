@@ -7,7 +7,8 @@ import Foundation
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertCoordinator.kt
 internal final class AlertCoordinator {
-  var unitSystem = "metric"
+  var distanceUnit = "km"
+  var temperatureUnit = "celsius"
   private let engine = AlertEngine()
   private let player: AlertAudioPlayer
   private let vibrateSingles: Bool
@@ -113,11 +114,12 @@ internal final class AlertCoordinator {
               controlId: alert.controlId,
               reading: spoken,
               percentAvailable: batteryPercent != nil,
-              unitSystem: unitSystem
+              distanceUnit: distanceUnit,
+              temperatureUnit: temperatureUnit
             )
           )
         } else if let tts = parseTtsAlertSound(alert.spec) {
-          let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, unitSystem: unitSystem)
+          let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, distanceUnit: distanceUnit)
           if !text.isEmpty { player.speakAfterSeverity(tts.severity, text: text) }
         }
       }

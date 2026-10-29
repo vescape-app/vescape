@@ -33,8 +33,18 @@ function firstReplayedFix(target: { latitude: number; longitude: number }) {
  * plans from the rider's current position, so a target set earlier would be planned from the
  * emulator's default location.
  */
-async function startWatchRide(replay: string, latitude: number, longitude: number) {
+async function startWatchRide(
+  replay: string,
+  latitude: number,
+  longitude: number,
+  navigation: boolean,
+) {
   await startDebugReplay(replay)
+  // The telemetry E2E needs the real replay, without depending on a Directions service.
+  if (!navigation) {
+    console.log(`[watch-ride] ${replay} running, telemetry only`)
+    return
+  }
   await firstReplayedFix({ latitude, longitude })
   // The store, not the native call alone, so the phone shows the same Navigation a rider's tap makes.
   await useMapStore.getState().setDirectionPoint(latitude, longitude)
@@ -46,7 +56,12 @@ async function startWatchRide(replay: string, latitude: number, longitude: numbe
  * `vescape://dev/watch-ride?replay=<recording>&lat=<lat>&lon=<lon>`. Release builds ignore it.
  */
 export default function WatchRideLink() {
-  const { replay, lat, lon } = useLocalSearchParams<{ replay: string; lat: string; lon: string }>()
+  const { replay, lat, lon, navigation } = useLocalSearchParams<{
+    replay: string
+    lat: string
+    lon: string
+    navigation?: string
+  }>()
   const router = useRouter()
 
   useEffect(() => {
@@ -55,14 +70,14 @@ export default function WatchRideLink() {
     if (__DEV__ && replay && Number.isFinite(latitude) && Number.isFinite(longitude)) {
       // The ride script stops resending the link on this line; starting can take a minute more.
       console.log(`[watch-ride] ${replay} received`)
-      startWatchRide(replay, latitude, longitude).catch((error: unknown) =>
+      startWatchRide(replay, latitude, longitude, navigation !== 'off').catch((error: unknown) =>
         console.warn('[watch-ride] failed', error),
       )
     }
     // Back to the bare main screen, as DevBadge's replay does: the ride is watched on the map.
     if (router.canDismiss()) router.dismissAll()
     router.replace('/')
-  }, [replay, lat, lon, router])
+  }, [replay, lat, lon, navigation, router])
 
   return null
 }

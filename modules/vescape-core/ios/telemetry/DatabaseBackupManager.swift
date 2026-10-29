@@ -7,7 +7,7 @@ import GRDB
 /// `TelemetryDatabase.migrator`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt `TELEMETRY_DATABASE_VERSION`
-internal let TELEMETRY_SCHEMA_VERSION = 52
+internal let TELEMETRY_SCHEMA_VERSION = 53
 
 /// Released schema generations that have a complete production path to the current schema.
 /// 37–39 never shipped as standalone migrations: Android deliberately jumps 36→40.
@@ -100,8 +100,11 @@ enum DatabaseBackupManager {
 
     TelemetryRepository.shared.beginDatabaseSwap()
     defer { TelemetryRepository.shared.endDatabaseSwap() }
-    try TelemetryDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion) { _ in
-      try MySounds.replaceFromBackup(staged.sounds)
+    // A weather observation fetched before the swap must not land in the restored database.
+    try DatabaseReplacementFence.process.fence {
+      try TelemetryDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion) { _ in
+        try MySounds.replaceFromBackup(staged.sounds)
+      }
     }
   }
 

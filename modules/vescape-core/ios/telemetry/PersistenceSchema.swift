@@ -78,4 +78,12 @@ enum PersistenceSchema {
   static func createAccessoryCapabilitySettings(_ db: Database) throws {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessory_capability_settings (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, enabled INTEGER NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
   }
+
+  /// Weather Observations: rows of current conditions keyed on observation time, tied to no Board,
+  /// ride or place. The key makes a repeated observation impossible to store twice.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_52_53`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `WeatherObservationEntity`
+  static func createWeatherObservations(_ db: Database) throws {
+    try db.execute(sql: "CREATE TABLE IF NOT EXISTS weather_observations (observed_at_ms INTEGER NOT NULL, temperature_c INTEGER NOT NULL, weather_code INTEGER NOT NULL, gust_kmh INTEGER, is_day INTEGER NOT NULL, PRIMARY KEY(observed_at_ms))")
+  }
 }

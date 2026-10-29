@@ -47,9 +47,9 @@ describe('profile stat formatting', () => {
 
 test('existing profile aggregates reformat without changing canonical values', () => {
   const stats = Object.freeze({ distanceM: 80, speedKmh: 40 })
-  expect(formatDistance(stats.distanceM, 'imperial')).toBe('0.0 mi')
-  expect(formatDistance(1609.344, 'imperial')).toBe('1.0 mi')
-  expect(formatDistance(null, 'imperial')).toBe(DASH)
-  expect(formatDistance(0, 'imperial')).toBe('0.0 mi')
+  expect(formatDistance(stats.distanceM, 'mi')).toBe('0.0 mi')
+  expect(formatDistance(1609.344, 'mi')).toBe('1.0 mi')
+  expect(formatDistance(null, 'mi')).toBe(DASH)
+  expect(formatDistance(0, 'mi')).toBe('0.0 mi')
   expect(stats).toEqual({ distanceM: 80, speedKmh: 40 })
 })

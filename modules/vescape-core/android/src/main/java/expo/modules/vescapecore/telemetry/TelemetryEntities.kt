@@ -424,7 +424,8 @@ data class AppSettings(
   val freeSpinMaxSpeedDeltaKmh: Double = DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
   val freeSpinStationaryBoardCapKmh: Double = DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
   val rideSplitGapMinutes: Int = DEFAULT_RIDE_SPLIT_GAP_MINUTES,
-  val unitSystem: String = "metric",
+  val distanceUnit: String = "km",
+  val temperatureUnit: String = "celsius",
   val themeMode: String = "system",
   val mapStyleKey: String = "onedark",
   val satelliteOverlayEnabled: Boolean = true,
@@ -605,6 +606,7 @@ data class FavoriteEntity(
   fun toMap(
     boardName: String?,
     routePoints: List<Map<String, Any>> = emptyList(),
+    weather: RideWeather? = null,
   ): Map<String, Any?> = mapOf(
     "id" to id,
     "boardId" to boardId,
@@ -622,6 +624,7 @@ data class FavoriteEntity(
     "maxSpeedKmh" to maxSpeedCentiKmh / 100.0,
     "batteryUsedWh" to batteryUsedWhMilli / 1000.0,
     "routePoints" to routePoints,
+    "weather" to weather?.toMap(),
   )
 }
 
@@ -927,3 +930,36 @@ data class AccessoryCapabilitySettingsEntity(
   val enabled: Boolean,
   @ColumnInfo(name = "sampling_rate_hz") val samplingRateHz: Double? = null,
 )
+
+/**
+ * One stored Weather Observation (`weather_observations`). Keyed on the Open-Meteo observation
+ * time: the same observation can never be stored twice.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceSchema.swift `createWeatherObservations`
+ */
+@Entity(tableName = "weather_observations")
+data class WeatherObservationEntity(
+  @PrimaryKey
+  @ColumnInfo(name = "observed_at_ms")
+  val observedAtMs: Long,
+  @ColumnInfo(name = "temperature_c")
+  val temperatureC: Int,
+  @ColumnInfo(name = "weather_code")
+  val weatherCode: Int,
+  @ColumnInfo(name = "gust_kmh")
+  val gustKmh: Int?,
+  @ColumnInfo(name = "is_day")
+  val isDay: Boolean,
+) {
+  internal fun toObservation() = WeatherObservation(observedAtMs, temperatureC, weatherCode, gustKmh, isDay)
+
+  internal companion object {
+    fun of(observation: WeatherObservation) = WeatherObservationEntity(
+      observation.observedAtMs,
+      observation.temperatureC,
+      observation.weatherCode,
+      observation.gustKmh,
+      observation.isDay,
+    )
+  }
+}

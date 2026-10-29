@@ -6,11 +6,7 @@ appId: ${APP_ID}
     visible: E2E History Board
     timeout: 15000
 
-- tapOn:
-    id: history-button
-- extendedWaitUntil:
-    visible: History
-    timeout: 15000
+- runFlow: fixture/_history.yaml
 
 # The drawer opens on riding totals and the ride list; the newest ride has to be opened for its stats.
 - tapOn:

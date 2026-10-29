@@ -101,7 +101,7 @@ final class WatchMirrorIntakeTests: XCTestCase {
   func testDisconnectClearsHotStatusAndGroupButPreservesColdChannels() {
     var intake = WatchMirrorIntake()
     intake.acceptRoute(WatchMirrorReplayAdapter.route(route, origin: origin))
-    intake.acceptSettings([WatchSettingsKey.unitSystem: "imperial"])
+    intake.acceptSettings([WatchSettingsKey.distanceUnit: "mi"])
     intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: 1_000, appliedAtMs: 1_000)
     intake.acceptRouteStatus(WatchRouteStatusCodec.encode(WatchRouteStatus(phase: .computing)))
     intake.acceptGroupRide(GroupRideFrameCodec.encode(GroupRideFrame(courseDeg: 90, spanM: 600, riders: [])), receivedAtMs: 1_000)
@@ -113,7 +113,7 @@ final class WatchMirrorIntakeTests: XCTestCase {
     XCTAssertNil(intake.groupRide)
     XCTAssertNil(intake.routeStatus)
     XCTAssertNotNil(intake.route)
-    XCTAssertEqual(intake.settings.unitSystem, "imperial")
+    XCTAssertEqual(intake.settings.distanceUnit, "mi")
     intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: 6_000, appliedAtMs: 6_000)
     intake.acceptGroupRide(GroupRideFrameCodec.encode(GroupRideFrame(courseDeg: nil, spanM: 600, riders: [])), receivedAtMs: 6_000)
     XCTAssertEqual(intake.groupRide?.courseDeg, 0)

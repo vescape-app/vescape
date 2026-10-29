@@ -13,7 +13,7 @@ import {
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import {
   lengthFromMeters,
   lengthInputToMeters,
@@ -74,7 +74,7 @@ export function TunePreviewScenarioControls({
   speedKmh,
   groundToBoardAngleDegrees,
 }: TunePreviewScenarioControlsProps) {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const { formatSpeedWithUnit } = useFormat()
   const { options, formatHillHeight, formatHillSpacing } = useTunePreviewFormat()
   const [movementPreset, setMovementPreset] = useState<MovementPresetId>('manual')
@@ -198,32 +198,36 @@ export function TunePreviewScenarioControls({
               Low speed · {formatSpeedWithUnit(customLowSpeedKmh, 1)}
             </Text>
             <TuneDial
-              key={`low-${units}`}
-              value={speedFromKmh(customLowSpeedKmh, units)}
-              min={speedFromKmh(-30, units)}
-              max={speedFromKmh(45, units)}
+              key={`low-${distanceUnit}`}
+              value={speedFromKmh(customLowSpeedKmh, distanceUnit)}
+              min={speedFromKmh(-30, distanceUnit)}
+              max={speedFromKmh(45, distanceUnit)}
               step={1}
               displayDecimals={1}
-              unit={speedUnit(units)}
+              unit={speedUnit(distanceUnit)}
               valueChangeMode="live"
               onValueChange={(value) =>
-                setCustomLowSpeedKmh(speedInputToKmh(value, customLowSpeedKmh, units, -30, 45))
+                setCustomLowSpeedKmh(
+                  speedInputToKmh(value, customLowSpeedKmh, distanceUnit, -30, 45),
+                )
               }
             />
             <Text style={styles.description}>
               High speed · {formatSpeedWithUnit(customHighSpeedKmh, 1)}
             </Text>
             <TuneDial
-              key={`high-${units}`}
-              value={speedFromKmh(customHighSpeedKmh, units)}
-              min={speedFromKmh(-15, units)}
-              max={speedFromKmh(50, units)}
+              key={`high-${distanceUnit}`}
+              value={speedFromKmh(customHighSpeedKmh, distanceUnit)}
+              min={speedFromKmh(-15, distanceUnit)}
+              max={speedFromKmh(50, distanceUnit)}
               step={1}
               displayDecimals={1}
-              unit={speedUnit(units)}
+              unit={speedUnit(distanceUnit)}
               valueChangeMode="live"
               onValueChange={(value) =>
-                setCustomHighSpeedKmh(speedInputToKmh(value, customHighSpeedKmh, units, -15, 50))
+                setCustomHighSpeedKmh(
+                  speedInputToKmh(value, customHighSpeedKmh, distanceUnit, -15, 50),
+                )
               }
             />
             <Text style={styles.description}>
@@ -260,32 +264,36 @@ export function TunePreviewScenarioControls({
               Valley-to-peak height · {formatHillHeight(hillHeightMeters)}
             </Text>
             <TuneDial
-              key={`height-${units}`}
-              value={lengthFromMeters(hillHeightMeters, units)}
-              min={lengthFromMeters(0, units)}
-              max={lengthFromMeters(50, units)}
+              key={`height-${distanceUnit}`}
+              value={lengthFromMeters(hillHeightMeters, distanceUnit)}
+              min={lengthFromMeters(0, distanceUnit)}
+              max={lengthFromMeters(50, distanceUnit)}
               step={0.1}
               displayDecimals={1}
-              unit={lengthUnit(units)}
+              unit={lengthUnit(distanceUnit)}
               valueChangeMode="live"
               onValueChange={(value) =>
-                onHillHeightChange(lengthInputToMeters(value, hillHeightMeters, units, 0, 50))
+                onHillHeightChange(
+                  lengthInputToMeters(value, hillHeightMeters, distanceUnit, 0, 50),
+                )
               }
             />
             <Text style={styles.description}>
               Peak-to-peak distance · {formatHillSpacing(hillSpacingMeters)}
             </Text>
             <TuneDial
-              key={`spacing-${units}`}
-              value={lengthFromMeters(hillSpacingMeters, units)}
-              min={lengthFromMeters(2, units)}
-              max={lengthFromMeters(1000, units)}
+              key={`spacing-${distanceUnit}`}
+              value={lengthFromMeters(hillSpacingMeters, distanceUnit)}
+              min={lengthFromMeters(2, distanceUnit)}
+              max={lengthFromMeters(1000, distanceUnit)}
               step={1}
               displayDecimals={1}
-              unit={lengthUnit(units)}
+              unit={lengthUnit(distanceUnit)}
               valueChangeMode="live"
               onValueChange={(value) =>
-                onHillSpacingChange(lengthInputToMeters(value, hillSpacingMeters, units, 2, 1000))
+                onHillSpacingChange(
+                  lengthInputToMeters(value, hillSpacingMeters, distanceUnit, 2, 1000),
+                )
               }
             />
           </>

@@ -101,8 +101,8 @@ final class WatchGroupRideTests: XCTestCase {
   }
 
   func testDistanceLabelsDropTheSpaceBeforeTheUnit() {
-    XCTAssertEqual(groupRideDistanceLabel(680, unitSystem: "metric"), "680m")
-    XCTAssertEqual(groupRideDistanceLabel(2_100, unitSystem: "metric"), "2.1km")
-    XCTAssertEqual(groupRideDistanceLabel(2_100, unitSystem: "imperial"), "1.3mi")
+    XCTAssertEqual(groupRideDistanceLabel(680, distanceUnit: "km"), "680m")
+    XCTAssertEqual(groupRideDistanceLabel(2_100, distanceUnit: "km"), "2.1km")
+    XCTAssertEqual(groupRideDistanceLabel(2_100, distanceUnit: "mi"), "1.3mi")
   }
 }

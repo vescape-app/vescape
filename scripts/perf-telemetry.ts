@@ -313,7 +313,7 @@ function compare(aPath: string, bPath: string): void {
     ['process CPU %', a.cpu.processPct ?? 0, b.cpu.processPct ?? 0, false],
   ]
   const pad = (s: string, n: number) => s.padEnd(n)
-  console.log(`  ${pad('metric', 18)}${pad('A', 12)}${pad('B', 12)}${pad('Δ', 12)}better`)
+  console.log(`  ${pad('km', 18)}${pad('A', 12)}${pad('B', 12)}${pad('Δ', 12)}better`)
   for (const [name, av, bv, higherBetter] of rows) {
     const better = av === bv ? '=' : bv > av === higherBetter ? 'B' : 'A'
     console.log(

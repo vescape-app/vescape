@@ -408,6 +408,21 @@ internal final class BoardSessionController: VescGattListener {
     self.makeGatt = makeGatt
     removeWeatherListener = WeatherCoordinator.shared.addNativeChangeListener { [weak self] weather in
       self?.weatherAlerts.evaluate(weather)
+      Self.storeWeatherObservation(weather)
+    }
+  }
+
+  /// Ride weather (#604): every successful refresh offers its current conditions to the store, off
+  /// the main thread. The ticket is taken here, so a Restore or Clear all that starts before the
+  /// write lands drops it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `storeWeatherObservation`
+  private static func storeWeatherObservation(_ weather: Weather) {
+    guard let observation = weather.observation else { return }
+    let recorder = WeatherObservationRecorder.process
+    let ticket = recorder.ticket()
+    DispatchQueue.global(qos: .utility).async {
+      do { _ = try recorder.record(observation, ticket: ticket) }
+      catch { RecordingStorageFailure.report(operation: "weather_observations", category: "write_failed", error: error) }
     }
   }
 
@@ -1271,7 +1286,8 @@ internal final class BoardSessionController: VescGattListener {
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
     weatherAlerts.settings = WeatherAlertSettings(settings: settings)
-    alertCoordinator.unitSystem = settings["unitSystem"] as? String ?? "metric"
+    alertCoordinator.distanceUnit = settings["distanceUnit"] as? String ?? "km"
+    alertCoordinator.temperatureUnit = settings["temperatureUnit"] as? String ?? "celsius"
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
@@ -1298,7 +1314,11 @@ internal final class BoardSessionController: VescGattListener {
       let settings = try appData.getSettings()
       // Without a Board Session nothing else keeps the player on the selected pack.
       alertAudioPlayer.applySoundSettings(settings)
-      alertAudioPlayer.preview(spec: spec, unitSystem: settings["unitSystem"] as? String ?? "metric")
+      alertAudioPlayer.preview(
+        spec: spec,
+        distanceUnit: settings["distanceUnit"] as? String ?? "km",
+        temperatureUnit: settings["temperatureUnit"] as? String ?? "celsius"
+      )
     } catch { RecordingStorageFailure.reportRead(operation: "alert_preview_settings", error: error) }
   }
 
@@ -1570,7 +1590,8 @@ internal final class BoardSessionController: VescGattListener {
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     weatherAlerts.settings = WeatherAlertSettings(settings: sessionSettings)
     connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
-    alertCoordinator.unitSystem = sessionSettings["unitSystem"] as? String ?? "metric"
+    alertCoordinator.distanceUnit = sessionSettings["distanceUnit"] as? String ?? "km"
+    alertCoordinator.temperatureUnit = sessionSettings["temperatureUnit"] as? String ?? "celsius"
     alertAudioPlayer.applySoundSettings(sessionSettings)
     // Engine and session up for the whole ride, before the first alert can fire; `goIdle()` at its end.
     alertAudioPlayer.wake()

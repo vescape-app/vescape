@@ -33,7 +33,7 @@ enum WatchSettingsKey {
   static let streetMapEnabled = "streetMapEnabled"
   /// Street map opacity behind the gauges, integer percent from ``WatchMapGauges/steps``.
   static let mapGaugesPercent = "mapGaugesPercent"
-  static let unitSystem = "unitSystem"
+  static let distanceUnit = "distanceUnit"
   /// Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist.
   static let tiltRatePercent = "tiltRatePercent"
 }
@@ -65,7 +65,7 @@ let watchSourceSettingKeys: Set<String> = [
   "wearTelemetryRouteEnabled",
   "wearStreetMapEnabled",
   "wearMapGaugesPercent",
-  "unitSystem",
+  "distanceUnit",
   "wearTiltRatePercent",
   "wearPushRateHz",
 ]
@@ -82,7 +82,7 @@ struct WatchSettings: Equatable {
   var telemetryRouteEnabled: Bool = true
   var streetMapEnabled: Bool = true
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
-  var unitSystem: String = "metric"
+  var distanceUnit: String = "km"
   var tiltRatePercent: Int = watchDefaultTiltRatePercent
 
   /// What the wrist holds before the first push lands, and what a cleared channel reads as.
@@ -101,7 +101,7 @@ struct WatchSettings: Equatable {
       WatchSettingsKey.telemetryRouteEnabled: telemetryRouteEnabled,
       WatchSettingsKey.streetMapEnabled: streetMapEnabled,
       WatchSettingsKey.mapGaugesPercent: mapGaugesPercent,
-      WatchSettingsKey.unitSystem: unitSystem,
+      WatchSettingsKey.distanceUnit: distanceUnit,
       WatchSettingsKey.tiltRatePercent: tiltRatePercent,
     ]
     if let boardMoveStrengthPercent { payload[WatchSettingsKey.boardMoveStrengthPercent] = boardMoveStrengthPercent }
@@ -125,7 +125,7 @@ struct WatchSettings: Equatable {
       telemetryRouteEnabled: payload[WatchSettingsKey.telemetryRouteEnabled] as? Bool ?? wristDefaults.telemetryRouteEnabled,
       streetMapEnabled: payload[WatchSettingsKey.streetMapEnabled] as? Bool ?? wristDefaults.streetMapEnabled,
       mapGaugesPercent: WatchMapGauges.percent(payload[WatchSettingsKey.mapGaugesPercent]) ?? wristDefaults.mapGaugesPercent,
-      unitSystem: payload[WatchSettingsKey.unitSystem] as? String == "imperial" ? "imperial" : "metric",
+      distanceUnit: payload[WatchSettingsKey.distanceUnit] as? String == "mi" ? "mi" : "km",
       // Held to the range the phone repositories accept (1–100) on read too: the wrist integrates
       // this every frame, and a rate from a newer or broken phone must not spin the stick.
       tiltRatePercent: (payload[WatchSettingsKey.tiltRatePercent] as? NSNumber)

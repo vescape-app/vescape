@@ -6,7 +6,11 @@ import {
   edgeDrawerContentResizeOffset,
   edgeDrawerFocusOffset,
   edgeDrawerDismissOpacity,
+  edgeDrawerDragStartsAtEdge,
+  edgeDrawerPastEdge,
+  edgeDrawerStickyShift,
   edgeDrawerOnScreenPixels,
+  edgeDrawerOpaqueFloorOffset,
   edgeDrawerRestoreOffset,
   edgeDrawerScrollEndAction,
   edgeDrawerVisibleFraction,
@@ -255,4 +259,86 @@ test('focuses a virtualized row far below the first window at screen center with
     opensFromTop: false,
   })
   expect(edgeDrawerVisibleFraction({ offset, range, height: HEIGHT, opensFromTop: false })).toBe(1)
+})
+
+describe('edgeDrawerDragStartsAtEdge', () => {
+  test('a drawer that fits on screen dismisses from any pull', () => {
+    expect(edgeDrawerDragStartsAtEdge(at(0, SHORT_RANGE, true))).toBe(true)
+    expect(edgeDrawerDragStartsAtEdge(at(SHORT_RANGE, SHORT_RANGE, false))).toBe(true)
+    expect(edgeDrawerDragStartsAtEdge(at(MEDIUM_RANGE, MEDIUM_RANGE, false))).toBe(true)
+  })
+
+  test('a long drawer dismisses only while its content start is on screen', () => {
+    const topEdge = edgeDrawerRestoreOffset(LONG_RANGE, HEIGHT, true)
+    expect(edgeDrawerDragStartsAtEdge(at(topEdge, LONG_RANGE, true))).toBe(true)
+    expect(edgeDrawerDragStartsAtEdge(at(LONG_RANGE - HEIGHT, LONG_RANGE, true))).toBe(true)
+    expect(edgeDrawerDragStartsAtEdge(at(LONG_RANGE - HEIGHT - 200, LONG_RANGE, true))).toBe(false)
+    const bottomEdge = edgeDrawerRestoreOffset(LONG_RANGE, HEIGHT, false)
+    expect(edgeDrawerDragStartsAtEdge(at(bottomEdge, LONG_RANGE, false))).toBe(true)
+    expect(edgeDrawerDragStartsAtEdge(at(HEIGHT, LONG_RANGE, false))).toBe(true)
+    expect(edgeDrawerDragStartsAtEdge(at(HEIGHT + 200, LONG_RANGE, false))).toBe(false)
+  })
+})
+
+describe('edgeDrawerPastEdge', () => {
+  test('only the dismissal side of the content edge counts', () => {
+    const topEdge = edgeDrawerRestoreOffset(LONG_RANGE, HEIGHT, true)
+    expect(edgeDrawerPastEdge(at(topEdge, LONG_RANGE, true))).toBe(false)
+    expect(edgeDrawerPastEdge(at(topEdge + 40, LONG_RANGE, true))).toBe(true)
+    expect(edgeDrawerPastEdge(at(topEdge - 40, LONG_RANGE, true))).toBe(false)
+    const bottomEdge = edgeDrawerRestoreOffset(LONG_RANGE, HEIGHT, false)
+    expect(edgeDrawerPastEdge(at(bottomEdge - 40, LONG_RANGE, false))).toBe(true)
+    expect(edgeDrawerPastEdge(at(bottomEdge + 40, LONG_RANGE, false))).toBe(false)
+  })
+})
+
+describe('edgeDrawerStickyShift', () => {
+  test('leading chrome follows the scroll once it reaches its pin', () => {
+    expect(edgeDrawerStickyShift({ offset: 0, start: 900, pinAt: 40, maxShift: 2000 })).toBe(0)
+    expect(edgeDrawerStickyShift({ offset: 1000, start: 900, pinAt: 40, maxShift: 2000 })).toBe(140)
+    expect(edgeDrawerStickyShift({ offset: 5000, start: 900, pinAt: 40, maxShift: 2000 })).toBe(
+      2000,
+    )
+  })
+
+  test('trailing chrome is pulled up to its pin while the body runs off screen', () => {
+    expect(edgeDrawerStickyShift({ offset: 0, end: 3000, pinAt: 860, maxShift: 2500 })).toBe(-2140)
+    expect(edgeDrawerStickyShift({ offset: 2140, end: 3000, pinAt: 860, maxShift: 2500 })).toBe(-0)
+    expect(edgeDrawerStickyShift({ offset: 0, end: 3000, pinAt: 860, maxShift: 100 })).toBe(-100)
+  })
+})
+
+describe('edgeDrawerOpaqueFloorOffset', () => {
+  test('an opaque drawer stays opaque when its rows grow in', () => {
+    const offset = edgeDrawerRestoreOffset(SHORT_RANGE, HEIGHT, false)
+    const grown = edgeDrawerOpaqueFloorOffset({
+      offset,
+      range: LONG_RANGE,
+      previousRange: SHORT_RANGE,
+      height: HEIGHT,
+    })
+    expect(edgeDrawerVisibleFraction(at(grown, LONG_RANGE, false))).toBe(1)
+  })
+
+  test('leaves a drawer scrolled into its content where it is', () => {
+    expect(
+      edgeDrawerOpaqueFloorOffset({
+        offset: 2000,
+        range: LONG_RANGE + 500,
+        previousRange: LONG_RANGE,
+        height: HEIGHT,
+      }),
+    ).toBe(2000)
+  })
+
+  test('never pulls back a drawer the rider is dismissing', () => {
+    expect(
+      edgeDrawerOpaqueFloorOffset({
+        offset: 100,
+        range: LONG_RANGE,
+        previousRange: SHORT_RANGE,
+        height: HEIGHT,
+      }),
+    ).toBe(100)
+  })
 })

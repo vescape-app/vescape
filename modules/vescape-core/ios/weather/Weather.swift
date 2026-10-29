@@ -112,8 +112,30 @@ struct Weather {
   var hourlySlots: [WeatherSlot] = []
   /// `minutely_15` series as absolute slots, for Weather Alerts. Not mirrored to JS.
   var quarterHourSlots: [WeatherSlot] = []
+  /// Unrounded current temperature, normalized only when stored.
+  var currentTemperatureC: Double?
+  /// Open-Meteo `current.time` as epoch ms, or nil when the response carried none.
+  var observedAtMs: Int64?
+  /// Current `wind_gusts_10m` in km/h, or nil when the response omitted it.
+  var windGustsKmh: Double?
+  /// Current `is_day`; falls back to the sunrise/sunset night window when omitted.
+  var isDay = true
 
   var label: String { weatherLabel(code: weatherCode) }
+
+  /// Normalized current conditions for `weather_observations`, or nil without an observation time:
+  /// a row must say when the weather was, not when it was fetched.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `Weather.observation`
+  var observation: WeatherObservation? {
+    guard let observedAtMs else { return nil }
+    return WeatherObservation.normalized(
+      observedAtMs: observedAtMs,
+      temperatureC: currentTemperatureC ?? Double(temperatureC),
+      weatherCode: weatherCode,
+      gustKmh: windGustsKmh,
+      isDay: isDay
+    )
+  }
 
   var map: [String: Any?] {
     [
@@ -250,19 +272,18 @@ func parseOpenMeteoWeather(
     )
   }
 
-  let currentMinute = (current["time"] as? String).flatMap(minuteOfDay)
+  let currentTime = current["time"] as? String
+  let currentMinute = currentTime.flatMap(minuteOfDay)
   let utcOffsetSeconds = root["utc_offset_seconds"] as? Int
-  return Weather(
+  let night = isNight(
+    minuteOfDay: currentMinute ?? hourly.first?.minuteOfDay ?? 12 * 60,
+    sunriseMinute: sunriseMinute,
+    sunsetMinute: sunsetMinute
+  )
+  var weather = Weather(
     temperatureC: Int(temperature.rounded()),
     weatherCode: currentCode,
-    icon: weatherIcon(
-      code: currentCode,
-      night: isNight(
-        minuteOfDay: currentMinute ?? hourly.first?.minuteOfDay ?? 12 * 60,
-        sunriseMinute: sunriseMinute,
-        sunsetMinute: sunsetMinute
-      )
-    ),
+    icon: weatherIcon(code: currentCode, night: night),
     precipitationProbability: (current["precipitation_probability"] as? Int) ?? 0,
     hourly: hourly,
     sunriseMinuteOfDay: sunriseMinute,
@@ -279,4 +300,11 @@ func parseOpenMeteoWeather(
       precipitationScale: 4
     )
   )
+  weather.currentTemperatureC = temperature
+  if let currentTime, let utcOffsetSeconds {
+    weather.observedAtMs = epochMs(currentTime, utcOffsetSeconds: utcOffsetSeconds)
+  }
+  weather.windGustsKmh = (current["wind_gusts_10m"] as? NSNumber)?.doubleValue
+  weather.isDay = (current["is_day"] as? NSNumber).map { $0.intValue != 0 } ?? !night
+  return weather
 }

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
+import { verifyWatchTelemetry } from './lib/watchTelemetryE2e.ts'
 import { dirname, join } from 'path'
 import { sdkRoot } from './lib/androidSdk.ts'
 import { bootAvd, isAvdRunning, pickAvd, type Avd } from './lib/avds.ts'
@@ -33,7 +34,17 @@ const DEBUG_APK = join(
 const PHONE_KEYSTORE = join(ROOT, 'android', 'app', 'debug.keystore')
 const SIGNED_APK = join(tmpdir(), 'wearos-debug-phone-cert-signed.apk')
 
-const COMMANDS = ['build', 'test', 'install', 'emulator', 'replay', 'pair', 'up', 'ride'] as const
+const COMMANDS = [
+  'build',
+  'test',
+  'install',
+  'emulator',
+  'replay',
+  'pair',
+  'up',
+  'ride',
+  'e2e',
+] as const
 type Command = (typeof COMMANDS)[number]
 
 /** Wear AVD for `emulator` and `up`; unset, the AVD picker chooses (a running one first). */
@@ -513,14 +524,49 @@ async function isOnMetro(phone: AdbDevice, packageName: string) {
 }
 
 /** Installs the phone dev build when missing, then makes sure its JS is running from Metro. */
-async function ensurePhoneApp(phone: AdbDevice, packageName: string) {
+async function ensurePhoneApp(
+  phone: AdbDevice,
+  packageName: string,
+  rebuild = false,
+  grantTestPermissions = false,
+) {
   const installed = capture(['adb', '-s', phone.serial, 'shell', 'pm', 'list', 'packages'])
     .split('\n')
     .includes(`package:${packageName}`)
-  if (!installed) {
-    run(['bun', 'run', 'scripts/android.ts', '--device', phone.serial, '--no-bundler'], {
-      timeoutMs: BUILD_TIMEOUT_MS,
-    })
+  if (!installed || rebuild) {
+    run(
+      [
+        'bun',
+        'run',
+        'scripts/android.ts',
+        '--device',
+        phone.serial,
+        // Expo reuses this run's Metro; --no-bundler hardcodes port 8081.
+        ...(process.env.E2E_METRO_PORT ? ['--port', process.env.E2E_METRO_PORT] : ['--no-bundler']),
+      ],
+      { timeoutMs: BUILD_TIMEOUT_MS },
+    )
+  }
+
+  if (grantTestPermissions) {
+    const sdk = Number(
+      capture(['adb', '-s', phone.serial, 'shell', 'getprop', 'ro.build.version.sdk']),
+    )
+    const permissions = ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION', 'ACTIVITY_RECOGNITION']
+    if (sdk >= 31) permissions.push('BLUETOOTH_SCAN', 'BLUETOOTH_CONNECT')
+    if (sdk >= 33) permissions.push('POST_NOTIFICATIONS')
+    for (const permission of permissions) {
+      run([
+        'adb',
+        '-s',
+        phone.serial,
+        'shell',
+        'pm',
+        'grant',
+        packageName,
+        `android.permission.${permission}`,
+      ])
+    }
   }
 
   const metro = await fetch(`${METRO_URL}/status`, { signal: AbortSignal.timeout(5000) })
@@ -530,12 +576,20 @@ async function ensurePhoneApp(phone: AdbDevice, packageName: string) {
     fail(`Metro is not running on ${METRO_URL} — start it with \`bun run start\`, then re-run`)
   }
   // The reverse dies with an adb server restart, like the pairing forward.
-  run(['adb', '-s', phone.serial, 'reverse', 'tcp:8081', 'tcp:8081'])
+  run([
+    'adb',
+    '-s',
+    phone.serial,
+    'reverse',
+    `tcp:${new URL(METRO_URL).port}`,
+    `tcp:${new URL(METRO_URL).port}`,
+  ])
   if (await isOnMetro(phone, packageName)) {
     console.log(`wear: ${packageName} is running from Metro`)
     return
   }
 
+  run(['adb', '-s', phone.serial, 'shell', 'am', 'force-stop', packageName])
   run([
     'adb',
     '-s',
@@ -546,7 +600,7 @@ async function ensurePhoneApp(phone: AdbDevice, packageName: string) {
     '-a',
     'android.intent.action.VIEW',
     '-d',
-    devClientUrl('vescape'),
+    devClientUrl('exp+vescape'),
     packageName,
   ])
   if (
@@ -604,7 +658,7 @@ async function waitForFirstFrame(watch: AdbDevice, phone: AdbDevice, packageName
  * mirroring, with frames on the wrist. Each step checks before it acts, so a re-run with both up
  * only proves the frames again.
  */
-async function up(requestedPhone: string | null) {
+async function up(requestedPhone: string | null, rebuildPhone = false, clearPhone = false) {
   begin('boot emulators')
   const { phone, watch } = await bootEmulators(requestedPhone)
 
@@ -619,7 +673,13 @@ async function up(requestedPhone: string | null) {
   const packageName = applicationId()
 
   begin('phone app')
-  await ensurePhoneApp(phone, packageName)
+  if (
+    clearPhone &&
+    capture(['adb', '-s', phone.serial, 'shell', 'pm', 'path', packageName]).startsWith('package:')
+  ) {
+    run(['adb', '-s', phone.serial, 'shell', 'pm', 'clear', packageName])
+  }
+  await ensurePhoneApp(phone, packageName, rebuildPhone, clearPhone)
 
   begin('watch app')
   ensureWatchApp(watch, packageName)
@@ -645,8 +705,11 @@ const RIDE_START_TIMEOUT_MS = 90_000
  * phone — thor301 replay plus normal Navigation, whose route native pushes to the wrist like on any
  * ride.
  */
-async function startRide(requestedPhone: string | null) {
-  const { watch, phone, packageName } = await up(requestedPhone)
+async function startRide(
+  requestedPhone: string | null,
+  { navigation = true, rebuildPhone = false, clearPhone = false } = {},
+) {
+  const { watch, phone, packageName } = await up(requestedPhone, rebuildPhone, clearPhone)
 
   begin('ride')
   run(['adb', '-s', phone.serial, 'logcat', '-c'])
@@ -662,7 +725,7 @@ async function startRide(requestedPhone: string | null) {
       '-a',
       'android.intent.action.VIEW',
       '-d',
-      `'${watchRideUrl('vescape')}'`,
+      `'${watchRideUrl('vescape', navigation)}'`,
       packageName,
     ])
     received = await waitForLog(
@@ -682,9 +745,11 @@ async function startRide(requestedPhone: string | null) {
   if (!outcome) fail('the phone received the ride link but never reported it running')
   if (outcome.includes('failed')) fail(outcome)
   console.log(`\nwear: ${outcome.trim()}`)
-  console.log(
-    `wear: route goes to the wrist once Directions answers — \`adb -s ${watch.serial} exec-out screencap -p > watch.png\``,
-  )
+  if (navigation)
+    console.log(
+      `wear: route goes to the wrist once Directions answers — \`adb -s ${watch.serial} exec-out screencap -p > watch.png\``,
+    )
+  return { watch, phone, packageName }
 }
 
 /**
@@ -758,7 +823,23 @@ if (command === 'pair') {
 }
 
 if (command === 'up') {
-  await up(requested)
+  await up(requested, args.includes('--rebuild-phone'), args.includes('--clear-phone'))
+  process.exit(0)
+}
+
+if (command === 'e2e') {
+  const { watch, phone, packageName } = await startRide(requested, {
+    navigation: false,
+    rebuildPhone: true,
+    clearPhone: true,
+  })
+  begin('watch telemetry E2E')
+  // Discard frames from before this ride. Only a fresh process can prove this session arrives.
+  await waitForFirstFrame(watch, phone, packageName)
+  const artifacts = join(ROOT, '.expo', 'watch-e2e', new Date().toISOString().replaceAll(':', '-'))
+  await verifyWatchTelemetry(watch.serial, packageName, artifacts)
+  step = null
+  console.log('\nWatch E2E passed: phone replay → Data Layer → changing wrist telemetry.')
   process.exit(0)
 }
 

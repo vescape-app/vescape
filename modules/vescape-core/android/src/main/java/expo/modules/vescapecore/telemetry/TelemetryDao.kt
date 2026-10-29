@@ -342,7 +342,7 @@ interface TelemetryDao {
     limit: Int,
   ): List<DiagnosticEventEntity>
 
-  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeCsv`
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
   @Query("""
     SELECT * FROM telemetry_frames WHERE captured_at_ms < :fromMs AND board_id IS :boardId
       AND (flags & 1) != 0
@@ -350,7 +350,7 @@ interface TelemetryDao {
   """)
   suspend fun getRideExportKeyframe(fromMs: Long, boardId: String?): TelemetryFrameEntity?
 
-  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeCsv`
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
   @Query("""
     SELECT * FROM telemetry_frames WHERE captured_at_ms >= :fromMs AND captured_at_ms <= :toMs
       AND board_id IS :boardId
@@ -546,6 +546,7 @@ interface TelemetryDao {
     clearDiagnosticEvents()
     clearExclusions()
     clearRideTrackPoints()
+    clearWeatherObservations()
   }
 
   @Transaction
@@ -555,14 +556,113 @@ interface TelemetryDao {
     subtractProtectedTelemetryRanges(requested, protectedRanges).forEach { range ->
       deleteRangeAllDevices(range.startMs, range.endMs)
     }
+    // A Favorite keeps the rows its weather reads: every row inside it, and an applicable start row.
+    val weatherProtected = protectedRanges.map {
+      TelemetryTimeRange(weatherProtectionStart(it.startMs), it.endMs)
+    }
+    subtractProtectedTelemetryRanges(requested, weatherProtected).forEach { range ->
+      deleteWeatherObservations(range.startMs, range.endMs)
+    }
     clearDiagnosticEvents()
   }
 
+  // Weather Observations (`weather_observations`)
+
+  @Query("DELETE FROM weather_observations")
+  suspend fun clearWeatherObservations()
+
+  @Query("DELETE FROM weather_observations WHERE observed_at_ms >= :startMs AND observed_at_ms <= :endMs")
+  suspend fun deleteWeatherObservations(startMs: Long, endMs: Long)
+
+  /** @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `latestWeatherObservation` */
+  @Query("SELECT * FROM weather_observations WHERE observed_at_ms <= :atMs ORDER BY observed_at_ms DESC LIMIT 1")
+  suspend fun getLatestWeatherObservation(atMs: Long): WeatherObservationEntity?
+
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertWeatherObservation(row: WeatherObservationEntity): Long
+
+  /**
+   * The last row at or before [startMs] plus every row up to [endMs]: what a ride, a Favorite or a
+   * whole History page spans.
+   * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `weatherObservationsSpanning`
+   */
+  @Query(
+    """
+    SELECT * FROM weather_observations
+    WHERE observed_at_ms <= :endMs
+      AND observed_at_ms >= COALESCE(
+        (SELECT MAX(observed_at_ms) FROM weather_observations WHERE observed_at_ms <= :startMs),
+        :startMs)
+    ORDER BY observed_at_ms
+    """,
+  )
+  suspend fun getWeatherObservationsSpanning(startMs: Long, endMs: Long): List<WeatherObservationEntity>
+
+  /**
+   * Store [observation] when it earns a row after the newest one at or before it. The read and
+   * the insert share one transaction so two writers cannot both decide on a stale previous row.
+   * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `storeWeatherObservation`
+   */
   @Transaction
-  suspend fun rebuildTelemetryBuckets(
+  suspend fun storeWeatherObservation(observation: WeatherObservation, force: Boolean): Boolean {
+    val previous = getLatestWeatherObservation(observation.observedAtMs)?.toObservation()
+    if (!shouldStoreWeatherObservation(previous, observation, force)) return false
+    return insertWeatherObservation(WeatherObservationEntity.of(observation)) != -1L
+  }
+
+  /** One Ride weather scan page, read in a single transaction. */
+  @Transaction
+  suspend fun weatherBackfillPage(cursor: WeatherBackfillCursor, nowMs: Long, gapMs: Long): WeatherBackfillPage =
+    weatherBackfillPageImpl(cursor, nowMs, gapMs)
+
+  /** One Ride weather window, rechecked and written in a single transaction. */
+  @Transaction
+  suspend fun storeWeatherBackfill(segments: List<WeatherBackfillSegment>, samples: List<WeatherObservation>): List<Boolean> =
+    storeWeatherBackfillImpl(segments, samples)
+
+  // @parity /modules/vescape-core/ios/telemetry/RideWeatherBackfill.swift `weatherBackfillBuckets`
+  @Query("""
+    SELECT * FROM telemetry_minute_buckets
+    WHERE bucket_start_ms >= :fromMs AND bucket_start_ms < :beforeMs
+    ORDER BY bucket_start_ms, board_id LIMIT :limit
+  """)
+  suspend fun getWeatherBackfillBuckets(fromMs: Long, beforeMs: Long, limit: Int): List<TelemetryMinuteBucketEntity>
+
+  // @parity /modules/vescape-core/ios/telemetry/RideWeatherBackfill.swift `firstPreciseRideTrackFix`
+  @Query("""
+    SELECT * FROM ride_track_points
+    WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs AND accuracy_cm IS NOT NULL AND accuracy_cm <= :maxAccuracyCm
+    ORDER BY fix_at_ms, id LIMIT 1
+  """)
+  suspend fun getFirstPreciseRideTrackFix(fromMs: Long, toMs: Long, maxAccuracyCm: Int): RideTrackPointEntity?
+
+  /** One Ride summaries Maintenance Job chunk, read and replaced in a single transaction. */
+  @Transaction
+  suspend fun rebuildRideSummariesChunk(
+    fromMs: Long,
+    context: RideSummariesContext,
     config: MetricSanitizerConfig,
-    onProgress: (Int, Int) -> Unit,
-  ): Int = rebuildTelemetryBucketsImpl(config, onProgress)
+    gapMs: Long,
+    nowMs: Long,
+  ): RideSummariesChunkResult = rebuildRideSummariesChunkImpl(fromMs, context, config, gapMs, nowMs)
+
+  @Query("DELETE FROM telemetry_minute_buckets WHERE bucket_start_ms >= :fromMs AND bucket_start_ms < :toMs")
+  suspend fun deleteBucketsRange(fromMs: Long, toMs: Long)
+
+  @Query("DELETE FROM metric_exclusion_ranges WHERE id = :id")
+  suspend fun deleteExclusionRange(id: Long)
+
+  @Query("SELECT MIN(captured_at_ms) FROM telemetry_frames WHERE captured_at_ms >= :fromMs")
+  suspend fun firstFrameAtOrAfter(fromMs: Long): Long?
+
+  @Query("SELECT MIN(fix_at_ms) FROM ride_track_points WHERE fix_at_ms >= :fromMs")
+  suspend fun firstRideTrackAtOrAfter(fromMs: Long): Long?
+
+  @Query("SELECT EXISTS(SELECT 1 FROM telemetry_frames WHERE captured_at_ms = :atMs AND board_id IS :boardId)")
+  suspend fun frameExists(atMs: Long, boardId: String?): Boolean
+
+  @Query("SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE id = :id)")
+  suspend fun rideTrackPointExists(id: Long): Boolean
 
   /** Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027). */
   @Query("SELECT * FROM boards WHERE deleted_at IS NULL ORDER BY created_at ASC")
@@ -681,11 +781,11 @@ interface TelemetryDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertAppSetting(setting: AppSettingEntity)
 
-  /** @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `updateUnitSystem` */
+  /** @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `updateDistanceUnit` */
   @Transaction
-  suspend fun updateUnitSystem(units: String) {
-    require(units in setOf("metric", "imperial")) { "Invalid unit system" }
-    upsertAppSetting(AppSettingEntity("unitSystem", JSONObject.quote(units), System.currentTimeMillis()))
+  suspend fun updateDistanceUnit(units: String) {
+    require(units in setOf("km", "mi")) { "Invalid distance unit" }
+    upsertAppSetting(AppSettingEntity("distanceUnit", JSONObject.quote(units), System.currentTimeMillis()))
   }
 
   @Query("DELETE FROM app_settings WHERE key = :key")

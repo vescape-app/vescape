@@ -1,4 +1,4 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { useCallback, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -84,9 +84,9 @@ export function AlertFormSheet({
   onClose,
   onSave,
 }: AlertFormSheetProps) {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const isSpeed = controlId === 'speed'
-  const toDisplay = (value: number) => (isSpeed ? speedFromKmh(value, units) : value)
+  const toDisplay = (value: number) => (isSpeed ? speedFromKmh(value, distanceUnit) : value)
   const isEditing = editRule != null
   const dialConfig = useMemo(
     () => getAlertDialConfig(controlId, batteryConfig),
@@ -125,7 +125,7 @@ export function AlertFormSheet({
           geigerDefaultSpec,
           controlId,
           batteryConfig,
-          units,
+          distanceUnit,
         )
     setTab(defaults.tab)
     setThreshold(defaults.threshold)
@@ -202,20 +202,20 @@ export function AlertFormSheet({
         <View style={styles.cardField}>
           <Text style={styles.fieldLabel}>THRESHOLD</Text>
           <TuneDial
-            key={units}
+            key={distanceUnit}
             value={toDisplay(threshold)}
             previousValue={editRule ? toDisplay(editRule.threshold) : undefined}
             min={toDisplay(dialConfig.min)}
             max={toDisplay(dialConfig.max)}
             step={dialConfig.step}
-            unit={isSpeed ? speedUnit(units) : dialConfig.unit}
+            unit={isSpeed ? speedUnit(distanceUnit) : dialConfig.unit}
             displayDecimals={isSpeed ? 1 : undefined}
             indicatorGlow={tab === 'geiger' ? 'right' : undefined}
             valueChangeMode="commit"
             onValueChange={(next) =>
               setThreshold(
                 isSpeed
-                  ? speedInputToKmh(next, threshold, units, dialConfig.min, dialConfig.max)
+                  ? speedInputToKmh(next, threshold, distanceUnit, dialConfig.min, dialConfig.max)
                   : next,
               )
             }
@@ -226,7 +226,7 @@ export function AlertFormSheet({
           <View style={styles.cardField}>
             <Text style={styles.fieldLabel}>THRESHOLD MAX</Text>
             <TuneDial
-              key={units}
+              key={distanceUnit}
               value={toDisplay(thresholdMax)}
               previousValue={
                 editRule?.thresholdMax != null ? toDisplay(editRule.thresholdMax) : undefined
@@ -234,14 +234,20 @@ export function AlertFormSheet({
               min={toDisplay(dialConfig.min)}
               max={toDisplay(dialConfig.max)}
               step={dialConfig.step}
-              unit={isSpeed ? speedUnit(units) : dialConfig.unit}
+              unit={isSpeed ? speedUnit(distanceUnit) : dialConfig.unit}
               displayDecimals={isSpeed ? 1 : undefined}
               indicatorGlow="left"
               valueChangeMode="commit"
               onValueChange={(next) =>
                 setThresholdMax(
                   isSpeed
-                    ? speedInputToKmh(next, thresholdMax, units, dialConfig.min, dialConfig.max)
+                    ? speedInputToKmh(
+                        next,
+                        thresholdMax,
+                        distanceUnit,
+                        dialConfig.min,
+                        dialConfig.max,
+                      )
                     : next,
                 )
               }

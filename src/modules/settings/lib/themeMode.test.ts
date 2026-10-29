@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   outdoorLightProgress,
+  nextSunThemeSwitch,
   resolveThemeMode,
   solarElevationDegrees,
 } from '@/modules/settings/lib/themeMode'
@@ -80,5 +81,28 @@ describe('solar light', () => {
     expect(outdoorLightProgress(dusk, WARSAW)).toBeGreaterThan(0)
     expect(outdoorLightProgress(dusk, WARSAW)).toBeLessThan(1)
     expect(outdoorLightProgress(night, WARSAW)).toBe(0)
+  })
+})
+
+describe('nextSunThemeSwitch', () => {
+  test('finds the next flip and it matches resolveThemeMode at that moment', () => {
+    const noon = new Date('2026-07-31T10:00:00Z')
+    const switchAt = nextSunThemeSwitch(noon, WARSAW)
+    expect(switchAt?.to).toBe('dark')
+    expect(switchAt!.at.getTime()).toBeGreaterThan(Date.parse('2026-07-31T18:00:00Z'))
+    expect(switchAt!.at.getTime()).toBeLessThan(Date.parse('2026-07-31T20:30:00Z'))
+    const justBefore = new Date(switchAt!.at.getTime() - 60_000)
+    const justAfter = new Date(switchAt!.at.getTime() + 60_000)
+    expect(
+      resolveThemeMode({ mode: 'sun', systemTheme: 'light', date: justBefore, coordinate: WARSAW }),
+    ).toBe('light')
+    expect(
+      resolveThemeMode({ mode: 'sun', systemTheme: 'light', date: justAfter, coordinate: WARSAW }),
+    ).toBe('dark')
+  })
+
+  test('returns null when the sun never crosses the horizon within a day', () => {
+    const polarSummer = new Date('2026-06-21T12:00:00Z')
+    expect(nextSunThemeSwitch(polarSummer, { latitude: 78.2, longitude: 15.6 })).toBeNull()
   })
 })

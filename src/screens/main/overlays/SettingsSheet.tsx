@@ -24,6 +24,12 @@ import { backupProgressFraction, type BackupSlot } from '@/modules/profile/lib/b
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
+import {
+  maintenanceFailed,
+  maintenanceProgress,
+  type MaintenanceProgress,
+} from '@/modules/settings/lib/maintenance'
+import { useMaintenanceStore } from '@/modules/settings/store/maintenanceStore'
 import { ThemePicker } from '@/modules/settings/components/ThemePicker'
 import { routes } from '@/navigation/routes'
 import { theme, type ThemeColor } from '@/constants/theme'
@@ -71,6 +77,9 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
   const neutral = useResolvedNeutralColors()
   const secondarySurface = useResolvedSecondaryWidgetSurface()
   const dbSize = useDatabaseSize().bytes
+  const maintenanceState = useMaintenanceStore((s) => s.state)
+  const maintenance = maintenanceProgress(maintenanceState)
+  const maintenanceHasFailed = maintenanceFailed(maintenanceState)
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
 
@@ -98,13 +107,11 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
           accessibilityLabel="Release notes"
         />
         <View style={[styles.stripDivider, { backgroundColor: neutral.border }]} />
-        <StripCell
-          icon={DatabaseIcon}
-          accent={theme.settingsIcon.database}
-          value={dbSize != null ? formatBytes(dbSize) : DASH}
-          label="Storage"
+        <StorageCell
+          bytes={dbSize}
+          progress={maintenance}
+          failed={maintenanceHasFailed}
           onPress={() => go(routes.settingsDatabase)}
-          accessibilityLabel="Database and storage"
         />
       </View>
 
@@ -134,8 +141,8 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
       <LinkWidget
         icon={WrenchIcon}
         accent={theme.settingsIcon.advanced}
-        label="Advanced settings"
-        hint="Diagnostics, map, filters, and developer tools"
+        label="More settings"
+        hint="Sounds, map, devices, and more"
         onPress={() => go(routes.settings)}
       />
     </View>
@@ -198,6 +205,44 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
   )
 }
 
+interface StorageCellProps {
+  bytes: number | null
+  /** The running Maintenance Job, if any: it replaces the size until it finishes. */
+  progress: MaintenanceProgress | null
+  /** A failed job: a small warning dot. Waiting for network is not one. */
+  failed: boolean
+  onPress?: () => void
+}
+
+/** The storage third of the status strip: the database size, or the job rewriting it. */
+export function StorageCell({ bytes, progress, failed, onPress }: StorageCellProps) {
+  const accent = theme.settingsIcon.database
+  const value = progress
+    ? `${Math.round((progress.fraction ?? 0) * 100)}%`
+    : bytes != null
+      ? formatBytes(bytes)
+      : DASH
+  return (
+    <StripCell
+      icon={DatabaseIcon}
+      accent={accent}
+      value={value}
+      valueColor={progress ? accent : undefined}
+      // While a job runs the percentage is update progress, not storage used.
+      label={progress ? 'Updating' : 'Storage'}
+      dot={failed ? theme.status.warning.color : undefined}
+      onPress={onPress}
+      accessibilityLabel={
+        progress
+          ? `Database and storage, ${progress.statusLine}`
+          : failed
+            ? 'Database and storage, ride data update failed'
+            : 'Database and storage'
+      }
+    />
+  )
+}
+
 interface StripCellProps {
   icon: Icon
   accent: ThemeColor
@@ -206,6 +251,8 @@ interface StripCellProps {
   valueColor?: ThemeColor
   /** 0–1. Draws a bar under the value; the bar alone says the work is running. */
   progress?: number
+  /** Small badge on the glyph for a state worth noticing. */
+  dot?: ThemeColor
   dim?: boolean
   onPress?: () => void
   accessibilityLabel: string
@@ -219,6 +266,7 @@ function StripCell({
   label,
   valueColor,
   progress,
+  dot,
   dim,
   onPress,
   accessibilityLabel,
@@ -234,7 +282,10 @@ function StripCell({
       disabled={!onPress}
       accessibilityLabel={accessibilityLabel}
     >
-      <IconComponent size={18} color={accent} weight="duotone" />
+      <View>
+        <IconComponent size={18} color={accent} weight="duotone" />
+        {dot ? <View style={[styles.dot, { backgroundColor: dot }]} /> : null}
+      </View>
       <Text
         style={[styles.stripValue, valueColor ? { color: valueColor } : null]}
         numberOfLines={1}
@@ -265,6 +316,14 @@ const styles = StyleSheet.create({
   },
   dim: {
     opacity: 0.5,
+  },
+  dot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 7,
+    height: 7,
+    borderRadius: 999,
   },
   // The cells carry the padding, not the strip: a divider that stops short of the card edges reads
   // as a broken line. Same rule as the board selector's links strip.

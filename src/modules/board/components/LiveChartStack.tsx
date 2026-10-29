@@ -1,4 +1,4 @@
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { presentLiveChart } from '@/modules/board/components/metricDetailData'
 import { use, useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -32,7 +32,7 @@ interface LiveChartStackProps {
  * reads the same moment on every line.
  */
 export function LiveChartStack({ charts, scrubTimeMs }: LiveChartStackProps) {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const alerts = use(MetricDetailAlertContext)
   // The series is opened on the same deferral (see `useLiveMetric`), so until it lands the stack
   // renders its chrome with no points and says so. Only a connected board will ever fill it —
@@ -53,13 +53,13 @@ export function LiveChartStack({ charts, scrubTimeMs }: LiveChartStackProps) {
   const specs = useMemo(
     () =>
       charts.map(({ controlId, ...chart }) => {
-        const presented = presentLiveChart(chart, units)
+        const presented = presentLiveChart(chart, distanceUnit)
         const spec = labelled ? presented : { ...presented, label: undefined }
         return alerts && controlId === alerts.controlId
           ? { ...spec, thresholds: alerts.thresholds }
           : spec
       }),
-    [alerts, charts, labelled, units],
+    [alerts, charts, labelled, distanceUnit],
   )
 
   return (

@@ -1,5 +1,5 @@
 import { useFormat } from '@/hooks/useFormat'
-import { useUnitSystem } from '@/hooks/useUnitSystem'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
 import { StyleSheet, ScrollView } from 'react-native'
@@ -30,7 +30,7 @@ const MIN_RIDE_SPLIT_GAP_MINUTES = 1
 const MAX_RIDE_SPLIT_GAP_MINUTES = 240
 
 export default function HistorySettingsScreen() {
-  const units = useUnitSystem()
+  const distanceUnit = useDistanceUnit()
   const { formatSpeedWithUnit } = useFormat()
   const {
     rideSplitGapMinutes,
@@ -85,27 +85,28 @@ export default function HistorySettingsScreen() {
 
         <SettingsSectionTitle>Filters</SettingsSectionTitle>
         <Text style={styles.sectionHint}>
-          Changes apply to new rides only. Rebuild history to reprocess past rides.
+          Changing this updates all past rides in the background. It can take a while, and until it
+          finishes some rides still show values from the old setting.
         </Text>
 
         <SettingsCard>
           <SettingsRow
             icon={GaugeIcon}
             label="Moving speed threshold"
-            hint={`Speeds below this are ignored for avg speed.\nDefault: ${formatSpeedWithUnit(3, units === 'imperial' ? 1 : 0)}.`}
+            hint={`Speeds below this are ignored for avg speed.\nDefault: ${formatSpeedWithUnit(3, distanceUnit === 'mi' ? 1 : 0)}.`}
             right={
               <Stepper
-                value={speedFromKmh(movingSpeedThresholdKmh, units)}
+                value={speedFromKmh(movingSpeedThresholdKmh, distanceUnit)}
                 formatValue={(value) => String(Number(value.toFixed(1)))}
                 step={stepDelta}
-                unit={speedUnit(units)}
-                min={speedFromKmh(0, units)}
-                max={speedFromKmh(20, units)}
+                unit={speedUnit(distanceUnit)}
+                min={speedFromKmh(0, distanceUnit)}
+                max={speedFromKmh(20, distanceUnit)}
                 onChange={(nextValue) => {
                   const clampedValue = speedInputToKmh(
                     nextValue,
                     movingSpeedThresholdKmh,
-                    units,
+                    distanceUnit,
                     0,
                     20,
                   )
@@ -119,20 +120,20 @@ export default function HistorySettingsScreen() {
           <SettingsRow
             icon={ArrowsOutLineHorizontalIcon}
             label="Free spin speed delta"
-            hint={`Max board-vs-GPS speed gap before sample is excluded as free spin. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedWithUnit(12, units === 'imperial' ? 1 : 0)}.`}
+            hint={`Max board-vs-GPS speed gap before sample is excluded as free spin. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedWithUnit(12, distanceUnit === 'mi' ? 1 : 0)}.`}
             right={
               <Stepper
-                value={speedFromKmh(freeSpinMaxSpeedDeltaKmh, units)}
+                value={speedFromKmh(freeSpinMaxSpeedDeltaKmh, distanceUnit)}
                 formatValue={(value) => String(Number(value.toFixed(1)))}
                 step={stepDelta}
-                unit={speedUnit(units)}
-                min={speedFromKmh(1, units)}
-                max={speedFromKmh(60, units)}
+                unit={speedUnit(distanceUnit)}
+                min={speedFromKmh(1, distanceUnit)}
+                max={speedFromKmh(60, distanceUnit)}
                 onChange={(nextValue) => {
                   const clampedValue = speedInputToKmh(
                     nextValue,
                     freeSpinMaxSpeedDeltaKmh,
-                    units,
+                    distanceUnit,
                     1,
                     60,
                   )
@@ -146,20 +147,20 @@ export default function HistorySettingsScreen() {
           <SettingsRow
             icon={ProhibitIcon}
             label="Free spin stationary cap"
-            hint={`Max board speed allowed when GPS is nearly stationary. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedWithUnit(15, units === 'imperial' ? 1 : 0)}.`}
+            hint={`Max board speed allowed when GPS is nearly stationary. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedWithUnit(15, distanceUnit === 'mi' ? 1 : 0)}.`}
             right={
               <Stepper
-                value={speedFromKmh(freeSpinStationaryBoardCapKmh, units)}
+                value={speedFromKmh(freeSpinStationaryBoardCapKmh, distanceUnit)}
                 formatValue={(value) => String(Number(value.toFixed(1)))}
                 step={stepDelta}
-                unit={speedUnit(units)}
-                min={speedFromKmh(1, units)}
-                max={speedFromKmh(60, units)}
+                unit={speedUnit(distanceUnit)}
+                min={speedFromKmh(1, distanceUnit)}
+                max={speedFromKmh(60, distanceUnit)}
                 onChange={(nextValue) => {
                   const clampedValue = speedInputToKmh(
                     nextValue,
                     freeSpinStationaryBoardCapKmh,
-                    units,
+                    distanceUnit,
                     1,
                     60,
                   )

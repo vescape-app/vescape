@@ -1,23 +1,46 @@
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { InfoIcon, PaletteIcon } from 'phosphor-react-native'
+import { PaletteIcon } from 'phosphor-react-native'
 
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { formatHour } from '@/helpers/format'
 import { THEME_OPTIONS } from '@/modules/settings/lib/themeOptions'
+import { useSunThemeClock } from '@/modules/settings/hooks/useSunThemeClock'
+import {
+  isUsableThemeCoordinate,
+  nextSunThemeSwitch,
+  type ResolvedTheme,
+  type ThemeCoordinate,
+} from '@/modules/settings/lib/themeMode'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+
+function formatClock(date: Date): string {
+  return formatHour(date.getHours() * 60 + date.getMinutes())
+}
+
+/** Next light and dark switches of the `sun` mode in time order, empty without a location or switch. */
+function upcomingSunSwitches(
+  now: Date,
+  coordinate: ThemeCoordinate,
+): { at: Date; to: ResolvedTheme }[] {
+  if (!isUsableThemeCoordinate(coordinate)) return []
+  const first = nextSunThemeSwitch(now, coordinate)
+  if (!first) return []
+  const second = nextSunThemeSwitch(first.at, coordinate)
+  return second ? [first, second] : [first]
+}
 
 /** Inline appearance choices in the quick-settings drawer. */
 export function ThemePicker() {
   const mode = useSettingsStore((s) => s.themeMode)
   const setSetting = useSettingsStore((s) => s.set)
   const [headerWidth, setHeaderWidth] = useState(0)
-  const neutral = useResolvedNeutralColors()
   const surface = useResolvedSecondaryWidgetSurface()
-  const selected = THEME_OPTIONS.find((o) => o.mode === mode) ?? THEME_OPTIONS[0]!
+  const { coordinate, now } = useSunThemeClock()
+  const switches = mode === 'sun' ? upcomingSunSwitches(now, coordinate) : []
 
   return (
     <View style={[styles.card, surface]}>
@@ -51,10 +74,20 @@ export function ThemePicker() {
           ))}
         </PillSelector>
       </View>
-      <View style={styles.hint}>
-        <InfoIcon size={16} color={neutral.textMuted} />
-        <Text style={styles.hintText}>{selected.hint}</Text>
-      </View>
+      {switches.length > 0 ? (
+        <View style={styles.switches}>
+          {switches.map(({ at, to }) => {
+            const option = THEME_OPTIONS.find((o) => o.mode === to)!
+            return (
+              <View key={to} style={styles.switch}>
+                <option.Icon size={16} color={option.hue.color} weight="duotone" />
+                <Text style={styles.hintText}>{option.label} at</Text>
+                <Text style={[styles.hintText, styles.hintTime]}>{formatClock(at)}</Text>
+              </View>
+            )
+          })}
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -75,6 +108,14 @@ const styles = StyleSheet.create({
   },
   title: { color: theme.neutral.textPrimary, fontSize: 15, fontWeight: '700' },
   tabs: { maxWidth: '100%' },
-  hint: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  hintText: { color: theme.neutral.textMuted, fontSize: 12, flex: 1 },
+  switches: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    columnGap: 16,
+    rowGap: 4,
+  },
+  switch: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  hintText: { color: theme.neutral.textMuted, fontSize: 12, textAlign: 'center' },
+  hintTime: { color: theme.neutral.textPrimary, fontWeight: '600' },
 })

@@ -41,8 +41,7 @@ export async function filmFeaturePreview(
   async function rect(id: string) {
     const output = JSON.parse(await command('get', 'attrs', `id="${id}"`, '--json'))
     const bounds = output.data?.node?.rect as
-      | { x: number; y: number; width: number; height: number }
-      | undefined
+      { x: number; y: number; width: number; height: number } | undefined
     if (!bounds || bounds.width <= 0 || bounds.height <= 0)
       throw new Error(`No visible bounds for ${id}`)
     return bounds

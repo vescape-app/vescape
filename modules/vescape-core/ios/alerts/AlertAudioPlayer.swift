@@ -933,12 +933,12 @@ internal final class AlertAudioPlayer {
 
   /// Play a preset once for UI preview, or speak a `tts` template with a sample fired alert after
   /// its severity sound.
-  func preview(spec: String, unitSystem: String = "metric") {
+  func preview(spec: String, distanceUnit: String = "km", temperatureUnit: String = "celsius") {
     guard !isReleased else { return }
     Self.log("AlertAudioPlayer.preview: \(spec)")
     if let sound = parseVoiceAlertSound(spec) {
       speakVoice(
-        voiceAnnouncement(sound, controlId: nil, reading: nil, percentAvailable: true, unitSystem: unitSystem)
+        voiceAnnouncement(sound, controlId: nil, reading: nil, percentAvailable: true, distanceUnit: distanceUnit, temperatureUnit: temperatureUnit)
       )
       return
     }
@@ -947,7 +947,7 @@ internal final class AlertAudioPlayer {
         tts.text,
         alert: ttsSampleAlert(spec: spec),
         batteryPercent: 42.0,
-        unitSystem: unitSystem
+        distanceUnit: distanceUnit
       )
       Self.log("AlertAudioPlayer.preview TTS text='\(text)'")
       if !text.isEmpty { speakAfterSeverity(tts.severity, text: text) }

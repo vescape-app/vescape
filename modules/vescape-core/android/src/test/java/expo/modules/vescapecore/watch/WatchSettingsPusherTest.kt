@@ -21,20 +21,20 @@ class WatchSettingsPusherTest {
         )
         val publisher = newPublisher()
         val metric = AppSettings().toWatchSettings()
-        val imperial = AppSettings(unitSystem = "imperial").toWatchSettings()
+        val miles = AppSettings(distanceUnit = "mi").toWatchSettings()
         publisher.push(metric)
         publisher.push(metric)
         assertEquals(1, writes)
         failing = true
-        publisher.push(imperial)
+        publisher.push(miles)
         assertEquals(metric, retained)
         assertEquals(listOf("watch_settings_push_failed"), events)
         failing = false
-        publisher.push(imperial)
-        assertEquals(imperial, retained)
+        publisher.push(miles)
+        assertEquals(miles, retained)
         // The Data Layer retains the last item offline; a phone restart republishes that preference.
-        newPublisher().push(imperial)
-        assertEquals(imperial, retained)
+        newPublisher().push(miles)
+        assertEquals(miles, retained)
         assertEquals(3, writes)
     }
 }

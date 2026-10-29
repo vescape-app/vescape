@@ -66,7 +66,8 @@ const e2eSettings: AppSettings = {
   freeSpinMaxSpeedDeltaKmh: 3,
   freeSpinStationaryBoardCapKmh: 1,
   rideSplitGapMinutes: 30,
-  unitSystem: 'metric',
+  distanceUnit: 'km',
+  temperatureUnit: 'celsius',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
@@ -372,6 +373,7 @@ function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }
       bucket.firstLatitude != null && bucket.firstLongitude != null
         ? [{ latitude: bucket.firstLatitude, longitude: bucket.firstLongitude }]
         : [],
+    weather: null,
   }))
   const limit = Math.max(1, options.limit ?? 10)
   const page = sessions.slice(0, limit)

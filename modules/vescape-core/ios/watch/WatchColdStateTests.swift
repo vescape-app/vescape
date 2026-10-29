@@ -27,19 +27,19 @@ final class WatchColdStateTests: XCTestCase {
     let wire = Wire()
     let state = wire.coldState()
     wire.failWith = WatchColdStateError.sessionNotActivated
-    state.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "metric").payload)
-    state.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "imperial").payload)
+    state.put(channel: watchSettingsChannel, payload: WatchSettings(distanceUnit: "km").payload)
+    state.put(channel: watchSettingsChannel, payload: WatchSettings(distanceUnit: "mi").payload)
     XCTAssertEqual(wire.writes, 0)
     wire.failWith = nil
     state.flush()
     XCTAssertEqual(wire.writes, 1)
-    XCTAssertEqual(WatchSettings.decode(context: wire.context).unitSystem, "imperial")
+    XCTAssertEqual(WatchSettings.decode(context: wire.context).distanceUnit, "mi")
     let restarted = wire.coldState()
     // Delivery caches are process-local. Restart republishes the latest settings once.
-    restarted.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "imperial").payload)
+    restarted.put(channel: watchSettingsChannel, payload: WatchSettings(distanceUnit: "mi").payload)
     XCTAssertEqual(wire.writes, 2)
-    XCTAssertEqual(WatchSettings.decode(context: wire.context).unitSystem, "imperial")
-    restarted.put(channel: watchSettingsChannel, payload: WatchSettings(unitSystem: "imperial").payload)
+    XCTAssertEqual(WatchSettings.decode(context: wire.context).distanceUnit, "mi")
+    restarted.put(channel: watchSettingsChannel, payload: WatchSettings(distanceUnit: "mi").payload)
     restarted.flush()
     XCTAssertEqual(wire.writes, 2)
   }

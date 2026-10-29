@@ -489,14 +489,16 @@ final class AppDataRepository {
   func getSettings() throws -> [String: Any?] {
     // A corrupt unit override must not prevent loading the other app settings.
     // intentional-suppression: invalid unit JSON is deleted and reported as app_setting_invalid below.
-    if let row = try boardSettingsPersistence().setting("unitSystem"),
-      validUnitSystem(try? Self.decodeStoredString(row.valueJson)) == nil {
-      try boardSettingsPersistence().deleteSetting("unitSystem")
-      TelemetryRepository.shared.recordDiagnosticEvent(eventName: "app_setting_invalid", properties: ["key": "unitSystem"])
+    if let row = try boardSettingsPersistence().setting("distanceUnit"),
+      validDistanceUnit(try? Self.decodeStoredString(row.valueJson)) == nil {
+      try boardSettingsPersistence().deleteSetting("distanceUnit")
+      TelemetryRepository.shared.recordDiagnosticEvent(eventName: "app_setting_invalid", properties: ["key": "distanceUnit"])
     }
     var merged = try boardSettingsPersistence().settings(defaults: Self.defaultSettings)
     merged.removeValue(forKey: Self.navigationPathKey)
     merged.removeValue(forKey: Self.navigationProfileKey)
+    // Maintenance Job fingerprints are native-owned state, not settings.
+    for key in merged.keys where key.hasPrefix(MAINTENANCE_JOB_KEY_PREFIX) { merged.removeValue(forKey: key) }
     if merged["movingSpeedThresholdKmh"] == nil {
       if let legacy = merged["avgSpeedCutoffKmh"] ?? merged["movingAvgSpeedThresholdKmh"] {
         merged["movingSpeedThresholdKmh"] = legacy
@@ -524,12 +526,13 @@ final class AppDataRepository {
     // profile through `setNavigationProfile`, never by writing these rows.
     guard
       key != "legalPolicy", key != "legalMode",
-      key != Self.navigationPathKey, key != Self.navigationProfileKey
+      key != Self.navigationPathKey, key != Self.navigationProfileKey,
+      !key.hasPrefix(MAINTENANCE_JOB_KEY_PREFIX)
     else { return }
-    if key == "unitSystem" {
-      let units = rawValue == nil || rawValue is NSNull ? "metric" : validUnitSystem(rawValue)
+    if key == "distanceUnit" {
+      let units = rawValue == nil || rawValue is NSNull ? "km" : validDistanceUnit(rawValue)
       guard let units else { throw CocoaError(.coderInvalidValue) }
-      try boardSettingsPersistence().updateUnitSystem(units)
+      try boardSettingsPersistence().updateDistanceUnit(units)
       notifyDataChanged(.alerts)
       notifyDataChanged(.settings)
       return
@@ -565,6 +568,9 @@ final class AppDataRepository {
     } else if key == "voiceLevel" {
       guard let level = Self.voiceLevel(rawValue) else { return }
       value = level
+    } else if key == "temperatureUnit" {
+      guard let unit = validTemperatureUnit(rawValue) else { return }
+      value = unit
     } else if key == "weatherRainAlertLevel" || key == "weatherWindAlertLevel" {
       guard let level = Self.weatherAlertLevel(rawValue) else { return }
       value = level
@@ -663,7 +669,8 @@ final class AppDataRepository {
     "rideSplitGapMinutes": DEFAULT_RIDE_SPLIT_GAP_MINUTES,
     "freeSpinMaxSpeedDeltaKmh": DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
     "freeSpinStationaryBoardCapKmh": DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
-    "unitSystem": "metric",
+    "distanceUnit": "km",
+    "temperatureUnit": "celsius",
     "themeMode": "system",
     "satelliteOverlayEnabled": true,
     "satelliteImageryOpacity": 0.2,
@@ -747,7 +754,8 @@ final class AppDataRepository {
       ?? NavigationController.defaultRerouteDistanceMeters
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
-    normalized["unitSystem"] = validUnitSystem(settings["unitSystem"]) ?? "metric"
+    normalized["distanceUnit"] = validDistanceUnit(settings["distanceUnit"]) ?? "km"
+    normalized["temperatureUnit"] = validTemperatureUnit(settings["temperatureUnit"]) ?? "celsius"
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     normalized["voice"] = voice(settings["voice"]) ?? voiceMatching

@@ -645,9 +645,9 @@ class VescAlertTemplateTest {
         val sample = alert(controlId = "speed", value = 40.2336, threshold = 40.0)
         val template = "{value} {unit} over {threshold} {unit}; literal km/h"
         assertEquals("25 mph over 25 mph; literal km/h",
-            renderAlertMessageTemplate(template, sample, null, unitSystem = "imperial"))
+            renderAlertMessageTemplate(template, sample, null, distanceUnit = "mi"))
         assertEquals("40 km/h over 40 km/h; literal km/h",
-            renderAlertMessageTemplate(template, sample, null, unitSystem = "metric"))
+            renderAlertMessageTemplate(template, sample, null, distanceUnit = "km"))
         assertEquals(40.0, sample.threshold, 0.0)
     }
 

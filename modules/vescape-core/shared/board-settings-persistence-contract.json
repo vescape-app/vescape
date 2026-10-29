@@ -14,8 +14,8 @@
     "malformedValueJson": "{"
   },
   "units": {
-    "default": "metric",
-    "selected": "imperial",
+    "default": "km",
+    "selected": "mi",
     "invalid": ["automatic", "US", "", true, 1]
   },
   "telemetryTrail": {

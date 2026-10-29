@@ -14,7 +14,7 @@ import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { theme } from '@/constants/theme'
-import { formatSpeedKmh, type UnitSystem } from '@/helpers/units'
+import { formatSpeedKmh, type DistanceUnit } from '@/helpers/units'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 const LEVEL_OPTIONS: readonly { value: WeatherAlertLevelSetting; label: string }[] = [
@@ -42,19 +42,19 @@ function rainHint(level: WeatherAlertLevelSetting, thresholds: WeatherAlertThres
 function windHint(
   level: WeatherAlertLevelSetting,
   thresholds: WeatherAlertThresholds,
-  units: UnitSystem,
+  distanceUnit: DistanceUnit,
 ): string {
   if (level === 'off') return 'No wind alerts.'
   const kmh = thresholds[level]?.gustKmh
   return kmh == null
     ? 'Warns of strong gusts.'
-    : `Warns of gusts from ${formatSpeedKmh(kmh, units)}.`
+    : `Warns of gusts from ${formatSpeedKmh(kmh, distanceUnit)}.`
 }
 
 export interface WeatherAlertsSettingsViewProps {
   rain: WeatherAlertLevelSetting
   wind: WeatherAlertLevelSetting
-  units: UnitSystem
+  distanceUnit: DistanceUnit
   /** Native-owned gates per level. */
   thresholds: WeatherAlertThresholds
   onRainChange: (level: WeatherAlertLevelSetting) => void
@@ -66,7 +66,7 @@ export interface WeatherAlertsSettingsViewProps {
 export function WeatherAlertsSettingsView({
   rain,
   wind,
-  units,
+  distanceUnit,
   thresholds,
   onRainChange,
   onWindChange,
@@ -89,7 +89,7 @@ export function WeatherAlertsSettingsView({
           icon={WindIcon}
           iconColor={theme.status.warning.color}
           label="Wind alert"
-          hint={windHint(wind, thresholds, units)}
+          hint={windHint(wind, thresholds, distanceUnit)}
         >
           <View style={styles.choices}>
             <PillChoiceRow options={LEVEL_OPTIONS} value={wind} onChange={onWindChange} />
@@ -107,7 +107,7 @@ export function WeatherAlertsButton({ style }: { style?: StyleProp<ViewStyle> })
   const [open, setOpen] = useState(false)
   const rain = useSettingsStore((s) => s.weatherRainAlertLevel)
   const wind = useSettingsStore((s) => s.weatherWindAlertLevel)
-  const units = useSettingsStore((s) => s.unitSystem)
+  const distanceUnit = useSettingsStore((s) => s.distanceUnit)
   const writeError = useSettingsStore((s) => s.writeError)
   const set = useSettingsStore((s) => s.set)
   const thresholds = useMemo(() => (open ? getWeatherAlertThresholds() : {}), [open])
@@ -133,7 +133,7 @@ export function WeatherAlertsButton({ style }: { style?: StyleProp<ViewStyle> })
         <WeatherAlertsSettingsView
           rain={rain}
           wind={wind}
-          units={units}
+          distanceUnit={distanceUnit}
           thresholds={thresholds}
           onRainChange={(level) => void set('weatherRainAlertLevel', level)}
           onWindChange={(level) => void set('weatherWindAlertLevel', level)}

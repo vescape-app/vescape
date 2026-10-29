@@ -30,15 +30,3 @@ export function weatherIconColor(icon: WeatherIconSlug): ThemeColor {
       return theme.weather.cloud
   }
 }
-
-/**
- * `H:MM` for a minute-of-day. Native carries forecast times as minutes since **local midnight at the
- * forecast location**, so this formats a label and never touches the device timezone.
- *
- * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `formatHour`
- */
-export function formatHour(minuteOfDay: number): string {
-  const hour = Math.floor(minuteOfDay / 60) % 24
-  const minute = minuteOfDay % 60
-  return `${hour}:${String(minute).padStart(2, '0')}`
-}

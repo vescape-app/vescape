@@ -16,7 +16,8 @@ const BASE: AppSettings = {
   rideSplitGapMinutes: 30,
   freeSpinMaxSpeedDeltaKmh: 12,
   freeSpinStationaryBoardCapKmh: 15,
-  unitSystem: 'metric',
+  distanceUnit: 'km',
+  temperatureUnit: 'celsius',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
@@ -246,7 +247,7 @@ test('master auto-start switch is independent from configured boards', async () 
 test('unit preference publishes only after native save and survives a reload', async () => {
   const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
   await useSettingsStore.getState().load()
-  expect(useSettingsStore.getState().unitSystem).toBe('metric')
+  expect(useSettingsStore.getState().distanceUnit).toBe('km')
   let finish!: () => void
   updateSetting.mockImplementationOnce(
     () =>
@@ -254,18 +255,16 @@ test('unit preference publishes only after native save and survives a reload', a
         finish = resolve
       }),
   )
-  const pending = useSettingsStore.getState().set('unitSystem', 'imperial')
-  expect(useSettingsStore.getState().unitSystem).toBe('metric')
+  const pending = useSettingsStore.getState().set('distanceUnit', 'mi')
+  expect(useSettingsStore.getState().distanceUnit).toBe('km')
   finish()
   await pending
-  expect(useSettingsStore.getState().unitSystem).toBe('imperial')
-  settings = { ...BASE, unitSystem: 'imperial' }
-  useSettingsStore.setState({ unitSystem: 'metric', loaded: false })
+  expect(useSettingsStore.getState().distanceUnit).toBe('mi')
+  settings = { ...BASE, distanceUnit: 'mi' }
+  useSettingsStore.setState({ distanceUnit: 'km', loaded: false })
   await useSettingsStore.getState().load()
-  expect(useSettingsStore.getState().unitSystem).toBe('imperial')
+  expect(useSettingsStore.getState().distanceUnit).toBe('mi')
   updateSetting.mockRejectedValueOnce(new Error('disk failed'))
-  await expect(useSettingsStore.getState().set('unitSystem', 'metric')).rejects.toThrow(
-    'disk failed',
-  )
-  expect(useSettingsStore.getState().unitSystem).toBe('imperial')
+  await expect(useSettingsStore.getState().set('distanceUnit', 'km')).rejects.toThrow('disk failed')
+  expect(useSettingsStore.getState().distanceUnit).toBe('mi')
 })

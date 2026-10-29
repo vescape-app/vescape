@@ -114,8 +114,8 @@ stay cached.
   `motorTemp`, `controller-temp` → `controllerTemp`, `speed`, `duty` → `dutyCycle`). No key: severity sound only.
 - **Value**: from the sound string, else the metric's current reading, so a repeat says where it is now. Battery speaks a
   percent, so a battery rule without a battery percent speaks no value. Speed is km/h, read in mph
-  under imperial units. Degrees are °C, converted
-  to °F under imperial units before rounding to the nearest clip (degree clips say only
+  under the `mi` distance unit. Degrees are °C, converted
+  to °F under the `mi` distance unit before rounding to the nearest clip (degree clips say only
   "degrees", −30…300). A missing value clip is skipped.
 - **Multi-value lines**: a `VoiceAnnouncement` carries an ordered list of `VoiceValue(type, value)`;
   the type travels with each value, so one line can say "Rain" + "in two and a half hours" +

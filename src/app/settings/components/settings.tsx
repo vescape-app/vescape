@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState } from 'react'
 import {
@@ -16,6 +16,9 @@ import { Switch } from '@/components/controls/Switch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
+import { ChipRow } from '@/components/dev/ShowcaseControls'
+import type { MaintenanceJobState } from 'vescape-core'
+import { StorageCell } from '@/screens/main/overlays/SettingsSheet'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import { BoardTopSpeedCard } from '@/modules/alerts/components/BoardTopSpeedCard'
@@ -50,6 +53,46 @@ function useMockAutoStart(): AutoStartCardProps {
   }
 }
 
+const STORAGE_JOB: MaintenanceJobState = {
+  id: 'rideSummaries',
+  status: 'running',
+  done: 312,
+  total: 780,
+  lastRunAtMs: null,
+  lastDurationMs: null,
+  lastError: null,
+}
+
+/** The drawer's Storage cell: size, a running Maintenance Job, and a failed one. */
+function StorageCellShowcase() {
+  const [mode, setMode] = useState('running')
+  const progress =
+    mode === 'running' || mode === 'counting'
+      ? {
+          job: STORAGE_JOB,
+          fraction: mode === 'running' ? 0.4 : null,
+          statusLine: 'Updating ride summaries · 312 of 780 hours',
+        }
+      : null
+  return (
+    <ShowcaseCard
+      name="StorageCell"
+      controls={
+        <ChipRow
+          label="state"
+          options={['size', 'running', 'counting', 'failed']}
+          selected={mode}
+          onSelect={setMode}
+        />
+      }
+    >
+      <View style={{ flexDirection: 'row' }}>
+        <StorageCell bytes={48_200_000} progress={progress} failed={mode === 'failed'} />
+      </View>
+    </ShowcaseCard>
+  )
+}
+
 export default function SettingsPage() {
   const [darkMode, setDarkMode] = useState(true)
   const [notifications, setNotifications] = useState(false)
@@ -60,6 +103,7 @@ export default function SettingsPage() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
+        <StorageCellShowcase />
         <ShowcaseCard name="Settings components">
           <IconHero
             icon={GearSixIcon}

@@ -10,7 +10,7 @@ import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { WeatherPill } from '@/modules/weather/components/WeatherPillView'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStripView'
 import { WeatherAlertsSettingsView } from '@/modules/weather/components/WeatherAlertsSettings'
-import type { UnitSystem } from '@/helpers/units'
+import type { DistanceUnit } from '@/helpers/units'
 import { IconHero } from '@/components/settings/IconHero'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
@@ -103,7 +103,7 @@ export default function WeatherPage() {
   const [expanded, setExpanded] = useState(false)
   const [rainLevel, setRainLevel] = useState<WeatherAlertLevelSetting>('normal')
   const [windLevel, setWindLevel] = useState<WeatherAlertLevelSetting>('normal')
-  const [units, setUnits] = useState<UnitSystem>('metric')
+  const [distanceUnit, setUnits] = useState<DistanceUnit>('km')
 
   const precipProbability = precip ? 40 : 0
   const iconColor = weatherIconColor(icon)
@@ -185,16 +185,16 @@ export default function WeatherPage() {
           controls={
             <ChipRow
               label="units"
-              options={['metric', 'imperial']}
-              selected={units}
-              onSelect={(value) => setUnits(value as UnitSystem)}
+              options={['km', 'mi']}
+              selected={distanceUnit}
+              onSelect={(value) => setUnits(value as DistanceUnit)}
             />
           }
         >
           <WeatherAlertsSettingsView
             rain={rainLevel}
             wind={windLevel}
-            units={units}
+            distanceUnit={distanceUnit}
             thresholds={MOCK_THRESHOLDS}
             onRainChange={setRainLevel}
             onWindChange={setWindLevel}

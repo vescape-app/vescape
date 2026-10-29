@@ -37,37 +37,39 @@ final class VoicePacksTests: XCTestCase {
   func testAnnouncementTakesKeyFromMetricAndValueFromThreshold() {
     let custom = VoiceAlertSound(severity: .info, key: nil, value: nil)
     XCTAssertEqual(
-      voiceAnnouncement(custom, controlId: "battery", reading: 19.6, percentAvailable: true, unitSystem: "metric"),
+      voiceAnnouncement(custom, controlId: "battery", reading: 19.6, percentAvailable: true, distanceUnit: "km", temperatureUnit: "celsius"),
       VoiceAnnouncement(severity: .info, key: "battery", values: [VoiceValue(type: "percent", value: 20)])
     )
     // Without a battery config the threshold is volts, not a percent.
     XCTAssertEqual(
-      voiceAnnouncement(custom, controlId: "battery", reading: 42, percentAvailable: false, unitSystem: "metric"),
+      voiceAnnouncement(custom, controlId: "battery", reading: 42, percentAvailable: false, distanceUnit: "km", temperatureUnit: "celsius"),
       VoiceAnnouncement(severity: .info, key: "battery")
     )
     XCTAssertEqual(
-      voiceAnnouncement(custom, controlId: "power", reading: 30, percentAvailable: true, unitSystem: "metric"),
+      voiceAnnouncement(custom, controlId: "power", reading: 30, percentAvailable: true, distanceUnit: "km", temperatureUnit: "celsius"),
       VoiceAnnouncement(severity: .info, key: nil)
     )
     let preset = VoiceAlertSound(severity: .critical, key: "motorTemp", value: nil)
     XCTAssertEqual(
-      voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, unitSystem: "metric"),
+      voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, distanceUnit: "km", temperatureUnit: "celsius"),
       VoiceAnnouncement(severity: .critical, key: "motorTemp", values: [VoiceValue(type: "degrees", value: 95)])
     )
     // °F converts before rounding: 95 °C = 203 °F, −20.6 °C = −5.08 °F.
-    XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, unitSystem: "imperial").values.first?.value, 203)
-    XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: -20.6, percentAvailable: false, unitSystem: "imperial").values.first?.value, -5)
+    XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, distanceUnit: "km", temperatureUnit: "fahrenheit").values.first?.value, 203)
+    XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: -20.6, percentAvailable: false, distanceUnit: "km", temperatureUnit: "fahrenheit").values.first?.value, -5)
+    // Degrees follow the temperature unit, not the distance unit.
+    XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, distanceUnit: "mi", temperatureUnit: "celsius").values.first?.value, 95)
     let explicit = VoiceAlertSound(severity: .warning, key: "battery", value: 10)
-    XCTAssertEqual(voiceAnnouncement(explicit, controlId: "speed", reading: 50, percentAvailable: false, unitSystem: "metric").values.first?.value, 10)
-    // Speed reads in mph under imperial (50 km/h = 31.07 mph); duty stays a percent.
+    XCTAssertEqual(voiceAnnouncement(explicit, controlId: "speed", reading: 50, percentAvailable: false, distanceUnit: "km", temperatureUnit: "celsius").values.first?.value, 10)
+    // Speed reads in mph under mi (50 km/h = 31.07 mph); duty stays a percent.
     let speed = VoiceAlertSound(severity: .warning, key: nil, value: nil)
     XCTAssertEqual(
-      voiceAnnouncement(speed, controlId: "speed", reading: 50, percentAvailable: false, unitSystem: "metric"),
+      voiceAnnouncement(speed, controlId: "speed", reading: 50, percentAvailable: false, distanceUnit: "km", temperatureUnit: "celsius"),
       VoiceAnnouncement(severity: .warning, key: "speed", values: [VoiceValue(type: "number", value: 50)])
     )
-    XCTAssertEqual(voiceAnnouncement(speed, controlId: "speed", reading: 50, percentAvailable: false, unitSystem: "imperial").values.first?.value, 31)
+    XCTAssertEqual(voiceAnnouncement(speed, controlId: "speed", reading: 50, percentAvailable: false, distanceUnit: "mi", temperatureUnit: "celsius").values.first?.value, 31)
     XCTAssertEqual(
-      voiceAnnouncement(speed, controlId: "duty", reading: 85, percentAvailable: false, unitSystem: "imperial"),
+      voiceAnnouncement(speed, controlId: "duty", reading: 85, percentAvailable: false, distanceUnit: "mi", temperatureUnit: "celsius"),
       VoiceAnnouncement(severity: .warning, key: "dutyCycle", values: [VoiceValue(type: "number", value: 85)])
     )
   }

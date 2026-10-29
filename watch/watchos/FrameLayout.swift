@@ -56,7 +56,7 @@ struct FrameLayout: View {
   var streetMapEnabled: Bool = true
   /// Street map opacity behind the gauges (phone: Settings > Watch > Map behind gauges).
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
-  var unitSystem: String = "metric"
+  var distanceUnit: String = "km"
 
   /// Readouts retreat for any page.
   private var focus: Double { max(navFocus, awayFocus) }
@@ -70,7 +70,7 @@ struct FrameLayout: View {
       navColor: navColor, trailColor: trailColor, navArrowEnabled: navArrowEnabled,
       telemetryTrailEnabled: telemetryTrailEnabled, telemetryGroupEnabled: telemetryGroupEnabled,
       telemetryRouteEnabled: telemetryRouteEnabled, streetMapEnabled: streetMapEnabled,
-      mapGaugesPercent: mapGaugesPercent, unitSystem: unitSystem
+      mapGaugesPercent: mapGaugesPercent, distanceUnit: distanceUnit
     ) {
       gauges(blind: blind)
     } readouts: {
@@ -156,14 +156,14 @@ struct FrameLayout: View {
   /// not: full-size digits side by side instead of two numbers squeezed between two arcs.
   private func heroes(blind: Bool) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 0) {
-      hero(WatchGauge.hero(frame.speed.map { UnitPresentation.speedFromKmh($0, unitSystem) }, blind: blind), unit: UnitPresentation.speedUnit(unitSystem), color: speedColor)
-      hero(WatchGauge.hero(frame.duty, blind: blind), unit: "%", color: dutyColor)
+      hero(WatchGauge.hero(frame.speed.map { UnitPresentation.speedFromKmh($0, distanceUnit) }, blind: blind), unit: UnitPresentation.speedUnit(distanceUnit), label: muted ? "Stale Speed" : "Speed", color: speedColor)
+      hero(WatchGauge.hero(frame.duty, blind: blind), unit: "%", label: muted ? "Stale Duty" : "Duty", color: dutyColor)
     }
     .padding(.top, HERO_TOP_INSET)
     .padding(.horizontal, Rim.innerInset)
   }
 
-  private func hero(_ value: String, unit: String, color: Color) -> some View {
+  private func hero(_ value: String, unit: String, label: String, color: Color) -> some View {
     // The placeholder is not just a small number: an em dash set at display size reads as a
     // progress bar, which is exactly the wrong thing for "no reading" to look like.
     let empty = value == WatchGauge.dash
@@ -180,6 +180,9 @@ struct FrameLayout: View {
         .foregroundStyle(Palette.secondaryText)
     }
     .frame(maxWidth: .infinity)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(label)
+    .accessibilityValue("\(value) \(unit)")
   }
 
   /// Values sit in the lower corners, level with the battery % between them; labels follow the

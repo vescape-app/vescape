@@ -15,11 +15,11 @@ class WatchUnitsTest {
         val rows = JSONArray(fixture.readText())
         for (index in 0 until rows.length()) {
             val row = rows.getJSONObject(index)
-            for (units in listOf("metric", "imperial")) {
+            for (units in listOf("km", "mi")) {
                 assertEquals(row.getString(units), UnitPresentation.distance(row.getDouble("meters"), units))
             }
         }
-        assertEquals("—", UnitPresentation.distance(Double.NaN, "imperial"))
-        assertEquals(25.0, UnitPresentation.speedFromKmh(40.2336, "imperial"), 1e-10)
+        assertEquals("—", UnitPresentation.distance(Double.NaN, "mi"))
+        assertEquals(25.0, UnitPresentation.speedFromKmh(40.2336, "mi"), 1e-10)
     }
 }

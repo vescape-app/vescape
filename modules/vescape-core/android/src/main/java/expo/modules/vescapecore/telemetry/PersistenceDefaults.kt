@@ -23,8 +23,15 @@ val DEFAULT_HISTORY_METRIC_HOT_RANGES: Map<String, Map<String, Double>> = mapOf(
 )
 
 /**
- * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validUnitSystem`
- * @parity /src/helpers/units.ts `UnitSystem`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validDistanceUnit`
+ * @parity /src/helpers/units.ts `DistanceUnit`
  */
-internal fun validUnitSystem(value: Any?): String? =
-  (value as? String)?.takeIf { it == "metric" || it == "imperial" }
+internal fun validDistanceUnit(value: Any?): String? =
+  (value as? String)?.takeIf { it == "km" || it == "mi" }
+
+/**
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validTemperatureUnit`
+ * @parity /modules/vescape-core/src/index.ts `TemperatureUnit`
+ */
+internal fun validTemperatureUnit(value: Any?): String? =
+  (value as? String)?.takeIf { it == "celsius" || it == "fahrenheit" }

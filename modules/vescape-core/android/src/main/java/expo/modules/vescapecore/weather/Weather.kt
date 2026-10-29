@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.weather
 
+import expo.modules.vescapecore.telemetry.WeatherObservation
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDateTime
@@ -125,8 +126,26 @@ data class Weather(
     val hourlySlots: List<WeatherSlot> = emptyList(),
     /** `minutely_15` series as absolute slots, for Weather Alerts. Not mirrored to JS. */
     val quarterHourSlots: List<WeatherSlot> = emptyList(),
+    /** Open-Meteo `current.time` as epoch ms, or null when the response carried none. */
+    val observedAtMs: Long? = null,
+    /** Current `wind_gusts_10m` in km/h, or null when the response omitted it. */
+    val windGustsKmh: Double? = null,
+    /** Current `is_day`; falls back to the sunrise/sunset night window when omitted. */
+    val isDay: Boolean = true,
+    /** Unrounded current temperature, normalized only when stored. */
+    val currentTemperatureC: Double = temperatureC.toDouble(),
 ) {
     val label: String get() = weatherLabel(weatherCode)
+
+    /**
+     * Normalized current conditions for `weather_observations`, or null without an observation
+     * time: a row must say when the weather was, not when it was fetched.
+     * @parity /modules/vescape-core/ios/weather/Weather.swift `Weather.observation`
+     */
+    fun observation(): WeatherObservation? {
+        val at = observedAtMs ?: return null
+        return WeatherObservation.normalized(at, currentTemperatureC, weatherCode, windGustsKmh, isDay)
+    }
 
     fun toMap(): Map<String, Any?> = mapOf(
         "temperatureC" to temperatureC,
@@ -265,13 +284,19 @@ fun parseOpenMeteoWeather(
     val utcOffsetSeconds = if (json.has("utc_offset_seconds")) json.optInt("utc_offset_seconds") else null
     val currentMinute = minuteOfDay(json.optJSONObject("current")?.optString("time").orEmpty())
     val currentCode = current.optInt("weather_code")
+    val currentTemperature = current.optDouble("temperature_2m")
+    val night = isNight(currentMinute ?: hourly.firstOrNull()?.minuteOfDay ?: 12 * 60, sunriseMinute, sunsetMinute)
+    val currentTime = current.optString("time").takeIf { it.isNotEmpty() }
     return Weather(
-        temperatureC = Math.round(current.optDouble("temperature_2m")).toInt(),
+        temperatureC = Math.round(currentTemperature).toInt(),
+        currentTemperatureC = currentTemperature,
         weatherCode = currentCode,
-        icon = weatherIcon(
-            currentCode,
-            isNight(currentMinute ?: hourly.firstOrNull()?.minuteOfDay ?: 12 * 60, sunriseMinute, sunsetMinute),
-        ),
+        icon = weatherIcon(currentCode, night),
+        observedAtMs = if (currentTime != null && utcOffsetSeconds != null) epochMs(currentTime, utcOffsetSeconds) else null,
+        windGustsKmh = if (current.has("wind_gusts_10m") && !current.isNull("wind_gusts_10m")) {
+            current.optDouble("wind_gusts_10m")
+        } else null,
+        isDay = if (current.has("is_day") && !current.isNull("is_day")) current.optInt("is_day") != 0 else !night,
         precipitationProbability = current.optInt("precipitation_probability"),
         hourly = hourly,
         sunriseMinuteOfDay = sunriseMinute,

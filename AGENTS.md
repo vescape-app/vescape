@@ -15,9 +15,9 @@ Do **not** use `npm`, `yarn`, `npx`, or `pnpm`.
 
 ## Formatter
 
-Use **Oxfmt** (`bun run format`) for repository formatting. Do not run Prettier or
-apply Prettier-formatted rewrites; Prettier rewrites the style globally and causes
-`Formatter mismatch caught: Prettier rewrote style globally`.
+Use **`bun fmt`** (`bun run format`) for repository formatting; its config is the `[fmt]` section
+of `bunfig.toml`. Do not run Prettier or oxfmt, or apply their rewrites; they rewrite the style
+globally and cause `Formatter mismatch caught: Prettier rewrote style globally`.
 
 ## Verification Budget
 

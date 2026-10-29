@@ -53,7 +53,10 @@ object DatabaseBackupManager {
 
   /** Caller must first await the BoardSessionController-owned stop callback. */
   internal suspend fun restoreBackup(context: Context, uriString: String) =
-    TelemetryDatabase.rideExportMutex.withLock { restoreBackupLocked(context, uriString) }
+    TelemetryDatabase.rideExportMutex.withLock {
+      // A weather observation fetched before the swap must not land in the restored database.
+      DatabaseReplacementFence.process.fence { restoreBackupLocked(context, uriString) }
+    }
 
   private fun restoreBackupLocked(context: Context, uriString: String) {
     val appContext = context.applicationContext

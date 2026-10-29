@@ -6,40 +6,117 @@ Maestro is pinned in `.maestro-version`. CI installs that version, and repositor
 a missing or different version before invoking Maestro. Run `bun run maestro:setup` after changing
 the pin or when the version check asks for it.
 
-## Local Android
+## Run everything on Android
 
-1. Install the pinned Maestro CLI: `bun run maestro:setup`
-2. Start an emulator.
-3. Build/install the app in E2E mode:
-
-```sh
-bun run android:e2e
-```
-
-4. Run all E2E flows:
-
-```sh
-bun run e2e --all
-```
-
-Run one flow by file name:
-
-```sh
-bun run e2e --flow connect-board
-```
-
-Run without flags to pick from an interactive selector:
+Run:
 
 ```sh
 bun run e2e
 ```
 
-Public flows live in `e2e/flows/*.yaml`. Helper flows start with `_` and are hidden from
-the selector.
+If Maestro is missing or has a different version, the terminal offers to install the pinned CLI.
+Non-interactive shells must prepare it first with `bun run maestro:setup`.
 
-The first example clears app state, opens the board selector, taps Add new board, uses `EXPO_PUBLIC_E2E=1` to surface a fake BLE scan result named `E2E VESC Board`, creates `E2E Board`, keeps default battery config, saves, then checks the board name appears on the main screen.
+The terminal menu defaults to **All tests**. Press Enter to run native smoke, phone flows,
+watch telemetry, and group rides in that order, or choose one suite. The shared device picker asks
+for the phone and, when needed, a Wear emulator before any build. It can boot an existing AVD.
+Suites run sequentially because they install different app modes on the same phone. A workspace
+lock rejects a second `bun run e2e` while one is active.
 
-Because this repo currently installs an Expo development build, the flow first selects the local Metro server from the Expo dev-client launcher. The dev-client config hides the tools button, skips onboarding, and prevents the dev menu from opening at launch. Those settings are native config plugin values, so rebuild the Android app after changing them.
+Each suite builds the current app and prepares its state. Phone, watch, and group suites own
+isolated Metro servers; group rides also own a local relay. Servers, child processes, and temporary
+ADB reverse listeners are cleaned up after success, failure, or Ctrl-C. Existing development
+Metro sessions and unrelated tunnels are preserved. Flows reset the selected app's data.
+The summary reports passed, failed, and not-run suites; a failure stops subsequent installs.
+
+Use flags to skip the menus, including in non-interactive shells:
+
+```sh
+bun run e2e --all --device Medium_Phone --watch WearLarge
+bun run e2e --suite phone --device Medium_Phone
+bun run e2e --suite smoke --flow 02-alerts --device Medium_Phone
+bun run e2e --flow connect-board --device Medium_Phone
+bun run e2e --help
+```
+
+Without a terminal, the workflow defaults to all. An ambiguous device choice requires `--device`
+or `--watch`; the runner never chooses a different device midway through the run.
+`--flow` alone selects the phone suite. It cannot be combined with all, watch, or group.
+All means the four Android validation suites, excluding screenshot capture, preview tours,
+performance measurements, and iOS tests.
+
+Watch and group require paired Google Play phone/Wear AVDs. Initial companion pairing can require
+one manual "Pair with emulator" action, described in
+[watch emulator setup](../docs/agents/watch-emulators.md). Group rides require the sibling
+`../vescape-server` checkout with Bun dependencies installed, or `GROUP_RIDE_SERVER_DIR`.
+Missing Maestro or server prerequisites are handled before builds.
+
+For a fast phone rerun against an already prepared E2E app and Metro:
+
+```sh
+bun run e2e:run --device Medium_Phone
+bun run e2e:run --device Medium_Phone --flow connect-board
+```
+
+`e2e:run` only runs public phone flows in `e2e/flows/*.yaml`, excluding `_` helpers and the legacy
+`e2e.yaml` aggregate. It defaults to port 8081; set `E2E_METRO_PORT` to reuse another Metro.
+
+The setup-board flow clears app state, discovers `E2E VESC Board` through `EXPO_PUBLIC_E2E=1`, reviews and saves its Direct link, names it `E2E Board`, adjusts the battery config, skips alert customization, and saves. It then connects the saved board and checks that telemetry appears.
+
+Because this repo currently installs an Expo development build, the launch helper waits for the Expo dev-client launcher, then opens this run's Metro URL directly. The dev-client config hides the tools button, skips onboarding, and prevents the dev menu from opening at launch. Those settings are native config plugin values, so rebuild the Android app after changing them.
+
+## Watch E2E (Wear OS)
+
+```sh
+bun run e2e:watch --device Medium_Phone
+```
+
+Use a paired phone + Wear OS emulator with Google Play services. `--device` selects the phone
+AVD; `WEAR_AVD` selects the watch AVD. Without overrides the shared picker prefers running AVDs.
+First-time pairing may need the Wear OS companion's "Pair with emulator" action; see
+[watch emulator setup](../docs/agents/watch-emulators.md).
+
+This runs as part of the all-tests workflow or independently. It starts its own Metro and rebuilds/installs the current phone
+development app and watch app, checks the real Data Layer link, and starts the thor301 recording
+on the phone. The watch launches normally, without its standalone fixture replay. No database
+backup is restored and navigation is skipped, so Directions is not a prerequisite.
+
+Android UI Automator reads the watch's displayed speed and duty through accessibility. The test
+requires nonzero speed and a subsequent speed change with both readouts still live. Stale readings,
+placeholders, and another app's UI do not match. UI dumps and a screenshot are saved under
+`.expo/watch-e2e/<timestamp>/` on success or failure. Setup, transport, and UI failures exit nonzero.
+Maestro is not used here because its Android device discovery excludes the Wear emulator. Owned Metro processes and reverse tunnels are removed afterward; installed apps remain.
+Apple Watch is not covered by this command.
+
+## Group Ride E2E, phone + Wear OS
+
+```sh
+bun run e2e:group --device Medium_Phone
+```
+
+Requires the sibling `../vescape-server` checkout with its Bun dependencies installed, Maestro,
+and a paired phone + Wear OS emulator with Google Play services. Set `GROUP_RIDE_SERVER_DIR` for
+another server checkout and `WEAR_AVD` for another watch AVD. The selected pair is used even when other emulators are connected. Initial pairing follows [watch emulator setup](../docs/agents/watch-emulators.md).
+
+The command owns an isolated Metro and a local server process on temporary ports. It rebuilds
+both current development apps and sets emulator GPS. Phone state is cleared before starting the
+Mirror, with location, nearby-device, activity and notification permissions granted for the test. The UI
+flow preserves that state and the established phone/watch connection. It mounts
+the server's real Group Ride relay, protocol validation, version gate, and App Status routes using
+`MemoryStore`. No database, Redis, server credentials, production rooms, JS native fake, or watch
+fixture replay are used. The sibling server revision is the implementation under test.
+
+A simulated WebSocket rider creates a nearby ride. Maestro sets the phone's rider name and joins
+through Social. The peer must receive native phone GPS presence without a Board Session. The
+watch's real roster must show that peer and battery. Changing the peer's presence must update
+the phone board name/battery and wrist battery/distance. Leaving through Social must remove the phone
+from the relay roster and remove the wrist group page.
+
+Android UI Automator checks the Wear UI; Maestro drives the phone. Logs, the peer's protocol
+transcript, phone Maestro artifacts, and watch XML/screenshots are saved under
+`.expo/group-ride-e2e/<timestamp>/`. Failures exit nonzero. Owned server/Metro processes stop and their ADB reverse tunnels are removed on success or failure; installed apps remain. Already running emulators are left running. This suite is separate from smoke, regular fake
+phone E2E, and `e2e:watch`. Apple Watch, BLE reception, reconnect, public auto-join and Privacy
+Zone suppression are outside this flow.
 
 ## Component-library smoke
 
@@ -57,6 +134,29 @@ changing adaptive colors. Visible preview assertions catch render failures even 
 the reconciler error is missing from logcat. This is a smoke check, not coverage of
 every showcase state.
 
+## Drawer controls regression
+
+```sh
+bun run e2e --flow edge-drawer-controls --device Medium_Phone
+```
+
+The drawer showcase has deterministic long, short, and empty pages on both edges. This flow
+switches pages repeatedly while open, checks that the first row returns, scrolls with the header
+and footer pinned, and exercises content dismissal, grabber dismissal, controlled close, Android
+Back, backdrop close, and reopening. A small content pull must spring back; a fling from inside
+the list must stop at its start before a fresh gesture can dismiss it.
+
+Maestro captures a reference of each open drawer during the run and compares the whole modal
+after returning to the same page or releasing the small pull. The 99% image match catches height,
+position, and opacity changes without maintaining device-specific golden images. References and
+failure diffs are saved in Maestro's run artifacts. These comparisons check restoration of the
+rendered state, not animation smoothness or the correctness of the initial reference itself.
+
+`edge-drawer-focus` also checks row 1 through ScrollView expansion and reopening, FlatList focus
+on row 80 outside the initial render window, and rows arriving after opening. Emptying and
+refilling the late list must restore the same rendered height and opacity.
+Both flows join the regular phone suite automatically.
+
 ## Seeded live telemetry
 
 Use the private `e2e-seed` route to put the app into a deterministic connected-board state. It
@@ -69,7 +169,7 @@ The seed requires an E2E build and a Metro server:
 bun run android:e2e
 ```
 
-Run the helper flow to clear app state, select Metro, seed/connect the fake board, and land on the
+Run the helper flow to clear app state, open Metro, seed/connect the fake board, and land on the
 live telemetry screen:
 
 ```sh
@@ -83,7 +183,7 @@ maestro test e2e/flows/_perf-home.yaml
 vescape://e2e-seed?flow=connect-board
 ```
 
-Do not use the deep link alone for perf baselines: it does not clear prior app state or select the
+Do not use the deep link alone for perf baselines: it does not clear prior app state or open the
 dev-client Metro server. Use `_perf-home.yaml` first.
 
 Measure a seeded telemetry screen with the bundled harness:
@@ -104,21 +204,32 @@ the first step of that: it boots from fixtures and a replay instead of `e2eFake`
 
 ## Smoke
 
-`bun run smoke` walks the screens a rider actually opens — live telemetry and persisted alerts,
+`bun run smoke` walks the screens a rider actually opens — live telemetry, custom alerts alongside persisted presets,
 map modes, Ride History, Profile stats, and the add-board wizard — and asserts on them on Android
 and iOS.
 
 ```sh
 bun run smoke                      # picks a device, builds, runs every flow
 bun run smoke --no-build           # reuse the smoke build already installed
-bun run smoke --flow 03-history    # one flow against the installed build
+bun run smoke --flow 03-history    # build and run one flow
+bun run smoke --no-build --flow 02-alerts # alerts against an installed smoke build
 bun run smoke --device <serial>    # skip the picker
 bun run smoke --platform ios       # use an iOS simulator
 bun run smoke --build-only --output .expo/smoke/app.apk
 bun run smoke --app .expo/smoke/app.apk --flow 03-history
 ```
 
-CI builds one Release artifact per platform without booting a device. Each platform's five flows
+`02-alerts` selects HEV effects, previews its Warning sound, and overrides the matching Radio
+voice with Nicole. It then saves a custom speed Geiger rule, changes Normal → Safe → Off, and reopens
+Speed to check that the custom range and Off selection survive navigation. It restores Normal
+before checking battery presets: Normal and Safe expand to their charge-percentage voice points,
+the battery preview completes with the selected sound settings, Safe survives reopening, and Off
+disables preview. It restores battery Normal before returning home. This is playback and continued
+navigation coverage, not an assertion on audible output or every pack/voice combination.
+Each runner invocation restores fresh fixtures; this checks native writes
+and screen reopening, not persistence across app restarts.
+
+CI builds one Release artifact per platform without booting a device. Each platform's six flows
 then run in parallel jobs, each installing that artifact and starting a fresh fixture session.
 The iOS app travels in a tar archive to preserve its bundle permissions and symlinks. Gradle's build
 cache and iOS CocoaPods dependencies are separate from app artifacts. iOS caches the compiled
