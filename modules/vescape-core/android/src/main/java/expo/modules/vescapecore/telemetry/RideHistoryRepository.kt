@@ -256,7 +256,7 @@ internal fun rideSessionId(session: RideSessionAggregate): String =
 /**
  * One complete ride by [rideSessionId], or null once it no longer exists under that id.
  * Pages from just past the ride's end, so the ride is the newest complete one in the window.
- * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `readRideSession`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getSession`
  */
 internal suspend fun readRideSession(dao: VescapeDao, id: String, gapMs: Long): Map<String, Any?>? {
   val endAtMs = id.substringAfterLast(':').toLongOrNull() ?: return null
@@ -269,7 +269,7 @@ internal suspend fun readRideSession(dao: VescapeDao, id: String, gapMs: Long): 
   return (page["sessions"] as List<Map<String, Any?>>).firstOrNull { it["id"] == id }
 }
 
-/** Rides of other Boards may end in the same minute; a few covers them. */
+/** Other Boards' rides that started during this one sort ahead of it; a few covers them. */
 private const val RIDE_SESSION_LOOKUP_LIMIT = 4
 
 /** @parity /modules/vescape-core/src/index.ts `RideHistorySession` */

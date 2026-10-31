@@ -75,7 +75,6 @@ internal final class ProfileStatsRepository {
   }
 }
 
-
 internal func computeProfileStatsForBuckets(
   buckets: [Row],
   markers: [Row],

@@ -97,7 +97,7 @@ private fun computeProfileStatsForSessions(
   }
 
   val topSpeedRide = included.maxByOrNull { it.topSpeedKmh }
-  val longestRide = included.filter { it.distanceM != null }.maxByOrNull { it.distanceM!! }
+  val longestRide = included.maxByOrNull { it.distanceM ?: -1.0 }?.takeIf { it.distanceM != null }
 
   return mapOf(
     "distanceM" to totalDistanceM,

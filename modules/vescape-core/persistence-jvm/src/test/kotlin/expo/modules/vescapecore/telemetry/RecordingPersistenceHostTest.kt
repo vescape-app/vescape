@@ -13,6 +13,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import expo.modules.vescapecore.database.AlertRuleEntity
 import expo.modules.vescapecore.database.AppSettingEntity
@@ -627,6 +628,13 @@ class RecordingPersistenceHostTest {
     assertEquals(expected.getDouble("profileTopSpeedKmh"), total["topSpeedKmh"])
     assertEquals(expected.getDouble("profileAvgSpeedKmh"), total["avgSpeedKmh"])
     assertEquals(expected.getInt("profileMonthCount"), (stats["months"] as List<*>).size)
+    // A record's ride id opens that ride, including one that is not the newest.
+    val currentId = firstSession["id"] as String
+    val olderId = (second["sessions"] as List<Map<String, Any?>>).single()["id"] as String
+    assertEquals(currentId, total["longestRideId"])
+    assertEquals(currentId, readRideSession(db.vescapeDao(), currentId, gapMs)?.get("id"))
+    assertEquals(olderId, readRideSession(db.vescapeDao(), olderId, gapMs)?.get("id"))
+    assertNull(readRideSession(db.vescapeDao(), "$boardId:1:2", gapMs))
     assertEquals(expected.getInt("selectedYear"), (stats["selectedMonth"] as Map<*, *>)["year"])
     assertEquals(expected.getInt("selectedMonth"), (stats["selectedMonth"] as Map<*, *>)["month"])
 

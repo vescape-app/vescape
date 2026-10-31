@@ -1,5 +1,6 @@
 import type { Href } from 'expo-router'
 
+import { RIDE_FOCUSES, type RideFocus } from '@/modules/history/lib/chartFocus'
 import { routes } from '@/navigation/routes'
 
 /**
@@ -7,11 +8,6 @@ import { routes } from '@/navigation/routes'
  * without reaching into that screen's stores. Each link has one builder and one parser here; the
  * target screen reads its params, opens the thing, then clears them.
  */
-
-/** A moment a linked ride opens on, instead of its start. */
-export type RideFocus = 'topSpeed'
-
-const RIDE_FOCUSES: readonly RideFocus[] = ['topSpeed']
 
 export interface RideLink {
   /** `RideHistorySession.id`. */

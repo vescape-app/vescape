@@ -138,7 +138,7 @@ internal final class RideHistoryRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `readRideSession`
   func getSession(_ id: String) throws -> [String: Any?]? {
     guard let endAtMs = id.split(separator: ":").last.flatMap({ Int64($0) }) else { return nil }
-    // Rides of other Boards may end in the same minute; a few covers them.
+    // Other Boards' rides that started during this one sort ahead of it; a few covers them.
     let page = try getPage(["cursorBeforeMs": endAtMs + 1, "limit": 4])
     let sessions = (page["sessions"] ?? nil) as? [[String: Any?]] ?? []
     return sessions.first { ($0["id"] ?? nil) as? String == id }

@@ -8,7 +8,7 @@ import type {
 } from 'vescape-core'
 
 import type { HistorySession } from '@/modules/history/lib/sessions'
-import type { RideFocus } from '@/navigation/links'
+import type { RideFocus } from '@/modules/history/lib/chartFocus'
 
 export interface HistoryState {
   blocks: TelemetryMinuteBucket[]

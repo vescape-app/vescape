@@ -1,5 +1,5 @@
 import type { HistorySession } from '@/modules/history/store/historyStore'
-import type { RideFocus } from '@/navigation/links'
+import type { RideFocus } from '@/modules/history/lib/chartFocus'
 import type { HistoryTab } from '@/screens/main/mainScreenStore'
 
 export type HistoryTarget =

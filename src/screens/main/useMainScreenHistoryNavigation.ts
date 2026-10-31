@@ -5,7 +5,7 @@ import { getNextRideSession, getPreviousRideSession } from '@/screens/main/mainS
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { openHistoryTarget, type HistoryTarget } from '@/screens/main/history/historyEntry'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
-import type { RideFocus } from '@/navigation/links'
+import type { RideFocus } from '@/modules/history/lib/chartFocus'
 
 const MAX_HISTORY_PREFETCH_PAGES = 8
 

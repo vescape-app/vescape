@@ -21,6 +21,11 @@ export const scrubHeadMs = makeMutable<number | null>(null)
  */
 export const zoomWindowMs = makeMutable<ChartTimeRange | null>(null)
 
+/** A moment a ride opens on, instead of its start. */
+export type RideFocus = 'topSpeed'
+
+export const RIDE_FOCUSES: readonly RideFocus[] = ['topSpeed']
+
 /** When the ride hit its top speed. Absolute, like the bucket `maxAbsSpeed` the record comes from. */
 export function peakSpeedAtMs(samples: readonly TelemetrySample[]): number | null {
   let peak: TelemetrySample | null = null
