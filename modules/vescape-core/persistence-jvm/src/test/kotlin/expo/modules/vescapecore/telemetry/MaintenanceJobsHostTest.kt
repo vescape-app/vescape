@@ -5,10 +5,18 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.DatabaseReplacementFence
+import expo.modules.vescapecore.database.MetricExclusionRangeEntity
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
+import expo.modules.vescapecore.database.TelemetryFrameEntity
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /** Rebuild every ride summary the way the runner does, without fingerprint bookkeeping. */
 internal suspend fun rebuildRideSummaries(
-  dao: TelemetryDao,
+  dao: VescapeDao,
   nowMs: Long = Long.MAX_VALUE / 2,
   fence: DatabaseReplacementFence = DatabaseReplacementFence(),
   committed: () -> Unit = {},
@@ -24,7 +32,7 @@ class MaintenanceJobsHostTest {
   private val hour = 60 * minute
   private val board = "board-a"
 
-  private fun db() = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+  private fun db() = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
 
   private fun frame(at: Long, speed: Int = 1_000) = TelemetryFrameEntity(
     capturedAtMs = at, elapsedRealtimeMs = at, boardId = board, canId = null,
@@ -41,7 +49,7 @@ class MaintenanceJobsHostTest {
     accuracyCm = 500, gpsSpeedCentiMps = speedCentiMps, bearingCentiDeg = null, altitudeCm = null,
   )
 
-  private suspend fun TelemetryDao.persisted() = Triple(
+  private suspend fun VescapeDao.persisted() = Triple(
     getAllHistoryBucketsAsc(),
     getExclusions(Long.MIN_VALUE, Long.MAX_VALUE, null).map { it.copy(id = 0) }.sortedBy { it.startMs },
     getAllHistoryBucketsAsc().map { it.routePreview },
@@ -49,7 +57,7 @@ class MaintenanceJobsHostTest {
 
   @Test fun rebuildingTwiceIsIdenticalAcrossMinuteAndHourEdges(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     val edge = 10 * hour
     // A ride across the hour edge: fast board, a standing GPS fix just before the edge, so free
     // spin needs the nearest-fix context from the previous chunk.
@@ -71,7 +79,7 @@ class MaintenanceJobsHostTest {
 
   @Test fun activeRideIsNeverTouchedAndKeepsTheJobStale(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     val now = 100 * hour
     dao.insertFrames((10 * hour until 10 * hour + 10 * minute step 5_000).map { frame(it) })
     // A three-hour ride still recording: samples every 20 minutes, inside the 30-minute split gap.
@@ -93,7 +101,7 @@ class MaintenanceJobsHostTest {
 
   @Test fun fenceAndDeletionBetweenChunksLeaveNoGhostsOrFingerprint(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     dao.insertFrames((0 until 3 * hour step minute).map { frame(it) })
     val fence = DatabaseReplacementFence()
     var chunks = 0
@@ -119,7 +127,7 @@ class MaintenanceJobsHostTest {
 
   @Test fun fingerprintCarriesVersionAndNormalizedInputs(): Unit = runBlocking {
     val db = db()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     assertEquals(MaintenanceJobOutcome.Completed, rebuildRideSummaries(dao))
     val settings = AppSettings(movingSpeedThresholdKmh = 2.999_999)
     val fingerprint = RideSummariesJob.fingerprint(settings)

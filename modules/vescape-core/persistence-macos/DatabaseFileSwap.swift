@@ -1,1 +1,1 @@
-../ios/telemetry/DatabaseFileSwap.swift
+../ios/database/DatabaseFileSwap.swift

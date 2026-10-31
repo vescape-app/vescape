@@ -14,6 +14,26 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import expo.modules.vescapecore.database.AlertRuleEntity
+import expo.modules.vescapecore.database.AppSettingEntity
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.BoardConfigChangeNoticeEntity
+import expo.modules.vescapecore.database.BoardConfigValuesEntity
+import expo.modules.vescapecore.database.BoardEntity
+import expo.modules.vescapecore.database.BoardSettingEntity
+import expo.modules.vescapecore.database.BoardWarningEntity
+import expo.modules.vescapecore.database.DiagnosticEventEntity
+import expo.modules.vescapecore.database.FavoriteMediaEntity
+import expo.modules.vescapecore.database.MetricExclusionRangeEntity
+import expo.modules.vescapecore.database.PrivacyZoneEntity
+import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
+import expo.modules.vescapecore.database.TelemetryFrameEntity
+import expo.modules.vescapecore.database.TelemetryMarkerEntity
+import expo.modules.vescapecore.database.TuneProfileEntity
+import expo.modules.vescapecore.database.VescFaultCaptureEntity
+import expo.modules.vescapecore.database.VescFaultCaptureSampleEntity
+import expo.modules.vescapecore.database.VescFaultOccurrenceEntity
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /** Production Room DAO contract on host SQLite. No Android framework, emulator, or test DAO. */
 class RecordingPersistenceHostTest {
@@ -23,9 +43,9 @@ class RecordingPersistenceHostTest {
     val frames = fixture.getJSONArray("frames")
     val path = Files.createTempFile("vescape-maintenance", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     fun frame(at: Long, boardId: String) = TelemetryFrameEntity(
       capturedAtMs = at, elapsedRealtimeMs = at, boardId = boardId, canId = null,
       flags = TELEMETRY_FLAG_KEYFRAME, changedMask1 = Int.MAX_VALUE, changedMask2 = 0,
@@ -83,18 +103,18 @@ class RecordingPersistenceHostTest {
     db = open()
     var failed = false
     try {
-      TelemetryMaintenancePersistence(db.telemetryDao()).deleteRanges((0 until rollback.length()).map { index ->
+      TelemetryMaintenancePersistence(db.vescapeDao()).deleteRanges((0 until rollback.length()).map { index ->
         rollback.getJSONObject(index).let { TelemetryTimeRange(it.getLong("fromMs"), it.getLong("toMs")) }
       }, null, allBoards = true)
     } catch (_: Exception) { failed = true }
     assertTrue(failed)
     db.close()
     db = open()
-    assertEquals(listOf("m3", "m-delta", "rollback-a", "rollback-b"), db.telemetryDao().getMarkers(0, Long.MAX_VALUE, null).map { it.type })
+    assertEquals(listOf("m3", "m-delta", "rollback-a", "rollback-b"), db.vescapeDao().getMarkers(0, Long.MAX_VALUE, null).map { it.type })
     val expectedTimes = fixture.getJSONArray("expectedRemainingFrameTimes")
     assertEquals(
       (0 until expectedTimes.length()).map { expectedTimes.getLong(it) },
-      db.telemetryDao().getFrames(0, Long.MAX_VALUE, null, Int.MAX_VALUE).map { it.capturedAtMs },
+      db.vescapeDao().getFrames(0, Long.MAX_VALUE, null, Int.MAX_VALUE).map { it.capturedAtMs },
     )
     db.close()
     Files.deleteIfExists(path)
@@ -112,10 +132,10 @@ class RecordingPersistenceHostTest {
     val navigation = fixture.getJSONObject("navigation")
     val path = Files.createTempFile("vescape-remaining-stores", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
     val navigationAt = 900L
-    db.telemetryDao().replaceAppSettings(
+    db.vescapeDao().replaceAppSettings(
       listOf(
         AppSettingEntity("navigationPath", JSONObject.quote(navigation.getString("path")), navigationAt),
         AppSettingEntity("navigationProfile", JSONObject.quote(navigation.getString("profile")), navigationAt),
@@ -124,45 +144,45 @@ class RecordingPersistenceHostTest {
       ),
       listOf("navigationPath", "navigationProfile", "directionPointLatitude", "directionPointLongitude"),
     )
-    db.telemetryDao().upsertPrivacyZone(PrivacyZoneEntity(zone.getString("id"), zone.getString("preset"), zone.getString("name"), true, zone.getInt("centerLatitudeE7"), zone.getInt("centerLongitudeE7"), zone.getInt("radiusMeters"), zone.getLong("createdAt"), zone.getLong("updatedAt")))
-    db.telemetryDao().insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = diagnostic.getLong("occurredAtMs"), elapsedRealtimeMs = 1, eventName = diagnostic.getString("eventName"), operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}"))
+    db.vescapeDao().upsertPrivacyZone(PrivacyZoneEntity(zone.getString("id"), zone.getString("preset"), zone.getString("name"), true, zone.getInt("centerLatitudeE7"), zone.getInt("centerLongitudeE7"), zone.getInt("radiusMeters"), zone.getLong("createdAt"), zone.getLong("updatedAt")))
+    db.vescapeDao().insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = diagnostic.getLong("occurredAtMs"), elapsedRealtimeMs = 1, eventName = diagnostic.getString("eventName"), operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}"))
     val warningBoardId = warning.getString("boardId")
-    db.telemetryDao().upsertBoardWarning(BoardWarningEntity(warningBoardId, warning.getString("kind"), warning.getString("severity"), warning.getLong("firstDetectedAtMs"), warning.getLong("lastDetectedAtMs"), warning.getString("payloadJson")))
-    db.telemetryDao().upsertBoardWarning(BoardWarningEntity(warningBoardId, warning.getString("kind"), "critical", warning.getLong("firstDetectedAtMs"), warning.getLong("updatedLastDetectedAtMs"), warning.getString("payloadJson")))
+    db.vescapeDao().upsertBoardWarning(BoardWarningEntity(warningBoardId, warning.getString("kind"), warning.getString("severity"), warning.getLong("firstDetectedAtMs"), warning.getLong("lastDetectedAtMs"), warning.getString("payloadJson")))
+    db.vescapeDao().upsertBoardWarning(BoardWarningEntity(warningBoardId, warning.getString("kind"), "critical", warning.getLong("firstDetectedAtMs"), warning.getLong("updatedLastDetectedAtMs"), warning.getString("payloadJson")))
     val faultBoardId = fault.getString("boardId")
     val firstFaultId = fault.getString("firstId")
-    db.telemetryDao().upsertVescFault(VescFaultOccurrenceEntity(firstFaultId, faultBoardId, fault.getInt("firstCode"), fault.getLong("occurredAtMs"), fault.getLong("occurredAtMs"), null, false))
-    assertEquals(1, db.telemetryDao().setVescFaultDismissed(firstFaultId, true))
-    db.telemetryDao().upsertVescFault(VescFaultOccurrenceEntity(firstFaultId, faultBoardId, fault.getInt("firstCode"), fault.getLong("occurredAtMs"), fault.getLong("advancedAtMs"), fault.getLong("clearedAtMs"), false))
+    db.vescapeDao().upsertVescFault(VescFaultOccurrenceEntity(firstFaultId, faultBoardId, fault.getInt("firstCode"), fault.getLong("occurredAtMs"), fault.getLong("occurredAtMs"), null, false))
+    assertEquals(1, db.vescapeDao().setVescFaultDismissed(firstFaultId, true))
+    db.vescapeDao().upsertVescFault(VescFaultOccurrenceEntity(firstFaultId, faultBoardId, fault.getInt("firstCode"), fault.getLong("occurredAtMs"), fault.getLong("advancedAtMs"), fault.getLong("clearedAtMs"), false))
     val secondFaultId = fault.getString("secondId")
-    db.telemetryDao().upsertVescFault(VescFaultOccurrenceEntity(secondFaultId, faultBoardId, fault.getInt("secondCode"), fault.getLong("secondOccurredAtMs"), fault.getLong("secondOccurredAtMs"), null, false))
+    db.vescapeDao().upsertVescFault(VescFaultOccurrenceEntity(secondFaultId, faultBoardId, fault.getInt("secondCode"), fault.getLong("secondOccurredAtMs"), fault.getLong("secondOccurredAtMs"), null, false))
     val captureSamples = fault.getJSONArray("captureSamples")
     fun captureSample(index: Int): VescFaultCaptureSampleEntity {
       val value = captureSamples.getJSONObject(index)
       return VescFaultCaptureSampleEntity(occurrenceId = firstFaultId, capturedAtMs = value.getLong("capturedAtMs"), speed = value.getDouble("speed"), dutyCycle = null, erpm = null, batteryVoltage = null, batteryCurrent = null, motorCurrent = null, tempMosfet = null, tempMotor = null, pitch = null, roll = null, balancePitch = null, adc1 = null, adc2 = null, state = value.getInt("state"))
     }
-    db.telemetryDao().saveVescFaultCapture(VescFaultCaptureEntity(firstFaultId, faultBoardId, fault.getLong("captureStartedAtMs"), fault.getLong("occurredAtMs"), captureSamples.length()), (0 until captureSamples.length()).map(::captureSample))
+    db.vescapeDao().saveVescFaultCapture(VescFaultCaptureEntity(firstFaultId, faultBoardId, fault.getLong("captureStartedAtMs"), fault.getLong("occurredAtMs"), captureSamples.length()), (0 until captureSamples.length()).map(::captureSample))
     db.close()
     db = open()
-    assertEquals(JSONObject.quote(navigation.getString("path")), db.telemetryDao().getAppSetting("navigationPath")?.valueJson)
-    assertEquals(JSONObject.quote(navigation.getString("profile")), db.telemetryDao().getAppSetting("navigationProfile")?.valueJson)
-    assertEquals(zone.getString("id"), db.telemetryDao().getPrivacyZones().single().id)
-    assertEquals(diagnostic.getString("eventName"), db.telemetryDao().getDiagnosticEvents(0, Long.MAX_VALUE, null, 10).single().eventName)
-    db.telemetryDao().insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = 13_000, elapsedRealtimeMs = 2, eventName = "retained", operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}"))
-    db.telemetryDao().deleteDiagnosticEventsBefore(5_000)
-    assertEquals(listOf("retained"), db.telemetryDao().getDiagnosticEvents(0, Long.MAX_VALUE, null, 10).map { it.eventName })
-    assertEquals("critical", db.telemetryDao().getBoardWarnings(warningBoardId).single().severity)
+    assertEquals(JSONObject.quote(navigation.getString("path")), db.vescapeDao().getAppSetting("navigationPath")?.valueJson)
+    assertEquals(JSONObject.quote(navigation.getString("profile")), db.vescapeDao().getAppSetting("navigationProfile")?.valueJson)
+    assertEquals(zone.getString("id"), db.vescapeDao().getPrivacyZones().single().id)
+    assertEquals(diagnostic.getString("eventName"), db.vescapeDao().getDiagnosticEvents(0, Long.MAX_VALUE, null, 10).single().eventName)
+    db.vescapeDao().insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = 13_000, elapsedRealtimeMs = 2, eventName = "retained", operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}"))
+    db.vescapeDao().deleteDiagnosticEventsBefore(5_000)
+    assertEquals(listOf("retained"), db.vescapeDao().getDiagnosticEvents(0, Long.MAX_VALUE, null, 10).map { it.eventName })
+    assertEquals("critical", db.vescapeDao().getBoardWarnings(warningBoardId).single().severity)
     var invalidSeverityFailed = false
     try { BoardWarningSeverity.fromWire(warning.getString("invalidSeverity")) } catch (_: IllegalArgumentException) { invalidSeverityFailed = true }
     assertTrue(invalidSeverityFailed)
-    assertEquals(1, db.telemetryDao().deleteBoardWarning(warningBoardId, warning.getString("kind")))
-    assertTrue(db.telemetryDao().getBoardWarnings(warningBoardId).isEmpty())
-    db.telemetryDao().upsertBoardWarning(BoardWarningEntity(warningBoardId, warning.getString("kind"), "critical", warning.getLong("firstDetectedAtMs"), warning.getLong("updatedLastDetectedAtMs"), warning.getString("payloadJson")))
-    assertEquals(secondFaultId, db.telemetryDao().getOpenVescFault(faultBoardId)?.id)
-    assertTrue(db.telemetryDao().getVescFault(firstFaultId)!!.dismissed)
-    assertEquals(captureSamples.length(), db.telemetryDao().getVescFaultCapture(firstFaultId)?.sampleCount)
-    assertEquals(listOf(7800L, 7900L), db.telemetryDao().getVescFaultCaptureSamples(firstFaultId).map { it.capturedAtMs })
-    val dao = db.telemetryDao()
+    assertEquals(1, db.vescapeDao().deleteBoardWarning(warningBoardId, warning.getString("kind")))
+    assertTrue(db.vescapeDao().getBoardWarnings(warningBoardId).isEmpty())
+    db.vescapeDao().upsertBoardWarning(BoardWarningEntity(warningBoardId, warning.getString("kind"), "critical", warning.getLong("firstDetectedAtMs"), warning.getLong("updatedLastDetectedAtMs"), warning.getString("payloadJson")))
+    assertEquals(secondFaultId, db.vescapeDao().getOpenVescFault(faultBoardId)?.id)
+    assertTrue(db.vescapeDao().getVescFault(firstFaultId)!!.dismissed)
+    assertEquals(captureSamples.length(), db.vescapeDao().getVescFaultCapture(firstFaultId)?.sampleCount)
+    assertEquals(listOf(7800L, 7900L), db.vescapeDao().getVescFaultCaptureSamples(firstFaultId).map { it.capturedAtMs })
+    val dao = db.vescapeDao()
     val boardId = config.getString("boardId")
     val base = config.getString("baseVersion")
     val persistence = ConfigPersistence(dao)
@@ -176,9 +196,9 @@ class RecordingPersistenceHostTest {
     persistence.saveFreshBoard(boardId, base, boardValues("updatedBoard") + ("kp" to 3.0), 4500, null)
     db.close()
     db = open()
-    assertEquals(3.0, JSONObject(db.telemetryDao().getBoardConfigValues(boardId, base)!!.valuesJson).getDouble("kp"), 0.0)
-    assertEquals(config.getJSONObject("updatedMotor").getDouble("l_temp_fet_start"), JSONObject(db.telemetryDao().getLatestMotorConfigValues(boardId)!!.valuesJson).getDouble("l_temp_fet_start"), 0.0)
-    val mergedNoticeJson = db.telemetryDao().getBoardConfigChangeNotice(boardId)!!.diffsJson
+    assertEquals(3.0, JSONObject(db.vescapeDao().getBoardConfigValues(boardId, base)!!.valuesJson).getDouble("kp"), 0.0)
+    assertEquals(config.getJSONObject("updatedMotor").getDouble("l_temp_fet_start"), JSONObject(db.vescapeDao().getLatestMotorConfigValues(boardId)!!.valuesJson).getDouble("l_temp_fet_start"), 0.0)
+    val mergedNoticeJson = db.vescapeDao().getBoardConfigChangeNotice(boardId)!!.diffsJson
     assertEquals(listOf("kp", "l_temp_fet_start"), BoardConfigChangeNotice.from(boardId, 4000, mergedNoticeJson).diffs.map { it.fieldId })
     db.close()
     var connection = BundledSQLiteDriver().open(path.toString())
@@ -186,13 +206,13 @@ class RecordingPersistenceHostTest {
     connection.close()
     db = open()
     var failed = false
-    try { db.telemetryDao().setPrivacyZoneEnabled(zone.getString("id"), false, 4000) } catch (_: Exception) { failed = true }
+    try { db.vescapeDao().setPrivacyZoneEnabled(zone.getString("id"), false, 4000) } catch (_: Exception) { failed = true }
     assertTrue(failed)
-    assertTrue(db.telemetryDao().getPrivacyZones().single().enabled)
-    db.telemetryDao().deletePrivacyZone(zone.getString("id"))
-    assertTrue(db.telemetryDao().getPrivacyZones().isEmpty())
-    db.telemetryDao().clearDiagnosticEvents()
-    assertTrue(db.telemetryDao().getDiagnosticEvents(0, Long.MAX_VALUE, null, 10).isEmpty())
+    assertTrue(db.vescapeDao().getPrivacyZones().single().enabled)
+    db.vescapeDao().deletePrivacyZone(zone.getString("id"))
+    assertTrue(db.vescapeDao().getPrivacyZones().isEmpty())
+    db.vescapeDao().clearDiagnosticEvents()
+    assertTrue(db.vescapeDao().getDiagnosticEvents(0, Long.MAX_VALUE, null, 10).isEmpty())
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("DROP TRIGGER fail_zone_update")
@@ -201,14 +221,14 @@ class RecordingPersistenceHostTest {
     connection.close()
     db = open()
     var diagnosticFailed = false
-    try { db.telemetryDao().insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = 14_000, elapsedRealtimeMs = 3, eventName = "must-fail", operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}")) } catch (_: Exception) { diagnosticFailed = true }
+    try { db.vescapeDao().insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = 14_000, elapsedRealtimeMs = 3, eventName = "must-fail", operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}")) } catch (_: Exception) { diagnosticFailed = true }
     assertTrue(diagnosticFailed)
     var configFailed = false
     try {
-      ConfigPersistence(db.telemetryDao()).saveFreshMotor(boardId, config.getLong("signature"), config.getString("firmware"), mapOf("l_temp_fet_start" to 90.0), 5000)
+      ConfigPersistence(db.vescapeDao()).saveFreshMotor(boardId, config.getLong("signature"), config.getString("firmware"), mapOf("l_temp_fet_start" to 90.0), 5000)
     } catch (_: Exception) { configFailed = true }
     assertTrue(configFailed)
-    assertEquals(mergedNoticeJson, db.telemetryDao().getBoardConfigChangeNotice(boardId)!!.diffsJson)
+    assertEquals(mergedNoticeJson, db.vescapeDao().getBoardConfigChangeNotice(boardId)!!.diffsJson)
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("DROP TRIGGER fail_motor_baseline")
@@ -217,23 +237,23 @@ class RecordingPersistenceHostTest {
     db = open()
     var corruptFailed = false
     try {
-      ConfigPersistence(db.telemetryDao()).saveFreshMotor(boardId, config.getLong("signature"), config.getString("firmware"), mapOf("l_temp_fet_start" to 90.0), 6000)
+      ConfigPersistence(db.vescapeDao()).saveFreshMotor(boardId, config.getLong("signature"), config.getString("firmware"), mapOf("l_temp_fet_start" to 90.0), 6000)
     } catch (_: Exception) { corruptFailed = true }
     assertTrue(corruptFailed)
-    assertEquals(85.0, JSONObject(db.telemetryDao().getLatestMotorConfigValues(boardId)!!.valuesJson).getDouble("l_temp_fet_start"), 0.0)
+    assertEquals(85.0, JSONObject(db.vescapeDao().getLatestMotorConfigValues(boardId)!!.valuesJson).getDouble("l_temp_fet_start"), 0.0)
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("UPDATE board_config_values SET values_json = 'not-json' WHERE board_id = '$boardId'")
     connection.close()
     db = open()
     var corruptBaselineFailed = false
-    try { ConfigPersistence(db.telemetryDao()).saveFreshBoard(boardId, base, mapOf("kp" to 4.0), 7000, null) } catch (_: Exception) { corruptBaselineFailed = true }
+    try { ConfigPersistence(db.vescapeDao()).saveFreshBoard(boardId, base, mapOf("kp" to 4.0), 7000, null) } catch (_: Exception) { corruptBaselineFailed = true }
     assertTrue(corruptBaselineFailed)
-    assertEquals("not-json", db.telemetryDao().getBoardConfigValues(boardId, base)!!.valuesJson)
-    db.telemetryDao().clearBoardConfigState(boardId)
-    assertEquals(null, db.telemetryDao().getBoardConfigValues(boardId, base))
-    assertEquals(null, db.telemetryDao().getLatestMotorConfigValues(boardId))
-    assertEquals(null, db.telemetryDao().getBoardConfigChangeNotice(boardId))
+    assertEquals("not-json", db.vescapeDao().getBoardConfigValues(boardId, base)!!.valuesJson)
+    db.vescapeDao().clearBoardConfigState(boardId)
+    assertEquals(null, db.vescapeDao().getBoardConfigValues(boardId, base))
+    assertEquals(null, db.vescapeDao().getLatestMotorConfigValues(boardId))
+    assertEquals(null, db.vescapeDao().getBoardConfigChangeNotice(boardId))
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("CREATE TRIGGER fail_fault_sample BEFORE INSERT ON vesc_fault_capture_samples WHEN NEW.captured_at = 7900 BEGIN SELECT RAISE(FAIL, 'late fault capture failure'); END")
@@ -241,18 +261,18 @@ class RecordingPersistenceHostTest {
     db = open()
     var captureFailed = false
     try {
-      db.telemetryDao().saveVescFaultCapture(VescFaultCaptureEntity(secondFaultId, faultBoardId, 6000, 8000, captureSamples.length()), (0 until captureSamples.length()).map { captureSample(it).copy(occurrenceId = secondFaultId) })
+      db.vescapeDao().saveVescFaultCapture(VescFaultCaptureEntity(secondFaultId, faultBoardId, 6000, 8000, captureSamples.length()), (0 until captureSamples.length()).map { captureSample(it).copy(occurrenceId = secondFaultId) })
     } catch (_: Exception) { captureFailed = true }
     assertTrue(captureFailed)
-    assertTrue(db.telemetryDao().getVescFaultCaptureSamples(secondFaultId).isEmpty())
-    assertEquals(null, db.telemetryDao().getVescFaultCapture(secondFaultId))
+    assertTrue(db.vescapeDao().getVescFaultCaptureSamples(secondFaultId).isEmpty())
+    assertEquals(null, db.vescapeDao().getVescFaultCapture(secondFaultId))
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("DROP TABLE board_warnings")
     connection.close()
     db = open()
     var warningQueryFailed = false
-    try { db.telemetryDao().getAllBoardWarnings() } catch (_: Exception) { warningQueryFailed = true }
+    try { db.vescapeDao().getAllBoardWarnings() } catch (_: Exception) { warningQueryFailed = true }
     assertTrue(warningQueryFailed)
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
@@ -260,7 +280,7 @@ class RecordingPersistenceHostTest {
     connection.close()
     db = open()
     var faultQueryFailed = false
-    try { db.telemetryDao().getAllVescFaults() } catch (_: Exception) { faultQueryFailed = true }
+    try { db.vescapeDao().getAllVescFaults() } catch (_: Exception) { faultQueryFailed = true }
     assertTrue(faultQueryFailed)
     db.close()
     Files.deleteIfExists(path)
@@ -275,10 +295,10 @@ class RecordingPersistenceHostTest {
     val expected = fixture.getJSONObject("expected")
     val path = Files.createTempFile("vescape-tune-alert-contract", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     val profile = TuneProfileEntity(profileValues.getString("id"), boardId, profileValues.getString("refloatBaseVersion"), profileValues.getString("name"), fieldsJson = profileValues.getString("initialFieldsJson"), createdAt = 1, updatedAt = 1)
     var db = open()
-    var dao = db.telemetryDao()
+    var dao = db.vescapeDao()
     var persistence = TuneAlertPersistence(dao)
     persistence.createProfile(profile)
     val compatibility = fixture.getJSONObject("compatibility")
@@ -291,7 +311,7 @@ class RecordingPersistenceHostTest {
     persistence.setAlertEnabled(boardId, alertValues.getString("id"), false)
     db.close()
 
-    db = open(); dao = db.telemetryDao(); persistence = TuneAlertPersistence(dao)
+    db = open(); dao = db.vescapeDao(); persistence = TuneAlertPersistence(dao)
     assertEquals(profileValues.getString("updatedFieldsJson"), dao.getTuneProfile(profile.id)?.fieldsJson)
     val requests = compatibility.getJSONArray("requestVersions")
     for (index in 0 until requests.length()) {
@@ -317,7 +337,7 @@ class RecordingPersistenceHostTest {
     var connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("CREATE TRIGGER fail_tune_update BEFORE UPDATE ON tune_profiles BEGIN SELECT RAISE(FAIL, 'late tune failure'); END")
     connection.close()
-    db = open(); dao = db.telemetryDao(); persistence = TuneAlertPersistence(dao)
+    db = open(); dao = db.vescapeDao(); persistence = TuneAlertPersistence(dao)
     var failed = false
     try { persistence.saveProfile(profile.id, profileValues.getString("failedFieldsJson"), 3) } catch (_: Exception) { failed = true }
     assertTrue(failed)
@@ -328,7 +348,7 @@ class RecordingPersistenceHostTest {
     connection.execSQL("DROP TRIGGER fail_tune_update")
     connection.execSQL("UPDATE tune_profiles SET fields_json = 'not-json' WHERE id = '${profile.id}'")
     connection.close()
-    db = open(); persistence = TuneAlertPersistence(db.telemetryDao())
+    db = open(); persistence = TuneAlertPersistence(db.vescapeDao())
     var malformedFailed = false
     try { persistence.profile(profile.id) } catch (_: Exception) { malformedFailed = true }
     assertTrue(malformedFailed)
@@ -336,7 +356,7 @@ class RecordingPersistenceHostTest {
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("DROP TABLE alerts")
     connection.close()
-    db = open(); persistence = TuneAlertPersistence(db.telemetryDao())
+    db = open(); persistence = TuneAlertPersistence(db.vescapeDao())
     var queryFailed = false
     try { persistence.alertRules(boardId) { throw it } } catch (_: Exception) { queryFailed = true }
     assertTrue(queryFailed)
@@ -362,32 +382,32 @@ class RecordingPersistenceHostTest {
     assertEquals(expected.getInt("avgSpeedCentiKmh"), summary.avgSpeedCentiKmh)
     val path = Files.createTempFile("vescape-favorite-contract", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
     val createdRange = TelemetryTimeRange(input.getLong("startMs"), input.getLong("endMs"))
-    val created = persistFavorite(db.telemetryDao(), null, createdRange, input.getString("boardId"), input.getString("name"), input.getLong("startMs"), { input.getString("id") }) { requested, boardId ->
+    val created = persistFavorite(db.vescapeDao(), null, createdRange, input.getString("boardId"), input.getString("name"), input.getLong("startMs"), { input.getString("id") }) { requested, boardId ->
       assertEquals(createdRange, requested); assertEquals(input.getString("boardId"), boardId); summary
     }!!
     val trimmedRange = TelemetryTimeRange(input.getLong("trimmedStartMs"), input.getLong("trimmedEndMs"))
-    val trimmed = persistFavorite(db.telemetryDao(), created.id, trimmedRange, null, input.getString("renamed"), created.updatedAt + 1, { error("must preserve id") }) { requested, boardId ->
+    val trimmed = persistFavorite(db.vescapeDao(), created.id, trimmedRange, null, input.getString("renamed"), created.updatedAt + 1, { error("must preserve id") }) { requested, boardId ->
       assertEquals(trimmedRange, requested); assertEquals(input.getString("boardId"), boardId); summary
     }!!
     assertEquals(input.getString("boardId"), trimmed.boardId)
-    val conflicting = persistFavorite(db.telemetryDao(), created.id, trimmedRange, "conflicting-board", input.getString("renamed"), trimmed.updatedAt + 1, { error("must preserve id") }) { _, boardId ->
+    val conflicting = persistFavorite(db.vescapeDao(), created.id, trimmedRange, "conflicting-board", input.getString("renamed"), trimmed.updatedAt + 1, { error("must preserve id") }) { _, boardId ->
       assertEquals(input.getString("boardId"), boardId); summary
     }!!
     assertEquals(input.getString("boardId"), conflicting.boardId)
-    val ownerless = persistFavorite(db.telemetryDao(), null, createdRange, null, null, created.updatedAt, { "ownerless-favorite" }) { _, boardId ->
+    val ownerless = persistFavorite(db.vescapeDao(), null, createdRange, null, null, created.updatedAt, { "ownerless-favorite" }) { _, boardId ->
       assertEquals(null, boardId); summary
     }!!
-    val ownerlessUpdated = persistFavorite(db.telemetryDao(), ownerless.id, trimmedRange, "conflicting-board", null, ownerless.updatedAt + 1, { error("must preserve id") }) { _, boardId ->
+    val ownerlessUpdated = persistFavorite(db.vescapeDao(), ownerless.id, trimmedRange, "conflicting-board", null, ownerless.updatedAt + 1, { error("must preserve id") }) { _, boardId ->
       assertEquals(null, boardId); summary
     }!!
     assertEquals(null, ownerlessUpdated.boardId)
-    assertEquals(1, db.telemetryDao().deleteFavorite(ownerless.id))
+    assertEquals(1, db.vescapeDao().deleteFavorite(ownerless.id))
     db.close()
     db = open()
-    val reopened = db.telemetryDao().getFavorite(created.id)!!
+    val reopened = db.vescapeDao().getFavorite(created.id)!!
     assertEquals(created.id, reopened.id)
     assertEquals(created.createdAt, reopened.createdAt)
     assertEquals(input.getString("renamed"), reopened.name)
@@ -396,7 +416,7 @@ class RecordingPersistenceHostTest {
     val protectedRange = expandTelemetryRangeToBuckets(TelemetryTimeRange(reopened.startMs, reopened.endMs))
     val deletable = subtractProtectedTelemetryRanges(TelemetryTimeRange(0, 120_000), listOf(protectedRange))
     assertTrue(deletable.all { it.endMs < protectedRange.startMs || it.startMs > protectedRange.endMs })
-    db.telemetryDao().insertFavoriteMedia(FavoriteMediaEntity(
+    db.vescapeDao().insertFavoriteMedia(FavoriteMediaEntity(
       "owned-media", created.id, null, "image/jpeg", "photo", 1, "00", created.createdAt,
     ))
     db.close()
@@ -405,16 +425,16 @@ class RecordingPersistenceHostTest {
     connection.close()
     db = open()
     var deleteFailed = false
-    try { db.telemetryDao().deleteFavorite(created.id) } catch (_: Exception) { deleteFailed = true }
+    try { db.vescapeDao().deleteFavorite(created.id) } catch (_: Exception) { deleteFailed = true }
     assertTrue(deleteFailed)
-    assertEquals(1, db.telemetryDao().getFavoriteMedia(created.id).size)
+    assertEquals(1, db.vescapeDao().getFavoriteMedia(created.id).size)
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("DROP TRIGGER fail_favorite_delete")
     connection.close()
     db = open()
-    assertEquals(1, db.telemetryDao().deleteFavorite(created.id))
-    assertEquals(null, db.telemetryDao().getFavorite(created.id))
+    assertEquals(1, db.vescapeDao().deleteFavorite(created.id))
+    assertEquals(null, db.vescapeDao().getFavorite(created.id))
     db.close()
     Files.deleteIfExists(path)
   }
@@ -428,10 +448,10 @@ class RecordingPersistenceHostTest {
     val setting = fixture.getJSONObject("setting")
     val path = Files.createTempFile("vescape-board-settings", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
 
     var db = open()
-    var persistence = BoardSettingsPersistence(db.telemetryDao())
+    var persistence = BoardSettingsPersistence(db.vescapeDao())
     val boardId = board.getString("id")
     val createdAt = board.getLong("createdAt")
     persistence.upsertBoard(
@@ -439,8 +459,8 @@ class RecordingPersistenceHostTest {
       listOf(BoardSettingEntity(boardId, "description", JSONObject.quote(board.getString("description")), createdAt)),
       emptyList(),
     )
-    db.telemetryDao().upsertBoardConfigValues(BoardConfigValuesEntity("delete-rollback", "1.0", "{}", createdAt))
-    db.telemetryDao().upsertBoardConfigChangeNotice(BoardConfigChangeNoticeEntity("delete-rollback", createdAt, "[]"))
+    db.vescapeDao().upsertBoardConfigValues(BoardConfigValuesEntity("delete-rollback", "1.0", "{}", createdAt))
+    db.vescapeDao().upsertBoardConfigChangeNotice(BoardConfigChangeNoticeEntity("delete-rollback", createdAt, "[]"))
     persistence.upsertSetting(AppSettingEntity(setting.getString("key"), setting.getString("valueJson"), createdAt))
     persistence.upsertBoard(BoardEntity(boardId, board.getString("renamed"), "AA:BB", createdAt), emptyList(), emptyList())
     persistence.upsertSetting(AppSettingEntity(setting.getString("key"), setting.getString("updatedValueJson"), createdAt + 1))
@@ -462,7 +482,7 @@ class RecordingPersistenceHostTest {
     db.close()
 
     db = open()
-    persistence = BoardSettingsPersistence(db.telemetryDao())
+    persistence = BoardSettingsPersistence(db.vescapeDao())
     assertEquals(units.getString("selected"), persistence.getSettings(mapOf("distanceUnit" to AppSettings().distanceUnit))["distanceUnit"])
     val rerouteDefaults = mapOf(rerouteKey to AppSettings().navigationRerouteDistanceMeters)
     assertEquals(reroute.getDouble("selected"), (persistence.getSettings(rerouteDefaults)[rerouteKey] as Number).toDouble(), 0.0)
@@ -495,7 +515,7 @@ class RecordingPersistenceHostTest {
     connection.execSQL("CREATE TRIGGER fail_board_setting BEFORE INSERT ON board_settings BEGIN SELECT RAISE(FAIL, 'deterministic failure'); END")
     connection.close()
     db = open()
-    persistence = BoardSettingsPersistence(db.telemetryDao())
+    persistence = BoardSettingsPersistence(db.vescapeDao())
     var saveFailed = false
     try {
       persistence.upsertBoard(
@@ -512,7 +532,7 @@ class RecordingPersistenceHostTest {
     connection.execSQL("CREATE TRIGGER fail_board_tombstone BEFORE INSERT ON boards WHEN NEW.deleted_at IS NOT NULL BEGIN SELECT RAISE(FAIL, 'late delete failure'); END")
     connection.close()
     db = open()
-    persistence = BoardSettingsPersistence(db.telemetryDao())
+    persistence = BoardSettingsPersistence(db.vescapeDao())
     persistence.upsertBoard(
       BoardEntity("delete-rollback", "Keep", null, createdAt),
       listOf(BoardSettingEntity("delete-rollback", "description", "\"keep\"", createdAt)),
@@ -523,15 +543,15 @@ class RecordingPersistenceHostTest {
     assertTrue(deleteFailed)
     assertEquals("Keep", persistence.getBoards().single().name)
     assertEquals(1, persistence.getBoardSettings("delete-rollback").size)
-    assertEquals("{}", db.telemetryDao().getBoardConfigValues("delete-rollback", "1.0")?.valuesJson)
-    assertEquals("[]", db.telemetryDao().getBoardConfigChangeNotice("delete-rollback")?.diffsJson)
+    assertEquals("{}", db.vescapeDao().getBoardConfigValues("delete-rollback", "1.0")?.valuesJson)
+    assertEquals("[]", db.vescapeDao().getBoardConfigChangeNotice("delete-rollback")?.diffsJson)
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("DROP TRIGGER fail_board_tombstone")
     connection.execSQL("DROP TABLE app_settings")
     connection.close()
     db = open()
-    persistence = BoardSettingsPersistence(db.telemetryDao())
+    persistence = BoardSettingsPersistence(db.vescapeDao())
     var readFailed = false
     try { persistence.getSettings() } catch (_: Exception) { readFailed = true }
     assertTrue(readFailed)
@@ -549,12 +569,12 @@ class RecordingPersistenceHostTest {
     val gapMs = contract.getLong("gapMs")
     val path = Files.createTempFile("vescape-history-read", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
 
     var db = open()
-    val emptyPage = readRideHistoryPage(db.telemetryDao(), mapOf("limit" to contract.getInt("pageSize")), gapMs)
+    val emptyPage = readRideHistoryPage(db.vescapeDao(), mapOf("limit" to contract.getInt("pageSize")), gapMs)
     assertEquals(expected.getInt("emptySessionCount"), (emptyPage["sessions"] as List<*>).size)
-    val emptyStats = readProfileStatsSnapshot(db.telemetryDao(), emptyMap(), gapMs)
+    val emptyStats = readProfileStatsSnapshot(db.vescapeDao(), emptyMap(), gapMs)
     assertEquals(expected.getInt("emptyRideCount"), (emptyStats["total"] as Map<*, *>)["rideCount"])
 
     val recording = JSONObject(
@@ -580,10 +600,10 @@ class RecordingPersistenceHostTest {
       firstMovingAtMs = current.firstMovingAtMs?.minus(offset),
       lastMovingAtMs = current.lastMovingAtMs?.minus(offset),
     )
-    RecordingPersistence(db.telemetryDao()).commit(emptyList(), listOf(current, currentNext, older), emptyList())
-    assertEquals(3, db.telemetryDao().getAllHistoryBucketsAsc().size)
-    assertEquals(2, (readRideHistoryPage(db.telemetryDao(), mapOf("limit" to 50), gapMs)["sessions"] as List<*>).size)
-    val first = readRideHistoryPage(db.telemetryDao(), mapOf("limit" to contract.getInt("pageSize")), gapMs)
+    RecordingPersistence(db.vescapeDao()).commit(emptyList(), listOf(current, currentNext, older), emptyList())
+    assertEquals(3, db.vescapeDao().getAllHistoryBucketsAsc().size)
+    assertEquals(2, (readRideHistoryPage(db.vescapeDao(), mapOf("limit" to 50), gapMs)["sessions"] as List<*>).size)
+    val first = readRideHistoryPage(db.vescapeDao(), mapOf("limit" to contract.getInt("pageSize")), gapMs)
     assertEquals(expected.getInt("firstPageSessionCount"), (first["sessions"] as List<*>).size)
     assertEquals(expected.getBoolean("firstPageHasMore"), first["hasMore"])
     val firstSession = (first["sessions"] as List<Map<String, Any?>>).single()
@@ -592,14 +612,14 @@ class RecordingPersistenceHostTest {
     assertEquals(expected.getInt("currentSampleCount"), firstSession["sampleCount"])
     assertEquals(expected.getDouble("currentDistanceM"), firstSession["distanceM"])
     val second = readRideHistoryPage(
-      db.telemetryDao(),
+      db.vescapeDao(),
       mapOf("limit" to contract.getInt("pageSize"), "cursorBeforeMs" to first["nextCursorBeforeMs"]),
       gapMs,
     )
     assertEquals(expected.getInt("secondPageSessionCount"), (second["sessions"] as List<*>).size)
     assertEquals(expected.getBoolean("secondPageHasMore"), second["hasMore"])
     assertEquals(older.firstSampleAtMs, (second["sessions"] as List<Map<String, Any?>>).single()["startAtMs"])
-    val stats = readProfileStatsSnapshot(db.telemetryDao(), emptyMap(), gapMs)
+    val stats = readProfileStatsSnapshot(db.vescapeDao(), emptyMap(), gapMs)
     val total = stats["total"] as Map<*, *>
     assertEquals(expected.getInt("profileRideCount"), total["rideCount"])
     assertEquals(expected.getLong("profileRideTimeMs"), total["rideTimeMs"])
@@ -616,10 +636,10 @@ class RecordingPersistenceHostTest {
     connection.close()
     db = open()
     var pageFailed = false
-    try { readRideHistoryPage(db.telemetryDao(), emptyMap(), gapMs) } catch (_: Exception) { pageFailed = true }
+    try { readRideHistoryPage(db.vescapeDao(), emptyMap(), gapMs) } catch (_: Exception) { pageFailed = true }
     assertTrue(pageFailed)
     var profileFailed = false
-    try { readProfileStatsSnapshot(db.telemetryDao(), emptyMap(), gapMs) } catch (_: Exception) { profileFailed = true }
+    try { readProfileStatsSnapshot(db.vescapeDao(), emptyMap(), gapMs) } catch (_: Exception) { profileFailed = true }
     assertTrue(profileFailed)
     db.close()
     Files.deleteIfExists(path)
@@ -629,9 +649,9 @@ class RecordingPersistenceHostTest {
   fun failedTransactionRollsBackAndStopsIngestion(): Unit = runBlocking {
     val path = Files.createTempFile("vescape-recording-failure", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
-    var persistence = RecordingPersistence(db.telemetryDao())
+    var persistence = RecordingPersistence(db.vescapeDao())
     fun marker(at: Long, type: String) = TelemetryMarkerEntity(
       occurredAtMs = at, elapsedRealtimeMs = at, type = type, boardId = null, message = null, gapMs = null,
     )
@@ -644,7 +664,7 @@ class RecordingPersistenceHostTest {
     """.trimIndent())
     connection.close()
     db = open()
-    persistence = RecordingPersistence(db.telemetryDao())
+    persistence = RecordingPersistence(db.vescapeDao())
     var reports = 0
     val boundary = RecordingCommitBoundary(persistence, onFailure = { reports++ })
     val failingFlush = async(start = CoroutineStart.UNDISPATCHED) {
@@ -663,7 +683,7 @@ class RecordingPersistenceHostTest {
     connection.execSQL("DROP TRIGGER fail_recording_marker")
     connection.close()
     db = open()
-    assertEquals(listOf("committed"), db.telemetryDao().getMarkers(0, Long.MAX_VALUE, null).map { it.type })
+    assertEquals(listOf("committed"), db.vescapeDao().getMarkers(0, Long.MAX_VALUE, null).map { it.type })
     db.close()
     Files.deleteIfExists(path)
   }
@@ -677,7 +697,7 @@ class RecordingPersistenceHostTest {
     val path = Files.createTempFile("vescape-recording-contract", ".db")
     Files.deleteIfExists(path)
 
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString())
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString())
       .setDriver(BundledSQLiteDriver())
       .build()
 
@@ -704,11 +724,11 @@ class RecordingPersistenceHostTest {
         sample.getInt("batteryVoltageMv"), 5000, 2000, 200, sample.getLong("odometerCm"), 300, 350)
     }
     val buckets = buildTelemetryBuckets(points, emptyList())
-    RecordingPersistence(db.telemetryDao()).commit(frames, buckets, emptyList())
+    RecordingPersistence(db.vescapeDao()).commit(frames, buckets, emptyList())
     db.close()
 
     db = open()
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     assertEquals(expected.getLong("frameCount"), dao.countFrames())
     val reopened = RecordingPersistence(dao).readCommittedRide()
     assertEquals(expected.getInt("bucketCount"), reopened.size)

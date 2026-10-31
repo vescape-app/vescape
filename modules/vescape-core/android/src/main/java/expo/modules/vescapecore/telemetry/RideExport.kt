@@ -9,6 +9,10 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 import kotlin.math.floor
 
 /** Export intent and temporary-file result cross the bridge; null Board means unassigned Board.
@@ -18,8 +22,8 @@ import kotlin.math.floor
  */
 internal object RideExport {
   // Driver-backed export Room instance: one WAL read snapshot across all generated DAO calls.
-  suspend fun <T> snapshot(db: TelemetryRoomDatabase, block: suspend (TelemetryDao) -> T): T =
-    db.useReaderConnection { reader -> reader.deferredTransaction { block(db.telemetryDao()) } }
+  suspend fun <T> snapshot(db: VescapeRoomDatabase, block: suspend (VescapeDao) -> T): T =
+    db.useReaderConnection { reader -> reader.deferredTransaction { block(db.vescapeDao()) } }
 
   const val BATCH_SIZE = 1000
   private val time = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ROOT).withZone(ZoneOffset.UTC)
@@ -30,16 +34,16 @@ internal object RideExport {
     FLOATY("json", "application/json", "public.json"),
   }
 
-  suspend fun gpx(dao: TelemetryDao, directory: File, options: Map<String, Any?>): Map<String, Any> =
+  suspend fun gpx(dao: VescapeDao, directory: File, options: Map<String, Any?>): Map<String, Any> =
     file(directory, options, Format.GPX) { writer, fromMs, toMs, boardId ->
       writeGpx(dao, writer, fromMs, toMs, boardId, options["name"] as? String ?: "Vescape ride")
     }
 
-  suspend fun csv(dao: TelemetryDao, directory: File, options: Map<String, Any?>): Map<String, Any> =
+  suspend fun csv(dao: VescapeDao, directory: File, options: Map<String, Any?>): Map<String, Any> =
     file(directory, options, Format.CSV) { writer, fromMs, toMs, boardId -> writeCsv(dao, writer, fromMs, toMs, boardId) }
 
   /** [batteryPercent] is the Board's 0–100 estimate for pack volts and battery amps, null when unknown. */
-  suspend fun floaty(dao: TelemetryDao, directory: File, options: Map<String, Any?>,
+  suspend fun floaty(dao: VescapeDao, directory: File, options: Map<String, Any?>,
     batteryPercent: (voltageV: Double, batteryCurrentA: Double) -> Double?): Map<String, Any> =
     file(directory, options, Format.FLOATY) { writer, fromMs, toMs, boardId ->
       writeFloaty(dao, writer, fromMs, toMs, boardId, options["name"] as? String, batteryPercent)
@@ -71,7 +75,7 @@ internal object RideExport {
   }
 
   // Caller holds a database snapshot for the complete export.
-  suspend fun writeGpx(dao: TelemetryDao, writer: Writer, fromMs: Long, toMs: Long,
+  suspend fun writeGpx(dao: VescapeDao, writer: Writer, fromMs: Long, toMs: Long,
     boardId: String?, name: String) {
     writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
     writer.write("<gpx version=\"1.1\" creator=\"Vescape\" xmlns=\"http://www.topografix.com/GPX/1/1\" xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v2\"><trk><name>${xml(name)}</name><trkseg>\n")
@@ -104,7 +108,7 @@ internal object RideExport {
     if (text.any { it == ',' || it == '"' || it == '\r' || it == '\n' }) "\"${text.replace("\"", "\"\"")}\"" else text
   } + "\r\n"
 
-  suspend fun writeCsv(dao: TelemetryDao, writer: Writer, fromMs: Long, toMs: Long, boardId: String?) {
+  suspend fun writeCsv(dao: VescapeDao, writer: Writer, fromMs: Long, toMs: Long, boardId: String?) {
     writer.write(csvLine(csvHeaders))
     val gps = TrackCursor(dao, fromMs, toMs, boardId)
     var currentGps = gps.next()
@@ -134,7 +138,7 @@ internal object RideExport {
    * after the arrays, so one streaming pass suffices.
    * @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeFloaty`
    */
-  suspend fun writeFloaty(dao: TelemetryDao, writer: Writer, fromMs: Long, toMs: Long, boardId: String?,
+  suspend fun writeFloaty(dao: VescapeDao, writer: Writer, fromMs: Long, toMs: Long, boardId: String?,
     name: String?, batteryPercent: (voltageV: Double, batteryCurrentA: Double) -> Double?) {
     val id = floatyId(fromMs, toMs, boardId)
     val sessionId = ",\"sessionId\":\"$id\"}"
@@ -233,7 +237,7 @@ internal object RideExport {
   /** Every stored frame in range with its reconstructed values, replaying the mask chain from the
    * preceding keyframe. Values are in storage mask bit order; a set bit with NULL clears a reading.
    */
-  private suspend inline fun forEachFrame(dao: TelemetryDao, fromMs: Long, toMs: Long, boardId: String?,
+  private suspend inline fun forEachFrame(dao: VescapeDao, fromMs: Long, toMs: Long, boardId: String?,
     body: (timestamp: Long, values: Array<Long?>) -> Unit) {
     val keyframe = dao.getRideExportKeyframe(fromMs, boardId)
     val start = keyframe?.capturedAtMs ?: fromMs
@@ -278,7 +282,7 @@ internal object RideExport {
     else -> null
   }
 
-  private class TrackCursor(val dao: TelemetryDao, val fromMs: Long, val toMs: Long,
+  private class TrackCursor(val dao: VescapeDao, val fromMs: Long, val toMs: Long,
     val boardId: String?) {
     var rows = emptyList<RideTrackPointEntity>()
     var index = 0

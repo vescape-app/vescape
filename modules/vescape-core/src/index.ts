@@ -691,7 +691,7 @@ export interface AlertTestRule {
   repeatEverySeconds: number | null
 }
 
-// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AlertRuleEntity`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AlertRuleEntity`
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `AlertRule`
 export interface AlertRule {
   /** Owning Board. The alert engine evaluates only the connected Board's rules (see docs/alerts.md). */
@@ -1135,7 +1135,7 @@ export interface HistoryGpsSample {
 
 /**
  * `recording_stop` is the explicit rider Stop Recording, the only marker that splits a ride.
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `RECORDING_STOP_MARKER`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `RECORDING_STOP_MARKER`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `recordingStopMarker`
  */
 export interface HistoryMarker {
@@ -1278,7 +1278,7 @@ export interface TelemetrySummary {
  * timestamps and the summary stats are native-owned — JS only ever sends a range and a name.
  *
  * @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `Favorite`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `FavoriteEntity`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `FavoriteEntity`
  */
 export interface Favorite {
   id: string
@@ -1333,7 +1333,7 @@ export interface UpdateFavoriteOptions {
 /**
  * One immutable Favorite Media manifest row. Native owns metadata and canonical storage.
  * @parity /modules/vescape-core/ios/telemetry/FavoriteMediaStore.swift `FavoriteMedia`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `FavoriteMediaEntity`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `FavoriteMediaEntity`
  */
 export interface FavoriteMedia {
   id: string
@@ -1544,7 +1544,7 @@ export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
  * Durable app-scoped settings. The keys here are a TS/Android/iOS parity triangle — every field is
  * persisted natively and projected back through {@link getSettings}/{@link updateSetting}. The
  * container tag covers all keys; individual literals are not tagged separately (see AGENTS.md).
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings`
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
  */
 export interface AppSettings {
@@ -1612,11 +1612,11 @@ export interface AppSettings {
   /** @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift */
   soundPack: string
   /** Android playback volume stream. iOS retains its playback session. */
-  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings` */
   /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   audioSource: 'alarm' | 'media'
   /** `matching` (the voice the effects pack names) or a voice pack id. */
-  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings` */
   /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   voice: 'matching' | 'nova' | 'radio' | 'nicole'
   /** Speech for presets and app sounds; custom rules ignore it. */

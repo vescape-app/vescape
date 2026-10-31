@@ -17,7 +17,7 @@ extension TelemetryRepository {
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
     let boardId = options["boardId"] as? String
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the range read below.
     let windowMs = try socWindowMs()

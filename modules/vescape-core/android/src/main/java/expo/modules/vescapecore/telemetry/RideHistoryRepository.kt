@@ -1,5 +1,10 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.database.RECORDING_STOP_MARKER
+import expo.modules.vescapecore.database.TelemetryMarkerEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.database.VescapeDao
+
 private const val RIDE_BUCKET_BATCH_SIZE = 100
 private const val MAX_RIDE_PAGE_SIZE = 50
 
@@ -58,7 +63,7 @@ internal data class RideSessionAggregate(
 /** Complete-ride paging over minute buckets. JS never observes a provisional, cut-off ride. */
 // @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift
 internal suspend fun readRideHistoryPage(
-  dao: TelemetryDao,
+  dao: VescapeDao,
   options: Map<String, Any?>,
   gapMs: Long,
 ): Map<String, Any?> {

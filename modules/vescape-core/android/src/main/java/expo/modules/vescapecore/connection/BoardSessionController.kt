@@ -164,13 +164,13 @@ import expo.modules.vescapecore.runtime.SessionClock
 import expo.modules.vescapecore.runtime.SystemSessionClock
 import expo.modules.vescapecore.runtime.postDelayedForSession
 import expo.modules.vescapecore.telemetry.AppDataRepository
-import expo.modules.vescapecore.telemetry.AppSettings
+import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.telemetry.BatterySocEstimator
 import expo.modules.vescapecore.telemetry.IDLE_PAUSE_POLL_INTERVAL_MS
 import expo.modules.vescapecore.telemetry.IdlePauseDetector
 import expo.modules.vescapecore.telemetry.IdlePauseTransition
 import expo.modules.vescapecore.telemetry.METRIC_MAX_DUTY
-import expo.modules.vescapecore.telemetry.PrivacyZoneEntity
+import expo.modules.vescapecore.database.PrivacyZoneEntity
 import expo.modules.vescapecore.telemetry.SocMedianWindow
 import expo.modules.vescapecore.telemetry.TelemetryCapture
 import expo.modules.vescapecore.telemetry.isRefloatEngaged

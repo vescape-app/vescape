@@ -27,8 +27,8 @@ Main files:
 
 - Native repository: `modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt`
 - Native Ride paging: `modules/vescape-core/{android,ios}/telemetry/RideHistoryRepository.*`
-- Native DAO: `modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt`
-- Native tables: `modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt`
+- Native DAO: `modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt`
+- Native tables: `modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt`
 - JS store: `src/modules/history/store/historyStore.ts`
 - Ride rendering types/helpers: `src/modules/history/lib/sessions.ts`
 - Map rendering: `src/screens/main/MainMap.tsx`

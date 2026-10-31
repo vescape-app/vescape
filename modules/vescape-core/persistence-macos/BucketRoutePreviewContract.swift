@@ -22,7 +22,7 @@ func runBucketRoutePreviewContract() throws {
   let url = FileManager.default.temporaryDirectory.appendingPathComponent("bucket-preview-\(UUID().uuidString).db")
   defer { try? FileManager.default.removeItem(at: url) }
   var queue = try DatabaseQueue(path: url.path)
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   func flush(_ points: [RideTrackPoint]) throws {
     try queue.write { db in
       try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: points, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(points)))

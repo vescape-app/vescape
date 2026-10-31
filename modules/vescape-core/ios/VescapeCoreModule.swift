@@ -1020,7 +1020,7 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("getDatabaseSizeBytes") { (promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
-      do { promise.resolve(Int(try TelemetryDatabase.databaseSizeBytes())) }
+      do { promise.resolve(Int(try VescapeDatabase.databaseSizeBytes())) }
       catch {
         RecordingStorageFailure.reportRead(operation: "database_size_read", error: error)
         promise.reject("APP_STORAGE_READ_FAILED", "Could not read database size", cause: error)

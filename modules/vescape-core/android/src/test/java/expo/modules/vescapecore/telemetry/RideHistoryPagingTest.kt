@@ -2,6 +2,9 @@ package expo.modules.vescapecore.telemetry
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import expo.modules.vescapecore.database.RECORDING_STOP_MARKER
+import expo.modules.vescapecore.database.TelemetryMarkerEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
 
 class RideHistoryPagingTest {
   private val gapMs = 30 * 60_000L

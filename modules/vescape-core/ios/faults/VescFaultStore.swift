@@ -12,7 +12,7 @@ enum VescFaultStoreError: Error {
 ///
 /// Fault rows are deliberately absent from Board deletion: the evidence outlives the Board record.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct VescFaultStore: VescFaultStoring {
   private struct Record: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "vesc_fault_occurrences"
@@ -47,7 +47,7 @@ struct VescFaultStore: VescFaultStoring {
   /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
-  static let shared = VescFaultStore { TelemetryDatabase.pool }
+  static let shared = VescFaultStore { VescapeDatabase.pool }
 
   init(_ resolveWriter: @escaping () -> DatabaseWriter?) {
     self.resolveWriter = resolveWriter
@@ -62,7 +62,7 @@ struct VescFaultStore: VescFaultStoring {
 
   /// Create the VESC Fault Occurrence table. Called from the app-data `DatabaseMigrator` and reused
   /// by tests so the schema stays single-source.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `VescFaultOccurrenceEntity`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `VescFaultOccurrenceEntity`
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createVescFaults(db)
   }

@@ -9,15 +9,32 @@ GRDB. Both runners load `modules/vescape-core/shared/recording-persistence-contr
 minute bucket from its moving samples, commit frames and bucket, close SQLite, reopen it, then assert
 explicit durable values. Missing fixture/scenario fails either runner.
 
-Android compiles the production `TelemetryRoomDatabase`, Room-generated `TelemetryDao`, recording
-transaction seam, entities, bucket builder, and `TelemetryMigrations` graph into a plain Kotlin/JVM
+Android compiles the production `VescapeRoomDatabase`, Room-generated `VescapeDao`, recording
+transaction seam, entities, bucket builder, and `DatabaseMigrations` graph into a plain Kotlin/JVM
 module. Android `Context`, legacy-file rename, the `SupportSQLiteDatabase` adapter, and app lifecycle
-remain in `TelemetryDatabase`; every adapter delegates to the same portable migration step that the
-Room 2.8.4 `sqlite-bundled` 2.6.2 host executes. The migration matrix starts from the authentic Room
-v3 entities at `f51663a8^`, derives each graph generation with production edges, separately covers
-the released v22 Tune Profile shape at `10deb46c^`, and lets Room validate every supported result
-against its generated current schema. `shared/migration-fixture-manifest.json` enumerates the exact
-Room versions and GRDB identifiers; versions 37–39 are absent because production jumps 36→40.
+remain in `VescapeDatabase`; every adapter delegates to the same portable migration step that the
+Room 2.8.4 `sqlite-bundled` 2.6.2 host executes. `shared/migration-fixture-manifest.json` enumerates
+the exact Room versions and GRDB identifiers; versions 37–39 are absent because production jumps 36→40.
+
+Room exports its schema to `android/schemas/` (`exportSchema = true`); the JSON is regenerated on
+every build and committed with the migration that changes it. Exports exist for every version that
+was ever the app's database version on `dev`: 3–9, 11–22, 24–27, 29, 31, 32, 36, 40, 42, 43, 48, 49,
+and 51 onward. The others only existed as an intermediate step inside one change, so no phone was
+ever created at them. Versions before 53 were generated once, by compiling each version's
+`DatabaseEntities.kt` from the newest first-parent `dev` commit at that version with today's Room.
+`DatabaseMigrationMatrixHostTest` creates each export with `MigrationTestHelper`, exactly as Room
+created that version fresh, migrates it to the current version with Room validating every table,
+and fails if the current version's export is missing. Starting at v3 runs every production edge.
+Named tests seed one era's rows in that era's export (v3 Board and telemetry, v12 settings, v32
+alert sounds, v49 Alert Presets, the released v22 Tune Profile) and assert what survives.
+
+`modules/vescape-core/schema/database.json` is the one schema both platforms must build: every
+table's columns, indexes, and foreign keys, normalized so it does not depend on which platform
+created the file. Neither platform owns it. Android checks a fresh Room database, every matrix start,
+and every exported schema after migration against it (`DatabaseSchemaHostTest`); the macOS host checks
+a fresh GRDB database, every GRDB start, and restored Android archives (`DatabaseSchemaDump.swift`).
+A failure names the table and column or index that differs. A schema change edits the file by hand in
+the same change as both platforms' migrations.
 
 Android's live Room database also uses `sqlite-bundled` 2.6.2 with WAL. Ride exports hold a deferred
 reader transaction across keyset pages, allowing recording commits without changing the export's
@@ -47,7 +64,7 @@ engine checks Ride Recording, Boards, settings, Tune Profiles, Favorites, and co
 formats, unsupported versions, migration failures, and failed file swaps are rejected before the
 former database and its WAL/SHM recovery files are discarded.
 
-macOS compiles production `TelemetryDatabase.migrator`, `RecordingPersistenceSQL`, and bucket builder
+macOS compiles production `VescapeDatabase.migrator`, `RecordingPersistenceSQL`, and bucket builder
 through a small Swift executable target. App-directory selection and database hot-swap remain in the
 iOS adapter. The host resolves GRDB 6.29.3 because earlier 6.x SPM builds fail to import Darwin on
 current Xcode; the app ships CocoaPods GRDB 6.24.1. This suite verifies SQL/schema behavior, not exact

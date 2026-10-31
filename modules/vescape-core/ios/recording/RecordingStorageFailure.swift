@@ -77,7 +77,7 @@ internal enum RecordingStorageFailure {
 
   static func initialize() {
     startupCheck {
-      let pool = try TelemetryDatabase.requirePool()
+      let pool = try VescapeDatabase.requirePool()
       try pool.write { db in
         try db.execute(sql: "CREATE TABLE storage_startup_probe (value INTEGER NOT NULL)")
         try db.execute(sql: "INSERT INTO storage_startup_probe (value) VALUES (1)")

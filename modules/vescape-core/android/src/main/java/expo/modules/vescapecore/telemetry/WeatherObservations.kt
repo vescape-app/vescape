@@ -3,6 +3,8 @@ package expo.modules.vescapecore.telemetry
 import expo.modules.vescapecore.weather.WeatherIcon
 import expo.modules.vescapecore.weather.weatherIcon
 import kotlin.math.roundToInt
+import expo.modules.vescapecore.database.DatabaseReplacementFence
+import expo.modules.vescapecore.database.VescapeDao
 
 /**
  * How long one stored Weather Observation keeps describing the weather when nothing changed. A
@@ -86,7 +88,7 @@ internal fun shouldStoreWeatherObservation(
  * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `WeatherObservationRecorder`
  */
 internal class WeatherObservationRecorder(
-  private val dao: () -> TelemetryDao,
+  private val dao: () -> VescapeDao,
   private val fence: DatabaseReplacementFence = DatabaseReplacementFence.process,
 ) {
   private var storedThisProcess = false
@@ -177,5 +179,5 @@ internal fun summarizeRideWeather(
 }
 
 /** Rows bounding a span, per the ride weather read query. Shared by History pages and Favorites. */
-internal suspend fun TelemetryDao.rideWeather(startMs: Long, endMs: Long): RideWeather? =
+internal suspend fun VescapeDao.rideWeather(startMs: Long, endMs: Long): RideWeather? =
   summarizeRideWeather(getWeatherObservationsSpanning(startMs, endMs).map { it.toObservation() }, startMs, endMs)

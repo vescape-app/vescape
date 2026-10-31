@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import expo.modules.vescapecore.database.DatabaseMigrations
+import expo.modules.vescapecore.database.MigrationDatabase
 
 /**
  * Ride Track becomes the durable home for ride position (#448, ADR 0038). Schema 42→43 creates
@@ -14,16 +16,16 @@ import org.junit.Test
  * This narrow test checks the portable production migration's emitted SQL. Real Room upgrade
  * behavior and cross-platform archive exchange are covered by the persistence-jvm contracts.
  *
- * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift
+ * @parity /modules/vescape-core/ios/database/DatabaseMigrationTests.swift
  */
 class RideTrackMigrationTest {
   private fun migrationSql(): List<String> {
     val sql = mutableListOf<String>()
-    val db = object : TelemetryMigrationDatabase {
+    val db = object : MigrationDatabase {
       override fun execSQL(statement: String) { sql += statement }
       override fun hasColumn(tableName: String, columnName: String) = false
     }
-    TelemetryMigrations.MIGRATION_42_43.migrate(db)
+    DatabaseMigrations.MIGRATION_42_43.migrate(db)
     return sql
   }
 
@@ -33,10 +35,10 @@ class RideTrackMigrationTest {
 
   @Test
   fun migrationCoversItsOwnEdgeOfTheGraph() {
-    // Deliberately not pinned to `TELEMETRY_DATABASE_VERSION`: this migration owns one edge, and
+    // Deliberately not pinned to `VESCAPE_DATABASE_VERSION`: this migration owns one edge, and
     // later schema work adds edges after it without changing what this one did.
-    assertEquals(42, TelemetryMigrations.MIGRATION_42_43.startVersion)
-    assertEquals(43, TelemetryMigrations.MIGRATION_42_43.endVersion)
+    assertEquals(42, DatabaseMigrations.MIGRATION_42_43.startVersion)
+    assertEquals(43, DatabaseMigrations.MIGRATION_42_43.endVersion)
   }
 
   @Test

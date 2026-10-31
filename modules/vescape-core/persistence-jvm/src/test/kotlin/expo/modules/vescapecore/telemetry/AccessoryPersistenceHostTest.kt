@@ -10,6 +10,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import expo.modules.vescapecore.database.AccessoryBrakeLightEntity
+import expo.modules.vescapecore.database.AccessoryCapabilitySettingsEntity
+import expo.modules.vescapecore.database.AccessoryGroundClearanceEntity
+import expo.modules.vescapecore.database.SavedAccessoryEntity
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /**
  * Enrolled Accessories through the production Room path, driven by the shared contract fixture the
@@ -37,12 +42,12 @@ class AccessoryPersistenceHostTest {
 
     val path = Files.createTempFile("vescape-accessories", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString())
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString())
       .setDriver(BundledSQLiteDriver())
       .build()
 
     var db = open()
-    var store = AccessoryPersistence(db.telemetryDao())
+    var store = AccessoryPersistence(db.vescapeDao())
 
     val enrolled = SavedAccessoryEntity(
       accessoryId = spec.getString("accessoryId"),
@@ -70,7 +75,7 @@ class AccessoryPersistenceHostTest {
     db.close()
 
     db = open()
-    store = AccessoryPersistence(db.telemetryDao())
+    store = AccessoryPersistence(db.vescapeDao())
     val reopened = store.getAccessories()
     assertEquals(listOf(spec.getString("accessoryId"), other.getString("accessoryId")), reopened.map { it.accessoryId })
     assertEquals(spec.getString("capabilitiesJson"), reopened.first().capabilitiesJson)
@@ -95,7 +100,7 @@ class AccessoryPersistenceHostTest {
     db.close()
 
     db = open()
-    store = AccessoryPersistence(db.telemetryDao())
+    store = AccessoryPersistence(db.vescapeDao())
     val persisted = store.getAccessory(spec.getString("accessoryId"))!!
     assertEquals(spec.getString("renamedTo"), persisted.name)
     assertEquals(spec.getString("updatedFirmwareVersion"), persisted.firmwareVersion)
@@ -114,7 +119,7 @@ class AccessoryPersistenceHostTest {
     db.close()
 
     db = open()
-    store = AccessoryPersistence(db.telemetryDao())
+    store = AccessoryPersistence(db.vescapeDao())
     assertEquals(listOf(other.getString("accessoryId")), store.getAccessories().map { it.accessoryId })
     db.close()
     Files.deleteIfExists(path)
@@ -132,7 +137,7 @@ class AccessoryPersistenceHostTest {
 
     val path = Files.createTempFile("vescape-ground-clearance", ".db")
     Files.deleteIfExists(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString())
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString())
       .setDriver(BundledSQLiteDriver())
       .build()
 
@@ -147,7 +152,7 @@ class AccessoryPersistenceHostTest {
     )
 
     var db = open()
-    var store = AccessoryPersistence(db.telemetryDao())
+    var store = AccessoryPersistence(db.vescapeDao())
     for (owner in listOf(spec, other)) {
       store.upsert(
         SavedAccessoryEntity(
@@ -180,7 +185,7 @@ class AccessoryPersistenceHostTest {
 
     // Settings survive restart: the whole reason this is a table and not process state.
     db = open()
-    store = AccessoryPersistence(db.telemetryDao())
+    store = AccessoryPersistence(db.vescapeDao())
     assertEquals(listOf(lightRow, lightRow.copy(accessoryId = otherId)).sortedBy { it.accessoryId }, store.getBrakeLights())
     assertEquals(listOf(switchRow, otherSwitch).sortedBy { it.accessoryId }, store.getCapabilitySettings())
     val reopened = store.getGroundClearance(accessoryId, nose)!!
@@ -237,7 +242,7 @@ class AccessoryPersistenceHostTest {
     db.close()
 
     db = open()
-    store = AccessoryPersistence(db.telemetryDao())
+    store = AccessoryPersistence(db.vescapeDao())
     assertTrue(store.clearGroundClearance(accessoryId, tail))
     assertFalse(store.clearGroundClearance(accessoryId, tail))
     assertEquals(2, store.getGroundClearances().size)
@@ -252,7 +257,7 @@ class AccessoryPersistenceHostTest {
     db.close()
 
     db = open()
-    store = AccessoryPersistence(db.telemetryDao())
+    store = AccessoryPersistence(db.vescapeDao())
     assertNull(store.getGroundClearance(accessoryId, nose))
     assertEquals(
       listOf(otherId),

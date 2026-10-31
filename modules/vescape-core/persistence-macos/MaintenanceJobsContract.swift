@@ -35,7 +35,7 @@ func runMaintenanceJobsContract() throws {
   }
   func freshQueue() throws -> DatabaseQueue {
     let queue = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(queue)
+    try VescapeDatabase.migrator.migrate(queue)
     return queue
   }
   func insertFrames(_ queue: DatabaseQueue, _ frames: [RecordingPersistenceSQL.Frame]) throws {

@@ -21,7 +21,7 @@ internal final class ProfileStatsRepository {
   private let gapMsProvider: () throws -> Int64
 
   internal init(
-    poolProvider: @escaping () throws -> DatabasePool = { try TelemetryDatabase.requirePool() },
+    poolProvider: @escaping () throws -> DatabasePool = { try VescapeDatabase.requirePool() },
     gapMsProvider: @escaping () throws -> Int64 = {
       let minutes = telemetryInt(try AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
       return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000

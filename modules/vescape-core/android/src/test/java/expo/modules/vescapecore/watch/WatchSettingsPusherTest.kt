@@ -2,7 +2,7 @@ package expo.modules.vescapecore.watch
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import expo.modules.vescapecore.telemetry.AppSettings
+import expo.modules.vescapecore.database.AppSettings
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -6,6 +6,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import expo.modules.vescapecore.database.FavoriteEntity
+import expo.modules.vescapecore.database.FavoriteMediaEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.database.VescapeDatabase
 
 /**
  * Favorites are durable pins over Ride History (ADR 0029). The summary is computed once from the raw
@@ -125,7 +129,7 @@ class FavoriteSummaryBuilderTest {
       }
     } as SupportSQLiteDatabase
 
-    TelemetryDatabase.MIGRATION_29_30.migrate(db)
+    VescapeDatabase.MIGRATION_29_30.migrate(db)
 
     assertTrue(sql.any { it.contains("CREATE TABLE IF NOT EXISTS favorites") })
     assertTrue(sql.any { it.contains("id TEXT NOT NULL PRIMARY KEY") })
@@ -159,7 +163,7 @@ class FavoriteSummaryBuilderTest {
       }
     } as SupportSQLiteDatabase
 
-    TelemetryDatabase.MIGRATION_30_31.migrate(db)
+    VescapeDatabase.MIGRATION_30_31.migrate(db)
 
     assertTrue(sql.any { it.contains("CREATE TABLE IF NOT EXISTS favorite_media") })
     for (column in listOf(

@@ -3,10 +3,11 @@ package expo.modules.vescapecore.telemetry
 import android.content.Context
 import androidx.room.useReaderConnection
 import androidx.room.deferredTransaction
+import expo.modules.vescapecore.database.VescapeDatabase
 
 /** Android lifecycle adapter around the host-testable production Profile stats query. */
 class ProfileStatsRepository private constructor(private val context: Context) {
-  private val database = TelemetryDatabase.get(context)
+  private val database = VescapeDatabase.get(context)
 
   /** @parity /modules/vescape-core/src/index.ts `ProfileStatsSnapshot` */
   suspend fun getProfileStatsSnapshot(options: Map<String, Any?>): Map<String, Any?> {
@@ -14,7 +15,7 @@ class ProfileStatsRepository private constructor(private val context: Context) {
     val gapMs = (minutes?.toLong() ?: DEFAULT_RIDE_SPLIT_GAP_MINUTES.toLong()) * 60_000L
     return database.useReaderConnection { reader ->
       reader.deferredTransaction {
-        readProfileStatsSnapshot(database.telemetryDao(), options, gapMs)
+        readProfileStatsSnapshot(database.vescapeDao(), options, gapMs)
       }
     }
   }

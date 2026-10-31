@@ -10,6 +10,13 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import expo.modules.vescapecore.database.AlertRuleEntity
+import expo.modules.vescapecore.database.AppSettingEntity
+import expo.modules.vescapecore.database.BoardConfigValuesEntity
+import expo.modules.vescapecore.database.BoardEntity
+import expo.modules.vescapecore.database.BoardSettingEntity
+import expo.modules.vescapecore.database.MotorConfigValuesEntity
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 class AlertPresetPersistenceHostTest {
   private val fixture = JSONObject(java.io.File("../shared/alert-preset-contract.json").readText())
@@ -18,8 +25,8 @@ class AlertPresetPersistenceHostTest {
     AlertRuleEntity(boardId, "preset:$metric", metric, 0.0, null, enabled = true, spec = spec, createdAt = 1)
 
   @Test fun sharedExpansionContract(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
-    val dao = db.telemetryDao()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val dao = db.vescapeDao()
     val cases = fixture.getJSONArray("cases")
     for (i in 0 until cases.length()) {
       val case = cases.getJSONObject(i)
@@ -82,8 +89,8 @@ class AlertPresetPersistenceHostTest {
 
   @Test fun unitSwitchChangesExpansionWithoutWrites(): Unit = runBlocking {
     val switch = fixture.getJSONObject("unitSwitch")
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
-    val dao = db.telemetryDao()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val dao = db.vescapeDao()
     for (id in listOf("first", "second")) {
       dao.upsertBoardWithSettings(BoardEntity(id, id, null, 1), listOf(BoardSettingEntity(id, "topSpeedKmh", switch.getDouble("topSpeedKmh").toString(), 1)), emptyList(), emptyList())
     }
@@ -105,8 +112,8 @@ class AlertPresetPersistenceHostTest {
 
   /** @parity /modules/vescape-core/persistence-macos/AlertPresetContract.swift `runAlertPresetBoardLifecycleContract` */
   @Test fun missingOrTombstonedBoardExpandsNothing(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
-    val dao = db.telemetryDao()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val dao = db.vescapeDao()
     val rider = AlertRuleEntity("ghost", "rider", "speed", 12.0, null, enabled = true, spec = "alert:warning", createdAt = 1)
     dao.upsertAlertRule(rider)
     dao.upsertAlertRule(presetRow("ghost", "speed", "preset(safe)"))
@@ -119,8 +126,8 @@ class AlertPresetPersistenceHostTest {
 
   /** @parity /modules/vescape-core/persistence-macos/AlertPresetContract.swift `runAlertPresetBoardLifecycleContract` */
   @Test fun oneMetricFailingToExpandKeepsTheRest(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
-    val dao = db.telemetryDao()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val dao = db.vescapeDao()
     dao.upsertBoardWithSettings(BoardEntity("board", "Board", null, 1), emptyList(), emptyList(), emptyList())
     val rider = AlertRuleEntity("board", "rider", "speed", 12.0, null, enabled = true, spec = "alert:warning", createdAt = 1)
     dao.upsertAlertRule(rider)
@@ -137,8 +144,8 @@ class AlertPresetPersistenceHostTest {
 
   /** @parity /modules/vescape-core/persistence-macos/AlertPresetContract.swift `runAlertPresetBoardLifecycleContract` */
   @Test fun boardIsSavedWithItsInitialAlertsAtomically(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
-    val dao = db.telemetryDao()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val dao = db.vescapeDao()
     val persistence = BoardSettingsPersistence(dao)
     val rider = AlertRuleEntity("new", "rider", "battery", 20.0, null, enabled = true, spec = "alert:warning", createdAt = 1)
     val alerts = listOf(AlertPresetPersistence.presetRow("new", "speed", "preset(safe)", 1)!!, rider)
@@ -161,8 +168,8 @@ class AlertPresetPersistenceHostTest {
 
   @Test fun presetIntentRewritesOneRowAndSurvivesReopen(): Unit = runBlocking {
     val path = Files.createTempFile("preset-contract", ".db"); Files.delete(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
-    var db = open(); var dao = db.telemetryDao()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    var db = open(); var dao = db.vescapeDao()
     val board = BoardEntity("board", "Board", null, 1)
     suspend fun spec(metric: String) = AlertPresetPersistence.specs(dao, board.id).getValue(metric)
     suspend fun expanded(metric: String) = TuneAlertPersistence(dao).alertRules(board.id) { throw it }.filter { it.controlId == metric }
@@ -227,7 +234,7 @@ class AlertPresetPersistenceHostTest {
     val connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("CREATE TRIGGER fail_preset BEFORE INSERT ON alerts WHEN NEW.id LIKE 'preset:%' BEGIN SELECT RAISE(ABORT, 'test preset write'); END")
     connection.close()
-    db = open(); dao = db.telemetryDao()
+    db = open(); dao = db.vescapeDao()
     var failed = false
     try { dao.applyAlertPreset(board.id, "speed", "minimal", null, null) } catch (_: Exception) { failed = true }
     assertTrue(failed)

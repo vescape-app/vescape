@@ -12,5 +12,6 @@ singleQuote = true
 jsxSingleQuote = false
 ignorePatterns = [
   ".agents/skills/**",
+  "modules/vescape-core/android/schemas/**",
   "modules/vescape-core/shared/ride-export-floaty-expected.json",
 ]

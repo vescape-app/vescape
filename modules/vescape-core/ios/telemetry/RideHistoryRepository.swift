@@ -24,14 +24,14 @@ private let maxRidePageSize = 50
 /// Ride History Marker for an explicit rider Stop Recording — the only marker that splits a ride
 /// (ADR 0041). Distinct from `app_stop`, which an ordinary Board Session stop writes.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `RECORDING_STOP_MARKER`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `RECORDING_STOP_MARKER`
 /// @parity /modules/vescape-core/src/index.ts `HistoryMarker`
 internal let recordingStopMarker = "recording_stop"
 
 /// Keep every Board in the boundary minute; the bucket limit is a soft limit.
 /// Both queries run in the caller's read transaction so the cursor and lookahead share a snapshot.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideBuckets`
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `hasRideBucketsBefore`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideBuckets`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `hasRideBucketsBefore`
 internal func fetchRideHistoryBucketBatch(
   _ db: Database,
   beforeMs: Int64,
@@ -123,7 +123,7 @@ internal final class RideHistoryRepository {
   private let gapMsProvider: () throws -> Int64
 
   internal init(
-    poolProvider: @escaping () throws -> DatabasePool = { try TelemetryDatabase.requirePool() },
+    poolProvider: @escaping () throws -> DatabasePool = { try VescapeDatabase.requirePool() },
     gapMsProvider: @escaping () throws -> Int64 = {
       let minutes = telemetryInt(try AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
       return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000

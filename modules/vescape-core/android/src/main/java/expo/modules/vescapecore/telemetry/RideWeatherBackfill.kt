@@ -6,6 +6,9 @@ import java.time.ZoneOffset
 import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.WeatherObservationEntity
 
 // Ride weather backfill (#606): hourly Open-Meteo history for past ride days without usable weather.
 // Every constant and rule below is mirrored in RideWeatherBackfill.swift.
@@ -241,7 +244,7 @@ internal fun weatherBackfillRows(samples: List<WeatherObservation>, startMs: Lon
  * into the potentially active ride.
  * @parity /modules/vescape-core/ios/telemetry/RideWeatherBackfill.swift `weatherBackfillPage`
  */
-internal suspend fun TelemetryDao.weatherBackfillPageImpl(
+internal suspend fun VescapeDao.weatherBackfillPageImpl(
   cursor: WeatherBackfillCursor,
   nowMs: Long,
   gapMs: Long,
@@ -289,7 +292,7 @@ internal suspend fun TelemetryDao.weatherBackfillPageImpl(
  * segment when it now has usable weather.
  * @parity /modules/vescape-core/ios/telemetry/RideWeatherBackfill.swift `storeWeatherBackfill`
  */
-internal suspend fun TelemetryDao.storeWeatherBackfillImpl(
+internal suspend fun VescapeDao.storeWeatherBackfillImpl(
   segments: List<WeatherBackfillSegment>,
   samples: List<WeatherObservation>,
 ): List<Boolean> = segments.map { segment ->
@@ -438,6 +441,6 @@ internal object RideWeatherJob : MaintenanceJob {
   private fun settle(rides: List<WeatherBackfillRide>, watermark: Long): Long =
     rides.fold(watermark) { mark, ride -> maxOf(mark, ride.endMs) }
 
-  private suspend fun publish(dao: TelemetryDao, doneThroughMs: Long, nowMs: Long) =
+  private suspend fun publish(dao: VescapeDao, doneThroughMs: Long, nowMs: Long) =
     dao.publishMaintenanceFingerprint(id, weatherBackfillWatermarkValue(version, doneThroughMs), nowMs)
 }

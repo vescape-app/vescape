@@ -3,6 +3,10 @@ package expo.modules.vescapecore.telemetry
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.json.JSONObject
+import expo.modules.vescapecore.database.AppSettingEntity
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.DatabaseReplacementFence
+import expo.modules.vescapecore.database.VescapeDao
 
 /**
  * A Maintenance Job: app-owned work that brings stored data up to date with the current app.
@@ -78,7 +82,7 @@ internal fun interface MaintenanceHttp {
  * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `MaintenanceJobScope`
  */
 internal class MaintenanceJobScope(
-  private val dao: () -> TelemetryDao,
+  private val dao: () -> VescapeDao,
   private val fence: DatabaseReplacementFence,
   private val ticket: Long,
   val nowMs: () -> Long = System::currentTimeMillis,
@@ -90,7 +94,7 @@ internal class MaintenanceJobScope(
   val http: MaintenanceHttp = MaintenanceHttp { throw java.io.IOException("No network transport") },
 ) {
   /** Run [block] under the fence; throws [MaintenanceRunFenced] once the database was replaced. */
-  suspend fun <T> chunk(block: suspend (TelemetryDao) -> T): T {
+  suspend fun <T> chunk(block: suspend (VescapeDao) -> T): T {
     currentCoroutineContext().ensureActive()
     // Boxed, so a block that legitimately returns null is not mistaken for a fenced write.
     val box = fence.write(ticket) { listOf(block(dao())) } ?: throw MaintenanceRunFenced()
@@ -108,10 +112,10 @@ internal fun maintenanceJobKey(id: String) = "$MAINTENANCE_JOB_KEY_PREFIX$id"
 internal const val MAINTENANCE_JOB_KEY_PREFIX = "maintenanceJob."
 
 // intentional-suppression: an unreadable fingerprint is a stale job, which re-runs and rewrites it.
-internal suspend fun TelemetryDao.storedMaintenanceFingerprint(id: String): String? =
+internal suspend fun VescapeDao.storedMaintenanceFingerprint(id: String): String? =
   getAppSetting(maintenanceJobKey(id))?.let { runCatching { decodeSettingJson(it.valueJson) as? String }.getOrNull() }
 
-internal suspend fun TelemetryDao.publishMaintenanceFingerprint(id: String, fingerprint: String, nowMs: Long) =
+internal suspend fun VescapeDao.publishMaintenanceFingerprint(id: String, fingerprint: String, nowMs: Long) =
   upsertAppSetting(AppSettingEntity(maintenanceJobKey(id), JSONObject.quote(fingerprint), nowMs))
 
 /**

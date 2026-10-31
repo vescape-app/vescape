@@ -23,24 +23,24 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/warnings/BoardWarningSeverity.kt",
       "expo/modules/vescapecore/config/BoardConfigChangeNotice.kt",
       "expo/modules/vescapecore/config/RefloatConfigSchema.kt",
-      "expo/modules/vescapecore/telemetry/TelemetryEntities.kt",
+      "expo/modules/vescapecore/database/DatabaseEntities.kt",
       "expo/modules/vescapecore/weather/WeatherAlertDefaults.kt",
       "expo/modules/vescapecore/navigation/RerouteDistance.kt",
       "expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt",
       "expo/modules/vescapecore/telemetry/RideExport.kt",
       "expo/modules/vescapecore/location/GpsAccuracy.kt",
-      "expo/modules/vescapecore/telemetry/TelemetryDao.kt",
+      "expo/modules/vescapecore/database/VescapeDao.kt",
       "expo/modules/vescapecore/telemetry/ConfigPersistence.kt",
       "expo/modules/vescapecore/telemetry/TuneAlertPersistence.kt",
       "expo/modules/vescapecore/telemetry/BoardSettingsPersistence.kt",
       "expo/modules/vescapecore/telemetry/AccessoryPersistence.kt",
       "expo/modules/vescapecore/telemetry/RecordingPersistence.kt",
       "expo/modules/vescapecore/telemetry/BucketRoutePreview.kt",
-      "expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt",
-      "expo/modules/vescapecore/telemetry/DatabaseUpgradeContract.kt",
-      "expo/modules/vescapecore/telemetry/TelemetryMigrations.kt",
-      "expo/modules/vescapecore/telemetry/DatabaseFileSwap.kt",
-      "expo/modules/vescapecore/telemetry/DatabaseBackupArchive.kt",
+      "expo/modules/vescapecore/database/VescapeRoomDatabase.kt",
+      "expo/modules/vescapecore/database/DatabaseUpgradeContract.kt",
+      "expo/modules/vescapecore/database/DatabaseMigrations.kt",
+      "expo/modules/vescapecore/database/DatabaseFileSwap.kt",
+      "expo/modules/vescapecore/database/DatabaseBackupArchive.kt",
       "expo/modules/vescapecore/telemetry/PersistenceDefaults.kt",
       "expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt",
       "expo/modules/vescapecore/telemetry/MetricSanitizer.kt",
@@ -53,7 +53,7 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/telemetry/TelemetryRangeSubtraction.kt",
       "expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt",
       "expo/modules/vescapecore/telemetry/WeatherObservations.kt",
-      "expo/modules/vescapecore/telemetry/DatabaseReplacementFence.kt",
+      "expo/modules/vescapecore/database/DatabaseReplacementFence.kt",
       "expo/modules/vescapecore/telemetry/MaintenanceJobs.kt",
       "expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt",
       "expo/modules/vescapecore/weather/Weather.kt",
@@ -65,6 +65,7 @@ val extractProductionPersistence by tasks.registering {
 }
 
 kotlin.sourceSets.main { kotlin.srcDir(generatedProduction) }
+ksp { arg("room.schemaLocation", "$projectDir/../android/schemas") }
 tasks.named("compileKotlin") { dependsOn(extractProductionPersistence) }
 tasks.matching { it.name.startsWith("ksp") }.configureEach { dependsOn(extractProductionPersistence) }
 dependencies {
@@ -74,6 +75,7 @@ dependencies {
   implementation("org.json:json:20231013")
   ksp("androidx.room:room-compiler:2.8.4")
   testImplementation("junit:junit:4.13.2")
+  testImplementation("androidx.room:room-testing:2.8.4")
 }
 
 tasks.withType<Test>().configureEach {

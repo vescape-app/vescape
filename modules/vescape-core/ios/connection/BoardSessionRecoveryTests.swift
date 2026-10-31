@@ -13,7 +13,7 @@ final class BoardSessionRecoveryTests: XCTestCase {
 
   override func setUpWithError() throws {
     let queue = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(queue)
+    try VescapeDatabase.migrator.migrate(queue)
     let repository = AppDataRepository.forTesting(dbWriter: queue)
     for key in ["connectionSoundsEnabled", "boardWarningsEnabled", "autoRecording", "vescFaultCollectionEnabled"] {
       try repository.updateSetting(key, rawValue: false)

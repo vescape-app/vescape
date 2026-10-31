@@ -3,6 +3,7 @@ package expo.modules.vescapecore.telemetry
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import expo.modules.vescapecore.database.PrivacyZoneEntity
 
 class PrivacyZoneFilterTest {
 

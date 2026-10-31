@@ -9,6 +9,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.lang.reflect.Proxy
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.VescapeDatabase
 
 /**
  * Board tombstones (ADR 0027): deleting a Board stamps `boards.deleted_at` instead of removing the
@@ -54,7 +56,7 @@ class BoardTombstoneTest {
   } as Cursor
 
   private fun daoSource(): String =
-    File("src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt").readText()
+    File("src/main/java/expo/modules/vescapecore/database/VescapeDao.kt").readText()
 
   /**
    * Additive and nullable: existing rows stay null, which is what "alive" means. A `NOT NULL DEFAULT`
@@ -62,15 +64,15 @@ class BoardTombstoneTest {
    */
   @Test
   fun migrationAddsNullableDeletedAtColumn() {
-    val sql = migrationSql(TelemetryDatabase.MIGRATION_40_41)
+    val sql = migrationSql(VescapeDatabase.MIGRATION_40_41)
 
     assertEquals(listOf("ALTER TABLE boards ADD COLUMN deleted_at INTEGER"), sql)
   }
 
   @Test
   fun migrationTargetsTheCurrentSchemaVersion() {
-    assertEquals(40, TelemetryDatabase.MIGRATION_40_41.startVersion)
-    assertEquals(41, TelemetryDatabase.MIGRATION_40_41.endVersion)
+    assertEquals(40, VescapeDatabase.MIGRATION_40_41.startVersion)
+    assertEquals(41, VescapeDatabase.MIGRATION_40_41.endVersion)
   }
 
   /** The Rider-facing list drops tombstones; lookup by id keeps them so history can name them. */

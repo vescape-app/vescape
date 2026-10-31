@@ -5,6 +5,7 @@ import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.runtime.BoardSession
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.Scheduler
+import expo.modules.vescapecore.database.RideTrackPointEntity
 
 internal const val DEFAULT_LIVE_HISTORY_LIMIT_MINUTES = 5
 internal const val MIN_LIVE_HISTORY_LIMIT_MINUTES = 1

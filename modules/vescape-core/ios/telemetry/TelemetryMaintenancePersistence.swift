@@ -2,7 +2,7 @@ import GRDB
 
 /// Production telemetry maintenance transactions. The app and macOS host contract execute this
 /// same orchestration so statement coverage cannot hide ordering or rollback defects.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct TelemetryMaintenancePersistence {
   let writer: any DatabaseWriter
 

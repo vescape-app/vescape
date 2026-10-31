@@ -1,8 +1,13 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
+import expo.modules.vescapecore.database.TelemetryFrameEntity
+import expo.modules.vescapecore.database.VescapeDao
+
 /** App-used outer transactions for maintenance operations that may span several protected ranges. */
 internal class TelemetryMaintenancePersistence(
-  private val dao: TelemetryDao,
+  private val dao: VescapeDao,
 ) {
   suspend fun deleteRanges(
     ranges: List<TelemetryTimeRange>,
@@ -61,7 +66,7 @@ private fun floorMinute(ms: Long) = Math.floorDiv(ms, TELEMETRY_BUCKET_SIZE_MS) 
 private fun floorChunk(ms: Long) = Math.floorDiv(ms, RIDE_SUMMARIES_CHUNK_MS) * RIDE_SUMMARIES_CHUNK_MS
 
 /** First owned chunk start, or null for a database with no frames and no Ride Track. */
-internal suspend fun TelemetryDao.rideSummariesStartMs(): Long? =
+internal suspend fun VescapeDao.rideSummariesStartMs(): Long? =
   listOfNotNull(firstFrameAt(), firstRideTrackAt()).minOrNull()?.let(::floorChunk)
 
 /**
@@ -70,7 +75,7 @@ internal suspend fun TelemetryDao.rideSummariesStartMs(): Long? =
  * the cutoff can only be earlier than the real ride start, never later.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `activeRideStartMs`
  */
-internal suspend fun TelemetryDao.activeRideStartMs(nowMs: Long, gapMs: Long): Long? {
+internal suspend fun VescapeDao.activeRideStartMs(nowMs: Long, gapMs: Long): Long? {
   val last = listOfNotNull(lastFrameAt(), lastRideTrackAt()).maxOrNull() ?: return null
   if (nowMs - last >= gapMs) return null
   var start = last
@@ -88,7 +93,7 @@ internal suspend fun TelemetryDao.activeRideStartMs(nowMs: Long, gapMs: Long): L
  * upserts never meet a rebuilt bucket: the potentially active ride is never owned.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `rebuildRideSummariesChunk`
  */
-internal suspend fun TelemetryDao.rebuildRideSummariesChunkImpl(
+internal suspend fun VescapeDao.rebuildRideSummariesChunkImpl(
   fromMs: Long,
   context: RideSummariesContext,
   config: MetricSanitizerConfig,
@@ -145,7 +150,7 @@ internal suspend fun TelemetryDao.rebuildRideSummariesChunkImpl(
 }
 
 /** Remove the `[fromMs, toMs)` portion of every exclusion range, keeping what lies outside it. */
-private suspend fun TelemetryDao.trimExclusions(fromMs: Long, toMs: Long) {
+private suspend fun VescapeDao.trimExclusions(fromMs: Long, toMs: Long) {
   for (range in getExclusions(fromMs, toMs - 1, null)) {
     deleteExclusionRange(range.id)
     val span = (range.endMs - range.startMs + 1).toDouble()

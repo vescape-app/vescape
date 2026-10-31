@@ -9,6 +9,8 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 class BucketRoutePreviewHostTest {
   private val fixture = bucketPreviewFixture
@@ -18,18 +20,18 @@ class BucketRoutePreviewHostTest {
   @Test fun multipleFlushesReopenLateFixesAndRollback(): Unit = runBlocking {
     val path = Files.createTempFile("bucket-preview", ".db")
     Files.delete(path)
-    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
     suspend fun flush(points: List<RideTrackPointEntity>) {
-      RecordingPersistence(db.telemetryDao()).commit(emptyList(), buildTelemetryBuckets(emptyList(), points.toBucketLocationPoints()), emptyList(), trackPoints = points)
+      RecordingPersistence(db.vescapeDao()).commit(emptyList(), buildTelemetryBuckets(emptyList(), points.toBucketLocationPoints()), emptyList(), trackPoints = points)
     }
     flush(fixes.take(3))
-    assertEquals(2, BucketRoutePreview.decode(db.telemetryDao().getBucket(0, board)!!.routePreview!!).single().points.size)
+    assertEquals(2, BucketRoutePreview.decode(db.vescapeDao().getBucket(0, board)!!.routePreview!!).single().points.size)
     db.close(); db = open()
     // Out-of-order later batches must use every original fix, including the previously removed one.
     flush(fixes.drop(5))
     flush(fixes.subList(3, 5))
-    val buckets = db.telemetryDao().getAllHistoryBucketsAsc()
+    val buckets = db.vescapeDao().getAllHistoryBucketsAsc()
     assertEquals(2, buckets.size)
     for ((index, bucket) in buckets.withIndex()) {
       val segments = BucketRoutePreview.decode(bucket.routePreview!!)
@@ -46,15 +48,15 @@ class BucketRoutePreviewHostTest {
     val previews = buckets.map { it.routePreview }
     // Telemetry-only merges must preserve the already-written route.
     val telemetry = BucketTelemetryPoint(3000, board, 1500, 80000, 1000, 500, 100, null)
-    RecordingPersistence(db.telemetryDao()).commit(emptyList(), buildTelemetryBuckets(listOf(telemetry), emptyList()), emptyList())
-    assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreview })
+    RecordingPersistence(db.vescapeDao()).commit(emptyList(), buildTelemetryBuckets(listOf(telemetry), emptyList()), emptyList())
+    assertEquals(previews, db.vescapeDao().getAllHistoryBucketsAsc().map { it.routePreview })
     // The GPS-only second minute is the ride's tail: one ride, one route.
-    val session = groupRideSessions(db.telemetryDao().getAllHistoryBucketsAsc(), emptyList(), 1_800_000).single()
+    val session = groupRideSessions(db.vescapeDao().getAllHistoryBucketsAsc(), emptyList(), 1_800_000).single()
     assertEquals(8, session.routePoints.size)
     assertEquals(listOf(5), session.routePoints.mapIndexedNotNull { i, p -> i.takeIf { p.breakBefore } })
     // Existing maintenance is the explicit backfill, and must produce the same geometry.
-    rebuildRideSummaries(db.telemetryDao())
-    assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreview })
+    rebuildRideSummaries(db.vescapeDao())
+    assertEquals(previews, db.vescapeDao().getAllHistoryBucketsAsc().map { it.routePreview })
     db.close()
     BundledSQLiteDriver().open(path.toString()).use { sql ->
       sql.execSQL("CREATE TRIGGER reject_preview BEFORE UPDATE OF route_preview ON telemetry_minute_buckets BEGIN SELECT RAISE(FAIL, 'preview failure'); END")
@@ -62,18 +64,18 @@ class BucketRoutePreviewHostTest {
     db = open()
     val later = fixes.last().copy(fixAtMs = 63000)
     var failures = 0
-    val boundary = RecordingCommitBoundary(RecordingPersistence(db.telemetryDao()), { failures++ })
+    val boundary = RecordingCommitBoundary(RecordingPersistence(db.vescapeDao()), { failures++ })
     assertFalse(boundary.commit(emptyList(), buildTelemetryBuckets(emptyList(), listOf(later).toBucketLocationPoints()), emptyList(), trackPoints = listOf(later)))
     assertEquals(1, failures)
     db.close(); db = open()
-    assertEquals(fixes.size.toLong(), db.telemetryDao().countRideTrackPoints())
-    assertEquals(previews, db.telemetryDao().getAllHistoryBucketsAsc().map { it.routePreview })
+    assertEquals(fixes.size.toLong(), db.vescapeDao().countRideTrackPoints())
+    assertEquals(previews, db.vescapeDao().getAllHistoryBucketsAsc().map { it.routePreview })
     db.close(); Files.deleteIfExists(path)
   }
 
   @Test fun favoritePreviewKeepsCornersAndClipsTheSelectedRange(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
-    val dao = db.telemetryDao()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val dao = db.vescapeDao()
     RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), fixes.toBucketLocationPoints()), emptyList(), trackPoints = fixes)
     val route = dao.favoriteRoutePreview(0, 119999, board)
     assertEquals(8, route.size)
@@ -102,9 +104,9 @@ class BucketRoutePreviewHostTest {
   }
 
   @Test fun boardScopeAndCrossMinuteGaps(): Unit = runBlocking {
-    val db = Room.inMemoryDatabaseBuilder<TelemetryRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
+    val db = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
     val points = listOf(fixes[0], fixes[0].copy(fixAtMs = 65000), fixes[2].copy(boardId = "other-board"), fixes[3].copy(boardId = null))
-    val dao = db.telemetryDao()
+    val dao = db.vescapeDao()
     RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), points.toBucketLocationPoints()), emptyList(), trackPoints = points)
     for (bucket in dao.getAllHistoryBucketsAsc()) assertEquals(1, BucketRoutePreview.decode(bucket.routePreview!!).single().points.size)
     val telemetry = BucketTelemetryPoint(1000, board, 1500, 80000, 1000, 500, 100, null)
