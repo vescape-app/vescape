@@ -424,6 +424,13 @@ export interface AccessoryEnrollment {
  * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
  */
 export interface LocationEvent {
+  /** Display-only source identity and source clock at delivery (replay clock adapted here).
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `displayMap`
+   * @parity /modules/vescape-core/ios/location/LocationTracker.swift `displayMap`
+   */
+  displaySourceId?: number
+  displayClockMs?: number
+  displayClockRate?: number
   latitude: number
   longitude: number
   speedMps: number | null
@@ -990,6 +997,9 @@ export interface LiveStateEvent {
     phase: GpsPhase
     /** What the fixes cost right now — and, by implication, why they are flowing. */
     mode: GpsPowerMode
+    displaySourceId?: number
+    displayClockMs?: number
+    displayClockRate?: number
     latestFix: LocationEvent | null
     latestApproximateFix?: LocationEvent | null
     latestPreciseFix?: LocationEvent | null
@@ -2852,6 +2862,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   exportDebugRecording(name: string): Promise<DatabaseBackupResult>
   deleteDebugRecording(name: string): Promise<void>
   startDebugReplay(name: string, options: DebugReplayOptions | null): Promise<void>
+  setWatchDisplayConfig(json: string): void
   setWatchRouteSpanM(spanM: number | null): void
   stopDebugReplay(): Promise<void>
   reportUiError(message: string, source?: string | null, stack?: string | null): void
@@ -4626,6 +4637,14 @@ export function addBmsSeriesListener(cb: (event: BmsSeriesUpdate) => void): Even
 
 export function addLocationListener(cb: (event: LocationEvent) => void): EventSubscription {
   return emitter.addListener('onLocation', cb)
+}
+
+/** Session-only display tuning; carried by the existing cold watch settings channel.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchDisplayConfig`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setWatchDisplayConfig`
+ */
+export function setWatchDisplayConfig(config: Record<string, number>): void {
+  if (!E2E_ENABLED) native.setWatchDisplayConfig(JSON.stringify(config))
 }
 
 /**

@@ -179,6 +179,8 @@ interface EngineSprings {
 
 export interface CameraEngine {
   /** React development remounts effects while preserving state; make the retained engine usable again. */
+  follow: (sample: (() => CameraEngineTarget | null) | null) => void
+  configureOmega: (values: Partial<CameraEngineOmega>) => void
   resume: () => void
   /** Initialize springs at rest on a known camera. Until called, targets snap. */
   reset: (camera: EngineCamera) => void
@@ -234,6 +236,8 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
           minZoom: config.ballistic?.minZoom ?? CAMERA_ENGINE_DEFAULT_BALLISTIC_MIN_ZOOM,
         }
 
+  let samplingTarget = false
+  let followTarget: (() => CameraEngineTarget | null) | null = null
   let springs: EngineSprings | null = null
   /** The zoom the caller asked for; the ballistic cap adjusts around it. */
   let zoomUserTarget = 0
@@ -358,6 +362,15 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
     )
     lastFrameMs = timestampMs
 
+    if (followTarget) {
+      samplingTarget = true
+      try {
+        const target = followTarget()
+        if (target) setTarget(target)
+      } finally {
+        samplingTarget = false
+      }
+    }
     let s = springs
     if (ballistic) {
       const remainingM = centerDistanceToTargetM(s)
@@ -381,7 +394,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
     springs = s
     emit(s)
 
-    if (settled(s)) {
+    if (settled(s) && !followTarget) {
       // Land exactly on target so the map doesn't rest epsilon off.
       springs = {
         lng: snapSpring(s.lng, s.lng.target),
@@ -409,8 +422,13 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   }
 
   const ensureLoop = () => {
-    if (destroyed || frameHandle != null) return
-    if (springs && settled(springs) && (holdUntilMs == null || now() >= holdUntilMs)) {
+    if (samplingTarget || destroyed || frameHandle != null) return
+    if (
+      !followTarget &&
+      springs &&
+      settled(springs) &&
+      (holdUntilMs == null || now() >= holdUntilMs)
+    ) {
       holdUntilMs = null
       targetOwned = false
       return
@@ -459,6 +477,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
     // The map is already parked here, so the next frame is measured against it rather than being
     // written unconditionally for want of anything to compare to.
     lastEmittedCamera = toCamera(springs)
+    if (followTarget) ensureLoop()
   }
 
   const snap = (target: CameraEngineTarget) => {
@@ -525,6 +544,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
       // A finger takes the camera back: whatever target was in flight is gone.
       targetOwned = false
       holdUntilMs = null
+      followTarget = null
     } else if (targetOwned) {
       // Momentum from a throw that predates the target, or an echo of the
       // engine's own write. Neither is a driver.
@@ -609,6 +629,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   }
 
   const stop = () => {
+    followTarget = null
     stopLoop()
     lastDriveMs = null
     targetOwned = false
@@ -627,6 +648,13 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   }
 
   return {
+    follow: (sample) => {
+      followTarget = sample
+      ensureLoop()
+    },
+    configureOmega: (values) => {
+      Object.assign(omega, values)
+    },
     resume: () => {
       destroyed = false
     },

@@ -1,3 +1,4 @@
+import { LiveMotionControls } from '@/modules/map/components/LiveMotionControls'
 import { useEffect, useMemo, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -66,6 +67,7 @@ export default function NavigationDiagnosticScreen() {
           <DiagnosticRowView label="Diagnostics age" value={vm.updatedAge} />
         </View>
 
+        <LiveMotionControls />
         <View style={styles.card}>
           <SettingsRow
             icon={CompassIcon}

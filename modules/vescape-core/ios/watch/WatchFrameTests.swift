@@ -140,11 +140,10 @@ final class WatchFrameTests: XCTestCase {
     XCTAssertNil(WatchFrameBuilder.decode(Data(count: WATCH_FRAME_BYTES - 1)))
   }
 
-  /// A phone and a wrist built from different commits can disagree about lane count. Misreading
-  /// every lane is worse than showing nothing, so the mismatch is rejected rather than truncated.
-  func testDecodeRejectsAFieldCountMismatch() {
+  /// Unknown appended lanes are allowed, but advertised bytes must actually exist.
+  func testDecodeRejectsTruncatedAdvertisedLanes() {
     var data = WatchFrameBuilder.encode(WatchFrame(speed: 1, stale: false))
-    data[0] = UInt8(WATCH_FRAME_FIELD_COUNT + 1)
+    data[0] = UInt8(WATCH_FRAME_FIELD_COUNT + 10)
     XCTAssertNil(WatchFrameBuilder.decode(data))
   }
 }

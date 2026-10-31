@@ -22,13 +22,14 @@ class WatchMirrorCoordinatorTest {
         var groups = 0
         var statuses = 0
         var settings = 0
+        var lastSettings: WatchSettings? = null
         var launches = 0
         override fun start() { starts++ }
         override fun stop() { stops++ }
         override fun pushFrame(frame: ByteArray) { frames++; lastFrame = frame; onFrame() }
         override fun pushGroup(frame: ByteArray) { groups++; onGroup() }
         override fun pushRouteStatus(status: WatchRouteStatus) { statuses++ }
-        override fun pushSettings(settings: WatchSettings) { this.settings++ }
+        override fun pushSettings(settings: WatchSettings) { this.settings++; lastSettings = settings }
         override fun pushWeather(weather: WatchWeather) {}
         override fun pushBoard(board: WatchBoard) {}
         override fun launch() { launches++ }
@@ -61,6 +62,19 @@ class WatchMirrorCoordinatorTest {
             { navigatingChanges++ }, { mapTiles += it },
         )
         fun active() { coordinator.start(); coordinator.acceptWakeLevel(WatchMirrorWakeLevel.ACTIVE) }
+    }
+
+    @Test fun `session motion overrides survive persisted settings reload and reset independently`() {
+        val h = Harness()
+        val tuning = "{\"predictionStrength\":0.25}"
+        h.coordinator.configureMotion(tuning)
+        h.coordinator.applySettings(WatchSettings(null, 10, false), 250, true)
+        assertEquals(tuning, h.transport.lastSettings?.displayMotionJson)
+        h.coordinator.applySettings(WatchSettings("#ff0000", 10, false), 250, true)
+        assertEquals(tuning, h.transport.lastSettings?.displayMotionJson)
+        h.coordinator.configureMotion("")
+        assertEquals("", h.transport.lastSettings?.displayMotionJson)
+        assertEquals("#ff0000", h.transport.lastSettings?.riderColor)
     }
 
     @Test fun `lifetime is idempotent and survives board disconnect`() {

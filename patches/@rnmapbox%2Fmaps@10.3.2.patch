@@ -527,3 +527,21 @@ index 51e22647de0011459dee4bd160ede4fcca1f4263..142cbea411d7569f5c1e0ac422e999e4
    moveBy: (
      viewRef: ViewRef,
      x: number,
+diff --git a/android/src/main/java/com/rnmapbox/rnmbx/shapeAnimators/RNMBXMovePointShapeAnimatorModule.kt b/android/src/main/java/com/rnmapbox/rnmbx/shapeAnimators/RNMBXMovePointShapeAnimatorModule.kt
+--- a/android/src/main/java/com/rnmapbox/rnmbx/shapeAnimators/RNMBXMovePointShapeAnimatorModule.kt
++++ b/android/src/main/java/com/rnmapbox/rnmbx/shapeAnimators/RNMBXMovePointShapeAnimatorModule.kt
+@@ -34 +34,2 @@
+-        val ratio = point.durationRatio()
++        val ratio = if (point.totalDurationSec > 0.0)
++            (animatorAgeSec - point.startedAtSec) / point.totalDurationSec else 1.0
+@@ -40,0 +42 @@
++            point.setProgress(point.target, animatorAgeSec)
+diff --git a/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift b/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift
+--- a/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift
++++ b/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift
+@@ -34 +34,2 @@
+-    let ratio = point.durationRatio()
++    let ratio = point.totalDurationSec > 0
++      ? (animatorAgeSec - point.startedAtSec) / point.totalDurationSec : 1
+@@ -37,0 +39 @@
++      point.setProgress(value: point.target, animatorAgeSec: animatorAgeSec)

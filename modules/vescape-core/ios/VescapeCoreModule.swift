@@ -731,6 +731,10 @@ public class VescapeCoreModule: Module {
       )
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchDisplayConfig`
+    Function("setWatchDisplayConfig") { (json: String) in
+      DispatchQueue.main.async { self.coordinator.configureWatchDisplay(json) }
+    }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
     Function("setWatchRouteSpanM") { (spanM: Double?) in
       WatchRouteMirror.shared.viewportSpanM = spanM
@@ -2064,6 +2068,7 @@ public class VescapeCoreModule: Module {
       RecordingStorageFailure.reportRead(operation: "live_state_settings_read", error: error)
       settings = [:]
     }
+    let displayClock = coordinator.gpsDisplayClockSample()
     return [
       "board": [
         "phase": coordinator.phase.rawValue,
@@ -2082,6 +2087,9 @@ public class VescapeCoreModule: Module {
       "gps": [
         "phase": coordinator.gpsPhase(),
         "mode": coordinator.gpsMode(),
+        "displaySourceId": coordinator.gpsDisplaySourceId(),
+        "displayClockMs": displayClock.timestampMs,
+        "displayClockRate": displayClock.rate,
         "latestFix": coordinator.gpsLatestPreciseLocation(),
         "latestApproximateFix": coordinator.gpsLatestLocation(),
         "latestPreciseFix": coordinator.gpsLatestPreciseLocation(),

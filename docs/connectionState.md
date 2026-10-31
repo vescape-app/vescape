@@ -97,6 +97,9 @@ consumers. Replay teardown alone clears recorded fixes.
 App-level state is not the same as an always-on radio. Whether the monitor runs, and how hard, is
 resolved from demand — see below.
 
+Display-only motion belongs to each visible map surface, separate from measured fixes and long-lived
+consumers. See [Live map display motion](./map.md).
+
 ### GPS demand
 
 `GpsDemand.resolve` is the one place that decides the **GPS Power Mode**, on both platforms, from

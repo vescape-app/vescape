@@ -21,7 +21,7 @@ import kotlin.math.abs
  * order by convention (ADR-0018). Adding or reordering a lane means editing both sides in the same
  * order, or the decode silently misreads. Keep the two lists adjacent in review.
  */
-internal const val WATCH_FRAME_FIELD_COUNT = 13
+internal const val WATCH_FRAME_FIELD_COUNT = 23
 
 /** Header (1 byte field-count + 1 byte flags) + Float32 lanes, little-endian. */
 internal const val WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
@@ -89,6 +89,7 @@ internal data class WatchFrame(
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
     val mapPosition: WatchMapPosition? = null,
+    val motionFacts: WatchMotionFacts? = null,
 )
 
 /** The latest cold-path values the watch tick reads to build a frame. `stale` is decided at tick time. */
@@ -111,6 +112,7 @@ internal data class WatchSnapshot(
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
     val mapPosition: WatchMapPosition? = null,
+    val motionFacts: WatchMotionFacts? = null,
     /** GPS ground speed, for the street-map lookahead. Phone-side only; not on the wire. */
     val riderSpeedMps: Double? = null,
 )
@@ -138,6 +140,7 @@ internal object WatchFrameBuilder {
         tiltControl = snapshot.tiltControl,
         trail = snapshot.trail,
         mapPosition = snapshot.mapPosition,
+        motionFacts = snapshot.motionFacts,
     )
 
     fun encode(frame: WatchFrame): ByteArray =
@@ -161,6 +164,7 @@ internal object WatchFrameBuilder {
             putFloat(frame.routeSpanM.toLaneFloat())
             putFloat(frame.remoteTilt?.toDouble().toLaneFloat())
             putFloat(frame.tiltControl.wire.toFloat())
+            (frame.motionFacts?.lanes() ?: List(WatchMotionFacts.LANE_COUNT) { Double.NaN }).forEach { putFloat(it.toFloat()) }
         }.array() + WatchTrailCodec.encode(frame.trail, frame.mapPosition)
 
     private fun Double?.toLaneFloat(): Float = this?.toFloat() ?: Float.NaN

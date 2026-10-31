@@ -1,3 +1,4 @@
+import { useLiveMotionSettings } from '@/modules/map/store/liveMotionSettings'
 import type { Camera as CameraRef } from '@rnmapbox/maps'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions } from 'react-native'
@@ -33,6 +34,9 @@ export type { CameraSnapshot, HistoryPreviewTarget }
 export function useCameraControls({
   ref,
   cameraFix,
+  displayMotion,
+  displayNow,
+  displayActive,
   persistedFallback,
   perspectiveEnabled,
   mapViewport,
@@ -200,8 +204,17 @@ export function useCameraControls({
       mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode
     const effect = reduceMapCameraIntent(controllerStateRef.current, {
       type: 'FollowLive',
-      gpsCamera: { ...gpsCamera, zoomLevel: baseZoomLevel },
-      followHeadingDeg: getFollowDeg(),
+      gpsCamera: {
+        ...gpsCamera,
+        centerCoordinate: displayMotion.position(displayNow()) ?? gpsCamera.centerCoordinate,
+        zoomLevel: baseZoomLevel,
+      },
+      followHeadingDeg:
+        mapOrientationMode === 'gpsHeading'
+          ? (displayMotion.cameraHeading(displayNow()) ??
+            currentCameraRef.current?.heading ??
+            getFollowDeg())
+          : getFollowDeg(),
       orientationMode: effectiveOrientationMode,
       perspectiveEnabled,
       viewportHeight,
@@ -216,6 +229,8 @@ export function useCameraControls({
     }
   }, [
     gpsCamera,
+    displayMotion,
+    displayNow,
     getFollowDeg,
     mapOrientationMode,
     phoneReady,
@@ -244,6 +259,28 @@ export function useCameraControls({
     [mapOrientationMode, perspectiveEnabled, phoneReady],
   )
 
+  const sampleLiveDisplay = useCallback(() => {
+    if (
+      !displayActive ||
+      historyActive ||
+      controllerStateRef.current.mode.kind !== 'liveFollow' ||
+      previewPanActiveRef.current
+    )
+      return null
+    const center = displayMotion.position(displayNow())
+    return {
+      ...(center ? { center } : {}),
+      ...(mapOrientationMode === 'gpsHeading'
+        ? {
+            heading:
+              displayMotion.cameraHeading(displayNow()) ??
+              currentCameraRef.current?.heading ??
+              getFollowDeg(),
+          }
+        : {}),
+    }
+  }, [displayActive, displayMotion, displayNow, getFollowDeg, historyActive, mapOrientationMode])
+
   const applyLiveFollowCamera = useCallback(() => {
     if (!cameraFix) return
     const followCamera = getLiveFollowCamera()
@@ -255,7 +292,8 @@ export function useCameraControls({
       pitch: followCamera.pitch,
       padding: followCamera.padding,
     })
-  }, [cameraFix, engine, getLiveFollowCamera])
+    engine.follow(sampleLiveDisplay)
+  }, [cameraFix, engine, getLiveFollowCamera, sampleLiveDisplay])
 
   const recenterLive = useCallback(
     (options?: { resetPadding?: boolean; animationDuration?: number }) => {
@@ -281,9 +319,10 @@ export function useCameraControls({
       } else {
         engine.setTarget(target)
       }
+      engine.follow(sampleLiveDisplay)
       onHeadingChange(followCamera.heading)
     },
-    [cameraFix, engine, enterCameraMode, getLiveFollowCamera, onHeadingChange],
+    [cameraFix, engine, enterCameraMode, getLiveFollowCamera, onHeadingChange, sampleLiveDisplay],
   )
 
   useEffect(() => {
@@ -362,6 +401,22 @@ export function useCameraControls({
     liveFollowUpdatesEnabled,
     previewGestures.previewPanActiveRef,
   ])
+
+  const motionConfig = useLiveMotionSettings((state) => state.config)
+  useEffect(
+    () =>
+      engine.configureOmega({
+        center: motionConfig.cameraPositionOmega,
+        heading: mapOrientationMode === 'gpsHeading' ? motionConfig.cameraHeadingOmega : 8,
+      }),
+    [engine, mapOrientationMode, motionConfig],
+  )
+
+  useEffect(() => {
+    engine.follow(displayActive && !historyActive && followGps ? sampleLiveDisplay : null)
+    if (!displayActive) engine.stop()
+    return () => engine.follow(null)
+  }, [displayActive, engine, followGps, historyActive, sampleLiveDisplay])
 
   // Every orientation change has to reach the camera, not only the ones that enter or leave GPS
   // heading. Compass drives the heading straight into the engine, so switching away from it leaves

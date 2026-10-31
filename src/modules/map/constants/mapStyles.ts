@@ -3,6 +3,7 @@ import { MapTrifoldIcon, MountainsIcon, PlanetIcon } from 'phosphor-react-native
 import { theme } from '@/constants/theme'
 
 export const MAP_DEFAULTS = {
+  userPositionLayerId: 'center-gps-puck-core',
   fallbackCoordinate: [15.0, 54.0] as [number, number],
   fallbackZoom: 3.2,
   persistedGpsFallbackZoom: 13,

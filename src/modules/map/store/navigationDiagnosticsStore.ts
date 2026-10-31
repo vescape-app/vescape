@@ -1,7 +1,9 @@
 import { create } from 'zustand'
+import type { MotionDiagnostics } from '@/modules/map/lib/liveMotion/motion'
 import type { LocationEvent } from 'vescape-core'
 
 export interface NavigationDiagnosticsState {
+  motion: MotionDiagnostics | null
   showProjectionConnector: boolean
   setShowProjectionConnector: (show: boolean) => void
   gpsFix: LocationEvent | null
@@ -41,6 +43,7 @@ const INITIAL_SNAPSHOT: NavigationDiagnosticsSnapshot = {
 
 export const useNavigationDiagnosticsStore = create<NavigationDiagnosticsState>((set) => ({
   ...INITIAL_SNAPSHOT,
+  motion: null,
   showProjectionConnector: false,
   setShowProjectionConnector(show) {
     set({ showProjectionConnector: show })

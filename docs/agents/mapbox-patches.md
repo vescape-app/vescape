@@ -116,3 +116,12 @@ cd android && ./gradlew :app:compileDebugKotlin
 
 On a device, pinch and release quickly in map mode. Zoom must keep decelerating while pitch follows
 the changing zoom. Also verify normal recentering and navigation-mode camera animations.
+
+## Linear point animator endpoints
+
+`MovePointShapeAnimator.moveTo({ coordinate, durationMs })` remains the stock API. The patch fixes
+two generic interpolation defects on both platforms: compute progress from the current animation
+age (upstream used the previous frame's progress time), and land exactly on the target at expiry
+(upstream stopped on the previous frame). No GPS, speed, prediction or correction logic lives here.
+The production point adapter sends linear segments only on input changes and segment boundaries.
+Native rebuilds are required after changing this patch.

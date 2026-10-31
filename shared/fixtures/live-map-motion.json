@@ -1,0 +1,1148 @@
+{
+  "scenarios": [
+    {
+      "name": "linear correction without Board and mid-segment retarget",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "sample",
+          "now": 1250,
+          "eastM": 2.5
+        },
+        {
+          "op": "sample",
+          "now": 1500,
+          "eastM": 5
+        },
+        {
+          "op": "fix",
+          "now": 1500,
+          "eastM": 20
+        },
+        {
+          "op": "sample",
+          "now": 1750,
+          "eastM": 8.75,
+          "cadenceMs": 1000
+        }
+      ]
+    },
+    {
+      "name": "braking, lateral correction and bounded overshoot recovery",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5.555555555555556
+        },
+        {
+          "op": "speed",
+          "now": 1300,
+          "mps": 2.777777777777778
+        },
+        {
+          "op": "sample",
+          "now": 1300,
+          "eastM": 3.833333333333333
+        },
+        {
+          "op": "speed",
+          "now": 1600,
+          "mps": 0
+        },
+        {
+          "op": "sample",
+          "now": 1600,
+          "eastM": 7.25
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "eastM": 11.25
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 10.5,
+          "northM": 1
+        },
+        {
+          "op": "sample",
+          "now": 2500,
+          "eastM": 11.25,
+          "northM": 0.5,
+          "recovering": false
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 10.5,
+          "northM": 1
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 10.5,
+          "northM": 1
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 10.5,
+          "northM": 1
+        },
+        {
+          "op": "sample",
+          "now": 5500,
+          "eastM": 10.875,
+          "northM": 1,
+          "recovering": true
+        },
+        {
+          "op": "sample",
+          "now": 6000,
+          "eastM": 10.5,
+          "northM": 1
+        }
+      ]
+    },
+    {
+      "name": "real reversal and independent longer camera direction window",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 20
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "eastM": 10,
+          "heading": 90,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 3000,
+          "mps": -5
+        },
+        {
+          "op": "sample",
+          "now": 3250,
+          "eastM": 16.875,
+          "heading": 270,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 9.5
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 9.0
+        },
+        {
+          "op": "fix",
+          "now": 6000,
+          "eastM": 8.5
+        },
+        {
+          "op": "fix",
+          "now": 7000,
+          "eastM": 8.0
+        },
+        {
+          "op": "fix",
+          "now": 8000,
+          "eastM": 7.5
+        },
+        {
+          "op": "fix",
+          "now": 9000,
+          "eastM": 7.0
+        },
+        {
+          "op": "fix",
+          "now": 10000,
+          "eastM": 6.5
+        },
+        {
+          "op": "fix",
+          "now": 11000,
+          "eastM": 6.0
+        },
+        {
+          "op": "fix",
+          "now": 12000,
+          "eastM": 5.5
+        },
+        {
+          "op": "fix",
+          "now": 13000,
+          "eastM": 5.0
+        },
+        {
+          "op": "fix",
+          "now": 14000,
+          "eastM": 4.5
+        },
+        {
+          "op": "fix",
+          "now": 15000,
+          "eastM": 4.0
+        },
+        {
+          "op": "fix",
+          "now": 16000,
+          "eastM": 3.5
+        },
+        {
+          "op": "fix",
+          "now": 17000,
+          "eastM": 3.0
+        },
+        {
+          "op": "fix",
+          "now": 18000,
+          "eastM": 2.5
+        },
+        {
+          "op": "fix",
+          "now": 19000,
+          "eastM": 2.0
+        },
+        {
+          "op": "sample",
+          "now": 19000,
+          "cameraHeading": 270
+        }
+      ]
+    },
+    {
+      "name": "invalid fixes do not anchor cadence; gap clears direction",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "fix",
+          "now": 1500,
+          "eastM": 999,
+          "accuracyM": 100,
+          "accepted": false
+        },
+        {
+          "op": "fix",
+          "now": 1600,
+          "eastM": 9,
+          "timestamp": 900,
+          "accepted": false
+        },
+        {
+          "op": "fix",
+          "now": 1800,
+          "eastM": 999,
+          "timestamp": 1700,
+          "ageMs": 4000,
+          "accepted": false
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 20
+        },
+        {
+          "op": "sample",
+          "now": 2500,
+          "eastM": 15,
+          "cadenceMs": 1000
+        },
+        {
+          "op": "fix",
+          "now": 10000,
+          "eastM": 100
+        },
+        {
+          "op": "sample",
+          "now": 10500,
+          "eastM": 60,
+          "heading": null,
+          "cadenceMs": 1000
+        }
+      ]
+    },
+    {
+      "name": "clustered noise expires direction, slow travel recovers, unknown heading holds",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "sample",
+          "now": 1000,
+          "heading": 90,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 10.2
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 9.8
+        },
+        {
+          "op": "sample",
+          "now": 3000,
+          "heading": null,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 10.2
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 9.8
+        },
+        {
+          "op": "fix",
+          "now": 6000,
+          "eastM": 10.2
+        },
+        {
+          "op": "fix",
+          "now": 7000,
+          "eastM": 11
+        },
+        {
+          "op": "fix",
+          "now": 8000,
+          "eastM": 12.5
+        },
+        {
+          "op": "sample",
+          "now": 8000,
+          "heading": 90
+        }
+      ]
+    },
+    {
+      "name": "settings and speed expiry preserve correction clock",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5.555555555555556
+        },
+        {
+          "op": "config",
+          "now": 1500,
+          "predictionStrength": 0
+        },
+        {
+          "op": "sample",
+          "now": 1500,
+          "eastM": 6.388888888888889,
+          "prediction": 0
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "eastM": 11.38888888888889
+        },
+        {
+          "op": "sample",
+          "now": 10000,
+          "eastM": 11.38888888888889
+        },
+        {
+          "op": "reset",
+          "now": 11000,
+          "source": 2
+        },
+        {
+          "op": "fix",
+          "now": 11000,
+          "eastM": 999,
+          "source": 1,
+          "accepted": false
+        },
+        {
+          "op": "speed",
+          "now": 11000,
+          "mps": 50,
+          "source": 1,
+          "accepted": false
+        },
+        {
+          "op": "fix",
+          "now": 11000,
+          "eastM": 50,
+          "timestamp": 0
+        },
+        {
+          "op": "sample",
+          "now": 12000,
+          "eastM": 50,
+          "heading": null
+        }
+      ]
+    },
+    {
+      "name": "one noisy backward fix does not reverse direction while braking",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5.555555555555556
+        },
+        {
+          "op": "speed",
+          "now": 1300,
+          "mps": 2.777777777777778
+        },
+        {
+          "op": "speed",
+          "now": 1600,
+          "mps": 0
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "eastM": 11.25
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 7
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "eastM": 11.25,
+          "heading": 90
+        },
+        {
+          "op": "sample",
+          "now": 2500,
+          "eastM": 11.25,
+          "heading": 90
+        }
+      ]
+    },
+    {
+      "name": "consistent poor-accuracy disagreement recovers while inconsistent noise does not",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5.555555555555556
+        },
+        {
+          "op": "speed",
+          "now": 1900,
+          "mps": 0
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "eastM": 12.5
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 11,
+          "accuracyM": 6
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 11,
+          "accuracyM": 6
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 11,
+          "accuracyM": 6
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 11,
+          "accuracyM": 6
+        },
+        {
+          "op": "sample",
+          "now": 5000,
+          "recovering": true
+        },
+        {
+          "op": "reset",
+          "now": 6000,
+          "source": 2
+        },
+        {
+          "op": "fix",
+          "now": 6000,
+          "eastM": 0,
+          "source": 2
+        },
+        {
+          "op": "fix",
+          "now": 7000,
+          "eastM": 10,
+          "source": 2
+        },
+        {
+          "op": "speed",
+          "now": 7000,
+          "mps": 5.555555555555556,
+          "source": 2
+        },
+        {
+          "op": "speed",
+          "now": 7900,
+          "mps": 0,
+          "source": 2
+        },
+        {
+          "op": "fix",
+          "now": 8000,
+          "eastM": 11,
+          "accuracyM": 6,
+          "source": 2
+        },
+        {
+          "op": "fix",
+          "now": 9000,
+          "eastM": 17,
+          "accuracyM": 6,
+          "source": 2
+        },
+        {
+          "op": "fix",
+          "now": 10000,
+          "eastM": 10,
+          "accuracyM": 6,
+          "source": 2
+        },
+        {
+          "op": "fix",
+          "now": 11000,
+          "eastM": 16,
+          "accuracyM": 6,
+          "source": 2
+        },
+        {
+          "op": "sample",
+          "now": 11000,
+          "recovering": false
+        }
+      ]
+    },
+    {
+      "name": "genuine half-metre-per-second movement accumulates across the recent window",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0.0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 0.5
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 1.0
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 1.5
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 2.0
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 2.5
+        },
+        {
+          "op": "sample",
+          "now": 5000,
+          "heading": 90,
+          "cameraHeading": 90
+        }
+      ]
+    },
+    {
+      "name": "camera confirms sustained slow reverse after net displacement without applying camera confirmation to point motion",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10,
+          "accuracyM": 3
+        },
+        {
+          "op": "sample",
+          "now": 1000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 9.5,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 9.0,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 8.5,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 8.0,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 6000,
+          "eastM": 7.5,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 7000,
+          "eastM": 7.0,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 8000,
+          "eastM": 6.5,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 9000,
+          "eastM": 6.0,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 10000,
+          "eastM": 5.5,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 11000,
+          "eastM": 5.0,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 12000,
+          "eastM": 4.5,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 13000,
+          "eastM": 4.0,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 14000,
+          "eastM": 3.5,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 15000,
+          "eastM": 3.0,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 16000,
+          "eastM": 2.5,
+          "accuracyM": 3
+        },
+        {
+          "op": "fix",
+          "now": 17000,
+          "eastM": 2.0,
+          "accuracyM": 3
+        },
+        {
+          "op": "sample",
+          "now": 17000,
+          "cameraHeading": 270
+        }
+      ]
+    },
+    {
+      "name": "traffic light rocking holds camera orientation and a source reset clears only pending evidence",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 9
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 10.5
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 9.5
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 10.2
+        },
+        {
+          "op": "sample",
+          "now": 5000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "reset",
+          "now": 6000,
+          "source": 2
+        },
+        {
+          "op": "fix",
+          "now": 6000,
+          "eastM": 0,
+          "source": 2
+        },
+        {
+          "op": "sample",
+          "now": 6000,
+          "cameraHeading": 90
+        }
+      ]
+    },
+    {
+      "name": "camera requires new meaningful movement instead of repeated displaced fixes",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0,
+          "northM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10,
+          "northM": 0
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 10,
+          "northM": 4
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 10,
+          "northM": 4
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 10,
+          "northM": 4
+        },
+        {
+          "op": "sample",
+          "now": 4000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 10,
+          "northM": 8
+        },
+        {
+          "op": "sample",
+          "now": 5000,
+          "cameraHeading": 0
+        }
+      ]
+    },
+    {
+      "name": "GPS gap clears pending camera evidence but retains confirmed heading",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0,
+          "northM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10,
+          "northM": 0
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 10,
+          "northM": 4
+        },
+        {
+          "op": "fix",
+          "now": 20000,
+          "eastM": 10,
+          "northM": 4
+        },
+        {
+          "op": "sample",
+          "now": 20000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 21000,
+          "eastM": 10,
+          "northM": 8
+        },
+        {
+          "op": "sample",
+          "now": 21000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 22000,
+          "eastM": 10,
+          "northM": 12
+        },
+        {
+          "op": "sample",
+          "now": 22000,
+          "cameraHeading": 0
+        }
+      ]
+    },
+    {
+      "name": "first camera direction cannot bridge a GPS gap",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0,
+          "northM": 0
+        },
+        {
+          "op": "fix",
+          "now": 20000,
+          "eastM": 100,
+          "northM": 0
+        },
+        {
+          "op": "sample",
+          "now": 20000,
+          "cameraHeading": null
+        },
+        {
+          "op": "fix",
+          "now": 21000,
+          "eastM": 110,
+          "northM": 0
+        },
+        {
+          "op": "sample",
+          "now": 21000,
+          "cameraHeading": 90
+        }
+      ]
+    },
+    {
+      "name": "camera window 2 controls curved travel heading",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "config",
+          "now": 0,
+          "cameraWindow": 2
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0,
+          "northM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10,
+          "northM": 0
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 10,
+          "northM": 10
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 20,
+          "northM": 10
+        },
+        {
+          "op": "sample",
+          "now": 3000,
+          "cameraHeading": 90
+        }
+      ]
+    },
+    {
+      "name": "camera window 3 controls curved travel heading",
+      "events": [
+        {
+          "op": "reset",
+          "now": 0,
+          "source": 1
+        },
+        {
+          "op": "config",
+          "now": 0,
+          "cameraWindow": 3
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0,
+          "northM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10,
+          "northM": 0
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 10,
+          "northM": 10
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 20,
+          "northM": 10
+        },
+        {
+          "op": "sample",
+          "now": 3000,
+          "cameraHeading": 45
+        }
+      ]
+    }
+  ]
+}

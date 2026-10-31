@@ -15,7 +15,7 @@ struct WatchMapView: Equatable {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `MAP_ZOOM_EASE_MS`
   static let zoomEase: TimeInterval = 0.35
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `MAP_TURN_EASE_MS`
-  static let turnEase: TimeInterval = 0.3
+  static let turnEase: TimeInterval = 3 / MotionConfig().cameraHeadingOmega
 
   private(set) var motion = WatchMapMotion()
   private var span: Ease
@@ -39,12 +39,26 @@ struct WatchMapView: Equatable {
   /// course holds the last one (a stop, an approximate fix). Without `animate` it lands at once.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `rememberWatchMapView`
-  mutating func retarget(spanM: Double, courseDeg: Double?, at now: Date, animate: Bool, position: WatchMapPosition? = nil) {
-    motion = motion.retarget(position, at: now, animate: animate)
+  mutating func retarget(spanM: Double, courseDeg: Double?, at now: Date, animate: Bool, position: WatchMapPosition? = nil, facts: WatchMotionFacts? = nil, speed: Double? = nil, config: MotionConfig = MotionConfig()) {
+    var heading = courseDeg
+    if let facts, let position, animate {
+      let display = motion.display ?? WatchDisplayMotion()
+      display.configure(config, local: now.timeIntervalSince1970 * 1000)
+      if display.accept(position, facts: facts, speed: speed, now: now.timeIntervalSince1970 * 1000) {
+        if display.position(now.timeIntervalSince1970 * 1000) == nil {
+          motion = motion.retarget(position, at: now, animate: animate)
+          return
+        }
+        let previousEnd = motion.endsAt
+        motion = WatchMapMotion(position: position, display: display)
+        motion.endsAt = max(previousEnd, Date(timeIntervalSince1970: (display.movingUntil(now.timeIntervalSince1970 * 1000) + 3000) / 1000))
+      }
+      heading = display.heading(now.timeIntervalSince1970 * 1000)
+    } else { motion = motion.retarget(position, at: now, animate: animate) }
     span.retarget(spanM, at: now, duration: animate ? Self.zoomEase : 0, curve: fastOutSlowIn)
-    if let courseDeg {
+    if let courseDeg = heading {
       let from = course.value(at: now) { $0 }
-      course.retarget(from + shortestAngleDelta(from: from, to: courseDeg), at: now, duration: animate ? Self.turnEase : 0) { $0 }
+      course.retarget(from + shortestAngleDelta(from: from, to: courseDeg), at: now, duration: animate ? 3 / config.cameraHeadingOmega : 0) { $0 }
     }
   }
 }
@@ -115,11 +129,20 @@ func shortestAngleDelta(from: Double, to: Double) -> Double {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `WatchMapMotion`
 struct WatchMapMotion: Equatable {
   var position: WatchMapPosition?
+  var display: WatchDisplayMotion?
+  init(position: WatchMapPosition? = nil, display: WatchDisplayMotion? = nil) { self.position = position; self.display = display }
   private var from = WatchTrailPoint(eastM: 0, northM: 0)
   private var startsAt = Date.distantPast
-  private(set) var endsAt = Date.distantPast
+  fileprivate(set) var endsAt = Date.distantPast
 
   func offset(at date: Date) -> WatchTrailPoint {
+    if let display {
+      // Settled timelines use distantFuture; land there without integrating an artificial clock.
+      if date == .distantFuture {
+        return display.offset(endsAt.timeIntervalSince1970 * 1000)
+      }
+      return display.offset(date.timeIntervalSince1970 * 1000)
+    }
     let remaining = endsAt > startsAt ? min(1, max(0, endsAt.timeIntervalSince(date) / endsAt.timeIntervalSince(startsAt))) : 0
     return WatchTrailPoint(eastM: from.eastM * remaining, northM: from.northM * remaining)
   }
@@ -154,4 +177,64 @@ func movingTrail(_ points: [WatchTrailPoint], offset: WatchTrailPoint) -> [Watch
     end -= 1
   }
   return Array(shifted.prefix(end)) + [WatchTrailPoint(eastM: 0, northM: 0)]
+}
+
+/// Thin measured-frame adapter. The controller alone integrates correction/prediction; camera
+/// response stays local and deliberately slower than the point.
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `WatchDisplayMotion`
+final class WatchDisplayMotion: Equatable {
+  static func == (a: WatchDisplayMotion, b: WatchDisplayMotion) -> Bool { a === b }
+  let model = LiveGpsMotion()
+  private let clock = WatchMotionClock()
+  private var source = -1.0
+  private var localAnchor = 0.0, displayAnchor = 0.0, rate = 1.0
+  private func displayNow(_ local: Double) -> Double { displayAnchor + (local - localAnchor) * rate }
+  func position(_ local: Double) -> (longitude: Double, latitude: Double)? { model.position(displayNow(local)) }
+  func heading(_ local: Double) -> Double? { model.cameraHeading(displayNow(local)) }
+  func movingUntil(_ local: Double) -> Double { let at = displayNow(local); return local + (model.movingUntil(at) - at) / rate }
+  func configure(_ config: MotionConfig, local: Double) { model.configure(config, now: displayNow(local)) }
+  private(set) var anchor: WatchMapPosition?
+  private var camera: MotionVector?, origin: WatchMapPosition?
+  private var velocity = MotionVector(), lastTarget = MotionVector()
+  private var time = 0.0
+
+  @discardableResult
+  func accept(_ position: WatchMapPosition, facts: WatchMotionFacts, speed: Double?, now: Double) -> Bool {
+    guard let delay = clock.accept(facts, now: now) else { return false }
+    let at = displayNow(now)
+    displayAnchor = at; localAnchor = now; rate = facts.clockRate
+    if facts.sourceId != source {
+      source = facts.sourceId; model.reset(source: source, now: at); camera = nil; origin = position
+    }
+    model.accept(MotionFix(longitude: position.longitude, latitude: position.latitude, timestamp: facts.fixTimestamp, accuracyM: facts.accuracyM), receivedAt: at, ageMs: facts.gpsAgeMs + delay * rate, source: source)
+    model.updateSpeed(speed.map { $0 / 3.6 }, revision: facts.sentAt, receivedAt: at, source: source, ageMs: facts.boardAgeMs + delay * rate)
+    anchor = position
+    return true
+  }
+  private func sample(_ now: Double) -> (point: MotionVector, camera: MotionVector) {
+    guard let coordinate = position(now), let origin else { return (MotionVector(), MotionVector()) }
+    let point = WatchMapPosition(latitude: coordinate.latitude, longitude: coordinate.longitude).offset(from: origin)
+    let target = MotionVector(x: point.eastM, y: point.northM)
+    guard let current = camera else { camera = target; lastTarget = target; time = now; return (target, target) }
+    let dt = (now - time) / 1000
+    guard dt > 0 else { return (target, current) }
+    let omega = model.config.cameraPositionOmega
+    let ramp = (target + lastTarget * -1) * (1 / dt)
+    let a = current + lastTarget * -1 + ramp * (2 / omega)
+    let b = velocity + ramp * -1 + a * omega
+    let decay = exp(-omega * dt)
+    let next = target + ramp * (-2 / omega) + (a + b * dt) * decay
+    velocity = ramp + (b + (a + b * dt) * -omega) * decay
+    camera = next; lastTarget = target; time = now
+    return (target, next)
+  }
+  func offset(_ now: Double) -> WatchTrailPoint {
+    guard let origin, let anchor else { return WatchTrailPoint(eastM: 0, northM: 0) }
+    let camera = sample(now).camera, anchorOffset = anchor.offset(from: origin)
+    return WatchTrailPoint(eastM: anchorOffset.eastM - camera.x, northM: anchorOffset.northM - camera.y)
+  }
+  func riderOffset(_ now: Double) -> WatchTrailPoint {
+    let (point, camera) = sample(now)
+    return WatchTrailPoint(eastM: point.x - camera.x, northM: point.y - camera.y)
+  }
 }

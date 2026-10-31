@@ -34,6 +34,9 @@ internal data class VescLiveStateSnapshot(
     val remoteTiltOwner: RemoteInputOwner,
     val linkIntegrity: LinkIntegrity,
     val settings: AppSettings,
+    val displaySourceId: Long = 0,
+    val displayClockMs: Long = 0,
+    val displayClockRate: Double = 1.0,
 )
 
 /**
@@ -87,6 +90,9 @@ internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> 
         "gps" to mapOf(
             "phase" to snapshot.gpsPhase.wireValue,
             "mode" to snapshot.gpsMode.slug,
+            "displaySourceId" to snapshot.displaySourceId,
+            "displayClockMs" to snapshot.displayClockMs,
+            "displayClockRate" to snapshot.displayClockRate,
             "latestFix" to snapshot.latestPreciseLocation?.toMap(),
             "latestApproximateFix" to snapshot.latestLocation?.toMap(),
             "latestPreciseFix" to snapshot.latestPreciseLocation?.toMap(),

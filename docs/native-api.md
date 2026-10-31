@@ -197,6 +197,13 @@ names the winner (`none | manual | sensor | move`). See [remote-tilt.md](./remot
 | `startLocationUpdates()` | sync | void. Emits `onLocation`. Independent of board session |
 | `stopLocationUpdates()`  | sync | void                                                   |
 
+`onLocation` and the GPS live-state snapshot include display-only source identity, source clock and
+clock rate. These adapt replay at the renderer boundary; measured fix timestamps stay unchanged.
+
+`setWatchDisplayConfig(config)` sends session-only numeric developer controls through the existing
+watch settings channel. It does not persist app settings or transport motion state. See
+[Live map display motion](./map.md).
+
 ## Board session
 
 | fn                                  | sync  | returns                                                                                                                                                                                                                  |

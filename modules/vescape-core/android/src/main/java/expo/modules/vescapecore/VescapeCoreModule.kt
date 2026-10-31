@@ -564,6 +564,8 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshLocationDemand`
     Function("refreshLocationDemand") { refreshLocationDemand() }
     registerGroupRide()
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setWatchDisplayConfig`
+    Function("setWatchDisplayConfig") { json: String -> CoreForegroundService.configureWatchDisplay(json) }
     Function("setWatchRouteSpanM") { spanM: Double? ->
       WatchRouteMirror.viewportSpanM = spanM
     }
