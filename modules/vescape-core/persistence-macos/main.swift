@@ -477,6 +477,13 @@ try require(total["distanceM"] as? Double == historyExpected["profileDistanceM"]
 try require(total["topSpeedKmh"] as? Double == historyExpected["profileTopSpeedKmh"] as? Double, "profile top speed")
 try require(total["avgSpeedKmh"] as? Double == historyExpected["profileAvgSpeedKmh"] as? Double, "profile average speed")
 try require((populatedStats["months"] as! [[String: Int]]).count == int(historyExpected["profileMonthCount"]), "profile months")
+// A record's ride id opens that ride, including one that is not the newest.
+let currentRideId = currentSession["id"] as! String
+let olderRideId = (secondPage["sessions"] as! [[String: Any?]]).first!["id"] as! String
+try require(total["longestRideId"] as? String == currentRideId, "longest ride id")
+try require(try history.getSession(currentRideId)?["id"] as? String == currentRideId, "current ride by id")
+try require(try history.getSession(olderRideId)?["id"] as? String == olderRideId, "older ride by id")
+try require(try history.getSession("\(boardId):1:2") == nil, "missing ride by id")
 let selectedMonth = populatedStats["selectedMonth"] as! [String: Int]
 try require(selectedMonth["year"] == int(historyExpected["selectedYear"]), "selected year")
 try require(selectedMonth["month"] == int(historyExpected["selectedMonth"]), "selected month")

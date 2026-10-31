@@ -833,6 +833,17 @@ class VescapeCoreModule : Module() {
         throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
       }
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideSession`
+    AsyncFunction("getRideSession") Coroutine { id: String ->
+      RecordingStorageFailure.requireAvailable()
+      try {
+        RideHistoryRepository.get(context.applicationContext).getSession(id)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_session_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride", error)
+      }
+    }
     AsyncFunction("getTelemetrySamples") Coroutine { options: Map<String, Any?> ->
       RecordingStorageFailure.requireAvailable()
       try { TelemetryRepository.get(context.applicationContext).getSamples(options) }

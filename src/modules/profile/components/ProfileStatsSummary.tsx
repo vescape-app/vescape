@@ -5,7 +5,10 @@ import { ChartLineUpIcon, WarningCircleIcon } from 'phosphor-react-native'
 import { Placeholder } from '@/components/base/Placeholder'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
-import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems'
+import {
+  useProfileStatItems,
+  type OpenRecordRide,
+} from '@/modules/profile/hooks/useProfileStatItems'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
 import { formatMonthLabel } from '@/modules/profile/lib/profileStats'
@@ -17,18 +20,28 @@ interface ProfileStatsSummaryProps {
   active?: boolean
   /** Action pinned opposite the scope switch, e.g. a link into the full stats screen. */
   action?: ReactNode
+  /** Tapping Top speed or Longest ride opens the ride that set it. */
+  onOpenRecordRide?: OpenRecordRide
 }
 
 /**
  * The rider's headline totals: four figures, switchable between all time and the current month.
  * The full breakdown lives on the Profile Stats screen; this is the glance version.
  */
-export function ProfileStatsSummary({ active = true, action }: ProfileStatsSummaryProps) {
+export function ProfileStatsSummary({
+  active = true,
+  action,
+  onOpenRecordRide,
+}: ProfileStatsSummaryProps) {
   const { total, monthly, selectedMonth, loading, error, empty } = useProfileStats(active)
   const surface = useResolvedSecondaryWidgetSurface()
   const [scope, setScope] = useState<Scope>('total')
   const stats = scope === 'total' ? total : monthly
-  const items = useProfileStatItems(stats, ['topSpeed', 'distance', 'longestRide', 'rides'])
+  const items = useProfileStatItems(
+    stats,
+    ['topSpeed', 'distance', 'longestRide', 'rides'],
+    onOpenRecordRide,
+  )
 
   return (
     <View

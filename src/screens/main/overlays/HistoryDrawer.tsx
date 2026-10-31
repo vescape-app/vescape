@@ -25,6 +25,8 @@ import { useFavoriteStore, type Favorite } from '@/modules/history/store/favorit
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { ProfileStatsSummary } from '@/modules/profile/components/ProfileStatsSummary'
 import { routes } from '@/navigation/routes'
+import { openRecordRide } from '@/screens/profileStats/openRecordRide'
+import type { ProfileRecordKey } from '@/modules/profile/hooks/useProfileStatItems'
 
 type ListMode = 'rides' | 'favorites' | null
 
@@ -94,6 +96,14 @@ export function HistoryDrawer({
     [onClose, onOpenRide],
   )
 
+  const openRecord = useCallback(
+    (rideId: string, record: ProfileRecordKey) => {
+      onClose()
+      openRecordRide(rideId, record)
+    },
+    [onClose],
+  )
+
   const openFavorite = useCallback(
     (favorite: Favorite) => {
       setListMode(null)
@@ -139,6 +149,7 @@ export function HistoryDrawer({
         <View style={styles.content} testID="history-drawer">
           <ProfileStatsSummary
             active={visible}
+            onOpenRecordRide={openRecord}
             action={
               <Button
                 label="Details"

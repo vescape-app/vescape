@@ -13,6 +13,8 @@ export const EMPTY_PROFILE_STATS: ProfileStats = {
   longestRideM: null,
   batteryUsedWh: null,
   batteryRegenWh: null,
+  topSpeedRideId: null,
+  longestRideId: null,
 }
 
 /**

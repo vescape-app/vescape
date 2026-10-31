@@ -335,6 +335,10 @@ function getTelemetryHistory(options: TelemetryHistoryOptions): TelemetryMinuteB
   return buckets
 }
 
+function getRideSession(id: string): RideHistorySession | null {
+  return getRideHistoryPage({}).sessions.find((session) => session.id === id) ?? null
+}
+
 function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): RideHistoryPage {
   const buckets = getTelemetryHistory({ cursorBeforeMs: options.cursorBeforeMs }).sort(
     (a, b) => b.startAtMs - a.startAtMs,
@@ -894,6 +898,8 @@ export const e2eFake = {
   getTelemetryHistory,
 
   getRideHistoryPage,
+
+  getRideSession,
 
   getHistoryRange,
 

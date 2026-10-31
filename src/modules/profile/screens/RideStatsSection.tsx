@@ -5,14 +5,22 @@ import { ChartLineUpIcon } from 'phosphor-react-native'
 
 import { Placeholder } from '@/components/base/Placeholder'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
-import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems'
+import {
+  useProfileStatItems,
+  type OpenRecordRide,
+} from '@/modules/profile/hooks/useProfileStatItems'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
 import { formatMonthLabel, getAdjacentMonths } from '@/modules/profile/lib/profileStats'
 import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
 import { Select, type SelectOption } from '@/components/forms/Select'
 import { theme } from '@/constants/theme'
 
-export function RideStatsSection() {
+interface RideStatsSectionProps {
+  /** Tapping Top speed or Longest ride opens the ride that set it. */
+  onOpenRecordRide?: OpenRecordRide
+}
+
+export function RideStatsSection({ onOpenRecordRide }: RideStatsSectionProps) {
   const {
     total,
     monthly,
@@ -24,8 +32,8 @@ export function RideStatsSection() {
     empty,
     selectMonth,
   } = useProfileStats()
-  const totalItems = useProfileStatItems(total)
-  const monthItems = useProfileStatItems(monthly)
+  const totalItems = useProfileStatItems(total, undefined, onOpenRecordRide)
+  const monthItems = useProfileStatItems(monthly, undefined, onOpenRecordRide)
   const adjacent = useMemo(() => getAdjacentMonths(months, selectedMonth), [months, selectedMonth])
 
   const monthOptions: SelectOption[] = useMemo(

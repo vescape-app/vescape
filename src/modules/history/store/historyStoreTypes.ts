@@ -8,12 +8,15 @@ import type {
 } from 'vescape-core'
 
 import type { HistorySession } from '@/modules/history/lib/sessions'
+import type { RideFocus } from '@/modules/history/lib/chartFocus'
 
 export interface HistoryState {
   blocks: TelemetryMinuteBucket[]
   sessions: HistorySession[]
   selectedBlock: TelemetryMinuteBucket | null
   selectedSession: HistorySession | null
+  /** Where the selected ride should open once its samples land; cleared once applied. */
+  sessionFocus: RideFocus | null
   samples: TelemetrySample[]
   gpsSamples: HistoryGpsSample[]
   sessionSamples: TelemetrySample[]
@@ -39,7 +42,9 @@ export interface HistoryActions {
   /** Re-read every loaded ride in place after native rewrote summaries; keeps the selection. */
   reloadLoadedSessions: () => Promise<void>
   selectBlock: (block: TelemetryMinuteBucket | null) => Promise<void>
-  selectSession: (session: HistorySession | null) => Promise<void>
+  selectSession: (session: HistorySession | null, focus?: RideFocus | null) => Promise<void>
+  /** The panel applied `sessionFocus`. */
+  clearSessionFocus: () => void
   refreshSummary: () => Promise<void>
   regroupSessions: () => void
   removeSelectedSession: () => Promise<void>
@@ -53,6 +58,7 @@ export const INITIAL_HISTORY_STATE: HistoryState = {
   sessions: [],
   selectedBlock: null,
   selectedSession: null,
+  sessionFocus: null,
   samples: [],
   gpsSamples: [],
   sessionSamples: [],
