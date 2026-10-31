@@ -20,6 +20,14 @@ internal class RideHistoryRepository private constructor(private val context: Co
     }
   }
 
+  suspend fun getSession(id: String): Map<String, Any?>? {
+    val minutes = AppDataRepository.get(context).getSettings()["rideSplitGapMinutes"] as? Number
+    val gapMs = (minutes?.toLong() ?: DEFAULT_RIDE_SPLIT_GAP_MINUTES.toLong()) * 60_000L
+    return database.useReaderConnection { reader ->
+      reader.deferredTransaction { readRideSession(database.vescapeDao(), id, gapMs) }
+    }
+  }
+
   companion object {
     @Volatile private var instance: RideHistoryRepository? = null
 

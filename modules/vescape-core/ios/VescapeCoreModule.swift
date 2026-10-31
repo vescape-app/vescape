@@ -806,6 +806,16 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideSession`
+    AsyncFunction("getRideSession") { (id: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try RideHistoryRepository.shared.getSession(id)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_session_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride", cause: error)
+      }
+    }
+
     AsyncFunction("getTelemetrySamples") { (options: [String: Any], promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try TelemetryRepository.shared.getSamples(options)) }

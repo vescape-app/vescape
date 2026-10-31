@@ -1,8 +1,9 @@
 import type { HistorySession } from '@/modules/history/store/historyStore'
+import type { RideFocus } from '@/navigation/links'
 import type { HistoryTab } from '@/screens/main/mainScreenStore'
 
 export type HistoryTarget =
-  | { kind: 'ride'; session: HistorySession }
+  | { kind: 'ride'; session: HistorySession; focus?: RideFocus }
   | { kind: 'favorite'; favoriteId: string; session: HistorySession }
 
 interface HistoryTargetActions {
@@ -12,7 +13,7 @@ interface HistoryTargetActions {
   closeFavorite: () => void
   setHistorySheetVisible: (visible: boolean) => void
   setOpenMediaAssetId: (id: string | null) => void
-  selectSession: (session: HistorySession) => Promise<void>
+  selectSession: (session: HistorySession, focus?: RideFocus) => Promise<void>
 }
 
 /** Opens one exact drawer/list target without deriving its identity again after async work. */
@@ -29,7 +30,10 @@ export function openHistoryTarget(
     actions.setHistoryTab('history')
     actions.closeFavorite()
   }
-  const selection = actions.selectSession(target.session)
+  const selection = actions.selectSession(
+    target.session,
+    target.kind === 'ride' ? target.focus : undefined,
+  )
   actions.enterHistory()
   return selection
 }

@@ -27,7 +27,10 @@ function getSessionSampleLimit(session: HistorySession) {
   return Math.max(MIN_SESSION_SAMPLE_LIMIT, session.sampleCount + 1)
 }
 
-type HistorySelectionSlice = Pick<HistoryActions, 'selectBlock' | 'selectSession'>
+type HistorySelectionSlice = Pick<
+  HistoryActions,
+  'selectBlock' | 'selectSession' | 'clearSessionFocus'
+>
 
 type SliceFactory = (
   set: StoreApi<HistoryStore>['setState'],
@@ -74,11 +77,16 @@ export const createHistorySelectionSlice: SliceFactory = (set, get) => ({
     }
   },
 
-  async selectSession(session) {
+  clearSessionFocus() {
+    set({ sessionFocus: null })
+  },
+
+  async selectSession(session, focus = null) {
     const version = ++sessionLoadVersion
     if (!session) {
       set({
         selectedSession: null,
+        sessionFocus: null,
         sessionSamples: [],
         sessionChartSamples: [],
         sessionGpsSamples: [],
@@ -91,6 +99,7 @@ export const createHistorySelectionSlice: SliceFactory = (set, get) => ({
     }
     set({
       selectedSession: session,
+      sessionFocus: focus,
       // Cleared, not held: samples and the ride they belong to have to move together. Keeping the
       // previous ride's samples here leaves the charts deriving series, timeline, ranges and paths
       // for the whole old dataset against the new ride's bounds — a full build whose result is

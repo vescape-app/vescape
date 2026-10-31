@@ -1,6 +1,7 @@
 import { makeMutable } from 'react-native-reanimated'
 
 import type { ChartTimeRange } from '@/components/charts/line/types'
+import type { TelemetrySample } from 'vescape-core'
 
 /**
  * The moment under the finger on the history chart, or `null` when nobody is scrubbing.
@@ -19,3 +20,12 @@ export const scrubHeadMs = makeMutable<number | null>(null)
  * read on the UI thread and only the consumers that must render sample it.
  */
 export const zoomWindowMs = makeMutable<ChartTimeRange | null>(null)
+
+/** When the ride hit its top speed. Absolute, like the bucket `maxAbsSpeed` the record comes from. */
+export function peakSpeedAtMs(samples: readonly TelemetrySample[]): number | null {
+  let peak: TelemetrySample | null = null
+  for (const sample of samples) {
+    if (peak == null || Math.abs(sample.speedKmh) > Math.abs(peak.speedKmh)) peak = sample
+  }
+  return peak?.capturedAtMs ?? null
+}

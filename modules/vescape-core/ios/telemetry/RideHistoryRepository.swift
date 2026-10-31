@@ -133,6 +133,17 @@ internal final class RideHistoryRepository {
     self.gapMsProvider = gapMsProvider
   }
 
+  /// One complete ride by `rideSessionId`, or nil once it no longer exists under that id.
+  /// Pages from just past the ride's end, so the ride is the newest complete one in the window.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `readRideSession`
+  func getSession(_ id: String) throws -> [String: Any?]? {
+    guard let endAtMs = id.split(separator: ":").last.flatMap({ Int64($0) }) else { return nil }
+    // Rides of other Boards may end in the same minute; a few covers them.
+    let page = try getPage(["cursorBeforeMs": endAtMs + 1, "limit": 4])
+    let sessions = (page["sessions"] ?? nil) as? [[String: Any?]] ?? []
+    return sessions.first { ($0["id"] ?? nil) as? String == id }
+  }
+
   /// @parity /modules/vescape-core/src/index.ts `RideHistoryPage`
   func getPage(_ options: [String: Any]) throws -> [String: Any?] {
     let limit = min(maxRidePageSize, max(1, telemetryInt(options["limit"]) ?? 10))
@@ -315,6 +326,12 @@ private func rideDistanceDeltaM(_ bucket: Row) -> Double? {
   return Double(max(0, last - first)) / 100.0
 }
 
+/// Stable Ride id: Board, start and end. A ride that grows gets a new id, so a stale link misses.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `rideSessionId`
+internal func rideSessionId(_ session: RideSessionAggregate) -> String {
+  "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)"
+}
+
 /// @parity /modules/vescape-core/src/index.ts `RideHistorySession`
 internal func rideSessionMap(
   _ session: RideSessionAggregate,
@@ -323,7 +340,7 @@ internal func rideSessionMap(
 ) -> [String: Any?] {
   let average = session.avgSpeedSampleCount > 0 ? session.avgSpeedWeightedSum / Double(session.avgSpeedSampleCount) : 0
   return [
-    "id": "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)",
+    "id": rideSessionId(session),
     "boardId": session.boardId.isEmpty ? nil : session.boardId,
     "boardName": boardNames[session.boardId] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "startAtMs": session.startAtMs, "endAtMs": session.endAtMs, "movingStartAtMs": session.movingStartAtMs,

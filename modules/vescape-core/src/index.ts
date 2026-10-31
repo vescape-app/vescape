@@ -1415,6 +1415,10 @@ export interface ProfileStats {
   longestRideM: number | null
   batteryUsedWh: number | null
   batteryRegenWh: number | null
+  /** `RideHistorySession.id` of the ride that set `topSpeedKmh`; open it with `getRideSession`. */
+  topSpeedRideId: string | null
+  /** `RideHistorySession.id` of the ride that set `longestRideM`, or null when none has a distance. */
+  longestRideId: string | null
 }
 
 export interface ProfileStatsMonth {
@@ -2880,6 +2884,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   removeCompanionPresenceBoard(boardId: string): Promise<void>
   getTelemetryHistory(options: TelemetryHistoryOptions): Promise<TelemetryMinuteBucket[]>
   getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): Promise<RideHistoryPage>
+  getRideSession(id: string): Promise<RideHistorySession | null>
   getTelemetrySamples(options: {
     fromMs: number
     toMs: number
@@ -3705,6 +3710,16 @@ export async function getRideHistoryPage(
 ): Promise<RideHistoryPage> {
   if (E2E_ENABLED) return e2eFake.getRideHistoryPage(options)
   return native.getRideHistoryPage(options)
+}
+
+/**
+ * One complete ride by id, or null once it no longer exists under that id (it grew, or was deleted).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideSession`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideSession`
+ */
+export async function getRideSession(id: string): Promise<RideHistorySession | null> {
+  if (E2E_ENABLED) return e2eFake.getRideSession(id)
+  return native.getRideSession(id)
 }
 
 export async function getTelemetrySamples(options: {

@@ -77,6 +77,8 @@ private fun computeProfileStatsForSessions(
       "longestRideM" to null,
       "batteryUsedWh" to null,
       "batteryRegenWh" to null,
+      "topSpeedRideId" to null,
+      "longestRideId" to null,
     )
   }
 
@@ -94,15 +96,20 @@ private fun computeProfileStatsForSessions(
     0.0
   }
 
+  val topSpeedRide = included.maxByOrNull { it.topSpeedKmh }
+  val longestRide = included.filter { it.distanceM != null }.maxByOrNull { it.distanceM!! }
+
   return mapOf(
     "distanceM" to totalDistanceM,
     "rideCount" to included.size,
     "rideTimeMs" to totalDurationMs,
-    "topSpeedKmh" to (included.maxOfOrNull { it.topSpeedKmh } ?: 0.0),
+    "topSpeedKmh" to (topSpeedRide?.topSpeedKmh ?: 0.0),
     "avgSpeedKmh" to avgSpeedKmh,
-    "longestRideM" to included.mapNotNull { it.distanceM }.maxOrNull(),
+    "longestRideM" to longestRide?.distanceM,
     "batteryUsedWh" to included.sumOf { it.batteryUsedWh },
     "batteryRegenWh" to included.sumOf { it.batteryRegenWh },
+    "topSpeedRideId" to topSpeedRide?.let(::rideSessionId),
+    "longestRideId" to longestRide?.let(::rideSessionId),
   )
 }
 

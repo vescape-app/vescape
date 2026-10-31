@@ -73,11 +73,8 @@ internal final class ProfileStatsRepository {
       "selectedMonth": ["year": selected.year, "month": selected.month],
     ]
   }
-
-  private func emptyProfileStatsSnapshot(_ options: [String: Any]) -> [String: Any?] {
-    profileStatsSnapshot(sessions: [], options: options)
-  }
 }
+
 
 internal func computeProfileStatsForBuckets(
   buckets: [Row],
@@ -111,6 +108,8 @@ private func computeProfileStatsForSessions(
     return total + max(0, span)
   }
   let distances = included.compactMap(\.distanceM)
+  let topSpeedRide = included.max { $0.topSpeedKmh < $1.topSpeedKmh }
+  let longestRide = included.filter { $0.distanceM != nil }.max { $0.distanceM! < $1.distanceM! }
   let avgSpeedSamples = included.reduce(0) { $0 + $1.avgSpeedSampleCount }
   let avgSpeedKmh = avgSpeedSamples > 0
     ? included.reduce(0.0) { $0 + $1.avgSpeedWeightedSum } / Double(avgSpeedSamples)
@@ -120,11 +119,13 @@ private func computeProfileStatsForSessions(
     "distanceM": distances.isEmpty ? nil : distances.reduce(0.0, +),
     "rideCount": included.count,
     "rideTimeMs": totalDurationMs,
-    "topSpeedKmh": included.map(\.topSpeedKmh).max() ?? 0.0,
+    "topSpeedKmh": topSpeedRide?.topSpeedKmh ?? 0.0,
     "avgSpeedKmh": avgSpeedKmh,
-    "longestRideM": distances.max(),
+    "longestRideM": longestRide?.distanceM,
     "batteryUsedWh": included.reduce(0.0) { $0 + $1.batteryUsedWh },
     "batteryRegenWh": included.reduce(0.0) { $0 + $1.batteryRegenWh },
+    "topSpeedRideId": topSpeedRide.map(rideSessionId),
+    "longestRideId": longestRide.map(rideSessionId),
   ]
 }
 
@@ -167,5 +168,7 @@ internal func emptyProfileStats() -> [String: Any?] {
     "longestRideM": nil,
     "batteryUsedWh": nil,
     "batteryRegenWh": nil,
+    "topSpeedRideId": nil,
+    "longestRideId": nil,
   ]
 }
