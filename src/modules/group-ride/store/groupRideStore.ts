@@ -146,7 +146,9 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           if (!rideId) {
             return { ...deriveRoster({ activeRideId: null, roster: [] }, state), error: null }
           }
-          if (state.activeRideId && state.activeRideId !== rideId) return state
+          // Membership comes from join intents/native join events. A queued presence roster
+          // must not restore the ride after Leave has already cleared it.
+          if (state.activeRideId !== rideId) return state
           return { ...deriveRoster({ activeRideId: rideId, roster: riders }, state), error: null }
         }),
       ),
@@ -296,7 +298,7 @@ function deriveRoster(
   patch: Partial<Pick<GroupRideState, 'activeRideId' | 'roster' | 'ownLocation'>>,
   current: GroupRideState,
 ): Pick<GroupRideState, 'activeRideId' | 'roster' | 'rosterRows'> {
-  const activeRideId = patch.activeRideId ?? current.activeRideId
+  const activeRideId = patch.activeRideId === undefined ? current.activeRideId : patch.activeRideId
   const roster = patch.roster ?? current.roster
   const ownLocation = patch.ownLocation ?? current.ownLocation
   const rows = riderRoster(roster, useRiderStore.getState().riderId, ownLocation)

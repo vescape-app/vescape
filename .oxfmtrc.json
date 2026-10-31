@@ -2,5 +2,9 @@
   "semi": false,
   "printWidth": 100,
   "singleQuote": true,
-  "jsxSingleQuote": false
+  "jsxSingleQuote": false,
+  "ignorePatterns": [
+    ".agents/skills/**",
+    "modules/vescape-core/shared/ride-export-floaty-expected.json"
+  ]
 }

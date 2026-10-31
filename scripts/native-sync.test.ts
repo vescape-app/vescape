@@ -93,6 +93,24 @@ describe('prebuildFingerprint', () => {
     ).toBe('updated phone encoder')
   })
 
+  it('regenerates both platforms when the process overrides the server origin', () => {
+    const original = process.env.EXPO_PUBLIC_SERVER_URL
+    try {
+      process.env.EXPO_PUBLIC_SERVER_URL = 'http://127.0.0.1:41001'
+      const android = prebuildFingerprint('android', root)
+      const ios = prebuildFingerprint('ios', root)
+      process.env.EXPO_PUBLIC_SERVER_URL = 'http://127.0.0.1:41002'
+      expect(prebuildFingerprint('android', root)).not.toEqual(android)
+      expect(prebuildFingerprint('ios', root)).not.toEqual(ios)
+      process.env.EXPO_PUBLIC_SERVER_URL = 'http://127.0.0.1:41001'
+      expect(prebuildFingerprint('android', root)).toEqual(android)
+      expect(prebuildFingerprint('ios', root)).toEqual(ios)
+    } finally {
+      if (original === undefined) delete process.env.EXPO_PUBLIC_SERVER_URL
+      else process.env.EXPO_PUBLIC_SERVER_URL = original
+    }
+  })
+
   it('regenerates Android when entering and leaving smoke mode', () => {
     const original = process.env.EXPO_PUBLIC_SMOKE
     try {

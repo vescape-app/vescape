@@ -3,12 +3,12 @@ import Foundation
 /// Where the rider is along their Navigation right now: the point on the path nearest to them, how
 /// far is left along the path from there, and which way the path goes next.
 ///
-/// Derived, never stored. It is recomputed from the fixed path on every GPS Fix and it dies with
-/// the Navigation it belongs to — see the glossary entry in `CONTEXT.md`. Nothing here recomputes
-/// or reroutes the Navigation itself, which stays computed-once.
+/// Derived, never stored. It is recomputed from the current path on every GPS Fix and it dies with
+/// the Navigation it belongs to — see the glossary entry in `CONTEXT.md`.
 ///
-/// Attachment is unconditional: the nearest point on the path is always taken, there is no
-/// off-route state and no threshold. A rider who loops away and comes back re-attaches by itself.
+/// Attachment is unconditional: the nearest point on the path is always taken, so a rider who loops
+/// away and comes back re-attaches by itself. Only `deviationMeters` feeds automatic recalculation;
+/// nothing derived from `remainingMeters` does.
 /// The accepted cost is that on a path passing near itself — out-and-back, figure-eight — the
 /// projection can snap between legs and `remainingMeters` can jump. Do not add a threshold to
 /// paper over it.
@@ -19,11 +19,20 @@ struct RouteProgress: Equatable {
   /// The point on the path nearest to the rider, projected onto a segment rather than a vertex.
   let latitude: Double
   let longitude: Double
+  /// The `Navigation.revision` this was projected on; the segment indexes into that path only.
+  let navigationRevision: Int64
+  /// The selected segment and the clamped fraction along it, so JS splits at this same point.
+  let segmentIndex: Int
+  let segmentFraction: Double
+  /// Straight-line metres from the rider to the projection.
+  let deviationMeters: Double
   /// Metres left to the Direction Point measured **along** the path from the projection: the rest
   /// of the projected segment plus every segment after it. Not the straight line — a target 679 m
   /// away across a river is the 2 km the rider actually has to ride. Projected onto the path's end,
   /// with nothing left along it, it is the straight line from the rider to that end.
   let remainingMeters: Double
+  /// Profile-based estimate scaled by remaining distance; nil without timing or past the end.
+  let remainingDurationSeconds: Double?
   /// Absolute degrees clockwise from north, from the projection to an aim point a short way further
   /// along the path, or from the rider to the path's end once projected onto it. Absolute on purpose: the wrist rotates a north-up world by the GPS course, so
   /// one convention keeps the two rotations from disagreeing.
@@ -39,7 +48,12 @@ struct RouteProgress: Equatable {
     [
       "latitude": latitude,
       "longitude": longitude,
+      "navigationRevision": navigationRevision,
+      "segmentIndex": segmentIndex,
+      "segmentFraction": segmentFraction,
+      "deviationMeters": deviationMeters,
       "remainingMeters": remainingMeters,
+      "remainingDurationSeconds": remainingDurationSeconds.map { $0 as Any } ?? NSNull(),
       "bearingDeg": bearingDeg,
     ]
   }
@@ -52,7 +66,10 @@ struct RouteProgress: Equatable {
     points: [(latitude: Double, longitude: Double)],
     riderLatitude: Double,
     riderLongitude: Double,
-    speedMps: Double?
+    speedMps: Double?,
+    navigationRevision: Int64 = 0,
+    routeDistanceMeters: Double = 0,
+    routeDurationSeconds: Double = 0
   ) -> RouteProgress? {
     guard points.count >= 2, let target = points.last else { return nil }
 
@@ -107,6 +124,10 @@ struct RouteProgress: Equatable {
       }
     }
 
+    let remainingDurationSeconds: Double? = routeDistanceMeters.isFinite && routeDistanceMeters > 0
+      && routeDurationSeconds.isFinite && routeDurationSeconds > 0
+      ? routeDurationSeconds * min(1, max(0, remainingMeters / routeDistanceMeters)) : nil
+
     // Walk forward from the projection until the aim budget runs out. Running off the end of the
     // path instead leaves the aim on the Direction Point, which is the right answer for the last
     // few metres of a ride.
@@ -144,7 +165,12 @@ struct RouteProgress: Equatable {
       return RouteProgress(
         latitude: latitude,
         longitude: longitude,
+        navigationRevision: navigationRevision,
+        segmentIndex: bestIndex,
+        segmentFraction: bestFraction,
+        deviationMeters: GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),
         remainingMeters: pastEndMeters,
+        remainingDurationSeconds: nil,
         bearingDeg: GeoMath.travelBearingDeg(
           riderLatitude, riderLongitude, target.latitude, target.longitude
         )
@@ -163,7 +189,12 @@ struct RouteProgress: Equatable {
     return RouteProgress(
       latitude: latitude,
       longitude: longitude,
+      navigationRevision: navigationRevision,
+      segmentIndex: bestIndex,
+      segmentFraction: bestFraction,
+      deviationMeters: GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),
       remainingMeters: remainingMeters,
+      remainingDurationSeconds: remainingDurationSeconds,
       bearingDeg: bearingDeg
     )
   }

@@ -141,10 +141,81 @@ const VIRTUALIZED_ROWS = Array.from({ length: 100 }, (_, index) => ({
   label: `Virtualized row ${index + 1}`,
 }))
 
+/** Deterministic pages for checking resize, sticky chrome, and dismissal together. */
+export function EdgeDrawerResizeShowcase({ edge }: { edge: 'top' | 'bottom' }) {
+  const triggerRef = useTriggerRef()
+  const [visible, setVisible] = useState(false)
+  const [page, setPage] = useState<'Long' | 'Short' | 'Empty'>('Long')
+  const rows =
+    page === 'Long' ? VIRTUALIZED_ROWS : VIRTUALIZED_ROWS.slice(0, page === 'Short' ? 3 : 0)
+
+  return (
+    <ShowcaseCard
+      name={`EdgeDrawer — ${edge} resize and dismissal`}
+      controls={
+        <View ref={triggerRef} collapsable={false} style={styles.trigger}>
+          <OpenButton
+            label={`Open ${edge} controls`}
+            onPress={() => {
+              setPage('Long')
+              setVisible(true)
+            }}
+          />
+        </View>
+      }
+    >
+      <Text style={styles.previewHint}>
+        Swap long, short, and empty pages while open. Scroll the list, pull a little to spring back,
+        or drag the grabber to close. The header and close button stay reachable.
+      </Text>
+      <EdgeDrawer
+        visible={visible}
+        triggerRef={triggerRef}
+        edge={edge}
+        testID="edge-drawer-controls"
+        backdropTestID="edge-drawer-controls-backdrop"
+        contentPageKey={page}
+        header={
+          <View style={styles.pageControls}>
+            {(['Long', 'Short', 'Empty'] as const).map((label) => (
+              <Button
+                key={label}
+                label={label}
+                size="sm"
+                variant={page === label ? 'primary' : 'secondary'}
+                onPress={() => setPage(label)}
+              />
+            ))}
+          </View>
+        }
+        stickyFooter={<Button label="Close controls" onPress={() => setVisible(false)} />}
+        onClose={() => setVisible(false)}
+        virtualizedContent={{
+          data: rows,
+          empty: <Text style={styles.tileText}>No rows on this page</Text>,
+          getItemLayout: (_data, index) => ({ index, length: 72, offset: index * 80 }),
+          keyExtractor: (item) => (item as (typeof VIRTUALIZED_ROWS)[number]).id,
+          renderItem: renderVirtualizedRow,
+          separator: VirtualizedRowSeparator,
+        }}
+      />
+    </ShowcaseCard>
+  )
+}
+
+function renderVirtualizedRow({ item }: { item: unknown }) {
+  return (
+    <View style={[styles.tile, { height: 72 }]}>
+      <Text style={styles.tileText}>{(item as (typeof VIRTUALIZED_ROWS)[number]).label}</Text>
+    </View>
+  )
+}
+
 export function EdgeDrawerVirtualizedShowcase() {
   const triggerRef = useTriggerRef()
   const [visible, setVisible] = useState(false)
   const [customHeader, setCustomHeader] = useState(true)
+  const [footer, setFooter] = useState(false)
   const [tab, setTab] = useState<'history' | 'favorites'>('history')
 
   const focusedIndex = tab === 'history' ? 79 : 3
@@ -155,6 +226,7 @@ export function EdgeDrawerVirtualizedShowcase() {
       controls={
         <>
           <ToggleRow label="tab header" value={customHeader} onToggle={setCustomHeader} />
+          <ToggleRow label="sticky footer" value={footer} onToggle={setFooter} />
           <View ref={triggerRef} collapsable={false} style={styles.trigger}>
             <OpenButton label="Open at row 80" onPress={() => setVisible(true)} />
           </View>
@@ -163,25 +235,27 @@ export function EdgeDrawerVirtualizedShowcase() {
     >
       <Text style={styles.previewHint}>
         Opens at row 80 outside the initial render window. Tabs stay mounted while content swaps.
+        Header, grabber, and footer stay on screen; drag the grabber toward the edge to close. The
+        star tab holds 5 rows: switching to it and back must leave the drawer fully opaque.
       </Text>
       <EdgeDrawer
         visible={visible}
         triggerRef={triggerRef}
         title="Virtualized rows"
         header={customHeader ? <HistoryTabs tab={tab} onSelectTab={setTab} /> : undefined}
+        contentPageKey={tab}
+        stickyFooter={
+          footer ? (
+            <Button label="Footer action" variant="secondary" onPress={() => setVisible(false)} />
+          ) : undefined
+        }
         onClose={() => setVisible(false)}
         virtualizedContent={{
           data: tab === 'history' ? VIRTUALIZED_ROWS : VIRTUALIZED_ROWS.slice(0, 5),
           initialFocus: { offset: focusedIndex * 80, height: 72 },
           getItemLayout: (_data, index) => ({ index, length: 72, offset: index * 80 }),
           keyExtractor: (item) => (item as (typeof VIRTUALIZED_ROWS)[number]).id,
-          renderItem: ({ item }) => (
-            <View style={[styles.tile, { height: 72 }]}>
-              <Text style={styles.tileText}>
-                {(item as (typeof VIRTUALIZED_ROWS)[number]).label}
-              </Text>
-            </View>
-          ),
+          renderItem: renderVirtualizedRow,
           separator: VirtualizedRowSeparator,
         }}
       />
@@ -191,6 +265,61 @@ export function EdgeDrawerVirtualizedShowcase() {
 
 function VirtualizedRowSeparator() {
   return <View style={styles.virtualizedSeparator} />
+}
+
+const LATE_ROWS = VIRTUALIZED_ROWS.slice(0, 3)
+/** Each late row lands a few frames after the previous one, like History loading its rides. */
+const LATE_ROW_INTERVAL_MS = 120
+
+/**
+ * A short list whose rows arrive after the drawer has taken its opening position, the way History
+ * fills in. The drawer must open, and stay after a tab switch, fully opaque.
+ */
+export function EdgeDrawerLateRowsShowcase() {
+  const triggerRef = useTriggerRef()
+  const [visible, setVisible] = useState(false)
+  const [tab, setTab] = useState<'history' | 'favorites'>('history')
+  const [loaded, setLoaded] = useState(0)
+
+  useEffect(() => {
+    if (!visible) return
+    setLoaded(0)
+    const timers = LATE_ROWS.map((_, index) =>
+      setTimeout(() => setLoaded(index + 1), LATE_ROW_INTERVAL_MS * (index + 1)),
+    )
+    return () => timers.forEach(clearTimeout)
+  }, [visible])
+
+  return (
+    <ShowcaseCard
+      name="EdgeDrawer — late rows"
+      controls={
+        <View ref={triggerRef} collapsable={false} style={styles.trigger}>
+          <OpenButton label="Open short list" onPress={() => setVisible(true)} />
+        </View>
+      }
+    >
+      <Text style={styles.previewHint}>
+        Three rows arrive one by one after opening; the star tab is empty. The drawer must open
+        fully opaque and stay so after switching tabs.
+      </Text>
+      <EdgeDrawer
+        visible={visible}
+        triggerRef={triggerRef}
+        header={<HistoryTabs tab={tab} onSelectTab={setTab} />}
+        testID="edge-drawer-late-rows"
+        contentPageKey={tab}
+        onClose={() => setVisible(false)}
+        virtualizedContent={{
+          data: tab === 'history' ? LATE_ROWS.slice(0, loaded) : [],
+          getItemLayout: (_data, index) => ({ index, length: 72, offset: index * 80 }),
+          keyExtractor: (item) => (item as (typeof VIRTUALIZED_ROWS)[number]).id,
+          renderItem: renderVirtualizedRow,
+          separator: VirtualizedRowSeparator,
+        }}
+      />
+    </ShowcaseCard>
+  )
 }
 
 export function EdgeDrawerInitialFocusShowcase() {
@@ -320,6 +449,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   focusList: { gap: 8 },
+  pageControls: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
   focusedTile: { borderColor: theme.palette.sky.color },
   previewHint: { color: theme.neutral.textDim, fontSize: 12, fontStyle: 'italic' },
   tile: {

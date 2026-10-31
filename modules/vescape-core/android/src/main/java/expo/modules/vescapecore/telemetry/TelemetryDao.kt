@@ -342,7 +342,7 @@ interface TelemetryDao {
     limit: Int,
   ): List<DiagnosticEventEntity>
 
-  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeCsv`
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
   @Query("""
     SELECT * FROM telemetry_frames WHERE captured_at_ms < :fromMs AND board_id IS :boardId
       AND (flags & 1) != 0
@@ -350,7 +350,7 @@ interface TelemetryDao {
   """)
   suspend fun getRideExportKeyframe(fromMs: Long, boardId: String?): TelemetryFrameEntity?
 
-  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeCsv`
+  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
   @Query("""
     SELECT * FROM telemetry_frames WHERE captured_at_ms >= :fromMs AND captured_at_ms <= :toMs
       AND board_id IS :boardId

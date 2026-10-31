@@ -1,13 +1,7 @@
 import { startPointAnimation } from '@/modules/map/lib/liveMotion/pointAnimation'
 import { CircleLayer, FillLayer, Images, LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
 import { useEffect, useRef, useState } from 'react'
-import {
-  createSpring,
-  stepSpring,
-  retargetSpring,
-  springSettled,
-  nearestBearingTarget,
-} from '@/modules/map/lib/cameraEngine/springs'
+import { startHeadingAnimation } from '@/modules/map/lib/liveMotion/headingAnimation'
 import { useLiveMotionSettings } from '@/modules/map/store/liveMotionSettings'
 import { processColor } from 'react-native'
 
@@ -72,50 +66,27 @@ export function LiveMapLayers({
   const [pointHeading, setPointHeading] = useState<number | null>(gpsPuckBearingDeg)
   const arrowRef = useRef<SymbolLayer>(null)
   const initialArrow = useRef(gpsPuckBearingDeg ?? 0)
+  const hasArrow = accuracyFix != null && pointHeading != null
   useEffect(() => {
     // Compass owns the only arrow in the other orientations. Stop GPS rotation as well as
     // removing its layer, including when a mode switch leaves a retained travel bearing.
     if (!gpsHeadingMode) return
-    let spring = createSpring(initialArrow.current)
-    let frame: number | null = null
-    let last = performance.now()
-    const animate = (now: number) => {
-      frame = null
-      if (!displayRuntime.active) return
-      spring = stepSpring(
-        spring,
-        useLiveMotionSettings.getState().config.arrowHeadingOmega,
-        Math.min(0.064, (now - last) / 1000),
-      )
-      last = now
-      initialArrow.current = spring.x
-      arrowRef.current?.setNativeProps({ style: { iconRotate: spring.x } })
-      if (!springSettled(spring, 0.05, 0.05)) frame = requestAnimationFrame(animate)
-    }
-    const update = () => {
-      if (!displayRuntime.active) {
-        if (frame != null) cancelAnimationFrame(frame)
-        frame = null
-        return
-      }
-      const heading = displayRuntime.motion.pointHeading(displayRuntime.now())
-      if (heading == null) return
-      setPointHeading((previous) => previous ?? heading)
-      const target = nearestBearingTarget(spring.x, heading)
-      if (target === spring.target && springSettled(spring, 0.05, 0.05)) return
-      spring = retargetSpring(spring, target)
-      if (frame == null) {
-        last = performance.now()
-        frame = requestAnimationFrame(animate)
-      }
-    }
-    const unsubscribe = displayRuntime.subscribe(update)
-    update()
-    return () => {
-      unsubscribe()
-      if (frame != null) cancelAnimationFrame(frame)
-    }
-  }, [displayRuntime, gpsHeadingMode])
+    return startHeadingAnimation({
+      angle: initialArrow,
+      heading: () => {
+        const heading = displayRuntime.motion.pointHeading(displayRuntime.now())
+        if (heading != null) setPointHeading((previous) => previous ?? heading)
+        return heading
+      },
+      omega: () => useLiveMotionSettings.getState().config.arrowHeadingOmega,
+      draw: (angle) => arrowRef.current?.setNativeProps({ style: { iconRotate: angle } }),
+      subscribe: displayRuntime.subscribe,
+      isActive: () => displayRuntime.active,
+      now: () => performance.now(),
+      schedule: requestAnimationFrame,
+      cancel: cancelAnimationFrame,
+    })
+  }, [displayRuntime, gpsHeadingMode, hasArrow])
 
   return (
     <>

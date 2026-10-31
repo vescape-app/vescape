@@ -14,6 +14,7 @@ import {
   GearSixIcon,
   LightningIcon,
   MarkdownLogoIcon,
+  RowsIcon,
   SquaresFourIcon,
   StackIcon,
   TextAaIcon,
@@ -83,6 +84,13 @@ const groups = [
         hint: 'Popups, confirmations, and sheets that float above the screen',
         route: '/settings/components/modals',
         icon: SquaresFourIcon,
+        color: theme.status.upgrade.color,
+      },
+      {
+        label: 'Drawers',
+        hint: 'Edge drawers and floating sheets with drag to dismiss',
+        route: '/settings/components/drawers',
+        icon: RowsIcon,
         color: theme.status.upgrade.color,
       },
       {

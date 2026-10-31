@@ -1,0 +1,31 @@
+appId: ${APP_ID}
+---
+- assertVisible: Virtualized row 1
+- assertVisible: Close controls
+# Runtime references avoid device/theme-specific golden images. Compare the
+# whole modal so a moved header, clipped footer, or changed opacity fails.
+- takeScreenshot:
+    path: drawer-${EDGE}-open
+    cropOn:
+      id: edge-drawer-controls
+- repeat:
+    times: 2
+    commands:
+      - tapOn: Short
+      - assertVisible: Virtualized row 1
+      - assertVisible: Virtualized row 3
+      - assertNotVisible: Virtualized row 4
+      - assertVisible: Close controls
+      - tapOn: Empty
+      - assertVisible: No rows on this page
+      - assertNotVisible: Virtualized row 1
+      - assertVisible: Close controls
+      - tapOn: Long
+      - assertVisible: Virtualized row 1
+      - assertNotVisible: No rows on this page
+      - assertScreenshot:
+          path: drawer-${EDGE}-open.png
+          cropOn:
+            id: edge-drawer-controls
+          thresholdPercentage: 99
+          label: Page changes preserve drawer height, chrome, and opacity

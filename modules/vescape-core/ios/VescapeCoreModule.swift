@@ -731,11 +731,11 @@ public class VescapeCoreModule: Module {
       )
     }
 
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchDisplayConfig`
     Function("setWatchDisplayConfig") { (json: String) in
       DispatchQueue.main.async { self.coordinator.configureWatchDisplay(json) }
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
     Function("setWatchRouteSpanM") { (spanM: Double?) in
       WatchRouteMirror.shared.viewportSpanM = spanM
     }
@@ -832,6 +832,14 @@ public class VescapeCoreModule: Module {
     AsyncFunction("exportRideCsv") { (options: [String: Any], promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try TelemetryRepository.shared.exportRideCsv(options)) }
+      catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideFloaty`
+    // @parity /modules/vescape-core/src/index.ts `exportRideFloaty`
+    AsyncFunction("exportRideFloaty") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.exportRideFloaty(options)) }
       catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
     }
 
@@ -1665,6 +1673,9 @@ public class VescapeCoreModule: Module {
         "weatherWindAlertLevel",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
+      }
+      if key == "navigationRerouteDistanceMeters" {
+        NavigationController.shared.reloadRerouteDistance()
       }
       if key == "distanceUnit" { self.coordinator.reloadAlertRules() }
       MaintenanceRunner.shared.onSettingChanged(key)
