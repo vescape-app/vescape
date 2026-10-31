@@ -46,8 +46,7 @@ export type MarkdownBlock =
 
 /** A paragraph split into text runs and the block-level images between them. */
 export type MarkdownRun =
-  | { kind: 'text'; nodes: MarkdownInline[] }
-  | { kind: 'image'; src: string; alt: string }
+  { kind: 'text'; nodes: MarkdownInline[] } | { kind: 'image'; src: string; alt: string }
 
 const md = new MarkdownIt('default', {
   html: false,

@@ -14,7 +14,6 @@ const ROOT = join(import.meta.dir, '../..')
 export const RELEASE_NOTES_DIRECTORY = join(ROOT, 'release-notes')
 export const GENERATED_RELEASE_NOTES_PATH = 'src/modules/release/generated/releaseNotes.ts'
 export const GENERATED_RELEASE_NOTES_FILE = join(ROOT, GENERATED_RELEASE_NOTES_PATH)
-const OXFMT_BINARY = join(ROOT, 'node_modules/.bin/oxfmt')
 
 export interface CanonicalReleaseNote extends BundledReleaseNote {
   fileName: string
@@ -91,16 +90,19 @@ export async function readCanonicalReleaseNotes(): Promise<CanonicalReleaseNote[
 
 /**
  * The generated module is committed, so its bytes must survive a formatter pass. Formatting here
- * keeps oxfmt the single style authority and stops `release-notes:check` from drifting the moment
+ * keeps `bun fmt` the single style authority and stops `release-notes:check` from drifting the moment
  * anything else formats the file.
  */
 async function formatGenerated(source: string): Promise<string> {
-  const child = Bun.spawn([OXFMT_BINARY, `--stdin-filepath=${GENERATED_RELEASE_NOTES_FILE}`], {
-    cwd: ROOT,
-    stdin: new TextEncoder().encode(source),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  const child = Bun.spawn(
+    [process.execPath, 'fmt', `--stdin-filepath=${GENERATED_RELEASE_NOTES_FILE}`],
+    {
+      cwd: ROOT,
+      stdin: new TextEncoder().encode(source),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),

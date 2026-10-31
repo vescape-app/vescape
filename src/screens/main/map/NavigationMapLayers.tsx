@@ -135,36 +135,35 @@ export function NavigationMapLayers({
 
   return (
     <>
-      {showDirectionPoint &&
-        navigationShape && (
-          // Passed and remaining sections are split at native's projection, see navigationPath.ts.
-          <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
-            <LineLayer
-              id="center-navigation-casing"
-              belowLayerID={MAP_DEFAULTS.userPositionLayerId}
-              style={{
-                lineOpacity: ['get', 'opacity'],
-                lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
-                lineWidth: NAVIGATION_CASING_WIDTH,
-                lineCap: 'round',
-                lineJoin: 'round',
-                lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
-              }}
-            />
-            <LineLayer
-              id="center-navigation-line"
-              belowLayerID={MAP_DEFAULTS.userPositionLayerId}
-              style={{
-                lineOpacity: ['get', 'opacity'],
-                lineColor: routeColor,
-                lineWidth: MAP_DEFAULTS.navigationWidth,
-                lineCap: 'round',
-                lineJoin: 'round',
-                lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
-              }}
-            />
-          </ShapeSource>
-        )}
+      {showDirectionPoint && navigationShape && (
+        // Passed and remaining sections are split at native's projection, see navigationPath.ts.
+        <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
+          <LineLayer
+            id="center-navigation-casing"
+            belowLayerID={MAP_DEFAULTS.userPositionLayerId}
+            style={{
+              lineOpacity: ['get', 'opacity'],
+              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
+              lineWidth: NAVIGATION_CASING_WIDTH,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
+            }}
+          />
+          <LineLayer
+            id="center-navigation-line"
+            belowLayerID={MAP_DEFAULTS.userPositionLayerId}
+            style={{
+              lineOpacity: ['get', 'opacity'],
+              lineColor: routeColor,
+              lineWidth: MAP_DEFAULTS.navigationWidth,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
+            }}
+          />
+        </ShapeSource>
+      )}
       {connector && showDirectionPoint && (
         <ShapeSource id="navigation-projection-source" shape={connector}>
           <LineLayer

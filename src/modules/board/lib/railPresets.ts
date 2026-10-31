@@ -332,19 +332,15 @@ export function railSideFace(
     pointThicknesses ?? (customPoints ? undefined : preset.pointThicknesses)
   // Keep editor and built-in X coordinates in the same scale, including rail length.
   const modelX = (x: number) => ((x - 104) * 436) / 180
-  const outer = points.map(
-    ([x, y], index): RailPoint => [
-      modelX(x),
-      (railPointThicknesses?.[index] ?? railThickness) / 2 - (y - 32) * 3.5,
-    ],
-  )
+  const outer = points.map(([x, y], index): RailPoint => [
+    modelX(x),
+    (railPointThicknesses?.[index] ?? railThickness) / 2 - (y - 32) * 3.5,
+  ])
   const bevel = Math.min(21, (outer[outer.length - 1]![0] - outer[0]![0]) / 2)
-  const inner = outer.map(
-    ([x, y], index): RailPoint => [
-      index === 0 ? x + bevel : index === outer.length - 1 ? x - bevel : x,
-      y - (railPointThicknesses?.[index] ?? railThickness),
-    ],
-  )
+  const inner = outer.map(([x, y], index): RailPoint => [
+    index === 0 ? x + bevel : index === outer.length - 1 ? x - bevel : x,
+    y - (railPointThicknesses?.[index] ?? railThickness),
+  ])
   return [...outer, ...inner.reverse()]
 }
 

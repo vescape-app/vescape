@@ -4,3 +4,13 @@ minimumReleaseAge = 86400 # 1 day in seconds
 
 [test]
 preload = ["./testSetup.ts"]
+
+[fmt]
+semi = false
+printWidth = 100
+singleQuote = true
+jsxSingleQuote = false
+ignorePatterns = [
+  ".agents/skills/**",
+  "modules/vescape-core/shared/ride-export-floaty-expected.json",
+]

@@ -70,9 +70,7 @@ export type AccessoryCapabilityType = 'ground_clearance' | 'brake_light'
  * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryCompatibility`
  */
 export type AccessoryCompatibility =
-  | 'supported'
-  | 'unsupported-version'
-  | 'unsupported-capabilities'
+  'supported' | 'unsupported-version' | 'unsupported-capabilities'
 
 /**
  * One capability an Accessory declares. `supported` is native's verdict, not a re-derivation
@@ -365,12 +363,7 @@ export interface AccessoryInspection {
  * @parity /modules/vescape-core/ios/accessory/AccessoryLink.swift `AccessoryLinkPhase`
  */
 export type AccessoryLinkPhase =
-  | 'idle'
-  | 'connecting'
-  | 'handshaking'
-  | 'connected'
-  | 'unavailable'
-  | 'incompatible'
+  'idle' | 'connecting' | 'handshaking' | 'connected' | 'unavailable' | 'incompatible'
 
 /**
  * One enrolled Accessory, as native currently sees it: the durable row plus whatever the live
@@ -778,12 +771,7 @@ export interface PrivacyZone {
  * Mirrors vescape-server `src/mapPoints/protocol.ts` `MapPointCategorySchema`.
  */
 export type MapPointCategory =
-  | 'drop'
-  | 'bonk'
-  | 'nose_slide'
-  | 'trail_entry'
-  | 'viewpoint'
-  | 'charging'
+  'drop' | 'bonk' | 'nose_slide' | 'trail_entry' | 'viewpoint' | 'charging'
 
 export type MapPointReaction = 'up' | 'down'
 
@@ -1997,11 +1985,7 @@ export interface GroupRideRider {
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `emitConnection`
  */
 export type GroupRideConnectionState =
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'disconnected'
-  | 'blocked'
+  'idle' | 'connecting' | 'connected' | 'disconnected' | 'blocked'
 
 export interface GroupRideConnectionEvent {
   state: GroupRideConnectionState
@@ -2700,12 +2684,7 @@ export interface DeviceCredentialStatus {
 }
 
 export type CriticalRideNotificationPermissionStatus =
-  | 'not-determined'
-  | 'denied'
-  | 'authorized'
-  | 'provisional'
-  | 'ephemeral'
-  | 'unknown'
+  'not-determined' | 'denied' | 'authorized' | 'provisional' | 'ephemeral' | 'unknown'
 
 /**
  * Event names must match the native `Events(...)` declarations exactly — a name only listed here
@@ -4240,9 +4219,7 @@ export type AlertPresetLevel = 'off' | 'safe' | 'normal' | 'minimal'
 
 /** One change to a metric's preset row: its level, its geiger tick level, or board-config match. */
 export type AlertPresetIntent =
-  | { level: AlertPresetLevel }
-  | { geiger: 'soft' | 'mid' | 'hard' }
-  | { match: boolean }
+  { level: AlertPresetLevel } | { geiger: 'soft' | 'mid' | 'hard' } | { match: boolean }
 
 /**
  * Expand an unsaved draft preset `spec` with the same native expander saved rows use.
