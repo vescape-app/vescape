@@ -34,7 +34,7 @@ Use flags to skip the menus, including in non-interactive shells:
 ```sh
 bun run e2e --all --device Medium_Phone --watch WearLarge
 bun run e2e --suite phone --device Medium_Phone
-bun run e2e --suite smoke --flow 02-alerts --device Medium_Phone
+bun run e2e --suite smoke --flow 02-alerts-speed --device Medium_Phone
 bun run e2e --flow connect-board --device Medium_Phone
 bun run e2e --help
 ```
@@ -212,24 +212,26 @@ and iOS.
 bun run smoke                      # picks a device, builds, runs every flow
 bun run smoke --no-build           # reuse the smoke build already installed
 bun run smoke --flow 03-history    # build and run one flow
-bun run smoke --no-build --flow 02-alerts # alerts against an installed smoke build
+bun run smoke --no-build --flow 02-alerts-speed # speed alerts against an installed smoke build
 bun run smoke --device <serial>    # skip the picker
 bun run smoke --platform ios       # use an iOS simulator
 bun run smoke --build-only --output .expo/smoke/app.apk
 bun run smoke --app .expo/smoke/app.apk --flow 03-history
 ```
 
-`02-alerts` selects HEV effects, previews its Warning sound, and overrides the matching Radio
-voice with Nicole. It then saves a custom speed Geiger rule, changes Normal → Safe → Off, and reopens
-Speed to check that the custom range and Off selection survive navigation. It restores Normal
-before checking battery presets: Normal and Safe expand to their charge-percentage voice points,
-the battery preview completes with the selected sound settings, Safe survives reopening, and Off
-disables preview. It restores battery Normal before returning home. This is playback and continued
-navigation coverage, not an assertion on audible output or every pack/voice combination.
+`02-alerts-battery` selects HEV effects, previews its Warning sound, and overrides the matching Radio
+voice with Nicole. It then checks battery presets: Normal and Safe expand to their
+charge-percentage voice points, the battery preview completes with the selected sound settings,
+Safe survives reopening, and Off disables preview. It restores battery Normal before returning
+home. `02-alerts-speed` saves a custom speed Geiger rule, changes Normal → Safe → Off, and reopens
+Speed to check that the custom range and Off selection survive navigation, then restores Normal.
+They are separate flows because together they outlast the Android emulator job's step timeout.
+This is playback and continued navigation coverage, not an assertion on audible output or every
+pack/voice combination.
 Each runner invocation restores fresh fixtures; this checks native writes
 and screen reopening, not persistence across app restarts.
 
-CI builds one Release artifact per platform without booting a device. Each platform's six flows
+CI builds one Release artifact per platform without booting a device. Each platform's flows
 then run in parallel jobs, each installing that artifact and starting a fresh fixture session.
 The iOS app travels in a tar archive to preserve its bundle permissions and symlinks. Gradle's build
 cache and iOS CocoaPods dependencies are separate from app artifacts. iOS caches the compiled
