@@ -279,7 +279,7 @@ jobs:
     name: iOS / ${{ matrix.flow }}
     needs: [plan, build-ios]
     runs-on: macos-26
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -304,7 +304,7 @@ jobs:
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - name: Run isolated flow
         # Include fresh simulator startup and Maestro's XCTest shutdown, not just assertions.
-        timeout-minutes: 20
+        timeout-minutes: 30
         env:
           SMOKE_FLOW: ${{ matrix.flow }}
           # A fresh hosted simulator can take over two minutes to start XCTest.
