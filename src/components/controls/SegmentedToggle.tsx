@@ -7,6 +7,8 @@ import { useResolvedControlColors, useResolvedNeutralColors } from '@/hooks/useT
 export interface SegmentedOption<T extends string> {
   value: T
   label: string
+  /** Small status dot before the label, e.g. marking a live view. */
+  dot?: ThemeColor
 }
 
 interface SegmentedToggleProps<T extends string> {
@@ -60,6 +62,7 @@ export function SegmentedToggle<T extends string>({
             accessibilityState={{ selected }}
             accessibilityLabel={option.label}
           >
+            {option.dot ? <View style={[styles.dot, { backgroundColor: option.dot }]} /> : null}
             <Text
               style={[
                 styles.label,
@@ -89,9 +92,17 @@ const styles = StyleSheet.create({
   },
   segment: {
     minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     justifyContent: 'center',
     paddingHorizontal: 14,
     borderRadius: 999,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   pressed: {
     backgroundColor: interaction.pressedBg,

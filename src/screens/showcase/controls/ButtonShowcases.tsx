@@ -285,7 +285,7 @@ export function SegmentedToggleShowcase() {
         <SegmentedToggle
           options={[
             { value: 'total', label: 'All time' },
-            { value: 'month', label: 'August 2026' },
+            { value: 'month', label: 'Today', dot: theme.palette.green.color },
           ]}
           value={value}
           onChange={setValue}
