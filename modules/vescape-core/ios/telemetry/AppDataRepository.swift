@@ -586,6 +586,11 @@ final class AppDataRepository {
       // Strict Bool, same reasoning as the board-warnings switch above.
       guard let flag = rawValue as? Bool else { return }
       value = flag
+    } else if key == "navigationRerouteDistanceMeters" {
+      guard let distance = Self.navigationRerouteDistanceMeters(rawValue) else {
+        throw NSError(domain: "AppSettings", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid navigationRerouteDistanceMeters"])
+      }
+      value = distance
     } else if key == "boardMoveStrengthPercent" {
       guard let percent = Self.boardMoveStrengthPercent(rawValue) else { return }
       value = percent
@@ -671,6 +676,7 @@ final class AppDataRepository {
     "satelliteImageryOpacity": 0.2,
     "satelliteMapImageryOpacity": 1.0,
     "satelliteImagerySaturation": -0.35,
+    "navigationRerouteDistanceMeters": NavigationController.defaultRerouteDistanceMeters,
     "hideTelemetryMapDetails": true,
     "showHistoryMapMarkers": false,
     "telemetryPollRateHz": 20,
@@ -710,10 +716,17 @@ final class AppDataRepository {
     "dismissedCommunityMessageIds": [String](),
   ]
 
-  // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getTypedSettings`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validRerouteDistanceMeters`
   static func audioSource(_ value: Any?) -> String? {
     guard let source = value as? String, source == "alarm" || source == "media" else { return nil }
     return source
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validRerouteDistanceMeters`
+  static func navigationRerouteDistanceMeters(_ value: Any?) -> Double? {
+    guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+    let distance = number.doubleValue
+    return distance.isFinite && NavigationController.rerouteDistanceRange.contains(distance) ? distance : nil
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validVoice`
@@ -737,6 +750,8 @@ final class AppDataRepository {
 
   static func normalizeSettings(_ settings: [String: Any]) -> [String: Any] {
     var normalized = settings
+    normalized["navigationRerouteDistanceMeters"] = navigationRerouteDistanceMeters(settings["navigationRerouteDistanceMeters"])
+      ?? NavigationController.defaultRerouteDistanceMeters
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
     normalized["distanceUnit"] = validDistanceUnit(settings["distanceUnit"]) ?? "km"

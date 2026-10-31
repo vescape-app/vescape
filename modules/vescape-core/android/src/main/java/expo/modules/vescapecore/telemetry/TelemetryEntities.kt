@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.navigation.DEFAULT_REROUTE_DISTANCE_METERS
 import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_DEFAULT
 import androidx.room.ColumnInfo
 import androidx.room.Entity
@@ -433,6 +434,7 @@ data class AppSettings(
   val satelliteImagerySaturation: Double = -0.35,
   val hideTelemetryMapDetails: Boolean = true,
   val showHistoryMapMarkers: Boolean = false,
+  val navigationRerouteDistanceMeters: Double = DEFAULT_REROUTE_DISTANCE_METERS,
   val mapOrientationMode: String = "northUp",
   val historyMetricGradientsEnabled: Boolean = true,
   val historyMetricHotRanges: Map<String, Map<String, Double>> = DEFAULT_HISTORY_METRIC_HOT_RANGES,

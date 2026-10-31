@@ -523,6 +523,10 @@ for invalid in unitFixture["invalid"] as! [Any] {
   try require(validDistanceUnit(invalid) == nil, "invalid units accepted")
 }
 try boardPersistence.saveSetting(.init(key: "distanceUnit", valueJson: "\"\(validDistanceUnit(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
+let rerouteFixture = boardFixture["navigationReroute"] as! [String: Any]
+let rerouteKey = rerouteFixture["key"] as! String
+let rerouteDefault = rerouteFixture["default"] as! Double
+try boardPersistence.saveSetting(.init(key: rerouteKey, valueJson: String(rerouteFixture["selected"] as! Double), updatedAt: contractCreatedAt))
 let trailFixture = boardFixture["telemetryTrail"] as! [String: Any]
 let trailKey = trailFixture["key"] as! String
 let trailDefault = trailFixture["default"] as! Bool
@@ -530,6 +534,11 @@ try boardPersistence.saveSetting(.init(key: trailKey, valueJson: String(trailFix
 try boardQueue!.close()
 boardQueue = try DatabaseQueue(path: boardURL.path)
 boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
+let reopenedReroute = try boardPersistence.settings(defaults: [rerouteKey: rerouteDefault])
+try require(reopenedReroute[rerouteKey] as? Double == rerouteFixture["selected"] as? Double, "reroute threshold survives reopen")
+try boardPersistence.deleteSetting(rerouteKey)
+let defaultReroute = try boardPersistence.settings(defaults: [rerouteKey: rerouteDefault])
+try require(defaultReroute[rerouteKey] as? Double == rerouteDefault, "reroute threshold returns to default")
 let reopenedTrail = try boardPersistence.settings(defaults: [trailKey: trailDefault])
 try require(reopenedTrail[trailKey] as? Bool == trailFixture["selected"] as? Bool, "watch trail false survives reopen")
 try boardPersistence.deleteSetting(trailKey)

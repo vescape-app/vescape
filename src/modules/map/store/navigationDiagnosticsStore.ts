@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import type { LocationEvent } from 'vescape-core'
 
 export interface NavigationDiagnosticsState {
+  showProjectionConnector: boolean
+  setShowProjectionConnector: (show: boolean) => void
   gpsFix: LocationEvent | null
   retainedGpsBearingDeg: number | null
   retainedGpsBearingAt: number | null
@@ -39,6 +41,10 @@ const INITIAL_SNAPSHOT: NavigationDiagnosticsSnapshot = {
 
 export const useNavigationDiagnosticsStore = create<NavigationDiagnosticsState>((set) => ({
   ...INITIAL_SNAPSHOT,
+  showProjectionConnector: false,
+  setShowProjectionConnector(show) {
+    set({ showProjectionConnector: show })
+  },
   updatedAt: null,
   update(next) {
     set({ ...next, updatedAt: Date.now() })
