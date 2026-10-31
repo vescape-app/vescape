@@ -5,6 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { CompassIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
+import { Switch } from '@/components/controls/Switch'
+import { SettingsRow } from '@/components/settings/SettingsRow'
+import { useMapStore } from '@/modules/map/store/mapStore'
 import { theme } from '@/constants/theme'
 import { IconHero } from '@/components/settings/IconHero'
 import {
@@ -15,6 +18,9 @@ import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDia
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function NavigationDiagnosticScreen() {
+  const progress = useMapStore((s) => s.routeProgress)
+  const showConnector = useNavigationDiagnosticsStore((s) => s.showProjectionConnector)
+  const setShowConnector = useNavigationDiagnosticsStore((s) => s.setShowProjectionConnector)
   const mapOrientationMode = useSettingsStore((s) => s.mapOrientationMode)
   const mapStyleKey = useSettingsStore((s) => s.mapStyleKey)
   const [now, setNow] = useState(() => Date.now())
@@ -60,6 +66,26 @@ export default function NavigationDiagnosticScreen() {
           <DiagnosticRowView label="Diagnostics age" value={vm.updatedAge} />
         </View>
 
+        <View style={styles.card}>
+          <SettingsRow
+            icon={CompassIcon}
+            label="Projection connector"
+            hint="Faint rider-to-path line on the map"
+            right={<Switch value={showConnector} onValueChange={setShowConnector} />}
+          />
+          <DiagnosticRowView
+            label="Path deviation"
+            value={progress ? `${progress.deviationMeters.toFixed(1)} m` : 'unavailable'}
+          />
+          <DiagnosticRowView
+            label="Segment / fraction"
+            value={
+              progress
+                ? `${progress.segmentIndex} / ${progress.segmentFraction.toFixed(4)}`
+                : 'unavailable'
+            }
+          />
+        </View>
         <DiagnosticSection title="GPS" rows={vm.gpsRows} />
         <DiagnosticSection title="Heading" rows={vm.headingRows} />
         <DiagnosticSection title="Board heading reserved" rows={vm.boardRows} />

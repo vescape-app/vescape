@@ -8,6 +8,7 @@ import {
   SlidersHorizontalIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
+import { NAVIGATION_REROUTE_DISTANCE } from 'vescape-core'
 
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -15,11 +16,16 @@ import { SettingsRow } from '@/components/settings/SettingsRow'
 import { Switch } from '@/components/controls/Switch'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
+import { lengthFromMeters, lengthInputToMeters, lengthUnit } from '@/helpers/units'
 import { theme } from '@/constants/theme'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
+const { minMeters, maxMeters } = NAVIGATION_REROUTE_DISTANCE
+
 export default function MapSettingsScreen() {
   const {
+    navigationRerouteDistanceMeters,
+    distanceUnit,
     satelliteOverlayEnabled,
     satelliteImageryOpacity,
     satelliteMapImageryOpacity,
@@ -28,6 +34,8 @@ export default function MapSettingsScreen() {
     set,
   } = useSettingsStore(
     useShallow((s) => ({
+      navigationRerouteDistanceMeters: s.navigationRerouteDistanceMeters,
+      distanceUnit: s.distanceUnit,
       satelliteOverlayEnabled: s.satelliteOverlayEnabled,
       satelliteImageryOpacity: s.satelliteImageryOpacity,
       satelliteMapImageryOpacity: s.satelliteMapImageryOpacity,
@@ -64,6 +72,35 @@ export default function MapSettingsScreen() {
           />
         </SettingsCard>
 
+        <SettingsSectionTitle>Navigation</SettingsSectionTitle>
+        <SettingsCard>
+          <SettingsRow
+            icon={MapTrifoldIcon}
+            label="Recalculate beyond"
+            hint="Distance from the path before finding a new way to your Direction Point"
+            right={
+              <Stepper
+                value={Math.round(lengthFromMeters(navigationRerouteDistanceMeters, distanceUnit))}
+                unit={lengthUnit(distanceUnit)}
+                min={Math.ceil(lengthFromMeters(minMeters, distanceUnit))}
+                max={Math.floor(lengthFromMeters(maxMeters, distanceUnit))}
+                step={distanceUnit === 'mi' ? 25 : 10}
+                onChange={(value) =>
+                  void set(
+                    'navigationRerouteDistanceMeters',
+                    lengthInputToMeters(
+                      value,
+                      navigationRerouteDistanceMeters,
+                      distanceUnit,
+                      minMeters,
+                      maxMeters,
+                    ),
+                  )
+                }
+              />
+            }
+          />
+        </SettingsCard>
         <SettingsSectionTitle>Satellite view</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow

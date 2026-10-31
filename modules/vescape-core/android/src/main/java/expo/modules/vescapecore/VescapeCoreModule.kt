@@ -1483,6 +1483,9 @@ class VescapeCoreModule : Module() {
         RecordingStorageFailure.report("setting_save", "write_failed", error)
         throw error
       }
+      if (key == "navigationRerouteDistanceMeters") {
+        NavigationController.get(context.applicationContext).reloadRerouteDistance()
+      }
       if (key == "distanceUnit") {
         CoreForegroundService.reloadAlertRules(context.applicationContext)
         val units = AppDataRepository.get(context.applicationContext).getTypedSettings().distanceUnit

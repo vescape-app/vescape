@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.navigation
 
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -15,6 +16,34 @@ import org.junit.Test
  * @parity /modules/vescape-core/ios/navigation/RouteProgressTests.swift
  */
 class RouteProgressTest {
+    @Test
+    fun `remaining duration shrinks with progress without using rider speed`() {
+        val path = listOf(0.0 to 0.0, 0.0 to 0.01)
+        val length = expo.modules.vescapecore.geo.GeoMath.distanceMeters(0.0, 0.0, 0.0, 0.01)
+        fun at(longitude: Double, speed: Double = 0.0) = RouteProgress.compute(path,
+            0.0, longitude, speed, routeDistanceMeters = length, routeDurationSeconds = 600.0)!!
+        assertEquals(600.0, at(0.0).remainingDurationSeconds!!, 0.01)
+        assertEquals(300.0, at(0.005).remainingDurationSeconds!!, 0.01)
+        assertEquals(at(0.005).remainingDurationSeconds, at(0.005, 20.0).remainingDurationSeconds)
+        assertEquals(0.0, at(0.01).remainingDurationSeconds!!, 0.0)
+        assertTrue(at(0.012).remainingMeters > 200)
+        assertNull(at(0.012).remainingDurationSeconds)
+        assertNull(RouteProgress.compute(path, 0.0, 0.005, 0.0)!!.remainingDurationSeconds)
+    }
+
+    @Test
+    fun `split and deviation use clamped nearest segment`() {
+        val path = listOf(0.0 to 0.0, 0.0 to 0.01)
+        val middle = RouteProgress.compute(path, 0.001, 0.005, null)!!
+        assertEquals(0, middle.segmentIndex)
+        assertEquals(0.5, middle.segmentFraction, 0.000001)
+        assertEquals(111.195, middle.deviationMeters, 0.1)
+        val end = RouteProgress.compute(path, 0.0, 0.012, null)!!
+        assertEquals(1.0, end.segmentFraction, 0.0)
+        assertTrue(end.remainingMeters > 200)
+        assertEquals(0.0, RouteProgress.compute(path, 0.0, -0.001, null)!!.segmentFraction, 0.0)
+    }
+
 
     /** 222 m east, then 222 m north. The corner is the only vertex between the ends. */
     private val cornerPath = listOf(

@@ -28,8 +28,11 @@ interface MapState {
    * is not `ready` is a computed answer of "no path", not an absence.
    */
   navigation: Navigation | null
-  /** The path the rider accepted with Ride it. Kept outside component state across UI remounts. */
-  acceptedNavigationComputedAtMs: number | null
+  /**
+   * Revision of the path the rider accepted with Ride it. Kept outside component state across UI
+   * remounts, and carried over to native's automatic replacements of that path.
+   */
+  acceptedNavigationRevision: number | null
   /**
    * Whether native is computing a path right now, mirrored like the path itself. Nothing on this
    * side sets it from a tap: a rider's request is only "in flight" once native says so, which is
@@ -60,6 +63,18 @@ interface MapActions {
 
 const DIRECTION_POINT_WRITE_FAILED = 'Could not save the direction point.'
 
+/** An accepted path stays accepted when native replaces it automatically; a rider intent resets it. */
+function acceptedRevisionAfter(state: MapState, navigation: Navigation | null): number | null {
+  const accepted = state.acceptedNavigationRevision
+  if (accepted == null || navigation == null) return null
+  if (navigation.revision === accepted) return accepted
+  return navigation.automatic &&
+    navigation.status === 'ready' &&
+    state.navigation?.revision === accepted
+    ? navigation.revision
+    : null
+}
+
 export const useMapStore = create<MapState & MapActions>((set, get) => {
   /**
    * The target moves on screen immediately, but native owns it — Group Ride presence reads native,
@@ -67,7 +82,7 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
    */
   async function moveDirectionPoint(next: DirectionPoint | null) {
     const previous = get().directionPoint
-    set({ directionPoint: next, acceptedNavigationComputedAtMs: null, error: null })
+    set({ directionPoint: next, acceptedNavigationRevision: null, error: null })
     try {
       await persistDirectionPoint(next?.latitude ?? null, next?.longitude ?? null)
     } catch {
@@ -78,7 +93,7 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
   return {
     directionPoint: null,
     navigation: null,
-    acceptedNavigationComputedAtMs: null,
+    acceptedNavigationRevision: null,
     navigationComputing: false,
     routeProgress: null,
     error: null,
@@ -107,10 +122,12 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
       set((state) => ({
         navigation,
         navigationComputing: computing,
-        acceptedNavigationComputedAtMs:
-          state.acceptedNavigationComputedAtMs === navigation?.computedAtMs
-            ? state.acceptedNavigationComputedAtMs
+        // Progress indexes into one path; native sends the reprojection right after a new one.
+        routeProgress:
+          state.routeProgress?.navigationRevision === navigation?.revision
+            ? state.routeProgress
             : null,
+        acceptedNavigationRevision: acceptedRevisionAfter(state, navigation),
       }))
     },
 
@@ -137,11 +154,11 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
     },
 
     acceptNavigation() {
-      set({ acceptedNavigationComputedAtMs: get().navigation?.computedAtMs ?? null })
+      set({ acceptedNavigationRevision: get().navigation?.revision ?? null })
     },
 
     editNavigation() {
-      set({ acceptedNavigationComputedAtMs: null })
+      set({ acceptedNavigationRevision: null })
     },
   }
 })

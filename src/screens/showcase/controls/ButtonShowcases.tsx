@@ -181,6 +181,7 @@ export function NavigationTopBarShowcase() {
           targetTitle="Forest trail entrance"
           targetIcon={NavigationArrowIcon}
           distanceLabel="1.2 km"
+          remainingDurationSeconds={480}
           riderColor={accents.violet.color}
           onNavigationPress={noop}
           onCancel={noop}
