@@ -11,6 +11,7 @@ import {
   WrenchIcon,
   CloudMoonIcon,
   CubeIcon,
+  CursorClickIcon,
   GearSixIcon,
   LightningIcon,
   MarkdownLogoIcon,
@@ -41,10 +42,17 @@ const groups = [
       },
       {
         label: 'Base',
-        hint: 'Buttons, banners, placeholders, and other everyday building blocks',
+        hint: 'Banners, placeholders, and other everyday building blocks',
         route: '/settings/components/base',
         icon: CubeIcon,
         color: theme.palette.cyan.color,
+      },
+      {
+        label: 'Buttons',
+        hint: 'Button, IconButton, and IconButtonExtension with live states',
+        route: '/settings/components/buttons',
+        icon: CursorClickIcon,
+        color: theme.palette.pink.color,
       },
       {
         label: 'Typography',

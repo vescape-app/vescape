@@ -55,6 +55,14 @@ internal suspend fun readProfileDayStats(
   )
 }
 
+/**
+ * Stats of the rides still going on or finished at or after [sinceMs], so a ride that crosses
+ * midnight keeps counting as the one being ridden.
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getRecentRideStats`
+ */
+internal suspend fun readProfileRecentStats(dao: VescapeDao, sinceMs: Long, gapMs: Long): Map<String, Any?> =
+  computeProfileStatsForSessions(readProfileSessions(dao, gapMs).filter { it.endAtMs >= sinceMs })
+
 private suspend fun readProfileSessions(dao: VescapeDao, gapMs: Long): List<RideSessionAggregate> {
   val buckets = dao.getAllHistoryBucketsAsc()
   val markers = readProfileMarkers(dao, buckets, gapMs)

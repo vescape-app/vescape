@@ -1187,6 +1187,17 @@ class VescapeCoreModule : Module() {
         throw CodedException("ERR_PROFILE_STATS_READ", "Could not load day stats", error)
       }
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRecentRideStats`
+    AsyncFunction("getRecentRideStats") Coroutine { sinceMs: Double ->
+      RecordingStorageFailure.requireAvailable()
+      try {
+        ProfileStatsRepository.get(context.applicationContext).getRecentRideStats(sinceMs.toLong())
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("recent_stats_read", error)
+        throw CodedException("ERR_PROFILE_STATS_READ", "Could not load recent ride stats", error)
+      }
+    }
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
     // and the denormalized summary are native.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFavorites`

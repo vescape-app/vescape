@@ -54,6 +54,14 @@ internal final class ProfileStatsRepository {
     })
   }
 
+  /// Stats of the rides still going on or finished at or after `sinceMs`, so a ride that crosses
+  /// midnight keeps counting as the one being ridden.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `readProfileRecentStats`
+  /// @parity /modules/vescape-core/src/index.ts `getRecentRideStats`
+  func getRecentRideStats(sinceMs: Int64) throws -> [String: Any?] {
+    computeProfileStatsForSessions(try readSessions().filter { $0.endAtMs >= sinceMs })
+  }
+
   private func readSessions() throws -> [RideSessionAggregate] {
     let gapMs = try gapMsProvider()
     let pool = try poolProvider()

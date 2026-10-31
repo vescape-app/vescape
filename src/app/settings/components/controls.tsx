@@ -4,7 +4,6 @@ import { SwatchesIcon } from 'phosphor-react-native'
 
 import { AlertPresetControlShowcase } from '@/screens/showcase/controls/AlertPresetControlShowcase'
 import {
-  CircleButtonShowcase,
   FloatingActionPillShowcase,
   FloatingBarShowcase,
   NavigationTopBarShowcase,
@@ -25,13 +24,12 @@ export default function ControlsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SwatchesIcon}
-          description="Switch, RadioIndicator, CircleButton, ExpandableCircleMenu, FloatingBar, PrevNextSelector, PillSelector, AlertPresetControl, MetricAlerts."
+          description="Switch, RadioIndicator, ExpandableCircleMenu, FloatingBar, PrevNextSelector, PillSelector, AlertPresetControl, MetricAlerts."
         />
         <SwitchShowcase />
         <RadioIndicatorShowcase />
         <AlertPresetControlShowcase />
         <MetricAlertsShowcase />
-        <CircleButtonShowcase />
         <NavigationTopBarShowcase />
         <FloatingBarShowcase />
         <FloatingActionPillShowcase />

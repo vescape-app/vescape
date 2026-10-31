@@ -18,6 +18,10 @@ class ProfileStatsRepository private constructor(private val context: Context) {
   suspend fun getDayStats(options: Map<String, Any?>): Map<String, Any?> =
     read { dao, gapMs -> readProfileDayStats(dao, options, gapMs) }
 
+  /** @parity /modules/vescape-core/src/index.ts `getRecentRideStats` */
+  suspend fun getRecentRideStats(sinceMs: Long): Map<String, Any?> =
+    read { dao, gapMs -> readProfileRecentStats(dao, sinceMs, gapMs) }
+
   private suspend fun read(block: suspend (VescapeDao, Long) -> Map<String, Any?>): Map<String, Any?> {
     val minutes = AppDataRepository.get(context).getSettings()["rideSplitGapMinutes"] as? Number
     val gapMs = (minutes?.toLong() ?: DEFAULT_RIDE_SPLIT_GAP_MINUTES.toLong()) * 60_000L

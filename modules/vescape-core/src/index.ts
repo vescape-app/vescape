@@ -2972,6 +2972,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
   getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
   getDayStats(day: RideDay): Promise<ProfileStats>
+  getRecentRideStats(sinceMs: number): Promise<ProfileStats>
   getMaintenanceState(): MaintenanceState
   deleteTelemetryBefore(beforeMs: number): Promise<number>
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
@@ -4173,6 +4174,15 @@ export async function getProfileStatsSnapshot(
  */
 export async function getDayStats(day: RideDay): Promise<ProfileStats> {
   return native.getDayStats(day)
+}
+
+/**
+ * Profile stats of the rides still going on or finished at or after `sinceMs` (epoch ms).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryAndroid.kt `getRecentRideStats`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getRecentRideStats`
+ */
+export async function getRecentRideStats(sinceMs: number): Promise<ProfileStats> {
+  return native.getRecentRideStats(sinceMs)
 }
 
 /**
