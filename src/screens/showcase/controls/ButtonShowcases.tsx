@@ -6,6 +6,7 @@ import {
   BluetoothSlashIcon,
   BluetoothXIcon,
   CameraIcon,
+  ClockCounterClockwiseIcon,
   HeartIcon,
   NavigationArrowIcon,
   PauseIcon,
@@ -18,7 +19,7 @@ import {
   type Icon,
 } from 'phosphor-react-native'
 
-import { CircleButton } from '@/components/controls/CircleButton'
+import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import {
   FloatingActionPill,
@@ -33,73 +34,6 @@ import { ChipRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors } from '@/hooks/useTheme'
 import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
-
-export function CircleButtonShowcase() {
-  return (
-    <ShowcaseCard name="CircleButton">
-      <View style={styles.buttonRow}>
-        <CircleButton icon={PencilSimpleIcon} accessibilityLabel="Edit" onPress={() => undefined} />
-        <CircleButton
-          icon={TrashIcon}
-          accessibilityLabel="Delete"
-          variant="outline"
-          onPress={() => undefined}
-        />
-        <CircleButton
-          icon={ArrowUpIcon}
-          accessibilityLabel="Move up"
-          variant="ghost"
-          onPress={() => undefined}
-        />
-        <CircleButton
-          icon={ArrowsClockwiseIcon}
-          accessibilityLabel="Loading"
-          loading
-          onPress={() => undefined}
-        />
-        <CircleButton
-          icon={NavigationArrowIcon}
-          accessibilityLabel="Disabled"
-          disabled
-          onPress={() => undefined}
-        />
-      </View>
-      <View style={styles.buttonRow}>
-        <CircleButton
-          icon={CameraIcon}
-          accessibilityLabel="Add photo"
-          tone="purple"
-          size="xs"
-          onPress={() => undefined}
-        />
-        <CircleButton
-          icon={HeartIcon}
-          accessibilityLabel="Favorite"
-          tone="amber"
-          size="sm"
-          variant="soft"
-          onPress={() => undefined}
-        />
-        <CircleButton
-          icon={RecordIcon}
-          accessibilityLabel="Record"
-          tone="red"
-          size="md"
-          variant="outline"
-          onPress={() => undefined}
-        />
-        <CircleButton
-          icon={StopIcon}
-          accessibilityLabel="Stop recording"
-          tone="red"
-          size="lg"
-          variant="solid"
-          onPress={() => undefined}
-        />
-      </View>
-    </ShowcaseCard>
-  )
-}
 
 const noop = () => undefined
 

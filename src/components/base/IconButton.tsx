@@ -77,6 +77,12 @@ export interface IconButtonTakeover {
   progress?: number
 }
 
+/**
+ * `soft` is the default control surface (tinted by `accent`), `solid` a stronger accent fill,
+ * `outline` a transparent surface with an accent ring, `ghost` a bare icon with no ring.
+ */
+export type IconButtonVariant = 'soft' | 'solid' | 'outline' | 'ghost'
+
 interface IconButtonProps {
   icon: Icon
   onPress: () => void
@@ -84,6 +90,7 @@ interface IconButtonProps {
   takeover?: IconButtonTakeover | null
   onLongPress?: () => void
   size?: keyof typeof SIZES
+  variant?: IconButtonVariant
   disabled?: boolean
   destructive?: boolean
   /** Override the icon + border colour to signal an active state. */
@@ -98,12 +105,24 @@ interface IconButtonProps {
   accessibilityLabel?: string
 }
 
+function getBackground(
+  variant: IconButtonVariant,
+  accent: ThemeColor | undefined,
+  coloredSurface: ThemeColor,
+): ThemeColor {
+  if (variant === 'outline' || variant === 'ghost') return theme.alpha(theme.palette.mono.black, 0)
+  if (!accent) return theme.control.background
+  // A single accent has no matching palette `bg` token, so the solid fill is the accent at 0.3.
+  return variant === 'solid' ? theme.alpha(accent, 0.3) : coloredSurface
+}
+
 export function IconButton({
   icon: RestingIcon,
   onPress,
   takeover,
   onLongPress,
   size = 'sm',
+  variant = 'soft',
   disabled = false,
   destructive = false,
   accent,
@@ -131,7 +150,7 @@ export function IconButton({
   // button keeps the navy control surface. Hook runs unconditionally; result ignored when plain.
   const coloredAccent = destructive ? theme.palette.red.light : activeAccent
   const coloredSurface = useColoredAction(coloredAccent ?? theme.control.background)
-  const background = coloredAccent ? coloredSurface : theme.control.background
+  const background = getBackground(variant, coloredAccent, coloredSurface)
   const progress = takeover?.progress
 
   const pulse = useSharedValue(0)
@@ -162,6 +181,7 @@ export function IconButton({
           borderColor,
           backgroundColor: background,
         },
+        variant === 'ghost' && styles.ghost,
         isDisabled && styles.disabled,
         pressed && !isDisabled && { opacity: interaction.pressedOpacity },
         style,
@@ -194,6 +214,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+  },
+  ghost: {
+    borderWidth: 0,
   },
   disabled: {
     opacity: 0.35,
