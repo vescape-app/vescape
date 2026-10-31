@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LocationEvent, MapPoint, MapPointCategory } from 'vescape-core'
 
 import { useLocationStore } from '@/modules/location/store/locationStore'
+import { useGpsStatusBadge } from '@/modules/location/hooks/useGpsStatusBadge'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { getLiveGpsPresentation } from '@/helpers/liveGpsPresentation'
@@ -57,6 +58,7 @@ export function useLiveMapModel({
   directionPoint: DirectionPoint | null
 }) {
   const accents = useResolvedAccentColors()
+  const gpsStatusBadge = useGpsStatusBadge()
   const [initialApproximateFix, setInitialApproximateFix] = useState<LocationEvent | null>(null)
   const retainedGpsFix = liveLocations.at(-1) ?? null
   const latestPreciseLocation = useLocationStore((s) => s.latestPreciseLocation)
@@ -77,10 +79,10 @@ export function useLiveMapModel({
   const { cameraFix, accuracyRadiusM, directionBearingDeg } = gpsPresentation
   const accuracyFix = useMemo(
     () =>
-      gpsPresentation.accuracyFix
+      gpsPresentation.accuracyFix && gpsStatusBadge?.kind !== 'lost'
         ? { ...gpsPresentation.accuracyFix, accuracyM: accuracyRadiusM }
         : null,
-    [gpsPresentation.accuracyFix, accuracyRadiusM],
+    [gpsPresentation.accuracyFix, accuracyRadiusM, gpsStatusBadge?.kind],
   )
   const approximateGpsPuckActive =
     gpsPresentation.degraded ||
