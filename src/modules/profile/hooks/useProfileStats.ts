@@ -1,13 +1,21 @@
 import { useCallback, useRef, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
 import {
-  getDayStats,
+  getRecentRideStats,
   getProfileStatsSnapshot,
   type ProfileStats,
   type ProfileStatsMonth,
 } from 'vescape-core'
 
 import { selectInitialMonth } from '@/modules/profile/lib/profileStats'
+
+/** How far back "Today" reaches: a rolling window, so a ride across midnight never drops out. */
+const TODAY_WINDOW_MS = 12 * 60 * 60_000
+
+/** Totals of the rides still going on or finished within the last 12 hours, shown as Today. */
+export function getTodayStats(): Promise<ProfileStats> {
+  return getRecentRideStats(Date.now() - TODAY_WINDOW_MS)
+}
 
 export const EMPTY_PROFILE_STATS: ProfileStats = {
   distanceM: null,
@@ -46,10 +54,9 @@ export function useProfileStats(active = true) {
     if (!loadedRef.current) setLoading(true)
     setError(null)
     try {
-      const now = new Date()
       const [snapshot, todayStats] = await Promise.all([
         getProfileStatsSnapshot(loadedRef.current ? selectedMonthRef.current : undefined),
-        getDayStats({ year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() }),
+        getTodayStats(),
       ])
       const availableMonths = snapshot.months
       // Keep the month the rider is looking at; fall back when it is gone (or on first load).

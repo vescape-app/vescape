@@ -6,16 +6,16 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 
 ## Term map
 
-| Domain (CONTEXT.md) | Native/API name                                                  |
-| ------------------- | ---------------------------------------------------------------- |
-| Board               | `board_id` in DB, `boardId` in API                               |
-| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                  |
-| Ride Recording      | frames + buckets + markers in DB                                 |
-| Ride History        | `getRideHistoryPage` (complete rides), `getHistoryRange` (full)  |
-| Tune Profile        | `tune_profiles` table, `TuneProfile` type                        |
-| Tune Snapshot       | `RefloatConfigSnapshot`                                          |
-| Alert Rule          | `alerts` table, `AlertRule` type                                 |
-| User Profile Stats  | `ProfileStatsSnapshot`, `getProfileStatsSnapshot`, `getDayStats` |
+| Domain (CONTEXT.md) | Native/API name                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| Board               | `board_id` in DB, `boardId` in API                                                     |
+| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                                        |
+| Ride Recording      | frames + buckets + markers in DB                                                       |
+| Ride History        | `getRideHistoryPage` (complete rides), `getHistoryRange` (full)                        |
+| Tune Profile        | `tune_profiles` table, `TuneProfile` type                                              |
+| Tune Snapshot       | `RefloatConfigSnapshot`                                                                |
+| Alert Rule          | `alerts` table, `AlertRule` type                                                       |
+| User Profile Stats  | `ProfileStatsSnapshot`, `getProfileStatsSnapshot`, `getDayStats`, `getRecentRideStats` |
 
 ---
 
@@ -345,6 +345,7 @@ it never creates occurrences, warnings, baselines, or persisted register snapsho
 | ----------------------------------------- | ------------------------------------------------------------------------- |
 | `getProfileStatsSnapshot({year?,month?})` | Lifetime + selected-month stats and available months from one native pass |
 | `getDayStats({year,month,day})`           | Profile stats of the rides that started on one local day                  |
+| `getRecentRideStats(sinceMs)`             | Profile stats of the rides ongoing or finished at or after `sinceMs`      |
 
 ### ProfileStats shape
 
