@@ -254,19 +254,27 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   const rideLink = parseRideLink(useLocalSearchParams())
   const linkedRideId = rideLink?.rideId
   const linkedRideFocus = rideLink?.focus ?? undefined
+  // Clearing the params re-runs this effect, so the lookup is tracked by request number rather
+  // than effect cleanup: only a newer link (or leaving the screen) drops a pending one.
+  const rideLinkRequest = useRef(0)
   useEffect(() => {
     if (!linkedRideId) return
     router.setParams(CLEARED_RIDE_LINK_PARAMS)
-    let cancelled = false
+    const request = ++rideLinkRequest.current
     getRideSession(linkedRideId)
       .then((session) => {
-        if (session && !cancelled) selectRide(session, linkedRideFocus)
+        if (request !== rideLinkRequest.current) return
+        if (session) selectRide(session, linkedRideFocus)
+        else console.warn('[main] linked ride no longer exists', linkedRideId)
       })
       .catch((error: unknown) => console.warn('[main] could not open linked ride', error))
-    return () => {
-      cancelled = true
-    }
   }, [linkedRideFocus, linkedRideId, selectRide])
+  useEffect(
+    () => () => {
+      rideLinkRequest.current += 1
+    },
+    [],
+  )
 
   const handleMapFocus = useCallback(() => {
     if (mode === 'map') return
