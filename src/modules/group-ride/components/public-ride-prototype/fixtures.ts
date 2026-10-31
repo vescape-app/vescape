@@ -1,5 +1,5 @@
 // UI-only fixtures. Never passed to the relay, native presence, or preference stores.
-export type PublicMode = 'off' | 'ride' | 'automatic'
+export type PublicMode = 'off' | 'ride' | 'day' | 'automatic'
 export interface MockRider {
   id: string
   name: string
@@ -18,12 +18,13 @@ export interface MockRider {
   position: { x: number; y: number }
 }
 export const PUBLIC_MODES: { value: PublicMode; title: string; subtitle: string }[] = [
-  { value: 'off', title: 'Off', subtitle: 'Keep my location private' },
-  { value: 'ride', title: 'This ride only', subtitle: 'Visible until this ride ends' },
+  { value: 'off', title: 'Off', subtitle: 'Your location is hidden' },
+  { value: 'ride', title: 'One ride', subtitle: 'Visible until this ride ends' },
+  { value: 'day', title: 'Today', subtitle: 'Visible until midnight' },
   {
     value: 'automatic',
-    title: 'Every ride with my board',
-    subtitle: 'Start when my board connects',
+    title: 'Always',
+    subtitle: 'Visible whenever my board connects',
   },
 ]
 export const MOCK_RIDERS: MockRider[] = [

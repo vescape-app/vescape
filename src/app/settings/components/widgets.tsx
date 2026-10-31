@@ -6,6 +6,7 @@ import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import {
   CanvasWidgetShowcase,
+  PublicRideSelectorShowcase,
   ExpandingWidgetShowcase,
   DialWidgetShowcase,
   SwitchWidgetShowcase,
@@ -32,6 +33,7 @@ export default function WidgetsPage() {
         <ExpandingWidgetShowcase />
         <SwitchWidgetShowcase />
         <DialWidgetShowcase />
+        <PublicRideSelectorShowcase />
         <CanvasWidgetShowcase />
       </ScrollView>
     </SafeAreaView>

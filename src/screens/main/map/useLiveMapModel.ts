@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LocationEvent, MapPoint, MapPointCategory } from 'vescape-core'
 
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import { MOCK_RIDERS } from '@/modules/group-ride/components/public-ride-prototype/fixtures'
+import { usePublicRidePrototypeStore } from '@/modules/group-ride/components/public-ride-prototype/prototypeStore'
+import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { getLiveGpsPresentation } from '@/helpers/liveGpsPresentation'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
@@ -97,7 +100,51 @@ export function useLiveMapModel({
     [hiddenMapPointCategories, mapPoints, selectedMapPointId],
   )
   const riderColor = useSelectedBoardRailColor()
-  const riderFocusRows = useGroupRideStore((state) => state.rosterRows)
+  const rosterRows = useGroupRideStore((state) => state.rosterRows)
+  const prototypeMode = usePublicRidePrototypeStore((state) => state.mode)
+  const hiddenPrototypeRiders = usePublicRidePrototypeStore((state) => state.hidden)
+  const showPrototypeRiders = usePublicRidePrototypeStore((state) => state.showRidersOnMap)
+  // Sample locations stay anchored to the first available fix, rather than following the phone.
+  const prototypeOrigin = useRef(trackingCoordinate)
+  if (!prototypeOrigin.current && trackingCoordinate) prototypeOrigin.current = trackingCoordinate
+  const prototypeLatitude = prototypeOrigin.current?.latitude
+  const prototypeLongitude = prototypeOrigin.current?.longitude
+  const riderFocusRows = useMemo((): RosterRider[] => {
+    if (!__DEV__) return rosterRows
+    if (
+      !showPrototypeRiders ||
+      prototypeMode === 'off' ||
+      prototypeLatitude == null ||
+      prototypeLongitude == null
+    )
+      return []
+    // Development fixtures only: reuse the dashboard's rider pins and offscreen indicators.
+    return MOCK_RIDERS.filter((rider) => !hiddenPrototypeRiders.includes(rider.id)).map(
+      (rider) => ({
+        id: `public-ride-prototype-${rider.id}`,
+        name: `${rider.name} · demo`,
+        color: null,
+        presence: {
+          lat: prototypeLatitude + (50 - rider.position.y) * 0.000035,
+          lng:
+            prototypeLongitude +
+            ((rider.position.x - 50) * 0.000035) /
+              Math.max(0.01, Math.cos((prototypeLatitude * Math.PI) / 180)),
+        },
+        stale: rider.freshness === 'recent',
+        lastSeen: 0,
+        distanceM: null,
+        isSelf: false,
+      }),
+    )
+  }, [
+    hiddenPrototypeRiders,
+    prototypeLatitude,
+    prototypeLongitude,
+    prototypeMode,
+    rosterRows,
+    showPrototypeRiders,
+  ])
   const mapRiders = useMemo(() => riderFocusRows.filter((row) => !row.isSelf), [riderFocusRows])
   const riderTargetPoints = useMemo(
     () => buildRiderTargetPoints(mapRiders, accents),

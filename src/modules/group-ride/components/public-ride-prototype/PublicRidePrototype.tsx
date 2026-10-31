@@ -13,12 +13,14 @@ import {
 } from 'phosphor-react-native'
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
-import { RadioIndicator } from '@/components/controls/RadioIndicator'
+import { Switch } from '@/components/controls/Switch'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { theme } from '@/constants/theme'
-import { MOCK_RIDERS, PUBLIC_MODES, type MockRider, type PublicMode } from './fixtures'
+import { MOCK_RIDERS, PUBLIC_MODES, type MockRider } from './fixtures'
+import { usePublicRidePrototypeStore } from './prototypeStore'
+import { PublicRideSelector } from './PublicRideSelector'
 
 interface Props {
   identity: ReactNode
@@ -27,10 +29,14 @@ interface Props {
 
 /** Development-only UI sandbox. No sharing intents, permissions, timers, or persisted settings. */
 export function PublicRidePrototype({ identity, onPageChange }: Props) {
-  const [mode, setMode] = useState<PublicMode>('ride')
+  const mode = usePublicRidePrototypeStore((state) => state.mode)
+  const setMode = usePublicRidePrototypeStore((state) => state.setMode)
   const [selected, setSelected] = useState<MockRider | null>(null)
   const [mapOpen, setMapOpen] = useState(false)
-  const [hidden, setHidden] = useState<string[]>([])
+  const showRidersOnMap = usePublicRidePrototypeStore((state) => state.showRidersOnMap)
+  const setShowRidersOnMap = usePublicRidePrototypeStore((state) => state.setShowRidersOnMap)
+  const hidden = usePublicRidePrototypeStore((state) => state.hidden)
+  const setHidden = usePublicRidePrototypeStore((state) => state.setHidden)
   const surface = useResolvedSecondaryWidgetSurface()
   const neutral = useResolvedNeutralColors()
   const riders = mode === 'off' ? [] : MOCK_RIDERS.filter((rider) => !hidden.includes(rider.id))
@@ -120,66 +126,24 @@ export function PublicRidePrototype({ identity, onPageChange }: Props) {
         </View>
       ) : (
         <>
-          <CanvasWidget
-            icon={BroadcastIcon}
-            title="Public ride"
-            accent={theme.palette.groupRide.color}
-            surface="secondary"
-          >
-            <View accessibilityRole="radiogroup">
-              {PUBLIC_MODES.map((option, index) => (
-                <Pressable
-                  key={option.value}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: mode === option.value }}
-                  accessibilityLabel={`${option.title}. ${option.subtitle}`}
-                  onPress={() => setMode(option.value)}
-                  style={[
-                    styles.option,
-                    index > 0 && {
-                      borderTopWidth: StyleSheet.hairlineWidth,
-                      borderTopColor: neutral.border,
-                    },
-                  ]}
-                >
-                  <RadioIndicator
-                    selected={mode === option.value}
-                    accent={theme.palette.groupRide.color}
-                  />
-                  <View style={styles.flex}>
-                    <Text style={styles.name}>{option.title}</Text>
-                    <Text style={styles.secondary}>{option.subtitle}</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-            <Text
-              style={[
-                styles.secondary,
-                { color: mode === 'off' ? neutral.textSecondary : theme.palette.groupRide.color },
-              ]}
-            >
-              {mode === 'off' ? 'Private · location hidden' : 'Visible nearby'}
-            </Text>
-          </CanvasWidget>
+          <PublicRideSelector value={mode} onValueChange={setMode} />
           <CanvasWidget
             icon={UsersThreeIcon}
             title="Nearby riders"
             accent={theme.palette.cyan.color}
-            action={<Text style={styles.secondary}>{riders.length}</Text>}
-            surface="secondary"
-            footer={
-              riders.length ? (
-                <Button
-                  label="Show riders on map"
-                  icon={MapTrifoldIcon}
-                  variant="accent"
-                  size="lg"
-                  onPress={() => navigate(null, true)}
-                  style={styles.flex}
+            action={
+              <View style={styles.mapToggle}>
+                <Text style={styles.caption}>On map</Text>
+                <Switch
+                  value={showRidersOnMap}
+                  onValueChange={setShowRidersOnMap}
+                  accent={theme.palette.cyan.color}
+                  accessibilityLabel="Show nearby riders on map"
+                  disabled={!riders.length}
                 />
-              ) : undefined
+              </View>
             }
+            surface="secondary"
           >
             {riders.length ? (
               riders.map((rider, index) => (
@@ -198,20 +162,18 @@ export function PublicRidePrototype({ identity, onPageChange }: Props) {
                 >
                   <Avatar rider={rider} />
                   <View style={styles.flex}>
-                    <View style={styles.row}>
-                      <Text style={[styles.name, styles.flex]}>{rider.name}</Text>
-                      <Text style={styles.secondary}>{rider.distance}</Text>
-                    </View>
+                    <Text style={styles.name}>{rider.name}</Text>
                     <View style={styles.telemetry}>
+                      {rider.battery !== null ? (
+                        <>
+                          <BatteryMediumIcon size={20} color={theme.palette.groupRide.color} />
+                          <Text style={styles.caption}>{reading(rider.battery, '%')}</Text>
+                        </>
+                      ) : null}
                       <GaugeIcon size={15} color={theme.neutral.textSecondary} />
                       <Text style={[styles.caption, styles.flex]}>
-                        {rider.board
-                          ? `${speed(rider)} · Board ${reading(rider.battery, '%')}`
-                          : 'Board disconnected · —'}
+                        {rider.board ? speed(rider) : 'Board disconnected · —'}
                       </Text>
-                      {rider.battery !== null ? (
-                        <BatteryMediumIcon size={20} color={theme.palette.groupRide.color} />
-                      ) : null}
                     </View>
                     {rider.freshness === 'recent' ? (
                       <Text style={styles.caption}>
@@ -219,6 +181,7 @@ export function PublicRidePrototype({ identity, onPageChange }: Props) {
                       </Text>
                     ) : null}
                   </View>
+                  <Text style={styles.secondary}>{rider.distance}</Text>
                   <CaretRightIcon size={18} color={theme.neutral.textSecondary} />
                 </Pressable>
               ))
@@ -254,7 +217,7 @@ export function PublicRidePrototype({ identity, onPageChange }: Props) {
               label={`Simulate ${selected.name} going private`}
               variant="secondary"
               onPress={() => {
-                setHidden((ids) => [...ids, selected.id])
+                setHidden([...hidden, selected.id])
                 navigate(null)
               }}
             />
@@ -393,13 +356,7 @@ const styles = StyleSheet.create({
   panel: { padding: 16, gap: 14 },
   flex: { flex: 1, minWidth: 0 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingVertical: 13,
-    minHeight: 64,
-  },
+  mapToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   name: { color: theme.neutral.textPrimary, fontSize: 15, fontWeight: '700' },
   nameLarge: { color: theme.neutral.textPrimary, fontSize: 24, fontWeight: '700' },
   secondary: { color: theme.neutral.textSecondary, fontSize: 13, lineHeight: 20 },

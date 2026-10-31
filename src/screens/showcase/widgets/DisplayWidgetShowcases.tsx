@@ -14,6 +14,12 @@ import { Placeholder } from '@/components/base/Placeholder'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { DialWidget } from '@/modules/tune/components/DialWidget'
 import { SwitchWidget } from '@/components/widgets/SwitchWidget'
+import { PublicRideSelector } from '@/modules/group-ride/components/public-ride-prototype/PublicRideSelector'
+import {
+  PUBLIC_MODES,
+  type PublicMode,
+} from '@/modules/group-ride/components/public-ride-prototype/fixtures'
+import { ChipRow } from '@/components/dev/ShowcaseControls'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { theme } from '@/constants/theme'
 import { Cell, Row, SizeLabel } from '@/screens/showcase/widgets/WidgetGrid'
@@ -248,3 +254,22 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 })
+
+export function PublicRideSelectorShowcase() {
+  const [mode, setMode] = useState<PublicMode>('off')
+  return (
+    <ShowcaseCard
+      name="PublicRideSelector"
+      controls={
+        <ChipRow
+          label="Mode"
+          options={PUBLIC_MODES.map((option) => option.value)}
+          selected={mode}
+          onSelect={(value) => setMode(value as PublicMode)}
+        />
+      }
+    >
+      <PublicRideSelector value={mode} onValueChange={setMode} />
+    </ShowcaseCard>
+  )
+}
