@@ -1221,6 +1221,16 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getDayStats`
+    AsyncFunction("getDayStats") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try ProfileStatsRepository.shared.getDayStats(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "day_stats_read", error: error)
+        promise.reject("ERR_PROFILE_STATS_READ", "Could not load day stats", cause: error)
+      }
+    }
+
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
     // and the denormalized summary are native.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFavorites`

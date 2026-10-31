@@ -1176,6 +1176,17 @@ class VescapeCoreModule : Module() {
         throw CodedException("ERR_PROFILE_STATS_READ", "Could not load profile stats", error)
       }
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getDayStats`
+    AsyncFunction("getDayStats") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
+      try {
+        ProfileStatsRepository.get(context.applicationContext).getDayStats(options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("day_stats_read", error)
+        throw CodedException("ERR_PROFILE_STATS_READ", "Could not load day stats", error)
+      }
+    }
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
     // and the denormalized summary are native.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFavorites`

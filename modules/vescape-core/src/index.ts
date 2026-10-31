@@ -1426,6 +1426,11 @@ export interface ProfileStatsMonth {
   month: number
 }
 
+/** A local calendar day; `month` is 1-based. */
+export interface RideDay extends ProfileStatsMonth {
+  day: number
+}
+
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryAndroid.kt `getProfileStatsSnapshot`
  * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getProfileStatsSnapshot`
@@ -2966,6 +2971,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<TuneProfile>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
   getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
+  getDayStats(day: RideDay): Promise<ProfileStats>
   getMaintenanceState(): MaintenanceState
   deleteTelemetryBefore(beforeMs: number): Promise<number>
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
@@ -4158,6 +4164,15 @@ export async function getProfileStatsSnapshot(
   options?: ProfileStatsMonth,
 ): Promise<ProfileStatsSnapshot> {
   return native.getProfileStatsSnapshot(options ?? {})
+}
+
+/**
+ * Profile stats of the rides that started on one local day.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryAndroid.kt `getDayStats`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getDayStats`
+ */
+export async function getDayStats(day: RideDay): Promise<ProfileStats> {
+  return native.getDayStats(day)
 }
 
 /**

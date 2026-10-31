@@ -167,6 +167,7 @@ function RootLayout() {
                   name={stackScreens.profileStats}
                   options={{ title: 'Profile stats' }}
                 />
+                <Stack.Screen name={stackScreens.rideDay} options={{ title: 'Day' }} />
                 {/* Clerk's own dismiss control is off (its native header carries system
                 Liquid Glass); the JS header owns back/dismiss instead. */}
                 <Stack.Screen name={stackScreens.signIn} options={{ title: 'Sign in' }} />

@@ -7,6 +7,7 @@ const ride = (day: number, hour: number) => ({
   endAtMs: at(day, hour + 1),
   movingStartAtMs: null,
   movingEndAtMs: null,
+  distanceM: 1000 as number | null,
 })
 
 test('one date heading per day, including rides appended from another page', () => {
@@ -49,4 +50,13 @@ test('exact frames include date headers and gaps across appended pages without m
     { index: 3, offset: 326, length: 126, rowOffset: 364 },
   ])
   expect(historyListLayouts(historyListRows(firstPage), 54)[1].rowOffset).toBe(150)
+})
+
+test('each date heading carries the totals of its loaded rides', () => {
+  const rows = historyListRows([ride(16, 18), { ...ride(16, 12), distanceM: null }, ride(15, 20)])
+  expect(rows.map((row) => row.day)).toEqual([
+    { rides: 2, durationMs: 2 * 3_600_000, distanceM: 1000 },
+    null,
+    { rides: 1, durationMs: 3_600_000, distanceM: 1000 },
+  ])
 })

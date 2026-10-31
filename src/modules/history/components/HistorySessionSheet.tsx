@@ -2,9 +2,10 @@ import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { useCallback, useMemo, type RefObject } from 'react'
 import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { ClockCounterClockwiseIcon, StarIcon } from 'phosphor-react-native'
-import type { Favorite } from 'vescape-core'
+import { CaretRightIcon, ClockCounterClockwiseIcon, StarIcon } from 'phosphor-react-native'
+import type { Favorite, RideDay } from 'vescape-core'
 
+import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
@@ -19,6 +20,7 @@ import {
 import { favoriteSessionId } from '@/modules/history/lib/favorites'
 import { formatFavoriteName, formatRideTime } from '@/modules/history/lib/rideFormat'
 import { isLiveRide } from '@/modules/history/lib/sessions'
+import { rideDayOf } from '@/modules/history/lib/rideDay'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 
@@ -35,6 +37,8 @@ interface HistorySessionSheetProps {
   onSelectSession: (session: HistorySession) => void
   onSelectTab: (tab: 'history' | 'favorites') => void
   onLoadMore: () => void
+  /** Adds Details to each day heading, opening that day's stats and rides. */
+  onOpenDay?: (day: RideDay) => void
 }
 
 export function HistorySessionSheet({
@@ -50,16 +54,18 @@ export function HistorySessionSheet({
   onSelectSession,
   onLoadMore,
   onSelectTab,
+  onOpenDay,
 }: HistorySessionSheetProps) {
   const { formatRideDetails } = useRideFormat()
   const { fontScale } = useWindowDimensions()
-  const dateHeaderHeight = 22 + 16 * fontScale
+  const dateHeaderHeight = 24 + 38 * fontScale
   useHistoryAutoRefresh(visible && !favoriteMode)
   const favoritesBySessionId = useMemo(
     () => new Map(favorites.map((favorite) => [favoriteSessionId(favorite.id), favorite])),
     [favorites],
   )
 
+  const openDay = favoriteMode ? undefined : onOpenDay
   const rows = useMemo(() => historyListRows(sessions), [sessions])
   const layouts = useMemo(
     () => historyListLayouts(rows, dateHeaderHeight),
@@ -70,7 +76,7 @@ export function HistorySessionSheet({
 
   const renderSession = useCallback(
     ({ item }: { item: unknown }) => {
-      const { session, window: rideWindow, dateHeader } = item as (typeof rows)[number]
+      const { session, window: rideWindow, dateHeader, day } = item as (typeof rows)[number]
       const selected = session.id === selectedSessionId
       const favorite = favoritesBySessionId.get(session.id)
       const time = formatRideTime(
@@ -85,13 +91,29 @@ export function HistorySessionSheet({
       )
       return (
         <View>
-          {dateHeader ? (
-            <Text
-              accessibilityRole="header"
-              style={[styles.dateHeader, { height: dateHeaderHeight }]}
-            >
-              {dateHeader}
-            </Text>
+          {dateHeader && day ? (
+            <View style={[styles.dateHeaderRow, { height: dateHeaderHeight }]}>
+              <View style={styles.dateHeaderText}>
+                <Text accessibilityRole="header" style={styles.dateHeader}>
+                  {dateHeader}
+                </Text>
+                <Text style={styles.dateHeaderDetails} numberOfLines={1}>
+                  {`${day.rides} ${day.rides === 1 ? 'ride' : 'rides'} · ${formatRideDetails(day.durationMs, day.distanceM, null)}`}
+                </Text>
+              </View>
+              {openDay && day.rides > 1 ? (
+                <Button
+                  label="Summary"
+                  icon={CaretRightIcon}
+                  iconPosition="right"
+                  size="sm"
+                  variant="secondary"
+                  accessibilityLabel={`${dateHeader} summary`}
+                  testID={`history-day-summary-${session.id}`}
+                  onPress={() => openDay(rideDayOf(rideWindow.startMs))}
+                />
+              ) : null}
+            </View>
           ) : null}
           <HistoryRideRow
             testID={`history-session-row-${session.id}`}
@@ -109,7 +131,14 @@ export function HistorySessionSheet({
         </View>
       )
     },
-    [favoritesBySessionId, onSelectSession, selectedSessionId, formatRideDetails, dateHeaderHeight],
+    [
+      favoritesBySessionId,
+      onSelectSession,
+      selectedSessionId,
+      formatRideDetails,
+      dateHeaderHeight,
+      openDay,
+    ],
   )
 
   const empty = (
@@ -175,14 +204,30 @@ function HistoryRowSeparator() {
 
 const styles = StyleSheet.create({
   separator: { height: HISTORY_RIDE_ROW_GAP },
+  dateHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  dateHeaderText: {
+    flex: 1,
+  },
   dateHeader: {
+    color: theme.neutral.textPrimary,
+    fontSize: 16,
+    lineHeight: 22,
+    includeFontPadding: false,
+    fontWeight: '700',
+  },
+  dateHeaderDetails: {
     color: theme.neutral.textSecondary,
     fontSize: 12,
     lineHeight: 16,
     includeFontPadding: false,
-    fontWeight: '700',
-    paddingTop: 12,
-    paddingBottom: 10,
+    fontWeight: '600',
   },
   empty: {
     paddingVertical: 28,

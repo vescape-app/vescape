@@ -3,9 +3,13 @@ import { rideMovingWindow, type HistorySession } from '@/modules/history/lib/ses
 
 /** Calendar sections follow the displayed ride start, including legacy rides and appended pages. */
 export function historyListRows<
-  T extends Pick<HistorySession, 'startAtMs' | 'endAtMs' | 'movingStartAtMs' | 'movingEndAtMs'>,
+  T extends Pick<
+    HistorySession,
+    'startAtMs' | 'endAtMs' | 'movingStartAtMs' | 'movingEndAtMs' | 'distanceM'
+  >,
 >(sessions: T[]) {
   let previousDate: string | null = null
+  let day: HistoryListDay | null = null
   return sessions.map((session) => {
     const window = rideMovingWindow(session) ?? {
       startMs: session.startAtMs,
@@ -14,8 +18,20 @@ export function historyListRows<
     const date = formatRideDate(window.startMs, window.startMs)
     const dateHeader = date !== previousDate ? date : null
     previousDate = date
-    return { session, window, dateHeader }
+    if (dateHeader) day = { rides: 0, durationMs: 0, distanceM: null }
+    // Rows share their heading's totals object, so later rows of the day add to it in place.
+    day!.rides += 1
+    day!.durationMs += window.endMs - window.startMs
+    if (session.distanceM != null) day!.distanceM = (day!.distanceM ?? 0) + session.distanceM
+    return { session, window, dateHeader, day: dateHeader ? day! : null }
   })
+}
+
+/** Totals of the loaded rides under one date heading; a day split across pages grows as they load. */
+export interface HistoryListDay {
+  rides: number
+  durationMs: number
+  distanceM: number | null
 }
 
 export const HISTORY_RIDE_ROW_HEIGHT = 88

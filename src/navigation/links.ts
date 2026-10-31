@@ -1,5 +1,7 @@
 import type { Href } from 'expo-router'
+import type { RideDay } from 'vescape-core'
 
+import { calendarDayKey } from '@/helpers/calendarDay'
 import { RIDE_FOCUSES, type RideFocus } from '@/modules/history/lib/chartFocus'
 import { routes } from '@/navigation/routes'
 
@@ -39,6 +41,18 @@ export function parseRideLink(params: SearchParams): RideLink | null {
 
 /** Params that clear a consumed {@link RideLink}, so going back to home does not reopen it. */
 export const CLEARED_RIDE_LINK_PARAMS = { ride: undefined, focus: undefined }
+
+/** One day's stats and rides. */
+export function rideDayHref(day: RideDay): Href {
+  return { pathname: routes.rideDay, params: { date: calendarDayKey(day) } }
+}
+
+/** The day in the ride day route's params, or null when it is missing or malformed. */
+export function parseRideDay(params: SearchParams): RideDay | null {
+  const [year, month, day] = (single(params.date) ?? '').split('-').map(Number)
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null
+  return { year, month, day }
+}
 
 function single(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value
