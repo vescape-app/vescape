@@ -2,6 +2,7 @@ import type Mapbox from '@rnmapbox/maps'
 import { Images, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 
+import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import { theme } from '@/constants/theme'
 import { useAppActive } from '@/hooks/useAppActive'
 import { deviceMotionPhoneHeadingAdapter } from '@/modules/map/lib/deviceMotionPhoneHeadingAdapter'
@@ -116,7 +117,12 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
     <>
       <Images images={{ [GPS_HEADING_ICON_ID]: { image: GPS_HEADING_ICON, sdf: true } }} />
       <ShapeSource id="center-phone-heading-source" shape={pointAnimator}>
-        <SymbolLayer ref={iconRef} id="center-phone-heading-outline" style={style} />
+        <SymbolLayer
+          ref={iconRef}
+          id="center-phone-heading-outline"
+          aboveLayerID={MAP_DEFAULTS.userPositionLayerId}
+          style={style}
+        />
       </ShapeSource>
     </>
   )

@@ -27,6 +27,7 @@ export function LiveMapLayers({
   liveTrailShape,
   accuracyFix,
   accuracyShape,
+  gpsHeadingMode,
   gpsPuckBearingDeg,
   riders,
   highContrastRoutes,
@@ -36,6 +37,7 @@ export function LiveMapLayers({
   liveTrailShape: MainMapLayersProps['liveTrailShape']
   accuracyFix: MainMapLayersProps['accuracyFix']
   accuracyShape: MainMapLayersProps['accuracyShape']
+  gpsHeadingMode: MainMapLayersProps['gpsHeadingMode']
   gpsPuckBearingDeg: MainMapLayersProps['gpsPuckBearingDeg']
   riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
@@ -71,6 +73,9 @@ export function LiveMapLayers({
   const arrowRef = useRef<SymbolLayer>(null)
   const initialArrow = useRef(gpsPuckBearingDeg ?? 0)
   useEffect(() => {
+    // Compass owns the only arrow in the other orientations. Stop GPS rotation as well as
+    // removing its layer, including when a mode switch leaves a retained travel bearing.
+    if (!gpsHeadingMode) return
     let spring = createSpring(initialArrow.current)
     let frame: number | null = null
     let last = performance.now()
@@ -83,6 +88,7 @@ export function LiveMapLayers({
         Math.min(0.064, (now - last) / 1000),
       )
       last = now
+      initialArrow.current = spring.x
       arrowRef.current?.setNativeProps({ style: { iconRotate: spring.x } })
       if (!springSettled(spring, 0.05, 0.05)) frame = requestAnimationFrame(animate)
     }
@@ -109,7 +115,7 @@ export function LiveMapLayers({
       unsubscribe()
       if (frame != null) cancelAnimationFrame(frame)
     }
-  }, [displayRuntime])
+  }, [displayRuntime, gpsHeadingMode])
 
   return (
     <>
@@ -117,6 +123,7 @@ export function LiveMapLayers({
         <ShapeSource id="center-live-trail-source" shape={liveTrailShape} lineMetrics>
           <LineLayer
             id="center-live-trail-casing"
+            belowLayerID={MAP_DEFAULTS.userPositionLayerId}
             style={{
               lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
               lineWidth: highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
@@ -126,6 +133,7 @@ export function LiveMapLayers({
           />
           <LineLayer
             id="center-live-trail-line"
+            belowLayerID={MAP_DEFAULTS.userPositionLayerId}
             style={{
               lineColor: trailColor,
               lineWidth: MAP_DEFAULTS.trailWidth,
@@ -146,36 +154,41 @@ export function LiveMapLayers({
           />
         </ShapeSource>
       )}
+      {/* Stable anchor: lines arriving after GPS acquisition must still stay below the rider. */}
+      {pointAnimator && (
+        <ShapeSource id="center-gps-puck-position-source" shape={pointAnimator}>
+          <CircleLayer
+            id={MAP_DEFAULTS.userPositionLayerId}
+            style={{
+              circleRadius: 8,
+              circleOpacity: accuracyFix ? 1 : 0,
+              circleStrokeOpacity: accuracyFix ? 1 : 0,
+              circleColor: gpsPointColor,
+              circleStrokeColor: theme.palette.mono.white,
+              circleStrokeWidth: 3,
+            }}
+          />
+        </ShapeSource>
+      )}
       {accuracyFix && (
         <>
           {accuracyShape && (
             <ShapeSource id="center-gps-accuracy-source" shape={accuracyShape}>
               <FillLayer
                 id="center-gps-accuracy-fill"
+                belowLayerID={MAP_DEFAULTS.userPositionLayerId}
                 style={{ fillColor: processColor(accuracyFillColor) as never }}
               />
             </ShapeSource>
           )}
-          {pointAnimator && (
-            <ShapeSource id="center-gps-puck-position-source" shape={pointAnimator}>
-              <CircleLayer
-                id="center-gps-puck-core"
-                style={{
-                  circleRadius: 8,
-                  circleColor: gpsPointColor,
-                  circleStrokeColor: theme.palette.mono.white,
-                  circleStrokeWidth: 3,
-                }}
-              />
-            </ShapeSource>
-          )}
-          {pointHeading != null && (
+          {gpsHeadingMode && pointHeading != null && (
             <>
               <Images images={{ [GPS_HEADING_ICON_ID]: { image: GPS_HEADING_ICON, sdf: true } }} />
               <ShapeSource id="center-gps-puck-heading-source" shape={pointAnimator}>
                 <SymbolLayer
                   ref={arrowRef}
                   id="center-gps-puck-heading-outline"
+                  aboveLayerID={MAP_DEFAULTS.userPositionLayerId}
                   style={{
                     iconImage: GPS_HEADING_ICON_ID,
                     iconRotate: pointHeading,

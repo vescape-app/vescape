@@ -125,33 +125,34 @@ export function NavigationMapLayers({
 
   return (
     <>
-      {showDirectionPoint &&
-        navigationShape && (
-          // Drawn whole, never trimmed or dimmed as the rider advances — deliberate, see #353.
-          // `lineMetrics` is free now and is what a later dimming pass would need.
-          <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
-            <LineLayer
-              id="center-navigation-casing"
-              style={{
-                lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
-                lineWidth: NAVIGATION_CASING_WIDTH,
-                lineCap: 'round',
-                lineJoin: 'round',
-                lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
-              }}
-            />
-            <LineLayer
-              id="center-navigation-line"
-              style={{
-                lineColor: routeColor,
-                lineWidth: MAP_DEFAULTS.navigationWidth,
-                lineCap: 'round',
-                lineJoin: 'round',
-                lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
-              }}
-            />
-          </ShapeSource>
-        )}
+      {showDirectionPoint && navigationShape && (
+        // Drawn whole, never trimmed or dimmed as the rider advances — deliberate, see #353.
+        // `lineMetrics` is free now and is what a later dimming pass would need.
+        <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
+          <LineLayer
+            id="center-navigation-casing"
+            belowLayerID={MAP_DEFAULTS.userPositionLayerId}
+            style={{
+              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
+              lineWidth: NAVIGATION_CASING_WIDTH,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
+            }}
+          />
+          <LineLayer
+            id="center-navigation-line"
+            belowLayerID={MAP_DEFAULTS.userPositionLayerId}
+            style={{
+              lineColor: routeColor,
+              lineWidth: MAP_DEFAULTS.navigationWidth,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
+            }}
+          />
+        </ShapeSource>
+      )}
       {showDirectionPoint && (
         <MapPin
           // Color in the key: PointAnnotation snapshots its children natively, so a

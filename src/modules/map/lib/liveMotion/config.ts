@@ -24,7 +24,7 @@ export const motionControls = {
   recoveryAfterS: { value: 3, min: 1, max: 6, step: 0.5, unit: 's' },
   recoverySpeedMps: { value: 2, min: 0.5, max: 5, step: 0.5, unit: 'm/s' },
   cameraPositionOmega: { value: 3, min: 1, max: 10, step: 0.5, unit: 'rad/s' },
-  cameraHeadingOmega: { value: 3, min: 1, max: 10, step: 0.5, unit: 'rad/s' },
+  cameraHeadingOmega: { value: 1, min: 1, max: 10, step: 0.5, unit: 'rad/s' },
   arrowHeadingOmega: { value: 10, min: 2, max: 20, step: 1, unit: 'rad/s' },
 } as const
 

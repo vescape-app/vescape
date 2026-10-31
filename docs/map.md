@@ -37,8 +37,10 @@ Navigation Diagnostics identifies this as `persistent-overshoot-recovery`. Relia
 the direction axis and does not wait for that recovery timer.
 
 The Map Camera Controller remains the phone's single camera writer. It samples the ongoing point
-estimate inside its existing spring loop. Position and GPS heading default to 3 rad/s; the arrow uses
-10 rad/s. The point stays responsive while the camera deliberately lags. Manual browsing, History
+estimate inside its existing spring loop. Position defaults to 3 rad/s and GPS camera heading to 1 rad/s; the GPS arrow uses
+10 rad/s. The slower heading spring continues between GPS fixes and preserves angular velocity
+when a new heading arrives. Only GPS-heading mode draws the travel arrow; North up, Free rotate
+and Compass modes use the phone-compass arrow instead. The point stays responsive while the camera deliberately lags. Manual browsing, History
 and preview gestures retain camera ownership. Watch renderers sample their own point controller
 and apply their own slower camera response. Street map, route and rider use the same local clock.
 LiveTrail geometry and styling are independent of this display estimate.

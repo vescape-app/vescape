@@ -192,6 +192,7 @@ export function MainMapScene({
               onStatusChange={onPhoneHeadingStatusChange}
             />
             <MainMapLayers
+              gpsHeadingMode={gpsHeadingMode}
               pointAnimator={pointAnimator}
               displayRuntime={displayRuntime}
               historyActive={historyActive}

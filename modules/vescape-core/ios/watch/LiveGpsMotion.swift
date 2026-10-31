@@ -13,7 +13,7 @@ struct MotionConfig: Equatable {
   var cameraConfirmFixes = 2.0, cameraReverseConfirmFixes = 4.0
   var telemetryFreshnessS = 1.0, directionRetentionS = 2.0, predictionHorizonS = 1.5
   var maxPredictionM = 8.0, recoveryAfterS = 3.0, recoverySpeedMps = 2.0
-  var cameraPositionOmega = 3.0, cameraHeadingOmega = 3.0, arrowHeadingOmega = 10.0
+  var cameraPositionOmega = 3.0, cameraHeadingOmega = 1.0, arrowHeadingOmega = 10.0
   static func fromJson(_ json: String) -> MotionConfig {
     // intentional-suppression: absent or malformed session tuning uses validated defaults.
     let values = (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any] ?? [:]

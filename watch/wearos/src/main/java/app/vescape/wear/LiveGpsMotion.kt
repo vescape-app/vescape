@@ -14,7 +14,7 @@ internal data class MotionConfig(
     val directionWindowS: Double = 8.0, val cameraConfirmM: Double = 3.0, val cameraReverseConfirmM: Double = 8.0,
     val cameraConfirmFixes: Double = 2.0, val cameraReverseConfirmFixes: Double = 4.0, val telemetryFreshnessS: Double = 1.0, val directionRetentionS: Double = 2.0, val predictionHorizonS: Double = 1.5,
     val maxPredictionM: Double = 8.0, val recoveryAfterS: Double = 3.0, val recoverySpeedMps: Double = 2.0,
-    val cameraPositionOmega: Double = 3.0, val cameraHeadingOmega: Double = 3.0, val arrowHeadingOmega: Double = 10.0,
+    val cameraPositionOmega: Double = 3.0, val cameraHeadingOmega: Double = 1.0, val arrowHeadingOmega: Double = 10.0,
 ) {
     companion object {
         fun fromJson(json: String): MotionConfig {

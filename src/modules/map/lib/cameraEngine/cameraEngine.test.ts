@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { createCameraEngine, type EngineCamera } from './engine'
+import { defaultMotionConfig } from '@/modules/map/lib/liveMotion/config'
 import {
   createSpring,
   nearestBearingTarget,
@@ -500,4 +501,43 @@ test('continuous follow samples between GPS ticks, keeps deliberate lag and rele
   expect(engine.getCamera().centerCoordinate[0] * 111320).toBeCloseTo(10, 4)
   engine.destroy()
   expect(hasPending()).toBe(false)
+})
+
+test('GPS heading keeps rotating across one-second fixes without restarting angular motion', () => {
+  const { engine, tick } = createTestEngine()
+  engine.reset(camera([0, 0], 14, 0, 28))
+  engine.configureOmega({ heading: defaultMotionConfig.cameraHeadingOmega })
+  let heading = 30
+  engine.follow(() => ({ heading }))
+  const tickHeading = () => {
+    tick(1000 / 60)
+    return engine.getCamera().heading
+  }
+  let previous = 0
+  let lastStep = 0
+  for (let i = 0; i < 60; i++) {
+    const current = tickHeading()
+    lastStep = current - previous
+    previous = current
+  }
+  // The default response stretches beyond the GPS interval instead of reaching each fix and waiting.
+  expect(previous).toBeGreaterThan(5)
+  expect(previous).toBeLessThan(15)
+  expect(lastStep).toBeGreaterThan(0.1)
+  for (heading = 60; heading <= 120; heading += 30) {
+    const before = engine.getCamera().heading
+    const first = tickHeading()
+    const step = first - before
+    expect(step).toBeGreaterThan(0.1)
+    // A fresh heading changes acceleration, without killing the velocity at the tick boundary.
+    expect(Math.abs(step - lastStep)).toBeLessThan(0.03)
+    previous = first
+    for (let i = 1; i < 60; i++) {
+      const current = tickHeading()
+      lastStep = current - previous
+      expect(lastStep).toBeGreaterThan(0.1)
+      previous = current
+    }
+  }
+  engine.destroy()
 })

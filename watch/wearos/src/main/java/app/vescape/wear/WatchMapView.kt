@@ -110,7 +110,7 @@ internal fun shortestAngleDelta(fromDeg: Float, toDeg: Float): Float =
 private const val MAP_ZOOM_EASE_MS = 350
 
 /** @parity /modules/vescape-core/ios/watch/WatchMapView.swift `turnEase` */
-private const val MAP_TURN_EASE_MS = 1000
+private val MAP_TURN_EASE_MS = (3000 / MotionConfig().cameraHeadingOmega).toInt()
 
 /** Remaining camera translation relative to the latest GPS fix. One clock for both paths.
  * The anchor is absolute: rerouting, history trimming and skipped frames cannot change its origin.

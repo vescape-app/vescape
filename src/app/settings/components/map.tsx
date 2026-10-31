@@ -81,6 +81,7 @@ export default function MapComponentsShowcase() {
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const [styleExpanded, setStyleExpanded] = useState(false)
+  const [gpsHeadingMode, setGpsHeadingMode] = useState(true)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
   const [mapPoints] = useState<MapPoint[]>(FIXTURE_MAP_POINTS)
@@ -147,6 +148,7 @@ export default function MapComponentsShowcase() {
         {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
         {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
         <MainMapLayers
+          gpsHeadingMode={gpsHeadingMode}
           displayRuntime={showcaseMotion}
           pointAnimator={pointAnimator}
           historyActive={false}
@@ -251,6 +253,7 @@ export default function MapComponentsShowcase() {
         title="Map options"
         onClose={() => setSheetVisible(false)}
       >
+        <ToggleRow label="GPS travel arrow" value={gpsHeadingMode} onToggle={setGpsHeadingMode} />
         <ToggleRow label="Weather radar" value={weatherActive} onToggle={setWeatherActive} />
         <ToggleRow label="Legal limits" value={legalLimitsActive} onToggle={setLegalLimitsActive} />
         <ChipRow

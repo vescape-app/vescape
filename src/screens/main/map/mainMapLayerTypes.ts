@@ -40,6 +40,7 @@ export interface MainMapLayersProps {
   } | null
   accuracyFix: { longitude: number; latitude: number } | null
   accuracyShape: ReturnType<typeof makeCircleFeature> | null
+  gpsHeadingMode: boolean
   gpsPuckBearingDeg: number | null
   riders: RosterRider[]
   rideRoute: [number, number][]
