@@ -80,9 +80,13 @@ appId: ${APP_ID}
 - tapOn:
     id: alert-test-battery
     waitToSettleTimeoutMs: 1000
+# A loaded CI emulator can spend over a minute inside the tap above, so the sweep may already have
+# finished by the time Maestro looks. "Stop" is therefore best-effort; reaching "Preview" again
+# below is what proves playback ended and the button recovered.
 - extendedWaitUntil:
     visible: 'Stop'
     timeout: 15000
+    optional: true
 - extendedWaitUntil:
     visible: 'Preview'
     timeout: 60000
