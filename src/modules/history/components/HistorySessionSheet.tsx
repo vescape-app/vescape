@@ -147,6 +147,7 @@ export function HistorySessionSheet({
       header={
         <HistoryTabs tab={favoriteMode ? 'favorites' : 'history'} onSelectTab={onSelectTab} />
       }
+      contentPageKey={favoriteMode ? 'favorites' : 'history'}
       onClose={onClose}
       backdropTestID="history-session-sheet-backdrop"
       virtualizedContent={{

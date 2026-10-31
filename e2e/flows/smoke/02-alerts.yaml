@@ -16,10 +16,11 @@ appId: ${APP_ID}
     waitToSettleTimeoutMs: 1000
 - scrollUntilVisible:
     element:
-      text: 'Sounds'
+      # iOS combines the settings row's title and hint into one accessibility label.
+      text: 'Sounds.*'
     direction: DOWN
 - tapOn:
-    text: 'Sounds'
+    text: 'Sounds.*'
     waitToSettleTimeoutMs: 1000
 - extendedWaitUntil:
     visible: 'Sound effects'
@@ -49,7 +50,7 @@ appId: ${APP_ID}
 - tapOn:
     id: header-back
     waitToSettleTimeoutMs: 1000
-- assertVisible: 'Sounds'
+- assertVisible: 'Sounds.*'
 - runFlow:
     file: ../fixture/_home.yaml
     env:

@@ -77,13 +77,11 @@ interface HistoryRangeResult {
   markers: HistoryMarker[]
 }
 
-const getHistoryRange = mock(
-  async (): Promise<HistoryRangeResult> => ({
-    boardSamples: [],
-    gpsSamples: [],
-    markers: [],
-  }),
-)
+const getHistoryRange = mock(async (): Promise<HistoryRangeResult> => ({
+  boardSamples: [],
+  gpsSamples: [],
+  markers: [],
+}))
 const getTelemetrySummary = mock(async () => summary)
 const clearTelemetryHistory = mock(async () => {})
 const deleteTelemetryRange = mock(async () => 0)

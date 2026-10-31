@@ -131,14 +131,12 @@ const BOARD_CONNECTION_PILLS: FloatingStatusPillModel[] = [
     'Reconnecting…',
     'Disconnecting…',
     'Connecting…',
-  ].map(
-    (text): FloatingStatusPillModel => ({
-      kind: 'spinner',
-      text,
-      color: theme.palette.sky.color,
-      onPress: noop,
-    }),
-  ),
+  ].map((text): FloatingStatusPillModel => ({
+    kind: 'spinner',
+    text,
+    color: theme.palette.sky.color,
+    onPress: noop,
+  })),
   actionPill('Update the board link', 'upgrade', ArrowsClockwiseIcon),
   actionPill('Re-link the board', 'upgrade', WarningCircleIcon),
   {

@@ -4,10 +4,11 @@ import Foundation
 /// far is left along the path from there, and which way the path goes next.
 ///
 /// Derived, never stored. It is recomputed from the current path on every GPS Fix and it dies with
-/// the Navigation it belongs to — see the glossary entry in `CONTEXT.md`. The controller uses this same projection for automatic recalculation.
+/// the Navigation it belongs to — see the glossary entry in `CONTEXT.md`.
 ///
-/// Attachment is unconditional: the nearest point on the path is always taken, there is no
-/// off-route state and no threshold. A rider who loops away and comes back re-attaches by itself.
+/// Attachment is unconditional: the nearest point on the path is always taken, so a rider who loops
+/// away and comes back re-attaches by itself. Only `deviationMeters` feeds automatic recalculation;
+/// nothing derived from `remainingMeters` does.
 /// The accepted cost is that on a path passing near itself — out-and-back, figure-eight — the
 /// projection can snap between legs and `remainingMeters` can jump. Do not add a threshold to
 /// paper over it.
@@ -18,8 +19,12 @@ struct RouteProgress: Equatable {
   /// The point on the path nearest to the rider, projected onto a segment rather than a vertex.
   let latitude: Double
   let longitude: Double
+  /// The `Navigation.revision` this was projected on; the segment indexes into that path only.
+  let navigationRevision: Int64
+  /// The selected segment and the clamped fraction along it, so JS splits at this same point.
   let segmentIndex: Int
   let segmentFraction: Double
+  /// Straight-line metres from the rider to the projection.
   let deviationMeters: Double
   /// Metres left to the Direction Point measured **along** the path from the projection: the rest
   /// of the projected segment plus every segment after it. Not the straight line — a target 679 m
@@ -43,6 +48,7 @@ struct RouteProgress: Equatable {
     [
       "latitude": latitude,
       "longitude": longitude,
+      "navigationRevision": navigationRevision,
       "segmentIndex": segmentIndex,
       "segmentFraction": segmentFraction,
       "deviationMeters": deviationMeters,
@@ -61,6 +67,7 @@ struct RouteProgress: Equatable {
     riderLatitude: Double,
     riderLongitude: Double,
     speedMps: Double?,
+    navigationRevision: Int64 = 0,
     routeDistanceMeters: Double = 0,
     routeDurationSeconds: Double = 0
   ) -> RouteProgress? {
@@ -158,6 +165,7 @@ struct RouteProgress: Equatable {
       return RouteProgress(
         latitude: latitude,
         longitude: longitude,
+        navigationRevision: navigationRevision,
         segmentIndex: bestIndex,
         segmentFraction: bestFraction,
         deviationMeters: GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),
@@ -181,6 +189,7 @@ struct RouteProgress: Equatable {
     return RouteProgress(
       latitude: latitude,
       longitude: longitude,
+      navigationRevision: navigationRevision,
       segmentIndex: bestIndex,
       segmentFraction: bestFraction,
       deviationMeters: GeoMath.distanceMeters(riderLatitude, riderLongitude, latitude, longitude),

@@ -17,8 +17,8 @@ export function watchRideUrl(scheme: string, navigation = true): string {
   return `${scheme}://dev/watch-ride?replay=${REPLAY}&lat=${DIRECTION_POINT.latitude}&lon=${DIRECTION_POINT.longitude}${navigation ? '' : '&navigation=off'}`
 }
 
-/** The local Metro server a dev build loads its bundle from. */
-export const METRO_URL = 'http://127.0.0.1:8081'
+/** The local Metro server; isolated E2E runners override the normal port 8081. */
+export const METRO_URL = `http://127.0.0.1:${process.env.E2E_METRO_PORT ?? '8081'}`
 
 /** Dev-client link that (re)loads the bundle from [METRO_URL]. */
 export function devClientUrl(scheme: string): string {

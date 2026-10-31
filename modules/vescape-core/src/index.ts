@@ -69,9 +69,7 @@ export type AccessoryCapabilityType = 'ground_clearance' | 'brake_light'
  * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryCompatibility`
  */
 export type AccessoryCompatibility =
-  | 'supported'
-  | 'unsupported-version'
-  | 'unsupported-capabilities'
+  'supported' | 'unsupported-version' | 'unsupported-capabilities'
 
 /**
  * One capability an Accessory declares. `supported` is native's verdict, not a re-derivation
@@ -364,12 +362,7 @@ export interface AccessoryInspection {
  * @parity /modules/vescape-core/ios/accessory/AccessoryLink.swift `AccessoryLinkPhase`
  */
 export type AccessoryLinkPhase =
-  | 'idle'
-  | 'connecting'
-  | 'handshaking'
-  | 'connected'
-  | 'unavailable'
-  | 'incompatible'
+  'idle' | 'connecting' | 'handshaking' | 'connected' | 'unavailable' | 'incompatible'
 
 /**
  * One enrolled Accessory, as native currently sees it: the durable row plus whatever the live
@@ -783,12 +776,7 @@ export interface PrivacyZone {
  * Mirrors vescape-server `src/mapPoints/protocol.ts` `MapPointCategorySchema`.
  */
 export type MapPointCategory =
-  | 'drop'
-  | 'bonk'
-  | 'nose_slide'
-  | 'trail_entry'
-  | 'viewpoint'
-  | 'charging'
+  'drop' | 'bonk' | 'nose_slide' | 'trail_entry' | 'viewpoint' | 'charging'
 
 export type MapPointReaction = 'up' | 'down'
 
@@ -2002,11 +1990,7 @@ export interface GroupRideRider {
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `emitConnection`
  */
 export type GroupRideConnectionState =
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'disconnected'
-  | 'blocked'
+  'idle' | 'connecting' | 'connected' | 'disconnected' | 'blocked'
 
 export interface GroupRideConnectionEvent {
   state: GroupRideConnectionState
@@ -2544,6 +2528,15 @@ export interface WeatherEvent {
 }
 
 /**
+ * Reroute Distance setting contract: how far the rider may be from the Navigation path before
+ * native recalculates it.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/RerouteDistance.kt
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `defaultRerouteDistanceMeters`
+ */
+export const NAVIGATION_REROUTE_DISTANCE = { defaultMeters: 50, minMeters: 1, maxMeters: 1000 }
+
+/**
  * The rideable path from the rider to their Direction Point, computed natively. JS renders it and
  * nothing else: there is no routing logic on this side, and native owns automatic path recalculation.
  *
@@ -2564,8 +2557,13 @@ export interface Navigation {
    */
   profile: NavigationProfile
   computedAtMs: number
-  /** Process-local framing revision. Automatic replacements keep it; never persisted. */
-  cameraRevision: number
+  /**
+   * Process-local identity of this published Navigation; changes on every publish. Route Progress
+   * carries the revision it was projected on. Never persisted.
+   */
+  revision: number
+  /** Published by native automatic recalculation rather than a rider intent. */
+  automatic: boolean
   status: NavigationStatus
   /**
    * How far the path runs and how long the routing service thinks it takes. Both are `0` unless
@@ -2639,6 +2637,8 @@ export interface NavigationEvent {
  * @parity /modules/vescape-core/ios/navigation/RouteProgress.swift `RouteProgress`
  */
 export interface RouteProgress {
+  /** The `Navigation.revision` this was projected on; the segment indexes into that path only. */
+  navigationRevision: number
   /** Selected native segment and clamped fraction; rendering must use this same projection. */
   segmentIndex: number
   segmentFraction: number
@@ -2689,12 +2689,7 @@ export interface DeviceCredentialStatus {
 }
 
 export type CriticalRideNotificationPermissionStatus =
-  | 'not-determined'
-  | 'denied'
-  | 'authorized'
-  | 'provisional'
-  | 'ephemeral'
-  | 'unknown'
+  'not-determined' | 'denied' | 'authorized' | 'provisional' | 'ephemeral' | 'unknown'
 
 /**
  * OneWheel PoC session phases, wire strings mirroring the native enum.
@@ -2955,6 +2950,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   }): Promise<TelemetrySample[]>
   exportRideGpx(options: RideExportOptions): Promise<RideExportFile>
   exportRideCsv(options: RideExportOptions): Promise<RideExportFile>
+  exportRideFloaty(options: RideExportOptions): Promise<RideExportFile>
   exportLiveTelemetryCsv(): Promise<RideExportFile>
   getHistoryRange(options: {
     fromMs: number
@@ -3842,6 +3838,15 @@ export async function exportRideCsv(options: RideExportOptions): Promise<RideExp
 }
 
 /**
+ * Floaty 3 session JSON (`schemaVersion` 2), importable from Floaty's Sessions list.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideFloaty`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRideFloaty`
+ */
+export async function exportRideFloaty(options: RideExportOptions): Promise<RideExportFile> {
+  return native.exportRideFloaty(options)
+}
+
+/**
  * Live telemetry, every frame at full rate, as a CSV in the ride export's columns. Rejects when the
  * window is empty.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`
@@ -4281,9 +4286,7 @@ export type AlertPresetLevel = 'off' | 'safe' | 'normal' | 'minimal'
 
 /** One change to a metric's preset row: its level, its geiger tick level, or board-config match. */
 export type AlertPresetIntent =
-  | { level: AlertPresetLevel }
-  | { geiger: 'soft' | 'mid' | 'hard' }
-  | { match: boolean }
+  { level: AlertPresetLevel } | { geiger: 'soft' | 'mid' | 'hard' } | { match: boolean }
 
 /**
  * Expand an unsaved draft preset `spec` with the same native expander saved rows use.
@@ -4444,7 +4447,8 @@ export async function setDirectionPoint(
  * Asks native to compute the Navigation again, from the rider's current position to the Direction
  * Point they already have. A no-op when no Direction Point is set.
  *
- * Explicit rider request. Native also recalculates automatically beyond the configured deviation.
+ * The rider's explicit request. Native also recalculates on its own once the rider is farther from
+ * the path than the Reroute Distance setting.
  *
  * A request that finds no path leaves a drawn one in place — asking for a better path never costs
  * the rider the one they had.

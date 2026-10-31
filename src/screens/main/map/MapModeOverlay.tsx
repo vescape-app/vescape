@@ -55,8 +55,8 @@ export function MapModeOverlay({
   const navigationProfile = useMapStore((s) => s.navigation?.profile ?? null)
   const navigationDistanceMeters = useMapStore((s) => s.navigation?.distanceMeters ?? 0)
   const navigationDurationSeconds = useMapStore((s) => s.navigation?.durationSeconds ?? 0)
-  const navigationComputedAtMs = useMapStore((s) => s.navigation?.computedAtMs ?? null)
-  const acceptedNavigationComputedAtMs = useMapStore((s) => s.acceptedNavigationComputedAtMs)
+  const navigationRevision = useMapStore((s) => s.navigation?.revision ?? null)
+  const acceptedNavigationRevision = useMapStore((s) => s.acceptedNavigationRevision)
   const navigationRemainingDistanceMeters = useMapStore(
     (s) => s.routeProgress?.remainingMeters ?? null,
   )
@@ -84,7 +84,7 @@ export function MapModeOverlay({
   const targetSheetVisible =
     selectedNavigationTarget != null || (navigationTarget != null && !addMenuOpen)
   const activeNavigationAccepted =
-    navigationComputedAtMs != null && acceptedNavigationComputedAtMs === navigationComputedAtMs
+    navigationRevision != null && acceptedNavigationRevision === navigationRevision
   const accents = useResolvedAccentColors()
   const navigationAction = navigationActionColors(
     riderColor,

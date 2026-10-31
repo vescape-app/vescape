@@ -1,6 +1,6 @@
 /**
- * Tunnels the device's localhost ports to this machine. Metro always uses 8081; the Vescape API
- * port is added when `EXPO_PUBLIC_SERVER_URL` points at a local server (../vescape-server).
+ * Tunnels the device's localhost ports to this machine. Metro defaults to 8081; E2E owns its port.
+ * The API port is added when `EXPO_PUBLIC_SERVER_URL` points at a local server.
  * Safe to run repeatedly before `expo run:android` or after clearing local development state.
  */
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1'])
@@ -34,7 +34,7 @@ async function connectedDevices(): Promise<string[]> {
     .map(([serial]) => serial!)
 }
 
-const ports = new Set([8081])
+const ports = new Set([Number(process.env.E2E_METRO_PORT ?? 8081)])
 const serverPort = localPort(process.env.EXPO_PUBLIC_SERVER_URL)
 if (serverPort !== null) ports.add(serverPort)
 

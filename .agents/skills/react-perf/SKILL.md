@@ -42,4 +42,4 @@ Playbook for live-data / gesture-heavy RN screens. Learned the hard way on live 
 
 - Worklet-shared pure functions live in `src/lib/`, marked with `'worklet'` (inert in plain JS/tests). Only mark what worklets actually call.
 - Gesture factories = module-level plain functions (`createXxxGesture({ sharedValues, callbacks })`) — keeps `react-hooks/refs` lint happy; component wraps the call in `useMemo`.
-- Formatter: `oxfmt` (`bun run format`). Never run bare `prettier` — no config, it mangles the file style.
+- Formatter: `bun fmt` (`bun run format`). Never run bare `prettier` — no config, it mangles the file style.

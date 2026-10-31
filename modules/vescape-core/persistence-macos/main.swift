@@ -523,6 +523,10 @@ for invalid in unitFixture["invalid"] as! [Any] {
   try require(validDistanceUnit(invalid) == nil, "invalid units accepted")
 }
 try boardPersistence.saveSetting(.init(key: "distanceUnit", valueJson: "\"\(validDistanceUnit(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
+let rerouteFixture = boardFixture["navigationReroute"] as! [String: Any]
+let rerouteKey = rerouteFixture["key"] as! String
+let rerouteDefault = rerouteFixture["default"] as! Double
+try boardPersistence.saveSetting(.init(key: rerouteKey, valueJson: String(rerouteFixture["selected"] as! Double), updatedAt: contractCreatedAt))
 let trailFixture = boardFixture["telemetryTrail"] as! [String: Any]
 let trailKey = trailFixture["key"] as! String
 let trailDefault = trailFixture["default"] as! Bool
@@ -1323,6 +1327,7 @@ try? FileManager.default.removeItem(at: clearanceURL)
 try runAlertPresetContract()
 try runRideExportContract()
 try runRideCsvContract()
+try runRideFloatyContract()
 try runBucketRoutePreviewContract()
 try runRecordingFlushTimerContract()
 try runWeatherObservationContract()

@@ -100,10 +100,33 @@ export function MapPin({
       : selected
         ? MAP_PIN_ICON_METRICS.selected
         : MAP_PIN_ICON_METRICS.default
+    const pin = (
+      <View
+        style={[
+          styles.iconPin,
+          iconPinStyle(metrics, resolvedColor),
+          selected && styles.iconPinSelected,
+          { backgroundColor: neutral.surface },
+        ]}
+      >
+        <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
+      </View>
+    )
+    // iOS PointAnnotation snapshots can omit the SVG even after refresh. Keep the single
+    // active navigation target live so its icon renders and updates with the view.
+    if (navigationActive) {
+      return (
+        <MarkerView coordinate={coordinate} allowOverlap>
+          <Pressable style={styles.iconPinFrame} onPress={onSelected}>
+            {pin}
+          </Pressable>
+        </MarkerView>
+      )
+    }
+
     const annotationKey = getIconAnnotationKey(
       id,
       selected,
-      navigationActive,
       resolvedColor,
       resolvedIconColor,
       neutral.surface,
@@ -115,16 +138,7 @@ export function MapPin({
             triggering "supports max 1 subview" + a broken snapshot (rnmapbox #3682,
             fixed in 10.3.2). Remove once we bump past 10.3.1. */}
         <View collapsable={false} style={styles.iconPinFrame}>
-          <View
-            style={[
-              styles.iconPin,
-              iconPinStyle(metrics, resolvedColor),
-              selected && styles.iconPinSelected,
-              { backgroundColor: neutral.surface },
-            ]}
-          >
-            <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
-          </View>
+          {pin}
         </View>
       </PointAnnotation>
     )
@@ -151,12 +165,11 @@ export function MapPin({
 function getIconAnnotationKey(
   id: string,
   selected: boolean,
-  navigationActive: boolean,
   color: string,
   iconColor: string | undefined,
   surfaceColor: string,
 ) {
-  return `${id}-${navigationActive ? 'navigation' : selected ? 'selected' : 'default'}-${color}-${iconColor ?? color}-${surfaceColor}`
+  return `${id}-${selected ? 'selected' : 'default'}-${color}-${iconColor ?? color}-${surfaceColor}`
 }
 
 function iconPinStyle(

@@ -28,7 +28,7 @@ beforeEach(() => {
   useMapStore.setState({
     directionPoint: null,
     navigation: null,
-    acceptedNavigationComputedAtMs: null,
+    acceptedNavigationRevision: null,
     error: null,
   })
   setDirectionPoint.mockClear()
@@ -66,12 +66,13 @@ test('clearing an already empty direction point does not write', async () => {
   expect(setDirectionPoint).not.toHaveBeenCalled()
 })
 
-test('accepted navigation survives the same native snapshot and follows a same-target replacement', () => {
+test('accepted navigation follows automatic replacements but not rider intents', () => {
   const navigation = {
     target: { latitude: 52.5, longitude: 21.5 },
     profile: 'walking' as const,
     computedAtMs: 1_000,
-    cameraRevision: 1,
+    revision: 1,
+    automatic: false,
     status: 'ready' as const,
     distanceMeters: 2_000,
     durationSeconds: 600,
@@ -80,19 +81,16 @@ test('accepted navigation survives the same native snapshot and follows a same-t
       [21.5, 52.5],
     ] as [number, number][],
   }
+  const accepted = () => useMapStore.getState().acceptedNavigationRevision
 
   useMapStore.getState().replaceNavigation(navigation, false)
   useMapStore.getState().acceptNavigation()
-  useMapStore.getState().replaceNavigation(navigation, false)
-  expect(useMapStore.getState().acceptedNavigationComputedAtMs).toBe(1_000)
+  useMapStore.getState().replaceNavigation(navigation, true)
+  expect(accepted()).toBe(1)
 
-  useMapStore.getState().replaceNavigation({ ...navigation, computedAtMs: 2_000 }, false)
-  expect(useMapStore.getState().acceptedNavigationComputedAtMs).toBe(2_000)
-  useMapStore
-    .getState()
-    .replaceNavigation(
-      { ...navigation, computedAtMs: 3_000, target: { latitude: 10, longitude: 20 } },
-      false,
-    )
-  expect(useMapStore.getState().acceptedNavigationComputedAtMs).toBeNull()
+  useMapStore.getState().replaceNavigation({ ...navigation, revision: 2, automatic: true }, false)
+  expect(accepted()).toBe(2)
+
+  useMapStore.getState().replaceNavigation({ ...navigation, revision: 3 }, false)
+  expect(accepted()).toBeNull()
 })

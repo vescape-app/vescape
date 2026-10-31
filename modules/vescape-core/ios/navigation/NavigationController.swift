@@ -68,15 +68,19 @@ struct Navigation {
   let durationSeconds: Double
   /// Path points in encoding order, each `(latitude, longitude)`. Empty unless `status` is `ready`.
   let points: [(latitude: Double, longitude: Double)]
-  /// Process-local presentation revision. Automatic replacements retain it; never persisted.
-  var cameraRevision: Int64 = 0
+  /// Process-local identity of this published Navigation, assigned by the controller on every
+  /// publish. Route Progress carries the revision it was projected on. Never persisted.
+  var revision: Int64 = 0
+  /// Published by automatic recalculation rather than a rider intent. Never persisted.
+  var automatic = false
 
   func toMap() -> [String: Any] {
     [
       "target": ["latitude": targetLatitude, "longitude": targetLongitude],
       "profile": profile.rawValue,
       "computedAtMs": computedAtMs,
-      "cameraRevision": cameraRevision,
+      "revision": revision,
+      "automatic": automatic,
       "status": status.rawValue,
       "distanceMeters": distanceMeters,
       "durationSeconds": durationSeconds,
@@ -121,8 +125,10 @@ enum DirectionsResult {
 /// Owns the process's single Navigation. Setting a Direction Point asks for one; clearing the
 /// Direction Point ends it. The two are strictly 1:1, so this holds at most one at a time.
 ///
-/// GPS-driven automatic recalculation uses the same nearest projection as Route Progress.
-/// Requests never overlap automatically; failures keep the usable path with a 30-second cooldown.
+/// It recalculates automatically when the rider is farther from the path than the Reroute Distance,
+/// measured with the same nearest projection as Route Progress — see ADR 0042. Automatic requests
+/// never overlap, never replace a usable path with a failure, and back off from 30 seconds up to
+/// 5 minutes while they keep failing.
 ///
 /// Durable: every change is written through to `NavigationStore`, and `restore()` brings the stored
 /// path back on cold start. Restoring is a read, never a fetch — the stored path is the truth
@@ -130,11 +136,27 @@ enum DirectionsResult {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt
 final class NavigationController {
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/RerouteDistance.kt
+  /// @parity /modules/vescape-core/src/index.ts `NAVIGATION_REROUTE_DISTANCE`
+  static let defaultRerouteDistanceMeters = 50.0
+  static let rerouteDistanceRange = 1.0...1000.0
+  private static let automaticMinBackoffMs = 30_000.0
+  private static let automaticMaxBackoffMs = 300_000.0
+
   /// Process singleton — the Navigation must outlive JS runtime reloads.
   static let shared: NavigationController = {
     let controller = NavigationController(
       api: MapboxDirectionsApi(accessToken: MapboxDirectionsApi.bakedAccessToken),
-      store: AppDataNavigationStore()
+      store: AppDataNavigationStore(),
+      loadRerouteDistanceMeters: {
+        do {
+          return try AppDataRepository.shared.getSettings()["navigationRerouteDistanceMeters"] as? Double
+            ?? defaultRerouteDistanceMeters
+        } catch {
+          RecordingStorageFailure.reportRead(operation: "navigation_threshold_read", error: error)
+          return defaultRerouteDistanceMeters
+        }
+      }
     )
     // Restore here rather than from the module, so a JS reload — which recreates the module but not
     // this singleton — cannot re-run it over a Navigation the rider has since replaced.
@@ -144,10 +166,11 @@ final class NavigationController {
 
   private let api: DirectionsRoutes
   private let store: NavigationStore
+  private let loadRerouteDistanceMeters: () async -> Double
   private let nowMillis: () -> Double
   private let lock = NSLock()
 
-  private var cameraRevision: Int64 = 0
+  private var revision: Int64 = 0
   private var state: Navigation?
   var current: Navigation? { lock.withLock { state } }
 
@@ -216,10 +239,11 @@ final class NavigationController {
   private var latestFix: (latitude: Double, longitude: Double, speedMps: Double?)?
 
   private func progressAtLatestFix() -> RouteProgress? {
-    guard let fix = latestFix, let points = ridePath(state) else { return nil }
+    guard let fix = latestFix, let navigation = state, let points = ridePath(navigation) else { return nil }
     return RouteProgress.compute(
       points: points, riderLatitude: fix.latitude, riderLongitude: fix.longitude, speedMps: fix.speedMps,
-      routeDistanceMeters: state?.distanceMeters ?? 0, routeDurationSeconds: state?.durationSeconds ?? 0
+      navigationRevision: navigation.revision,
+      routeDistanceMeters: navigation.distanceMeters, routeDurationSeconds: navigation.durationSeconds
     )
   }
 
@@ -229,20 +253,27 @@ final class NavigationController {
   var onProgressChange: ((RouteProgress?) -> Void)?
 
   // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `onFix`
-  private var rerouteDistanceMeters = 50.0
-  private var thresholdChosen = false
+  private var rerouteDistanceMeters = defaultRerouteDistanceMeters
   private var automaticRequest: Int?
   private var nextAutomaticAtMs = 0.0
+  private var automaticBackoffMs = automaticMinBackoffMs
+  private var rerouteDistanceRead = 0
 
-  func setRerouteDistanceMeters(_ distance: Double) {
-    guard distance.isFinite, (1...1000).contains(distance) else { return }
-    lock.withLock {
-      thresholdChosen = true
-      rerouteDistanceMeters = distance
+  /// Re-reads the Reroute Distance setting. Called on cold start and whenever the rider changes it;
+  /// only the newest read applies, so a slow cold-start read cannot undo a later change.
+  func reloadRerouteDistance() {
+    let read: Int = lock.withLock {
+      rerouteDistanceRead += 1
+      return rerouteDistanceRead
+    }
+    Task {
+      let distance = await loadRerouteDistanceMeters()
+      lock.withLock { if read == rerouteDistanceRead { rerouteDistanceMeters = distance } }
     }
   }
 
-  /// One nearest projection supplies progress and deviation, even while JS is suspended.
+  /// A GPS Fix arrived. Reprojects Route Progress and, when the rider is farther from the path than
+  /// the Reroute Distance, starts one automatic recalculation from here. Runs while JS is suspended.
   func onFix(latitude: Double, longitude: Double, speedMps: Double?) {
     let work: (Int, Navigation, NavigationProfile)? = lock.withLock {
       latestFix = (latitude, longitude, speedMps)
@@ -254,23 +285,23 @@ final class NavigationController {
       guard let next, let navigation = state, computingRequest == nil, automaticRequest == nil,
         next.deviationMeters > rerouteDistanceMeters, nowMillis() >= nextAutomaticAtMs
       else { return nil }
-      // Reserve in the same critical section as the decision; later rider intents supersede it.
-      generation += 1
-      let request = generation
+      // Reserve in the same critical section as the decision: another fix cannot launch a duplicate,
+      // and a later target/profile/clear intent invalidates this token before the task runs.
+      let request = claimRequestLocked()
       automaticRequest = request
-      computingRequest = request
-      onChange?(state)
-      onWatchChange?()
+      beginComputingLocked(request)
       return (request, navigation, profile)
     }
     guard let (request, navigation, requested) = work else { return }
     Task {
       let replacement = await compute(navigation.targetLatitude, navigation.targetLongitude,
         latitude, longitude, requested)
-      publish(request, replacement, keepUsablePath: true, frameCamera: false)
+      publish(request, replacement, keepUsablePath: true, automatic: true)
       lock.withLock {
         if automaticRequest == request { automaticRequest = nil }
-        nextAutomaticAtMs = nowMillis() + 30_000
+        nextAutomaticAtMs = nowMillis() + automaticBackoffMs
+        automaticBackoffMs = replacement.status == .ready
+          ? Self.automaticMinBackoffMs : min(automaticBackoffMs * 2, Self.automaticMaxBackoffMs)
       }
       endComputing(request)
     }
@@ -284,21 +315,24 @@ final class NavigationController {
   /// schedule them, which is not the order the rider tapped in.
   private var generation = 0
 
-  private func claimRequest() -> Int {
-    lock.withLock {
-      let wasComputing = computingRequest != nil
-      computingRequest = nil
-      generation += 1
-      if wasComputing {
-        onChange?(state)
-        onWatchChange?()
-      }
-      return generation
+  private func claimRequest() -> Int { lock.withLock { claimRequestLocked() } }
+
+  /// `claimRequest` for callers already holding `lock`.
+  private func claimRequestLocked() -> Int {
+    let wasComputing = computingRequest != nil
+    computingRequest = nil
+    generation += 1
+    if wasComputing {
+      onChange?(state)
+      onWatchChange?()
     }
+    return generation
   }
 
   init(api: DirectionsRoutes, store: NavigationStore,
+       loadRerouteDistanceMeters: @escaping () async -> Double = { defaultRerouteDistanceMeters },
        nowMillis: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime * 1000 }) {
+    self.loadRerouteDistanceMeters = loadRerouteDistanceMeters
     self.nowMillis = nowMillis
     self.api = api
     self.store = store
@@ -312,9 +346,8 @@ final class NavigationController {
   /// Returns immediately; the read runs in its own `Task`.
   func restore() {
     let request = claimRequest()
+    reloadRerouteDistance()
     Task {
-      let threshold = await store.loadRerouteDistanceMeters()
-      lock.withLock { if !thresholdChosen { rerouteDistanceMeters = threshold } }
       if let stored = await store.loadProfile() {
         // The rider may have switched while this read was in flight; their choice is the newer one.
         lock.withLock { if !profileChosen { profile = stored } }
@@ -388,10 +421,7 @@ final class NavigationController {
     let changed: Bool = lock.withLock {
       guard profile != next || !profileChosen else { return false }
       profile = next
-      generation += 1 // A result under the previous profile is already stale.
-      computingRequest = nil
-      onChange?(state)
-      onWatchChange?()
+      _ = claimRequestLocked() // A result under the previous profile is already stale.
       // A restore still in flight must not undo this with yesterday's value.
       profileChosen = true
       return true
@@ -405,7 +435,7 @@ final class NavigationController {
   }
 
   /// The rider asking for a fresh path to the Direction Point they already have, from where they
-  /// are now. Automatic replacements use the same publish and failure-retention rules.
+  /// are now. Automatic recalculation in `onFix` follows the same publish and failure-retention rules.
   ///
   /// Unlike `setTarget` it does not drop the current path first, and a request that produces no
   /// path is discarded while a usable one is already drawn: losing a working line by asking for a
@@ -439,13 +469,13 @@ final class NavigationController {
   /// Bracket around one in-flight Directions call. Both ends notify, because `computing` is part of
   /// what JS mirrors: the spinner has to come on before the fetch and go off after the result has
   /// already been published, or the rider sees a gap between the two.
-  private func beginComputing(_ request: Int) {
-    lock.withLock {
-      guard request == generation else { return }
-      computingRequest = request
-      onChange?(state)
-      onWatchChange?()
-    }
+  private func beginComputing(_ request: Int) { lock.withLock { beginComputingLocked(request) } }
+
+  private func beginComputingLocked(_ request: Int) {
+    guard request == generation else { return }
+    computingRequest = request
+    onChange?(state)
+    onWatchChange?()
   }
 
   private func endComputing(_ request: Int) {
@@ -484,7 +514,7 @@ final class NavigationController {
           targetLatitude: toLatitude,
           targetLongitude: toLongitude,
           profile: profile,
-          computedAtMs: lock.withLock { max(Int64(Date().timeIntervalSince1970 * 1000), (state?.computedAtMs ?? 0) + 1) },
+          computedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
           status: .ready,
           distanceMeters: distanceMeters,
           durationSeconds: durationSeconds,
@@ -504,7 +534,7 @@ final class NavigationController {
       targetLatitude: toLatitude,
       targetLongitude: toLongitude,
       profile: profile,
-      computedAtMs: lock.withLock { max(Int64(Date().timeIntervalSince1970 * 1000), (state?.computedAtMs ?? 0) + 1) },
+      computedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
       status: status,
       distanceMeters: 0,
       durationSeconds: 0,
@@ -524,22 +554,25 @@ final class NavigationController {
   ///
   /// `onChange` only hops to the main queue to emit and never calls back into this controller, so
   /// holding the lock across it cannot deadlock.
-  private func publish(_ request: Int, _ navigation: Navigation?, keepUsablePath: Bool = false, frameCamera: Bool = true) {
+  private func publish(_ request: Int, _ navigation: Navigation?, keepUsablePath: Bool = false, automatic: Bool = false) {
     let committed: Bool = lock.withLock {
       guard request == generation, !isSame(state, navigation) else { return false }
       // A recompute that found nothing must not take away a path the rider can still ride. Checked
       // in here rather than at the call site so the read of `state` and the write are one step.
       if keepUsablePath, navigation?.status != .ready, state?.status == .ready { return false }
       let previousPath = ridePath(state)
-      if frameCamera, navigation?.status == .ready { cameraRevision += 1 }
       var next = navigation
-      next?.cameraRevision = cameraRevision
+      if next != nil {
+        revision += 1
+        next?.revision = revision
+        next?.automatic = automatic
+      }
       state = next
       // Reproject immediately: foreground GPS may not deliver another fix until the rider moves.
       let previousProgress = progress
       progress = progressAtLatestFix()
       onChange?(state)
-      if previousProgress != progress || progress != nil { onProgressChange?(progress) }
+      if previousProgress != progress { onProgressChange?(progress) }
       let nextPath = ridePath(state)
       if !samePath(previousPath, nextPath) { onPathChange?(nextPath) }
       onWatchChange?()

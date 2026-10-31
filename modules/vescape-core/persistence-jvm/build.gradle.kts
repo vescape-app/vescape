@@ -25,6 +25,7 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/config/RefloatConfigSchema.kt",
       "expo/modules/vescapecore/telemetry/TelemetryEntities.kt",
       "expo/modules/vescapecore/weather/WeatherAlertDefaults.kt",
+      "expo/modules/vescapecore/navigation/RerouteDistance.kt",
       "expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt",
       "expo/modules/vescapecore/telemetry/RideExport.kt",
       "expo/modules/vescapecore/location/GpsAccuracy.kt",

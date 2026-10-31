@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { applicationId } from '../src/config/appVariant.ts'
-import { waitForApp } from './e2e.ts'
+import { waitForApp } from './phone-e2e.ts'
 
 test('setup waits for the intended app, rather than a running Metro alone', async () => {
   let connected = false

@@ -835,6 +835,14 @@ public class VescapeCoreModule: Module {
       catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportRideFloaty`
+    // @parity /modules/vescape-core/src/index.ts `exportRideFloaty`
+    AsyncFunction("exportRideFloaty") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.exportRideFloaty(options)) }
+      catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
+    }
+
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`
     // @parity /modules/vescape-core/src/index.ts `exportLiveTelemetryCsv`
     AsyncFunction("exportLiveTelemetryCsv") { (promise: Promise) in
@@ -1667,8 +1675,7 @@ public class VescapeCoreModule: Module {
         self.coordinator.reloadTelemetrySettings()
       }
       if key == "navigationRerouteDistanceMeters" {
-        NavigationController.shared.setRerouteDistanceMeters(
-          (try self.appData.getSettings())["navigationRerouteDistanceMeters"] as? Double ?? 50.0)
+        NavigationController.shared.reloadRerouteDistance()
       }
       if key == "distanceUnit" { self.coordinator.reloadAlertRules() }
       MaintenanceRunner.shared.onSettingChanged(key)

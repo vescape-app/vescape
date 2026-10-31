@@ -7,12 +7,7 @@ const PERSPECTIVE_MIN_ZOOM = 11
 const PERSPECTIVE_MAX_ZOOM = 16
 
 export type MapCameraProfileKey =
-  | 'northUp'
-  | 'freeRotate'
-  | 'gpsHeading'
-  | 'compass'
-  | 'rideHistory'
-  | 'weather'
+  'northUp' | 'freeRotate' | 'gpsHeading' | 'compass' | 'rideHistory' | 'weather'
 
 export interface CameraPadding {
   paddingTop: number

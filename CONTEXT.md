@@ -172,12 +172,16 @@ One rider's private navigation target on the map, stored on the phone only. It i
 _Avoid_: Direction map point, navigation Map Point, destination marker
 
 **Navigation**:
-The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Native recalculates it from the current GPS Fix when the nearest path is farther away than the configurable threshold (50 m by default), retaining the usable path if replacement fails. It describes where the rider could go and is never **Ride History**, which records where they did go.
+The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Native recalculates it when the rider is farther from the path than the **Reroute Distance** (ADR-0042). It describes where the rider could go and is never **Ride History**, which records where they did go.
 _Avoid_: Route, ride route, navigation mode, guidance, directions
 
 **Route Progress**:
-Where the rider is along their **Navigation** right now: the point on the path nearest to them, how far is left to the **Direction Point** from there, and the bearing to an aim point a short way further along. It is derived and never stored, it changes with every **GPS Fix**, and it ends with the Navigation it belongs to. Route Progress also supplies the passed-path split and rider-to-path deviation from that same nearest projection. Its remaining-time estimate scales the routing service’s total duration by remaining distance divided by its total distance, independently of current speed; it is unavailable without timing or beyond the path’s end.
+Where the rider is along their **Navigation** right now: the point on the path nearest to them, how far is left to the **Direction Point** from there, and the bearing to an aim point a short way further along. It is derived and never stored, it changes with every **GPS Fix**, and it ends with the Navigation it belongs to. The same projection splits the drawn path into passed and remaining, and measures how far the rider is from the path.
 _Avoid_: Navigation progress, route position, ETA, remaining route, navigation fix
+
+**Reroute Distance**:
+How far the rider may be from their **Navigation** path, measured from the **Route Progress** projection, before native recalculates the path. A rider setting, 50 m by default.
+_Avoid_: Off-route threshold, reroute threshold, deviation limit
 
 **Navigation Profile**:
 The kind of ways a **Navigation** may follow, such as footpaths or cycleways. The rider chooses it while looking at a path and the last choice carries to the next Navigation. It is not a **Map Camera Profile**, which is camera behavior, nor a **Tune Profile**, which is board settings.
