@@ -14,6 +14,7 @@ import { formatMonthLabel, getAdjacentMonths } from '@/modules/profile/lib/profi
 import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
 import { Select, type SelectOption } from '@/components/forms/Select'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 
 interface RideStatsSectionProps {
   /** Tapping Top speed or Longest ride opens the ride that set it. */
@@ -24,6 +25,7 @@ export function RideStatsSection({ onOpenRecordRide }: RideStatsSectionProps) {
   const {
     total,
     monthly,
+    today,
     months,
     selectedMonth,
     loading,
@@ -32,6 +34,8 @@ export function RideStatsSection({ onOpenRecordRide }: RideStatsSectionProps) {
     empty,
     selectMonth,
   } = useProfileStats()
+  const accent = useResolvedAccentColors()
+  const todayItems = useProfileStatItems(today, undefined, onOpenRecordRide)
   const totalItems = useProfileStatItems(total, undefined, onOpenRecordRide)
   const monthItems = useProfileStatItems(monthly, undefined, onOpenRecordRide)
   const adjacent = useMemo(() => getAdjacentMonths(months, selectedMonth), [months, selectedMonth])
@@ -72,6 +76,19 @@ export function RideStatsSection({ onOpenRecordRide }: RideStatsSectionProps) {
         />
       ) : (
         <>
+          {today.rideCount > 0 ? (
+            <View
+              testID="profile-today-stats"
+              style={[styles.todayCard, { borderColor: accent.sky.border }]}
+            >
+              <View style={styles.todayHeader}>
+                <View style={[styles.todayDot, { backgroundColor: accent.green.color }]} />
+                <Text style={[styles.sectionTitle, styles.todayTitle]}>Today</Text>
+              </View>
+              <ProfileStatsGrid items={todayItems} />
+            </View>
+          ) : null}
+
           <Text style={styles.sectionTitle}>All time</Text>
           <ProfileStatsGrid items={totalItems} />
 
@@ -129,6 +146,27 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginLeft: 4,
     marginTop: 4,
+  },
+  todayCard: {
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 10,
+    gap: 4,
+  },
+  todayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 4,
+  },
+  todayDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  todayTitle: {
+    marginLeft: 0,
+    marginTop: 0,
   },
   grid: {
     flexDirection: 'row',

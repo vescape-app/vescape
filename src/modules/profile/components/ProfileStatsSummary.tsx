@@ -10,12 +10,24 @@ import { useResolvedAccentColors } from '@/hooks/useTheme'
 import {
   useProfileStatItems,
   type OpenRecordRide,
+  type ProfileStatKey,
 } from '@/modules/profile/hooks/useProfileStatItems'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
 import { formatMonthLabel } from '@/modules/profile/lib/profileStats'
 
 type Scope = 'today' | 'total' | 'month'
+
+const SUMMARY_KEYS: ProfileStatKey[] = ['topSpeed', 'distance', 'longestRide', 'rides']
+/** A day is about how far and how hard, not records or ride counts. */
+const TODAY_KEYS: ProfileStatKey[] = [
+  'topSpeed',
+  'distance',
+  'rideTime',
+  'avgSpeed',
+  'used',
+  'regen',
+]
 
 interface ProfileStatsSummaryProps {
   /** Load and refresh while the containing drawer or screen is visible. */
@@ -56,7 +68,7 @@ export function ProfileStatsSummary({
   const todayStyle = scope === 'today' && { borderColor: accent.sky.border }
   const items = useProfileStatItems(
     stats,
-    ['topSpeed', 'distance', 'longestRide', 'rides'],
+    scope === 'today' ? TODAY_KEYS : SUMMARY_KEYS,
     onOpenRecordRide,
   )
 
@@ -89,7 +101,7 @@ export function ProfileStatsSummary({
             style={styles.empty}
           />
         ) : (
-          <ProfileStatsGrid items={items} emphasis columns={4} />
+          <ProfileStatsGrid items={items} emphasis columns={scope === 'today' ? 3 : 4} />
         )}
       </View>
     </View>
