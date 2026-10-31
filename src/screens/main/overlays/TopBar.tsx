@@ -104,6 +104,7 @@ export function TopBar({
     accessoryId?: string
   } | null>(null)
   const [socialOpen, setSocialOpen] = useState(false)
+  const [socialPage, setSocialPage] = useState('nearby')
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const riderColor = useSelectedBoardRailColor() ?? theme.palette.green.color
@@ -271,11 +272,12 @@ export function TopBar({
         triggerRef={socialRef}
         edge="top"
         title="Social"
+        contentPageKey={socialPage}
         icon={UsersThreeIcon}
         backdropTestID="social-drawer-backdrop"
         onClose={() => setSocialOpen(false)}
       >
-        <SocialSheet />
+        <SocialSheet onPageChange={setSocialPage} />
       </EdgeDrawer>
 
       <EdgeDrawer

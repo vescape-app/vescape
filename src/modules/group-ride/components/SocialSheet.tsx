@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PublicRidePrototype } from './public-ride-prototype/PublicRidePrototype'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
@@ -23,7 +24,9 @@ import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoar
 import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/GroupRideRoster'
 
-export function SocialSheet() {
+export function SocialSheet({ onPageChange }: { onPageChange?: (page: string) => void }) {
+  if (__DEV__)
+    return <PublicRidePrototype identity={<RiderNameWidget />} onPageChange={onPageChange} />
   return (
     <View testID="social-sheet" style={styles.list}>
       <RiderNameWidget />
