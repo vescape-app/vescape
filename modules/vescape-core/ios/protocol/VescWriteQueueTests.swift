@@ -102,19 +102,6 @@ final class VescWriteQueueTests: XCTestCase {
     XCTAssertEqual(queue.startNext()?.bytes, newerNeutral)
   }
 
-  func testRefusedRemoteInputWriteNeverOverwritesNewerTilt() {
-    let queue = VescWriteQueue()
-    let refused: [UInt8] = [1]
-    let latest: [UInt8] = [2]
-
-    queue.replaceRemoteInput(refused)
-    XCTAssertEqual(queue.startNext()?.bytes, refused)
-    queue.replaceRemoteInput(latest)
-    queue.retryInFlight()
-
-    XCTAssertEqual(queue.startNext()?.bytes, latest)
-  }
-
   /// The regression this queue exists for: a held stream at its repeat cadence must not grow the
   /// backlog, or the neutral that ends the gesture lands seconds late and the board holds tilt.
   func testHeldStreamNeverAccumulatesBacklog() {
@@ -187,30 +174,16 @@ final class VescWriteQueueTests: XCTestCase {
     XCTAssertEqual(rest[3], poll)
   }
 
-  func testRefusedChunkMidFrameIsRetriedWithItsOwnBytes() {
+  func testFailedChunkDropsTheRestOfItsFrame() {
     let queue = VescWriteQueue()
-    let tuneFrame = frame(50)
+    let poll: [UInt8] = [255]
 
-    queue.enqueueNormal(tuneFrame)
+    queue.enqueueNormal(frame(50))
+    queue.enqueueNormal(poll)
     _ = queue.startNext()
-    queue.completeInFlight()
-    let refused = queue.startNext()?.bytes
-    queue.retryInFlight()
+    queue.completeInFlight(failed: true)
 
-    XCTAssertEqual(queue.startNext()?.bytes, refused)
-    queue.completeInFlight()
-    XCTAssertEqual(drain(queue), [Array(tuneFrame[40..<50])])
-  }
-
-  func testRefusedFirstChunkPutsTheWholeFrameBack() {
-    let queue = VescWriteQueue()
-    let tuneFrame = frame(50)
-
-    queue.enqueueNormal(tuneFrame)
-    _ = queue.startNext()
-    queue.retryInFlight()
-
-    XCTAssertEqual(drain(queue).flatMap { $0 }, tuneFrame)
+    XCTAssertEqual(drain(queue), [poll])
   }
 
   func testClearDropsAPartlySentFrame() {

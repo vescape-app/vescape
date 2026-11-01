@@ -242,7 +242,7 @@ internal class VescGattClient(
             status: Int,
         ) {
             if (gatt !== this@VescGattClient.gatt || characteristic.uuid != NUS_TX_UUID) return
-            val completed = writeQueue.completeInFlight()
+            val completed = writeQueue.completeInFlight(failed = status != BluetoothGatt.GATT_SUCCESS)
             val bytes = completed?.bytes
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 Log.w(VESC_SESSION_TAG, "gatt write callback failed status=$status bytes=${bytes?.size}")

@@ -13,10 +13,12 @@ import Foundation
 /// A frame larger than the chunk limit goes out as consecutive chunks. Some BLE modules hang on the
 /// GATT long write the OS would otherwise use (#620). No other write runs between chunks of one
 /// frame: extra bytes mid-frame corrupt the VESC byte stream. So an urgent neutral waits for the
-/// frame in flight to finish, at most one frame of chunks (about 14 writes for a 280-byte tune frame
-/// at MTU 23).
+/// frame in flight to finish. At MTU 23 the largest frames (about 500 bytes) take about 25 writes.
+/// A failed write drops the rest of its frame; the board would reject the broken frame anyway.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescWriteQueue.kt
+/// @platform-diff CoreBluetooth cannot refuse to start a write, so there is no retry of a refused
+/// write here; Android's `writeCharacteristic` can refuse, and its queue puts the write back.
 internal final class VescWriteQueue {
   enum Write {
     case normal(bytes: [UInt8])
@@ -46,7 +48,6 @@ internal final class VescWriteQueue {
   /// Frame whose chunks are being sent, and the offset of its next unsent byte.
   private var frame: Write?
   private var frameOffset = 0
-  private var inFlightOffset = 0
   private var chunkLimit = VescWriteQueue.defaultChunkLimit
 
   /// Largest single write the link accepts (ATT MTU - 3). Applies from the next chunk on.
@@ -84,7 +85,6 @@ internal final class VescWriteQueue {
     let frameBytes = current.bytes
     let end = min(frameOffset + chunkLimit, frameBytes.count)
     let bytes = frameOffset == 0 && end == frameBytes.count ? frameBytes : Array(frameBytes[frameOffset..<end])
-    inFlightOffset = frameOffset
     frameOffset = end
     let write: Write
     switch current {
@@ -113,42 +113,18 @@ internal final class VescWriteQueue {
     return next
   }
 
-  /// Complete the current chunk after its GATT callback.
+  /// Complete the current chunk after its GATT callback. A failed write drops the rest of its frame.
   @discardableResult
-  func completeInFlight() -> Write? {
+  func completeInFlight(failed: Bool = false) -> Write? {
     lock.lock()
     defer { lock.unlock() }
     let completed = inFlight
     inFlight = nil
-    if frameOffset >= (frame?.bytes.count ?? 0) { frame = nil }
+    if failed || frameOffset >= (frame?.bytes.count ?? 0) { frame = nil }
     return completed
   }
 
-  /// Put a chunk that CoreBluetooth refused to start back into the queue. A partly sent frame
-  /// resumes from the refused chunk. A frame with nothing sent yet goes back whole, and a newer
-  /// remote input value wins over a refused one.
-  func retryInFlight() {
-    lock.lock()
-    defer { lock.unlock() }
-    guard inFlight != nil else { return }
-    inFlight = nil
-    if inFlightOffset > 0 {
-      frameOffset = inFlightOffset
-      return
-    }
-    switch frame {
-    case .normal(let bytes):
-      normal.insert(bytes, at: 0)
-    case .remoteInput(let bytes):
-      if pendingRemoteInput == nil {
-        pendingRemoteInput = PendingRemoteInput(bytes: bytes, urgent: false)
-      }
-    case nil:
-      break
-    }
-    frame = nil
-  }
-
+  /// Drop everything the old link had queued, and forget its chunk limit.
   func clear() {
     lock.lock()
     defer { lock.unlock() }
@@ -158,6 +134,6 @@ internal final class VescWriteQueue {
     preferRemoteInput = false
     frame = nil
     frameOffset = 0
-    inFlightOffset = 0
+    chunkLimit = VescWriteQueue.defaultChunkLimit
   }
 }

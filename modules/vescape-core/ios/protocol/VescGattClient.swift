@@ -529,7 +529,7 @@ extension VescGattClient: CBPeripheralDelegate {
 
   func didWriteValue(_ peripheral: VescPeripheral, characteristic: CBCharacteristic, error: Error?) {
     guard linkUp, peripheral === self.peripheral, characteristic.uuid == VescGattUUIDs.tx else { return }
-    let completed = writeQueue.completeInFlight()
+    let completed = writeQueue.completeInFlight(failed: error != nil)
     if let error {
       NSLog("gatt write callback failed bytes=\(completed?.bytes.count ?? 0): \(error.localizedDescription)")
     }

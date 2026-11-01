@@ -11,10 +11,12 @@ package expo.modules.vescapecore.protocol
  * A frame larger than [chunkLimit] goes out as consecutive chunks. Some BLE modules hang on
  * the GATT long write the OS would otherwise use (#620). No other write runs between chunks of one
  * frame: extra bytes mid-frame corrupt the VESC byte stream. So an urgent neutral waits for the
- * frame in flight to finish, at most one frame of chunks (about 14 writes for a 280-byte tune
- * frame at MTU 23).
+ * frame in flight to finish. At MTU 23 the largest frames (about 500 bytes) take about 25 writes.
+ * A failed write drops the rest of its frame; the board would reject the broken frame anyway.
  *
  * @parity /modules/vescape-core/ios/protocol/VescWriteQueue.swift
+ * @platform-diff Android's `writeCharacteristic` can refuse to start a write, so [retryInFlight]
+ * puts it back; CoreBluetooth cannot refuse, and the iOS queue has no retry.
  */
 internal class VescWriteQueue {
     sealed interface Write {
@@ -100,12 +102,12 @@ internal class VescWriteQueue {
         return next
     }
 
-    /** Complete current chunk after its GATT callback. */
+    /** Complete current chunk after its GATT callback. A failed write drops the rest of its frame. */
     @Synchronized
-    fun completeInFlight(): Write? {
+    fun completeInFlight(failed: Boolean = false): Write? {
         val completed = inFlight
         inFlight = null
-        if (frameOffset >= (frame?.bytes?.size ?: 0)) frame = null
+        if (failed || frameOffset >= (frame?.bytes?.size ?: 0)) frame = null
         return completed
     }
 
@@ -132,6 +134,7 @@ internal class VescWriteQueue {
         frame = null
     }
 
+    /** Drop everything the old link had queued, and forget its chunk limit. */
     @Synchronized
     fun clear() {
         normal.clear()
@@ -141,6 +144,7 @@ internal class VescWriteQueue {
         frame = null
         frameOffset = 0
         inFlightOffset = 0
+        chunkLimit = DEFAULT_CHUNK_LIMIT
     }
 
     companion object {

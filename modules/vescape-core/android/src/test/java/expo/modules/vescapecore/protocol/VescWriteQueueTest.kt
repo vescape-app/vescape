@@ -203,6 +203,19 @@ class VescWriteQueueTest {
     }
 
     @Test
+    fun failedChunkDropsTheRestOfItsFrame() {
+        val queue = VescWriteQueue()
+        val poll = byteArrayOf(-1)
+
+        queue.enqueueNormal(frame(50))
+        queue.enqueueNormal(poll)
+        queue.startNext()
+        queue.completeInFlight(failed = true)
+
+        assertArrayEquals(poll, drain(queue).single())
+    }
+
+    @Test
     fun clearDropsAPartlySentFrame() {
         val queue = VescWriteQueue()
 
