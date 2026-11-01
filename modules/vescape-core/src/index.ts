@@ -1514,7 +1514,15 @@ export interface RideWeather {
 }
 
 /**
- * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty or absent = all).
+ * Weather a ride can be filtered by, judged natively from its Ride weather summary.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideWeatherCondition`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideWeatherCondition`
+ */
+export type RideWeatherCondition = 'rain' | 'cold' | 'hot'
+
+/**
+ * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty or absent = all)
+ * that meet any of `weather` (empty or absent = any weather; no weather summary never matches).
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
  */
@@ -1522,6 +1530,7 @@ export interface RideHistoryFilter {
   fromMs?: number
   toMs?: number
   boardIds?: string[]
+  weather?: RideWeatherCondition[]
 }
 
 export interface RideHistoryPageOptions extends RideHistoryFilter {

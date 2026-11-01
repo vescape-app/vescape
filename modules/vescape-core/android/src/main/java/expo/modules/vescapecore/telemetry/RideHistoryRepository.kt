@@ -91,7 +91,16 @@ internal suspend fun readRideHistoryPage(
         val grouped = groupRideSessions(buckets, markers, gapMs).filter { it.avgSpeedSampleCount > 0 }
         val completeAll = completeRideSessions(grouped, hasOlderBuckets)
         reachedFrom = filter.reachedFrom(completeAll)
-        complete = completeAll.filter(filter::matches)
+        val candidates = completeAll.filter(filter::matches)
+        complete = if (filter.weather.isEmpty() || candidates.isEmpty()) candidates else {
+          val observations = dao.getWeatherObservationsSpanning(
+            candidates.minOf { it.startAtMs },
+            candidates.maxOf { it.endAtMs },
+          ).map { it.toObservation() }
+          candidates.filter {
+            filter.matchesWeather(summarizeRideWeather(observations, it.startAtMs, it.endAtMs))
+          }
+        }
       }
       val exhausted = !hasOlderBuckets || reachedFrom
 
@@ -129,16 +138,47 @@ internal suspend fun countRideHistory(dao: VescapeDao, options: Map<String, Any?
 }
 
 /**
- * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty = all).
+ * Weather conditions a ride can be filtered by, judged from its Ride weather summary.
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideWeatherCondition`
+ * @parity /modules/vescape-core/src/index.ts `RideWeatherCondition`
+ */
+internal object RideWeatherCondition {
+  const val RAIN = "rain"
+  const val COLD = "cold"
+  const val HOT = "hot"
+  /** One stray drizzle reading does not make a rainy ride. */
+  const val RAIN_MIN_MINUTES = 5
+  const val COLD_MAX_C = 5
+  const val HOT_MIN_C = 28
+
+  fun matches(condition: String, weather: RideWeather) = when (condition) {
+    RAIN -> weather.rainMinutes >= RAIN_MIN_MINUTES
+    COLD -> weather.minTemperatureC <= COLD_MAX_C
+    HOT -> weather.maxTemperatureC >= HOT_MIN_C
+    else -> false
+  }
+}
+
+/**
+ * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty = all) that
+ * meet any of `weather` (empty = any weather; a ride without weather never matches a condition).
  * Applied after grouping, because another Board's buckets still decide where a ride splits.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
  * @parity /modules/vescape-core/src/index.ts `RideHistoryFilter`
  */
-internal data class RideHistoryFilter(val fromMs: Long?, val toMs: Long?, val boardIds: Set<String>) {
+internal data class RideHistoryFilter(
+  val fromMs: Long?,
+  val toMs: Long?,
+  val boardIds: Set<String>,
+  val weather: Set<String> = emptySet(),
+) {
   fun matches(session: RideSessionAggregate) =
     (fromMs == null || session.startAtMs >= fromMs) &&
       (toMs == null || session.startAtMs < toMs) &&
       (boardIds.isEmpty() || session.boardId in boardIds)
+
+  fun matchesWeather(summary: RideWeather?) =
+    weather.isEmpty() || (summary != null && weather.any { RideWeatherCondition.matches(it, summary) })
 
   /** Once a complete ride starts before [fromMs], every older ride does too. */
   fun reachedFrom(complete: List<RideSessionAggregate>) =
@@ -149,6 +189,7 @@ internal data class RideHistoryFilter(val fromMs: Long?, val toMs: Long?, val bo
       fromMs = (options["fromMs"] as? Number)?.toLong(),
       toMs = (options["toMs"] as? Number)?.toLong(),
       boardIds = (options["boardIds"] as? List<*>)?.filterIsInstance<String>()?.toSet() ?: emptySet(),
+      weather = (options["weather"] as? List<*>)?.filterIsInstance<String>()?.toSet() ?: emptySet(),
     )
   }
 }

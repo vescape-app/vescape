@@ -590,12 +590,19 @@ test('the ride filter reloads the first page and follows every later page', asyn
   useHistoryStore.getState().setRideFilter({
     date: { preset: 'custom', fromMs: 1_000, toMs: 9_000_000 },
     boardIds: ['thor'],
+    weather: ['rain'],
   })
   await new Promise((resolve) => setTimeout(resolve, 0))
   await useHistoryStore.getState().loadMore()
 
   const calls = getRideHistoryPage.mock.calls as unknown[][]
-  expect(calls[0][0]).toEqual({ fromMs: 1_000, toMs: 9_000_000, boardIds: ['thor'], limit: 10 })
+  expect(calls[0][0]).toEqual({
+    fromMs: 1_000,
+    toMs: 9_000_000,
+    boardIds: ['thor'],
+    weather: ['rain'],
+    limit: 10,
+  })
   expect(calls[1][0]).toMatchObject({ fromMs: 1_000, toMs: 9_000_000, boardIds: ['thor'] })
-  useHistoryFilterStore.setState({ selection: { date: null, boardIds: [] } })
+  useHistoryFilterStore.setState({ selection: { date: null, boardIds: [], weather: [] } })
 })

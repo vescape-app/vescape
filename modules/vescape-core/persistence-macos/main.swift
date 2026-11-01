@@ -480,6 +480,17 @@ try require((try history.getPage(["boardIds": ["other-board"]])["sessions"] as! 
 try require(try history.countRides([:]) == 2, "count all rides")
 try require(try history.countRides(["fromMs": currentStart]) == 1, "count filtered rides")
 try require(try history.countRides(["boardIds": [boardId]]) == 2, "count board rides")
+// Weather matches on the ride's summary; a ride without one never meets a condition.
+try historyPool.write { db in
+  try db.execute(
+    sql: "INSERT INTO weather_observations (observed_at_ms, temperature_c, weather_code, gust_kmh, is_day) VALUES (?, 2, 0, NULL, 1)",
+    arguments: [currentStart - 1]
+  )
+}
+try require((try history.getPage(["weather": ["cold"]])["sessions"] as! [[String: Any?]]).map { $0["startAtMs"] as? Int64 } == [currentStart], "filter cold")
+try require((try history.getPage(["weather": ["hot"]])["sessions"] as! [Any]).isEmpty, "filter hot")
+try require(try history.countRides(["weather": ["rain", "cold"]]) == 1, "count weather rides")
+try historyPool.write { db in try db.execute(sql: "DELETE FROM weather_observations") }
 let populatedStats = try profile.getProfileStatsSnapshot([:])
 let total = populatedStats["total"] as! [String: Any?]
 try require(total["rideCount"] as! Int == int(historyExpected["profileRideCount"]), "profile ride count")

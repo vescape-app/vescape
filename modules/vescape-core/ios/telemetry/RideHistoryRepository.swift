@@ -189,7 +189,19 @@ internal final class RideHistoryRepository {
           .filter { $0.avgSpeedSampleCount > 0 }
         let completeAll = completeRideSessions(grouped, hasOlderBuckets: hasOlderBuckets)
         reachedFrom = filter.reachedFrom(completeAll)
-        complete = completeAll.filter(filter.matches)
+        let candidates = completeAll.filter(filter.matches)
+        if filter.weather.isEmpty || candidates.isEmpty {
+          complete = candidates
+        } else {
+          let observations = try weatherObservationsSpanning(
+            db,
+            startMs: candidates.map(\.startAtMs).min()!,
+            endMs: candidates.map(\.endAtMs).max()!
+          )
+          complete = candidates.filter {
+            filter.matchesWeather(summarizeRideWeather(observations, startMs: $0.startAtMs, endMs: $0.endAtMs))
+          }
+        }
       }
       let exhausted = !hasOlderBuckets || reachedFrom
       let sorted = complete.sorted { $0.startAtMs > $1.startAtMs }
@@ -214,7 +226,30 @@ internal final class RideHistoryRepository {
 
 }
 
-/// Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty = all).
+/// Weather conditions a ride can be filtered by, judged from its Ride weather summary.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideWeatherCondition`
+/// @parity /modules/vescape-core/src/index.ts `RideWeatherCondition`
+internal enum RideWeatherCondition {
+  static let rain = "rain"
+  static let cold = "cold"
+  static let hot = "hot"
+  /// One stray drizzle reading does not make a rainy ride.
+  static let rainMinMinutes = 5
+  static let coldMaxC = 5
+  static let hotMinC = 28
+
+  static func matches(_ condition: String, _ weather: RideWeather) -> Bool {
+    switch condition {
+    case rain: return weather.rainMinutes >= rainMinMinutes
+    case cold: return weather.minTemperatureC <= coldMaxC
+    case hot: return weather.maxTemperatureC >= hotMinC
+    default: return false
+    }
+  }
+}
+
+/// Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty = all) that
+/// meet any of `weather` (empty = any weather; a ride without weather never matches a condition).
 /// Applied after grouping, because another Board's buckets still decide where a ride splits.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
 /// @parity /modules/vescape-core/src/index.ts `RideHistoryFilter`
@@ -222,11 +257,19 @@ internal struct RideHistoryFilter {
   let fromMs: Int64?
   let toMs: Int64?
   let boardIds: Set<String>
+  let weather: Set<String>
 
   init(_ options: [String: Any]) {
     fromMs = telemetryLong(options["fromMs"])
     toMs = telemetryLong(options["toMs"])
     boardIds = Set((options["boardIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
+    weather = Set((options["weather"] as? [Any])?.compactMap { $0 as? String } ?? [])
+  }
+
+  func matchesWeather(_ summary: RideWeather?) -> Bool {
+    guard !weather.isEmpty else { return true }
+    guard let summary else { return false }
+    return weather.contains { RideWeatherCondition.matches($0, summary) }
   }
 
   func matches(_ session: RideSessionAggregate) -> Bool {

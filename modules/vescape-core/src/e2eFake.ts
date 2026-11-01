@@ -345,6 +345,8 @@ function matchesRideFilter(bucket: TelemetryMinuteBucket, filter: RideHistoryFil
   if (filter.fromMs != null && bucket.startAtMs < filter.fromMs) return false
   if (filter.toMs != null && bucket.startAtMs >= filter.toMs) return false
   if (filter.boardIds?.length && !filter.boardIds.includes(bucket.boardId ?? '')) return false
+  // Fake rides carry no weather summary, and a ride without one never meets a weather condition.
+  if (filter.weather?.length) return false
   return true
 }
 

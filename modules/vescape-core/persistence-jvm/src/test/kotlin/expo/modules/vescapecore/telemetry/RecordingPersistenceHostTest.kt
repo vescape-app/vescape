@@ -25,6 +25,7 @@ import expo.modules.vescapecore.database.BoardSettingEntity
 import expo.modules.vescapecore.database.BoardWarningEntity
 import expo.modules.vescapecore.database.DiagnosticEventEntity
 import expo.modules.vescapecore.database.FavoriteMediaEntity
+import expo.modules.vescapecore.database.WeatherObservationEntity
 import expo.modules.vescapecore.database.MetricExclusionRangeEntity
 import expo.modules.vescapecore.database.PrivacyZoneEntity
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
@@ -631,6 +632,15 @@ class RecordingPersistenceHostTest {
     assertEquals(2, countRideHistory(db.vescapeDao(), emptyMap(), gapMs))
     assertEquals(1, countRideHistory(db.vescapeDao(), mapOf("fromMs" to currentStart), gapMs))
     assertEquals(2, countRideHistory(db.vescapeDao(), mapOf("boardIds" to listOf(boardId)), gapMs))
+    // Weather matches on the ride's summary; a ride without one never meets a condition.
+    db.vescapeDao().insertWeatherObservation(
+      WeatherObservationEntity.of(WeatherObservation(currentStart - 1, 2, 0, null, true)),
+    )
+    val cold = readRideHistoryPage(db.vescapeDao(), mapOf("weather" to listOf("cold")), gapMs)
+    assertEquals(listOf(currentStart), (cold["sessions"] as List<Map<String, Any?>>).map { it["startAtMs"] })
+    assertTrue((readRideHistoryPage(db.vescapeDao(), mapOf("weather" to listOf("hot")), gapMs)["sessions"] as List<*>).isEmpty())
+    assertEquals(1, countRideHistory(db.vescapeDao(), mapOf("weather" to listOf("rain", "cold")), gapMs))
+    db.vescapeDao().clearWeatherObservations()
     val stats = readProfileStatsSnapshot(db.vescapeDao(), emptyMap(), gapMs)
     val total = stats["total"] as Map<*, *>
     assertEquals(expected.getInt("profileRideCount"), total["rideCount"])

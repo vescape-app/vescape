@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { RideWeatherCondition } from 'vescape-core'
 import { StyleSheet, View } from 'react-native'
 
 import { Button } from '@/components/base/Button'
@@ -18,6 +19,12 @@ const DATE_PRESETS: readonly { preset: RideDatePreset; label: string }[] = [
   { preset: 'thisMonth', label: 'This month' },
   { preset: 'previousMonth', label: 'Previous month' },
   { preset: 'custom', label: 'Custom range' },
+]
+
+const WEATHER_CONDITIONS: readonly { condition: RideWeatherCondition; label: string }[] = [
+  { condition: 'rain', label: 'Rainy' },
+  { condition: 'cold', label: 'Cold' },
+  { condition: 'hot', label: 'Hot' },
 ]
 
 const DAY_MS = 24 * 60 * 60_000
@@ -51,6 +58,13 @@ export function HistoryFilterPanel({ selection, onApply }: HistoryFilterPanelPro
       ? draft.boardIds.filter((id) => id !== boardId)
       : [...draft.boardIds, boardId]
     setDraft({ ...draft, boardIds })
+  }
+
+  const toggleWeather = (condition: RideWeatherCondition) => {
+    const weather = draft.weather.includes(condition)
+      ? draft.weather.filter((item) => item !== condition)
+      : [...draft.weather, condition]
+    setDraft({ ...draft, weather })
   }
 
   const custom = draft.date?.preset === 'custom' ? draft.date : null
@@ -95,6 +109,20 @@ export function HistoryFilterPanel({ selection, onApply }: HistoryFilterPanelPro
           />
         </View>
       ) : null}
+
+      <Text style={styles.heading}>Weather</Text>
+      <View style={styles.chips}>
+        {WEATHER_CONDITIONS.map(({ condition, label }) => (
+          <Button
+            key={condition}
+            label={label}
+            size="sm"
+            variant={draft.weather.includes(condition) ? 'accent' : 'secondary'}
+            testID={`history-filter-weather-${condition}`}
+            onPress={() => toggleWeather(condition)}
+          />
+        ))}
+      </View>
 
       {boards.length > 1 ? (
         <>
