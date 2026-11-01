@@ -2,92 +2,99 @@
 
 # Vescape
 
-An open-source ride companion for VESC-based boards. See what your board is doing,
-hear the signals that matter, and keep a record of the ride. Built by riders, out
-in the open.
+Mobile telemetry proof of concept for VESC-based boards over BLE.
 
-[Website](https://vescape.app) ·
-[Google Play](https://play.google.com/store/apps/details?id=app.vescape) ·
-[iOS beta on TestFlight](https://testflight.apple.com/join/DUn2GHAd)
+The app scans for nearby VESC BLE devices, starts a native session (Kotlin on
+Android, Swift on iOS), connects over the Nordic UART Service, discovers the
+motor controller on CAN, and polls Refloat telemetry for live riding,
+electrical, and thermal values.
 
-## Features
-
-- **Live telemetry.** Speed, duty cycle, battery, voltage, current, and temperatures,
-  with live gauges and graphs to see how your board responds.
-- **Audible alerts.** Set your own Alert Rules. Geiger-style beeps pick up as you
-  approach a duty-cycle or speed limit, and spoken updates keep you informed
-  without another glance at the screen.
-- **Ride Recording and Ride History.** Save routes and telemetry while you ride.
-  Revisit your stats, photos, and videos, or dig into the signals to understand
-  what happened on the board.
-- **Group Rides.** Create or join a ride, find your crew on the map, share live
-  telemetry, and choose the next spot together. Your position is shared while
-  you're in the Group Ride.
-- **Maps and weather.** Find Map Points, check the forecast and rain radar, and
-  use privacy zones to control location sharing.
-- **Battery detail.** Follow charge state and charging detection, with per-cell
-  readings on compatible smart BMS hardware.
-- **Refloat tuning.** Read, edit, save, and sync Tune Profiles from the app.
-- **Your boards, ready to ride.** Save multiple boards, reconnect over Bluetooth,
-  and inspect board and connection diagnostics when something feels off.
-
-A Vescape Account is optional. Local board, recording, history, and tuning
-features work offline. Online features such as Group Rides need a connection.
-
-## Supported hardware
-
-Tested boards and controllers:
+## Supported Hardware
 
 - Floatwheel ADV2
 - Floatwheel Pint V
 - Thor 301 controller
 - Tronic 250R controller
 
-Vescape targets VESC-based boards running Refloat. Compatibility and available
-readings depend on the controller, firmware, BLE hardware, and BMS.
+These are the boards and controllers we have tested on. It should work with most
+VESC-based controllers running Refloat.
 
-Android and iOS have native implementations. Android is the more road-tested
-platform; iOS is available in beta.
+Both platforms are implemented natively. `modules/vescape-core` carries peer
+Kotlin and Swift implementations of roughly equal size, linked by `@parity` tags
+— see [AGENTS.md](AGENTS.md). Android is the more road-tested of the two.
+
+## Features
+
+- Fast live telemetry (up to ~35 Hz)
+- Fast connect and reconnect
+- Multiple saved boards
+- Ride history recordings with map routes, photos, and videos
+- Ride alerts: TTS spoken messages and Geiger-style audio alerts
+- Battery state-of-charge with charging detection
+- Smart BMS readout with per-cell display
+- Weather and rain radar
+- Refloat tune profiles (read, edit, sync)
 
 ## Stack
 
-- Expo SDK 57, React Native 0.86, and Expo Router
-- TypeScript and Zustand
-- Reanimated and React Native Skia for gauges and charts
-- Mapbox maps
-- Kotlin and Swift in the custom `vescape-core` Expo module
-- Native Wear OS and watchOS Watch Mirror implementations
-- Bun for dependencies, scripts, and JS tests
+- Expo SDK 56
+- React Native 0.85
+- Expo Router
+- TypeScript
+- Zustand
+- Reanimated + React Native Skia (gauges, charts)
+- `phosphor-react-native` icons
+- Styling via `StyleSheet` + design tokens in `src/constants/theme.ts` (no NativeWind/Tailwind)
+- Bun
+- Custom Expo native module for BLE: `modules/vescape-core`
 
-## Architecture
-
-Native code owns the board connection, telemetry, recording, alerts, and durable
-storage. React Native renders state and sends intents. Long-running board work
-doesn't depend on JS timers or an open screen.
-
-Android uses a foreground service, with companion-device wake-up and auto-connect.
-iOS has a peer Swift implementation, including background recording and Live
-Activity support. Native contracts are linked by `@parity` tags so changes stay
-aligned across platforms.
-
-See [Architecture](docs/architecture.md), [Connection state](docs/connectionState.md),
-and [iOS](docs/ios.md) for the details.
-
-## Project layout
+## How It Works
 
 ```text
-src/app/                    Thin Expo Router routes
-src/modules/<feature>/      Domain code, state, hooks, and components
-src/components/             Shared UI primitives
-src/screens/                Multi-module screen composition
-src/bootstrap/              App-root native-to-JS wiring
-src/helpers/                Shared pure utilities
-src/constants/theme.ts      Design tokens
-modules/vescape-core/        Native core, with Android and iOS peer implementations
-watch/                      Wear OS and watchOS companions
-targets/ride-activity/       iOS Live Activity extension
-shared/                     Shared inputs copied into native builds
-docs/                       Architecture, feature contracts, and contributor guides
+React Native UI                 Companion device / auto-connect provider
+  -> vescape-core JS session API      -> (wakes service without JS)
+        \                        /
+         -> Android foreground service
+              -> BLE / Nordic UART Service
+              -> VESC BLE bridge
+              -> CAN bus
+              -> VESC motor controller
+```
+
+The Android foreground service owns the long-running board session. It owns
+connection, polling, packet parsing, and notification updates, keeping
+telemetry off JS timers and the React Native bridge. React Native renders state
+and sends intents, but it is not required for a session to run.
+
+The session can start without the JS layer alive at all:
+
+- A `CompanionDeviceService` lets Android wake the app and connect when the
+  paired board comes into BLE range, even with the app process dead.
+- A `ContentProvider` runs at process start (before React Native) to
+  auto-connect the selected board.
+
+So the board can connect and stream in the background, and the UI attaches to an
+already-running session when it opens.
+
+## Project Layout
+
+```text
+src/app/                     Expo Router routes only (no logic)
+src/modules/<feature>/       Domain modules (board, battery, tune, map, history, alerts,
+                             weather, group-ride, settings, diagnostics, profile, legal) —
+                             each colocates its lib/ store/ hooks/ components/ constants/
+src/components/              Domain-less UI kit (base, forms, charts, controls, widgets, ...)
+src/screens/main/            Main screen composition (map/, overlays/, history/)
+src/hooks/                   Generic React hooks (no domain imports)
+src/bootstrap/               App-root wiring (native -> JS data sync)
+src/constants/theme.ts       Design tokens (single source of color/typography)
+shared/                      Pure JS shared with native (copied in via copy:shared)
+modules/vescape-core/            Custom Expo native BLE/session module
+modules/vescape-core/android/    Kotlin: Expo bridge, foreground service, polling, protocol
+modules/vescape-core/ios/        Swift: Expo bridge, board session, recording, alerts, Live Activity
+targets/ride-activity/           iOS widget extension (Live Activity lock-screen UI)
+docs/                        Protocol, architecture, ADRs, and agent notes
+CONTEXT.md                   Shared domain language
 ```
 
 ## Development
@@ -179,18 +186,61 @@ cd android
 ./gradlew assembleDebug
 ```
 
-## Contributing
+## Agent Skills
 
-Bug reports, board compatibility feedback, code, and documentation are welcome.
-[Open an issue](https://github.com/vescape-app/vescape/issues) with what you expected,
-what happened, and the board, firmware, phone, and app version involved.
+Project-local skills live in `.agents/skills/` and are slash commands you type at your coding agent. `.claude/skills` is a symlink to that directory, so Claude Code, Codex, and OpenCode all read the same set — add skills under `.agents/skills/`, never only for one agent.
 
-Before changing code, read [AGENTS.md](AGENTS.md) for repository conventions and
-[CONTEXT.md](CONTEXT.md) for the domain language. Open pull requests against `dev`;
-`main` is reserved for production releases. Keep changes focused and include the
-verification relevant to your change.
+They chain into a plan-to-PR pipeline, but each works standalone.
 
-Project-local coding-agent workflows live in [.agents/skills/](.agents/skills/).
+### Planning
+
+- `/grill-with-docs` — Stress-test your idea before writing code. Asks pointed questions one at a time, cross-checks answers against project docs (`CONTEXT.md`, ADRs, glossary), and updates them as decisions land. Good when scope is fuzzy.
+- `/to-prd` — Turn a conversation into a PRD issue on GitHub. Use after grilling or when you already know what to build.
+
+### Breaking down work
+
+- `/to-issues <prd>` — Break a PRD or plan into small, independently-grabbable GitHub issues. Each issue is a vertical slice (thin end-to-end, not one layer at a time).
+- `/prep-pr` — Open the long-running feature PR up front, linked to the PRD and its task issues. Task branches merge back into it.
+
+### Implementation
+
+- `/to-code <issue>` — Implement one issue locally. Reads project docs, writes code, runs tests, reports what changed. No git operations — your working tree stays uncommitted.
+- `/done <issue>` — Verify, commit the scoped changes with the issue id, and close the issue. No push.
+- `/burn <issue>` — `/to-code` + `/done` + push, on the branch you are already on. The everyday command once a feature branch exists. Warns if the branch does not match the issue's area.
+- `/burndown <pr>` — Burn down every task issue linked from a feature PR, one delegated subagent at a time, sequentially on the PR branch. Asks up front whether you want cross-agent review per task, once at the end, or not at all. Marks the PR ready for review when the list hits zero.
+- `/pr` — Take whatever is in your working tree, create a branch, commit, push, and open a PR. Works without an issue. Also opens the PR for a branch `/burn` already pushed.
+
+### Typical flow
+
+The full formal flow, start to finish:
+
+```text
+/grill-with-docs     # sharpen the idea against project docs
+/to-prd              # idea -> PRD issue on GitHub (optional)
+/to-issues           # PRD or plan -> N implementation issues
+/prep-pr             # open the feature PR, linked to the issues
+/burndown <pr>       # implement every issue on it, then mark ready for review
+```
+
+`/to-prd` is the skippable step — `/to-issues` accepts a plan straight from the grilling session when the work does not warrant a PRD.
+
+One issue at a time, by hand:
+
+```text
+/burn <id>           # on an existing feature branch — pushes, PR updates itself
+/burn <id> --no-push # then /pr, when the branch has no PR yet
+```
+
+Or skip issues entirely:
+
+```text
+# just make changes and ship
+/pr "Add dark mode support"
+```
+
+PR base is always `dev` (`main` is reserved for production releases).
+
+PR descriptions are written by humans. Skills correct a body line only when the work makes it false; they never append generated sections.
 
 ## Documentation
 
