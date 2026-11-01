@@ -69,11 +69,13 @@ internal suspend fun readRideHistoryPage(
 ): Map<String, Any?> {
   val limit = ((options["limit"] as? Number)?.toInt() ?: 10).coerceIn(1, MAX_RIDE_PAGE_SIZE)
   var beforeExclusive = (options["cursorBeforeMs"] as? Number)?.toLong() ?: Long.MAX_VALUE
+  val filter = RideHistoryFilter.from(options)
       val buckets = mutableListOf<TelemetryMinuteBucketEntity>()
       var hasOlderBuckets = true
       var complete = emptyList<RideSessionAggregate>()
+      var reachedFrom = false
 
-      while (hasOlderBuckets && complete.size < limit) {
+      while (hasOlderBuckets && !reachedFrom && complete.size < limit) {
         // The limit is soft: include every Board in the boundary minute.
         val batch = dao.getRideBuckets(beforeExclusive, RIDE_BUCKET_BATCH_SIZE)
         if (batch.isEmpty()) {
@@ -87,8 +89,11 @@ internal suspend fun readRideHistoryPage(
         val markerTo = buckets.maxOf { it.lastSampleAtMs } + TELEMETRY_BUCKET_SIZE_MS
         val markers = dao.getMarkers(markerFrom, markerTo, null)
         val grouped = groupRideSessions(buckets, markers, gapMs).filter { it.avgSpeedSampleCount > 0 }
-        complete = completeRideSessions(grouped, hasOlderBuckets)
+        val completeAll = completeRideSessions(grouped, hasOlderBuckets)
+        reachedFrom = filter.reachedFrom(completeAll)
+        complete = completeAll.filter(filter::matches)
       }
+      val exhausted = !hasOlderBuckets || reachedFrom
 
       // Names resolve from `boards` on read, never off the bucket row (ADR 0028), so a rename
       // relabels the whole Ride History.
@@ -96,7 +101,7 @@ internal suspend fun readRideHistoryPage(
       val sorted = complete.sortedByDescending { it.startAtMs }
       val cutoff = sorted.getOrNull(limit - 1)?.firstBucketStartMs
       val page = if (cutoff == null) sorted else sorted.filter { it.firstBucketStartMs >= cutoff }
-      val hasMore = hasOlderBuckets || (cutoff != null && sorted.any { it.firstBucketStartMs < cutoff })
+      val hasMore = !exhausted || (cutoff != null && sorted.any { it.firstBucketStartMs < cutoff })
       // One weather read per page; each ride picks its rows from the page span in memory.
       val weather = if (page.isEmpty()) emptyList() else dao.getWeatherObservationsSpanning(
         page.minOf { it.startAtMs },
@@ -107,6 +112,45 @@ internal suspend fun readRideHistoryPage(
         "hasMore" to hasMore,
         "nextCursorBeforeMs" to if (hasMore) page.lastOrNull()?.firstBucketStartMs else null,
       )
+}
+
+/**
+ * Counts every complete ride matching the filter in `options`, independent of loaded pages.
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `countRides`
+ */
+internal suspend fun countRideHistory(dao: VescapeDao, options: Map<String, Any?>, gapMs: Long): Int {
+  var count = 0
+  var cursor: Long? = null
+  while (true) {
+    val page = readRideHistoryPage(dao, options + mapOf("limit" to MAX_RIDE_PAGE_SIZE, "cursorBeforeMs" to cursor), gapMs)
+    count += (page["sessions"] as List<*>).size
+    cursor = page["nextCursorBeforeMs"] as? Long ?: return count
+  }
+}
+
+/**
+ * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty = all).
+ * Applied after grouping, because another Board's buckets still decide where a ride splits.
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
+ * @parity /modules/vescape-core/src/index.ts `RideHistoryFilter`
+ */
+internal data class RideHistoryFilter(val fromMs: Long?, val toMs: Long?, val boardIds: Set<String>) {
+  fun matches(session: RideSessionAggregate) =
+    (fromMs == null || session.startAtMs >= fromMs) &&
+      (toMs == null || session.startAtMs < toMs) &&
+      (boardIds.isEmpty() || session.boardId in boardIds)
+
+  /** Once a complete ride starts before [fromMs], every older ride does too. */
+  fun reachedFrom(complete: List<RideSessionAggregate>) =
+    fromMs != null && complete.any { it.startAtMs < fromMs }
+
+  companion object {
+    fun from(options: Map<String, Any?>) = RideHistoryFilter(
+      fromMs = (options["fromMs"] as? Number)?.toLong(),
+      toMs = (options["toMs"] as? Number)?.toLong(),
+      boardIds = (options["boardIds"] as? List<*>)?.filterIsInstance<String>()?.toSet() ?: emptySet(),
+    )
+  }
 }
 
 /**

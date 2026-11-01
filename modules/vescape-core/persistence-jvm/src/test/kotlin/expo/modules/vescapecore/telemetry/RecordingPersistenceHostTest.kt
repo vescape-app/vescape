@@ -620,6 +620,17 @@ class RecordingPersistenceHostTest {
     assertEquals(expected.getInt("secondPageSessionCount"), (second["sessions"] as List<*>).size)
     assertEquals(expected.getBoolean("secondPageHasMore"), second["hasMore"])
     assertEquals(older.firstSampleAtMs, (second["sessions"] as List<Map<String, Any?>>).single()["startAtMs"])
+    // The Ride History Filter pages and counts natively, by ride start and Board.
+    val currentStart = firstSession["startAtMs"] as Long
+    val fromCurrent = readRideHistoryPage(db.vescapeDao(), mapOf("limit" to 50, "fromMs" to currentStart), gapMs)
+    assertEquals(listOf(currentStart), (fromCurrent["sessions"] as List<Map<String, Any?>>).map { it["startAtMs"] })
+    assertEquals(false, fromCurrent["hasMore"])
+    val beforeCurrent = readRideHistoryPage(db.vescapeDao(), mapOf("limit" to 50, "toMs" to currentStart), gapMs)
+    assertEquals(listOf(older.firstSampleAtMs), (beforeCurrent["sessions"] as List<Map<String, Any?>>).map { it["startAtMs"] })
+    assertTrue((readRideHistoryPage(db.vescapeDao(), mapOf("boardIds" to listOf("other-board")), gapMs)["sessions"] as List<*>).isEmpty())
+    assertEquals(2, countRideHistory(db.vescapeDao(), emptyMap(), gapMs))
+    assertEquals(1, countRideHistory(db.vescapeDao(), mapOf("fromMs" to currentStart), gapMs))
+    assertEquals(2, countRideHistory(db.vescapeDao(), mapOf("boardIds" to listOf(boardId)), gapMs))
     val stats = readProfileStatsSnapshot(db.vescapeDao(), emptyMap(), gapMs)
     val total = stats["total"] as Map<*, *>
     assertEquals(expected.getInt("profileRideCount"), total["rideCount"])

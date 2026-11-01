@@ -11,7 +11,7 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 | Board               | `board_id` in DB, `boardId` in API                                                     |
 | Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                                        |
 | Ride Recording      | frames + buckets + markers in DB                                                       |
-| Ride History        | `getRideHistoryPage` (complete rides), `getHistoryRange` (full)                        |
+| Ride History        | `getRideHistoryPage` (complete rides), `countRideHistory`, `getHistoryRange` (full)    |
 | Tune Profile        | `tune_profiles` table, `TuneProfile` type                                              |
 | Tune Snapshot       | `RefloatConfigSnapshot`                                                                |
 | Alert Rule          | `alerts` table, `AlertRule` type                                                       |
@@ -256,14 +256,15 @@ Field omitted (null) when change < threshold from previous:
 
 ## Telemetry queries
 
-| fn                                                   | returns                                                                    | notes                                                                                             |
-| ---------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `getTelemetryHistory(opts?)`                         | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
-| `getRideHistoryPage({limit?,cursorBeforeMs?})`       | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride                  |
-| `getTelemetrySamples({fromMs,toMs,boardId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
-| `getHistoryRange({fromMs,toMs,boardId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
-| `getTelemetrySummary()`                              | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
-| `getDatabaseSizeBytes()`                             | number                                                                     | File size of vescape.db                                                                           |
+| fn                                                                     | returns                                                                    | notes                                                                                                                                                             |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getTelemetryHistory(opts?)`                                           | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                                                                                |
+| `getRideHistoryPage({limit?,cursorBeforeMs?,fromMs?,toMs?,boardIds?})` | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride. Optional Ride History Filter: ride start in `[fromMs, toMs)`, any of `boardIds` |
+| `countRideHistory({fromMs?,toMs?,boardIds?})`                          | number                                                                     | Complete rides matching the same filter, independent of loaded pages                                                                                              |
+| `getTelemetrySamples({fromMs,toMs,boardId?,limit?})`                   | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000                                                                 |
+| `getHistoryRange({fromMs,toMs,boardId?,limit?})`                       | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                                                                                       |
+| `getTelemetrySummary()`                                                | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                                                                                     |
+| `getDatabaseSizeBytes()`                                               | number                                                                     | File size of vescape.db                                                                                                                                           |
 
 ### TelemetryMinuteBucket (bucket shape)
 

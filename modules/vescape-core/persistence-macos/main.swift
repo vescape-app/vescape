@@ -469,6 +469,17 @@ let secondPage = try history.getPage(["limit": int(historyFixture["pageSize"]), 
 try require((secondPage["sessions"] as! [[String: Any?]]).count == int(historyExpected["secondPageSessionCount"]), "second page count")
 try require(secondPage["hasMore"] as? Bool == historyExpected["secondPageHasMore"] as? Bool, "second page hasMore")
 try require((secondPage["sessions"] as! [[String: Any?]]).first?["startAtMs"] as? Int64 == older.firstSampleAtMs, "older ride")
+// The Ride History Filter pages and counts natively, by ride start and Board.
+let currentStart = currentSession["startAtMs"] as! Int64
+let fromCurrent = try history.getPage(["limit": 50, "fromMs": currentStart])
+try require((fromCurrent["sessions"] as! [[String: Any?]]).map { $0["startAtMs"] as? Int64 } == [currentStart], "filter from")
+try require(fromCurrent["hasMore"] as? Bool == false, "filter from stops at its start")
+let beforeCurrent = try history.getPage(["limit": 50, "toMs": currentStart])
+try require((beforeCurrent["sessions"] as! [[String: Any?]]).map { $0["startAtMs"] as? Int64 } == [older.firstSampleAtMs], "filter to")
+try require((try history.getPage(["boardIds": ["other-board"]])["sessions"] as! [Any]).isEmpty, "filter board")
+try require(try history.countRides([:]) == 2, "count all rides")
+try require(try history.countRides(["fromMs": currentStart]) == 1, "count filtered rides")
+try require(try history.countRides(["boardIds": [boardId]]) == 2, "count board rides")
 let populatedStats = try profile.getProfileStatsSnapshot([:])
 let total = populatedStats["total"] as! [String: Any?]
 try require(total["rideCount"] as! Int == int(historyExpected["profileRideCount"]), "profile ride count")

@@ -1517,6 +1517,22 @@ export interface RideWeather {
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepositoryAndroid.kt `getPage`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getPage`
  */
+/**
+ * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty or absent = all).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
+ */
+export interface RideHistoryFilter {
+  fromMs?: number
+  toMs?: number
+  boardIds?: string[]
+}
+
+export interface RideHistoryPageOptions extends RideHistoryFilter {
+  limit?: number
+  cursorBeforeMs?: number
+}
+
 export interface RideHistoryPage {
   sessions: RideHistorySession[]
   hasMore: boolean
@@ -2888,7 +2904,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   addCompanionPresenceBoard(boardId: string): Promise<void>
   removeCompanionPresenceBoard(boardId: string): Promise<void>
   getTelemetryHistory(options: TelemetryHistoryOptions): Promise<TelemetryMinuteBucket[]>
-  getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): Promise<RideHistoryPage>
+  getRideHistoryPage(options: RideHistoryPageOptions): Promise<RideHistoryPage>
+  countRideHistory(filter: RideHistoryFilter): Promise<number>
   getRideSession(id: string): Promise<RideHistorySession | null>
   getTelemetrySamples(options: {
     fromMs: number
@@ -3713,10 +3730,20 @@ export async function getTelemetryHistory(
 }
 
 export async function getRideHistoryPage(
-  options: { limit?: number; cursorBeforeMs?: number } = {},
+  options: RideHistoryPageOptions = {},
 ): Promise<RideHistoryPage> {
   if (E2E_ENABLED) return e2eFake.getRideHistoryPage(options)
   return native.getRideHistoryPage(options)
+}
+
+/**
+ * Complete rides matching the filter, counted natively so callers never depend on loaded pages.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `countRideHistory`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `countRideHistory`
+ */
+export async function countRideHistory(filter: RideHistoryFilter = {}): Promise<number> {
+  if (E2E_ENABLED) return e2eFake.countRideHistory(filter)
+  return native.countRideHistory(filter)
 }
 
 /**

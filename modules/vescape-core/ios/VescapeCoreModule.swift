@@ -806,6 +806,16 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `countRideHistory`
+    AsyncFunction("countRideHistory") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try RideHistoryRepository.shared.countRides(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_count_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not count ride history", cause: error)
+      }
+    }
+
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideSession`
     AsyncFunction("getRideSession") { (id: String, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()

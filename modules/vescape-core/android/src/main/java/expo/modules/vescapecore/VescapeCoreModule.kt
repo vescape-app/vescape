@@ -822,28 +822,7 @@ class VescapeCoreModule : Module() {
         throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
       }
     }
-    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideHistoryPage`
-    AsyncFunction("getRideHistoryPage") Coroutine { options: Map<String, Any?> ->
-      RecordingStorageFailure.requireAvailable()
-      try {
-        RideHistoryRepository.get(context.applicationContext).getPage(options)
-      } catch (error: CancellationException) { throw error }
-      catch (error: Exception) {
-        RecordingStorageFailure.reportRead("history_page_read", error)
-        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
-      }
-    }
-    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideSession`
-    AsyncFunction("getRideSession") Coroutine { id: String ->
-      RecordingStorageFailure.requireAvailable()
-      try {
-        RideHistoryRepository.get(context.applicationContext).getSession(id)
-      } catch (error: CancellationException) { throw error }
-      catch (error: Exception) {
-        RecordingStorageFailure.reportRead("history_session_read", error)
-        throw CodedException("ERR_HISTORY_READ", "Could not load ride", error)
-      }
-    }
+    registerRideHistory()
     AsyncFunction("getTelemetrySamples") Coroutine { options: Map<String, Any?> ->
       RecordingStorageFailure.requireAvailable()
       try { TelemetryRepository.get(context.applicationContext).getSamples(options) }
@@ -1555,6 +1534,42 @@ class VescapeCoreModule : Module() {
         key == "temperatureUnit"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
+      }
+    }
+  }
+
+  private fun ModuleDefinitionBuilder.registerRideHistory() {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideHistoryPage`
+    AsyncFunction("getRideHistoryPage") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
+      try {
+        RideHistoryRepository.get(context.applicationContext).getPage(options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_page_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `countRideHistory`
+    AsyncFunction("countRideHistory") Coroutine { options: Map<String, Any?> ->
+      RecordingStorageFailure.requireAvailable()
+      try {
+        RideHistoryRepository.get(context.applicationContext).countRides(options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_count_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not count ride history", error)
+      }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideSession`
+    AsyncFunction("getRideSession") Coroutine { id: String ->
+      RecordingStorageFailure.requireAvailable()
+      try {
+        RideHistoryRepository.get(context.applicationContext).getSession(id)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_session_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride", error)
       }
     }
   }

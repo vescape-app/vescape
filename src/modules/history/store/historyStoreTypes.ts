@@ -8,6 +8,7 @@ import type {
 } from 'vescape-core'
 
 import type { HistorySession } from '@/modules/history/lib/sessions'
+import type { RideFilterSelection } from '@/modules/history/lib/rideFilter'
 import type { RideFocus } from '@/modules/history/lib/chartFocus'
 
 export interface HistoryState {
@@ -47,6 +48,8 @@ export interface HistoryActions {
   clearSessionFocus: () => void
   refreshSummary: () => Promise<void>
   regroupSessions: () => void
+  /** Replace the Ride History Filter and reload the first page under it. */
+  setRideFilter: (selection: RideFilterSelection) => void
   removeSelectedSession: () => Promise<void>
   clearHistory: () => Promise<void>
 }

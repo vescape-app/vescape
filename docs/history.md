@@ -108,6 +108,18 @@ Older pages use native's opaque `nextCursorBeforeMs`. A page boundary is always 
 Ride, never through an arbitrary minute bucket. Native concatenates the precomputed bucket route
 segments for list thumbnails, so JS neither groups buckets nor loads raw tracks per row.
 
+### Ride History Filter
+
+The History list filters by date (This month, Previous month, Last 7 days, or a custom range picked
+with the system date picker) and by Board. No Board selected means all Boards. The filter lives in
+memory only (`historyFilterStore`): it lasts while the app runs and resets on restart.
+
+Native owns the filtered query. Every ride page read passes `{fromMs, toMs, boardIds}`, so paging
+keeps working with a filter on, and `countRideHistory` counts the same filter without loaded rows.
+Rides group first and filter after, since another Board's buckets still decide where a ride splits;
+a ride matches by its start. Favorites are fully loaded, so the Favorites tab applies the same match
+in JS. The rides list shares the store, so the History drawer's Last rides follow the filter too.
+
 ### Maintenance Jobs
 
 History reads stay precomputed (ADR-0005). Bringing old summaries up to date with the current app is

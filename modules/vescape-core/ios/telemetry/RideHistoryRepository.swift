@@ -144,10 +144,25 @@ internal final class RideHistoryRepository {
     return sessions.first { ($0["id"] ?? nil) as? String == id }
   }
 
+  /// Counts every complete ride matching the filter in `options`, independent of loaded pages.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `countRideHistory`
+  func countRides(_ options: [String: Any]) throws -> Int {
+    var count = 0
+    var query = options
+    query["limit"] = maxRidePageSize
+    while true {
+      let page = try getPage(query)
+      count += ((page["sessions"] ?? nil) as? [Any])?.count ?? 0
+      guard let cursor = (page["nextCursorBeforeMs"] ?? nil) as? Int64 else { return count }
+      query["cursorBeforeMs"] = cursor
+    }
+  }
+
   /// @parity /modules/vescape-core/src/index.ts `RideHistoryPage`
   func getPage(_ options: [String: Any]) throws -> [String: Any?] {
     let limit = min(maxRidePageSize, max(1, telemetryInt(options["limit"]) ?? 10))
     var beforeMs = telemetryLong(options["cursorBeforeMs"]) ?? Int64.max
+    let filter = RideHistoryFilter(options)
     let gapMs = try gapMsProvider()
     let pool = try poolProvider()
     return try pool.read { db in
@@ -156,7 +171,8 @@ internal final class RideHistoryRepository {
       var buckets: [Row] = []
       var complete: [RideSessionAggregate] = []
       var hasOlderBuckets = true
-      while hasOlderBuckets && complete.count < limit {
+      var reachedFrom = false
+      while hasOlderBuckets && !reachedFrom && complete.count < limit {
         let batch = try fetchRideHistoryBucketBatch(db, beforeMs: beforeMs)
         if batch.buckets.isEmpty { hasOlderBuckets = false; break }
         buckets.append(contentsOf: batch.buckets)
@@ -171,12 +187,15 @@ internal final class RideHistoryRepository {
         )
         let grouped = try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
           .filter { $0.avgSpeedSampleCount > 0 }
-        complete = completeRideSessions(grouped, hasOlderBuckets: hasOlderBuckets)
+        let completeAll = completeRideSessions(grouped, hasOlderBuckets: hasOlderBuckets)
+        reachedFrom = filter.reachedFrom(completeAll)
+        complete = completeAll.filter(filter.matches)
       }
+      let exhausted = !hasOlderBuckets || reachedFrom
       let sorted = complete.sorted { $0.startAtMs > $1.startAtMs }
       let cutoff = sorted.indices.contains(limit - 1) ? sorted[limit - 1].firstBucketStartMs : nil
       let page = cutoff.map { value in sorted.filter { $0.firstBucketStartMs >= value } } ?? sorted
-      let hasMore = hasOlderBuckets || cutoff.map { value in sorted.contains { $0.firstBucketStartMs < value } } == true
+      let hasMore = !exhausted || cutoff.map { value in sorted.contains { $0.firstBucketStartMs < value } } == true
       // One weather read per page; each ride picks its rows from the page span in memory.
       let weather = page.isEmpty ? [] : try weatherObservationsSpanning(
         db,
@@ -193,6 +212,34 @@ internal final class RideHistoryRepository {
     }
   }
 
+}
+
+/// Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty = all).
+/// Applied after grouping, because another Board's buckets still decide where a ride splits.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
+/// @parity /modules/vescape-core/src/index.ts `RideHistoryFilter`
+internal struct RideHistoryFilter {
+  let fromMs: Int64?
+  let toMs: Int64?
+  let boardIds: Set<String>
+
+  init(_ options: [String: Any]) {
+    fromMs = telemetryLong(options["fromMs"])
+    toMs = telemetryLong(options["toMs"])
+    boardIds = Set((options["boardIds"] as? [Any])?.compactMap { $0 as? String } ?? [])
+  }
+
+  func matches(_ session: RideSessionAggregate) -> Bool {
+    (fromMs.map { session.startAtMs >= $0 } ?? true) &&
+      (toMs.map { session.startAtMs < $0 } ?? true) &&
+      (boardIds.isEmpty || boardIds.contains(session.boardId))
+  }
+
+  /// Once a complete ride starts before `fromMs`, every older ride does too.
+  func reachedFrom(_ complete: [RideSessionAggregate]) -> Bool {
+    guard let fromMs else { return false }
+    return complete.contains { $0.startAtMs < fromMs }
+  }
 }
 
 /// Buckets arrive newest-first, so the only ride that may still grow backwards is the OLDEST one in
