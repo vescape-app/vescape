@@ -226,30 +226,48 @@ internal final class RideHistoryRepository {
 
 }
 
-/// Weather conditions a ride can be filtered by, judged from its Ride weather summary.
+/// Weather conditions a ride can be filtered by, judged from its Ride weather summary. Conditions
+/// in one group are alternatives; picked groups must all hold ("rain" + "cold" = cold rainy rides).
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideWeatherCondition`
 /// @parity /modules/vescape-core/src/index.ts `RideWeatherCondition`
 internal enum RideWeatherCondition {
-  static let rain = "rain"
-  static let cold = "cold"
-  static let hot = "hot"
   /// One stray drizzle reading does not make a rainy ride.
   static let rainMinMinutes = 5
   static let coldMaxC = 5
   static let hotMinC = 28
+  static let windyMinGustKmh = 40
+
+  private static let groups: [String: String] = [
+    "clear": "sky", "cloudy": "sky", "rain": "sky", "snow": "sky", "storm": "sky",
+    "cold": "temperature", "hot": "temperature",
+    "windy": "wind",
+    "night": "light",
+  ]
 
   static func matches(_ condition: String, _ weather: RideWeather) -> Bool {
     switch condition {
-    case rain: return weather.rainMinutes >= rainMinMinutes
-    case cold: return weather.minTemperatureC <= coldMaxC
-    case hot: return weather.maxTemperatureC >= hotMinC
+    case "clear": return weather.icon == "sun" || weather.icon == "moon"
+    case "cloudy": return ["cloud-sun", "cloud-moon", "cloud", "cloud-fog"].contains(weather.icon)
+    case "rain": return weather.rainMinutes >= rainMinMinutes
+    case "snow": return weather.icon == "cloud-snow"
+    case "storm": return weather.icon == "cloud-lightning"
+    case "cold": return weather.minTemperatureC <= coldMaxC
+    case "hot": return weather.maxTemperatureC >= hotMinC
+    case "windy": return (weather.maxGustKmh ?? 0) >= windyMinGustKmh
+    case "night": return weather.icon == "moon" || weather.icon == "cloud-moon"
     default: return false
+    }
+  }
+
+  static func matchesAll(_ conditions: Set<String>, _ weather: RideWeather) -> Bool {
+    Dictionary(grouping: conditions) { groups[$0] }.values.allSatisfy { group in
+      group.contains { matches($0, weather) }
     }
   }
 }
 
 /// Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty = all) that
-/// meet any of `weather` (empty = any weather; a ride without weather never matches a condition).
+/// meet `weather` (empty = any weather; a ride without weather never matches a condition).
 /// Applied after grouping, because another Board's buckets still decide where a ride splits.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
 /// @parity /modules/vescape-core/src/index.ts `RideHistoryFilter`
@@ -269,7 +287,7 @@ internal struct RideHistoryFilter {
   func matchesWeather(_ summary: RideWeather?) -> Bool {
     guard !weather.isEmpty else { return true }
     guard let summary else { return false }
-    return weather.contains { RideWeatherCondition.matches($0, summary) }
+    return RideWeatherCondition.matchesAll(weather, summary)
   }
 
   func matches(_ session: RideSessionAggregate) -> Bool {

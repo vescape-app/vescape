@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import type { RideWeather } from 'vescape-core'
 
 import {
   customRange,
@@ -54,22 +55,27 @@ test('favorites match by ride start and Board, with no Board meaning all', () =>
   ).toBe(false)
 })
 
-test('favorites meet any picked weather condition, and no summary meets none', () => {
-  const weather = (minTemperatureC: number, maxTemperatureC: number, rainMinutes: number) => ({
-    icon: 'cloud-sun' as const,
+test('favorite weather: either within a group, both across groups, none without a summary', () => {
+  const weather = (
+    icon: RideWeather['icon'],
+    minTemperatureC: number,
+    rainMinutes = 0,
+    maxGustKmh: number | null = null,
+  ): RideWeather => ({
+    icon,
     minTemperatureC,
-    maxTemperatureC,
-    maxGustKmh: null,
+    maxTemperatureC: minTemperatureC + 4,
+    maxGustKmh,
     rainMinutes,
   })
-  const ride = (summary: ReturnType<typeof weather> | null) => ({
-    startAtMs: 0,
-    boardId: null,
-    weather: summary,
-  })
-  expect(matchesRideFilter(ride(weather(3, 9, 0)), { weather: ['cold', 'rain'] })).toBe(true)
-  expect(matchesRideFilter(ride(weather(12, 18, 4)), { weather: ['rain'] })).toBe(false)
-  expect(matchesRideFilter(ride(weather(12, 18, 5)), { weather: ['rain'] })).toBe(true)
-  expect(matchesRideFilter(ride(weather(20, 28, 0)), { weather: ['hot'] })).toBe(true)
+  const ride = (summary: RideWeather | null) => ({ startAtMs: 0, boardId: null, weather: summary })
+  const coldClearNight = ride(weather('moon', 2))
+  expect(matchesRideFilter(coldClearNight, { weather: ['rain', 'clear'] })).toBe(true)
+  expect(matchesRideFilter(coldClearNight, { weather: ['clear', 'cold', 'night'] })).toBe(true)
+  expect(matchesRideFilter(coldClearNight, { weather: ['rain', 'cold'] })).toBe(false)
+  expect(matchesRideFilter(ride(weather('cloud-rain', 12, 4)), { weather: ['rain'] })).toBe(false)
+  expect(matchesRideFilter(ride(weather('cloud', 12, 5, 40)), { weather: ['rain', 'windy'] })).toBe(
+    true,
+  )
   expect(matchesRideFilter(ride(null), { weather: ['cold'] })).toBe(false)
 })

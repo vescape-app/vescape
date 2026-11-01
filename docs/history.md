@@ -111,9 +111,10 @@ segments for list thumbnails, so JS neither groups buckets nor loads raw tracks 
 ### Ride History Filter
 
 The History list filters by date (This month, Previous month, or a custom range picked
-with the system date picker) by Board, and by weather. No Board selected means all Boards. Weather picks Rainy (5+ rain
-minutes), Cold (low of 5 °C or less), or Hot (high of 28 °C or more) from the Ride weather summary;
-a ride meets any picked condition, and a ride without a summary meets none. The filter lives in
+with the system date picker) by Board, and by weather. No Board selected means all Boards. Weather tiles judge the Ride weather summary in groups: sky (Clear, Cloudy,
+Rain = 5+ rain minutes, Snow, Storm), temperature (Cold = low ≤ 5 °C, Hot = high ≥ 28 °C), Windy
+(gust ≥ 40 km/h), and Night (mostly after dark). Picks in one group are alternatives, picked groups
+must all hold, so Rain + Cold finds cold rainy rides. A ride without a summary meets none. The filter lives in
 memory only (`historyFilterStore`): it lasts while the app runs and resets on restart.
 
 Native owns the filtered query. Every ride page read passes `{fromMs, toMs, boardIds, weather}`, so paging

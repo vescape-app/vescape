@@ -489,7 +489,9 @@ try historyPool.write { db in
 }
 try require((try history.getPage(["weather": ["cold"]])["sessions"] as! [[String: Any?]]).map { $0["startAtMs"] as? Int64 } == [currentStart], "filter cold")
 try require((try history.getPage(["weather": ["hot"]])["sessions"] as! [Any]).isEmpty, "filter hot")
-try require(try history.countRides(["weather": ["rain", "cold"]]) == 1, "count weather rides")
+// Alternatives inside a group, every picked group must hold: a clear cold ride is not a rainy one.
+try require(try history.countRides(["weather": ["clear", "rain", "cold"]]) == 1, "count weather rides")
+try require(try history.countRides(["weather": ["rain", "cold"]]) == 0, "weather groups must all hold")
 try historyPool.write { db in try db.execute(sql: "DELETE FROM weather_observations") }
 let populatedStats = try profile.getProfileStatsSnapshot([:])
 let total = populatedStats["total"] as! [String: Any?]

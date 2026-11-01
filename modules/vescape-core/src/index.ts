@@ -1514,15 +1514,18 @@ export interface RideWeather {
 }
 
 /**
- * Weather a ride can be filtered by, judged natively from its Ride weather summary.
+ * Weather a ride can be filtered by, judged natively from its Ride weather summary. Groups: sky
+ * (`clear` `cloudy` `rain` `snow` `storm`), temperature (`cold` `hot`), `windy`, `night`. Picks in
+ * one group are alternatives; picked groups must all hold.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideWeatherCondition`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideWeatherCondition`
  */
-export type RideWeatherCondition = 'rain' | 'cold' | 'hot'
+export type RideWeatherCondition =
+  'clear' | 'cloudy' | 'rain' | 'snow' | 'storm' | 'cold' | 'hot' | 'windy' | 'night'
 
 /**
  * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty or absent = all)
- * that meet any of `weather` (empty or absent = any weather; no weather summary never matches).
+ * that meet `weather` (empty or absent = any weather; no weather summary never matches).
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
  */

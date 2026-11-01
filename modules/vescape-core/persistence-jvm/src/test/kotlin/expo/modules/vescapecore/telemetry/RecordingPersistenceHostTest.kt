@@ -639,7 +639,9 @@ class RecordingPersistenceHostTest {
     val cold = readRideHistoryPage(db.vescapeDao(), mapOf("weather" to listOf("cold")), gapMs)
     assertEquals(listOf(currentStart), (cold["sessions"] as List<Map<String, Any?>>).map { it["startAtMs"] })
     assertTrue((readRideHistoryPage(db.vescapeDao(), mapOf("weather" to listOf("hot")), gapMs)["sessions"] as List<*>).isEmpty())
-    assertEquals(1, countRideHistory(db.vescapeDao(), mapOf("weather" to listOf("rain", "cold")), gapMs))
+    // Alternatives inside a group, every picked group must hold: a clear cold ride is not a rainy one.
+    assertEquals(1, countRideHistory(db.vescapeDao(), mapOf("weather" to listOf("clear", "rain", "cold")), gapMs))
+    assertEquals(0, countRideHistory(db.vescapeDao(), mapOf("weather" to listOf("rain", "cold")), gapMs))
     db.vescapeDao().clearWeatherObservations()
     val stats = readProfileStatsSnapshot(db.vescapeDao(), emptyMap(), gapMs)
     val total = stats["total"] as Map<*, *>

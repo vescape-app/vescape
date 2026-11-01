@@ -7,6 +7,7 @@ import { Text } from '@/components/base/Text'
 import { DateField } from '@/components/forms/DateField'
 import { theme } from '@/constants/theme'
 import { useAsyncRead } from '@/hooks/useAsyncRead'
+import { WeatherFilterGrid } from '@/modules/history/components/WeatherFilterGrid'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import {
   EMPTY_RIDE_FILTER,
@@ -21,12 +22,6 @@ const DATE_PRESETS: readonly { preset: RideDatePreset; label: string }[] = [
   { preset: 'thisMonth', label: 'This month' },
   { preset: 'previousMonth', label: 'Previous month' },
   { preset: 'custom', label: 'Custom range' },
-]
-
-const WEATHER_CONDITIONS: readonly { condition: RideWeatherCondition; label: string }[] = [
-  { condition: 'rain', label: 'Rainy' },
-  { condition: 'cold', label: 'Cold' },
-  { condition: 'hot', label: 'Hot' },
 ]
 
 const DAY_MS = 24 * 60 * 60_000
@@ -134,18 +129,7 @@ export function HistoryFilterPanel({
       ) : null}
 
       <Text style={styles.heading}>Weather</Text>
-      <View style={styles.chips}>
-        {WEATHER_CONDITIONS.map(({ condition, label }) => (
-          <Button
-            key={condition}
-            label={label}
-            size="sm"
-            variant={draft.weather.includes(condition) ? 'accent' : 'secondary'}
-            testID={`history-filter-weather-${condition}`}
-            onPress={() => toggleWeather(condition)}
-          />
-        ))}
-      </View>
+      <WeatherFilterGrid value={draft.weather} onToggle={toggleWeather} />
 
       {boards.length > 1 ? (
         <>

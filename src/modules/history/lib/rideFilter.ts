@@ -68,14 +68,48 @@ export function toRideHistoryFilter(selection: RideFilterSelection): RideHistory
 }
 
 /**
- * Thresholds native filters ride pages with; favorites reuse them in JS.
+ * Native's weather match, repeated for favorites: they are all loaded, so JS filters them.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideWeatherCondition`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideWeatherCondition`
  */
+export const RIDE_WEATHER_THRESHOLDS = {
+  rainMinMinutes: 5,
+  coldMaxC: 5,
+  hotMinC: 28,
+  windyMinGustKmh: 40,
+} as const
+
+const WEATHER_GROUPS: Record<RideWeatherCondition, string> = {
+  clear: 'sky',
+  cloudy: 'sky',
+  rain: 'sky',
+  snow: 'sky',
+  storm: 'sky',
+  cold: 'temperature',
+  hot: 'temperature',
+  windy: 'wind',
+  night: 'light',
+}
+
 const WEATHER_MATCHERS: Record<RideWeatherCondition, (weather: RideWeather) => boolean> = {
-  rain: (weather) => weather.rainMinutes >= 5,
-  cold: (weather) => weather.minTemperatureC <= 5,
-  hot: (weather) => weather.maxTemperatureC >= 28,
+  clear: ({ icon }) => icon === 'sun' || icon === 'moon',
+  cloudy: ({ icon }) => ['cloud-sun', 'cloud-moon', 'cloud', 'cloud-fog'].includes(icon),
+  rain: (weather) => weather.rainMinutes >= RIDE_WEATHER_THRESHOLDS.rainMinMinutes,
+  snow: ({ icon }) => icon === 'cloud-snow',
+  storm: ({ icon }) => icon === 'cloud-lightning',
+  cold: (weather) => weather.minTemperatureC <= RIDE_WEATHER_THRESHOLDS.coldMaxC,
+  hot: (weather) => weather.maxTemperatureC >= RIDE_WEATHER_THRESHOLDS.hotMinC,
+  windy: (weather) => (weather.maxGustKmh ?? 0) >= RIDE_WEATHER_THRESHOLDS.windyMinGustKmh,
+  night: ({ icon }) => icon === 'moon' || icon === 'cloud-moon',
+}
+
+function matchesWeather(conditions: RideWeatherCondition[], weather: RideWeather): boolean {
+  const groups = new Set(conditions.map((condition) => WEATHER_GROUPS[condition]))
+  return [...groups].every((group) =>
+    conditions.some(
+      (condition) => WEATHER_GROUPS[condition] === group && WEATHER_MATCHERS[condition](weather),
+    ),
+  )
 }
 
 /**
@@ -91,10 +125,7 @@ export function matchesRideFilter(
   if (filter.toMs != null && ride.startAtMs >= filter.toMs) return false
   if (filter.boardIds?.length && !filter.boardIds.includes(ride.boardId ?? '')) return false
   if (filter.weather?.length) {
-    const { weather } = ride
-    if (!weather || !filter.weather.some((condition) => WEATHER_MATCHERS[condition](weather))) {
-      return false
-    }
+    if (!ride.weather || !matchesWeather(filter.weather, ride.weather)) return false
   }
   return true
 }

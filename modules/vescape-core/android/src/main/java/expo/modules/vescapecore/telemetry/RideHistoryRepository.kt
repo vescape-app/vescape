@@ -138,30 +138,45 @@ internal suspend fun countRideHistory(dao: VescapeDao, options: Map<String, Any?
 }
 
 /**
- * Weather conditions a ride can be filtered by, judged from its Ride weather summary.
+ * Weather conditions a ride can be filtered by, judged from its Ride weather summary. Conditions
+ * in one group are alternatives; picked groups must all hold ("rain" + "cold" = cold rainy rides).
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideWeatherCondition`
  * @parity /modules/vescape-core/src/index.ts `RideWeatherCondition`
  */
 internal object RideWeatherCondition {
-  const val RAIN = "rain"
-  const val COLD = "cold"
-  const val HOT = "hot"
   /** One stray drizzle reading does not make a rainy ride. */
   const val RAIN_MIN_MINUTES = 5
   const val COLD_MAX_C = 5
   const val HOT_MIN_C = 28
+  const val WINDY_MIN_GUST_KMH = 40
+
+  private val GROUPS = mapOf(
+    "clear" to "sky", "cloudy" to "sky", "rain" to "sky", "snow" to "sky", "storm" to "sky",
+    "cold" to "temperature", "hot" to "temperature",
+    "windy" to "wind",
+    "night" to "light",
+  )
 
   fun matches(condition: String, weather: RideWeather) = when (condition) {
-    RAIN -> weather.rainMinutes >= RAIN_MIN_MINUTES
-    COLD -> weather.minTemperatureC <= COLD_MAX_C
-    HOT -> weather.maxTemperatureC >= HOT_MIN_C
+    "clear" -> weather.icon == "sun" || weather.icon == "moon"
+    "cloudy" -> weather.icon in setOf("cloud-sun", "cloud-moon", "cloud", "cloud-fog")
+    "rain" -> weather.rainMinutes >= RAIN_MIN_MINUTES
+    "snow" -> weather.icon == "cloud-snow"
+    "storm" -> weather.icon == "cloud-lightning"
+    "cold" -> weather.minTemperatureC <= COLD_MAX_C
+    "hot" -> weather.maxTemperatureC >= HOT_MIN_C
+    "windy" -> (weather.maxGustKmh ?: 0) >= WINDY_MIN_GUST_KMH
+    "night" -> weather.icon == "moon" || weather.icon == "cloud-moon"
     else -> false
   }
+
+  fun matchesAll(conditions: Set<String>, weather: RideWeather) =
+    conditions.groupBy { GROUPS[it] }.values.all { group -> group.any { matches(it, weather) } }
 }
 
 /**
  * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty = all) that
- * meet any of `weather` (empty = any weather; a ride without weather never matches a condition).
+ * meet `weather` (empty = any weather; a ride without weather never matches a condition).
  * Applied after grouping, because another Board's buckets still decide where a ride splits.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
  * @parity /modules/vescape-core/src/index.ts `RideHistoryFilter`
@@ -178,7 +193,7 @@ internal data class RideHistoryFilter(
       (boardIds.isEmpty() || session.boardId in boardIds)
 
   fun matchesWeather(summary: RideWeather?) =
-    weather.isEmpty() || (summary != null && weather.any { RideWeatherCondition.matches(it, summary) })
+    weather.isEmpty() || (summary != null && RideWeatherCondition.matchesAll(weather, summary))
 
   /** Once a complete ride starts before [fromMs], every older ride does too. */
   fun reachedFrom(complete: List<RideSessionAggregate>) =
