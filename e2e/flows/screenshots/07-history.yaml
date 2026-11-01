@@ -1,0 +1,14 @@
+appId: ${APP_ID}
+---
+# History opens on its overview drawer; the newest ride is the first Last rides card.
+- runFlow: ../fixture/_history.yaml
+- tapOn:
+    id: history-latest-ride
+- extendedWaitUntil:
+    visible:
+      id: history-metric-tab-duty
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: ${OUT_DIR}/07-history
+- runFlow: ../fixture/_home.yaml

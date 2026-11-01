@@ -5,5 +5,5 @@ appId: ${APP_ID}
     id: map-mode-legal-limits
 - waitForAnimationToEnd:
     timeout: 20000
-- takeScreenshot: ${OUT_DIR}/05-speed-limit
+- takeScreenshot: ${OUT_DIR}/06-speed-limit
 - runFlow: ../fixture/_home.yaml

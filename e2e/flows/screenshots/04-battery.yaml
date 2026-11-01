@@ -1,11 +1,11 @@
 appId: ${APP_ID}
 ---
 - tapOn:
-    id: gauge-speed
+    id: battery-bar
 - extendedWaitUntil:
-    visible: 'Speed'
+    visible: 'Battery'
     timeout: 15000
 - waitForAnimationToEnd:
     timeout: 20000
-- takeScreenshot: ${OUT_DIR}/02-speed
+- takeScreenshot: ${OUT_DIR}/04-battery
 - runFlow: ../fixture/_home.yaml

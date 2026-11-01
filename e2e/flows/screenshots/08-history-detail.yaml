@@ -1,10 +1,10 @@
 # Ride detail with the optional charts on: duty cycle plus both temperature traces.
 appId: ${APP_ID}
 ---
+# History opens on its overview drawer; the newest ride is the first Last rides card.
+- runFlow: ../fixture/_history.yaml
 - tapOn:
-    id: history-button
-# The newest ride is already open — same one the ride list's first row would have selected, so
-# there is nothing to pick.
+    id: history-latest-ride
 - extendedWaitUntil:
     visible:
       id: history-metric-tab-duty
@@ -17,5 +17,5 @@ appId: ${APP_ID}
     id: history-metric-tab-tempController
 - waitForAnimationToEnd:
     timeout: 20000
-- takeScreenshot: ${OUT_DIR}/07-history-detail
+- takeScreenshot: ${OUT_DIR}/08-history-detail
 - runFlow: ../fixture/_home.yaml

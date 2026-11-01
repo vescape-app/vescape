@@ -34,7 +34,7 @@ export const CAPTURE_LOCATION = { latitude: 51.1079, longitude: 17.0385 }
 
 export interface CaptureDriver {
   readonly platform: CapturePlatform
-  /** Repo-relative output dir, handed to the flows as `OUT_DIR` for `takeScreenshot`. */
+  /** Repo-relative dir the captured panels are collected into. */
   readonly outDir: string
   /** What Maestro's `--device` takes: an adb serial or a simulator udid. */
   readonly deviceId: string

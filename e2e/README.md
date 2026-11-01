@@ -315,7 +315,7 @@ and the map reveal gesture.
 
 ## Store screenshots
 
-`e2e/flows/screenshots/*.yaml` capture the eight store panels from the real app, driven by
+`e2e/flows/screenshots/*.yaml` capture the nine store panels from the real app, driven by
 `scripts/screenshots.ts`:
 
 ```sh
@@ -325,7 +325,7 @@ bun run screenshots --platform ios  # skip the platform picker
 
 The bare command asks for the platform first (Android / iOS / Both), then the device. "Both" is a
 deliberate choice rather than the default: the runs are sequential, so a whole Android pass — build,
-eight panels — happens before iOS starts.
+nine panels — happens before iOS starts.
 
 One flow set drives both platforms. The runner passes `OUT_DIR` to Maestro
 (`screenshots/android` or `screenshots/ios`), so the panel list, order and filenames are identical

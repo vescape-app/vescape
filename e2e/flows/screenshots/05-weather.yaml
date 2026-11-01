@@ -6,5 +6,5 @@ appId: ${APP_ID}
     id: map-mode-weather
 - waitForAnimationToEnd:
     timeout: 20000
-- takeScreenshot: ${OUT_DIR}/04-weather
+- takeScreenshot: ${OUT_DIR}/05-weather
 - runFlow: ../fixture/_home.yaml

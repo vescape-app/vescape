@@ -16,7 +16,8 @@
  * panel list, their order and their filenames stay identical and the sets can be compared side by
  * side. Everything platform-specific lives behind `CaptureDriver` (`scripts/lib/captureDriver.ts`).
  */
-import { mkdirSync, readdirSync } from 'fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
 import { basename, join } from 'path'
 
 import { applicationId } from '../src/config/appVariant.ts'
@@ -90,7 +91,7 @@ function parseArgs(argv: string[]): Args {
 }
 
 /**
- * Platform first, device second — the two runs are sequential and a whole Android pass (build, 8
+ * Platform first, device second — the two runs are sequential and a whole Android pass (build, 9
  * panels) sits in front of the iOS one, so "both" has to be a deliberate choice
  * rather than what you get for pressing Enter on a device list.
  */
@@ -126,22 +127,43 @@ function selectPanels(panel: number | null): string[] {
   return [match]
 }
 
+/** `OUT_DIR` as the flows see it. Maestro 2.x only writes `takeScreenshot` inside its own output dir. */
+const FLOW_OUT_DIR = 'shots'
+
 async function runFlow(file: string, driver: CaptureDriver): Promise<void> {
   console.log(`› ${basename(file, '.yaml')}`)
-  // Without --device Maestro picks the first attached device itself, which silently drives whatever
-  // else is plugged in rather than the one this run prepared.
-  await runOrDie(
-    await maestroCommand(
-      'test',
-      '--device',
-      driver.deviceId,
-      '-e',
-      `APP_ID=${applicationId}`,
-      '-e',
-      `OUT_DIR=${driver.outDir}`,
-      join(FLOWS_DIR, file),
-    ),
-  )
+  const testOutputDir = mkdtempSync(join(tmpdir(), 'vescape-shots-'))
+  try {
+    // Without --device Maestro picks the first attached device itself, which silently drives
+    // whatever else is plugged in rather than the one this run prepared.
+    await runOrDie(
+      await maestroCommand(
+        'test',
+        '--device',
+        driver.deviceId,
+        '--test-output-dir',
+        testOutputDir,
+        '-e',
+        `APP_ID=${applicationId}`,
+        '-e',
+        `OUT_DIR=${FLOW_OUT_DIR}`,
+        join(FLOWS_DIR, file),
+      ),
+    )
+    collectScreenshots(testOutputDir, join(ROOT, driver.outDir))
+  } finally {
+    rmSync(testOutputDir, { recursive: true, force: true })
+  }
+}
+
+/** Maestro nests them as `<flow>/takeScreenshot/<OUT_DIR>/<name>.png`; flatten into the panel set. */
+function collectScreenshots(testOutputDir: string, outDir: string): void {
+  for (const entry of readdirSync(testOutputDir, { recursive: true, encoding: 'utf8' })) {
+    const parts = entry.split(/[\\/]/)
+    if (!entry.endsWith('.png') || parts.at(-2) !== FLOW_OUT_DIR) continue
+    if (parts.at(-3) !== 'takeScreenshot') continue
+    copyFileSync(join(testOutputDir, entry), join(outDir, parts.at(-1)!))
+  }
 }
 
 async function createDriver(platform: CapturePlatform, args: Args): Promise<CaptureDriver> {
