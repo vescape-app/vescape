@@ -274,6 +274,9 @@ export function EdgeDrawer({
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
+                    // A status-bar tap would scroll the list to the dismissed edge, fading the drawer
+                    // out through its scroll-driven opacity without ever committing the close.
+                    scrollsToTop={false}
                     overScrollMode="never"
                     testID={virtualizedContent.testID}
                     initialNumToRender={8}
@@ -294,6 +297,9 @@ export function EdgeDrawer({
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
+                    // A status-bar tap would scroll the list to the dismissed edge, fading the drawer
+                    // out through its scroll-driven opacity without ever committing the close.
+                    scrollsToTop={false}
                     overScrollMode="never"
                   >
                     {!opensFromTop ? emptyDismissArea : null}
