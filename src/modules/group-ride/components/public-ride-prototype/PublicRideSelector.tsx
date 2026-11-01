@@ -1,23 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import {
   BroadcastIcon,
   CalendarBlankIcon,
-  EyeSlashIcon,
+  PowerIcon,
   InfinityIcon,
-  PathIcon,
+  NavigationArrowIcon,
 } from 'phosphor-react-native'
 import * as Haptics from 'expo-haptics'
-import Svg, { Circle, G, Line, Path } from 'react-native-svg'
+import Svg, { G, Path } from 'react-native-svg'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import Animated, { useAnimatedProps, useSharedValue, withTiming } from 'react-native-reanimated'
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 
 import { Text } from '@/components/base/Text'
-import { CanvasWidget } from '@/components/widgets/CanvasWidget'
-import { useColoredControlSurface } from '@/components/controls/coloredControlSurface'
-import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { blend, theme } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 import {
   PUBLIC_RIDE_ARC,
   publicRideIndexAt,
@@ -25,34 +29,54 @@ import {
 } from '@/modules/group-ride/lib/publicRideArc'
 import { PUBLIC_MODES, type PublicMode } from './fixtures'
 
-const AnimatedLine = Animated.createAnimatedComponent(Line)
+const BROADCAST_Y = PUBLIC_RIDE_ARC.cy - 18
 
-const ICONS = [EyeSlashIcon, PathIcon, CalendarBlankIcon, InfinityIcon]
+const ICONS = [PowerIcon, NavigationArrowIcon, CalendarBlankIcon, InfinityIcon]
 const SECTORS = PUBLIC_MODES.map((_, index) => publicRideSector(index))
 
 /** Presentation only: the owner decides what selecting a sharing duration does. */
 export function PublicRideSelector({
   value,
   onValueChange,
+  profileAction,
 }: {
   value: PublicMode
+  profileAction?: ReactNode
   onValueChange: (mode: PublicMode) => void
 }) {
   const neutral = useResolvedNeutralColors()
-  const surface = useColoredControlSurface(theme.palette.groupRide.color)
-  const [width, setWidth] = useState(320)
+  const accent = useResolvedColor(theme.palette.groupRide.color)
+  const activeFill = blend(neutral.surfaceDeep, accent, 0.12)
+  const [width, setWidth] = useState<number>(PUBLIC_RIDE_ARC.width)
   const scale = width / PUBLIC_RIDE_ARC.width
   const selected = PUBLIC_MODES.findIndex((option) => option.value === value)
   const committed = useSharedValue(selected)
   const detent = useSharedValue(selected)
-  const angle = useSharedValue(-67.5 + selected * 45)
+  const wave = useSharedValue(1)
+  const previous = useRef(value)
   const live = value !== 'off'
 
   useEffect(() => {
     committed.set(selected)
     detent.set(selected)
-    angle.set(withTiming(-67.5 + selected * 45, { duration: 150 }))
-  }, [angle, committed, detent, selected])
+  }, [committed, detent, selected])
+
+  useEffect(() => {
+    cancelAnimation(wave)
+    if (previous.current !== value && value !== 'off') {
+      wave.set(0)
+      wave.set(withRepeat(withTiming(1, { duration: 700 }), 2, false))
+    } else {
+      wave.set(1)
+    }
+    previous.current = value
+    return () => cancelAnimation(wave)
+  }, [value, wave])
+
+  const waveStyle = useAnimatedStyle(() => ({
+    opacity: (1 - wave.get()) * 0.65,
+    transform: [{ scale: 0.7 + wave.get() * 1.3 }],
+  }))
 
   const select = useCallback(
     (index: number) => {
@@ -73,62 +97,40 @@ export function PublicRideSelector({
       const next = publicRideIndexAt(x / scale, y / scale)
       if (next < 0 || next === detent.get()) return
       detent.set(next)
-      angle.set(withTiming(-67.5 + next * 45, { duration: 100 }))
       scheduleOnRN(select, next)
     }
     return Gesture.Pan()
       .minDistance(0)
       .onBegin((event) => update(event.x, event.y))
       .onUpdate((event) => update(event.x, event.y))
-  }, [angle, detent, scale, select])
-  const pointerProps = useAnimatedProps(() => {
-    const radians = (angle.get() * Math.PI) / 180
-    const { cx, cy, knobRadius } = PUBLIC_RIDE_ARC
-    return {
-      x1: cx + Math.sin(radians) * (knobRadius - 5),
-      y1: cy - Math.cos(radians) * (knobRadius - 5),
-      x2: cx + Math.sin(radians) * (knobRadius - 20),
-      y2: cy - Math.cos(radians) * (knobRadius - 20),
-    }
-  })
+  }, [detent, scale, select])
 
   return (
-    <CanvasWidget
-      icon={BroadcastIcon}
-      title="Public ride"
-      accent={theme.palette.groupRide.color}
-      surface="secondary"
-      action={
-        <View style={styles.badge} accessibilityLiveRegion="polite">
-          <View
-            style={[
-              styles.dot,
-              { backgroundColor: live ? theme.palette.groupRide.color : neutral.textSecondary },
-            ]}
-          />
-          <Text
-            style={[
-              styles.status,
-              { color: live ? theme.palette.groupRide.color : neutral.textSecondary },
-            ]}
-          >
+    <View style={styles.root}>
+      <View style={styles.header}>
+        <BroadcastIcon size={22} color={accent} style={styles.headerIcon} />
+        <View style={styles.heading}>
+          <Text style={[styles.title, { color: neutral.textPrimary }]}>Public ride</Text>
+          <Text style={[styles.intro, { color: neutral.textSecondary }]}>Share your location</Text>
+        </View>
+        {profileAction ?? (
+          <Text style={[styles.status, { color: live ? accent : neutral.textSecondary }]}>
             {live ? 'LIVE' : 'PRIVATE'}
           </Text>
-        </View>
-      }
-    >
+        )}
+      </View>
       <View style={styles.content}>
         <GestureDetector gesture={gesture}>
           <View
             onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-            style={styles.arc}
+            style={[styles.arc, { height: PUBLIC_RIDE_ARC.height * scale }]}
             testID="public-ride-selector"
             accessibilityRole="radiogroup"
             accessibilityLabel="Public ride duration"
           >
             <Svg
-              width="100%"
-              height="100%"
+              width={width}
+              height={PUBLIC_RIDE_ARC.height * scale}
               viewBox={`0 0 ${PUBLIC_RIDE_ARC.width} ${PUBLIC_RIDE_ARC.height}`}
               style={StyleSheet.absoluteFill}
             >
@@ -136,51 +138,37 @@ export function PublicRideSelector({
                 <Path
                   key={PUBLIC_MODES[index].value}
                   d={sector.path}
-                  fill={
-                    selected === index
-                      ? index === 0
-                        ? surface.unselected
-                        : surface.selected
-                      : surface.unselected
-                  }
+                  fill={selected === index && index > 0 ? activeFill : neutral.surfaceDeep}
                   stroke={
                     selected === index
                       ? index === 0
                         ? neutral.textSecondary
-                        : surface.tint
+                        : accent
                       : neutral.border
                   }
                   strokeWidth={1}
                 />
               ))}
-              {/* The dial and sectors share one viewport, centre and scale. */}
-              <Circle
-                cx={PUBLIC_RIDE_ARC.cx}
-                cy={PUBLIC_RIDE_ARC.cy}
-                r={PUBLIC_RIDE_ARC.knobRadius}
-                fill={live ? surface.selected : neutral.surface}
-                stroke={live ? surface.tint : neutral.textSecondary}
-                strokeWidth={1}
-              />
-              <G transform={`translate(${PUBLIC_RIDE_ARC.cx - 12} ${PUBLIC_RIDE_ARC.cy - 12})`}>
-                <BroadcastIcon size={24} color={live ? surface.tint : neutral.textSecondary} />
+              <G transform={`translate(${PUBLIC_RIDE_ARC.cx - 9} ${BROADCAST_Y - 9})`}>
+                <BroadcastIcon size={18} color={live ? accent : neutral.textSecondary} />
               </G>
-              <AnimatedLine
-                animatedProps={pointerProps}
-                stroke={live ? surface.tint : neutral.textSecondary}
-                strokeWidth={2}
-                strokeLinecap="round"
-              />
             </Svg>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.wave,
+                {
+                  left: PUBLIC_RIDE_ARC.cx * scale - 15,
+                  top: BROADCAST_Y * scale - 15,
+                  borderColor: accent,
+                },
+                waveStyle,
+              ]}
+            />
             {PUBLIC_MODES.map((option, index) => {
               const Icon = ICONS[index]
               const active = selected === index
-              const color =
-                active && index > 0
-                  ? surface.tint
-                  : surface.onNavy
-                    ? theme.control.textMuted
-                    : neutral.textSecondary
+              const color = active && index > 0 ? accent : neutral.textSecondary
               return (
                 <Pressable
                   key={option.value}
@@ -196,7 +184,7 @@ export function PublicRideSelector({
                     },
                   ]}
                 >
-                  <Icon size={18} color={color} />
+                  <Icon size={20} color={color} />
                   <Text style={[styles.label, { color, fontWeight: active ? '700' : '500' }]}>
                     {option.title}
                   </Text>
@@ -206,19 +194,30 @@ export function PublicRideSelector({
           </View>
         </GestureDetector>
         <Text
-          style={[styles.description, { color: neutral.textSecondary }]}
+          style={[styles.description, { color: neutral.textPrimary }]}
           accessibilityLiveRegion="polite"
         >
           {PUBLIC_MODES[selected].subtitle}
         </Text>
       </View>
-    </CanvasWidget>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
-  content: { marginTop: -8, gap: 0 },
-  arc: { width: '100%', maxWidth: 340, aspectRatio: 320 / 188, alignSelf: 'center' },
+  root: { gap: 0 },
+  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
+  headerIcon: { marginTop: 3 },
+  heading: { flex: 1, minWidth: 0, gap: 4 },
+  title: { fontSize: 17, fontWeight: '700' },
+  content: { gap: 0 },
+  intro: { fontSize: 11, lineHeight: 16, maxWidth: 210 },
+  arc: {
+    width: '100%',
+    maxWidth: 340,
+    alignSelf: 'center',
+  },
+  wave: { position: 'absolute', width: 30, height: 30, borderRadius: 15, borderWidth: 1 },
   choice: {
     position: 'absolute',
     width: 70,
@@ -227,9 +226,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
   },
-  label: { fontSize: 11, textAlign: 'center' },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  dot: { width: 5, height: 5, borderRadius: 3 },
+  label: { fontSize: 12, textAlign: 'center' },
   status: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  description: { fontSize: 11, lineHeight: 16, textAlign: 'center' },
+  description: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: -18,
+    marginBottom: 10,
+  },
 })

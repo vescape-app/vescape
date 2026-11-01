@@ -1,8 +1,15 @@
 import { useState } from 'react'
+import { FadeCardModal } from '@/components/modals/FadeCardModal'
+import { Input } from '@/components/forms/Input'
+import { useRouter } from 'expo-router'
+import { useUser } from '@clerk/expo'
+import { routes } from '@/navigation/routes'
 import { PublicRidePrototype } from './public-ride-prototype/PublicRidePrototype'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
+  CheckIcon,
+  SignInIcon,
   BroadcastIcon,
   CrosshairIcon,
   UserCircleIcon,
@@ -12,6 +19,8 @@ import {
   WarningIcon,
   XIcon,
 } from 'phosphor-react-native'
+import { IconButton } from '@/components/base/IconButton'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { Switch } from '@/components/controls/Switch'
@@ -26,7 +35,9 @@ import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/Grou
 
 export function SocialSheet({ onPageChange }: { onPageChange?: (page: string) => void }) {
   if (__DEV__)
-    return <PublicRidePrototype identity={<RiderNameWidget />} onPageChange={onPageChange} />
+    return (
+      <PublicRidePrototype identity={<RiderNameWidget compact />} onPageChange={onPageChange} />
+    )
   return (
     <View testID="social-sheet" style={styles.list}>
       <RiderNameWidget />
@@ -35,11 +46,92 @@ export function SocialSheet({ onPageChange }: { onPageChange?: (page: string) =>
   )
 }
 
-function RiderNameWidget() {
+function RiderNameWidget({ compact = false }: { compact?: boolean }) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [draft, setDraft] = useState('')
+  const router = useRouter()
+  const { isSignedIn } = useUser()
   const riderName = useRiderStore((s) => s.riderName)
   const setName = useRiderStore((s) => s.setName)
   const error = useRiderStore((s) => s.error)
   const riderColor = useSelectedBoardRailColor()
+  const neutral = useResolvedNeutralColors()
+  const saveName = () => {
+    if (!draft.trim() || saving) return
+    setSaving(true)
+    // intentional-suppression: Rider store error is shown in this dialog.
+    void setName(draft.trim())
+      .then(() => setEditing(false))
+      .catch(() => undefined)
+      .finally(() => setSaving(false))
+  }
+
+  if (compact)
+    return (
+      <>
+        <Button
+          label={riderName || 'Add name'}
+          icon={UserCircleIcon}
+          size="sm"
+          variant="secondary"
+          onPress={() => {
+            setDraft(riderName ?? '')
+            setEditing(true)
+          }}
+        />
+        <FadeCardModal
+          visible={editing}
+          title="Rider profile"
+          titleIcon={UserCircleIcon}
+          titleIconColor={theme.neutral.textSecondary}
+          scrollable={false}
+          dismissDisabled={saving}
+          onDismiss={() => setEditing(false)}
+        >
+          <View style={styles.list}>
+            <Text style={{ color: neutral.textSecondary, fontSize: 12 }}>Display name</Text>
+            <View style={styles.nameEditor}>
+              <Input
+                style={styles.nameInput}
+                value={draft}
+                onChangeText={setDraft}
+                maxLength={32}
+                placeholder="Enter your name"
+                accessibilityLabel="Rider display name"
+                returnKeyType="done"
+                onSubmitEditing={saveName}
+                editable={!saving}
+              />
+              <IconButton
+                icon={CheckIcon}
+                onPress={saveName}
+                loading={saving}
+                disabled={!draft.trim()}
+                accent={theme.palette.groupRide.color}
+                accessibilityLabel="Save display name"
+              />
+            </View>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            <View style={styles.orSeparator}>
+              <View style={[styles.separatorLine, { backgroundColor: neutral.border }]} />
+              <Text style={{ color: neutral.textSecondary, fontSize: 12 }}>or</Text>
+              <View style={[styles.separatorLine, { backgroundColor: neutral.border }]} />
+            </View>
+            <Button
+              label={isSignedIn ? 'Account' : 'Sign in'}
+              icon={isSignedIn ? UserCircleIcon : SignInIcon}
+              variant="secondary"
+              disabled={saving}
+              onPress={() => {
+                setEditing(false)
+                router.push(isSignedIn ? routes.account : routes.signIn)
+              }}
+            />
+          </View>
+        </FadeCardModal>
+      </>
+    )
 
   return (
     <View style={styles.riderIdentity}>
@@ -222,6 +314,10 @@ function LiveBadge({ connected }: { connected: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  nameEditor: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nameInput: { flex: 1, minWidth: 0 },
+  orSeparator: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  separatorLine: { flex: 1, height: StyleSheet.hairlineWidth },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',

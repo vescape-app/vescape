@@ -7,7 +7,8 @@ describe('public ride arc', () => {
     for (let index = 0; index < 3; index++) {
       const left = publicRideSector(index)
       const right = publicRideSector(index + 1)
-      const angle = Math.PI + ((index + 1) * Math.PI) / 4
+      const angle =
+        ((PUBLIC_RIDE_ARC.startAngle + (index + 1) * PUBLIC_RIDE_ARC.sectorAngle) * Math.PI) / 180
       const distanceFromSeam = (point: { x: number; y: number }) =>
         Math.abs((point.x - cx) * -Math.sin(angle) + (point.y - cy) * Math.cos(angle))
       for (const point of [left.outerEnd, left.innerEnd, right.outerStart, right.innerStart]) {
@@ -16,16 +17,20 @@ describe('public ride arc', () => {
     }
   })
 
-  test('dragging selects the same detent from either the knob or a sector', () => {
+  test('dragging selects the same detent at each sector across its thickness', () => {
     const { cx, cy } = PUBLIC_RIDE_ARC
     for (let index = 0; index < 4; index++) {
-      const angle = Math.PI + ((index + 0.5) * Math.PI) / 4
-      for (const radius of [24, 96, 138]) {
+      const angle =
+        ((PUBLIC_RIDE_ARC.startAngle + (index + 0.5) * PUBLIC_RIDE_ARC.sectorAngle) * Math.PI) / 180
+      for (const radius of [PUBLIC_RIDE_ARC.innerRadius, 83, PUBLIC_RIDE_ARC.outerRadius]) {
         expect(
           publicRideIndexAt(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius),
         ).toBe(index)
       }
     }
+    // Clamp touches at or below the ends of the semicircle to the outer detents.
+    expect(publicRideIndexAt(cx - 100, cy)).toBe(0)
+    expect(publicRideIndexAt(cx + 100, cy)).toBe(3)
     expect(publicRideIndexAt(cx, cy)).toBe(-1)
     expect(publicRideIndexAt(cx - 100, cy + 20)).toBe(0)
     expect(publicRideIndexAt(cx + 100, cy + 20)).toBe(3)

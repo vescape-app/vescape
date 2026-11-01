@@ -10,10 +10,14 @@ import {
   GaugeIcon,
   UserCircleIcon,
   UsersThreeIcon,
+  UsersIcon,
+  ShieldCheckIcon,
 } from 'phosphor-react-native'
+import { useRouter } from 'expo-router'
+import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { Text } from '@/components/base/Text'
+import { IconButton } from '@/components/base/IconButton'
 import { Button } from '@/components/base/Button'
-import { Switch } from '@/components/controls/Switch'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
@@ -29,17 +33,22 @@ interface Props {
 
 /** Development-only UI sandbox. No sharing intents, permissions, timers, or persisted settings. */
 export function PublicRidePrototype({ identity, onPageChange }: Props) {
+  const router = useRouter()
+  const [tab, setTab] = useState<'nearby' | 'friends'>('nearby')
   const mode = usePublicRidePrototypeStore((state) => state.mode)
   const setMode = usePublicRidePrototypeStore((state) => state.setMode)
   const [selected, setSelected] = useState<MockRider | null>(null)
   const [mapOpen, setMapOpen] = useState(false)
-  const showRidersOnMap = usePublicRidePrototypeStore((state) => state.showRidersOnMap)
-  const setShowRidersOnMap = usePublicRidePrototypeStore((state) => state.setShowRidersOnMap)
   const hidden = usePublicRidePrototypeStore((state) => state.hidden)
   const setHidden = usePublicRidePrototypeStore((state) => state.setHidden)
   const surface = useResolvedSecondaryWidgetSurface()
   const neutral = useResolvedNeutralColors()
   const riders = mode === 'off' ? [] : MOCK_RIDERS.filter((rider) => !hidden.includes(rider.id))
+  const friends = riders.filter((rider) => rider.friend)
+  const visibleRiders = tab === 'friends' ? friends : riders
+  const ridingFriends = friends.filter(
+    (rider) => rider.freshness === 'live' && (rider.speed ?? 0) > 0,
+  )
   const navigate = (rider: MockRider | null, map = false) => {
     setSelected(rider)
     setMapOpen(map)
@@ -52,7 +61,6 @@ export function PublicRidePrototype({ identity, onPageChange }: Props) {
 
   return (
     <View style={styles.stack} testID="public-ride-prototype">
-      <Text style={styles.caption}>UI prototype · simulated riders and locations</Text>
       {selected || mapOpen ? (
         <Button
           label="Nearby riders"
@@ -60,9 +68,7 @@ export function PublicRidePrototype({ identity, onPageChange }: Props) {
           variant="secondary"
           onPress={() => navigate(null)}
         />
-      ) : (
-        identity
-      )}
+      ) : null}
       {mapOpen ? (
         <CanvasWidget
           icon={MapTrifoldIcon}
@@ -126,72 +132,101 @@ export function PublicRidePrototype({ identity, onPageChange }: Props) {
         </View>
       ) : (
         <>
-          <PublicRideSelector value={mode} onValueChange={setMode} />
-          <CanvasWidget
-            icon={UsersThreeIcon}
-            title="Nearby riders"
-            accent={theme.palette.cyan.color}
-            action={
-              <View style={styles.mapToggle}>
-                <Text style={styles.caption}>On map</Text>
-                <Switch
-                  value={showRidersOnMap}
-                  onValueChange={setShowRidersOnMap}
-                  accent={theme.palette.cyan.color}
-                  accessibilityLabel="Show nearby riders on map"
-                  disabled={!riders.length}
-                />
+          <PublicRideSelector
+            value={mode}
+            onValueChange={setMode}
+            profileAction={
+              <View>
+                {identity}
+                {mode !== 'off' ? (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.profileDot,
+                      {
+                        backgroundColor: theme.palette.groupRide.color,
+                      },
+                    ]}
+                  />
+                ) : null}
               </View>
             }
-            surface="secondary"
-          >
-            {riders.length ? (
-              riders.map((rider, index) => (
-                <Pressable
-                  key={rider.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`View ${rider.name}, ${rider.distance}, ${rider.freshness === 'live' ? 'Live' : `Last seen ${rider.age}`}`}
-                  onPress={() => navigate(rider)}
-                  style={[
-                    styles.rider,
-                    index > 0 && {
-                      borderTopWidth: StyleSheet.hairlineWidth,
-                      borderTopColor: neutral.border,
-                    },
-                  ]}
-                >
-                  <Avatar rider={rider} />
-                  <View style={styles.flex}>
-                    <Text style={styles.name}>{rider.name}</Text>
-                    <View style={styles.telemetry}>
+          />
+          <View style={[surface, styles.roster]}>
+            <View style={styles.rosterHeader}>
+              <PillSelector activeId={tab} contained fitContent showFullLabel variant="lightTabs">
+                <PillSelectorItem
+                  id="nearby"
+                  label="Nearby"
+                  icon={UsersThreeIcon}
+                  activeWidth={120}
+                  inactiveWidth={60}
+                  color={theme.palette.groupRide}
+                  badge={<Text style={styles.count}>{riders.length}</Text>}
+                  onPress={() => setTab('nearby')}
+                />
+                <PillSelectorItem
+                  id="friends"
+                  label="Friends"
+                  icon={UsersIcon}
+                  activeWidth={120}
+                  inactiveWidth={60}
+                  color={theme.palette.blue}
+                  badge={<Text style={styles.count}>{ridingFriends.length}</Text>}
+                  onPress={() => setTab('friends')}
+                />
+              </PillSelector>
+              <IconButton
+                icon={ShieldCheckIcon}
+                accessibilityLabel="Privacy zones"
+                onPress={() => router.push('/settings/privacy-zones')}
+              />
+            </View>
+            <View>
+              {visibleRiders.length ? (
+                visibleRiders.map((rider, index) => (
+                  <Pressable
+                    key={rider.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${rider.name}, battery ${reading(rider.battery, '%')}, ${speed(rider)}, ${rider.distance}, ${rider.freshness === 'live' ? 'Live' : `Last seen ${rider.age}`}`}
+                    onPress={() => navigate(rider)}
+                    style={[
+                      styles.rider,
+                      index > 0 && {
+                        borderTopWidth: StyleSheet.hairlineWidth,
+                        borderTopColor: neutral.border,
+                      },
+                    ]}
+                  >
+                    <Avatar rider={rider} />
+                    <Text numberOfLines={1} style={[styles.name, styles.riderName]}>
+                      {rider.name}
+                    </Text>
+                    <View style={[styles.telemetry, styles.flex]}>
                       {rider.battery !== null ? (
                         <>
-                          <BatteryMediumIcon size={20} color={theme.palette.groupRide.color} />
+                          <BatteryMediumIcon size={16} color={theme.palette.groupRide.color} />
                           <Text style={styles.caption}>{reading(rider.battery, '%')}</Text>
                         </>
                       ) : null}
-                      <GaugeIcon size={15} color={theme.neutral.textSecondary} />
-                      <Text style={[styles.caption, styles.flex]}>
-                        {rider.board ? speed(rider) : 'Board disconnected · —'}
+                      <GaugeIcon size={14} color={theme.neutral.textSecondary} />
+                      <Text numberOfLines={1} style={styles.caption}>
+                        {rider.board ? speed(rider) : 'Disconnected'}
                       </Text>
                     </View>
-                    {rider.freshness === 'recent' ? (
-                      <Text style={styles.caption}>
-                        Last seen {rider.age} · {rider.updatedAt}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <Text style={styles.secondary}>{rider.distance}</Text>
-                  <CaretRightIcon size={18} color={theme.neutral.textSecondary} />
-                </Pressable>
-              ))
-            ) : (
-              <Text style={[styles.secondary, styles.empty]}>
-                You’re private. Choose a public ride mode to see simulated nearby riders.
-              </Text>
-            )}
-            {riders.length ? <Legend /> : null}
-          </CanvasWidget>
+                    <Text style={styles.distance}>{rider.distance}</Text>
+                    <CaretRightIcon size={14} color={theme.neutral.textSecondary} />
+                  </Pressable>
+                ))
+              ) : (
+                <Text style={[styles.secondary, styles.empty]}>
+                  {mode === 'off'
+                    ? 'Choose a public ride mode to see nearby riders.'
+                    : 'No friends nearby right now.'}
+                </Text>
+              )}
+            </View>
+          </View>
         </>
       )}
       {selected || mapOpen ? (
@@ -249,7 +284,7 @@ function Dot({ recent = false }: { recent?: boolean }) {
 function Avatar({ rider, large = false }: { rider: MockRider; large?: boolean }) {
   return (
     <View accessible={false}>
-      <UserCircleIcon size={large ? 64 : 42} color={theme.neutral.textSecondary} weight="thin" />
+      <UserCircleIcon size={large ? 64 : 32} color={theme.neutral.textSecondary} weight="thin" />
       <View style={styles.avatarDot}>
         <Dot recent={rider.freshness === 'recent'} />
       </View>
@@ -352,11 +387,28 @@ function MockMap({
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 12 },
+  stack: { gap: 10 },
+  roster: { padding: 12, gap: 6 },
+  rosterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  profileDot: {
+    position: 'absolute',
+    left: 1,
+    top: 1,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   panel: { padding: 16, gap: 14 },
   flex: { flex: 1, minWidth: 0 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  mapToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  count: { color: theme.control.textMuted, fontSize: 10, marginLeft: 5 },
+  riderName: { width: 48, fontSize: 13 },
+  distance: { color: theme.neutral.textSecondary, fontSize: 12, width: 56, textAlign: 'center' },
   name: { color: theme.neutral.textPrimary, fontSize: 15, fontWeight: '700' },
   nameLarge: { color: theme.neutral.textPrimary, fontSize: 24, fontWeight: '700' },
   secondary: { color: theme.neutral.textSecondary, fontSize: 13, lineHeight: 20 },
@@ -364,13 +416,13 @@ const styles = StyleSheet.create({
   rider: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    minHeight: 68,
+    gap: 7,
+    paddingVertical: 8,
+    minHeight: 48,
   },
-  telemetry: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
+  telemetry: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  avatarDot: { position: 'absolute', bottom: 3, right: 3 },
+  avatarDot: { position: 'absolute', top: 1, left: 1 },
   freshness: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
   legend: {
     flexDirection: 'row',

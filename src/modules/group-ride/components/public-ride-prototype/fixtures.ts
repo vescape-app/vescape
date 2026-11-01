@@ -3,6 +3,7 @@ export type PublicMode = 'off' | 'ride' | 'day' | 'automatic'
 export interface MockRider {
   id: string
   name: string
+  friend: boolean
   board: string | null
   freshness: 'live' | 'recent'
   updatedAt: string
@@ -31,6 +32,7 @@ export const MOCK_RIDERS: MockRider[] = [
   {
     id: 'ola',
     name: 'Ola',
+    friend: true,
     board: 'Floatwheel ADV',
     freshness: 'live',
     updatedAt: '21:28:58',
@@ -48,6 +50,7 @@ export const MOCK_RIDERS: MockRider[] = [
   {
     id: 'kuba',
     name: 'Kuba',
+    friend: false,
     board: 'Onewheel GT',
     freshness: 'recent',
     updatedAt: '21:28:00',
@@ -65,6 +68,7 @@ export const MOCK_RIDERS: MockRider[] = [
   {
     id: 'maja',
     name: 'Maja',
+    friend: true,
     board: 'Floatwheel ADV2',
     freshness: 'live',
     updatedAt: '21:28:57',
@@ -82,6 +86,7 @@ export const MOCK_RIDERS: MockRider[] = [
   {
     id: 'jan',
     name: 'Jan',
+    friend: false,
     board: null,
     freshness: 'live',
     updatedAt: '21:28:56',

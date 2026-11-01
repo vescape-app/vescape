@@ -270,6 +270,7 @@ export function PublicRideSelectorShowcase() {
       }
     >
       <PublicRideSelector value={mode} onValueChange={setMode} />
+      <Text>Drag across the sectors. Each public selection sends two visual pulses.</Text>
     </ShowcaseCard>
   )
 }
