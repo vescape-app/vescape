@@ -1,5 +1,5 @@
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { useCallback, useMemo, useState, type RefObject } from 'react'
+import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
@@ -137,6 +137,7 @@ export function HistorySessionSheet({
     toggle: toggleSelect,
   } = useRideSelectStore.getState()
   // Ride ids under each date heading, keyed by the heading's first ride.
+  const longPressedRef = useRef(false)
   const dayIds = useMemo(() => {
     const days = new Map<string, string[]>()
     let current: string[] = []
@@ -175,7 +176,10 @@ export function HistorySessionSheet({
       return (
         <View>
           {dateHeader && day ? (
-            <View style={[styles.dateHeaderRow, { height: dateHeaderHeight }]}>
+            <Pressable
+              style={[styles.dateHeaderRow, { height: dateHeaderHeight }]}
+              onLongPress={() => (selectActive ? toggleSelect(ids) : startSelect(ids))}
+            >
               <View style={styles.dateHeaderText}>
                 <Text accessibilityRole="header" style={styles.dateHeader}>
                   {dateHeader}
@@ -213,7 +217,7 @@ export function HistorySessionSheet({
                   onPress={() => openDay(rideDayOf(rideWindow.startMs))}
                 />
               ) : null}
-            </View>
+            </Pressable>
           ) : null}
           <HistoryRideRow
             testID={`history-session-row-${session.id}`}
@@ -227,8 +231,20 @@ export function HistorySessionSheet({
             accent={favorite ? theme.palette.amber.color : undefined}
             weather={session.weather}
             checked={selectActive ? isRideSelected(select, session.id) : undefined}
-            onPress={() => (selectActive ? toggleSelect([session.id]) : onSelectSession(session))}
-            onLongPress={selectActive ? undefined : () => startSelect(session.id)}
+            onPress={() => {
+              // The release after a long-press can still land as a press on the re-rendered row.
+              if (longPressedRef.current) longPressedRef.current = false
+              else if (selectActive) toggleSelect([session.id])
+              else onSelectSession(session)
+            }}
+            onLongPress={
+              selectActive
+                ? undefined
+                : () => {
+                    longPressedRef.current = true
+                    startSelect([session.id])
+                  }
+            }
           />
         </View>
       )

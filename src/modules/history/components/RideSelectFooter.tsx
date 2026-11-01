@@ -91,7 +91,7 @@ export function RideSelectFooter({
         <Button
           label="Delete"
           icon={TrashIcon}
-          variant="secondary"
+          variant="destructive"
           disabled={count === 0}
           testID="ride-select-delete"
           onPress={() => setConfirming(true)}
@@ -100,6 +100,7 @@ export function RideSelectFooter({
           style={styles.grow}
           label={count === 0 ? 'Export' : `Export ${label}`}
           icon={ExportIcon}
+          variant="accent"
           disabled={count === 0}
           testID="ride-select-export"
           onPress={onExport}
@@ -110,7 +111,7 @@ export function RideSelectFooter({
 }
 
 const styles = StyleSheet.create({
-  footer: { gap: 10 },
+  footer: { gap: 10, paddingTop: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   grow: { flex: 1 },
   message: {
