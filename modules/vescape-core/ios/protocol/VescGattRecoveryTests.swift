@@ -209,6 +209,7 @@ private final class RecoveryTestPeripheral: VescPeripheral {
   func discoverCharacteristics(_ characteristicUUIDs: [CBUUID]?, for service: CBService) {}
   func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic) {}
   func writeValue(_ data: Data, for characteristic: CBCharacteristic, type: CBCharacteristicWriteType) { writes.append(data) }
+  func maximumWriteValueLength(for type: CBCharacteristicWriteType) -> Int { 182 }
 }
 
 private final class ConnectedGattFixture {

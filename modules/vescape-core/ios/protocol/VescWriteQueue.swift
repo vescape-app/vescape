@@ -10,6 +10,12 @@ import Foundation
 /// outruns the link and leaves the board executing values seconds behind the finger — and leaves the
 /// neutral that ends the gesture stuck behind that backlog.
 ///
+/// A frame larger than the chunk limit goes out as consecutive chunks. Some BLE modules hang on the
+/// GATT long write the OS would otherwise use (#620). No other write runs between chunks of one
+/// frame: extra bytes mid-frame corrupt the VESC byte stream. So an urgent neutral waits for the
+/// frame in flight to finish, at most one frame of chunks (about 14 writes for a 280-byte tune frame
+/// at MTU 23).
+///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescWriteQueue.kt
 internal final class VescWriteQueue {
   enum Write {
@@ -34,6 +40,22 @@ internal final class VescWriteQueue {
   private var inFlight: Write?
   private var preferRemoteInput = false
 
+  /// Payload of one write at the default ATT MTU of 23.
+  static let defaultChunkLimit = 20
+
+  /// Frame whose chunks are being sent, and the offset of its next unsent byte.
+  private var frame: Write?
+  private var frameOffset = 0
+  private var inFlightOffset = 0
+  private var chunkLimit = VescWriteQueue.defaultChunkLimit
+
+  /// Largest single write the link accepts (ATT MTU - 3). Applies from the next chunk on.
+  func setChunkLimit(_ bytes: Int) {
+    lock.lock()
+    defer { lock.unlock() }
+    chunkLimit = max(bytes, VescWriteQueue.defaultChunkLimit)
+  }
+
   func enqueueNormal(_ bytes: [UInt8]) {
     lock.lock()
     defer { lock.unlock() }
@@ -52,46 +74,69 @@ internal final class VescWriteQueue {
     pendingRemoteInput = PendingRemoteInput(bytes: bytes, urgent: urgent)
   }
 
-  /// Start next write, or `nil` while another write is active or the queue is empty.
+  /// Start next chunk, or `nil` while another write is active or the queue is empty. The rest of a
+  /// partly sent frame always goes before any other write.
   func startNext() -> Write? {
     lock.lock()
     defer { lock.unlock() }
     if inFlight != nil { return nil }
+    guard let current = frame ?? nextFrame() else { return nil }
+    let frameBytes = current.bytes
+    let end = min(frameOffset + chunkLimit, frameBytes.count)
+    let bytes = frameOffset == 0 && end == frameBytes.count ? frameBytes : Array(frameBytes[frameOffset..<end])
+    inFlightOffset = frameOffset
+    frameOffset = end
+    let write: Write
+    switch current {
+    case .normal: write = .normal(bytes: bytes)
+    case .remoteInput: write = .remoteInput(bytes: bytes)
+    }
+    inFlight = write
+    return write
+  }
 
+  private func nextFrame() -> Write? {
+    let next: Write
     if let remoteInput = pendingRemoteInput,
       remoteInput.urgent || normal.isEmpty || preferRemoteInput
     {
       pendingRemoteInput = nil
       preferRemoteInput = false
-      let write = Write.remoteInput(bytes: remoteInput.bytes)
-      inFlight = write
-      return write
+      next = .remoteInput(bytes: remoteInput.bytes)
+    } else {
+      if normal.isEmpty { return nil }
+      preferRemoteInput = true
+      next = .normal(bytes: normal.removeFirst())
     }
-
-    if normal.isEmpty { return nil }
-    let next = normal.removeFirst()
-    preferRemoteInput = true
-    let write = Write.normal(bytes: next)
-    inFlight = write
-    return write
+    frame = next
+    frameOffset = 0
+    return next
   }
 
-  /// Complete the current write after its GATT callback.
+  /// Complete the current chunk after its GATT callback.
   @discardableResult
   func completeInFlight() -> Write? {
     lock.lock()
     defer { lock.unlock() }
     let completed = inFlight
     inFlight = nil
+    if frameOffset >= (frame?.bytes.count ?? 0) { frame = nil }
     return completed
   }
 
-  /// Put a write that CoreBluetooth refused to start back into the queue. A newer remote input
-  /// value wins over the refused one.
+  /// Put a chunk that CoreBluetooth refused to start back into the queue. A partly sent frame
+  /// resumes from the refused chunk. A frame with nothing sent yet goes back whole, and a newer
+  /// remote input value wins over a refused one.
   func retryInFlight() {
     lock.lock()
     defer { lock.unlock() }
-    switch inFlight {
+    guard inFlight != nil else { return }
+    inFlight = nil
+    if inFlightOffset > 0 {
+      frameOffset = inFlightOffset
+      return
+    }
+    switch frame {
     case .normal(let bytes):
       normal.insert(bytes, at: 0)
     case .remoteInput(let bytes):
@@ -101,7 +146,7 @@ internal final class VescWriteQueue {
     case nil:
       break
     }
-    inFlight = nil
+    frame = nil
   }
 
   func clear() {
@@ -111,5 +156,8 @@ internal final class VescWriteQueue {
     pendingRemoteInput = nil
     inFlight = nil
     preferRemoteInput = false
+    frame = nil
+    frameOffset = 0
+    inFlightOffset = 0
   }
 }

@@ -133,4 +133,93 @@ final class VescWriteQueueTests: XCTestCase {
     queue.completeInFlight()
     XCTAssertNil(queue.startNext())
   }
+
+  private func frame(_ size: Int) -> [UInt8] { (0..<size).map { UInt8($0 & 0xFF) } }
+
+  /// Drain every remaining write, completing each one, and return their bytes in order.
+  private func drain(_ queue: VescWriteQueue) -> [[UInt8]] {
+    var writes: [[UInt8]] = []
+    while let write = queue.startNext() {
+      writes.append(write.bytes)
+      queue.completeInFlight()
+    }
+    return writes
+  }
+
+  func testLargeFrameGoesOutAsOrderedChunksWithinTheLimit() {
+    let queue = VescWriteQueue()
+    let tuneFrame = frame(272)
+
+    queue.enqueueNormal(tuneFrame)
+    let writes = drain(queue)
+
+    XCTAssertEqual(writes.map(\.count), Array(repeating: 20, count: 13) + [12])
+    XCTAssertEqual(writes.flatMap { $0 }, tuneFrame)
+  }
+
+  func testFrameWithinTheLimitGoesOutAsOneWrite() {
+    let queue = VescWriteQueue()
+    let tuneFrame = frame(272)
+    queue.setChunkLimit(514)
+
+    queue.enqueueNormal(tuneFrame)
+
+    XCTAssertEqual(drain(queue), [tuneFrame])
+  }
+
+  func testNoWriteRunsBetweenChunksOfOneFrame() {
+    let queue = VescWriteQueue()
+    let tuneFrame = frame(45)
+    let poll: [UInt8] = [255]
+    let neutral: [UInt8] = [254]
+
+    queue.enqueueNormal(tuneFrame)
+    _ = queue.startNext()
+    queue.enqueueNormal(poll)
+    queue.replaceRemoteInput(neutral, urgent: true)
+    queue.completeInFlight()
+
+    let rest = drain(queue)
+
+    XCTAssertEqual(rest.prefix(2).map(\.count), [20, 5])
+    // The stop still goes before later normal traffic, just after the frame in flight.
+    XCTAssertEqual(rest[2], neutral)
+    XCTAssertEqual(rest[3], poll)
+  }
+
+  func testRefusedChunkMidFrameIsRetriedWithItsOwnBytes() {
+    let queue = VescWriteQueue()
+    let tuneFrame = frame(50)
+
+    queue.enqueueNormal(tuneFrame)
+    _ = queue.startNext()
+    queue.completeInFlight()
+    let refused = queue.startNext()?.bytes
+    queue.retryInFlight()
+
+    XCTAssertEqual(queue.startNext()?.bytes, refused)
+    queue.completeInFlight()
+    XCTAssertEqual(drain(queue), [Array(tuneFrame[40..<50])])
+  }
+
+  func testRefusedFirstChunkPutsTheWholeFrameBack() {
+    let queue = VescWriteQueue()
+    let tuneFrame = frame(50)
+
+    queue.enqueueNormal(tuneFrame)
+    _ = queue.startNext()
+    queue.retryInFlight()
+
+    XCTAssertEqual(drain(queue).flatMap { $0 }, tuneFrame)
+  }
+
+  func testClearDropsAPartlySentFrame() {
+    let queue = VescWriteQueue()
+
+    queue.enqueueNormal(frame(50))
+    _ = queue.startNext()
+    queue.clear()
+
+    XCTAssertNil(queue.startNext())
+  }
 }
