@@ -6,6 +6,7 @@ import android.util.Log
 import expo.modules.kotlin.jni.NativeArrayBuffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.time.ZoneId
 import java.util.UUID
 import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
@@ -140,6 +141,33 @@ class TelemetryRepository private constructor(context: Context) {
     VescapeDatabase.withRideExportSnapshot(appContext) { dao ->
       RideExport.floaty(dao, appContext.cacheDir, options) { voltage, current ->
         BatterySocEstimator.estimateBatteryPercent(voltage, config, current)
+      }
+    }
+  }
+
+  /** Every selected ride in one `.zip`, read from one database snapshot.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `exportRides`
+   */
+  internal suspend fun exportRides(
+    items: List<RideBatch.Item>,
+    format: RideExport.Format,
+    isCancelled: () -> Boolean,
+    onProgress: (done: Int, total: Int) -> Unit,
+  ): Map<String, Any> = withContext(Dispatchers.IO) {
+    val configs = if (format == RideExport.Format.FLOATY) batteryConfigByBoard() else emptyMap()
+    VescapeDatabase.withRideExportSnapshot(appContext) { dao ->
+      RideBatch.zip(appContext.cacheDir, items, format, ZoneId.systemDefault(), isCancelled, onProgress) { writer, ride ->
+        when (format) {
+          RideExport.Format.GPX ->
+            RideExport.writeGpx(dao, writer, ride.fromMs, ride.toMs, ride.boardId, ride.name ?: "Vescape ride")
+          RideExport.Format.CSV -> RideExport.writeCsv(dao, writer, ride.fromMs, ride.toMs, ride.boardId)
+          RideExport.Format.FLOATY -> {
+            val config = ride.boardId?.let { configs[it] }
+            RideExport.writeFloaty(dao, writer, ride.fromMs, ride.toMs, ride.boardId, ride.name) { voltage, current ->
+              BatterySocEstimator.estimateBatteryPercent(voltage, config, current)
+            }
+          }
+        }
       }
     }
   }
@@ -700,16 +728,23 @@ class TelemetryRepository private constructor(context: Context) {
     dao.deleteBefore(beforeMs)
   }
 
-  suspend fun deleteRange(options: Map<String, Any?>): Int = withContext(Dispatchers.IO) {
+  suspend fun deleteRange(options: Map<String, Any?>): Int {
     val query = RangeMutationOptions.from(options)
+    return deleteRides(listOf(RideBatch.Item(query.fromMs, query.toMs, query.boardId, null)))
+  }
+
+  /** Telemetry, markers, buckets and Ride Track of every ride, in one transaction. Favorite ranges
+   * inside a ride survive, like a single-range delete.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `deleteRides`
+   */
+  internal suspend fun deleteRides(items: List<RideBatch.Item>): Int = withContext(Dispatchers.IO) {
     flushNow()
-    val requested = TelemetryTimeRange(query.fromMs, query.toMs)
     val protected = favoriteTelemetryRanges()
-    promoteProtectedRangeStarts(protected, query.boardId)
-    val deleted = maintenancePersistence.deleteRanges(
-      subtractProtectedTelemetryRanges(requested, protected), query.boardId, allBoards = false,
-    )
-    deleted
+    val byBoard = items.groupBy { it.boardId }.mapValues { (boardId, rides) ->
+      promoteProtectedRangeStarts(protected, boardId)
+      rides.flatMap { subtractProtectedTelemetryRanges(TelemetryTimeRange(it.fromMs, it.toMs), protected) }
+    }
+    maintenancePersistence.deleteBoardRanges(byBoard)
   }
 
   // Favorites (ADR 0029)

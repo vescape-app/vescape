@@ -11,7 +11,7 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 | Board               | `board_id` in DB, `boardId` in API                                                     |
 | Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                                        |
 | Ride Recording      | frames + buckets + markers in DB                                                       |
-| Ride History        | `getRideHistoryPage` (complete rides), `getHistoryRange` (full)                        |
+| Ride History        | `getRideHistoryPage` (complete rides), `countRideHistory`, `getHistoryRange` (full)    |
 | Tune Profile        | `tune_profiles` table, `TuneProfile` type                                              |
 | Tune Snapshot       | `RefloatConfigSnapshot`                                                                |
 | Alert Rule          | `alerts` table, `AlertRule` type                                                       |
@@ -256,14 +256,16 @@ Field omitted (null) when change < threshold from previous:
 
 ## Telemetry queries
 
-| fn                                                   | returns                                                                    | notes                                                                                             |
-| ---------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `getTelemetryHistory(opts?)`                         | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
-| `getRideHistoryPage({limit?,cursorBeforeMs?})`       | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride                  |
-| `getTelemetrySamples({fromMs,toMs,boardId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
-| `getHistoryRange({fromMs,toMs,boardId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
-| `getTelemetrySummary()`                              | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
-| `getDatabaseSizeBytes()`                             | number                                                                     | File size of vescape.db                                                                           |
+| fn                                                                              | returns                                                                    | notes                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getTelemetryHistory(opts?)`                                                    | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                                                                                                                              |
+| `getRideHistoryPage({limit?,cursorBeforeMs?,fromMs?,toMs?,boardIds?,weather?})` | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride. Optional Ride History Filter: ride start in `[fromMs, toMs)`, any of `boardIds`, meets `weather` (see `RideWeatherCondition`) |
+| `countRideHistory({fromMs?,toMs?,boardIds?,weather?})`                          | number                                                                     | Complete rides matching the same filter, independent of loaded pages                                                                                                                                            |
+| `exportRides(selection: RideSelection, format)`                                 | `RideExportFile \| null`                                                   | One `.zip`, one GPX/CSV/Floaty file per ride, streamed. Emits `onRideExportProgress {done,total}`; null when `cancelRideExport()` stopped it. `RideSelection` is `{rides}` windows or `{filter, excludeIds}`    |
+| `getTelemetrySamples({fromMs,toMs,boardId?,limit?})`                            | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000                                                                                                               |
+| `getHistoryRange({fromMs,toMs,boardId?,limit?})`                                | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                                                                                                                                     |
+| `getTelemetrySummary()`                                                         | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                                                                                                                                   |
+| `getDatabaseSizeBytes()`                                                        | number                                                                     | File size of vescape.db                                                                                                                                                                                         |
 
 ### TelemetryMinuteBucket (bucket shape)
 
@@ -333,11 +335,12 @@ it never creates occurrences, warnings, baselines, or persisted register snapsho
 
 ## Telemetry deletion
 
-| fn                                             | returns                                                           |
-| ---------------------------------------------- | ----------------------------------------------------------------- |
-| `deleteTelemetryBefore(beforeMs)`              | frames deleted count. Also deletes matching markers + buckets     |
-| `deleteTelemetryRange({fromMs,toMs,boardId?})` | frames deleted count. Flushes pending first                       |
-| `clearTelemetryHistory()`                      | void. Wipes all frames, markers, buckets + resets in-memory state |
+| fn                                             | returns                                                                                      |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `deleteTelemetryBefore(beforeMs)`              | frames deleted count. Also deletes matching markers + buckets                                |
+| `deleteTelemetryRange({fromMs,toMs,boardId?})` | frames deleted count. Flushes pending first                                                  |
+| `deleteRides(selection: RideSelection)`        | frames deleted count. Every selected ride in one transaction; Favorite ranges inside survive |
+| `clearTelemetryHistory()`                      | void. Wipes all frames, markers, buckets + resets in-memory state                            |
 
 ## User Profile Stats
 

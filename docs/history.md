@@ -108,6 +108,21 @@ Older pages use native's opaque `nextCursorBeforeMs`. A page boundary is always 
 Ride, never through an arbitrary minute bucket. Native concatenates the precomputed bucket route
 segments for list thumbnails, so JS neither groups buckets nor loads raw tracks per row.
 
+### Ride History Filter
+
+The History list filters by date (This month, Previous month, or a custom range picked
+with the system date picker) by Board, and by weather. No Board selected means all Boards. Weather tiles judge the Ride weather summary in groups: sky (Clear, Cloudy,
+Rain = 5+ rain minutes, Snow, Storm), temperature (Cold = low ≤ 5 °C, Hot = high ≥ 28 °C), Windy
+(gust ≥ 40 km/h), and Night (mostly after dark). Picks in one group are alternatives, picked groups
+must all hold, so Rain + Cold finds cold rainy rides. A ride without a summary meets none. The filter lives in
+memory only (`historyFilterStore`): it lasts while the app runs and resets on restart.
+
+Native owns the filtered query. Every ride page read passes `{fromMs, toMs, boardIds, weather}`, so paging
+keeps working with a filter on, and `countRideHistory` counts the same filter without loaded rows.
+Rides group first and filter after, since another Board's buckets still decide where a ride splits;
+a ride matches by its start. Favorites are fully loaded, so the Favorites tab applies the same match
+in JS. The rides list shares the store, so the History drawer's Last rides follow the filter too.
+
 ### Maintenance Jobs
 
 History reads stay precomputed (ADR-0005). Bringing old summaries up to date with the current app is
@@ -389,6 +404,24 @@ Decisions from the 2026-09-20 design discussion:
   for matching fields, omit unsupported columns, and append additional stored telemetry fields
   such as `erpm` and `balanceCurrent`. External-app import testing belongs to the rider; exact
   importer compatibility is not yet verified. No VESC-specific CSV contract has been established.
+
+### Bulk export and delete
+
+History and Favorites have a select mode (#594): the list-check button in the drawer header or a
+long-press on a row turns it on. Rows and day headers get checkboxes; a partly picked day shows a
+partial state. **Select all (N)** picks every ride matching the active Ride History Filter,
+including rides not loaded yet: the selection stays `{filter, excludeIds}` and native resolves it,
+and N comes from `countRideHistory`. Picked rows and Favorites cross as explicit `{rides}` windows.
+
+- **Export:** GPX, CSV, or Floaty, one format per export; the choice is kept for the app session.
+  Native writes one `.zip` as a stream (no folders, no ride cap), emits progress after each ride,
+  and stops mid-file on Cancel. Entries are `2026-08-03_1726_<board>.<ext>` in device time, with
+  `-2`, `-3` on clashes; the zip is `vescape-rides-<day>.zip` or `vescape-rides-<first>_<last>.zip`.
+  A Favorite exports its saved window.
+- **Delete:** an inline confirm shows the count. Rides go through `deleteRides`, one transaction,
+  with the single-ride delete's rules: Favorite ranges inside a ride survive. In Favorites, Delete
+  removes the Favorites and keeps their rides.
+- **Exit:** ✕, Android back, or closing the drawer, which also clears the selection.
 
 ### CSV mapping and merge
 

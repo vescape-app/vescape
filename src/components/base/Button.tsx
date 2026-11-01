@@ -56,13 +56,14 @@ export function Button({
   const coloredAction = useColoredAction(accentToken)
   const coloredBorder = useColoredActionForeground(accentToken)
   const coloredForeground = useColoredActionForeground(accent ?? variantColors.foreground)
-  // A disabled button drops its accent entirely: dimming the accent pill with opacity washes it out
-  // against a light background until the label is unreadable.
+  // A disabled button drops its accent, then dims the plain neutral pill. A filled disabled surface
+  // read stronger than an enabled secondary button; dimming the accent pill itself washes it out.
   const button = isDisabled
     ? {
-        backgroundColor: theme.control.backgroundDisabled,
+        backgroundColor: theme.control.background,
         borderWidth: 1,
         borderColor: theme.control.border,
+        opacity: DISABLED_OPACITY,
       }
     : isColored
       ? { backgroundColor: coloredAction, borderWidth: 1, borderColor: coloredBorder }
@@ -72,7 +73,7 @@ export function Button({
           borderColor: variantColors.border,
         }
   const foreground = isDisabled
-    ? theme.control.textMuted
+    ? theme.control.text
     : isColored
       ? coloredForeground
       : variantColors.foreground
@@ -112,7 +113,7 @@ export function Button({
           size === 'sm' ? styles.labelSm : size === 'lg' ? styles.labelLg : styles.labelMd,
           {
             color: isDisabled
-              ? theme.control.textMuted
+              ? theme.control.text
               : isColored
                 ? coloredForeground
                 : variantColors.text,
@@ -125,6 +126,8 @@ export function Button({
     </Pressable>
   )
 }
+
+const DISABLED_OPACITY = 0.4
 
 /**
  * `foreground` is the label/icon/indicator token. Colored variants sit on the navy colored-action

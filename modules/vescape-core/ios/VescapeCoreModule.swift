@@ -1,4 +1,5 @@
 import ExpoModulesCore
+import os
 
 private extension Promise {
   /// Keep the bridge error code and the underlying native failure together.
@@ -57,6 +58,7 @@ public class VescapeCoreModule: Module {
   private var frontendActive = true
   /// Events with at least one live JS listener, tracked via `OnStartObserving`/`OnStopObserving`.
   private var observedEvents = Set<String>()
+  private let rideExportCancelled = OSAllocatedUnfairLock(initialState: false)
   /// Remover for this module's App Status mirror subscription; the Group Ride online gate holds its
   /// own, so the sink cannot be a single assignable closure.
   private var appStatusUnsubscribe: (() -> Void)?
@@ -90,7 +92,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
+    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -806,6 +808,16 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `countRideHistory`
+    AsyncFunction("countRideHistory") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try RideHistoryRepository.shared.countRides(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_count_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not count ride history", cause: error)
+      }
+    }
+
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideSession`
     AsyncFunction("getRideSession") { (id: String, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
@@ -847,6 +859,32 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try TelemetryRepository.shared.exportRideFloaty(options)) }
       catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
+    }
+
+    /// Bulk ride export and delete; one export at a time, Cancel stops it mid-file.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `registerRideBatch`
+    /// @parity /modules/vescape-core/src/index.ts `exportRides`
+    AsyncFunction("exportRides") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      self.rideExportCancelled.withLock { $0 = false }
+      do {
+        let rides = try RideHistoryRepository.shared.selectedRides(options["selection"] as? [String: Any] ?? [:])
+        let file = try TelemetryRepository.shared.exportRides(rides, format: try RideBatch.format(options["format"]),
+          isCancelled: { self.rideExportCancelled.withLock { $0 } }) { done, total in
+          self.sendEvent("onRideExportProgress", ["done": done, "total": total])
+        }
+        promise.resolve(file)
+      } catch RideBatch.RideBatchError.cancelled {
+        promise.resolve(nil)
+      } catch { promise.reject("ERR_RIDE_EXPORT", "Could not export rides", cause: error) }
+    }
+
+    Function("cancelRideExport") { self.rideExportCancelled.withLock { $0 = true } }
+
+    AsyncFunction("deleteRides") { (selection: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.deleteRides(try RideHistoryRepository.shared.selectedRides(selection))) }
+      catch { RecordingStorageFailure.report(operation: "ride_delete", category: "write_failed", error: error); promise.reject("ERR_RIDE_DELETE", "Could not delete rides", cause: error) }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`

@@ -1514,6 +1514,34 @@ export interface RideWeather {
 }
 
 /**
+ * Weather a ride can be filtered by, judged natively from its Ride weather summary. Groups: sky
+ * (`clear` `cloudy` `rain` `snow` `storm`), temperature (`cold` `hot`), `windy`, `night`. Picks in
+ * one group are alternatives; picked groups must all hold.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideWeatherCondition`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideWeatherCondition`
+ */
+export type RideWeatherCondition =
+  'clear' | 'cloudy' | 'rain' | 'snow' | 'storm' | 'cold' | 'hot' | 'windy' | 'night'
+
+/**
+ * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty or absent = all)
+ * that meet `weather` (empty or absent = any weather; no weather summary never matches).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
+ */
+export interface RideHistoryFilter {
+  fromMs?: number
+  toMs?: number
+  boardIds?: string[]
+  weather?: RideWeatherCondition[]
+}
+
+export interface RideHistoryPageOptions extends RideHistoryFilter {
+  limit?: number
+  cursorBeforeMs?: number
+}
+
+/**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepositoryAndroid.kt `getPage`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getPage`
  */
@@ -2709,6 +2737,7 @@ type VescapeCoreEvents = {
   onLocation: (event: LocationEvent) => void
   onMaintenanceState: (event: MaintenanceState) => void
   onBoardProbeProgress: (event: BoardProbeProgressEvent) => void
+  onRideExportProgress: (event: RideExportProgressEvent) => void
   /** Observe WebSocket connection state to the Group Ride relay. */
   onGroupRideConnection: (event: GroupRideConnectionEvent) => void
   /** Full active-ride list, sent once on connect. */
@@ -2888,7 +2917,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   addCompanionPresenceBoard(boardId: string): Promise<void>
   removeCompanionPresenceBoard(boardId: string): Promise<void>
   getTelemetryHistory(options: TelemetryHistoryOptions): Promise<TelemetryMinuteBucket[]>
-  getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): Promise<RideHistoryPage>
+  getRideHistoryPage(options: RideHistoryPageOptions): Promise<RideHistoryPage>
+  countRideHistory(filter: RideHistoryFilter): Promise<number>
   getRideSession(id: string): Promise<RideHistorySession | null>
   getTelemetrySamples(options: {
     fromMs: number
@@ -2900,6 +2930,12 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   exportRideCsv(options: RideExportOptions): Promise<RideExportFile>
   exportRideFloaty(options: RideExportOptions): Promise<RideExportFile>
   exportLiveTelemetryCsv(): Promise<RideExportFile>
+  exportRides(options: {
+    selection: RideSelection
+    format: RideExportFormat
+  }): Promise<RideExportFile | null>
+  cancelRideExport(): void
+  deleteRides(selection: RideSelection): Promise<number>
   getHistoryRange(options: {
     fromMs: number
     toMs: number
@@ -3713,10 +3749,20 @@ export async function getTelemetryHistory(
 }
 
 export async function getRideHistoryPage(
-  options: { limit?: number; cursorBeforeMs?: number } = {},
+  options: RideHistoryPageOptions = {},
 ): Promise<RideHistoryPage> {
   if (E2E_ENABLED) return e2eFake.getRideHistoryPage(options)
   return native.getRideHistoryPage(options)
+}
+
+/**
+ * Complete rides matching the filter, counted natively so callers never depend on loaded pages.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `countRideHistory`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `countRideHistory`
+ */
+export async function countRideHistory(filter: RideHistoryFilter = {}): Promise<number> {
+  if (E2E_ENABLED) return e2eFake.countRideHistory(filter)
+  return native.countRideHistory(filter)
 }
 
 /**
@@ -3798,6 +3844,61 @@ export async function exportRideFloaty(options: RideExportOptions): Promise<Ride
  */
 export async function exportLiveTelemetryCsv(): Promise<RideExportFile> {
   return native.exportLiveTelemetryCsv()
+}
+
+/**
+ * Rides picked in History select mode: explicit windows (picked rows, Favorites), or every ride
+ * matching the filter minus the ones unticked afterwards. Native resolves the filter form, so rides
+ * not loaded yet are included.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideBatch.kt
+ * @parity /modules/vescape-core/ios/telemetry/RideBatch.swift
+ */
+export type RideSelection =
+  { rides: RideExportOptions[] } | { filter: RideHistoryFilter; excludeIds: string[] }
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideBatch.kt `format`
+ * @parity /modules/vescape-core/ios/telemetry/RideBatch.swift `format`
+ */
+export type RideExportFormat = 'gpx' | 'csv' | 'floaty'
+
+/** Rides written into the zip so far. */
+export interface RideExportProgressEvent {
+  done: number
+  total: number
+}
+
+/**
+ * Every selected ride as one `.zip`, one file per ride. Resolves null when `cancelRideExport` stops
+ * it. Emits `onRideExportProgress` after each ride.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `registerRideBatch`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRides`
+ */
+export async function exportRides(
+  selection: RideSelection,
+  format: RideExportFormat,
+): Promise<RideExportFile | null> {
+  return native.exportRides({ selection, format })
+}
+
+export function cancelRideExport(): void {
+  native.cancelRideExport()
+}
+
+export function addRideExportProgressListener(
+  cb: (event: RideExportProgressEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onRideExportProgress', cb)
+}
+
+/**
+ * Deletes every selected ride's telemetry and Ride Track in one transaction; Favorite ranges inside
+ * survive. Resolves the deleted frame count.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `registerRideBatch`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRides`
+ */
+export async function deleteRides(selection: RideSelection): Promise<number> {
+  return native.deleteRides(selection)
 }
 
 export async function getHistoryRange(options: {

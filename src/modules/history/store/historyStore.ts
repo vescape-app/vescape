@@ -4,12 +4,14 @@ import {
   getRideHistoryPage,
   getTelemetrySummary,
   clearTelemetryHistory,
+  deleteRides,
   deleteTelemetryRange,
   type HistoryGpsSample,
   type HistoryMarker,
   type TelemetryMinuteBucket,
   type TelemetrySample,
 } from 'vescape-core'
+import { getRideFilter, useHistoryFilterStore } from '@/modules/history/store/historyFilterStore'
 import { matchRideSession, type HistorySession } from '@/modules/history/lib/sessions'
 
 import { INITIAL_HISTORY_STATE, type HistoryStore } from '@/modules/history/store/historyStoreTypes'
@@ -35,7 +37,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       const [summary, blocks, page] = await Promise.all([
         getTelemetrySummary(),
         getTelemetryHistory({ limit: BUCKET_PAGE_SIZE }),
-        getRideHistoryPage({ limit: RIDE_PAGE_SIZE }),
+        getRideHistoryPage({ ...getRideFilter(), limit: RIDE_PAGE_SIZE }),
       ])
       set({
         summary,
@@ -79,7 +81,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
           toMs: now,
           limit: RECENT_BUCKET_LIMIT,
         }),
-        getRideHistoryPage({ limit: RIDE_PAGE_SIZE }),
+        getRideHistoryPage({ ...getRideFilter(), limit: RIDE_PAGE_SIZE }),
       ])
       if (version !== recentRefreshVersion) return
       set((state) => {
@@ -128,7 +130,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     try {
       // Native caps a page, so walk cursors until the range the rider already loaded is covered.
       const summary = await getTelemetrySummary()
-      let page = await getRideHistoryPage({ limit: RIDE_PAGE_SIZE })
+      let page = await getRideHistoryPage({ ...getRideFilter(), limit: RIDE_PAGE_SIZE })
       const sessions = [...page.sessions]
       while (
         sessions.length < loadedSessions.length &&
@@ -136,6 +138,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         page.nextCursorBeforeMs != null
       ) {
         page = await getRideHistoryPage({
+          ...getRideFilter(),
           limit: RIDE_PAGE_SIZE,
           cursorBeforeMs: page.nextCursorBeforeMs,
         })
@@ -163,6 +166,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     set({ loading: true, error: undefined })
     try {
       const page = await getRideHistoryPage({
+        ...getRideFilter(),
         limit: RIDE_PAGE_SIZE,
         cursorBeforeMs: nextCursorBeforeMs,
       })
@@ -201,9 +205,28 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     }
   },
 
+  setRideFilter(selection) {
+    useHistoryFilterStore.getState().setSelection(selection)
+    recentRefreshVersion++
+    set({ sessions: [], selectedSession: null, hasMore: true, nextCursorBeforeMs: null })
+    void get().loadInitial()
+  },
+
   /** Native owns Ride boundaries; changing the gap invalidates the page cursor and reloads it. */
   regroupSessions() {
     void get().loadInitial()
+  },
+
+  async removeRides(selection) {
+    const reloadLimit = Math.min(500, Math.max(BUCKET_PAGE_SIZE, get().blocks.length))
+    recentRefreshVersion++
+    await deleteRides(selection)
+    const [blocks, summary] = await Promise.all([
+      getTelemetryHistory({ limit: reloadLimit }),
+      getTelemetrySummary(),
+    ])
+    set({ blocks, summary, selectedBlock: null })
+    get().setRideFilter(useHistoryFilterStore.getState().selection)
   },
 
   async removeSelectedSession() {
@@ -221,7 +244,10 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       const selectedIndex = sessions.findIndex((session) => session.id === selectedSession.id)
       const [blocks, page] = await Promise.all([
         getTelemetryHistory({ limit: reloadLimit }),
-        getRideHistoryPage({ limit: Math.min(50, Math.max(RIDE_PAGE_SIZE, sessions.length)) }),
+        getRideHistoryPage({
+          ...getRideFilter(),
+          limit: Math.min(50, Math.max(RIDE_PAGE_SIZE, sessions.length)),
+        }),
       ])
       const nextSessions = page.sessions
       const nextSelectedSession =
@@ -265,7 +291,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       await clearTelemetryHistory()
       const [blocks, page] = await Promise.all([
         getTelemetryHistory({ limit: reloadLimit }),
-        getRideHistoryPage({ limit: RIDE_PAGE_SIZE }),
+        getRideHistoryPage({ ...getRideFilter(), limit: RIDE_PAGE_SIZE }),
       ])
       set({
         blocks,

@@ -16,7 +16,9 @@ import type {
   LiveStateEvent,
   MetricExclusion,
   PrivacyZone,
+  RideHistoryFilter,
   RideHistoryPage,
+  RideHistoryPageOptions,
   RideHistorySession,
   TelemetryEvent,
   TelemetryHistoryEvent,
@@ -339,10 +341,23 @@ function getRideSession(id: string): RideHistorySession | null {
   return getRideHistoryPage({}).sessions.find((session) => session.id === id) ?? null
 }
 
-function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): RideHistoryPage {
-  const buckets = getTelemetryHistory({ cursorBeforeMs: options.cursorBeforeMs }).sort(
-    (a, b) => b.startAtMs - a.startAtMs,
-  )
+function matchesRideFilter(bucket: TelemetryMinuteBucket, filter: RideHistoryFilter): boolean {
+  if (filter.fromMs != null && bucket.startAtMs < filter.fromMs) return false
+  if (filter.toMs != null && bucket.startAtMs >= filter.toMs) return false
+  if (filter.boardIds?.length && !filter.boardIds.includes(bucket.boardId ?? '')) return false
+  // Fake rides carry no weather summary, and a ride without one never meets a weather condition.
+  if (filter.weather?.length) return false
+  return true
+}
+
+function countRideHistory(filter: RideHistoryFilter): number {
+  return getTelemetryHistory({}).filter((bucket) => matchesRideFilter(bucket, filter)).length
+}
+
+function getRideHistoryPage(options: RideHistoryPageOptions): RideHistoryPage {
+  const buckets = getTelemetryHistory({ cursorBeforeMs: options.cursorBeforeMs })
+    .filter((bucket) => matchesRideFilter(bucket, options))
+    .sort((a, b) => b.startAtMs - a.startAtMs)
   const sessions: RideHistorySession[] = buckets.map((bucket) => ({
     id: `${bucket.boardId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
     boardId: bucket.boardId,
@@ -898,6 +913,7 @@ export const e2eFake = {
   getTelemetryHistory,
 
   getRideHistoryPage,
+  countRideHistory,
 
   getRideSession,
 

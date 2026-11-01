@@ -579,3 +579,30 @@ test('refreshRecent follows the growing ride and clears a stale error', async ()
   expect(useHistoryStore.getState().selectedSession?.id).not.toBe(selected.id)
   expect(useHistoryStore.getState().error).toBeUndefined()
 })
+
+test('the ride filter reloads the first page and follows every later page', async () => {
+  const newest = block({ id: 'newest', startAtMs: 5_000_000, endAtMs: 5_060_000 })
+  getRideHistoryPage.mockResolvedValueOnce(ridePage([newest], true))
+
+  const { useHistoryStore } = await import('@/modules/history/store/historyStore')
+  const { useHistoryFilterStore } = await import('@/modules/history/store/historyFilterStore')
+
+  useHistoryStore.getState().setRideFilter({
+    date: { preset: 'custom', fromMs: 1_000, toMs: 9_000_000 },
+    boardIds: ['thor'],
+    weather: ['rain'],
+  })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await useHistoryStore.getState().loadMore()
+
+  const calls = getRideHistoryPage.mock.calls as unknown[][]
+  expect(calls[0][0]).toEqual({
+    fromMs: 1_000,
+    toMs: 9_000_000,
+    boardIds: ['thor'],
+    weather: ['rain'],
+    limit: 10,
+  })
+  expect(calls[1][0]).toMatchObject({ fromMs: 1_000, toMs: 9_000_000, boardIds: ['thor'] })
+  useHistoryFilterStore.setState({ selection: { date: null, boardIds: [], weather: [] } })
+})

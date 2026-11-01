@@ -65,6 +65,31 @@ internal final class TelemetryRepository {
     }
   }
 
+  /// Every selected ride in one `.zip`, read from one database snapshot.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `exportRides`
+  func exportRides(_ items: [RideBatch.Item], format: RideExport.Format, isCancelled: @escaping () -> Bool,
+    onProgress: (_ done: Int, _ total: Int) -> Void) throws -> [String: Any] {
+    let configs = format == .floaty ? try batteryConfigByBoard() : [:]
+    return try VescapeDatabase.requirePool().read { db in
+      try RideBatch.zip(directory: FileManager.default.temporaryDirectory, items: items, format: format,
+        zone: .current, isCancelled: isCancelled, onProgress: onProgress) { ride, write in
+        switch format {
+        case .gpx:
+          try RideExport.writeGpx(db, fromMs: ride.fromMs, toMs: ride.toMs, boardId: ride.boardId,
+            name: ride.name ?? "Vescape ride", write: write)
+        case .csv:
+          try RideExport.writeCsv(db, fromMs: ride.fromMs, toMs: ride.toMs, boardId: ride.boardId, write: write)
+        case .floaty:
+          let config = ride.boardId.flatMap { configs[$0] }
+          try RideExport.writeFloaty(db, fromMs: ride.fromMs, toMs: ride.toMs, boardId: ride.boardId,
+            name: ride.name, batteryPercent: { voltage, current in
+              self.batteryEstimator.estimateBatteryPercent(voltageV: voltage, config: config, batteryCurrentA: current)
+            }, write: write)
+        }
+      }
+    }
+  }
+
   private var databaseSwapInProgress = false
   private lazy var flushTimer = RecordingFlushTimer(queue: queue)
   private lazy var recordingCommitBoundary = RecordingCommitBoundary { [weak self] error in
@@ -553,17 +578,25 @@ internal final class TelemetryRepository {
   }
 
   func deleteRange(_ options: [String: Any]) throws -> Int {
-    flushBlocking()
-    let pool = try VescapeDatabase.requirePool()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? 0
-    let boardId = options["boardId"] as? String
     guard toMs >= fromMs else { return 0 }
-    let deletable = subtractProtectedTelemetryRanges(
-      deleteRange: TelemetryTimeRange(startMs: fromMs, endMs: toMs),
-      protectedRanges: favoriteTelemetryRanges()
-    )
-    return try TelemetryMaintenancePersistence(writer: pool).deleteRanges(deletable, boardId: boardId, allBoards: false)
+    return try deleteRides([RideBatch.Item(fromMs: fromMs, toMs: toMs, boardId: options["boardId"] as? String, name: nil)])
+  }
+
+  /// Telemetry, markers, buckets and Ride Track of every ride, in one transaction. Favorite ranges
+  /// inside a ride survive, like a single-range delete.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `deleteRides`
+  func deleteRides(_ items: [RideBatch.Item]) throws -> Int {
+    flushBlocking()
+    let pool = try VescapeDatabase.requirePool()
+    let protected = favoriteTelemetryRanges()
+    let byBoard = Dictionary(grouping: items, by: \.boardId).mapValues { rides in
+      rides.flatMap {
+        subtractProtectedTelemetryRanges(deleteRange: TelemetryTimeRange(startMs: $0.fromMs, endMs: $0.toMs), protectedRanges: protected)
+      }
+    }
+    return try TelemetryMaintenancePersistence(writer: pool).deleteBoardRanges(byBoard)
   }
 
   func clearAll() throws {

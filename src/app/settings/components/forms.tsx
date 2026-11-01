@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 
 import { ListIcon } from 'phosphor-react-native'
 import { ColorPicker } from '@/components/forms/ColorPicker'
+import { DateField } from '@/components/forms/DateField'
 import { Dropdown, useTriggerRef } from '@/components/forms/Dropdown'
 import { IconHero } from '@/components/settings/IconHero'
 import { Input } from '@/components/forms/Input'
@@ -32,6 +33,15 @@ function SelectShowcase() {
   return (
     <ShowcaseCard name="Select">
       <Select options={options} value={value} onChange={setValue} placeholder="Choose metric…" />
+    </ShowcaseCard>
+  )
+}
+
+function DateFieldShowcase() {
+  const [date, setDate] = useState(() => new Date())
+  return (
+    <ShowcaseCard name="DateField">
+      <DateField label="From" value={date} maximumDate={new Date()} onChange={setDate} />
     </ShowcaseCard>
   )
 }
@@ -144,6 +154,7 @@ export default function FormsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero icon={ListIcon} description="Select, Dropdown, ColorPicker, SoundPicker." />
         <InputShowcase />
+        <DateFieldShowcase />
         <TextareaShowcase />
         <SelectShowcase />
         <DropdownShowcase />
