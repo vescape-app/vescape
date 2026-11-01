@@ -280,10 +280,15 @@ BLE _discovery_ falls back to `e2eFake.scan()` — `FAKE_SCAN` in `modules/vesca
 That fake stands in for absent hardware; every other `E2E_ENABLED` branch stands in for absent data,
 which fixtures and replay now supply.
 
-The replay recording has to outlast the flows that need it. `replay-thor301.jsonl` is a 13-minute
-ride, and a full pass can run longer than that — Maestro spends most of its time waiting for a live
-view hierarchy to settle. Flows 01-04 finish inside the window; `05-add-board` is written to work
-whether the session is still up or has already ended on its own.
+Smoke replays `replay-thor301-1hz.jsonl`: the same 13-minute ride as `replay-thor301.jsonl`, thinned
+by `scripts/thin-replay-fixture.ts` to one telemetry frame and one heading per second. At the
+recorded ~15 Hz the live screens never settle on a CPU-rendered CI emulator, and every Maestro
+hierarchy read stalls for seconds; the battery alert flow ran past its 15-minute step limit. Rerun
+the script after changing the source recording.
+
+The replay recording has to outlast the flows that need it, and a full pass can run longer than 13
+minutes. Flows 01-04 finish inside the window; `05-add-board` is written to work whether the session
+is still up or has already ended on its own.
 
 In a local full pass, flow order is load-bearing. `05-add-board` runs last because saving a board hands it to the
 connection manager, which goes at the real BLE stack, finds nothing, and takes the replay session
