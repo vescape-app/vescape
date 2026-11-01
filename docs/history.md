@@ -110,7 +110,7 @@ segments for list thumbnails, so JS neither groups buckets nor loads raw tracks 
 
 ### Ride History Filter
 
-The History list filters by date (This month, Previous month, Last 7 days, or a custom range picked
+The History list filters by date (This month, Previous month, or a custom range picked
 with the system date picker) and by Board. No Board selected means all Boards. The filter lives in
 memory only (`historyFilterStore`): it lasts while the app runs and resets on restart.
 

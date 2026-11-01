@@ -1,6 +1,6 @@
 import type { RideHistoryFilter } from 'vescape-core'
 
-export type RideDatePreset = 'thisMonth' | 'previousMonth' | 'last7Days' | 'custom'
+export type RideDatePreset = 'thisMonth' | 'previousMonth' | 'custom'
 
 /** Local-time `[fromMs, toMs)` a date preset or custom range resolved to. */
 export interface RideDateRange {
@@ -22,7 +22,7 @@ function startOfDay(ms: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
-/** Presets end at the next local midnight, so today's rides are always in. */
+/** This month ends at the next local midnight, so today's rides are always in. */
 export function presetRange(
   preset: Exclude<RideDatePreset, 'custom'>,
   nowMs: number,
@@ -39,12 +39,6 @@ export function presetRange(
         preset,
         fromMs: new Date(year, month - 1, 1).getTime(),
         toMs: new Date(year, month, 1).getTime(),
-      }
-    case 'last7Days':
-      return {
-        preset,
-        fromMs: new Date(year, month, today.getDate() - 6).getTime(),
-        toMs: tomorrow,
       }
   }
 }

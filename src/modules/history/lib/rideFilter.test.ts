@@ -19,14 +19,10 @@ describe('presetRange', () => {
     })
   })
 
-  test('this month and last 7 days include all of today', () => {
+  test('this month includes all of today', () => {
     const now = local(2026, 3, 3, 9)
     expect(presetRange('thisMonth', now)).toMatchObject({
       fromMs: local(2026, 3, 1),
-      toMs: local(2026, 3, 4),
-    })
-    expect(presetRange('last7Days', now)).toMatchObject({
-      fromMs: local(2026, 2, 25),
       toMs: local(2026, 3, 4),
     })
   })

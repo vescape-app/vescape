@@ -17,7 +17,6 @@ import {
 const DATE_PRESETS: readonly { preset: RideDatePreset; label: string }[] = [
   { preset: 'thisMonth', label: 'This month' },
   { preset: 'previousMonth', label: 'Previous month' },
-  { preset: 'last7Days', label: 'Last 7 days' },
   { preset: 'custom', label: 'Custom range' },
 ]
 

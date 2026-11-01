@@ -1514,10 +1514,6 @@ export interface RideWeather {
 }
 
 /**
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepositoryAndroid.kt `getPage`
- * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getPage`
- */
-/**
  * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty or absent = all).
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
@@ -1533,6 +1529,10 @@ export interface RideHistoryPageOptions extends RideHistoryFilter {
   cursorBeforeMs?: number
 }
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepositoryAndroid.kt `getPage`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getPage`
+ */
 export interface RideHistoryPage {
   sessions: RideHistorySession[]
   hasMore: boolean
