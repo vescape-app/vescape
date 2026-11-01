@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { PUBLIC_RIDE_ARC, publicRideIndexAt, publicRideSector } from './publicRideArc'
+import {
+  PUBLIC_RIDE_ARC,
+  publicRideIndexAt,
+  publicRideSector,
+  publicRideStableIndexAt,
+} from './publicRideArc'
 
 describe('public ride arc', () => {
   test('seams stay equally spaced at the inner and outer edges', () => {
@@ -35,4 +40,42 @@ describe('public ride arc', () => {
     expect(publicRideIndexAt(cx - 100, cy + 20)).toBe(0)
     expect(publicRideIndexAt(cx + 100, cy + 20)).toBe(3)
   })
+})
+
+test('seam jitter keeps its current sector until the finger clearly crosses', () => {
+  const { cx, cy, startAngle, sectorAngle } = PUBLIC_RIDE_ARC
+  for (let seam = 1; seam < 4; seam++) {
+    const boundary = startAngle + seam * sectorAngle
+    const at = (offset: number, previous: number) => {
+      const radians = ((boundary + offset) * Math.PI) / 180
+      return publicRideStableIndexAt(
+        cx + Math.cos(radians) * 100,
+        cy + Math.sin(radians) * 100,
+        previous,
+      )
+    }
+    for (const offset of [-1, -0.2, 0.2, 1]) {
+      expect(at(offset, seam - 1)).toBe(seam - 1)
+      expect(at(offset, seam)).toBe(seam)
+    }
+    expect(at(3, seam - 1)).toBe(seam)
+    expect(at(-3, seam)).toBe(seam - 1)
+  }
+})
+
+test('the hollow centre cannot jump directly between Off and Always', () => {
+  const { cx, cy } = PUBLIC_RIDE_ARC
+  for (const previous of [0, 3]) {
+    for (const dx of [-20, -1, 1, 20]) {
+      expect(publicRideStableIndexAt(cx + dx, cy + 14, previous)).toBe(-1)
+    }
+  }
+})
+
+test('an active drag projects header touches onto the arc without extending its initial hit area', () => {
+  const { cx, cy } = PUBLIC_RIDE_ARC
+  expect(publicRideStableIndexAt(cx, -150, 0)).toBe(-1)
+  expect(publicRideStableIndexAt(cx, -150, 0, true)).toBe(2)
+  expect(publicRideStableIndexAt(cx - 350, cy - 40, 2, true)).toBe(0)
+  expect(publicRideStableIndexAt(cx + 350, cy - 40, 0, true)).toBe(3)
 })

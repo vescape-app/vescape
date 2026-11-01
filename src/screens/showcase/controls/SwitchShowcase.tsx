@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
+import { CalendarBlankIcon, ClockIcon } from 'phosphor-react-native'
 import { Switch } from '@/components/controls/Switch'
 import { Text } from '@/components/base/Text'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
@@ -96,6 +97,14 @@ export function SwitchShowcase() {
         </Cell>
       </View>
 
+      <Text style={styles.group}>Icon captions</Text>
+      <Switch
+        value={local}
+        onValueChange={setLocal}
+        onIcon={ClockIcon}
+        offIcon={CalendarBlankIcon}
+        accessibilityLabel="Hours instead of calendar presets"
+      />
       <Text style={styles.group}>Every state</Text>
       <View style={styles.row}>
         {STATES.map((state) => (

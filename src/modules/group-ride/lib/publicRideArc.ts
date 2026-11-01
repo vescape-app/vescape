@@ -11,10 +11,10 @@ export const PUBLIC_RIDE_ARC = {
 } as const
 
 /** Parallel, offset sides keep the gap the same width at both ends of each seam. */
-export function publicRideSector(index: number) {
+export function publicRideSector(index: number, span = 1) {
   const { cx, cy, outerRadius, innerRadius, gap } = PUBLIC_RIDE_ARC
   const start = ((PUBLIC_RIDE_ARC.startAngle + index * PUBLIC_RIDE_ARC.sectorAngle) * Math.PI) / 180
-  const end = start + (PUBLIC_RIDE_ARC.sectorAngle * Math.PI) / 180
+  const end = start + (span * PUBLIC_RIDE_ARC.sectorAngle * Math.PI) / 180
   const outerInset = Math.asin(gap / 2 / outerRadius)
   const innerInset = Math.asin(gap / 2 / innerRadius)
   const point = (radius: number, angle: number) => ({
@@ -47,4 +47,31 @@ export function publicRideIndexAt(x: number, y: number) {
     0,
     Math.min(3, Math.floor((angle - PUBLIC_RIDE_ARC.startAngle) / PUBLIC_RIDE_ARC.sectorAngle)),
   )
+}
+
+/** A small dead band prevents finger jitter at a seam from flashing adjacent sectors. */
+export function publicRideStableIndexAt(
+  x: number,
+  y: number,
+  previous: number,
+  continuing = false,
+) {
+  'worklet'
+  const dx = x - PUBLIC_RIDE_ARC.cx
+  const dy = y - PUBLIC_RIDE_ARC.cy
+  const radius = Math.sqrt(dx * dx + dy * dy)
+  if (
+    radius < (continuing ? 12 : PUBLIC_RIDE_ARC.innerRadius - 12) ||
+    (!continuing && (radius > PUBLIC_RIDE_ARC.outerRadius + 16 || dy > 0))
+  )
+    return -1
+  const next = publicRideIndexAt(x, y)
+  if (next < 0 || next === previous) return next
+  let angle = (Math.atan2(y - PUBLIC_RIDE_ARC.cy, x - PUBLIC_RIDE_ARC.cx) * 180) / Math.PI
+  if (angle > 90) angle -= 360
+  const boundary =
+    PUBLIC_RIDE_ARC.startAngle +
+    (next > previous ? previous + 1 : previous) * PUBLIC_RIDE_ARC.sectorAngle
+  if (Math.abs(angle - boundary) < 2) return previous
+  return next
 }

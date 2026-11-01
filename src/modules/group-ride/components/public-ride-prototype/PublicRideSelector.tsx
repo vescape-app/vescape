@@ -1,65 +1,283 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import {
   BroadcastIcon,
   CalendarBlankIcon,
+  ClockIcon,
   PowerIcon,
   InfinityIcon,
   NavigationArrowIcon,
+  type Icon,
 } from 'phosphor-react-native'
 import * as Haptics from 'expo-haptics'
-import Svg, { G, Path } from 'react-native-svg'
+import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
+import { useSkiaFont } from '@/hooks/useSkiaFont'
+import Svg, { Path } from 'react-native-svg'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
+  useAnimatedProps,
+  useDerivedValue,
+  type SharedValue,
   useSharedValue,
   withRepeat,
   withTiming,
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 
+import { createPublicRideInteraction } from '@/modules/group-ride/lib/publicRideInteraction'
+import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { Text } from '@/components/base/Text'
 import { blend, theme } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 import {
   PUBLIC_RIDE_ARC,
-  publicRideIndexAt,
+  publicRideStableIndexAt,
   publicRideSector,
 } from '@/modules/group-ride/lib/publicRideArc'
-import { PUBLIC_MODES, type PublicMode } from './fixtures'
+import {
+  PUBLIC_MODES,
+  PUBLIC_RIDE_DURATIONS,
+  publicRideDurationLabel,
+  type PublicMode,
+} from './fixtures'
 
-const BROADCAST_Y = PUBLIC_RIDE_ARC.cy - 18
+const BROADCAST_Y = PUBLIC_RIDE_ARC.cy - 22
+const RULER_EDGE_INSET =
+  (Math.asin(PUBLIC_RIDE_ARC.gap / 2 / PUBLIC_RIDE_ARC.outerRadius) * 180) / Math.PI
+const RULER_START = PUBLIC_RIDE_ARC.startAngle + PUBLIC_RIDE_ARC.sectorAngle + RULER_EDGE_INSET
+const DURATION_COUNT = PUBLIC_RIDE_DURATIONS.length
+const ALWAYS_STOP = DURATION_COUNT + 1
+const RULER_STEP = (PUBLIC_RIDE_ARC.sectorAngle * 2 - RULER_EDGE_INSET * 2) / (DURATION_COUNT + 1)
+const FIRST_TICK = RULER_START + RULER_STEP
 
 const ICONS = [PowerIcon, NavigationArrowIcon, CalendarBlankIcon, InfinityIcon]
+const HOUR_ICONS = [PowerIcon, ClockIcon, InfinityIcon]
 const SECTORS = PUBLIC_MODES.map((_, index) => publicRideSector(index))
+const HOUR_SECTORS = [SECTORS[0], publicRideSector(1, 2), SECTORS[3]]
+const HOUR_TITLES = ['Off', ...PUBLIC_RIDE_DURATIONS.map(publicRideDurationLabel), 'Always']
+const HOUR_DESCRIPTIONS = [
+  'Your location is hidden',
+  ...PUBLIC_RIDE_DURATIONS.map((hours) =>
+    hours >= 48
+      ? `Visible for ${hours / 24} days`
+      : `Visible for ${hours} ${hours === 1 ? 'hour' : 'hours'}`,
+  ),
+  PUBLIC_MODES[3].subtitle,
+]
+const TICK_PATH = Array.from({ length: DURATION_COUNT }, (_, index) => {
+  const angle = ((FIRST_TICK + index * RULER_STEP) * Math.PI) / 180
+  const { cx, cy, outerRadius } = PUBLIC_RIDE_ARC
+  return `M ${cx + Math.cos(angle) * outerRadius} ${cy + Math.sin(angle) * outerRadius} L ${cx + Math.cos(angle) * (outerRadius - 11)} ${cy + Math.sin(angle) * (outerRadius - 11)}`
+}).join(' ')
+const AnimatedPath = Animated.createAnimatedComponent(Path)
+const AnimatedText = Animated.createAnimatedComponent(Text)
+
+interface Readout {
+  sector: number
+  title: string
+  description: string
+  rotation: number
+  timed: boolean
+}
+
+function Sector({
+  path,
+  index,
+  readout,
+  surface,
+  border,
+  accent,
+  activeFill,
+  muted,
+}: {
+  path: string
+  index: number
+  readout: SharedValue<Readout>
+  surface: string
+  border: string
+  accent: string
+  activeFill: string
+  muted: string
+}) {
+  const props = useAnimatedProps(() => ({
+    fill: readout.get().sector === index && index > 0 ? activeFill : surface,
+    stroke: readout.get().sector === index ? (index === 0 ? muted : accent) : border,
+  }))
+  return <AnimatedPath d={path} animatedProps={props} strokeWidth={1} />
+}
+
+/** Icons and labels share the same preview as the sector, including before release. */
+function PreviewGlyph({
+  icon: IconComponent,
+  index,
+  readout,
+  accent,
+  muted,
+  size = 20,
+}: {
+  icon: Icon
+  index: number
+  readout: SharedValue<Readout>
+  accent: string
+  muted: string
+  size?: number
+}) {
+  const style = useAnimatedStyle(() => ({
+    opacity: (index < 0 ? readout.get().sector > 0 : index > 0 && readout.get().sector === index)
+      ? 1
+      : 0,
+  }))
+  return (
+    <View style={{ width: size, height: size }} pointerEvents="none">
+      <IconComponent size={size} color={muted} />
+      <Animated.View style={[StyleSheet.absoluteFill, style]}>
+        <IconComponent size={size} color={accent} />
+      </Animated.View>
+    </View>
+  )
+}
+
+function PreviewLabel({
+  title,
+  index,
+  readout,
+  accent,
+  muted,
+}: {
+  title: string
+  index: number
+  readout: SharedValue<Readout>
+  accent: string
+  muted: string
+}) {
+  const style = useAnimatedStyle(() => ({
+    color: index > 0 && readout.get().sector === index ? accent : muted,
+  }))
+  return <AnimatedText style={[styles.label, style]}>{title}</AnimatedText>
+}
+
+/** Skia paints live text without native text-input commits or React renders. */
+function ReadoutText({
+  readout,
+  description = false,
+  accent,
+  muted,
+}: {
+  readout: SharedValue<Readout>
+  description?: boolean
+  accent: string
+  muted: string
+}) {
+  'use no memo'
+  const height = description ? 22 : 16
+  const font = useSkiaFont(description ? '600' : '700', description ? 16 : 12)
+  const canvasSize = useSharedValue({ width: 0, height })
+  const layout = useMemo(() => {
+    if (!font) return null
+    const strings = description
+      ? [...HOUR_DESCRIPTIONS, ...PUBLIC_MODES.map((option) => option.subtitle)]
+      : HOUR_TITLES
+    const widths = Object.fromEntries(strings.map((text) => [text, font.measureText(text).width]))
+    const { ascent, descent } = font.getMetrics()
+    return { widths, baseline: height / 2 - (ascent + descent) / 2 }
+  }, [font, description, height])
+  const text = useDerivedValue(() =>
+    description ? readout.get().description : readout.get().title,
+  )
+  const x = useDerivedValue(() => (canvasSize.get().width - (layout?.widths[text.get()] ?? 0)) / 2)
+  const color = useDerivedValue(() => (description ? muted : readout.get().timed ? accent : muted))
+  return (
+    <View
+      accessible
+      accessibilityLabel={
+        description ? 'Selected visibility duration' : 'Selected sharing duration'
+      }
+      style={description ? styles.description : styles.liveLabel}
+    >
+      <Canvas pointerEvents="none" style={{ height }} onSize={canvasSize}>
+        {font && layout ? (
+          <SkiaText text={text} x={x} y={layout.baseline} font={font} color={color} />
+        ) : null}
+      </Canvas>
+    </View>
+  )
+}
 
 /** Presentation only: the owner decides what selecting a sharing duration does. */
 export function PublicRideSelector({
   value,
   onValueChange,
   profileAction,
+  durationControl,
+  hours,
 }: {
   value: PublicMode
+  hours?: number
+  durationControl?: ReactNode
   profileAction?: ReactNode
-  onValueChange: (mode: PublicMode) => void
+  onValueChange: (mode: PublicMode, hours?: number) => void
 }) {
+  'use no memo'
+  useRenderRateWarning('PublicRideSelector')
   const neutral = useResolvedNeutralColors()
   const accent = useResolvedColor(theme.palette.groupRide.color)
   const activeFill = blend(neutral.surfaceDeep, accent, 0.12)
   const [width, setWidth] = useState<number>(PUBLIC_RIDE_ARC.width)
   const scale = width / PUBLIC_RIDE_ARC.width
-  const selected = PUBLIC_MODES.findIndex((option) => option.value === value)
-  const committed = useSharedValue(selected)
-  const detent = useSharedValue(selected)
+  const hourly = hours !== undefined
+  const durationStop = Math.max(0, PUBLIC_RIDE_DURATIONS.indexOf(hours ?? 2)) + 1
+  const options = hourly
+    ? [
+        PUBLIC_MODES[0],
+        {
+          value: 'hours' as const,
+          title: publicRideDurationLabel(hours),
+          subtitle: HOUR_DESCRIPTIONS[durationStop],
+        },
+        PUBLIC_MODES[3],
+      ]
+    : PUBLIC_MODES
+  const sectors = hourly ? HOUR_SECTORS : SECTORS
+  const icons = hourly ? HOUR_ICONS : ICONS
+  const selected = Math.max(
+    0,
+    options.findIndex((option) => option.value === value),
+  )
+  const stop = hourly
+    ? value === 'off'
+      ? 0
+      : value === 'automatic'
+        ? ALWAYS_STOP
+        : durationStop
+    : selected
+  const initial = useSharedValue(stop)
+  const detent = useSharedValue(stop)
+  const dragging = useSharedValue(false)
+  const touchStartX = useSharedValue(0)
+  const touchStartY = useSharedValue(0)
+  const readout = useDerivedValue<Readout>(() => {
+    const next = detent.get()
+    const sector = hourly ? (next === 0 ? 0 : next === ALWAYS_STOP ? 2 : 1) : next
+    return {
+      sector,
+      title: hourly
+        ? HOUR_TITLES[Math.max(1, Math.min(DURATION_COUNT, next))]
+        : PUBLIC_MODES[next].title,
+      description: hourly ? HOUR_DESCRIPTIONS[next] : PUBLIC_MODES[next].subtitle,
+      rotation: FIRST_TICK + (next - 1) * RULER_STEP + 90,
+      timed: hourly && next > 0 && next < ALWAYS_STOP,
+    }
+  })
   const wave = useSharedValue(1)
   const previous = useRef(value)
   const live = value !== 'off'
 
   useEffect(() => {
-    committed.set(selected)
-    detent.set(selected)
-  }, [committed, detent, selected])
+    initial.set(stop)
+    if (!dragging.get()) detent.set(stop)
+  }, [initial, detent, dragging, stop])
 
   useEffect(() => {
     cancelAnimation(wave)
@@ -80,30 +298,84 @@ export function PublicRideSelector({
 
   const select = useCallback(
     (index: number) => {
-      if (index < 0 || index === committed.get()) return
-      committed.set(index)
-      // A distinct stop at Private; light detents while scrubbing between public durations.
+      if (index < 0) return
       void Haptics.impactAsync(
         index === 0 ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Soft,
       )
-      onValueChange(PUBLIC_MODES[index].value)
+      if (hourly) {
+        onValueChange(
+          index === 0 ? 'off' : index === ALWAYS_STOP ? 'automatic' : 'hours',
+          index > 0 && index < ALWAYS_STOP ? PUBLIC_RIDE_DURATIONS[index - 1] : undefined,
+        )
+      } else onValueChange(PUBLIC_MODES[index].value)
     },
-    [committed, onValueChange],
+    [onValueChange, hourly],
   )
 
   const gesture = useMemo(() => {
-    const update = (x: number, y: number) => {
-      'worklet'
-      const next = publicRideIndexAt(x / scale, y / scale)
-      if (next < 0 || next === detent.get()) return
-      detent.set(next)
-      scheduleOnRN(select, next)
-    }
-    return Gesture.Pan()
-      .minDistance(0)
-      .onBegin((event) => update(event.x, event.y))
-      .onUpdate((event) => update(event.x, event.y))
-  }, [detent, scale, select])
+    const interaction = createPublicRideInteraction({
+      preview: detent,
+      initial,
+      active: dragging,
+      indexAt: (x, y, continuing) => {
+        'worklet'
+        const previewStop = detent.get()
+        const previewStopSector = hourly
+          ? previewStop === 0
+            ? 0
+            : previewStop === ALWAYS_STOP
+              ? 3
+              : previewStop <= DURATION_COUNT / 2
+                ? 1
+                : 2
+          : previewStop
+        let next = publicRideStableIndexAt(x / scale, y / scale, previewStopSector, continuing)
+        if (hourly && next >= 0) {
+          const angle =
+            (Math.atan2(y / scale - PUBLIC_RIDE_ARC.cy, x / scale - PUBLIC_RIDE_ARC.cx) * 180) /
+            Math.PI
+          next =
+            next === 0
+              ? 0
+              : next === 3
+                ? ALWAYS_STOP
+                : Math.max(
+                    1,
+                    Math.min(DURATION_COUNT, 1 + Math.round((angle - FIRST_TICK) / RULER_STEP)),
+                  )
+        }
+        return next
+      },
+      onCommit: (next) => {
+        'worklet'
+        scheduleOnRN(select, next)
+      },
+    })
+    const pan = Gesture.Pan()
+      .minDistance(6)
+      .shouldCancelWhenOutside(false)
+      .onBegin((event) => {
+        touchStartX.set(event.x)
+        touchStartY.set(event.y)
+      })
+      .onStart((event) => {
+        interaction.begin(touchStartX.get(), touchStartY.get())
+        interaction.move(event.x, event.y)
+      })
+      .onUpdate((event) => interaction.move(event.x, event.y))
+      .onFinalize((_event, success) => interaction.finish(success))
+    const tap = Gesture.Tap().onEnd((event, success) => {
+      if (!success) return
+      interaction.begin(event.x, event.y)
+      interaction.finish(true)
+    })
+    return Gesture.Race(pan, tap)
+  }, [detent, initial, dragging, touchStartX, touchStartY, scale, select, hourly])
+
+  const indicatorStyle = useAnimatedStyle(() => ({
+    opacity: readout.get().timed ? 1 : 0,
+    transform: [{ rotate: `${readout.get().rotation}deg` }],
+  }))
 
   return (
     <View style={styles.root}>
@@ -113,11 +385,14 @@ export function PublicRideSelector({
           <Text style={[styles.title, { color: neutral.textPrimary }]}>Public ride</Text>
           <Text style={[styles.intro, { color: neutral.textSecondary }]}>Share your location</Text>
         </View>
-        {profileAction ?? (
-          <Text style={[styles.status, { color: live ? accent : neutral.textSecondary }]}>
-            {live ? 'LIVE' : 'PRIVATE'}
-          </Text>
-        )}
+        <View style={styles.profileControls}>
+          {profileAction ?? (
+            <Text style={[styles.status, { color: live ? accent : neutral.textSecondary }]}>
+              {live ? 'LIVE' : 'PRIVATE'}
+            </Text>
+          )}
+          {durationControl ? <View style={styles.floatingDuration}>{durationControl}</View> : null}
+        </View>
       </View>
       <View style={styles.content}>
         <GestureDetector gesture={gesture}>
@@ -134,25 +409,66 @@ export function PublicRideSelector({
               viewBox={`0 0 ${PUBLIC_RIDE_ARC.width} ${PUBLIC_RIDE_ARC.height}`}
               style={StyleSheet.absoluteFill}
             >
-              {SECTORS.map((sector, index) => (
-                <Path
-                  key={PUBLIC_MODES[index].value}
-                  d={sector.path}
-                  fill={selected === index && index > 0 ? activeFill : neutral.surfaceDeep}
-                  stroke={
-                    selected === index
-                      ? index === 0
-                        ? neutral.textSecondary
-                        : accent
-                      : neutral.border
-                  }
-                  strokeWidth={1}
+              {sectors.map((sector, index) => (
+                <Sector
+                  key={index}
+                  path={sector.path}
+                  index={index}
+                  readout={readout}
+                  surface={neutral.surfaceDeep}
+                  border={neutral.border}
+                  accent={accent}
+                  activeFill={activeFill}
+                  muted={neutral.textSecondary}
                 />
               ))}
-              <G transform={`translate(${PUBLIC_RIDE_ARC.cx - 9} ${BROADCAST_Y - 9})`}>
-                <BroadcastIcon size={18} color={live ? accent : neutral.textSecondary} />
-              </G>
+              {hourly ? (
+                <Path
+                  d={TICK_PATH}
+                  stroke={neutral.textSecondary}
+                  strokeWidth={1}
+                  strokeLinecap="round"
+                />
+              ) : null}
             </Svg>
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: (PUBLIC_RIDE_ARC.cx - 9) * scale,
+                top: (BROADCAST_Y - 9) * scale,
+              }}
+            >
+              <PreviewGlyph
+                icon={BroadcastIcon}
+                index={-1}
+                readout={readout}
+                accent={accent}
+                muted={neutral.textSecondary}
+                size={18 * scale}
+              />
+            </View>
+            {hourly ? (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.indicatorPivot,
+                  { left: PUBLIC_RIDE_ARC.cx * scale, top: PUBLIC_RIDE_ARC.cy * scale },
+                  indicatorStyle,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.indicator,
+                    {
+                      backgroundColor: accent,
+                      top: -PUBLIC_RIDE_ARC.outerRadius * scale,
+                      height: 17 * scale,
+                    },
+                  ]}
+                />
+              </Animated.View>
+            ) : null}
             <Animated.View
               pointerEvents="none"
               style={[
@@ -165,52 +481,79 @@ export function PublicRideSelector({
                 waveStyle,
               ]}
             />
-            {PUBLIC_MODES.map((option, index) => {
-              const Icon = ICONS[index]
+            {options.map((option, index) => {
+              const Icon = icons[index]
               const active = selected === index
-              const color = active && index > 0 ? accent : neutral.textSecondary
               return (
-                <Pressable
+                <View
+                  accessible
                   key={option.value}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: active }}
                   accessibilityLabel={`${option.title}. ${option.subtitle}`}
-                  onPress={() => select(index)}
+                  accessibilityActions={[{ name: 'activate' }]}
+                  onAccessibilityAction={(event) => {
+                    if (event.nativeEvent.actionName !== 'activate') return
+                    select(
+                      hourly ? (index === 0 ? 0 : index === 2 ? ALWAYS_STOP : durationStop) : index,
+                    )
+                  }}
+                  onAccessibilityTap={() =>
+                    select(
+                      hourly ? (index === 0 ? 0 : index === 2 ? ALWAYS_STOP : durationStop) : index,
+                    )
+                  }
                   style={[
                     styles.choice,
                     {
-                      left: SECTORS[index].label.x * scale - 35,
-                      top: SECTORS[index].label.y * scale - 24,
+                      left: sectors[index].label.x * scale - 35,
+                      top: (sectors[index].label.y + (hourly && index === 1 ? 12 : 0)) * scale - 24,
                     },
                   ]}
                 >
-                  <Icon size={20} color={color} />
-                  <Text style={[styles.label, { color, fontWeight: active ? '700' : '500' }]}>
-                    {option.title}
-                  </Text>
-                </Pressable>
+                  <PreviewGlyph
+                    icon={Icon}
+                    index={index}
+                    readout={readout}
+                    accent={accent}
+                    muted={neutral.textSecondary}
+                  />
+                  {hourly && index === 1 ? (
+                    <ReadoutText readout={readout} accent={accent} muted={neutral.textSecondary} />
+                  ) : (
+                    <PreviewLabel
+                      title={option.title}
+                      index={index}
+                      readout={readout}
+                      accent={accent}
+                      muted={neutral.textSecondary}
+                    />
+                  )}
+                </View>
               )
             })}
           </View>
         </GestureDetector>
-        <Text
-          style={[styles.description, { color: neutral.textPrimary }]}
-          accessibilityLiveRegion="polite"
-        >
-          {PUBLIC_MODES[selected].subtitle}
-        </Text>
+        <ReadoutText readout={readout} description accent={accent} muted={neutral.textPrimary} />
       </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  indicatorPivot: { position: 'absolute', width: 0, height: 0 },
+  indicator: { position: 'absolute', width: 4, left: -2, borderRadius: 2 },
+  liveLabel: {
+    width: 70,
+  },
   root: { gap: 0 },
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
+  header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6, zIndex: 1 },
   headerIcon: { marginTop: 3 },
   heading: { flex: 1, minWidth: 0, gap: 4 },
   title: { fontSize: 17, fontWeight: '700' },
   content: { gap: 0 },
+  profileControls: { alignItems: 'flex-end' },
+  floatingDuration: { position: 'absolute', top: '100%', right: 0, marginTop: 4 },
   intro: { fontSize: 11, lineHeight: 16, maxWidth: 210 },
   arc: {
     width: '100%',
@@ -226,14 +569,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
   },
-  label: { fontSize: 12, textAlign: 'center' },
+  label: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   status: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
   description: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: -18,
+    marginTop: -22,
     marginBottom: 10,
   },
 })

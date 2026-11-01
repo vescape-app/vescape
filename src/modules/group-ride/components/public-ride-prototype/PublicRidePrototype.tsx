@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import {
+  CalendarBlankIcon,
+  ClockIcon,
   BatteryMediumIcon,
   BroadcastIcon,
   CaretLeftIcon,
@@ -17,12 +19,14 @@ import { useRouter } from 'expo-router'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { Text } from '@/components/base/Text'
 import { IconButton } from '@/components/base/IconButton'
+import { Switch } from '@/components/controls/Switch'
 import { Button } from '@/components/base/Button'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { theme } from '@/constants/theme'
-import { MOCK_RIDERS, PUBLIC_MODES, type MockRider } from './fixtures'
+import { MOCK_RIDERS, PUBLIC_MODES, publicRideDurationLabel, type MockRider } from './fixtures'
 import { usePublicRidePrototypeStore } from './prototypeStore'
 import { PublicRideSelector } from './PublicRideSelector'
 
@@ -33,7 +37,10 @@ interface Props {
 
 /** Development-only UI sandbox. No sharing intents, permissions, timers, or persisted settings. */
 export function PublicRidePrototype({ identity, onPageChange }: Props) {
+  useRenderRateWarning('PublicRidePrototype')
   const router = useRouter()
+  const [hourly, setHourly] = useState(true)
+  const hours = usePublicRidePrototypeStore((state) => state.hours)
   const [tab, setTab] = useState<'nearby' | 'friends'>('nearby')
   const mode = usePublicRidePrototypeStore((state) => state.mode)
   const setMode = usePublicRidePrototypeStore((state) => state.setMode)
@@ -134,7 +141,23 @@ export function PublicRidePrototype({ identity, onPageChange }: Props) {
         <>
           <PublicRideSelector
             value={mode}
+            hours={hourly ? hours : undefined}
             onValueChange={setMode}
+            durationControl={
+              <View style={styles.durationSwitch}>
+                <Switch
+                  onIcon={ClockIcon}
+                  offIcon={CalendarBlankIcon}
+                  value={hourly}
+                  accent={theme.palette.groupRide.color}
+                  accessibilityLabel="Choose duration with hours instead of ride and day presets"
+                  onValueChange={(next) => {
+                    setHourly(next)
+                    if (mode !== 'off' && mode !== 'automatic') setMode(next ? 'hours' : 'ride')
+                  }}
+                />
+              </View>
+            }
             profileAction={
               <View>
                 {identity}
@@ -238,7 +261,9 @@ export function PublicRidePrototype({ identity, onPageChange }: Props) {
           <View style={[surface, styles.summary]}>
             <BroadcastIcon size={22} color={theme.palette.groupRide.color} />
             <Text style={[styles.name, styles.flex]}>
-              {PUBLIC_MODES.find((option) => option.value === mode)?.title}
+              {mode === 'hours'
+                ? publicRideDurationLabel(hours)
+                : PUBLIC_MODES.find((option) => option.value === mode)?.title}
             </Text>
             <Button
               label="Go private"
@@ -388,6 +413,7 @@ function MockMap({
 
 const styles = StyleSheet.create({
   stack: { gap: 10 },
+  durationSwitch: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   roster: { padding: 12, gap: 6 },
   rosterHeader: {
     flexDirection: 'row',

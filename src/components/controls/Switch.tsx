@@ -20,6 +20,7 @@ import {
   CONTROL_INK as INK,
   useColoredControlSurface,
 } from '@/components/controls/coloredControlSurface'
+import type { Icon } from 'phosphor-react-native'
 import { theme, type ThemeColor } from '@/constants/theme'
 
 const WIDTH = 58
@@ -56,6 +57,9 @@ export interface SwitchProps {
   disabled?: boolean
   /** Tint of the on state. Defaults to the surrounding `SwitchAccentProvider`, then to sky. */
   accent?: ThemeColor
+  /** Optional state icons in place of ON/OFF captions. */
+  onIcon?: Icon
+  offIcon?: Icon
   accessibilityLabel?: string
   testID?: string
 }
@@ -76,6 +80,8 @@ export function Switch({
   disabled,
   accent,
   accessibilityLabel,
+  onIcon: OnIcon,
+  offIcon: OffIcon,
   testID,
 }: SwitchProps) {
   const inheritedAccent = useContext(SwitchAccentContext)
@@ -214,12 +220,24 @@ export function Switch({
         {...(testID ? { testID } : {})}
       >
         <Animated.View style={[styles.track, disabled ? styles.trackDisabled : null, trackStyle]}>
-          <Animated.Text style={[styles.caption, styles.captionOn, onCaptionStyle]}>
-            ON
-          </Animated.Text>
-          <Animated.Text style={[styles.caption, styles.captionOff, offCaptionStyle]}>
-            OFF
-          </Animated.Text>
+          {OnIcon ? (
+            <Animated.View style={[styles.iconCaption, styles.captionOn, onCaptionStyle]}>
+              <OnIcon size={14} color={tint} />
+            </Animated.View>
+          ) : (
+            <Animated.Text style={[styles.caption, styles.captionOn, onCaptionStyle]}>
+              ON
+            </Animated.Text>
+          )}
+          {OffIcon ? (
+            <Animated.View style={[styles.iconCaption, styles.captionOff, offCaptionStyle]}>
+              <OffIcon size={14} color={INK.textMuted} />
+            </Animated.View>
+          ) : (
+            <Animated.Text style={[styles.caption, styles.captionOff, offCaptionStyle]}>
+              OFF
+            </Animated.Text>
+          )}
           <Animated.View style={[styles.thumb, thumbStyle]}>
             {pending ? (
               <Animated.View style={[styles.spinner, { borderColor: tint }, spinnerStyle]} />
@@ -256,6 +274,7 @@ const styles = StyleSheet.create({
   trackDisabled: {
     borderStyle: 'dashed',
   },
+  iconCaption: { position: 'absolute', width: 14, height: 14 },
   caption: {
     position: 'absolute',
     fontFamily: theme.font('800'),

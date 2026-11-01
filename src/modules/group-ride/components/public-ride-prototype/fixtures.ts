@@ -1,5 +1,5 @@
 // UI-only fixtures. Never passed to the relay, native presence, or preference stores.
-export type PublicMode = 'off' | 'ride' | 'day' | 'automatic'
+export type PublicMode = 'off' | 'ride' | 'day' | 'automatic' | 'hours'
 export interface MockRider {
   id: string
   name: string
@@ -102,3 +102,9 @@ export const MOCK_RIDERS: MockRider[] = [
     position: { x: 28, y: 70 },
   },
 ]
+
+// Nonlinear ruler: 12 hours at its midpoint, then 24 hours and whole days.
+export const PUBLIC_RIDE_DURATIONS = [1, 2, 3, 4, 6, 8, 10, 12, 24, 48, 72, 96, 120, 144, 168]
+export function publicRideDurationLabel(hours: number) {
+  return hours >= 48 ? `${hours / 24} d` : `${hours} h`
+}

@@ -257,20 +257,40 @@ const styles = StyleSheet.create({
 
 export function PublicRideSelectorShowcase() {
   const [mode, setMode] = useState<PublicMode>('off')
+  const [hours, setHours] = useState(2)
+  const [hourly, setHourly] = useState(false)
   return (
     <ShowcaseCard
       name="PublicRideSelector"
       controls={
         <ChipRow
           label="Mode"
-          options={PUBLIC_MODES.map((option) => option.value)}
+          options={
+            hourly ? ['off', 'hours', 'automatic'] : PUBLIC_MODES.map((option) => option.value)
+          }
           selected={mode}
           onSelect={(value) => setMode(value as PublicMode)}
         />
       }
     >
-      <PublicRideSelector value={mode} onValueChange={setMode} />
-      <Text>Drag across the sectors. Each public selection sends two visual pulses.</Text>
+      <ChipRow
+        label="Variant"
+        options={['Original', 'Hours']}
+        selected={hourly ? 'Hours' : 'Original'}
+        onSelect={(value) => {
+          setHourly(value === 'Hours')
+          setMode('off')
+        }}
+      />
+      <PublicRideSelector
+        value={mode}
+        onValueChange={(nextMode, nextHours) => {
+          setMode(nextMode)
+          if (nextHours !== undefined) setHours(nextHours)
+        }}
+        hours={hourly ? hours : undefined}
+      />
+      <Text>Drag to preview; release to apply. Public selections send two visual pulses.</Text>
     </ShowcaseCard>
   )
 }
