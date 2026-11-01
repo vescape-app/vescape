@@ -307,6 +307,10 @@ internal final class VescGattClient: NSObject, SessionTransport {
   /// remote controls from dropping each other, and keeps the queue short enough that a neutral
   /// reaches the board while the rider's finger is still lifting.
   ///
+  /// Each write is one chunk sized to the link (#620). The limit comes from `.withoutResponse`: for
+  /// `.withResponse` CoreBluetooth reports 512 because it would do a GATT long write itself, which
+  /// some board BLE modules cannot handle.
+  ///
   /// `.withResponse` writes resume from `didWriteValueFor`; `.withoutResponse` writes have no
   /// completion callback, so they complete inline and back off on `canSendWriteWithoutResponse`,
   /// resuming from `peripheralIsReady`.
@@ -315,6 +319,7 @@ internal final class VescGattClient: NSObject, SessionTransport {
   @discardableResult
   private func drainWriteQueue() -> Bool {
     guard linkUp, let peripheral, let txChar else { return false }
+    writeQueue.setChunkLimit(peripheral.maximumWriteValueLength(for: .withoutResponse))
     while true {
       if writeType == .withoutResponse, !peripheral.canSendWriteWithoutResponse {
         return true
@@ -524,7 +529,7 @@ extension VescGattClient: CBPeripheralDelegate {
 
   func didWriteValue(_ peripheral: VescPeripheral, characteristic: CBCharacteristic, error: Error?) {
     guard linkUp, peripheral === self.peripheral, characteristic.uuid == VescGattUUIDs.tx else { return }
-    let completed = writeQueue.completeInFlight()
+    let completed = writeQueue.completeInFlight(failed: error != nil)
     if let error {
       NSLog("gatt write callback failed bytes=\(completed?.bytes.count ?? 0): \(error.localizedDescription)")
     }

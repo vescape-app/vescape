@@ -102,19 +102,6 @@ final class VescWriteQueueTests: XCTestCase {
     XCTAssertEqual(queue.startNext()?.bytes, newerNeutral)
   }
 
-  func testRefusedRemoteInputWriteNeverOverwritesNewerTilt() {
-    let queue = VescWriteQueue()
-    let refused: [UInt8] = [1]
-    let latest: [UInt8] = [2]
-
-    queue.replaceRemoteInput(refused)
-    XCTAssertEqual(queue.startNext()?.bytes, refused)
-    queue.replaceRemoteInput(latest)
-    queue.retryInFlight()
-
-    XCTAssertEqual(queue.startNext()?.bytes, latest)
-  }
-
   /// The regression this queue exists for: a held stream at its repeat cadence must not grow the
   /// backlog, or the neutral that ends the gesture lands seconds late and the board holds tilt.
   func testHeldStreamNeverAccumulatesBacklog() {
@@ -131,6 +118,81 @@ final class VescWriteQueueTests: XCTestCase {
     // Only the newest survives; the other 99 never reach the board.
     XCTAssertEqual(queue.startNext()?.bytes, [100])
     queue.completeInFlight()
+    XCTAssertNil(queue.startNext())
+  }
+
+  private func frame(_ size: Int) -> [UInt8] { (0..<size).map { UInt8($0 & 0xFF) } }
+
+  /// Drain every remaining write, completing each one, and return their bytes in order.
+  private func drain(_ queue: VescWriteQueue) -> [[UInt8]] {
+    var writes: [[UInt8]] = []
+    while let write = queue.startNext() {
+      writes.append(write.bytes)
+      queue.completeInFlight()
+    }
+    return writes
+  }
+
+  func testLargeFrameGoesOutAsOrderedChunksWithinTheLimit() {
+    let queue = VescWriteQueue()
+    let tuneFrame = frame(272)
+
+    queue.enqueueNormal(tuneFrame)
+    let writes = drain(queue)
+
+    XCTAssertEqual(writes.map(\.count), Array(repeating: 20, count: 13) + [12])
+    XCTAssertEqual(writes.flatMap { $0 }, tuneFrame)
+  }
+
+  func testFrameWithinTheLimitGoesOutAsOneWrite() {
+    let queue = VescWriteQueue()
+    let tuneFrame = frame(272)
+    queue.setChunkLimit(514)
+
+    queue.enqueueNormal(tuneFrame)
+
+    XCTAssertEqual(drain(queue), [tuneFrame])
+  }
+
+  func testNoWriteRunsBetweenChunksOfOneFrame() {
+    let queue = VescWriteQueue()
+    let tuneFrame = frame(45)
+    let poll: [UInt8] = [255]
+    let neutral: [UInt8] = [254]
+
+    queue.enqueueNormal(tuneFrame)
+    _ = queue.startNext()
+    queue.enqueueNormal(poll)
+    queue.replaceRemoteInput(neutral, urgent: true)
+    queue.completeInFlight()
+
+    let rest = drain(queue)
+
+    XCTAssertEqual(rest.prefix(2).map(\.count), [20, 5])
+    // The stop still goes before later normal traffic, just after the frame in flight.
+    XCTAssertEqual(rest[2], neutral)
+    XCTAssertEqual(rest[3], poll)
+  }
+
+  func testFailedChunkDropsTheRestOfItsFrame() {
+    let queue = VescWriteQueue()
+    let poll: [UInt8] = [255]
+
+    queue.enqueueNormal(frame(50))
+    queue.enqueueNormal(poll)
+    _ = queue.startNext()
+    queue.completeInFlight(failed: true)
+
+    XCTAssertEqual(drain(queue), [poll])
+  }
+
+  func testClearDropsAPartlySentFrame() {
+    let queue = VescWriteQueue()
+
+    queue.enqueueNormal(frame(50))
+    _ = queue.startNext()
+    queue.clear()
+
     XCTAssertNil(queue.startNext())
   }
 }

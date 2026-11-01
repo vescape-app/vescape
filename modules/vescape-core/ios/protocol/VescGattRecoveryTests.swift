@@ -55,6 +55,26 @@ final class VescGattRecoveryTests: XCTestCase {
     XCTAssertEqual(fixture.peripheral.writes, [Data(VescPacketCodec.encode([1])), Data(VescPacketCodec.encode([3]))])
   }
 
+  /// #620: boards at MTU 23 drop the link on a GATT long write, so every write must fit one ATT
+  /// packet even though `.withResponse` reports 512.
+  func testLargeFrameIsWrittenInChunksThatFitTheLink() {
+    let fixture = ConnectedGattFixture(target: target)
+    fixture.subscribe()
+    fixture.gatt.didUpdateNotificationState(fixture.peripheral, characteristic: fixture.peripheral.rx, error: nil)
+    let payload = (0..<280).map { UInt8($0 & 0xFF) }
+
+    XCTAssertTrue(fixture.gatt.sendPayload(payload))
+    // Acknowledge each write until the queue stops sending.
+    var acknowledged = 0
+    while fixture.peripheral.writes.count > acknowledged {
+      acknowledged = fixture.peripheral.writes.count
+      fixture.gatt.didWriteValue(fixture.peripheral, characteristic: fixture.peripheral.tx, error: nil)
+    }
+
+    XCTAssertTrue(fixture.peripheral.writes.allSatisfy { $0.count <= 20 })
+    XCTAssertEqual(Array(fixture.peripheral.writes.joined()), VescPacketCodec.encode(payload))
+  }
+
   func testCentralIsCreatedAtConstructionBeforeAnyConnectOrScan() {
     let central = RecoveryTestCentral()
     let listener = RecoveryTestGattListener()
@@ -209,6 +229,11 @@ private final class RecoveryTestPeripheral: VescPeripheral {
   func discoverCharacteristics(_ characteristicUUIDs: [CBUUID]?, for service: CBService) {}
   func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic) {}
   func writeValue(_ data: Data, for characteristic: CBCharacteristic, type: CBCharacteristicWriteType) { writes.append(data) }
+  /// A board stuck at ATT MTU 23. CoreBluetooth reports 512 for `.withResponse` because it would
+  /// split the write into a GATT long write itself.
+  func maximumWriteValueLength(for type: CBCharacteristicWriteType) -> Int {
+    type == .withResponse ? 512 : 20
+  }
 }
 
 private final class ConnectedGattFixture {
