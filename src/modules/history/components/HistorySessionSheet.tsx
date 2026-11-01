@@ -9,7 +9,7 @@ import {
   StarIcon,
   XIcon,
 } from 'phosphor-react-native'
-import type { Favorite, RideDay } from 'vescape-core'
+import { countRideHistory, type Favorite, type RideDay, type RideHistoryFilter } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
@@ -39,6 +39,9 @@ import { useHistoryFilterStore } from '@/modules/history/store/historyFilterStor
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import type { HistorySession } from '@/modules/history/store/historyStore'
+
+const RIDE_NOUN = { one: 'ride', other: 'rides' }
+const FAVORITE_NOUN = { one: 'favorite', other: 'favorites' }
 
 interface HistorySessionSheetProps {
   visible: boolean
@@ -83,6 +86,13 @@ export function HistorySessionSheet({
     setFilterOpen(false)
     useHistoryStore.getState().setRideFilter(selection)
   }, [])
+  const countMatches = useCallback(
+    async (filter: RideHistoryFilter) =>
+      favoriteMode
+        ? listedSessions.filter((session) => matchesRideFilter(session, filter)).length
+        : countRideHistory(filter),
+    [favoriteMode, listedSessions],
+  )
   // Native filters the ride pages; favorites are all loaded, so they filter here by their ride.
   const sessions = useMemo(() => {
     if (!favoriteMode || !filtered) return listedSessions
@@ -262,7 +272,14 @@ export function HistorySessionSheet({
             }
       }
     >
-      {filterOpen ? <HistoryFilterPanel selection={filterSelection} onApply={applyFilter} /> : null}
+      {filterOpen ? (
+        <HistoryFilterPanel
+          selection={filterSelection}
+          countMatches={countMatches}
+          noun={favoriteMode ? FAVORITE_NOUN : RIDE_NOUN}
+          onApply={applyFilter}
+        />
+      ) : null}
     </EdgeDrawer>
   )
 }

@@ -1,16 +1,18 @@
 import { useState } from 'react'
-import type { RideWeatherCondition } from 'vescape-core'
+import type { RideHistoryFilter, RideWeatherCondition } from 'vescape-core'
 import { StyleSheet, View } from 'react-native'
 
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { DateField } from '@/components/forms/DateField'
 import { theme } from '@/constants/theme'
+import { useAsyncRead } from '@/hooks/useAsyncRead'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import {
   EMPTY_RIDE_FILTER,
   customRange,
   presetRange,
+  toRideHistoryFilter,
   type RideDatePreset,
   type RideFilterSelection,
 } from '@/modules/history/lib/rideFilter'
@@ -31,13 +33,34 @@ const DAY_MS = 24 * 60 * 60_000
 
 interface HistoryFilterPanelProps {
   selection: RideFilterSelection
+  /** Matches for the draft, so the rider sees the result size before applying it. */
+  countMatches: (filter: RideHistoryFilter) => Promise<number>
+  /** Plural noun for what is counted, e.g. `rides` or `favorites`. */
+  noun: { one: string; other: string }
   onApply: (selection: RideFilterSelection) => void
 }
 
 /** Date and Board filter for both History tabs; edits a draft until Apply. */
-export function HistoryFilterPanel({ selection, onApply }: HistoryFilterPanelProps) {
+export function HistoryFilterPanel({
+  selection,
+  countMatches,
+  noun,
+  onApply,
+}: HistoryFilterPanelProps) {
   const boards = useBoardStore((state) => state.boards)
   const [draft, setDraft] = useState(selection)
+  const draftFilter = toRideHistoryFilter(draft)
+  const matches = useAsyncRead(
+    () => countMatches(draftFilter),
+    null as number | null,
+    JSON.stringify(draftFilter),
+  )
+  const applyLabel =
+    matches.loading || matches.value == null
+      ? 'Apply'
+      : matches.value === 0
+        ? `No matching ${noun.other}`
+        : `Show ${matches.value} ${matches.value === 1 ? noun.one : noun.other}`
   const today = new Date()
 
   const pickPreset = (preset: RideDatePreset) => {
@@ -151,7 +174,9 @@ export function HistoryFilterPanel({ selection, onApply }: HistoryFilterPanelPro
           onPress={() => onApply(EMPTY_RIDE_FILTER)}
         />
         <Button
-          label="Apply"
+          label={applyLabel}
+          variant="accent"
+          disabled={matches.value === 0}
           style={styles.action}
           testID="history-filter-apply"
           onPress={() => onApply(draft)}
