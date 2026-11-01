@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LocationEvent, MapPoint, MapPointCategory } from 'vescape-core'
 
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
-import { MOCK_RIDERS } from '@/modules/group-ride/components/public-ride-prototype/fixtures'
+import {
+  MOCK_RIDERS,
+  publicRideMapRiderId,
+} from '@/modules/group-ride/components/public-ride-prototype/fixtures'
 import { usePublicRidePrototypeStore } from '@/modules/group-ride/components/public-ride-prototype/prototypeStore'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
@@ -40,6 +43,7 @@ function usableCoordinate(location: { longitude: number; latitude: number } | nu
 }
 
 export function useLiveMapModel({
+  prototypeFallbackCoordinate,
   liveLocations,
   latestApproximateLocation,
   historyGpsSamples,
@@ -49,6 +53,7 @@ export function useLiveMapModel({
   activeNavigationTarget,
   directionPoint,
 }: {
+  prototypeFallbackCoordinate: [number, number] | null
   liveLocations: LocationEvent[]
   latestApproximateLocation: LocationEvent | null
   historyGpsSamples: HistoryGpsSample[]
@@ -105,8 +110,16 @@ export function useLiveMapModel({
   const hiddenPrototypeRiders = usePublicRidePrototypeStore((state) => state.hidden)
   const showPrototypeRiders = usePublicRidePrototypeStore((state) => state.showRidersOnMap)
   // Sample locations stay anchored to the first available fix, rather than following the phone.
-  const prototypeOrigin = useRef(trackingCoordinate)
-  if (!prototypeOrigin.current && trackingCoordinate) prototypeOrigin.current = trackingCoordinate
+  const prototypeAnchor =
+    trackingCoordinate ??
+    (prototypeFallbackCoordinate
+      ? {
+          longitude: prototypeFallbackCoordinate[0],
+          latitude: prototypeFallbackCoordinate[1],
+        }
+      : null)
+  const prototypeOrigin = useRef(prototypeAnchor)
+  if (!prototypeOrigin.current && prototypeAnchor) prototypeOrigin.current = prototypeAnchor
   const prototypeLatitude = prototypeOrigin.current?.latitude
   const prototypeLongitude = prototypeOrigin.current?.longitude
   const riderFocusRows = useMemo((): RosterRider[] => {
@@ -121,7 +134,7 @@ export function useLiveMapModel({
     // Development fixtures only: reuse the dashboard's rider pins and offscreen indicators.
     return MOCK_RIDERS.filter((rider) => !hiddenPrototypeRiders.includes(rider.id)).map(
       (rider) => ({
-        id: `public-ride-prototype-${rider.id}`,
+        id: publicRideMapRiderId(rider.id),
         name: `${rider.name} · demo`,
         color: null,
         presence: {

@@ -65,6 +65,17 @@ const groups = [
   {
     title: 'General use',
     sections: [
+      ...(__DEV__
+        ? [
+            {
+              label: 'Social — rider prototypes',
+              hint: 'Nine layouts, active and inactive riders, friendship states',
+              route: '/settings/components/rider-prototype',
+              icon: MapTrifoldIcon,
+              color: theme.palette.groupRide.color,
+            },
+          ]
+        : []),
       {
         label: 'Charts',
         hint: 'Sparklines and gauges for showing telemetry over time',

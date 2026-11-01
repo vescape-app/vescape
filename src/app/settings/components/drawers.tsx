@@ -1,3 +1,4 @@
+import { SocialNavigationShowcase } from '@/screens/showcase/modals/SocialNavigationShowcase'
 import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { RowsIcon } from 'phosphor-react-native'
@@ -24,6 +25,7 @@ export default function DrawersPage() {
         />
         <EdgeDrawerResizeShowcase edge="bottom" />
         <EdgeDrawerResizeShowcase edge="top" />
+        <SocialNavigationShowcase />
         <EdgeDrawerPositionShowcase
           edge="auto"
           name="EdgeDrawer — automatic edge"

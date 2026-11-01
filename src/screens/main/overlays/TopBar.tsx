@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BoardSelectorSheet } from '@/modules/board/components/BoardSelectorSheet'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { IconButton } from '@/components/base/IconButton'
-import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
+import { SocialDrawer } from '@/screens/main/overlays/SocialDrawer'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
 import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
@@ -104,7 +104,6 @@ export function TopBar({
     accessoryId?: string
   } | null>(null)
   const [socialOpen, setSocialOpen] = useState(false)
-  const [socialPage, setSocialPage] = useState('nearby')
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const riderColor = useSelectedBoardRailColor() ?? theme.palette.green.color
@@ -267,18 +266,12 @@ export function TopBar({
           />
         </View>
       </View>
-      <EdgeDrawer
+      <SocialDrawer
         visible={socialOpen}
         triggerRef={socialRef}
-        edge="top"
-        title="Social"
-        contentPageKey={socialPage}
-        icon={UsersThreeIcon}
-        backdropTestID="social-drawer-backdrop"
         onClose={() => setSocialOpen(false)}
-      >
-        <SocialSheet onPageChange={setSocialPage} />
-      </EdgeDrawer>
+        onEnterMap={onNavigationPress}
+      />
 
       <EdgeDrawer
         visible={settingsOpen}

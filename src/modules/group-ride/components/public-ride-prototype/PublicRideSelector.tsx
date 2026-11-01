@@ -10,13 +10,12 @@ import {
   type Icon,
 } from 'phosphor-react-native'
 import * as Haptics from 'expo-haptics'
-import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
-import { useSkiaFont } from '@/hooks/useSkiaFont'
 import Svg, { Path } from 'react-native-svg'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
+  useAnimatedReaction,
   useAnimatedProps,
   useDerivedValue,
   type SharedValue,
@@ -27,7 +26,6 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets'
 
 import { createPublicRideInteraction } from '@/modules/group-ride/lib/publicRideInteraction'
-import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { Text } from '@/components/base/Text'
 import { blend, theme } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
@@ -43,6 +41,13 @@ import {
   type PublicMode,
 } from './fixtures'
 
+import {
+  PublicRideReadout,
+  HOUR_TITLES,
+  HOUR_DESCRIPTIONS,
+  type PublicRideReadoutState as Readout,
+} from './PublicRideReadout'
+
 const BROADCAST_Y = PUBLIC_RIDE_ARC.cy - 22
 const RULER_EDGE_INSET =
   (Math.asin(PUBLIC_RIDE_ARC.gap / 2 / PUBLIC_RIDE_ARC.outerRadius) * 180) / Math.PI
@@ -56,31 +61,14 @@ const ICONS = [PowerIcon, NavigationArrowIcon, CalendarBlankIcon, InfinityIcon]
 const HOUR_ICONS = [PowerIcon, ClockIcon, InfinityIcon]
 const SECTORS = PUBLIC_MODES.map((_, index) => publicRideSector(index))
 const HOUR_SECTORS = [SECTORS[0], publicRideSector(1, 2), SECTORS[3]]
-const HOUR_TITLES = ['Off', ...PUBLIC_RIDE_DURATIONS.map(publicRideDurationLabel), 'Always']
-const HOUR_DESCRIPTIONS = [
-  'Your location is hidden',
-  ...PUBLIC_RIDE_DURATIONS.map((hours) =>
-    hours >= 48
-      ? `Visible for ${hours / 24} days`
-      : `Visible for ${hours} ${hours === 1 ? 'hour' : 'hours'}`,
-  ),
-  PUBLIC_MODES[3].subtitle,
-]
 const TICK_PATH = Array.from({ length: DURATION_COUNT }, (_, index) => {
   const angle = ((FIRST_TICK + index * RULER_STEP) * Math.PI) / 180
   const { cx, cy, outerRadius } = PUBLIC_RIDE_ARC
-  return `M ${cx + Math.cos(angle) * outerRadius} ${cy + Math.sin(angle) * outerRadius} L ${cx + Math.cos(angle) * (outerRadius - 11)} ${cy + Math.sin(angle) * (outerRadius - 11)}`
+  const innerRadius = outerRadius - (PUBLIC_RIDE_DURATIONS[index] === 12 ? 12 : 7)
+  return `M ${cx + Math.cos(angle) * outerRadius} ${cy + Math.sin(angle) * outerRadius} L ${cx + Math.cos(angle) * innerRadius} ${cy + Math.sin(angle) * innerRadius}`
 }).join(' ')
 const AnimatedPath = Animated.createAnimatedComponent(Path)
 const AnimatedText = Animated.createAnimatedComponent(Text)
-
-interface Readout {
-  sector: number
-  title: string
-  description: string
-  rotation: number
-  timed: boolean
-}
 
 function Sector({
   path,
@@ -91,7 +79,9 @@ function Sector({
   accent,
   activeFill,
   muted,
+  initialActive,
 }: {
+  initialActive: boolean
   path: string
   index: number
   readout: SharedValue<Readout>
@@ -101,11 +91,26 @@ function Sector({
   activeFill: string
   muted: string
 }) {
-  const props = useAnimatedProps(() => ({
-    fill: readout.get().sector === index && index > 0 ? activeFill : surface,
-    stroke: readout.get().sector === index ? (index === 0 ? muted : accent) : border,
-  }))
-  return <AnimatedPath d={path} animatedProps={props} strokeWidth={1} />
+  const opacity = useSharedValue(initialActive ? 1 : 0)
+  useAnimatedReaction(
+    () => readout.get().sector === index,
+    (active, previous) => {
+      if (active !== previous) opacity.set(withTiming(active ? 1 : 0, { duration: 80 }))
+    },
+  )
+  const props = useAnimatedProps(() => ({ opacity: opacity.get() }))
+  return (
+    <>
+      <Path d={path} fill={surface} stroke={border} strokeWidth={1} />
+      <AnimatedPath
+        d={path}
+        fill={index > 0 ? activeFill : surface}
+        stroke={index === 0 ? muted : accent}
+        animatedProps={props}
+        strokeWidth={1}
+      />
+    </>
+  )
 }
 
 /** Icons and labels share the same preview as the sector, including before release. */
@@ -158,53 +163,6 @@ function PreviewLabel({
   return <AnimatedText style={[styles.label, style]}>{title}</AnimatedText>
 }
 
-/** Skia paints live text without native text-input commits or React renders. */
-function ReadoutText({
-  readout,
-  description = false,
-  accent,
-  muted,
-}: {
-  readout: SharedValue<Readout>
-  description?: boolean
-  accent: string
-  muted: string
-}) {
-  'use no memo'
-  const height = description ? 22 : 16
-  const font = useSkiaFont(description ? '600' : '700', description ? 16 : 12)
-  const canvasSize = useSharedValue({ width: 0, height })
-  const layout = useMemo(() => {
-    if (!font) return null
-    const strings = description
-      ? [...HOUR_DESCRIPTIONS, ...PUBLIC_MODES.map((option) => option.subtitle)]
-      : HOUR_TITLES
-    const widths = Object.fromEntries(strings.map((text) => [text, font.measureText(text).width]))
-    const { ascent, descent } = font.getMetrics()
-    return { widths, baseline: height / 2 - (ascent + descent) / 2 }
-  }, [font, description, height])
-  const text = useDerivedValue(() =>
-    description ? readout.get().description : readout.get().title,
-  )
-  const x = useDerivedValue(() => (canvasSize.get().width - (layout?.widths[text.get()] ?? 0)) / 2)
-  const color = useDerivedValue(() => (description ? muted : readout.get().timed ? accent : muted))
-  return (
-    <View
-      accessible
-      accessibilityLabel={
-        description ? 'Selected visibility duration' : 'Selected sharing duration'
-      }
-      style={description ? styles.description : styles.liveLabel}
-    >
-      <Canvas pointerEvents="none" style={{ height }} onSize={canvasSize}>
-        {font && layout ? (
-          <SkiaText text={text} x={x} y={layout.baseline} font={font} color={color} />
-        ) : null}
-      </Canvas>
-    </View>
-  )
-}
-
 /** Presentation only: the owner decides what selecting a sharing duration does. */
 export function PublicRideSelector({
   value,
@@ -220,7 +178,6 @@ export function PublicRideSelector({
   onValueChange: (mode: PublicMode, hours?: number) => void
 }) {
   'use no memo'
-  useRenderRateWarning('PublicRideSelector')
   const neutral = useResolvedNeutralColors()
   const accent = useResolvedColor(theme.palette.groupRide.color)
   const activeFill = blend(neutral.surfaceDeep, accent, 0.12)
@@ -233,7 +190,7 @@ export function PublicRideSelector({
         PUBLIC_MODES[0],
         {
           value: 'hours' as const,
-          title: publicRideDurationLabel(hours),
+          title: value === 'hours' ? publicRideDurationLabel(hours) : 'Timer',
           subtitle: HOUR_DESCRIPTIONS[durationStop],
         },
         PUBLIC_MODES[3],
@@ -263,7 +220,9 @@ export function PublicRideSelector({
     return {
       sector,
       title: hourly
-        ? HOUR_TITLES[Math.max(1, Math.min(DURATION_COUNT, next))]
+        ? next > 0 && next < ALWAYS_STOP
+          ? HOUR_TITLES[next]
+          : 'Timer'
         : PUBLIC_MODES[next].title,
       description: hourly ? HOUR_DESCRIPTIONS[next] : PUBLIC_MODES[next].subtitle,
       rotation: FIRST_TICK + (next - 1) * RULER_STEP + 90,
@@ -290,6 +249,10 @@ export function PublicRideSelector({
     previous.current = value
     return () => cancelAnimation(wave)
   }, [value, wave])
+
+  const rulerProps = useAnimatedProps(() => ({
+    stroke: readout.get().timed ? neutral.textSecondary : neutral.border,
+  }))
 
   const waveStyle = useAnimatedStyle(() => ({
     opacity: (1 - wave.get()) * 0.65,
@@ -371,10 +334,14 @@ export function PublicRideSelector({
     })
     return Gesture.Race(pan, tap)
   }, [detent, initial, dragging, touchStartX, touchStartY, scale, select, hourly])
-
+  const indicatorRotation = useDerivedValue(() => {
+    const target = readout.get().rotation
+    if (!readout.get().timed || dragging.get()) return target
+    return withTiming(target, { duration: 380 })
+  })
   const indicatorStyle = useAnimatedStyle(() => ({
     opacity: readout.get().timed ? 1 : 0,
-    transform: [{ rotate: `${readout.get().rotation}deg` }],
+    transform: [{ rotate: `${indicatorRotation.get()}deg` }],
   }))
 
   return (
@@ -412,6 +379,7 @@ export function PublicRideSelector({
               {sectors.map((sector, index) => (
                 <Sector
                   key={index}
+                  initialActive={selected === index}
                   path={sector.path}
                   index={index}
                   readout={readout}
@@ -423,9 +391,9 @@ export function PublicRideSelector({
                 />
               ))}
               {hourly ? (
-                <Path
+                <AnimatedPath
                   d={TICK_PATH}
-                  stroke={neutral.textSecondary}
+                  animatedProps={rulerProps}
                   strokeWidth={1}
                   strokeLinecap="round"
                 />
@@ -463,7 +431,7 @@ export function PublicRideSelector({
                     {
                       backgroundColor: accent,
                       top: -PUBLIC_RIDE_ARC.outerRadius * scale,
-                      height: 17 * scale,
+                      height: 20 * scale,
                     },
                   ]}
                 />
@@ -507,7 +475,7 @@ export function PublicRideSelector({
                     styles.choice,
                     {
                       left: sectors[index].label.x * scale - 35,
-                      top: (sectors[index].label.y + (hourly && index === 1 ? 12 : 0)) * scale - 24,
+                      top: (sectors[index].label.y + (hourly && index === 1 ? 7 : 0)) * scale - 24,
                     },
                   ]}
                 >
@@ -519,7 +487,11 @@ export function PublicRideSelector({
                     muted={neutral.textSecondary}
                   />
                   {hourly && index === 1 ? (
-                    <ReadoutText readout={readout} accent={accent} muted={neutral.textSecondary} />
+                    <PublicRideReadout
+                      readout={readout}
+                      accent={accent}
+                      muted={neutral.textSecondary}
+                    />
                   ) : (
                     <PreviewLabel
                       title={option.title}
@@ -534,7 +506,12 @@ export function PublicRideSelector({
             })}
           </View>
         </GestureDetector>
-        <ReadoutText readout={readout} description accent={accent} muted={neutral.textPrimary} />
+        <PublicRideReadout
+          readout={readout}
+          description
+          accent={accent}
+          muted={neutral.textPrimary}
+        />
       </View>
     </View>
   )
@@ -543,9 +520,6 @@ export function PublicRideSelector({
 const styles = StyleSheet.create({
   indicatorPivot: { position: 'absolute', width: 0, height: 0 },
   indicator: { position: 'absolute', width: 4, left: -2, borderRadius: 2 },
-  liveLabel: {
-    width: 70,
-  },
   root: { gap: 0 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6, zIndex: 1 },
   headerIcon: { marginTop: 3 },
@@ -571,8 +545,4 @@ const styles = StyleSheet.create({
   },
   label: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   status: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  description: {
-    marginTop: -22,
-    marginBottom: 10,
-  },
 })

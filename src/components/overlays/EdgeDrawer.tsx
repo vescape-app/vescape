@@ -46,6 +46,8 @@ interface EdgeDrawerProps {
   visible: boolean
   triggerRef: React.RefObject<View | null>
   onClose: () => void
+  /** Android Back may pop a nested page; backdrop and drag still dismiss the drawer. */
+  onBack?: () => void
   /** Which edge the drawer opens from. `auto` picks the edge nearest the trigger. */
   edge?: 'auto' | 'top' | 'bottom'
   /** Custom interactive header, replacing the default title and icon. */
@@ -83,6 +85,7 @@ export function EdgeDrawer({
   visible,
   triggerRef,
   onClose,
+  onBack,
   edge = 'bottom',
   title,
   header,
@@ -230,7 +233,7 @@ export function EdgeDrawer({
       statusBarTranslucent
       navigationBarTranslucent
       presentationStyle="overFullScreen"
-      onRequestClose={focusActive ? focusController.close : close}
+      onRequestClose={focusActive ? focusController.close : (onBack ?? close)}
       onShow={startOpen}
     >
       <GestureHandlerRootView testID={testID} style={styles.modalGestureRoot}>

@@ -13,6 +13,7 @@ import {
   SpeakerHighIcon,
   SwatchesIcon,
   ToolboxIcon,
+  UsersIcon,
   type Icon,
 } from 'phosphor-react-native'
 import { startDebugReplay } from 'vescape-core'
@@ -30,6 +31,12 @@ const QUICK_REPLAY = 'replay-thor301.jsonl'
 
 // @parity /src/app/settings/dev.tsx `DEV_PAGE_SHORTCUTS`
 const DEV_PAGE_SHORTCUTS = [
+  {
+    label: 'Rider profile prototypes',
+    route: routes.devRiderProfilePrototype,
+    icon: UsersIcon,
+    iconColor: theme.palette.groupRide.color,
+  },
   {
     label: 'Components library',
     route: routes.settingsComponents,

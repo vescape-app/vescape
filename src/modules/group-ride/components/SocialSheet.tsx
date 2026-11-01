@@ -33,10 +33,23 @@ import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoar
 import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/GroupRideRoster'
 
-export function SocialSheet({ onPageChange }: { onPageChange?: (page: string) => void }) {
+export function SocialSheet({
+  page,
+  onPageChange,
+  onShowOnMap,
+}: {
+  page: string
+  onPageChange: (page: string) => void
+  onShowOnMap?: () => void
+}) {
   if (__DEV__)
     return (
-      <PublicRidePrototype identity={<RiderNameWidget compact />} onPageChange={onPageChange} />
+      <PublicRidePrototype
+        identity={<RiderNameWidget compact />}
+        page={page}
+        onPageChange={onPageChange}
+        onShowOnMap={onShowOnMap}
+      />
     )
   return (
     <View testID="social-sheet" style={styles.list}>

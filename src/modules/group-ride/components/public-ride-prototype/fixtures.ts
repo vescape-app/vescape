@@ -5,7 +5,7 @@ export interface MockRider {
   name: string
   friend: boolean
   board: string | null
-  freshness: 'live' | 'recent'
+  freshness: 'live' | 'recent' | 'offline'
   updatedAt: string
   age: string
   distance: string
@@ -108,3 +108,50 @@ export const PUBLIC_RIDE_DURATIONS = [1, 2, 3, 4, 6, 8, 10, 12, 24, 48, 72, 96, 
 export function publicRideDurationLabel(hours: number) {
   return hours >= 48 ? `${hours / 24} d` : `${hours} h`
 }
+
+export function publicRideMapRiderId(id: string) {
+  return `public-ride-prototype-${id}`
+}
+
+export function publicRidePageRider(
+  page: string,
+  inactiveFriends = MOCK_INACTIVE_FRIENDS,
+): MockRider | null {
+  const rider = MOCK_RIDERS.find((candidate) => candidate.id === page)
+  if (rider) return rider
+  const friend = inactiveFriends.find((candidate) => candidate.id === page)
+  return friend
+    ? {
+        id: friend.id,
+        name: friend.name,
+        friend: true,
+        board: null,
+        freshness: 'offline',
+        updatedAt: '',
+        age: friend.lastSeen,
+        distance: '—',
+        speed: null,
+        battery: null,
+        rideDistance: null,
+        voltage: null,
+        controller: null,
+        motor: null,
+        phone: null,
+        position: { x: 0, y: 0 },
+      }
+    : null
+}
+
+export interface InactiveFriend {
+  id: string
+  name: string
+  lastSeen: string
+}
+export const MOCK_INACTIVE_FRIENDS: InactiveFriend[] = [
+  { id: 'adam', name: 'Adam', lastSeen: 'Last seen 2 hours ago' },
+  { id: 'zosia', name: 'Zosia', lastSeen: 'Last seen 5 hours ago' },
+  { id: 'bartek', name: 'Bartek', lastSeen: 'Last seen yesterday' },
+  { id: 'ania', name: 'Ania', lastSeen: 'Last seen 2 days ago' },
+  { id: 'michal', name: 'Michał', lastSeen: 'Last seen 4 days ago' },
+  { id: 'kasia', name: 'Kasia', lastSeen: 'Last seen a week ago' },
+]

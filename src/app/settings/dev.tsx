@@ -9,6 +9,7 @@ import {
   SpeakerHighIcon,
   SwatchesIcon,
   ToolboxIcon,
+  UsersIcon,
 } from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
@@ -19,6 +20,13 @@ import { theme } from '@/constants/theme'
 
 // @parity /src/modules/diagnostics/components/DevBadge.tsx `DEV_PAGE_SHORTCUTS`
 const DEV_PAGE_SHORTCUTS = [
+  {
+    label: 'Rider profile prototypes',
+    hint: 'Compare nine Social profiles, live status and friendship states',
+    route: routes.devRiderProfilePrototype,
+    icon: UsersIcon,
+    iconColor: theme.palette.groupRide.color,
+  },
   {
     label: 'Components library',
     hint: 'Browse all UI components with live props',

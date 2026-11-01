@@ -35,6 +35,7 @@ import type { PhoneHeadingStatus } from '@/modules/map/lib/phoneHeading'
 import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMapIndicators'
 import { MapLoadingPlaceholder, MapUnavailable } from '@/screens/main/map/MainMapOverlays'
 import { MainMapScene } from '@/screens/main/map/MainMapScene'
+import { usePublicRideMapFraming } from '@/screens/main/map/usePublicRideMapFraming'
 import { useLiveMapModel } from '@/screens/main/map/useLiveMapModel'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
 import { useChartZoomRoute } from '@/screens/main/map/useChartZoomRoute'
@@ -201,6 +202,16 @@ export const MainMap = memo(
     )
 
     useEffect(() => () => setWatchRouteSpanM(null), [])
+    const lastGpsLatitude = useSettingsStore((s) => s.lastGpsLatitude)
+    const lastGpsLongitude = useSettingsStore((s) => s.lastGpsLongitude)
+    const persistedFallback = useMemo(
+      () =>
+        lastGpsLatitude != null && lastGpsLongitude != null
+          ? ([lastGpsLongitude, lastGpsLatitude] as [number, number])
+          : null,
+      [lastGpsLatitude, lastGpsLongitude],
+    )
+
     const {
       gpsFix,
       cameraFix,
@@ -216,6 +227,7 @@ export const MainMap = memo(
       liveTrailShape,
       rideRouteShape,
     } = useLiveMapModel({
+      prototypeFallbackCoordinate: persistedFallback,
       liveLocations,
       latestApproximateLocation,
       historyGpsSamples: history.gpsSamples,
@@ -238,17 +250,8 @@ export const MainMap = memo(
     const mapStyle = useResolvedMapStyle({ ...styleProps, mode })
 
     const settingsLoaded = useSettingsStore((s) => s.loaded)
-    const lastGpsLatitude = useSettingsStore((s) => s.lastGpsLatitude)
-    const lastGpsLongitude = useSettingsStore((s) => s.lastGpsLongitude)
     const historyMetricGradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
     const historyMetricHotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
-    const persistedFallback = useMemo(
-      () =>
-        lastGpsLatitude != null && lastGpsLongitude != null
-          ? ([lastGpsLongitude, lastGpsLatitude] as [number, number])
-          : null,
-      [lastGpsLatitude, lastGpsLongitude],
-    )
 
     const gpsHeadingMode = mapOrientationMode === 'gpsHeading'
     const phoneHeadingMode = mapOrientationMode === 'phoneHeading'
@@ -446,6 +449,12 @@ export const MainMap = memo(
     })
 
     useNavigationPathFraming({ active: mode === 'map' && !historyActive, fitRoute })
+    usePublicRideMapFraming({
+      active: mode === 'map' && !historyActive && cameraReady,
+      riders: mapRiders,
+      selfLocation: gpsFix ?? accuracyFix ?? cameraFix,
+      fitRoute,
+    })
 
     const handleTouchStart = useCallback(() => {
       onMapInteraction()
