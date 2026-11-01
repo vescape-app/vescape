@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
-import { dirname, extname, join, parse, relative } from 'path'
+import nodePath, { dirname, extname, join, parse } from 'path'
 
 const ROOT = join(import.meta.dir, '..')
 
@@ -84,12 +84,21 @@ export function sharedTargets(root = ROOT): SharedTarget[] {
   ]
 }
 
+/**
+ * `to` relative to `from`, always `/`-separated. Path filters and the prune set compare these
+ * strings; with the native separator, Windows yielded `effects-arc\pack.json`, the pack filter
+ * matched nothing, and the APK shipped without alert packs (#621).
+ */
+export function relativePath(from: string, to: string, { relative, sep } = nodePath): string {
+  return relative(from, to).split(sep).join('/')
+}
+
 /** Files under `dir`, relative to it; one level unless `recursive`. */
 function listFiles(dir: string, recursive: boolean): string[] {
   if (!existsSync(dir)) return []
   return readdirSync(dir, { recursive, withFileTypes: true })
     .filter((entry) => entry.isFile())
-    .map((entry) => relative(dir, join(entry.parentPath, entry.name)))
+    .map((entry) => relativePath(dir, join(entry.parentPath, entry.name)))
 }
 
 /** Source files a target copies, absolute, sorted. */
@@ -103,8 +112,8 @@ export function sharedSources(target: SharedTarget): string[] {
 
 /** Where a source file lands once copied. */
 export function sharedOutput(target: SharedTarget, source: string): string {
-  const path = relative(target.src, source)
-  return join(target.dest, dirname(path), target.rename(parse(path).base))
+  const file = relativePath(target.src, source)
+  return join(target.dest, dirname(file), target.rename(parse(file).base))
 }
 
 export function copyShared(root = ROOT, { quiet = false } = {}) {
@@ -116,28 +125,37 @@ export function copyShared(root = ROOT, { quiet = false } = {}) {
   for (const target of sharedTargets(root)) {
     mkdirSync(target.dest, { recursive: true })
 
-    log(`\n  ${relative(root, target.src)} → ${relative(root, target.dest)}`)
+    log(`\n  ${relativePath(root, target.src)} → ${relativePath(root, target.dest)}`)
 
     // Copying alone leaves orphans behind: a fixture renamed in `shared/` kept shipping under its
     // old name inside the Android APK for a week, and showed up in the Replay UI as a recording
     // that no longer existed in the repo. Only names this target would produce survive, so a
     // destination it shares with anything else is left alone.
     const expected = new Set(
-      sharedSources(target).map((source) => relative(target.dest, sharedOutput(target, source))),
+      sharedSources(target).map((source) =>
+        relativePath(target.dest, sharedOutput(target, source)),
+      ),
     )
     for (const file of listFiles(target.dest, !!target.include)) {
       if (!target.extensions.has(extname(file).toLowerCase()) || expected.has(file)) continue
       rmSync(join(target.dest, file))
-      log(`    ✗ ${file} (removed, no longer in ${relative(root, target.src)})`)
+      log(`    ✗ ${file} (removed, no longer in ${relativePath(root, target.src)})`)
     }
 
-    for (const source of sharedSources(target)) {
+    const sources = sharedSources(target)
+    // Other targets copying keeps the total above zero, so an empty pack walk slipped through
+    // silently and the app crashed on launch instead (#621).
+    if (target.include && sources.length === 0) {
+      throw new Error(`No files under ${relativePath(root, target.src)} passed its filter`)
+    }
+
+    for (const source of sources) {
       const output = sharedOutput(target, source)
       mkdirSync(dirname(output), { recursive: true })
       copyFileSync(source, output)
 
-      const file = relative(target.src, source)
-      const outputName = relative(target.dest, output)
+      const file = relativePath(target.src, source)
+      const outputName = relativePath(target.dest, output)
       const renamed = outputName !== file ? ` (→ ${outputName})` : ''
       log(`    ✓ ${file}${renamed}`)
       totalCopied += 1

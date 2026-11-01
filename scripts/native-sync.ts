@@ -2,7 +2,13 @@ import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join, relative } from 'path'
 import { wearSharedSources } from '../plugins/wearSharedSources.ts'
-import { copyShared, sharedOutput, sharedSources, sharedTargets } from './copy-shared.ts'
+import {
+  copyShared,
+  relativePath,
+  sharedOutput,
+  sharedSources,
+  sharedTargets,
+} from './copy-shared.ts'
 
 const ROOT = join(import.meta.dir, '..')
 const CACHE_DIR = join(ROOT, '.expo', 'native-sync')
@@ -165,7 +171,7 @@ export function missingSharedOutputs(root = ROOT): string[] {
   return sharedTargets(root)
     .flatMap((target) => sharedSources(target).map((source) => sharedOutput(target, source)))
     .filter((output) => !existsSync(output))
-    .map((output) => relative(root, output))
+    .map((output) => relativePath(root, output))
 }
 
 export function diffFingerprints(previous: Fingerprint, next: Fingerprint): Diff {
