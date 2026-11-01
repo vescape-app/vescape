@@ -148,14 +148,36 @@ internal final class RideHistoryRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `countRideHistory`
   func countRides(_ options: [String: Any]) throws -> Int {
     var count = 0
+    try forEachMatchingRide(options) { _ in count += 1 }
+    return count
+  }
+
+  /// Every complete ride matching the filter in `options`, newest first, page by page.
+  private func forEachMatchingRide(_ options: [String: Any], _ body: ([String: Any?]) throws -> Void) throws {
     var query = options
     query["limit"] = maxRidePageSize
     while true {
       let page = try getPage(query)
-      count += ((page["sessions"] ?? nil) as? [Any])?.count ?? 0
-      guard let cursor = (page["nextCursorBeforeMs"] ?? nil) as? Int64 else { return count }
+      for ride in ((page["sessions"] ?? nil) as? [[String: Any?]]) ?? [] { try body(ride) }
+      guard let cursor = (page["nextCursorBeforeMs"] ?? nil) as? Int64 else { return }
       query["cursorBeforeMs"] = cursor
     }
+  }
+
+  /// Rides a selection names: explicit windows, or every ride matching `filter` minus `excludeIds`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `selectedRides`
+  /// @parity /modules/vescape-core/src/index.ts `RideSelection`
+  func selectedRides(_ selection: [String: Any]) throws -> [RideBatch.Item] {
+    if let rides = selection["rides"] as? [[String: Any]] { return try rides.map(RideBatch.Item.init) }
+    let excluded = Set(selection["excludeIds"] as? [String] ?? [])
+    var items: [RideBatch.Item] = []
+    try forEachMatchingRide(selection["filter"] as? [String: Any] ?? [:]) { ride in
+      guard let id = (ride["id"] ?? nil) as? String, !excluded.contains(id),
+        let from = telemetryLong(ride["startAtMs"] ?? nil), let to = telemetryLong(ride["endAtMs"] ?? nil) else { return }
+      items.append(RideBatch.Item(fromMs: from, toMs: to, boardId: (ride["boardId"] ?? nil) as? String,
+        name: (ride["boardName"] ?? nil) as? String))
+    }
+    return items
   }
 
   /// @parity /modules/vescape-core/src/index.ts `RideHistoryPage`

@@ -2737,6 +2737,7 @@ type VescapeCoreEvents = {
   onLocation: (event: LocationEvent) => void
   onMaintenanceState: (event: MaintenanceState) => void
   onBoardProbeProgress: (event: BoardProbeProgressEvent) => void
+  onRideExportProgress: (event: RideExportProgressEvent) => void
   /** Observe WebSocket connection state to the Group Ride relay. */
   onGroupRideConnection: (event: GroupRideConnectionEvent) => void
   /** Full active-ride list, sent once on connect. */
@@ -2929,6 +2930,12 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   exportRideCsv(options: RideExportOptions): Promise<RideExportFile>
   exportRideFloaty(options: RideExportOptions): Promise<RideExportFile>
   exportLiveTelemetryCsv(): Promise<RideExportFile>
+  exportRides(options: {
+    selection: RideSelection
+    format: RideExportFormat
+  }): Promise<RideExportFile | null>
+  cancelRideExport(): void
+  deleteRides(selection: RideSelection): Promise<number>
   getHistoryRange(options: {
     fromMs: number
     toMs: number
@@ -3837,6 +3844,61 @@ export async function exportRideFloaty(options: RideExportOptions): Promise<Ride
  */
 export async function exportLiveTelemetryCsv(): Promise<RideExportFile> {
   return native.exportLiveTelemetryCsv()
+}
+
+/**
+ * Rides picked in History select mode: explicit windows (picked rows, Favorites), or every ride
+ * matching the filter minus the ones unticked afterwards. Native resolves the filter form, so rides
+ * not loaded yet are included.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideBatch.kt
+ * @parity /modules/vescape-core/ios/telemetry/RideBatch.swift
+ */
+export type RideSelection =
+  { rides: RideExportOptions[] } | { filter: RideHistoryFilter; excludeIds: string[] }
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideBatch.kt `format`
+ * @parity /modules/vescape-core/ios/telemetry/RideBatch.swift `format`
+ */
+export type RideExportFormat = 'gpx' | 'csv' | 'floaty'
+
+/** Rides written into the zip so far. */
+export interface RideExportProgressEvent {
+  done: number
+  total: number
+}
+
+/**
+ * Every selected ride as one `.zip`, one file per ride. Resolves null when `cancelRideExport` stops
+ * it. Emits `onRideExportProgress` after each ride.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `registerRideBatch`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRides`
+ */
+export async function exportRides(
+  selection: RideSelection,
+  format: RideExportFormat,
+): Promise<RideExportFile | null> {
+  return native.exportRides({ selection, format })
+}
+
+export function cancelRideExport(): void {
+  native.cancelRideExport()
+}
+
+export function addRideExportProgressListener(
+  cb: (event: RideExportProgressEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onRideExportProgress', cb)
+}
+
+/**
+ * Deletes every selected ride's telemetry and Ride Track in one transaction; Favorite ranges inside
+ * survive. Resolves the deleted frame count.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `registerRideBatch`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRides`
+ */
+export async function deleteRides(selection: RideSelection): Promise<number> {
+  return native.deleteRides(selection)
 }
 
 export async function getHistoryRange(options: {

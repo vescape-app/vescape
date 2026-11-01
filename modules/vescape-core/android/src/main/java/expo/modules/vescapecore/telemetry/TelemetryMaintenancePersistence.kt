@@ -15,6 +15,9 @@ internal class TelemetryMaintenancePersistence(
     allBoards: Boolean,
   ): Int = dao.deleteRanges(ranges, boardId, allBoards)
 
+  suspend fun deleteBoardRanges(rangesByBoard: Map<String?, List<TelemetryTimeRange>>): Int =
+    dao.deleteBoardRanges(rangesByBoard)
+
   suspend fun clear(protectedRanges: List<TelemetryTimeRange>) = dao.clearExcept(protectedRanges)
 }
 

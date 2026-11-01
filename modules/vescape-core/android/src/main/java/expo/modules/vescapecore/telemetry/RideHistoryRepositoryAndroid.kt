@@ -26,6 +26,13 @@ internal class RideHistoryRepository private constructor(private val context: Co
     }
   }
 
+  suspend fun selectedRides(selection: Map<String, Any?>): List<RideBatch.Item> {
+    val gapMs = gapMs()
+    return database.useReaderConnection { reader ->
+      reader.deferredTransaction { selectedRides(database.vescapeDao(), selection, gapMs) }
+    }
+  }
+
   suspend fun getSession(id: String): Map<String, Any?>? {
     val gapMs = gapMs()
     return database.useReaderConnection { reader ->

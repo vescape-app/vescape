@@ -4,6 +4,7 @@ import {
   getRideHistoryPage,
   getTelemetrySummary,
   clearTelemetryHistory,
+  deleteRides,
   deleteTelemetryRange,
   type HistoryGpsSample,
   type HistoryMarker,
@@ -214,6 +215,18 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
   /** Native owns Ride boundaries; changing the gap invalidates the page cursor and reloads it. */
   regroupSessions() {
     void get().loadInitial()
+  },
+
+  async removeRides(selection) {
+    const reloadLimit = Math.min(500, Math.max(BUCKET_PAGE_SIZE, get().blocks.length))
+    recentRefreshVersion++
+    await deleteRides(selection)
+    const [blocks, summary] = await Promise.all([
+      getTelemetryHistory({ limit: reloadLimit }),
+      getTelemetrySummary(),
+    ])
+    set({ blocks, summary, selectedBlock: null })
+    get().setRideFilter(useHistoryFilterStore.getState().selection)
   },
 
   async removeSelectedSession() {

@@ -546,6 +546,11 @@ interface VescapeDao {
       else deleteRange(range.startMs, range.endMs, boardId)
     }
 
+  /** Several Boards' ranges in one transaction, e.g. a bulk ride delete. */
+  @Transaction
+  suspend fun deleteBoardRanges(rangesByBoard: Map<String?, List<TelemetryTimeRange>>): Int =
+    rangesByBoard.entries.sumOf { (boardId, ranges) -> deleteRanges(ranges, boardId, allBoards = false) }
+
   @Query("DELETE FROM telemetry_frames")
   suspend fun clearFrames()
 

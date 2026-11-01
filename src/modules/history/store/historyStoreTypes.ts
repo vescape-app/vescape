@@ -2,6 +2,7 @@ import type {
   HistoryGpsSample,
   HistoryMarker,
   MetricExclusion,
+  RideSelection,
   TelemetryMinuteBucket,
   TelemetrySample,
   TelemetrySummary,
@@ -51,6 +52,8 @@ export interface HistoryActions {
   /** Replace the Ride History Filter and reload the first page under it. */
   setRideFilter: (selection: RideFilterSelection) => void
   removeSelectedSession: () => Promise<void>
+  /** Bulk delete from select mode, then the list reloads under the active filter. */
+  removeRides: (selection: RideSelection) => Promise<void>
   clearHistory: () => Promise<void>
 }
 

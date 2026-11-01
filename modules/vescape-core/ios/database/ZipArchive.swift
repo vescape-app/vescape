@@ -187,15 +187,20 @@ enum ZipArchive {
   }()
 
   private static func crc32(_ data: Data) -> UInt32 {
-    var crc: UInt32 = 0xFFFF_FFFF
+    crc32(update: 0xFFFF_FFFF, data) ^ 0xFFFF_FFFF
+  }
+
+  /// Running CRC-32 over chunks: start at `0xFFFF_FFFF`, XOR the result with it after the last chunk.
+  static func crc32(update crc: UInt32, _ data: Data) -> UInt32 {
+    var crc = crc
     for byte in data {
       crc = crcTable[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
     }
-    return crc ^ 0xFFFF_FFFF
+    return crc
   }
 }
 
-private extension Data {
+extension Data {
   mutating func append(le16 value: UInt16) {
     append(UInt8(value & 0xFF))
     append(UInt8((value >> 8) & 0xFF))

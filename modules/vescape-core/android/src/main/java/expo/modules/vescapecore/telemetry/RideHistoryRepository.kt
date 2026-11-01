@@ -129,12 +129,41 @@ internal suspend fun readRideHistoryPage(
  */
 internal suspend fun countRideHistory(dao: VescapeDao, options: Map<String, Any?>, gapMs: Long): Int {
   var count = 0
+  forEachMatchingRide(dao, options, gapMs) { count++ }
+  return count
+}
+
+/** Every complete ride matching the filter in [options], newest first, page by page. */
+internal suspend fun forEachMatchingRide(
+  dao: VescapeDao,
+  options: Map<String, Any?>,
+  gapMs: Long,
+  body: (Map<*, *>) -> Unit,
+) {
   var cursor: Long? = null
   while (true) {
     val page = readRideHistoryPage(dao, options + mapOf("limit" to MAX_RIDE_PAGE_SIZE, "cursorBeforeMs" to cursor), gapMs)
-    count += (page["sessions"] as List<*>).size
-    cursor = page["nextCursorBeforeMs"] as? Long ?: return count
+    (page["sessions"] as List<*>).forEach { body(it as Map<*, *>) }
+    cursor = page["nextCursorBeforeMs"] as? Long ?: return
   }
+}
+
+/** Rides a selection names: explicit windows, or every ride matching `filter` minus `excludeIds`.
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `selectedRides`
+ * @parity /modules/vescape-core/src/index.ts `RideSelection`
+ */
+internal suspend fun selectedRides(dao: VescapeDao, selection: Map<String, Any?>, gapMs: Long): List<RideBatch.Item> {
+  (selection["rides"] as? List<*>)?.let { rides -> return rides.map { RideBatch.Item.from(it as Map<*, *>) } }
+  @Suppress("UNCHECKED_CAST")
+  val filter = selection["filter"] as? Map<String, Any?> ?: emptyMap()
+  val excluded = (selection["excludeIds"] as? List<*>)?.filterIsInstance<String>()?.toSet() ?: emptySet()
+  val items = mutableListOf<RideBatch.Item>()
+  forEachMatchingRide(dao, filter, gapMs) { ride ->
+    if (ride["id"] in excluded) return@forEachMatchingRide
+    items += RideBatch.Item((ride["startAtMs"] as Number).toLong(), (ride["endAtMs"] as Number).toLong(),
+      ride["boardId"] as? String, ride["boardName"] as? String)
+  }
+  return items
 }
 
 /**

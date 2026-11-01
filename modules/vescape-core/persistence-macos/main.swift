@@ -511,6 +511,43 @@ try require(try history.getSession("\(boardId):1:2") == nil, "missing ride by id
 let selectedMonth = populatedStats["selectedMonth"] as! [String: Int]
 try require(selectedMonth["year"] == int(historyExpected["selectedYear"]), "selected year")
 try require(selectedMonth["month"] == int(historyExpected["selectedMonth"]), "selected month")
+// A bulk selection resolves natively: every ride matching the filter, minus the rides unticked.
+let olderSession = (secondPage["sessions"] as! [[String: Any?]]).first!
+let picked = try history.selectedRides(["filter": ["boardIds": [boardId]], "excludeIds": [currentRideId]])
+try require(picked.map(\.fromMs) == [older.firstSampleAtMs], "selection minus unticked rides")
+try require(picked.first?.name == olderSession["boardName"] as? String, "selection carries the Board name")
+try require(try history.selectedRides(["rides": [["fromMs": 1, "toMs": 2, "name": "Fav"]]]) == [RideBatch.Item(fromMs: 1, toMs: 2, boardId: nil, name: "Fav")], "explicit selection")
+// One zip, one file per ride, clashing names suffixed, streamed through DEFLATE.
+let utc = TimeZone(secondsFromGMT: 0)!
+let day = Int64(1_785_772_800_000) // 2026-08-03 16:00 UTC
+let batch = [RideBatch.Item(fromMs: day, toMs: day + 1, boardId: nil, name: "Pint X"),
+  RideBatch.Item(fromMs: day + 30_000, toMs: day + 40_000, boardId: nil, name: "Pint X"),
+  RideBatch.Item(fromMs: day + 86_400_000, toMs: day + 86_400_001, boardId: nil, name: "Ł")]
+let exportDir = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-batch-\(UUID().uuidString)")
+try FileManager.default.createDirectory(at: exportDir, withIntermediateDirectories: true)
+var progress: [Int] = []
+let zipped = try RideBatch.zip(directory: exportDir, items: batch, format: .csv, zone: utc, isCancelled: { false },
+  onProgress: { done, _ in progress.append(done) }) { item, write in
+  for _ in 0..<5_000 { try write("ride \(item.fromMs)\n") }
+}
+let zipURL = URL(string: zipped["uri"] as! String)!
+try require(zipURL.lastPathComponent == "vescape-rides-2026-08-03_2026-08-04.zip", "zip named by day range")
+try require(progress == [1, 2, 3], "progress per ride")
+let unzipped = try ZipArchive.entries(from: Data(contentsOf: zipURL))
+try require(Set(unzipped.keys) == ["2026-08-03_1600_Pint-X.csv", "2026-08-03_1600_Pint-X-2.csv", "2026-08-04_1600_ride.csv"], "entry names")
+try require(unzipped["2026-08-03_1600_Pint-X-2.csv"] == Data(String(repeating: "ride \(day + 30_000)\n", count: 5_000).utf8), "entry content")
+try require(RideBatch.zipName([batch[0]], zone: utc) == "vescape-rides-2026-08-03.zip", "zip named by day")
+do {
+  _ = try RideBatch.zip(directory: exportDir, items: batch, format: .csv, zone: utc, isCancelled: { true },
+    onProgress: { _, _ in }) { _, write in try write("x") }
+  throw Failure(description: "cancelled export finished")
+} catch RideBatch.RideBatchError.cancelled {}
+try require(try FileManager.default.contentsOfDirectory(atPath: exportDir.path).count == 1, "cancel leaves no archive")
+try FileManager.default.removeItem(at: exportDir)
+// Bulk delete removes every Board's ranges in one write.
+_ = try TelemetryMaintenancePersistence(writer: historyPool).deleteBoardRanges(
+  [boardId: [TelemetryTimeRange(startMs: older.firstSampleAtMs, endMs: olderSession["endAtMs"] as! Int64)]])
+try require(try history.countRides([:]) == 1, "bulk delete removes the ride")
 try historyPool.write { db in try db.drop(table: "board_settings") }
 do { _ = try historyPool.read(historyBatteryConfigs); throw Failure(description: "battery-config query failure became empty") } catch is DatabaseError {}
 try historyPool.write { db in try db.drop(table: "boards") }

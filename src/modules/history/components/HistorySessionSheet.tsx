@@ -1,15 +1,25 @@
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { useCallback, useMemo, useState, type RefObject } from 'react'
-import { StyleSheet, View, useWindowDimensions } from 'react-native'
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
   CaretRightIcon,
+  CheckSquareIcon,
   ClockCounterClockwiseIcon,
   FunnelSimpleIcon,
+  ListChecksIcon,
+  MinusSquareIcon,
+  SquareIcon,
   StarIcon,
   XIcon,
 } from 'phosphor-react-native'
-import { countRideHistory, type Favorite, type RideDay, type RideHistoryFilter } from 'vescape-core'
+import {
+  cancelRideExport,
+  countRideHistory,
+  type Favorite,
+  type RideDay,
+  type RideHistoryFilter,
+} from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
@@ -19,6 +29,11 @@ import { theme } from '@/constants/theme'
 import { HistoryFilterPanel } from '@/modules/history/components/HistoryFilterPanel'
 import { HistoryTabs } from '@/modules/history/components/HistoryTabs'
 import { HistoryRideRow, HistoryRideRowSkeleton } from '@/modules/history/components/HistoryRideRow'
+import { RideSelectFooter } from '@/modules/history/components/RideSelectFooter'
+import { RideSelectHeader } from '@/modules/history/components/RideSelectHeader'
+import { useRideSelectMode } from '@/modules/history/hooks/useRideSelectMode'
+import { isRideSelected, rideDayState } from '@/modules/history/lib/rideSelect'
+import { useRideSelectStore } from '@/modules/history/store/rideSelectStore'
 import {
   historyListRows,
   historyListLayouts,
@@ -106,6 +121,31 @@ export function HistorySessionSheet({
 
   const openDay = favoriteMode ? undefined : onOpenDay
   const rows = useMemo(() => historyListRows(sessions), [sessions])
+  const noun = favoriteMode ? FAVORITE_NOUN : RIDE_NOUN
+
+  const selectMode = useRideSelectMode({
+    favoriteMode,
+    sessions,
+    favoritesBySessionId,
+    filterSelection,
+    noun,
+  })
+  const { active: selectActive, select } = selectMode
+  const {
+    start: startSelect,
+    exit: exitSelect,
+    toggle: toggleSelect,
+  } = useRideSelectStore.getState()
+  // Ride ids under each date heading, keyed by the heading's first ride.
+  const dayIds = useMemo(() => {
+    const days = new Map<string, string[]>()
+    let current: string[] = []
+    for (const row of rows) {
+      if (row.dateHeader) days.set(row.session.id, (current = []))
+      current.push(row.session.id)
+    }
+    return days
+  }, [rows])
   const layouts = useMemo(
     () => historyListLayouts(rows, dateHeaderHeight),
     [rows, dateHeaderHeight],
@@ -117,6 +157,10 @@ export function HistorySessionSheet({
     ({ item }: { item: unknown }) => {
       const { session, window: rideWindow, dateHeader, day } = item as (typeof rows)[number]
       const selected = session.id === selectedSessionId
+      const ids = dayIds.get(session.id) ?? []
+      const dayState = selectActive ? rideDayState(select, ids) : 'none'
+      const DayCheck =
+        dayState === 'all' ? CheckSquareIcon : dayState === 'some' ? MinusSquareIcon : SquareIcon
       const favorite = favoritesBySessionId.get(session.id)
       const time = formatRideTime(
         rideWindow.startMs,
@@ -140,7 +184,24 @@ export function HistorySessionSheet({
                   {`${day.rides} ${day.rides === 1 ? 'ride' : 'rides'} · ${formatRideDetails(day.durationMs, day.distanceM, null)}`}
                 </Text>
               </View>
-              {openDay && day.rides > 1 ? (
+              {selectActive ? (
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityState={{
+                    checked: dayState === 'some' ? 'mixed' : dayState === 'all',
+                  }}
+                  accessibilityLabel={`Select ${dateHeader}`}
+                  hitSlop={10}
+                  testID={`history-day-select-${session.id}`}
+                  onPress={() => toggleSelect(ids)}
+                >
+                  <DayCheck
+                    size={22}
+                    color={dayState === 'none' ? theme.neutral.textDim : theme.palette.sky.color}
+                    weight={dayState === 'none' ? 'regular' : 'fill'}
+                  />
+                </Pressable>
+              ) : openDay && day.rides > 1 ? (
                 <Button
                   label="Summary"
                   icon={CaretRightIcon}
@@ -165,7 +226,9 @@ export function HistorySessionSheet({
             selected={selected}
             accent={favorite ? theme.palette.amber.color : undefined}
             weather={session.weather}
-            onPress={() => onSelectSession(session)}
+            checked={selectActive ? isRideSelected(select, session.id) : undefined}
+            onPress={() => (selectActive ? toggleSelect([session.id]) : onSelectSession(session))}
+            onLongPress={selectActive ? undefined : () => startSelect(session.id)}
           />
         </View>
       )
@@ -177,25 +240,15 @@ export function HistorySessionSheet({
       formatRideDetails,
       dateHeaderHeight,
       openDay,
+      dayIds,
+      select,
+      selectActive,
+      startSelect,
+      toggleSelect,
     ],
   )
 
-  const empty = (
-    <Placeholder
-      icon={favoriteMode ? StarIcon : ClockCounterClockwiseIcon}
-      title={
-        filtered ? 'Nothing matches the filter' : favoriteMode ? 'No favorites yet' : 'No rides yet'
-      }
-      description={
-        filtered
-          ? 'Change or clear the filter to see more'
-          : favoriteMode
-            ? 'Open a ride in History, tap the star, adjust the range, then save'
-            : 'Record a ride and it shows up in this list'
-      }
-      style={styles.empty}
-    />
-  )
+  const empty = <HistoryEmpty favoriteMode={favoriteMode} filtered={filtered} />
 
   const footer =
     hasMore && loadingMore ? (
@@ -217,38 +270,69 @@ export function HistorySessionSheet({
       visible={visible}
       triggerRef={triggerRef}
       header={
-        <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <IconButton
-              icon={filterOpen ? XIcon : FunnelSimpleIcon}
-              accessibilityLabel={filterOpen ? 'Close filter' : 'Filter rides'}
-              dot={filtered && !filterOpen ? theme.palette.purple.color : undefined}
-              testID="history-filter-button"
-              onPress={() => setFilterOpen((open) => !open)}
-            />
-            <HistoryTabs
-              tab={favoriteMode ? 'favorites' : 'history'}
-              onSelectTab={(tab) => {
-                setFilterOpen(false)
-                onSelectTab(tab)
-              }}
-            />
+        selectActive ? (
+          <RideSelectHeader
+            selectedCount={selectMode.selectedCount}
+            matchingTotal={selectMode.matchingTotal}
+          />
+        ) : (
+          <View style={styles.header}>
+            <View style={styles.headerRow}>
+              <IconButton
+                icon={filterOpen ? XIcon : FunnelSimpleIcon}
+                accessibilityLabel={filterOpen ? 'Close filter' : 'Filter rides'}
+                dot={filtered && !filterOpen ? theme.palette.purple.color : undefined}
+                testID="history-filter-button"
+                onPress={() => setFilterOpen((open) => !open)}
+              />
+              <HistoryTabs
+                tab={favoriteMode ? 'favorites' : 'history'}
+                onSelectTab={(tab) => {
+                  setFilterOpen(false)
+                  onSelectTab(tab)
+                }}
+              />
+              <IconButton
+                icon={ListChecksIcon}
+                accessibilityLabel={`Select ${noun.other}`}
+                disabled={filterOpen || sessions.length === 0}
+                testID="history-select-button"
+                onPress={() => startSelect()}
+              />
+            </View>
+            {filtered && !filterOpen ? (
+              <Button
+                label="Filtered · Clear"
+                icon={XIcon}
+                size="sm"
+                variant="secondary"
+                testID="history-filter-clear-chip"
+                onPress={() => applyFilter(EMPTY_RIDE_FILTER)}
+              />
+            ) : null}
           </View>
-          {filtered && !filterOpen ? (
-            <Button
-              label="Filtered · Clear"
-              icon={XIcon}
-              size="sm"
-              variant="secondary"
-              testID="history-filter-clear-chip"
-              onPress={() => applyFilter(EMPTY_RIDE_FILTER)}
-            />
-          ) : null}
-        </View>
+        )
       }
+      stickyFooter={
+        selectActive ? (
+          <RideSelectFooter
+            count={selectMode.selectedCount}
+            noun={noun}
+            format={selectMode.format}
+            onFormat={useRideSelectStore.getState().setFormat}
+            progress={selectMode.exportProgress}
+            error={selectMode.error}
+            onExport={() => void selectMode.runExport()}
+            onCancelExport={cancelRideExport}
+            onDelete={selectMode.runDelete}
+          />
+        ) : undefined
+      }
+      onBack={selectActive ? exitSelect : undefined}
       contentPageKey={filterOpen ? 'filter' : favoriteMode ? 'favorites' : 'history'}
       onClose={() => {
         setFilterOpen(false)
+        exitSelect()
         onClose()
       }}
       backdropTestID="history-session-sheet-backdrop"
@@ -276,11 +360,30 @@ export function HistorySessionSheet({
         <HistoryFilterPanel
           selection={filterSelection}
           countMatches={countMatches}
-          noun={favoriteMode ? FAVORITE_NOUN : RIDE_NOUN}
+          noun={noun}
           onApply={applyFilter}
         />
       ) : null}
     </EdgeDrawer>
+  )
+}
+
+function HistoryEmpty({ favoriteMode, filtered }: { favoriteMode: boolean; filtered: boolean }) {
+  return (
+    <Placeholder
+      icon={favoriteMode ? StarIcon : ClockCounterClockwiseIcon}
+      title={
+        filtered ? 'Nothing matches the filter' : favoriteMode ? 'No favorites yet' : 'No rides yet'
+      }
+      description={
+        filtered
+          ? 'Change or clear the filter to see more'
+          : favoriteMode
+            ? 'Open a ride in History, tap the star, adjust the range, then save'
+            : 'Record a ride and it shows up in this list'
+      }
+      style={styles.empty}
+    />
   )
 }
 

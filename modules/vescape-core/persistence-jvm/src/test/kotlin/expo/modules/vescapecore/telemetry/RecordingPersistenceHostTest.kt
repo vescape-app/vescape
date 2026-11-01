@@ -660,6 +660,42 @@ class RecordingPersistenceHostTest {
     assertNull(readRideSession(db.vescapeDao(), "$boardId:1:2", gapMs))
     assertEquals(expected.getInt("selectedYear"), (stats["selectedMonth"] as Map<*, *>)["year"])
     assertEquals(expected.getInt("selectedMonth"), (stats["selectedMonth"] as Map<*, *>)["month"])
+    // A bulk selection resolves natively: every ride matching the filter, minus the rides unticked.
+    val olderSession = (second["sessions"] as List<Map<String, Any?>>).single()
+    val picked = selectedRides(db.vescapeDao(), mapOf("filter" to mapOf("boardIds" to listOf(boardId)), "excludeIds" to listOf(currentId)), gapMs)
+    assertEquals(listOf(older.firstSampleAtMs), picked.map { it.fromMs })
+    assertEquals(olderSession["boardName"], picked.single().name)
+    assertEquals(listOf(RideBatch.Item(1, 2, null, "Fav")),
+      selectedRides(db.vescapeDao(), mapOf("rides" to listOf(mapOf("fromMs" to 1, "toMs" to 2, "name" to "Fav"))), gapMs))
+    // One zip, one file per ride, clashing names suffixed.
+    val utc = java.time.ZoneOffset.UTC
+    val day = 1_785_772_800_000L // 2026-08-03 16:00 UTC
+    val batch = listOf(RideBatch.Item(day, day + 1, null, "Pint X"), RideBatch.Item(day + 30_000, day + 40_000, null, "Pint X"),
+      RideBatch.Item(day + 86_400_000, day + 86_400_001, null, "Ł"))
+    val exportDir = Files.createTempDirectory("vescape-batch").toFile()
+    val progress = mutableListOf<Int>()
+    val zipped = RideBatch.zip(exportDir, batch, RideExport.Format.CSV, utc, { false }, { done, _ -> progress += done }) { writer, item ->
+      repeat(5_000) { writer.write("ride ${item.fromMs}\n") }
+    }
+    val zipFile = java.io.File(java.net.URI(zipped["uri"] as String))
+    assertEquals("vescape-rides-2026-08-03_2026-08-04.zip", zipFile.name)
+    assertEquals(listOf(1, 2, 3), progress)
+    val unzipped = mutableMapOf<String, String>()
+    java.util.zip.ZipInputStream(zipFile.inputStream()).use { zip ->
+      while (true) { val entry = zip.nextEntry ?: break; unzipped[entry.name] = zip.readBytes().toString(Charsets.UTF_8) }
+    }
+    assertEquals(setOf("2026-08-03_1600_Pint-X.csv", "2026-08-03_1600_Pint-X-2.csv", "2026-08-04_1600_ride.csv"), unzipped.keys)
+    assertEquals("ride ${day + 30_000}\n".repeat(5_000), unzipped["2026-08-03_1600_Pint-X-2.csv"])
+    assertEquals("vescape-rides-2026-08-03.zip", RideBatch.zipName(batch.take(1), utc))
+    var cancelled = false
+    try { RideBatch.zip(exportDir, batch, RideExport.Format.CSV, utc, { true }, { _, _ -> }) { writer, _ -> writer.write("x") } }
+    catch (_: RideBatch.Cancelled) { cancelled = true }
+    assertTrue(cancelled)
+    assertEquals(1, exportDir.listFiles()!!.size)
+    exportDir.deleteRecursively()
+    // Bulk delete removes every Board's ranges in one transaction.
+    db.vescapeDao().deleteBoardRanges(mapOf(boardId to listOf(TelemetryTimeRange(older.firstSampleAtMs, olderSession["endAtMs"] as Long))))
+    assertEquals(1, countRideHistory(db.vescapeDao(), emptyMap(), gapMs))
 
     db.close()
     val connection = BundledSQLiteDriver().open(path.toString())
