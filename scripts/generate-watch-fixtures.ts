@@ -13,6 +13,8 @@ import { join } from 'path'
  *
  * The decode mirrors `VescPacketReassembler` + `parseRefloatGetAllData`; the SoC lane mirrors
  * `BatterySocEstimator` manual mode, since the recording carries no Board battery config.
+ * `watch-preview.jsonl` is the same ride on the recording's real GPS track and clock, for a phone
+ * preview take filmed alongside the wrist (`bun run preview --platform android`).
  * `watch-sweep.jsonl` is synthetic: every lane walked through its full range, including null and
  * stale stretches, so gauge extremes are reachable without hunting for them in a real ride.
  *
@@ -213,6 +215,7 @@ type CaptureRecord = {
   base64?: string
   latitude?: number
   longitude?: number
+  bearingDeg?: number
 }
 
 function readCapture(): CaptureRecord[] {
@@ -425,8 +428,15 @@ function buildWeather() {
   }
 }
 
-/** Resamples the decoded ride onto the watch tick grid — latest-sample-wins, like the cold path. */
-function buildRide(): LaneSample[] {
+/**
+ * Resamples the decoded ride onto the watch tick grid — latest-sample-wins, like the cold path.
+ * [positionAt] adds the map lanes for a recorded `t` and its progress through the ride.
+ */
+function resampleRide(
+  name: string,
+  positionAt: (t: number, progress: number) => Partial<LaneSample>,
+  rebase: boolean,
+): LaneSample[] {
   const decoded = decodeRide()
   if (decoded.length === 0) throw new Error('no Refloat ALLDATA packets decoded from the recording')
 
@@ -441,19 +451,50 @@ function buildRide(): LaneSample[] {
     const { telemetry } = decoded[cursor]
     const progress = (t - decoded[0].t) / Math.max(1, endMs - decoded[0].t)
     samples.push({
-      t: t - decoded[0].t,
+      t: rebase ? t - decoded[0].t : t,
       speed: round(Math.abs(telemetry.speed)),
       duty: round(Math.abs(telemetry.dutyCycle) * 100),
       battery: round(estimateSoc(telemetry.batteryVoltage, telemetry.batteryCurrent, seriesCount)),
       motorTemp: telemetry.tempMotor === null ? null : round(telemetry.tempMotor),
       ctrlTemp: telemetry.tempMosfet === null ? null : round(telemetry.tempMosfet),
-      ...mapLanes(progress),
+      ...positionAt(t, progress),
     })
   }
   console.log(
-    `watch-ride: ${samples.length} samples, ${Math.round(endMs / 1000)}s, ${seriesCount}s pack`,
+    `${name}: ${samples.length} samples, ${Math.round(endMs / 1000)}s, ${seriesCount}s pack`,
   )
   return samples
+}
+
+function buildRide(): LaneSample[] {
+  return resampleRide('watch-ride', (_, progress) => mapLanes(progress), true)
+}
+
+/**
+ * The phone's own replay as the wrist sees it: the recording's real GPS track and no Navigation,
+ * with `t` left on the recording's clock so a preview take can start it where the phone is.
+ */
+function buildPreview(): LaneSample[] {
+  const fixes = CAPTURE.filter(
+    (record) =>
+      record.kind === 'location' && record.latitude !== undefined && record.longitude !== undefined,
+  )
+  const cosLat = Math.cos((ORIGIN.latitude * Math.PI) / 180)
+  let cursor = 0
+  return resampleRide(
+    'watch-preview',
+    (t) => {
+      while (cursor + 1 < fixes.length && (fixes[cursor + 1].t ?? 0) <= t) cursor++
+      const fix = fixes[cursor]
+      return {
+        riderEast: round((fix.longitude! - ORIGIN.longitude) * 111_320 * cosLat),
+        riderNorth: round((fix.latitude! - ORIGIN.latitude) * 110_574),
+        ...(fix.bearingDeg === undefined ? {} : { course: round(fix.bearingDeg) }),
+        routeSpanM: ROUTE_SPAN_M,
+      }
+    },
+    false,
+  )
 }
 
 /**
@@ -584,9 +625,11 @@ async function syncMapTiles(keys: string[]): Promise<void> {
 mkdirSync(OUT_DIR, { recursive: true })
 const ride = buildRide()
 const sweep = buildSweep()
+const preview = buildPreview()
 writeFileSync(join(OUT_DIR, 'watch-ride.jsonl'), serialize(ride))
 writeFileSync(join(OUT_DIR, 'watch-sweep.jsonl'), serialize(sweep))
+writeFileSync(join(OUT_DIR, 'watch-preview.jsonl'), serialize(preview))
 writeFileSync(join(OUT_DIR, 'watch-route.json'), JSON.stringify({ origin: ORIGIN, points: ROUTE }))
 writeFileSync(join(OUT_DIR, 'watch-weather.json'), JSON.stringify(buildWeather()))
-await syncMapTiles(mapTileKeys([ride, sweep]))
+await syncMapTiles(mapTileKeys([ride, sweep, preview]))
 console.log(`wrote fixtures to ${OUT_DIR}`)

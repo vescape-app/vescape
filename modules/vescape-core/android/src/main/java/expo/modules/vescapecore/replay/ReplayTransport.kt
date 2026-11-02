@@ -70,7 +70,10 @@ internal class ReplayTransport(
         dispatchListener { listener.onGattConnected() }
         dispatchListener { listener.onGattSubscribing() }
         dispatchListener { listener.onGattReady() }
-        clock.startPlayback(System.currentTimeMillis())
+        val startedAt = System.currentTimeMillis()
+        clock.startPlayback(startedAt)
+        // Wall time of recorded t=0; `bun run preview` starts the wrist's replay from it.
+        Log.d(VESC_SESSION_TAG, "replay playback started recording=$recordingName wallMs=$startedAt")
         scheduleNext(events, 0)
     }
 

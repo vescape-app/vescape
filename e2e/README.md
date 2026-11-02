@@ -410,7 +410,7 @@ since it spends recording too.
 
 `bun run preview` records a Release fixture build with the platform recorder, then exports H.264
 MP4 footage for a landing page or promo. It reuses screenshot device preparation and the sanitized
-history database. `EXPO_PUBLIC_PREVIEW=1` selects dark appearance and fast-forwards the first eight
+history database. `EXPO_PUBLIC_PREVIEW=1` selects dark appearance and fast-forwards the first seven
 minutes off-camera through the same native replay warmup used by screenshots. The map opens on the
 later western stretch with an established trail and filled charts, then plays recorded BLE/GPS at 1×.
 Normal rider controls, including REC, remain visible.
@@ -421,12 +421,24 @@ bun run preview --platform android --device Medium_Phone
 bun run preview --platform ios --scene ride --no-build
 ```
 
-The default `tour` scene holds the live ride for 30 seconds, then visits history and two ride details
-with readable pauses. `--scene ride` captures a minute of the moving dashboard for a landing-page
+The default `tour` scene rides for 5 seconds, opens the live telemetry drawer, returns to the map for
+25 seconds, then visits history and two ride details with readable pauses. `--scene ride` captures a minute of the moving dashboard for a landing-page
 hero. `--scene store` captures a shorter tour for the App Store. `--platform both` runs iOS
 then Android; omit the platform to pick. `--replay <name>` changes the recording baked into the
 build. `--no-build` requires a preview build from the current workspace, not a screenshot, smoke,
 development or production app.
+
+Android takes always film the Wear emulator too, with no pairing. Before the take the script boots
+the Wear AVD when none is running (`WEAR_AVD=<AVD>` picks it) and installs the current watch app
+(`wear.ts install`). At the take's start it launches the watch on `watch-preview.jsonl`: the same
+recording reduced to watch lanes, on its real GPS track with map tiles along it. The watch starts
+where the phone is: the phone logs `replay playback started … wallMs=` and the watch takes that as
+`--el replayEpoch`. Both emulators run on the host clock, so the two stay in step.
+
+The watch video is saved next to the phone's as `watch-*-raw.mp4` and `watch-*-web.mp4`. The watch
+is kept awake for the take and returned to its normal timeout after. After changing the recording,
+regenerate the watch fixtures with `bun scripts/generate-watch-fixtures.ts` (new tiles need
+`EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`). To view the watch replay alone: `bun run scripts/wear.ts replay preview`.
 
 Two standalone scenes cover landing-page feature sections:
 

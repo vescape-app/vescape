@@ -37,6 +37,9 @@ import kotlin.math.sin
 const val REPLAY_FIXTURE_RIDE = "watch-ride.jsonl"
 const val REPLAY_FIXTURE_SWEEP = "watch-sweep.jsonl"
 
+/** The phone preview's ride on its real GPS track, timed on the recording's clock; no route. */
+const val REPLAY_FIXTURE_PREVIEW = "watch-preview.jsonl"
+
 /**
  * Fixtures for the two surfaces the phone pushes outside the frame stream: the route the rider lanes
  * are placed on, and the forecast. Both fixtures are shared by every lane fixture — they describe the
@@ -353,8 +356,18 @@ class FrameReplayer(private val context: Context) {
         tilt = value ?: TILT_CENTER
     }
 
-    /** [group]: also play the Group Ride fixture, as if the Rider had joined one. */
-    fun start(fixture: String, group: Boolean, navigation: Boolean = true, wander: Boolean = false, routeLoading: Boolean = false) {
+    /**
+     * [group]: also play the Group Ride fixture, as if the Rider had joined one. [fromMs]: the first
+     * pass starts at that fixture time, so a preview take joins the phone mid-ride; loops start at 0.
+     */
+    fun start(
+        fixture: String,
+        group: Boolean,
+        navigation: Boolean = true,
+        wander: Boolean = false,
+        routeLoading: Boolean = false,
+        fromMs: Long = 0,
+    ) {
         if (running) return
         val routeJson = readAsset(REPLAY_FIXTURE_ROUTE)
         val origin = routeJson?.let(ReplaySceneParser::parseOrigin)
@@ -365,7 +378,7 @@ class FrameReplayer(private val context: Context) {
         }
         if (samples.isEmpty()) return
         WatchDiagnostics.recordReplay(fixture, samples.size)
-        loadScene(routeJson, origin)
+        loadScene(routeJson.takeUnless { fixture == REPLAY_FIXTURE_PREVIEW }, origin)
         MirrorIntakeState.apply {
             acceptRouteStatus(if (routeLoading) WatchRouteStatusCodec.encode(WatchRouteStatus(WatchRoutePhase.READY, 1)) else null)
             if (routeLoading) acceptRoute(null)
@@ -373,7 +386,7 @@ class FrameReplayer(private val context: Context) {
         groupRide = if (group) readAsset(REPLAY_FIXTURE_GROUP_RIDE)?.let(ReplaySceneParser::parseGroupRide) else null
         running = true
         startedAt = SystemClock.elapsedRealtime()
-        restartLoop()
+        restartLoop(fromMs)
         if (groupRide != null) pushGroupRide()
     }
 
@@ -395,9 +408,9 @@ class FrameReplayer(private val context: Context) {
         handler.removeCallbacksAndMessages(null)
     }
 
-    private fun restartLoop() {
-        index = 0
-        loopStartedAt = SystemClock.elapsedRealtime()
+    private fun restartLoop(fromMs: Long = 0) {
+        index = samples.indexOfFirst { it.atMs >= fromMs }.coerceAtLeast(0)
+        loopStartedAt = SystemClock.elapsedRealtime() - fromMs
         scheduleNext()
     }
 

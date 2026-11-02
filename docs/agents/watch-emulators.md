@@ -14,6 +14,12 @@ bun run wear:ride        # android:up, then the thor301 replay and Navigation
 of each kind is used, and on a cold machine the AVD picker asks (last pick on top). Nothing
 machine-specific is in the repo.
 
+## Preview footage
+
+`bun run preview --platform android` films the watch beside the phone without pairing: the watch
+replays `watch-preview.jsonl` from the phone's position. See the preview section of
+`e2e/README.md`.
+
 ## Ride E2E
 
 `bun run e2e:watch` starts an isolated Metro, rebuilds the current phone and watch apps, starts a
