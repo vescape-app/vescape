@@ -118,10 +118,25 @@ export class PreviewRecording {
         ).includes('alive')
       )
         await Bun.sleep(250)
-      const pull = Bun.spawnSync(
+      // The Wear emulator's adb transfer sometimes fails silently mid-copy; the file is intact on
+      // the device, so the copy is retried.
+      let pull = Bun.spawnSync(
         ['adb', '-s', this.driver.deviceId, 'pull', this.remotePath, this.rawPath],
-        { cwd: ROOT, timeout: 30_000 },
+        {
+          cwd: ROOT,
+          timeout: 30_000,
+        },
       )
+      for (let attempt = 1; attempt < 3 && pull.exitCode !== 0; attempt++) {
+        await Bun.sleep(1000)
+        pull = Bun.spawnSync(
+          ['adb', '-s', this.driver.deviceId, 'pull', this.remotePath, this.rawPath],
+          {
+            cwd: ROOT,
+            timeout: 30_000,
+          },
+        )
+      }
       if (pull.exitCode !== 0)
         throw new Error(
           `adb pull ${this.remotePath} from ${this.driver.deviceId} failed (${pull.exitCode ?? pull.signalCode}): ${pull.stdout.toString()}${pull.stderr.toString()}`,

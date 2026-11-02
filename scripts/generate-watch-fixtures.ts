@@ -12,7 +12,7 @@ import { join } from 'path'
  *   replay-thor301.jsonl -> reassemble rx packets -> Refloat ALLDATA -> lanes -> watch-ride.jsonl
  *
  * The decode mirrors `VescPacketReassembler` + `parseRefloatGetAllData`; the SoC lane mirrors
- * `BatterySocEstimator` manual mode, since the recording carries no Board battery config.
+ * `BatterySocEstimator` preset mode on the fixture board's pack, then `SocMedianWindow`.
  * `watch-preview.jsonl` is the same ride on the recording's real GPS track and clock, for a phone
  * preview take filmed alongside the wrist (`bun run preview --platform android`).
  * `watch-sweep.jsonl` is synthetic: every lane walked through its full range, including null and
@@ -55,21 +55,24 @@ const REFLOAT_MAGIC = 101
 const REFLOAT_GET_ALLDATA = 10
 const REFLOAT_FAULT_MODE = 69
 
-/** Manual-mode SoC shape from `BatterySocEstimator.MANUAL_CURVE`: pack-voltage fraction -> percent. */
-const MANUAL_CURVE: [norm: number, soc: number][] = [
-  [1.0, 100],
-  [0.95, 90],
-  [0.9, 75],
-  [0.82, 55],
-  [0.72, 35],
-  [0.55, 18],
-  [0.35, 7],
-  [0.15, 2],
-  [0.0, 0],
-]
-const DEFAULT_INTERNAL_RESISTANCE_MILLIOHM = 18
-const CELL_MIN_V = 3.1
-const CELL_MAX_V = 4.2
+/**
+ * The pack the phone's replay sizes its SoC with: the selected Thor301 board in
+ * `shared/fixtures/screenshot-db.zip`, which a replay session borrows (`loadBatteryConfig`).
+ */
+const FIXTURE_PACK = { cellPresetId: 'molicel:18650:p30b', seriesCount: 20, parallelCount: 2 }
+/** `SocMedianWindow` default: the phone smooths the SoC estimate before pushing it to the wrist. */
+const SOC_MEDIAN_WINDOW_MS = 20_000
+
+type CellPresets = {
+  curves: Record<string, { voltage: number; soc: number }[]>
+  cells: { id: string; curveId: string; internalResistanceMilliOhm: number }[]
+}
+const CELL_PRESETS: CellPresets = JSON.parse(
+  readFileSync(join(ROOT, 'shared', 'data', 'cell-presets.json'), 'utf8'),
+)
+const FIXTURE_CELL = CELL_PRESETS.cells.find((cell) => cell.id === FIXTURE_PACK.cellPresetId)
+if (!FIXTURE_CELL) throw new Error(`cell preset ${FIXTURE_PACK.cellPresetId} is missing`)
+const FIXTURE_CURVE = CELL_PRESETS.curves[FIXTURE_CELL.curveId]
 
 type LaneSample = {
   t: number
@@ -176,24 +179,21 @@ function parseAllData(payload: Uint8Array): Telemetry | null {
   }
 }
 
-/**
- * Sag-corrected pack voltage -> SoC percent. The recording carries no Board battery config, so the
- * series count is inferred from the highest voltage seen and the pack is assumed 2P, matching the
- * assumptions `BatterySocEstimator` manual mode already makes.
- */
-function estimateSoc(voltageV: number, currentA: number, seriesCount: number): number {
-  const rPackOhm = ((DEFAULT_INTERNAL_RESISTANCE_MILLIOHM / 1000) * seriesCount) / 2
-  const corrected = voltageV + currentA * rPackOhm
-  const norm = (corrected - CELL_MIN_V * seriesCount) / ((CELL_MAX_V - CELL_MIN_V) * seriesCount)
-  if (norm >= 1) return 100
-  if (norm <= 0) return 0
-  for (let i = 0; i < MANUAL_CURVE.length - 1; i++) {
-    const [hiNorm, hiSoc] = MANUAL_CURVE[i]
-    const [loNorm, loSoc] = MANUAL_CURVE[i + 1]
-    if (norm <= hiNorm && norm >= loNorm) {
-      const span = hiNorm - loNorm
-      const t = span > 0 ? (norm - loNorm) / span : 0
-      return loSoc + t * (hiSoc - loSoc)
+/** Sag-corrected pack voltage -> SoC percent, as `BatterySocEstimator` preset mode computes it. */
+function estimateSoc(voltageV: number, currentA: number): number {
+  const rPackOhm =
+    ((FIXTURE_CELL!.internalResistanceMilliOhm / 1000) * FIXTURE_PACK.seriesCount) /
+    FIXTURE_PACK.parallelCount
+  const cellV = (voltageV + currentA * rPackOhm) / FIXTURE_PACK.seriesCount
+  if (cellV >= FIXTURE_CURVE[0].voltage) return 100
+  if (cellV <= FIXTURE_CURVE[FIXTURE_CURVE.length - 1].voltage) return 0
+  for (let i = 0; i < FIXTURE_CURVE.length - 1; i++) {
+    const hi = FIXTURE_CURVE[i]
+    const lo = FIXTURE_CURVE[i + 1]
+    if (cellV <= hi.voltage && cellV >= lo.voltage) {
+      const span = hi.voltage - lo.voltage
+      const t = span > 0 ? (cellV - lo.voltage) / span : 0
+      return lo.soc + t * (hi.soc - lo.soc)
     }
   }
   return 0
@@ -440,8 +440,16 @@ function resampleRide(
   const decoded = decodeRide()
   if (decoded.length === 0) throw new Error('no Refloat ALLDATA packets decoded from the recording')
 
-  const peakVoltage = Math.max(...decoded.map((entry) => entry.telemetry.batteryVoltage))
-  const seriesCount = Math.max(1, Math.round(peakVoltage / CELL_MAX_V))
+  // Trailing median per packet, as `SocMedianWindow` holds it: raw sag transients never reach the wrist.
+  const soc = decoded.map(({ telemetry }) =>
+    estimateSoc(telemetry.batteryVoltage, telemetry.batteryCurrent),
+  )
+  let windowStart = 0
+  const smoothedSoc = decoded.map((entry, index) => {
+    while (entry.t - decoded[windowStart].t > SOC_MEDIAN_WINDOW_MS) windowStart++
+    const window = soc.slice(windowStart, index + 1).sort((a, b) => a - b)
+    return window[Math.floor(window.length / 2)]
+  })
 
   const samples: LaneSample[] = []
   const endMs = decoded[decoded.length - 1].t
@@ -454,15 +462,13 @@ function resampleRide(
       t: rebase ? t - decoded[0].t : t,
       speed: round(Math.abs(telemetry.speed)),
       duty: round(Math.abs(telemetry.dutyCycle) * 100),
-      battery: round(estimateSoc(telemetry.batteryVoltage, telemetry.batteryCurrent, seriesCount)),
+      battery: round(smoothedSoc[cursor]),
       motorTemp: telemetry.tempMotor === null ? null : round(telemetry.tempMotor),
       ctrlTemp: telemetry.tempMosfet === null ? null : round(telemetry.tempMosfet),
       ...positionAt(t, progress),
     })
   }
-  console.log(
-    `${name}: ${samples.length} samples, ${Math.round(endMs / 1000)}s, ${seriesCount}s pack`,
-  )
+  console.log(`${name}: ${samples.length} samples, ${Math.round(endMs / 1000)}s`)
   return samples
 }
 
