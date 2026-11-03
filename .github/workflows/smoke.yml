@@ -272,6 +272,7 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
+          include-hidden-files: true
           name: maestro-debug-android-${{ matrix.flow }}
           path: ~/.maestro/tests/
           if-no-files-found: warn
@@ -318,6 +319,7 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
+          include-hidden-files: true
           name: maestro-debug-ios-${{ matrix.flow }}
           path: ~/.maestro/tests/
           if-no-files-found: warn

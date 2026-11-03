@@ -58,5 +58,20 @@ const kept = lines.filter((line) => {
   return !isRealtimeFrame(event.base64!) || keepOncePerInterval('realtime', event.t)
 })
 
-writeFileSync(TARGET, `${kept.join('\n')}\n`)
-console.log(`${kept.length} of ${lines.length} events → ${TARGET}`)
+// Hosted XCTest startup can consume most of this 13-minute ride before assertions begin.
+// Repeat the real incoming telemetry/GPS timeline to cover the entire 30-minute CI budget,
+// including the six-minute fast-forward. Keep metadata and lifecycle records only once.
+const events = kept.map((line) => JSON.parse(line) as ReplayEvent)
+const duration = Math.max(...events.map((event) => event.t)) + INTERVAL_MS
+const playback = events.filter(
+  (event) =>
+    event.kind === 'ble-chunk' || event.kind === 'location' || event.kind === 'phone-heading',
+)
+const extended = [...kept]
+for (let offset = duration; offset < 60 * 60_000; offset += duration) {
+  extended.push(...playback.map((event) => JSON.stringify({ ...event, t: event.t + offset })))
+}
+writeFileSync(TARGET, `${extended.join('\n')}\n`)
+console.log(
+  `${kept.length} of ${lines.length} source events, ${extended.length} extended events → ${TARGET}`,
+)
