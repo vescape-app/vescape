@@ -138,8 +138,8 @@ class BatterySocEstimatorTest {
             "seriesCount" to 20,
             "parallelCount" to 2,
         )
-        // P50B: 20mΩ, R_pack = 0.020 * 20 / 2 = 0.2Ω
-        // At 30A discharge: correction = +6V
+        // P50B: 13mΩ, R_pack = 0.013 * 20 / 2 = 0.13Ω
+        // At 30A discharge: correction = +3.9V
         val noLoad = BatterySocEstimator.estimateBatteryPercent(72.0, config, 0.0)!!
         val withLoad = BatterySocEstimator.estimateBatteryPercent(72.0, config, 30.0)!!
         assertTrue("IR compensation should increase SoC under load", withLoad > noLoad)

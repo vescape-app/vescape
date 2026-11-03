@@ -4,7 +4,7 @@
 
 Under load (hill climbs, hard acceleration), battery voltage drops due to internal resistance (voltage sag). Raw voltage-based SoC estimation reports artificially low % during high-current draw, causing unreliable battery display and premature alert triggers.
 
-We apply IR compensation before the SoC curve lookup: `V_corrected = V_measured + I_battery × R_pack`, where `R_pack = R_cell × seriesCount / parallelCount`. Each cell preset carries its own `internalResistanceMilliOhm` value from datasheet AC impedance specs. Manual battery config uses a default of 18mΩ with series count estimated from max voltage.
+We apply IR compensation before the SoC curve lookup: `V_corrected = V_measured + I_battery × R_pack`, where `R_pack = R_cell × seriesCount / parallelCount`. Each cell preset carries its own `internalResistanceMilliOhm`: the cell's DC internal resistance at 50% SoC from a ~10 A pulse, as manufacturer datasheets list it. Never use the AC 1 kHz impedance; it is about half the DC value and under-compensates sag. When a datasheet gives only AC, use 2× AC. Manual battery config uses a default of 18mΩ with series count estimated from max voltage.
 
 Raw voltage remains unchanged in telemetry output — only the % calculation (display, alerts, history buckets) uses the corrected voltage. VESC `batteryCurrent` is positive during discharge, so the formula adds voltage back.
 

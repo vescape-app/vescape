@@ -31,14 +31,14 @@
       "datasheetEmptyVoltage": 2.5,
       "recommendedEmptyVoltage": 3.0,
       "capacityAh": 4.2,
-      "internalResistanceMilliOhm": 20,
+      "internalResistanceMilliOhm": 16,
       "maxContinuousDischargeA": 45,
       "verified": true
     },
     {
-      "id": "molicel:21700:p28a",
+      "id": "molicel:18650:p28a",
       "curveId": "nmc-ref",
-      "formFactor": "21700",
+      "formFactor": "18650",
       "brand": "Molicel",
       "model": "P28A",
       "chemistry": "NMC",
@@ -47,7 +47,7 @@
       "datasheetEmptyVoltage": 2.5,
       "recommendedEmptyVoltage": 3.0,
       "capacityAh": 2.8,
-      "internalResistanceMilliOhm": 24,
+      "internalResistanceMilliOhm": 20,
       "maxContinuousDischargeA": 35,
       "verified": true
     },
@@ -63,7 +63,7 @@
       "datasheetEmptyVoltage": 2.5,
       "recommendedEmptyVoltage": 3.0,
       "capacityAh": 4.5,
-      "internalResistanceMilliOhm": 18,
+      "internalResistanceMilliOhm": 15,
       "maxContinuousDischargeA": 45,
       "verified": true
     },
@@ -79,7 +79,7 @@
       "datasheetEmptyVoltage": 2.5,
       "recommendedEmptyVoltage": 3.0,
       "capacityAh": 5.0,
-      "internalResistanceMilliOhm": 20,
+      "internalResistanceMilliOhm": 13,
       "maxContinuousDischargeA": 60,
       "verified": true
     },
@@ -95,7 +95,7 @@
       "datasheetEmptyVoltage": 2.5,
       "recommendedEmptyVoltage": 3.0,
       "capacityAh": 3.0,
-      "internalResistanceMilliOhm": 22,
+      "internalResistanceMilliOhm": 17,
       "maxContinuousDischargeA": 36,
       "verified": true
     },
@@ -111,7 +111,7 @@
       "datasheetEmptyVoltage": 2.5,
       "recommendedEmptyVoltage": 3.0,
       "capacityAh": 5.0,
-      "internalResistanceMilliOhm": 18,
+      "internalResistanceMilliOhm": 16,
       "maxContinuousDischargeA": 25,
       "verified": true
     },
@@ -142,7 +142,7 @@
       "datasheetEmptyVoltage": 2.0,
       "recommendedEmptyVoltage": 3.0,
       "capacityAh": 3.0,
-      "internalResistanceMilliOhm": 18,
+      "internalResistanceMilliOhm": 19,
       "maxContinuousDischargeA": 30,
       "verified": true
     },
@@ -173,7 +173,7 @@
       "datasheetEmptyVoltage": 2.5,
       "recommendedEmptyVoltage": 3.0,
       "capacityAh": 4.0,
-      "internalResistanceMilliOhm": 12,
+      "internalResistanceMilliOhm": 20,
       "verified": false
     }
   ]
