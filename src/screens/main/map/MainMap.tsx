@@ -1,4 +1,3 @@
-import Mapbox from '@rnmapbox/maps'
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
 import {
@@ -10,7 +9,6 @@ import {
 
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 
-import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { captureMode } from '@/config/env'
 import {
   MAP_DEFAULTS,
@@ -51,8 +49,7 @@ import { useNavigationPathFraming } from '@/screens/main/map/useNavigationPathFr
 import { useOffscreenMapIndicators } from '@/screens/main/map/useOffscreenMapIndicators'
 import { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
 import { watchRouteSpanMeters } from '@/modules/map/lib/nearbyRadius'
-
-Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
+import { useMapServicesStore } from '@/modules/map/store/mapServicesStore'
 
 export interface MainMapHandle {
   recenterLive: (options?: { resetPadding?: boolean; animationDuration?: number }) => void
@@ -238,6 +235,7 @@ export const MainMap = memo(
     const mapStyle = useResolvedMapStyle({ ...styleProps, mode })
 
     const settingsLoaded = useSettingsStore((s) => s.loaded)
+    const mapboxToken = useMapServicesStore((s) => s.mapboxToken)
     const lastGpsLatitude = useSettingsStore((s) => s.lastGpsLatitude)
     const lastGpsLongitude = useSettingsStore((s) => s.lastGpsLongitude)
     const historyMetricGradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
@@ -466,7 +464,7 @@ export const MainMap = memo(
       onMapIdle: handleMapIdle,
     })
 
-    if (!MAPBOX_ACCESS_TOKEN) {
+    if (!mapboxToken) {
       return <MapUnavailable />
     }
 

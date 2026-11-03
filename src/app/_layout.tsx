@@ -38,6 +38,7 @@ import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
 import { startNavigationSync } from '@/modules/map/store/mapStore'
 import { startAppStatusSync } from '@/modules/release/store/appStatusStore'
+import { startMapServicesSync } from '@/modules/map/store/mapServicesStore'
 import { startWeatherSync } from '@/modules/weather/store/weatherStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { ThemeController } from '@/modules/settings/components/ThemeController'
@@ -108,6 +109,7 @@ function RootLayout() {
     const stopTuneSnapshotSessionSync = startTuneSnapshotSessionSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
     const stopAppStatusSync = startAppStatusSync()
+    const stopMapServicesSync = startMapServicesSync()
     const stopNavigationSync = startNavigationSync()
     const stopWeatherSync = startWeatherSync()
     const stopAccessoryStateMirror = startAccessoryStateMirror()
@@ -124,6 +126,7 @@ function RootLayout() {
       stopTuneSnapshotSessionSync()
       stopAlertsBoardSync()
       stopAppStatusSync()
+      stopMapServicesSync()
       stopNavigationSync()
       stopWeatherSync()
       stopAccessoryStateMirror()

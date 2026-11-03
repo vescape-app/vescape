@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { IS_MAPY_CONFIGURED } from '@/config/mapy'
+import { useMapServicesStore } from '@/modules/map/store/mapServicesStore'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import {
   getSatelliteImageryPaint,
@@ -38,6 +38,7 @@ export function useResolvedMapStyle({
   hideTelemetryMapDetails: boolean
 }) {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const mapyConfigured = useMapServicesStore((state) => state.mapyTileUrlTemplate != null)
   const outdoorLight = useThemeStore((state) => state.outdoorLight)
   const renderedStyleKey = mapStyleForTheme(mapStyleKey, resolvedTheme)
   const requestedMapStyle =
@@ -45,7 +46,7 @@ export function useResolvedMapStyle({
       ? { key: 'outdoors' as const, styleURL: Mapbox.StyleURL.Outdoors }
       : (MAP_STYLES.find((style) => style.key === renderedStyleKey) ?? MAP_STYLES[0])
   const selectedMapStyle =
-    requestedMapStyle.key === 'mapy' && !IS_MAPY_CONFIGURED ? MAP_STYLES[0] : requestedMapStyle
+    requestedMapStyle.key === 'mapy' && !mapyConfigured ? MAP_STYLES[0] : requestedMapStyle
   const isMapy = selectedMapStyle.key === 'mapy'
   const isOneDark = selectedMapStyle.key === 'onedark'
   const isSatellite = selectedMapStyle.key === 'satellite'

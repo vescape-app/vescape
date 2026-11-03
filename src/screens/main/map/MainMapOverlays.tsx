@@ -81,7 +81,7 @@ export function MapUnavailable() {
     <View style={styles.unavailable}>
       <Text style={styles.unavailableTitle}>Map unavailable</Text>
       <Text style={styles.unavailableMessage}>
-        Set EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN and rebuild the app.
+        The map service is not configured yet. Connect to the internet and reopen the app.
       </Text>
     </View>
   )

@@ -11,7 +11,6 @@ import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
-import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import {
   getSatelliteDarkMapStyle,
@@ -44,8 +43,6 @@ import {
 import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayers'
 import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import { DASH } from '@/helpers/format'
-
-Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
 const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
   { key: 'speed', label: 'Speed' },
