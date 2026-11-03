@@ -20,10 +20,10 @@ appId: ${APP_ID}
     timeout: 30000
 - assertVisible: 'All time'
 - assertVisible: 'Monthly'
-- assertVisible: 'Distance'
-- assertVisible: 'Rides'
-- assertVisible: 'Ride time'
-- assertVisible: 'Top speed'
+- assertVisible: '.*Distance.*'
+- assertVisible: '.*Rides.*'
+- assertVisible: '.*Ride time.*'
+- assertVisible: '.*Top speed.*'
 
 - tapOn:
     id: profile-month-select

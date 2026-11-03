@@ -44,6 +44,7 @@ test('build-only exports an APK without resolving or booting a device', async ()
     createDriver: unexpected,
     runFlow: unexpected,
     launchAndroidApp: unexpected,
+    launchIosApp: unexpected,
   })
   expect(readFileSync(output, 'utf8')).toBe('release APK')
 })
@@ -61,6 +62,7 @@ test('iOS artifact export preserves executable bits and relative bundle symlinks
     createDriver: unexpected,
     runFlow: unexpected,
     launchAndroidApp: unexpected,
+    launchIosApp: unexpected,
   })
   expect(statSync(join(output, 'binary')).mode & 0o777).toBe(0o755)
   expect(readlinkSync(join(output, 'linked-binary'))).toBe('binary')
@@ -110,12 +112,17 @@ test('artifact flows use one Maestro session after installing and restoring fixt
             expect(deviceId).toBe(driver.deviceId)
             calls.push('launch')
           },
+          launchIosApp: async (deviceId) => {
+            expect(platform).toBe('ios')
+            expect(deviceId).toBe(driver.deviceId)
+            calls.push('launch')
+          },
           runFlow: async (path, selected) => {
             expect(selected).toBe(driver)
             wrapper = path
             calls.push('maestro')
             const content = readFileSync(path, 'utf8')
-            expect(content.includes('APP_ALREADY_LAUNCHED:')).toBe(platform === 'android')
+            expect(content.includes('APP_ALREADY_LAUNCHED:')).toBe(true)
             const steps = JSON.parse(content.split('\n---\n')[1]) as {
               runFlow: string
             }[]
@@ -135,7 +142,7 @@ test('artifact flows use one Maestro session after installing and restoring fixt
         'awake',
         'fixtures',
         'location',
-        ...(platform === 'android' ? ['launch'] : []),
+        'launch',
         'maestro',
       ])
       expect(existsSync(wrapper)).toBe(false)
@@ -151,6 +158,7 @@ test('unknown selected flows fail before building or acquiring a device', async 
       createDriver: unexpected,
       runFlow: unexpected,
       launchAndroidApp: unexpected,
+      launchIosApp: unexpected,
     }),
   ).rejects.toThrow('No smoke flow named')
 })
@@ -165,6 +173,7 @@ test('failed Maestro preflight stops before acquiring or booting a device', asyn
       createDriver: unexpected,
       runFlow: unexpected,
       launchAndroidApp: unexpected,
+      launchIosApp: unexpected,
     }),
   ).rejects.toThrow('Version preflight failed')
 })
