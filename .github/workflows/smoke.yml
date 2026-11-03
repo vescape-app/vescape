@@ -117,7 +117,8 @@ jobs:
   build-ios:
     name: Build iOS smoke app
     needs: plan
-    if: inputs.platform != 'android'
+    # Hosted macOS XCTest startup is too flaky to gate pushes; run iOS by manual dispatch.
+    if: github.event_name == 'workflow_dispatch' && inputs.platform != 'android'
     runs-on: macos-26
     timeout-minutes: 60
     env:
