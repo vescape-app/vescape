@@ -50,6 +50,7 @@ interface MapTargetSheetHostProps {
   onRecomputeNavigation: () => void
   onSelectNavigationProfile: (profile: NavigationProfile) => void
   onDismissSelected: () => void
+  onSignInForDetails?: () => void
   onAddFeature: () => void
   onSaveMapPoint: (id: string, patch: MapPointPatch) => Promise<MapPoint | null>
   onVoteMapPoint: (id: string, reaction: 'up' | 'down' | null) => void
@@ -87,6 +88,7 @@ export function MapTargetSheetHost({
   onRecomputeNavigation,
   onSelectNavigationProfile,
   onDismissSelected,
+  onSignInForDetails,
   onAddFeature,
   onSaveMapPoint,
   onVoteMapPoint,
@@ -112,6 +114,7 @@ export function MapTargetSheetHost({
     return (
       <MapTargetSheet
         key={selectedTarget.id}
+        onSignInForDetails={onSignInForDetails}
         target={selectedTarget}
         bottom={bottom}
         mode={editing ? 'edit' : 'select'}

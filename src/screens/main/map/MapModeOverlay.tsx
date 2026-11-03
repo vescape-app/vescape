@@ -196,6 +196,13 @@ export function MapModeOverlay({
         ) : null}
         {visible ? (
           <MapTargetSheetHost
+            onSignInForDetails={
+              accountReady
+                ? undefined
+                : () => {
+                    requireAccount('details')
+                  }
+            }
             selectedTarget={selectedNavigationTarget}
             activeTarget={navigationTarget}
             activeTargetSuppressed={addMenuOpen}

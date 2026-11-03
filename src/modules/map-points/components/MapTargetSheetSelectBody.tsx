@@ -22,6 +22,7 @@ export function MapTargetSelectBody({
   bottom,
   action,
   media,
+  onSignInForDetails,
   onAddFeature,
   onEdit,
   onVoteMapPoint,
@@ -32,6 +33,7 @@ export function MapTargetSelectBody({
   bottom: number
   action: MapTargetSheetAction
   media: readonly MapPointMediaAsset[]
+  onSignInForDetails?: () => void
   onAddFeature?: () => void
   onEdit?: () => void
   onVoteMapPoint?: (id: string, reaction: 'up' | 'down' | null) => boolean
@@ -45,7 +47,7 @@ export function MapTargetSelectBody({
     <MapTargetSheetFrame
       target={target}
       bottom={bottom}
-      header={<MapTargetReadHeader target={target} />}
+      header={<MapTargetReadHeader target={target} onSignInForDetails={onSignInForDetails} />}
       fallbackColor={action.color}
       fallbackTextColor={action.color}
       onDismiss={onDismiss}
