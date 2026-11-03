@@ -36,6 +36,22 @@
       "verified": true
     },
     {
+      "id": "molicel:21700:p28a",
+      "curveId": "nmc-ref",
+      "formFactor": "21700",
+      "brand": "Molicel",
+      "model": "P28A",
+      "chemistry": "NMC",
+      "nominalVoltage": 3.6,
+      "fullVoltage": 4.2,
+      "datasheetEmptyVoltage": 2.5,
+      "recommendedEmptyVoltage": 3.0,
+      "capacityAh": 2.8,
+      "internalResistanceMilliOhm": 24,
+      "maxContinuousDischargeA": 35,
+      "verified": true
+    },
+    {
       "id": "molicel:21700:p45b",
       "curveId": "nmc-ref",
       "formFactor": "21700",
