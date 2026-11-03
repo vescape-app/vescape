@@ -6,6 +6,7 @@ import expo.modules.vescapecore.api.AuthMode
 import expo.modules.vescapecore.api.HttpMethod
 import expo.modules.vescapecore.api.VescapeApi
 import org.json.JSONObject
+import java.util.Locale
 
 /**
  * The app's only Directions call. It fetches one way-following geometry between two coordinates
@@ -34,7 +35,10 @@ class MapboxDirectionsApi(private val api: VescapeApi) : DirectionsRoutes {
     profile: String,
   ): DirectionsResult {
     // Mapbox takes coordinates as `longitude,latitude` — the opposite order from `setDirectionPoint`.
-    val coordinates = "$fromLongitude,$fromLatitude;$toLongitude,$toLatitude"
+    // Fixed 6 decimals: `Double.toString` writes small values as `5.0E-4`, which the server rejects.
+    val coordinates = listOf(fromLongitude, fromLatitude, toLongitude, toLatitude)
+      .map { String.format(Locale.ROOT, "%.6f", it) }
+      .let { (a, b, c, d) -> "$a,$b;$c,$d" }
     val result = api.request(
       method = HttpMethod.GET,
       path = "$PATH/$profile/$coordinates",

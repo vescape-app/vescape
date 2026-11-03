@@ -34,8 +34,11 @@ final class MapboxDirectionsApi: DirectionsRoutes {
     profile: String
   ) async -> DirectionsResult {
     // Mapbox takes coordinates as `longitude,latitude` — the opposite order from `setDirectionPoint`.
-    let coordinates = "\(fromLongitude),\(fromLatitude);\(toLongitude),\(toLatitude)"
-    let result = await api.request(.get, path: "\(Self.path)/\(profile)/\(coordinates)", auth: .required) {
+    // Fixed 6 decimals: `\(Double)` writes small values as `1e-05`, which the server rejects.
+    let coordinates = [fromLongitude, fromLatitude, toLongitude, toLatitude]
+      .map { String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), $0) }
+    let path = "\(Self.path)/\(profile)/\(coordinates[0]),\(coordinates[1]);\(coordinates[2]),\(coordinates[3])"
+    let result = await api.request(.get, path: path, auth: .required) {
       try Self.parse($0)
     }
     switch result {

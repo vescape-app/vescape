@@ -96,7 +96,9 @@ final class VescapeApi {
     guard !query.isEmpty else { return baseUrl + path }
     var components = URLComponents()
     components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
-    return baseUrl + path + "?" + (components.percentEncodedQuery ?? "")
+    // `URLComponents` leaves `+` raw, which servers read as a space; Android sends `%2B`.
+    let encoded = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B") ?? ""
+    return baseUrl + path + "?" + encoded
   }
 
   private func send<T>(
