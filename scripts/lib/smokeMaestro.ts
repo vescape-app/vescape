@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { homedir } from 'os'
 import { CommandFailed } from './captureDriver.ts'
 
 /** Require every outer subflow, including boot, to finish. Nested successes prove nothing. */
@@ -20,12 +21,21 @@ export async function runSmokeMaestro(
 ): Promise<void> {
   const expected = JSON.parse(readFileSync(flow, 'utf8').split('\n---\n')[1]).length
   // Keep artifacts under Maestro's normal upload root, isolated from previous invocations.
-  const debug = join(process.env.HOME!, '.maestro', 'tests', `smoke-${Date.now()}`)
+  const debug = join(homedir(), '.maestro', 'tests', `smoke-${Date.now()}`)
   const proc = Bun.spawn([...command.slice(0, -1), '--debug-output', debug, command.at(-1)!], {
     stdout: 'inherit',
     stderr: 'inherit',
     detached: true,
   })
+  const stop = () => {
+    try {
+      process.kill(-proc.pid, 'SIGKILL')
+    } catch {
+      proc.kill('SIGKILL')
+    }
+  }
+  process.once('SIGINT', stop)
+  process.once('SIGTERM', stop)
   let completedAt: number | undefined
   let stoppedAfterCompletion = false
   const started = Date.now()
@@ -57,11 +67,7 @@ export async function runSmokeMaestro(
           ? '› All smoke commands passed; stopping stalled Maestro shutdown.'
           : '› Maestro execution deadline exceeded.',
       )
-      try {
-        process.kill(-proc.pid, 'SIGKILL')
-      } catch {
-        proc.kill('SIGKILL')
-      }
+      stop()
     }
   }, 1000)
   try {
@@ -69,5 +75,8 @@ export async function runSmokeMaestro(
     if (code !== 0 && !stoppedAfterCompletion) throw new CommandFailed(code || 1, command)
   } finally {
     clearInterval(timer)
+    process.removeListener('SIGINT', stop)
+    process.removeListener('SIGTERM', stop)
+    stop()
   }
 }
