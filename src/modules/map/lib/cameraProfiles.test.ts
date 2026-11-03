@@ -105,11 +105,22 @@ describe('map camera profiles', () => {
 
   test('derives heading profile zoom and padding minimums centrally', () => {
     expect(getProfileZoomLevel({ profile: 'gpsHeading', zoom: 13 })).toBe(16)
-    expect(getPaddingForProfile({ profile: 'gpsHeading', viewportHeight: 1000 })).toEqual({
-      paddingTop: 200,
-      paddingRight: 0,
-      paddingBottom: 0,
-      paddingLeft: 0,
-    })
+    expect(getPaddingForProfile({ profile: 'gpsHeading', viewportHeight: 1000, zoom: 16 })).toEqual(
+      {
+        paddingTop: 200,
+        paddingRight: 0,
+        paddingBottom: 0,
+        paddingLeft: 0,
+      },
+    )
+  })
+
+  test('tilt offset fades out with zoom alongside pitch', () => {
+    const paddingTopAt = (zoom: number) =>
+      getPaddingForProfile({ profile: 'gpsHeading', viewportHeight: 1000, zoom }).paddingTop
+    expect(paddingTopAt(17)).toBe(200)
+    expect(paddingTopAt(13.5)).toBe(100)
+    expect(paddingTopAt(11)).toBe(0)
+    expect(paddingTopAt(6)).toBe(0)
   })
 })

@@ -99,6 +99,11 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
+/** 0 at the zoom where tilt is gone, 1 where it is full. Pitch and the tilt offset share it. */
+function perspectiveProgress(zoom: number) {
+  return clamp((zoom - PERSPECTIVE_MIN_ZOOM) / (PERSPECTIVE_MAX_ZOOM - PERSPECTIVE_MIN_ZOOM), 0, 1)
+}
+
 export function getPitchForProfileZoom({
   profile,
   zoom,
@@ -112,12 +117,7 @@ export function getPitchForProfileZoom({
 }) {
   if (!perspectiveEnabled) return 0
   const definition = typeof profile === 'string' ? MAP_CAMERA_PROFILES[profile] : profile
-  const progress = clamp(
-    (zoom - PERSPECTIVE_MIN_ZOOM) / (PERSPECTIVE_MAX_ZOOM - PERSPECTIVE_MIN_ZOOM),
-    0,
-    1,
-  )
-  const pitch = progress * definition.maxPitch
+  const pitch = perspectiveProgress(zoom) * definition.maxPitch
   return enforceMinimums && definition.minimumPitch != null
     ? Math.max(pitch, definition.minimumPitch)
     : pitch
@@ -148,17 +148,25 @@ export function getMapRevealPitch({
   return basePitch + (targetPitch - basePitch) * progress
 }
 
+/**
+ * The vertical offset that pushes the rider down to see further ahead. It fades out with zoom like
+ * pitch does, so a zoomed-out view sits centered on the rider.
+ */
 export function getPaddingForProfile({
   profile,
   viewportHeight,
+  zoom,
 }: {
   profile: MapCameraProfileKey | CameraProfileDefinition
   viewportHeight?: number
+  zoom: number
 }): CameraPadding {
   const definition = typeof profile === 'string' ? MAP_CAMERA_PROFILES[profile] : profile
   if (definition.verticalOffsetRatio == null || viewportHeight == null) return ZERO_CAMERA_PADDING
   return {
-    paddingTop: Math.round(viewportHeight * definition.verticalOffsetRatio),
+    paddingTop: Math.round(
+      viewportHeight * definition.verticalOffsetRatio * perspectiveProgress(zoom),
+    ),
     paddingRight: 0,
     paddingBottom: 0,
     paddingLeft: 0,
@@ -219,6 +227,6 @@ export function getLiveFollowCameraProfile({
     zoomLevel,
     heading: followHeadingDeg,
     pitch,
-    padding: getPaddingForProfile({ profile, viewportHeight }),
+    padding: getPaddingForProfile({ profile, viewportHeight, zoom: zoomLevel }),
   }
 }

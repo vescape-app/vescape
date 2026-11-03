@@ -194,7 +194,7 @@ function buildLiveFollowCamera({
       perspectiveEnabled,
       enforceMinimums: enforceMinimums && followZoomLevel == null,
     }),
-    padding: getPaddingForProfile({ profile, viewportHeight }),
+    padding: getPaddingForProfile({ profile, viewportHeight, zoom: zoomLevel }),
   }
 }
 
@@ -382,6 +382,8 @@ export function reduceMapCameraIntent(
           centerCoordinate: intent.fallbackCenterCoordinate,
           zoomLevel,
           heading: 0,
+          // Explicit: native keeps the last padding when omitted, so the follow tilt offset leaked in.
+          padding: getPaddingForProfile({ profile: 'weather', zoom: zoomLevel }),
           pitch: getPitchForProfileZoom({
             profile: MAP_CAMERA_PROFILES.weather,
             zoom: zoomLevel,
