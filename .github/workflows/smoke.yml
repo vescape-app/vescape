@@ -286,6 +286,9 @@ jobs:
       matrix:
         flow: ${{ fromJSON(needs.plan.outputs.flows) }}
     steps:
+      - name: Start simulator boot
+        # First boot on a fresh image can sit in Data Migration for minutes; overlap it with setup.
+        run: nohup xcrun simctl boot 'iPhone 17' > /dev/null 2>&1 &
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-java@v4

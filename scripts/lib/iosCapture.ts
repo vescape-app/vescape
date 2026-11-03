@@ -59,7 +59,8 @@ async function bootSimulator(sim: Simulator): Promise<Simulator> {
   }
   // Booted only means the process started. Wait for SpringBoard and first-boot setup before
   // installing the app or starting XCTest; this returns immediately for a ready local simulator.
-  await runOrDie(['xcrun', 'simctl', 'bootstatus', sim.udid, '-b'], undefined, 300_000)
+  // Hosted runners can spend 5+ minutes in first-boot Data Migration.
+  await runOrDie(['xcrun', 'simctl', 'bootstatus', sim.udid, '-b'], undefined, 600_000)
   // Maestro drives the simulator through its UI, so the Simulator app has to be on screen.
   await capture(['open', '-a', 'Simulator'])
   return { ...sim, state: 'Booted' }
