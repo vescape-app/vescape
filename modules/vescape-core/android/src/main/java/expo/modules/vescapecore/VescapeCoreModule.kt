@@ -16,6 +16,8 @@ import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
+import expo.modules.vescapecore.serviceconfig.ServiceConfigCoordinator
+import expo.modules.vescapecore.maps.MapSearchApi
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
@@ -145,6 +147,7 @@ class VescapeCoreModule : Module() {
   private var alertTestControlId: String? = null
   /** Remover for this module's App Status mirror listener; cleared in OnDestroy. */
   private var appStatusUnsub: (() -> Unit)? = null
+  private var serviceConfigUnsub: (() -> Unit)? = null
   private val companionPresence by lazy {
     CompanionPresence(context.applicationContext, activityProvider = { appContext.currentActivity })
   }
@@ -207,6 +210,7 @@ class VescapeCoreModule : Module() {
       "onBoardConfigChangeNotice",
       "onBoardLights",
       "onAppStatus",
+      "onServiceConfig",
       "onNavigation",
       "onRouteProgress",
       "onWeather",
@@ -237,6 +241,16 @@ class VescapeCoreModule : Module() {
     appStatusUnsub = AppStatusCoordinator.get(context).addChangeListener { status ->
       if (shouldEmitToFrontend("onAppStatus")) {
         sendEvent("onAppStatus", mapOf("status" to status?.toMap()))
+      }
+    }
+
+    // Native owns the resolved Service Config (persisted server answer over the baked seed); JS
+    // mirrors it to configure the map SDKs.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `onServiceConfig`
+    // @parity /modules/vescape-core/src/index.ts `ServiceConfigEvent`
+    serviceConfigUnsub = ServiceConfigCoordinator.get(context).addChangeListener { config ->
+      if (shouldEmitToFrontend("onServiceConfig")) {
+        sendEvent("onServiceConfig", mapOf("config" to config.toMap()))
       }
     }
 
@@ -378,6 +392,11 @@ class VescapeCoreModule : Module() {
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
     }
     OnStopObserving("onAppStatus") { stopObserving("onAppStatus") }
+    OnStartObserving("onServiceConfig") {
+      startObserving("onServiceConfig")
+      sendEvent("onServiceConfig", mapOf("config" to ServiceConfigCoordinator.get(context).current.toMap()))
+    }
+    OnStopObserving("onServiceConfig") { stopObserving("onServiceConfig") }
     OnStartObserving("onNavigation") {
       startObserving("onNavigation")
       // Late subscriber: replay the current Navigation so JS is immediately consistent.
@@ -426,6 +445,7 @@ class VescapeCoreModule : Module() {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.get(context).refresh()
+      ServiceConfigCoordinator.get(context).refresh()
       MaintenanceRunner.onChange = ::emitMaintenanceState
       MaintenanceRunner.start(context.applicationContext)
     }
@@ -436,6 +456,7 @@ class VescapeCoreModule : Module() {
       CompanionRestartGate.clear(context.applicationContext)
       CoreForegroundService.setAppVisible(context.applicationContext, true)
       AppStatusCoordinator.get(context).refresh()
+      ServiceConfigCoordinator.get(context).refresh()
       // Emits were gated while hidden; the screen must not keep a stale running state.
       emitMaintenanceState(MaintenanceRunner.snapshot())
     }
@@ -463,6 +484,8 @@ class VescapeCoreModule : Module() {
       NavigationController.get(context).onProgressChange = null
       appStatusUnsub?.invoke()
       appStatusUnsub = null
+      serviceConfigUnsub?.invoke()
+      serviceConfigUnsub = null
       previewAlertFeedback?.release()
       previewAlertFeedback = null
       stopAlertTest()
@@ -638,6 +661,10 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAppStatus`
     Function("getAppStatus") {
       AppStatusCoordinator.get(context).current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getServiceConfig`
+    Function("getServiceConfig") {
+      ServiceConfigCoordinator.get(context).current.toMap()
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeather`
     Function("getWeather") {
@@ -1377,22 +1404,7 @@ class VescapeCoreModule : Module() {
       AppDataRepository.get(appCtx).deletePrivacyZone(id)
       reloadPrivacyZonesIntoRecorder(appCtx)
     }
-    // Map Points are server-owned; native holds no copy. @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getNearbyMapPoints`
-    AsyncFunction("getNearbyMapPoints") Coroutine { latitude: Double, longitude: Double, radiusMeters: Int ->
-      MapPointApi.get(context.applicationContext).nearby(latitude, longitude, radiusMeters)
-    }
-    AsyncFunction("createMapPoint") Coroutine { values: Map<String, Any?> ->
-      MapPointApi.get(context.applicationContext).create(values)
-    }
-    AsyncFunction("updateMapPoint") Coroutine { id: String, patch: Map<String, Any?> ->
-      MapPointApi.get(context.applicationContext).update(id, patch)
-    }
-    AsyncFunction("deleteMapPoint") Coroutine { id: String ->
-      MapPointApi.get(context.applicationContext).delete(id)
-    }
-    AsyncFunction("setMapPointReaction") Coroutine { id: String, reaction: String? ->
-      MapPointApi.get(context.applicationContext).setReaction(id, reaction)
-    }
+    registerMapServices()
     // The direction target is personal client state, never a Map Point. Native keeps it so Group
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") Coroutine { latitude: Double?, longitude: Double? ->
@@ -1604,6 +1616,34 @@ class VescapeCoreModule : Module() {
         RecordingStorageFailure.reportRead("history_session_read", error)
         throw CodedException("ERR_HISTORY_READ", "Could not load ride", error)
       }
+    }
+  }
+
+  /** Server-backed map calls: Map Points and the Mapbox search proxy. Split out to keep `definition()` under the JVM method size limit. */
+  private fun ModuleDefinitionBuilder.registerMapServices() {
+    // Map Points are server-owned; native holds no copy. @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getNearbyMapPoints`
+    AsyncFunction("getNearbyMapPoints") Coroutine { latitude: Double, longitude: Double, radiusMeters: Int ->
+      MapPointApi.get(context.applicationContext).nearby(latitude, longitude, radiusMeters)
+    }
+    // Place search runs through the server's Mapbox proxy; native only owns the Device Token.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `searchMap`
+    AsyncFunction("searchMap") Coroutine { query: String, limit: Int, proximity: String? ->
+      MapSearchApi.get(context.applicationContext).search(query, limit, proximity)
+    }
+    AsyncFunction("reverseGeocodeMap") Coroutine { latitude: Double, longitude: Double ->
+      MapSearchApi.get(context.applicationContext).reverse(latitude, longitude)
+    }
+    AsyncFunction("createMapPoint") Coroutine { values: Map<String, Any?> ->
+      MapPointApi.get(context.applicationContext).create(values)
+    }
+    AsyncFunction("updateMapPoint") Coroutine { id: String, patch: Map<String, Any?> ->
+      MapPointApi.get(context.applicationContext).update(id, patch)
+    }
+    AsyncFunction("deleteMapPoint") Coroutine { id: String ->
+      MapPointApi.get(context.applicationContext).delete(id)
+    }
+    AsyncFunction("setMapPointReaction") Coroutine { id: String, reaction: String? ->
+      MapPointApi.get(context.applicationContext).setReaction(id, reaction)
     }
   }
 

@@ -189,7 +189,7 @@ final class AppStatusCoordinator: OnlineCapability {
   }
 
   /// Default transport: one short-timeout GET, result handed back on the main thread.
-  private static func urlSessionTransport() -> AppStatusTransport {
+  static func urlSessionTransport() -> AppStatusTransport {
     { url, appVersion, deviceToken, onResult in
       guard let target = URL(string: url) else {
         DispatchQueue.main.async { onResult(nil) }

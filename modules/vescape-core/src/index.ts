@@ -2482,6 +2482,26 @@ export interface AppStatusEvent {
 }
 
 /**
+ * Third-party service tokens resolved natively: the last successful `GET /api/service-config`
+ * answer (persisted), else the build-time seed. `null` = that service is not configured.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/serviceconfig/ServiceConfig.kt `ServiceConfig`
+ * @parity /modules/vescape-core/ios/serviceconfig/ServiceConfig.swift `ServiceConfig`
+ */
+export interface ServiceConfig {
+  mapboxToken: string | null
+  mapyToken: string | null
+}
+
+/**
+ * Native Service Config changed. Emitted when a refresh changes it and replayed on subscribe.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onServiceConfig`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendServiceConfig`
+ */
+export interface ServiceConfigEvent {
+  config: ServiceConfig
+}
+
+/**
  * The condition pictogram a forecast resolves to. Native classifies the WMO code; this side only
  * picks artwork and a tint for the slug it is handed, so the phone, the wrist and iOS cannot
  * disagree about what the weather is.
@@ -2762,6 +2782,8 @@ type VescapeCoreEvents = {
   onBoardLights: (event: BoardLightsEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
+  /** Native Service Config, when a refresh changes it and on subscribe. */
+  onServiceConfig: (event: ServiceConfigEvent) => void
   /** Native Navigation, on every change (including clears) and on subscribe. */
   onNavigation: (event: NavigationEvent) => void
   /** Native Route Progress, on every GPS Fix that moves it, on clears, and on subscribe. */
@@ -2897,6 +2919,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getDiagnosticStatus(): DiagnosticStatus
   getLiveState(): LiveStateEvent
   getAppStatus(): AppStatus | null
+  getServiceConfig(): ServiceConfig
   getWeather(): Weather | null
   refreshWeather(): void
   getWeatherAlertThresholds(): WeatherAlertThresholds
@@ -3039,6 +3062,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   upsertPrivacyZone(zone: PrivacyZone): Promise<void>
   setPrivacyZoneEnabled(id: string, enabled: boolean): Promise<void>
   deletePrivacyZone(id: string): Promise<void>
+  searchMap(query: string, limit: number, proximity: string | null): Promise<string>
+  reverseGeocodeMap(latitude: number, longitude: number): Promise<string>
   getNearbyMapPoints(
     latitude: number,
     longitude: number,
@@ -3639,6 +3664,11 @@ export function getLiveState(): LiveStateEvent {
 export function getAppStatus(): AppStatus | null {
   if (E2E_ENABLED) return null
   return native.getAppStatus()
+}
+
+/** Read the resolved Service Config (persisted server answer, else the build-time seed). */
+export function getServiceConfig(): ServiceConfig {
+  return native.getServiceConfig()
 }
 
 /**
@@ -4467,6 +4497,23 @@ export async function deletePrivacyZone(id: string): Promise<void> {
 }
 
 /**
+ * Place search through the server's Mapbox proxy. Resolves the Mapbox Search Box forward body
+ * verbatim; `proximity` is `longitude,latitude`. Needs a Device Token.
+ */
+export async function searchMap(
+  query: string,
+  limit: number,
+  proximity: string | null,
+): Promise<string> {
+  return native.searchMap(query, limit, proximity)
+}
+
+/** Reverse geocoding through the server's Mapbox proxy; the Geocoding v5 body verbatim. */
+export async function reverseGeocodeMap(latitude: number, longitude: number): Promise<string> {
+  return native.reverseGeocodeMap(latitude, longitude)
+}
+
+/**
  * Map Points nearest to a coordinate, newest server truth. Reads need no account; a stored Device
  * Token additionally resolves `ownedByMe` and `myReaction`.
  */
@@ -4694,6 +4741,12 @@ export function addBoardLightsListener(cb: (event: BoardLightsEvent) => void): E
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {
   return emitter.addListener('onAppStatus', cb)
+}
+
+export function addServiceConfigListener(
+  cb: (event: ServiceConfigEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onServiceConfig', cb)
 }
 
 export function addWeatherListener(cb: (event: WeatherEvent) => void): EventSubscription {

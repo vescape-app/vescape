@@ -1,6 +1,8 @@
 package expo.modules.vescapecore.navigation
 
 import android.content.Context
+import expo.modules.vescapecore.api.VescapeApi
+import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.watch.WatchRouteMirror
@@ -631,7 +633,9 @@ class NavigationController(
     /** Process singleton — the Navigation must outlive JS runtime reloads. */
     fun get(context: Context): NavigationController = instance ?: synchronized(this) {
       instance ?: NavigationController(
-        MapboxDirectionsApi(MapboxDirectionsApi.accessToken(context.applicationContext)),
+        MapboxDirectionsApi(
+          VescapeApi.forOrigin(context, AppStatusCoordinator.serverBaseUrl(context)),
+        ),
         AppDataNavigationStore(context.applicationContext),
         loadRerouteDistanceMeters = {
           try {

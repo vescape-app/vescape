@@ -62,6 +62,7 @@ public class VescapeCoreModule: Module {
   /// Remover for this module's App Status mirror subscription; the Group Ride online gate holds its
   /// own, so the sink cannot be a single assignable closure.
   private var appStatusUnsubscribe: (() -> Void)?
+  private var serviceConfigUnsubscribe: (() -> Void)?
 
   /// Shared, app-level Board Session owner that outlives this module instance. A JS runtime reload
   /// (dev reload, OTA update, JS crash recovery) tears down this module and builds a fresh one; the
@@ -92,7 +93,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
+    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -178,6 +179,12 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onAppStatus", ["status": AppStatusCoordinator.shared.current?.toMap()])
     }
     OnStopObserving("onAppStatus") { self.observedEvents.remove("onAppStatus") }
+    OnStartObserving("onServiceConfig") {
+      self.observedEvents.insert("onServiceConfig")
+      // Late subscriber: replay the resolved Service Config so the map SDKs configure at once.
+      self.sendEvent("onServiceConfig", ["config": ServiceConfigCoordinator.shared.current.toMap()])
+    }
+    OnStopObserving("onServiceConfig") { self.observedEvents.remove("onServiceConfig") }
     OnStartObserving("onNavigation") {
       self.observedEvents.insert("onNavigation")
       // Late subscriber: replay the current Navigation so JS is immediately consistent.
@@ -244,6 +251,10 @@ public class VescapeCoreModule: Module {
       self.appStatusUnsubscribe = AppStatusCoordinator.shared.addChangeListener { [weak self] status in
         self?.sendAppStatus(status)
       }
+      self.serviceConfigUnsubscribe?()
+      self.serviceConfigUnsubscribe = ServiceConfigCoordinator.shared.addChangeListener { [weak self] config in
+        self?.sendServiceConfig(config)
+      }
 
       // The forecast is native-owned too; JS mirrors whatever the coordinator resolves.
       WeatherCoordinator.shared.onChange = { [weak self] weather in self?.sendWeather(weather) }
@@ -258,6 +269,7 @@ public class VescapeCoreModule: Module {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
+      ServiceConfigCoordinator.shared.refresh()
       self.attachToCoordinator()
       // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
       // rendering a confident live session forever. Guarded by the coordinator so a running or
@@ -282,6 +294,7 @@ public class VescapeCoreModule: Module {
       self.frontendActive = true
       self.coordinator.appVisible = true
       AppStatusCoordinator.shared.refresh()
+      ServiceConfigCoordinator.shared.refresh()
       // Emits were gated while hidden; the screen must not keep a stale running state.
       self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
     }
@@ -308,6 +321,8 @@ public class VescapeCoreModule: Module {
       BoardConfigStore.onNoticeChanged = nil
       self.appStatusUnsubscribe?()
       self.appStatusUnsubscribe = nil
+      self.serviceConfigUnsubscribe?()
+      self.serviceConfigUnsubscribe = nil
       NavigationController.shared.onChange = nil
       NavigationController.shared.onProgressChange = nil
       self.frontendActive = false
@@ -593,6 +608,10 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getAppStatus`
     Function("getAppStatus") { () -> [String: Any?]? in
       AppStatusCoordinator.shared.current?.toMap()
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getServiceConfig`
+    Function("getServiceConfig") { () -> [String: Any?] in
+      ServiceConfigCoordinator.shared.current.toMap()
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeather`
@@ -1514,6 +1533,21 @@ public class VescapeCoreModule: Module {
       promise.resolve(nil)
     }
 
+    // Place search runs through the server's Mapbox proxy; native only owns the Device Token.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `searchMap`
+    AsyncFunction("searchMap") { (query: String, limit: Int, proximity: String?, promise: Promise) in
+      Task {
+        do { promise.resolve(try await MapSearchApi.shared.search(query: query, limit: limit, proximity: proximity)) }
+        catch { Self.rejectMapSearch(promise, error) }
+      }
+    }
+    AsyncFunction("reverseGeocodeMap") { (latitude: Double, longitude: Double, promise: Promise) in
+      Task {
+        do { promise.resolve(try await MapSearchApi.shared.reverse(latitude: latitude, longitude: longitude)) }
+        catch { Self.rejectMapSearch(promise, error) }
+      }
+    }
+
     // Map Points are server-owned; native holds no copy.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getNearbyMapPoints`
     AsyncFunction("getNearbyMapPoints") {
@@ -2248,6 +2282,16 @@ public class VescapeCoreModule: Module {
     }
   }
 
+  /// Emit `onServiceConfig` with the resolved Service Config.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onServiceConfig`
+  /// @parity /modules/vescape-core/src/index.ts `ServiceConfigEvent`
+  private func sendServiceConfig(_ config: ServiceConfig) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onServiceConfig") else { return }
+      self.sendEvent("onServiceConfig", ["config": config.toMap()])
+    }
+  }
+
   /// Asks for the path again, to the Direction Point the rider already has and from where they are
   /// now. A no-op with no Direction Point: there is nothing to compute a path to.
   private func recomputeNavigation() {
@@ -2318,6 +2362,11 @@ public class VescapeCoreModule: Module {
 
   /// Map Point failures carry a code JS branches on; anything else is an unexpected native fault.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/mappoints/MapPointApi.kt `MapPointApiException`
+  private static func rejectMapSearch(_ promise: Promise, _ error: Error) {
+    let apiError = error as? MapSearchApiError
+    promise.reject(apiError?.code ?? MapSearchApiError.unavailable, apiError?.message ?? error.localizedDescription)
+  }
+
   private static func rejectMapPoint(_ promise: Promise, _ error: Error) {
     guard let apiError = error as? MapPointApiError else {
       promise.reject(MapPointApiError.refused, error.localizedDescription)
