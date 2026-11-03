@@ -25,6 +25,7 @@ import { tmpdir } from 'os'
 import { basename, dirname, join, relative, resolve } from 'path'
 
 import { applicationId } from '../src/config/appVariant.ts'
+import { runSmokeMaestro } from './lib/smokeMaestro.ts'
 import { maestroCommand } from './lib/maestro.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
 import {
@@ -123,7 +124,7 @@ async function runFlow(path: string, driver: CaptureDriver): Promise<void> {
   console.log(`› ${basename(path, '.yaml')}`)
   // Without --device Maestro picks the first attached device itself, which silently drives whatever
   // else is plugged in rather than the one this run prepared.
-  await runOrDie(
+  await runSmokeMaestro(
     await maestroCommand(
       'test',
       '--device',
@@ -132,6 +133,7 @@ async function runFlow(path: string, driver: CaptureDriver): Promise<void> {
       `APP_ID=${applicationId}`,
       path,
     ),
+    path,
   )
 }
 
@@ -172,6 +174,7 @@ interface SmokeDependencies {
   createDriver: (args: Args) => Promise<CaptureDriver>
   runFlow: typeof runFlow
   launchAndroidApp: typeof launchAndroidApp
+  launchIosApp: (deviceId: string) => Promise<void>
 }
 
 const dependencies: SmokeDependencies = {
@@ -186,6 +189,9 @@ const dependencies: SmokeDependencies = {
       : createAndroidDriver(args.device, args.replay, 'smoke'),
   runFlow,
   launchAndroidApp,
+  launchIosApp: async (deviceId) => {
+    await runOrDie(['xcrun', 'simctl', 'launch', deviceId, applicationId], undefined, 60_000)
+  },
 }
 
 export async function main(args: Args, deps: SmokeDependencies = dependencies): Promise<void> {
@@ -218,6 +224,7 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
   await driver.stageFixtures()
   await driver.pinLocation()
   if (args.platform === 'android') await deps.launchAndroidApp(driver.deviceId)
+  else await deps.launchIosApp(driver.deviceId)
 
   // A separate Maestro process starts the iOS XCTest driver again. Keep boot and all selected
   // flows in one session, retaining their order and failing before later flows when boot fails.
@@ -229,7 +236,8 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
       sessionFlow,
       [
         `appId: ${JSON.stringify(applicationId)}`,
-        ...(args.platform === 'android' ? ['env:', '  APP_ALREADY_LAUNCHED: "true"'] : []),
+        'env:',
+        '  APP_ALREADY_LAUNCHED: "true"',
         '---',
         JSON.stringify(paths.map((path) => ({ runFlow: relative(sessionDir, path) }))),
         '',
