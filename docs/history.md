@@ -239,7 +239,7 @@ uses Web Mercator and one uniform scale for both axes, centred in its frame, nev
 
 Thumbnails draw a dark street map behind the route. Native `MapTiles` downloads 512 px JPEG tiles of
 a Mapbox-hosted style from the Static Tiles API and keeps them in the app's cache directory with no
-expiry; concurrent requests share one download and a failed one stores nothing. The style is the
+expiry, authenticated with the Mapbox token from Service Config; concurrent requests share one download and a failed one stores nothing. The style is the
 One Dark ground layers without labels, icons or boundaries, published to the app's Mapbox account
 with `bun run map:publish-thumbnail-style` (needs `MAPBOX_SECRET_TOKEN` with `styles:list`,
 `styles:read` and `styles:write`). Its `owner/styleId` is a native constant and part of the cache

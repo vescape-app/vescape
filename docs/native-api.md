@@ -524,6 +524,32 @@ Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` 
 { enabled, host, distinctId?, captureCount, lastEventName?, lastCaptureAt? }
 ```
 
+## Service Config and map services
+
+Native owns the third-party map tokens (`serviceconfig/ServiceConfig.{kt,swift}`). On launch and
+every foreground, beside App Status, it fetches the public `GET /api/service-config` →
+`{ tokens: { mapbox?, mapy? } }` (absent key = not configured) and persists the last successful
+body (SharedPreferences / UserDefaults). Resolution: persisted server answer, else the build-time
+seed baked by `plugins/withServiceTokens.ts` from `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` /
+`EXPO_PUBLIC_MAPY_API_KEY` (both optional). A failed refresh keeps what is known; a successful one
+replaces it whole.
+
+| call / event             | shape                                       | notes                                                      |
+| ------------------------ | ------------------------------------------- | ---------------------------------------------------------- |
+| `getServiceConfig()`     | `{ mapboxToken, mapyToken }` (`null` = off) | sync read of the resolved config                           |
+| `onServiceConfig`        | `{ config }`                                | on change, replayed on subscribe                           |
+| `searchMap(q, limit, p)` | `Promise<string>`                           | `GET /api/maps/search`, Mapbox Search Box body verbatim    |
+| `reverseGeocodeMap(…)`   | `Promise<string>`                           | `GET /api/maps/reverse`, Mapbox Geocoding v5 body verbatim |
+
+JS mirrors the config in `src/modules/map/store/mapServicesStore.ts`, which calls
+`Mapbox.setAccessToken` on load and on every token change and builds the Mapy tile template.
+Watch/thumbnail `MapTiles` read the resolved Mapbox token per download.
+
+Search, reverse geocoding and Directions (`MapboxDirectionsApi`) go through the server's Mapbox
+proxy via `VescapeApi` with a required Device Token; the Mapbox secret never ships for them. The
+search calls reject with `MAP_SEARCH_SIGN_IN_REQUIRED` or `MAP_SEARCH_UNAVAILABLE` (rate limit,
+upstream down, not configured, offline); Directions turns every such failure into a failed path.
+
 ## Events
 
 | event                  | payload                            | when                                                                                                             |

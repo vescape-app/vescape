@@ -7,9 +7,8 @@
  * checks this contract before prebuild so the failure is loud and early.
  */
 export const REQUIRED_PRODUCTION_ENV = [
-  'EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN',
-  'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY',
-  'EXPO_PUBLIC_MAPY_API_KEY',
+  // No map tokens: the server hands them out as Service Config. `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`
+  // and `EXPO_PUBLIC_MAPY_API_KEY` are optional seeds for the first, still-offline launch.
   'EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY',
   'EXPO_PUBLIC_SENTRY_DSN',
   // No analytics keys: diagnostics stay local-only (ADR 0031) and Sentry owns monitoring.

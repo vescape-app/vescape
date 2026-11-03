@@ -431,6 +431,10 @@ _Avoid_: Release warning, push notification, server error
 An app capability that depends on the Vescape server and remains separate from local Board, recording, history, and tuning capabilities.
 _Avoid_: Server feature, cloud feature, online mode
 
+**Service Config**:
+The server-issued set of third-party service tokens (Mapbox, Mapy) the app needs to draw maps. Native keeps the last successful answer across launches and falls back to the tokens baked into the build until the server has answered once; a service missing from it is off.
+_Avoid_: API keys, env config, remote config
+
 **Diagnostic Event**:
 An app-observed abnormal condition that helps explain board connection, telemetry, tuning, recording, or UI failures.
 _Avoid_: Error log, debug session, crash report
