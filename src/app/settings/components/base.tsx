@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useEffect, useState } from 'react'
 import {
@@ -197,14 +198,14 @@ function SectionHeaderShowcase() {
 
 export default function BaseComponentsPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero icon={CubeIcon} description="SectionHeader, Banner, Placeholder, TickText." />
         <SectionHeaderShowcase />
         <PlaceholderShowcase />
         <BannerShowcase />
         <TickTextShowcase />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

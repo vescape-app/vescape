@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { TextAaIcon } from 'phosphor-react-native'
 
@@ -67,8 +68,8 @@ const TABULAR_ROWS = ['12.345', '6.789', '123.0']
 
 export default function TypographyComponentsPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={TextAaIcon}
           description="Raleway across every UI text role. Weights, tokens, and tabular-nums sanity check."
@@ -132,7 +133,7 @@ export default function TypographyComponentsPage() {
             Readouts opt out of Raleway via fontFamily: &apos;monospace&apos;.
           </Text>
         </ShowcaseCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

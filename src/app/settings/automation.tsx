@@ -1,5 +1,6 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useState } from 'react'
-import { Alert, Linking, Platform, ScrollView, StyleSheet } from 'react-native'
+import { Alert, Linking, Platform, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   BluetoothConnectedIcon,
@@ -147,8 +148,8 @@ export default function AutomationSettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={BluetoothConnectedIcon}
           description="Choose how the app wakes up, connects to your board, and reacts when the board connects."
@@ -262,7 +263,7 @@ export default function AutomationSettingsScreen() {
             </SettingsCard>
           </>
         ) : null}
-      </ScrollView>
+      </PageScrollView>
       <ConfirmModal
         visible={disconnectPrompt}
         title="Board will disconnect"

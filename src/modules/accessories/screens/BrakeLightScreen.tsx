@@ -1,5 +1,6 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useEffect, useRef, useState } from 'react'
-import { AppState, ScrollView, StyleSheet } from 'react-native'
+import { AppState, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LightbulbFilamentIcon } from 'phosphor-react-native'
 import {
@@ -111,8 +112,8 @@ export function BrakeLightScreen({
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={LightbulbFilamentIcon}
           iconColor={theme.palette.red.color}
@@ -183,7 +184,7 @@ export function BrakeLightScreen({
             {problem ? <Text style={styles.problem}>{problem}</Text> : null}
           </>
         )}
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

@@ -1,3 +1,4 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { Text } from '@/components/base/Text'
 import { useState } from 'react'
 import { FadersIcon, WavesIcon } from 'phosphor-react-native'
@@ -5,7 +6,7 @@ import { TuneProfileSelectCard } from '@/modules/tune/components/TuneProfileSele
 import { tuneProfileColorTheme } from '@/modules/tune/components/TuneProfileMetadataModal'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { ChipRow } from '@/components/dev/ShowcaseControls'
-import { ScrollView, StyleSheet } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ToolboxIcon } from 'phosphor-react-native'
 
@@ -30,8 +31,8 @@ export default function TunePage() {
   const [color, setColor] = useState('purple')
   const [tabCount, setTabCount] = useState('2')
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ToolboxIcon}
           description="TuneDial, BasicSliderCell, Tune Preview, Movement Board Test, TuneSyncBar, TuneGroupGrid."
@@ -109,7 +110,7 @@ export default function TunePage() {
         <TuneProfileMetadataModalShowcase />
         <TunePreviewShowcase />
         <UnsupportedTunePreviewShowcase />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

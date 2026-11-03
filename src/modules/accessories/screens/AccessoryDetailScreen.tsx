@@ -1,5 +1,6 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useCallback, useState } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { TrashIcon } from 'phosphor-react-native'
@@ -67,7 +68,7 @@ export function AccessoryDetailScreen({
 
   if (!accessory) {
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container} edges={[]}>
         <IconHero
           icon={AccessoryIcon}
           title="Accessory not found"
@@ -80,8 +81,8 @@ export function AccessoryDetailScreen({
   const status = accessoryStatusCopy(accessory.phase)
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero icon={AccessoryIcon} title={accessory.name} />
 
         {accessory.compatibility ? (
@@ -163,7 +164,7 @@ export function AccessoryDetailScreen({
             This accessory could not be removed. It is still saved and still connecting; try again.
           </Text>
         ) : null}
-      </ScrollView>
+      </PageScrollView>
       <ConfirmModal
         visible={confirming}
         title="Forget accessory"

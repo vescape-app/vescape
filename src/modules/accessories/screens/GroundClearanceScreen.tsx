@@ -1,5 +1,6 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   ArrowLineDownIcon,
@@ -158,7 +159,7 @@ export function GroundClearanceScreen({
 
   if (!accessory || !capability) {
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container} edges={[]}>
         <IconHero
           icon={ArrowsVerticalIcon}
           title="Sensor not found"
@@ -175,8 +176,8 @@ export function GroundClearanceScreen({
   const configured = saved != null && saved.problem == null
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <IconHero
           icon={ArrowsVerticalIcon}
           iconColor={theme.palette.sky.color}
@@ -316,7 +317,7 @@ export function GroundClearanceScreen({
             </SettingsCard>
           </>
         ) : null}
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

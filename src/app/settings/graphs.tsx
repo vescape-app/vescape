@@ -1,7 +1,8 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
-import { View, StyleSheet, ScrollView } from 'react-native'
+import { View, StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { GaugeIcon, ChartLineUpIcon } from 'phosphor-react-native'
@@ -60,8 +61,8 @@ export default function GraphsSettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ChartLineUpIcon}
           description="Hot graph ramps start at Start and reach full warning color at End."
@@ -151,7 +152,7 @@ export default function GraphsSettingsScreen() {
             )
           })}
         </SettingsCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

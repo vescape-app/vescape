@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { SwatchesIcon } from 'phosphor-react-native'
 
@@ -20,8 +21,8 @@ import { theme } from '@/constants/theme'
 
 export default function ControlsPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SwatchesIcon}
           description="Switch, RadioIndicator, ExpandableCircleMenu, FloatingBar, PrevNextSelector, PillSelector, AlertPresetControl, MetricAlerts."
@@ -37,7 +38,7 @@ export default function ControlsPage() {
         <SegmentedToggleShowcase />
         <ZonePillsShowcase />
         <ExpandableCircleMenuShowcase />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

@@ -1,6 +1,7 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { DistanceUnitContext, useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedUnit, type DistanceUnit } from '@/helpers/units'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -554,8 +555,8 @@ export default function ChartsPage() {
   const [distanceUnit, setUnits] = useState<DistanceUnit>('km')
   return (
     <DistanceUnitContext value={distanceUnit}>
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.content}>
+      <SafeAreaView style={styles.container} edges={[]}>
+        <PageScrollView contentContainerStyle={styles.content}>
           <IconHero
             icon={ChartLineUpIcon}
             description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
@@ -580,7 +581,7 @@ export default function ChartsPage() {
             <ChartGestureHint compact />
           </ShowcaseCard>
           <BmsCellVoltagesShowcase />
-        </ScrollView>
+        </PageScrollView>
       </SafeAreaView>
     </DistanceUnitContext>
   )

@@ -1,4 +1,5 @@
-import { Platform, StyleSheet, ScrollView } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { Platform, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   AngleIcon,
@@ -81,8 +82,8 @@ export default function WatchSettingsScreen() {
   )
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero icon={WatchIcon} description="Live telemetry on your watch while you ride." />
 
         <SettingsSectionTitle>Connection</SettingsSectionTitle>
@@ -238,7 +239,7 @@ export default function WatchSettingsScreen() {
             }
           />
         </SettingsCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

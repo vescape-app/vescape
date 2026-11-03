@@ -1,4 +1,5 @@
-import { View, StyleSheet, ScrollView } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { View, StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
@@ -30,8 +31,8 @@ export default function DatabaseSettingsScreen() {
   const progress = maintenanceProgress(maintenance)
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={DatabaseIcon}
           description="Back up and restore your ride history database."
@@ -99,7 +100,7 @@ export default function DatabaseSettingsScreen() {
             />
           ))}
         </SettingsCard>
-      </ScrollView>
+      </PageScrollView>
       <ConfirmModal
         visible={db.restoreConfirmVisible}
         title="Restore database"

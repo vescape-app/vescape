@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { GaugeIcon, ThermometerIcon } from 'phosphor-react-native'
 
@@ -16,8 +17,8 @@ export default function UnitsSettingsScreen() {
   const set = useSettingsStore((state) => state.set)
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero icon={GaugeIcon} description="Pick how speed, distance and temperature read." />
         <SettingsCard>
           <SettingsRow
@@ -55,7 +56,7 @@ export default function UnitsSettingsScreen() {
             }
           />
         </SettingsCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

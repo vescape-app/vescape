@@ -1,4 +1,5 @@
-import { StyleSheet, ScrollView } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ClockCountdownIcon, GaugeIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
@@ -20,8 +21,8 @@ export default function LiveTelemetrySettingsScreen() {
   )
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={GaugeIcon}
           description="How much full-rate board data the live charts keep, and how often it is requested."
@@ -71,7 +72,7 @@ export default function LiveTelemetrySettingsScreen() {
             }
           />
         </SettingsCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

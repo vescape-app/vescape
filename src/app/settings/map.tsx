@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   ImageSquareIcon,
@@ -49,8 +50,8 @@ export default function MapSettingsScreen() {
   const satelliteDesaturationPercent = Math.round(-satelliteImagerySaturation * 100)
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ImageSquareIcon}
           description="Set the satellite baseline. Active theme and daylight adapt it without changing routes or pins."
@@ -177,7 +178,7 @@ export default function MapSettingsScreen() {
             </>
           ) : null}
         </SettingsCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

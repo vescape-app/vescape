@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState } from 'react'
 import { WrenchIcon } from 'phosphor-react-native'
@@ -52,15 +53,15 @@ function ShowcaseControlsShowcase() {
 
 export default function DevComponentsPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={WrenchIcon}
           description="DevBadge, ShowcaseCard, ShowcaseControls — dev-only surfaces and the scaffolding this browser is built from."
         />
         <DevBadgeShowcase />
         <ShowcaseControlsShowcase />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }
