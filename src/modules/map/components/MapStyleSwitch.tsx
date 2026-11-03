@@ -2,7 +2,7 @@ import {
   ExpandableCircleMenu,
   type ExpandableCircleMenuSize,
 } from '@/components/controls/ExpandableCircleMenu'
-import { IS_MAPY_CONFIGURED } from '@/config/mapy'
+import { useMapServicesStore } from '@/modules/map/store/mapServicesStore'
 import {
   useColoredActionForeground,
   useResolvedAccentColors,
@@ -28,13 +28,14 @@ export function MapStyleSwitch({
 }: MapStyleSwitchProps) {
   const accents = useResolvedAccentColors()
   const light = useThemeStore((state) => state.resolvedTheme === 'light')
+  const mapyConfigured = useMapServicesStore((state) => state.mapyTileUrlTemplate != null)
   const activeForeground = useColoredActionForeground(theme.palette.sky.color)
   const iconSize = size === 'sm' ? 18 : 21
-  const availableStyles = IS_MAPY_CONFIGURED
+  const availableStyles = mapyConfigured
     ? MAP_STYLES
     : MAP_STYLES.filter((style) => style.key !== 'mapy')
   const effectiveActiveKey =
-    activeKey === 'mapy' && !IS_MAPY_CONFIGURED
+    activeKey === 'mapy' && !mapyConfigured
       ? MAP_STYLES[0].key
       : activeKey === 'outdoors'
         ? 'onedark'

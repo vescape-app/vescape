@@ -39,7 +39,7 @@ final class MapTilesTests: XCTestCase {
   }
 
   private func tiles(_ gate: FetchGate) -> MapTiles {
-    MapTiles(directory: directory, fetch: { _ in await gate.fetch() }, accessToken: "pk.test")
+    MapTiles(directory: directory, fetch: { _ in await gate.fetch() }, accessToken: { "pk.test" })
   }
 
   func testConcurrentRequestsForOneTileShareADownloadAndLaterOnesReadTheDisk() async throws {

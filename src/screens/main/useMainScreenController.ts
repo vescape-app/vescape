@@ -16,7 +16,7 @@ import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { useHistoryFavorites } from '@/screens/main/history/useHistoryFavorites'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
-import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
+import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useFavoriteMedia } from '@/modules/history/hooks/useMediaHistory'
 import type { MediaAssetInput } from '@/modules/history/lib/mediaHistory'
@@ -156,7 +156,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     markers: sessionMarkers,
   })
 
-  const canContribute = useMapContributionReady()
+  const canContribute = useDeviceAccountReady()
 
   useEffect(() => {
     void loadDirectionPoint()

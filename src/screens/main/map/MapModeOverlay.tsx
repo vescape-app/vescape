@@ -7,16 +7,17 @@ import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoar
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { MapTargetSheetHost } from '@/modules/map-points/components/MapTargetSheetHost'
-import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
+import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useResolvedAccentColors } from '@/hooks/useTheme'
 import { routes } from '@/navigation/routes'
 import { FullMapControls } from '@/screens/main/map/FullMapControls'
+import { accountGateCopy, type AccountGateReason } from '@/screens/main/map/accountGate'
 import { navigationActionColors } from '@/screens/main/map/navigationActionColors'
 import type { MapModeOverlayProps } from '@/screens/main/map/mapModeOverlayTypes'
 
 /**
  * Explore mode. Owns the map's write-side state — what is selected, what is being edited, whether
- * the add menu is placing a feature — and the sign-in gate every one of those writes goes through.
+ * the add menu is placing a feature — and the sign-in gate those writes, search and navigation go through.
  */
 export function MapModeOverlay({
   visible,
@@ -42,10 +43,11 @@ export function MapModeOverlay({
   onRemoveMapPoint,
 }: MapModeOverlayProps) {
   const router = useRouter()
-  // The server authorizes Map Point writes on the Device Token, so that is what gates the UI.
-  const canContribute = useMapContributionReady()
+  // The server authorizes Map Point writes and the map proxy on the Device Token, so that is what
+  // gates the UI.
+  const accountReady = useDeviceAccountReady()
   const riderColor = useSelectedBoardRailColor()
-  const [signInPromptVisible, setSignInPromptVisible] = useState(false)
+  const [signInReason, setSignInReason] = useState<AccountGateReason | null>(null)
   const [editingMapPointId, setEditingMapPointId] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
@@ -99,11 +101,21 @@ export function MapModeOverlay({
     [mapRef],
   )
 
-  const requireMapAccount = useCallback(() => {
-    if (canContribute) return true
-    setSignInPromptVisible(true)
-    return false
-  }, [canContribute])
+  const requireAccount = useCallback(
+    (reason: AccountGateReason) => {
+      if (accountReady) return true
+      setSignInReason(reason)
+      return false
+    },
+    [accountReady],
+  )
+  const requireMapAccount = useCallback(() => requireAccount('contribute'), [requireAccount])
+  const navigateTarget = useCallback(
+    async (target: MapSelection) => {
+      if (requireAccount('navigate')) await onNavigateTarget(target)
+    },
+    [onNavigateTarget, requireAccount],
+  )
 
   useEffect(() => {
     if (selectedNavigationTarget?.type === 'mapPoint') return
@@ -122,8 +134,8 @@ export function MapModeOverlay({
   useEffect(() => {
     if (!visible || !longPressMapTarget) return
     const frame = requestAnimationFrame(() => {
-      if (!canContribute) {
-        setSignInPromptVisible(true)
+      if (!accountReady) {
+        setSignInReason('contribute')
         onLongPressMapTargetHandled()
         return
       }
@@ -138,7 +150,7 @@ export function MapModeOverlay({
     })
     return () => cancelAnimationFrame(frame)
   }, [
-    canContribute,
+    accountReady,
     longPressMapTarget,
     mapRef,
     onDismissSelectedTarget,
@@ -174,16 +186,23 @@ export function MapModeOverlay({
             searchProximity={searchProximity}
             onExit={onExit}
             onSelectNavigationTarget={onSelectNavigationTarget}
-            onNavigateTarget={onNavigateTarget}
+            onNavigateTarget={navigateTarget}
             bottomControlsVisible={!targetSheetVisible}
             addMenuOpen={addMenuOpen}
             onAddMenuVisibilityChange={setAddMenuOpen}
             onBeginEditMapPoint={setEditingMapPointId}
-            onRequireMapAccount={requireMapAccount}
+            onRequireAccount={requireAccount}
           />
         ) : null}
         {visible ? (
           <MapTargetSheetHost
+            onSignInForDetails={
+              accountReady
+                ? undefined
+                : () => {
+                    requireAccount('details')
+                  }
+            }
             selectedTarget={selectedNavigationTarget}
             activeTarget={navigationTarget}
             activeTargetSuppressed={addMenuOpen}
@@ -193,7 +212,9 @@ export function MapModeOverlay({
             actionTextColor={navigationAction.textColor}
             onBeginEdit={setEditingMapPointId}
             onEndEdit={() => setEditingMapPointId(null)}
-            onNavigateSelected={() => void onNavigateSelectedTarget()}
+            onNavigateSelected={() => {
+              if (requireAccount('navigate')) void onNavigateSelectedTarget()
+            }}
             onCancelNavigation={() => {
               editNavigation()
               onCancelNavigation()
@@ -235,16 +256,16 @@ export function MapModeOverlay({
       </View>
 
       <ConfirmModal
-        visible={signInPromptVisible}
-        title="Sign in to contribute"
-        message="A Vescape account is required to add, edit, delete, or react to map features. Map features are shared with other riders."
+        visible={signInReason != null}
+        title={accountGateCopy[signInReason ?? 'contribute'].title}
+        message={accountGateCopy[signInReason ?? 'contribute'].message}
         confirmLabel="Sign in"
         cancelLabel="Not now"
         onConfirm={() => {
-          setSignInPromptVisible(false)
+          setSignInReason(null)
           router.push(routes.signIn)
         }}
-        onCancel={() => setSignInPromptVisible(false)}
+        onCancel={() => setSignInReason(null)}
       />
     </>
   )

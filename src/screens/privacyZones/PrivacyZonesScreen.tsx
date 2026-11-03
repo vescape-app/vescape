@@ -15,14 +15,11 @@ import {
   PillSelectorMenuItem,
 } from '@/components/controls/PillSelector'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
-import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { theme } from '@/constants/theme'
 import { useThemeStore } from '@/hooks/useTheme'
 import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
 import { usePrivacyZoneEditor } from '@/screens/privacyZones/usePrivacyZoneEditor'
 import { ZoneNameModal } from '@/screens/privacyZones/ZoneNameModal'
-
-Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
 const HEADER_HEIGHT = Platform.OS === 'android' ? 56 : 44
 

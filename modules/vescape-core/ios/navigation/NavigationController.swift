@@ -146,7 +146,7 @@ final class NavigationController {
   /// Process singleton — the Navigation must outlive JS runtime reloads.
   static let shared: NavigationController = {
     let controller = NavigationController(
-      api: MapboxDirectionsApi(accessToken: MapboxDirectionsApi.bakedAccessToken),
+      api: MapboxDirectionsApi(api: VescapeApi.forOrigin(AppStatusCoordinator.serverBaseUrl)),
       store: AppDataNavigationStore(),
       loadRerouteDistanceMeters: {
         do {

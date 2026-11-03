@@ -1,3 +1,4 @@
+import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { MapPointPatch } from 'vescape-core'
@@ -17,6 +18,7 @@ export function useMainScreenMapTargets(
   controller: ReturnType<typeof useMainScreenController>,
   mapRef: React.RefObject<MainMapHandle | null>,
 ) {
+  const accountReady = useDeviceAccountReady()
   const [offscreenMapIndicators, setOffscreenMapIndicators] = useState<
     OffscreenMapIndicatorState[]
   >([])
@@ -216,6 +218,12 @@ export function useMainScreenMapTargets(
 
   useEffect(() => {
     if (!selectedNavigationTarget?.loadingDetails) return
+    if (!accountReady) {
+      setSelectedNavigationTarget((current) =>
+        current ? { ...current, loadingDetails: false } : current,
+      )
+      return
+    }
     const abortController = new AbortController()
     const { id, latitude, longitude, type } = selectedNavigationTarget
     void reverseGeocodeMapCoordinate(latitude, longitude, { signal: abortController.signal })
@@ -248,7 +256,7 @@ export function useMainScreenMapTargets(
         )
       })
     return () => abortController.abort()
-  }, [selectedNavigationTarget])
+  }, [selectedNavigationTarget, accountReady])
 
   useEffect(() => {
     if (!activeNavigationTarget?.loadingDetails) return

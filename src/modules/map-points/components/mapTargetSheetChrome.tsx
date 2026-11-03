@@ -149,7 +149,13 @@ export function getMapTargetDisplayTitle(target: MapSelection) {
     : target.title
 }
 
-export function MapTargetReadHeader({ target }: { target: MapSelection }) {
+export function MapTargetReadHeader({
+  target,
+  onSignInForDetails,
+}: {
+  target: MapSelection
+  onSignInForDetails?: () => void
+}) {
   if (target.type === 'mapPoint') {
     const title = getMapTargetDisplayTitle(target)
     const created = new Date(target.point.createdAt).toLocaleDateString()
@@ -165,9 +171,10 @@ export function MapTargetReadHeader({ target }: { target: MapSelection }) {
     )
   }
 
-  const detail = target.loadingDetails
-    ? 'Loading details'
-    : target.subtitle || `${target.latitude.toFixed(5)}, ${target.longitude.toFixed(5)}`
+  const detail =
+    target.loadingDetails && !onSignInForDetails
+      ? 'Loading details'
+      : target.subtitle || `${target.latitude.toFixed(5)}, ${target.longitude.toFixed(5)}`
 
   return (
     <>
@@ -177,6 +184,11 @@ export function MapTargetReadHeader({ target }: { target: MapSelection }) {
       <Text style={mapSheetStyles.mapTargetSubtitle} numberOfLines={2}>
         {detail}
       </Text>
+      {!target.subtitle && onSignInForDetails && (
+        <Pressable accessibilityRole="button" onPress={onSignInForDetails}>
+          <Text style={mapSheetStyles.mapTargetSubtitle}>Sign in to see more details</Text>
+        </Pressable>
+      )}
     </>
   )
 }

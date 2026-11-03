@@ -14,6 +14,7 @@ import { MapPointFilterMenu } from '@/modules/map-points/components/MapPointFilt
 import { getMapPointKindLabel } from '@/modules/map-points/constants/mapPoints'
 import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
 import { CenterPlacementPointer } from '@/screens/main/map/CenterPlacementPointer'
+import type { AccountGateReason } from '@/screens/main/map/accountGate'
 import { MapSearch } from '@/screens/main/map/MapSearch'
 import { navigationActionColors } from '@/screens/main/map/navigationActionColors'
 import type { MapModeOverlayProps } from '@/screens/main/map/mapModeOverlayTypes'
@@ -34,7 +35,7 @@ export interface FullMapControlsProps extends Pick<
   addMenuOpen: boolean
   onAddMenuVisibilityChange: (visible: boolean) => void
   onBeginEditMapPoint: (id: string) => void
-  onRequireMapAccount: () => boolean
+  onRequireAccount: (reason: AccountGateReason) => boolean
 }
 
 /** Search, the Map Point add menu and the category filter — everything only Explore mode shows. */
@@ -52,7 +53,7 @@ export function FullMapControls({
   addMenuOpen,
   onAddMenuVisibilityChange,
   onBeginEditMapPoint,
-  onRequireMapAccount,
+  onRequireAccount,
 }: FullMapControlsProps) {
   const accents = useResolvedAccentColors()
   const riderColor = useSelectedBoardRailColor()
@@ -131,12 +132,12 @@ export function FullMapControls({
       closeAddMenu()
       return
     }
-    if (!onRequireMapAccount()) return
+    if (!onRequireAccount('contribute')) return
     mapRef.current?.zoomBy(0.45)
     addMenuZoomedRef.current = true
     setPlacementPulseKey(0)
     onAddMenuVisibilityChange(true)
-  }, [addMenuOpen, closeAddMenu, mapRef, onAddMenuVisibilityChange, onRequireMapAccount])
+  }, [addMenuOpen, closeAddMenu, mapRef, onAddMenuVisibilityChange, onRequireAccount])
 
   const toggleFilterMenu = useCallback(() => {
     closeAddMenu()
@@ -218,7 +219,9 @@ export function FullMapControls({
         open={searchOpen}
         top={top}
         searchProximity={searchProximity}
-        onOpen={() => setSearchOpen(true)}
+        onOpen={() => {
+          if (onRequireAccount('search')) setSearchOpen(true)
+        }}
         onClose={() => setSearchOpen(false)}
         onSelectResult={handleSearchSelect}
       />

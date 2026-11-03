@@ -290,8 +290,8 @@ The command then:
    `vescape://dev/watch-ride?replay=replay-thor301.jsonl&lat=51.13185&lon=16.98653`.
 3. The phone starts the replay, waits for the first replayed fix, and only then sets the Direction
    Point (the recording's last fix). The replay owns position once it starts (ADR 0024); a Direction
-   Point set earlier would be planned from the emulator's default location. Native runs the Mapbox
-   Directions request and pushes `/route` to the wrist. No path is injected.
+   Point set earlier would be planned from the emulator's default location. Native runs the Directions
+   request (through the server's Mapbox proxy, so the phone needs a Device Token) and pushes `/route` to the wrist. No path is injected.
 
 It succeeds once the phone logs `[watch-ride] … running`, which the command prints. A link that lands
 before the app is listening is dropped, so it is resent until the phone logs `[watch-ride] … received`,
