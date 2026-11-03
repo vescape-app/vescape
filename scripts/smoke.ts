@@ -31,7 +31,6 @@ import { createAndroidDriver } from './lib/androidCapture.ts'
 import {
   CommandFailed,
   ROOT,
-  runOrDie,
   type CaptureDriver,
   type CapturePlatform,
 } from './lib/captureDriver.ts'
@@ -174,7 +173,6 @@ interface SmokeDependencies {
   createDriver: (args: Args) => Promise<CaptureDriver>
   runFlow: typeof runFlow
   launchAndroidApp: typeof launchAndroidApp
-  launchIosApp: (deviceId: string) => Promise<void>
 }
 
 const dependencies: SmokeDependencies = {
@@ -189,9 +187,6 @@ const dependencies: SmokeDependencies = {
       : createAndroidDriver(args.device, args.replay, 'smoke'),
   runFlow,
   launchAndroidApp,
-  launchIosApp: async (deviceId) => {
-    await runOrDie(['xcrun', 'simctl', 'launch', deviceId, applicationId], undefined, 60_000)
-  },
 }
 
 export async function main(args: Args, deps: SmokeDependencies = dependencies): Promise<void> {
@@ -223,8 +218,9 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
   await driver.requireAwakeDisplay()
   await driver.stageFixtures()
   await driver.pinLocation()
+  // iOS: Maestro launches the app after its XCTest driver is up. Launching first lets the replay
+  // load starve XCTest startup on hosted runners (driver timeouts in most CI runs).
   if (args.platform === 'android') await deps.launchAndroidApp(driver.deviceId)
-  else await deps.launchIosApp(driver.deviceId)
 
   // A separate Maestro process starts the iOS XCTest driver again. Keep boot and all selected
   // flows in one session, retaining their order and failing before later flows when boot fails.
@@ -236,8 +232,7 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
       sessionFlow,
       [
         `appId: ${JSON.stringify(applicationId)}`,
-        'env:',
-        '  APP_ALREADY_LAUNCHED: "true"',
+        ...(args.platform === 'android' ? ['env:', '  APP_ALREADY_LAUNCHED: "true"'] : []),
         '---',
         JSON.stringify(paths.map((path) => ({ runFlow: relative(sessionDir, path) }))),
         '',

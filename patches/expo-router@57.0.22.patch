@@ -1,0 +1,39 @@
+diff --git a/build/react-navigation/stack/views/Header/HeaderContainer.js b/build/react-navigation/stack/views/Header/HeaderContainer.js
+index 7ae60c9f2b287bb92694232e1fe224bb89799a95..8b43ce3838de414052d9e3d781f9e3d220597d9f 100644
+--- a/build/react-navigation/stack/views/Header/HeaderContainer.js
++++ b/build/react-navigation/stack/views/Header/HeaderContainer.js
+@@ -83,7 +83,7 @@ function HeaderContainer({ mode, scenes, layout, getPreviousScene, getFocusedRou
+                             pointerEvents: isFocused ? 'box-none' : 'none',
+                         }, // Avoid positioning the focused header absolutely
+                         // Otherwise accessibility tools don't seem to be able to find it
+-                        (mode === 'float' && !isFocused) || headerTransparent ? styles.header : null,
++                        mode === 'float' && (!isFocused || headerTransparent) ? styles.header : null,
+                     ], children: header !== undefined ? header(props) : (0, jsx_runtime_1.jsx)(Header_1.Header, { ...props }) }) }, scene.descriptor.route.key));
+         }) }));
+ }
+diff --git a/build/react-navigation/stack/views/Stack/CardContainer.js b/build/react-navigation/stack/views/Stack/CardContainer.js
+index 409daa423cf378921df76a96be548189540796c6..8388aa3e9b63c6e776770ce03119edf7e14e5b32 100644
+--- a/build/react-navigation/stack/views/Stack/CardContainer.js
++++ b/build/react-navigation/stack/views/Stack/CardContainer.js
+@@ -137,7 +137,7 @@ function CardContainerInner({ interpolationIndex, index, active, opening, closin
+                                 getPreviousScene,
+                                 getFocusedRoute,
+                                 onContentHeightChange: onHeaderHeightChange,
+-                                style: styles.header,
++                                style: [styles.header, scene.descriptor.options.headerTransparent ? styles.transparentHeader : null],
+                             })
+                             : null, (0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.scene, children: (0, jsx_runtime_1.jsx)(elements_1.HeaderBackContext.Provider, { value: headerBack, children: (0, jsx_runtime_1.jsx)(elements_1.HeaderShownContext.Provider, { value: isParentHeaderShown || headerShown !== false, children: (0, jsx_runtime_1.jsx)(elements_1.HeaderHeightContext.Provider, { value: headerShown !== false ? headerHeight : (parentHeaderHeight ?? 0), children: scene.descriptor.render() }) }) }) })] }) }) }) }));
+ }
+@@ -146,6 +146,12 @@ const styles = react_native_1.StyleSheet.create({
+     container: {
+         flex: 1,
+     },
++    transparentHeader: {
++        position: 'absolute',
++        top: 0,
++        start: 0,
++        end: 0,
++    },
+     header: {
+         zIndex: 1,
+     },

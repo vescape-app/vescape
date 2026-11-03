@@ -22,7 +22,11 @@ function PageHeaderBackground() {
   )
 }
 
-/** Full-page content scrolls beneath chrome; resting content clears both safe areas. */
+/**
+ * Full-page content scrolls beneath chrome; resting content clears both safe areas.
+ * The transparent header relies on `patches/expo-router@*.patch`: without it, the JS stack nests
+ * the header in a zero-height box and Android accessibility (TalkBack, Maestro) loses it.
+ */
 export function PageScrollView({ contentContainerStyle, ...props }: ScrollViewProps) {
   const navigation = useNavigation()
   const headerHeight = useHeaderHeight()

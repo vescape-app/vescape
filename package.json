@@ -148,7 +148,8 @@
     "@rnmapbox/maps@10.3.2": "patches/@rnmapbox%2Fmaps@10.3.2.patch",
     "phosphor-react-native@3.0.6": "patches/phosphor-react-native@3.0.6.patch",
     "react-native@0.86.3": "patches/react-native@0.86.3.patch",
-    "expo-modules-autolinking@57.0.13": "patches/expo-modules-autolinking@57.0.13.patch"
+    "expo-modules-autolinking@57.0.13": "patches/expo-modules-autolinking@57.0.13.patch",
+    "expo-router@57.0.22": "patches/expo-router@57.0.22.patch"
   },
   "trustedDependencies": [
     "@shopify/react-native-skia"
