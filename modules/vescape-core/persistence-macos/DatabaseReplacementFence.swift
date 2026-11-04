@@ -1,1 +1,1 @@
-../ios/telemetry/DatabaseReplacementFence.swift
+../ios/database/DatabaseReplacementFence.swift

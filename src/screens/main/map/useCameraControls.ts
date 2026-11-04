@@ -13,7 +13,9 @@ import {
 } from '@/modules/map/lib/cameraController'
 import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 import {
+  type CameraPadding,
   getMapCameraProfileForOrientationMode,
+  getPaddingForProfile,
   getPitchForProfileZoom,
 } from '@/modules/map/lib/cameraProfiles'
 import {
@@ -240,23 +242,28 @@ export function useCameraControls({
   ])
 
   /**
-   * Pitch the live follow camera would sit at for a zoom. A pinch drives the camera itself, and
-   * deriving its pitch from the plain zoom profile tilts it differently than the follow profiles
-   * do — the tilt would drop under the fingers and spring back on release.
+   * Pitch and tilt offset the live follow camera would sit at for a zoom. A pinch drives the camera
+   * itself, and deriving them from the plain zoom profile tilts it differently than the follow
+   * profiles do — the tilt would drop under the fingers and spring back on release.
    */
-  const getFollowPitchForZoom = useCallback(
-    (zoom: number) =>
-      getPitchForProfileZoom({
-        profile: getMapCameraProfileForOrientationMode(
-          mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode,
-        ),
-        zoom,
-        perspectiveEnabled,
-        // A pinch pins the follow zoom, and live follow drops the profile minimums once it is
-        // pinned. Matching that keeps the two in step.
-        enforceMinimums: false,
-      }),
-    [mapOrientationMode, perspectiveEnabled, phoneReady],
+  const getFollowFrameForZoom = useCallback(
+    (zoom: number): { pitch: number; padding: CameraPadding } => {
+      const profile = getMapCameraProfileForOrientationMode(
+        mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode,
+      )
+      return {
+        pitch: getPitchForProfileZoom({
+          profile,
+          zoom,
+          perspectiveEnabled,
+          // A pinch pins the follow zoom, and live follow drops the profile minimums once it is
+          // pinned. Matching that keeps the two in step.
+          enforceMinimums: false,
+        }),
+        padding: getPaddingForProfile({ profile, viewportHeight, zoom }),
+      }
+    },
+    [mapOrientationMode, perspectiveEnabled, phoneReady, viewportHeight],
   )
 
   const sampleLiveDisplay = useCallback(() => {
@@ -352,7 +359,7 @@ export function useCameraControls({
     applyLiveFollowCamera,
     dispatchCameraIntent,
     getFollowHeadingDeg: getFollowDeg,
-    getFollowPitchForZoom,
+    getFollowFrameForZoom,
     getLiveFollowCamera,
     setFollowZoomLevel,
   })

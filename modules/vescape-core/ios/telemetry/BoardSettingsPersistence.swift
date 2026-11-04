@@ -6,12 +6,11 @@ struct PersistedBoard: Codable, FetchableRecord, PersistableRecord {
   let id: String
   let name: String
   let bleId: String?
-  let transport: String?
   let createdAt: Int64
   let deletedAt: Int64?
 
   enum CodingKeys: String, CodingKey {
-    case id, name, transport
+    case id, name
     case bleId = "ble_id"
     case createdAt = "created_at"
     case deletedAt = "deleted_at"
@@ -72,12 +71,12 @@ final class BoardSettingsPersistence {
 
   /// The Board, its settings, and any `alerts` rows (a new Board's preset rows and rider rules) in
   /// one transaction, so no reader sees the Board without its alert setup.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `upsertBoardWithSettings`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `upsertBoardWithSettings`
   func upsertBoard(_ board: PersistedBoard, settings: [PersistedBoardSetting], deletedKeys: [String], alerts: [PersistedAlertRule] = []) throws {
     try writer.write { db in
       let tombstone = try PersistedBoard.fetchOne(db, key: board.id)?.deletedAt
       try PersistedBoard(
-        id: board.id, name: board.name, bleId: board.bleId, transport: board.transport,
+        id: board.id, name: board.name, bleId: board.bleId,
         createdAt: board.createdAt, deletedAt: tombstone ?? board.deletedAt
       ).save(db)
       for key in deletedKeys {
@@ -100,7 +99,7 @@ final class BoardSettingsPersistence {
       try db.execute(sql: "DELETE FROM alerts WHERE board_id = ?", arguments: [id])
       try db.execute(sql: "DELETE FROM board_config_values WHERE board_id = ?", arguments: [id])
       try db.execute(sql: "DELETE FROM board_config_change_notices WHERE board_id = ?", arguments: [id])
-      board = PersistedBoard(id: board.id, name: board.name, bleId: board.bleId, transport: board.transport, createdAt: board.createdAt, deletedAt: deletedAt)
+      board = PersistedBoard(id: board.id, name: board.name, bleId: board.bleId, createdAt: board.createdAt, deletedAt: deletedAt)
       try board.update(db)
     }
   }
@@ -122,7 +121,7 @@ final class BoardSettingsPersistence {
     return merged
   }
 
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `updateDistanceUnit`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `updateDistanceUnit`
   func updateDistanceUnit(_ units: String) throws {
     precondition(["km", "mi"].contains(units))
     try writer.write { db in

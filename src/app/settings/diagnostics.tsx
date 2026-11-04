@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import {
@@ -24,8 +25,8 @@ export default function DiagnosticsSettingsScreen() {
   const set = useSettingsStore((s) => s.set)
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={EngineIcon}
           description="Board health checks that watch telemetry and flag problems while you ride, plus live GPS and heading evidence."
@@ -83,7 +84,7 @@ export default function DiagnosticsSettingsScreen() {
             onPress={() => router.push(routes.settingsNavigationDiagnostic)}
           />
         </SettingsCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

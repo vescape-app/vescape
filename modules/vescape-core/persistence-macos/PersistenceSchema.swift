@@ -1,1 +1,1 @@
-../ios/telemetry/PersistenceSchema.swift
+../ios/database/PersistenceSchema.swift

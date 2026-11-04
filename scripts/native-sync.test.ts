@@ -9,9 +9,9 @@ import {
   writeFileSync,
 } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { join, win32 } from 'path'
 import { copyWearSharedSources, wearSharedSources } from '../plugins/wearSharedSources.ts'
-import { copyShared } from './copy-shared.ts'
+import { copyShared, relativePath } from './copy-shared.ts'
 import {
   missingSharedOutputs,
   planSync,
@@ -226,6 +226,23 @@ describe('shared assets', () => {
 
     copyShared(root, { quiet: true })
     expect(missingSharedOutputs(root)).toEqual([])
+  })
+
+  it('gives Windows pack paths forward slashes, so the pack filter still matches them', () => {
+    expect(
+      relativePath(
+        'C:\\vescape\\shared\\alerts\\packs',
+        'C:\\vescape\\shared\\alerts\\packs\\effects-arc\\pack.json',
+        win32,
+      ),
+    ).toBe('effects-arc/pack.json')
+  })
+
+  it('fails instead of shipping an empty alert-packs folder', () => {
+    unlinkSync(join(root, 'shared/alerts/packs/effects-arc/severity.warning.m4a'))
+    write('shared/alerts/packs/sources/notes.json', '{}')
+
+    expect(() => copyShared(root, { quiet: true })).toThrow('shared/alerts/packs')
   })
 
   it('removes a copied pack file that is no longer in shared/', () => {

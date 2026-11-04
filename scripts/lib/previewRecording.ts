@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 
-import { ROOT, runOrDie, type CaptureDriver } from './captureDriver.ts'
+import { ROOT, capture, runOrDie, type CaptureDriver } from './captureDriver.ts'
 
 /** Own exactly one platform recorder. Android signals its remote PID, never every screenrecord. */
 export class PreviewRecording {
@@ -12,10 +12,11 @@ export class PreviewRecording {
   readonly rawPath: string
 
   constructor(
-    private driver: CaptureDriver,
+    private driver: Pick<CaptureDriver, 'platform' | 'deviceId'>,
     outDir: string,
+    prefix = 'preview',
   ) {
-    const name = `preview-${Date.now()}`
+    const name = `${prefix}-${Date.now()}`
     this.remotePath = `/sdcard/${name}.mp4`
     this.rawPath = join(outDir, `${name}-raw.${driver.platform === 'ios' ? 'mov' : 'mp4'}`)
   }
@@ -101,15 +102,72 @@ export class PreviewRecording {
     clearTimeout(timer)
     if (code !== 0) throw new Error(`Recorder failed (${code}); partial footage: ${this.rawPath}`)
     if (this.driver.platform === 'android') {
-      await runOrDie(
-        ['adb', '-s', this.driver.deviceId, 'pull', this.remotePath, this.rawPath],
-        undefined,
-        30_000,
+      // The adb shell can return before screenrecord finishes writing the file; pull only after it exits.
+      const deadline = Date.now() + 15_000
+      while (
+        this.remotePid &&
+        Date.now() < deadline &&
+        (
+          await capture([
+            'adb',
+            '-s',
+            this.driver.deviceId,
+            'shell',
+            `kill -0 ${this.remotePid} 2>/dev/null && echo alive`,
+          ])
+        ).includes('alive')
       )
+        await Bun.sleep(250)
+      // The Wear emulator's adb transfer sometimes fails silently mid-copy; the file is intact on
+      // the device, so the copy is retried.
+      let pull = Bun.spawnSync(
+        ['adb', '-s', this.driver.deviceId, 'pull', this.remotePath, this.rawPath],
+        {
+          cwd: ROOT,
+          timeout: 30_000,
+        },
+      )
+      for (let attempt = 1; attempt < 3 && pull.exitCode !== 0; attempt++) {
+        await Bun.sleep(1000)
+        pull = Bun.spawnSync(
+          ['adb', '-s', this.driver.deviceId, 'pull', this.remotePath, this.rawPath],
+          {
+            cwd: ROOT,
+            timeout: 30_000,
+          },
+        )
+      }
+      if (pull.exitCode !== 0)
+        throw new Error(
+          `adb pull ${this.remotePath} from ${this.driver.deviceId} failed (${pull.exitCode ?? pull.signalCode}): ${pull.stdout.toString()}${pull.stderr.toString()}`,
+        )
       await runOrDie(['adb', '-s', this.driver.deviceId, 'shell', 'rm', '-f', this.remotePath])
     }
     if (!existsSync(this.rawPath) || statSync(this.rawPath).size === 0)
       throw new Error('Recorder produced no footage')
+  }
+}
+
+/**
+ * Several recorders as one take: they start together, once [beforeStart] resolves, and every one is
+ * stopped even if another fails.
+ */
+export class PreviewTake {
+  constructor(
+    private recordings: PreviewRecording[],
+    /** Runs on start, before any recorder; the footage begins once it resolves. */
+    private beforeStart: () => Promise<void> = async () => {},
+  ) {}
+
+  async start(): Promise<void> {
+    await this.beforeStart()
+    await Promise.all(this.recordings.map((recording) => recording.start()))
+  }
+
+  async stop(): Promise<void> {
+    const results = await Promise.allSettled(this.recordings.map((recording) => recording.stop()))
+    const failure = results.find((result) => result.status === 'rejected')
+    if (failure) throw failure.reason
   }
 }
 

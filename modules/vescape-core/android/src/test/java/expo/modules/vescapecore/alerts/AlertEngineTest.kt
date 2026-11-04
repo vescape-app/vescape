@@ -2,7 +2,7 @@ package expo.modules.vescapecore.alerts
 
 import expo.modules.vescapecore.protocol.RefloatTelemetry
 
-import expo.modules.vescapecore.telemetry.AlertRuleEntity
+import expo.modules.vescapecore.database.AlertRuleEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

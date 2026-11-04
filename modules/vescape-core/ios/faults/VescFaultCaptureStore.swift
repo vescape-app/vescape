@@ -8,7 +8,7 @@ import GRDB
 /// Overlapping captures duplicate samples on purpose, so a sample row belongs to exactly one
 /// occurrence and each occurrence stays independently inspectable.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct VescFaultCaptureStore: VescFaultCaptureStoring {
   private struct WriterUnavailable: Error {}
   private struct CaptureRecord: Codable, FetchableRecord, PersistableRecord {
@@ -48,7 +48,7 @@ struct VescFaultCaptureStore: VescFaultCaptureStoring {
   /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
-  static let shared = VescFaultCaptureStore { TelemetryDatabase.pool }
+  static let shared = VescFaultCaptureStore { VescapeDatabase.pool }
 
   init(_ resolveWriter: @escaping () -> DatabaseWriter?) {
     self.resolveWriter = resolveWriter
@@ -63,7 +63,7 @@ struct VescFaultCaptureStore: VescFaultCaptureStoring {
 
   /// Create the VESC Fault Capture tables. Called from the app-data `DatabaseMigrator` and reused by
   /// tests so the schema stays single-source.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `VescFaultCaptureEntity`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `VescFaultCaptureEntity`
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createVescFaultCaptures(db)
   }

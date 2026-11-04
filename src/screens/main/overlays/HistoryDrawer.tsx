@@ -1,4 +1,3 @@
-import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { router } from 'expo-router'
 import {
@@ -15,18 +14,22 @@ import { SectionHeader } from '@/components/base/SectionHeader'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FavoriteRideCard } from '@/modules/history/components/FavoriteRideCard'
-import { RidePreviewCard } from '@/modules/history/components/RidePreviewCard'
+import { RidePreviewCardList } from '@/modules/history/components/RidePreviewCardList'
 import { HistorySessionSheet } from '@/modules/history/components/HistorySessionSheet'
 import { favoriteSessionId, favoriteToSession } from '@/modules/history/lib/favorites'
-import { formatRideDate, formatRideTime } from '@/modules/history/lib/rideFormat'
-import { isLiveRide, rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
+import type { HistorySession } from '@/modules/history/lib/sessions'
 import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import { useFavoriteStore, type Favorite } from '@/modules/history/store/favoriteStore'
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { ProfileStatsSummary } from '@/modules/profile/components/ProfileStatsSummary'
+import { rideDayHref } from '@/navigation/links'
 import { routes } from '@/navigation/routes'
+import { openRecordRide } from '@/screens/profileStats/openRecordRide'
+import type { ProfileRecordKey } from '@/modules/profile/hooks/useProfileStatItems'
 
 type ListMode = 'rides' | 'favorites' | null
+
+const CARD_BLEED = 24
 
 interface HistoryDrawerProps {
   visible: boolean
@@ -44,7 +47,6 @@ export function HistoryDrawer({
   onOpenRide,
   onOpenFavorite,
 }: HistoryDrawerProps) {
-  const { formatRideDetails } = useRideFormat()
   const [listMode, setListMode] = useState<ListMode>(null)
   const pendingListRef = useRef<ListMode>(null)
   const [ridesLoaded, setRidesLoaded] = useState(false)
@@ -94,6 +96,14 @@ export function HistoryDrawer({
     [onClose, onOpenRide],
   )
 
+  const openRecord = useCallback(
+    (rideId: string, record: ProfileRecordKey) => {
+      onClose()
+      openRecordRide(rideId, record)
+    },
+    [onClose],
+  )
+
   const openFavorite = useCallback(
     (favorite: Favorite) => {
       setListMode(null)
@@ -139,6 +149,7 @@ export function HistoryDrawer({
         <View style={styles.content} testID="history-drawer">
           <ProfileStatsSummary
             active={visible}
+            onOpenRecordRide={openRecord}
             action={
               <Button
                 label="Details"
@@ -185,41 +196,12 @@ export function HistoryDrawer({
               style={styles.placeholder}
             />
           ) : (
-            <ScrollView
-              horizontal
-              style={styles.cardScroll}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.cardList}
-            >
-              {sessions.slice(0, 8).map((session, index) => {
-                const window = rideMovingWindow(session) ?? {
-                  startMs: session.startAtMs,
-                  endMs: session.endAtMs,
-                }
-                const details = formatRideDetails(
-                  window.endMs - window.startMs,
-                  session.distanceM,
-                  null,
-                )
-                return (
-                  <RidePreviewCard
-                    key={session.id}
-                    testID={index === 0 ? 'history-latest-ride' : undefined}
-                    title={formatRideTime(
-                      window.startMs,
-                      window.endMs,
-                      isLiveRide(session, Date.now()),
-                    )}
-                    date={formatRideDate(window.startMs, window.endMs)}
-                    subtitle={details}
-                    routePoints={session.routePoints}
-                    color={theme.palette.purple.color}
-                    weather={session.weather}
-                    onPress={() => openRide(session)}
-                  />
-                )
-              })}
-            </ScrollView>
+            <RidePreviewCardList
+              sessions={sessions.slice(0, 8)}
+              onOpenRide={openRide}
+              firstTestID="history-latest-ride"
+              bleed={CARD_BLEED}
+            />
           )}
 
           <SectionHeader
@@ -298,6 +280,10 @@ export function HistoryDrawer({
           else openRide(session)
         }}
         onLoadMore={() => void useHistoryStore.getState().loadMore()}
+        onOpenDay={(day) => {
+          setListMode(null)
+          router.push(rideDayHref(day))
+        }}
       />
     </>
   )
@@ -329,10 +315,10 @@ const styles = StyleSheet.create({
   },
   cardList: {
     gap: 10,
-    paddingHorizontal: 24,
+    paddingHorizontal: CARD_BLEED,
   },
   cardScroll: {
-    marginHorizontal: -24,
+    marginHorizontal: -CARD_BLEED,
   },
   placeholder: {
     minHeight: 170,

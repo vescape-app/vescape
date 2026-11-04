@@ -16,7 +16,7 @@ fixture under `modules/vescape-core/shared/` and both platform implementations l
 For design context, consult the relevant section of the
 [reliability plan](../../../docs/persistence-reliability-plan.md).
 
-- Android contracts: `modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/`.
+- Android contracts: `modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/` — `database/` for schema, migration, and backup tests; `telemetry/` for the stores.
 - Swift contracts: `modules/vescape-core/persistence-macos/main.swift`.
 - Orchestration: `scripts/test-persistence.ts`.
 
@@ -25,6 +25,16 @@ platform must execute its production persistence path. Avoid a duplicate test DA
 that can pass while the app's implementation breaks.
 
 ## Extend the changed behavior
+
+A new Room version needs its regenerated `android/schemas/…/<version>.json` committed; the
+matrix fails without it. Write each new Android migration case as its own named test: create the
+old version from its export (`migrateFromExport` / `createFromExport`), seed rows in that version's
+shape, and assert after Room validates the current schema. Never hand-write `CREATE TABLE` SQL for
+an old version; every shipped version already has an export.
+
+Every schema change also updates `modules/vescape-core/schema/database.json` by hand. Both
+platforms compare their fresh, migrated, and restored databases with it, so a column, default,
+or index added on one side only fails `test:persistence`.
 
 Choose assertions that demonstrate the actual risk: save/close/reopen, query ordering or paging,
 failed read versus empty result, preserved old values, or rollback of a multi-write operation.

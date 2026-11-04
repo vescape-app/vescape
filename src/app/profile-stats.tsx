@@ -1,3 +1,3 @@
-import { ProfileStatsScreen } from '@/modules/profile/screens/ProfileStatsScreen'
+import { ProfileStatsScreen } from '@/screens/profileStats/ProfileStatsScreen'
 
 export default ProfileStatsScreen

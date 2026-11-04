@@ -1,21 +1,22 @@
 import { useLocationStore } from '@/modules/location/store/locationStore'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { BackHandler, ToastAndroid } from 'react-native'
-import { useFocusEffect } from 'expo-router'
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
 
-import { exitApp } from 'vescape-core'
+import { exitApp, getRideSession } from 'vescape-core'
 
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { useMainScreenHistoryNavigation } from '@/screens/main/useMainScreenHistoryNavigation'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
+import { CLEARED_RIDE_LINK_PARAMS, parseRideLink } from '@/navigation/links'
 import { getNextRideSession, getPreviousRideSession } from '@/screens/main/mainState'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { useHistoryFavorites } from '@/screens/main/history/useHistoryFavorites'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
-import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
+import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useFavoriteMedia } from '@/modules/history/hooks/useMediaHistory'
 import type { MediaAssetInput } from '@/modules/history/lib/mediaHistory'
@@ -155,7 +156,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     markers: sessionMarkers,
   })
 
-  const canContribute = useMapContributionReady()
+  const canContribute = useDeviceAccountReady()
 
   useEffect(() => {
     void loadDirectionPoint()
@@ -247,6 +248,33 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     selectRide,
     selectFavoriteRide,
   } = historyNavigation
+
+  // A ride link (`rideHref`) lands here. Its params are cleared first, so going back to home never
+  // reopens it; a ride that no longer exists under that id (it grew, or was deleted) opens nothing.
+  const rideLink = parseRideLink(useLocalSearchParams())
+  const linkedRideId = rideLink?.rideId
+  const linkedRideFocus = rideLink?.focus ?? undefined
+  // Clearing the params re-runs this effect, so the lookup is tracked by request number rather
+  // than effect cleanup: only a newer link (or leaving the screen) drops a pending one.
+  const rideLinkRequest = useRef(0)
+  useEffect(() => {
+    if (!linkedRideId) return
+    router.setParams(CLEARED_RIDE_LINK_PARAMS)
+    const request = ++rideLinkRequest.current
+    getRideSession(linkedRideId)
+      .then((session) => {
+        if (request !== rideLinkRequest.current) return
+        if (session) selectRide(session, linkedRideFocus)
+        else console.warn('[main] linked ride no longer exists', linkedRideId)
+      })
+      .catch((error: unknown) => console.warn('[main] could not open linked ride', error))
+  }, [linkedRideFocus, linkedRideId, selectRide])
+  useEffect(
+    () => () => {
+      rideLinkRequest.current += 1
+    },
+    [],
+  )
 
   const handleMapFocus = useCallback(() => {
     if (mode === 'map') return

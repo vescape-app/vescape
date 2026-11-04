@@ -1,6 +1,6 @@
 package expo.modules.vescapecore.connection
 
-import expo.modules.vescapecore.telemetry.PrivacyZoneEntity
+import expo.modules.vescapecore.database.PrivacyZoneEntity
 import java.io.IOException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals

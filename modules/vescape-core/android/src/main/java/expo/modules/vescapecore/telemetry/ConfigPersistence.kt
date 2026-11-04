@@ -3,9 +3,13 @@ package expo.modules.vescapecore.telemetry
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
 import expo.modules.vescapecore.config.RefloatConfigSchema
 import org.json.JSONObject
+import expo.modules.vescapecore.database.BoardConfigChangeNoticeEntity
+import expo.modules.vescapecore.database.BoardConfigValuesEntity
+import expo.modules.vescapecore.database.MotorConfigValuesEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 /** Production transaction seam shared by the app and host persistence contract. */
-internal class ConfigPersistence(private val dao: TelemetryDao) {
+internal class ConfigPersistence(private val dao: VescapeDao) {
   suspend fun saveFreshBoard(
     boardId: String,
     base: String,

@@ -168,7 +168,7 @@ const config: ExpoConfig = {
     './plugins/withSentryNativeInit',
     './plugins/withAndroidSigningConfig',
     './plugins/withServerOrigin',
-    './plugins/withMapboxToken',
+    './plugins/withServiceTokens',
   ],
   experiments: {
     typedRoutes: true,

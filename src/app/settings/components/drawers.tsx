@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { RowsIcon } from 'phosphor-react-native'
 
@@ -16,8 +17,8 @@ import {
 
 export default function DrawersPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={RowsIcon}
           description="EdgeDrawer and FloatingSheet: edge-anchored sheets, pinned chrome, and drag to dismiss."
@@ -44,7 +45,7 @@ export default function DrawersPage() {
         <EdgeDrawerLateRowsShowcase />
         <EdgeDrawerInitialFocusShowcase />
         <FloatingSheetShowcase />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

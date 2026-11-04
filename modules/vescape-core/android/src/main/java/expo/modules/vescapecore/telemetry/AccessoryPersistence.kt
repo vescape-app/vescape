@@ -1,5 +1,11 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.database.AccessoryBrakeLightEntity
+import expo.modules.vescapecore.database.AccessoryCapabilitySettingsEntity
+import expo.modules.vescapecore.database.AccessoryGroundClearanceEntity
+import expo.modules.vescapecore.database.SavedAccessoryEntity
+import expo.modules.vescapecore.database.VescapeDao
+
 /**
  * Durable Accessory enrollment. Production Room operations shared by the Android adapter and the
  * host persistence contract.
@@ -10,7 +16,7 @@ package expo.modules.vescapecore.telemetry
  *
  * @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift
  */
-internal class AccessoryPersistence(private val dao: TelemetryDao) {
+internal class AccessoryPersistence(private val dao: VescapeDao) {
   suspend fun getAccessories(): List<SavedAccessoryEntity> = dao.getAccessories()
 
   suspend fun getAccessory(accessoryId: String): SavedAccessoryEntity? = dao.getAccessory(accessoryId)

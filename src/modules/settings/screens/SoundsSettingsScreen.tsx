@@ -1,6 +1,7 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useState } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   ChatTextIcon,
@@ -118,8 +119,8 @@ export default function SoundsSettingsScreen() {
   ]
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
@@ -376,7 +377,7 @@ export default function SoundsSettingsScreen() {
             </Text>
           </>
         )}
-      </ScrollView>
+      </PageScrollView>
       <ConfirmModal
         visible={deleteId !== null}
         title="Delete sound"

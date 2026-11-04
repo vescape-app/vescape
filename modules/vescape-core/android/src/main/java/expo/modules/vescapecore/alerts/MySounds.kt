@@ -8,6 +8,8 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 /**
@@ -143,7 +145,13 @@ internal object MySounds {
     val dir = directory(context)
     val temp = File(dir, "$MANIFEST.tmp")
     temp.writeText(encode(store))
-    check(temp.renameTo(File(dir, MANIFEST))) { "Could not save My sounds" }
+    // `File.renameTo` won't replace an existing manifest on a Windows JVM (#625).
+    Files.move(
+      temp.toPath(),
+      File(dir, MANIFEST).toPath(),
+      StandardCopyOption.REPLACE_EXISTING,
+      StandardCopyOption.ATOMIC_MOVE,
+    )
     cached = dir to store
   }
 

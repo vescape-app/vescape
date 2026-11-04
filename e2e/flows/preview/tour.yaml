@@ -10,7 +10,28 @@ appId: ${APP_ID}
     file: _recorder.js
     env:
       ACTION: dwell
-      MS: 30000
+      MS: 5000
+# Live telemetry drawer, pulled up from the strip, then closed on the scrim above the sheet.
+- tapOn:
+    id: telemetry-panel-handle
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible:
+      id: telemetry-panel
+    timeout: 10000
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: dwell
+      MS: 6000
+- tapOn:
+    point: 50%, 4%
+    waitToSettleTimeoutMs: 0
+- runScript:
+    file: _recorder.js
+    env:
+      ACTION: dwell
+      MS: 25000
 - tapOn:
     id: history-button
     waitToSettleTimeoutMs: 0

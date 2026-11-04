@@ -1,5 +1,6 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useMemo } from 'react'
-import { ScrollView, StyleSheet } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { BracketsCurlyIcon } from 'phosphor-react-native'
 
@@ -36,8 +37,8 @@ export default function RawSettingsScreen() {
   )
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={BracketsCurlyIcon}
           description="Raw app settings and current board record, exactly as stored."
@@ -51,7 +52,7 @@ export default function RawSettingsScreen() {
           exportName="board"
           empty="No board selected"
         />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

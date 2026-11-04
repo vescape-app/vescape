@@ -3,7 +3,7 @@ import Foundation
 import GRDB
 
 /// Raw keyset page, ordered by timestamp and row id so equal timestamps cannot lose fixes.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideExportTrackPage`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportTrackPage`
 internal func rideExportTrackPage(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
   afterMs: Int64, afterId: Int64) throws -> [Row] {
   try Row.fetchAll(db, sql: """
@@ -277,8 +277,8 @@ internal enum RideExport {
 
   /// Every stored frame in range with its reconstructed values, replaying the mask chain from the
   /// preceding keyframe even for Android archives imported on iOS. Values are in storage mask bit order.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideExportKeyframe`
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideExportTelemetryPage`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportKeyframe`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportTelemetryPage`
   private static func forEachFrame(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
     _ body: (_ timestamp: Int64, _ values: [Int64?]) throws -> Void) throws {
     let keyframe = try Row.fetchOne(db, sql: """

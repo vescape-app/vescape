@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import expo.modules.vescapecore.database.RideTrackPointEntity
 
 class HistoryGpsProjectionTest {
   @Test

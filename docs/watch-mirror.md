@@ -290,8 +290,8 @@ The command then:
    `vescape://dev/watch-ride?replay=replay-thor301.jsonl&lat=51.13185&lon=16.98653`.
 3. The phone starts the replay, waits for the first replayed fix, and only then sets the Direction
    Point (the recording's last fix). The replay owns position once it starts (ADR 0024); a Direction
-   Point set earlier would be planned from the emulator's default location. Native runs the Mapbox
-   Directions request and pushes `/route` to the wrist. No path is injected.
+   Point set earlier would be planned from the emulator's default location. Native runs the Directions
+   request (through the server's Mapbox proxy, so the phone needs a Device Token) and pushes `/route` to the wrist. No path is injected.
 
 It succeeds once the phone logs `[watch-ride] … running`, which the command prints. A link that lands
 before the app is listening is dropped, so it is resent until the phone logs `[watch-ride] … received`,
@@ -546,7 +546,7 @@ Adding a mirrored setting:
    write to any key in that set reloads native settings and republishes to the wrist, even when no
    service or Board Session exists; `WatchSettingsTest` fails when a mirrored field has no key there.
    Native process startup also republishes saved settings.
-5. Persist the app key on the phone: `AppSettings` (`TelemetryEntities.kt`) and `AppDataRepository`
+5. Persist the app key on the phone: `AppSettings` (`DatabaseEntities.kt`) and `AppDataRepository`
    on both platforms (read, write validation, default). On iOS also read it in the settings reload in
    `IOSWatchMirror.swift`, and decode it in Swift `WatchSettings`.
 6. JS: the `AppSettings` field in `modules/vescape-core/src/index.ts` with `@parity`, the settings

@@ -8,6 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.lang.reflect.Proxy
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.VescapeDatabase
 
 /**
  * Telemetry keys on the Board id (#280, ADR 0028). Schema 41→42 adds `board_id` to
@@ -20,7 +22,7 @@ import java.lang.reflect.Proxy
  * [SyncCursorMigrationTest] works under. The behavioural half — actual rows after an actual
  * migration — runs on the GRDB peer, which does have an in-memory database.
  *
- * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift
+ * @parity /modules/vescape-core/ios/database/DatabaseMigrationTests.swift
  */
 class TelemetryBoardIdMigrationTest {
   private fun migrationSql(): List<String> {
@@ -38,7 +40,7 @@ class TelemetryBoardIdMigrationTest {
         else -> throw UnsupportedOperationException(method.name)
       }
     } as SupportSQLiteDatabase
-    TelemetryDatabase.MIGRATION_41_42.migrate(db)
+    VescapeDatabase.MIGRATION_41_42.migrate(db)
     return sql
   }
 
@@ -55,7 +57,7 @@ class TelemetryBoardIdMigrationTest {
   } as Cursor
 
   private fun daoSource(): String =
-    File("src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt").readText()
+    File("src/main/java/expo/modules/vescapecore/database/VescapeDao.kt").readText()
 
   private fun statement(match: String): String =
     migrationSql().firstOrNull { it.contains(match) }
@@ -63,8 +65,8 @@ class TelemetryBoardIdMigrationTest {
 
   @Test
   fun migrationSpansTheBoardIdSchemaStep() {
-    assertEquals(41, TelemetryDatabase.MIGRATION_41_42.startVersion)
-    assertEquals(42, TelemetryDatabase.MIGRATION_41_42.endVersion)
+    assertEquals(41, VescapeDatabase.MIGRATION_41_42.startVersion)
+    assertEquals(42, VescapeDatabase.MIGRATION_41_42.endVersion)
   }
 
   // MARK: Backfill

@@ -22,7 +22,7 @@ private struct TuneHistoryRecord: Codable, PersistableRecord {
 
 /// Android-matching error vocabulary for Tune Profile mutations. Messages are byte-for-byte the same
 /// as Android so JS surfaces identical text, and the JS `errorMessage()` helper reads `message`.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 enum TuneProfileError: LocalizedError, Equatable {
   case profileNotFound(String)
   case cannotDeleteLast
@@ -50,7 +50,7 @@ enum TuneProfileError: LocalizedError, Equatable {
 }
 
 /// DB-backed storage for Tune Profiles (per-board VESC tune configs) and their Tune History. Mirrors
-/// the Android `AppDataRepository` tune methods plus the transactional DAO bodies in `TelemetryDao`.
+/// the Android `AppDataRepository` tune methods plus the transactional DAO bodies in `VescapeDao`.
 /// Native owns durable truth; JS renders state and sends intents. Values cross the bridge as
 /// `[String: Any?]` bags to match the JS contract, using the same `tune_profiles` /
 /// `tune_history_entries` table shapes as Android Room.
@@ -70,7 +70,7 @@ struct TuneProfileStore {
 
   /// Bound to the single app-data database. Mirrors Android routing tune ops through the singleton
   /// `AppDataRepository`.
-  static let shared = TuneProfileStore { TelemetryDatabase.pool }
+  static let shared = TuneProfileStore { VescapeDatabase.pool }
 
   init(_ resolveWriter: @escaping () -> DatabaseWriter?) {
     self.resolveWriter = resolveWriter
@@ -85,7 +85,7 @@ struct TuneProfileStore {
 
   /// Create the Tune Profile tables. Called from the app-data `DatabaseMigrator` and reused by tests
   /// so the schema stays single-source. Mirrors Android `TuneProfileEntity` / `TuneHistoryEntryEntity`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createTuneProfiles(db)
   }
@@ -168,7 +168,7 @@ struct TuneProfileStore {
   }
 
   /// Delete a Tune Profile and its Tune History, refusing to remove a board's last profile.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `deleteTuneProfileSafe`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `deleteTuneProfileSafe`
   func deleteProfile(profileId: String) throws {
     _ = try inWrite { db -> Bool in
       guard let row = try Self.fetchProfileRow(db, profileId) else {
@@ -187,7 +187,7 @@ struct TuneProfileStore {
 
   /// Restore a Tune Profile's fields from a Tune History entry, first snapshotting the current fields
   /// as a new history entry so the rollback is itself reversible.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `rollbackTuneProfile`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `rollbackTuneProfile`
   func rollbackProfile(profileId: String, historyEntryId: Int64) throws -> [String: Any?] {
     let now = Self.nowMs()
     return try inWrite { db in
@@ -233,7 +233,7 @@ struct TuneProfileStore {
 
   /// Save new fields onto a Tune Profile, first snapshotting the current fields as a Tune History
   /// entry so the edit is reversible.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `saveTuneProfile`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `saveTuneProfile`
   func saveProfile(profileId: String, fields: [String: Any]) throws -> [String: Any?] {
     let now = Self.nowMs()
     let fieldsJson = try Self.encodeFields(fields)

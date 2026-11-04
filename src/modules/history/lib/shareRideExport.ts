@@ -4,10 +4,9 @@ import {
   exportRideCsv,
   exportRideFloaty,
   type RideExportFile,
+  type RideExportFormat,
   type RideExportOptions,
 } from 'vescape-core'
-
-export type RideExportFormat = 'gpx' | 'csv' | 'floaty'
 
 const exporters: Record<RideExportFormat, (options: RideExportOptions) => Promise<RideExportFile>> =
   { gpx: exportRideGpx, csv: exportRideCsv, floaty: exportRideFloaty }

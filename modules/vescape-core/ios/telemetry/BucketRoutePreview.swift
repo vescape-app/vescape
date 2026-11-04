@@ -112,7 +112,7 @@ internal enum BucketRoutePreview {
 
 /// Called inside recording/rebuild transactions after their raw fixes have been inserted.
 /// Re-read one indexed minute, so restarts and late fixes need no separate cache recovery.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `refreshBucketRoutePreview`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `refreshBucketRoutePreview`
 internal func refreshBucketRoutePreview(_ db: Database, bucketStartMs: Int64, boardId: String) throws {
   let rows = try Row.fetchAll(db, sql: """
     SELECT * FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms < ?

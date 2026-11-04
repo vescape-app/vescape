@@ -12,6 +12,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import expo.modules.vescapecore.database.FavoriteEntity
+import expo.modules.vescapecore.database.FavoriteMediaEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 /** @parity /modules/vescape-core/ios/telemetry/FavoriteMediaStoreTests.swift */
 class FavoriteMediaTest {
@@ -25,8 +28,8 @@ class FavoriteMediaTest {
     root = Files.createTempDirectory("favorite-media-test").toFile()
     rows = mutableListOf()
     val dao = Proxy.newProxyInstance(
-      TelemetryDao::class.java.classLoader,
-      arrayOf(TelemetryDao::class.java),
+      VescapeDao::class.java.classLoader,
+      arrayOf(VescapeDao::class.java),
     ) { _, method, args ->
       when (method.name) {
         "getFavorite" -> favorite()
@@ -39,7 +42,7 @@ class FavoriteMediaTest {
         "deleteFavoriteMedia" -> if (rows.removeIf { it.id == args?.first() }) 1 else 0
         else -> throw UnsupportedOperationException(method.name)
       }
-    } as TelemetryDao
+    } as VescapeDao
     store = FavoriteMediaStore(root, dao) { uri -> File(uri).inputStream() }
   }
 

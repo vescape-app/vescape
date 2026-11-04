@@ -1,7 +1,8 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { useLayoutEffect } from 'react'
-import { View, StyleSheet, ScrollView, Platform } from 'react-native'
+import { View, StyleSheet, Platform } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useNavigation } from 'expo-router'
@@ -66,8 +67,8 @@ export default function SettingsScreen() {
   }, [navigation])
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: neutral.bg }]} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={[styles.container, { backgroundColor: neutral.bg }]} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero media={<VescapeWordmark width={200} />}>
           <View style={styles.headerStats}>
             <View style={styles.headerItem}>
@@ -214,7 +215,7 @@ export default function SettingsScreen() {
             onPress={() => router.push(routes.settingsAbout)}
           />
         </SettingsCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

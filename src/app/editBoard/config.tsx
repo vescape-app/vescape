@@ -1,5 +1,6 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useMemo } from 'react'
-import { ScrollView, StyleSheet } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
 import { BracketsCurlyIcon } from 'phosphor-react-native'
@@ -63,8 +64,8 @@ export default function BoardConfigScreen() {
   }, [motorForThisBoard, motor])
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={BracketsCurlyIcon}
           description="Decoded Refloat and VESC motor config for the current Board Session, exactly as read."
@@ -99,7 +100,7 @@ export default function BoardConfigScreen() {
           exportName="motor-config"
           empty="No motor config read — connect this board"
         />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

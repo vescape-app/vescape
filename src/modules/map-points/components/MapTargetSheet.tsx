@@ -21,6 +21,7 @@ export function MapTargetSheet({
   path,
   computing,
   profileSelector,
+  onSignInForDetails,
   onAddFeature,
   onEdit,
   onSave,
@@ -47,6 +48,7 @@ export function MapTargetSheet({
   computing?: boolean
   /** Navigation mode only: the Navigation Profile switcher, shown beside the drawn path. */
   profileSelector?: ReactNode
+  onSignInForDetails?: () => void
   onAddFeature?: () => void
   onEdit?: () => void
   onSave?: () => void
@@ -97,6 +99,7 @@ export function MapTargetSheet({
 
   return (
     <MapTargetSelectBody
+      onSignInForDetails={onSignInForDetails}
       target={target}
       bottom={bottom}
       action={action}

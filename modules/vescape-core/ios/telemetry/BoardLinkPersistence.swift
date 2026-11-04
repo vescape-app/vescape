@@ -23,8 +23,8 @@ internal enum BoardLinkPersistence {
     return normalized
   }
 
-  static func compose(bleId: String?, storedTransport: String?, values: [String: Any]) -> [String: Any?]? {
-    guard let bleId, let transport = BoardTransport.decode(storedTransport)?.bridgeValue else { return nil }
+  static func compose(bleId: String?, values: [String: Any]) -> [String: Any?]? {
+    guard let bleId, let transport = BoardTransport.decode(values["transport"] as? String)?.bridgeValue else { return nil }
     var built: [String: Any?] = ["bleId": bleId, "transport": transport]
     // Only the current schema version survives the read. A missing or older stored version
     // reads as absent so the link registers as legacy and re-probes, instead of being laundered

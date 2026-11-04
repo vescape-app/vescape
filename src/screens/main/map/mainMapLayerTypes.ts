@@ -1,9 +1,10 @@
-import type MapboxTypes from '@rnmapbox/maps'
-import type { LiveGpsRuntime } from '@/screens/main/map/useLiveGpsMotion'
+import type { MotionDisplayRuntime } from '@/modules/map/lib/liveMotion/display'
+import type { SharedValue } from 'react-native-reanimated'
 import type { MapPoint, MapPointCategory } from 'vescape-core'
 
 import type { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
+import type { MapPose } from '@/modules/map/components/GpsPuck'
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 import type {
   HistoryMetricHotRanges,
@@ -19,11 +20,8 @@ import type { LegalLimitCountry } from '@/modules/legal/lib/legalLimits'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 
-type MovePointShapeAnimator = InstanceType<typeof MapboxTypes.__experimental.MovePointShapeAnimator>
-
 export interface MainMapLayersProps {
-  pointAnimator: MovePointShapeAnimator
-  displayRuntime: Pick<LiveGpsRuntime, 'active' | 'motion' | 'now' | 'duration' | 'subscribe'>
+  displayRuntime: MotionDisplayRuntime
   historyActive: boolean
   expandSelectedMapPoints: boolean
   isMapy: boolean
@@ -40,8 +38,9 @@ export interface MainMapLayersProps {
   } | null
   accuracyFix: { longitude: number; latitude: number } | null
   accuracyShape: ReturnType<typeof makeCircleFeature> | null
-  gpsHeadingMode: boolean
-  gpsPuckBearingDeg: number | null
+  /** The puck arrow's map bearing — GPS course or phone compass; null hides the arrow. */
+  puckBearing: SharedValue<number | null>
+  mapPose: SharedValue<MapPose>
   riders: RosterRider[]
   rideRoute: [number, number][]
   rideTelemetrySamples: TelemetrySample[]

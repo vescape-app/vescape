@@ -2,6 +2,11 @@ package expo.modules.vescapecore.telemetry
 
 import org.json.JSONArray
 import org.json.JSONObject
+import expo.modules.vescapecore.database.AlertRuleEntity
+import expo.modules.vescapecore.database.AppSettingEntity
+import expo.modules.vescapecore.database.BoardEntity
+import expo.modules.vescapecore.database.BoardSettingEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 internal fun decodeSettingJson(json: String): Any? = jsonValue(JSONObject("{\"v\":$json}").get("v"))
 
@@ -13,7 +18,7 @@ internal fun jsonValue(value: Any?): Any? = when (value) {
 }
 
 /** Production Room operations shared by the Android adapter and host persistence contract. */
-internal class BoardSettingsPersistence(private val dao: TelemetryDao) {
+internal class BoardSettingsPersistence(private val dao: VescapeDao) {
   suspend fun getBoards(): List<BoardEntity> = dao.getBoards()
   suspend fun getBoard(id: String): BoardEntity? = dao.getBoard(id)
   suspend fun getBoardSettings(boardId: String): List<BoardSettingEntity> = dao.getBoardSettings(boardId)

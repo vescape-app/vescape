@@ -40,7 +40,7 @@ import {
   useVisibleRideSamples,
 } from '@/modules/history/hooks/useHistoryChartData'
 import type { MediaAssetInput, MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
-import { scrubHeadMs, zoomWindowMs } from '@/modules/history/lib/chartFocus'
+import { peakSpeedAtMs, scrubHeadMs, zoomWindowMs } from '@/modules/history/lib/chartFocus'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import { rideMovingWindow } from '@/modules/history/lib/sessions'
 import { useHistoryStore, type TelemetrySample } from '@/modules/history/store/historyStore'
@@ -243,6 +243,16 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
       zoomWindowMs.value = null
     }
   }, [startAtMs])
+
+  // A ride linked with a focus (e.g. from the Top speed record): once its samples land, park the
+  // head on that moment so the chart and the map both mark it. The next touch takes it back.
+  const sessionFocus = useHistoryStore((s) => s.sessionFocus)
+  useEffect(() => {
+    if (sessionFocus == null || visibleGpsGapSamples.length === 0) return
+    useHistoryStore.getState().clearSessionFocus()
+    const focusMs = sessionFocus === 'topSpeed' ? peakSpeedAtMs(visibleGpsGapSamples) : null
+    if (focusMs != null) scrubHeadMs.value = focusMs
+  }, [sessionFocus, visibleGpsGapSamples])
 
   // The seed range enters the canvas as a shared value, so dragging a handle never renders the
   // panel; the trimmer hears about it through the throttled callbacks below.

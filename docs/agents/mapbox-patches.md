@@ -19,8 +19,9 @@ It is used by `src/screens/main/MainMap.tsx` to continuously derive pitch from z
 map camera is moving, including native deceleration after the user releases a pinch gesture. The
 pitch calculation remains pure in `src/modules/map/lib/cameraProfiles.ts` (`getPitchForZoom`).
 
-It is also used by `src/screens/main/PhoneHeadingMapLayer.tsx` to apply the fused phone heading
-without starting and repeatedly cancelling Mapbox camera transitions for every sensor sample.
+It also carries the fused phone heading in Compass mode (`usePhoneHeading` retargets the camera
+engine, which writes through `setCameraDirect`) without starting and repeatedly cancelling Mapbox
+camera transitions for every sensor sample.
 
 ### Why normal `setCamera` is not used
 
@@ -123,7 +124,10 @@ the changing zoom. Also verify normal recentering and navigation-mode camera ani
 two generic interpolation defects on both platforms: compute progress from the current animation
 age (upstream used the previous frame's progress time), and land exactly on the target at expiry
 (upstream stopped on the previous frame). No GPS, speed, prediction or correction logic lives here.
-The production point adapter sends linear segments only on input changes and segment boundaries.
+The segment adapter sends moves only on input changes and segment boundaries. The main map's 3D
+coin uses a non-interactive native view annotation driven by Reanimated on the UI thread; it bypasses
+the public MarkerView wrapper's touch-position React updates. The playground's shape point still
+uses `MovePointShapeAnimator`. Both render the same native-authored segments.
 The iOS module also registers its own generated TurboModule spec; upstream registered the point
 annotation spec, leaving `generate` and `moveTo` unavailable at runtime. Its Objective-C selectors
 and scalar argument types match that generated spec, with boxing only at the Swift boundary.

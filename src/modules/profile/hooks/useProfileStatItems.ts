@@ -20,12 +20,19 @@ import { theme, type ThemeColor } from '@/constants/theme'
 export type ProfileStatKey =
   'distance' | 'rides' | 'rideTime' | 'topSpeed' | 'avgSpeed' | 'longestRide' | 'used' | 'regen'
 
+/** A stat set by one ride, which tapping it opens. */
+export type ProfileRecordKey = 'topSpeed' | 'longestRide'
+
+export type OpenRecordRide = (rideId: string, record: ProfileRecordKey) => void
+
 export interface ProfileStatItem {
   key: ProfileStatKey
   label: string
   value: string
   icon: Icon
   accent: ThemeColor
+  /** Set when the figure links somewhere, e.g. the ride that set a record. */
+  onPress?: () => void
 }
 
 /** Every riding total as a labelled, formatted, tinted figure — one definition for every surface
@@ -33,6 +40,8 @@ export interface ProfileStatItem {
 export function useProfileStatItems(
   stats: ProfileStats,
   keys?: ProfileStatKey[],
+  /** Makes Top speed and Longest ride link to the ride that set them. */
+  onOpenRecordRide?: OpenRecordRide,
 ): ProfileStatItem[] {
   const distanceUnit = useDistanceUnit()
   const { formatSpeedWithUnit } = useFormat()
@@ -65,6 +74,7 @@ export function useProfileStatItems(
         value: formatSpeedWithUnit(stats.topSpeedKmh),
         icon: GaugeIcon,
         accent: theme.status.warning.color,
+        onPress: recordPress(stats.topSpeedRideId, 'topSpeed', onOpenRecordRide),
       },
       {
         key: 'avgSpeed',
@@ -79,6 +89,7 @@ export function useProfileStatItems(
         value: formatDistance(stats.longestRideM, distanceUnit),
         icon: TrophyIcon,
         accent: theme.palette.yellow.color,
+        onPress: recordPress(stats.longestRideId, 'longestRide', onOpenRecordRide),
       },
       {
         key: 'used',
@@ -95,7 +106,15 @@ export function useProfileStatItems(
         accent: theme.palette.green.text,
       },
     ],
-    [stats, distanceUnit, formatSpeedWithUnit],
+    [stats, distanceUnit, formatSpeedWithUnit, onOpenRecordRide],
   )
   return keys ? keys.flatMap((key) => items.filter((item) => item.key === key)) : items
+}
+
+function recordPress(
+  rideId: string | null,
+  record: ProfileRecordKey,
+  onOpenRecordRide: OpenRecordRide | undefined,
+): (() => void) | undefined {
+  return rideId && onOpenRecordRide ? () => onOpenRecordRide(rideId, record) : undefined
 }

@@ -1,8 +1,9 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useFormat } from '@/hooks/useFormat'
 import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
-import { StyleSheet, ScrollView } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   GaugeIcon,
@@ -52,8 +53,8 @@ export default function HistorySettingsScreen() {
   const regroupSessions = useHistoryStore((s) => s.regroupSessions)
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ClockCounterClockwiseIcon}
           description="How recorded telemetry becomes rides in your history."
@@ -192,7 +193,7 @@ export default function HistorySettingsScreen() {
             }
           />
         </SettingsCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

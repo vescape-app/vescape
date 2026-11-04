@@ -151,6 +151,7 @@ class MainActivity : ComponentActivity() {
                 navigation = intent?.getBooleanExtra("navigation", true) != false,
                 routeLoading = intent?.getBooleanExtra("route-loading", false) == true,
                 wander = intent?.getBooleanExtra("wander", false) == true,
+                fromMs = replayFromMs(),
             )
             return
         }
@@ -204,8 +205,22 @@ class MainActivity : ComponentActivity() {
      * (`-S` because a running instance keeps its original intent).
      * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.requestedFixture`
      */
-    private fun replayFixture(): String =
-        if (intent?.getStringExtra("replay") == "sweep") REPLAY_FIXTURE_SWEEP else REPLAY_FIXTURE_RIDE
+    private fun replayFixture(): String = when (intent?.getStringExtra("replay")) {
+        "sweep" -> REPLAY_FIXTURE_SWEEP
+        // TODO(iOS parity): watchOS has no preview fixture or `replayFrom`; only Android takes film a watch.
+        "preview" -> REPLAY_FIXTURE_PREVIEW
+        else -> REPLAY_FIXTURE_RIDE
+    }
+
+    /**
+     * `--el replayEpoch <wall ms>` beside `--es replay preview`: the wall time the phone's replay was
+     * at fixture t=0, so the wrist joins a preview take where the phone is. Both emulators run on the
+     * host clock. The phone's warmup is long over by then, so after it the two advance together.
+     */
+    private fun replayFromMs(): Long {
+        val epoch = intent?.getLongExtra("replayEpoch", 0L) ?: 0L
+        return if (epoch > 0L) (System.currentTimeMillis() - epoch).coerceAtLeast(0L) else 0L
+    }
 
     /**
      * `--ez group true` beside `--es replay`: also replay a joined Group Ride.

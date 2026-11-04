@@ -1,7 +1,7 @@
 import { applicationId } from '../../src/config/appVariant.ts'
 import { PREVIEW_WARMUP_MS, REPLAY_WARMUP_SPEED } from '../../src/config/replayWarmup.ts'
 import { ROOT, type CaptureDriver } from './captureDriver.ts'
-import type { PreviewRecording } from './previewRecording.ts'
+import type { PreviewTake } from './previewRecording.ts'
 
 export type FeaturePreviewScene = 'history' | 'board-alerts'
 
@@ -9,7 +9,7 @@ export type FeaturePreviewScene = 'history' | 'board-alerts'
 export async function filmFeaturePreview(
   driver: CaptureDriver,
   scene: FeaturePreviewScene,
-  recording: PreviewRecording,
+  recording: PreviewTake,
   signal: AbortSignal,
 ): Promise<void> {
   const session = `preview-${driver.platform}-${crypto.randomUUID()}`

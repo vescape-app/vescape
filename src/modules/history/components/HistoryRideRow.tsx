@@ -1,6 +1,6 @@
 import { forwardRef } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { CaretRightIcon } from 'phosphor-react-native'
+import { CaretRightIcon, CheckSquareIcon, SquareIcon } from 'phosphor-react-native'
 
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
@@ -23,6 +23,9 @@ interface HistoryRideRowProps {
   /** Route line color; Favorites ride under their own accent. */
   accent?: ThemeColor
   onPress: () => void
+  onLongPress?: () => void
+  /** Select mode: a checkbox replaces the chevron. Undefined outside select mode. */
+  checked?: boolean
   testID?: string
   /** Ride weather beside the stats; null renders nothing. */
   weather?: RideWeather | null
@@ -39,6 +42,8 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
     selected = false,
     accent,
     onPress,
+    onLongPress,
+    checked,
     testID,
     weather = null,
   },
@@ -50,8 +55,8 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
     <Pressable
       ref={ref}
       testID={testID}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
+      accessibilityRole={checked === undefined ? 'button' : 'checkbox'}
+      accessibilityState={checked === undefined ? { selected } : { checked }}
       accessibilityLabel={title}
       style={({ pressed }) => [
         styles.row,
@@ -60,6 +65,7 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
         pressed && styles.rowPressed,
       ]}
       onPress={onPress}
+      onLongPress={onLongPress}
     >
       <View style={styles.preview}>
         <RouteSparkline
@@ -77,7 +83,13 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
       {weather ? (
         <RideWeatherLabel weather={weather} color={theme.neutral.textSecondary} fontSize={12} />
       ) : null}
-      <CaretRightIcon size={16} color={theme.neutral.textDim} weight="bold" />
+      {checked === undefined ? (
+        <CaretRightIcon size={16} color={theme.neutral.textDim} weight="bold" />
+      ) : checked ? (
+        <CheckSquareIcon size={22} color={theme.palette.sky.color} weight="fill" />
+      ) : (
+        <SquareIcon size={22} color={theme.neutral.textDim} />
+      )}
     </Pressable>
   )
 })

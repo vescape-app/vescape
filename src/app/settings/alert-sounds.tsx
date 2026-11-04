@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { SpeakerHighIcon } from 'phosphor-react-native'
 
@@ -10,8 +11,8 @@ import { VoiceProbe, WeatherProbe } from '@/screens/showcase/sounds/VoiceProbe'
 
 export default function AlertSoundsDevScreen() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SpeakerHighIcon}
           description="Severity sounds, Geiger, voice lines and TTS, played without a board."
@@ -20,7 +21,7 @@ export default function AlertSoundsDevScreen() {
         <WeatherProbe />
         <AlertSoundProbe />
         <TtsProbe />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

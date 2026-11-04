@@ -78,7 +78,7 @@ struct BoardConfigStore {
   /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
-  static let shared = BoardConfigStore { TelemetryDatabase.pool }
+  static let shared = BoardConfigStore { VescapeDatabase.pool }
 
   init(_ resolveWriter: @escaping () -> DatabaseWriter?) {
     self.resolveWriter = resolveWriter
@@ -91,7 +91,7 @@ struct BoardConfigStore {
 
   /// Create the Last Known Board Config Values table. Called from the app-data `DatabaseMigrator` and
   /// reused by tests so the schema stays single-source. Mirrors Android `BoardConfigValuesEntity`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createBoardConfig(db)
   }

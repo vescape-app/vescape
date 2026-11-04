@@ -7,6 +7,7 @@ import kotlin.math.cos
 import kotlin.math.roundToLong
 import kotlin.math.sin
 import kotlin.math.sqrt
+import expo.modules.vescapecore.database.RideTrackPointEntity
 
 /**
  * Reported horizontal accuracy a Ride Track fix must beat to count as a route point or as GPS

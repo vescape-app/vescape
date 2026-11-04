@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { SquaresFourIcon } from 'phosphor-react-native'
 
@@ -19,8 +20,8 @@ import {
 
 export default function ModalsPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SquaresFourIcon}
           description="FadeCardModal, ConfirmModal, InfoModal, VersionNoticeModal, CommunityMessageModal, AppBlockScreen, TextPromptModal."
@@ -33,7 +34,7 @@ export default function ModalsPage() {
         <AppBlockScreenShowcase />
         <TextPromptModalShowcase />
         <TextPromptModalClearableShowcase />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

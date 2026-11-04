@@ -34,7 +34,7 @@ Use flags to skip the menus, including in non-interactive shells:
 ```sh
 bun run e2e --all --device Medium_Phone --watch WearLarge
 bun run e2e --suite phone --device Medium_Phone
-bun run e2e --suite smoke --flow 02-alerts --device Medium_Phone
+bun run e2e --suite smoke --flow 02-alerts-speed --device Medium_Phone
 bun run e2e --flow connect-board --device Medium_Phone
 bun run e2e --help
 ```
@@ -212,24 +212,26 @@ and iOS.
 bun run smoke                      # picks a device, builds, runs every flow
 bun run smoke --no-build           # reuse the smoke build already installed
 bun run smoke --flow 03-history    # build and run one flow
-bun run smoke --no-build --flow 02-alerts # alerts against an installed smoke build
+bun run smoke --no-build --flow 02-alerts-speed # speed alerts against an installed smoke build
 bun run smoke --device <serial>    # skip the picker
 bun run smoke --platform ios       # use an iOS simulator
 bun run smoke --build-only --output .expo/smoke/app.apk
 bun run smoke --app .expo/smoke/app.apk --flow 03-history
 ```
 
-`02-alerts` selects HEV effects, previews its Warning sound, and overrides the matching Radio
-voice with Nicole. It then saves a custom speed Geiger rule, changes Normal → Safe → Off, and reopens
-Speed to check that the custom range and Off selection survive navigation. It restores Normal
-before checking battery presets: Normal and Safe expand to their charge-percentage voice points,
-the battery preview completes with the selected sound settings, Safe survives reopening, and Off
-disables preview. It restores battery Normal before returning home. This is playback and continued
-navigation coverage, not an assertion on audible output or every pack/voice combination.
+`02-alerts-battery` selects HEV effects, previews its Warning sound, and overrides the matching Radio
+voice with Nicole. It then checks battery presets: Normal and Safe expand to their
+charge-percentage voice points, the battery preview completes with the selected sound settings,
+Safe survives reopening, and Off disables preview. It restores battery Normal before returning
+home. `02-alerts-speed` saves a custom speed Geiger rule, changes Normal → Safe → Off, and reopens
+Speed to check that the custom range and Off selection survive navigation, then restores Normal.
+They are separate flows because together they outlast the Android emulator job's step timeout.
+This is playback and continued navigation coverage, not an assertion on audible output or every
+pack/voice combination.
 Each runner invocation restores fresh fixtures; this checks native writes
 and screen reopening, not persistence across app restarts.
 
-CI builds one Release artifact per platform without booting a device. Each platform's six flows
+CI builds one Release artifact per platform without booting a device. Each platform's flows
 then run in parallel jobs, each installing that artifact and starting a fresh fixture session.
 The iOS app travels in a tar archive to preserve its bundle permissions and symlinks. Gradle's build
 cache and iOS CocoaPods dependencies are separate from app artifacts. iOS caches the compiled
@@ -278,10 +280,15 @@ BLE _discovery_ falls back to `e2eFake.scan()` — `FAKE_SCAN` in `modules/vesca
 That fake stands in for absent hardware; every other `E2E_ENABLED` branch stands in for absent data,
 which fixtures and replay now supply.
 
-The replay recording has to outlast the flows that need it. `replay-thor301.jsonl` is a 13-minute
-ride, and a full pass can run longer than that — Maestro spends most of its time waiting for a live
-view hierarchy to settle. Flows 01-04 finish inside the window; `05-add-board` is written to work
-whether the session is still up or has already ended on its own.
+Smoke replays `replay-thor301-1hz.jsonl`: the same 13-minute ride as `replay-thor301.jsonl`, thinned
+by `scripts/thin-replay-fixture.ts` to one telemetry frame and one heading per second. At the
+recorded ~15 Hz the live screens never settle on a CPU-rendered CI emulator, and every Maestro
+hierarchy read stalls for seconds; the battery alert flow ran past its 15-minute step limit. Rerun
+the script after changing the source recording.
+
+The replay recording has to outlast the flows that need it, and a full pass can run longer than 13
+minutes. Flows 01-04 finish inside the window; `05-add-board` is written to work whether the session
+is still up or has already ended on its own.
 
 In a local full pass, flow order is load-bearing. `05-add-board` runs last because saving a board hands it to the
 connection manager, which goes at the real BLE stack, finds nothing, and takes the replay session
@@ -313,7 +320,7 @@ and the map reveal gesture.
 
 ## Store screenshots
 
-`e2e/flows/screenshots/*.yaml` capture the eight store panels from the real app, driven by
+`e2e/flows/screenshots/*.yaml` capture the nine store panels from the real app, driven by
 `scripts/screenshots.ts`:
 
 ```sh
@@ -323,7 +330,7 @@ bun run screenshots --platform ios  # skip the platform picker
 
 The bare command asks for the platform first (Android / iOS / Both), then the device. "Both" is a
 deliberate choice rather than the default: the runs are sequential, so a whole Android pass — build,
-eight panels — happens before iOS starts.
+nine panels — happens before iOS starts.
 
 One flow set drives both platforms. The runner passes `OUT_DIR` to Maestro
 (`screenshots/android` or `screenshots/ios`), so the panel list, order and filenames are identical
@@ -403,7 +410,7 @@ since it spends recording too.
 
 `bun run preview` records a Release fixture build with the platform recorder, then exports H.264
 MP4 footage for a landing page or promo. It reuses screenshot device preparation and the sanitized
-history database. `EXPO_PUBLIC_PREVIEW=1` selects dark appearance and fast-forwards the first eight
+history database. `EXPO_PUBLIC_PREVIEW=1` selects dark appearance and fast-forwards the first seven
 minutes off-camera through the same native replay warmup used by screenshots. The map opens on the
 later western stretch with an established trail and filled charts, then plays recorded BLE/GPS at 1×.
 Normal rider controls, including REC, remain visible.
@@ -414,12 +421,24 @@ bun run preview --platform android --device Medium_Phone
 bun run preview --platform ios --scene ride --no-build
 ```
 
-The default `tour` scene holds the live ride for 30 seconds, then visits history and two ride details
-with readable pauses. `--scene ride` captures a minute of the moving dashboard for a landing-page
+The default `tour` scene rides for 5 seconds, opens the live telemetry drawer, returns to the map for
+25 seconds, then visits history and two ride details with readable pauses. `--scene ride` captures a minute of the moving dashboard for a landing-page
 hero. `--scene store` captures a shorter tour for the App Store. `--platform both` runs iOS
 then Android; omit the platform to pick. `--replay <name>` changes the recording baked into the
 build. `--no-build` requires a preview build from the current workspace, not a screenshot, smoke,
 development or production app.
+
+Android takes always film the Wear emulator too, with no pairing. Before the take the script boots
+the Wear AVD when none is running (`WEAR_AVD=<AVD>` picks it) and installs the current watch app
+(`wear.ts install`). At the take's start it launches the watch on `watch-preview.jsonl`: the same
+recording reduced to watch lanes, on its real GPS track with map tiles along it. The watch starts
+where the phone is: the phone logs `replay playback started … wallMs=` and the watch takes that as
+`--el replayEpoch`. Both emulators run on the host clock, so the two stay in step.
+
+The watch video is saved next to the phone's as `watch-*-raw.mp4` and `watch-*-web.mp4`. The watch
+is kept awake for the take and returned to its normal timeout after. After changing the recording,
+regenerate the watch fixtures with `bun scripts/generate-watch-fixtures.ts` (new tiles need
+`EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`). To view the watch replay alone: `bun run scripts/wear.ts replay preview`.
 
 Two standalone scenes cover landing-page feature sections:
 

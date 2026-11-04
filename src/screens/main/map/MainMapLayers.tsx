@@ -1,6 +1,6 @@
 import { FillExtrusionLayer, RasterLayer, RasterSource } from '@rnmapbox/maps'
 
-import { MAPY_TILE_URL_TEMPLATE } from '@/config/mapy'
+import { useMapServicesStore } from '@/modules/map/store/mapServicesStore'
 import { theme } from '@/constants/theme'
 import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
@@ -32,6 +32,7 @@ function BaseTerrainLayers({
   isOneDark,
   showBuildings3d,
 }: Pick<MainMapLayersProps, 'isMapy' | 'isOneDark' | 'showBuildings3d'>) {
+  const mapyTileUrlTemplate = useMapServicesStore((state) => state.mapyTileUrlTemplate)
   return (
     <>
       {showBuildings3d && (
@@ -49,10 +50,10 @@ function BaseTerrainLayers({
           }}
         />
       )}
-      {isMapy && MAPY_TILE_URL_TEMPLATE ? (
+      {isMapy && mapyTileUrlTemplate ? (
         <RasterSource
           id="center-mapy-tiles"
-          tileUrlTemplates={[MAPY_TILE_URL_TEMPLATE]}
+          tileUrlTemplates={[mapyTileUrlTemplate]}
           tileSize={256}
           maxZoomLevel={MAP_DEFAULTS.maxZoom}
         >
@@ -144,13 +145,12 @@ export function MainMapLayers(props: MainMapLayersProps) {
             onFocusDirectionPoint={props.onFocusDirectionPoint}
           />
           <LiveMapLayers
-            gpsHeadingMode={props.gpsHeadingMode}
-            pointAnimator={props.pointAnimator}
             displayRuntime={props.displayRuntime}
             liveTrailShape={props.liveTrailShape}
             accuracyFix={props.accuracyFix}
             accuracyShape={props.accuracyShape}
-            gpsPuckBearingDeg={props.gpsPuckBearingDeg}
+            puckBearing={props.puckBearing}
+            mapPose={props.mapPose}
             riders={riders}
             highContrastRoutes={isSatellite}
           />

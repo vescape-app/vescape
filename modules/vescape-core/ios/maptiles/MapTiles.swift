@@ -34,16 +34,21 @@ actor MapTiles {
     return MapTiles(
       directory: caches.appendingPathComponent("map-tiles", isDirectory: true),
       fetch: { url in await fetchTile(session, url) },
-      accessToken: MapboxDirectionsApi.bakedAccessToken
+      accessToken: { await MainActor.run { ServiceConfigCoordinator.shared.current.mapboxToken } }
     )
   }()
 
   private let directory: URL
   private let fetch: @Sendable (URL) async -> Data?
-  private let accessToken: String
+  /// Current Mapbox token from Service Config, read per download so a refreshed token applies at once.
+  private let accessToken: @Sendable () async -> String?
   private var inFlight: [String: Task<URL?, Never>] = [:]
 
-  init(directory: URL, fetch: @escaping @Sendable (URL) async -> Data?, accessToken: String) {
+  init(
+    directory: URL,
+    fetch: @escaping @Sendable (URL) async -> Data?,
+    accessToken: @escaping @Sendable () async -> String?
+  ) {
     self.directory = directory
     self.fetch = fetch
     self.accessToken = accessToken
@@ -66,7 +71,7 @@ actor MapTiles {
   }
 
   private func download(to file: URL, z: Int, x: Int, y: Int) async -> URL? {
-    guard !accessToken.isEmpty,
+    guard let accessToken = await accessToken(),
       var components = URLComponents(string: "\(Self.baseUrl)/\(Self.style)/tiles/512/\(z)/\(x)/\(y).jpeg")
     else { return nil }
     components.queryItems = [URLQueryItem(name: "access_token", value: accessToken)]

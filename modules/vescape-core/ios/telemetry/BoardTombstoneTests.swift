@@ -14,7 +14,7 @@ final class BoardTombstoneTests: XCTestCase {
 
   override func setUpWithError() throws {
     queue = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(queue)
+    try VescapeDatabase.migrator.migrate(queue)
     repo = AppDataRepository.forTesting(dbWriter: queue)
   }
 
@@ -60,7 +60,7 @@ final class BoardTombstoneTests: XCTestCase {
   /// Re-running the whole migrator over a migrated database has to be a no-op, not a duplicate
   /// column error.
   func testMigrationIsANoOpOnReRun() throws {
-    XCTAssertNoThrow(try TelemetryDatabase.migrator.migrate(queue))
+    XCTAssertNoThrow(try VescapeDatabase.migrator.migrate(queue))
   }
 
   // MARK: Delete
@@ -118,6 +118,26 @@ final class BoardTombstoneTests: XCTestCase {
   }
 
   // MARK: Reads
+
+  /// The proven transport lives in a `board_settings` row, as on Android (#612): it reads back into
+  /// the link, and clearing the link removes the row.
+  func testBoardLinkTransportRoundTripsThroughBoardSettings() throws {
+    try seedBoard()
+    let stored = try queue.read { db in
+      try String.fetchOne(db, sql: "SELECT value_json FROM board_settings WHERE board_id = 'board-1' AND key = 'transport'")
+    }
+    XCTAssertEqual(stored, "\"direct\"")
+    let link = try repo.getBoard("board-1")?["link"] as? [String: Any?]
+    XCTAssertEqual(link?["transport"] as? String, "direct")
+
+    try repo.upsertBoard(["id": "board-1", "name": "ADV", "createdAt": Int64(1000), "link": nil])
+
+    XCTAssertNil(try repo.getBoard("board-1")?["link"] ?? nil)
+    let remaining = try queue.read { db in
+      try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM board_settings WHERE board_id = 'board-1' AND key = 'transport'")
+    }
+    XCTAssertEqual(remaining, 0)
+  }
 
   func testTombstonedBoardLeavesTheRiderFacingListButStaysResolvableById() throws {
     try seedBoard()

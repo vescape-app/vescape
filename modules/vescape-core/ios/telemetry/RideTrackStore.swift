@@ -14,7 +14,7 @@ internal let MAX_SAMPLE_LIMIT = 20_000
 ///
 /// `fixAtMs` is the GPS clock, deliberately not aligned to any telemetry frame's capture time.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `RideTrackPointEntity`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `RideTrackPointEntity`
 internal struct RideTrackPoint {
   /// Owning Board (`boards.id`), or nil when the fix matched no saved Board (ADR 0028).
   let boardId: String?
@@ -31,7 +31,7 @@ internal struct RideTrackPoint {
 
 // MARK: - Storage
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `insertRideTrackPoints`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `insertRideTrackPoints`
 internal func insertRideTrackPoint(_ db: Database, _ point: RideTrackPoint) throws {
   try db.execute(
     sql: """
@@ -52,7 +52,7 @@ internal func insertRideTrackPoint(_ db: Database, _ point: RideTrackPoint) thro
 /// [limit] is the same read cap the Telemetry Sample reads carry: a wide range must not pull an
 /// unbounded track into memory and across the bridge.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideTrackPoints`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideTrackPoints`
 internal func fetchRideTrack(
   _ db: Database,
   fromMs: Int64,
@@ -64,7 +64,7 @@ internal func fetchRideTrack(
 }
 
 /// Complete input for durable summaries and bucket rebuilds, without the bridge read cap.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideTrackForAggregation`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideTrackForAggregation`
 internal func fetchRideTrackForAggregation(
   _ db: Database,
   fromMs: Int64,

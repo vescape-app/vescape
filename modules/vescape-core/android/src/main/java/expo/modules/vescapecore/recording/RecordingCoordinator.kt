@@ -4,8 +4,8 @@ import expo.modules.vescapecore.protocol.LocationSnapshot
 import android.content.Context
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.telemetry.AppDataRepository
-import expo.modules.vescapecore.telemetry.AppSettings
-import expo.modules.vescapecore.telemetry.RECORDING_STOP_MARKER
+import expo.modules.vescapecore.database.AppSettings
+import expo.modules.vescapecore.database.RECORDING_STOP_MARKER
 import expo.modules.vescapecore.telemetry.TelemetryCapture
 import expo.modules.vescapecore.telemetry.TelemetryLocationCapture
 import expo.modules.vescapecore.telemetry.TelemetryRepository

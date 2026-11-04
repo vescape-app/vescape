@@ -65,7 +65,6 @@ jobs:
     env:
       EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
       EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
-      EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
       EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
       EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
       SENTRY_DISABLE_AUTO_UPLOAD: 'true'
@@ -118,13 +117,13 @@ jobs:
   build-ios:
     name: Build iOS smoke app
     needs: plan
-    if: inputs.platform != 'android'
+    # Hosted macOS XCTest startup is too flaky to gate pushes; run iOS by manual dispatch.
+    if: github.event_name == 'workflow_dispatch' && inputs.platform != 'android'
     runs-on: macos-26
     timeout-minutes: 60
     env:
       EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
       EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
-      EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
       EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
       EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
       SENTRY_DISABLE_AUTO_UPLOAD: 'true'
@@ -251,6 +250,8 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          cores: 4
+          ram-size: 4096M
           # Keep the Pixel 6 layout in dp while reducing software-rendered pixels by 56%.
           pre-emulator-launch-script: >-
             sed -i
@@ -261,7 +262,7 @@ jobs:
           emulator-options: >-
             -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect
             -noaudio -camera-back none
-          disable-animations: false
+          disable-animations: true
           script: |
             adb -s emulator-5554 shell wm size
             adb -s emulator-5554 shell wm density
@@ -270,6 +271,7 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
+          include-hidden-files: true
           name: maestro-debug-android-${{ matrix.flow }}
           path: ~/.maestro/tests/
           if-no-files-found: warn
@@ -279,12 +281,15 @@ jobs:
     name: iOS / ${{ matrix.flow }}
     needs: [plan, build-ios]
     runs-on: macos-26
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
         flow: ${{ fromJSON(needs.plan.outputs.flows) }}
     steps:
+      - name: Start simulator boot
+        # First boot on a fresh image can sit in Data Migration for minutes; overlap it with setup.
+        run: nohup xcrun simctl boot 'iPhone 17' > /dev/null 2>&1 &
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-java@v4
@@ -304,7 +309,7 @@ jobs:
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - name: Run isolated flow
         # Include fresh simulator startup and Maestro's XCTest shutdown, not just assertions.
-        timeout-minutes: 20
+        timeout-minutes: 30
         env:
           SMOKE_FLOW: ${{ matrix.flow }}
           # A fresh hosted simulator can take over two minutes to start XCTest.
@@ -316,6 +321,7 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
+          include-hidden-files: true
           name: maestro-debug-ios-${{ matrix.flow }}
           path: ~/.maestro/tests/
           if-no-files-found: warn

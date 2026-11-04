@@ -4,7 +4,7 @@ import expo.modules.vescapecore.telemetry.BucketTelemetryPoint
 import expo.modules.vescapecore.telemetry.EXCLUSION_REASON_FREE_SPIN
 import expo.modules.vescapecore.telemetry.FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH
 import expo.modules.vescapecore.telemetry.FREE_SPIN_NEAREST_GPS_MAX_AGE_MS
-import expo.modules.vescapecore.telemetry.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPointEntity
 import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_ID
 import expo.modules.vescapecore.telemetry.isPrecise
 import kotlin.math.abs

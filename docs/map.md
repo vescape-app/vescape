@@ -41,15 +41,18 @@ the direction axis and does not wait for that recovery timer.
 The phone native input coordinator owns display source identity, replay rate adaptation, Board
 Session generation, telemetry speed conversion/coalescing and input freshness. It emits complete,
 bounded linear segments at input changes and segment/heading deadlines, never at animation-frame
-rate. JS evaluates these segments for the point animator and camera; it does not interpret GPS,
+rate. JS evaluates these segments for the point renderer and camera; it does not interpret GPS,
 speed or source changes. Segment endpoints include correction, prediction-expiry and distance-budget
 boundaries, so a stationary prefix can still lead to a future moving segment.
 
 The Map Camera Controller remains the phone's single camera writer. It samples supplied segments
 inside its existing spring loop. Position defaults to 3 rad/s and GPS camera heading to 1 rad/s; the GPS arrow uses
 10 rad/s. The slower heading spring continues between GPS fixes and preserves angular velocity
-when a new heading arrives. Only GPS-heading mode draws the travel arrow; North up, Free rotate
-and Compass modes use the phone-compass arrow instead. The point stays responsive while the camera deliberately lags. Manual browsing, History
+when a new heading arrives. The 3D coin's arrow shows native GPS direction in GPS-heading, North up
+and Free rotate modes; Compass uses phone heading. Approximate fixes hide GPS direction. The coin's
+view annotation interpolates native-authored position segments on the UI thread, without per-frame
+React updates or annotation-position events for touch hit testing. The playground retains the linear
+Mapbox shape animator. The point stays responsive while the camera deliberately lags. Manual browsing, History
 and preview gestures retain camera ownership. Watch renderers sample their own point controller
 and apply their own slower camera response. Street map, route and rider use the same local clock.
 LiveTrail geometry and styling are independent of this display estimate. Once the target is

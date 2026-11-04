@@ -706,7 +706,7 @@ export interface AlertTestRule {
   repeatEverySeconds: number | null
 }
 
-// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AlertRuleEntity`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AlertRuleEntity`
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `AlertRule`
 export interface AlertRule {
   /** Owning Board. The alert engine evaluates only the connected Board's rules (see docs/alerts.md). */
@@ -1157,7 +1157,7 @@ export interface HistoryGpsSample {
 
 /**
  * `recording_stop` is the explicit rider Stop Recording, the only marker that splits a ride.
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `RECORDING_STOP_MARKER`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `RECORDING_STOP_MARKER`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `recordingStopMarker`
  */
 export interface HistoryMarker {
@@ -1300,7 +1300,7 @@ export interface TelemetrySummary {
  * timestamps and the summary stats are native-owned — JS only ever sends a range and a name.
  *
  * @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `Favorite`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `FavoriteEntity`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `FavoriteEntity`
  */
 export interface Favorite {
   id: string
@@ -1355,7 +1355,7 @@ export interface UpdateFavoriteOptions {
 /**
  * One immutable Favorite Media manifest row. Native owns metadata and canonical storage.
  * @parity /modules/vescape-core/ios/telemetry/FavoriteMediaStore.swift `FavoriteMedia`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `FavoriteMediaEntity`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `FavoriteMediaEntity`
  */
 export interface FavoriteMedia {
   id: string
@@ -1437,11 +1437,20 @@ export interface ProfileStats {
   longestRideM: number | null
   batteryUsedWh: number | null
   batteryRegenWh: number | null
+  /** `RideHistorySession.id` of the ride that set `topSpeedKmh`; open it with `getRideSession`. */
+  topSpeedRideId: string | null
+  /** `RideHistorySession.id` of the ride that set `longestRideM`, or null when none has a distance. */
+  longestRideId: string | null
 }
 
 export interface ProfileStatsMonth {
   year: number
   month: number
+}
+
+/** A local calendar day; `month` is 1-based. */
+export interface RideDay extends ProfileStatsMonth {
+  day: number
 }
 
 /**
@@ -1527,6 +1536,34 @@ export interface RideWeather {
 }
 
 /**
+ * Weather a ride can be filtered by, judged natively from its Ride weather summary. Groups: sky
+ * (`clear` `cloudy` `rain` `snow` `storm`), temperature (`cold` `hot`), `windy`, `night`. Picks in
+ * one group are alternatives; picked groups must all hold.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideWeatherCondition`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideWeatherCondition`
+ */
+export type RideWeatherCondition =
+  'clear' | 'cloudy' | 'rain' | 'snow' | 'storm' | 'cold' | 'hot' | 'windy' | 'night'
+
+/**
+ * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty or absent = all)
+ * that meet `weather` (empty or absent = any weather; no weather summary never matches).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
+ */
+export interface RideHistoryFilter {
+  fromMs?: number
+  toMs?: number
+  boardIds?: string[]
+  weather?: RideWeatherCondition[]
+}
+
+export interface RideHistoryPageOptions extends RideHistoryFilter {
+  limit?: number
+  cursorBeforeMs?: number
+}
+
+/**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepositoryAndroid.kt `getPage`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getPage`
  */
@@ -1566,7 +1603,7 @@ export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
  * Durable app-scoped settings. The keys here are a TS/Android/iOS parity triangle — every field is
  * persisted natively and projected back through {@link getSettings}/{@link updateSetting}. The
  * container tag covers all keys; individual literals are not tagged separately (see AGENTS.md).
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings`
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
  */
 export interface AppSettings {
@@ -1634,11 +1671,11 @@ export interface AppSettings {
   /** @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift */
   soundPack: string
   /** Android playback volume stream. iOS retains its playback session. */
-  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings` */
   /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   audioSource: 'alarm' | 'media'
   /** `matching` (the voice the effects pack names) or a voice pack id. */
-  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AppSettings` */
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings` */
   /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   voice: 'matching' | 'nova' | 'radio' | 'nicole'
   /** Speech for presets and app sounds; custom rules ignore it. */
@@ -2467,6 +2504,26 @@ export interface AppStatusEvent {
 }
 
 /**
+ * Third-party service tokens resolved natively: the last successful `GET /api/service-config`
+ * answer (persisted), else the build-time seed. `null` = that service is not configured.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/serviceconfig/ServiceConfig.kt `ServiceConfig`
+ * @parity /modules/vescape-core/ios/serviceconfig/ServiceConfig.swift `ServiceConfig`
+ */
+export interface ServiceConfig {
+  mapboxToken: string | null
+  mapyToken: string | null
+}
+
+/**
+ * Native Service Config changed. Emitted when a refresh changes it and replayed on subscribe.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onServiceConfig`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendServiceConfig`
+ */
+export interface ServiceConfigEvent {
+  config: ServiceConfig
+}
+
+/**
  * The condition pictogram a forecast resolves to. Native classifies the WMO code; this side only
  * picks artwork and a tint for the slug it is handed, so the phone, the wrist and iOS cannot
  * disagree about what the weather is.
@@ -2723,6 +2780,7 @@ type VescapeCoreEvents = {
   onLocation: (event: LocationEvent) => void
   onMaintenanceState: (event: MaintenanceState) => void
   onBoardProbeProgress: (event: BoardProbeProgressEvent) => void
+  onRideExportProgress: (event: RideExportProgressEvent) => void
   /** Observe WebSocket connection state to the Group Ride relay. */
   onGroupRideConnection: (event: GroupRideConnectionEvent) => void
   /** Full active-ride list, sent once on connect. */
@@ -2747,6 +2805,8 @@ type VescapeCoreEvents = {
   onBoardLights: (event: BoardLightsEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
+  /** Native Service Config, when a refresh changes it and on subscribe. */
+  onServiceConfig: (event: ServiceConfigEvent) => void
   /** Native Navigation, on every change (including clears) and on subscribe. */
   onNavigation: (event: NavigationEvent) => void
   /** Native Route Progress, on every GPS Fix that moves it, on clears, and on subscribe. */
@@ -2885,6 +2945,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getDiagnosticStatus(): DiagnosticStatus
   getLiveState(): LiveStateEvent
   getAppStatus(): AppStatus | null
+  getServiceConfig(): ServiceConfig
   getWeather(): Weather | null
   refreshWeather(): void
   getWeatherAlertThresholds(): WeatherAlertThresholds
@@ -2905,7 +2966,9 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   addCompanionPresenceBoard(boardId: string): Promise<void>
   removeCompanionPresenceBoard(boardId: string): Promise<void>
   getTelemetryHistory(options: TelemetryHistoryOptions): Promise<TelemetryMinuteBucket[]>
-  getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): Promise<RideHistoryPage>
+  getRideHistoryPage(options: RideHistoryPageOptions): Promise<RideHistoryPage>
+  countRideHistory(filter: RideHistoryFilter): Promise<number>
+  getRideSession(id: string): Promise<RideHistorySession | null>
   getTelemetrySamples(options: {
     fromMs: number
     toMs: number
@@ -2916,6 +2979,12 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   exportRideCsv(options: RideExportOptions): Promise<RideExportFile>
   exportRideFloaty(options: RideExportOptions): Promise<RideExportFile>
   exportLiveTelemetryCsv(): Promise<RideExportFile>
+  exportRides(options: {
+    selection: RideSelection
+    format: RideExportFormat
+  }): Promise<RideExportFile | null>
+  cancelRideExport(): void
+  deleteRides(selection: RideSelection): Promise<number>
   getHistoryRange(options: {
     fromMs: number
     toMs: number
@@ -2987,6 +3056,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<TuneProfile>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
   getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
+  getDayStats(day: RideDay): Promise<ProfileStats>
+  getRecentRideStats(sinceMs: number): Promise<ProfileStats>
   getMaintenanceState(): MaintenanceState
   deleteTelemetryBefore(beforeMs: number): Promise<number>
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
@@ -3017,6 +3088,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   upsertPrivacyZone(zone: PrivacyZone): Promise<void>
   setPrivacyZoneEnabled(id: string, enabled: boolean): Promise<void>
   deletePrivacyZone(id: string): Promise<void>
+  searchMap(query: string, limit: number, proximity: string | null): Promise<string>
+  reverseGeocodeMap(latitude: number, longitude: number): Promise<string>
   getNearbyMapPoints(
     latitude: number,
     longitude: number,
@@ -3619,6 +3692,11 @@ export function getAppStatus(): AppStatus | null {
   return native.getAppStatus()
 }
 
+/** Read the resolved Service Config (persisted server answer, else the build-time seed). */
+export function getServiceConfig(): ServiceConfig {
+  return native.getServiceConfig()
+}
+
 /**
  * Read the process's current forecast. `null` until a GPS Fix has produced one — nothing on this
  * side can ask for a fetch, because the position that would drive it is native's to begin with.
@@ -3727,10 +3805,30 @@ export async function getTelemetryHistory(
 }
 
 export async function getRideHistoryPage(
-  options: { limit?: number; cursorBeforeMs?: number } = {},
+  options: RideHistoryPageOptions = {},
 ): Promise<RideHistoryPage> {
   if (E2E_ENABLED) return e2eFake.getRideHistoryPage(options)
   return native.getRideHistoryPage(options)
+}
+
+/**
+ * Complete rides matching the filter, counted natively so callers never depend on loaded pages.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `countRideHistory`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `countRideHistory`
+ */
+export async function countRideHistory(filter: RideHistoryFilter = {}): Promise<number> {
+  if (E2E_ENABLED) return e2eFake.countRideHistory(filter)
+  return native.countRideHistory(filter)
+}
+
+/**
+ * One complete ride by id, or null once it no longer exists under that id (it grew, or was deleted).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideSession`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideSession`
+ */
+export async function getRideSession(id: string): Promise<RideHistorySession | null> {
+  if (E2E_ENABLED) return e2eFake.getRideSession(id)
+  return native.getRideSession(id)
 }
 
 export async function getTelemetrySamples(options: {
@@ -3802,6 +3900,61 @@ export async function exportRideFloaty(options: RideExportOptions): Promise<Ride
  */
 export async function exportLiveTelemetryCsv(): Promise<RideExportFile> {
   return native.exportLiveTelemetryCsv()
+}
+
+/**
+ * Rides picked in History select mode: explicit windows (picked rows, Favorites), or every ride
+ * matching the filter minus the ones unticked afterwards. Native resolves the filter form, so rides
+ * not loaded yet are included.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideBatch.kt
+ * @parity /modules/vescape-core/ios/telemetry/RideBatch.swift
+ */
+export type RideSelection =
+  { rides: RideExportOptions[] } | { filter: RideHistoryFilter; excludeIds: string[] }
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideBatch.kt `format`
+ * @parity /modules/vescape-core/ios/telemetry/RideBatch.swift `format`
+ */
+export type RideExportFormat = 'gpx' | 'csv' | 'floaty'
+
+/** Rides written into the zip so far. */
+export interface RideExportProgressEvent {
+  done: number
+  total: number
+}
+
+/**
+ * Every selected ride as one `.zip`, one file per ride. Resolves null when `cancelRideExport` stops
+ * it. Emits `onRideExportProgress` after each ride.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `registerRideBatch`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRides`
+ */
+export async function exportRides(
+  selection: RideSelection,
+  format: RideExportFormat,
+): Promise<RideExportFile | null> {
+  return native.exportRides({ selection, format })
+}
+
+export function cancelRideExport(): void {
+  native.cancelRideExport()
+}
+
+export function addRideExportProgressListener(
+  cb: (event: RideExportProgressEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onRideExportProgress', cb)
+}
+
+/**
+ * Deletes every selected ride's telemetry and Ride Track in one transaction; Favorite ranges inside
+ * survive. Resolves the deleted frame count.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `registerRideBatch`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRides`
+ */
+export async function deleteRides(selection: RideSelection): Promise<number> {
+  return native.deleteRides(selection)
 }
 
 export async function getHistoryRange(options: {
@@ -4172,6 +4325,24 @@ export async function getProfileStatsSnapshot(
 }
 
 /**
+ * Profile stats of the rides that started on one local day.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryAndroid.kt `getDayStats`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getDayStats`
+ */
+export async function getDayStats(day: RideDay): Promise<ProfileStats> {
+  return native.getDayStats(day)
+}
+
+/**
+ * Profile stats of the rides still going on or finished at or after `sinceMs` (epoch ms).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryAndroid.kt `getRecentRideStats`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getRecentRideStats`
+ */
+export async function getRecentRideStats(sinceMs: number): Promise<ProfileStats> {
+  return native.getRecentRideStats(sinceMs)
+}
+
+/**
  * The Maintenance Job runner's current state; pushes follow on `onMaintenanceState`.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMaintenanceState`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMaintenanceState`
@@ -4349,6 +4520,23 @@ export async function deletePrivacyZone(id: string): Promise<void> {
     return
   }
   return native.deletePrivacyZone(id)
+}
+
+/**
+ * Place search through the server's Mapbox proxy. Resolves the Mapbox Search Box forward body
+ * verbatim; `proximity` is `longitude,latitude`. Needs a Device Token.
+ */
+export async function searchMap(
+  query: string,
+  limit: number,
+  proximity: string | null,
+): Promise<string> {
+  return native.searchMap(query, limit, proximity)
+}
+
+/** Reverse geocoding through the server's Mapbox proxy; the Geocoding v5 body verbatim. */
+export async function reverseGeocodeMap(latitude: number, longitude: number): Promise<string> {
+  return native.reverseGeocodeMap(latitude, longitude)
 }
 
 /**
@@ -4579,6 +4767,12 @@ export function addBoardLightsListener(cb: (event: BoardLightsEvent) => void): E
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {
   return emitter.addListener('onAppStatus', cb)
+}
+
+export function addServiceConfigListener(
+  cb: (event: ServiceConfigEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onServiceConfig', cb)
 }
 
 export function addWeatherListener(cb: (event: WeatherEvent) => void): EventSubscription {

@@ -1,7 +1,11 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
 
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
-import { getMapRevealPitch, getPitchForZoom } from '@/modules/map/lib/cameraProfiles'
+import {
+  type CameraPadding,
+  getMapRevealPitch,
+  getPitchForZoom,
+} from '@/modules/map/lib/cameraProfiles'
 import { getCameraAfterScreenDrag } from '@/modules/map/lib/cameraPanProjection'
 import type { reduceMapCameraIntent } from '@/modules/map/lib/cameraController'
 import {
@@ -23,7 +27,7 @@ interface UseCameraPreviewGesturesParams {
     intent: Parameters<typeof reduceMapCameraIntent>[1],
   ) => ReturnType<typeof reduceMapCameraIntent>['effect']
   getFollowHeadingDeg: () => number
-  getFollowPitchForZoom: (zoom: number) => number
+  getFollowFrameForZoom: (zoom: number) => { pitch: number; padding: CameraPadding }
   getLiveFollowCamera: () => CameraSnapshot
   setFollowZoomLevel: (zoomLevel: number) => void
 }
@@ -36,7 +40,7 @@ export function useCameraPreviewGestures({
   applyLiveFollowCamera,
   dispatchCameraIntent,
   getFollowHeadingDeg,
-  getFollowPitchForZoom,
+  getFollowFrameForZoom,
   getLiveFollowCamera,
   setFollowZoomLevel,
 }: UseCameraPreviewGesturesParams) {
@@ -69,7 +73,7 @@ export function useCameraPreviewGestures({
     applyLiveFollowCamera,
     cameraFix,
     getFollowHeadingDeg,
-    getFollowPitchForZoom,
+    getFollowFrameForZoom,
     getLiveFollowCamera,
     gpsCamera,
     perspectiveEnabled,
@@ -194,9 +198,9 @@ export function useCameraPreviewGestures({
       const previewCamera = {
         ...followCamera,
         zoomLevel,
-        pitch: live
-          ? latest.getFollowPitchForZoom(zoomLevel)
-          : getPitchForZoom(zoomLevel, latest.perspectiveEnabled),
+        ...(live
+          ? latest.getFollowFrameForZoom(zoomLevel)
+          : { pitch: getPitchForZoom(zoomLevel, latest.perspectiveEnabled) }),
       }
       currentCameraRef.current = previewCamera
       if (cameraFix) {
@@ -208,6 +212,7 @@ export function useCameraPreviewGestures({
           zoomLevel: previewCamera.zoomLevel,
           heading: previewCamera.heading,
           pitch: previewCamera.pitch,
+          padding: previewCamera.padding,
         },
         { gesture: true },
       )
@@ -216,6 +221,7 @@ export function useCameraPreviewGestures({
         zoom: previewCamera.zoomLevel,
         heading: previewCamera.heading,
         pitch: previewCamera.pitch,
+        padding: previewCamera.padding,
       })
     },
     [cameraFix, cameraRef, currentCameraRef, engine, followingLive, lastFollowKeyRef],
@@ -236,7 +242,7 @@ export function useCameraPreviewGestures({
       engine.setTarget({
         zoom: current.zoomLevel,
         pitch: live
-          ? latest.getFollowPitchForZoom(current.zoomLevel)
+          ? latest.getFollowFrameForZoom(current.zoomLevel).pitch
           : getPitchForZoom(current.zoomLevel, latest.perspectiveEnabled),
       })
     }

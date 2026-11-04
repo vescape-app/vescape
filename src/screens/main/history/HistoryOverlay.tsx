@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { router } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
 import type { Favorite, HistoryGpsSample, HistoryMarker } from 'vescape-core'
 
@@ -17,6 +18,7 @@ import type {
   TelemetrySample,
 } from '@/modules/history/store/historyStore'
 import { useFavoriteStore } from '@/modules/history/store/favoriteStore'
+import { rideDayHref } from '@/navigation/links'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
 import { HistoryRideDetail } from '@/screens/main/history/HistoryRideDetail'
 import type { HistoryTab } from '@/screens/main/mainScreenStore'
@@ -185,6 +187,10 @@ export function HistoryOverlay({
         }}
         onLoadMore={() => {
           void history.loadMoreHistory()
+        }}
+        onOpenDay={(day) => {
+          closeList()
+          router.push(rideDayHref(day))
         }}
       />
 

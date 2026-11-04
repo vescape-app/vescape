@@ -75,9 +75,11 @@ appId: ${APP_ID}
     visible:
       id: history-session-sheet
     timeout: 10000
-# The selector covers the exposed dismiss area, so its centre cannot hit a ride row.
+# The dismiss area is a window-high spacer scrolled mostly off screen, so the centre of its element
+# is not on screen: iOS resolves that tap into the status bar. Tap the exposed strip above the
+# sheet's header instead.
 - tapOn:
-    id: history-session-sheet-backdrop
+    point: 50%,15%
 # Wait for the sheet to be *gone*, not just tapped. It slides out over several frames, and while any
 # of it is still on screen it covers the header — so `history-back` is not visible, every branch in
 # `_home.yaml` skips, and the run dies on `battery-bar` with History still underneath. Asserting the

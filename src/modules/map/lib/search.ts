@@ -1,7 +1,8 @@
-import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
+import { reverseGeocodeMap, searchMap } from 'vescape-core'
+
 import { distanceMeters } from '@/helpers/mapGeometry'
 
-const SEARCH_FETCH_LIMIT = '10'
+const SEARCH_FETCH_LIMIT = 10
 const SEARCH_RESULT_LIMIT = 5
 const LOCAL_RESULT_RADIUS_METERS = 150_000
 
@@ -112,28 +113,22 @@ export function prioritizeNearbySearchResults(
   return [...nearby, ...distant].slice(0, SEARCH_RESULT_LIMIT)
 }
 
+/**
+ * Place search through the server's Mapbox proxy (native call, Device Token attached). The body is
+ * Mapbox's verbatim, so parsing stays here. An aborted search still finishes natively; its result is
+ * dropped.
+ */
 export async function searchMapResults(query: string, options: SearchMapResultsOptions = {}) {
   const normalized = normalizeSearchQuery(query)
   if (normalized.length < 2) return []
-  if (!MAPBOX_ACCESS_TOKEN) throw new Error('Mapbox access token missing')
 
-  const params = new URLSearchParams({
-    q: normalized,
-    access_token: MAPBOX_ACCESS_TOKEN,
-    limit: SEARCH_FETCH_LIMIT,
-  })
-  if (options.proximity) {
-    params.set('proximity', `${options.proximity.longitude},${options.proximity.latitude}`)
-  }
+  const proximity = options.proximity
+    ? `${options.proximity.longitude},${options.proximity.latitude}`
+    : null
+  const body = await searchMap(normalized, SEARCH_FETCH_LIMIT, proximity)
+  options.signal?.throwIfAborted()
 
-  const response = await fetch(`https://api.mapbox.com/search/searchbox/v1/forward?${params}`, {
-    signal: options.signal,
-  })
-  if (!response.ok) {
-    throw new Error(`Mapbox search failed: ${response.status}`)
-  }
-
-  const data = (await response.json()) as MapboxGeocodingResponse
+  const data = JSON.parse(body) as MapboxGeocodingResponse
   const results = (data.features ?? []).map(toMapSearchResult).filter((result) => result != null)
   return prioritizeNearbySearchResults(results, options.proximity)
 }
@@ -143,21 +138,10 @@ export async function reverseGeocodeMapCoordinate(
   longitude: number,
   options: { signal?: AbortSignal } = {},
 ): Promise<MapReverseGeocodeResult | null> {
-  if (!MAPBOX_ACCESS_TOKEN) throw new Error('Mapbox access token missing')
+  const body = await reverseGeocodeMap(latitude, longitude)
+  options.signal?.throwIfAborted()
 
-  const params = new URLSearchParams({
-    access_token: MAPBOX_ACCESS_TOKEN,
-    limit: '1',
-  })
-  const response = await fetch(
-    `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?${params}`,
-    { signal: options.signal },
-  )
-  if (!response.ok) {
-    throw new Error(`Mapbox reverse geocoding failed: ${response.status}`)
-  }
-
-  const data = (await response.json()) as MapboxGeocodingResponse
+  const data = JSON.parse(body) as MapboxGeocodingResponse
   const feature = data.features?.[0]
   if (!feature) return null
   return {

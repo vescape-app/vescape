@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState } from 'react'
@@ -121,8 +122,8 @@ export default function WeatherPage() {
   )
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={CloudMoonIcon}
           description="Weather icons, stat, pill, hourly strip, and alert settings."
@@ -200,7 +201,7 @@ export default function WeatherPage() {
             onWindChange={setWindLevel}
           />
         </ShowcaseCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

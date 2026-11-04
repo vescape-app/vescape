@@ -2,6 +2,8 @@ package expo.modules.vescapecore.telemetry
 
 import kotlin.math.cos
 import org.json.JSONArray
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 /**
  * Derived thumbnail geometry. route_preview stores JSON segments [firstFixMs,lastFixMs,polyline],
@@ -115,7 +117,7 @@ internal object BucketRoutePreview {
 /** Full minutes reuse previews; only trimmed edge minutes need original fixes for exact boundaries.
  * @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift `favoriteRoutePreview`
  */
-internal suspend fun TelemetryDao.favoriteRoutePreview(startMs: Long, endMs: Long, boardId: String?): List<Map<String, Any>> {
+internal suspend fun VescapeDao.favoriteRoutePreview(startMs: Long, endMs: Long, boardId: String?): List<Map<String, Any>> {
   val buckets = getFavoriteRouteBuckets(startMs - startMs % TELEMETRY_BUCKET_SIZE_MS, endMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
   val result = mutableListOf<Map<String, Any>>()
   var previousEnd: Long? = null

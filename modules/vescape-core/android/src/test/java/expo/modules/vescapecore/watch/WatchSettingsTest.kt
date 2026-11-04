@@ -1,6 +1,6 @@
 package expo.modules.vescapecore.watch
 
-import expo.modules.vescapecore.telemetry.AppSettings
+import expo.modules.vescapecore.database.AppSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

@@ -92,7 +92,7 @@ enum class GroundClearanceDirection(val wire: String) {
  * where it is at full strength, so `near < far` always — less clearance means more correction.
  *
  * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceCalibration`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AccessoryGroundClearanceEntity`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AccessoryGroundClearanceEntity`
  * @parity /modules/vescape-core/src/index.ts `GroundClearanceCalibration`
  */
 data class GroundClearanceCalibration(

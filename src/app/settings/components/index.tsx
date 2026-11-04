@@ -1,5 +1,6 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { Fragment } from 'react'
-import { ScrollView, StyleSheet } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, type Href } from 'expo-router'
 import {
@@ -11,6 +12,7 @@ import {
   WrenchIcon,
   CloudMoonIcon,
   CubeIcon,
+  CursorClickIcon,
   GearSixIcon,
   LightningIcon,
   MarkdownLogoIcon,
@@ -41,10 +43,17 @@ const groups = [
       },
       {
         label: 'Base',
-        hint: 'Buttons, banners, placeholders, and other everyday building blocks',
+        hint: 'Banners, placeholders, and other everyday building blocks',
         route: '/settings/components/base',
         icon: CubeIcon,
         color: theme.palette.cyan.color,
+      },
+      {
+        label: 'Buttons',
+        hint: 'Button, IconButton, and IconButtonExtension with live states',
+        route: '/settings/components/buttons',
+        icon: CursorClickIcon,
+        color: theme.palette.pink.color,
       },
       {
         label: 'Typography',
@@ -172,8 +181,8 @@ const groups = [
 
 export default function ComponentsIndex() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SwatchesIcon}
           description="Browse and preview all UI components with live controls."
@@ -195,7 +204,7 @@ export default function ComponentsIndex() {
             </SettingsCard>
           </Fragment>
         ))}
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

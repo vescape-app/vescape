@@ -1,6 +1,6 @@
 # Favorites pin telemetry ranges
 
-A Favorite is a durable, optionally named time range `[startMs, endMs]` over telemetry history, stored in a native table in the telemetry DB on both platforms. It is not a pointer to a ride: history sessions are derived on read (ADR 0004/0005) and have no stable identity, while a time range survives regrouping and allows multiple Favorites per ride, including trimmed sub-ranges selected on the ride timeline.
+A Favorite is a durable, optionally named time range `[startMs, endMs]` over telemetry history, stored in a native table in the app database on both platforms. It is not a pointer to a ride: history sessions are derived on read (ADR 0004/0005) and have no stable identity, while a time range survives regrouping and allows multiple Favorites per ride, including trimmed sub-ranges selected on the ride timeline.
 
 ## Contract
 
@@ -21,6 +21,6 @@ A Favorite is a durable, optionally named time range `[startMs, endMs]` over tel
 
 ## Consequences
 
-- Delete paths subtract bucket-aligned protected ranges. This deliberately keeps up to 59 seconds of telemetry beyond each exact Favorite edge so bucket summaries stay truthful without rebuilding the full telemetry database; the Favorite's own range and denormalized summary remain exact.
+- Delete paths subtract bucket-aligned protected ranges. This deliberately keeps up to 59 seconds of telemetry beyond each exact Favorite edge so bucket summaries stay truthful without rebuilding all stored telemetry; the Favorite's own range and denormalized summary remain exact.
 - Favorited telemetry is exempt from any future retention pruning.
 - Orphan favorite islands appear in History after surrounding-ride deletion; this is accepted as honest.

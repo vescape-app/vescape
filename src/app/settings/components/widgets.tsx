@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StackIcon } from 'phosphor-react-native'
 
@@ -19,8 +20,8 @@ import {
 
 export default function WidgetsPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={StackIcon}
           description="Reusable dashboard widgets with full, half and square footprints where each control supports them."
@@ -33,7 +34,7 @@ export default function WidgetsPage() {
         <SwitchWidgetShowcase />
         <DialWidgetShowcase />
         <CanvasWidgetShowcase />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

@@ -2,9 +2,15 @@ package expo.modules.vescapecore.telemetry
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import expo.modules.vescapecore.database.MetricExclusionRangeEntity
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.TelemetryFrameEntity
+import expo.modules.vescapecore.database.TelemetryMarkerEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 /** Host-runnable recording transaction seam. OS lifecycle stays in [TelemetryRepository]. */
-internal class RecordingPersistence(private val dao: TelemetryDao) {
+internal class RecordingPersistence(private val dao: VescapeDao) {
   suspend fun commit(
     frames: List<TelemetryFrameEntity>,
     buckets: Collection<TelemetryMinuteBucketEntity>,

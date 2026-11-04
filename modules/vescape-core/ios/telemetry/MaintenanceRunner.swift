@@ -165,7 +165,7 @@ final class MaintenanceRunner {
     let fence = DatabaseReplacementFence.process
     let ticket = fence.ticket()
     let scope = MaintenanceJobScope(
-      writer: { try TelemetryDatabase.requirePool() },
+      writer: { try VescapeDatabase.requirePool() },
       fence: fence,
       ticket: ticket,
       isCancelled: { [unowned self] in onQueue { runGeneration != generation } },

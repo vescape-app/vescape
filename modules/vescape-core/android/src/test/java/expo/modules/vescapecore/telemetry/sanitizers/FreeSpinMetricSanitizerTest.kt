@@ -3,7 +3,7 @@ package expo.modules.vescapecore.telemetry.sanitizers
 import expo.modules.vescapecore.telemetry.BucketTelemetryPoint
 import expo.modules.vescapecore.telemetry.EXCLUSION_REASON_FREE_SPIN
 import expo.modules.vescapecore.telemetry.RIDE_TRACK_PRECISE_ACCURACY_CM
-import expo.modules.vescapecore.telemetry.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPointEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

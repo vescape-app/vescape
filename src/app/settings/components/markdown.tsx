@@ -1,5 +1,6 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useState } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { MarkdownLogoIcon } from 'phosphor-react-native'
 
@@ -131,14 +132,14 @@ function MarkdownShowcase() {
 
 export default function MarkdownComponentsPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={MarkdownLogoIcon}
           description="Native Markdown rendering — no WebView. Links, images, nesting, and scrolling tables."
         />
         <MarkdownShowcase />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

@@ -25,7 +25,7 @@ internal final class TelemetryRepository {
 
   /// Internal, not private: `getRange` lives in `TelemetryRangePayload.swift` because it returns an
   /// Expo `NativeArrayBuffer`, and a cross-file extension can only reach internal members.
-  internal var pool: DatabasePool? { TelemetryDatabase.pool }
+  internal var pool: DatabasePool? { VescapeDatabase.pool }
   private let queue = DispatchQueue(label: "vesc.telemetry.repository")
   private var pendingStates: [FullTelemetryState] = []
   private var pendingPersisted: [FullTelemetryState] = []
@@ -43,14 +43,14 @@ internal final class TelemetryRepository {
   private var onRecordingFailure: (() -> Void)?
   // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `exportRideGpx`
   func exportRideGpx(_ options: [String: Any]) throws -> [String: Any] {
-    try TelemetryDatabase.requirePool().read { db in
+    try VescapeDatabase.requirePool().read { db in
       try RideExport.gpx(db, directory: FileManager.default.temporaryDirectory, options: options)
     }
   }
 
   // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `exportRideCsv`
   func exportRideCsv(_ options: [String: Any]) throws -> [String: Any] {
-    try TelemetryDatabase.requirePool().read { db in
+    try VescapeDatabase.requirePool().read { db in
       try RideExport.csv(db, directory: FileManager.default.temporaryDirectory, options: options)
     }
   }
@@ -58,9 +58,34 @@ internal final class TelemetryRepository {
   // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `exportRideFloaty`
   func exportRideFloaty(_ options: [String: Any]) throws -> [String: Any] {
     let config = try (options["boardId"] as? String).flatMap { try batteryConfigByBoard()[$0] }
-    return try TelemetryDatabase.requirePool().read { db in
+    return try VescapeDatabase.requirePool().read { db in
       try RideExport.floaty(db, directory: FileManager.default.temporaryDirectory, options: options) { voltage, current in
         self.batteryEstimator.estimateBatteryPercent(voltageV: voltage, config: config, batteryCurrentA: current)
+      }
+    }
+  }
+
+  /// Every selected ride in one `.zip`, read from one database snapshot.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `exportRides`
+  func exportRides(_ items: [RideBatch.Item], format: RideExport.Format, isCancelled: @escaping () -> Bool,
+    onProgress: (_ done: Int, _ total: Int) -> Void) throws -> [String: Any] {
+    let configs = format == .floaty ? try batteryConfigByBoard() : [:]
+    return try VescapeDatabase.requirePool().read { db in
+      try RideBatch.zip(directory: FileManager.default.temporaryDirectory, items: items, format: format,
+        zone: .current, isCancelled: isCancelled, onProgress: onProgress) { ride, write in
+        switch format {
+        case .gpx:
+          try RideExport.writeGpx(db, fromMs: ride.fromMs, toMs: ride.toMs, boardId: ride.boardId,
+            name: ride.name ?? "Vescape ride", write: write)
+        case .csv:
+          try RideExport.writeCsv(db, fromMs: ride.fromMs, toMs: ride.toMs, boardId: ride.boardId, write: write)
+        case .floaty:
+          let config = ride.boardId.flatMap { configs[$0] }
+          try RideExport.writeFloaty(db, fromMs: ride.fromMs, toMs: ride.toMs, boardId: ride.boardId,
+            name: ride.name, batteryPercent: { voltage, current in
+              self.batteryEstimator.estimateBatteryPercent(voltageV: voltage, config: config, batteryCurrentA: current)
+            }, write: write)
+        }
       }
     }
   }
@@ -213,7 +238,7 @@ internal final class TelemetryRepository {
   }
 
   func getSummary() throws -> [String: Any?] {
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
       [
         "sampleCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames") ?? 0,
@@ -231,7 +256,7 @@ internal final class TelemetryRepository {
     let beforeMs = telemetryLong(options["cursorBeforeMs"]) ?? toMs
     let limit = min(500, max(1, telemetryInt(options["limit"]) ?? DEFAULT_HISTORY_LIMIT))
     let boardId = options["boardId"] as? String
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
       let boardNames = try historyBoardNames(db)
       let rows = try Row.fetchAll(
@@ -257,7 +282,7 @@ internal final class TelemetryRepository {
   }
 
   func getSamples(_ options: [String: Any]) throws -> [[String: Any?]] {
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
@@ -358,14 +383,14 @@ internal final class TelemetryRepository {
 
   /// Ride weather over the pinned range, read like a History ride's.
   private func favoriteWeather(_ favorite: Favorite) throws -> RideWeather? {
-    try TelemetryDatabase.requirePool().read { db in
+    try VescapeDatabase.requirePool().read { db in
       try rideWeather(db, startMs: favorite.startMs, endMs: favorite.endMs)
     }
   }
 
   /// Coarse native route projection for Favorite cards, independent of JS history pagination.
   private func favoriteRoutePoints(_ favorite: Favorite) throws -> [[String: Any]] {
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
       try favoriteRoutePreview(db, startMs: favorite.startMs, endMs: favorite.endMs, boardId: favorite.boardId)
     }
@@ -378,7 +403,7 @@ internal final class TelemetryRepository {
   func createFavorite(_ options: [String: Any]) throws -> [String: Any?]? {
     flushBlocking()
     guard let range = Self.favoriteRange(options) else { return nil }
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     let startMs = range.startMs
     let endMs = range.endMs
     let boardId = options["boardId"] as? String
@@ -406,7 +431,7 @@ internal final class TelemetryRepository {
   /// Rider deleted (ADR 0027), and resolving on read is what makes a rename retroactive.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `boardNamesById`
   internal static func boardNamesById() throws -> [String: String] {
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
       try Row.fetchAll(db, sql: "SELECT id, name FROM boards").reduce(into: [String: String]()) {
         $0[$1["id"] as String] = $1["name"] as String
@@ -432,7 +457,7 @@ internal final class TelemetryRepository {
   func updateFavorite(_ id: String, options: [String: Any]) throws -> [String: Any?]? {
     flushBlocking()
     guard let range = Self.favoriteRange(options) else { return nil }
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     let startMs = range.startMs
     let endMs = range.endMs
     let boardId = options["boardId"] as? String
@@ -506,7 +531,7 @@ internal final class TelemetryRepository {
     endMs: Int64,
     boardId: String?
   ) throws -> (points: [BucketTelemetryPoint], track: [RideTrackPoint]) {
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
       let rows = try Row.fetchAll(
         db,
@@ -548,27 +573,35 @@ internal final class TelemetryRepository {
   }
 
   func deleteBefore(_ beforeMs: Int64) throws -> Int {
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     return try TelemetryMaintenancePersistence(writer: pool).deleteBefore(beforeMs)
   }
 
   func deleteRange(_ options: [String: Any]) throws -> Int {
-    flushBlocking()
-    let pool = try TelemetryDatabase.requirePool()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? 0
-    let boardId = options["boardId"] as? String
     guard toMs >= fromMs else { return 0 }
-    let deletable = subtractProtectedTelemetryRanges(
-      deleteRange: TelemetryTimeRange(startMs: fromMs, endMs: toMs),
-      protectedRanges: favoriteTelemetryRanges()
-    )
-    return try TelemetryMaintenancePersistence(writer: pool).deleteRanges(deletable, boardId: boardId, allBoards: false)
+    return try deleteRides([RideBatch.Item(fromMs: fromMs, toMs: toMs, boardId: options["boardId"] as? String, name: nil)])
+  }
+
+  /// Telemetry, markers, buckets and Ride Track of every ride, in one transaction. Favorite ranges
+  /// inside a ride survive, like a single-range delete.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `deleteRides`
+  func deleteRides(_ items: [RideBatch.Item]) throws -> Int {
+    flushBlocking()
+    let pool = try VescapeDatabase.requirePool()
+    let protected = favoriteTelemetryRanges()
+    let byBoard = Dictionary(grouping: items, by: \.boardId).mapValues { rides in
+      rides.flatMap {
+        subtractProtectedTelemetryRanges(deleteRange: TelemetryTimeRange(startMs: $0.fromMs, endMs: $0.toMs), protectedRanges: protected)
+      }
+    }
+    return try TelemetryMaintenancePersistence(writer: pool).deleteBoardRanges(byBoard)
   }
 
   func clearAll() throws {
     flushBlocking()
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     let protected = favoriteTelemetryRanges()
     try DatabaseReplacementFence.process.fence {
       try TelemetryMaintenancePersistence(writer: pool).clear(protectedRanges: protected)
@@ -651,7 +684,7 @@ internal final class TelemetryRepository {
     )
 
     recordingCommitBoundary.commit {
-      try TelemetryDatabase.requirePool().write { db in
+      try VescapeDatabase.requirePool().write { db in
         for state in persisted { try insertFrame(db, state) }
         try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: track, buckets: buckets)
         for marker in markers { try insertMarker(db, marker) }
@@ -702,7 +735,7 @@ internal final class TelemetryRepository {
   }
 
   func getDiagnosticEvents(_ options: [String: Any]) throws -> [[String: Any?]] {
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let boardId = options["boardId"] as? String
@@ -717,7 +750,7 @@ internal final class TelemetryRepository {
   }
 
   func clearDiagnosticEvents() throws {
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     try DiagnosticEventPersistence(writer: pool).clear()
   }
 

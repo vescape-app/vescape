@@ -2,9 +2,13 @@ package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.alerts.AlertPresetSpec
 import org.json.JSONObject
+import expo.modules.vescapecore.database.AlertRuleEntity
+import expo.modules.vescapecore.database.TuneHistoryEntryEntity
+import expo.modules.vescapecore.database.TuneProfileEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 /** Production Tune History and Alert operations shared by AppDataRepository and host contracts. */
-internal class TuneAlertPersistence(private val dao: TelemetryDao) {
+internal class TuneAlertPersistence(private val dao: VescapeDao) {
   suspend fun createProfile(profile: TuneProfileEntity): TuneProfileEntity = dao.createTuneProfile(
     profile,
     TuneHistoryEntryEntity(profileId = profile.id, fieldsJson = profile.fieldsJson, createdAt = profile.createdAt),

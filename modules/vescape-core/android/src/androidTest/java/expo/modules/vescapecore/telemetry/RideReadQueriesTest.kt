@@ -13,6 +13,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /**
  * Real SQLite regressions for complete-minute paging and complete aggregation reads.
@@ -21,17 +25,17 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class RideReadQueriesTest {
-  private lateinit var database: TelemetryRoomDatabase
-  private lateinit var dao: TelemetryDao
+  private lateinit var database: VescapeRoomDatabase
+  private lateinit var dao: VescapeDao
   private val displayLimit = 20_000
   private val base = 1_714_521_600_000L
 
   @Before
   fun setUp() {
     val context = ApplicationProvider.getApplicationContext<Context>()
-    database = Room.inMemoryDatabaseBuilder(context, TelemetryRoomDatabase::class.java)
+    database = Room.inMemoryDatabaseBuilder(context, VescapeRoomDatabase::class.java)
       .allowMainThreadQueries().build()
-    dao = database.telemetryDao()
+    dao = database.vescapeDao()
   }
 
   @After

@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
 import android.content.Context
+import expo.modules.vescapecore.database.VescapeDatabase
 
 @Volatile private var processRecorder: WeatherObservationRecorder? = null
 
@@ -10,6 +11,6 @@ import android.content.Context
  */
 internal fun weatherObservationRecorder(context: Context): WeatherObservationRecorder =
   processRecorder ?: synchronized(WeatherObservationRecorder::class) {
-    processRecorder ?: WeatherObservationRecorder({ TelemetryDatabase.get(context.applicationContext).telemetryDao() })
+    processRecorder ?: WeatherObservationRecorder({ VescapeDatabase.get(context.applicationContext).vescapeDao() })
       .also { processRecorder = it }
   }

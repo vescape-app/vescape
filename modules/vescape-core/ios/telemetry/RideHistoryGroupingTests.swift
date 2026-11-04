@@ -122,7 +122,7 @@ final class RideHistoryGroupingTests: XCTestCase {
   /// @parity /modules/vescape-core/android/src/androidTest/java/expo/modules/vescapecore/telemetry/RideReadQueriesTest.kt
   func testBucketPagingIncludesTheWholeBoundaryMinute() throws {
     let database = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(database)
+    try VescapeDatabase.migrator.migrate(database)
     try database.write { db in
       for minute in 2...100 {
         try insertPagingBucket(db, start: base + Int64(minute) * 60_000, boardId: "board-newer")

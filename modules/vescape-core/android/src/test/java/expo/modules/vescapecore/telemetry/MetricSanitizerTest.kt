@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import expo.modules.vescapecore.database.RideTrackPointEntity
 
 /**
  * Free spin compares the Board's speed against the phone's, and the phone's speed lives in the

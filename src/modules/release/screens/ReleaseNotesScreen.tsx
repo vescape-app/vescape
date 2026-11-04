@@ -1,6 +1,7 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import Constants from 'expo-constants'
 import { NewspaperClippingIcon } from 'phosphor-react-native'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Markdown } from '@/components/base/Markdown'
@@ -16,8 +17,8 @@ export function ReleaseNotesScreen() {
   const notes = selectReleaseNotes(bundledReleaseNotes, installedVersion)
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         {notes.length === 0 ? (
           <Placeholder
             icon={NewspaperClippingIcon}
@@ -32,7 +33,7 @@ export function ReleaseNotesScreen() {
             </View>
           ))
         )}
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

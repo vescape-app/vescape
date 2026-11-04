@@ -118,7 +118,7 @@ final class ManualBoardStopTests: XCTestCase {
   @MainActor
   func testWidgetStopAcrossConnectionPhasesIgnoresLateCallbacks() async throws {
     let queue = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(queue)
+    try VescapeDatabase.migrator.migrate(queue)
     let appData = AppDataRepository.forTesting(dbWriter: queue)
     let boardId = "widget-stop-board"
     try appData.upsertBoard(["id": boardId, "name": "Stop test"])

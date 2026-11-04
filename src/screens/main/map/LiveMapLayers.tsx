@@ -1,56 +1,34 @@
-import { MotionComparisonLayers } from '@/modules/map/components/MotionComparisonLayers'
-import { startPointAnimation } from '@/modules/map/lib/liveMotion/pointAnimation'
-import { CircleLayer, FillLayer, Images, LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
-import { useEffect, useRef, useState } from 'react'
-import { startHeadingAnimation } from '@/modules/map/lib/liveMotion/headingAnimation'
-import { useLiveMotionSettings } from '@/modules/map/store/liveMotionSettings'
+import { CircleLayer, FillLayer, LineLayer, ShapeSource } from '@rnmapbox/maps'
 import { processColor } from 'react-native'
 
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
+import { MotionPuck } from '@/modules/map/components/MotionPuck'
+import { MotionComparisonLayers } from '@/modules/map/components/MotionComparisonLayers'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
-const GPS_HEADING_ICON_ID = 'center-gps-heading'
-const GPS_HEADING_ICON = require('@rnmapbox/maps/src/assets/heading.png')
-
 export function LiveMapLayers({
-  pointAnimator,
   displayRuntime,
   liveTrailShape,
   accuracyFix,
   accuracyShape,
-  gpsHeadingMode,
-  gpsPuckBearingDeg,
+  puckBearing,
+  mapPose,
   riders,
   highContrastRoutes,
 }: {
-  pointAnimator: MainMapLayersProps['pointAnimator']
   displayRuntime: MainMapLayersProps['displayRuntime']
   liveTrailShape: MainMapLayersProps['liveTrailShape']
   accuracyFix: MainMapLayersProps['accuracyFix']
   accuracyShape: MainMapLayersProps['accuracyShape']
-  gpsHeadingMode: MainMapLayersProps['gpsHeadingMode']
-  gpsPuckBearingDeg: MainMapLayersProps['gpsPuckBearingDeg']
+  puckBearing: MainMapLayersProps['puckBearing']
+  mapPose: MainMapLayersProps['mapPose']
   riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
 }) {
-  useEffect(
-    () =>
-      startPointAnimation({
-        motion: displayRuntime.motion,
-        subscribe: displayRuntime.subscribe,
-        now: displayRuntime.now,
-        isActive: () => displayRuntime.active,
-        moveTo: (coordinate, durationMs) =>
-          pointAnimator.moveTo({ coordinate, durationMs: displayRuntime.duration(durationMs) }),
-        schedule: (callback, ms) => setTimeout(callback, displayRuntime.duration(ms)),
-        cancel: clearTimeout,
-      }),
-    [displayRuntime, pointAnimator],
-  )
   const riderColor = useSelectedBoardRailColor()
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
@@ -64,34 +42,16 @@ export function LiveMapLayers({
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
     : theme.alpha(accents.violet.color, 0.85)
-  const [pointHeading, setPointHeading] = useState<number | null>(gpsPuckBearingDeg)
-  const arrowRef = useRef<SymbolLayer>(null)
-  const initialArrow = useRef(gpsPuckBearingDeg ?? 0)
-  const hasArrow = accuracyFix != null && pointHeading != null
-  useEffect(() => {
-    // Compass owns the only arrow in the other orientations. Stop GPS rotation as well as
-    // removing its layer, including when a mode switch leaves a retained travel bearing.
-    if (!gpsHeadingMode) return
-    return startHeadingAnimation({
-      angle: initialArrow,
-      heading: () => {
-        const heading = displayRuntime.motion.pointHeading(displayRuntime.now())
-        if (heading != null) setPointHeading((previous) => previous ?? heading)
-        return heading
-      },
-      omega: () => useLiveMotionSettings.getState().config.arrowHeadingOmega,
-      draw: (angle) => arrowRef.current?.setNativeProps({ style: { iconRotate: angle } }),
-      subscribe: displayRuntime.subscribe,
-      isActive: () => displayRuntime.active,
-      now: () => performance.now(),
-      schedule: requestAnimationFrame,
-      cancel: cancelAnimationFrame,
-    })
-  }, [displayRuntime, gpsHeadingMode, hasArrow])
-
   return (
     <>
       <MotionComparisonLayers motion={displayRuntime.motion} />
+      {/* Stable ordering anchor; the visible coin is a native view annotation. */}
+      <ShapeSource id="center-gps-puck-anchor" shape={{ type: 'Point', coordinates: [0, 0] }}>
+        <CircleLayer
+          id={MAP_DEFAULTS.userPositionLayerId}
+          style={{ circleOpacity: 0, circleRadius: 0 }}
+        />
+      </ShapeSource>
       {liveTrailShape && (
         <ShapeSource id="center-live-trail-source" shape={liveTrailShape} lineMetrics>
           <LineLayer
@@ -127,22 +87,6 @@ export function LiveMapLayers({
           />
         </ShapeSource>
       )}
-      {/* Stable anchor: lines arriving after GPS acquisition must still stay below the rider. */}
-      {pointAnimator && (
-        <ShapeSource id="center-gps-puck-position-source" shape={pointAnimator}>
-          <CircleLayer
-            id={MAP_DEFAULTS.userPositionLayerId}
-            style={{
-              circleRadius: 8,
-              circleOpacity: accuracyFix ? 1 : 0,
-              circleStrokeOpacity: accuracyFix ? 1 : 0,
-              circleColor: gpsPointColor,
-              circleStrokeColor: theme.palette.mono.white,
-              circleStrokeWidth: 3,
-            }}
-          />
-        </ShapeSource>
-      )}
       {accuracyFix && (
         <>
           {accuracyShape && (
@@ -154,28 +98,13 @@ export function LiveMapLayers({
               />
             </ShapeSource>
           )}
-          {gpsHeadingMode && pointHeading != null && (
-            <>
-              <Images images={{ [GPS_HEADING_ICON_ID]: { image: GPS_HEADING_ICON, sdf: true } }} />
-              <ShapeSource id="center-gps-puck-heading-source" shape={pointAnimator}>
-                <SymbolLayer
-                  ref={arrowRef}
-                  id="center-gps-puck-heading-outline"
-                  aboveLayerID={MAP_DEFAULTS.userPositionLayerId}
-                  style={{
-                    iconImage: GPS_HEADING_ICON_ID,
-                    iconRotate: pointHeading,
-                    iconAllowOverlap: true,
-                    iconIgnorePlacement: true,
-                    iconRotationAlignment: 'map',
-                    iconSize: 0.95,
-                    iconOffset: [0, -10],
-                    iconColor: theme.palette.mono.white,
-                  }}
-                />
-              </ShapeSource>
-            </>
-          )}
+          <MotionPuck
+            displayRuntime={displayRuntime}
+            fallbackCoordinate={[accuracyFix.longitude, accuracyFix.latitude]}
+            color={gpsPointColor}
+            bearing={puckBearing}
+            mapPose={mapPose}
+          />
         </>
       )}
       {riders.map((rider, index) =>

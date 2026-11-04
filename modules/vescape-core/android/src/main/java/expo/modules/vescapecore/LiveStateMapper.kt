@@ -7,7 +7,7 @@ import expo.modules.vescapecore.location.GpsPhase
 import expo.modules.vescapecore.location.GpsPowerMode
 import expo.modules.vescapecore.protocol.LocationSnapshot
 
-import expo.modules.vescapecore.telemetry.AppSettings
+import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.runtime.LinkIntegrity
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.recording.RecordingStorageFailureKind

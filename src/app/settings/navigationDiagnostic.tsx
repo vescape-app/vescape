@@ -1,7 +1,8 @@
 import { useScreenVisible } from '@/hooks/useScreenVisible'
 import { LiveMotionControls } from '@/modules/map/components/LiveMotionControls'
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useEffect, useMemo, useState } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { CompassIcon } from 'phosphor-react-native'
@@ -58,8 +59,8 @@ export default function NavigationDiagnosticScreen() {
   )
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero icon={CompassIcon} description="Live map heading, GPS, and fallback evidence." />
         <Text style={styles.sectionTitle}>Navigation</Text>
         <View style={styles.card}>
@@ -94,7 +95,7 @@ export default function NavigationDiagnosticScreen() {
         <DiagnosticSection title="GPS" rows={vm.gpsRows} />
         <DiagnosticSection title="Heading" rows={vm.headingRows} />
         <DiagnosticSection title="Board heading reserved" rows={vm.boardRows} />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

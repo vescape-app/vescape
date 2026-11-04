@@ -5,6 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.reflect.Proxy
+import expo.modules.vescapecore.database.TuneProfileEntity
+import expo.modules.vescapecore.database.VescapeDatabase
 
 class TuneProfileCompatibilityTest {
   @Test
@@ -50,7 +52,7 @@ class TuneProfileCompatibilityTest {
       }
     } as SupportSQLiteDatabase
 
-    TelemetryDatabase.MIGRATION_23_24.migrate(db)
+    VescapeDatabase.MIGRATION_23_24.migrate(db)
 
     assertTrue(sql.any { it == "ALTER TABLE tune_profiles ADD COLUMN refloat_base_version TEXT NOT NULL DEFAULT ''" })
     assertTrue(

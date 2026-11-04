@@ -1,6 +1,6 @@
 package expo.modules.vescapecore.watch
 
-import expo.modules.vescapecore.telemetry.AppSettings
+import expo.modules.vescapecore.database.AppSettings
 
 /**
  * Data Layer path carrying the rider's phone settings to the wrist. Cold data like the route: it

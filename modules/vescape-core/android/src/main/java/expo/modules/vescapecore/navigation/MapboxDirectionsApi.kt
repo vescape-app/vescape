@@ -1,37 +1,31 @@
 package expo.modules.vescapecore.navigation
 
-import android.content.Context
-import android.content.pm.PackageManager
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import expo.modules.vescapecore.api.ApiResult
+import expo.modules.vescapecore.api.AuthMode
+import expo.modules.vescapecore.api.HttpMethod
+import expo.modules.vescapecore.api.VescapeApi
 import org.json.JSONObject
-import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
+import java.util.Locale
 
 /**
- * The app's only call to the Mapbox Directions API. It fetches one way-following geometry between
- * two coordinates and returns the decoded points; it holds no state and decides nothing about when
- * a Navigation exists — that is [NavigationController]'s job.
+ * The app's only Directions call. It fetches one way-following geometry between two coordinates
+ * through the server's Mapbox Directions proxy (`GET /api/maps/directions/:profile/:coordinates`,
+ * body verbatim from Mapbox) and returns the decoded points; it holds no state and decides nothing
+ * about when a Navigation exists — that is [NavigationController]'s job.
  *
- * This does not go through `VescapeApi`: that boundary owns the Vescape backend's origin, Device
- * Credential and 401 policy, none of which apply to a third-party host authenticated by a baked
- * token.
+ * The proxy needs a Device Token, so a signed-out rider gets [DirectionsResult.Failed].
  *
  * @parity /modules/vescape-core/ios/navigation/MapboxDirectionsApi.swift
  */
-class MapboxDirectionsApi(private val accessToken: String) : DirectionsRoutes {
-  private val client = OkHttpClient.Builder().callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS).build()
-
+class MapboxDirectionsApi(private val api: VescapeApi) : DirectionsRoutes {
   /**
-   * Points of the first returned route, or which way this failed. A missing token, a transport
-   * error and a non-2xx response are all [DirectionsResult.Failed] — the question never got a real
-   * answer. A 2xx carrying no route is [DirectionsResult.NoPath]: Mapbox answered, and the answer is
-   * that nothing leads there.
+   * Points of the first returned route, or which way this failed. No credential, a transport error,
+   * a rate limit, an unconfigured or unreachable upstream and any other non-2xx are all
+   * [DirectionsResult.Failed] — the question never got a real answer. A 2xx carrying no route is
+   * [DirectionsResult.NoPath]: Mapbox answered, and the answer is that nothing leads there.
    *
-   * Nothing is retried here; retrying is the rider's call.
+   * Nothing is retried here beyond the API boundary's own rule; retrying is the rider's call.
    */
   override suspend fun route(
     fromLatitude: Double,
@@ -39,76 +33,51 @@ class MapboxDirectionsApi(private val accessToken: String) : DirectionsRoutes {
     toLatitude: Double,
     toLongitude: Double,
     profile: String,
-  ): DirectionsResult = withContext(Dispatchers.IO) {
-    if (accessToken.isEmpty()) {
-      Log.w(TAG, "No Mapbox access token baked in; skipping Directions call")
-      return@withContext DirectionsResult.Failed
-    }
-
+  ): DirectionsResult {
     // Mapbox takes coordinates as `longitude,latitude` — the opposite order from `setDirectionPoint`.
-    val coordinates = "$fromLongitude,$fromLatitude;$toLongitude,$toLatitude"
-    val url = "$BASE_URL/$profile/$coordinates" +
-      "?geometries=polyline6&overview=full&access_token=${encode(accessToken)}"
-
-    try {
-      client.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
-        val body = response.body?.string()
-        if (!response.isSuccessful || body == null) {
-          Log.w(TAG, "Directions call failed: HTTP ${response.code}")
-          return@withContext DirectionsResult.Failed
-        }
-        val route = JSONObject(body)
-          .optJSONArray("routes")
-          ?.takeIf { it.length() > 0 }
-          ?.getJSONObject(0)
-          ?: return@withContext DirectionsResult.NoPath
-        val geometry = route.optString("geometry").takeIf { it.isNotEmpty() }
-          ?: return@withContext DirectionsResult.NoPath
-
-        val points = Polyline6.decode(geometry)
-        if (points.isEmpty()) {
-          DirectionsResult.NoPath
-        } else {
-          // Mapbox reports both for the route it returned; they are the only length and time the
-          // app ever shows, so nothing here recomputes them from the geometry.
-          DirectionsResult.Path(
-            points = points,
-            distanceMeters = route.optDouble("distance", 0.0).takeIf { it.isFinite() } ?: 0.0,
-            durationSeconds = route.optDouble("duration", 0.0).takeIf { it.isFinite() } ?: 0.0,
-          )
-        }
+    // Fixed 6 decimals: `Double.toString` writes small values as `5.0E-4`, which the server rejects.
+    val coordinates = listOf(fromLongitude, fromLatitude, toLongitude, toLatitude)
+      .map { String.format(Locale.ROOT, "%.6f", it) }
+      .let { (a, b, c, d) -> "$a,$b;$c,$d" }
+    val result = api.request(
+      method = HttpMethod.GET,
+      path = "$PATH/$profile/$coordinates",
+      auth = AuthMode.Required,
+      parse = ::parse,
+    )
+    return when (result) {
+      is ApiResult.Ok -> result.value
+      else -> {
+        Log.w(TAG, "Directions call failed: $result")
+        DirectionsResult.Failed
       }
-    } catch (e: Exception) {
-      Log.w(TAG, "Directions call failed: ${e.message}")
-      DirectionsResult.Failed
     }
   }
 
-  private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
+  private fun parse(body: String): DirectionsResult {
+    val route = JSONObject(body)
+      .optJSONArray("routes")
+      ?.takeIf { it.length() > 0 }
+      ?.getJSONObject(0)
+      ?: return DirectionsResult.NoPath
+    val geometry = route.optString("geometry").takeIf { it.isNotEmpty() }
+      ?: return DirectionsResult.NoPath
+
+    val points = Polyline6.decode(geometry)
+    if (points.isEmpty()) return DirectionsResult.NoPath
+    // Mapbox reports both for the route it returned; they are the only length and time the app
+    // ever shows, so nothing here recomputes them from the geometry.
+    return DirectionsResult.Path(
+      points = points,
+      distanceMeters = route.optDouble("distance", 0.0).takeIf { it.isFinite() } ?: 0.0,
+      durationSeconds = route.optDouble("duration", 0.0).takeIf { it.isFinite() } ?: 0.0,
+    )
+  }
 
   companion object {
     private const val TAG = "MapboxDirectionsApi"
-    private const val BASE_URL = "https://api.mapbox.com/directions/v5/mapbox"
-    private const val CALL_TIMEOUT_SECONDS = 15L
 
-    /**
-     * Manifest metadata holding the Mapbox access token, injected at prebuild time so native never
-     * depends on the JS runtime having started.
-     * @parity /plugins/withMapboxToken.ts `ANDROID_METADATA_NAME`
-     * @parity /modules/vescape-core/ios/navigation/MapboxDirectionsApi.swift `accessTokenInfoKey`
-     */
-    const val ACCESS_TOKEN_METADATA = "app.vescape.MAPBOX_ACCESS_TOKEN"
-
-    /** Baked Mapbox access token, empty when prebuild ran without one. */
-    fun accessToken(context: Context): String = try {
-      context.packageManager
-        .getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
-        .metaData
-        ?.getString(ACCESS_TOKEN_METADATA)
-        .orEmpty()
-    } catch (e: Exception) {
-      Log.w(TAG, "Cannot read baked Mapbox token: ${e.message}")
-      ""
-    }
+    /** @parity /modules/vescape-core/ios/navigation/MapboxDirectionsApi.swift `path` */
+    private const val PATH = "/api/maps/directions"
   }
 }

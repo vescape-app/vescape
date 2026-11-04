@@ -6,16 +6,16 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 
 ## Term map
 
-| Domain (CONTEXT.md) | Native/API name                                                 |
-| ------------------- | --------------------------------------------------------------- |
-| Board               | `board_id` in DB, `boardId` in API                              |
-| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                 |
-| Ride Recording      | frames + buckets + markers in DB                                |
-| Ride History        | `getRideHistoryPage` (complete rides), `getHistoryRange` (full) |
-| Tune Profile        | `tune_profiles` table, `TuneProfile` type                       |
-| Tune Snapshot       | `RefloatConfigSnapshot`                                         |
-| Alert Rule          | `alerts` table, `AlertRule` type                                |
-| User Profile Stats  | `ProfileStatsSnapshot`, `getProfileStatsSnapshot`               |
+| Domain (CONTEXT.md) | Native/API name                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| Board               | `board_id` in DB, `boardId` in API                                                     |
+| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                                        |
+| Ride Recording      | frames + buckets + markers in DB                                                       |
+| Ride History        | `getRideHistoryPage` (complete rides), `countRideHistory`, `getHistoryRange` (full)    |
+| Tune Profile        | `tune_profiles` table, `TuneProfile` type                                              |
+| Tune Snapshot       | `RefloatConfigSnapshot`                                                                |
+| Alert Rule          | `alerts` table, `AlertRule` type                                                       |
+| User Profile Stats  | `ProfileStatsSnapshot`, `getProfileStatsSnapshot`, `getDayStats`, `getRecentRideStats` |
 
 ---
 
@@ -276,14 +276,16 @@ Field omitted (null) when change < threshold from previous:
 
 ## Telemetry queries
 
-| fn                                                   | returns                                                                    | notes                                                                                             |
-| ---------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `getTelemetryHistory(opts?)`                         | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
-| `getRideHistoryPage({limit?,cursorBeforeMs?})`       | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride                  |
-| `getTelemetrySamples({fromMs,toMs,boardId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
-| `getHistoryRange({fromMs,toMs,boardId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
-| `getTelemetrySummary()`                              | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
-| `getDatabaseSizeBytes()`                             | number                                                                     | File size of vescape.db                                                                           |
+| fn                                                                              | returns                                                                    | notes                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getTelemetryHistory(opts?)`                                                    | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                                                                                                                              |
+| `getRideHistoryPage({limit?,cursorBeforeMs?,fromMs?,toMs?,boardIds?,weather?})` | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride. Optional Ride History Filter: ride start in `[fromMs, toMs)`, any of `boardIds`, meets `weather` (see `RideWeatherCondition`) |
+| `countRideHistory({fromMs?,toMs?,boardIds?,weather?})`                          | number                                                                     | Complete rides matching the same filter, independent of loaded pages                                                                                                                                            |
+| `exportRides(selection: RideSelection, format)`                                 | `RideExportFile \| null`                                                   | One `.zip`, one GPX/CSV/Floaty file per ride, streamed. Emits `onRideExportProgress {done,total}`; null when `cancelRideExport()` stopped it. `RideSelection` is `{rides}` windows or `{filter, excludeIds}`    |
+| `getTelemetrySamples({fromMs,toMs,boardId?,limit?})`                            | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000                                                                                                               |
+| `getHistoryRange({fromMs,toMs,boardId?,limit?})`                                | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                                                                                                                                     |
+| `getTelemetrySummary()`                                                         | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                                                                                                                                   |
+| `getDatabaseSizeBytes()`                                                        | number                                                                     | File size of vescape.db                                                                                                                                                                                         |
 
 ### TelemetryMinuteBucket (bucket shape)
 
@@ -353,17 +355,20 @@ it never creates occurrences, warnings, baselines, or persisted register snapsho
 
 ## Telemetry deletion
 
-| fn                                             | returns                                                           |
-| ---------------------------------------------- | ----------------------------------------------------------------- |
-| `deleteTelemetryBefore(beforeMs)`              | frames deleted count. Also deletes matching markers + buckets     |
-| `deleteTelemetryRange({fromMs,toMs,boardId?})` | frames deleted count. Flushes pending first                       |
-| `clearTelemetryHistory()`                      | void. Wipes all frames, markers, buckets + resets in-memory state |
+| fn                                             | returns                                                                                      |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `deleteTelemetryBefore(beforeMs)`              | frames deleted count. Also deletes matching markers + buckets                                |
+| `deleteTelemetryRange({fromMs,toMs,boardId?})` | frames deleted count. Flushes pending first                                                  |
+| `deleteRides(selection: RideSelection)`        | frames deleted count. Every selected ride in one transaction; Favorite ranges inside survive |
+| `clearTelemetryHistory()`                      | void. Wipes all frames, markers, buckets + resets in-memory state                            |
 
 ## User Profile Stats
 
 | fn                                        | returns                                                                   |
 | ----------------------------------------- | ------------------------------------------------------------------------- |
 | `getProfileStatsSnapshot({year?,month?})` | Lifetime + selected-month stats and available months from one native pass |
+| `getDayStats({year,month,day})`           | Profile stats of the rides that started on one local day                  |
+| `getRecentRideStats(sinceMs)`             | Profile stats of the rides ongoing or finished at or after `sinceMs`      |
 
 ### ProfileStats shape
 
@@ -538,6 +543,32 @@ Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` 
 ```ts
 { enabled, host, distinctId?, captureCount, lastEventName?, lastCaptureAt? }
 ```
+
+## Service Config and map services
+
+Native owns the third-party map tokens (`serviceconfig/ServiceConfig.{kt,swift}`). On launch and
+every foreground, beside App Status, it fetches the public `GET /api/service-config` →
+`{ tokens: { mapbox?, mapy? } }` (absent key = not configured) and persists the last successful
+body (SharedPreferences / UserDefaults). Resolution: persisted server answer, else the build-time
+seed baked by `plugins/withServiceTokens.ts` from `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` /
+`EXPO_PUBLIC_MAPY_API_KEY` (both optional). A failed refresh keeps what is known; a successful one
+replaces it whole.
+
+| call / event             | shape                                       | notes                                                      |
+| ------------------------ | ------------------------------------------- | ---------------------------------------------------------- |
+| `getServiceConfig()`     | `{ mapboxToken, mapyToken }` (`null` = off) | sync read of the resolved config                           |
+| `onServiceConfig`        | `{ config }`                                | on change, replayed on subscribe                           |
+| `searchMap(q, limit, p)` | `Promise<string>`                           | `GET /api/maps/search`, Mapbox Search Box body verbatim    |
+| `reverseGeocodeMap(…)`   | `Promise<string>`                           | `GET /api/maps/reverse`, Mapbox Geocoding v5 body verbatim |
+
+JS mirrors the config in `src/modules/map/store/mapServicesStore.ts`, which calls
+`Mapbox.setAccessToken` on load and on every token change and builds the Mapy tile template.
+Watch/thumbnail `MapTiles` read the resolved Mapbox token per download.
+
+Search, reverse geocoding and Directions (`MapboxDirectionsApi`) go through the server's Mapbox
+proxy via `VescapeApi` with a required Device Token; the Mapbox secret never ships for them. The
+search calls reject with `MAP_SEARCH_SIGN_IN_REQUIRED` or `MAP_SEARCH_UNAVAILABLE` (rate limit,
+upstream down, not configured, offline); Directions turns every such failure into a failed path.
 
 ## Events
 

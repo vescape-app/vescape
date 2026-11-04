@@ -21,7 +21,7 @@ internal final class ProfileStatsRepository {
   private let gapMsProvider: () throws -> Int64
 
   internal init(
-    poolProvider: @escaping () throws -> DatabasePool = { try TelemetryDatabase.requirePool() },
+    poolProvider: @escaping () throws -> DatabasePool = { try VescapeDatabase.requirePool() },
     gapMsProvider: @escaping () throws -> Int64 = {
       let minutes = telemetryInt(try AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
       return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
@@ -34,6 +34,35 @@ internal final class ProfileStatsRepository {
   /// Lifetime, available months, and selected-month stats from one read/grouping pass.
   /// @parity /modules/vescape-core/src/index.ts `ProfileStatsSnapshot`
   func getProfileStatsSnapshot(_ options: [String: Any]) throws -> [String: Any?] {
+    profileStatsSnapshot(sessions: try readSessions(), options: options)
+  }
+
+  /// Stats of the rides that started on one local calendar day.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `readProfileDayStats`
+  /// @parity /modules/vescape-core/src/index.ts `getDayStats`
+  func getDayStats(_ options: [String: Any]) throws -> [String: Any?] {
+    let calendar = Calendar.current
+    let day = DateComponents(
+      year: telemetryInt(options["year"]),
+      month: telemetryInt(options["month"]),
+      day: telemetryInt(options["day"])
+    )
+    return computeProfileStatsForSessions(try readSessions().filter { session in
+      let date = Date(timeIntervalSince1970: Double(session.startAtMs) / 1000.0)
+      let parts = calendar.dateComponents([.year, .month, .day], from: date)
+      return parts.year == day.year && parts.month == day.month && parts.day == day.day
+    })
+  }
+
+  /// Stats of the rides still going on or finished at or after `sinceMs`, so a ride that crosses
+  /// midnight keeps counting as the one being ridden.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `readProfileRecentStats`
+  /// @parity /modules/vescape-core/src/index.ts `getRecentRideStats`
+  func getRecentRideStats(sinceMs: Int64) throws -> [String: Any?] {
+    computeProfileStatsForSessions(try readSessions().filter { $0.endAtMs >= sinceMs })
+  }
+
+  private func readSessions() throws -> [RideSessionAggregate] {
     let gapMs = try gapMsProvider()
     let pool = try poolProvider()
     return try pool.read { db in
@@ -50,9 +79,8 @@ internal final class ProfileStatsRepository {
           arguments: [fromMs, toMs]
         )
       }
-      let sessions = try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
+      return try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
         .filter { $0.avgSpeedSampleCount > 0 }
-      return profileStatsSnapshot(sessions: sessions, options: options)
     }
   }
 
@@ -67,15 +95,13 @@ internal final class ProfileStatsRepository {
       month: telemetryInt(options["month"]) ?? months.first?.month ?? now.month
     )
     return [
-      "total": computeProfileStatsForSessions(sessions, month: nil),
-      "monthly": computeProfileStatsForSessions(sessions, month: selected),
+      "total": computeProfileStatsForSessions(sessions),
+      "monthly": computeProfileStatsForSessions(
+        sessions.filter { profileMonth($0.startAtMs, calendar: .current) == selected }
+      ),
       "months": months.map { ["year": $0.year, "month": $0.month] },
       "selectedMonth": ["year": selected.year, "month": selected.month],
     ]
-  }
-
-  private func emptyProfileStatsSnapshot(_ options: [String: Any]) -> [String: Any?] {
-    profileStatsSnapshot(sessions: [], options: options)
   }
 }
 
@@ -88,17 +114,12 @@ internal func computeProfileStatsForBuckets(
 ) throws -> [String: Any?] {
   let sessions = try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
     .filter { $0.avgSpeedSampleCount > 0 }
-  return computeProfileStatsForSessions(sessions, month: month, calendar: calendar)
+  return computeProfileStatsForSessions(month.map { target in
+    sessions.filter { profileMonth($0.startAtMs, calendar: calendar) == target }
+  } ?? sessions)
 }
 
-private func computeProfileStatsForSessions(
-  _ sessions: [RideSessionAggregate],
-  month: ProfileStatsMonth?,
-  calendar: Calendar = .current
-) -> [String: Any?] {
-  let included = month.map { target in
-    sessions.filter { profileMonth($0.startAtMs, calendar: calendar) == target }
-  } ?? sessions
+private func computeProfileStatsForSessions(_ included: [RideSessionAggregate]) -> [String: Any?] {
   guard !included.isEmpty else { return emptyProfileStats() }
 
   let totalDurationMs = included.reduce(Int64(0)) { total, session in
@@ -111,6 +132,8 @@ private func computeProfileStatsForSessions(
     return total + max(0, span)
   }
   let distances = included.compactMap(\.distanceM)
+  let topSpeedRide = included.max { $0.topSpeedKmh < $1.topSpeedKmh }
+  let longestRide = included.filter { $0.distanceM != nil }.max { $0.distanceM! < $1.distanceM! }
   let avgSpeedSamples = included.reduce(0) { $0 + $1.avgSpeedSampleCount }
   let avgSpeedKmh = avgSpeedSamples > 0
     ? included.reduce(0.0) { $0 + $1.avgSpeedWeightedSum } / Double(avgSpeedSamples)
@@ -120,11 +143,13 @@ private func computeProfileStatsForSessions(
     "distanceM": distances.isEmpty ? nil : distances.reduce(0.0, +),
     "rideCount": included.count,
     "rideTimeMs": totalDurationMs,
-    "topSpeedKmh": included.map(\.topSpeedKmh).max() ?? 0.0,
+    "topSpeedKmh": topSpeedRide?.topSpeedKmh ?? 0.0,
     "avgSpeedKmh": avgSpeedKmh,
-    "longestRideM": distances.max(),
+    "longestRideM": longestRide?.distanceM,
     "batteryUsedWh": included.reduce(0.0) { $0 + $1.batteryUsedWh },
     "batteryRegenWh": included.reduce(0.0) { $0 + $1.batteryRegenWh },
+    "topSpeedRideId": topSpeedRide.map(rideSessionId),
+    "longestRideId": longestRide.map(rideSessionId),
   ]
 }
 
@@ -167,5 +192,7 @@ internal func emptyProfileStats() -> [String: Any?] {
     "longestRideM": nil,
     "batteryUsedWh": nil,
     "batteryRegenWh": nil,
+    "topSpeedRideId": nil,
+    "longestRideId": nil,
   ]
 }

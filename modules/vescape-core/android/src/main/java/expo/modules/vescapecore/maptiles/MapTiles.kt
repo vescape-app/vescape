@@ -2,7 +2,7 @@ package expo.modules.vescapecore.maptiles
 
 import android.content.Context
 import android.util.Log
-import expo.modules.vescapecore.navigation.MapboxDirectionsApi
+import expo.modules.vescapecore.serviceconfig.ServiceConfigCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -32,7 +32,8 @@ import java.util.concurrent.TimeUnit
 class MapTiles internal constructor(
   private val directory: File,
   private val fetch: suspend (url: String) -> ByteArray?,
-  private val accessToken: String,
+  /** Current Mapbox token from Service Config, read per download so a refreshed token applies at once. */
+  private val accessToken: () -> String?,
 ) {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val inFlight = ConcurrentHashMap<String, Deferred<File?>>()
@@ -47,7 +48,7 @@ class MapTiles internal constructor(
     val download = inFlight.computeIfAbsent(file.path) {
       scope.async(start = CoroutineStart.LAZY) {
         try {
-          download(file, "$BASE_URL/$STYLE/tiles/512/$z/$x/$y.jpeg?access_token=$accessToken")
+          download(file, z, x, y)
         } finally {
           inFlight.remove(file.path)
         }
@@ -57,10 +58,10 @@ class MapTiles internal constructor(
     return download.await()
   }
 
-  private suspend fun download(file: File, url: String): File? = downloads.withPermit {
+  private suspend fun download(file: File, z: Int, x: Int, y: Int): File? = downloads.withPermit {
     if (file.exists()) return@withPermit file
-    if (accessToken.isEmpty()) return@withPermit null
-    val bytes = fetch(url) ?: return@withPermit null
+    val token = accessToken() ?: return@withPermit null
+    val bytes = fetch("$BASE_URL/$STYLE/tiles/512/$z/$x/$y.jpeg?access_token=$token") ?: return@withPermit null
     file.parentFile?.mkdirs()
     // Write beside the target, then rename: a reader never sees half a tile.
     val partial = File(file.parentFile, "${file.name}.${UUID.randomUUID()}.partial")
@@ -102,7 +103,7 @@ class MapTiles internal constructor(
         MapTiles(
           directory = File(app.cacheDir, "map-tiles"),
           fetch = { url -> fetchTile(client, url) },
-          accessToken = MapboxDirectionsApi.accessToken(app),
+          accessToken = { ServiceConfigCoordinator.get(app).current.mapboxToken },
         ).also { instance = it }
       }
     }

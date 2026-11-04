@@ -51,7 +51,7 @@ type Command = (typeof COMMANDS)[number]
 const WEAR_AVD = process.env.WEAR_AVD ?? null
 
 /** Lane fixtures the emulator build replays, keyed by the `replay` intent extra MainActivity reads. */
-const REPLAY_FIXTURES = ['ride', 'sweep'] as const
+const REPLAY_FIXTURES = ['ride', 'sweep', 'preview'] as const
 
 /** The step `up` is on, so a failure names where the machine got stuck. */
 let step: string | null = null

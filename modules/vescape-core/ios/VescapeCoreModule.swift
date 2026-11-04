@@ -1,4 +1,5 @@
 import ExpoModulesCore
+import os
 
 private extension Promise {
   /// Keep the bridge error code and the underlying native failure together.
@@ -83,9 +84,11 @@ public class VescapeCoreModule: Module {
   private var frontendActive = true
   /// Events with at least one live JS listener, tracked via `OnStartObserving`/`OnStopObserving`.
   private var observedEvents = Set<String>()
+  private let rideExportCancelled = OSAllocatedUnfairLock(initialState: false)
   /// Remover for this module's App Status mirror subscription; the Group Ride online gate holds its
   /// own, so the sink cannot be a single assignable closure.
   private var appStatusUnsubscribe: (() -> Void)?
+  private var serviceConfigUnsubscribe: (() -> Void)?
 
   /// Shared, app-level Board Session owner that outlives this module instance. A JS runtime reload
   /// (dev reload, OTA update, JS crash recovery) tears down this module and builds a fresh one; the
@@ -116,7 +119,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onMapDisplay", "onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
+    Events("onMapDisplay", "onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -204,6 +207,12 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onAppStatus", ["status": AppStatusCoordinator.shared.current?.toMap()])
     }
     OnStopObserving("onAppStatus") { self.observedEvents.remove("onAppStatus") }
+    OnStartObserving("onServiceConfig") {
+      self.observedEvents.insert("onServiceConfig")
+      // Late subscriber: replay the resolved Service Config so the map SDKs configure at once.
+      self.sendEvent("onServiceConfig", ["config": ServiceConfigCoordinator.shared.current.toMap()])
+    }
+    OnStopObserving("onServiceConfig") { self.observedEvents.remove("onServiceConfig") }
     OnStartObserving("onNavigation") {
       self.observedEvents.insert("onNavigation")
       // Late subscriber: replay the current Navigation so JS is immediately consistent.
@@ -270,6 +279,10 @@ public class VescapeCoreModule: Module {
       self.appStatusUnsubscribe = AppStatusCoordinator.shared.addChangeListener { [weak self] status in
         self?.sendAppStatus(status)
       }
+      self.serviceConfigUnsubscribe?()
+      self.serviceConfigUnsubscribe = ServiceConfigCoordinator.shared.addChangeListener { [weak self] config in
+        self?.sendServiceConfig(config)
+      }
 
       // The forecast is native-owned too; JS mirrors whatever the coordinator resolves.
       WeatherCoordinator.shared.onChange = { [weak self] weather in self?.sendWeather(weather) }
@@ -284,6 +297,7 @@ public class VescapeCoreModule: Module {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
+      ServiceConfigCoordinator.shared.refresh()
       self.attachToCoordinator()
       // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
       // rendering a confident live session forever. Guarded by the coordinator so a running or
@@ -308,6 +322,7 @@ public class VescapeCoreModule: Module {
       self.frontendActive = true
       self.coordinator.appVisible = true
       AppStatusCoordinator.shared.refresh()
+      ServiceConfigCoordinator.shared.refresh()
       // Emits were gated while hidden; the screen must not keep a stale running state.
       self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
     }
@@ -335,6 +350,8 @@ public class VescapeCoreModule: Module {
       BoardConfigStore.onNoticeChanged = nil
       self.appStatusUnsubscribe?()
       self.appStatusUnsubscribe = nil
+      self.serviceConfigUnsubscribe?()
+      self.serviceConfigUnsubscribe = nil
       NavigationController.shared.onChange = nil
       NavigationController.shared.onProgressChange = nil
       self.onDisplayQueue { self.mapDisplays.values.forEach { $0.stop() } }
@@ -622,6 +639,10 @@ public class VescapeCoreModule: Module {
     Function("getAppStatus") { () -> [String: Any?]? in
       AppStatusCoordinator.shared.current?.toMap()
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getServiceConfig`
+    Function("getServiceConfig") { () -> [String: Any?] in
+      ServiceConfigCoordinator.shared.current.toMap()
+    }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeather`
     Function("getWeather") { () -> [String: Any?]? in
@@ -864,6 +885,26 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `countRideHistory`
+    AsyncFunction("countRideHistory") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try RideHistoryRepository.shared.countRides(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_count_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not count ride history", cause: error)
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideSession`
+    AsyncFunction("getRideSession") { (id: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try RideHistoryRepository.shared.getSession(id)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_session_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride", cause: error)
+      }
+    }
+
     AsyncFunction("getTelemetrySamples") { (options: [String: Any], promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try TelemetryRepository.shared.getSamples(options)) }
@@ -895,6 +936,32 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try TelemetryRepository.shared.exportRideFloaty(options)) }
       catch { promise.reject("ERR_RIDE_EXPORT", "Could not export ride", cause: error) }
+    }
+
+    /// Bulk ride export and delete; one export at a time, Cancel stops it mid-file.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `registerRideBatch`
+    /// @parity /modules/vescape-core/src/index.ts `exportRides`
+    AsyncFunction("exportRides") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      self.rideExportCancelled.withLock { $0 = false }
+      do {
+        let rides = try RideHistoryRepository.shared.selectedRides(options["selection"] as? [String: Any] ?? [:])
+        let file = try TelemetryRepository.shared.exportRides(rides, format: try RideBatch.format(options["format"]),
+          isCancelled: { self.rideExportCancelled.withLock { $0 } }) { done, total in
+          self.sendEvent("onRideExportProgress", ["done": done, "total": total])
+        }
+        promise.resolve(file)
+      } catch RideBatch.RideBatchError.cancelled {
+        promise.resolve(nil)
+      } catch { promise.reject("ERR_RIDE_EXPORT", "Could not export rides", cause: error) }
+    }
+
+    Function("cancelRideExport") { self.rideExportCancelled.withLock { $0 = true } }
+
+    AsyncFunction("deleteRides") { (selection: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try TelemetryRepository.shared.deleteRides(try RideHistoryRepository.shared.selectedRides(selection))) }
+      catch { RecordingStorageFailure.report(operation: "ride_delete", category: "write_failed", error: error); promise.reject("ERR_RIDE_DELETE", "Could not delete rides", cause: error) }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportLiveTelemetryCsv`
@@ -1078,7 +1145,7 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("getDatabaseSizeBytes") { (promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
-      do { promise.resolve(Int(try TelemetryDatabase.databaseSizeBytes())) }
+      do { promise.resolve(Int(try VescapeDatabase.databaseSizeBytes())) }
       catch {
         RecordingStorageFailure.reportRead(operation: "database_size_read", error: error)
         promise.reject("APP_STORAGE_READ_FAILED", "Could not read database size", cause: error)
@@ -1266,6 +1333,26 @@ public class VescapeCoreModule: Module {
       catch {
         RecordingStorageFailure.reportRead(operation: "profile_stats_read", error: error)
         promise.reject("ERR_PROFILE_STATS_READ", "Could not load profile stats", cause: error)
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getDayStats`
+    AsyncFunction("getDayStats") { (options: [String: Any], promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try ProfileStatsRepository.shared.getDayStats(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "day_stats_read", error: error)
+        promise.reject("ERR_PROFILE_STATS_READ", "Could not load day stats", cause: error)
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRecentRideStats`
+    AsyncFunction("getRecentRideStats") { (sinceMs: Double, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try ProfileStatsRepository.shared.getRecentRideStats(sinceMs: Int64(sinceMs))) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "recent_stats_read", error: error)
+        promise.reject("ERR_PROFILE_STATS_READ", "Could not load recent ride stats", cause: error)
       }
     }
 
@@ -1502,6 +1589,21 @@ public class VescapeCoreModule: Module {
       do { try self.reloadPrivacyZonesIntoRecorder() }
       catch { RecordingStorageFailure.reportRead(operation: "privacy_zones_reload", error: error) }
       promise.resolve(nil)
+    }
+
+    // Place search runs through the server's Mapbox proxy; native only owns the Device Token.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `searchMap`
+    AsyncFunction("searchMap") { (query: String, limit: Int, proximity: String?, promise: Promise) in
+      Task {
+        do { promise.resolve(try await MapSearchApi.shared.search(query: query, limit: limit, proximity: proximity)) }
+        catch { Self.rejectMapSearch(promise, error) }
+      }
+    }
+    AsyncFunction("reverseGeocodeMap") { (latitude: Double, longitude: Double, promise: Promise) in
+      Task {
+        do { promise.resolve(try await MapSearchApi.shared.reverse(latitude: latitude, longitude: longitude)) }
+        catch { Self.rejectMapSearch(promise, error) }
+      }
     }
 
     // Map Points are server-owned; native holds no copy.
@@ -2246,6 +2348,16 @@ public class VescapeCoreModule: Module {
     }
   }
 
+  /// Emit `onServiceConfig` with the resolved Service Config.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onServiceConfig`
+  /// @parity /modules/vescape-core/src/index.ts `ServiceConfigEvent`
+  private func sendServiceConfig(_ config: ServiceConfig) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onServiceConfig") else { return }
+      self.sendEvent("onServiceConfig", ["config": config.toMap()])
+    }
+  }
+
   /// Asks for the path again, to the Direction Point the rider already has and from where they are
   /// now. A no-op with no Direction Point: there is nothing to compute a path to.
   private func recomputeNavigation() {
@@ -2316,6 +2428,11 @@ public class VescapeCoreModule: Module {
 
   /// Map Point failures carry a code JS branches on; anything else is an unexpected native fault.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/mappoints/MapPointApi.kt `MapPointApiException`
+  private static func rejectMapSearch(_ promise: Promise, _ error: Error) {
+    let apiError = error as? MapSearchApiError
+    promise.reject(apiError?.code ?? MapSearchApiError.unavailable, apiError?.message ?? error.localizedDescription)
+  }
+
   private static func rejectMapPoint(_ promise: Promise, _ error: Error) {
     guard let apiError = error as? MapPointApiError else {
       promise.reject(MapPointApiError.refused, error.localizedDescription)

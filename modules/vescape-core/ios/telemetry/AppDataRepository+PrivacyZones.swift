@@ -8,7 +8,7 @@ extension AppDataRepository {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `reloadPrivacyZonesIntoRecorder`
   func getEnabledPrivacyZoneEntities() throws -> [PrivacyZoneEntity] {
-    let pool = try TelemetryDatabase.requirePool()
+    let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
       try Row.fetchAll(
         db,

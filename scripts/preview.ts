@@ -15,8 +15,9 @@ import {
   type CapturePlatform,
 } from './lib/captureDriver.ts'
 import { filmFeaturePreview } from './lib/featurePreview.ts'
+import { listAdbDevices } from './lib/devices.ts'
 import { createIosDriver } from './lib/iosCapture.ts'
-import { PreviewRecording, exportPreview } from './lib/previewRecording.ts'
+import { PreviewRecording, PreviewTake, exportPreview } from './lib/previewRecording.ts'
 import { select } from './lib/select.ts'
 
 let platform: CapturePlatform | 'both' | null = null
@@ -52,6 +53,65 @@ platform ??= await select('Preview platform', [
   { label: 'Both', value: 'both' as const },
 ])
 
+/** Boots the Wear emulator, then builds and installs the current watch app; returns its serial. */
+async function readyWatch(): Promise<string> {
+  const findWatch = () => listAdbDevices().find((it) => it.isWatch && it.isEmulator)
+  if (!findWatch()) await runOrDie(['bun', 'run', 'scripts/wear.ts', 'emulator'])
+  const deadline = Date.now() + 5 * 60_000
+  let watch = findWatch()
+  while (
+    !watch ||
+    (
+      await capture(['adb', '-s', watch.serial, 'shell', 'getprop', 'sys.boot_completed'])
+    ).trim() !== '1'
+  ) {
+    if (Date.now() > deadline) throw new Error('The Wear emulator did not boot')
+    await Bun.sleep(2000)
+    watch = findWatch()
+  }
+  await runOrDie(
+    ['bun', 'run', 'scripts/wear.ts', 'install', '--device', watch.serial],
+    undefined,
+    30 * 60_000,
+  )
+  return watch.serial
+}
+
+const MIRROR_ACTIVITY = 'app.vescape.wear.MainActivity'
+/** Long enough for the restarted Mirror to draw its first replayed frame before footage starts. */
+const WATCH_LAUNCH_MS = 2000
+
+/**
+ * Starts the wrist on `watch-preview.jsonl`, the phone's recording reduced to lanes on its real GPS
+ * track, at the point the phone's replay has reached. No Data Layer: the emulators' pairing is not
+ * reliable enough to film, so the wrist is fed what the phone would have sent it.
+ */
+async function startWatchReplay(watch: string, phone: string): Promise<void> {
+  const log = await capture(['adb', '-s', phone, 'logcat', '-d', '-s', 'VescSession:D'])
+  const startedAt = [...log.matchAll(/replay playback started .*wallMs=(\d+)/g)].at(-1)?.[1]
+  if (!startedAt) throw new Error(`No replay playback start in ${phone} logcat`)
+  // After its warmup the phone replays at 1x, trailing wall time by the warmup's real duration.
+  const epoch = Number(startedAt) + PREVIEW_WARMUP_MS / REPLAY_WARMUP_SPEED - PREVIEW_WARMUP_MS
+  await runOrDie([
+    'adb',
+    '-s',
+    watch,
+    'shell',
+    'am',
+    'start',
+    '-S',
+    '-n',
+    `${applicationId}/${MIRROR_ACTIVITY}`,
+    '--es',
+    'replay',
+    'preview',
+    '--el',
+    'replayEpoch',
+    String(Math.round(epoch)),
+  ])
+  await Bun.sleep(WATCH_LAUNCH_MS)
+}
+
 async function film(driver: CaptureDriver): Promise<void> {
   const outDir = join(ROOT, 'previews', driver.platform, scene)
   mkdirSync(outDir, { recursive: true })
@@ -63,6 +123,8 @@ async function film(driver: CaptureDriver): Promise<void> {
   await driver.requireAwakeDisplay()
   await driver.stageFixtures()
   await driver.pinLocation()
+  // Android takes always film the Wear emulator too, booting it when needed.
+  const watch = driver.platform === 'android' ? await readyWatch() : null
   const adb = (...args: string[]) => ['adb', '-s', driver.deviceId, ...args]
   const oldTouches =
     driver.platform === 'android'
@@ -76,7 +138,16 @@ async function film(driver: CaptureDriver): Promise<void> {
   const oldAppearance =
     driver.platform === 'ios' ? appearance : /^Night mode: (\w+)$/.exec(appearance)?.[1]
   if (!oldAppearance) throw new Error(`Could not read device appearance: ${appearance}`)
-  const recording = new PreviewRecording(driver, outDir)
+  const phoneRecording = new PreviewRecording(driver, outDir)
+  const watchRecording = watch
+    ? new PreviewRecording({ platform: 'android', deviceId: watch }, outDir, 'watch')
+    : null
+  // The take starts only once the wrist replays from where the phone is, never on its idle screen.
+  const recording = new PreviewTake(
+    watchRecording ? [phoneRecording, watchRecording] : [phoneRecording],
+    watch ? () => startWatchReplay(watch, driver.deviceId) : undefined,
+  )
+  const watchAdb = (...args: string[]) => ['adb', '-s', watch!, ...args]
   let failure: unknown = null
   // Maestro's JS HTTP client runs on the host. Start only after its driver, launch and fixture
   // restore are ready; otherwise XCTest startup alone adds tens of seconds of dead footage.
@@ -111,6 +182,11 @@ async function film(driver: CaptureDriver): Promise<void> {
     // Native adaptive surfaces and the keyboard must also be dark throughout the take.
     await runOrDie(appearanceCommand(driver.platform === 'ios' ? 'dark' : 'yes'))
     await driver.setChrome(true)
+    if (watch) {
+      // Out of ambient mode for the whole take.
+      await runOrDie(watchAdb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'))
+      await runOrDie(watchAdb('shell', 'svc', 'power', 'stayon', 'true'))
+    }
     if (oldTouches != null)
       await runOrDie(adb('shell', 'settings', 'put', 'system', 'show_touches', '1'))
     if (scene === 'history' || scene === 'board-alerts') {
@@ -144,6 +220,7 @@ async function film(driver: CaptureDriver): Promise<void> {
       server.stop(true)
       try {
         await driver.setChrome(false)
+        if (watch) await runOrDie(watchAdb('shell', 'svc', 'power', 'stayon', 'false'))
       } finally {
         try {
           if (oldTouches != null)
@@ -168,7 +245,11 @@ async function film(driver: CaptureDriver): Promise<void> {
       }
     }
   }
-  const exports = await exportPreview(recording.rawPath, driver.platform, scene === 'store')
+  if (watchRecording) {
+    const watchExports = await exportPreview(watchRecording.rawPath, 'android', false)
+    console.log(`› Watch: ${watchRecording.rawPath}\n› Watch web: ${watchExports.web}`)
+  }
+  const exports = await exportPreview(phoneRecording.rawPath, driver.platform, scene === 'store')
   const output = exports.appPreview ?? exports.web
   const probe = Bun.spawn(
     [
@@ -187,7 +268,7 @@ async function film(driver: CaptureDriver): Promise<void> {
   if ((await probe.exited) !== 0 || !Number.isFinite(duration))
     throw new Error('Could not verify video duration')
   console.log(
-    `› Footage: ${recording.rawPath}\n› Web: ${exports.web} (${duration.toFixed(1)}s)${exports.appPreview ? `\n› App preview: ${exports.appPreview}` : ''}`,
+    `› Footage: ${phoneRecording.rawPath}\n› Web: ${exports.web} (${duration.toFixed(1)}s)${exports.appPreview ? `\n› App preview: ${exports.appPreview}` : ''}`,
   )
   if (driver.platform === 'ios' && scene === 'store' && (duration < 15 || duration > 30)) {
     throw new Error(

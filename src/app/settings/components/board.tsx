@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useEffect, useState } from 'react'
 import { useSharedValue } from 'react-native-reanimated'
@@ -463,8 +464,8 @@ function BoardConfigSectionShowcase() {
 
 export default function BoardComponentsPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={LightningIcon}
           description="Board pill states, warning and fault rows, telemetry captures, and connection components."
@@ -484,7 +485,7 @@ export default function BoardComponentsPage() {
         <RimTempArcShowcase />
         <LiveMetricCardShowcase />
         <BoardConfigSectionShowcase />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

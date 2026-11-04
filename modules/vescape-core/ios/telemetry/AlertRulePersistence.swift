@@ -28,7 +28,7 @@ struct PersistedAlertRule: Codable, FetchableRecord, PersistableRecord {
 }
 
 /// Production Alert Rule CRUD shared by the app repository and host persistence contract.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct AlertRulePersistence {
   let writer: any DatabaseWriter
 

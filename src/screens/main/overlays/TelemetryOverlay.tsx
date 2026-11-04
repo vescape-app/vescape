@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics'
-import { ClockCounterClockwiseIcon, SirenIcon, SlidersHorizontalIcon } from 'phosphor-react-native'
+import { SirenIcon, SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { Platform, StyleSheet, View } from 'react-native'
 import Animated, {
@@ -34,6 +34,7 @@ import {
 } from '@/screens/main/overlays/TelemetryPanel'
 import { TopBar } from '@/screens/main/overlays/TopBar'
 import { BoardDrawer } from '@/screens/main/overlays/BoardDrawer'
+import { HistoryButton } from '@/screens/main/overlays/HistoryButton'
 import { HistoryDrawer } from '@/screens/main/overlays/HistoryDrawer'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 
@@ -234,12 +235,7 @@ export function TelemetryOverlay({
               collapsable={false}
               style={[styles.historyButton, { bottom: buttonBottom }]}
             >
-              <IconButton
-                icon={ClockCounterClockwiseIcon}
-                size="lg"
-                onPress={() => setHistoryDrawerOpen(true)}
-                testID="history-button"
-              />
+              <HistoryButton onPress={() => setHistoryDrawerOpen(true)} />
             </View>
             <HistoryDrawer
               visible={historyDrawerOpen}

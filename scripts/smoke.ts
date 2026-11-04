@@ -25,12 +25,12 @@ import { tmpdir } from 'os'
 import { basename, dirname, join, relative, resolve } from 'path'
 
 import { applicationId } from '../src/config/appVariant.ts'
+import { runSmokeMaestro } from './lib/smokeMaestro.ts'
 import { maestroCommand } from './lib/maestro.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
 import {
   CommandFailed,
   ROOT,
-  runOrDie,
   type CaptureDriver,
   type CapturePlatform,
 } from './lib/captureDriver.ts'
@@ -41,7 +41,7 @@ const FLOWS_DIR = join(ROOT, 'e2e', 'flows', 'smoke')
 const BOOT_FLOW = join(ROOT, 'e2e', 'flows', 'fixture', '_boot.yaml')
 
 /** Same city ride the capture run replays, started afresh for each CI flow. */
-export const DEFAULT_REPLAY = 'replay-thor301.jsonl'
+export const DEFAULT_REPLAY = 'replay-thor301-1hz.jsonl'
 
 export interface Args {
   platform: CapturePlatform
@@ -123,7 +123,7 @@ async function runFlow(path: string, driver: CaptureDriver): Promise<void> {
   console.log(`› ${basename(path, '.yaml')}`)
   // Without --device Maestro picks the first attached device itself, which silently drives whatever
   // else is plugged in rather than the one this run prepared.
-  await runOrDie(
+  await runSmokeMaestro(
     await maestroCommand(
       'test',
       '--device',
@@ -132,6 +132,7 @@ async function runFlow(path: string, driver: CaptureDriver): Promise<void> {
       `APP_ID=${applicationId}`,
       path,
     ),
+    path,
   )
 }
 
@@ -217,6 +218,8 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
   await driver.requireAwakeDisplay()
   await driver.stageFixtures()
   await driver.pinLocation()
+  // iOS: Maestro launches the app after its XCTest driver is up. Launching first lets the replay
+  // load starve XCTest startup on hosted runners (driver timeouts in most CI runs).
   if (args.platform === 'android') await deps.launchAndroidApp(driver.deviceId)
 
   // A separate Maestro process starts the iOS XCTest driver again. Keep boot and all selected

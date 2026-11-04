@@ -47,7 +47,11 @@ export function startHeadingAnimation({
       return
     }
     const bearing = heading()
-    if (bearing == null) return
+    if (bearing == null) {
+      if (frame != null) cancel(frame)
+      frame = null
+      return
+    }
     const target = nearestBearingTarget(spring.x, bearing)
     if (target === spring.target && springSettled(spring, 0.05, 0.05)) return
     spring = retargetSpring(spring, target)

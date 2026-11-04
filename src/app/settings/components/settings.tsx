@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useState } from 'react'
 import {
@@ -101,8 +102,8 @@ export default function SettingsPage() {
   const autoStart = useMockAutoStart()
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <StorageCellShowcase />
         <ShowcaseCard name="Settings components">
           <IconHero
@@ -184,7 +185,7 @@ export default function SettingsPage() {
         <ShowcaseCard name="AutoStartCard">
           <AutoStartCard {...autoStart} />
         </ShowcaseCard>
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

@@ -1,4 +1,6 @@
-import { StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
+
+import { CaretRightIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
@@ -24,13 +26,18 @@ export function ProfileStatsGrid({
       {items.map((item) => {
         const ItemIcon = item.icon
         return (
-          <View
+          <Pressable
             key={item.key}
-            style={[
+            disabled={item.onPress == null}
+            onPress={item.onPress}
+            accessibilityRole={item.onPress ? 'button' : undefined}
+            testID={item.onPress ? `profile-stat-${item.key}` : undefined}
+            style={({ pressed }) => [
               styles.cell,
               columns === 3 && styles.cellThird,
               columns === 4 && styles.cellFourth,
               emphasis && styles.cellEmphasis,
+              pressed && styles.cellPressed,
             ]}
           >
             <ItemIcon
@@ -51,13 +58,22 @@ export function ProfileStatsGrid({
             >
               {item.value}
             </Text>
-            <Text
-              style={[styles.label, columns === 4 && styles.labelFourth]}
-              numberOfLines={columns > 2 ? 1 : undefined}
-            >
-              {item.label}
-            </Text>
-          </View>
+            <View style={styles.labelRow}>
+              <Text
+                style={[styles.label, columns === 4 && styles.labelFourth]}
+                numberOfLines={columns > 2 ? 1 : undefined}
+              >
+                {item.label}
+              </Text>
+              {item.onPress ? (
+                <CaretRightIcon
+                  size={columns === 4 ? 10 : 11}
+                  color={theme.neutral.textMuted}
+                  weight="bold"
+                />
+              ) : null}
+            </View>
+          </Pressable>
         )
       })}
     </View>
@@ -82,6 +98,9 @@ const styles = StyleSheet.create({
     width: '25%',
     paddingHorizontal: 3,
   },
+  cellPressed: {
+    opacity: 0.6,
+  },
   cellEmphasis: {
     paddingVertical: 6,
   },
@@ -101,7 +120,13 @@ const styles = StyleSheet.create({
   valueFourth: {
     fontSize: 15,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
   label: {
+    flexShrink: 1,
     color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',

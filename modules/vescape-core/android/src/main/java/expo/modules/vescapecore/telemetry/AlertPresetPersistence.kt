@@ -6,6 +6,8 @@ import expo.modules.vescapecore.alerts.PRESET_RULE_PREFIX
 import expo.modules.vescapecore.alerts.resolveConfigRelativeBase
 import kotlin.coroutines.cancellation.CancellationException
 import org.json.JSONObject
+import expo.modules.vescapecore.database.AlertRuleEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 /**
  * An Alert Preset is one `alerts` row per Board and metric, id `preset:<metric>`, whose spec is
@@ -39,7 +41,7 @@ internal object AlertPresetPersistence {
   }
 
   /** Each metric's stored spec, or the app default when it has no row. */
-  suspend fun specs(dao: TelemetryDao, boardId: String): Map<String, String> {
+  suspend fun specs(dao: VescapeDao, boardId: String): Map<String, String> {
     val rows = presetRows(dao.getAlertRules(boardId))
     return metrics.associateWith { rows[it]?.spec ?: DEFAULT_SPEC.encode() }
   }
@@ -49,7 +51,7 @@ internal object AlertPresetPersistence {
    * A missing or tombstoned Board expands nothing. A metric that fails to expand is passed to
    * [reportFailure] and skipped, so the rider rules and the other metrics still load.
    */
-  suspend fun expandedRules(dao: TelemetryDao, boardId: String, reportFailure: (Throwable) -> Unit): List<AlertRuleEntity> {
+  suspend fun expandedRules(dao: VescapeDao, boardId: String, reportFailure: (Throwable) -> Unit): List<AlertRuleEntity> {
     val rows = dao.getAlertRules(boardId)
     val riderRules = rows.filterNot { isPresetId(it.id) }
     val board = dao.getBoard(boardId)
@@ -80,7 +82,7 @@ internal object AlertPresetPersistence {
   }
 
   /** Rewrite [metric]'s preset row with exactly one of a new level, geiger level, or match choice. */
-  suspend fun apply(dao: TelemetryDao, boardId: String, metric: String, level: String?, geiger: String?, match: Boolean?) {
+  suspend fun apply(dao: VescapeDao, boardId: String, metric: String, level: String?, geiger: String?, match: Boolean?) {
     require(metric in metrics) { "Unknown alert preset metric" }
     require(listOfNotNull(level, geiger, match).size == 1) { "Expected one preset change" }
     val board = dao.getBoard(boardId)
@@ -127,7 +129,7 @@ internal object AlertPresetPersistence {
   private fun presetRows(rows: List<AlertRuleEntity>): Map<String, AlertRuleEntity> =
     rows.filter { it.id == rowId(it.controlId) }.associateBy { it.controlId }
 
-  private suspend fun resolveBase(dao: TelemetryDao, boardId: String, fieldId: String): Double? {
+  private suspend fun resolveBase(dao: VescapeDao, boardId: String, fieldId: String): Double? {
     fun values(raw: String?) = raw?.let { jsonValue(JSONObject(it)) as? Map<String, Any> } ?: emptyMap()
     return resolveConfigRelativeBase(fieldId, values(dao.getLatestBoardConfigValues(boardId)?.valuesJson), values(dao.getLatestMotorConfigValues(boardId)?.valuesJson))
   }

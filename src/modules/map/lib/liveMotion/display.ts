@@ -99,3 +99,12 @@ export class MotionDisplay {
     return { raw: this.snapshot?.raw ?? null, trail: this.snapshot?.trail ?? [] }
   }
 }
+
+/** Visible-surface presentation adapter; contains no native input ownership. */
+export interface MotionDisplayRuntime {
+  motion: MotionDisplay
+  active: boolean
+  now: () => number
+  duration: (ms: number) => number
+  subscribe: (listener: () => void) => () => void
+}

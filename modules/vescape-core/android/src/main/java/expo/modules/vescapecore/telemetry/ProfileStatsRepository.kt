@@ -2,6 +2,9 @@ package expo.modules.vescapecore.telemetry
 
 import java.time.Instant
 import java.time.ZoneId
+import expo.modules.vescapecore.database.TelemetryMarkerEntity
+import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.database.VescapeDao
 
 /**
  * Minutes without a recorded sample that end a ride, when the rider has set no `rideSplitGapMinutes`.
@@ -12,28 +15,62 @@ data class ProfileStatsMonth(val year: Int, val month: Int)
 
 // @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift
 internal suspend fun readProfileStatsSnapshot(
-  dao: TelemetryDao,
+  dao: VescapeDao,
   options: Map<String, Any?>,
   gapMs: Long,
 ): Map<String, Any?> {
-      val buckets = dao.getAllHistoryBucketsAsc()
-      val markers = readProfileMarkers(dao, buckets, gapMs)
-      val sessions = groupRideSessions(buckets, markers, gapMs).filter { it.avgSpeedSampleCount > 0 }
+      val sessions = readProfileSessions(dao, gapMs)
       val months = profileMonthsForSessions(sessions)
       val requested = ProfileStatsMonth(
         year = (options["year"] as? Number)?.toInt() ?: months.firstOrNull()?.year ?: java.time.LocalDate.now().year,
         month = (options["month"] as? Number)?.toInt() ?: months.firstOrNull()?.month ?: java.time.LocalDate.now().monthValue,
       )
       return mapOf(
-        "total" to computeProfileStatsForSessions(sessions, null),
-        "monthly" to computeProfileStatsForSessions(sessions, requested),
+        "total" to computeProfileStatsForSessions(sessions),
+        "monthly" to computeProfileStatsForSessions(sessions.filter { profileMonth(it.startAtMs) == requested }),
         "months" to months.map { mapOf("year" to it.year, "month" to it.month) },
         "selectedMonth" to mapOf("year" to requested.year, "month" to requested.month),
       )
 }
 
+/**
+ * Stats of the rides that started on one local calendar day.
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getDayStats`
+ */
+internal suspend fun readProfileDayStats(
+  dao: VescapeDao,
+  options: Map<String, Any?>,
+  gapMs: Long,
+  zoneId: ZoneId = ZoneId.systemDefault(),
+): Map<String, Any?> {
+  val day = java.time.LocalDate.of(
+    (options["year"] as Number).toInt(),
+    (options["month"] as Number).toInt(),
+    (options["day"] as Number).toInt(),
+  )
+  return computeProfileStatsForSessions(
+    readProfileSessions(dao, gapMs).filter {
+      Instant.ofEpochMilli(it.startAtMs).atZone(zoneId).toLocalDate() == day
+    },
+  )
+}
+
+/**
+ * Stats of the rides still going on or finished at or after [sinceMs], so a ride that crosses
+ * midnight keeps counting as the one being ridden.
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getRecentRideStats`
+ */
+internal suspend fun readProfileRecentStats(dao: VescapeDao, sinceMs: Long, gapMs: Long): Map<String, Any?> =
+  computeProfileStatsForSessions(readProfileSessions(dao, gapMs).filter { it.endAtMs >= sinceMs })
+
+private suspend fun readProfileSessions(dao: VescapeDao, gapMs: Long): List<RideSessionAggregate> {
+  val buckets = dao.getAllHistoryBucketsAsc()
+  val markers = readProfileMarkers(dao, buckets, gapMs)
+  return groupRideSessions(buckets, markers, gapMs).filter { it.avgSpeedSampleCount > 0 }
+}
+
 private suspend fun readProfileMarkers(
-    dao: TelemetryDao,
+    dao: VescapeDao,
     buckets: List<TelemetryMinuteBucketEntity>,
     gapMs: Long,
   ): List<TelemetryMarkerEntity> {
@@ -51,19 +88,12 @@ internal fun computeProfileStatsForBuckets(
   gapMs: Long = DEFAULT_RIDE_SPLIT_GAP_MINUTES * 60_000L,
 ): Map<String, Any?> {
   val sessions = groupRideSessions(buckets, markers, gapMs).filter { it.avgSpeedSampleCount > 0 }
-  return computeProfileStatsForSessions(sessions, month, zoneId)
+  return computeProfileStatsForSessions(
+    if (month == null) sessions else sessions.filter { profileMonth(it.startAtMs, zoneId) == month },
+  )
 }
 
-private fun computeProfileStatsForSessions(
-  sessions: List<RideSessionAggregate>,
-  month: ProfileStatsMonth?,
-  zoneId: ZoneId = ZoneId.systemDefault(),
-): Map<String, Any?> {
-  val included = if (month == null) {
-    sessions
-  } else {
-    sessions.filter { profileMonth(it.startAtMs, zoneId) == month }
-  }
+private fun computeProfileStatsForSessions(included: List<RideSessionAggregate>): Map<String, Any?> {
   if (included.isEmpty()) {
     return mapOf(
       "distanceM" to null,
@@ -74,6 +104,8 @@ private fun computeProfileStatsForSessions(
       "longestRideM" to null,
       "batteryUsedWh" to null,
       "batteryRegenWh" to null,
+      "topSpeedRideId" to null,
+      "longestRideId" to null,
     )
   }
 
@@ -91,15 +123,20 @@ private fun computeProfileStatsForSessions(
     0.0
   }
 
+  val topSpeedRide = included.maxByOrNull { it.topSpeedKmh }
+  val longestRide = included.maxByOrNull { it.distanceM ?: -1.0 }?.takeIf { it.distanceM != null }
+
   return mapOf(
     "distanceM" to totalDistanceM,
     "rideCount" to included.size,
     "rideTimeMs" to totalDurationMs,
-    "topSpeedKmh" to (included.maxOfOrNull { it.topSpeedKmh } ?: 0.0),
+    "topSpeedKmh" to (topSpeedRide?.topSpeedKmh ?: 0.0),
     "avgSpeedKmh" to avgSpeedKmh,
-    "longestRideM" to included.mapNotNull { it.distanceM }.maxOrNull(),
+    "longestRideM" to longestRide?.distanceM,
     "batteryUsedWh" to included.sumOf { it.batteryUsedWh },
     "batteryRegenWh" to included.sumOf { it.batteryRegenWh },
+    "topSpeedRideId" to topSpeedRide?.let(::rideSessionId),
+    "longestRideId" to longestRide?.let(::rideSessionId),
   )
 }
 
@@ -121,7 +158,7 @@ private fun profileMonthsForSessions(
     .sortedWith(compareByDescending<ProfileStatsMonth> { it.year }.thenByDescending { it.month })
 }
 
-private fun profileMonth(atMs: Long, zoneId: ZoneId): ProfileStatsMonth {
+private fun profileMonth(atMs: Long, zoneId: ZoneId = ZoneId.systemDefault()): ProfileStatsMonth {
   val dt = Instant.ofEpochMilli(atMs).atZone(zoneId)
   return ProfileStatsMonth(year = dt.year, month = dt.monthValue)
 }

@@ -5,6 +5,7 @@ import {
   reduceMapCameraIntent,
   zoomForRadarView,
 } from '@/modules/map/lib/cameraController'
+import { ZERO_CAMERA_PADDING } from '@/modules/map/lib/cameraProfiles'
 
 /** A phone-sized viewport: the radar view frames its outer range ring inside the narrow side. */
 const VIEWPORT = { width: 390, height: 844 }
@@ -302,6 +303,8 @@ describe('map camera controller', () => {
       // Framed on the 100 km ring rather than a fixed zoom, so it tightens as latitude rises.
       zoomLevel: expect.closeTo(6.32, 2),
       heading: 0,
+      // Clears the follow tilt offset, otherwise native keeps it and the rider sits below center.
+      padding: ZERO_CAMERA_PADDING,
       pitch: 0,
     })
   })

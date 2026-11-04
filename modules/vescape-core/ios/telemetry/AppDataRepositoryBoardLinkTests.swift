@@ -3,14 +3,12 @@ import XCTest
 
 final class AppDataRepositoryBoardLinkTests: XCTestCase {
   private func roundTrip(_ link: [String: Any?]) -> [String: Any?]? {
-    let normalized = BoardLinkPersistence.normalized(link)
-    let bleId = normalized?["bleId"] as? String
-    let storedTransport = BoardTransport.encode(BoardTransport.fromBridge(normalized?["transport"] ?? nil))
+    let bleId = BoardLinkPersistence.normalized(link)?["bleId"] as? String
     var values: [String: Any] = [:]
-    for (key, value) in BoardLinkPersistence.settings(from: link) where key != "transport" {
+    for (key, value) in BoardLinkPersistence.settings(from: link) {
       if let value { values[key] = value }
     }
-    return BoardLinkPersistence.compose(bleId: bleId, storedTransport: storedTransport, values: values)
+    return BoardLinkPersistence.compose(bleId: bleId, values: values)
   }
 
   func testV3IdentityFieldsSurviveRoundTrip() {
@@ -55,8 +53,7 @@ final class AppDataRepositoryBoardLinkTests: XCTestCase {
   func testStoredOutdatedLinkVersionReadsAsLegacy() {
     let link = BoardLinkPersistence.compose(
       bleId: "AA:BB",
-      storedTransport: "84",
-      values: ["linkVersion": 3, "hasBms": true]
+      values: ["transport": "84", "linkVersion": 3, "hasBms": true]
     )
 
     XCTAssertNotNil(link)
@@ -66,8 +63,7 @@ final class AppDataRepositoryBoardLinkTests: XCTestCase {
   func testStoredLinkWithoutVersionReadsAsLegacy() {
     let link = BoardLinkPersistence.compose(
       bleId: "AA:BB",
-      storedTransport: "84",
-      values: ["hasBms": true]
+      values: ["transport": "84", "hasBms": true]
     )
 
     XCTAssertNotNil(link)

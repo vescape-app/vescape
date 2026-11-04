@@ -1,1 +1,1 @@
-../ios/telemetry/ZipArchive.swift
+../ios/database/ZipArchive.swift

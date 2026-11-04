@@ -13,7 +13,6 @@ import { ScrollView, StyleSheet, View } from 'react-native'
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
-import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { theme } from '@/constants/theme'
 import { makeCircleFeature, offsetCoordinate } from '@/helpers/mapGeometry'
 import { PlaygroundSlider } from '@/modules/map/components/PlaygroundSlider'
@@ -32,8 +31,6 @@ import {
   type FakeGpsMode,
   type FakeGpsState,
 } from '@/modules/map/lib/fakeGps'
-
-Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
 const START: [number, number] = [17.0385, 51.1079]
 const START_ZOOM = 16

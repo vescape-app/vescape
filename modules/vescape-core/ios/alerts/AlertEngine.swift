@@ -29,7 +29,7 @@ internal func normalizedAlertRepeatSeconds(_ raw: Double?) -> Int64? {
 }
 
 /// Alert rule persisted in GRDB (`alerts` table). Mirrors Android `AlertRuleEntity`.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt
 internal struct AlertRule {
   let boardId: String
   let id: String

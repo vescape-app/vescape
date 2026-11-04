@@ -1,8 +1,21 @@
 import { useCallback, useRef, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
-import { getProfileStatsSnapshot, type ProfileStats, type ProfileStatsMonth } from 'vescape-core'
+import {
+  getRecentRideStats,
+  getProfileStatsSnapshot,
+  type ProfileStats,
+  type ProfileStatsMonth,
+} from 'vescape-core'
 
 import { selectInitialMonth } from '@/modules/profile/lib/profileStats'
+
+/** How far back "Today" reaches: a rolling window, so a ride across midnight never drops out. */
+const TODAY_WINDOW_MS = 12 * 60 * 60_000
+
+/** Totals of the rides still going on or finished within the last 12 hours, shown as Today. */
+export function getTodayStats(): Promise<ProfileStats> {
+  return getRecentRideStats(Date.now() - TODAY_WINDOW_MS)
+}
 
 export const EMPTY_PROFILE_STATS: ProfileStats = {
   distanceM: null,
@@ -13,10 +26,12 @@ export const EMPTY_PROFILE_STATS: ProfileStats = {
   longestRideM: null,
   batteryUsedWh: null,
   batteryRegenWh: null,
+  topSpeedRideId: null,
+  longestRideId: null,
 }
 
 /**
- * Lifetime and per-month riding totals read from native.
+ * Lifetime, per-month, and today's riding totals read from native.
  *
  * Reloaded on focus, not just on mount: a ride recorded while the screen sat mounted behind another
  * one would otherwise leave lifetime stats frozen below what Ride History already shows.
@@ -24,6 +39,7 @@ export const EMPTY_PROFILE_STATS: ProfileStats = {
 export function useProfileStats(active = true) {
   const [total, setTotal] = useState<ProfileStats>(EMPTY_PROFILE_STATS)
   const [monthly, setMonthly] = useState<ProfileStats>(EMPTY_PROFILE_STATS)
+  const [today, setToday] = useState<ProfileStats>(EMPTY_PROFILE_STATS)
   const [months, setMonths] = useState<ProfileStatsMonth[]>([])
   const [selectedMonth, setSelectedMonth] = useState<ProfileStatsMonth>(selectInitialMonth([]))
   const [loading, setLoading] = useState(true)
@@ -38,9 +54,10 @@ export function useProfileStats(active = true) {
     if (!loadedRef.current) setLoading(true)
     setError(null)
     try {
-      const snapshot = await getProfileStatsSnapshot(
-        loadedRef.current ? selectedMonthRef.current : undefined,
-      )
+      const [snapshot, todayStats] = await Promise.all([
+        getProfileStatsSnapshot(loadedRef.current ? selectedMonthRef.current : undefined),
+        getTodayStats(),
+      ])
       const availableMonths = snapshot.months
       // Keep the month the rider is looking at; fall back when it is gone (or on first load).
       const current = selectedMonthRef.current
@@ -58,10 +75,12 @@ export function useProfileStats(active = true) {
       setMonths(availableMonths)
       setSelectedMonth(month)
       setMonthly(resolvedSnapshot.monthly)
+      setToday(todayStats)
       loadedRef.current = true
     } catch (err) {
       setTotal(EMPTY_PROFILE_STATS)
       setMonthly(EMPTY_PROFILE_STATS)
+      setToday(EMPTY_PROFILE_STATS)
       setMonths([])
       loadedRef.current = false
       setError(err instanceof Error ? err.message : String(err))
@@ -99,6 +118,8 @@ export function useProfileStats(active = true) {
   return {
     total,
     monthly,
+    /** Totals of the current local day, refreshed with the rest. */
+    today,
     months,
     selectedMonth,
     loading,

@@ -27,7 +27,7 @@ func runAlertPresetContract() throws {
   let url = FileManager.default.temporaryDirectory.appendingPathComponent("alert-presets-\(UUID()).db")
   defer { try? FileManager.default.removeItem(at: url) }
   var queue = try DatabaseQueue(path: url.path)
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   for item in fixture["cases"] as! [[String: Any]] {
     let name = item["name"] as! String; let metric = item["metric"] as! String; let spec = item["spec"] as! String
     let units = item["distanceUnit"] as? String ?? "km"
@@ -47,7 +47,7 @@ func runAlertPresetContract() throws {
     if let battery = item["batteryConfig"] {
       settings.append(.init(boardId: name, key: "batteryConfig", valueJson: String(decoding: try JSONSerialization.data(withJSONObject: battery), as: UTF8.self), updatedAt: 1))
     }
-    try BoardSettingsPersistence(writer: queue).upsertBoard(PersistedBoard(id: name, name: name, bleId: nil, transport: nil, createdAt: 1, deletedAt: nil), settings: settings, deletedKeys: [])
+    try BoardSettingsPersistence(writer: queue).upsertBoard(PersistedBoard(id: name, name: name, bleId: nil, createdAt: 1, deletedAt: nil), settings: settings, deletedKeys: [])
     try queue.write { try presetRow(name, metric, spec).save($0) }
     let stored = try storedRules(queue, name)
     let rules = try AlertRulePersistence(writer: queue).rules(boardId: name, reportPresetFailure: unexpectedPresetFailure).filter { $0.controlId == metric }
@@ -95,7 +95,7 @@ func runAlertPresetContract() throws {
     try require(rejected, "invalid preview rejected")
   }
 
-  let board = PersistedBoard(id: "board", name: "Board", bleId: nil, transport: nil, createdAt: 1, deletedAt: nil)
+  let board = PersistedBoard(id: "board", name: "Board", bleId: nil, createdAt: 1, deletedAt: nil)
   func apply(_ metric: String, level: String? = nil, geiger: String? = nil, match: Bool? = nil, board id: String = "board") throws {
     try AlertPresetPersistence(writer: queue).apply(boardId: id, metric: metric, level: level, geiger: geiger, match: match)
   }
@@ -185,9 +185,9 @@ func runAlertPresetUnitSwitchContract() throws {
   let url = FileManager.default.temporaryDirectory.appendingPathComponent("preset-units-\(UUID()).db")
   defer { try? FileManager.default.removeItem(at: url) }
   let queue = try DatabaseQueue(path: url.path)
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   for id in ["first", "second"] {
-    let board = PersistedBoard(id: id, name: id, bleId: nil, transport: nil, createdAt: 1, deletedAt: nil)
+    let board = PersistedBoard(id: id, name: id, bleId: nil, createdAt: 1, deletedAt: nil)
     try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [
       .init(boardId: id, key: "topSpeedKmh", valueJson: String((switchCase["topSpeedKmh"] as! NSNumber).doubleValue), updatedAt: 1),
     ], deletedKeys: [])
@@ -212,7 +212,7 @@ func runAlertPresetUnitSwitchContract() throws {
 /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/AlertPresetPersistenceHostTest.kt
 func runAlertPresetBoardLifecycleContract() throws {
   let queue = try DatabaseQueue()
-  try TelemetryDatabase.migrator.migrate(queue)
+  try VescapeDatabase.migrator.migrate(queue)
   let boards = BoardSettingsPersistence(writer: queue)
   func rider(_ boardId: String) -> PersistedAlertRule {
     PersistedAlertRule(
@@ -230,11 +230,11 @@ func runAlertPresetBoardLifecycleContract() throws {
     try presetRow("ghost", "speed", "preset(safe)").save(db)
   }
   try require(try expanded("ghost") == ["rider"], "missing Board expands nothing")
-  try boards.upsertBoard(PersistedBoard(id: "gone", name: "Gone", bleId: nil, transport: nil, createdAt: 1, deletedAt: nil), settings: [], deletedKeys: [])
+  try boards.upsertBoard(PersistedBoard(id: "gone", name: "Gone", bleId: nil, createdAt: 1, deletedAt: nil), settings: [], deletedKeys: [])
   try boards.tombstoneBoard(id: "gone", deletedAt: 2)
   try require(try expanded("gone").isEmpty, "tombstoned Board expands nothing")
 
-  try boards.upsertBoard(PersistedBoard(id: "board", name: "Board", bleId: nil, transport: nil, createdAt: 1, deletedAt: nil), settings: [], deletedKeys: [])
+  try boards.upsertBoard(PersistedBoard(id: "board", name: "Board", bleId: nil, createdAt: 1, deletedAt: nil), settings: [], deletedKeys: [])
   try queue.write { db in
     try rider("board").save(db)
     try presetRow("board", "duty", "preset(normal):match=on").save(db)
@@ -245,7 +245,7 @@ func runAlertPresetBoardLifecycleContract() throws {
   try require(failures == 1, "failing metric reported once")
   try require(isolated.contains("rider") && isolated.contains("preset:speed:0") && !isolated.contains { $0.hasPrefix("preset:duty") }, "failing metric skipped, the rest expand")
 
-  let fresh = PersistedBoard(id: "new", name: "New", bleId: nil, transport: nil, createdAt: 1, deletedAt: nil)
+  let fresh = PersistedBoard(id: "new", name: "New", bleId: nil, createdAt: 1, deletedAt: nil)
   let alerts = [try AlertPresetPersistence.presetRow(boardId: "new", metric: "speed", spec: "preset(safe)", createdAt: 1)!, rider("new")]
   try queue.write { try $0.execute(sql: "CREATE TRIGGER fail_rider BEFORE INSERT ON alerts WHEN NEW.id = 'rider' BEGIN SELECT RAISE(ABORT, 'test'); END") }
   var failed = false

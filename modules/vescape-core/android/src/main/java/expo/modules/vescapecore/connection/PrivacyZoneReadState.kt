@@ -1,6 +1,6 @@
 package expo.modules.vescapecore.connection
 
-import expo.modules.vescapecore.telemetry.PrivacyZoneEntity
+import expo.modules.vescapecore.database.PrivacyZoneEntity
 
 /**
  * Fail-closed privacy configuration: an empty loaded list is usable, while a failed read blocks

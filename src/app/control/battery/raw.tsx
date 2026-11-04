@@ -1,5 +1,6 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useMemo } from 'react'
-import { ScrollView, StyleSheet } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { BatteryChargingIcon } from 'phosphor-react-native'
 
@@ -32,8 +33,8 @@ export default function BatteryRawScreen() {
     : 'No smart-BMS detected. Re-link a board with a BMS over CAN to see live data.'
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero icon={BatteryChargingIcon} description={description} />
 
         <RawSection
@@ -49,7 +50,7 @@ export default function BatteryRawScreen() {
           exportName="bms-summary"
           empty="No usable cell voltages yet."
         />
-      </ScrollView>
+      </PageScrollView>
     </SafeAreaView>
   )
 }

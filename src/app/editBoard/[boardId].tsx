@@ -1,6 +1,7 @@
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { View } from 'react-native'
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native'
+import { KeyboardAvoidingView, Platform, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
 import { BracketsCurlyIcon, EngineIcon, WarningDiamondIcon } from 'phosphor-react-native'
@@ -110,8 +111,8 @@ export default function EditBoardScreen() {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <SafeAreaView style={styles.container} edges={[]}>
+        <PageScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <EditBoardSettings
             name={form.name}
             railId={editingBoard.personalization?.railId}
@@ -148,7 +149,7 @@ export default function EditBoardScreen() {
             onUnlink={form.unlink}
             onRemove={() => setRemoveConfirmVisible(true)}
           />
-        </ScrollView>
+        </PageScrollView>
       </SafeAreaView>
 
       <EdgeDrawer

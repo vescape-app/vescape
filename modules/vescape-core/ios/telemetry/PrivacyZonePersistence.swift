@@ -23,7 +23,7 @@ struct PersistedPrivacyZone: Codable, FetchableRecord, PersistableRecord {
 }
 
 /// Production Privacy Zone operations shared by the app adapter and host persistence contract.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct PrivacyZonePersistence {
   let writer: any DatabaseWriter
 

@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
+import expo.modules.vescapecore.database.BoardSettingEntity
 
 class BoardLinkPersistenceTest {
   private fun roundTrip(link: Map<String, Any?>): Map<*, *>? {

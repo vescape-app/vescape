@@ -38,6 +38,14 @@ test('remount restores the drawn heading even when direction expired or the spri
   let stop = mount()
   bearing = 180
   emit()
+  expect(scheduled).not.toBeNull()
+  // Expired native direction cancels a pending turn; a later usable target resumes it.
+  bearing = null
+  emit()
+  expect(scheduled).toBeNull()
+  expect(drawn).toBe(90)
+  bearing = 180
+  emit()
   for (let i = 0; i < 300 && scheduled; i++) {
     time += 16
     const frame = scheduled as ((now: number) => void) | null

@@ -7,7 +7,7 @@ final class TelemetryPersistenceTests: XCTestCase {
 
   override func setUpWithError() throws {
     dbQueue = try DatabaseQueue()
-    try TelemetryDatabase.migrator.migrate(dbQueue)
+    try VescapeDatabase.migrator.migrate(dbQueue)
   }
 
   private func state(capturedAtMs: Int64 = 1_800_000) -> FullTelemetryState {

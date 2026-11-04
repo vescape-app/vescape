@@ -38,7 +38,7 @@ test('build-only exports an APK without resolving or booting a device', async ()
     checkMaestro: unexpected,
     buildApp: async (received) => {
       expect(received.platform).toBe('android')
-      expect(received.replay).toBe('replay-thor301.jsonl')
+      expect(received.replay).toBe('replay-thor301-1hz.jsonl')
       return artifact
     },
     createDriver: unexpected,

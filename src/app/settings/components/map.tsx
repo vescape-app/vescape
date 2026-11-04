@@ -4,6 +4,7 @@ import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useRef, useState, type ComponentRef } from 'react'
 import { StyleSheet, View } from 'react-native'
+import { useSharedValue } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 import type { MapPoint, NavigationProfile } from 'vescape-core'
 
@@ -13,7 +14,6 @@ import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
-import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import {
   getSatelliteDarkMapStyle,
@@ -47,7 +47,7 @@ import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayer
 import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import { DASH } from '@/helpers/format'
 
-// Isolated fixture: showcase never subscribes to real GPS or telemetry.
+// Render-only fixture: never acquires native GPS or telemetry.
 const showcaseMotion = {
   now: () => performance.now(),
   duration: (ms: number) => ms,
@@ -59,9 +59,7 @@ const showcaseMotion = {
     subscribe: () => ({ remove() {} }),
   }),
   subscribe: () => () => {},
-  changed: () => {},
 }
-Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
 const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
   { key: 'speed', label: 'Speed' },
@@ -74,18 +72,12 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 ]
 
 export default function MapComponentsShowcase() {
-  const [pointAnimator] = useState(
-    () =>
-      new Mapbox.__experimental.MovePointShapeAnimator([
-        FIXTURE_ACCURACY_FIX.longitude,
-        FIXTURE_ACCURACY_FIX.latitude,
-      ]),
-  )
-
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  // Fixture camera is north-up and flat, so the arrow shows the raw fixture bearing.
+  const mapPose = useSharedValue({ heading: 0, pitch: 0 })
+  const puckBearing = useSharedValue<number | null>(FIXTURE_GPS_PUCK_BEARING_DEG)
   const [styleExpanded, setStyleExpanded] = useState(false)
-  const [gpsHeadingMode, setGpsHeadingMode] = useState(true)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
   const [mapPoints] = useState<MapPoint[]>(FIXTURE_MAP_POINTS)
@@ -152,9 +144,7 @@ export default function MapComponentsShowcase() {
         {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
         {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
         <MainMapLayers
-          gpsHeadingMode={gpsHeadingMode}
           displayRuntime={showcaseMotion}
-          pointAnimator={pointAnimator}
           historyActive={false}
           expandSelectedMapPoints
           isMapy={isMapy}
@@ -167,7 +157,8 @@ export default function MapComponentsShowcase() {
           rideRouteShape={null}
           accuracyFix={FIXTURE_ACCURACY_FIX}
           accuracyShape={FIXTURE_ACCURACY_SHAPE}
-          gpsPuckBearingDeg={FIXTURE_GPS_PUCK_BEARING_DEG}
+          puckBearing={puckBearing}
+          mapPose={mapPose}
           riders={FIXTURE_RIDERS}
           rideRoute={[]}
           rideTelemetrySamples={[]}
@@ -257,8 +248,6 @@ export default function MapComponentsShowcase() {
         title="Map options"
         onClose={() => setSheetVisible(false)}
       >
-        <LiveMotionControls evidence={null} />
-        <ToggleRow label="GPS travel arrow" value={gpsHeadingMode} onToggle={setGpsHeadingMode} />
         <ToggleRow label="Weather radar" value={weatherActive} onToggle={setWeatherActive} />
         <ToggleRow label="Legal limits" value={legalLimitsActive} onToggle={setLegalLimitsActive} />
         <ChipRow
@@ -272,6 +261,7 @@ export default function MapComponentsShowcase() {
             if (match) setActiveHistoryMapMetric(match.key)
           }}
         />
+        <LiveMotionControls />
         <ValueRow label="Last interaction" value={lastEvent ?? DASH} />
         <Text style={styles.hint}>
           Tap a pin to expand its label + delete button. Buildings 3D follows the style (Outdoors,
