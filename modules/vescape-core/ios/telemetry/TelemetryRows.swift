@@ -127,6 +127,7 @@ internal func exclusionMap(_ row: Row) -> [String: Any?] {
   var metrics: [String: Bool] = [:]
   if reason == EXCLUSION_REASON_LOW_SPEED { metrics[METRIC_AVG_SPEED] = true }
   if reason == EXCLUSION_REASON_FREE_SPIN {
+    metrics[METRIC_AVG_SPEED] = true
     metrics[METRIC_MAX_SPEED] = true
     metrics[METRIC_MAX_DUTY] = true
   }

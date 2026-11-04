@@ -1757,8 +1757,6 @@ public class VescapeCoreModule: Module {
         "movingSpeedThresholdKmh",
         "avgSpeedCutoffKmh",
         "movingAvgSpeedThresholdKmh",
-        "freeSpinMaxSpeedDeltaKmh",
-        "freeSpinStationaryBoardCapKmh",
         "socEstimateWindowSeconds",
         "telemetryPollRateHz",
         "boardWarningsEnabled",

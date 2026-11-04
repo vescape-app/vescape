@@ -10,11 +10,7 @@ internal class LowSpeedAverageSpeedSanitizer(
 ) : MetricSampleSanitizer {
   private val threshold = movingSpeedThresholdCentiKmh.coerceAtLeast(0)
 
-  override fun sanitize(
-    index: Int,
-    point: BucketTelemetryPoint,
-    context: MetricSanitizationContext,
-  ): MetricSanitizerOutput {
+  override fun sanitize(point: BucketTelemetryPoint): MetricSanitizerOutput {
     val absSpeed = abs(point.speedCentiKmh)
     if (absSpeed >= threshold) return MetricSanitizerOutput()
 

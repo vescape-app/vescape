@@ -14,8 +14,6 @@ const BASE: AppSettings = {
   directionPointLongitude: null,
   movingSpeedThresholdKmh: 3,
   rideSplitGapMinutes: 30,
-  freeSpinMaxSpeedDeltaKmh: 12,
-  freeSpinStationaryBoardCapKmh: 15,
   distanceUnit: 'km',
   temperatureUnit: 'celsius',
   themeMode: 'system',

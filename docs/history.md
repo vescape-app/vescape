@@ -132,7 +132,7 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
   `MaintenanceJobs.swift` list every job in run order. A job declares a `version`, the setting keys
   its output depends on (`inputKeys`, normalized by `inputs`), and `requiresNetwork`.
 - **Done state.** A job is done when the `app_settings` row `maintenanceJob.<id>` holds its
-  fingerprint `version|inputs`, e.g. `1|moving=300|freeSpinDelta=1200|freeSpinCap=1500`. Anything
+  fingerprint `version|inputs`, e.g. `2|moving=300`. Anything
   else is stale. A done job costs one row read. Fingerprints travel with backups, so restoring an
   older backup makes its jobs stale again. There is no progress cursor and no pending-work state: a
   run that stops early restarts from zero, and the missing fingerprint is the only obligation. A job
@@ -164,9 +164,9 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
 **Ride summaries** is the first job. Its inputs are the Metric Sanitizer settings. It rebuilds
 minute buckets, exclusion ranges and route previews oldest first, one transaction per owned chunk:
 whole minutes, half-open `[from, to)`, at most one clock hour. Inside the transaction it reads the
-frames and Ride Track of the chunk, plus read-only context: each Board's delta chain and the last
-precise fix from the previous chunk (dropped when a ride deletion removed them) and fixes up to 10 s
-outside the chunk for the free-spin sanitizer. It then replaces the chunk's buckets and the chunk's
+frames and Ride Track of the chunk, plus read-only context from the previous chunk: each Board's
+delta chain and free-spin state, and the last precise fix (dropped when a ride deletion removed
+them). It then replaces the chunk's buckets and the chunk's
 portion of every exclusion range, keeping portions outside it. Rebuilt ranges are plain inserts and
 never merge across a chunk edge, so rebuilding twice gives identical rows. History stays complete
 throughout: a mix of old and new hours, never a missing ride.

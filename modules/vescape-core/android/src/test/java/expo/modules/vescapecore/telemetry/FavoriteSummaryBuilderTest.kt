@@ -55,7 +55,8 @@ class FavoriteSummaryBuilderTest {
   @Test
   fun summaryExcludesIdleSamplesFromAverageSpeed() {
     val idle = ridePoints(startMs = 0, count = 10, speedCentiKmh = 0)
-    val moving = ridePoints(startMs = 10_000, count = 10)
+    // Samples further apart than an acceleration is read across, so 0 → 20 km/h is no spin-up.
+    val moving = ridePoints(startMs = 11_000, count = 10)
 
     val summary = buildFavoriteSummary(bucketsFor(idle + moving))
 
@@ -201,7 +202,7 @@ class FavoriteSummaryBuilderTest {
   }
 
   private fun bucketsFor(points: List<BucketTelemetryPoint>): Collection<TelemetryMinuteBucketEntity> {
-    val sanitization = sanitizeTelemetrySamples(points, emptyList(), MetricSanitizerConfig())
+    val sanitization = sanitizeTelemetrySamples(points)
     val sanitized = points.mapIndexed { index, point ->
       point.copy(
         excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
@@ -212,10 +213,7 @@ class FavoriteSummaryBuilderTest {
     return buildTelemetryBuckets(telemetryPoints = sanitized, locationPoints = emptyList())
   }
 
-  /**
-   * A steady ride: constant speed, odometer advancing 1 m per second, no GPS (so the free-spin
-   * sanitizer has nothing to compare against and leaves max speed alone).
-   */
+  /** A steady ride: constant speed, so no free spin, and the odometer advancing 1 m per second. */
   private fun ridePoints(
     startMs: Long,
     count: Int,

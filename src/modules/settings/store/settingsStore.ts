@@ -29,8 +29,6 @@ const DEFAULTS: AppSettings = {
   directionPointLatitude: null,
   directionPointLongitude: null,
   movingSpeedThresholdKmh: 3,
-  freeSpinMaxSpeedDeltaKmh: 12,
-  freeSpinStationaryBoardCapKmh: 15,
   rideSplitGapMinutes: DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   distanceUnit: 'km',
   temperatureUnit: 'celsius',

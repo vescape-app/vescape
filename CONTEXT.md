@@ -88,6 +88,10 @@ _Avoid_: Stale Board Link, disconnected
 A rule that marks an implausible telemetry-derived value as excluded from ride metrics without changing the original sample.
 _Avoid_: Filter, smoother, cleaner
 
+**Free Spin**:
+The wheel turning without the rider's weight on it: in the air, or slipping. Found from Board telemetry, as a fast speed climb on little motor current, and kept until the Board is loaded again. Its samples are excluded from every speed metric and Max Duty (ADR 0043).
+_Avoid_: Wheel spin, air spin
+
 **Metric Exclusion**:
 A durable annotation that explains why a metric value from a Telemetry Sample was left out of one or more ride metrics.
 _Avoid_: Deleted value, hidden sample, rejected packet

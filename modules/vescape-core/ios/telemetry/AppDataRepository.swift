@@ -665,8 +665,6 @@ final class AppDataRepository {
     "legalPolicy": NSNull(),
     "movingSpeedThresholdKmh": 3,
     "rideSplitGapMinutes": DEFAULT_RIDE_SPLIT_GAP_MINUTES,
-    "freeSpinMaxSpeedDeltaKmh": DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
-    "freeSpinStationaryBoardCapKmh": DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
     "distanceUnit": "km",
     "temperatureUnit": "celsius",
     "themeMode": "system",

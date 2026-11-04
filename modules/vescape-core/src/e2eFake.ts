@@ -65,8 +65,6 @@ const e2eSettings: AppSettings = {
   directionPointLatitude: null,
   directionPointLongitude: null,
   movingSpeedThresholdKmh: 5,
-  freeSpinMaxSpeedDeltaKmh: 3,
-  freeSpinStationaryBoardCapKmh: 1,
   rideSplitGapMinutes: 30,
   distanceUnit: 'km',
   temperatureUnit: 'celsius',

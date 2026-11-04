@@ -112,7 +112,8 @@ The two streams are joined on time at read, never at write, and never re-clocked
   Track-only buckets carry no Telemetry Samples, so they never move a sample-based statistic.
 - The Metric Sanitizers read the Ride Track directly for the free-spin speed comparison, rather than
   a fix synthesised back onto a sample. Live sanitization uses the fixes the packets arrived with,
-  which is the same rule against the live equivalent of the stream.
+  which is the same rule against the live equivalent of the stream. _Superseded by ADR 0043: free
+  spin no longer reads GPS._
 
 ## Disconnect intent
 
