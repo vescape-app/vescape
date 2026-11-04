@@ -1,0 +1,1065 @@
+{
+  "scenarios": [
+    {
+      "name": "stationary display and unused diagnostics leave no recurring work",
+      "events": [
+        {
+          "op": "options",
+          "body": {
+            "active": true
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLiveState",
+          "body": {
+            "board": {
+              "phase": "connected",
+              "connectionSeq": 1,
+              "recentTelemetry": []
+            },
+            "gps": {
+              "displaySourceId": 1,
+              "displayClockMs": 0,
+              "displayClockRate": 1,
+              "latestFix": {
+                "longitude": 0,
+                "latitude": 0,
+                "timestamp": 0,
+                "accuracyM": 3
+              }
+            }
+          }
+        },
+        {
+          "op": "advance",
+          "now": 33
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 33,
+            "displaySourceId": 1,
+            "displayClockMs": 33,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 66
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 66,
+            "displaySourceId": 1,
+            "displayClockMs": 66,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 99
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 99,
+            "displaySourceId": 1,
+            "displayClockMs": 99,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 132
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 132,
+            "displaySourceId": 1,
+            "displayClockMs": 132,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 165
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 165,
+            "displaySourceId": 1,
+            "displayClockMs": 165,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 198
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 198,
+            "displaySourceId": 1,
+            "displayClockMs": 198,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 231
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 231,
+            "displaySourceId": 1,
+            "displayClockMs": 231,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 264
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 264,
+            "displaySourceId": 1,
+            "displayClockMs": 264,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 297
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 297,
+            "displaySourceId": 1,
+            "displayClockMs": 297,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 330
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 330,
+            "displaySourceId": 1,
+            "displayClockMs": 330,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 363
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 363,
+            "displaySourceId": 1,
+            "displayClockMs": 363,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 396
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 396,
+            "displaySourceId": 1,
+            "displayClockMs": 396,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 429
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 429,
+            "displaySourceId": 1,
+            "displayClockMs": 429,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 462
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 462,
+            "displaySourceId": 1,
+            "displayClockMs": 462,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 495
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 495,
+            "displaySourceId": 1,
+            "displayClockMs": 495,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 528
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 528,
+            "displaySourceId": 1,
+            "displayClockMs": 528,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 561
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 561,
+            "displaySourceId": 1,
+            "displayClockMs": 561,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 594
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 594,
+            "displaySourceId": 1,
+            "displayClockMs": 594,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 627
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 627,
+            "displaySourceId": 1,
+            "displayClockMs": 627,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 660
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 660,
+            "displaySourceId": 1,
+            "displayClockMs": 660,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 693
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 693,
+            "displaySourceId": 1,
+            "displayClockMs": 693,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 726
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 726,
+            "displaySourceId": 1,
+            "displayClockMs": 726,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 759
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 759,
+            "displaySourceId": 1,
+            "displayClockMs": 759,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 792
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 792,
+            "displaySourceId": 1,
+            "displayClockMs": 792,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 825
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 825,
+            "displaySourceId": 1,
+            "displayClockMs": 825,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 858
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 858,
+            "displaySourceId": 1,
+            "displayClockMs": 858,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 891
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 891,
+            "displaySourceId": 1,
+            "displayClockMs": 891,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 924
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 924,
+            "displaySourceId": 1,
+            "displayClockMs": 924,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 957
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 957,
+            "displaySourceId": 1,
+            "displayClockMs": 957,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 990
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 0,
+            "lastPacketAt": 990,
+            "displaySourceId": 1,
+            "displayClockMs": 990,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "emissions": 2,
+            "pending": 0,
+            "diagnostics": null,
+            "segmentsCount": 0,
+            "trailCount": 0,
+            "raw": null
+          }
+        },
+        {
+          "op": "advance",
+          "now": 100000
+        },
+        {
+          "op": "check",
+          "expect": {
+            "emissions": 2,
+            "pending": 0
+          }
+        },
+        {
+          "op": "options",
+          "body": {
+            "active": false
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "pending": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "unusable acquisition raw quality recovery and teardown",
+      "events": [
+        {
+          "op": "options",
+          "body": {
+            "active": true,
+            "diagnostics": true,
+            "raw": true,
+            "trail": true
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLiveState",
+          "body": {
+            "board": {
+              "phase": "connected",
+              "connectionSeq": 1,
+              "recentTelemetry": []
+            },
+            "gps": {
+              "displaySourceId": 1,
+              "displayClockMs": 0,
+              "displayClockRate": 1,
+              "latestFix": {
+                "longitude": 0,
+                "latitude": 0,
+                "timestamp": 0,
+                "accuracyM": null
+              }
+            }
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "position": null,
+            "raw.accepted": false,
+            "raw.accuracyM": null
+          }
+        },
+        {
+          "op": "advance",
+          "now": 3000
+        },
+        {
+          "op": "check",
+          "expect": {
+            "raw.stale": true,
+            "diagnostics.reason": "gps-unusable",
+            "trailCount": 0
+          }
+        },
+        {
+          "op": "advance",
+          "now": 4000
+        },
+        {
+          "op": "input",
+          "name": "onLocation",
+          "body": {
+            "longitude": 8.983111749910169e-5,
+            "latitude": 0,
+            "timestamp": 4000,
+            "accuracyM": 3,
+            "displaySourceId": 1,
+            "displayClockMs": 4000,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "raw.accepted": true,
+            "raw.stale": false
+          }
+        },
+        {
+          "op": "advance",
+          "now": 4500
+        },
+        {
+          "op": "input",
+          "name": "onLocation",
+          "body": {
+            "longitude": 0.0008893280632411067,
+            "latitude": 0,
+            "timestamp": 4500,
+            "accuracyM": -1,
+            "displaySourceId": 1,
+            "displayClockMs": 4500,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "raw.accepted": false
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLocation",
+          "body": {
+            "longitude": 0.00017966223499820338,
+            "latitude": 0,
+            "timestamp": 4400,
+            "accuracyM": 3,
+            "displaySourceId": 1,
+            "displayClockMs": 4400,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "raw.timestamp": 4500
+          }
+        },
+        {
+          "op": "advance",
+          "now": 5000
+        },
+        {
+          "op": "input",
+          "name": "onLocation",
+          "body": {
+            "longitude": 0.00017966223499820338,
+            "latitude": 0,
+            "timestamp": 5000,
+            "accuracyM": 3,
+            "displaySourceId": 1,
+            "displayClockMs": 5000,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 20,
+            "lastPacketAt": 5000,
+            "displaySourceId": 1,
+            "displayClockMs": 5000,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 5500
+        },
+        {
+          "op": "check",
+          "expect": {
+            "minTrail": 2
+          }
+        },
+        {
+          "op": "options",
+          "body": {
+            "active": false
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "pending": 0,
+            "trailCount": 0,
+            "raw": null
+          }
+        },
+        {
+          "op": "advance",
+          "now": 20000
+        },
+        {
+          "op": "check",
+          "expect": {
+            "pending": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "native replay clock and source generation reject delayed events",
+      "events": [
+        {
+          "op": "options",
+          "body": {
+            "active": true
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLiveState",
+          "body": {
+            "board": {
+              "phase": "connected",
+              "connectionSeq": 1,
+              "recentTelemetry": []
+            },
+            "gps": {
+              "displaySourceId": 1,
+              "displayClockMs": 100000,
+              "displayClockRate": 4,
+              "latestFix": {
+                "longitude": 0,
+                "latitude": 0,
+                "timestamp": 100000,
+                "accuracyM": 3
+              }
+            }
+          }
+        },
+        {
+          "op": "advance",
+          "now": 250
+        },
+        {
+          "op": "input",
+          "name": "onLocation",
+          "body": {
+            "longitude": 8.983111749910169e-5,
+            "latitude": 0,
+            "timestamp": 101000,
+            "accuracyM": 3,
+            "displaySourceId": 1,
+            "displayClockMs": 101000,
+            "displayClockRate": 4
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "clockMs": 1000
+          }
+        },
+        {
+          "op": "advance",
+          "now": 375
+        },
+        {
+          "op": "check",
+          "expect": {
+            "clockMs": 1500
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 20,
+            "lastPacketAt": 101500,
+            "displaySourceId": 0,
+            "displayClockMs": 101500,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "clockMs": 1500,
+            "clockRate": 4
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLocation",
+          "body": {
+            "longitude": 0.00017966223499820338,
+            "latitude": 0,
+            "timestamp": 101500,
+            "accuracyM": 3,
+            "displaySourceId": 1,
+            "displayClockMs": 101500,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "clockMs": 1500,
+            "clockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 500
+        },
+        {
+          "op": "check",
+          "expect": {
+            "clockMs": 1625
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 0,
+            "speed": 20,
+            "lastPacketAt": 101625,
+            "displaySourceId": 1,
+            "displayClockMs": 101625,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "clockMs": 1625
+          }
+        },
+        {
+          "op": "options",
+          "body": {
+            "active": false
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "pending": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "overlay toggles stop collection independently",
+      "events": [
+        {
+          "op": "options",
+          "body": {
+            "active": true,
+            "trail": true,
+            "raw": true
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLiveState",
+          "body": {
+            "board": {
+              "phase": "connected",
+              "connectionSeq": 1,
+              "recentTelemetry": []
+            },
+            "gps": {
+              "displaySourceId": 1,
+              "displayClockMs": 0,
+              "displayClockRate": 1,
+              "latestFix": {
+                "longitude": 0,
+                "latitude": 0,
+                "timestamp": 0,
+                "accuracyM": 3
+              }
+            }
+          }
+        },
+        {
+          "op": "advance",
+          "now": 1000
+        },
+        {
+          "op": "input",
+          "name": "onLocation",
+          "body": {
+            "longitude": 8.983111749910169e-5,
+            "latitude": 0,
+            "timestamp": 1000,
+            "accuracyM": 3,
+            "displaySourceId": 1,
+            "displayClockMs": 1000,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLiveTick",
+          "body": {
+            "generation": 1,
+            "speed": 20,
+            "lastPacketAt": 1000,
+            "displaySourceId": 1,
+            "displayClockMs": 1000,
+            "displayClockRate": 1
+          }
+        },
+        {
+          "op": "advance",
+          "now": 1600
+        },
+        {
+          "op": "check",
+          "expect": {
+            "minTrail": 2,
+            "raw.timestamp": 1000
+          }
+        },
+        {
+          "op": "options",
+          "body": {
+            "trail": false
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "trailCount": 0,
+            "raw.timestamp": 1000
+          }
+        },
+        {
+          "op": "options",
+          "body": {
+            "raw": false
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "raw": null
+          }
+        },
+        {
+          "op": "advance",
+          "now": 5000
+        },
+        {
+          "op": "check",
+          "expect": {
+            "pending": 0,
+            "segmentsCount": 0
+          }
+        },
+        {
+          "op": "options",
+          "body": {
+            "active": false
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "pending": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "resume uses newest cached weak fix rather than an older precise fix",
+      "events": [
+        {
+          "op": "options",
+          "body": {
+            "active": true,
+            "raw": true,
+            "diagnostics": true
+          }
+        },
+        {
+          "op": "input",
+          "name": "onLiveState",
+          "body": {
+            "board": {
+              "phase": "connected",
+              "connectionSeq": 1,
+              "recentTelemetry": []
+            },
+            "gps": {
+              "displaySourceId": 1,
+              "displayClockMs": 1000,
+              "displayClockRate": 1,
+              "latestFix": {
+                "longitude": 0,
+                "latitude": 0,
+                "timestamp": 0,
+                "accuracyM": 3
+              },
+              "latestApproximateFix": {
+                "longitude": 0.001,
+                "latitude": 0,
+                "timestamp": 1000,
+                "accuracyM": null
+              }
+            }
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "position": null,
+            "raw.accepted": false,
+            "raw.timestamp": 1000
+          }
+        },
+        {
+          "op": "options",
+          "body": {
+            "active": false
+          }
+        },
+        {
+          "op": "check",
+          "expect": {
+            "pending": 0
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -2380,7 +2380,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 locationTracker.displaySourceId.toDouble(), rider?.timestamp?.toDouble() ?: 0.0,
                 displayClock.timestampMs.toDouble(), rider?.let { maxOf(0L, displayClock.timestampMs - it.timestamp).toDouble() } ?: 1e9,
                 current?.let { maxOf(0L, displayClock.timestampMs - it.lastPacketAt).toDouble() } ?: 1e9,
-                rider?.accuracyM ?: 1e9, displayClock.rate,
+                rider?.accuracyM, displayClock.rate,
             ),
             trail = expo.modules.vescapecore.watch.watchTrail(
                 rider?.let { GeoPoint(it.latitude, it.longitude) },
@@ -2441,6 +2441,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         tick["speedPeak"] = processed.speedPeak
         tick["dutyPeak"] = processed.dutyPeak
         tick["generation"] = generation
+        val displayClock = sessionClock.displaySample()
+        tick["displaySourceId"] = locationTracker.displaySourceId
+        tick["displayClockMs"] = displayClock.timestampMs
+        tick["displayClockRate"] = displayClock.rate
         tick["remoteTilt"] = remoteTiltState()
         if (firedAlerts.isNotEmpty()) tick["firedAlerts"] = firedAlerts
         return tick

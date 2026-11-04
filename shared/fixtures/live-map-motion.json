@@ -1143,6 +1143,470 @@
           "cameraHeading": 45
         }
       ]
+    },
+    {
+      "name": "unusable accuracy None stops prediction and recovers",
+      "events": [
+        {
+          "op": "reset",
+          "source": 1,
+          "now": 0
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5
+        },
+        {
+          "op": "fix",
+          "now": 1200,
+          "eastM": 999,
+          "accuracyM": null,
+          "accepted": false
+        },
+        {
+          "op": "sample",
+          "now": 1200,
+          "prediction": 0,
+          "reason": "gps-unusable"
+        },
+        {
+          "op": "fix",
+          "now": 1300,
+          "timestamp": 1100,
+          "eastM": 100,
+          "accepted": false
+        },
+        {
+          "op": "sample",
+          "now": 1300,
+          "prediction": 0
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 20
+        },
+        {
+          "op": "speed",
+          "now": 2000,
+          "mps": 5
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "prediction": 0.5,
+          "cadenceMs": 1000
+        }
+      ]
+    },
+    {
+      "name": "unusable accuracy -1 stops prediction and recovers",
+      "events": [
+        {
+          "op": "reset",
+          "source": 1,
+          "now": 0
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5
+        },
+        {
+          "op": "fix",
+          "now": 1200,
+          "eastM": 999,
+          "accuracyM": -1,
+          "accepted": false
+        },
+        {
+          "op": "sample",
+          "now": 1200,
+          "prediction": 0,
+          "reason": "gps-unusable"
+        },
+        {
+          "op": "fix",
+          "now": 1300,
+          "timestamp": 1100,
+          "eastM": 100,
+          "accepted": false
+        },
+        {
+          "op": "sample",
+          "now": 1300,
+          "prediction": 0
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 20
+        },
+        {
+          "op": "speed",
+          "now": 2000,
+          "mps": 5
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "prediction": 0.5,
+          "cadenceMs": 1000
+        }
+      ]
+    },
+    {
+      "name": "unusable accuracy nan stops prediction and recovers",
+      "events": [
+        {
+          "op": "reset",
+          "source": 1,
+          "now": 0
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5
+        },
+        {
+          "op": "fix",
+          "now": 1200,
+          "eastM": 999,
+          "accuracyM": "nan",
+          "accepted": false
+        },
+        {
+          "op": "sample",
+          "now": 1200,
+          "prediction": 0,
+          "reason": "gps-unusable"
+        },
+        {
+          "op": "fix",
+          "now": 1300,
+          "timestamp": 1100,
+          "eastM": 100,
+          "accepted": false
+        },
+        {
+          "op": "sample",
+          "now": 1300,
+          "prediction": 0
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 20
+        },
+        {
+          "op": "speed",
+          "now": 2000,
+          "mps": 5
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "prediction": 0.5,
+          "cadenceMs": 1000
+        }
+      ]
+    },
+    {
+      "name": "unusable accuracy 100 stops prediction and recovers",
+      "events": [
+        {
+          "op": "reset",
+          "source": 1,
+          "now": 0
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5
+        },
+        {
+          "op": "fix",
+          "now": 1200,
+          "eastM": 999,
+          "accuracyM": 100,
+          "accepted": false
+        },
+        {
+          "op": "sample",
+          "now": 1200,
+          "prediction": 0,
+          "reason": "gps-unusable"
+        },
+        {
+          "op": "fix",
+          "now": 1300,
+          "timestamp": 1100,
+          "eastM": 100,
+          "accepted": false
+        },
+        {
+          "op": "sample",
+          "now": 1300,
+          "prediction": 0
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 20
+        },
+        {
+          "op": "speed",
+          "now": 2000,
+          "mps": 5
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "prediction": 0.5,
+          "cadenceMs": 1000
+        }
+      ]
+    },
+    {
+      "name": "intersection backwards creep holds camera then sustained reverse confirms",
+      "events": [
+        {
+          "op": "reset",
+          "source": 1,
+          "now": 0
+        },
+        {
+          "op": "fix",
+          "now": 0,
+          "eastM": 0
+        },
+        {
+          "op": "fix",
+          "now": 1000,
+          "eastM": 10
+        },
+        {
+          "op": "speed",
+          "now": 1000,
+          "mps": 5
+        },
+        {
+          "op": "speed",
+          "now": 1500,
+          "mps": 0
+        },
+        {
+          "op": "fix",
+          "now": 2000,
+          "eastM": 9.5
+        },
+        {
+          "op": "sample",
+          "now": 2000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 3000,
+          "eastM": 9
+        },
+        {
+          "op": "sample",
+          "now": 3000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 4000,
+          "eastM": 8.5
+        },
+        {
+          "op": "sample",
+          "now": 4000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 5000,
+          "eastM": 8
+        },
+        {
+          "op": "sample",
+          "now": 5000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 6000,
+          "eastM": 10
+        },
+        {
+          "op": "sample",
+          "now": 6000,
+          "cameraHeading": 90
+        },
+        {
+          "op": "fix",
+          "now": 7000,
+          "eastM": 9.5
+        },
+        {
+          "op": "fix",
+          "now": 8000,
+          "eastM": 9.0
+        },
+        {
+          "op": "fix",
+          "now": 9000,
+          "eastM": 8.5
+        },
+        {
+          "op": "fix",
+          "now": 10000,
+          "eastM": 8.0
+        },
+        {
+          "op": "fix",
+          "now": 11000,
+          "eastM": 7.5
+        },
+        {
+          "op": "fix",
+          "now": 12000,
+          "eastM": 7.0
+        },
+        {
+          "op": "fix",
+          "now": 13000,
+          "eastM": 6.5
+        },
+        {
+          "op": "fix",
+          "now": 14000,
+          "eastM": 6.0
+        },
+        {
+          "op": "fix",
+          "now": 15000,
+          "eastM": 5.5
+        },
+        {
+          "op": "fix",
+          "now": 16000,
+          "eastM": 5.0
+        },
+        {
+          "op": "fix",
+          "now": 17000,
+          "eastM": 4.5
+        },
+        {
+          "op": "fix",
+          "now": 18000,
+          "eastM": 4.0
+        },
+        {
+          "op": "fix",
+          "now": 19000,
+          "eastM": 3.5
+        },
+        {
+          "op": "fix",
+          "now": 20000,
+          "eastM": 3.0
+        },
+        {
+          "op": "fix",
+          "now": 21000,
+          "eastM": 2.5
+        },
+        {
+          "op": "fix",
+          "now": 22000,
+          "eastM": 2.0
+        },
+        {
+          "op": "fix",
+          "now": 23000,
+          "eastM": 1.5
+        },
+        {
+          "op": "fix",
+          "now": 24000,
+          "eastM": 1.0
+        },
+        {
+          "op": "fix",
+          "now": 25000,
+          "eastM": 0.5
+        },
+        {
+          "op": "fix",
+          "now": 26000,
+          "eastM": 0.0
+        },
+        {
+          "op": "sample",
+          "now": 26000,
+          "cameraHeading": 270
+        },
+        {
+          "op": "reset",
+          "source": 2,
+          "now": 27000
+        },
+        {
+          "op": "fix",
+          "now": 27000,
+          "eastM": 0
+        },
+        {
+          "op": "sample",
+          "now": 27000,
+          "cameraHeading": 270
+        }
+      ]
     }
   ]
 }

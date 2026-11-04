@@ -1,4 +1,4 @@
-import type { LiveGpsMotion } from './motion'
+import type { MotionDisplay } from './display'
 
 /** Thin adapter for the existing linear native animator. No renderer-side motion/rebasing math. */
 export function startPointAnimation({
@@ -10,7 +10,7 @@ export function startPointAnimation({
   schedule,
   cancel,
 }: {
-  motion: LiveGpsMotion
+  motion: MotionDisplay
   moveTo: (coordinate: [number, number], durationMs: number) => void
   subscribe: (listener: () => void) => () => void
   now: () => number
@@ -20,14 +20,19 @@ export function startPointAnimation({
 }) {
   let timer: ReturnType<typeof setTimeout> | null = null
   let revision: number | null = null
+  let wasActive = false
   function update() {
     if (timer != null) cancel(timer)
     timer = null
     if (!isActive()) {
-      const coordinate = motion.position(now())
-      if (coordinate) moveTo(coordinate, 0)
+      if (wasActive) {
+        const coordinate = motion.position(now())
+        if (coordinate) moveTo(coordinate, 0)
+      }
+      wasActive = false
       return
     }
+    wasActive = true
     const segment = motion.segment(now())
     if (!segment.from || !segment.to) return
     if (revision !== segment.revision) {

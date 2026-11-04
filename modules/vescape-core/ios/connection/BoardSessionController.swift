@@ -2700,6 +2700,10 @@ internal final class BoardSessionController: VescGattListener {
     var liveTick = tick
     liveTick["speedPeak"] = peaks.speed
     liveTick["dutyPeak"] = peaks.duty
+    let displayClock = gpsDisplayClockSample()
+    liveTick["displaySourceId"] = gpsDisplaySourceId()
+    liveTick["displayClockMs"] = displayClock.timestampMs
+    liveTick["displayClockRate"] = displayClock.rate
     emit?("onLiveTick", liveTick)
 
     if let capture = telemetryCapture(telemetry) {
@@ -2859,7 +2863,7 @@ internal final class BoardSessionController: VescGattListener {
         sourceId: Double(locationTracker.displaySourceId), fixTimestamp: Double(rider?.timestamp ?? 0),
         sentAt: Double(displayClock.timestampMs), gpsAgeMs: rider.map { Double(max(0, displayClock.timestampMs - $0.timestamp)) } ?? 1e9,
         boardAgeMs: current.map { Double(max(0, displayClock.timestampMs - $0.lastPacketAt)) } ?? 1e9,
-        accuracyM: rider?.accuracyM ?? 1e9, clockRate: displayClock.rate
+        accuracyM: rider?.accuracyM, clockRate: displayClock.rate
       ),
       mapPosition: rider.map { WatchMapPosition(latitude: $0.latitude, longitude: $0.longitude) },
       riderSpeedMps: rider?.speedMps

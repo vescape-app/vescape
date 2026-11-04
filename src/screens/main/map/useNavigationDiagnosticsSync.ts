@@ -25,9 +25,11 @@ export function useNavigationDiagnosticsSync({
   displayedCameraHeading: number
   mapOrientationMode: MapOrientationMode
 }) {
+  const consumers = useNavigationDiagnosticsStore((state) => state.motionConsumers)
   const updateNavigationDiagnostics = useNavigationDiagnosticsStore((state) => state.update)
 
   useEffect(() => {
+    if (!consumers) return
     updateNavigationDiagnostics({
       gpsFix,
       retainedGpsBearingDeg: courseDeg,
@@ -45,6 +47,7 @@ export function useNavigationDiagnosticsSync({
       }),
     })
   }, [
+    consumers,
     displayedCameraHeading,
     gpsFix,
     gpsPinBearingDeg,

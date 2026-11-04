@@ -18,6 +18,14 @@ class WatchMotionFactsTest {
         assertEquals(input, WatchFrameDecoder.decode(WatchFrameBuilder.encode(frame))!!.motionFacts)
         assertNull(WatchMotionFacts.decode(List(9) { Double.NaN }))
     }
+    @Test fun `absent accuracy survives the float32 wire without losing motion clocks`() {
+        val input = facts(epoch + 999).copy(accuracyM = null)
+        val frame = PhoneFrame(20.0, null, null, null, null, false, motionFacts = input)
+        val decoded = WatchFrameDecoder.decode(WatchFrameBuilder.encode(frame))!!.motionFacts!!
+        assertEquals(input, decoded)
+        assertNull(decoded.accuracyM)
+        assertEquals(input.sourceId, decoded.sourceId, 0.0)
+    }
     @Test fun `different clocks delayed frames and source resets`() {
         val clock = WatchMotionClock()
         assertEquals(0.0, clock.accept(facts(epoch), 10_000.0)!!, 0.001)

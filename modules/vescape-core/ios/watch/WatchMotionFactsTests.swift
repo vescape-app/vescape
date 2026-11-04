@@ -20,6 +20,14 @@ final class WatchMotionFactsTests: XCTestCase {
     XCTAssertEqual(old.mapPosition, frame.mapPosition)
     XCTAssertNil(WatchMotionFacts.decode([Double](repeating: .nan, count: 9)))
   }
+  func testAbsentAccuracySurvivesFloat32WireWithoutLosingMotionClocks() throws {
+    var input = facts(1793100000999)
+    input.accuracyM = nil
+    let frame = WatchFrame(speed: 20, motionFacts: input)
+    let decoded = try XCTUnwrap(WatchFrameBuilder.decode(WatchFrameBuilder.encode(frame))?.motionFacts)
+    XCTAssertEqual(decoded, input)
+    XCTAssertNil(decoded.accuracyM)
+  }
   func testDifferentDeviceClocksDelayedFramesAndSourceReset() throws {
     let c = WatchMotionClock(), epoch = 1793100000000.0
     XCTAssertEqual(c.accept(facts(epoch), now: 10_000), 0)

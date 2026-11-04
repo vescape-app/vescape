@@ -124,4 +124,7 @@ two generic interpolation defects on both platforms: compute progress from the c
 age (upstream used the previous frame's progress time), and land exactly on the target at expiry
 (upstream stopped on the previous frame). No GPS, speed, prediction or correction logic lives here.
 The production point adapter sends linear segments only on input changes and segment boundaries.
+The iOS module also registers its own generated TurboModule spec; upstream registered the point
+annotation spec, leaving `generate` and `moveTo` unavailable at runtime. Its Objective-C selectors
+and scalar argument types match that generated spec, with boxing only at the Swift boundary.
 Native rebuilds are required after changing this patch.

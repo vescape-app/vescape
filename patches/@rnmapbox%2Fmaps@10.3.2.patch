@@ -545,3 +545,19 @@ diff --git a/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.swift b/
 +      ? (animatorAgeSec - point.startedAtSec) / point.totalDurationSec : 1
 @@ -37,0 +39 @@
 +      point.setProgress(value: point.target, animatorAgeSec: animatorAgeSec)
+diff --git a/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.mm b/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.mm
+--- a/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.mm
++++ b/ios/RNMBX/ShapeAnimators/RNMBXMovePointShapeAnimatorModule.mm
+@@ -28,2 +28,2 @@
+-RCT_EXPORT_METHOD(generate:(nonnull NSNumber*)tag startCoordinate: (nonnull NSArray*)startCoordinate resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+-  resolve([[MovePointShapeAnimator generateWithTag:tag startCoordinate:startCoordinate] getTag]);
++RCT_EXPORT_METHOD(generate:(NSInteger)tag coordinate:(nonnull NSArray*)coordinate resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
++  resolve([[MovePointShapeAnimator generateWithTag:@(tag) startCoordinate:coordinate] getTag]);
+@@ -32,2 +32,2 @@
+-RCT_EXPORT_METHOD(moveTo:(nonnull NSNumber*)tag coordinate: (nonnull NSArray*)coordinate durationMs: (nonnull NSNumber*)durationMs resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+-  [MovePointShapeAnimator moveToTag:tag coordinate:coordinate durationMs:durationMs resolve:resolve reject:reject];
++RCT_EXPORT_METHOD(moveTo:(NSInteger)tag coordinate:(nonnull NSArray*)coordinate duration:(double)duration resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
++  [MovePointShapeAnimator moveToTag:@(tag) coordinate:coordinate durationMs:@(duration) resolve:resolve reject:reject];
+@@ -39 +39 @@
+-    return std::make_shared<facebook::react::NativeRNMBXPointAnnotationModuleSpecJSI>(params);
++    return std::make_shared<facebook::react::NativeRNMBXMovePointShapeAnimatorModuleSpecJSI>(params);

@@ -1,3 +1,4 @@
+import { MotionComparisonLayers } from '@/modules/map/components/MotionComparisonLayers'
 import { startPointAnimation } from '@/modules/map/lib/liveMotion/pointAnimation'
 import { CircleLayer, FillLayer, Images, LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
 import { useEffect, useRef, useState } from 'react'
@@ -90,6 +91,7 @@ export function LiveMapLayers({
 
   return (
     <>
+      <MotionComparisonLayers motion={displayRuntime.motion} />
       {liveTrailShape && (
         <ShapeSource id="center-live-trail-source" shape={liveTrailShape} lineMetrics>
           <LineLayer

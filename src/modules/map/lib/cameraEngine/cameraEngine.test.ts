@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
 import { createCameraEngine, type EngineCamera } from './engine'
-import { defaultMotionConfig } from '@/modules/map/lib/liveMotion/config'
 import {
   createSpring,
   nearestBearingTarget,
@@ -506,7 +505,7 @@ test('continuous follow samples between GPS ticks, keeps deliberate lag and rele
 test('GPS heading keeps rotating across one-second fixes without restarting angular motion', () => {
   const { engine, tick } = createTestEngine()
   engine.reset(camera([0, 0], 14, 0, 28))
-  engine.configureOmega({ heading: defaultMotionConfig.cameraHeadingOmega })
+  engine.configureOmega({ heading: 1 })
   let heading = 30
   engine.follow(() => ({ heading }))
   const tickHeading = () => {
@@ -540,4 +539,68 @@ test('GPS heading keeps rotating across one-second fixes without restarting angu
     }
   }
   engine.destroy()
+})
+
+test('stationary follow idles after fling hold and an explicit segment change wakes it', () => {
+  const { engine, run, hasPending } = createTestEngine()
+  engine.reset(camera([21, 52], 14, 0, 28))
+  let target: [number, number] = [21, 52]
+  const follow = () => ({ center: target, motion: { moving: false, wakeAfterMs: null } })
+  engine.follow(follow)
+  run(1000)
+  expect(hasPending()).toBe(false)
+  target = [21.0001, 52]
+  engine.follow(follow)
+  expect(hasPending()).toBe(true)
+  run(1000)
+  expect(hasPending()).toBe(false)
+  expect(engine.getCamera().centerCoordinate).toEqual(target)
+  engine.destroy()
+})
+
+test('a future segment wakes by deadline without polling and destroy cancels its wake', () => {
+  let now = 0
+  let frame: ((at: number) => void) | null = null
+  let wake: (() => void) | null = null
+  let wakeDelay = 0
+  const engine = createCameraEngine({
+    applyFrame() {},
+    now: () => now,
+    scheduleFrame: (callback) => {
+      frame = (at) => {
+        frame = null
+        callback(at)
+      }
+      return 1
+    },
+    cancelFrame: () => {
+      frame = null
+    },
+    holdAfterTargetMs: 0,
+    scheduleWake: (callback, delay) => {
+      wake = () => {
+        wake = null
+        callback()
+      }
+      wakeDelay = delay
+      return 1 as unknown as ReturnType<typeof setTimeout>
+    },
+    cancelWake: () => {
+      wake = null
+    },
+  })
+  engine.reset(camera([0, 0]))
+  engine.follow(() => ({ center: [0, 0], motion: { moving: false, wakeAfterMs: 1000 - now } }))
+  now = 16
+  const first = frame as ((at: number) => void) | null
+  first?.(now)
+  expect(frame).toBeNull()
+  expect(wakeDelay).toBe(984)
+  now = 1000
+  const deadline = wake as (() => void) | null
+  deadline?.()
+  expect(frame).not.toBeNull()
+  engine.destroy()
+  expect(frame).toBeNull()
+  expect(wake).toBeNull()
 })

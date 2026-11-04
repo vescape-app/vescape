@@ -29,6 +29,8 @@ export interface EngineCamera {
 }
 
 export interface CameraEngineTarget {
+  /** Supplied by native segments, including a future moving segment. */
+  motion?: { moving: boolean; wakeAfterMs: number | null }
   center?: [number, number]
   zoom?: number
   heading?: number
@@ -82,6 +84,8 @@ export interface CameraEngineConfig {
   /** Injectable for tests. Defaults to requestAnimationFrame. */
   scheduleFrame?: (callback: (timestampMs: number) => void) => number
   cancelFrame?: (handle: number) => void
+  scheduleWake?: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>
+  cancelWake?: (handle: ReturnType<typeof setTimeout>) => void
   /** Injectable for tests. Milliseconds clock used to time `driveExternal` samples. */
   now?: () => number
 }
@@ -217,6 +221,27 @@ export interface CameraEngine {
   destroy: () => void
 }
 
+/** One deadline wake, cancelled with the owning surface. */
+function createDeadlineWake(config: CameraEngineConfig) {
+  let handle: ReturnType<typeof setTimeout> | null = null
+  const schedule = config.scheduleWake ?? ((callback, ms) => setTimeout(callback, ms))
+  const cancelTimer = config.cancelWake ?? clearTimeout
+  const cancel = () => {
+    if (handle != null) cancelTimer(handle)
+    handle = null
+  }
+  return {
+    cancel,
+    schedule: (callback: () => void, ms: number) => {
+      cancel()
+      handle = schedule(() => {
+        handle = null
+        callback()
+      }, ms)
+    },
+  }
+}
+
 export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   const omega: CameraEngineOmega = { ...CAMERA_ENGINE_DEFAULT_OMEGA, ...config.omega }
   const teleportDistanceM = config.teleportDistanceM ?? CAMERA_ENGINE_DEFAULT_TELEPORT_DISTANCE_M
@@ -236,6 +261,8 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
           minZoom: config.ballistic?.minZoom ?? CAMERA_ENGINE_DEFAULT_BALLISTIC_MIN_ZOOM,
         }
 
+  const wake = createDeadlineWake(config)
+  let followMotion: CameraEngineTarget['motion']
   let samplingTarget = false
   let followTarget: (() => CameraEngineTarget | null) | null = null
   let springs: EngineSprings | null = null
@@ -342,6 +369,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   }
 
   const stopLoop = () => {
+    wake.cancel()
     if (frameHandle != null) cancelFrame(frameHandle)
     frameHandle = null
     lastFrameMs = null
@@ -366,6 +394,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
       samplingTarget = true
       try {
         const target = followTarget()
+        followMotion = target?.motion
         if (target) setTarget(target)
       } finally {
         samplingTarget = false
@@ -394,7 +423,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
     springs = s
     emit(s)
 
-    if (settled(s) && !followTarget) {
+    if (settled(s) && !followMotion?.moving) {
       // Land exactly on target so the map doesn't rest epsilon off.
       springs = {
         lng: snapSpring(s.lng, s.lng.target),
@@ -414,8 +443,12 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
         return
       }
       holdUntilMs = null
-      targetOwned = false
+      // Follow retains ownership while asleep. New segments/intents explicitly wake it.
+      if (!followTarget) targetOwned = false
       lastFrameMs = null
+      if (followTarget && followMotion?.wakeAfterMs != null) {
+        wake.schedule(ensureLoop, followMotion.wakeAfterMs)
+      }
       return
     }
     frameHandle = scheduleFrame(frame)
@@ -506,7 +539,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   const setTarget = (target: CameraEngineTarget) => {
     if (!springs) return
     lastDriveMs = null
-    claimTarget()
+    if (!samplingTarget || !targetOwned) claimTarget()
     if (target.center) {
       const from = { longitude: springs.lng.x, latitude: springs.lat.x }
       const to = { longitude: target.center[0], latitude: target.center[1] }
@@ -545,6 +578,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
       targetOwned = false
       holdUntilMs = null
       followTarget = null
+      followMotion = undefined
     } else if (targetOwned) {
       // Momentum from a throw that predates the target, or an echo of the
       // engine's own write. Neither is a driver.
@@ -630,6 +664,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
 
   const stop = () => {
     followTarget = null
+    followMotion = undefined
     stopLoop()
     lastDriveMs = null
     targetOwned = false
@@ -650,6 +685,8 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   return {
     follow: (sample) => {
       followTarget = sample
+      followMotion = undefined
+      wake.cancel()
       ensureLoop()
     },
     configureOmega: (values) => {

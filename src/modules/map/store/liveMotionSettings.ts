@@ -1,21 +1,22 @@
-import { setWatchDisplayConfig } from 'vescape-core'
+import { setMapDisplayConfig, type MotionConfig } from 'vescape-core'
 import { create } from 'zustand'
-import {
-  defaultMotionConfig,
-  validMotionConfig,
-  type MotionConfig,
-} from '@/modules/map/lib/liveMotion/config'
 
-/** Developer experiment, deliberately not persisted. One configuration per phone runtime. */
+/** Session-only intents; native returns the validated configuration and forwards it to watches. */
 export const useLiveMotionSettings = create<{
   config: MotionConfig
+  showSmoothedTrail: boolean
+  showRawGpsPoint: boolean
+  setOverlay: (key: 'showSmoothedTrail' | 'showRawGpsPoint', value: boolean) => void
   set: (key: keyof MotionConfig, value: number) => void
   reset: () => void
 }>((set) => ({
-  config: { ...defaultMotionConfig },
+  config: setMapDisplayConfig({}),
+  showSmoothedTrail: false,
+  showRawGpsPoint: false,
+  setOverlay: (key, value) => set({ [key]: value }),
   set: (key, value) =>
-    set((state) => ({ config: validMotionConfig({ ...state.config, [key]: value }) })),
-  reset: () => set({ config: { ...defaultMotionConfig } }),
+    set((state) => ({
+      config: setMapDisplayConfig({ ...state.config, [key]: value }),
+    })),
+  reset: () => set({ config: setMapDisplayConfig({}) }),
 }))
-
-useLiveMotionSettings.subscribe((state) => setWatchDisplayConfig(state.config))

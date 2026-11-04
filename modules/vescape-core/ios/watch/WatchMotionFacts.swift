@@ -4,14 +4,15 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMotionFacts.kt
 struct WatchMotionFacts: Equatable {
   var sourceId: Double, fixTimestamp: Double, sentAt: Double
-  var gpsAgeMs: Double, boardAgeMs: Double, accuracyM: Double
+  var gpsAgeMs: Double, boardAgeMs: Double
+  var accuracyM: Double?
   var clockRate = 1.0
   var lanes: [Double] {
-    [sourceId, fixTimestamp, sentAt].flatMap { [floor($0 / 1048576), $0.truncatingRemainder(dividingBy: 1048576)] } + [gpsAgeMs, boardAgeMs, accuracyM, clockRate]
+    [sourceId, fixTimestamp, sentAt].flatMap { [floor($0 / 1048576), $0.truncatingRemainder(dividingBy: 1048576)] } + [gpsAgeMs, boardAgeMs, accuracyM ?? .nan, clockRate]
   }
   static func decode(_ lanes: [Double]) -> WatchMotionFacts? {
-    guard lanes.count == 10, lanes.allSatisfy({ $0.isFinite && $0 >= 0 }) else { return nil }
-    return WatchMotionFacts(sourceId: lanes[0] * 1048576 + lanes[1], fixTimestamp: lanes[2] * 1048576 + lanes[3], sentAt: lanes[4] * 1048576 + lanes[5], gpsAgeMs: lanes[6], boardAgeMs: lanes[7], accuracyM: lanes[8], clockRate: min(100, max(0.1, lanes[9])))
+    guard lanes.count == 10, lanes.enumerated().allSatisfy({ $0.offset == 8 || ($0.element.isFinite && $0.element >= 0) }) else { return nil }
+    return WatchMotionFacts(sourceId: lanes[0] * 1048576 + lanes[1], fixTimestamp: lanes[2] * 1048576 + lanes[3], sentAt: lanes[4] * 1048576 + lanes[5], gpsAgeMs: lanes[6], boardAgeMs: lanes[7], accuracyM: lanes[8].isFinite && lanes[8] >= 0 ? lanes[8] : nil, clockRate: min(100, max(0.1, lanes[9])))
   }
 }
 

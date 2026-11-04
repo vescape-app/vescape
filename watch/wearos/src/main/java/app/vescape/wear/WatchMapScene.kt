@@ -1,5 +1,7 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.display.*
+
 import expo.modules.vescapecore.watch.WatchRouteNotice
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope

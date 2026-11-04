@@ -1,5 +1,5 @@
-import { DisplayClock } from '@/modules/map/lib/liveMotion/clock'
-import { LiveGpsMotion } from '@/modules/map/lib/liveMotion/motion'
+import { MotionDisplay } from '@/modules/map/lib/liveMotion/display'
+import { LiveMotionControls } from '@/modules/map/components/LiveMotionControls'
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useRef, useState, type ComponentRef } from 'react'
@@ -49,11 +49,15 @@ import { DASH } from '@/helpers/format'
 
 // Isolated fixture: showcase never subscribes to real GPS or telemetry.
 const showcaseMotion = {
-  clock: new DisplayClock(),
   now: () => performance.now(),
   duration: (ms: number) => ms,
   active: false,
-  motion: new LiveGpsMotion(),
+  motion: new MotionDisplay('bench', {
+    command: () => {
+      throw new Error('Showcase is render-only')
+    },
+    subscribe: () => ({ remove() {} }),
+  }),
   subscribe: () => () => {},
   changed: () => {},
 }
@@ -253,6 +257,7 @@ export default function MapComponentsShowcase() {
         title="Map options"
         onClose={() => setSheetVisible(false)}
       >
+        <LiveMotionControls evidence={null} />
         <ToggleRow label="GPS travel arrow" value={gpsHeadingMode} onToggle={setGpsHeadingMode} />
         <ToggleRow label="Weather radar" value={weatherActive} onToggle={setWeatherActive} />
         <ToggleRow label="Legal limits" value={legalLimitsActive} onToggle={setLegalLimitsActive} />

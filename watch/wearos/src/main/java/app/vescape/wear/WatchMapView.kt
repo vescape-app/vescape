@@ -1,5 +1,7 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.display.*
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing

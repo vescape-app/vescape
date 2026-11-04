@@ -1,3 +1,4 @@
+import { useScreenVisible } from '@/hooks/useScreenVisible'
 import { LiveMotionControls } from '@/modules/map/components/LiveMotionControls'
 import { useEffect, useMemo, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
@@ -19,6 +20,7 @@ import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDia
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function NavigationDiagnosticScreen() {
+  const visible = useScreenVisible()
   const progress = useMapStore((s) => s.routeProgress)
   const showConnector = useNavigationDiagnosticsStore((s) => s.showProjectionConnector)
   const setShowConnector = useNavigationDiagnosticsStore((s) => s.setShowProjectionConnector)
@@ -39,9 +41,10 @@ export default function NavigationDiagnosticScreen() {
     })),
   )
   useEffect(() => {
+    if (!visible) return
     const timer = setInterval(() => setNow(Date.now()), 1_000)
     return () => clearInterval(timer)
-  }, [])
+  }, [visible])
 
   const vm = useMemo(
     () =>

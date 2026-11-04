@@ -1,5 +1,7 @@
+import { MotionComparisonLayers } from '@/modules/map/components/MotionComparisonLayers'
 import { useScreenVisible } from '@/hooks/useScreenVisible'
-import { LiveGpsMotion, type MotionDiagnostics } from '@/modules/map/lib/liveMotion/motion'
+import { createMotionDisplay } from '@/modules/map/lib/liveMotion/nativeDisplay'
+import type { MotionDiagnostics } from 'vescape-core'
 import { startPointAnimation } from '@/modules/map/lib/liveMotion/pointAnimation'
 import { useLiveMotionSettings } from '@/modules/map/store/liveMotionSettings'
 import { LiveMotionControls } from '@/modules/map/components/LiveMotionControls'
@@ -69,49 +71,54 @@ const INITIAL_CAMERA: EngineCamera = {
 export function MapPlaygroundScreen() {
   const accents = useResolvedAccentColors()
   const active = useScreenVisible()
-  const [motion] = useState(() => new LiveGpsMotion())
+  const [motion] = useState(() => createMotionDisplay('bench'))
   const [pointAnimator] = useState(() => new Mapbox.__experimental.MovePointShapeAnimator(START))
-  const [pointListeners] = useState(() => new Set<() => void>())
-  const benchSource = useRef(1)
-  const changed = useCallback(() => {
-    for (const listener of pointListeners) listener()
-  }, [pointListeners])
   const config = useLiveMotionSettings((state) => state.config)
   useEffect(() => {
     if (!active) return
-    const at = performance.now()
-    benchSource.current++
-    motion.reset(benchSource.current, at)
-    motion.accept(
-      {
-        longitude: gpsStateRef.current.position[0],
-        latitude: gpsStateRef.current.position[1],
-        timestamp: at,
-        accuracyM: 3,
-      },
-      at,
-      0,
-      benchSource.current,
-    )
-    motion.configure(useLiveMotionSettings.getState().config, at)
-    return startPointAnimation({
+    const disconnect = motion.connect()
+    const options = () => {
+      const settings = useLiveMotionSettings.getState()
+      motion.command({
+        op: 'options',
+        active: true,
+        diagnostics: true,
+        trail: settings.showSmoothedTrail,
+        raw: settings.showRawGpsPoint,
+      })
+    }
+    options()
+    const stopSettings = useLiveMotionSettings.subscribe((state, previous) => {
+      if (
+        state.showSmoothedTrail !== previous.showSmoothedTrail ||
+        state.showRawGpsPoint !== previous.showRawGpsPoint
+      )
+        options()
+    })
+    motion.command({ op: 'reset' })
+    motion.command({
+      op: 'fix',
+      longitude: gpsStateRef.current.position[0],
+      latitude: gpsStateRef.current.position[1],
+      timestamp: performance.now(),
+      accuracyM: 3,
+    })
+    const stopAnimation = startPointAnimation({
       motion,
-      now: () => performance.now(),
-      moveTo: (coordinate, durationMs) => pointAnimator.moveTo({ coordinate, durationMs }),
-      subscribe: (listener) => {
-        pointListeners.add(listener)
-        return () => {
-          pointListeners.delete(listener)
-        }
-      },
-      schedule: setTimeout,
+      now: motion.now,
+      moveTo: (coordinate, durationMs) =>
+        pointAnimator.moveTo({ coordinate, durationMs: motion.duration(durationMs) }),
+      subscribe: motion.subscribe,
+      schedule: (callback, ms) => setTimeout(callback, motion.duration(ms)),
       cancel: clearTimeout,
     })
-  }, [active, motion, pointAnimator, pointListeners])
-  useEffect(() => {
-    motion.configure(config, performance.now())
-    changed()
-  }, [changed, config, motion])
+    return () => {
+      stopAnimation()
+      stopSettings()
+      motion.command({ op: 'options', active: false })
+      disconnect()
+    }
+  }, [active, motion, pointAnimator])
   const cameraRef = useRef<CameraRef>(null)
   const engineRef = useRef<CameraEngine | null>(null)
   const cameraStateRef = useRef<EngineCamera>(INITIAL_CAMERA)
@@ -202,14 +209,18 @@ export function MapPlaygroundScreen() {
       zoom: zoomRef.current,
       ...(driversRef.current.compassOn ? { heading: targetRef.current.heading } : {}),
     })
-    engine.follow(() => ({
-      center: motion.position(performance.now()) ?? targetRef.current.center,
+    const follow = () => ({
+      motion: motion.motionState(motion.now()),
+      center: motion.position(motion.now()) ?? targetRef.current.center,
       ...(driversRef.current.compassOn
         ? {}
-        : { heading: motion.cameraHeading(performance.now()) ?? engine.getCamera().heading }),
-    }))
+        : { heading: motion.cameraHeading(motion.now()) ?? engine.getCamera().heading }),
+    })
+    engine.follow(follow)
+    const wake = motion.subscribe(() => engine.follow(follow))
     engineRef.current = engine
     return () => {
+      wake()
       engine.destroy()
       if (engineRef.current === engine) engineRef.current = null
     }
@@ -223,9 +234,10 @@ export function MapPlaygroundScreen() {
   }, [omegaCenter, omegaHeading])
 
   useEffect(() => {
+    if (!active) return
     const id = setInterval(() => {
       const { gpsMode: mode, gpsRunning: running, speedKmh: speed } = driversRef.current
-      if (!running || !active) return
+      if (!running) return
       const sample = advanceFakeGps({
         state: gpsStateRef.current,
         mode,
@@ -235,30 +247,22 @@ export function MapPlaygroundScreen() {
       gpsStateRef.current = sample.state
       targetRef.current.center = sample.reported
       setGpsFix(sample.reported)
-      const at = performance.now()
-      motion.accept(
-        {
-          longitude: sample.reported[0],
-          latitude: sample.reported[1],
-          timestamp: at,
-          accuracyM: mode === 'jitter' ? 12 : 3,
-        },
-        at,
-        0,
-        benchSource.current,
-      )
-      changed()
+      motion.command({
+        op: 'fix',
+        longitude: sample.reported[0],
+        latitude: sample.reported[1],
+        timestamp: performance.now(),
+        accuracyM: mode === 'jitter' ? 12 : 3,
+      })
     }, GPS_TICK_MS)
     return () => clearInterval(id)
-  }, [active, changed, motion])
+  }, [active, motion])
 
   useEffect(() => {
+    if (!active) return
     const id = setInterval(() => {
-      if (!active) return
       const { compassOn: on, compassNoise: noise, speedKmh: speed } = driversRef.current
-      const at = performance.now()
-      motion.updateSpeed(speed / 3.6, at, at, benchSource.current)
-      changed()
+      motion.command({ op: 'speed', mps: speed / 3.6 })
       if (!on) return
       compassElapsedRef.current += COMPASS_TICK_MS / 1000
       const heading = fakeCompassHeading({
@@ -270,16 +274,16 @@ export function MapPlaygroundScreen() {
       engineRef.current?.setTarget({ heading })
     }, COMPASS_TICK_MS)
     return () => clearInterval(id)
-  }, [active, changed, motion])
+  }, [active, motion])
 
   useEffect(() => {
+    if (!active) return
     const id = setInterval(() => {
-      if (!active) return
       setTraces({ lng: [...tracesRef.current.lng], heading: [...tracesRef.current.heading] })
       setReadout({
         camera: cameraStateRef.current,
         animating: engineRef.current?.isAnimating() ?? false,
-        evidence: motion.diagnostics(performance.now()),
+        evidence: motion.evidence(),
       })
     }, UI_TICK_MS)
     return () => clearInterval(id)
@@ -294,16 +298,14 @@ export function MapPlaygroundScreen() {
     gpsStateRef.current = { ...gpsStateRef.current, position: far }
     targetRef.current.center = far
     setGpsFix(far)
-    const at = performance.now()
-    benchSource.current++
-    motion.reset(benchSource.current, at)
-    motion.accept(
-      { longitude: far[0], latitude: far[1], timestamp: at, accuracyM: 3 },
-      at,
-      0,
-      benchSource.current,
-    )
-    changed()
+    motion.command({ op: 'reset' })
+    motion.command({
+      op: 'fix',
+      longitude: far[0],
+      latitude: far[1],
+      timestamp: performance.now(),
+      accuracyM: 3,
+    })
     engineRef.current?.setTarget({ center: far })
   }
 
@@ -311,16 +313,14 @@ export function MapPlaygroundScreen() {
     gpsStateRef.current = createFakeGpsState(START)
     targetRef.current.center = START
     setGpsFix(START)
-    const at = performance.now()
-    benchSource.current++
-    motion.reset(benchSource.current, at)
-    motion.accept(
-      { longitude: START[0], latitude: START[1], timestamp: at, accuracyM: 3 },
-      at,
-      0,
-      benchSource.current,
-    )
-    changed()
+    motion.command({ op: 'reset' })
+    motion.command({
+      op: 'fix',
+      longitude: START[0],
+      latitude: START[1],
+      timestamp: performance.now(),
+      accuracyM: 3,
+    })
     engineRef.current?.snap({ center: START, zoom })
   }
 
@@ -337,6 +337,7 @@ export function MapPlaygroundScreen() {
           attributionEnabled={false}
           compassEnabled={false}
         >
+          <MotionComparisonLayers motion={motion} />
           <Mapbox.Camera
             ref={cameraRef}
             defaultSettings={{

@@ -1,4 +1,4 @@
-import { useLiveMotionSettings } from '@/modules/map/store/liveMotionSettings'
+import { useMotionCameraFollow } from '@/modules/map/hooks/useMotionCameraFollow'
 import type { Camera as CameraRef } from '@rnmapbox/maps'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions } from 'react-native'
@@ -269,6 +269,7 @@ export function useCameraControls({
       return null
     const center = displayMotion.position(displayNow())
     return {
+      motion: displayMotion.motionState(displayNow()),
       ...(center ? { center } : {}),
       ...(mapOrientationMode === 'gpsHeading'
         ? {
@@ -402,21 +403,15 @@ export function useCameraControls({
     previewGestures.previewPanActiveRef,
   ])
 
-  const motionConfig = useLiveMotionSettings((state) => state.config)
-  useEffect(
-    () =>
-      engine.configureOmega({
-        center: motionConfig.cameraPositionOmega,
-        heading: mapOrientationMode === 'gpsHeading' ? motionConfig.cameraHeadingOmega : 8,
-      }),
-    [engine, mapOrientationMode, motionConfig],
-  )
-
-  useEffect(() => {
-    engine.follow(displayActive && !historyActive && followGps ? sampleLiveDisplay : null)
-    if (!displayActive) engine.stop()
-    return () => engine.follow(null)
-  }, [displayActive, engine, followGps, historyActive, sampleLiveDisplay])
+  useMotionCameraFollow({
+    motion: displayMotion,
+    engine,
+    sample: sampleLiveDisplay,
+    controller: controllerStateRef,
+    active: displayActive && !historyActive,
+    enabled: followGps,
+    gpsHeading: mapOrientationMode === 'gpsHeading',
+  })
 
   // Every orientation change has to reach the camera, not only the ones that enter or leave GPS
   // heading. Compass drives the heading straight into the engine, so switching away from it leaves

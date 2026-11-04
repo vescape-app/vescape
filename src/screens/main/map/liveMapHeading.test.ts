@@ -28,6 +28,7 @@ mock.module('@/modules/group-ride/lib/selectedBoardRailColor', () => ({ useSelec
 mock.module('@/modules/group-ride/components/RiderMapLayers', () => ({ RiderPresencePin: () => null, RiderTrail: () => null }))
 mock.module('@/modules/map/constants/mapStyles', () => ({ MAP_DEFAULTS: { trailWidth: 2, userPositionLayerId: 'center-gps-puck-core' } }))
 mock.module('@/modules/map/store/liveMotionSettings', () => ({ useLiveMotionSettings: {} }))
+mock.module('@/modules/map/components/MotionComparisonLayers', () => ({ MotionComparisonLayers: () => null }))
 const { LiveMapLayers } = await import('./src/screens/main/map/LiveMapLayers')
 const props = {
   pointAnimator: {}, displayRuntime: { active: true, motion: {}, now: () => 1000 },
