@@ -130,13 +130,15 @@ export const useMapPointStore = create<MapPointState & MapPointActions>((set, ge
       // Nothing is cached offline (Map Points are server-owned), so the map goes empty and says so.
       // `lastRead` is dropped so a still camera retries on its next idle instead of staying empty
       // until the rider pans far enough to beat the skip heuristic.
-      set({
-        mapPoints: [],
+      // An already-empty set keeps its identity: offline, every camera idle retries and fails, and a
+      // fresh [] each time re-rendered the whole map tree for nothing.
+      set((s) => ({
+        mapPoints: s.mapPoints.length === 0 ? s.mapPoints : [],
         truncated: false,
         loading: false,
         lastRead: null,
         error: mapPointErrorMessage(error),
-      })
+      }))
     }
 
     const next = queuedRead

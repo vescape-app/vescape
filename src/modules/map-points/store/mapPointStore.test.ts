@@ -158,6 +158,17 @@ test('a failed read empties the map and reports why', async () => {
   expect(state.error).toBe('Could not reach the server. Map features need a connection.')
 })
 
+/** Offline, every camera idle retries and fails; a fresh [] each time re-rendered the map tree. */
+test('repeated failed reads keep the same empty set', async () => {
+  nearbyError = new ApiError('MAP_POINT_UNREACHABLE')
+  await useMapPointStore.getState().refreshNearby(52.1, 21.1, 14)
+  const empty = useMapPointStore.getState().mapPoints
+
+  await useMapPointStore.getState().refreshNearby(52.1, 21.1, 14)
+
+  expect(useMapPointStore.getState().mapPoints).toBe(empty)
+})
+
 /** Otherwise a rider parked on the spot would sit on an empty map until they panned far enough. */
 test('a still camera retries after a failed read', async () => {
   nearbyError = new ApiError('MAP_POINT_UNREACHABLE')

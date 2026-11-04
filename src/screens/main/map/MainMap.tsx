@@ -179,7 +179,6 @@ export const MainMap = memo(
       dismissHistoryMarker,
       closeLegalCountry,
     } = useMapOverlaySelection(legalLimitsActive)
-    const [cameraHeading, setCameraHeading] = useState(0)
     const mapPose = useSharedValue<MapPose>({ heading: 0, pitch: 0 })
     const [cameraZoom, setCameraZoom] = useState<number>(MAP_DEFAULTS.fallbackZoom)
     const { mapViewRef, mapLayout, handleMapLayout, getViewfinderCoordinateFromMap } =
@@ -261,19 +260,16 @@ export const MainMap = memo(
     )
     const headingFollowMode = gpsHeadingMode || phoneHeadingMode
     useRenderRateWarning('MainMap')
-    const followHeadingDeg = gpsHeadingMode
-      ? (directionBearingDeg ?? 0)
-      : phoneHeadingMode
-        ? cameraHeading
-        : 0
+    // The rendered heading comes from `mapPose`, not React state: holding it in state re-rendered
+    // the whole map on every camera idle — about once per fix while following.
     const getFollowHeadingDeg = useCallback(
       () =>
         gpsHeadingMode
           ? (directionBearingDeg ?? 0)
           : phoneHeadingMode
-            ? (phoneHeadingDegRef.current ?? cameraHeading)
+            ? (phoneHeadingDegRef.current ?? mapPose.get().heading)
             : 0,
-      [cameraHeading, directionBearingDeg, gpsHeadingMode, phoneHeadingMode],
+      [directionBearingDeg, gpsHeadingMode, mapPose, phoneHeadingMode],
     )
 
     const {
@@ -324,9 +320,6 @@ export const MainMap = memo(
       phoneHeadingDeg: null,
       gpsBearingDeg: directionBearingDeg,
     })
-    const displayedCameraHeading = followGps && headingFollowMode ? followHeadingDeg : cameraHeading
-    const gpsPinBearingDeg =
-      gpsPuckBearingDeg == null ? null : gpsPuckBearingDeg - displayedCameraHeading
 
     const {
       indicators: offscreenMapIndicators,
@@ -402,8 +395,8 @@ export const MainMap = memo(
       courseSourceTimestamp: retainedGpsBearingSourceTimestamp,
       phoneHeadingDegRef,
       phoneHeadingStatus,
-      gpsPinBearingDeg,
-      displayedCameraHeading,
+      gpsPuckBearingDeg,
+      mapPose,
       mapOrientationMode,
     })
 
@@ -416,7 +409,7 @@ export const MainMap = memo(
       cameraFix,
       gpsCameraCenter: gpsCamera.centerCoordinate,
       followGps,
-      followHeadingDeg,
+      getFollowHeadingDeg,
       headingFollowMode,
       historyActive,
       historyPreview,
@@ -434,7 +427,6 @@ export const MainMap = memo(
       repositionOffscreenIndicatorsForCamera,
       scheduleOffscreenMapIndicatorRefresh,
       updateOffscreenMapIndicators,
-      setCameraHeading,
       mapPose,
       setCameraReady,
       setCameraZoom,

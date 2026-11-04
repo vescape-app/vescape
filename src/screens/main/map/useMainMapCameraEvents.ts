@@ -21,7 +21,7 @@ export function useMainMapCameraEvents({
   cameraFix,
   gpsCameraCenter,
   followGps,
-  followHeadingDeg,
+  getFollowHeadingDeg,
   headingFollowMode,
   historyActive,
   historyPreview,
@@ -39,7 +39,6 @@ export function useMainMapCameraEvents({
   repositionOffscreenIndicatorsForCamera,
   scheduleOffscreenMapIndicatorRefresh,
   updateOffscreenMapIndicators,
-  setCameraHeading,
   mapPose,
   setCameraReady,
   setCameraZoom,
@@ -52,7 +51,7 @@ export function useMainMapCameraEvents({
   cameraFix: GpsFix | null
   gpsCameraCenter: [number, number]
   followGps: boolean
-  followHeadingDeg: number
+  getFollowHeadingDeg: () => number
   headingFollowMode: boolean
   historyActive: boolean
   historyPreview: ({ key: string } & HistoryPreviewTarget) | null
@@ -71,7 +70,6 @@ export function useMainMapCameraEvents({
   repositionOffscreenIndicatorsForCamera: (camera: CameraSnapshot) => void
   scheduleOffscreenMapIndicatorRefresh: () => void
   updateOffscreenMapIndicators: () => void
-  setCameraHeading: Dispatch<SetStateAction<number>>
   mapPose: SharedValue<MapPose>
   setCameraReady: Dispatch<SetStateAction<boolean>>
   setCameraZoom: Dispatch<SetStateAction<number>>
@@ -94,7 +92,7 @@ export function useMainMapCameraEvents({
           ? camera.heading
           : historyActive
             ? 0
-            : followHeadingDeg
+            : getFollowHeadingDeg()
       const initialPitch = getPitchForZoom(camera.zoomLevel, perspectiveEnabled)
       cameraRef.current?.setCamera({
         ...camera,
@@ -116,7 +114,7 @@ export function useMainMapCameraEvents({
       controllerStateRef,
       currentCameraRef,
       engine,
-      followHeadingDeg,
+      getFollowHeadingDeg,
       getHistoryPreviewCamera,
       getLiveFollowCamera,
       historyActive,
@@ -186,7 +184,7 @@ export function useMainMapCameraEvents({
           historyActive,
           centerDistanceM: gestureCenterDistanceM,
           headingDeg: state.properties.heading,
-          followHeadingDeg,
+          followHeadingDeg: getFollowHeadingDeg(),
         })
         if (preservesLiveFollow) {
           setFollowZoomLevel(state.properties.zoom)
@@ -195,7 +193,7 @@ export function useMainMapCameraEvents({
               centerCoordinate: [longitude, latitude],
               zoomLevel: state.properties.zoom,
             },
-            followHeadingDeg,
+            followHeadingDeg: getFollowHeadingDeg(),
             gpsHeadingMode: headingFollowMode,
             profileKey: phoneHeadingMode ? 'compass' : undefined,
             perspectiveEnabled,
@@ -224,7 +222,7 @@ export function useMainMapCameraEvents({
       currentCameraRef,
       engine,
       followGps,
-      followHeadingDeg,
+      getFollowHeadingDeg,
       gpsCameraCenter,
       headingFollowMode,
       historyActive,
@@ -246,8 +244,6 @@ export function useMainMapCameraEvents({
 
   const handleMapIdle = useCallback(() => {
     const camera = currentCameraRef.current
-    const heading = camera?.heading
-    if (heading != null) setCameraHeading(heading)
     scheduleOffscreenMapIndicatorRefresh()
     // Map Points live on the server, so the visible set is read per camera rest.
     if (camera) {
@@ -260,7 +256,6 @@ export function useMainMapCameraEvents({
     onCameraSettled,
     onWatchRouteSpanChange,
     scheduleOffscreenMapIndicatorRefresh,
-    setCameraHeading,
   ])
 
   return { handleMapLoaded, handleCameraChanged, handleMapIdle }
