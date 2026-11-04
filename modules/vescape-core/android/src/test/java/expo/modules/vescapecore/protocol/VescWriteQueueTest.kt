@@ -117,4 +117,112 @@ class VescWriteQueueTest {
 
         assertArrayEquals(latest, queue.startNext()!!.bytes)
     }
+
+    private fun frame(size: Int) = ByteArray(size) { it.toByte() }
+
+    /** Drain every remaining write, completing each one, and return their bytes in order. */
+    private fun drain(queue: VescWriteQueue): List<ByteArray> = buildList {
+        while (true) {
+            val write = queue.startNext() ?: break
+            add(write.bytes)
+            queue.completeInFlight()
+        }
+    }
+
+    @Test
+    fun largeFrameGoesOutAsOrderedChunksWithinTheLimit() {
+        val queue = VescWriteQueue()
+        val tuneFrame = frame(272)
+
+        queue.enqueueNormal(tuneFrame)
+        val writes = drain(queue)
+
+        assertEquals(List(13) { 20 } + 12, writes.map { it.size })
+        assertArrayEquals(tuneFrame, writes.reduce { acc, chunk -> acc + chunk })
+    }
+
+    @Test
+    fun frameWithinTheLimitGoesOutAsOneWrite() {
+        val queue = VescWriteQueue()
+        val tuneFrame = frame(272)
+        queue.setChunkLimit(514)
+
+        queue.enqueueNormal(tuneFrame)
+
+        assertArrayEquals(tuneFrame, drain(queue).single())
+    }
+
+    @Test
+    fun noWriteRunsBetweenChunksOfOneFrame() {
+        val queue = VescWriteQueue()
+        val tuneFrame = frame(45)
+        val poll = byteArrayOf(-1)
+        val neutral = byteArrayOf(-2)
+
+        queue.enqueueNormal(tuneFrame)
+        queue.startNext()
+        queue.enqueueNormal(poll)
+        queue.replaceRemoteInput(neutral, urgent = true)
+        queue.completeInFlight()
+
+        val rest = drain(queue)
+
+        assertEquals(listOf(20, 5), rest.take(2).map { it.size })
+        // The stop still goes before later normal traffic, just after the frame in flight.
+        assertArrayEquals(neutral, rest[2])
+        assertArrayEquals(poll, rest[3])
+    }
+
+    @Test
+    fun refusedChunkMidFrameIsRetriedWithItsOwnBytes() {
+        val queue = VescWriteQueue()
+        val tuneFrame = frame(50)
+
+        queue.enqueueNormal(tuneFrame)
+        queue.startNext()
+        queue.completeInFlight()
+        val refused = queue.startNext()!!.bytes
+        queue.retryInFlight()
+
+        val retried = queue.startNext()!!.bytes
+        assertArrayEquals(refused, retried)
+        queue.completeInFlight()
+        assertArrayEquals(tuneFrame.copyOfRange(40, 50), drain(queue).single())
+    }
+
+    @Test
+    fun refusedFirstChunkPutsTheWholeFrameBack() {
+        val queue = VescWriteQueue()
+        val tuneFrame = frame(50)
+
+        queue.enqueueNormal(tuneFrame)
+        queue.startNext()
+        queue.retryInFlight()
+
+        assertArrayEquals(tuneFrame, drain(queue).reduce { acc, chunk -> acc + chunk })
+    }
+
+    @Test
+    fun failedChunkDropsTheRestOfItsFrame() {
+        val queue = VescWriteQueue()
+        val poll = byteArrayOf(-1)
+
+        queue.enqueueNormal(frame(50))
+        queue.enqueueNormal(poll)
+        queue.startNext()
+        queue.completeInFlight(failed = true)
+
+        assertArrayEquals(poll, drain(queue).single())
+    }
+
+    @Test
+    fun clearDropsAPartlySentFrame() {
+        val queue = VescWriteQueue()
+
+        queue.enqueueNormal(frame(50))
+        queue.startNext()
+        queue.clear()
+
+        assertNull(queue.startNext())
+    }
 }
