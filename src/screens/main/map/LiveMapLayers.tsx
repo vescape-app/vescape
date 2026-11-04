@@ -1,29 +1,28 @@
-import { CircleLayer, FillLayer, Images, LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
-import { useMemo } from 'react'
+import { FillLayer, LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
 import { processColor } from 'react-native'
 
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
+import { GpsPuck } from '@/modules/map/components/GpsPuck'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
-
-const GPS_HEADING_ICON_ID = 'center-gps-heading'
-const GPS_HEADING_ICON = require('@rnmapbox/maps/src/assets/heading.png')
 
 export function LiveMapLayers({
   liveTrailShape,
   accuracyFix,
   accuracyShape,
-  gpsPuckBearingDeg,
+  puckBearing,
+  mapPose,
   riders,
   highContrastRoutes,
 }: {
   liveTrailShape: MainMapLayersProps['liveTrailShape']
   accuracyFix: MainMapLayersProps['accuracyFix']
   accuracyShape: MainMapLayersProps['accuracyShape']
-  gpsPuckBearingDeg: MainMapLayersProps['gpsPuckBearingDeg']
+  puckBearing: MainMapLayersProps['puckBearing']
+  mapPose: MainMapLayersProps['mapPose']
   riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
 }) {
@@ -40,40 +39,6 @@ export function LiveMapLayers({
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
     : theme.alpha(accents.violet.color, 0.85)
-  const gpsPuckPositionShape = useMemo(
-    () =>
-      accuracyFix
-        ? ({
-            type: 'Feature',
-            geometry: {
-              type: 'Point',
-              coordinates: [accuracyFix.longitude, accuracyFix.latitude],
-            },
-            properties: {},
-          } as GeoJSON.Feature<GeoJSON.Point>)
-        : null,
-    [accuracyFix],
-  )
-  const gpsPuckShape = useMemo(
-    () =>
-      accuracyFix && gpsPuckBearingDeg != null
-        ? ({
-            type: 'FeatureCollection',
-            features: [
-              {
-                type: 'Feature',
-                geometry: {
-                  type: 'Point',
-                  coordinates: [accuracyFix.longitude, accuracyFix.latitude],
-                },
-                properties: { bearing: gpsPuckBearingDeg },
-              },
-            ],
-          } as GeoJSON.FeatureCollection)
-        : null,
-    [accuracyFix, gpsPuckBearingDeg],
-  )
-
   return (
     <>
       {liveTrailShape && (
@@ -119,39 +84,9 @@ export function LiveMapLayers({
               />
             </ShapeSource>
           )}
-          {gpsPuckPositionShape && (
-            <ShapeSource id="center-gps-puck-position-source" shape={gpsPuckPositionShape}>
-              <CircleLayer
-                id="center-gps-puck-core"
-                style={{
-                  circleRadius: 8,
-                  circleColor: gpsPointColor,
-                  circleStrokeColor: theme.palette.mono.white,
-                  circleStrokeWidth: 3,
-                }}
-              />
-            </ShapeSource>
-          )}
-          {gpsPuckShape && (
-            <>
-              <Images images={{ [GPS_HEADING_ICON_ID]: { image: GPS_HEADING_ICON, sdf: true } }} />
-              <ShapeSource id="center-gps-puck-heading-source" shape={gpsPuckShape}>
-                <SymbolLayer
-                  id="center-gps-puck-heading-outline"
-                  style={{
-                    iconImage: GPS_HEADING_ICON_ID,
-                    iconRotate: ['get', 'bearing'],
-                    iconAllowOverlap: true,
-                    iconIgnorePlacement: true,
-                    iconRotationAlignment: 'map',
-                    iconSize: 0.95,
-                    iconOffset: [0, -10],
-                    iconColor: theme.palette.mono.white,
-                  }}
-                />
-              </ShapeSource>
-            </>
-          )}
+          <MarkerView coordinate={[accuracyFix.longitude, accuracyFix.latitude]} allowOverlap>
+            <GpsPuck color={gpsPointColor} bearing={puckBearing} mapPose={mapPose} />
+          </MarkerView>
         </>
       )}
       {riders.map((rider, index) =>

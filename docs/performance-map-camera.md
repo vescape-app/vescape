@@ -76,10 +76,10 @@ GPS follow, which keeps running under the `location` background mode by design.
 
 ## Files
 
-| File                                                  | Role                                                          |
-| ----------------------------------------------------- | ------------------------------------------------------------- |
-| `src/modules/map/lib/cameraEngine/engine.ts`          | Spring engine; emit epsilons and the `force` escape hatch     |
-| `src/modules/map/lib/phoneHeading.ts`                 | Sensor interval, smoothing alpha, dead band, max step         |
-| `src/modules/map/components/PhoneHeadingMapLayer.tsx` | DeviceMotion subscription, foreground gate, cone shape writes |
-| `src/hooks/useAppActive.ts`                           | Foreground predicate                                          |
-| `patches/@rnmapbox%2Fmaps@10.3.2.patch`               | `includeBounds` on the camera-changed payload                 |
+| File                                         | Role                                                      |
+| -------------------------------------------- | --------------------------------------------------------- |
+| `src/modules/map/lib/cameraEngine/engine.ts` | Spring engine; emit epsilons and the `force` escape hatch |
+| `src/modules/map/lib/phoneHeading.ts`        | Sensor interval, smoothing alpha, dead band, max step     |
+| `src/modules/map/hooks/usePhoneHeading.ts`   | DeviceMotion subscription, foreground gate                |
+| `src/hooks/useAppActive.ts`                  | Foreground predicate                                      |
+| `patches/@rnmapbox%2Fmaps@10.3.2.patch`      | `includeBounds` on the camera-changed payload             |

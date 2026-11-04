@@ -2,6 +2,7 @@ import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useRef, useState, type ComponentRef } from 'react'
 import { StyleSheet, View } from 'react-native'
+import { useSharedValue } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 import type { MapPoint, NavigationProfile } from 'vescape-core'
 
@@ -57,6 +58,9 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 export default function MapComponentsShowcase() {
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  // Fixture camera is north-up and flat, so the arrow shows the raw fixture bearing.
+  const mapPose = useSharedValue({ heading: 0, pitch: 0 })
+  const puckBearing = useSharedValue<number | null>(FIXTURE_GPS_PUCK_BEARING_DEG)
   const [styleExpanded, setStyleExpanded] = useState(false)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
@@ -136,7 +140,8 @@ export default function MapComponentsShowcase() {
           rideRouteShape={null}
           accuracyFix={FIXTURE_ACCURACY_FIX}
           accuracyShape={FIXTURE_ACCURACY_SHAPE}
-          gpsPuckBearingDeg={FIXTURE_GPS_PUCK_BEARING_DEG}
+          puckBearing={puckBearing}
+          mapPose={mapPose}
           riders={FIXTURE_RIDERS}
           rideRoute={[]}
           rideTelemetrySamples={[]}

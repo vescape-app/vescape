@@ -1,5 +1,6 @@
 import type { Camera } from '@rnmapbox/maps'
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react'
+import type { SharedValue } from 'react-native-reanimated'
 
 import { distanceMeters } from '@/helpers/mapGeometry'
 import type { MapCameraControllerState } from '@/modules/map/lib/cameraController'
@@ -9,6 +10,7 @@ import { shouldPreserveLiveFollowGesture } from '@/modules/map/lib/cameraGesture
 import type { MainViewState } from '@/screens/main/mainViewState'
 import type { CameraSnapshot, HistoryPreviewTarget } from '@/screens/main/map/useCameraControls'
 import type { GpsFix } from '@/screens/main/map/cameraControlTypes'
+import type { MapPose } from '@/modules/map/components/GpsPuck'
 
 export function useMainMapCameraEvents({
   cameraRef,
@@ -38,6 +40,7 @@ export function useMainMapCameraEvents({
   scheduleOffscreenMapIndicatorRefresh,
   updateOffscreenMapIndicators,
   setCameraHeading,
+  mapPose,
   setCameraReady,
   setCameraZoom,
 }: {
@@ -69,6 +72,7 @@ export function useMainMapCameraEvents({
   scheduleOffscreenMapIndicatorRefresh: () => void
   updateOffscreenMapIndicators: () => void
   setCameraHeading: Dispatch<SetStateAction<number>>
+  mapPose: SharedValue<MapPose>
   setCameraReady: Dispatch<SetStateAction<boolean>>
   setCameraZoom: Dispatch<SetStateAction<number>>
 }) {
@@ -127,6 +131,7 @@ export function useMainMapCameraEvents({
       gestures: { isGestureActive: boolean }
     }) => {
       const [longitude, latitude] = state.properties.center
+      mapPose.set({ heading: state.properties.heading, pitch: state.properties.pitch })
       const automaticHeadingFollow =
         followGps && headingFollowMode && !state.gestures.isGestureActive
       const camera = {
@@ -213,6 +218,7 @@ export function useMainMapCameraEvents({
       }
     },
     [
+      mapPose,
       cameraRef,
       cameraFix,
       currentCameraRef,

@@ -19,8 +19,9 @@ It is used by `src/screens/main/MainMap.tsx` to continuously derive pitch from z
 map camera is moving, including native deceleration after the user releases a pinch gesture. The
 pitch calculation remains pure in `src/modules/map/lib/cameraProfiles.ts` (`getPitchForZoom`).
 
-It is also used by `src/screens/main/PhoneHeadingMapLayer.tsx` to apply the fused phone heading
-without starting and repeatedly cancelling Mapbox camera transitions for every sensor sample.
+It also carries the fused phone heading in Compass mode (`usePhoneHeading` retargets the camera
+engine, which writes through `setCameraDirect`) without starting and repeatedly cancelling Mapbox
+camera transitions for every sensor sample.
 
 ### Why normal `setCamera` is not used
 

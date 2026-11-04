@@ -1,4 +1,5 @@
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSharedValue } from 'react-native-reanimated'
 import { View } from 'react-native'
 import {
   setWatchRouteSpanM,
@@ -50,6 +51,9 @@ import { useOffscreenMapIndicators } from '@/screens/main/map/useOffscreenMapInd
 import { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
 import { watchRouteSpanMeters } from '@/modules/map/lib/nearbyRadius'
 import { useMapServicesStore } from '@/modules/map/store/mapServicesStore'
+import { usePhoneHeading } from '@/modules/map/hooks/usePhoneHeading'
+import { usePuckBearing } from '@/screens/main/map/usePuckBearing'
+import type { MapPose } from '@/modules/map/components/GpsPuck'
 
 export interface MainMapHandle {
   recenterLive: (options?: { resetPadding?: boolean; animationDuration?: number }) => void
@@ -176,6 +180,7 @@ export const MainMap = memo(
       closeLegalCountry,
     } = useMapOverlaySelection(legalLimitsActive)
     const [cameraHeading, setCameraHeading] = useState(0)
+    const mapPose = useSharedValue<MapPose>({ heading: 0, pitch: 0 })
     const [cameraZoom, setCameraZoom] = useState<number>(MAP_DEFAULTS.fallbackZoom)
     const { mapViewRef, mapLayout, handleMapLayout, getViewfinderCoordinateFromMap } =
       useMapViewport()
@@ -336,28 +341,42 @@ export const MainMap = memo(
       enabled: !historyActive,
     })
 
-    const handlePhoneFollowHeading = useCallback(
-      (headingDeg: number) => {
-        engine.setTarget({ heading: headingDeg })
-      },
-      [engine],
-    )
     /**
      * The compass never moves the edge indicators itself. It only retargets the camera spring, so
      * its heading runs ahead of the heading the map is actually drawn with; repositioning from both
      * left the indicators alternating between the predicted and the real angle every frame. The
      * camera-changed echo is the single writer, and the indicators lag exactly as much as the map.
      */
+    const { puckBearing, syncPuckBearing } = usePuckBearing({
+      orientationMode: mapOrientationMode,
+      approximateFix: approximateGpsPuckActive,
+      gpsBearingDeg: directionBearingDeg,
+      phoneHeadingDegRef,
+    })
     const handlePhoneHeadingChange = useCallback(
       (headingDeg: number | null) => {
         phoneHeadingDegRef.current = headingDeg
+        syncPuckBearing(headingDeg)
         onPhoneHeadingChange(headingDeg)
 
         if (headingDeg == null || !phoneHeadingMode || !followGps) return
         scheduleOffscreenMapIndicatorRefresh()
       },
-      [followGps, onPhoneHeadingChange, phoneHeadingMode, scheduleOffscreenMapIndicatorRefresh],
+      [
+        followGps,
+        onPhoneHeadingChange,
+        phoneHeadingMode,
+        scheduleOffscreenMapIndicatorRefresh,
+        syncPuckBearing,
+      ],
     )
+    usePhoneHeading({
+      active: !historyActive && phoneHeadingMode,
+      followCamera: phoneHeadingMode && followGps,
+      onFollowHeading: (headingDeg) => engine.setTarget({ heading: headingDeg }),
+      onHeadingChange: handlePhoneHeadingChange,
+      onStatusChange: setPhoneHeadingStatus,
+    })
     const { handleOffscreenIndicatorPress, handleFocusDirectionPoint } = useMainMapFocusActions({
       engine,
       currentCameraRef,
@@ -416,6 +435,7 @@ export const MainMap = memo(
       scheduleOffscreenMapIndicatorRefresh,
       updateOffscreenMapIndicators,
       setCameraHeading,
+      mapPose,
       setCameraReady,
       setCameraZoom,
     })
@@ -499,20 +519,15 @@ export const MainMap = memo(
           onCameraChanged={handleCameraChanged}
           getLiveFollowCamera={getLiveFollowCamera}
           historyActive={historyActive}
-          gpsHeadingMode={gpsHeadingMode}
-          phoneHeadingMode={phoneHeadingMode}
-          followGps={followGps}
           accuracyFix={accuracyFix}
-          onPhoneFollowHeading={handlePhoneFollowHeading}
-          onPhoneHeadingChange={handlePhoneHeadingChange}
-          onPhoneHeadingStatusChange={setPhoneHeadingStatus}
           mode={mode}
           weatherActive={weatherActive}
           legalLimitsActive={legalLimitsActive}
           liveTrailShape={liveTrailShape}
           rideRouteShape={rideRouteShape}
           accuracyShape={accuracyShape}
-          gpsPuckBearingDeg={gpsPuckBearingDeg}
+          puckBearing={puckBearing}
+          mapPose={mapPose}
           riders={mapRiders}
           rideRoute={rideRoute}
           history={history}

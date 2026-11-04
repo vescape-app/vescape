@@ -148,7 +148,8 @@ export function MainMapLayers(props: MainMapLayersProps) {
             liveTrailShape={props.liveTrailShape}
             accuracyFix={props.accuracyFix}
             accuracyShape={props.accuracyShape}
-            gpsPuckBearingDeg={props.gpsPuckBearingDeg}
+            puckBearing={props.puckBearing}
+            mapPose={props.mapPose}
             riders={riders}
             highContrastRoutes={isSatellite}
           />

@@ -3,8 +3,19 @@ import { describe, expect, test } from 'bun:test'
 import { getGpsPuckBearing } from '@/modules/map/lib/gpsPuckHeading'
 
 describe('getGpsPuckBearing', () => {
-  test.each(['northUp', 'freeRotate', 'phoneHeading'] as const)(
-    'uses phone heading for the puck in %s mode',
+  test('uses phone heading for the puck in compass mode', () => {
+    expect(
+      getGpsPuckBearing({
+        orientationMode: 'phoneHeading',
+        approximateFix: false,
+        phoneHeadingDeg: 42,
+        gpsBearingDeg: 170,
+      }),
+    ).toBe(42)
+  })
+
+  test.each(['gpsHeading', 'northUp', 'freeRotate'] as const)(
+    'uses GPS course in %s mode, not where the phone points',
     (orientationMode) => {
       expect(
         getGpsPuckBearing({
@@ -13,25 +24,14 @@ describe('getGpsPuckBearing', () => {
           phoneHeadingDeg: 42,
           gpsBearingDeg: 170,
         }),
-      ).toBe(42)
+      ).toBe(170)
     },
   )
 
-  test('uses GPS course only in GPS heading mode', () => {
+  test('hides the course arrow for an approximate fix', () => {
     expect(
       getGpsPuckBearing({
-        orientationMode: 'gpsHeading',
-        approximateFix: false,
-        phoneHeadingDeg: 42,
-        gpsBearingDeg: 170,
-      }),
-    ).toBe(170)
-  })
-
-  test('hides the arrow for an approximate fix in GPS heading mode', () => {
-    expect(
-      getGpsPuckBearing({
-        orientationMode: 'gpsHeading',
+        orientationMode: 'northUp',
         approximateFix: true,
         phoneHeadingDeg: 42,
         gpsBearingDeg: 170,
@@ -42,7 +42,7 @@ describe('getGpsPuckBearing', () => {
   test('keeps the compass arrow for an approximate fix', () => {
     expect(
       getGpsPuckBearing({
-        orientationMode: 'northUp',
+        orientationMode: 'phoneHeading',
         approximateFix: true,
         phoneHeadingDeg: 42,
         gpsBearingDeg: 170,

@@ -3,7 +3,6 @@ import { Fragment, type ComponentProps, type ComponentRef, type RefObject } from
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { theme } from '@/constants/theme'
-import { PhoneHeadingMapLayer } from '@/modules/map/components/PhoneHeadingMapLayer'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { MainViewState } from '@/screens/main/mainViewState'
 import { MainMapLayers } from '@/screens/main/map/MainMapLayers'
@@ -41,20 +40,15 @@ interface MainMapSceneProps {
   onCameraChanged: MapViewProps['onCameraChanged']
   getLiveFollowCamera: () => CameraSnapshot
   historyActive: boolean
-  gpsHeadingMode: boolean
-  phoneHeadingMode: boolean
-  followGps: boolean
   accuracyFix: LayerProps['accuracyFix']
-  onPhoneFollowHeading: ComponentProps<typeof PhoneHeadingMapLayer>['onFollowHeading']
-  onPhoneHeadingChange: ComponentProps<typeof PhoneHeadingMapLayer>['onHeadingChange']
-  onPhoneHeadingStatusChange: ComponentProps<typeof PhoneHeadingMapLayer>['onStatusChange']
   mode: MainViewState
   weatherActive: boolean
   legalLimitsActive: boolean
   liveTrailShape: LayerProps['liveTrailShape']
   rideRouteShape: LayerProps['rideRouteShape']
   accuracyShape: LayerProps['accuracyShape']
-  gpsPuckBearingDeg: LayerProps['gpsPuckBearingDeg']
+  puckBearing: LayerProps['puckBearing']
+  mapPose: LayerProps['mapPose']
   riders: LayerProps['riders']
   rideRoute: LayerProps['rideRoute']
   history: MainMapHistoryProps
@@ -94,20 +88,15 @@ export function MainMapScene({
   onCameraChanged,
   getLiveFollowCamera,
   historyActive,
-  gpsHeadingMode,
-  phoneHeadingMode,
-  followGps,
   accuracyFix,
-  onPhoneFollowHeading,
-  onPhoneHeadingChange,
-  onPhoneHeadingStatusChange,
   mode,
   weatherActive,
   legalLimitsActive,
   liveTrailShape,
   rideRouteShape,
   accuracyShape,
-  gpsPuckBearingDeg,
+  puckBearing,
+  mapPose,
   riders,
   rideRoute,
   history,
@@ -176,14 +165,6 @@ export function MainMapScene({
               mapDetailsVisible={mapStyle.mapDetailsVisible}
               satelliteRoadLineOpacity={mapStyle.satelliteRoadLineOpacity}
             />
-            <PhoneHeadingMapLayer
-              active={!historyActive && !gpsHeadingMode}
-              followCamera={phoneHeadingMode && followGps}
-              coordinate={accuracyFix}
-              onFollowHeading={onPhoneFollowHeading}
-              onHeadingChange={onPhoneHeadingChange}
-              onStatusChange={onPhoneHeadingStatusChange}
-            />
             <MainMapLayers
               historyActive={historyActive}
               expandSelectedMapPoints={mode === 'map'}
@@ -197,7 +178,8 @@ export function MainMapScene({
               rideRouteShape={rideRouteShape}
               accuracyFix={accuracyFix}
               accuracyShape={accuracyShape}
-              gpsPuckBearingDeg={gpsPuckBearingDeg}
+              puckBearing={puckBearing}
+              mapPose={mapPose}
               riders={riders}
               rideRoute={rideRoute}
               rideTelemetrySamples={history.telemetrySamples}

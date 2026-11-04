@@ -1,7 +1,9 @@
+import type { SharedValue } from 'react-native-reanimated'
 import type { MapPoint, MapPointCategory } from 'vescape-core'
 
 import type { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
+import type { MapPose } from '@/modules/map/components/GpsPuck'
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 import type {
   HistoryMetricHotRanges,
@@ -34,7 +36,9 @@ export interface MainMapLayersProps {
   } | null
   accuracyFix: { longitude: number; latitude: number } | null
   accuracyShape: ReturnType<typeof makeCircleFeature> | null
-  gpsPuckBearingDeg: number | null
+  /** The puck arrow's map bearing — GPS course or phone compass; null hides the arrow. */
+  puckBearing: SharedValue<number | null>
+  mapPose: SharedValue<MapPose>
   riders: RosterRider[]
   rideRoute: [number, number][]
   rideTelemetrySamples: TelemetrySample[]
