@@ -48,9 +48,13 @@ boundaries, so a stationary prefix can still lead to a future moving segment.
 The Map Camera Controller remains the phone's single camera writer. It samples supplied segments
 inside its existing spring loop. Position defaults to 3 rad/s and GPS camera heading to 1 rad/s; the GPS arrow uses
 10 rad/s. The slower heading spring continues between GPS fixes and preserves angular velocity
-when a new heading arrives. The 3D coin's arrow shows native GPS direction in GPS-heading, North up
-and Free rotate modes; Compass uses phone heading. Approximate fixes hide GPS direction. The coin's
-view annotation interpolates native-authored position segments on the UI thread, without per-frame
+when a new heading arrives. The 3D coin's arrow shows native GPS travel direction in every
+orientation, including Compass. Compass camera rotation independently follows the live phone heading, including during replay;
+replay does not contain compass samples. The arrow subtracts the rendered camera heading once,
+so rotating a stationary phone changes the arrow's screen angle while retaining its geographic
+direction. Missing, expired or approximate GPS direction hides the arrow, with no phone/north
+fallback. A fresh direction restores visibility even when its angle equals the previous target.
+The coin's view annotation interpolates native-authored position segments on the UI thread, without per-frame
 React updates or annotation-position events for touch hit testing. The playground retains the linear
 Mapbox shape animator. The point stays responsive while the camera deliberately lags. Manual browsing, History
 and preview gestures retain camera ownership. Watch renderers sample their own point controller
@@ -58,7 +62,9 @@ and apply their own slower camera response. Street map, route and rider use the 
 LiveTrail geometry and styling are independent of this display estimate. Once the target is
 stationary, springs have settled and the fling hold has expired, the camera requests no recurring
 frames, including in follow mode. New display events, camera intents and future segment deadlines
-wake it. A sampled follow target cannot continuously renew the fling hold.
+wake it. A sampled follow target cannot continuously renew the fling hold. Orientation changes,
+including entry into GPS Heading, retarget the current camera springs without snapping or clearing
+velocity. Explicit instant camera intents and distance-based teleport protection remain separate.
 
 ## Developer tuning
 
@@ -99,9 +105,13 @@ Older Wear decoders skip appended lanes. Older watchOS decoders require exactly 
 phone sends that layout until an optional wake-heartbeat capability byte advertises support.
 New watches accept legacy frames with their existing interpolation and no prediction.
 
-Phone display subscriptions and animation stop while hidden or backgrounded; watch maps stop in
-ambient or when their surface disappears. Native GPS collection, recording and watch delivery keep
-their existing independent lifetimes.
+Phone display subscriptions and animation stop while hidden or backgrounded. The same visibility
+gate covers measured-GPS and orientation-change camera effects, so a retained hidden route cannot
+restart its camera writer when a new fix renders. Watch maps stop in
+ambient or when their surface disappears. A watch display-source change resets the entire camera
+translation state (position, velocity, target history and sample time); same-source retargets retain
+continuity. Native GPS collection, recording and watch delivery keep their existing independent
+lifetimes.
 
 ## Accuracy and optional comparison evidence
 

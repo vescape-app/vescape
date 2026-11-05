@@ -340,28 +340,19 @@ export const MainMap = memo(
      * left the indicators alternating between the predicted and the real angle every frame. The
      * camera-changed echo is the single writer, and the indicators lag exactly as much as the map.
      */
-    const { puckBearing, syncPuckBearing } = usePuckBearing({
-      orientationMode: mapOrientationMode,
+    const puckBearing = usePuckBearing({
       approximateFix: approximateGpsPuckActive,
       displayRuntime,
-      phoneHeadingDegRef,
     })
     const handlePhoneHeadingChange = useCallback(
       (headingDeg: number | null) => {
         phoneHeadingDegRef.current = headingDeg
-        syncPuckBearing(headingDeg)
         onPhoneHeadingChange(headingDeg)
 
         if (headingDeg == null || !phoneHeadingMode || !followGps) return
         scheduleOffscreenMapIndicatorRefresh()
       },
-      [
-        followGps,
-        onPhoneHeadingChange,
-        phoneHeadingMode,
-        scheduleOffscreenMapIndicatorRefresh,
-        syncPuckBearing,
-      ],
+      [followGps, onPhoneHeadingChange, phoneHeadingMode, scheduleOffscreenMapIndicatorRefresh],
     )
     usePhoneHeading({
       active: displayActive && phoneHeadingMode,

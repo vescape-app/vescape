@@ -31,6 +31,7 @@ export function startHeadingAnimation({
   let spring = createSpring(angle.current)
   let frame: number | null = null
   let last = now()
+  let visible = false
   const animate = (at: number) => {
     frame = null
     if (!isActive()) return
@@ -48,9 +49,16 @@ export function startHeadingAnimation({
     }
     const bearing = heading()
     if (bearing == null) {
+      visible = false
       if (frame != null) cancel(frame)
       frame = null
       return
+    }
+    // Visibility can have expired while this mounted spring retained the same target.
+    // Restore the current drawn angle even when the settled fast path needs no frame.
+    if (!visible) {
+      draw(spring.x)
+      visible = true
     }
     const target = nearestBearingTarget(spring.x, bearing)
     if (target === spring.target && springSettled(spring, 0.05, 0.05)) return
@@ -62,7 +70,10 @@ export function startHeadingAnimation({
   }
   const unsubscribe = subscribe(update)
   // A remounted native layer has its declarative initial angle, even if no animation is needed.
-  if (isActive()) draw(angle.current)
+  if (isActive()) {
+    draw(angle.current)
+    visible = true
+  }
   update()
   return () => {
     unsubscribe()

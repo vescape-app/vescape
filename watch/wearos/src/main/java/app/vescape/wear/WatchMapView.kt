@@ -195,12 +195,19 @@ internal class WatchDisplayMotion {
         val at = displayNow(now)
         displayAnchor = at; localAnchor = now; rate = facts.clockRate
         if (facts.sourceId != source) {
-            source = facts.sourceId; model.reset(source, at); camera = null; origin = position
+            source = facts.sourceId; model.reset(source, at); resetPresentation(position)
         }
         model.accept(MotionFix(position.longitude, position.latitude, facts.fixTimestamp, facts.accuracyM), at, facts.gpsAgeMs + delay * rate, source)
         model.updateSpeed(speed?.div(3.6), facts.sentAt, at, source, facts.boardAgeMs + delay * rate)
         anchor = position
         return true
+    }
+    private fun resetPresentation(origin: WatchMapPosition) {
+        camera = null
+        this.origin = origin
+        velocity = MotionVector()
+        lastTarget = MotionVector()
+        time = 0.0
     }
     private fun sample(now: Double): Pair<MotionVector, MotionVector> {
         val coordinate = position(now) ?: return Pair(MotionVector(), MotionVector())

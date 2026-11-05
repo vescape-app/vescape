@@ -74,3 +74,62 @@ test('remount restores the drawn heading even when direction expired or the spri
   expect(scheduled).toBeNull()
   stop()
 })
+
+for (const initial of [0, 90]) {
+  test(`same-instance expiry restores ${initial} degrees without idle frames`, () => {
+    const angle = { current: initial }
+    let target: number | null = initial
+    let visible: number | null = null
+    const readVisible = (): number | null => visible
+    let changed = () => {}
+    let pending: ((at: number) => void) | null = null
+    let now = 0
+    const stop = startHeadingAnimation({
+      angle,
+      heading: () => {
+        if (target == null) visible = null
+        return target
+      },
+      omega: () => 10,
+      draw: (value) => {
+        visible = value
+      },
+      subscribe: (listener) => {
+        changed = listener
+        return () => {}
+      },
+      isActive: () => true,
+      now: () => now,
+      schedule: (callback) => {
+        pending = callback
+        return 1
+      },
+      cancel: () => {
+        pending = null
+      },
+    })
+    expect(readVisible()).toBe(initial)
+    target = null
+    changed()
+    expect(readVisible()).toBeNull()
+    target = initial
+    changed()
+    expect(readVisible()).toBe(initial)
+    expect(pending).toBeNull()
+    target = initial + 90
+    changed()
+    now = 16
+    const frame = pending as ((at: number) => void) | null
+    frame?.(now)
+    const turning = angle.current
+    target = null
+    changed()
+    expect(readVisible()).toBeNull()
+    target = initial + 90
+    changed()
+    expect(readVisible()).toBe(turning)
+    expect(pending).not.toBeNull()
+    stop()
+    expect(pending).toBeNull()
+  })
+}

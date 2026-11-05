@@ -388,6 +388,7 @@ export function useCameraControls({
 
   useEffect(() => {
     if (
+      !displayActive ||
       !cameraFix ||
       !followGps ||
       historyActive ||
@@ -402,6 +403,7 @@ export function useCameraControls({
     applyLiveFollowCamera()
   }, [
     applyLiveFollowCamera,
+    displayActive,
     cameraFix,
     followGps,
     getLiveFollowCamera,
@@ -424,6 +426,8 @@ export function useCameraControls({
   // heading. Compass drives the heading straight into the engine, so switching away from it leaves
   // the last compass bearing on the map until something else writes a heading.
   useEffect(() => {
+    // A retained hidden route applies its pending orientation only after becoming visible.
+    if (!displayActive) return
     const previousMode = previousOrientationModeRef.current
     previousOrientationModeRef.current = mapOrientationMode
     if (historyActive || previousMode === mapOrientationMode) return
@@ -437,17 +441,11 @@ export function useCameraControls({
       return
     }
 
-    if (mapOrientationMode === 'gpsHeading') {
-      const frame = requestAnimationFrame(() =>
-        recenterLiveRef.current?.({ resetPadding: true, animationDuration: 0 }),
-      )
-      return () => cancelAnimationFrame(frame)
-    }
-    followZoomLevelRef.current = null
+    if (mapOrientationMode !== 'gpsHeading') followZoomLevelRef.current = null
     lastFollowKeyRef.current = null
     const frame = requestAnimationFrame(() => recenterLiveRef.current?.({ resetPadding: true }))
     return () => cancelAnimationFrame(frame)
-  }, [engine, historyActive, mapOrientationMode, onHeadingChange])
+  }, [displayActive, engine, historyActive, mapOrientationMode, onHeadingChange])
 
   return {
     cameraRef,

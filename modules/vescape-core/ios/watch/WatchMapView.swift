@@ -204,12 +204,19 @@ final class WatchDisplayMotion: Equatable {
     let at = displayNow(now)
     displayAnchor = at; localAnchor = now; rate = facts.clockRate
     if facts.sourceId != source {
-      source = facts.sourceId; model.reset(source: source, now: at); camera = nil; origin = position
+      source = facts.sourceId; model.reset(source: source, now: at); resetPresentation(origin: position)
     }
     model.accept(MotionFix(longitude: position.longitude, latitude: position.latitude, timestamp: facts.fixTimestamp, accuracyM: facts.accuracyM), receivedAt: at, ageMs: facts.gpsAgeMs + delay * rate, source: source)
     model.updateSpeed(speed.map { $0 / 3.6 }, revision: facts.sentAt, receivedAt: at, source: source, ageMs: facts.boardAgeMs + delay * rate)
     anchor = position
     return true
+  }
+  private func resetPresentation(origin: WatchMapPosition) {
+    camera = nil
+    self.origin = origin
+    velocity = MotionVector()
+    lastTarget = MotionVector()
+    time = 0
   }
   private func sample(_ now: Double) -> (point: MotionVector, camera: MotionVector) {
     guard let coordinate = position(now), let origin else { return (MotionVector(), MotionVector()) }

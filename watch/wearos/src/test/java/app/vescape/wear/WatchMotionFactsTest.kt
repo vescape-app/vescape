@@ -85,4 +85,27 @@ class WatchMotionFactsTest {
         assertEquals(10.0, display.position(875.0)!!.first * 111320, 0.0001)
     }
 
+    @Test fun `source change clears camera momentum while same source retains it`() {
+        val display = WatchDisplayMotion(); val control = WatchDisplayMotion()
+        fun feed(d: WatchDisplayMotion, east: Double, now: Double, source: Double = 1.0) {
+            val f = facts(now, source = source, fix = now).copy(gpsAgeMs = 0.0, boardAgeMs = 0.0)
+            assertTrue(d.accept(WatchMapPosition(0.0, east / 111320), f, null, now))
+        }
+        for (d in listOf(display, control)) {
+            feed(d, 0.0, 0.0); d.riderOffsetAt(0.0)
+            feed(d, 10.0, 1000.0)
+            for (i in 0..30) d.riderOffsetAt(1000 + i * 10.0)
+        }
+        assertTrue(display.riderOffsetAt(1300.0).eastM > 0)
+        val f = facts(1301.0, source = 1.0, fix = 1000.0).copy(gpsAgeMs = 301.0, boardAgeMs = 0.0)
+        assertTrue(control.accept(WatchMapPosition(0.0, 10.0 / 111320), f, null, 1301.0))
+        assertEquals(display.riderOffsetAt(1310.0).eastM, control.riderOffsetAt(1310.0).eastM, 0.000001)
+        feed(display, 100.0, 1400.0, 2.0)
+        for (i in 0..60) {
+            val offset = display.riderOffsetAt(1400 + i * 10.0)
+            assertEquals(0.0, offset.eastM, 0.000001)
+            assertEquals(0.0, offset.northM, 0.000001)
+        }
+    }
+
 }

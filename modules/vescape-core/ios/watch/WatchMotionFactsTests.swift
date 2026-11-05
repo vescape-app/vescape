@@ -92,4 +92,29 @@ final class WatchMotionFactsTests: XCTestCase {
     XCTAssertEqual(try XCTUnwrap(display.position(875)).longitude * 111320, 10, accuracy: 0.0001)
   }
 
+  func testSourceChangeClearsCameraMomentumWhileSameSourceRetainsIt() {
+    let display = WatchDisplayMotion(), control = WatchDisplayMotion()
+    func feed(_ d: WatchDisplayMotion, _ east: Double, _ now: Double, _ source: Double = 1) {
+      var f = facts(now, source: source, fix: now); f.gpsAgeMs = 0; f.boardAgeMs = 0
+      XCTAssertTrue(d.accept(WatchMapPosition(latitude: 0, longitude: east / 111320), facts: f, speed: nil, now: now))
+    }
+    for d in [display, control] {
+      feed(d, 0, 0); _ = d.riderOffset(0)
+      feed(d, 10, 1000)
+      for i in 0...30 { _ = d.riderOffset(1000 + Double(i) * 10) }
+    }
+    let before = display.riderOffset(1300).eastM
+    XCTAssertGreaterThan(before, 0)
+    // A same-source speed/frame update must not reset kinetic state.
+    var f = facts(1301, source: 1, fix: 1000); f.gpsAgeMs = 301; f.boardAgeMs = 0
+    XCTAssertTrue(control.accept(WatchMapPosition(latitude: 0, longitude: 10 / 111320), facts: f, speed: nil, now: 1301))
+    XCTAssertEqual(control.riderOffset(1310).eastM, display.riderOffset(1310).eastM, accuracy: 0.000001)
+    feed(display, 100, 1400, 2)
+    for i in 0...60 {
+      let offset = display.riderOffset(1400 + Double(i) * 10)
+      XCTAssertEqual(offset.eastM, 0, accuracy: 0.000001)
+      XCTAssertEqual(offset.northM, 0, accuracy: 0.000001)
+    }
+  }
+
 }
