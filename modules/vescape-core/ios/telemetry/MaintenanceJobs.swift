@@ -20,7 +20,7 @@ protocol MaintenanceJob {
   /// Setting keys whose change can change `inputs`; a change re-runs the job after a debounce.
   var inputKeys: Set<String> { get }
 
-  /// Normalized settings the output depends on, e.g. `moving=300|freeSpinDelta=1200`.
+  /// Normalized settings the output depends on, e.g. `moving=300`.
   func inputs(_ settings: [String: Any?]) -> String
 
   /// One run over the whole data set. Writes only through `MaintenanceJobScope.chunk`.
@@ -174,20 +174,16 @@ let maintenanceJobs: [MaintenanceJob] = [RideSummariesJob(), RideWeatherJob.shar
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `RideSummariesJob`
 struct RideSummariesJob: MaintenanceJob {
   let id = "rideSummaries"
-  let version = 1
+  let version = 2
   let requiresNetwork = false
   let inputKeys: Set<String> = [
     "movingSpeedThresholdKmh",
     "avgSpeedCutoffKmh",
     "movingAvgSpeedThresholdKmh",
-    "freeSpinMaxSpeedDeltaKmh",
-    "freeSpinStationaryBoardCapKmh",
   ]
 
   func inputs(_ settings: [String: Any?]) -> String {
-    let config = MetricSanitizerConfig.from(settings: settings)
-    return "moving=\(config.movingSpeedThresholdCentiKmh)|freeSpinDelta=\(config.freeSpinMaxSpeedDeltaCentiKmh)"
-      + "|freeSpinCap=\(config.freeSpinStationaryBoardCapCentiKmh)"
+    "moving=\(MetricSanitizerConfig.from(settings: settings).movingSpeedThresholdCentiKmh)"
   }
 
   func run(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws -> MaintenanceJobOutcome {

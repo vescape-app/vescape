@@ -30,6 +30,7 @@ import expo.modules.vescapecore.database.FavoriteEntity
 import expo.modules.vescapecore.database.MetricExclusionRangeEntity
 import expo.modules.vescapecore.database.PrivacyZoneEntity
 import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.telemetry.sanitizers.FreeSpinCarry
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.TELEMETRY_MASK_ADC1
 import expo.modules.vescapecore.database.TELEMETRY_MASK_ADC2
@@ -188,6 +189,7 @@ class TelemetryRepository private constructor(context: Context) {
   // a Board change flushes them under those identities rather than the new session's (ADR 0038).
   private val pendingTrack = ArrayDeque<RideTrackPointEntity>()
   private var lastFlushedTrackPoint: RideTrackPointEntity? = null
+  private var lastFlushedFreeSpin = FreeSpinCarry()
 
   private var flushScheduled = false
   private var lastState: FullTelemetryState? = null
@@ -217,18 +219,6 @@ class TelemetryRepository private constructor(context: Context) {
   fun setMovingSpeedThresholdKmh(value: Double) {
     metricSanitizerConfig = metricSanitizerConfig.copy(
       movingSpeedThresholdCentiKmh = (value * 100.0).roundToInt().coerceAtLeast(0),
-    )
-  }
-
-  fun setFreeSpinMaxSpeedDeltaKmh(value: Double) {
-    metricSanitizerConfig = metricSanitizerConfig.copy(
-      freeSpinMaxSpeedDeltaCentiKmh = (value * 100.0).roundToInt().coerceAtLeast(0),
-    )
-  }
-
-  fun setFreeSpinStationaryBoardCapKmh(value: Double) {
-    metricSanitizerConfig = metricSanitizerConfig.copy(
-      freeSpinStationaryBoardCapCentiKmh = (value * 100.0).roundToInt().coerceAtLeast(0),
     )
   }
 
@@ -424,6 +414,7 @@ class TelemetryRepository private constructor(context: Context) {
       pendingMarkers.clear()
       pendingTrack.clear()
       lastFlushedTrackPoint = null
+      lastFlushedFreeSpin = FreeSpinCarry()
       flushScheduled = false
       lastState = null
       lastFrameAtMs = null
@@ -863,7 +854,7 @@ class TelemetryRepository private constructor(context: Context) {
   ): FavoriteSummary {
     if (states.isEmpty() && track.isEmpty()) return FavoriteSummary()
     val telemetryPoints = states.map { it.state.toBucketPoint() }
-    val sanitization = sanitizeTelemetrySamples(telemetryPoints, track, metricSanitizerConfig)
+    val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
     val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
       point.copy(
         excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
@@ -893,6 +884,7 @@ class TelemetryRepository private constructor(context: Context) {
       pendingMarkers.clear()
       pendingTrack.clear()
       lastFlushedTrackPoint = null
+      lastFlushedFreeSpin = FreeSpinCarry()
       lastState = null
       lastFrameAtMs = null
       lastHistoryAtMs = null
@@ -968,6 +960,7 @@ class TelemetryRepository private constructor(context: Context) {
       val markers: List<TelemetryMarkerEntity>
       val trackPoints: List<RideTrackPointEntity>
       val previousTrackPoint: RideTrackPointEntity?
+      val previousFreeSpin: FreeSpinCarry
       synchronized(lock) {
         if (pending.isEmpty() && pendingBucketStates.isEmpty() && pendingMarkers.isEmpty() && pendingTrack.isEmpty()) {
           flushScheduled = false
@@ -978,6 +971,7 @@ class TelemetryRepository private constructor(context: Context) {
         markers = pendingMarkers.toList()
         trackPoints = pendingTrack.toList()
         previousTrackPoint = lastFlushedTrackPoint
+        previousFreeSpin = lastFlushedFreeSpin
         pendingTrack.clear()
         pending.clear()
         pendingBucketStates.clear()
@@ -1011,7 +1005,8 @@ class TelemetryRepository private constructor(context: Context) {
       }
 
       val telemetryPoints = filteredStates.map { it.toBucketPoint() }
-      val sanitization = sanitizeTelemetrySamples(telemetryPoints, filteredTrack, metricSanitizerConfig)
+      // Free spin continues from the previous flush, so a spin crossing a flush stays excluded.
+      val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig, previousFreeSpin)
       val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
         point.copy(
           excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
@@ -1034,7 +1029,10 @@ class TelemetryRepository private constructor(context: Context) {
         exclusions = sanitization.exclusions,
         trackPoints = filteredTrack,
       )
-      if (committed) synchronized(lock) { lastFlushedTrackPoint = filteredTrack.lastOrNull { it.isPrecise() } ?: previousTrackPoint }
+      if (committed) synchronized(lock) {
+        lastFlushedTrackPoint = filteredTrack.lastOrNull { it.isPrecise() } ?: previousTrackPoint
+        lastFlushedFreeSpin = sanitization.freeSpinCarry
+      }
     }
   }
 
@@ -1237,23 +1235,6 @@ internal data class FullTelemetryState(
     "tempMotor" to tempMotorDeciC?.let { it / 10.0 },
   )
 
-  /**
-   * The fix this frame arrived with, shaped as a Ride Track point. Live only: durable reads take
-   * the real track from storage, and a fix with no reported accuracy stays unqualified (ADR 0038).
-   */
-  fun toLiveTrackPoint(): RideTrackPointEntity? = location?.let {
-    RideTrackPointEntity(
-      boardId = boardId,
-      fixAtMs = it.timestampMs,
-      latitudeE7 = it.latitudeE7,
-      longitudeE7 = it.longitudeE7,
-      accuracyCm = it.accuracyCm,
-      gpsSpeedCentiMps = it.gpsSpeedCentiMps,
-      bearingCentiDeg = it.bearingCentiDeg,
-      altitudeCm = it.altitudeCm,
-    )
-  }
-
   fun toBucketPoint(): BucketTelemetryPoint = BucketTelemetryPoint(
     capturedAtMs = capturedAtMs,
     boardId = boardId,
@@ -1402,6 +1383,7 @@ private fun metricsForExclusionReason(reason: String): Map<String, Boolean> =
     when (reason) {
       EXCLUSION_REASON_LOW_SPEED -> put(METRIC_AVG_SPEED, true)
       EXCLUSION_REASON_FREE_SPIN -> {
+        put(METRIC_AVG_SPEED, true)
         put(METRIC_MAX_SPEED, true)
         put(METRIC_MAX_DUTY, true)
       }

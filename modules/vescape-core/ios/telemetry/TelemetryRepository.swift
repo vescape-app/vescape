@@ -34,6 +34,7 @@ internal final class TelemetryRepository {
   // telemetry frame, and already carrying the Board they were captured under (ADR 0038).
   private var pendingTrack: [RideTrackPoint] = []
   private var lastFlushedTrackPoint: RideTrackPoint?
+  private var lastFlushedFreeSpin = FreeSpinCarry()
   private var lastFrameAtMs: Int64?
   private var lastHistoryAtMs: Int64?
   private var lastKeyframeAtMs: Int64?
@@ -222,6 +223,7 @@ internal final class TelemetryRepository {
       pendingMarkers.removeAll()
       pendingTrack.removeAll()
       lastFlushedTrackPoint = nil
+      lastFlushedFreeSpin = FreeSpinCarry()
       lastFrameAtMs = nil
       lastHistoryAtMs = nil
       lastKeyframeAtMs = nil
@@ -554,7 +556,7 @@ internal final class TelemetryRepository {
     config: MetricSanitizerConfig
   ) -> FavoriteSummary {
     guard !points.isEmpty || !track.isEmpty else { return FavoriteSummary() }
-    let sanitization = sanitizeTelemetrySamples(points, track: track, config: config)
+    let sanitization = sanitizeTelemetrySamples(points, config: config)
     var sanitized = points
     for i in sanitized.indices {
       sanitized[i].excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed
@@ -612,6 +614,7 @@ internal final class TelemetryRepository {
       pendingMarkers.removeAll()
       pendingTrack.removeAll()
       lastFlushedTrackPoint = nil
+      lastFlushedFreeSpin = FreeSpinCarry()
       lastFrameAtMs = nil
       lastHistoryAtMs = nil
       lastKeyframeAtMs = nil
@@ -665,7 +668,9 @@ internal final class TelemetryRepository {
     guard !states.isEmpty || !persisted.isEmpty || !markers.isEmpty || !track.isEmpty else { return }
 
     let telemetryPoints = states.map { $0.toBucketPoint() }
-    let sanitization = sanitizeTelemetrySamples(telemetryPoints, track: track, config: metricConfig)
+    // Free spin continues from the previous flush, so a spin crossing a flush stays excluded.
+    let sanitization = sanitizeTelemetrySamples(telemetryPoints, config: metricConfig, freeSpinCarry: lastFlushedFreeSpin)
+    lastFlushedFreeSpin = sanitization.freeSpinCarry
     var sanitized = telemetryPoints
     for i in sanitized.indices {
       sanitized[i].excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed

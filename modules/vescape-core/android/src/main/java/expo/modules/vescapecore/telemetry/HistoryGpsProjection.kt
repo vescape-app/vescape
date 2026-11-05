@@ -1,7 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.location.MAX_RECORDING_ACCURACY_M
-import expo.modules.vescapecore.telemetry.sanitizers.gpsSpeedCentiMpsToCentiKmh
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToLong
@@ -38,6 +37,9 @@ internal fun RideTrackPointEntity.isPrecise(): Boolean =
 internal fun RideTrackPointEntity.isMovementEvidence(movingThresholdCentiKmh: Int): Boolean =
   isPrecise() && gpsSpeedCentiMps != null &&
     gpsSpeedCentiMpsToCentiKmh(gpsSpeedCentiMps) >= movingThresholdCentiKmh
+
+/** @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `gpsSpeedCentiMpsToCentiKmh` */
+internal fun gpsSpeedCentiMpsToCentiKmh(centiMps: Int): Int = (centiMps * 36) / 10
 
 /** One Ride Track fix with the distance from the fix before it, which is a sequence property. */
 internal data class RideTrackProjectionPoint(

@@ -21,17 +21,13 @@ func runMaintenanceJobsContract() throws {
   let minute: Int64 = 60_000
   let hour = 60 * minute
   let board = "board-a"
-  func frame(_ at: Int64, speed: Int = 1_000) -> RecordingPersistenceSQL.Frame {
+  func frame(_ at: Int64, speed: Int = 1_000, motorCurrentMa: Int = 1_000) -> RecordingPersistenceSQL.Frame {
     .init(capturedAtMs: at, elapsedRealtimeMs: at, boardId: board, canId: nil, flags: 1,
           changedMask1: Int.max, changedMask2: 0, speedCentiKmh: speed, batteryVoltageMv: 80_000,
-          motorCurrentMa: 1_000, batteryCurrentMa: 500, dutyPermille: 100, pitchCentiDeg: 0,
+          motorCurrentMa: motorCurrentMa, batteryCurrentMa: 500, dutyPermille: 100, pitchCentiDeg: 0,
           rollCentiDeg: 0, balancePitchCentiDeg: 0, balanceCurrentMa: 0, erpm: 1_000, state: 1,
           switchState: 1, adc1Milli: 0, adc2Milli: 0, odometerCm: at, tempMosfetDeciC: 300,
           tempMotorDeciC: 300)
-  }
-  func fix(_ at: Int64, _ speedCentiMps: Int) -> RideTrackPoint {
-    RideTrackPoint(boardId: board, fixAtMs: at, latitudeE7: 520_000_000 + at / 1_000, longitudeE7: 210_000_000,
-                   accuracyCm: 500, gpsSpeedCentiMps: speedCentiMps, bearingCentiDeg: nil, altitudeCm: nil)
   }
   func freshQueue() throws -> DatabaseQueue {
     let queue = try DatabaseQueue()
@@ -52,22 +48,24 @@ func runMaintenanceJobsContract() throws {
     try queue.read { try Row.fetchAll($0, sql: "SELECT board_id, reason, start_ms, end_ms, sample_count FROM metric_exclusion_ranges ORDER BY start_ms, reason") }
   }
 
-  // Rebuilding twice is identical across minute and hour edges, with free spin GPS context.
+  // Rebuilding twice is identical across minute and hour edges, with a free spin crossing the hour:
+  // the wheel spins up just before the edge and keeps spinning after it, so the next chunk needs
+  // the spin carried from this one.
   do {
     let queue = try freshQueue()
     let edge = 10 * hour
-    try insertFrames(queue, stride(from: edge - 5 * minute, to: edge + 5 * minute, by: 2_000).map { frame($0, speed: 3_000) })
+    let spinning = (edge - 500)..<(edge + 5_000)
+    try insertFrames(queue, stride(from: edge - 5 * minute, to: edge + 5 * minute, by: 500).map {
+      spinning.contains($0) ? frame($0, speed: 5_000, motorCurrentMa: 1_000) : frame($0, speed: 3_000, motorCurrentMa: 20_000)
+    })
     try queue.write { db in
-      for point in [fix(edge - 3_000, 0)] + stride(from: edge + 20_000, to: edge + 4 * minute, by: 5_000).map({ fix($0, 800) }) {
-        try insertRideTrackPoint(db, point)
-      }
       try insertExclusion(db, .init(boardId: board, reason: "live", startMs: edge - 90_000, endMs: edge + 90_000, sampleCount: 4))
     }
     try require(try rebuildRideSummaries(queue) == .completed, "rebuild completes")
     let first = (try buckets(queue), try exclusions(queue))
     try require(first.0.count == 10, "rebuild covers both sides of the hour edge")
     try require(first.1.contains { $0["reason"] == EXCLUSION_REASON_FREE_SPIN && ($0["start_ms"] as Int64) >= edge && ($0["start_ms"] as Int64) < edge + 10_000 },
-                "free spin sees the fix across the edge")
+                "free spin carries across the edge")
     try require(!first.1.contains { $0["reason"] == "live" }, "rebuild replaces both owned portions of the live range")
     try rebuildRideSummaries(queue)
     try require(try buckets(queue) == first.0 && (try exclusions(queue)) == first.1, "rebuilding twice is identical")
@@ -121,9 +119,9 @@ func runMaintenanceJobsContract() throws {
     let queue = try freshQueue()
     try require(try rebuildRideSummaries(queue) == .completed, "empty database completes")
     let fingerprint = maintenanceFingerprint(RideSummariesJob(), settings: ["movingSpeedThresholdKmh": 2.999_999])
-    try require(fingerprint == "1|moving=300|freeSpinDelta=1200|freeSpinCap=1500", "fingerprint format \(fingerprint)")
+    try require(fingerprint == "2|moving=300", "fingerprint format \(fingerprint)")
     try queue.write { try publishMaintenanceFingerprint($0, id: RideSummariesJob().id, fingerprint: fingerprint, nowMs: 1) }
     try require(try queue.read { try storedMaintenanceFingerprint($0, id: RideSummariesJob().id) } == fingerprint, "fingerprint round trip")
-    try require(maintenanceFingerprint(RideSummariesJob(), settings: ["freeSpinMaxSpeedDeltaKmh": 10.0]) != fingerprint, "inputs change the fingerprint")
+    try require(maintenanceFingerprint(RideSummariesJob(), settings: ["movingSpeedThresholdKmh": 5.0]) != fingerprint, "inputs change the fingerprint")
   }
 }

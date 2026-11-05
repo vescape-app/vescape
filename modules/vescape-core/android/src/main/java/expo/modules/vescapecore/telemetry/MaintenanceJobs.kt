@@ -29,7 +29,7 @@ internal interface MaintenanceJob {
   /** Setting keys whose change can change [inputs]; a change re-runs the job after a debounce. */
   val inputKeys: Set<String>
 
-  /** Normalized settings the output depends on, e.g. `moving=300|freeSpinDelta=1200`. */
+  /** Normalized settings the output depends on, e.g. `moving=300`. */
   fun inputs(settings: AppSettings): String
 
   /** One run over the whole data set. Writes only through [MaintenanceJobScope.chunk]. */
@@ -132,20 +132,16 @@ internal val MAINTENANCE_JOBS: List<MaintenanceJob> = listOf(RideSummariesJob, R
  */
 internal object RideSummariesJob : MaintenanceJob {
   override val id = "rideSummaries"
-  override val version = 1
+  override val version = 2
   override val requiresNetwork = false
   override val inputKeys = setOf(
     "movingSpeedThresholdKmh",
     "avgSpeedCutoffKmh",
     "movingAvgSpeedThresholdKmh",
-    "freeSpinMaxSpeedDeltaKmh",
-    "freeSpinStationaryBoardCapKmh",
   )
 
-  override fun inputs(settings: AppSettings): String = settings.toMetricSanitizerConfig().let {
-    "moving=${it.movingSpeedThresholdCentiKmh}|freeSpinDelta=${it.freeSpinMaxSpeedDeltaCentiKmh}" +
-      "|freeSpinCap=${it.freeSpinStationaryBoardCapCentiKmh}"
-  }
+  override fun inputs(settings: AppSettings): String =
+    "moving=${settings.toMetricSanitizerConfig().movingSpeedThresholdCentiKmh}"
 
   override suspend fun run(scope: MaintenanceJobScope, settings: AppSettings): MaintenanceJobOutcome {
     val config = settings.toMetricSanitizerConfig()

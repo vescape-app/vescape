@@ -5,14 +5,7 @@ import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
 import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import {
-  GaugeIcon,
-  ArrowsOutLineHorizontalIcon,
-  ProhibitIcon,
-  ClockCounterClockwiseIcon,
-  PathIcon,
-  WaveformIcon,
-} from 'phosphor-react-native'
+import { GaugeIcon, ClockCounterClockwiseIcon, PathIcon, WaveformIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { Text } from '@/components/base/Text'
@@ -33,23 +26,15 @@ const MAX_RIDE_SPLIT_GAP_MINUTES = 240
 export default function HistorySettingsScreen() {
   const distanceUnit = useDistanceUnit()
   const { formatSpeedWithUnit } = useFormat()
-  const {
-    rideSplitGapMinutes,
-    movingSpeedThresholdKmh,
-    freeSpinMaxSpeedDeltaKmh,
-    freeSpinStationaryBoardCapKmh,
-    socEstimateWindowSeconds,
-    set,
-  } = useSettingsStore(
-    useShallow((s) => ({
-      rideSplitGapMinutes: s.rideSplitGapMinutes,
-      movingSpeedThresholdKmh: s.movingSpeedThresholdKmh,
-      freeSpinMaxSpeedDeltaKmh: s.freeSpinMaxSpeedDeltaKmh,
-      freeSpinStationaryBoardCapKmh: s.freeSpinStationaryBoardCapKmh,
-      socEstimateWindowSeconds: s.socEstimateWindowSeconds,
-      set: s.set,
-    })),
-  )
+  const { rideSplitGapMinutes, movingSpeedThresholdKmh, socEstimateWindowSeconds, set } =
+    useSettingsStore(
+      useShallow((s) => ({
+        rideSplitGapMinutes: s.rideSplitGapMinutes,
+        movingSpeedThresholdKmh: s.movingSpeedThresholdKmh,
+        socEstimateWindowSeconds: s.socEstimateWindowSeconds,
+        set: s.set,
+      })),
+    )
   const regroupSessions = useHistoryStore((s) => s.regroupSessions)
 
   return (
@@ -113,60 +98,6 @@ export default function HistorySettingsScreen() {
                   )
                   if (clampedValue !== movingSpeedThresholdKmh) {
                     void set('movingSpeedThresholdKmh', clampedValue)
-                  }
-                }}
-              />
-            }
-          />
-          <SettingsRow
-            icon={ArrowsOutLineHorizontalIcon}
-            label="Free spin speed delta"
-            hint={`Max board-vs-GPS speed gap before sample is excluded as free spin. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedWithUnit(12, distanceUnit === 'mi' ? 1 : 0)}.`}
-            right={
-              <Stepper
-                value={speedFromKmh(freeSpinMaxSpeedDeltaKmh, distanceUnit)}
-                formatValue={(value) => String(Number(value.toFixed(1)))}
-                step={stepDelta}
-                unit={speedUnit(distanceUnit)}
-                min={speedFromKmh(1, distanceUnit)}
-                max={speedFromKmh(60, distanceUnit)}
-                onChange={(nextValue) => {
-                  const clampedValue = speedInputToKmh(
-                    nextValue,
-                    freeSpinMaxSpeedDeltaKmh,
-                    distanceUnit,
-                    1,
-                    60,
-                  )
-                  if (clampedValue !== freeSpinMaxSpeedDeltaKmh) {
-                    void set('freeSpinMaxSpeedDeltaKmh', clampedValue)
-                  }
-                }}
-              />
-            }
-          />
-          <SettingsRow
-            icon={ProhibitIcon}
-            label="Free spin stationary cap"
-            hint={`Max board speed allowed when GPS is nearly stationary. Lower will increase the number of excluded samples.\nDefault: ${formatSpeedWithUnit(15, distanceUnit === 'mi' ? 1 : 0)}.`}
-            right={
-              <Stepper
-                value={speedFromKmh(freeSpinStationaryBoardCapKmh, distanceUnit)}
-                formatValue={(value) => String(Number(value.toFixed(1)))}
-                step={stepDelta}
-                unit={speedUnit(distanceUnit)}
-                min={speedFromKmh(1, distanceUnit)}
-                max={speedFromKmh(60, distanceUnit)}
-                onChange={(nextValue) => {
-                  const clampedValue = speedInputToKmh(
-                    nextValue,
-                    freeSpinStationaryBoardCapKmh,
-                    distanceUnit,
-                    1,
-                    60,
-                  )
-                  if (clampedValue !== freeSpinStationaryBoardCapKmh) {
-                    void set('freeSpinStationaryBoardCapKmh', clampedValue)
                   }
                 }}
               />

@@ -13,11 +13,7 @@ class LowSpeedAverageSpeedSanitizerTest {
   fun excludesSampleBelowThreshold() {
     val point = point(capturedAtMs = 1000L, speedCentiKmh = 299)
 
-    val result = LowSpeedAverageSpeedSanitizer(300).sanitize(
-      index = 0,
-      point = point,
-      context = contextFor(point),
-    )
+    val result = LowSpeedAverageSpeedSanitizer(300).sanitize(point)
 
     assertTrue(result.excludedFromAvgSpeed)
     assertFalse(result.excludedFromMaxSpeed)
@@ -31,11 +27,7 @@ class LowSpeedAverageSpeedSanitizerTest {
   fun keepsSampleAtThreshold() {
     val point = point(speedCentiKmh = 300)
 
-    val result = LowSpeedAverageSpeedSanitizer(300).sanitize(
-      index = 0,
-      point = point,
-      context = contextFor(point),
-    )
+    val result = LowSpeedAverageSpeedSanitizer(300).sanitize(point)
 
     assertFalse(result.excludedFromAvgSpeed)
     assertTrue(result.exclusions.isEmpty())
@@ -45,21 +37,12 @@ class LowSpeedAverageSpeedSanitizerTest {
   fun usesAbsoluteSpeedAndUnknownDeviceFallback() {
     val point = point(deviceId = null, speedCentiKmh = -200)
 
-    val result = LowSpeedAverageSpeedSanitizer(300).sanitize(
-      index = 0,
-      point = point,
-      context = contextFor(point),
-    )
+    val result = LowSpeedAverageSpeedSanitizer(300).sanitize(point)
 
     assertTrue(result.excludedFromAvgSpeed)
     assertEquals(UNKNOWN_TELEMETRY_BOARD_ID, result.exclusions.single().boardId)
     assertEquals(EXCLUSION_REASON_LOW_SPEED, result.exclusions.single().reason)
   }
-
-  private fun contextFor(vararg points: BucketTelemetryPoint) = MetricSanitizationContext(
-    samples = points.toList(),
-    track = emptyList(),
-  )
 
   private fun point(
     capturedAtMs: Long = 0L,

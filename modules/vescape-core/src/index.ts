@@ -1595,8 +1595,6 @@ export interface AppSettings {
   directionPointLatitude: number | null
   directionPointLongitude: number | null
   movingSpeedThresholdKmh: number
-  freeSpinMaxSpeedDeltaKmh: number
-  freeSpinStationaryBoardCapKmh: number
   /**
    * Minutes of no recorded samples that end a ride: a longer stop starts a new one in the history
    * list and in profile stats. Read-time grouping, so changing it re-groups existing rides too.

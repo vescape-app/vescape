@@ -5,7 +5,6 @@ import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.runtime.BoardSession
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.Scheduler
-import expo.modules.vescapecore.database.RideTrackPointEntity
 
 internal const val DEFAULT_LIVE_HISTORY_LIMIT_MINUTES = 5
 internal const val MIN_LIVE_HISTORY_LIMIT_MINUTES = 1
@@ -105,8 +104,6 @@ internal class TelemetryPipeline(
     private data class LivePoint(
         val bucketPoint: BucketTelemetryPoint,
         val eventMap: MutableMap<String, Any?>,
-        /** The fix this packet carried, as a Ride Track point — what free spin compares against. */
-        val fix: RideTrackPointEntity?,
     )
 
     private val recentTelemetry = ArrayDeque<MutableMap<String, Any?>>()
@@ -317,7 +314,7 @@ internal class TelemetryPipeline(
         val state = FullTelemetryState.from(capture)
         val bucketPoint = state.toBucketPoint()
         val updates = synchronized(liveLock) {
-            liveTelemetryPoints.addLast(LivePoint(bucketPoint, baseEventMap, state.toLiveTrackPoint()))
+            liveTelemetryPoints.addLast(LivePoint(bucketPoint, baseEventMap))
             pruneLiveTelemetryPoints(parsed.lastPacketAt)
             sanitizeLivePoints()
         }
@@ -366,10 +363,7 @@ internal class TelemetryPipeline(
     private fun sanitizeLivePoints(): List<Map<String, Any?>> {
         if (liveTelemetryPoints.isEmpty()) return emptyList()
         val points = liveTelemetryPoints.map { it.bucketPoint }
-        // The live equivalent of the Ride Track: the fixes these packets arrived with, so free spin
-        // has the same phone-speed comparison it has in history, without position on the sample.
-        val track = liveTelemetryPoints.mapNotNull { it.fix }.sortedBy { it.fixAtMs }
-        val sanitization = sanitizeTelemetrySamples(points, track, metricSanitizerConfig)
+        val sanitization = sanitizeTelemetrySamples(points, metricSanitizerConfig)
         val updates = mutableListOf<Map<String, Any?>>()
         val lastIndex = liveTelemetryPoints.size - 1
         liveTelemetryPoints.forEachIndexed { index, point ->

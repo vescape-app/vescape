@@ -470,8 +470,6 @@ class AppDataRepository private constructor(private val context: Context) {
       directionPointLatitude = opt(DIRECTION_POINT_LATITUDE) { (it as? Number)?.toDouble() },
       directionPointLongitude = opt(DIRECTION_POINT_LONGITUDE) { (it as? Number)?.toDouble() },
       movingSpeedThresholdKmh = req("movingSpeedThresholdKmh", 3.0) { (it as? Number)?.toDouble() },
-      freeSpinMaxSpeedDeltaKmh = req("freeSpinMaxSpeedDeltaKmh", DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH) { (it as? Number)?.toDouble() },
-      freeSpinStationaryBoardCapKmh = req("freeSpinStationaryBoardCapKmh", DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH) { (it as? Number)?.toDouble() },
       distanceUnit = req("distanceUnit", "km", ::validDistanceUnit),
       temperatureUnit = req("temperatureUnit", "celsius", ::validTemperatureUnit),
       themeMode = req("themeMode", "system", ::validThemeMode),
@@ -567,8 +565,6 @@ class AppDataRepository private constructor(private val context: Context) {
       "lastGpsLongitude" -> (value as? Number)?.toDouble()
       "movingSpeedThresholdKmh", "avgSpeedCutoffKmh", "movingAvgSpeedThresholdKmh" ->
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
-      "freeSpinMaxSpeedDeltaKmh", "freeSpinStationaryBoardCapKmh" ->
-        ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
       "distanceUnit" -> requireNotNull(validDistanceUnit(value)) { "Invalid distanceUnit" }
       "temperatureUnit" -> validTemperatureUnit(value) ?: return@withContext
       "themeMode" -> validThemeMode(value) ?: return@withContext
@@ -647,8 +643,6 @@ class AppDataRepository private constructor(private val context: Context) {
         "lastGpsLatitude" -> d.lastGpsLatitude
         "lastGpsLongitude" -> d.lastGpsLongitude
         "movingSpeedThresholdKmh" -> d.movingSpeedThresholdKmh
-        "freeSpinMaxSpeedDeltaKmh" -> d.freeSpinMaxSpeedDeltaKmh
-        "freeSpinStationaryBoardCapKmh" -> d.freeSpinStationaryBoardCapKmh
         "distanceUnit" -> d.distanceUnit
         "temperatureUnit" -> d.temperatureUnit
         "themeMode" -> d.themeMode
@@ -1034,8 +1028,6 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   DIRECTION_POINT_LATITUDE to directionPointLatitude,
   DIRECTION_POINT_LONGITUDE to directionPointLongitude,
   "movingSpeedThresholdKmh" to movingSpeedThresholdKmh,
-  "freeSpinMaxSpeedDeltaKmh" to freeSpinMaxSpeedDeltaKmh,
-  "freeSpinStationaryBoardCapKmh" to freeSpinStationaryBoardCapKmh,
   "distanceUnit" to distanceUnit,
   "temperatureUnit" to temperatureUnit,
   "themeMode" to themeMode,

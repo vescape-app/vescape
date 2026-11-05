@@ -32,6 +32,7 @@
 - [history.md](./history.md) — ride history persistence, grouping, markers, and map rendering
 - [Ride boundaries from data](./adr/0041-ride-boundaries-are-derived-from-recorded-data.md) — a ride is one Board's Telemetry Samples; frame gap, Board change or Stop Recording split it
 - [Navigation recalculates on path deviation](./adr/0042-navigation-recalculates-on-path-deviation.md) — native reroutes once the rider is farther from the path than the Reroute Distance; distance from the path is the only trigger
+- [Free spin from Board telemetry](./adr/0043-free-spin-is-detected-from-board-telemetry.md) — a fast speed climb on little motor current starts a free spin; no GPS, no per-Board state
 - [tune.md](./tune.md) — Refloat tune screen behavior, basic slider formulas, field groups
 - [tune-preview-pl.md](./tune-preview-pl.md) — Tune vs Tune Preview, explained (Polish)
 - [remote-tilt.md](./remote-tilt.md) — Remote Tilt gesture ownership, native command timing, and latency checks

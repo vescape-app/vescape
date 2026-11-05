@@ -1,14 +1,12 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.telemetry.sanitizers.FreeSpinCarry
 import expo.modules.vescapecore.telemetry.sanitizers.FreeSpinMetricSanitizer
 import expo.modules.vescapecore.telemetry.sanitizers.LowSpeedAverageSpeedSanitizer
 import expo.modules.vescapecore.telemetry.sanitizers.MetricExclusionSample
-import expo.modules.vescapecore.telemetry.sanitizers.MetricSanitizationContext
-import expo.modules.vescapecore.telemetry.sanitizers.preciseGpsTrack
 import kotlin.math.roundToInt
 import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.database.MetricExclusionRangeEntity
-import expo.modules.vescapecore.database.RideTrackPointEntity
 
 // @parity /modules/vescape-core/ios/telemetry/MetricSanitizer.swift
 internal const val DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH = 300
@@ -18,21 +16,13 @@ internal const val METRIC_MAX_DUTY = "max_duty"
 internal const val EXCLUSION_REASON_LOW_SPEED = "low_speed"
 internal const val EXCLUSION_REASON_FREE_SPIN = "free_spin"
 
-internal const val FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH = 700
-internal const val FREE_SPIN_MAX_DELTA_CENTI_KMH = 1200
-internal const val FREE_SPIN_NEAREST_GPS_MAX_AGE_MS = 10_000L
-
 data class MetricSanitizerConfig(
   val movingSpeedThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
-  val freeSpinMaxSpeedDeltaCentiKmh: Int = (DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH * 100).toInt(),
-  val freeSpinStationaryBoardCapCentiKmh: Int = (DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH * 100).toInt(),
 )
 
 internal fun AppSettings.toMetricSanitizerConfig(): MetricSanitizerConfig =
   MetricSanitizerConfig(
     movingSpeedThresholdCentiKmh = (movingSpeedThresholdKmh * 100.0).roundToInt().coerceAtLeast(0),
-    freeSpinMaxSpeedDeltaCentiKmh = (freeSpinMaxSpeedDeltaKmh * 100.0).roundToInt().coerceAtLeast(0),
-    freeSpinStationaryBoardCapCentiKmh = (freeSpinStationaryBoardCapKmh * 100.0).roundToInt().coerceAtLeast(0),
   )
 
 internal data class SanitizedSample(
@@ -47,50 +37,34 @@ internal data class SanitizedSample(
 internal data class SanitizationResult(
   val samples: List<SanitizedSample>,
   val exclusions: List<MetricExclusionRangeEntity>,
+  /** Free-spin state after the last sample; hand it to the batch that continues these samples. */
+  val freeSpinCarry: FreeSpinCarry,
 )
 
 /**
  * Metric Sanitizers preserve raw Telemetry Samples while marking metric values excluded.
  *
- * [track] is the Ride Track over the same span, ordered by fix time. Free spin compares the Board's
- * reported speed against the phone's, and that comparison reads the track directly rather than a
- * fix synthesised back onto the sample (ADR 0038).
+ * [samples] must be in capture order. Free spin reads each sample against the one before it, so a
+ * batch that continues earlier samples passes the earlier batch's [SanitizationResult.freeSpinCarry]
+ * as [freeSpinCarry].
  *
  * @parity /modules/vescape-core/ios/telemetry/MetricSanitizer.swift `sanitizeTelemetrySamples`
  */
 internal fun sanitizeTelemetrySamples(
   samples: List<BucketTelemetryPoint>,
-  track: List<RideTrackPointEntity>,
-  config: MetricSanitizerConfig,
-): SanitizationResult =
-  sanitizeTelemetrySamples(
-    samples = samples,
-    track = track,
-    movingSpeedThresholdCentiKmh = config.movingSpeedThresholdCentiKmh,
-    freeSpinMaxSpeedDeltaCentiKmh = config.freeSpinMaxSpeedDeltaCentiKmh,
-    freeSpinStationaryBoardCapCentiKmh = config.freeSpinStationaryBoardCapCentiKmh,
-  )
-
-internal fun sanitizeTelemetrySamples(
-  samples: List<BucketTelemetryPoint>,
-  track: List<RideTrackPointEntity> = emptyList(),
-  movingSpeedThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
-  freeSpinMaxSpeedDeltaCentiKmh: Int = (DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH * 100).toInt(),
-  freeSpinStationaryBoardCapCentiKmh: Int = (DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH * 100).toInt(),
+  config: MetricSanitizerConfig = MetricSanitizerConfig(),
+  freeSpinCarry: FreeSpinCarry = FreeSpinCarry(),
 ): SanitizationResult {
+  val freeSpin = FreeSpinMetricSanitizer(freeSpinCarry)
   val sanitizers = listOf(
-    LowSpeedAverageSpeedSanitizer(movingSpeedThresholdCentiKmh),
-    FreeSpinMetricSanitizer(freeSpinMaxSpeedDeltaCentiKmh, freeSpinStationaryBoardCapCentiKmh),
-  )
-  val context = MetricSanitizationContext(
-    samples = samples,
-    track = preciseGpsTrack(track),
+    LowSpeedAverageSpeedSanitizer(config.movingSpeedThresholdCentiKmh),
+    freeSpin,
   )
   val sanitized = mutableListOf<SanitizedSample>()
   val exclusionSamples = mutableListOf<MetricExclusionSample>()
 
   for ((index, point) in samples.withIndex()) {
-    val results = sanitizers.map { sanitizer -> sanitizer.sanitize(index, point, context) }
+    val results = sanitizers.map { sanitizer -> sanitizer.sanitize(point) }
 
     sanitized.add(
       SanitizedSample(
@@ -105,7 +79,11 @@ internal fun sanitizeTelemetrySamples(
     exclusionSamples.addAll(results.flatMap { it.exclusions })
   }
 
-  return SanitizationResult(samples = sanitized, exclusions = collapseExclusionSamples(exclusionSamples))
+  return SanitizationResult(
+    samples = sanitized,
+    exclusions = collapseExclusionSamples(exclusionSamples),
+    freeSpinCarry = freeSpin.carry,
+  )
 }
 
 internal fun collapseExclusionSamples(samples: List<MetricExclusionSample>): List<MetricExclusionRangeEntity> {
