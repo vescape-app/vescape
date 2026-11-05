@@ -2854,6 +2854,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<GroundClearanceSaveResult>
   clearGroundClearanceCalibration(accessoryId: string, capabilityId: string): Promise<boolean>
   exitApp(): void
+  hideLaunchSplash(): Promise<void>
   refreshLocationDemand(): void
   startGroupRideObserve(serverUrl: string): void
   stopGroupRideObserve(): void
@@ -3549,6 +3550,11 @@ export async function stopBoard(): Promise<void> {
 }
 
 /** Stop all native work and remove app task. */
+/** Fades out the animated native launch splash. */
+export function hideLaunchSplash(): Promise<void> {
+  return native.hideLaunchSplash()
+}
+
 export function exitApp(): void {
   if (E2E_ENABLED) return
   native.exitApp()

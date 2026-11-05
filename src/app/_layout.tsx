@@ -8,6 +8,7 @@ import { useFonts } from 'expo-font'
 // treatments (including Liquid Glass) that conflict with Vescape's cross-platform header design.
 import { Stack } from 'expo-router/js-stack'
 import * as SplashScreen from 'expo-splash-screen'
+import { hideLaunchSplash } from 'vescape-core'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
 import { View } from 'react-native'
@@ -86,7 +87,10 @@ function RootLayout() {
   })
 
   useEffect(() => {
-    if (fontsLoaded || fontError) void SplashScreen.hideAsync()
+    if (!fontsLoaded && !fontError) return
+    // expo-splash-screen's static view sits under the animated native launch splash; drop both.
+    void SplashScreen.hideAsync()
+    void hideLaunchSplash()
   }, [fontsLoaded, fontError])
 
   // A fixture build (screenshots, smoke) restores a database before anything reads it; every other
