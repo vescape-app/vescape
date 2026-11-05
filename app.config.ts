@@ -2,6 +2,7 @@ import type { ExpoConfig } from 'expo/config'
 import pkg from './package.json' with { type: 'json' }
 import { applicationId, isDevelopmentApp } from './src/config/appVariant.ts'
 import { androidVersionCode } from './src/helpers/version.ts'
+import { SPLASH_LOGO_WIDTH } from './src/config/splash.ts'
 
 // Without a team ID, prebuild happily writes an Xcode project with no DEVELOPMENT_TEAM and the
 // failure only surfaces minutes later as "Signing for X requires a development team". Expo loads
@@ -111,7 +112,7 @@ const config: ExpoConfig = {
       'expo-splash-screen',
       {
         image: './assets/images/splashIcon.png',
-        imageWidth: 200,
+        imageWidth: SPLASH_LOGO_WIDTH,
         resizeMode: 'contain',
         backgroundColor: '#111827',
         dark: {
