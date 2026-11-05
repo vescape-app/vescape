@@ -1,3 +1,5 @@
+import { useScreenVisible } from '@/hooks/useScreenVisible'
+import { useLiveGpsMotion } from '@/screens/main/map/useLiveGpsMotion'
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSharedValue } from 'react-native-reanimated'
 import { View } from 'react-native'
@@ -19,7 +21,6 @@ import {
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
-import { getGpsPuckBearing } from '@/modules/map/lib/gpsPuckHeading'
 import type {
   HistoryGpsSample,
   HistoryMarker,
@@ -165,6 +166,7 @@ export const MainMap = memo(
     ref,
   ) {
     const historyActive = history.active
+    const displayActive = useScreenVisible() && !historyActive
     const historyPreview = history.preview
     const mapPoints = mapPointProps.points
     const selectedMapPointId = mapPointProps.selectedId
@@ -227,6 +229,8 @@ export const MainMap = memo(
       directionPoint,
     })
 
+    const displayRuntime = useLiveGpsMotion(displayActive)
+
     const chartZoomRoute = useChartZoomRoute(history.gpsSamples)
     // The panel covers the bottom of the map and grows as the rider opens metrics; the route is
     // framed into what is left, so opening one reframes rather than hiding half the ride.
@@ -265,11 +269,11 @@ export const MainMap = memo(
     const getFollowHeadingDeg = useCallback(
       () =>
         gpsHeadingMode
-          ? (directionBearingDeg ?? 0)
+          ? (displayRuntime.motion.cameraHeading(displayRuntime.now()) ?? mapPose.get().heading)
           : phoneHeadingMode
             ? (phoneHeadingDegRef.current ?? mapPose.get().heading)
             : 0,
-      [directionBearingDeg, gpsHeadingMode, mapPose, phoneHeadingMode],
+      [displayRuntime, gpsHeadingMode, mapPose, phoneHeadingMode],
     )
 
     const {
@@ -290,6 +294,9 @@ export const MainMap = memo(
     } = useCameraControls({
       ref,
       cameraFix,
+      displayMotion: displayRuntime.motion,
+      displayNow: displayRuntime.now,
+      displayActive,
       persistedFallback,
       perspectiveEnabled,
       mapViewport: cameraViewport,
@@ -314,13 +321,6 @@ export const MainMap = memo(
       onHeadingChange,
       onPerspectiveChange,
     })
-    const gpsPuckBearingDeg = getGpsPuckBearing({
-      orientationMode: mapOrientationMode,
-      approximateFix: approximateGpsPuckActive,
-      phoneHeadingDeg: null,
-      gpsBearingDeg: directionBearingDeg,
-    })
-
     const {
       indicators: offscreenMapIndicators,
       update: updateOffscreenMapIndicators,
@@ -340,31 +340,22 @@ export const MainMap = memo(
      * left the indicators alternating between the predicted and the real angle every frame. The
      * camera-changed echo is the single writer, and the indicators lag exactly as much as the map.
      */
-    const { puckBearing, syncPuckBearing } = usePuckBearing({
-      orientationMode: mapOrientationMode,
+    const puckBearing = usePuckBearing({
       approximateFix: approximateGpsPuckActive,
-      gpsBearingDeg: directionBearingDeg,
-      phoneHeadingDegRef,
+      displayRuntime,
     })
     const handlePhoneHeadingChange = useCallback(
       (headingDeg: number | null) => {
         phoneHeadingDegRef.current = headingDeg
-        syncPuckBearing(headingDeg)
         onPhoneHeadingChange(headingDeg)
 
         if (headingDeg == null || !phoneHeadingMode || !followGps) return
         scheduleOffscreenMapIndicatorRefresh()
       },
-      [
-        followGps,
-        onPhoneHeadingChange,
-        phoneHeadingMode,
-        scheduleOffscreenMapIndicatorRefresh,
-        syncPuckBearing,
-      ],
+      [followGps, onPhoneHeadingChange, phoneHeadingMode, scheduleOffscreenMapIndicatorRefresh],
     )
     usePhoneHeading({
-      active: !historyActive && phoneHeadingMode,
+      active: displayActive && phoneHeadingMode,
       followCamera: phoneHeadingMode && followGps,
       onFollowHeading: (headingDeg) => engine.setTarget({ heading: headingDeg }),
       onHeadingChange: handlePhoneHeadingChange,
@@ -395,7 +386,7 @@ export const MainMap = memo(
       courseSourceTimestamp: retainedGpsBearingSourceTimestamp,
       phoneHeadingDegRef,
       phoneHeadingStatus,
-      gpsPuckBearingDeg,
+      puckBearing,
       mapPose,
       mapOrientationMode,
     })
@@ -490,6 +481,7 @@ export const MainMap = memo(
           <View testID="map-settled" collapsable={false} pointerEvents="none" />
         )}
         <MainMapScene
+          displayRuntime={displayRuntime}
           mapOpacity={mapOpacity}
           onLayout={handleMapLayout}
           onTouchStart={handleTouchStart}

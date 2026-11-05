@@ -230,7 +230,9 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   private func send(_ command: WatchCommand) {
     let session = WCSession.default
     guard session.activationState == .activated, session.isReachable else { return }
-    session.sendMessageData(WatchCommandCodec.encode(command), replyHandler: nil, errorHandler: nil)
+    var bytes = WatchCommandCodec.encode(command)
+    if case .mirrorAwake = command { bytes.append(1) } // optional display-facts capability; older phones ignore it
+    session.sendMessageData(bytes, replyHandler: nil, errorHandler: nil)
   }
 
   /// Ages a stopped stream into `disconnected` without an explicit phone message. The UI drives

@@ -6,10 +6,12 @@ import path from 'node:path'
 const sourceRoot = 'modules/vescape-core/android/src/main/java'
 const packageRoot = 'expo/modules/vescapecore'
 const sources = [
+  'display/LiveGpsMotion.kt',
   'telemetry/UnitPresentation.kt',
   'telemetry/TelemetryLevel.kt',
   'watch/GroupRideFrame.kt',
   'watch/WatchTrail.kt',
+  'watch/WatchMotionFacts.kt',
   'watch/WatchMapTile.kt',
   'watch/WatchRouteStatus.kt',
   'watch/WatchFrame.kt',

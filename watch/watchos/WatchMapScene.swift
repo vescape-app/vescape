@@ -20,6 +20,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   let telemetryRouteEnabled: Bool
   let streetMapEnabled: Bool
   let mapGaugesPercent: Int
+  let displayMotionJson: String
   let distanceUnit: String
   @ViewBuilder var gauges: () -> Gauges
   @ViewBuilder var readouts: () -> Readouts
@@ -76,8 +77,18 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
       }
 
       if scene.drawMap {
-        RiderPosition(color: muted ? Palette.dimText : navColor,
+        TimelineView(.animation(paused: !mapMoving)) { timeline in
+          GeometryReader { geometry in
+            let at = mapMoving ? timeline.date : Date()
+            let offset = mapView.motion.display?.riderOffset(at.timeIntervalSince1970 * 1000) ?? WatchTrailPoint(eastM: 0, northM: 0)
+            let map = WatchMapProjection(size: geometry.size, spanM: mapView.spanM(at: at), courseDeg: mapView.courseDeg(at: at))
+            let point = map.place(eastM: offset.eastM, northM: offset.northM, margin: 0).point
+            let center = WatchMapProjection.riderPoint(in: geometry.size)
+            RiderPosition(color: muted ? Palette.dimText : navColor,
           loading: scene.notice != nil && scene.notice != .failed && navStackAlpha > 0)
+              .offset(x: point.x - center.x, y: point.y - center.y)
+          }
+        }
           .opacity(navStackAlpha * scene.riderAlpha(navFocus: navFocus))
       }
 
@@ -120,7 +131,8 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
       }
     }
     .onAppear { retargetMap(animate: false) }
-    .onChange(of: scene.target) { retargetMap(animate: scene.drawMap) }
+    .onChange(of: displayMotionJson) { retargetMap(animate: scene.drawMap) }
+    .onChange(of: frame) { retargetMap(animate: scene.drawMap) }
     // Ambient lands a map mid-ease, as Wear's relaunched effect does.
     .onChange(of: scene.drawMap) { if !scene.drawMap { retargetMap(animate: false) } }
     // Stops the layers' timelines once the map has landed, so a still map never redraws.
@@ -136,7 +148,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
 
   private func retargetMap(animate: Bool) {
     let now = Date()
-    mapView.retarget(spanM: scene.target.spanM, courseDeg: scene.target.courseDeg, at: now, animate: animate, position: scene.target.position)
+    mapView.retarget(spanM: scene.target.spanM, courseDeg: scene.target.courseDeg, at: now, animate: animate, position: scene.target.position, facts: frame.motionFacts, speed: frame.stale ? nil : frame.speed, config: MotionConfig.fromJson(displayMotionJson))
     mapMoving = mapView.settlesAt > now
   }
 

@@ -14,7 +14,7 @@ export function useNavigationDiagnosticsSync({
   courseSourceTimestamp,
   phoneHeadingDegRef,
   phoneHeadingStatus,
-  gpsPuckBearingDeg,
+  puckBearing,
   mapPose,
   mapOrientationMode,
 }: {
@@ -23,24 +23,26 @@ export function useNavigationDiagnosticsSync({
   courseSourceTimestamp: number | null
   phoneHeadingDegRef: RefObject<number | null>
   phoneHeadingStatus: PhoneHeadingStatus | 'idle'
-  gpsPuckBearingDeg: number | null
+  puckBearing: SharedValue<number | null>
   mapPose: SharedValue<MapPose>
   mapOrientationMode: MapOrientationMode
 }) {
+  const consumers = useNavigationDiagnosticsStore((state) => state.motionConsumers)
   const updateNavigationDiagnostics = useNavigationDiagnosticsStore((state) => state.update)
 
   // Synced per fix; the camera heading is sampled then, not tracked — re-rendering the map for it
   // cost a render per camera idle.
   useEffect(() => {
+    if (!consumers) return
     const cameraHeadingDeg = mapPose.get().heading
+    const bearing = puckBearing.get()
     updateNavigationDiagnostics({
       gpsFix,
       retainedGpsBearingDeg: courseDeg,
       retainedGpsBearingAt: courseSourceTimestamp,
       phoneHeadingDeg: phoneHeadingDegRef.current,
       phoneHeadingStatus,
-      activeDisplayHeadingDeg:
-        gpsPuckBearingDeg == null ? null : gpsPuckBearingDeg - cameraHeadingDeg,
+      activeDisplayHeadingDeg: bearing == null ? null : bearing - cameraHeadingDeg,
       cameraHeadingDeg,
       fallbackReason: getNavigationFallbackReason({
         mapOrientationMode,
@@ -51,8 +53,9 @@ export function useNavigationDiagnosticsSync({
       }),
     })
   }, [
+    consumers,
     gpsFix,
-    gpsPuckBearingDeg,
+    puckBearing,
     mapOrientationMode,
     mapPose,
     phoneHeadingDegRef,

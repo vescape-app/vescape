@@ -1,3 +1,4 @@
+import { useMotionCameraFollow } from '@/modules/map/hooks/useMotionCameraFollow'
 import type { Camera as CameraRef } from '@rnmapbox/maps'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions } from 'react-native'
@@ -35,6 +36,9 @@ export type { CameraSnapshot, HistoryPreviewTarget }
 export function useCameraControls({
   ref,
   cameraFix,
+  displayMotion,
+  displayNow,
+  displayActive,
   persistedFallback,
   perspectiveEnabled,
   mapViewport,
@@ -202,8 +206,17 @@ export function useCameraControls({
       mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode
     const effect = reduceMapCameraIntent(controllerStateRef.current, {
       type: 'FollowLive',
-      gpsCamera: { ...gpsCamera, zoomLevel: baseZoomLevel },
-      followHeadingDeg: getFollowDeg(),
+      gpsCamera: {
+        ...gpsCamera,
+        centerCoordinate: displayMotion.position(displayNow()) ?? gpsCamera.centerCoordinate,
+        zoomLevel: baseZoomLevel,
+      },
+      followHeadingDeg:
+        mapOrientationMode === 'gpsHeading'
+          ? (displayMotion.cameraHeading(displayNow()) ??
+            currentCameraRef.current?.heading ??
+            getFollowDeg())
+          : getFollowDeg(),
       orientationMode: effectiveOrientationMode,
       perspectiveEnabled,
       viewportHeight,
@@ -218,6 +231,8 @@ export function useCameraControls({
     }
   }, [
     gpsCamera,
+    displayMotion,
+    displayNow,
     getFollowDeg,
     mapOrientationMode,
     phoneReady,
@@ -251,6 +266,29 @@ export function useCameraControls({
     [mapOrientationMode, perspectiveEnabled, phoneReady, viewportHeight],
   )
 
+  const sampleLiveDisplay = useCallback(() => {
+    if (
+      !displayActive ||
+      historyActive ||
+      controllerStateRef.current.mode.kind !== 'liveFollow' ||
+      previewPanActiveRef.current
+    )
+      return null
+    const center = displayMotion.position(displayNow())
+    return {
+      motion: displayMotion.motionState(displayNow()),
+      ...(center ? { center } : {}),
+      ...(mapOrientationMode === 'gpsHeading'
+        ? {
+            heading:
+              displayMotion.cameraHeading(displayNow()) ??
+              currentCameraRef.current?.heading ??
+              getFollowDeg(),
+          }
+        : {}),
+    }
+  }, [displayActive, displayMotion, displayNow, getFollowDeg, historyActive, mapOrientationMode])
+
   const applyLiveFollowCamera = useCallback(() => {
     if (!cameraFix) return
     const followCamera = getLiveFollowCamera()
@@ -262,7 +300,8 @@ export function useCameraControls({
       pitch: followCamera.pitch,
       padding: followCamera.padding,
     })
-  }, [cameraFix, engine, getLiveFollowCamera])
+    engine.follow(sampleLiveDisplay)
+  }, [cameraFix, engine, getLiveFollowCamera, sampleLiveDisplay])
 
   const recenterLive = useCallback(
     (options?: { resetPadding?: boolean; animationDuration?: number }) => {
@@ -288,9 +327,10 @@ export function useCameraControls({
       } else {
         engine.setTarget(target)
       }
+      engine.follow(sampleLiveDisplay)
       onHeadingChange(followCamera.heading)
     },
-    [cameraFix, engine, enterCameraMode, getLiveFollowCamera, onHeadingChange],
+    [cameraFix, engine, enterCameraMode, getLiveFollowCamera, onHeadingChange, sampleLiveDisplay],
   )
 
   useEffect(() => {
@@ -348,6 +388,7 @@ export function useCameraControls({
 
   useEffect(() => {
     if (
+      !displayActive ||
       !cameraFix ||
       !followGps ||
       historyActive ||
@@ -362,6 +403,7 @@ export function useCameraControls({
     applyLiveFollowCamera()
   }, [
     applyLiveFollowCamera,
+    displayActive,
     cameraFix,
     followGps,
     getLiveFollowCamera,
@@ -370,10 +412,22 @@ export function useCameraControls({
     previewGestures.previewPanActiveRef,
   ])
 
+  useMotionCameraFollow({
+    motion: displayMotion,
+    engine,
+    sample: sampleLiveDisplay,
+    controller: controllerStateRef,
+    active: displayActive && !historyActive,
+    enabled: followGps,
+    gpsHeading: mapOrientationMode === 'gpsHeading',
+  })
+
   // Every orientation change has to reach the camera, not only the ones that enter or leave GPS
   // heading. Compass drives the heading straight into the engine, so switching away from it leaves
   // the last compass bearing on the map until something else writes a heading.
   useEffect(() => {
+    // A retained hidden route applies its pending orientation only after becoming visible.
+    if (!displayActive) return
     const previousMode = previousOrientationModeRef.current
     previousOrientationModeRef.current = mapOrientationMode
     if (historyActive || previousMode === mapOrientationMode) return
@@ -387,17 +441,11 @@ export function useCameraControls({
       return
     }
 
-    if (mapOrientationMode === 'gpsHeading') {
-      const frame = requestAnimationFrame(() =>
-        recenterLiveRef.current?.({ resetPadding: true, animationDuration: 0 }),
-      )
-      return () => cancelAnimationFrame(frame)
-    }
-    followZoomLevelRef.current = null
+    if (mapOrientationMode !== 'gpsHeading') followZoomLevelRef.current = null
     lastFollowKeyRef.current = null
     const frame = requestAnimationFrame(() => recenterLiveRef.current?.({ resetPadding: true }))
     return () => cancelAnimationFrame(frame)
-  }, [engine, historyActive, mapOrientationMode, onHeadingChange])
+  }, [displayActive, engine, historyActive, mapOrientationMode, onHeadingChange])
 
   return {
     cameraRef,

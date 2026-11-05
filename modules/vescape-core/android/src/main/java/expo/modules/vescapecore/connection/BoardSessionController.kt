@@ -78,6 +78,7 @@ import expo.modules.vescapecore.protocol.VescGattListener
 import expo.modules.vescapecore.replay.ReplayLocation
 import expo.modules.vescapecore.replay.ReplayClock
 import expo.modules.vescapecore.replay.ReplayTransport
+import expo.modules.vescapecore.runtime.displaySample
 import expo.modules.vescapecore.VescLiveStateSnapshot
 import expo.modules.vescapecore.protocol.VescPacketReassembler
 import expo.modules.vescapecore.navigation.NavigationController
@@ -422,6 +423,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             ::emitEvent,
             recordingCoordinator,
             telemetryPipeline,
+            displayClock = { sessionClock.displaySample() },
         )
     }
     private val configController by lazy {
@@ -2341,6 +2343,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     /** Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live. */
     private fun watchSnapshot(): WatchSnapshot {
+        val displayClock = sessionClock.displaySample()
         val current = telemetry
         // Navigation lanes require Route Progress; course and trail stay live independently.
         val progress = NavigationController.get(service.applicationContext).currentProgress
@@ -2373,6 +2376,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
             tiltControl = watchTiltControl(),
             mapPosition = rider?.let { expo.modules.vescapecore.watch.WatchMapPosition(it.latitude, it.longitude) },
             riderSpeedMps = rider?.speedMps,
+            motionFacts = expo.modules.vescapecore.watch.WatchMotionFacts(
+                locationTracker.displaySourceId.toDouble(), rider?.timestamp?.toDouble() ?: 0.0,
+                displayClock.timestampMs.toDouble(), rider?.let { maxOf(0L, displayClock.timestampMs - it.timestamp).toDouble() } ?: 1e9,
+                current?.let { maxOf(0L, displayClock.timestampMs - it.lastPacketAt).toDouble() } ?: 1e9,
+                rider?.accuracyM, displayClock.rate,
+            ),
             trail = expo.modules.vescapecore.watch.watchTrail(
                 rider?.let { GeoPoint(it.latitude, it.longitude) },
                 locationTracker.recentLocations(),
@@ -2432,6 +2441,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         tick["speedPeak"] = processed.speedPeak
         tick["dutyPeak"] = processed.dutyPeak
         tick["generation"] = generation
+        val displayClock = sessionClock.displaySample()
+        tick["displaySourceId"] = locationTracker.displaySourceId
+        tick["displayClockMs"] = displayClock.timestampMs
+        tick["displayClockRate"] = displayClock.rate
         tick["remoteTilt"] = remoteTiltState()
         if (firedAlerts.isNotEmpty()) tick["firedAlerts"] = firedAlerts
         return tick
@@ -2765,6 +2778,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         watchTiltRefused = false
         recordWatchDiagnostic("watch_tilt_cancel", mapOf("accepted" to stopRemoteTilt()))
     }
+
+    internal fun configureWatchDisplay(json: String) { scheduler.post { watchMirror.configureMotion(json) } }
 
     internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
         // WearableListenerService callbacks arrive off the controller's scheduler.
@@ -3472,6 +3487,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         settings: AppSettings,
         includeRecent: Boolean,
     ): Map<String, Any?> {
+        val displayClock = sessionClock.displaySample()
         val recentTelemetryValue = if (includeRecent) telemetryPipeline.recentSnapshot() else emptyList()
         val recentLocationsValue = if (includeRecent) locationTracker.recentLocations() else emptyList()
 
@@ -3485,6 +3501,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 recentTelemetry = recentTelemetryValue,
                 gpsPhase = gpsMonitor.phase,
                 gpsMode = gpsMonitor.mode,
+                displaySourceId = locationTracker.displaySourceId,
+                displayClockMs = displayClock.timestampMs,
+                displayClockRate = displayClock.rate,
                 latestLocation = locationTracker.latestLocation,
                 latestPreciseLocation = locationTracker.latestPreciseLocation,
                 recentLocations = recentLocationsValue,

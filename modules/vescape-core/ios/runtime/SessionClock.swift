@@ -26,6 +26,16 @@ internal protocol SessionClock: AnyObject {
   var speed: Double { get }
 }
 
+/// One compatible timestamp/rate pair for display consumers adapting replay time.
+internal struct DisplayClockSample {
+  let timestampMs: Int64
+  let rate: Double
+}
+
+extension SessionClock {
+  func displaySample() -> DisplayClockSample { DisplayClockSample(timestampMs: nowMs(), rate: speed) }
+}
+
 extension SessionClock {
   var speed: Double { 1.0 }
 }

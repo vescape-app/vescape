@@ -1,3 +1,10 @@
+import { MotionComparisonLayers } from '@/modules/map/components/MotionComparisonLayers'
+import { useScreenVisible } from '@/hooks/useScreenVisible'
+import { createMotionDisplay } from '@/modules/map/lib/liveMotion/nativeDisplay'
+import type { MotionDiagnostics } from 'vescape-core'
+import { startPointAnimation } from '@/modules/map/lib/liveMotion/pointAnimation'
+import { useLiveMotionSettings } from '@/modules/map/store/liveMotionSettings'
+import { LiveMotionControls } from '@/modules/map/components/LiveMotionControls'
 import { useResolvedAccentColors } from '@/hooks/useTheme'
 import Mapbox, { type Camera as CameraRef } from '@rnmapbox/maps'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -60,6 +67,55 @@ const INITIAL_CAMERA: EngineCamera = {
  */
 export function MapPlaygroundScreen() {
   const accents = useResolvedAccentColors()
+  const active = useScreenVisible()
+  const [motion] = useState(() => createMotionDisplay('bench'))
+  const [pointAnimator] = useState(() => new Mapbox.__experimental.MovePointShapeAnimator(START))
+  const config = useLiveMotionSettings((state) => state.config)
+  useEffect(() => {
+    if (!active) return
+    const disconnect = motion.connect()
+    const options = () => {
+      const settings = useLiveMotionSettings.getState()
+      motion.command({
+        op: 'options',
+        active: true,
+        diagnostics: true,
+        trail: settings.showSmoothedTrail,
+        raw: settings.showRawGpsPoint,
+      })
+    }
+    options()
+    const stopSettings = useLiveMotionSettings.subscribe((state, previous) => {
+      if (
+        state.showSmoothedTrail !== previous.showSmoothedTrail ||
+        state.showRawGpsPoint !== previous.showRawGpsPoint
+      )
+        options()
+    })
+    motion.command({ op: 'reset' })
+    motion.command({
+      op: 'fix',
+      longitude: gpsStateRef.current.position[0],
+      latitude: gpsStateRef.current.position[1],
+      timestamp: performance.now(),
+      accuracyM: 3,
+    })
+    const stopAnimation = startPointAnimation({
+      motion,
+      now: motion.now,
+      moveTo: (coordinate, durationMs) =>
+        pointAnimator.moveTo({ coordinate, durationMs: motion.duration(durationMs) }),
+      subscribe: motion.subscribe,
+      schedule: (callback, ms) => setTimeout(callback, motion.duration(ms)),
+      cancel: clearTimeout,
+    })
+    return () => {
+      stopAnimation()
+      stopSettings()
+      motion.command({ op: 'options', active: false })
+      disconnect()
+    }
+  }, [active, motion, pointAnimator])
   const cameraRef = useRef<CameraRef>(null)
   const engineRef = useRef<CameraEngine | null>(null)
   const cameraStateRef = useRef<EngineCamera>(INITIAL_CAMERA)
@@ -71,9 +127,9 @@ export function MapPlaygroundScreen() {
   const gpsStateRef = useRef<FakeGpsState>(createFakeGpsState(START))
   const compassElapsedRef = useRef(0)
 
-  const [omegaCenter, setOmegaCenter] = useState(CAMERA_ENGINE_DEFAULT_OMEGA.center)
+  const omegaCenter = config.cameraPositionOmega
   const [omegaZoom, setOmegaZoom] = useState(CAMERA_ENGINE_DEFAULT_OMEGA.zoom)
-  const [omegaHeading, setOmegaHeading] = useState(CAMERA_ENGINE_DEFAULT_OMEGA.heading)
+  const omegaHeading = config.cameraHeadingOmega
   const [omegaPitch, setOmegaPitch] = useState(CAMERA_ENGINE_DEFAULT_OMEGA.pitch)
   const [derivePitchOn, setDerivePitchOn] = useState(true)
   const [ballisticOn, setBallisticOn] = useState(true)
@@ -85,9 +141,14 @@ export function MapPlaygroundScreen() {
   const [compassNoise, setCompassNoise] = useState(false)
   const [gpsFix, setGpsFix] = useState<[number, number]>(START)
   const [traces, setTraces] = useState<Traces>(emptyTraces)
-  const [readout, setReadout] = useState<{ camera: EngineCamera; animating: boolean }>({
+  const [readout, setReadout] = useState<{
+    camera: EngineCamera
+    animating: boolean
+    evidence: MotionDiagnostics | null
+  }>({
     camera: INITIAL_CAMERA,
     animating: false,
+    evidence: null,
   })
 
   const zoomRef = useRef(zoom)
@@ -100,13 +161,11 @@ export function MapPlaygroundScreen() {
 
   const applyFrame = useCallback((camera: EngineCamera) => {
     cameraStateRef.current = camera
-    // TODO: switch to setCameraDirect once the extended patch lands
-    cameraRef.current?.setCamera({
-      centerCoordinate: camera.centerCoordinate,
-      zoomLevel: camera.zoomLevel,
+    cameraRef.current?.setCameraDirect({
+      center: camera.centerCoordinate,
+      zoom: camera.zoomLevel,
       heading: camera.heading,
       pitch: camera.pitch,
-      animationDuration: 0,
     })
     const t = Date.now()
     const traceState = tracesRef.current
@@ -123,15 +182,16 @@ export function MapPlaygroundScreen() {
     }
   }, [])
 
-  // Omega is a creation-time constant, so a tuning change rebuilds the engine
-  // on top of the camera the old one left behind.
+  // Bench-only zoom/pitch and transit options rebuild from the current camera.
+  // Shared position/heading tuning retargets the existing engine below.
   useEffect(() => {
+    if (!active) return
     const engine = createCameraEngine({
       applyFrame,
       omega: {
-        center: omegaCenter,
+        center: useLiveMotionSettings.getState().config.cameraPositionOmega,
         zoom: omegaZoom,
-        heading: omegaHeading,
+        heading: useLiveMotionSettings.getState().config.cameraHeadingOmega,
         pitch: omegaPitch,
       },
       derivePitch: derivePitchOn ? (z) => getPitchForZoom(z, true) : undefined,
@@ -146,14 +206,32 @@ export function MapPlaygroundScreen() {
       zoom: zoomRef.current,
       ...(driversRef.current.compassOn ? { heading: targetRef.current.heading } : {}),
     })
+    const follow = () => ({
+      motion: motion.motionState(motion.now()),
+      center: motion.position(motion.now()) ?? targetRef.current.center,
+      ...(driversRef.current.compassOn
+        ? {}
+        : { heading: motion.cameraHeading(motion.now()) ?? engine.getCamera().heading }),
+    })
+    engine.follow(follow)
+    const wake = motion.subscribe(() => engine.follow(follow))
     engineRef.current = engine
     return () => {
+      wake()
       engine.destroy()
       if (engineRef.current === engine) engineRef.current = null
     }
-  }, [applyFrame, omegaCenter, omegaZoom, omegaHeading, omegaPitch, derivePitchOn, ballisticOn])
+  }, [active, applyFrame, motion, omegaZoom, omegaPitch, derivePitchOn, ballisticOn])
 
   useEffect(() => {
+    engineRef.current?.configureOmega({
+      center: useLiveMotionSettings.getState().config.cameraPositionOmega,
+      heading: omegaHeading,
+    })
+  }, [omegaCenter, omegaHeading])
+
+  useEffect(() => {
+    if (!active) return
     const id = setInterval(() => {
       const { gpsMode: mode, gpsRunning: running, speedKmh: speed } = driversRef.current
       if (!running) return
@@ -166,14 +244,22 @@ export function MapPlaygroundScreen() {
       gpsStateRef.current = sample.state
       targetRef.current.center = sample.reported
       setGpsFix(sample.reported)
-      engineRef.current?.setTarget({ center: sample.reported })
+      motion.command({
+        op: 'fix',
+        longitude: sample.reported[0],
+        latitude: sample.reported[1],
+        timestamp: performance.now(),
+        accuracyM: mode === 'jitter' ? 12 : 3,
+      })
     }, GPS_TICK_MS)
     return () => clearInterval(id)
-  }, [])
+  }, [active, motion])
 
   useEffect(() => {
+    if (!active) return
     const id = setInterval(() => {
-      const { compassOn: on, compassNoise: noise } = driversRef.current
+      const { compassOn: on, compassNoise: noise, speedKmh: speed } = driversRef.current
+      motion.command({ op: 'speed', mps: speed / 3.6 })
       if (!on) return
       compassElapsedRef.current += COMPASS_TICK_MS / 1000
       const heading = fakeCompassHeading({
@@ -185,18 +271,20 @@ export function MapPlaygroundScreen() {
       engineRef.current?.setTarget({ heading })
     }, COMPASS_TICK_MS)
     return () => clearInterval(id)
-  }, [])
+  }, [active, motion])
 
   useEffect(() => {
+    if (!active) return
     const id = setInterval(() => {
       setTraces({ lng: [...tracesRef.current.lng], heading: [...tracesRef.current.heading] })
       setReadout({
         camera: cameraStateRef.current,
         animating: engineRef.current?.isAnimating() ?? false,
+        evidence: motion.evidence(),
       })
     }, UI_TICK_MS)
     return () => clearInterval(id)
-  }, [])
+  }, [active, motion])
 
   useEffect(() => {
     engineRef.current?.setTarget({ zoom })
@@ -207,6 +295,14 @@ export function MapPlaygroundScreen() {
     gpsStateRef.current = { ...gpsStateRef.current, position: far }
     targetRef.current.center = far
     setGpsFix(far)
+    motion.command({ op: 'reset' })
+    motion.command({
+      op: 'fix',
+      longitude: far[0],
+      latitude: far[1],
+      timestamp: performance.now(),
+      accuracyM: 3,
+    })
     engineRef.current?.setTarget({ center: far })
   }
 
@@ -214,6 +310,14 @@ export function MapPlaygroundScreen() {
     gpsStateRef.current = createFakeGpsState(START)
     targetRef.current.center = START
     setGpsFix(START)
+    motion.command({ op: 'reset' })
+    motion.command({
+      op: 'fix',
+      longitude: START[0],
+      latitude: START[1],
+      timestamp: performance.now(),
+      accuracyM: 3,
+    })
     engineRef.current?.snap({ center: START, zoom })
   }
 
@@ -230,6 +334,7 @@ export function MapPlaygroundScreen() {
           attributionEnabled={false}
           compassEnabled={false}
         >
+          <MotionComparisonLayers motion={motion} />
           <Mapbox.Camera
             ref={cameraRef}
             defaultSettings={{
@@ -252,6 +357,12 @@ export function MapPlaygroundScreen() {
               }}
             />
           </Mapbox.ShapeSource>
+          <Mapbox.ShapeSource id="playground-display" shape={pointAnimator}>
+            <Mapbox.CircleLayer
+              id="playground-display-point"
+              style={{ circleRadius: 5, circleColor: accents.green.color }}
+            />
+          </Mapbox.ShapeSource>
         </Mapbox.MapView>
       </View>
 
@@ -267,7 +378,7 @@ export function MapPlaygroundScreen() {
         <PlaygroundSlider
           label="speed"
           value={speedKmh}
-          min={5}
+          min={0}
           max={50}
           step={1}
           color={theme.palette.green.color}
@@ -296,25 +407,11 @@ export function MapPlaygroundScreen() {
 
         <Text style={styles.section}>Springs</Text>
         <PlaygroundSlider
-          label="omega center"
-          value={omegaCenter}
-          min={1}
-          max={20}
-          onChange={setOmegaCenter}
-        />
-        <PlaygroundSlider
           label="omega zoom"
           value={omegaZoom}
           min={1}
           max={20}
           onChange={setOmegaZoom}
-        />
-        <PlaygroundSlider
-          label="omega heading"
-          value={omegaHeading}
-          min={1}
-          max={20}
-          onChange={setOmegaHeading}
         />
         <PlaygroundSlider
           label="omega pitch"
@@ -339,6 +436,7 @@ export function MapPlaygroundScreen() {
         />
         <ToggleRow label="ballistic transit zoom" value={ballisticOn} onToggle={setBallisticOn} />
 
+        <LiveMotionControls evidence={readout.evidence} />
         <Text style={styles.section}>Telemetry</Text>
         <SpringTraceChart
           label="center lng"

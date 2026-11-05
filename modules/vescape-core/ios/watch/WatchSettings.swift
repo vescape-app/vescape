@@ -73,6 +73,7 @@ let watchSourceSettingKeys: Set<String> = [
 struct WatchSettings: Equatable {
   /// `#RRGGBB` / `#AARRGGBB` as the phone's rider palette stores it; nil when the rider has none.
   var riderColor: String?
+  var displayMotionJson = ""
   /// Null until a phone new enough to send it has pushed; the wrist then shows no number.
   var boardMoveStrengthPercent: Int?
   /// Off by default: an older phone never sends the key, and the arrow is opt-in until it works.
@@ -95,6 +96,7 @@ struct WatchSettings: Equatable {
   var payload: [String: Any] {
     var payload: [String: Any] = [
       WatchSettingsKey.riderColor: riderColor ?? "",
+      "displayMotion": displayMotionJson,
       WatchSettingsKey.navArrowEnabled: navArrowEnabled,
       WatchSettingsKey.telemetryTrailEnabled: telemetryTrailEnabled,
       WatchSettingsKey.telemetryGroupEnabled: telemetryGroupEnabled,
@@ -118,6 +120,7 @@ struct WatchSettings: Equatable {
       .trimmingCharacters(in: .whitespaces)
     return WatchSettings(
       riderColor: (color?.isEmpty ?? true) ? nil : color,
+      displayMotionJson: payload["displayMotion"] as? String ?? "",
       boardMoveStrengthPercent: (payload[WatchSettingsKey.boardMoveStrengthPercent] as? NSNumber)?.intValue,
       navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
       telemetryTrailEnabled: payload[WatchSettingsKey.telemetryTrailEnabled] as? Bool ?? wristDefaults.telemetryTrailEnabled,

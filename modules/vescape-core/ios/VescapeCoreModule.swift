@@ -39,6 +39,32 @@ public class VescapeCoreModule: Module {
 
   // MARK: - Session state
 
+  private var mapDisplays: [String: MapDisplayCoordinator] = [:]
+  private var motionConfig = MotionConfig()
+  private func mapDisplay(_ id: String) -> MapDisplayCoordinator {
+    precondition(id == "live" || id == "bench")
+    if let display = mapDisplays[id] { return display }
+    let display = MapDisplayCoordinator(
+      clock: { ProcessInfo.processInfo.systemUptime * 1000 },
+      schedule: { ms, callback in
+        let task = DispatchWorkItem(block: callback)
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0.001, ms / 1000), execute: task)
+        return { task.cancel() }
+      },
+      emit: { [weak self] body in
+        DispatchQueue.main.async {
+          guard let self, self.shouldEmitToFrontend("onMapDisplay") else { return }
+          self.sendEvent("onMapDisplay", body.merging(["id": id]) { _, new in new })
+        }
+      })
+    display.configure(motionConfig)
+    mapDisplays[id] = display
+    return display
+  }
+  private func onDisplayQueue<T>(_ work: () -> T) -> T {
+    if Thread.isMainThread { return work() }
+    return DispatchQueue.main.sync(execute: work)
+  }
   private var selectedBoardId: String? = nil
   /// Dev-setting request: capture a raw debug Session Recorder for the next Board Session.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `requestedDebugRecordingEnabled`
@@ -93,11 +119,13 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
+    Events("onMapDisplay", "onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
     // gate. @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
+    OnStartObserving("onMapDisplay") { self.observedEvents.insert("onMapDisplay") }
+    OnStopObserving("onMapDisplay") { self.observedEvents.remove("onMapDisplay") }
     OnStartObserving("onDevice") { self.observedEvents.insert("onDevice") }
     OnStopObserving("onDevice") { self.observedEvents.remove("onDevice") }
     OnStartObserving("onError") { self.observedEvents.insert("onError") }
@@ -299,6 +327,7 @@ public class VescapeCoreModule: Module {
       self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
     }
     OnAppEntersBackground {
+      self.onDisplayQueue { self.mapDisplays.values.forEach { $0.stop() } }
       self.frontendActive = false
       // Drops GPS demand to `off` unless a ride or a Group Ride is paying for it. Deliberately not
       // mirrored in `OnDestroy`: a JS runtime teardown (dev reload, OTA) is not the rider putting
@@ -325,6 +354,7 @@ public class VescapeCoreModule: Module {
       self.serviceConfigUnsubscribe = nil
       NavigationController.shared.onChange = nil
       NavigationController.shared.onProgressChange = nil
+      self.onDisplayQueue { self.mapDisplays.values.forEach { $0.stop() } }
       self.frontendActive = false
       self.observedEvents.removeAll()
       self.cancelActiveProbe(reason: "module_destroyed")
@@ -752,6 +782,34 @@ public class VescapeCoreModule: Module {
       )
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mapDisplayCommand`
+    // @parity /modules/vescape-core/src/mapDisplay.ts
+    Function("getMapDisplayControls") { MotionConfig.controls() }
+    Function("setMapDisplayConfig") { (json: String) throws -> [String: Double] in
+      let config = MotionConfig.fromJson(json)
+      let values = config.values()
+      let data = try JSONSerialization.data(withJSONObject: values)
+      let text = String(decoding: data, as: UTF8.self)
+      return self.onDisplayQueue {
+        self.motionConfig = config
+        self.mapDisplays.values.forEach { $0.configure(config) }
+        self.coordinator.configureWatchDisplay(text)
+        return values
+      }
+    }
+    Function("mapDisplayCommand") { (id: String, body: [String: Any]) throws -> [String: Any] in
+      guard id == "live" || id == "bench" else {
+        throw Exception(name: "ERR_MAP_DISPLAY", description: "Unknown display surface")
+      }
+      return self.onDisplayQueue {
+        let display = self.mapDisplay(id)
+        if body["op"] as? String == "options" {
+          display.options(body)
+          if id == "live", body["active"] as? Bool == true { display.input("onLiveState", self.liveState(includeRecent: true).compactMapValues { $0 }) }
+        } else if id == "bench" { display.bench(body) }
+        return display.snapshot()
+      }
+    }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
     Function("setWatchRouteSpanM") { (spanM: Double?) in
       WatchRouteMirror.shared.viewportSpanM = spanM
@@ -2100,11 +2158,15 @@ public class VescapeCoreModule: Module {
   /// the still-running session. Mirrors Android setting `CoreForegroundService.emitEvent`.
   private func attachToCoordinator() {
     coordinator.emit = { [weak self] name, body in
-      guard let self, self.shouldEmitToFrontend(name) else { return }
+      guard let self else { return }
+      if self.frontendActive { self.mapDisplays["live"]?.input(name, body.compactMapValues { $0 }) }
+      guard self.shouldEmitToFrontend(name) else { return }
       self.sendEvent(name, body)
     }
     coordinator.onStateChanged = { [weak self] in
-      guard let self, self.shouldEmitToFrontend("onLiveState") else { return }
+      guard let self else { return }
+      if self.frontendActive, let display = self.mapDisplays["live"] { display.input("onLiveState", self.liveState().compactMapValues { $0 }) }
+      guard self.shouldEmitToFrontend("onLiveState") else { return }
       self.sendEvent("onLiveState", self.liveState())
     }
   }
@@ -2166,6 +2228,7 @@ public class VescapeCoreModule: Module {
       RecordingStorageFailure.reportRead(operation: "live_state_settings_read", error: error)
       settings = [:]
     }
+    let displayClock = coordinator.gpsDisplayClockSample()
     return [
       "board": [
         "phase": coordinator.phase.rawValue,
@@ -2184,6 +2247,9 @@ public class VescapeCoreModule: Module {
       "gps": [
         "phase": coordinator.gpsPhase(),
         "mode": coordinator.gpsMode(),
+        "displaySourceId": coordinator.gpsDisplaySourceId(),
+        "displayClockMs": displayClock.timestampMs,
+        "displayClockRate": displayClock.rate,
         "latestFix": coordinator.gpsLatestPreciseLocation(),
         "latestApproximateFix": coordinator.gpsLatestLocation(),
         "latestPreciseFix": coordinator.gpsLatestPreciseLocation(),

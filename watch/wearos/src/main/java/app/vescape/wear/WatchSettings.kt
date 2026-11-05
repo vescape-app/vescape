@@ -54,6 +54,7 @@ const val DEFAULT_TILT_RATE_PERCENT = 20
 /** Phone settings the wrist mirrors. Every field defaults to the wrist's own look. */
 data class WatchSettings(
     val riderColor: Color? = null,
+    val displayMotionJson: String = "",
     val distanceUnit: String = "km",
     /** Off by default: an older phone never sends the key, and the arrow is opt-in until it works. */
     val navArrowEnabled: Boolean = false,
@@ -69,6 +70,7 @@ data class WatchSettings(
     companion object {
         /** Missing or unknown preference values from older/newer phones always mean metric. */
         fun decode(payload: Map<String, Any?>): WatchSettings = WatchSettings(
+            displayMotionJson = payload["displayMotion"] as? String ?: "",
             riderColor = parseRiderColor(payload[SETTING_RIDER_COLOR] as? String),
             navArrowEnabled = payload[SETTING_NAV_ARROW] as? Boolean ?: false,
             telemetryTrailEnabled = payload[SETTING_TELEMETRY_TRAIL] as? Boolean ?: true,

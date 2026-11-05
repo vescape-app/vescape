@@ -140,6 +140,7 @@ export function NavigationMapLayers({
         <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
           <LineLayer
             id="center-navigation-casing"
+            belowLayerID={MAP_DEFAULTS.userPositionLayerId}
             style={{
               lineOpacity: ['get', 'opacity'],
               lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
@@ -151,6 +152,7 @@ export function NavigationMapLayers({
           />
           <LineLayer
             id="center-navigation-line"
+            belowLayerID={MAP_DEFAULTS.userPositionLayerId}
             style={{
               lineOpacity: ['get', 'opacity'],
               lineColor: routeColor,

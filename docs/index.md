@@ -26,6 +26,8 @@
 
 ### Features
 
+- [map.md](./map.md) — live point prediction, deliberately lagging camera, developer tuning and watch delivery
+
 - [units.md](./units.md) — km/mi distance-unit preference, conversion, editing, alerts, and watches
 - [accessories.md](./accessories.md) — in-progress accessory design: ground-clearance tilt sensor and brake light
 - [accessory-protocol.md](./accessory-protocol.md) — JSON/BLE protocol v1: discovery implemented against shared fixtures; commands, readings, and failure handling still draft

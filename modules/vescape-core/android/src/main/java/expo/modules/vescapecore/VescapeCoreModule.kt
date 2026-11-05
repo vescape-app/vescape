@@ -1,5 +1,7 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.display.MapDisplayCoordinator
+import expo.modules.vescapecore.display.MotionConfig
 import expo.modules.vescapecore.weather.WeatherAlertLevel
 import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
@@ -137,6 +139,24 @@ class VescapeCoreModule : Module() {
   private var frontendActive = true
   private val observedEvents = mutableSetOf<String>()
   private val mainHandler = Handler(Looper.getMainLooper())
+  private val mapDisplays = ConcurrentHashMap<String, MapDisplayCoordinator>()
+  private var motionConfig = MotionConfig()
+  @Synchronized private fun mapDisplay(id: String): MapDisplayCoordinator {
+    require(id == "live" || id == "bench")
+    return mapDisplays.getOrPut(id) {
+      MapDisplayCoordinator(
+        clock = { android.os.SystemClock.elapsedRealtime().toDouble() },
+        schedule = { ms, callback ->
+          val task = Runnable { callback() }
+          mainHandler.postDelayed(task, kotlin.math.max(1L, ms.toLong()))
+          ({ mainHandler.removeCallbacks(task) })
+        },
+        emit = { body -> mainHandler.post {
+          if (shouldEmitToFrontend("onMapDisplay")) sendEvent("onMapDisplay", body + ("id" to id))
+        } },
+      ).also { it.configure(motionConfig) }
+    }
+  }
   private val rideExportCancelled = java.util.concurrent.atomic.AtomicBoolean(false)
   private var activeProbe: ActiveBoardProbe? = null
   private val completedProbes = ConcurrentHashMap<String, TransportDetection.Result>()
@@ -163,6 +183,7 @@ class VescapeCoreModule : Module() {
     Name("VescapeCore")
 
     CoreForegroundService.emitEvent = { name, body ->
+      if (frontendActive) mapDisplays["live"]?.input(name, body)
       // Durable-data invalidation must bypass the live-telemetry subscription gate.
       // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendAppDataChanged`
       if (name == "onAppDataChanged") {
@@ -181,6 +202,7 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
     Events(
+      "onMapDisplay",
       "onDevice",
       "onRideExportProgress",
       "onError",
@@ -313,6 +335,8 @@ class VescapeCoreModule : Module() {
       }
     }
 
+    OnStartObserving("onMapDisplay") { startObserving("onMapDisplay") }
+    OnStopObserving("onMapDisplay") { stopObserving("onMapDisplay") }
     OnStartObserving("onDevice") { startObserving("onDevice") }
     OnStopObserving("onDevice") { stopObserving("onDevice") }
     OnStartObserving("onError") { startObserving("onError") }
@@ -461,6 +485,7 @@ class VescapeCoreModule : Module() {
       emitMaintenanceState(MaintenanceRunner.snapshot())
     }
     OnActivityEntersBackground {
+      mapDisplays.values.forEach { it.stop() }
       frontendActive = false
       // Drops GPS demand to `Off` unless a ride or a Group Ride is paying for it. Deliberately not
       // mirrored in `OnDestroy`: a JS runtime teardown (dev reload, OTA) is not the rider putting
@@ -473,6 +498,7 @@ class VescapeCoreModule : Module() {
     OnDestroy {
       MaintenanceRunner.onChange = null
       RecordingStorageFailure.observeOutage(null)
+      mapDisplays.values.forEach { it.stop() }
       frontendActive = false
       observedEvents.clear()
       // Detach the JS-facing emit sink so the process-singleton registry doesn't keep the destroyed
@@ -590,6 +616,7 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshLocationDemand`
     Function("refreshLocationDemand") { refreshLocationDemand() }
     registerGroupRide()
+    registerMapDisplay()
     Function("setWatchRouteSpanM") { spanM: Double? ->
       WatchRouteMirror.viewportSpanM = spanM
     }
@@ -1551,6 +1578,26 @@ class VescapeCoreModule : Module() {
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
+    }
+  }
+
+  private fun ModuleDefinitionBuilder.registerMapDisplay() {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapDisplayCommand`
+    // @parity /modules/vescape-core/src/mapDisplay.ts
+    Function("getMapDisplayControls") { MotionConfig.controls() }
+    Function("setMapDisplayConfig") { json: String ->
+      motionConfig = MotionConfig.fromJson(json)
+      mapDisplays.values.forEach { it.configure(motionConfig) }
+      CoreForegroundService.configureWatchDisplay(org.json.JSONObject(motionConfig.values()).toString())
+      motionConfig.values()
+    }
+    Function("mapDisplayCommand") { id: String, body: Map<String, Any?> ->
+      val display = mapDisplay(id)
+      if (body["op"] == "options") {
+        display.options(body)
+        if (id == "live" && body["active"] == true) display.input("onLiveState", CoreForegroundService.currentLiveState(context))
+      } else if (id == "bench") display.bench(body)
+      display.snapshot()
     }
   }
 

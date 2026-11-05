@@ -14,6 +14,7 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     var groups = 0
     var statuses = 0
     var settings = 0
+    var lastSettings: WatchSettings?
     var batteries: [WatchLastBattery?] = []
     var receive: ((WatchCommand) -> Void)?
     func start(command: @escaping (WatchCommand) -> Void) { starts += 1; receive = command }
@@ -21,7 +22,7 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     func pushFrame(_ frame: Data) { frames.append(frame); onFrame() }
     func pushGroup(_ frame: Data) { groups += 1; onGroup() }
     func pushRouteStatus(_ status: WatchRouteStatus) { statuses += 1 }
-    func pushSettings(_ settings: WatchSettings) { self.settings += 1 }
+    func pushSettings(_ settings: WatchSettings) { self.settings += 1; lastSettings = settings }
     func pushWeather(_ weather: WatchWeather) {}
     func pushRoute(_ payload: [String: Any]) {}
     func pushBoard(_ board: WatchBoardLights) {}
@@ -65,6 +66,19 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
       mapTiles: { self.mapTiles.append($0) }
     )
     func active() { coordinator.start(); coordinator.acceptWakeLevel(.active) }
+  }
+
+  func testSessionMotionOverridesSurvivePersistedReloadAndResetIndependently() {
+    let h = Harness()
+    let tuning = "{\"predictionStrength\":0.25}"
+    h.coordinator.configureMotion(tuning)
+    h.coordinator.applySettings(WatchSettings(riderColor: nil, boardMoveStrengthPercent: 10), intervalMs: 250)
+    XCTAssertEqual(h.transport.lastSettings?.displayMotionJson, tuning)
+    h.coordinator.applySettings(WatchSettings(riderColor: "#ff0000", boardMoveStrengthPercent: 10), intervalMs: 250)
+    XCTAssertEqual(h.transport.lastSettings?.displayMotionJson, tuning)
+    h.coordinator.configureMotion("")
+    XCTAssertEqual(h.transport.lastSettings?.displayMotionJson, "")
+    XCTAssertEqual(h.transport.lastSettings?.riderColor, "#ff0000")
   }
 
   func testPersistedBatteryAndSelectionClearBypassLiveStreamWakeGate() {

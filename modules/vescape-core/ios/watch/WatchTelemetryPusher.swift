@@ -129,7 +129,10 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     }
   }
 
+  private var supportsMotionFacts = false
+
   func pushFrame(_ frame: Data) {
+    let frame = supportsMotionFacts ? frame : WatchFrameBuilder.legacyFrame(frame)
     guard let session, canPush else { return }
     session.sendMessageData(
       frame,
@@ -183,7 +186,10 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommandListenerService.kt
   func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
     guard let command = WatchCommandCodec.decode(messageData) else { return }
-    onCommand?(command)
+    DispatchQueue.main.async { [weak self] in
+      if case .mirrorAwake = command { self?.supportsMotionFacts = messageData.count >= 3 && messageData[2] == 1 }
+      self?.onCommand?(command)
+    }
   }
 
   func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {

@@ -82,6 +82,7 @@ internal data class WatchSettings(
     val telemetryRouteEnabled: Boolean = true,
     val streetMapEnabled: Boolean = true,
     val mapGaugesPercent: Int = WatchMapGauges.DEFAULT_PERCENT,
+    val displayMotionJson: String = "",
 )
 
 /**

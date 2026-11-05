@@ -37,6 +37,7 @@ export function RiderTrail({
     <ShapeSource id={`center-rider-trail-source-${rider.id}`} shape={shape} lineMetrics>
       <LineLayer
         id={`center-rider-trail-casing-${rider.id}`}
+        belowLayerID={MAP_DEFAULTS.userPositionLayerId}
         style={{
           lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
           lineWidth: highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
@@ -46,6 +47,7 @@ export function RiderTrail({
       />
       <LineLayer
         id={`center-rider-trail-line-${rider.id}`}
+        belowLayerID={MAP_DEFAULTS.userPositionLayerId}
         style={{
           lineColor: color,
           lineWidth: MAP_DEFAULTS.trailWidth,

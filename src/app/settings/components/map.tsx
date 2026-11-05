@@ -1,3 +1,5 @@
+import { MotionDisplay } from '@/modules/map/lib/liveMotion/display'
+import { LiveMotionControls } from '@/modules/map/components/LiveMotionControls'
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useRef, useState, type ComponentRef } from 'react'
@@ -44,6 +46,20 @@ import {
 import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayers'
 import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import { DASH } from '@/helpers/format'
+
+// Render-only fixture: never acquires native GPS or telemetry.
+const showcaseMotion = {
+  now: () => performance.now(),
+  duration: (ms: number) => ms,
+  active: false,
+  motion: new MotionDisplay('bench', {
+    command: () => {
+      throw new Error('Showcase is render-only')
+    },
+    subscribe: () => ({ remove() {} }),
+  }),
+  subscribe: () => () => {},
+}
 
 const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
   { key: 'speed', label: 'Speed' },
@@ -128,6 +144,7 @@ export default function MapComponentsShowcase() {
         {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
         {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
         <MainMapLayers
+          displayRuntime={showcaseMotion}
           historyActive={false}
           expandSelectedMapPoints
           isMapy={isMapy}
@@ -244,6 +261,7 @@ export default function MapComponentsShowcase() {
             if (match) setActiveHistoryMapMetric(match.key)
           }}
         />
+        <LiveMotionControls />
         <ValueRow label="Last interaction" value={lastEvent ?? DASH} />
         <Text style={styles.hint}>
           Tap a pin to expand its label + delete button. Buildings 3D follows the style (Outdoors,

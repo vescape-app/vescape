@@ -35,6 +35,7 @@ internal class WatchSettingsPusher(
                     write = { settings ->
                         val request = PutDataMapRequest.create(WATCH_SETTINGS_PATH).apply {
                             dataMap.putString(WATCH_SETTING_RIDER_COLOR, settings.riderColor ?: "")
+                            dataMap.putString("displayMotion", settings.displayMotionJson)
                             dataMap.putInt(WATCH_SETTING_BOARD_MOVE_STRENGTH, settings.boardMoveStrengthPercent)
                             dataMap.putBoolean(WATCH_SETTING_NAV_ARROW, settings.navArrowEnabled)
                             dataMap.putBoolean(WATCH_SETTING_TELEMETRY_TRAIL, settings.telemetryTrailEnabled)
