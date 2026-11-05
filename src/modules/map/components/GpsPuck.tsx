@@ -7,6 +7,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { theme } from '@/constants/theme'
+import { useThemeStore } from '@/hooks/useTheme'
 
 /** The map's rendered heading and pitch, written every camera frame. */
 export interface MapPose {
@@ -51,9 +52,14 @@ export function GpsPuck({
       transform: [{ translateY: -COIN_HEIGHT * Math.sin(pitch) }, { scaleY: Math.cos(pitch) }],
     }
   })
+  const light = useThemeStore((state) => state.resolvedTheme === 'light')
+  const shadowColor = theme.alpha(
+    theme.palette.mono.black,
+    light ? COIN_SHADOW_ALPHA_LIGHT : COIN_SHADOW_ALPHA_DARK,
+  )
   return (
     <View style={styles.puck}>
-      <Animated.View style={[styles.coinShadow, shadowStyle]} />
+      <Animated.View style={[styles.coinShadow, { backgroundColor: shadowColor }, shadowStyle]} />
       <Animated.View style={[styles.coinFace, { backgroundColor: color }, baseStyle]}>
         <View style={styles.wallShade} />
       </Animated.View>
@@ -118,6 +124,9 @@ const COIN_SIZE = 22
 const COIN_HEIGHT = 7
 const COIN_SHADOW_SIZE = 30
 const COIN_SHADOW_DROP = 2
+/** A light basemap shows a soft shadow much darker than a dark one does. */
+const COIN_SHADOW_ALPHA_LIGHT = 0.12
+const COIN_SHADOW_ALPHA_DARK = 0.3
 const ARROW_WIDTH = 18
 const ARROW_LENGTH = 14
 /** How far the arrow's base tucks under the top face, so it grows out of the rim. */
@@ -141,7 +150,6 @@ const styles = StyleSheet.create({
     width: COIN_SHADOW_SIZE,
     height: COIN_SHADOW_SIZE,
     borderRadius: COIN_SHADOW_SIZE / 2,
-    backgroundColor: theme.alpha(theme.palette.mono.black, 0.3),
   },
   coinFace: {
     position: 'absolute',
