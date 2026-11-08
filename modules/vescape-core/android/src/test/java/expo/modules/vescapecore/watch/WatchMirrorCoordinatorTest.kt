@@ -108,7 +108,7 @@ class WatchMirrorCoordinatorTest {
         val h = Harness()
         h.active()
         h.coordinator.acceptWakeLevel(WatchMirrorWakeLevel.AMBIENT)
-        h.coordinator.applySettings(WatchSettings(null, 10, false), 100, true)
+        h.coordinator.applySettings(WatchSettings(10, false), 100, true)
         h.scheduler.advance(4999)
         assertEquals(0, h.transport.frames)
         h.scheduler.advance(1)
@@ -171,9 +171,9 @@ class WatchMirrorCoordinatorTest {
         h.active()
         h.coordinator.boardConnected(1)
         h.coordinator.boardConnected(1)
-        h.coordinator.applySettings(WatchSettings(null, 10, false), 250, false)
+        h.coordinator.applySettings(WatchSettings(10, false), 250, false)
         h.coordinator.boardConnected(2)
-        h.coordinator.applySettings(WatchSettings(null, 10, false), 250, true)
+        h.coordinator.applySettings(WatchSettings(10, false), 250, true)
         h.transport.reachable = false
         h.coordinator.boardConnected(2)
         h.transport.reachable = true
@@ -231,12 +231,12 @@ class WatchMirrorCoordinatorTest {
     @Test fun `street map setting off pauses tiles and on resumes them`() {
         val h = Harness()
         h.active()
-        h.coordinator.applySettings(WatchSettings(null, 10, false, streetMapEnabled = false), 250, true)
+        h.coordinator.applySettings(WatchSettings(10, false, streetMapEnabled = false), 250, true)
         h.mapTiles.clear()
         h.scheduler.advance(1000)
         assertTrue(h.mapTiles.isNotEmpty() && h.mapTiles.all { it == null })
         assertTrue(h.transport.frames > 0) // Only the map pauses; frames keep flowing.
-        h.coordinator.applySettings(WatchSettings(null, 10, false, streetMapEnabled = true), 250, true)
+        h.coordinator.applySettings(WatchSettings(10, false, streetMapEnabled = true), 250, true)
         h.mapTiles.clear()
         h.scheduler.advance(250)
         assertEquals(WatchMapRider(WatchMapPosition(51.1, 17.0), null, 5.0, 800.0), h.mapTiles.single())

@@ -2,7 +2,8 @@ import { FillExtrusionLayer, RasterLayer, RasterSource } from '@rnmapbox/maps'
 
 import { useMapServicesStore } from '@/modules/map/store/mapServicesStore'
 import { theme } from '@/constants/theme'
-import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
+import { riderMapColor } from '@/modules/group-ride/lib/riderColor'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesMapLayer'
 import { LegalLimitsMapLayer } from '@/modules/legal/components/LegalLimitsMapLayer'
@@ -72,21 +73,24 @@ function BaseTerrainLayers({
 
 /** Rider Direction Points, so the group can see where everyone is heading. */
 function RiderTargetPins({ riders }: { riders: MainMapLayersProps['riders'] }) {
+  const accents = useResolvedAccentColors()
   return (
     <>
-      {riders.map((rider, index) =>
-        rider.presence?.target ? (
+      {riders.map((rider) => {
+        if (!rider.presence?.target) return null
+        const color = riderMapColor(rider, accents)
+        return (
           <MapPin
             // Color in the key: PointAnnotation snapshots its children natively, so a
             // color change must remount the pin to re-render.
-            key={`center-rider-target-${rider.id}-${rosterRiderColor(rider, index)}`}
+            key={`center-rider-target-${rider.id}-${color}`}
             id={`center-rider-target-${rider.id}`}
             coordinate={[rider.presence.target.lng, rider.presence.target.lat]}
-            color={rosterRiderColor(rider, index)}
+            color={color}
             icon={getMapPointKindIcon('direction')}
           />
-        ) : null,
-      )}
+        )
+      })}
     </>
   )
 }

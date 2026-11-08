@@ -490,7 +490,8 @@ Preview the receiving state with `bun run wear:replay ride --route-loading`. Thi
 fixture using the live rendering state, not a measurement of Bluetooth transfer latency.
 
 `/group-ride` carries the Group Ride Frame (ADR-0039): the Rider's course, the phone map's span, and
-each other Rider's id, name, colour, stale flag, east/north offset from the Rider's latest GPS Fix,
+each other Rider's id, name, colour (the palette slot their id owns, the same slot the phone map
+and roster use), stale flag, east/north offset from the Rider's latest GPS Fix,
 battery % (none without a Board Session), battery level and heat level. The phone derives both
 levels (normal, warning, critical) from the app's telemetry thresholds in
 `telemetry/TelemetryThresholds.kt` / `.swift`, the native mirror of `telemetryThresholds.ts`: battery
@@ -558,9 +559,8 @@ Rider Units travels on this channel as `distanceUnit`, defaulting to `km` for mi
 values. Both wrists convert speed, navigation, radar, and accessibility readouts while frame values,
 route geometry, and gauge proportions stay metric.
 
-The rider colour is another of these: pick a colour on the phone and the wrist route, chevron and
-rider dot follow it. The watchOS Mirror carries the same bag on its own channel — see
-`docs/watchos.md` for how the two transports differ.
+The watchOS Mirror carries the same bag on its own channel — see `docs/watchos.md` for how the two
+transports differ.
 
 ## Board battery complication
 

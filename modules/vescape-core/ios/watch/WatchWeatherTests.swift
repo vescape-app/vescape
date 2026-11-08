@@ -44,12 +44,12 @@ final class WatchWeatherTests: XCTestCase {
   }
 
   func testAbsentChannelIsNoForecast() {
-    XCTAssertNil(WatchWeather.decode(context: ["settings": ["riderColor": "#FF0000"]]))
+    XCTAssertNil(WatchWeather.decode(context: ["settings": ["distanceUnit": "mi"]]))
   }
 
   func testChannelIsReadOutOfAMergedContext() {
     let context: [String: Any] = [
-      "settings": ["riderColor": "#FF0000"],
+      "settings": ["distanceUnit": "mi"],
       watchWeatherChannel: sample().payload,
     ]
     XCTAssertEqual(WatchWeather.decode(context: context), sample())

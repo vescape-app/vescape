@@ -7,18 +7,35 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideRoster.kt `GROUP_RIDE_STALE_AFTER_MS`
 let GROUP_RIDE_STALE_AFTER_MS: Int64 = 5_000
 
-/// Fallback tints for a Rider who has not picked a colour, by their index in the phone roster.
+/// The Rider palette in slot order, as the phone's dark accents. A Rider id owns one slot everywhere.
 ///
-/// @parity /src/modules/group-ride/lib/riderColor.ts `riderFallbackColors`
-/// @parity /src/modules/group-ride/lib/roster.ts `riderRoster`
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideRoster.kt `GROUP_RIDE_FALLBACK_COLORS`
-let GROUP_RIDE_FALLBACK_COLORS: [UInt32] = [
+/// @parity /src/modules/group-ride/lib/riderColor.ts `RIDER_HUES`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideRoster.kt `GROUP_RIDE_RIDER_COLORS`
+let GROUP_RIDE_RIDER_COLORS: [UInt32] = [
   0xFF06_B6D4, // cyan
   0xFF22_C55E, // green
   0xFFF5_9E0B, // amber
   0xFFC0_84FC, // fuchsia
   0xFF38_BDF8, // sky
 ]
+
+/// The palette slot a Rider id owns: FNV-1a 32-bit over the id's UTF-8 bytes, modulo the palette
+/// size. Depends on the id alone, so distance, stale and away never move it.
+///
+/// @parity /src/modules/group-ride/lib/riderColor.ts `riderPaletteIndex`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideRoster.kt `groupRideRiderPaletteIndex`
+func groupRideRiderPaletteIndex(_ id: String) -> Int {
+  var hash: UInt32 = 0x811C_9DC5
+  for byte in id.utf8 {
+    hash = (hash ^ UInt32(byte)) &* 0x0100_0193
+  }
+  return Int(hash % UInt32(GROUP_RIDE_RIDER_COLORS.count))
+}
+
+/// The opaque ARGB colour a Rider id owns.
+func groupRideRiderColor(_ id: String) -> UInt32 {
+  GROUP_RIDE_RIDER_COLORS[groupRideRiderPaletteIndex(id)]
+}
 
 /// One roster entry as native keeps it for the wrist: the relay's `RiderView` reduced to what the
 /// Group Ride Frame needs.
@@ -27,8 +44,6 @@ let GROUP_RIDE_FALLBACK_COLORS: [UInt32] = [
 struct GroupRideRosterRider: Equatable {
   var id: String
   var name: String
-  /// `#RRGGBB` as the Rider picked it, or nil.
-  var color: String?
   /// Latest presence position; nil for a Rider who has not shared one yet.
   var position: WatchGeoPoint?
   var stale: Bool

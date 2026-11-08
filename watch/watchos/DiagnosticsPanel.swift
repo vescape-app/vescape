@@ -25,13 +25,6 @@ struct DiagnosticsPanel: View {
           }
           // The mirrored inputs, named here because the pages that consume them draw a *result*.
           // "Nav arrow off" and "no route pushed" look identical on the nav page; they do not here.
-          row(
-            "color",
-            link.settings.riderColor ?? WatchGauge.dash,
-            // Drawn in the colour it names: a hex string is not something a rider can check by
-            // reading, and a colour the wrist failed to parse falls back and is visibly wrong.
-            value: Palette.rider(link.settings.riderColor) ?? Palette.primaryText
-          )
           row("nav arrow", link.settings.navArrowEnabled ? "on" : "off")
           row("move", link.settings.boardMoveStrengthPercent.map { "\($0)%" } ?? WatchGauge.dash)
           row("route", link.route.map { "\($0.points.count) pts" } ?? WatchGauge.dash)

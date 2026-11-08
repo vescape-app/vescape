@@ -11,19 +11,39 @@ package expo.modules.vescapecore.watch
 internal const val GROUP_RIDE_STALE_AFTER_MS = 5_000L
 
 /**
- * Fallback tints for a Rider who has not picked a colour, by their index in the phone roster.
+ * The Rider palette in slot order, as the phone's dark accents. A Rider id owns one slot everywhere.
  *
- * @parity /src/modules/group-ride/lib/riderColor.ts `riderFallbackColors`
- * @parity /src/modules/group-ride/lib/roster.ts `riderRoster`
- * @parity /modules/vescape-core/ios/watch/GroupRideRoster.swift `GROUP_RIDE_FALLBACK_COLORS`
+ * @parity /src/modules/group-ride/lib/riderColor.ts `RIDER_HUES`
+ * @parity /modules/vescape-core/ios/watch/GroupRideRoster.swift `GROUP_RIDE_RIDER_COLORS`
  */
-internal val GROUP_RIDE_FALLBACK_COLORS = intArrayOf(
+internal val GROUP_RIDE_RIDER_COLORS = intArrayOf(
     0xFF06B6D4.toInt(), // cyan
     0xFF22C55E.toInt(), // green
     0xFFF59E0B.toInt(), // amber
     0xFFC084FC.toInt(), // fuchsia
     0xFF38BDF8.toInt(), // sky
 )
+
+/**
+ * The palette slot a Rider id owns: FNV-1a 32-bit over the id's UTF-8 bytes, modulo the palette
+ * size. Depends on the id alone, so distance, stale and away never move it.
+ *
+ * @parity /src/modules/group-ride/lib/riderColor.ts `riderPaletteIndex`
+ * @parity /modules/vescape-core/ios/watch/GroupRideRoster.swift `groupRideRiderPaletteIndex`
+ */
+internal fun groupRideRiderPaletteIndex(id: String): Int {
+    var hash = FNV_OFFSET_BASIS
+    for (byte in id.toByteArray(Charsets.UTF_8)) {
+        hash = (hash xor (byte.toInt() and 0xFF)) * FNV_PRIME
+    }
+    return (hash.toUInt() % GROUP_RIDE_RIDER_COLORS.size.toUInt()).toInt()
+}
+
+/** The opaque ARGB colour a Rider id owns. */
+internal fun groupRideRiderColor(id: String): Int = GROUP_RIDE_RIDER_COLORS[groupRideRiderPaletteIndex(id)]
+
+private const val FNV_OFFSET_BASIS = 0x811C9DC5.toInt()
+private const val FNV_PRIME = 0x01000193
 
 /**
  * One roster entry as native keeps it for the wrist: the relay's `RiderView` reduced to what the
@@ -34,8 +54,6 @@ internal val GROUP_RIDE_FALLBACK_COLORS = intArrayOf(
 internal data class GroupRideRosterRider(
     val id: String,
     val name: String,
-    /** `#RRGGBB` as the Rider picked it, or null. */
-    val color: String?,
     /** Latest presence position; null for a Rider who has not shared one yet. */
     val position: GeoPoint?,
     val stale: Boolean,

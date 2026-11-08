@@ -89,18 +89,13 @@ export function LiveMapLayers({
           </MarkerView>
         </>
       )}
-      {riders.map((rider, index) =>
+      {riders.map((rider) =>
         rider.trail && rider.trail.length >= 2 ? (
-          <RiderTrail
-            key={rider.id}
-            rider={rider}
-            index={index}
-            highContrastRoutes={highContrastRoutes}
-          />
+          <RiderTrail key={rider.id} rider={rider} highContrastRoutes={highContrastRoutes} />
         ) : null,
       )}
-      {riders.map((rider, index) =>
-        rider.presence ? <RiderPresencePin key={rider.id} rider={rider} index={index} /> : null,
+      {riders.map((rider) =>
+        rider.presence ? <RiderPresencePin key={rider.id} rider={rider} /> : null,
       )}
     </>
   )

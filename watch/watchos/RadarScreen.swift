@@ -22,9 +22,6 @@ struct RadarScreen: View {
   /// its failure is the watch's network and not the phone's link — and on the diagnostics page it
   /// has to read that way rather than as a dead mirror.
   var onFetchFailed: () -> Void = {}
-  /// The rider's own colour when they picked one on the phone — the same dot every other page pins
-  /// them under.
-  var riderColor: Color = Palette.speed
   var distanceUnit: String = "km"
   @StateObject private var radar = RadarStore()
   @State private var index = 0
@@ -129,7 +126,7 @@ struct RadarScreen: View {
               x: centre.x - RIDER_DOT_RADIUS, y: centre.y - RIDER_DOT_RADIUS,
               width: RIDER_DOT_RADIUS * 2, height: RIDER_DOT_RADIUS * 2
             )),
-            with: .color(riderColor)
+            with: .color(Palette.speed)
           )
           drawTimeline(&context, size: canvasSize, progress: progress)
         }

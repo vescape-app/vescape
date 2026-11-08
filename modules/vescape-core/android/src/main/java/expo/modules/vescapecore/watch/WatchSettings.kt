@@ -18,9 +18,6 @@ import expo.modules.vescapecore.database.AppSettings
  */
 internal const val WATCH_SETTINGS_PATH = "/settings"
 
-/** Rider colour as the phone stores it: a `#RRGGBB` string, or blank for "no colour chosen". */
-internal const val WATCH_SETTING_RIDER_COLOR = "riderColor"
-
 /** Board Move strength as a percentage of full scale; the wrist displays it but never applies it. */
 internal const val WATCH_SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
 
@@ -57,7 +54,6 @@ internal const val WATCH_SETTING_TILT_RATE = "tiltRatePercent"
  * @parity /modules/vescape-core/ios/watch/WatchSettings.swift `watchSourceSettingKeys`
  */
 internal val WATCH_SOURCE_SETTING_KEYS = setOf(
-    "riderColor",
     "boardMoveStrengthPercent",
     "wearNavArrowEnabled",
     "wearTelemetryTrailEnabled",
@@ -72,7 +68,6 @@ internal val WATCH_SOURCE_SETTING_KEYS = setOf(
 
 /** The wrist-relevant slice of [AppSettings]. Equality is what decides whether a push is needed. */
 internal data class WatchSettings(
-    val riderColor: String?,
     val boardMoveStrengthPercent: Int,
     val navArrowEnabled: Boolean,
     val distanceUnit: String = "km",
@@ -90,8 +85,6 @@ internal data class WatchSettings(
  * [WatchSettingsPusher], and a read on the wrist.
  */
 internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
-    // Sent verbatim; the wrist is the one place that parses the colour, so garbage degrades there.
-    riderColor = riderColor?.trim()?.takeIf { it.isNotEmpty() },
     boardMoveStrengthPercent = boardMoveStrengthPercent,
     navArrowEnabled = wearNavArrowEnabled,
     telemetryTrailEnabled = wearTelemetryTrailEnabled,

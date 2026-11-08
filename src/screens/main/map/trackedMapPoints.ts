@@ -7,7 +7,7 @@ import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { accentColors, type ResolvedAccentColors } from '@/constants/theme'
-import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
+import { riderMapColor } from '@/modules/group-ride/lib/riderColor'
 import {
   getMapPointKindIcon,
   getPlaceCategoryIcon,
@@ -116,15 +116,15 @@ export function buildActiveNavigationPoint({
   )
 }
 
-/** Peers themselves, index-aligned with the roster so pin and edge indicator share one tint. */
+/** Peers themselves, tinted by Rider id so pin and edge indicator share one color. */
 export function buildRiderPoints(
   riders: RosterRider[],
   accents?: ResolvedAccentColors,
 ): TrackedMapPoint[] {
-  return riders.flatMap((rider, index) => {
+  return riders.flatMap((rider) => {
     const presence = rider.presence
     if (!presence) return []
-    const color = rosterRiderColor(rider, index, accents)
+    const color = riderMapColor(rider, accents)
     return [
       {
         id: `rider-${rider.id}`,
@@ -138,15 +138,15 @@ export function buildRiderPoints(
   })
 }
 
-/** Peers' shared targets, same index-aligned tint as their rider pin. */
+/** Peers' shared targets, the same tint as their rider pin. */
 export function buildRiderTargetPoints(
   riders: RosterRider[],
   accents?: ResolvedAccentColors,
 ): TrackedMapPoint[] {
-  return riders.flatMap((rider, index) => {
+  return riders.flatMap((rider) => {
     const target = rider.presence?.target
     if (!target) return []
-    const color = rosterRiderColor(rider, index, accents)
+    const color = riderMapColor(rider, accents)
     return [
       {
         id: `rider-target-${rider.id}`,

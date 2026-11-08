@@ -1069,17 +1069,16 @@ internal final class BoardSessionController: VescGattListener {
     groupRideObserver.stop()
   }
 
-  func createGroupRide(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Bool) {
-    groupRideObserver.create(riderId: riderId, riderName: riderName, riderColor: riderColor, name: name, lat: lat, lng: lng, auto: auto)
+  func createGroupRide(riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Bool) {
+    groupRideObserver.create(riderId: riderId, riderName: riderName, name: name, lat: lat, lng: lng, auto: auto)
   }
 
-  func joinGroupRide(riderId: String, riderName: String, riderColor: String?, rideId: String) {
+  func joinGroupRide(riderId: String, riderName: String, rideId: String) {
     // No refresh here: the observer reports its own participation edge, which is the only way the
     // server-driven departures get seen too.
     groupRideObserver.join(
       riderId: riderId,
       riderName: riderName,
-      riderColor: riderColor,
       rideId: rideId,
       presence: latestRiderPresence()
     )
@@ -1089,8 +1088,8 @@ internal final class BoardSessionController: VescGattListener {
     groupRideObserver.leave()
   }
 
-  func updateGroupRideIdentity(riderId: String, riderName: String, riderColor: String?) {
-    groupRideObserver.updateIdentity(riderId: riderId, riderName: riderName, riderColor: riderColor)
+  func updateGroupRideIdentity(riderId: String, riderName: String) {
+    groupRideObserver.updateIdentity(riderId: riderId, riderName: riderName)
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`

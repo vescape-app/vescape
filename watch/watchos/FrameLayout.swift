@@ -42,9 +42,6 @@ struct FrameLayout: View {
   var routeStatus: WatchRouteStatus?
   /// The joined Group Ride; nil draws no group. Hidden in ambient.
   var groupRide: WatchGroupRide?
-  /// The rider's own colour, so route, chevron and rider dot match the phone map.
-  var navColor: Color = Palette.nav
-  var trailColor: Color = Palette.trail
   /// Whether the rider turned the direction arrow on (phone: Settings > Watch).
   var navArrowEnabled: Bool = false
   var telemetryTrailEnabled: Bool = true
@@ -67,7 +64,7 @@ struct FrameLayout: View {
       frame: frame, muted: muted, ambient: ambient,
       navFocus: navFocus, awayFocus: awayFocus,
       route: route, routeStatus: routeStatus, groupRide: groupRide,
-      navColor: navColor, trailColor: trailColor, navArrowEnabled: navArrowEnabled,
+      navArrowEnabled: navArrowEnabled,
       telemetryTrailEnabled: telemetryTrailEnabled, telemetryGroupEnabled: telemetryGroupEnabled,
       telemetryRouteEnabled: telemetryRouteEnabled, streetMapEnabled: streetMapEnabled,
       mapGaugesPercent: mapGaugesPercent, distanceUnit: distanceUnit

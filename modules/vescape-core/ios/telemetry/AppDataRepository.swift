@@ -656,7 +656,6 @@ final class AppDataRepository {
     "selectedBoardId": NSNull(),
     "riderId": NSNull(),
     "riderName": NSNull(),
-    "riderColor": NSNull(),
     "groupRidePublicEnabled": false,
     "lastGpsLatitude": NSNull(),
     "lastGpsLongitude": NSNull(),

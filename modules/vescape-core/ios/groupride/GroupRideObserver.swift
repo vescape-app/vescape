@@ -29,7 +29,6 @@ internal final class GroupRideObserver: NSObject {
   private var stopped = true { didSet { notifyParticipationIfChanged() } }
   private var riderId: String?
   private var riderName: String?
-  private var riderColor: String?
   private var joinedRideId: String? { didSet { notifyParticipationIfChanged() } }
   private var desiredRideId: String? {
     didSet {
@@ -39,6 +38,11 @@ internal final class GroupRideObserver: NSObject {
   }
   /// Cue decisions for the joined ride; any change of the wanted ride forgets them.
   private var cues = GroupRideCues()
+  /// The rider left while the socket was down, so the relay still holds them in the ride as away.
+  /// Sent once right after the next `hello`; a create/join before then supersedes it, since the
+  /// relay leaves the previous ride itself.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `pendingLeave`
+  private var pendingLeave = false
   /// Last `participating` value handed to the owner, so only real transitions are reported.
   private var lastParticipating = false
   private var lastPresence: RiderPresence?
@@ -196,6 +200,9 @@ internal final class GroupRideObserver: NSObject {
     emitConnection("blocked")
   }
 
+  /// The socket is open: frames sent now reach the relay after this connection's `hello`.
+  private var linkOpen: Bool { webSocket != nil && lastConnection == "connected" }
+
   /// Callback may arrive after its socket was closed or superseded.
   private func isCurrentSocket(_ task: URLSessionWebSocketTask) -> Bool {
     !stopped && !online.onlineBlocked && webSocket === task
@@ -206,7 +213,7 @@ internal final class GroupRideObserver: NSObject {
   /// location egress while observing. The server fans the result back as `ride-created`, so there
   /// is no local optimistic insert here. No-op when not connected. With `auto` the relay joins the
   /// nearest ride in range instead, creating only when none is.
-  func create(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Bool) {
+  func create(riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Bool) {
     onMain { [self] in
       guard !stopped, let ws = webSocket else {
         NSLog("[GroupRide] create ignored: observe socket not connected")
@@ -218,7 +225,8 @@ internal final class GroupRideObserver: NSObject {
         desiredRideId = nil
         stopHeartbeat()
       }
-      sendHello(ws, riderId: riderId, riderName: riderName, riderColor: riderColor)
+      pendingLeave = false
+      sendHello(ws, riderId: riderId, riderName: riderName)
       lastPresence = RiderPresence(lat: lat, lng: lng)
       var create: [String: Any] = ["type": "create", "location": ["lat": lat, "lng": lng]]
       if let name, !name.trimmingCharacters(in: .whitespaces).isEmpty { create["name"] = name }
@@ -227,7 +235,7 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  func join(riderId: String, riderName: String, riderColor: String?, rideId: String, presence: RiderPresence?) {
+  func join(riderId: String, riderName: String, rideId: String, presence: RiderPresence?) {
     onMain { [self] in
       guard !stopped, let ws = webSocket else {
         NSLog("[GroupRide] join ignored: observe socket not connected")
@@ -239,7 +247,8 @@ internal final class GroupRideObserver: NSObject {
         joinedRideId = nil
         stopHeartbeat()
       }
-      sendHello(ws, riderId: riderId, riderName: riderName, riderColor: riderColor)
+      pendingLeave = false
+      sendHello(ws, riderId: riderId, riderName: riderName)
       desiredRideId = rideId
       if let presence { lastPresence = presence }
       var join: [String: Any] = ["type": "join", "rideId": rideId]
@@ -248,10 +257,16 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
+  /// Leave the ride now, connected or not: no rejoin on reconnect, no cues for it, and JS sees the
+  /// same departure as a live leave. While the socket is down the relay keeps the rider as away, so
+  /// the leave waits in `pendingLeave` for the next connection.
   func leave() {
     onMain { [self] in
-      guard let ws = webSocket else { return }
-      send(ws, ["type": "leave"])
+      if let ws = webSocket, linkOpen {
+        send(ws, ["type": "leave"])
+      } else if joinedRideId != nil || desiredRideId != nil {
+        pendingLeave = true
+      }
       joinedRideId = nil
       desiredRideId = nil
       stopHeartbeat()
@@ -260,17 +275,16 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  /// Re-bind this connection's Rider identity after a name/color change. Updates the remembered
-  /// identity (so a reconnect re-announces the fresh values) and, while the socket is live,
-  /// re-sends `hello` — the server re-emits the roster so peers update without a rejoin. No-op when
-  /// the observe socket is not connected.
-  func updateIdentity(riderId: String, riderName: String, riderColor: String?) {
+  /// Re-bind this connection's Rider identity after a name change. Updates the remembered identity
+  /// (so a reconnect re-announces the fresh values) and, while the socket is live, re-sends `hello`
+  /// — the server re-emits the roster so peers update without a rejoin. No-op when the observe
+  /// socket is not connected.
+  func updateIdentity(riderId: String, riderName: String) {
     onMain { [self] in
       self.riderId = riderId
       self.riderName = riderName
-      self.riderColor = riderColor
       guard !stopped, let ws = webSocket else { return }
-      sendHello(ws, riderId: riderId, riderName: riderName, riderColor: riderColor)
+      sendHello(ws, riderId: riderId, riderName: riderName)
     }
   }
 
@@ -326,7 +340,11 @@ internal final class GroupRideObserver: NSObject {
       reconnectAttempt = 0
       emitConnection("connected")
       guard let id = riderId, let name = riderName else { return }
-      sendHello(task, riderId: id, riderName: name, riderColor: riderColor)
+      sendHello(task, riderId: id, riderName: name)
+      if pendingLeave {
+        pendingLeave = false
+        send(task, ["type": "leave"])
+      }
       if let rideId = desiredRideId { sendJoin(task, rideId: rideId, presence: lastPresence) }
     }
   }
@@ -450,15 +468,10 @@ internal final class GroupRideObserver: NSObject {
     emit("onGroupRideError", ["message": message])
   }
 
-  private func sendHello(_ task: URLSessionWebSocketTask, riderId: String, riderName: String, riderColor: String?) {
+  private func sendHello(_ task: URLSessionWebSocketTask, riderId: String, riderName: String) {
     self.riderId = riderId
     self.riderName = riderName
-    self.riderColor = riderColor
-    var hello: [String: Any] = ["type": "hello", "riderId": riderId, "name": riderName]
-    if let riderColor, !riderColor.trimmingCharacters(in: .whitespaces).isEmpty {
-      hello["color"] = riderColor
-    }
-    send(task, hello)
+    send(task, ["type": "hello", "riderId": riderId, "name": riderName])
   }
 
   private func sendJoin(_ task: URLSessionWebSocketTask, rideId: String, presence: RiderPresence?) {
@@ -518,7 +531,6 @@ internal final class GroupRideObserver: NSObject {
     return [
       "id": id,
       "name": obj["name"] as? String ?? "",
-      "color": (obj["color"] as? String).flatMap { $0.isEmpty ? nil : $0 },
       "presence": Self.presenceMap(obj["presence"] as? [String: Any]),
       "trail": trailList(obj["trail"] as? [Any]),
       "stale": obj["stale"] as? Bool ?? false,
@@ -592,7 +604,6 @@ internal final class GroupRideObserver: NSObject {
     return GroupRideRosterRider(
       id: id,
       name: view["name"] as? String ?? "",
-      color: view["color"] as? String,
       position: lat.flatMap { lat in lng.map { WatchGeoPoint(latitude: lat, longitude: $0) } },
       stale: view["stale"] as? Bool ?? false,
       away: view["away"] as? Bool ?? false,

@@ -1,6 +1,5 @@
 import type { HistoryGpsSample, HistoryMarker, MapPoint, TelemetrySample } from 'vescape-core'
 
-import { accentColors } from '@/constants/theme'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
@@ -198,17 +197,23 @@ function fixtureTrail(
   })
 }
 
+/** Where the showcase roster measures rider distances from: the camera centre. */
+export const FIXTURE_OWN_LOCATION = { lat: BASE_LAT, lng: BASE_LON }
+
+/** Other Riders: live, live with hot telemetry, stale, and away for minutes. */
 export const FIXTURE_RIDERS: RosterRider[] = [
   {
     id: 'fixture-rider-ana',
     name: 'Ana',
-    color: null,
     presence: {
       lat: BASE_LAT + 0.005,
       lng: BASE_LON + 0.0005,
       heading: 120,
       speed: 6.2,
       soc: 0.71,
+      motorTemp: 48,
+      ctrlTemp: 39,
+      phoneBattery: 0.82,
       boardName: 'Ana Board',
       target: { lat: BASE_LAT + 0.0075, lng: BASE_LON + 0.003 },
     },
@@ -216,32 +221,31 @@ export const FIXTURE_RIDERS: RosterRider[] = [
     stale: false,
     away: false,
     lastSeen: NOW,
-    distanceM: 42,
     isSelf: false,
   },
   {
     id: 'fixture-rider-jonas',
     name: 'Jonáš',
-    color: null,
     presence: {
       lat: BASE_LAT + 0.0042,
       lng: BASE_LON - 0.0012,
       heading: 260,
       speed: 4.8,
-      soc: 0.44,
-      boardName: 'Jonáš Board',
+      soc: 0.12,
+      motorTemp: 83,
+      ctrlTemp: 64,
+      phoneBattery: 0.35,
+      boardName: 'Jonáš Board with a very long name',
     },
     trail: fixtureTrail(BASE_LAT + 0.0042, BASE_LON - 0.0012, -0.00005, 0.00035),
     stale: false,
     away: false,
     lastSeen: NOW,
-    distanceM: 96,
     isSelf: false,
   },
   {
     id: 'fixture-rider-miguel',
     name: 'Miguel',
-    color: accentColors.dark.red.color,
     presence: {
       lat: BASE_LAT + 0.0058,
       lng: BASE_LON + 0.0022,
@@ -254,9 +258,53 @@ export const FIXTURE_RIDERS: RosterRider[] = [
     stale: true,
     away: false,
     lastSeen: NOW - 20_000,
-    distanceM: 180,
     isSelf: false,
   },
+  {
+    id: 'fixture-rider-zoe',
+    name: 'Zoë',
+    presence: {
+      lat: BASE_LAT - 0.003,
+      lng: BASE_LON + 0.004,
+      heading: 40,
+      speed: 0,
+      soc: 0.54,
+      motorTemp: 36,
+      ctrlTemp: 33,
+      phoneBattery: 0.6,
+      boardName: 'Zoë Board',
+    },
+    trail: null,
+    stale: true,
+    away: true,
+    lastSeen: NOW - 7 * 60_000,
+    isSelf: false,
+  },
+]
+
+/** The Social roster as the device sees it: its own Rider first, then everyone else by name. */
+export const FIXTURE_ROSTER_ROWS: RosterRider[] = [
+  {
+    id: 'fixture-rider-me',
+    name: 'Kacper',
+    presence: {
+      lat: BASE_LAT,
+      lng: BASE_LON,
+      heading: 90,
+      speed: 5.4,
+      soc: 0.66,
+      motorTemp: 52,
+      ctrlTemp: 41,
+      phoneBattery: 0.74,
+      boardName: 'GT-S',
+    },
+    trail: null,
+    stale: false,
+    away: false,
+    lastSeen: NOW,
+    isSelf: true,
+  },
+  ...FIXTURE_RIDERS,
 ]
 
 export const FIXTURE_HISTORY_METRIC_HOT_RANGES = DEFAULT_HISTORY_METRIC_HOT_RANGES

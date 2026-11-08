@@ -21,7 +21,8 @@ import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { theme } from '@/constants/theme'
-import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/GroupRideRoster'
+import { NearbyRideBody, RosterList } from '@/modules/group-ride/components/GroupRideRoster'
+import type { RosterRider } from '@/modules/group-ride/lib/roster'
 
 export function SocialSheet() {
   return (
@@ -182,7 +183,7 @@ function GroupRideWidget() {
     >
       {active ? (
         rosterRows.length > 0 ? (
-          <RosterGrid rows={rosterRows} accent={accent} connected={connection === 'connected'} />
+          <JoinedRoster rows={rosterRows} />
         ) : (
           <Placeholder icon={UsersIcon} description="Waiting for other riders to join." />
         )
@@ -202,6 +203,12 @@ function GroupRideWidget() {
       )}
     </CanvasWidget>
   )
+}
+
+/** The roster with live distances. Own GPS ticks re-render only this, not the whole widget. */
+function JoinedRoster({ rows }: { rows: RosterRider[] }) {
+  const ownLocation = useGroupRideStore((s) => s.ownLocation)
+  return <RosterList rows={rows} ownLocation={ownLocation} />
 }
 
 /** Connection-state pill in the header: green "LIVE" when the relay socket is up, amber

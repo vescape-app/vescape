@@ -1,9 +1,6 @@
 import type { GroupRideRider } from 'vescape-core'
 
-import { distanceMeters } from '@/helpers/mapGeometry'
-
 export interface RosterRider extends GroupRideRider {
-  distanceM: number | null
   /** True for the device's own Rider — pinned first and labelled "You". */
   isSelf: boolean
 }
@@ -24,26 +21,25 @@ export function rosterRowsEqual(a: RosterRider[], b: RosterRider[]): boolean {
     return (
       row.id === other.id &&
       row.name === other.name &&
-      row.color === other.color &&
       row.presence === other.presence &&
       row.trail === other.trail &&
       row.stale === other.stale &&
       row.away === other.away &&
       row.lastSeen === other.lastSeen &&
-      row.distanceM === other.distanceM &&
       row.isSelf === other.isSelf
     )
   })
 }
 
+/**
+ * The roster in a stable order: the device's own Rider first, then by name, then by id. Nothing
+ * that changes while riding (distance, stale, away) moves a row.
+ */
 export function riderRoster(
   riders: GroupRideRider[],
   ownRiderId: string | null,
-  ownLocation: { lat: number; lng: number } | null,
   nowMs = Date.now(),
 ): RosterRider[] {
-  const from = ownLocation ? { latitude: ownLocation.lat, longitude: ownLocation.lng } : null
-
   // Nobody is dropped client-side: the relay's roster decides who is in the ride. A Rider unheard
   // for RIDER_STALE_AFTER_MS, or away, greys out at their last presence.
   return riders
@@ -51,21 +47,9 @@ export function riderRoster(
       ...rider,
       stale: rider.stale || rider.away || nowMs - rider.lastSeen >= RIDER_STALE_AFTER_MS,
       isSelf: rider.id === ownRiderId,
-      distanceM:
-        from && rider.presence
-          ? distanceMeters(from, {
-              latitude: rider.presence.lat,
-              longitude: rider.presence.lng,
-            })
-          : null,
     }))
     .sort((a, b) => {
-      // The device's own Rider is always pinned to the front of the roster.
       if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1
-      if (a.stale !== b.stale) return a.stale ? 1 : -1
-      if (a.distanceM == null && b.distanceM == null) return a.name.localeCompare(b.name)
-      if (a.distanceM == null) return 1
-      if (b.distanceM == null) return -1
-      return a.distanceM - b.distanceM
+      return a.name.localeCompare(b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
     })
 }

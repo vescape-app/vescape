@@ -26,9 +26,6 @@ import { useBleStore } from '@/modules/board/store/bleStore'
 import { nearbyRides, type NearbyRide } from '@/modules/group-ride/lib/nearby'
 import { riderRoster, rosterRowsEqual, type RosterRider } from '@/modules/group-ride/lib/roster'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
-import { useBoardStore } from '@/modules/board/store/boardStore'
-import { useThemeStore } from '@/hooks/useTheme'
-import { selectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { SERVER_WS_URL } from '@/config/server'
 
 type TimerHandle = ReturnType<typeof setInterval>
@@ -156,28 +153,16 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
         autoPending = false
         set({ error: message })
       }),
+      // Own GPS only feeds the nearby list: the roster neither sorts nor stores distance, so a
+      // fix leaves `rosterRows` (and every map layer reading it) untouched.
       addLocationListener(({ latitude, longitude }) =>
-        set((state) => ({
-          ...deriveNearby({ ownLocation: { lat: latitude, lng: longitude } }, state),
-          ...deriveRoster({ ownLocation: { lat: latitude, lng: longitude } }, state),
-        })),
+        set((state) => deriveNearby({ ownLocation: { lat: latitude, lng: longitude } }, state)),
       ),
-      // Push name and Board rail changes to peers without rejoining.
+      // Push name changes to peers without rejoining.
       {
         remove: useRiderStore.subscribe((rider, previous) => {
           if (rider.riderName === previous.riderName) return
           pushIdentity()
-        }),
-      },
-      {
-        remove: useBoardStore.subscribe((board, previous) => {
-          if (board.activeBoardId !== previous.activeBoardId || board.boards !== previous.boards)
-            pushIdentity()
-        }),
-      },
-      {
-        remove: useThemeStore.subscribe((theme, previous) => {
-          if (theme.resolvedTheme !== previous.resolvedTheme) pushIdentity()
         }),
       },
     ]
@@ -233,13 +218,13 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   },
 
   joinRide(rideId) {
-    const { riderId, riderName, riderColor } = currentIdentity()
+    const { riderId, riderName } = currentIdentity()
     if (!riderId) return
     set((state) => ({
       ...deriveRoster({ activeRideId: rideId, roster: [] }, state),
       error: null,
     }))
-    joinGroupRide({ riderId, riderName, riderColor, rideId })
+    joinGroupRide({ riderId, riderName, rideId })
   },
 
   leaveRide() {
@@ -265,14 +250,9 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
  * The device's Group Ride identity, with the same blank-name fallback the relay would
  * otherwise auto-apply. `riderId` is null until the rider identity has loaded.
  */
-function currentIdentity(): {
-  riderId: string | null
-  riderName: string
-  riderColor: string | null
-} {
+function currentIdentity(): { riderId: string | null; riderName: string } {
   const { riderId, riderName } = useRiderStore.getState()
-  const riderColor = selectedBoardRailColor(useThemeStore.getState().resolvedTheme)
-  return { riderId, riderName: riderName?.trim() || 'Rider', riderColor }
+  return { riderId, riderName: riderName?.trim() || 'Rider' }
 }
 
 /** Merge a `rides`/`ownLocation` change with the current state and recompute the nearby view. */
@@ -295,18 +275,17 @@ function upsertRide(rides: GroupRideSummary[], ride: GroupRideSummary): GroupRid
 }
 
 function deriveRoster(
-  patch: Partial<Pick<GroupRideState, 'activeRideId' | 'roster' | 'ownLocation'>>,
+  patch: Partial<Pick<GroupRideState, 'activeRideId' | 'roster'>>,
   current: GroupRideState,
 ): Pick<GroupRideState, 'activeRideId' | 'roster' | 'rosterRows'> {
   const activeRideId = patch.activeRideId === undefined ? current.activeRideId : patch.activeRideId
   const roster = patch.roster ?? current.roster
-  const ownLocation = patch.ownLocation ?? current.ownLocation
-  const rows = riderRoster(roster, useRiderStore.getState().riderId, ownLocation)
+  const rows = riderRoster(roster, useRiderStore.getState().riderId)
   return {
     activeRideId,
     roster,
     // Keep the previous reference when nothing visible changed, so the 1s
-    // freshness tick and GPS ticks don't fan out to selectors as new arrays.
+    // freshness tick doesn't fan out to selectors as a new array.
     rosterRows: rosterRowsEqual(rows, current.rosterRows) ? current.rosterRows : rows,
   }
 }
@@ -337,7 +316,7 @@ function startRide(
 ) {
   const { ownLocation } = get()
   if (!ownLocation) return
-  const { riderId, riderName, riderColor } = currentIdentity()
+  const { riderId, riderName } = currentIdentity()
   if (!riderId) return
   set((state) => ({
     ...deriveRoster({ activeRideId: null, roster: [] }, state),
@@ -346,7 +325,6 @@ function startRide(
   createGroupRide({
     riderId,
     riderName,
-    riderColor,
     name,
     lat: ownLocation.lat,
     lng: ownLocation.lng,
@@ -355,6 +333,6 @@ function startRide(
 }
 
 function pushIdentity() {
-  const { riderId, riderName, riderColor } = currentIdentity()
-  if (riderId) updateGroupRideIdentity({ riderId, riderName, riderColor })
+  const { riderId, riderName } = currentIdentity()
+  if (riderId) updateGroupRideIdentity({ riderId, riderName })
 }

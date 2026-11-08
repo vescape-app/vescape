@@ -71,12 +71,12 @@ internal fun WatchMapScene(
                     }
                 }
                 Box(Modifier.fillMaxSize().graphicsLayer { alpha = scene.trailAlpha(focus()) }) {
-                    RiderTrail(frame.trail, mapView, if (muted) DimText else trailColor())
+                    RiderTrail(frame.trail, mapView, if (muted) DimText else TrailColor)
                 }
             }
             if (group != null) GroupRideLayer(group = group, mapView = mapView, navFocus = focus, alpha = groupAlpha)
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() * scene.riderAlpha(focus()) }) {
-                RiderPosition(if (muted) DimText else navColor(), loading = loading)
+                RiderPosition(if (muted) DimText else NavColor, loading = loading)
             }
         }
         gauges()

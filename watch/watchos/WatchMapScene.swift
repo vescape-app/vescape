@@ -12,8 +12,6 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
   let route: WatchRoute?
   let routeStatus: WatchRouteStatus?
   let groupRide: WatchGroupRide?
-  let navColor: Color
-  let trailColor: Color
   let navArrowEnabled: Bool
   let telemetryTrailEnabled: Bool
   let telemetryGroupEnabled: Bool
@@ -53,13 +51,13 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
           mapView: mapView,
           mapMoving: mapMoving,
           focus: navFocus,
-          color: muted ? Palette.dimText : navColor
+          color: muted ? Palette.dimText : Palette.nav
         )
         .opacity(navStackAlpha * scene.routeAlpha(navFocus: navFocus))
       }
 
       if scene.drawMap {
-        RiderTrail(points: frame.trail, mapView: mapView, mapMoving: mapMoving, color: muted ? Palette.dimText : trailColor)
+        RiderTrail(points: frame.trail, mapView: mapView, mapMoving: mapMoving, color: muted ? Palette.dimText : Palette.trail)
           .opacity(navStackAlpha * scene.trailAlpha(navFocus: navFocus))
       }
 
@@ -76,7 +74,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
       }
 
       if scene.drawMap {
-        RiderPosition(color: muted ? Palette.dimText : navColor,
+        RiderPosition(color: muted ? Palette.dimText : Palette.nav,
           loading: scene.notice != nil && scene.notice != .failed && navStackAlpha > 0)
           .opacity(navStackAlpha * scene.riderAlpha(navFocus: navFocus))
       }
@@ -96,7 +94,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
           focus: navFocus,
           stackAlpha: navStackAlpha,
           arrowEnabled: navArrowEnabled,
-          color: (muted || ambient.active) ? Palette.dimText : navColor,
+          color: (muted || ambient.active) ? Palette.dimText : Palette.nav,
           remoteTilt: frame.remoteTilt,
           tiltColor: tiltColor
         )
