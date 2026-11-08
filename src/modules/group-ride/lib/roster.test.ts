@@ -1,13 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { GroupRideRider } from 'vescape-core'
 
-import {
-  RIDER_DROP_AFTER_MS,
-  RIDER_STALE_AFTER_MS,
-  clientFreshRoster,
-  riderRoster,
-  rosterRowsEqual,
-} from '@/modules/group-ride/lib/roster'
+import { RIDER_STALE_AFTER_MS, riderRoster, rosterRowsEqual } from '@/modules/group-ride/lib/roster'
 
 const OWN = { lat: 50.0619, lng: 19.9368 }
 
@@ -17,6 +11,7 @@ function rider(id: string, lat: number | null, stale = false): GroupRideRider {
     name: id,
     color: null,
     stale,
+    away: false,
     lastSeen: 0,
     presence: lat == null ? null : { lat, lng: OWN.lng },
   }
@@ -64,12 +59,18 @@ describe('riderRoster', () => {
     expect(rows[0].stale).toBe(true)
   })
 
-  test('drops silent riders from the client clock', () => {
-    const now = 40_000
-    const fresh = { ...rider('fresh', OWN.lat), lastSeen: now - RIDER_DROP_AFTER_MS + 1 }
-    const dropped = { ...rider('dropped', OWN.lat), lastSeen: now - RIDER_DROP_AFTER_MS }
+  test('keeps riders however long silent, greyed at their last presence', () => {
+    const now = 3_600_000
+    const away = { ...rider('away', OWN.lat), away: true, lastSeen: now }
+    const silent = { ...rider('silent', OWN.lat), lastSeen: 0 }
 
-    expect(clientFreshRoster([fresh, dropped], now).map((r) => r.id)).toEqual(['fresh'])
+    const rows = riderRoster([away, silent], null, OWN, now)
+
+    expect(rows.map((r) => [r.id, r.stale])).toEqual([
+      ['away', true],
+      ['silent', true],
+    ])
+    expect(rows[0].presence).toBe(away.presence)
   })
 })
 

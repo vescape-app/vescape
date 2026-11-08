@@ -40,15 +40,13 @@ internal object GroupRideFrameBuilder {
     }
 
     private fun place(roster: GroupRideRoster, own: GeoPoint, nowMs: Long): List<GroupRideFrameRider> {
-        fun silentMs(rider: GroupRideRosterRider) = nowMs - rider.lastSeenMs
-        val fresh = roster.riders.filter { silentMs(it) < GROUP_RIDE_DROP_AFTER_MS }
-        val entries = fresh
+        val entries = roster.riders
             .filter { it.id != roster.ownRiderId }
             .map { rider ->
                 Entry(
                     rider,
                     rider.position?.let { offsetMeters(own, it) },
-                    stale = rider.stale || silentMs(rider) >= GROUP_RIDE_STALE_AFTER_MS,
+                    stale = rider.stale || rider.away || nowMs - rider.lastSeenMs >= GROUP_RIDE_STALE_AFTER_MS,
                 )
             }
             // The phone map's roster order, which is what its fallback tints are indexed by: fresh
@@ -60,7 +58,7 @@ internal object GroupRideFrameBuilder {
                     .thenBy { it.rider.name },
             )
         // The phone roster pins the Rider's own entry first, so everyone else's index starts after it.
-        val first = if (fresh.any { it.id == roster.ownRiderId }) 1 else 0
+        val first = if (roster.riders.any { it.id == roster.ownRiderId }) 1 else 0
         return entries
             .mapIndexedNotNull { index, entry ->
                 val (east, north) = entry.offset ?: return@mapIndexedNotNull null

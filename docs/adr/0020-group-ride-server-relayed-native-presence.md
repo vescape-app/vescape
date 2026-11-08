@@ -22,7 +22,7 @@ The durable, long-lived work (the WebSocket connection and the location pushes t
 
 - **Privacy Zones suppress Rider Presence.** While a Rider is inside a **Privacy Zone**, Rider Presence is not broadcast (the dot freezes/hides for the group, resumes on exit), reusing the native zone check already in the location path — consistent with ADR-0009. Observing never sends location at all, so it needs no zone gating.
 
-- **Stale handling is server heartbeat + WS close.** A Rider with no recent Rider Presence greys after ~5 s and drops from the Group Ride after ~30 s or on clean disconnect/leave.
+- **Stale handling is server heartbeat + WS close.** A Rider with no recent Rider Presence greys after ~5 s. A closed socket without a `leave` keeps the Rider in the Group Ride as **away**: frozen at their last presence, greyed, no trail. Away Riders stay until they leave or the Group Ride ends; clients never drop a Rider on their own, the relay's roster decides membership. (Amended 2026-11: Riders used to drop after ~30 s of silence or on any disconnect, so every flaky connection read as a leave and a rejoin.)
 
 - **The Social panel repurposes the profile route.** The profile entry becomes a Social panel (rider name, nearby Group Rides with one-tap join/create, and — when joined — the live roster: name, distance, speed, SoC, plus leave). The existing profile ride-stats grid is kept as a section/tab, not deleted. Other Riders render on the existing `@rnmapbox/maps` map as colored dots with name + heading, greyed when stale, tap-to-focus in the roster.
 

@@ -218,7 +218,15 @@ test('snapshot clears active ride when server no longer has it', async () => {
   useGroupRideStore.setState({
     activeRideId: 'old-ride',
     roster: [
-      { id: 'rider', name: 'Rider', color: null, presence: null, stale: false, lastSeen: 1 },
+      {
+        id: 'rider',
+        name: 'Rider',
+        color: null,
+        presence: null,
+        stale: false,
+        away: false,
+        lastSeen: 1,
+      },
     ],
     rosterRows: [],
     error: 'no such ride: old-ride',
@@ -241,7 +249,9 @@ test('online block clears stale ride state and marks the connection blocked', as
     nearby: [{ ride: ride('r1'), distanceM: 10 }] as unknown as NearbyRide[],
     badge: true,
     activeRideId: 'r1',
-    roster: [{ id: 'x', name: 'X', color: null, presence: null, stale: false, lastSeen: 1 }],
+    roster: [
+      { id: 'x', name: 'X', color: null, presence: null, stale: false, away: false, lastSeen: 1 },
+    ],
     rosterRows: [{ id: 'x' }] as unknown as RosterRider[],
     error: 'boom',
   })
@@ -377,6 +387,7 @@ test('native departure clears membership instead of retaining the previous ride 
           color: null,
           presence: null,
           stale: false,
+          away: false,
           lastSeen: Date.now(),
         },
       ],
@@ -399,7 +410,15 @@ test('queued roster events cannot restore membership after an explicit leave', a
   const queuedRoster = {
     rideId: 'r1',
     riders: [
-      { id: 'peer', name: 'Peer', color: null, presence: null, stale: false, lastSeen: Date.now() },
+      {
+        id: 'peer',
+        name: 'Peer',
+        color: null,
+        presence: null,
+        stale: false,
+        away: false,
+        lastSeen: Date.now(),
+      },
     ],
   }
   joinedListeners.forEach((listener) => listener({ rideId: 'r1' }))

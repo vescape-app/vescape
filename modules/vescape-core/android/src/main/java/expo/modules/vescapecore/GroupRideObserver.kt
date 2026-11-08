@@ -72,12 +72,12 @@ internal class GroupRideObserver(
         }
     private var desiredRideId: String? = null
         set(value) {
-            if (value != field) rideLinkLost = false
+            if (value != field) forgetRideCues()
             field = value
             notifyParticipationIfChanged()
         }
-    /** The joined ride's socket dropped; its next `joined` is a restore, not a fresh join. */
-    private var rideLinkLost = false
+    /** Cue decisions for the joined ride; any change of the wanted ride forgets them. */
+    private val cues = GroupRideCues()
 
     /** Last `participating` value handed to the owner, so only real transitions are reported. */
     private var lastParticipating = false
@@ -94,6 +94,7 @@ internal class GroupRideObserver(
     /** Remover for the App Status listener; non-null only while observing. */
     private var onlineUnsub: (() -> Unit)? = null
     private val reconnectRunnable = Runnable { connect() }
+    private val lostRunnable = Runnable { cues.graceElapsed()?.let(onCue) }
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
             val ws = webSocket
@@ -385,10 +386,7 @@ internal class GroupRideObserver(
     private fun scheduleReconnect() {
         webSocket = null
         if (stopped) return
-        if (joinedRideId != null) {
-            rideLinkLost = true
-            onCue("groupRide.lost")
-        }
+        if (cues.linkDropped()) handler.postDelayed(lostRunnable, GroupRideCues.LOST_GRACE_MS)
         joinedRideId = null
         stopHeartbeat()
         emitConnection("disconnected")
@@ -450,11 +448,11 @@ internal class GroupRideObserver(
             "joined" -> {
                 val rideId = json.optString("rideId")
                 if (rideId.isNotEmpty()) {
-                    val restored = rideLinkLost
-                    if (rideId != joinedRideId) onCue(if (restored) "groupRide.restored" else "groupRide.joined")
-                    rideLinkLost = false
-                    joinedRideId = rideId
+                    // The wanted ride first: switching rides forgets the old ride's cues.
                     desiredRideId = rideId
+                    handler.removeCallbacks(lostRunnable)
+                    cues.joined(rideId)?.let(onCue)
+                    joinedRideId = rideId
                     startHeartbeat()
                     emit("onGroupRideJoined", mapOf("rideId" to rideId))
                 }
@@ -467,10 +465,11 @@ internal class GroupRideObserver(
                         riderView(ridersJson.optJSONObject(i))?.let(riders::add)
                     }
                 }
-                emitRoster(
-                    if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() },
-                    riders,
-                )
+                val rideId = if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() }
+                if (rideId != null && rideId == joinedRideId) {
+                    cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, riderId)?.let(onCue)
+                }
+                emitRoster(rideId, riders)
             }
             "error" -> {
                 val message = json.optString("message")
@@ -554,6 +553,7 @@ internal class GroupRideObserver(
         )
     }
 
+    /** @parity /modules/vescape-core/src/index.ts `GroupRideRider` */
     private fun riderView(obj: JSONObject?): Map<String, Any?>? {
         obj ?: return null
         val id = obj.optString("id")
@@ -566,6 +566,8 @@ internal class GroupRideObserver(
             "presence" to presenceMap(obj.optJSONObject("presence")),
             "trail" to trailList(obj.optJSONArray("trail")),
             "stale" to obj.optBoolean("stale"),
+            // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
+            "away" to obj.optBoolean("away"),
             "lastSeen" to obj.optLong("lastSeen"),
         )
     }
@@ -585,10 +587,6 @@ internal class GroupRideObserver(
     }
 
     private fun emitRoster(rideId: String?, riders: List<Map<String, Any?>>) {
-        if (rideId != null && rideId == joinedRideId && rideId == lastRosterRideId) {
-            rosterCue(lastRoster.mapNotNull { it["id"] as? String }, riders.mapNotNull { it["id"] as? String }, riderId)
-                ?.let(onCue)
-        }
         lastRosterRideId = rideId
         lastRoster = riders
         lastRosterRiders = riders.mapNotNull(::rosterRider)
@@ -599,6 +597,12 @@ internal class GroupRideObserver(
     private fun emitConnection(state: String) {
         lastConnection = state
         emit("onGroupRideConnection", mapOf("state" to state))
+    }
+
+    /** The rider is out of the ride: drop its cue state, a pending `lost` included. */
+    private fun forgetRideCues() {
+        cues.reset()
+        handler.removeCallbacks(lostRunnable)
     }
 
     private fun startHeartbeat() {
@@ -673,25 +677,6 @@ internal class GroupRideObserver(
         }
 
         /**
-         * Cue for a joined ride's roster going from [previous] to [next] rider ids: `riderJoined`
-         * when someone else arrived, else `riderLeft` when someone else left. An empty [previous]
-         * is the first roster after joining, so nobody "joined" then.
-         *
-         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterCue`
-         */
-        internal fun rosterCue(previous: List<String>, next: List<String>, ownRiderId: String?): String? {
-            if (previous.isEmpty()) return null
-            val others = { ids: List<String> -> ids.filter { it != ownRiderId }.toSet() }
-            val before = others(previous)
-            val after = others(next)
-            return when {
-                (after - before).isNotEmpty() -> "groupRide.riderJoined"
-                (before - after).isNotEmpty() -> "groupRide.riderLeft"
-                else -> null
-            }
-        }
-
-        /**
          * A [riderView] map as the typed entry native keeps; null when it carries no id. No presence
          * leaves the Rider unplaced.
          *
@@ -708,6 +693,7 @@ internal class GroupRideObserver(
                 color = view["color"] as? String,
                 position = if (lat != null && lng != null) GeoPoint(lat, lng) else null,
                 stale = view["stale"] as? Boolean ?: false,
+                away = view["away"] as? Boolean ?: false,
                 lastSeenMs = view["lastSeen"] as? Long ?: 0L,
                 soc = presence?.get("soc") as? Double,
                 motorTempC = presence?.get("motorTemp") as? Double,

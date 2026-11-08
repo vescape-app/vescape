@@ -9,8 +9,9 @@ import {
 
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { DASH } from '@/helpers/format'
+import { DASH, fmtTimeAgo } from '@/helpers/format'
 import { useFormat } from '@/hooks/useFormat'
+import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useRiderStats } from '@/modules/group-ride/hooks/useRiderStats'
 import {
   TELEMETRY_LEVEL_COLOR,
@@ -77,8 +78,11 @@ function RiderCell({
   // the last snapshot we received and we can't know it's current.
   const fresh = !rider.stale && connected
   const statusColor = fresh ? accent : theme.neutral.textMuted
-  const status = fresh ? 'Live' : 'Stale'
+  const status = rider.away ? 'Away' : fresh ? 'Live' : 'Stale'
   const s = useRiderStats(rider.presence)
+  // An away Rider's stats are frozen at their last presence; show when that was instead.
+  const now = useMinuteNow(rider.away)
+  const seenAgo = fmtTimeAgo(rider.lastSeen, now)
 
   return (
     <View style={styles.riderCell}>
@@ -102,16 +106,26 @@ function RiderCell({
               {status}
             </Text>
           </View>
-          <StatCell icon={DeviceMobileIcon} value={s.phone.value} level={s.phone.level} />
+          {rider.away ? null : (
+            <StatCell icon={DeviceMobileIcon} value={s.phone.value} level={s.phone.level} />
+          )}
         </View>
-        <View style={styles.statRow}>
-          <StatCell icon={GaugeIcon} value={s.speed.value} level={s.speed.level} />
-          <StatCell icon={ThermometerSimpleIcon} value={s.motor.value} level={s.motor.level} />
-        </View>
-        <View style={styles.statRow}>
-          <StatCell icon={BatteryMediumIcon} value={s.soc.value} level={s.soc.level} />
-          <StatCell icon={ThermometerSimpleIcon} value={s.ctrl.value} level={s.ctrl.level} />
-        </View>
+        {rider.away ? (
+          <Text style={styles.statValue} numberOfLines={1}>
+            Last seen {seenAgo === 'now' ? 'just now' : seenAgo}
+          </Text>
+        ) : (
+          <>
+            <View style={styles.statRow}>
+              <StatCell icon={GaugeIcon} value={s.speed.value} level={s.speed.level} />
+              <StatCell icon={ThermometerSimpleIcon} value={s.motor.value} level={s.motor.level} />
+            </View>
+            <View style={styles.statRow}>
+              <StatCell icon={BatteryMediumIcon} value={s.soc.value} level={s.soc.level} />
+              <StatCell icon={ThermometerSimpleIcon} value={s.ctrl.value} level={s.ctrl.level} />
+            </View>
+          </>
+        )}
       </View>
     </View>
   )

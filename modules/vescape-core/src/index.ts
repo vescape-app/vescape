@@ -1992,6 +1992,11 @@ export interface TrailPoint {
   lng: number
 }
 
+/**
+ * One roster entry, the relay's `RiderView` as native decodes it.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `riderView`
+ * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `riderView`
+ */
 export interface GroupRideRider {
   id: string
   name: string
@@ -2001,6 +2006,11 @@ export interface GroupRideRider {
   /** Recent path (oldest → newest), server-capped to ~30s. Null/omitted while empty. */
   trail?: TrailPoint[] | null
   stale: boolean
+  /**
+   * The Rider's link to the relay closed without a leave: they stay in the ride, frozen at their
+   * last presence, until they leave or the ride ends. False from relays that predate it.
+   */
+  away: boolean
   lastSeen: number
 }
 

@@ -11,10 +11,11 @@ final class GroupRideFrameBuilderTests: XCTestCase {
     at position: WatchGeoPoint? = WatchGeoPoint(latitude: 52.001, longitude: 21.0),
     color: String? = "#FF0000",
     stale: Bool = false,
+    away: Bool = false,
     lastSeenMs: Int64? = nil
   ) -> GroupRideRosterRider {
     GroupRideRosterRider(
-      id: id, name: id.uppercased(), color: color, position: position, stale: stale,
+      id: id, name: id.uppercased(), color: color, position: position, stale: stale, away: away,
       lastSeenMs: lastSeenMs ?? nowMs
     )
   }
@@ -60,14 +61,17 @@ final class GroupRideFrameBuilderTests: XCTestCase {
     XCTAssertTrue(build([rider("ola")], own: .some(nil)).riders.isEmpty)
   }
 
-  func testRidersWithoutPositionOrSilentPastTheDropWindowAreLeftOut() {
-    let frame = build([
-      rider("nowhere", at: nil),
-      rider("gone", lastSeenMs: nowMs - GROUP_RIDE_DROP_AFTER_MS),
-      rider("ola"),
-    ])
+  func testRidersWithoutAPositionAreLeftOut() {
+    let frame = build([rider("nowhere", at: nil), rider("ola")])
 
     XCTAssertEqual(frame.riders.map(\.id), ["ola"])
+  }
+
+  func testAnAwayRiderStaysAtTheirLastPositionStaleHoweverLongSilent() {
+    let frame = build([rider("away", away: true, lastSeenMs: nowMs - 3_600_000)])
+
+    XCTAssertEqual(frame.riders.map(\.id), ["away"])
+    XCTAssertEqual(frame.riders.first?.stale, true)
   }
 
   func testARiderUnheardPastTheStaleWindowIsStale() {

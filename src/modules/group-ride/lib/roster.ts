@@ -9,16 +9,6 @@ export interface RosterRider extends GroupRideRider {
 }
 
 export const RIDER_STALE_AFTER_MS = 5_000
-export const RIDER_DROP_AFTER_MS = 30_000
-
-export function clientFreshRoster(riders: GroupRideRider[], nowMs: number): GroupRideRider[] {
-  return riders
-    .filter((rider) => nowMs - rider.lastSeen < RIDER_DROP_AFTER_MS)
-    .map((rider) => ({
-      ...rider,
-      stale: rider.stale || nowMs - rider.lastSeen >= RIDER_STALE_AFTER_MS,
-    }))
-}
 
 /**
  * True when both roster views are equivalent, so store updates can keep the
@@ -38,6 +28,7 @@ export function rosterRowsEqual(a: RosterRider[], b: RosterRider[]): boolean {
       row.presence === other.presence &&
       row.trail === other.trail &&
       row.stale === other.stale &&
+      row.away === other.away &&
       row.lastSeen === other.lastSeen &&
       row.distanceM === other.distanceM &&
       row.isSelf === other.isSelf
@@ -53,9 +44,12 @@ export function riderRoster(
 ): RosterRider[] {
   const from = ownLocation ? { latitude: ownLocation.lat, longitude: ownLocation.lng } : null
 
-  return clientFreshRoster(riders, nowMs)
+  // Nobody is dropped client-side: the relay's roster decides who is in the ride. A Rider unheard
+  // for RIDER_STALE_AFTER_MS, or away, greys out at their last presence.
+  return riders
     .map((rider) => ({
       ...rider,
+      stale: rider.stale || rider.away || nowMs - rider.lastSeen >= RIDER_STALE_AFTER_MS,
       isSelf: rider.id === ownRiderId,
       distanceM:
         from && rider.presence

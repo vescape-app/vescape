@@ -16,8 +16,9 @@ class GroupRideFrameBuilderTest {
         position: GeoPoint? = GeoPoint(52.001, 21.0),
         color: String? = "#FF0000",
         stale: Boolean = false,
+        away: Boolean = false,
         lastSeenMs: Long = nowMs,
-    ) = GroupRideRosterRider(id, id.uppercase(), color, position, stale, lastSeenMs)
+    ) = GroupRideRosterRider(id, id.uppercase(), color, position, stale, away, lastSeenMs)
 
     private fun build(
         riders: List<GroupRideRosterRider>,
@@ -66,16 +67,18 @@ class GroupRideFrameBuilderTest {
     }
 
     @Test
-    fun `riders without a position or silent past the drop window are left out`() {
-        val frame = build(
-            listOf(
-                rider("nowhere", position = null),
-                rider("gone", lastSeenMs = nowMs - GROUP_RIDE_DROP_AFTER_MS),
-                rider("ola"),
-            ),
-        )
+    fun `riders without a position are left out`() {
+        val frame = build(listOf(rider("nowhere", position = null), rider("ola")))
 
         assertEquals(listOf("ola"), frame.riders.map { it.id })
+    }
+
+    @Test
+    fun `an away rider stays at their last position, stale, however long silent`() {
+        val frame = build(listOf(rider("away", away = true, lastSeenMs = nowMs - 3_600_000L)))
+
+        assertEquals(listOf("away"), frame.riders.map { it.id })
+        assertTrue(frame.riders.single().stale)
     }
 
     @Test

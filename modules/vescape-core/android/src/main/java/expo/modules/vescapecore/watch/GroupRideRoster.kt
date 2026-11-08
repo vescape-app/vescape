@@ -2,18 +2,13 @@ package expo.modules.vescapecore.watch
 
 /**
  * Client-side presence ageing, the same rule the phone roster applies: a Rider unheard for
- * [GROUP_RIDE_STALE_AFTER_MS] is stale, and one unheard for [GROUP_RIDE_DROP_AFTER_MS] is gone.
+ * [GROUP_RIDE_STALE_AFTER_MS] is stale. Nobody is dropped client-side; the relay's roster decides
+ * who is in the ride.
  *
  * @parity /src/modules/group-ride/lib/roster.ts `RIDER_STALE_AFTER_MS`
  * @parity /modules/vescape-core/ios/watch/GroupRideRoster.swift `GROUP_RIDE_STALE_AFTER_MS`
  */
 internal const val GROUP_RIDE_STALE_AFTER_MS = 5_000L
-
-/**
- * @parity /src/modules/group-ride/lib/roster.ts `RIDER_DROP_AFTER_MS`
- * @parity /modules/vescape-core/ios/watch/GroupRideRoster.swift `GROUP_RIDE_DROP_AFTER_MS`
- */
-internal const val GROUP_RIDE_DROP_AFTER_MS = 30_000L
 
 /**
  * Fallback tints for a Rider who has not picked a colour, by their index in the phone roster.
@@ -44,6 +39,8 @@ internal data class GroupRideRosterRider(
     /** Latest presence position; null for a Rider who has not shared one yet. */
     val position: GeoPoint?,
     val stale: Boolean,
+    /** The Rider's link to the relay closed; they stay in the ride, frozen at their last presence. */
+    val away: Boolean,
     /** Relay wall-clock time of the Rider's last presence, epoch ms. */
     val lastSeenMs: Long,
     /** Battery SoC Estimate as a 0-1 fraction; null without a Board Session. */

@@ -1,14 +1,11 @@
 import Foundation
 
-/// Client-side presence ageing, the same rule the phone roster applies.
+/// Client-side presence ageing, the same rule the phone roster applies. Nobody is dropped
+/// client-side; the relay's roster decides who is in the ride.
 ///
 /// @parity /src/modules/group-ride/lib/roster.ts `RIDER_STALE_AFTER_MS`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideRoster.kt `GROUP_RIDE_STALE_AFTER_MS`
 let GROUP_RIDE_STALE_AFTER_MS: Int64 = 5_000
-
-/// @parity /src/modules/group-ride/lib/roster.ts `RIDER_DROP_AFTER_MS`
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideRoster.kt `GROUP_RIDE_DROP_AFTER_MS`
-let GROUP_RIDE_DROP_AFTER_MS: Int64 = 30_000
 
 /// Fallback tints for a Rider who has not picked a colour, by their index in the phone roster.
 ///
@@ -35,6 +32,8 @@ struct GroupRideRosterRider: Equatable {
   /// Latest presence position; nil for a Rider who has not shared one yet.
   var position: WatchGeoPoint?
   var stale: Bool
+  /// The Rider's link to the relay closed; they stay in the ride, frozen at their last presence.
+  var away: Bool
   /// Relay wall-clock time of the Rider's last presence, epoch ms.
   var lastSeenMs: Int64
   /// Battery SoC Estimate as a 0-1 fraction; nil without a Board Session.

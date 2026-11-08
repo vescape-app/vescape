@@ -31,14 +31,13 @@ enum GroupRideFrameBuilder {
   }
 
   private static func place(roster: GroupRideRoster, own: WatchGeoPoint, nowMs: Int64) -> [GroupRideFrameRider] {
-    let fresh = roster.riders.filter { nowMs - $0.lastSeenMs < GROUP_RIDE_DROP_AFTER_MS }
-    let entries = fresh
+    let entries = roster.riders
       .filter { $0.id != roster.ownRiderId }
       .map { rider in
         Entry(
           rider: rider,
           offset: rider.position.map { watchOffsetMeters(origin: own, point: $0) },
-          stale: rider.stale || nowMs - rider.lastSeenMs >= GROUP_RIDE_STALE_AFTER_MS
+          stale: rider.stale || rider.away || nowMs - rider.lastSeenMs >= GROUP_RIDE_STALE_AFTER_MS
         )
       }
       // The phone map's roster order, which is what its fallback tints are indexed by: fresh before
@@ -53,7 +52,7 @@ enum GroupRideFrameBuilder {
         }
       }
     // The phone roster pins the Rider's own entry first, so everyone else's index starts after it.
-    let first = fresh.contains { $0.id == roster.ownRiderId } ? 1 : 0
+    let first = roster.riders.contains { $0.id == roster.ownRiderId } ? 1 : 0
     let placed: [GroupRideFrameRider] = entries.enumerated().compactMap { index, entry in
       guard let offset = entry.offset else { return nil }
       return GroupRideFrameRider(

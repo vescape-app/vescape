@@ -97,9 +97,17 @@ Speech comes from a second app-wide choice next to Sound effects:
   speak whatever the level, with its wording (Off reads as Standard).
 - **Group Ride cues**, all native from `GroupRideObserver`: `groupRide.created` (a new ride the
   rider created, or one within the 40 km nearby radius of the latest GPS position), `groupRide.joined` (the rider joined),
-  `groupRide.riderJoined` / `groupRide.riderLeft` (someone else in the joined ride's roster),
-  `groupRide.lost` (the joined ride's relay socket dropped), `groupRide.restored` (rejoined after a
-  loss). All are gated by the app sounds switch (`connectionSoundsEnabled`).
+  `groupRide.riderJoined` (a Rider id not seen before in the joined ride), `groupRide.riderLeft`
+  (another Rider's id left the roster, which the relay does only on a manual leave),
+  `groupRide.lost` (the joined ride's relay socket has been down for 15 s), `groupRide.restored`
+  (rejoined after a `lost`). A Rider whose link drops stays in the roster as away, so going away
+  or coming back plays nothing. The seen ids are kept per joined ride: the first roster after
+  joining seeds them silently, and leaving, joining another ride, stopping, an online block or the
+  ride ending clears them. A rejoin within the 15 s plays neither `lost` nor `restored`, a longer
+  outage plays one `lost`, and the first roster after our own rejoin only catches up, so our
+  reconnect never plays peer cues. Leaving, stopping, an online block or the ride ending cancels
+  a pending `lost`. The decisions live in `GroupRideCues` (`.kt`, `.swift`). All are gated by the
+  app sounds switch (`connectionSoundsEnabled`).
 
 A `voice(<severity>):<key>:<value>` sound plays the effects pack's `severity.<severity>` sound
 once, then the voice line, starting once the sound has finished, or 1.5 s after it starts if it runs longer (the same timing as TTS). Native
