@@ -140,7 +140,7 @@ jobs:
           ruby-version: '3.3'
           bundler-cache: true
       - name: Install trusted release lanes
-        run: cp .release-trusted/fastlane/Fastfile fastlane/Fastfile
+        run: cp .release-trusted/fastlane/Fastfile .release-trusted/fastlane/Matchfile fastlane/
       - name: Build IPA and upload to TestFlight
         run: bundle exec fastlane ios release
         env:
