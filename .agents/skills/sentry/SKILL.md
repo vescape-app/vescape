@@ -69,7 +69,7 @@ not a function`, `Property 'x' doesn't exist`, `DebugServerException`, `Cannot f
 **Android versionCode** (`androidVersionCode` in `src/helpers/version.ts`) tells store from local:
 
 ```
-0.86.0+8600        major*10000+minor*100+patch  -> local / CI build
+0.86.0+86000       major*1000000+minor*1000+patch  -> local / CI build
 0.86.0+100000024   explicit VERSION_CODE        -> Play store release, real users
 ```
 

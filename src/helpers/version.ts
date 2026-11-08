@@ -20,12 +20,12 @@ export function androidVersionCode(version: string, releaseCode?: string): numbe
   if (
     parts.length !== 3 ||
     !numbers.every((part) => Number.isInteger(part) && part >= 0) ||
-    numbers[1] > 99 ||
-    numbers[2] > 99
+    numbers[1] > 999 ||
+    numbers[2] > 999
   ) {
     throw new Error(`Invalid version "${version}"`)
   }
 
   const [major, minor, patch] = numbers
-  return major * 10000 + minor * 100 + patch
+  return major * 1_000_000 + minor * 1000 + patch
 }
