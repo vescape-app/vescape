@@ -4,8 +4,9 @@ type("appstore")
 
 # The watchOS Mirror ships inside the phone IPA, so its App ID needs the same appstore
 # profile as the phone and widget. `.watchkitapp` is appended by the target config
-# (watch/watchos/expo-target.config.js) — this is the production form of that id.
-app_identifier(["app.vescape", "app.vescape.widget", "app.vescape.watchkitapp"])
+# (watch/watchos/expo-target.config.js) — this is the production form of that id. The
+# watch battery complication (targets/watch-battery) is embedded in the watch app.
+app_identifier(["app.vescape", "app.vescape.widget", "app.vescape.watchkitapp", "app.vescape.watchkitapp.battery"])
 team_id(ENV["APPLE_TEAM_ID"])
 
 # In CI the workflow sets CI=true; match runs read-only so no Apple auth is

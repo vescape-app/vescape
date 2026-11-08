@@ -340,7 +340,8 @@ platform :ios do
       { target: "RideActivity", bundle: "app.vescape.widget" },
       # The watchOS Mirror is embedded in the phone IPA and must be signed with its own
       # profile; an unsigned embedded watch app fails export, not archive.
-      { target: "VescapeWatch", bundle: "app.vescape.watchkitapp" }
+      { target: "VescapeWatch", bundle: "app.vescape.watchkitapp" },
+      { target: "WatchBattery", bundle: "app.vescape.watchkitapp.battery" }
     ].each do |t|
       UI.user_error!("No appstore profile for #{t[:bundle]} — run `fastlane ios bootstrap_certs`") unless profiles[t[:bundle]]
       update_code_signing_settings(
