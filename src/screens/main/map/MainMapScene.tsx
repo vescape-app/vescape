@@ -19,6 +19,7 @@ type OverlayProps = ComponentProps<typeof MainMapOverlays>
 type MapViewProps = ComponentProps<typeof Mapbox.MapView>
 
 interface MainMapSceneProps {
+  displayRuntime: LayerProps['displayRuntime']
   mapOpacity: Animated.Value
   onLayout: ComponentProps<typeof Animated.View>['onLayout']
   onTouchStart: ComponentProps<typeof Animated.View>['onTouchStart']
@@ -67,6 +68,7 @@ interface MainMapSceneProps {
 }
 
 export function MainMapScene({
+  displayRuntime,
   mapOpacity,
   onLayout,
   onTouchStart,
@@ -166,6 +168,7 @@ export function MainMapScene({
               satelliteRoadLineOpacity={mapStyle.satelliteRoadLineOpacity}
             />
             <MainMapLayers
+              displayRuntime={displayRuntime}
               historyActive={historyActive}
               expandSelectedMapPoints={mode === 'map'}
               isMapy={mapStyle.isMapy}

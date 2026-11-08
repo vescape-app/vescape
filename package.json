@@ -130,6 +130,7 @@
     "lefthook": "^2.1.14",
     "oxlint": "^1.83.0",
     "oxlint-tsgolint": "^7.0.2002",
+    "react-test-renderer": "19.2.3",
     "sharp": "^0.35.4",
     "typescript": "^6"
   },

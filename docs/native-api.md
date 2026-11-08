@@ -197,6 +197,26 @@ names the winner (`none | manual | sensor | move`). See [remote-tilt.md](./remot
 | `startLocationUpdates()` | sync | void. Emits `onLocation`. Independent of board session |
 | `stopLocationUpdates()`  | sync | void                                                   |
 
+`onLocation`, `onLiveTick` and the GPS live-state snapshot include display source identity, source
+clock and clock rate. Native display input owners use them to reject delayed source emissions and
+adapt replay; measured timestamps stay unchanged.
+
+### Surface display motion
+
+| fn                               | sync | returns                                                                                                                                                      |
+| -------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `getMapDisplayControls()`        | sync | Native metadata/defaults for the seven session-only controls.                                                                                                |
+| `setMapDisplayConfig(config)`    | sync | Validated controls; applies to phone/bench and forwards only these values over the cold watch settings channel. Empty overrides restore defaults.            |
+| `mapDisplayCommand(id, command)` | sync | Display snapshot for `live` or isolated `bench`. `options` sets `active`, `diagnostics`, `trail`, `raw`; bench also accepts `reset`, `fix`, `speed` intents. |
+
+`onMapDisplay` emits surface snapshots: source/revision, native monotonic clock, display clock/rate,
+current position, linear segment start/end times and endpoints, confirmed camera heading and
+expiring point heading. Optional raw measurement, bounded displayed trail and diagnostic evidence
+are consumer-gated. `modules/vescape-core/src/mapDisplay.ts` defines the payload. These snapshots
+belong to neither Live State, Watch Frames nor persistence. JS evaluates supplied segments only.
+Native cancels scheduled work on surface teardown/background; ordinary GPS, recording and watch
+lifetimes remain independent. See [Live map display motion](./map.md).
+
 ## Board session
 
 | fn                                  | sync  | returns                                                                                                                                                                                                                  |

@@ -323,6 +323,8 @@ class CoreForegroundService : Service() {
         }
 
         /** Wrist wake level. Dropped when no service is running — nothing is pushing frames anyway. */
+        internal fun configureWatchDisplay(json: String) { instance?.controller?.configureWatchDisplay(json) }
+
         internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
             instance?.controller?.watchMirrorWakeLevel(level)
         }

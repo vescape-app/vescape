@@ -117,3 +117,18 @@ cd android && ./gradlew :app:compileDebugKotlin
 
 On a device, pinch and release quickly in map mode. Zoom must keep decelerating while pitch follows
 the changing zoom. Also verify normal recentering and navigation-mode camera animations.
+
+## Linear point animator endpoints
+
+`MovePointShapeAnimator.moveTo({ coordinate, durationMs })` remains the stock API. The patch fixes
+two generic interpolation defects on both platforms: compute progress from the current animation
+age (upstream used the previous frame's progress time), and land exactly on the target at expiry
+(upstream stopped on the previous frame). No GPS, speed, prediction or correction logic lives here.
+The segment adapter sends moves only on input changes and segment boundaries. The main map's 3D
+coin uses a non-interactive native view annotation driven by Reanimated on the UI thread; it bypasses
+the public MarkerView wrapper's touch-position React updates. The playground's shape point still
+uses `MovePointShapeAnimator`. Both render the same native-authored segments.
+The iOS module also registers its own generated TurboModule spec; upstream registered the point
+annotation spec, leaving `generate` and `moveTo` unavailable at runtime. Its Objective-C selectors
+and scalar argument types match that generated spec, with boxing only at the Swift boundary.
+Native rebuilds are required after changing this patch.

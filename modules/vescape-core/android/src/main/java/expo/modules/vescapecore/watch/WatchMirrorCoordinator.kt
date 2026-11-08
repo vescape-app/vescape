@@ -144,12 +144,20 @@ internal class WatchMirrorCoordinator(
         applyInterval()
     }
 
+    private var motionJson = ""
+    private var lastSettings: WatchSettings? = null
+    fun configureMotion(json: String) {
+        motionJson = json
+        lastSettings?.let { transport.pushSettings(it.copy(displayMotionJson = json)) }
+    }
+
     fun applySettings(settings: WatchSettings, intervalMs: Long, autoLaunch: Boolean) {
         configuredIntervalMs = intervalMs
         this.autoLaunch = autoLaunch
         streetMapEnabled = settings.streetMapEnabled
         applyInterval()
-        transport.pushSettings(settings)
+        lastSettings = settings
+        transport.pushSettings(settings.copy(displayMotionJson = motionJson))
     }
 
     private fun applyInterval() {

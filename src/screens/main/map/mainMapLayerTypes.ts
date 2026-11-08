@@ -1,3 +1,4 @@
+import type { MotionDisplayRuntime } from '@/modules/map/lib/liveMotion/display'
 import type { SharedValue } from 'react-native-reanimated'
 import type { MapPoint, MapPointCategory } from 'vescape-core'
 
@@ -20,6 +21,7 @@ import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 
 export interface MainMapLayersProps {
+  displayRuntime: MotionDisplayRuntime
   historyActive: boolean
   expandSelectedMapPoints: boolean
   isMapy: boolean

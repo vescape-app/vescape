@@ -476,3 +476,131 @@ describe('cameraEngine', () => {
     }
   })
 })
+
+test('continuous follow samples between GPS ticks, keeps deliberate lag and releases to gestures', () => {
+  const { engine, tick, hasPending } = createTestEngine()
+  engine.reset(camera([0, 0]))
+  engine.configureOmega({ center: 3, heading: 3 })
+  let target = 0
+  engine.follow(() => ({ center: [target / 111320, 0], heading: 90 }))
+  const positions: number[] = []
+  for (let i = 0; i < 60; i++) {
+    target += 0.1
+    tick()
+    positions.push(engine.getCamera().centerCoordinate[0] * 111320)
+  }
+  expect(positions[59]).toBeGreaterThan(positions[30]!)
+  expect(positions[59]).toBeLessThan(target)
+  const before = engine.getCamera()
+  engine.configureOmega({ center: 5 })
+  expect(engine.getCamera()).toEqual(before)
+  engine.driveExternal(camera([10 / 111320, 0]), { gesture: true })
+  target = 100
+  tick()
+  expect(engine.getCamera().centerCoordinate[0] * 111320).toBeCloseTo(10, 4)
+  engine.destroy()
+  expect(hasPending()).toBe(false)
+})
+
+test('GPS heading keeps rotating across one-second fixes without restarting angular motion', () => {
+  const { engine, tick } = createTestEngine()
+  engine.reset(camera([0, 0], 14, 0, 28))
+  engine.configureOmega({ heading: 1 })
+  let heading = 30
+  engine.follow(() => ({ heading }))
+  const tickHeading = () => {
+    tick(1000 / 60)
+    return engine.getCamera().heading
+  }
+  let previous = 0
+  let lastStep = 0
+  for (let i = 0; i < 60; i++) {
+    const current = tickHeading()
+    lastStep = current - previous
+    previous = current
+  }
+  // The default response stretches beyond the GPS interval instead of reaching each fix and waiting.
+  expect(previous).toBeGreaterThan(5)
+  expect(previous).toBeLessThan(15)
+  expect(lastStep).toBeGreaterThan(0.1)
+  for (heading = 60; heading <= 120; heading += 30) {
+    const before = engine.getCamera().heading
+    const first = tickHeading()
+    const step = first - before
+    expect(step).toBeGreaterThan(0.1)
+    // A fresh heading changes acceleration, without killing the velocity at the tick boundary.
+    expect(Math.abs(step - lastStep)).toBeLessThan(0.03)
+    previous = first
+    for (let i = 1; i < 60; i++) {
+      const current = tickHeading()
+      lastStep = current - previous
+      expect(lastStep).toBeGreaterThan(0.1)
+      previous = current
+    }
+  }
+  engine.destroy()
+})
+
+test('stationary follow idles after fling hold and an explicit segment change wakes it', () => {
+  const { engine, run, hasPending } = createTestEngine()
+  engine.reset(camera([21, 52], 14, 0, 28))
+  let target: [number, number] = [21, 52]
+  const follow = () => ({ center: target, motion: { moving: false, wakeAfterMs: null } })
+  engine.follow(follow)
+  run(1000)
+  expect(hasPending()).toBe(false)
+  target = [21.0001, 52]
+  engine.follow(follow)
+  expect(hasPending()).toBe(true)
+  run(1000)
+  expect(hasPending()).toBe(false)
+  expect(engine.getCamera().centerCoordinate).toEqual(target)
+  engine.destroy()
+})
+
+test('a future segment wakes by deadline without polling and destroy cancels its wake', () => {
+  let now = 0
+  let frame: ((at: number) => void) | null = null
+  let wake: (() => void) | null = null
+  let wakeDelay = 0
+  const engine = createCameraEngine({
+    applyFrame() {},
+    now: () => now,
+    scheduleFrame: (callback) => {
+      frame = (at) => {
+        frame = null
+        callback(at)
+      }
+      return 1
+    },
+    cancelFrame: () => {
+      frame = null
+    },
+    holdAfterTargetMs: 0,
+    scheduleWake: (callback, delay) => {
+      wake = () => {
+        wake = null
+        callback()
+      }
+      wakeDelay = delay
+      return 1 as unknown as ReturnType<typeof setTimeout>
+    },
+    cancelWake: () => {
+      wake = null
+    },
+  })
+  engine.reset(camera([0, 0]))
+  engine.follow(() => ({ center: [0, 0], motion: { moving: false, wakeAfterMs: 1000 - now } }))
+  now = 16
+  const first = frame as ((at: number) => void) | null
+  first?.(now)
+  expect(frame).toBeNull()
+  expect(wakeDelay).toBe(984)
+  now = 1000
+  const deadline = wake as (() => void) | null
+  deadline?.()
+  expect(frame).not.toBeNull()
+  engine.destroy()
+  expect(frame).toBeNull()
+  expect(wake).toBeNull()
+})

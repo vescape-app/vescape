@@ -145,6 +145,7 @@ export function MainMapLayers(props: MainMapLayersProps) {
             onFocusDirectionPoint={props.onFocusDirectionPoint}
           />
           <LiveMapLayers
+            displayRuntime={props.displayRuntime}
             liveTrailShape={props.liveTrailShape}
             accuracyFix={props.accuracyFix}
             accuracyShape={props.accuracyShape}

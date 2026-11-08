@@ -1,3 +1,11 @@
+import type { MapDisplaySnapshot, MotionConfig, MotionControls } from './mapDisplay'
+export type {
+  MapDisplaySnapshot,
+  MotionConfig,
+  MotionControls,
+  MotionFix,
+  MotionDiagnostics,
+} from './mapDisplay'
 /**
  * TS declaration of the VescapeCore native contract: every type here mirrors a native definition.
  * Coverage is not uniform — parts of this surface are Android-only (Group Ride, Remote Tilt) and
@@ -424,6 +432,13 @@ export interface AccessoryEnrollment {
  * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
  */
 export interface LocationEvent {
+  /** Display-only source identity and source clock at delivery (replay clock adapted here).
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `displayMap`
+   * @parity /modules/vescape-core/ios/location/LocationTracker.swift `displayMap`
+   */
+  displaySourceId?: number
+  displayClockMs?: number
+  displayClockRate?: number
   latitude: number
   longitude: number
   speedMps: number | null
@@ -823,6 +838,10 @@ export type MapPointErrorCode =
   | 'MAP_POINT_UNREACHABLE'
 
 export interface TelemetryEvent {
+  /** Native display epoch; used by native input owners to reject delayed source emissions. */
+  displaySourceId?: number
+  displayClockMs?: number
+  displayClockRate?: number
   generation?: number
   /** Native remote-tilt snapshot paired with this telemetry tick. */
   remoteTilt?: RemoteTiltState | null
@@ -990,6 +1009,9 @@ export interface LiveStateEvent {
     phase: GpsPhase
     /** What the fixes cost right now — and, by implication, why they are flowing. */
     mode: GpsPowerMode
+    displaySourceId?: number
+    displayClockMs?: number
+    displayClockRate?: number
     latestFix: LocationEvent | null
     latestApproximateFix?: LocationEvent | null
     latestPreciseFix?: LocationEvent | null
@@ -2754,6 +2776,7 @@ type VescapeCoreEvents = {
   onTelemetryHistory: (event: TelemetryHistoryEvent) => void
   onBms: (event: BmsEvent) => void
   onBmsSeries: (event: NativeBmsSeriesEvent) => void
+  onMapDisplay: (event: MapDisplaySnapshot) => void
   onLocation: (event: LocationEvent) => void
   onMaintenanceState: (event: MaintenanceState) => void
   onBoardProbeProgress: (event: BoardProbeProgressEvent) => void
@@ -2912,6 +2935,9 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   exportDebugRecording(name: string): Promise<DatabaseBackupResult>
   deleteDebugRecording(name: string): Promise<void>
   startDebugReplay(name: string, options: DebugReplayOptions | null): Promise<void>
+  getMapDisplayControls(): MotionControls
+  setMapDisplayConfig(json: string): MotionConfig
+  mapDisplayCommand(id: string, command: Record<string, unknown>): MapDisplaySnapshot
   setWatchRouteSpanM(spanM: number | null): void
   stopDebugReplay(): Promise<void>
   reportUiError(message: string, source?: string | null, stack?: string | null): void
@@ -4820,6 +4846,28 @@ export function addBmsSeriesListener(cb: (event: BmsSeriesUpdate) => void): Even
 
 export function addLocationListener(cb: (event: LocationEvent) => void): EventSubscription {
   return emitter.addListener('onLocation', cb)
+}
+
+/** Native owns defaults, validation, estimation and input lifetimes.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `mapDisplayCommand`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `mapDisplayCommand`
+ */
+export function getMapDisplayControls(): MotionControls {
+  return native.getMapDisplayControls()
+}
+export function setMapDisplayConfig(config: Partial<MotionConfig>): MotionConfig {
+  return native.setMapDisplayConfig(JSON.stringify(config))
+}
+export function mapDisplayCommand(
+  id: 'live' | 'bench',
+  command: Record<string, unknown>,
+): MapDisplaySnapshot {
+  return { ...native.mapDisplayCommand(id, command), id }
+}
+export function addMapDisplayListener(
+  cb: (snapshot: MapDisplaySnapshot) => void,
+): EventSubscription {
+  return emitter.addListener('onMapDisplay', cb)
 }
 
 /**

@@ -58,8 +58,9 @@ Measured on iPhone SE (3rd gen), iOS 26.6, Release build — see
 | worst hang                         | 11.64s → process killed | 368ms microhang          |
 | main-thread samples/s while locked | foreground rate         | 17/s vs 236/s foreground |
 
-Backgrounded camera writes are reduced, not zero: ~7/s remain, driven through `setCameraDirect` by
-GPS follow, which keeps running under the `location` background mode by design.
+Those measurements predate the display-motion foreground gate. Current GPS follow and compass
+animation both stop while the map is hidden or backgrounded; native location/recording lifetimes
+remain independent. See [live map display motion](./map.md).
 
 ## What NOT to do
 

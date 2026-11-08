@@ -115,6 +115,22 @@ final class WatchMapViewTests: XCTestCase {
     XCTAssertEqual(map.motion.offset(at: at(0.15)).northM, 5, accuracy: 0.0001)
   }
 
+  func testPausedMapAdapterKeepsFinalDisplayCameraOffset() {
+    let epoch = 1_793_100_000_000.0
+    let origin = Date(timeIntervalSince1970: 0)
+    var map = WatchMapView(spanM: 600, courseDeg: nil)
+    var first = WatchMotionFacts(sourceId: 1, fixTimestamp: 0, sentAt: epoch, gpsAgeMs: 0, boardAgeMs: 0, accuracyM: 3)
+    first.clockRate = 1
+    map.retarget(spanM: 600, courseDeg: nil, at: origin, animate: true, position: position(0), facts: first, speed: 72)
+    var second = first; second.fixTimestamp = 1_000; second.sentAt += 1_000
+    map.retarget(spanM: 600, courseDeg: nil, at: origin.addingTimeInterval(1), animate: true, position: position(10), facts: second, speed: 72)
+    let final = map.motion.offset(at: map.settlesAt)
+    let paused = map.motion.offset(at: .distantFuture)
+    XCTAssertEqual(paused.eastM, final.eastM, accuracy: 0.0001)
+    XCTAssertEqual(paused.northM, final.northM, accuracy: 0.0001)
+    XCTAssertNotEqual(paused.northM, 0)
+  }
+
   func testASampledUTurnNeverErasesRetainedHistoryDuringCameraMotion() {
     let trail = [-100.0, -50, -2, 0].map { WatchTrailPoint(eastM: $0, northM: 0) }
     for east in [-1.0, -0.5, -0.01, 0] {
