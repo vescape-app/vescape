@@ -2816,6 +2816,10 @@ internal final class BoardSessionController: VescGattListener {
     pushWatchLastBattery()
     reloadWatchSettings()
     pushWatchBoard()
+    // Written once at launch, empty included, so a list a dead process left on the wrist does not
+    // outlive it. The listener fires on main, where the cold state is written.
+    RideNotices.shared.addListener { [weak self] in self?.watchMirror.pushRideNotices($0) }
+    watchMirror.pushRideNotices(RideNotices.shared.current)
   }
 
   /// Mirror coordination already hops WCSession commands onto this controller's scheduler.

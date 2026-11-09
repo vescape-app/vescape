@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import WatchKit
 import WidgetKit
 
 /// Wrist-side end of the Watch Frame path (ADR-0019). Receives the frames `WatchTelemetryPusher`
@@ -85,6 +86,13 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchGroupRide.kt `GroupRideState`
   @Published private(set) var groupRide: WatchGroupRide?
+
+  /// The Ride Notice the full-screen card shows, or nil for the gauges. The buzz is a one-shot fired
+  /// where a delivery brings a pair the wrist has not shown, never derived from this value, so an
+  /// Always On wake or a redraw cannot replay it.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/RideNoticeCard.kt `RideNoticeState`
+  @Published private(set) var rideNoticeCard: RideNoticeFrameItem?
 
   /// Latest wake level reported to the phone, and the heartbeat that keeps re-asserting it.
   private var wakeLevel: WatchMirrorWakeLevel = .asleep
@@ -253,6 +261,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     if weather != intake.weather || weather?.fetchedAtMs != intake.weather?.fetchedAtMs { weather = intake.weather }
     if board != intake.board { board = intake.board }
     if groupRide != intake.groupRide { groupRide = intake.groupRide }
+    if rideNoticeCard != intake.rideNoticeCard { rideNoticeCard = intake.rideNoticeCard }
     if let list = intake.mapTiles, list != retainedMapTiles {
       retainedMapTiles = list
       MapTileStore.shared.retain(list)
@@ -357,8 +366,30 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
 
   private func acceptColdState(_ context: [String: Any]) {
     refreshLastBatteryContext()
-    intake.restoreColdState(context)
+    let fresh = intake.restoreColdState(context)
     publishIntake()
+    if fresh { buzzRideNotice() }
+  }
+
+  /// The rider tapped the card away: hidden on the wrist until the phone posts a new revision.
+  /// #652 sends the dismiss to the phone from here.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `hideRideNotice`
+  @MainActor
+  func hideRideNotice(_ notice: RideNoticeFrameItem) {
+    intake.hideRideNotice(id: notice.id, rev: notice.rev)
+    publishIntake()
+  }
+
+  private func acceptRideNotices(_ bytes: Data) {
+    let fresh = intake.acceptRideNotices(bytes)
+    publishIntake()
+    if fresh { buzzRideNotice() }
+  }
+
+  /// Fires only while the app runs: watchOS gives a suspended Mirror nothing (docs/watch-mirror.md).
+  private func buzzRideNotice() {
+    WKInterfaceDevice.current().play(.notification)
   }
 
   private func acceptGroupRide(_ bytes: Data, receivedAtMs: Int64) {
@@ -440,6 +471,10 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MainActivity.kt `listener`
   func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
     let receivedAtMs = Self.nowMs()
+    if let bytes = message[watchRideNoticesChannel] as? Data {
+      DispatchQueue.main.async { self.acceptRideNotices(bytes) }
+      return
+    }
     if let bytes = message[watchRouteStatusMessageKey] as? Data {
       DispatchQueue.main.async {
         self.intake.acceptRouteStatus(bytes)

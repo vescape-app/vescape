@@ -90,6 +90,13 @@ struct MirrorScreen: View {
           .padding(.top, 10)
         }
       }
+      // Over everything, weather readout included: a "Rider down" outranks whatever the rider was
+      // doing. Always On draws it too, quieter; the buzz already fired when it arrived.
+      .overlay {
+        if let notice = link.rideNoticeCard {
+          RideNoticeCard(notice: notice, ambient: ambient) { hideRideNotice(notice) }
+        }
+      }
       .onPreferenceChange(PagePositionKey.self) { values in
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -134,6 +141,16 @@ struct MirrorScreen: View {
     }
     .onChange(of: scenePhase) { _, _ in reportWakeLevel() }
     .onAppear { reportWakeLevel() }
+  }
+
+  /// Hide the card on the wrist and land on the gauges.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `hideRideNotice`
+  private func hideRideNotice(_ notice: RideNoticeFrameItem) {
+    link.hideRideNotice(notice)
+    vertical = .gauges
+    control = .gauges
+    controlDrag = 0
   }
 
   /// The phone owns the push cadence but not the fact it turns on: only the wrist knows whether it

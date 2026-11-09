@@ -129,6 +129,21 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     }
   }
 
+  /// The full visible Ride Notice list. Retained in the merged Application Context so a wrist that
+  /// starts later still finds it, and also sent live while the watch is reachable: the context alone
+  /// is delivered opportunistically, too slow for "Rider down". Both carry the same bytes, so the
+  /// wrist keys on `(id, rev)` and the frame's `sentAtMs` and never buzzes twice for one notice.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRideNoticePusher.kt `WatchRideNoticePusher`
+  func pushRideNotices(_ notices: [RideNotice], sentAtMs: Int64) {
+    let frame = RideNoticeFrameCodec.encode(rideNoticeFrame(notices, sentAtMs: sentAtMs))
+    pushColdState(channel: watchRideNoticesChannel, payload: [watchRideNoticesFrameKey: frame])
+    guard let session, canPush else { return }
+    session.sendMessage([watchRideNoticesChannel: frame], replyHandler: nil) { [weak self] error in
+      self?.reportIssue("watch_frame_send_failed", ["path": watchRideNoticesChannel, "error": error.localizedDescription])
+    }
+  }
+
   func pushFrame(_ frame: Data) {
     guard let session, canPush else { return }
     session.sendMessageData(
@@ -236,4 +251,26 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     activeIssue = nil
     record("watch_frame_send_recovered", ["after": resolved])
   }
+}
+
+/// The wrist's slice of the visible list: no key, location or post time, which the wrist never shows.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRideNoticePusher.kt `toRideNoticeFrame`
+func rideNoticeFrame(_ notices: [RideNotice], sentAtMs: Int64) -> RideNoticeFrame {
+  RideNoticeFrame(
+    sentAtMs: sentAtMs,
+    notices: notices.map { notice in
+      let severity: RideNoticeFrameSeverity
+      switch notice.content.severity {
+      case .critical: severity = .critical
+      case .warning: severity = .warning
+      case .info: severity = .info
+      }
+      return RideNoticeFrameItem(
+        id: notice.id, rev: notice.rev, severity: severity,
+        title: notice.content.title, details: notice.content.details,
+        expiresAtMs: notice.content.expiresAt
+      )
+    }
+  )
 }
