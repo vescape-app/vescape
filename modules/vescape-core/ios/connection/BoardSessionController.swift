@@ -2948,15 +2948,17 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   /// Ride Notice on the Live Activity (#653). The listener fires only on visible-list changes; the
-  /// push is further limited to a change of the top notice's headline, keeping within the update
+  /// push is further limited to a change of the top notice's `(id, rev, title, severity)`, keeping within the update
   /// budget. `update` is a no-op without a running activity.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onRideNoticesChanged`
   private func onRideNoticesChanged(_ notices: [RideNotice]) {
     let top = notices.first
     let shown = liveActivityNotice
-    guard top?.id != shown?.id || top?.rev != shown?.rev || top?.content.title != shown?.content.title
-    else { return }
+    // Always keep the latest content: a same-revision repost replaces it in place.
     liveActivityNotice = top
+    guard top?.id != shown?.id || top?.rev != shown?.rev || top?.content.title != shown?.content.title
+      || top?.content.severity != shown?.content.severity
+    else { return }
     refreshLiveActivity()
   }
 

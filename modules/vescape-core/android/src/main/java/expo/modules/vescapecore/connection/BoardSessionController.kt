@@ -308,7 +308,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
             deviceName = { boardConfig?.deviceName ?: selectedBoardName },
             sessionActive = { boardConfig != null },
             canConnect = { boardConfig == null && selectedBoardName != null },
-            rideNotice = { notificationNotice?.content },
+            // Wall-clock filter: the engine's expiry timer runs on uptime and lags while the phone sleeps.
+            rideNotice = {
+                notificationNotice?.content?.takeUnless { c -> c.expiresAt?.let { it <= System.currentTimeMillis() } == true }
+            },
         )
     }
     private val notificationGate = NotificationUpdateGate(NOTIFICATION_TELEMETRY_INTERVAL_MS)
@@ -3129,12 +3132,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
      */
     private fun onRideNoticesChanged(notices: List<RideNotice>) {
         val top = notices.firstOrNull()
-        if (top?.headline() == notificationNotice?.headline()) return
+        val changed = top?.headline() != notificationNotice?.headline()
+        // Always keep the latest content: a same-revision repost replaces it in place.
         notificationNotice = top
-        refreshNotification(force = true)
+        // Only repaint a notification that is up; a plain-started service has none to ride on.
+        if (changed && notificationController.isShowing()) refreshNotification(force = true)
     }
 
-    private fun RideNotice.headline() = Triple(id, rev, content.title)
+    /** What the notification renders, plus `rev`: `(id, rev, title, severity)`. */
+    private fun RideNotice.headline() = listOf(id, rev, content.title, content.severity)
 
     /** Swallows the repaints of an intermediate teardown whose end state is never rider-visible. */
     private inline fun withNotificationRepaintSuppressed(block: () -> Unit) {

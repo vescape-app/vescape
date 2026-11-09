@@ -44,7 +44,7 @@ the expanded Dynamic Island. The compact and minimal island presentations stay r
 When the last notice clears, the line goes away. A stale card hides it with the rest of its state.
 
 - `BoardSessionController` listens to `RideNotices` and pushes a new `ContentState` only when the top
-  notice's `(id, rev, title)` changes, never per engine tick, so notices do not eat the ActivityKit
+  notice's `(id, rev, title, severity)` changes, never per engine tick, so notices do not eat the ActivityKit
   update budget.
 - `noticeTitle` / `noticeSeverity` are optional `ContentState` fields, so a state from an activity
   started by an older build still decodes.
@@ -52,7 +52,7 @@ When the last notice clears, the line goes away. A stale card hides it with the 
   is shown only in the app and on the watch.
 - The Live Activity exists only during a Board Session, so a board-less Group Ride shows no notice on
   the Lock Screen. Android's peer is the foreground-service notification, which leads its status line
-  with the notice (`⚠ Title · status`) for as long as that notification is up; it is never posted
+  with the notice (`⚠ Title · status`) whenever that notification is up; it is never posted
   for a notice either.
 
 ### Cross-target type sharing
