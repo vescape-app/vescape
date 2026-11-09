@@ -62,6 +62,7 @@ public class VescapeCoreModule: Module {
   /// Remover for this module's App Status mirror subscription; the Group Ride online gate holds its
   /// own, so the sink cannot be a single assignable closure.
   private var appStatusUnsubscribe: (() -> Void)?
+  private var rideNoticesUnsubscribe: (() -> Void)?
   private var serviceConfigUnsubscribe: (() -> Void)?
 
   /// Shared, app-level Board Session owner that outlives this module instance. A JS runtime reload
@@ -93,7 +94,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onGroupRideSignalAvailability", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
+    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onGroupRideSignalAvailability", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading", "onRideNotices")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -217,6 +218,12 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onAccessoryState") { self.observedEvents.remove("onAccessoryState") }
     OnStartObserving("onAccessoryReading") { self.observedEvents.insert("onAccessoryReading") }
     OnStopObserving("onAccessoryReading") { self.observedEvents.remove("onAccessoryReading") }
+    OnStartObserving("onRideNotices") {
+      self.observedEvents.insert("onRideNotices")
+      // Late subscriber: replay the active list so the card is consistent immediately.
+      self.emitRideNotices(RideNotices.shared.current)
+    }
+    OnStopObserving("onRideNotices") { self.observedEvents.remove("onRideNotices") }
 
     OnCreate {
       // Seed GPS demand's visibility input. A cold start fires no foreground notification, and a
@@ -273,6 +280,7 @@ public class VescapeCoreModule: Module {
       AppStatusCoordinator.shared.refresh()
       ServiceConfigCoordinator.shared.refresh()
       self.attachToCoordinator()
+      self.rideNoticesUnsubscribe = RideNotices.shared.addListener { [weak self] in self?.emitRideNotices($0) }
       // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
       // rendering a confident live session forever. Guarded by the coordinator so a running or
       // resuming session keeps its own activity.
@@ -299,6 +307,7 @@ public class VescapeCoreModule: Module {
       ServiceConfigCoordinator.shared.refresh()
       // Emits were gated while hidden; the screen must not keep a stale running state.
       self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
+      self.emitRideNotices(RideNotices.shared.current)
     }
     OnAppEntersBackground {
       self.frontendActive = false
@@ -325,6 +334,8 @@ public class VescapeCoreModule: Module {
       self.appStatusUnsubscribe = nil
       self.serviceConfigUnsubscribe?()
       self.serviceConfigUnsubscribe = nil
+      self.rideNoticesUnsubscribe?()
+      self.rideNoticesUnsubscribe = nil
       NavigationController.shared.onChange = nil
       NavigationController.shared.onProgressChange = nil
       self.frontendActive = false
@@ -485,6 +496,38 @@ public class VescapeCoreModule: Module {
 
     Function("joinGroupRide") { (riderId: String, riderName: String, rideId: String) in
       self.coordinator.joinGroupRide(riderId: riderId, riderName: riderName, rideId: rideId)
+    }
+
+    // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair stands in for a real
+    // source until one exists.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `dismissRideNotice`
+    Function("getRideNotices") { () -> [[String: Any?]] in
+      RideNotices.shared.current.map { $0.toMap() }
+    }
+    Function("dismissRideNotice") { (id: Int) in
+      RideNotices.shared.dismiss(id: id)
+    }
+    Function("devPostRideNotice") { (notice: [String: Any]) in
+      guard let severity = RideNoticeSeverity(rawValue: notice["severity"] as? String ?? "") else {
+        throw NSError(domain: "VescapeCore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown Ride Notice severity"])
+      }
+      let lat = (notice["lat"] as? NSNumber)?.doubleValue
+      let lng = (notice["lng"] as? NSNumber)?.doubleValue
+      RideNotices.shared.post(
+        key: notice["key"] as? String ?? "",
+        content: RideNoticeContent(
+          severity: severity,
+          title: notice["title"] as? String ?? "",
+          details: notice["details"] as? String ?? "",
+          postedAt: (notice["postedAt"] as? NSNumber)?.int64Value ?? 0,
+          location: lat.flatMap { lat in lng.map { RideNoticeLocation(lat: lat, lng: $0) } },
+          expiresAt: (notice["expiresAt"] as? NSNumber)?.int64Value
+        ),
+        revision: notice["revision"] as? String ?? ""
+      )
+    }
+    Function("devClearRideNotice") { (key: String) in
+      RideNotices.shared.clear(key: key)
     }
 
     Function("leaveGroupRide") {
@@ -2213,6 +2256,11 @@ public class VescapeCoreModule: Module {
   /// True only when the app is foregrounded and JS is actively listening to `name`. Gates the
   /// coordinator's JS-facing emits so the telemetry firehose sleeps in the background.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `shouldEmitToFrontend`
+  private func emitRideNotices(_ notices: [RideNotice]) {
+    guard shouldEmitToFrontend("onRideNotices") else { return }
+    sendEvent("onRideNotices", ["notices": notices.map { $0.toMap() }])
+  }
+
   private func shouldEmitToFrontend(_ name: String) -> Bool {
     frontendActive && observedEvents.contains(name)
   }

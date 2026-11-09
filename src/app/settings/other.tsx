@@ -7,6 +7,7 @@ import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import { BoardWarningProbe } from '@/screens/showcase/other/BoardWarningProbe'
 import { HapticsProbe } from '@/screens/showcase/other/HapticsProbe'
+import { RideNoticeProbe } from '@/screens/showcase/other/RideNoticeProbe'
 
 export default function OtherSettingsScreen() {
   return (
@@ -14,6 +15,7 @@ export default function OtherSettingsScreen() {
       <PageScrollView contentContainerStyle={styles.content}>
         <IconHero icon={ToolboxIcon} description="Small platform probes and local experiments." />
         <BoardWarningProbe />
+        <RideNoticeProbe />
         <HapticsProbe />
       </PageScrollView>
     </SafeAreaView>

@@ -2827,6 +2827,8 @@ type VescapeCoreEvents = {
   onRouteProgress: (event: RouteProgressEvent) => void
   /** Native forecast, on every successful refresh and on subscribe. */
   onWeather: (event: WeatherEvent) => void
+  /** The visible Ride Notices, most urgent first, on every change and on subscribe. */
+  onRideNotices: (event: RideNoticesEvent) => void
   /** One advertisement from a device running the Vescape Accessory service. */
   onAccessoryDevice: (event: AccessoryDeviceEvent) => void
   /** The accessory scan could not run or stopped running. */
@@ -3013,6 +3015,10 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getDiagnosticEvents(options: DiagnosticEventOptions): Promise<LocalDiagnosticEvent[]>
   clearDiagnosticEvents(): Promise<void>
   getBoardWarnings(): Promise<BoardWarning[]>
+  getRideNotices(): RideNotice[]
+  dismissRideNotice(id: number): void
+  devPostRideNotice(notice: DevRideNoticeParams): void
+  devClearRideNotice(key: string): void
   clearBoardWarning(boardId: string, kind: string): Promise<void>
   clearAllBoardWarnings(boardId: string): Promise<void>
   devInjectBoardWarning(
@@ -4053,6 +4059,63 @@ export async function clearDiagnosticEvents(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /** Pull the full current Board Warning list across all boards — used for the foreground catch-up. */
+/**
+ * One visible Ride Notice. `id` (1–255) addresses it in a dismiss; `rev` (1–255, wraps) bumps when
+ * the source posts a new revision. `postedAt` and `expiresAt` are source-supplied epoch ms.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notices/RideNoticeEngine.kt `RideNotice`
+ * @parity /modules/vescape-core/ios/notices/RideNoticeEngine.swift `RideNotice`
+ */
+export interface RideNotice {
+  id: number
+  rev: number
+  key: string
+  severity: 'critical' | 'warning' | 'info'
+  title: string
+  details: string
+  postedAt: number
+  location: { lat: number; lng: number } | null
+  expiresAt: number | null
+}
+
+export interface RideNoticesEvent {
+  notices: RideNotice[]
+}
+
+/** A test notice posted through the native engine, standing in for a real source. */
+export interface DevRideNoticeParams {
+  key: string
+  revision: string
+  severity: RideNotice['severity']
+  title: string
+  details: string
+  postedAt: number
+  lat?: number
+  lng?: number
+  expiresAt?: number
+}
+
+/** The visible Ride Notices, most urgent first. */
+export function getRideNotices(): RideNotice[] {
+  return native.getRideNotices()
+}
+
+/** Hide a notice until its source clears it or posts a new revision. */
+export function dismissRideNotice(id: number): void {
+  native.dismissRideNotice(id)
+}
+
+export function devPostRideNotice(notice: DevRideNoticeParams): void {
+  native.devPostRideNotice(notice)
+}
+
+export function devClearRideNotice(key: string): void {
+  native.devClearRideNotice(key)
+}
+
+export function addRideNoticesListener(cb: (event: RideNoticesEvent) => void): EventSubscription {
+  return emitter.addListener('onRideNotices', cb)
+}
+
 export async function getBoardWarnings(): Promise<BoardWarning[]> {
   return native.getBoardWarnings()
 }

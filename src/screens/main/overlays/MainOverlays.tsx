@@ -19,6 +19,7 @@ import { MapVignette } from '@/screens/main/map/MapVignette'
 import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMapIndicators'
 import { useMainScreenStore, type MapSelector } from '@/screens/main/mainScreenStore'
 import type { MainViewState } from '@/screens/main/mainViewState'
+import { RideNoticeOverlay } from '@/screens/main/overlays/RideNoticeOverlay'
 import { MapPointStatusBanner } from '@/modules/map-points/components/MapPointStatusBanner'
 import { TelemetryOverlay } from '@/screens/main/overlays/TelemetryOverlay'
 import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
@@ -53,6 +54,9 @@ interface MainMapOverlayProps {
   enterLegalLimits: () => void
   exitLegalLimits: () => void
   weatherLocation: { latitude: number; longitude: number } | null
+  /** The rider's latest precise fix, for live distances; null without one. */
+  ownLocation: { latitude: number; longitude: number } | null
+  onFocusCoordinate: (coordinate: { latitude: number; longitude: number }) => void
   directionPoint: DirectionPoint | null
   activeNavigationTarget: MapSelection | null
   selectedNavigationTarget: MapSelection | null
@@ -218,6 +222,14 @@ export function MainOverlays({
         top={mapModeTabsTop}
         onExit={map.exitLegalLimits}
       />
+
+      {mode === 'telemetry' || mode === 'map' ? (
+        <RideNoticeOverlay
+          top={belowMapModeTabsTop}
+          ownLocation={map.ownLocation}
+          onShowOnMap={map.onFocusCoordinate}
+        />
+      ) : null}
 
       <HistoryOverlay
         visible={mode === 'history'}
