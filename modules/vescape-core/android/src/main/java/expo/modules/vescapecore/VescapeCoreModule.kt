@@ -8,6 +8,7 @@ import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.weather.WeatherAlertLevel
 import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
+import expo.modules.vescapecore.watch.WatchRideNoticePusher
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 
@@ -465,6 +466,7 @@ class VescapeCoreModule : Module() {
       MaintenanceRunner.onChange = ::emitMaintenanceState
       MaintenanceRunner.start(context.applicationContext)
       rideNoticesUnsub = RideNotices.addListener(::emitRideNotices)
+      WatchRideNoticePusher.start(context)
     }
 
     OnActivityEntersForeground {

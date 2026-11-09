@@ -1,6 +1,5 @@
 package expo.modules.vescapecore.watch
 
-import expo.modules.vescapecore.notices.RideNotice
 import expo.modules.vescapecore.runtime.TestScheduler
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -32,7 +31,6 @@ class WatchMirrorCoordinatorTest {
         override fun pushSettings(settings: WatchSettings) { this.settings++ }
         override fun pushWeather(weather: WatchWeather) {}
         override fun pushBoard(board: WatchBoard) {}
-        override fun pushRideNotices(notices: List<RideNotice>) {}
         override fun launch() { launches++ }
     }
     private class Sources : WatchMirrorSources {

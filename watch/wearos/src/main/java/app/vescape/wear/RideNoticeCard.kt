@@ -37,11 +37,12 @@ import expo.modules.vescapecore.watch.RideNoticeFrameSeverity
  */
 internal object RideNoticeState {
     val card = mutableStateOf<RideNoticeFrameItem?>(null)
-    /** Set while the activity exists; a buzz with no screen to show the card on is pointless. */
-    var vibrator: Vibrator? = null
+    /** The application's, so no activity outlives or races another over it. */
+    private var vibrator: Vibrator? = null
 
+    /** Once per process; deliveries only arrive while [MainActivity] is started anyway. */
     fun attach(context: Context) {
-        vibrator = context.getSystemService(Vibrator::class.java)
+        if (vibrator == null) vibrator = context.applicationContext.getSystemService(Vibrator::class.java)
     }
 
     fun buzz() {

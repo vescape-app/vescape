@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.SystemClock
 import expo.modules.vescapecore.maptiles.MapTiles
 import expo.modules.vescapecore.navigation.NavigationController
-import expo.modules.vescapecore.notices.RideNotice
 import expo.modules.vescapecore.navigation.NavigationStatus
 import expo.modules.vescapecore.runtime.Scheduler
 import expo.modules.vescapecore.weather.WeatherCoordinator
@@ -33,7 +32,6 @@ internal fun androidWatchMirror(
     val settingsPusher = WatchSettingsPusher.get(context, scope)
     val weatherPusher = WatchWeatherPusher(context, scope, record)
     val boardPusher = WatchBoardPusher(context, scope, record)
-    val rideNoticePusher = WatchRideNoticePusher(context, scope, record)
     val launcher = WatchMirrorLauncher(context, scope, record)
     val mapTiles = WatchMapTileSender(
         scheduler, scope, SystemClock::elapsedRealtime,
@@ -53,7 +51,6 @@ internal fun androidWatchMirror(
             override fun pushSettings(settings: WatchSettings) = settingsPusher.push(settings)
             override fun pushWeather(weather: WatchWeather) = weatherPusher.push(weather)
             override fun pushBoard(board: WatchBoard) = boardPusher.push(board)
-            override fun pushRideNotices(notices: List<RideNotice>) = rideNoticePusher.push(notices)
             override fun launch() = launcher.launch()
         },
         sources = object : WatchMirrorSources {

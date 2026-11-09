@@ -577,8 +577,8 @@ Android writes it as an urgent Data Layer item. iOS puts it in the merged Applic
 `rideNotices` and, while the watch is reachable, also sends the same bytes as a `sendMessage`: the
 context alone is delivered opportunistically, too slow for "Rider down". The phone writes the
 channel whenever the visible list changes and once on every start, empty included, so a list left
-by a phone process that died is replaced. Android writes while the core service runs (it owns the
-Watch Mirror); iOS from process launch.
+by a phone process that died is replaced. Both phones write from process start, independent of the
+core service, like the Ride Notice list itself. `sentAtMs` is strictly increasing per process.
 
 The wrist keys on `(id, rev)`. A pair it has not shown since the watch app started draws a
 full-screen card (severity ring, title, details) over everything and buzzes; the same pair updated

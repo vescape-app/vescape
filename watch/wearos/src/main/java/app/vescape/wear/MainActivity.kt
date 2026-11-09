@@ -259,7 +259,6 @@ class MainActivity : ComponentActivity() {
         wakeHeartbeat.removeCallbacksAndMessages(null)
         phoneLinkMonitor.shutdown()
         ongoingActivityController.stop()
-        RideNoticeState.vibrator = null
         super.onDestroy()
         // After super: composition disposal runs there, and MoveScreen's dispose sends its stop.
         commandSender.shutdown()

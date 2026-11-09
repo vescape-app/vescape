@@ -189,7 +189,8 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     )
     // The cold-state channels the process knew about before the session would accept them. Cold
     // start is the one moment they are guaranteed to be waiting.
-    if activationState == .activated { coldState.flush(); wakeComplication() }
+    // On main, where every other cold-state write happens: `WatchColdState` is not synchronised.
+    if activationState == .activated { DispatchQueue.main.async { self.coldState.flush(); self.wakeComplication() } }
   }
 
   /// Wrist commands (ADR-0033). Two bytes, decoded off the delegate queue and handed to the owner;

@@ -84,10 +84,10 @@ import expo.modules.vescapecore.replay.ReplayTransport
 import expo.modules.vescapecore.VescLiveStateSnapshot
 import expo.modules.vescapecore.protocol.VescPacketReassembler
 import expo.modules.vescapecore.navigation.NavigationController
-import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchBoard
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
+import expo.modules.vescapecore.watch.WatchRideNoticePusher
 import expo.modules.vescapecore.watch.androidWatchMirror
 import expo.modules.vescapecore.watch.WatchLightsRelay
 import expo.modules.vescapecore.watch.WatchLightsSwitch
@@ -402,7 +402,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
     )
     private var weatherUnsubscribe: (() -> Unit)? = null
     private var weatherObservationUnsubscribe: (() -> Unit)? = null
-    private var rideNoticesUnsubscribe: (() -> Unit)? = null
     private val watchMoveRelay by lazy {
         WatchMoveRelay(
             scheduler = scheduler,
@@ -834,10 +833,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // The wrist mirrors the phone, not the board session. Keep presence + frames alive while
         // this service owns GPS/navigation even when no board is selected or connected.
         watchMirror.start()
-        // Written on every service start, empty included: a list a dead process left on the wrist
-        // must not outlive it.
-        rideNoticesUnsubscribe = RideNotices.addListener(watchMirror::pushRideNotices)
-        watchMirror.pushRideNotices(RideNotices.current)
+        // Process-scoped and idempotent; started here too for a service started without the module.
+        WatchRideNoticePusher.start(service)
         weatherUnsubscribe = weatherCoordinator.addChangeListener(::onWeatherChanged)
         // Listeners fire only on a successful refresh; the replay below is not one and stores nothing.
         weatherObservationUnsubscribe = weatherCoordinator.addChangeListener(::storeWeatherObservation)
@@ -1008,8 +1005,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
     }
 
     fun onServiceDestroy() {
-        rideNoticesUnsubscribe?.invoke()
-        rideNoticesUnsubscribe = null
         weatherUnsubscribe?.invoke()
         weatherUnsubscribe = null
         weatherObservationUnsubscribe?.invoke()

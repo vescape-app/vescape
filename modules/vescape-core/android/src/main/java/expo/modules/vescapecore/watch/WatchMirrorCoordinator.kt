@@ -1,6 +1,5 @@
 package expo.modules.vescapecore.watch
 
-import expo.modules.vescapecore.notices.RideNotice
 import expo.modules.vescapecore.runtime.Scheduler
 
 /** Active default and ambient cadence; independent of Board telemetry polling.
@@ -22,7 +21,6 @@ internal interface WatchMirrorTransport {
     fun pushSettings(settings: WatchSettings)
     fun pushWeather(weather: WatchWeather)
     fun pushBoard(board: WatchBoard)
-    fun pushRideNotices(notices: List<RideNotice>)
     fun launch()
 }
 
@@ -163,9 +161,6 @@ internal class WatchMirrorCoordinator(
     }
 
     fun pushBoard(board: WatchBoard) = transport.pushBoard(board)
-
-    /** The full visible Ride Notice list; process lifetime, like the board push. */
-    fun pushRideNotices(notices: List<RideNotice>) = transport.pushRideNotices(notices)
 
     /** A reconnect/stale recovery in the same Board Session must not wake the wrist again. */
     fun boardConnected(sessionId: Long) {

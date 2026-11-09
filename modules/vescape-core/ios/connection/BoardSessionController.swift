@@ -294,6 +294,7 @@ internal final class BoardSessionController: VescGattListener {
     speak: { [weak self] line in self?.alertAudioPlayer.speakAdvisory(line.voiceAnnouncement) }
   )
   private var removeWeatherListener: (() -> Void)?
+  private var removeRideNoticesListener: (() -> Void)?
   private let legalPolicyCatalog = LegalPolicyCatalog()
   /// Persistent Board Session status surface (Live Activity) — the iOS peer of Android's foreground
   /// notification. Native-driven so it survives screen-off and a dead JS runtime.
@@ -432,6 +433,7 @@ internal final class BoardSessionController: VescGattListener {
 
   deinit {
     removeWeatherListener?()
+    removeRideNoticesListener?()
   }
 
   // MARK: - Scan API
@@ -2818,7 +2820,7 @@ internal final class BoardSessionController: VescGattListener {
     pushWatchBoard()
     // Written once at launch, empty included, so a list a dead process left on the wrist does not
     // outlive it. The listener fires on main, where the cold state is written.
-    RideNotices.shared.addListener { [weak self] in self?.watchMirror.pushRideNotices($0) }
+    removeRideNoticesListener = RideNotices.shared.addListener { [weak self] in self?.watchMirror.pushRideNotices($0) }
     watchMirror.pushRideNotices(RideNotices.shared.current)
   }
 

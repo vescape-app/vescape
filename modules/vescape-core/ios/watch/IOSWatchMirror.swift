@@ -34,8 +34,11 @@ private final class IOSWatchMirrorTransport: WatchMirrorTransport {
   func pushRoute(_ payload: [String: Any]) { pusher.pushColdState(channel: watchRouteChannel, payload: payload) }
   func pushLastBattery(_ battery: WatchLastBattery?) { pusher.pushLastBattery(battery) }
   func pushBoard(_ board: WatchBoardLights) { pusher.pushColdState(channel: watchBoardChannel, payload: board.payload) }
+  /// Strictly increasing, so two writes in one millisecond never look like a repeat to the wrist.
+  private var lastRideNoticesSentAtMs: Int64 = 0
   func pushRideNotices(_ notices: [RideNotice]) {
-    pusher.pushRideNotices(notices, sentAtMs: Int64(Date().timeIntervalSince1970 * 1000))
+    lastRideNoticesSentAtMs = max(Int64(Date().timeIntervalSince1970 * 1000), lastRideNoticesSentAtMs + 1)
+    pusher.pushRideNotices(notices, sentAtMs: lastRideNoticesSentAtMs)
   }
 }
 
