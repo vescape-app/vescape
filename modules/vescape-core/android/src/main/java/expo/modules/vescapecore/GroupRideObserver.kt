@@ -208,6 +208,8 @@ internal class GroupRideObserver(
         lastPresence = null
         knownRides.clear()
         relayFeatures = emptySet()
+        // A restarted observer must re-emit availability to the fresh JS store.
+        lastSignalAvailability = null
         lastRosterRideId = null
         lastRoster = emptyList()
         lastRosterRiders = emptyList()

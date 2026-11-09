@@ -172,6 +172,8 @@ internal final class GroupRideObserver: NSObject {
     lastPresence = nil
     knownRides = []
     relayFeatures = []
+    // A restarted observer must re-emit availability to the fresh JS store.
+    lastSignalAvailability = nil
     lastRosterRideId = nil
     lastRoster = []
     lastRosterRiders = []
