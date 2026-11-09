@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import {
+  ArrowsHorizontalIcon,
   BatteryMediumIcon,
   DeviceMobileIcon,
   GaugeIcon,
@@ -8,11 +10,12 @@ import {
 } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 import { distanceMeters } from '@/helpers/mapGeometry'
 import { useFormat } from '@/hooks/useFormat'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useRiderStats } from '@/modules/group-ride/hooks/useRiderStats'
 import {
   TELEMETRY_LEVEL_COLOR,
@@ -24,7 +27,11 @@ import type { RosterRider } from '@/modules/group-ride/lib/roster'
 
 type OwnLocation = { lat: number; lng: number } | null
 
-/** The joined ride's Riders as full-width two-line rows whose stat columns line up like a table. */
+/** Below this list width the six stat columns no longer fit one line without ellipsizing values,
+ *  so each Rider's stats wrap into two lines of three. */
+const ONE_LINE_STATS_MIN_WIDTH = 290
+
+/** The joined ride's Riders as full-width rows whose stat columns line up like a table. */
 export function RosterList({
   rows,
   ownLocation,
@@ -32,47 +39,75 @@ export function RosterList({
   rows: RosterRider[]
   ownLocation: OwnLocation
 }) {
+  const neutral = useResolvedNeutralColors()
+  const divider = theme.alpha(neutral.border, 0.6)
+  const [width, setWidth] = useState(0)
+  // Until measured, assume the common wide layout; narrow phones re-render once after layout.
+  const wrapStats = width > 0 && width < ONE_LINE_STATS_MIN_WIDTH
   return (
-    <View style={styles.list}>
-      {rows.map((rider) => (
-        <RiderRow key={rider.id} rider={rider} ownLocation={ownLocation} />
+    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      {rows.map((rider, index) => (
+        <RiderRow
+          key={rider.id}
+          rider={rider}
+          ownLocation={ownLocation}
+          divider={index > 0 ? divider : undefined}
+          wrapStats={wrapStats}
+        />
       ))}
     </View>
   )
 }
 
-/** One fixed-width stat column: its icon is always shown; a missing value reads as a dash.
- *  When `level` is warning/critical the icon and value adopt the matching alert color. */
-function StatColumn({
-  icon: StatIcon,
-  value,
-  level = 'normal',
-}: {
+interface Stat {
   icon: Icon
+  color: ThemeColor
+  /** Share of a one-line row; wrapped lines split evenly. */
+  weight: number
   value?: string
   level?: TelemetryLevel
-}) {
+}
+
+/** One stat column, sized by `weight` so every row splits the width the same way. The icon, in
+ *  its metric color, names the value; a missing value reads as a muted dash so real readings stand
+ *  out. When `level` is warning/critical the icon and value adopt the matching alert color. */
+function StatColumn({ icon: StatIcon, color, weight, value, level = 'normal' }: Stat) {
   const alert = level !== 'normal'
-  const color = alert ? TELEMETRY_LEVEL_COLOR[level] : theme.neutral.textSecondary
+  const iconColor = alert ? TELEMETRY_LEVEL_COLOR[level] : color
+  const valueColor = alert
+    ? TELEMETRY_LEVEL_COLOR[level]
+    : value
+      ? theme.neutral.textPrimary
+      : theme.neutral.textMuted
   return (
-    <View style={styles.statColumn}>
-      <StatIcon size={11} color={color} weight="bold" />
-      <Text style={[styles.statValue, alert && { color }]} numberOfLines={1}>
+    <View style={[styles.statColumn, { flex: weight }]}>
+      <StatIcon size={12} color={iconColor} weight="bold" />
+      <Text style={[styles.statValue, { color: valueColor }]} numberOfLines={1}>
         {value ?? DASH}
       </Text>
     </View>
   )
 }
 
-/** How long an away Rider has been gone, for the slot the distance usually takes. */
+/** How long an away Rider has been gone, for the badge after the board name. */
 function awayLabel(lastSeen: number, nowMs: number): string {
   const minutes = Math.floor((nowMs - lastSeen) / 60_000)
-  if (minutes < 1) return 'away'
-  if (minutes < 60) return `away · ${minutes} min`
-  return `away · ${Math.floor(minutes / 60)} h`
+  if (minutes < 1) return 'Away'
+  if (minutes < 60) return `Away ${minutes} min`
+  return `Away ${Math.floor(minutes / 60)} h`
 }
 
-function RiderRow({ rider, ownLocation }: { rider: RosterRider; ownLocation: OwnLocation }) {
+function RiderRow({
+  rider,
+  ownLocation,
+  divider,
+  wrapStats,
+}: {
+  rider: RosterRider
+  ownLocation: OwnLocation
+  divider?: string
+  wrapStats: boolean
+}) {
   const { formatDistance } = useFormat()
   const s = useRiderStats(rider.presence)
   // An away Rider's stats stay frozen at their last presence; the minute clock ages the label.
@@ -81,18 +116,30 @@ function RiderRow({ rider, ownLocation }: { rider: RosterRider; ownLocation: Own
   const dotColor = rider.stale ? theme.neutral.textMuted : theme.palette[riderHue(rider.id)].color
   const boardName = rider.presence?.boardName?.trim() || 'No board'
   const distance =
-    ownLocation && rider.presence
+    ownLocation && rider.presence && !rider.isSelf
       ? formatDistance(
           distanceMeters(
             { latitude: ownLocation.lat, longitude: ownLocation.lng },
             { latitude: rider.presence.lat, longitude: rider.presence.lng },
           ),
         )
-      : DASH
-  const trailing = rider.away ? awayLabel(rider.lastSeen, now) : rider.isSelf ? null : distance
+      : undefined
+  const stats: Stat[] = [
+    {
+      icon: ArrowsHorizontalIcon,
+      color: theme.palette.groupRide.color,
+      weight: 1.5,
+      value: distance,
+    },
+    { icon: GaugeIcon, color: theme.telemetry.speed, weight: 1, ...s.speed },
+    { icon: BatteryMediumIcon, color: theme.telemetry.battVoltage, weight: 1.2, ...s.soc },
+    { icon: ThermometerSimpleIcon, color: theme.telemetry.motorTemp, weight: 1, ...s.motor },
+    { icon: ThermometerSimpleIcon, color: theme.telemetry.controllerTemp, weight: 1, ...s.ctrl },
+    { icon: DeviceMobileIcon, color: theme.neutral.textSecondary, weight: 1.2, ...s.phone },
+  ]
 
   return (
-    <View style={[styles.row, rider.away && styles.rowAway]}>
+    <View style={[styles.row, divider ? [styles.rowDivided, { borderTopColor: divider }] : null]}>
       <View style={styles.head}>
         <View style={[styles.dot, { backgroundColor: dotColor }]} />
         <Text style={styles.name} numberOfLines={1}>
@@ -102,14 +149,17 @@ function RiderRow({ rider, ownLocation }: { rider: RosterRider; ownLocation: Own
         <Text style={styles.board} numberOfLines={1}>
           {boardName}
         </Text>
-        {trailing ? <Text style={styles.trailing}>{trailing}</Text> : null}
+        {rider.away ? <Text style={styles.awayTag}>{awayLabel(rider.lastSeen, now)}</Text> : null}
       </View>
-      <View style={styles.stats}>
-        <StatColumn icon={GaugeIcon} value={s.speed.value} level={s.speed.level} />
-        <StatColumn icon={BatteryMediumIcon} value={s.soc.value} level={s.soc.level} />
-        <StatColumn icon={ThermometerSimpleIcon} value={s.motor.value} level={s.motor.level} />
-        <StatColumn icon={ThermometerSimpleIcon} value={s.ctrl.value} level={s.ctrl.level} />
-        <StatColumn icon={DeviceMobileIcon} value={s.phone.value} level={s.phone.level} />
+      {/* An away Rider's numbers are their last presence: dimmed, while the badge stays legible. */}
+      <View style={[styles.statLines, rider.away && styles.statsAway]}>
+        {(wrapStats ? [stats.slice(0, 3), stats.slice(3)] : [stats]).map((line, index) => (
+          <View key={index} style={styles.stats}>
+            {line.map((stat, column) => (
+              <StatColumn key={column} {...stat} weight={wrapStats ? 1 : stat.weight} />
+            ))}
+          </View>
+        ))}
       </View>
     </View>
   )
@@ -144,8 +194,19 @@ const DOT_SIZE = 8
 const HEAD_GAP = 6
 
 const styles = StyleSheet.create({
+  awayTag: {
+    color: theme.palette.amber.light,
+    backgroundColor: theme.palette.amber.bg,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    overflow: 'hidden',
+  },
   board: {
-    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
     color: theme.neutral.textMuted,
     fontSize: 12,
@@ -160,14 +221,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: HEAD_GAP,
   },
-  list: {
-    gap: 12,
-  },
   name: {
     flexShrink: 1,
     maxWidth: '45%',
     color: theme.neutral.textPrimary,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
   },
   rideMeta: {
@@ -185,10 +243,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   row: {
-    gap: 4,
+    gap: 6,
+    paddingVertical: 10,
   },
-  rowAway: {
-    opacity: 0.5,
+  rowDivided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   selfTag: {
     color: theme.palette.groupRide.light,
@@ -202,9 +261,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   statColumn: {
-    // Equal flex columns with no content min-width: every row splits the same width the same way,
-    // so each stat sits under the one above it and long values ellipsize instead of shifting.
-    flex: 1,
+    // Weighted flex columns with no content min-width: every row splits the same width the same
+    // way, so each stat sits under the one above it and long values ellipsize instead of shifting.
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
@@ -212,19 +270,18 @@ const styles = StyleSheet.create({
   },
   stats: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 4,
     // Line 2 starts under the name, not the dot.
     paddingLeft: DOT_SIZE + HEAD_GAP,
   },
+  statLines: {
+    gap: 4,
+  },
+  statsAway: {
+    opacity: 0.5,
+  },
   statValue: {
     flexShrink: 1,
-    color: theme.neutral.textSecondary,
-    fontSize: 11,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-  },
-  trailing: {
-    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],

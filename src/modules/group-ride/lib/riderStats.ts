@@ -1,5 +1,5 @@
 import { fmtPercent, fmtTempC } from '@/helpers/format'
-import { formatSpeedMps, type DistanceUnit } from '@/helpers/units'
+import { formatSpeedValue, type DistanceUnit } from '@/helpers/units'
 import {
   batteryLevel,
   tempLevel,
@@ -22,7 +22,9 @@ interface RiderStats {
 
 const NORMAL_STAT: RiderStat = { level: 'normal' }
 
-/** Per-Rider telemetry values for the roster stat grid, each carrying its alert level. */
+/** Per-Rider telemetry values for the roster stat grid, each carrying its alert level.
+ *  Values are bare numbers: the column's icon names the metric and the rider's units are known,
+ *  so six columns still fit one line on a narrow phone. */
 export function riderStats(p: RosterRider['presence'], distanceUnit: DistanceUnit): RiderStats {
   if (!p)
     return {
@@ -34,7 +36,7 @@ export function riderStats(p: RosterRider['presence'], distanceUnit: DistanceUni
     }
   return {
     speed: {
-      value: p.speed != null ? formatSpeedMps(p.speed, distanceUnit) : undefined,
+      value: p.speed != null ? formatSpeedValue(p.speed * 3.6, distanceUnit) : undefined,
       level: 'normal',
     },
     soc: {
@@ -42,11 +44,11 @@ export function riderStats(p: RosterRider['presence'], distanceUnit: DistanceUni
       level: batteryLevel(p.soc),
     },
     motor: {
-      value: p.motorTemp != null ? `M ${fmtTempC(p.motorTemp)}` : undefined,
+      value: p.motorTemp != null ? fmtTempC(p.motorTemp) : undefined,
       level: tempLevel(p.motorTemp),
     },
     ctrl: {
-      value: p.ctrlTemp != null ? `C ${fmtTempC(p.ctrlTemp)}` : undefined,
+      value: p.ctrlTemp != null ? fmtTempC(p.ctrlTemp) : undefined,
       level: tempLevel(p.ctrlTemp),
     },
     phone: {
