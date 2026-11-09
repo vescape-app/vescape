@@ -8,7 +8,7 @@ The durable, long-lived work (the WebSocket connection and the location pushes t
 
 ## Decision
 
-- **A dedicated bun relay server, hosted on Railway, holds Group Ride state in memory only.** No database. Rooms and their Rider Presence live in a process `Map`. On restart, clients reconnect and re-announce, and rooms rebuild naturally. The server is a relay and a registry, not a system of record — consistent with **Group Rides** owning no durable truth. (Amended 2026-11: the relay now keeps rides and Riders in Redis behind its `Store` interface, with an in-memory adapter for development and tests, so rooms survive a relay restart; records expire after inactivity and are deleted when rides end. Still not a system of record.)
+- **A dedicated bun relay server, hosted on Railway, holds Group Ride state as expiring records, never a system of record.** Rides, Riders with their Rider Presence, and each Rider's active **Rider Signal** sit in Redis behind the relay's `Store` interface, with an in-memory adapter for development and tests. Rooms survive a relay restart; records expire after inactivity and are deleted when rides end. Nothing is kept past a ride, consistent with **Group Rides** owning no durable truth. (Amended 2026-11: this used to say the relay kept state in a process `Map` only, with no database, and rebuilt rooms from re-announcing clients after a restart.)
 
 - **Riders are anonymous.** Identity is a persistent device-generated id plus a rider-chosen display name, stored locally and sent to the server. No login, no account, no server-side identity record. The server trusts what clients send.
 
@@ -42,7 +42,7 @@ The durable, long-lived work (the WebSocket connection and the location pushes t
 - **Peer-to-peer / local mesh (BLE / Wi-Fi-direct / UDP).** Rejected: literally matches "everyone close by" but NAT traversal, discovery, and range make it unreliable, and a rendezvous server would be needed anyway.
 - **JS-owned WebSocket.** Rejected: the OS throttles/kills JS when backgrounded, so sharing would stop the moment the screen sleeps — useless for real rides. The client must be native, where `CoreForegroundService` already keeps location alive.
 - **Server-side geo-subscription (client sends location, server filters nearby).** Rejected in favor of server-pushes-events + client-filters-locally: observers then never send location at all (a privacy win), the server stays a dumb fan-out, and distance math reuses the GPS already running. The earlier "always send observe location" tradeoff is eliminated.
-- **Persisted server state (Postgres/SQLite).** Rejected: Group Rides own no durable truth; in-memory matches the ephemeral model and avoids infra.
+- **Persisted server state (Postgres/SQLite).** Rejected: Group Rides own no durable truth; expiring records match the ephemeral model without a system of record.
 - **Requiring a Board Session to join.** Rejected: blocks spectators and phone-only riders; phone **GPS Fix** is enough, telemetry only enriches.
 
 ## Deferred (considered, postponed)

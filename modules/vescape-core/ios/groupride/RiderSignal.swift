@@ -3,7 +3,7 @@ import Foundation
 /// The fixed **Rider Signal** kinds, by their relay wire name.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
-/// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KINDS`
+/// @parity /modules/vescape-core/src/index.ts `RIDER_SIGNAL_KINDS`
 internal enum RiderSignalKind: String, CaseIterable {
   case board
   case battery
@@ -12,6 +12,8 @@ internal enum RiderSignalKind: String, CaseIterable {
   case help
 
   /// A call for help rather than a heads-up; it wins when several signals cue at once.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `critical`
+  /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
   var critical: Bool { self == .down || self == .help }
 
   /// Titles Ride Notices.

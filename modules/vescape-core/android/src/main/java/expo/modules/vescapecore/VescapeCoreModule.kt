@@ -1682,11 +1682,12 @@ class VescapeCoreModule : Module() {
     Function("joinGroupRide") { riderId: String, riderName: String, rideId: String ->
       CoreForegroundService.joinGroupRide(context.applicationContext, riderId, riderName, rideId)
     }
-    // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair stands in for a real
-    // source until one exists.
+    // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair posts test notices.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `dismissRideNotice`
     Function("getRideNotices") { RideNotices.current.map { it.toMap() } }
     Function("dismissRideNotice") { id: Int, rev: Int -> RideNotices.dismiss(id, rev) }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `devPostRideNotice`
+    // @parity /modules/vescape-core/src/index.ts `DevRideNoticeParams`
     Function("devPostRideNotice") { notice: Map<String, Any?> ->
       val severity = RideNoticeSeverity.fromWire(notice["severity"] as? String)
         ?: throw IllegalArgumentException("Unknown Ride Notice severity")
@@ -1768,6 +1769,10 @@ class VescapeCoreModule : Module() {
     }
   }
 
+  /**
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `emitRideNotices`
+   * @parity /modules/vescape-core/src/index.ts `RideNoticesEvent`
+   */
   private fun emitRideNotices(notices: List<RideNotice>) {
     if (!shouldEmitToFrontend("onRideNotices")) return
     val body = mapOf("notices" to notices.map { it.toMap() })

@@ -6,7 +6,7 @@ import org.json.JSONObject
  * The fixed **Rider Signal** kinds, by their relay wire name.
  *
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalKind`
- * @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KINDS`
+ * @parity /modules/vescape-core/src/index.ts `RIDER_SIGNAL_KINDS`
  */
 internal enum class RiderSignalKind(val wire: String, val label: String) {
     // Labels title Ride Notices.
@@ -17,7 +17,11 @@ internal enum class RiderSignalKind(val wire: String, val label: String) {
     WAIT("wait", "Wait for me"),
     HELP("help", "Need help");
 
-    /** A call for help rather than a heads-up; it wins when several signals cue at once. */
+    /**
+     * A call for help rather than a heads-up; it wins when several signals cue at once.
+     * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `critical`
+     * @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
+     */
     val critical: Boolean get() = this == DOWN || this == HELP
 
     companion object {

@@ -10,7 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Wrist dismiss (#652): the wire bytes a wrist sends go through the service's real routing into the
+ * Wrist dismiss: the wire bytes a wrist sends go through the service's real routing into the
  * same engine dismiss the phone card uses, and nothing else. The engine stands in for the
  * main-looper `RideNotices` owner, which plain JVM tests cannot run.
  *

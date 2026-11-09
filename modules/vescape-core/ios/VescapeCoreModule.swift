@@ -499,8 +499,7 @@ public class VescapeCoreModule: Module {
       self.coordinator.joinGroupRide(riderId: riderId, riderName: riderName, rideId: rideId)
     }
 
-    // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair stands in for a real
-    // source until one exists.
+    // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair posts test notices.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `dismissRideNotice`
     Function("getRideNotices") { () -> [[String: Any?]] in
       RideNotices.shared.current.map { $0.toMap() }
@@ -508,6 +507,8 @@ public class VescapeCoreModule: Module {
     Function("dismissRideNotice") { (id: Int, rev: Int) in
       RideNotices.shared.dismiss(id: id, rev: rev)
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `devPostRideNotice`
+    // @parity /modules/vescape-core/src/index.ts `DevRideNoticeParams`
     Function("devPostRideNotice") { (notice: [String: Any]) in
       guard
         let severity = RideNoticeSeverity(rawValue: notice["severity"] as? String ?? ""),
@@ -2261,6 +2262,8 @@ public class VescapeCoreModule: Module {
     ]
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `emitRideNotices`
+  /// @parity /modules/vescape-core/src/index.ts `RideNoticesEvent`
   private func emitRideNotices(_ notices: [RideNotice]) {
     guard shouldEmitToFrontend("onRideNotices") else { return }
     sendEvent("onRideNotices", ["notices": notices.map { $0.toMap() }])

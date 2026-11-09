@@ -18,7 +18,7 @@ const TITLES: Record<RideNotice['severity'], string> = {
   critical: 'Rider down',
 }
 
-/** Posts test notices through the native Ride Notice engine; real sources land in later slices. */
+/** Posts test notices through the native Ride Notice engine. */
 export function RideNoticeProbe() {
   const notices = useRideNoticesStore((s) => s.notices)
   const lastFix = useLocationStore((s) => s.liveLocationHistory.at(-1) ?? null)

@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { CheckIcon, MegaphoneIcon } from 'phosphor-react-native'
-import type { GroupRideSignal } from 'vescape-core'
+import { RIDER_SIGNAL_KINDS, type GroupRideSignal } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import {
-  RIDER_SIGNAL_KINDS,
   RIDER_SIGNAL_KIND_INFO,
   riderSignalKindInfo,
 } from '@/modules/group-ride/constants/riderSignalKinds'
@@ -78,13 +78,13 @@ function RiderSignalSheet({ onSent }: { onSent: () => void }) {
       <Text style={styles.hint}>{hint}</Text>
       <View style={styles.kinds}>
         {RIDER_SIGNAL_KINDS.map((kind) => {
-          const { label, icon } = RIDER_SIGNAL_KIND_INFO[kind]
+          const { label, icon, critical } = RIDER_SIGNAL_KIND_INFO[kind]
           return (
             <Button
               key={kind}
               label={label}
               icon={icon}
-              variant={kind === 'down' || kind === 'help' ? 'destructive' : 'caution'}
+              variant={critical ? 'destructive' : 'caution'}
               disabled={blockedReason !== null}
               onPress={() => {
                 sendSignal(kind)
@@ -102,11 +102,14 @@ function RiderSignalSheet({ onSent }: { onSent: () => void }) {
 function OwnSignal({ signal }: { signal: GroupRideSignal }) {
   const relayClock = useGroupRideStore((s) => s.relayClock)
   const clearSignal = useGroupRideStore((s) => s.clearSignal)
+  const accents = useResolvedAccentColors()
   const info = riderSignalKindInfo(signal.kind)
   if (!info) return null
   const KindIcon = info.icon
   return (
-    <View style={styles.own}>
+    <View
+      style={[styles.own, { borderColor: accents.red.border, backgroundColor: accents.red.bg }]}
+    >
       <KindIcon size={20} color={theme.palette.red.color} weight="fill" />
       <View style={styles.ownText}>
         <Text style={styles.ownLabel}>{info.label}</Text>
@@ -160,8 +163,6 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.red.border,
-    backgroundColor: theme.palette.red.bg,
   },
   ownText: {
     flex: 1,

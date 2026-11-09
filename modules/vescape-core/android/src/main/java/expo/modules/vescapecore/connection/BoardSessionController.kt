@@ -3122,7 +3122,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     }
 
     /**
-     * Ride Notice on the ride notification (#653). Fires on the main looper, only when the visible
+     * Ride Notice on the ride notification. Fires on the main looper, only when the visible
      * list changes; the repaint is further limited to a change of the top notice's headline.
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRideNoticesChanged`
      */

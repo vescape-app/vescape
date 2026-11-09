@@ -71,7 +71,7 @@ struct WatchMirrorIntake {
   }
 
   /// The rider tapped the card away. Wrist-local: it returns while the phone posts a new revision.
-  /// The dismiss command to the phone (#652) is sent next to this call.
+  /// The dismiss command to the phone is sent next to this call.
   mutating func hideRideNotice(id: Int, rev: Int) { rideNotices.hide(id: id, rev: rev) }
 
   /// A complete snapshot on startup/reconnect resets channels absent from the phone. Per-channel

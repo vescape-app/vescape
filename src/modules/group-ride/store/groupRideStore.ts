@@ -24,10 +24,10 @@ import {
   type GroupRideRider,
   type GroupRideSignalAvailability,
   type GroupRideSummary,
+  type RiderSignalKind,
 } from 'vescape-core'
 
 import { useBleStore } from '@/modules/board/store/bleStore'
-import type { RiderSignalKind } from '@/modules/group-ride/constants/riderSignalKinds'
 import { nearbyRides, type NearbyRide } from '@/modules/group-ride/lib/nearby'
 import { monotonicNow, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
 import { riderRoster, rosterRowsEqual, type RosterRider } from '@/modules/group-ride/lib/roster'

@@ -104,7 +104,8 @@ export function RiderSignalPins() {
 /**
  * A Rider's active signal, pinned where it was sent. Apart from the presence pin, so it stays put
  * while the sender moves on or goes away. Always in the sender's own color: a live call for help
- * is never muted by a stale presence.
+ * is never muted by a stale presence. The pin stands on a stem above its spot, clear of a presence
+ * dot and name label that sit on the same spot while the sender has not moved.
  */
 function RiderSignalPin({ rider }: { rider: RosterRider }) {
   const accents = useResolvedAccentColors()
@@ -116,25 +117,44 @@ function RiderSignalPin({ rider }: { rider: RosterRider }) {
   const KindIcon = info.icon
 
   return (
-    <MarkerView coordinate={[signal.lng, signal.lat]} allowOverlap>
+    <MarkerView coordinate={[signal.lng, signal.lat]} anchor={SIGNAL_PIN_ANCHOR} allowOverlap>
       <View
-        style={[
-          styles.signalPin,
-          { borderColor: color, backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85) },
-        ]}
+        style={styles.signalMarker}
         accessibilityLabel={`${rider.name || 'Rider'}: ${info.label}`}
       >
-        <KindIcon size={18} color={color} weight="fill" />
+        <View
+          style={[
+            styles.signalPin,
+            { borderColor: color, backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85) },
+          ]}
+        >
+          <KindIcon size={18} color={color} weight="fill" />
+        </View>
+        <View style={[styles.signalStem, { backgroundColor: color }]} />
       </View>
     </MarkerView>
   )
 }
 
+// The presence marker centers its dot and label on the Rider's position, its heading ring reaching
+// ~28 px above it. The stem lifts the signal pin past that, its foot on the signal's own spot.
+const SIGNAL_PIN_SIZE = 32
+const SIGNAL_STEM_HEIGHT = 30
+const SIGNAL_PIN_ANCHOR = { x: 0.5, y: 1 }
+
 const styles = StyleSheet.create({
+  signalMarker: {
+    alignItems: 'center',
+  },
+  signalStem: {
+    width: 2,
+    height: SIGNAL_STEM_HEIGHT,
+    borderRadius: 1,
+  },
   signalPin: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: SIGNAL_PIN_SIZE,
+    height: SIGNAL_PIN_SIZE,
+    borderRadius: SIGNAL_PIN_SIZE / 2,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',

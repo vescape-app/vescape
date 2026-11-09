@@ -1989,9 +1989,18 @@ export interface TrailPoint {
 }
 
 /**
+ * The fixed Rider Signal kinds, by their relay wire name, in picker order.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
+ * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalKind`
+ */
+export const RIDER_SIGNAL_KINDS = ['board', 'battery', 'down', 'wait', 'help'] as const
+
+export type RiderSignalKind = (typeof RIDER_SIGNAL_KINDS)[number]
+
+/**
  * A Rider's active Rider Signal, stamped by the relay. Times are relay epoch ms: compare them with
- * the roster's relay `now`, never `Date.now()`. `kind` is one of the group-ride module's
- * `RIDER_SIGNAL_KINDS`; native drops a signal of any other kind.
+ * the roster's relay `now`, never `Date.now()`. `kind` is one of `RIDER_SIGNAL_KINDS`; native drops
+ * a signal of any other kind.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignal`
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignal`
  */
@@ -2906,7 +2915,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): void
   joinGroupRide(riderId: string, riderName: string, rideId: string): void
   leaveGroupRide(): void
-  sendGroupRideSignal(kind: string): void
+  sendGroupRideSignal(kind: RiderSignalKind): void
   clearGroupRideSignal(): void
   updateGroupRideIdentity(riderId: string, riderName: string): void
   setTelemetryRecordingEnabled(enabled: boolean): void
@@ -3358,7 +3367,7 @@ export function leaveGroupRide(): void {
  * Raise a Rider Signal at the latest GPS fix. Native rejects it without a fix from the last 30 s or
  * inside a Privacy Zone, and holds it for the rejoin while the relay is out of reach.
  */
-export function sendGroupRideSignal(kind: string): void {
+export function sendGroupRideSignal(kind: RiderSignalKind): void {
   if (E2E_ENABLED) return
   native.sendGroupRideSignal(kind)
 }
@@ -4055,7 +4064,7 @@ export async function clearDiagnosticEvents(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Board Warnings
+// Ride Notices
 // ---------------------------------------------------------------------------
 
 /**
@@ -4076,11 +4085,19 @@ export interface RideNotice {
   expiresAt: number | null
 }
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `emitRideNotices`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `emitRideNotices`
+ */
 export interface RideNoticesEvent {
   notices: RideNotice[]
 }
 
-/** A test notice posted through the native engine, standing in for a real source. */
+/**
+ * A test notice posted through the native engine.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `devPostRideNotice`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `devPostRideNotice`
+ */
 export interface DevRideNoticeParams {
   key: string
   revision: string
@@ -4117,6 +4134,10 @@ export function devClearRideNotice(key: string): void {
 export function addRideNoticesListener(cb: (event: RideNoticesEvent) => void): EventSubscription {
   return emitter.addListener('onRideNotices', cb)
 }
+
+// ---------------------------------------------------------------------------
+// Board Warnings
+// ---------------------------------------------------------------------------
 
 /** Pull the full current Board Warning list across all boards — used for the foreground catch-up. */
 export async function getBoardWarnings(): Promise<BoardWarning[]> {

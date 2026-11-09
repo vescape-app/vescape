@@ -15,7 +15,7 @@ import { DASH } from '@/helpers/format'
 import { distanceMeters } from '@/helpers/mapGeometry'
 import { useFormat } from '@/hooks/useFormat'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useRiderStats } from '@/modules/group-ride/hooks/useRiderStats'
 import {
   TELEMETRY_LEVEL_COLOR,
@@ -188,11 +188,15 @@ function RiderRow({
 
 /** The Rider's active signal, as its kind's icon and label. */
 function SignalBadge({ kind }: { kind: string }) {
+  const accents = useResolvedAccentColors()
   const info = riderSignalKindInfo(kind)
   if (!info) return null
   const KindIcon = info.icon
   return (
-    <View style={styles.signalTag} accessibilityLabel={`Signal: ${info.label}`}>
+    <View
+      style={[styles.signalTag, { backgroundColor: accents.red.bg }]}
+      accessibilityLabel={`Signal: ${info.label}`}
+    >
       <KindIcon size={11} color={theme.palette.red.light} weight="fill" />
       <Text style={styles.signalTagLabel} numberOfLines={1}>
         {info.label}
@@ -235,7 +239,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     flexShrink: 1,
-    backgroundColor: theme.palette.red.bg,
     borderRadius: 6,
     paddingHorizontal: 5,
     paddingVertical: 1,

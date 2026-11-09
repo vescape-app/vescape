@@ -24,7 +24,7 @@ enum WatchCommandKind {
   /// Wrist Remote Tilt: an absolute lock, and the reset that eases it back to neutral.
   static let tiltLock: UInt8 = 4
   static let tiltCancel: UInt8 = 5
-  /// Ride Notice dismiss (#652).
+  /// Ride Notice dismiss.
   static let dismissNotice: UInt8 = 6
 }
 

@@ -6,28 +6,23 @@ import {
   WrenchIcon,
   type Icon,
 } from 'phosphor-react-native'
+import { RIDER_SIGNAL_KINDS, type RiderSignalKind } from 'vescape-core'
 
 /**
- * The fixed Rider Signal kinds, by their relay wire name, in picker order.
+ * Display label, icon, and urgency per kind, for the picker, roster badge, and map pin. Native
+ * titles Ride Notices with the same labels and ranks the same kinds `critical`.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalKind`
  */
-export const RIDER_SIGNAL_KINDS = ['board', 'battery', 'down', 'wait', 'help'] as const
-
-export type RiderSignalKind = (typeof RIDER_SIGNAL_KINDS)[number]
-
-/**
- * Display label and icon per kind: the one source for picker, badge, and notice titles. Native
- * titles Ride Notices with the same labels.
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
- * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalKind`
- */
-export const RIDER_SIGNAL_KIND_INFO: Record<RiderSignalKind, { label: string; icon: Icon }> = {
-  board: { label: 'Board problem', icon: WrenchIcon },
-  battery: { label: 'Out of battery', icon: BatteryEmptyIcon },
-  down: { label: 'Rider down', icon: FirstAidIcon },
-  wait: { label: 'Wait for me', icon: HandIcon },
-  help: { label: 'Need help', icon: LifebuoyIcon },
+export const RIDER_SIGNAL_KIND_INFO: Record<
+  RiderSignalKind,
+  { label: string; icon: Icon; critical: boolean }
+> = {
+  board: { label: 'Board problem', icon: WrenchIcon, critical: false },
+  battery: { label: 'Out of battery', icon: BatteryEmptyIcon, critical: false },
+  down: { label: 'Rider down', icon: FirstAidIcon, critical: true },
+  wait: { label: 'Wait for me', icon: HandIcon, critical: false },
+  help: { label: 'Need help', icon: LifebuoyIcon, critical: true },
 }
 
 /** The kind's info, or null for a wire kind this build does not know. */
