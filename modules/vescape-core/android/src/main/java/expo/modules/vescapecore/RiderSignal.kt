@@ -15,6 +15,9 @@ internal enum class RiderSignalKind(val wire: String) {
     WAIT("wait"),
     HELP("help");
 
+    /** A call for help rather than a heads-up; it wins when several signals cue at once. */
+    val critical: Boolean get() = this == DOWN || this == HELP
+
     companion object {
         fun fromWire(wire: String?): RiderSignalKind? = entries.firstOrNull { it.wire == wire }
     }

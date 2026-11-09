@@ -10,6 +10,9 @@ internal enum RiderSignalKind: String, CaseIterable {
   case down
   case wait
   case help
+
+  /// A call for help rather than a heads-up; it wins when several signals cue at once.
+  var critical: Bool { self == .down || self == .help }
 }
 
 /// A Rider's active signal as the relay stamps it. Times are relay epoch ms: compare them against the

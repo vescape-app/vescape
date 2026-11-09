@@ -177,6 +177,60 @@
         ]
       }
     },
+    "groupRide.signal.board": {
+      "start": ["lines/groupRide.signal.board.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.board.full.start.0.m4a",
+          "lines/groupRide.signal.board.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.battery": {
+      "start": ["lines/groupRide.signal.battery.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.battery.full.start.0.m4a",
+          "lines/groupRide.signal.battery.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.down": {
+      "start": ["lines/groupRide.signal.down.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.down.full.start.0.m4a",
+          "lines/groupRide.signal.down.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.wait": {
+      "start": ["lines/groupRide.signal.wait.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.wait.full.start.0.m4a",
+          "lines/groupRide.signal.wait.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.help": {
+      "start": ["lines/groupRide.signal.help.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.help.full.start.0.m4a",
+          "lines/groupRide.signal.help.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.ok": {
+      "start": ["lines/groupRide.signal.ok.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.ok.full.start.0.m4a",
+          "lines/groupRide.signal.ok.full.start.1.m4a"
+        ]
+      }
+    },
     "ride.end": {
       "start": ["lines/ride.end.start.0.m4a"],
       "full": {
@@ -872,6 +926,24 @@
     "lines/groupRide.restored.full.start.0.m4a": "7f7231e83a4116da",
     "lines/groupRide.restored.full.start.1.m4a": "62142f0797ddd7bd",
     "lines/groupRide.restored.start.0.m4a": "8057e03b973ffcc0",
+    "lines/groupRide.signal.board.full.start.0.m4a": "2e370d2f99bd25aa",
+    "lines/groupRide.signal.board.full.start.1.m4a": "9eac9192d032a264",
+    "lines/groupRide.signal.board.start.0.m4a": "a1a49c98b028f5ec",
+    "lines/groupRide.signal.battery.full.start.0.m4a": "1948e900faf9e043",
+    "lines/groupRide.signal.battery.full.start.1.m4a": "913d8b5254865e4e",
+    "lines/groupRide.signal.battery.start.0.m4a": "6b6162d2ef45bff6",
+    "lines/groupRide.signal.down.full.start.0.m4a": "07200780df9330d0",
+    "lines/groupRide.signal.down.full.start.1.m4a": "729f64a4fe62f213",
+    "lines/groupRide.signal.down.start.0.m4a": "36894bc158b89284",
+    "lines/groupRide.signal.wait.full.start.0.m4a": "283861915f8a7679",
+    "lines/groupRide.signal.wait.full.start.1.m4a": "cec3b44fda5900d8",
+    "lines/groupRide.signal.wait.start.0.m4a": "0a4d4ffd19b0e994",
+    "lines/groupRide.signal.help.full.start.0.m4a": "24109618cbcac7df",
+    "lines/groupRide.signal.help.full.start.1.m4a": "b982bbf0bbea8150",
+    "lines/groupRide.signal.help.start.0.m4a": "1b8818041698c354",
+    "lines/groupRide.signal.ok.full.start.0.m4a": "7792241f05e58e0f",
+    "lines/groupRide.signal.ok.full.start.1.m4a": "2422a9dd552c0c94",
+    "lines/groupRide.signal.ok.start.0.m4a": "c82d050888cdf0b2",
     "lines/ride.end.full.start.0.m4a": "6d878c02c99a8a0e",
     "lines/ride.end.full.start.1.m4a": "9cb39cac013d8b7c",
     "lines/ride.end.full.start.2.m4a": "e321fe9aa53104d8",

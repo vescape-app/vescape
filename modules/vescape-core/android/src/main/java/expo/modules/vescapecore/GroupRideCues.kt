@@ -19,6 +19,8 @@ internal class GroupRideCues {
     private var members: Set<String> = emptySet()
     /** The [members] that roster marked away. */
     private var away: Set<String> = emptySet()
+    /** Active signals of other Riders in the last roster of [rideId], by rider id. */
+    private var signals: Map<String, RiderSignal> = emptyMap()
     /** The next roster only catches up: the first after joining, or after our own link came back. */
     private var syncing = true
     /** Our socket to [rideId] dropped and the rider has not rejoined yet. */
@@ -59,24 +61,44 @@ internal class GroupRideCues {
     }
 
     /**
-     * A roster of the joined ride, its [awayIds] the riders the relay marks away: `riderJoined` for
-     * an id never seen in this ride, else `riderLeft` when another Rider's id is gone and the previous
-     * roster had them live. The rider's own id never cues. Rosters of any other ride, or arriving
-     * while our link is down, are ignored.
+     * A roster of the joined ride, its [awayIds] the riders the relay marks away and [riderSignals]
+     * their active signals, [now] the relay's clock. A Rider Signal cue wins over social cues of
+     * the same roster: `groupRide.signal.<kind>` for a new or replaced signal (new `startedAt`),
+     * else `groupRide.signal.ok` for a still-present Rider whose signal is gone before its
+     * `expiresAt` by relay [now]. Expiry, a Rider leaving, and a missing [now] are silent. Social:
+     * `riderJoined` for an id never seen in this ride, else `riderLeft` when another Rider's id is
+     * gone and the previous roster had them live. The rider's own id never cues. Rosters of any
+     * other ride, or arriving while our link is down, are ignored; the first roster after joining
+     * or our own reconnect only catches up, so signals already active then stay silent.
      */
-    fun roster(rideId: String, riderIds: List<String>, awayIds: Set<String>, ownRiderId: String?): String? {
+    fun roster(
+        rideId: String,
+        riderIds: List<String>,
+        awayIds: Set<String>,
+        ownRiderId: String?,
+        riderSignals: Map<String, RiderSignal> = emptyMap(),
+        now: Long? = null,
+    ): String? {
         if (rideId != this.rideId || linkDown) return null
         val others = riderIds.filter { it != ownRiderId }.toSet()
         val arrived = others - seen
         val left = members - others - away
+        val current = riderSignals.filterKeys { it in others }
+        val raised = current.filter { (id, signal) -> signals[id]?.startedAt != signal.startedAt }.values
+        val cleared = signals.filter { (id, signal) ->
+            id in others && id !in current && now != null && now < signal.expiresAt
+        }
         seen += others
         members = others
         away = awayIds intersect others
+        signals = current
         if (syncing) {
             syncing = false
             return null
         }
         return when {
+            raised.isNotEmpty() -> signalCue(raised.minBy { if (it.kind.critical) 0 else 1 }.kind.wire)
+            cleared.isNotEmpty() -> signalCue("ok")
             arrived.isNotEmpty() -> "groupRide.riderJoined"
             left.isNotEmpty() -> "groupRide.riderLeft"
             else -> null
@@ -89,12 +111,24 @@ internal class GroupRideCues {
         seen.clear()
         members = emptySet()
         away = emptySet()
+        signals = emptyMap()
         syncing = true
         linkDown = false
         lostPlayed = false
     }
 
     companion object {
+        private const val SIGNAL_CUE_PREFIX = "groupRide.signal."
+
+        private fun signalCue(name: String) = SIGNAL_CUE_PREFIX + name
+
+        /**
+         * A Rider Signal cue: a safety call, so it plays even with connection sounds off.
+         *
+         * @parity /modules/vescape-core/ios/groupride/GroupRideCues.swift `isSignalCue`
+         */
+        fun isSignalCue(cue: String): Boolean = cue.startsWith(SIGNAL_CUE_PREFIX)
+
         /**
          * How long our joined ride's link may stay down before `lost` plays. A rejoin inside it is
          * silent, so a flapping connection does not chatter.

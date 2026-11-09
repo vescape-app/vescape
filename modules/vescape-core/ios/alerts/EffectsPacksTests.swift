@@ -30,4 +30,14 @@ final class EffectsPacksTests: XCTestCase {
     XCTAssertEqual(appCueSlot("groupRide.lost"), "severity.warning")
     XCTAssertEqual(appCueSlot("groupRide.restored"), "severity.positive")
   }
+
+  func testRiderSignalCuesPlayTheirSeverityAtAdvisoryPriority() {
+    XCTAssertEqual(appCueSlot("groupRide.signal.down"), "severity.critical")
+    XCTAssertEqual(appCueSlot("groupRide.signal.help"), "severity.critical")
+    XCTAssertEqual(appCueSlot("groupRide.signal.board"), "severity.warning")
+    XCTAssertEqual(appCueSlot("groupRide.signal.ok"), "severity.positive")
+    XCTAssertEqual(appCueVoiceKey("groupRide.signal.wait"), "groupRide.signal.wait")
+    XCTAssertEqual(appCuePriority("groupRide.signal.battery"), .advisory)
+    XCTAssertEqual(appCuePriority("groupRide.riderJoined"), .social)
+  }
 }

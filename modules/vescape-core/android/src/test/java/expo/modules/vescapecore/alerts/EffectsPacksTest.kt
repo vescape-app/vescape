@@ -35,4 +35,15 @@ class EffectsPacksTest {
         assertEquals("severity.warning", appCueSlot("groupRide.lost"))
         assertEquals("severity.positive", appCueSlot("groupRide.restored"))
     }
+
+    @Test
+    fun riderSignalCuesPlayTheirSeverityAtAdvisoryPriority() {
+        assertEquals("severity.critical", appCueSlot("groupRide.signal.down"))
+        assertEquals("severity.critical", appCueSlot("groupRide.signal.help"))
+        assertEquals("severity.warning", appCueSlot("groupRide.signal.board"))
+        assertEquals("severity.positive", appCueSlot("groupRide.signal.ok"))
+        assertEquals("groupRide.signal.wait", appCueVoiceKey("groupRide.signal.wait"))
+        assertEquals(AnnouncementPriority.ADVISORY, appCuePriority("groupRide.signal.battery"))
+        assertEquals(AnnouncementPriority.SOCIAL, appCuePriority("groupRide.riderJoined"))
+    }
 }

@@ -607,11 +607,16 @@ internal class GroupRideObserver(
                     }
                 }
                 val rideId = if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() }
+                val now = if (json.has("now")) json.optLong("now") else null
                 if (rideId != null && rideId == joinedRideId) {
                     val awayIds = riders.filter { it["away"] == true }.mapNotNull { it["id"] as? String }.toSet()
-                    cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, awayIds, riderId)?.let(onCue)
+                    val signals = (0 until (ridersJson?.length() ?: 0)).mapNotNull { i ->
+                        val obj = ridersJson?.optJSONObject(i) ?: return@mapNotNull null
+                        val signal = RiderSignal.parse(obj.optJSONObject("signal")) ?: return@mapNotNull null
+                        obj.optString("id").takeIf { it.isNotEmpty() }?.let { it to signal }
+                    }.toMap()
+                    cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, awayIds, riderId, signals, now)?.let(onCue)
                 }
-                val now = if (json.has("now")) json.optLong("now") else null
                 emitRoster(rideId, riders, now)
             }
             "error" -> {

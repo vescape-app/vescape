@@ -153,6 +153,42 @@
         "start": ["Squad link restored.", "Squad channel back online."]
       }
     },
+    "groupRide.signal.board": {
+      "start": ["Rider reports board fault."],
+      "full": {
+        "start": ["Squad member reports board fault.", "Board fault in the squad."]
+      }
+    },
+    "groupRide.signal.battery": {
+      "start": ["Rider out of battery."],
+      "full": {
+        "start": ["Squad member out of battery.", "Squad member power depleted."]
+      }
+    },
+    "groupRide.signal.down": {
+      "start": ["Warning. Rider down."],
+      "full": {
+        "start": ["Warning. Rider down.", "Man down in the squad."]
+      }
+    },
+    "groupRide.signal.wait": {
+      "start": ["Rider requests hold."],
+      "full": {
+        "start": ["Squad member requests hold.", "Hold position. Rider requests wait."]
+      }
+    },
+    "groupRide.signal.help": {
+      "start": ["Rider requests assistance."],
+      "full": {
+        "start": ["Squad member requests assistance.", "Assistance requested in the squad."]
+      }
+    },
+    "groupRide.signal.ok": {
+      "start": ["Rider status OK."],
+      "full": {
+        "start": ["Squad member status OK.", "All clear. Rider is OK."]
+      }
+    },
     "ride.end": {
       "start": ["Ride session terminated."],
       "full": {

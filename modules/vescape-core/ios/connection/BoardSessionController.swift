@@ -255,8 +255,9 @@ internal final class BoardSessionController: VescGattListener {
     scheduler: scheduler,
     // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
     onParticipationChanged: { [weak self] in self?.refreshGpsDemand() },
+    // Rider Signal cues are safety calls, not connection sounds: the toggle does not mute them.
     onCue: { [weak self] cue in
-      guard let self, self.connectionSoundsEnabled else { return }
+      guard let self, self.connectionSoundsEnabled || GroupRideCues.isSignalCue(cue) else { return }
       self.alertAudioPlayer.playAppCue(cue)
     },
     ownLocation: { [weak self] in

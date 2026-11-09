@@ -13,6 +13,12 @@ class GroupRideCuesTest {
     private fun roster(vararg ids: String, away: Set<String> = emptySet(), rideId: String = "ride") =
         cues.roster(rideId, ids.toList(), away, "me")
 
+    private fun signal(kind: RiderSignalKind, startedAt: Long = 1_000, expiresAt: Long = 61_000) =
+        RiderSignal(kind, 50.0, 19.0, startedAt, expiresAt)
+
+    private fun signals(vararg ids: String, signals: Map<String, RiderSignal>, now: Long? = 10_000) =
+        cues.roster("ride", ids.toList(), emptySet(), "me", signals, now)
+
     private fun joinedWith(vararg ids: String, away: Set<String> = emptySet()) {
         assertEquals("groupRide.joined", cues.joined("ride"))
         assertNull(roster(*ids, away = away))
@@ -154,5 +160,86 @@ class GroupRideCuesTest {
         assertNull(cues.graceElapsed())
         assertFalse(cues.linkDropped())
         assertEquals("groupRide.joined", cues.joined("ride"))
+    }
+
+    @Test
+    fun `another rider's new signal cues its kind once`() {
+        joinedWith("me", "ola")
+        val down = signal(RiderSignalKind.DOWN)
+
+        assertEquals("groupRide.signal.down", signals("me", "ola", signals = mapOf("ola" to down)))
+        assertNull(signals("me", "ola", signals = mapOf("ola" to down)))
+    }
+
+    @Test
+    fun `a replaced signal cues the new kind`() {
+        joinedWith("me", "ola")
+        signals("me", "ola", signals = mapOf("ola" to signal(RiderSignalKind.WAIT)))
+
+        assertEquals(
+            "groupRide.signal.battery",
+            signals("me", "ola", signals = mapOf("ola" to signal(RiderSignalKind.BATTERY, startedAt = 5_000))),
+        )
+    }
+
+    @Test
+    fun `a signal cleared before it expires by relay now cues ok, expiry is silent`() {
+        joinedWith("me", "ola", "kai")
+        val help = mapOf("ola" to signal(RiderSignalKind.HELP), "kai" to signal(RiderSignalKind.BOARD))
+        signals("me", "ola", "kai", signals = help)
+
+        assertEquals("groupRide.signal.ok", signals("me", "ola", "kai", signals = help - "ola", now = 60_999))
+        assertNull(signals("me", "ola", "kai", signals = emptyMap(), now = 61_000))
+    }
+
+    @Test
+    fun `a signal gone a second late or without relay now stays silent`() {
+        joinedWith("me", "ola")
+        val board = mapOf("ola" to signal(RiderSignalKind.BOARD))
+        signals("me", "ola", signals = board)
+        assertNull(signals("me", "ola", signals = emptyMap(), now = 62_000))
+
+        signals("me", "ola", signals = mapOf("ola" to signal(RiderSignalKind.BOARD, startedAt = 2_000)))
+        assertNull(signals("me", "ola", signals = emptyMap(), now = null))
+    }
+
+    @Test
+    fun `a rider leaving with an active signal cues riderLeft, not ok`() {
+        joinedWith("me", "ola", "kai")
+        signals("me", "ola", "kai", signals = mapOf("ola" to signal(RiderSignalKind.WAIT)))
+
+        assertEquals("groupRide.riderLeft", signals("me", "kai", signals = emptyMap()))
+    }
+
+    @Test
+    fun `the rider's own signal never cues`() {
+        joinedWith("me", "ola")
+        val own = mapOf("me" to signal(RiderSignalKind.DOWN))
+
+        assertNull(signals("me", "ola", signals = own))
+        assertNull(signals("me", "ola", signals = emptyMap()))
+    }
+
+    @Test
+    fun `signals already active at join or reconnect stay silent`() {
+        val down = mapOf("ola" to signal(RiderSignalKind.DOWN))
+        assertEquals("groupRide.joined", cues.joined("ride"))
+        assertNull(signals("me", "ola", signals = down))
+        assertNull(signals("me", "ola", signals = down))
+
+        cues.linkDropped()
+        cues.joined("ride")
+        val wait = mapOf("ola" to signal(RiderSignalKind.WAIT, startedAt = 3_000))
+        assertNull(signals("me", "ola", signals = wait))
+        assertNull(signals("me", "ola", signals = wait))
+    }
+
+    @Test
+    fun `a signal wins over social cues and a critical signal over others`() {
+        joinedWith("me", "ola")
+        val both = mapOf("ola" to signal(RiderSignalKind.WAIT), "kai" to signal(RiderSignalKind.HELP))
+
+        assertEquals("groupRide.signal.help", signals("me", "ola", "kai", signals = both))
+        assertEquals("groupRide.signal.ok", signals("me", "kai", "zoe", signals = emptyMap()))
     }
 }

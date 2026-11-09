@@ -145,6 +145,42 @@
         "start": ["Group ride connection restored.", "Back in the group ride."]
       }
     },
+    "groupRide.signal.board": {
+      "start": ["Rider has a board problem."],
+      "full": {
+        "start": ["A rider has a board problem.", "Board trouble in the group."]
+      }
+    },
+    "groupRide.signal.battery": {
+      "start": ["Rider is out of battery."],
+      "full": {
+        "start": ["A rider is out of battery.", "A rider's battery is empty."]
+      }
+    },
+    "groupRide.signal.down": {
+      "start": ["Rider down."],
+      "full": {
+        "start": ["Rider down. Check on them.", "A rider is down."]
+      }
+    },
+    "groupRide.signal.wait": {
+      "start": ["Rider asks to wait."],
+      "full": {
+        "start": ["A rider asks the group to wait.", "Hold up, a rider asks to wait."]
+      }
+    },
+    "groupRide.signal.help": {
+      "start": ["Rider needs help."],
+      "full": {
+        "start": ["A rider needs help.", "A rider is asking for help."]
+      }
+    },
+    "groupRide.signal.ok": {
+      "start": ["Rider is OK."],
+      "full": {
+        "start": ["The rider is OK.", "All good, the rider is OK."]
+      }
+    },
     "ride.end": {
       "start": ["Ride ended."],
       "full": {

@@ -524,20 +524,32 @@ internal final class GroupRideObserver: NSObject {
       // Replay a signal intent made while the relay was out of reach.
       if let pendingSignal { submitSignal(pendingSignal) }
     case "roster":
-      let riders = (json["riders"] as? [Any] ?? []).compactMap { riderView($0 as? [String: Any]) }
+      let riderObjects = (json["riders"] as? [Any] ?? []).compactMap { $0 as? [String: Any] }
+      let riders = riderObjects.compactMap { riderView($0) }
       let rideId = (json["rideId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
       let awayIds = Set(riders.filter { $0["away"] as? Bool == true }.compactMap { $0["id"] as? String })
+      let now = (json["now"] as? NSNumber)?.int64Value
+      var signals: [String: RiderSignal] = [:]
+      for obj in riderObjects {
+        if let id = obj["id"] as? String, !id.isEmpty,
+          let signal = RiderSignal.parse(obj["signal"] as? [String: Any])
+        {
+          signals[id] = signal
+        }
+      }
       if let rideId, rideId == joinedRideId,
         let cue = cues.roster(
           rideId: rideId,
           riderIds: riders.compactMap { $0["id"] as? String },
           awayIds: awayIds,
-          ownRiderId: riderId
+          ownRiderId: riderId,
+          riderSignals: signals,
+          now: now
         )
       {
         onCue(cue)
       }
-      emitRoster(rideId, riders, now: (json["now"] as? NSNumber)?.int64Value)
+      emitRoster(rideId, riders, now: now)
     case "error":
       if let message = json["message"] as? String, !message.isEmpty { handleError(message) }
     default:

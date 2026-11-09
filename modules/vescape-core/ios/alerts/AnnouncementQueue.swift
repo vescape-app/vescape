@@ -6,9 +6,9 @@ import Foundation
 enum AnnouncementPriority: Int {
   /// Board connect, disconnect, connection error.
   case connection
-  /// Ride state and, later, weather and battery lines.
+  /// Ride state, Rider Signals and, later, weather and battery lines.
   case advisory
-  /// Group Ride events.
+  /// Social Group Ride events.
   case social
 
   var ttlMs: Int64 {
@@ -27,7 +27,7 @@ internal func appCuePriority(_ cue: String) -> AnnouncementPriority? {
   switch cue {
   case "on", "off", "error": return .connection
   case "ride.end": return .advisory
-  default: return .social
+  default: return GroupRideCues.isSignalCue(cue) ? .advisory : .social
   }
 }
 

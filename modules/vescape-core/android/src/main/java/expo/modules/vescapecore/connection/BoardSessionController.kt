@@ -42,6 +42,7 @@ import expo.modules.vescapecore.location.GpsMonitor
 import expo.modules.vescapecore.location.GpsPowerMode
 import expo.modules.vescapecore.location.RIDE_DROPOUT_GRACE_MS
 import expo.modules.vescapecore.location.isPreciseGpsFix
+import expo.modules.vescapecore.GroupRideCues
 import expo.modules.vescapecore.GroupRideObserver
 import expo.modules.vescapecore.RiderSignalContext
 import expo.modules.vescapecore.RiderSignals
@@ -474,7 +475,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // rider-initiated. Reporting from inside the observer also lands after its `handler.post`
             // has actually mutated the state, which a caller refreshing inline cannot.
             onParticipationChanged = ::refreshGpsDemand,
-            onCue = { cue -> if (connectionSoundsEnabled) alertFeedback.playAppCue(cue) },
+            // Rider Signal cues are safety calls, not connection sounds: the toggle does not mute them.
+            onCue = { cue ->
+                if (connectionSoundsEnabled || GroupRideCues.isSignalCue(cue)) alertFeedback.playAppCue(cue)
+            },
             ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
             signalContext = ::riderSignalContext,
         )

@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.alerts
 
+import expo.modules.vescapecore.GroupRideCues
+
 /**
  * Rank of a queued announcement; the queue plays the lowest ordinal first, oldest first within one.
  * [ttlMs] is how long an item may wait before it is dropped as stale.
@@ -9,9 +11,9 @@ package expo.modules.vescapecore.alerts
 enum class AnnouncementPriority(val ttlMs: Long) {
     /** Board connect, disconnect, connection error. */
     CONNECTION(10_000L),
-    /** Ride state and, later, weather and battery lines. */
+    /** Ride state, Rider Signals and, later, weather and battery lines. */
     ADVISORY(30_000L),
-    /** Group Ride events. */
+    /** Social Group Ride events. */
     SOCIAL(20_000L),
 }
 
@@ -23,7 +25,7 @@ enum class AnnouncementPriority(val ttlMs: Long) {
 internal fun appCuePriority(cue: String): AnnouncementPriority? = when {
     appCueSlot(cue) == null -> null
     cue == "on" || cue == "off" || cue == "error" -> AnnouncementPriority.CONNECTION
-    cue == "ride.end" -> AnnouncementPriority.ADVISORY
+    cue == "ride.end" || GroupRideCues.isSignalCue(cue) -> AnnouncementPriority.ADVISORY
     else -> AnnouncementPriority.SOCIAL
 }
 

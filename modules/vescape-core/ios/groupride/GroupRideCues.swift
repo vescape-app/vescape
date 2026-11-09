@@ -14,6 +14,12 @@ struct GroupRideCues {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideCues.kt `LOST_GRACE_MS`
   static let lostGraceMs: Int64 = 15_000
 
+  private static let signalCuePrefix = "groupRide.signal."
+
+  /// A Rider Signal cue: a safety call, so it plays even with connection sounds off.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideCues.kt `isSignalCue`
+  static func isSignalCue(_ cue: String) -> Bool { cue.hasPrefix(signalCuePrefix) }
+
   /// The ride the rider joined; `seen` and `members` belong to it. Kept through our own outage.
   private var rideId: String?
   /// Every other Rider id seen in `rideId`. Only an id outside it is a new Rider.
@@ -22,6 +28,8 @@ struct GroupRideCues {
   private var members: Set<String> = []
   /// The `members` that roster marked away.
   private var away: Set<String> = []
+  /// Active signals of other Riders in the last roster of `rideId`, by rider id.
+  private var signals: [String: RiderSignal] = [:]
   /// The next roster only catches up: the first after joining, or after our own link came back.
   private var syncing = true
   /// Our socket to `rideId` dropped and the rider has not rejoined yet.
@@ -59,22 +67,45 @@ struct GroupRideCues {
     return "groupRide.lost"
   }
 
-  /// A roster of the joined ride, its `awayIds` the riders the relay marks away: `riderJoined` for an
-  /// id never seen in this ride, else `riderLeft` when another Rider's id is gone and the previous
+  /// A roster of the joined ride, its `awayIds` the riders the relay marks away and `riderSignals`
+  /// their active signals, `now` the relay's clock. A Rider Signal cue wins over social cues of the
+  /// same roster: `groupRide.signal.<kind>` for a new or replaced signal (new `startedAt`), else
+  /// `groupRide.signal.ok` for a still-present Rider whose signal is gone before its `expiresAt` by
+  /// relay `now`. Expiry, a Rider leaving, and a missing `now` are silent. Social: `riderJoined` for
+  /// an id never seen in this ride, else `riderLeft` when another Rider's id is gone and the previous
   /// roster had them live. The rider's own id never cues. Rosters of any other ride, or arriving
-  /// while our link is down, are ignored.
-  mutating func roster(rideId: String, riderIds: [String], awayIds: Set<String>, ownRiderId: String?) -> String? {
+  /// while our link is down, are ignored; the first roster after joining or our own reconnect only
+  /// catches up, so signals already active then stay silent.
+  mutating func roster(
+    rideId: String,
+    riderIds: [String],
+    awayIds: Set<String>,
+    ownRiderId: String?,
+    riderSignals: [String: RiderSignal] = [:],
+    now: Int64? = nil
+  ) -> String? {
     guard rideId == self.rideId, !linkDown else { return nil }
     let others = Set(riderIds.filter { $0 != ownRiderId })
     let arrived = others.subtracting(seen)
     let left = members.subtracting(others).subtracting(away)
+    let current = riderSignals.filter { others.contains($0.key) }
+    let raised = current.filter { signals[$0.key]?.startedAt != $0.value.startedAt }.map(\.value)
+    let cleared = signals.contains { id, signal in
+      guard let now else { return false }
+      return others.contains(id) && current[id] == nil && now < signal.expiresAt
+    }
     seen.formUnion(others)
     members = others
     away = awayIds.intersection(others)
+    signals = current
     if syncing {
       syncing = false
       return nil
     }
+    if let signal = raised.first(where: \.kind.critical) ?? raised.first {
+      return Self.signalCuePrefix + signal.kind.rawValue
+    }
+    if cleared { return Self.signalCuePrefix + "ok" }
     if !arrived.isEmpty { return "groupRide.riderJoined" }
     if !left.isEmpty { return "groupRide.riderLeft" }
     return nil
@@ -86,6 +117,7 @@ struct GroupRideCues {
     seen = []
     members = []
     away = []
+    signals = [:]
     syncing = true
     linkDown = false
     lostPlayed = false

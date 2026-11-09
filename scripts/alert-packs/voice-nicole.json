@@ -161,6 +161,42 @@
         "start": ["There they are. Act natural.", "Back together. I knew they'd miss us."]
       }
     },
+    "groupRide.signal.board": {
+      "start": ["Rider has a board problem."],
+      "full": {
+        "start": ["Someone's board is acting up.", "A rider has a board problem. Not it."]
+      }
+    },
+    "groupRide.signal.battery": {
+      "start": ["Rider is out of battery."],
+      "full": {
+        "start": ["Someone ran out of juice.", "A rider is out of battery. Should've charged."]
+      }
+    },
+    "groupRide.signal.down": {
+      "start": ["Rider down."],
+      "full": {
+        "start": ["Rider down. Go check on them.", "A rider is down."]
+      }
+    },
+    "groupRide.signal.wait": {
+      "start": ["Rider asks to wait."],
+      "full": {
+        "start": ["Someone asks you to wait. Be nice.", "A rider asks to wait."]
+      }
+    },
+    "groupRide.signal.help": {
+      "start": ["Rider needs help."],
+      "full": {
+        "start": ["A rider needs help.", "Someone needs help. Go."]
+      }
+    },
+    "groupRide.signal.ok": {
+      "start": ["Rider is OK."],
+      "full": {
+        "start": ["Rider is OK. Panic over.", "All good, the rider is OK."]
+      }
+    },
     "ride.end": {
       "start": ["Ride ended."],
       "full": {
