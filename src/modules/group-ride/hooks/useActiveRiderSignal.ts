@@ -13,14 +13,18 @@ export function useActiveRiderSignal(
   signal: GroupRideSignal | null | undefined,
 ): GroupRideSignal | null {
   const relayClock = useGroupRideStore((s) => s.relayClock)
-  const leftMs = signal && relayClock ? signalTimeLeftMs(signal, relayClock) : 0
   const [expired, setExpired] = useState<GroupRideSignal | null>(null)
 
+  // Delay computed inside: depending on a render-time `leftMs` would re-arm the timer every render.
   useEffect(() => {
-    if (!signal || leftMs <= 0) return
+    if (!signal || !relayClock) return
+    const leftMs = signalTimeLeftMs(signal, relayClock)
+    if (leftMs <= 0) return
     const id = setTimeout(() => setExpired(signal), leftMs)
     return () => clearTimeout(id)
-  }, [signal, leftMs])
+  }, [signal, relayClock])
 
-  return signal && leftMs > 0 && expired !== signal ? signal : null
+  const active =
+    signal && relayClock && expired !== signal && signalTimeLeftMs(signal, relayClock) > 0
+  return active ? signal : null
 }
