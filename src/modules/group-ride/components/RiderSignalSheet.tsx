@@ -69,7 +69,7 @@ function RiderSignalSheet({ onSent }: { onSent: () => void }) {
   const hint =
     blockedReason ??
     (availability.insidePrivacyZone
-      ? "You're inside a Privacy Zone. Sending shares your location with the group."
+      ? 'Sending shares your location, even inside a Privacy Zone.'
       : 'Everyone in the group ride sees it where you are now.')
 
   return (

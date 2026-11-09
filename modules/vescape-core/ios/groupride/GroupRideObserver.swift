@@ -315,7 +315,7 @@ internal final class GroupRideObserver: NSObject {
   }
 
   /// Raise a Rider Signal of `kind` at the latest GPS fix. Rejected (logged, nothing sent) outside a
-  /// ride, for an unknown kind, inside a Privacy Zone, without a recent fix, or against a relay that
+  /// ride, for an unknown kind, without a recent fix, or against a relay that
   /// does not advertise signals. While the relay is out of reach the intent waits for the rejoin.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `sendSignal`
   func sendSignal(_ kind: String) {
@@ -323,7 +323,7 @@ internal final class GroupRideObserver: NSObject {
       guard let signalKind = RiderSignalKind(rawValue: kind),
         let intent = RiderSignals.sendIntent(signalKind, signalContext())
       else {
-        NSLog("[GroupRide] signal rejected: kind=\(kind), no recent fix or inside a Privacy Zone")
+        NSLog("[GroupRide] signal rejected: kind=\(kind), unknown kind or no recent fix")
         return
       }
       submitSignal(intent)
