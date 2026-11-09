@@ -65,7 +65,7 @@ internal struct RiderSignalNotices {
   static func key(_ riderId: String) -> String { "riderSignal:" + riderId }
 
   private static func content(_ name: String, _ signal: RiderSignal, _ pinned: Pinned) -> RideNoticeContent {
-    let trimmed = name.trimmingCharacters(in: .whitespaces)
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
     return RideNoticeContent(
       severity: signal.kind.critical ? .critical : .warning,
       title: "\(trimmed.isEmpty ? "Rider" : name): \(signal.kind.label)",
