@@ -16,7 +16,12 @@ export const RIDER_SIGNAL_KINDS = ['board', 'battery', 'down', 'wait', 'help'] a
 
 export type RiderSignalKind = (typeof RIDER_SIGNAL_KINDS)[number]
 
-/** Display label and icon per kind: the one source for picker, badge, and notice titles. */
+/**
+ * Display label and icon per kind: the one source for picker, badge, and notice titles. Native
+ * titles Ride Notices with the same labels.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
+ * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalKind`
+ */
 export const RIDER_SIGNAL_KIND_INFO: Record<RiderSignalKind, { label: string; icon: Icon }> = {
   board: { label: 'Board problem', icon: WrenchIcon },
   battery: { label: 'Out of battery', icon: BatteryEmptyIcon },

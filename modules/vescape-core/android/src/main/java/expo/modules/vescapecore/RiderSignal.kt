@@ -8,12 +8,14 @@ import org.json.JSONObject
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalKind`
  * @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KINDS`
  */
-internal enum class RiderSignalKind(val wire: String) {
-    BOARD("board"),
-    BATTERY("battery"),
-    DOWN("down"),
-    WAIT("wait"),
-    HELP("help");
+internal enum class RiderSignalKind(val wire: String, val label: String) {
+    // Labels title Ride Notices.
+    // @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
+    BOARD("board", "Board problem"),
+    BATTERY("battery", "Out of battery"),
+    DOWN("down", "Rider down"),
+    WAIT("wait", "Wait for me"),
+    HELP("help", "Need help");
 
     /** A call for help rather than a heads-up; it wins when several signals cue at once. */
     val critical: Boolean get() = this == DOWN || this == HELP

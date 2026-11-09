@@ -13,6 +13,18 @@ internal enum RiderSignalKind: String, CaseIterable {
 
   /// A call for help rather than a heads-up; it wins when several signals cue at once.
   var critical: Bool { self == .down || self == .help }
+
+  /// Titles Ride Notices.
+  /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
+  var label: String {
+    switch self {
+    case .board: "Board problem"
+    case .battery: "Out of battery"
+    case .down: "Rider down"
+    case .wait: "Wait for me"
+    case .help: "Need help"
+    }
+  }
 }
 
 /// A Rider's active signal as the relay stamps it. Times are relay epoch ms: compare them against the

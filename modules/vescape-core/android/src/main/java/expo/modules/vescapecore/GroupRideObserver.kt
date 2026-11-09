@@ -4,6 +4,7 @@ import android.os.Handler
 import android.util.Log
 import expo.modules.vescapecore.appstatus.OnlineCapability
 import expo.modules.vescapecore.geo.GeoMath
+import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.GroupRideRoster
 import expo.modules.vescapecore.watch.GroupRideRosterRider
@@ -87,6 +88,8 @@ internal class GroupRideObserver(
         }
     /** Cue decisions for the joined ride; any change of the wanted ride forgets them. */
     private val cues = GroupRideCues()
+    /** Other Riders' signals as Ride Notices; forgotten with [cues]. */
+    private val signalNotices = RiderSignalNotices()
     /**
      * The latest Rider Signal intent made while the relay was out of reach, replayed once the ride
      * is rejoined. A later intent overwrites it; leaving the ride drops it.
@@ -616,6 +619,13 @@ internal class GroupRideObserver(
                 if (rideId != null && rideId == joinedRideId) {
                     val awayIds = riders.filter { it["away"] == true }.mapNotNull { it["id"] as? String }.toSet()
                     cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, awayIds, riderId, signals, now)?.let(onCue)
+                    val signalRiders = riders.map {
+                        val id = it["id"] as String
+                        SignalRider(id, it["name"] as? String ?: "", signals[id])
+                    }
+                    val update = signalNotices.roster(signalRiders, riderId, now, System.currentTimeMillis())
+                    update.clears.forEach(RideNotices::clear)
+                    update.posts.forEach { RideNotices.post(it.key, it.content, it.revision) }
                 }
                 emitRoster(rideId, riders, now)
             }
@@ -751,9 +761,10 @@ internal class GroupRideObserver(
         emit("onGroupRideConnection", mapOf("state" to state))
     }
 
-    /** The rider is out of the ride: drop its cue state, a pending `lost` included. */
+    /** The rider is out of the ride: drop its cue state, a pending `lost` included, and signal notices. */
     private fun forgetRideCues() {
         cues.reset()
+        signalNotices.reset().forEach(RideNotices::clear)
         handler.removeCallbacks(lostRunnable)
     }
 

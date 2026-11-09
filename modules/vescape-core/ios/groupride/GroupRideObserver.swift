@@ -42,6 +42,8 @@ internal final class GroupRideObserver: NSObject {
   }
   /// Cue decisions for the joined ride; any change of the wanted ride forgets them.
   private var cues = GroupRideCues()
+  /// Other Riders' signals as Ride Notices; forgotten with `cues`.
+  private var signalNotices = RiderSignalNotices()
   /// The latest Rider Signal intent made while the relay was out of reach, replayed once the ride is
   /// rejoined. A later intent overwrites it; leaving the ride drops it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `pendingSignal`
@@ -547,6 +549,16 @@ internal final class GroupRideObserver: NSObject {
       {
         onCue(cue)
       }
+      if let rideId, rideId == joinedRideId {
+        let signalRiders = riders.compactMap { view -> SignalRider? in
+          guard let id = view["id"] as? String else { return nil }
+          return SignalRider(id: id, name: view["name"] as? String ?? "", signal: signals[id])
+        }
+        let localNow = Int64(Date().timeIntervalSince1970 * 1000)
+        let update = signalNotices.roster(signalRiders, ownRiderId: riderId, relayNow: now, localNow: localNow)
+        update.clears.forEach { RideNotices.shared.clear(key: $0) }
+        update.posts.forEach { RideNotices.shared.post(key: $0.key, content: $0.content, revision: $0.revision) }
+      }
       emitRoster(rideId, riders, now: now)
     case "error":
       if let message = json["message"] as? String, !message.isEmpty { handleError(message) }
@@ -740,9 +752,10 @@ internal final class GroupRideObserver: NSObject {
     emit("onGroupRideConnection", ["state": state])
   }
 
-  /// The rider is out of the ride: drop its cue state, a pending `lost` included.
+  /// The rider is out of the ride: drop its cue state, a pending `lost` included, and signal notices.
   private func forgetRideCues() {
     cues.reset()
+    signalNotices.reset().forEach { RideNotices.shared.clear(key: $0) }
     cancelLost()
   }
 
