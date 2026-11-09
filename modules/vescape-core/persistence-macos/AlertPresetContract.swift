@@ -103,7 +103,7 @@ func runAlertPresetContract() throws {
   func expanded(_ metric: String) throws -> [PersistedAlertRule] { try AlertRulePersistence(writer: queue).rules(boardId: board.id, reportPresetFailure: unexpectedPresetFailure).filter { $0.controlId == metric } }
   try BoardSettingsPersistence(writer: queue).upsertBoard(board, settings: [.init(boardId: board.id, key: "topSpeedKmh", valueJson: "50", updatedAt: 1)], deletedKeys: [])
   try require(try spec("speed") == "preset(normal)", "missing row is the app default")
-  try require(try expanded("duty").first?.spec == "geiger:hard", "default expands")
+  try require(try expanded("duty").first?.spec == "geiger:soft", "default expands")
   let manual = PersistedAlertRule(
     boardId: board.id, id: "manual", controlId: "speed", threshold: 12, thresholdMax: nil, enabled: true,
     spec: "alert:warning", createdAt: 1, repeatEverySeconds: nil, thresholdKind: "fixed",

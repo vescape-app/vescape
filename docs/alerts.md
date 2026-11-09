@@ -291,8 +291,8 @@ saved before the sound string grammar keep working through the parser: `preset:t
 
 The speed and duty cycle presets and the custom geiger form offer a Soft / Mid / Hard select.
 On a preset it is the `geiger=<level>` option of the preset string, applied to every geiger point
-the definition gives that metric; without it the definition's default plays (speed soft, duty cycle
-hard). `preset(off)` keeps its options, so Off and back keeps the level. The interval shrinks linearly:
+the definition gives that metric; without it the definition's default plays (speed hard, duty cycle
+soft). `preset(off)` keeps its options, so Off and back keeps the level. The interval shrinks linearly:
 
 - at `threshold` → about 800 ms between ticks
 - at `threshold_max` → the tick loops continuously
