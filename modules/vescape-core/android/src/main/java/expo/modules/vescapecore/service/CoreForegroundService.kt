@@ -436,6 +436,14 @@ class CoreForegroundService : Service() {
             instance?.controller?.leaveGroupRide()
         }
 
+        fun sendGroupRideSignal(kind: String) {
+            instance?.controller?.sendGroupRideSignal(kind)
+        }
+
+        fun clearGroupRideSignal() {
+            instance?.controller?.clearGroupRideSignal()
+        }
+
         fun updateGroupRideIdentity(
             @Suppress("UNUSED_PARAMETER") context: Context,
             riderId: String,

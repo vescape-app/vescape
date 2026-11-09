@@ -32,12 +32,27 @@ internal final class GroupRideObserver: NSObject {
   private var joinedRideId: String? { didSet { notifyParticipationIfChanged() } }
   private var desiredRideId: String? {
     didSet {
-      if desiredRideId != oldValue { forgetRideCues() }
+      if desiredRideId != oldValue {
+        forgetRideCues()
+        // A signal intent belongs to the ride it was made in.
+        pendingSignal = nil
+      }
       notifyParticipationIfChanged()
     }
   }
   /// Cue decisions for the joined ride; any change of the wanted ride forgets them.
   private var cues = GroupRideCues()
+  /// The latest Rider Signal intent made while the relay was out of reach, replayed once the ride is
+  /// rejoined. A later intent overwrites it; leaving the ride drops it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `pendingSignal`
+  private var pendingSignal: RiderSignalIntent?
+  /// Optional capabilities the connected relay advertised in its `snapshot`.
+  private var relayFeatures: Set<String> = []
+  private var signalsSupported: Bool { relayFeatures.contains(RiderSignals.relayFeature) }
+  /// Last availability handed to JS, so only changes are emitted.
+  private var lastSignalAvailability: [String: Bool]?
+  /// Relay clock (epoch ms) of `lastRoster`; nil from relays that predate it.
+  private var lastRosterNow: Int64?
   /// The rider left while the socket was down, so the relay still holds them in the ride as away.
   /// Sent once right after the next `hello`; a create/join before then supersedes it, since the
   /// relay leaves the previous ride itself.
@@ -76,6 +91,9 @@ internal final class GroupRideObserver: NSObject {
   private let onCue: (String) -> Void
   /// The device's latest position (lat, lng), for the nearby test of `groupRide.created`.
   private let ownLocation: () -> (lat: Double, lng: Double)?
+  /// The fix and Privacy Zone state a Rider Signal send is checked against.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `signalContext`
+  private let signalContext: () -> RiderSignalContext
 
   init(
     emit: @escaping (String, [String: Any?]) -> Void,
@@ -83,8 +101,10 @@ internal final class GroupRideObserver: NSObject {
     scheduler: Scheduler = MainQueueScheduler(),
     onParticipationChanged: @escaping () -> Void = {},
     onCue: @escaping (String) -> Void = { _ in },
-    ownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil }
+    ownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil },
+    signalContext: @escaping () -> RiderSignalContext = { RiderSignalContext(fix: nil, insidePrivacyZone: true) }
   ) {
+    self.signalContext = signalContext
     self.onCue = onCue
     self.ownLocation = ownLocation
     self.emit = emit
@@ -151,9 +171,11 @@ internal final class GroupRideObserver: NSObject {
     desiredRideId = nil
     lastPresence = nil
     knownRides = []
+    relayFeatures = []
     lastRosterRideId = nil
     lastRoster = []
     lastRosterRiders = []
+    lastRosterNow = nil
     stopHeartbeat()
     stopPing()
     emitConnection("idle")
@@ -165,7 +187,9 @@ internal final class GroupRideObserver: NSObject {
     // Snapshot first: JS drops an active ride that is missing from the ride list.
     emit("onGroupRideSnapshot", ["rides": knownRides.map { $0.ride }])
     emit("onGroupRideJoined", ["rideId": joinedRideId])
-    emitRoster(lastRosterRideId, lastRoster)
+    emitRoster(lastRosterRideId, lastRoster, now: lastRosterNow)
+    lastSignalAvailability = nil
+    refreshSignalAvailability()
   }
 
   /// React to an App Status change while observing: tear down the moment online work is blocked,
@@ -288,6 +312,62 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
+  /// Raise a Rider Signal of `kind` at the latest GPS fix. Rejected (logged, nothing sent) outside a
+  /// ride, for an unknown kind, inside a Privacy Zone, without a recent fix, or against a relay that
+  /// does not advertise signals. While the relay is out of reach the intent waits for the rejoin.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `sendSignal`
+  func sendSignal(_ kind: String) {
+    onMain { [self] in
+      guard let signalKind = RiderSignalKind(rawValue: kind),
+        let intent = RiderSignals.sendIntent(signalKind, signalContext())
+      else {
+        NSLog("[GroupRide] signal rejected: kind=\(kind), no recent fix or inside a Privacy Zone")
+        return
+      }
+      submitSignal(intent)
+    }
+  }
+
+  /// Clear the Rider's active signal; held like a send while the relay is out of reach.
+  func clearSignal() {
+    onMain { [self] in submitSignal(.clear) }
+  }
+
+  /// Recompute what JS needs to offer a signal; emits only on change.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `refreshSignalAvailability`
+  /// @parity /modules/vescape-core/src/index.ts `GroupRideSignalAvailability`
+  func refreshSignalAvailability() {
+    onMain { [self] in
+      guard !stopped else { return }
+      let context = signalContext()
+      let availability = [
+        "supported": signalsSupported,
+        "insidePrivacyZone": context.insidePrivacyZone,
+        "hasRecentFix": context.fix != nil,
+      ]
+      guard availability != lastSignalAvailability else { return }
+      lastSignalAvailability = availability
+      emit("onGroupRideSignalAvailability", availability)
+    }
+  }
+
+  private func submitSignal(_ intent: RiderSignalIntent) {
+    guard !stopped, participating else {
+      NSLog("[GroupRide] signal ignored: not in a ride")
+      return
+    }
+    guard let ws = webSocket, linkOpen, joinedRideId != nil else {
+      pendingSignal = intent
+      return
+    }
+    pendingSignal = nil
+    if signalsSupported {
+      send(ws, intent.frame())
+    } else {
+      NSLog("[GroupRide] signal ignored: relay does not support rider signals")
+    }
+  }
+
   func pushPresence(_ presence: RiderPresence) {
     onMain { [self] in
       guard !stopped, let ws = webSocket, joinedRideId != nil else { return }
@@ -398,7 +478,9 @@ internal final class GroupRideObserver: NSObject {
     case "snapshot":
       let rides = (json["rides"] as? [Any] ?? []).compactMap { rideSummary($0 as? [String: Any]) }
       knownRides = rides.compactMap { ride in (ride["id"] as? String).map { (id: $0, ride: ride) } }
+      relayFeatures = Set((json["features"] as? [Any] ?? []).compactMap { $0 as? String })
       emit("onGroupRideSnapshot", ["rides": rides])
+      refreshSignalAvailability()
     case "ride-created":
       if let ride = rideSummary(json["ride"] as? [String: Any]) {
         let isNew = !knownRides.contains { $0.id == ride["id"] as? String }
@@ -437,6 +519,8 @@ internal final class GroupRideObserver: NSObject {
       joinedRideId = rideId
       startHeartbeat()
       emit("onGroupRideJoined", ["rideId": rideId])
+      // Replay a signal intent made while the relay was out of reach.
+      if let pendingSignal { submitSignal(pendingSignal) }
     case "roster":
       let riders = (json["riders"] as? [Any] ?? []).compactMap { riderView($0 as? [String: Any]) }
       let rideId = (json["rideId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -451,7 +535,7 @@ internal final class GroupRideObserver: NSObject {
       {
         onCue(cue)
       }
-      emitRoster(rideId, riders)
+      emitRoster(rideId, riders, now: (json["now"] as? NSNumber)?.int64Value)
     case "error":
       if let message = json["message"] as? String, !message.isEmpty { handleError(message) }
     default:
@@ -543,6 +627,7 @@ internal final class GroupRideObserver: NSObject {
       // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
       "away": obj["away"] as? Bool ?? false,
       "lastSeen": (obj["lastSeen"] as? NSNumber)?.int64Value ?? 0,
+      "signal": RiderSignal.parse(obj["signal"] as? [String: Any])?.toMap(),
     ]
   }
 
@@ -629,11 +714,12 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  private func emitRoster(_ rideId: String?, _ riders: [[String: Any?]]) {
+  private func emitRoster(_ rideId: String?, _ riders: [[String: Any?]], now: Int64? = nil) {
     lastRosterRideId = rideId
     lastRoster = riders
     lastRosterRiders = riders.compactMap(Self.rosterRider)
-    emit("onGroupRideRoster", ["rideId": rideId, "riders": riders])
+    lastRosterNow = now
+    emit("onGroupRideRoster", ["rideId": rideId, "riders": riders, "now": now])
   }
 
   // @parity /modules/vescape-core/src/index.ts `GroupRideConnectionState`
@@ -661,6 +747,8 @@ internal final class GroupRideObserver: NSObject {
   private func scheduleHeartbeat() {
     heartbeatWork = scheduler.postDelayed(Int64(Self.heartbeatIntervalSeconds * 1000)) { [weak self] in
       guard let self, !self.stopped, let ws = self.webSocket, self.joinedRideId != nil else { return }
+      // The beat also ages the GPS fix a send needs.
+      self.refreshSignalAvailability()
       self.send(ws, ["type": "heartbeat"])
       self.scheduleHeartbeat()
     }

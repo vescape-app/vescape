@@ -22,6 +22,7 @@ import {
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
 import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
+import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
 import { riderHue } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 
@@ -150,6 +151,7 @@ function RiderRow({
           {boardName}
         </Text>
         {rider.away ? <Text style={styles.awayTag}>{awayLabel(rider.lastSeen, now)}</Text> : null}
+        {rider.signal ? <SignalBadge kind={rider.signal.kind} /> : null}
       </View>
       {/* An away Rider's numbers are their last presence: dimmed, while the badge stays legible. */}
       <View style={[styles.statLines, rider.away && styles.statsAway]}>
@@ -161,6 +163,21 @@ function RiderRow({
           </View>
         ))}
       </View>
+    </View>
+  )
+}
+
+/** The Rider's active signal, as its kind's icon and label. */
+function SignalBadge({ kind }: { kind: string }) {
+  const info = riderSignalKindInfo(kind)
+  if (!info) return null
+  const KindIcon = info.icon
+  return (
+    <View style={styles.signalTag} accessibilityLabel={`Signal: ${info.label}`}>
+      <KindIcon size={11} color={theme.palette.red.light} weight="fill" />
+      <Text style={styles.signalTagLabel} numberOfLines={1}>
+        {info.label}
+      </Text>
     </View>
   )
 }
@@ -194,6 +211,22 @@ const DOT_SIZE = 8
 const HEAD_GAP = 6
 
 const styles = StyleSheet.create({
+  signalTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    flexShrink: 1,
+    backgroundColor: theme.palette.red.bg,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  signalTagLabel: {
+    color: theme.palette.red.light,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
   awayTag: {
     color: theme.palette.amber.light,
     backgroundColor: theme.palette.amber.bg,

@@ -25,6 +25,7 @@ export function rosterRowsEqual(a: RosterRider[], b: RosterRider[]): boolean {
       row.trail === other.trail &&
       row.stale === other.stale &&
       row.away === other.away &&
+      row.signal === other.signal &&
       row.lastSeen === other.lastSeen &&
       row.isSelf === other.isSelf
     )

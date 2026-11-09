@@ -10,7 +10,12 @@ const createdListeners: Listener<{ ride: unknown }>[] = []
 const updatedListeners: Listener<{ ride: unknown }>[] = []
 const endedListeners: Listener<{ rideId: string }>[] = []
 const joinedListeners: Listener<{ rideId: string | null }>[] = []
-const rosterListeners: Listener<{ rideId: string | null; riders: unknown[] }>[] = []
+const rosterListeners: Listener<{
+  rideId: string | null
+  riders: unknown[]
+  now?: number | null
+}>[] = []
+const signalAvailabilityListeners: Listener<unknown>[] = []
 const errorListeners: Listener<{ message: string }>[] = []
 const locationListeners: Listener<{ latitude: number; longitude: number }>[] = []
 
@@ -57,6 +62,10 @@ mock.module('vescape-core', () => ({
     subscribe(joinedListeners, listener),
   addGroupRideRosterListener: (listener: Listener<{ rideId: string | null; riders: unknown[] }>) =>
     subscribe(rosterListeners, listener),
+  addGroupRideSignalAvailabilityListener: (listener: Listener<unknown>) =>
+    subscribe(signalAvailabilityListeners, listener),
+  sendGroupRideSignal: () => {},
+  clearGroupRideSignal: () => {},
   addGroupRideErrorListener: (listener: Listener<{ message: string }>) =>
     subscribe(errorListeners, listener),
   addLocationListener: (listener: Listener<{ latitude: number; longitude: number }>) =>
@@ -94,6 +103,7 @@ function resetListeners() {
   endedListeners.length = 0
   joinedListeners.length = 0
   rosterListeners.length = 0
+  signalAvailabilityListeners.length = 0
   errorListeners.length = 0
   locationListeners.length = 0
 }
@@ -121,6 +131,7 @@ beforeEach(async () => {
     activeRideId: null,
     roster: [],
     rosterRows: [],
+    relayClock: null,
     error: null,
     focusRequest: null,
     observing: false,
@@ -390,4 +401,15 @@ test('own GPS fixes keep the rosterRows reference', async () => {
 
   expect(useGroupRideStore.getState().ownLocation).toEqual({ lat: 50.05, lng: 19.92 })
   expect(useGroupRideStore.getState().rosterRows).toBe(rows)
+})
+
+test('a roster carrying the relay clock sets it; one without keeps the last', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  useGroupRideStore.getState().startObserving()
+  joinedListeners.forEach((listener) => listener({ rideId: 'r1' }))
+  rosterListeners.forEach((listener) => listener({ rideId: 'r1', riders: [], now: 5_000 }))
+  expect(useGroupRideStore.getState().relayClock?.relayNow).toBe(5_000)
+
+  rosterListeners.forEach((listener) => listener({ rideId: 'r1', riders: [], now: null }))
+  expect(useGroupRideStore.getState().relayClock?.relayNow).toBe(5_000)
 })

@@ -1989,6 +1989,21 @@ export interface TrailPoint {
 }
 
 /**
+ * A Rider's active Rider Signal, stamped by the relay. Times are relay epoch ms: compare them with
+ * the roster's relay `now`, never `Date.now()`. `kind` is one of the group-ride module's
+ * `RIDER_SIGNAL_KINDS`; native drops a signal of any other kind.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignal`
+ * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignal`
+ */
+export interface GroupRideSignal {
+  kind: string
+  lat: number
+  lng: number
+  startedAt: number
+  expiresAt: number
+}
+
+/**
  * One roster entry, the relay's `RiderView` as native decodes it.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `riderView`
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `riderView`
@@ -2006,6 +2021,8 @@ export interface GroupRideRider {
    */
   away: boolean
   lastSeen: number
+  /** The Rider's active signal; null/omitted when none. Kept while the Rider is away. */
+  signal?: GroupRideSignal | null
 }
 
 /**
@@ -2045,6 +2062,21 @@ export interface GroupRideJoinedEvent {
 export interface GroupRideRosterEvent {
   rideId: string | null
   riders: GroupRideRider[]
+  /** Relay clock (epoch ms) when the roster was sent; null from relays that predate it. */
+  now: number | null
+}
+
+/**
+ * Whether the joined Rider can send a Rider Signal right now. `supported` is false against a relay
+ * that does not advertise signals. `insidePrivacyZone` is also true while zones have not loaded.
+ * `hasRecentFix` needs a GPS fix at most 30 s old. Emitted on change.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `refreshSignalAvailability`
+ * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `refreshSignalAvailability`
+ */
+export interface GroupRideSignalAvailability {
+  supported: boolean
+  insidePrivacyZone: boolean
+  hasRecentFix: boolean
 }
 
 export interface GroupRideErrorEvent {
@@ -2772,6 +2804,7 @@ type VescapeCoreEvents = {
   onGroupRideJoined: (event: GroupRideJoinedEvent) => void
   onGroupRideRoster: (event: GroupRideRosterEvent) => void
   onGroupRideError: (event: GroupRideErrorEvent) => void
+  onGroupRideSignalAvailability: (event: GroupRideSignalAvailability) => void
   /** Persisted board/app data changed natively — reload the matching store. */
   onAppDataChanged: (event: AppDataChangedEvent) => void
   /** Full current Board Warning list for a board, on every registry change and on subscribe. */
@@ -2871,6 +2904,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): void
   joinGroupRide(riderId: string, riderName: string, rideId: string): void
   leaveGroupRide(): void
+  sendGroupRideSignal(kind: string): void
+  clearGroupRideSignal(): void
   updateGroupRideIdentity(riderId: string, riderName: string): void
   setTelemetryRecordingEnabled(enabled: boolean): void
   setBmsSeriesFocused(focused: boolean): void
@@ -3311,6 +3346,21 @@ export function joinGroupRide({ riderId, riderName, rideId }: JoinGroupRideParam
 export function leaveGroupRide(): void {
   if (E2E_ENABLED) return
   native.leaveGroupRide()
+}
+
+/**
+ * Raise a Rider Signal at the latest GPS fix. Native rejects it without a fix from the last 30 s or
+ * inside a Privacy Zone, and holds it for the rejoin while the relay is out of reach.
+ */
+export function sendGroupRideSignal(kind: string): void {
+  if (E2E_ENABLED) return
+  native.sendGroupRideSignal(kind)
+}
+
+/** Clear the Rider's active signal; held for the rejoin while the relay is out of reach. */
+export function clearGroupRideSignal(): void {
+  if (E2E_ENABLED) return
+  native.clearGroupRideSignal()
 }
 
 export interface UpdateGroupRideIdentityParams {
@@ -4890,6 +4940,12 @@ export function addGroupRideErrorListener(
   cb: (event: GroupRideErrorEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onGroupRideError', cb)
+}
+
+export function addGroupRideSignalAvailabilityListener(
+  cb: (event: GroupRideSignalAvailability) => void,
+): EventSubscription {
+  return emitter.addListener('onGroupRideSignalAvailability', cb)
 }
 
 /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `saveBrakeLightSettings`

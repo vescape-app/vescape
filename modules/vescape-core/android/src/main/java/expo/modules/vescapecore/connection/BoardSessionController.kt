@@ -43,6 +43,8 @@ import expo.modules.vescapecore.location.GpsPowerMode
 import expo.modules.vescapecore.location.RIDE_DROPOUT_GRACE_MS
 import expo.modules.vescapecore.location.isPreciseGpsFix
 import expo.modules.vescapecore.GroupRideObserver
+import expo.modules.vescapecore.RiderSignalContext
+import expo.modules.vescapecore.RiderSignals
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
 import expo.modules.vescapecore.telemetry.ProcessedTelemetry
@@ -474,6 +476,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             onParticipationChanged = ::refreshGpsDemand,
             onCue = { cue -> if (connectionSoundsEnabled) alertFeedback.playAppCue(cue) },
             ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
+            signalContext = ::riderSignalContext,
         )
     }
 
@@ -1101,6 +1104,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     fun leaveGroupRide() {
         groupRideObserver.leave()
+    }
+
+    fun sendGroupRideSignal(kind: String) {
+        groupRideObserver.sendSignal(kind)
+    }
+
+    fun clearGroupRideSignal() {
+        groupRideObserver.clearSignal()
     }
 
     fun updateGroupRideIdentity(riderId: String, riderName: String) {
@@ -3269,6 +3280,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val snapshot = locationTracker.onLocationUpdated(location)
         recordRideTrackFix(snapshot)
         latestRiderPresence()?.let(groupRideObserver::pushPresence)
+        groupRideObserver.refreshSignalAvailability()
         // Offered on every Fix; the coordinator owns the freshness and distance gates.
         weatherCoordinator.onPosition(location.latitude, location.longitude)
     }
@@ -3399,6 +3411,23 @@ internal class BoardSessionController(private val service: CoreForegroundService
             phoneBattery = readPhoneBattery(),
             boardName = if (boardConfig != null) (boardConfig?.deviceName ?: selectedBoardName) else null,
             target = groupRideTarget,
+        )
+    }
+
+    /**
+     * What a Rider Signal send is checked against: the latest fix while it is recent, and whether it
+     * lies inside a Privacy Zone (assumed so until zones load). Not the presence egress gate: a
+     * signal has its own location and will be allowed inside a zone in a later slice.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderSignalContext`
+     */
+    private fun riderSignalContext(): RiderSignalContext {
+        val location = locationTracker.latestLocation
+            ?.takeIf { System.currentTimeMillis() - it.timestamp <= RiderSignals.FIX_MAX_AGE_MS }
+        return RiderSignalContext(
+            fix = location?.let { it.latitude to it.longitude },
+            insidePrivacyZone = !groupRidePrivacy.allowsLocationEgress ||
+                (location != null && isInsidePrivacyZone(location)),
         )
     }
 

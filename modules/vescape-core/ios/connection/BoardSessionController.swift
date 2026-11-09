@@ -261,6 +261,9 @@ internal final class BoardSessionController: VescGattListener {
     },
     ownLocation: { [weak self] in
       self?.locationTracker.latestLocation.map { (lat: $0.latitude, lng: $0.longitude) }
+    },
+    signalContext: { [weak self] in
+      self?.riderSignalContext() ?? RiderSignalContext(fix: nil, insidePrivacyZone: true)
     }
   )
 
@@ -1088,6 +1091,14 @@ internal final class BoardSessionController: VescGattListener {
     groupRideObserver.leave()
   }
 
+  func sendGroupRideSignal(_ kind: String) {
+    groupRideObserver.sendSignal(kind)
+  }
+
+  func clearGroupRideSignal() {
+    groupRideObserver.clearSignal()
+  }
+
   func updateGroupRideIdentity(riderId: String, riderName: String) {
     groupRideObserver.updateIdentity(riderId: riderId, riderName: riderName)
   }
@@ -1112,6 +1123,21 @@ internal final class BoardSessionController: VescGattListener {
       phoneBattery: readPhoneBattery(),
       boardName: config.map { $0.name.isEmpty ? boardName : $0.name } ?? nil,
       target: groupRideTarget
+    )
+  }
+
+  /// What a Rider Signal send is checked against: the latest fix while it is recent, and whether it
+  /// lies inside a Privacy Zone (assumed so until zones load). Not the presence egress gate: a signal
+  /// has its own location and will be allowed inside a zone in a later slice.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `riderSignalContext`
+  private func riderSignalContext() -> RiderSignalContext {
+    let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+    let location = locationTracker.latestLocation.flatMap {
+      nowMs - $0.timestamp <= RiderSignals.fixMaxAgeMs ? $0 : nil
+    }
+    return RiderSignalContext(
+      fix: location.map { (lat: $0.latitude, lng: $0.longitude) },
+      insidePrivacyZone: !groupRidePrivacy.allowsLocationEgress || location.map(isInsidePrivacyZone) == true
     )
   }
 
@@ -3203,6 +3229,7 @@ internal final class BoardSessionController: VescGattListener {
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
+    groupRideObserver.refreshSignalAvailability()
     emit?("onLocation", location.map)
   }
 

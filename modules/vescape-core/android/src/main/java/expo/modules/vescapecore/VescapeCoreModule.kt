@@ -202,6 +202,7 @@ class VescapeCoreModule : Module() {
       "onGroupRideJoined",
       "onGroupRideRoster",
       "onGroupRideError",
+      "onGroupRideSignalAvailability",
       "onAppDataChanged",
       "onBoardWarnings",
       "onVescFaults",
@@ -356,6 +357,8 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onGroupRideRoster") { stopObserving("onGroupRideRoster") }
     OnStartObserving("onGroupRideError") { startObserving("onGroupRideError") }
     OnStopObserving("onGroupRideError") { stopObserving("onGroupRideError") }
+    OnStartObserving("onGroupRideSignalAvailability") { startObserving("onGroupRideSignalAvailability") }
+    OnStopObserving("onGroupRideSignalAvailability") { stopObserving("onGroupRideSignalAvailability") }
     OnStartObserving("onBoardWarnings") {
       startObserving("onBoardWarnings")
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
@@ -1661,6 +1664,13 @@ class VescapeCoreModule : Module() {
     }
     Function("leaveGroupRide") {
       CoreForegroundService.leaveGroupRide(context.applicationContext)
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendGroupRideSignal`
+    Function("sendGroupRideSignal") { kind: String ->
+      CoreForegroundService.sendGroupRideSignal(kind)
+    }
+    Function("clearGroupRideSignal") {
+      CoreForegroundService.clearGroupRideSignal()
     }
     Function("updateGroupRideIdentity") { riderId: String, riderName: String ->
       CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName)
