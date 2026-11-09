@@ -431,6 +431,10 @@ _Avoid_: Force Update, hard block, kill switch
 A server-authored, rider-facing communication that may inform, warn, or announce without changing capability availability.
 _Avoid_: Release warning, push notification, server error
 
+**Ride Notice**:
+A short-lived, rider-facing card that a native source posts on the phone so the rider can see what needs attention: severity, title, details and, optionally, a location and phone-only actions such as Show on map. Keyed per source, so a re-post updates it in place. It ends when the source clears it or it expires, is never saved, and a dismiss on the phone or the **Watch Mirror** dismisses it on both. The wrist mirrors it as a card with a haptic. It never becomes a system notification, but it shows on the ride notification or Live Activity while one exists. It is not an **Announcement Queue** item (sound), a **Board Warning** (durable Board finding) or a **Community Message** (server-authored). Agreed, not yet built (#649).
+_Avoid_: Notification, alert, toast, banner, inbox
+
 **Online Capability**:
 An app capability that depends on the Vescape server and remains separate from local Board, recording, history, and tuning capabilities.
 _Avoid_: Server feature, cloud feature, online mode
