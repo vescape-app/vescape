@@ -93,12 +93,14 @@ struct TelemetryMaintenancePersistence {
 
 internal let RIDE_SUMMARIES_CHUNK_MS: Int64 = 3_600_000
 
-/// Read-only state one Ride summaries chunk hands the next: the last precise Ride Track fix. It
-/// shapes the next chunk's output but is never written as it, and every chunk re-checks it against
-/// the database, so a ride deleted between chunks cannot leak into the rebuild.
+/// Read-only state one Ride summaries chunk hands the next: each Board's free-spin state and the
+/// last precise Ride Track fix. It shapes the next chunk's output but is never written as it, and
+/// every chunk re-checks it against the database, so a ride deleted between chunks cannot leak into
+/// the rebuild.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `RideSummariesContext`
 final class RideSummariesContext {
   fileprivate(set) var previousTrack: RideTrackPoint?
+  fileprivate(set) var freeSpin = FreeSpinCarry()
 }
 
 /// What one Ride summaries chunk did. Owned ranges are half-open `[from, to)` on whole minutes.
@@ -172,19 +174,20 @@ internal func rebuildRideSummariesChunk(
      try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE fix_at_ms = ? AND board_id IS ?)", arguments: [previous.fixAtMs, previous.boardId]) != true {
     context.previousTrack = nil
   }
+  context.freeSpin.boards = try context.freeSpin.boards.filter { _, state in
+    guard let previous = state.previous else { return true }
+    return try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM telemetry_frames WHERE captured_at_ms = ? AND board_id IS ?)", arguments: [previous.capturedAtMs, previous.boardId]) == true
+  }
 
   try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE bucket_start_ms >= ? AND bucket_start_ms < ?", arguments: [fromMs, toMs])
   try trimExclusions(db, fromMs: fromMs, toMs: toMs)
 
   var points = try Row.fetchAll(db, sql: "SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms < ? ORDER BY captured_at_ms ASC", arguments: [fromMs, toMs]).compactMap(bucketPoint)
   let track = try fetchRideTrackForAggregation(db, fromMs: fromMs, toMs: toMs - 1, boardId: nil).map(rideTrackPoint)
-  // Free spin reads the nearest fix, which may sit just outside the owned span.
-  let sanitizerTrack = try fetchRideTrackForAggregation(
-    db, fromMs: fromMs - FREE_SPIN_NEAREST_GPS_MAX_AGE_MS, toMs: toMs - 1 + FREE_SPIN_NEAREST_GPS_MAX_AGE_MS, boardId: nil
-  ).map(rideTrackPoint)
   let locations = rideTrackBucketPoints(track, previous: context.previousTrack, movingThresholdCentiKmh: config.movingSpeedThresholdCentiKmh)
   context.previousTrack = track.last(where: rideTrackFixIsPrecise) ?? context.previousTrack
-  let sanitization = sanitizeTelemetrySamples(points, track: sanitizerTrack, config: config)
+  let sanitization = sanitizeTelemetrySamples(points, config: config, freeSpinCarry: context.freeSpin)
+  context.freeSpin = sanitization.freeSpinCarry
   for i in points.indices {
     points[i].excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed
     points[i].excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed

@@ -278,7 +278,8 @@ final class FavoriteStoreTests: XCTestCase {
   /// Sanitizers, exactly as they are while recording — a trimmed Favorite must not average them in.
   func testSummaryExcludesIdleSamplesFromAverageSpeed() {
     let idle = ridePoints(startMs: 0, count: 10, speedCentiKmh: 0, intervalMs: 1_000)
-    let moving = ridePoints(startMs: 10_000, count: 10, speedCentiKmh: 2_000, intervalMs: 1_000)
+    // Samples further apart than an acceleration is read across, so 0 → 20 km/h is no spin-up.
+    let moving = ridePoints(startMs: 11_000, count: 10, speedCentiKmh: 2_000, intervalMs: 1_000)
 
     let summary = TelemetryRepository.favoriteSummary(idle + moving, config: MetricSanitizerConfig())
 
@@ -320,8 +321,7 @@ final class FavoriteStoreTests: XCTestCase {
     )
   }
 
-  /// A steady ride: constant speed, odometer advancing 1 m per interval, no GPS (so the free-spin
-  /// sanitizer has nothing to compare against and leaves max speed alone).
+  /// A steady ride: constant speed, so no free spin, and the odometer advancing 1 m per interval.
   private func ridePoints(
     startMs: Int64,
     count: Int,

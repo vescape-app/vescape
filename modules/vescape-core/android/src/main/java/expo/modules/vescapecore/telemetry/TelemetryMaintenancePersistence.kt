@@ -4,6 +4,7 @@ import expo.modules.vescapecore.database.RideTrackPointEntity
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeDao
+import expo.modules.vescapecore.telemetry.sanitizers.FreeSpinCarry
 
 /** App-used outer transactions for maintenance operations that may span several protected ranges. */
 internal class TelemetryMaintenancePersistence(
@@ -46,13 +47,14 @@ internal data class RebuildState(
 internal const val RIDE_SUMMARIES_CHUNK_MS = 3_600_000L
 
 /**
- * Read-only state one Ride summaries chunk hands the next: each Board's delta chain and the last
- * precise Ride Track fix. It shapes the next chunk's output but is never written as it. Every chunk
+ * Read-only state one Ride summaries chunk hands the next: each Board's delta chain, its free-spin
+ * state, and the last precise Ride Track fix. It shapes the next chunk's output but is never written as it. Every chunk
  * re-checks it against the database, so a ride deleted between chunks cannot leak into the rebuild.
  */
 class RideSummariesContext {
   internal val latestStates = mutableMapOf<String?, RebuildState>()
   internal var previousTrack: RideTrackPointEntity? = null
+  internal var freeSpin = FreeSpinCarry()
 }
 
 /** What one Ride summaries chunk did. Owned ranges are half-open `[from, to)` on whole minutes. */
@@ -116,6 +118,9 @@ internal suspend fun VescapeDao.rebuildRideSummariesChunkImpl(
   for ((boardId, state) in context.latestStates.entries.toList()) {
     if (!frameExists(state.at, boardId)) context.latestStates.remove(boardId)
   }
+  context.freeSpin = FreeSpinCarry(context.freeSpin.boards.filterValues { state ->
+    state.previous?.let { frameExists(it.capturedAtMs, it.boardId) } ?: true
+  })
   context.previousTrack = context.previousTrack?.takeIf { rideTrackPointExists(it.id) }
 
   deleteBucketsRange(fromMs, toMs)
@@ -130,15 +135,12 @@ internal suspend fun VescapeDao.rebuildRideSummariesChunkImpl(
   }
   states.sortBy { it.at }
   val track = getRideTrackForAggregation(fromMs, toMs - 1, null)
-  // Free spin reads the nearest fix, which may sit just outside the owned span.
-  val sanitizerTrack = getRideTrackForAggregation(
-    fromMs - FREE_SPIN_NEAREST_GPS_MAX_AGE_MS, toMs - 1 + FREE_SPIN_NEAREST_GPS_MAX_AGE_MS, null,
-  )
   val locations = track.toBucketLocationPoints(previous = context.previousTrack,
     movingThresholdCentiKmh = config.movingSpeedThresholdCentiKmh)
   context.previousTrack = track.lastOrNull { it.isPrecise() } ?: context.previousTrack
   val points = states.map { it.point() }
-  val sanitization = sanitizeTelemetrySamples(points, sanitizerTrack, config)
+  val sanitization = sanitizeTelemetrySamples(points, config, context.freeSpin)
+  context.freeSpin = sanitization.freeSpinCarry
   val sanitized = points.mapIndexed { i, point -> point.copy(
     excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed,
     excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed,

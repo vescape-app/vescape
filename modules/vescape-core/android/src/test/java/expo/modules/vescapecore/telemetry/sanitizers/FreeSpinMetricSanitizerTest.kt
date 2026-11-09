@@ -2,164 +2,139 @@ package expo.modules.vescapecore.telemetry.sanitizers
 
 import expo.modules.vescapecore.telemetry.BucketTelemetryPoint
 import expo.modules.vescapecore.telemetry.EXCLUSION_REASON_FREE_SPIN
-import expo.modules.vescapecore.telemetry.RIDE_TRACK_PRECISE_ACCURACY_CM
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.telemetry.SanitizationResult
+import expo.modules.vescapecore.telemetry.sanitizeTelemetrySamples
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** @parity /modules/vescape-core/ios/telemetry/FreeSpinTests.swift */
 class FreeSpinMetricSanitizerTest {
+  /** A wheel in the air: 20 → 40 km/h in half a second on a few amps. */
+  private val spinUp = listOf(sample(0, 20.0, 10.0), sample(500, 40.0, 5.0))
+
   @Test
-  fun excludesMaxSpeedAndDutyWhenLowGpsAndHighBoardSpeed() {
-    val point = pointWithGps(
-      capturedAtMs = 1000L,
-      speedCentiKmh = 1600,
-      dutyPermille = 800,
-      gpsSpeedCentiMps = 100,
-      gpsTimestampMs = 1000L,
-    )
+  fun spinUpOnLittleCurrentIsExcludedFromEverySpeedMetric() {
+    val result = sanitize(spinUp)
 
-    val result = sanitize(point)
-
-    assertTrue(result.excludedFromMaxSpeed)
-    assertTrue(result.excludedFromMaxDuty)
-    assertFalse(result.excludedFromAvgSpeed)
-    assertEquals(1, result.exclusions.size)
-    assertEquals(EXCLUSION_REASON_FREE_SPIN, result.exclusions.single().reason)
-    assertEquals(1000L, result.exclusions.single().capturedAtMs)
+    assertEquals(listOf(false, true), result.freeSpin())
+    val spin = result.samples[1]
+    assertTrue(spin.excludedFromAvgSpeed && spin.excludedFromMaxSpeed && spin.excludedFromMaxDuty)
+    val range = result.exclusions.single { it.reason == EXCLUSION_REASON_FREE_SPIN }
+    assertEquals(500L, range.startMs)
   }
 
   @Test
-  fun keepsSampleWhenDeltaAtThreshold() {
-    val point = pointWithGps(
-      capturedAtMs = 1000L,
-      speedCentiKmh = 3698,
-      gpsSpeedCentiMps = 694,
-      gpsTimestampMs = 1000L,
-    )
+  fun theSameClimbWithARiderOnBoardIsKept() {
+    val result = sanitize(listOf(sample(0, 20.0, 100.0), sample(500, 40.0, 120.0)))
 
-    val result = sanitize(point)
-
-    assertFalse(result.excludedFromMaxSpeed)
-    assertFalse(result.excludedFromMaxDuty)
-    assertTrue(result.exclusions.isEmpty())
+    assertEquals(listOf(false, false), result.freeSpin())
   }
 
   @Test
-  fun ignoresImpreciseGps() {
-    val point = pointWithGps(
-      capturedAtMs = 1000L,
-      speedCentiKmh = 5000,
-      gpsSpeedCentiMps = 100,
-      gpsTimestampMs = 1000L,
-      gpsAccuracyCm = RIDE_TRACK_PRECISE_ACCURACY_CM + 1,
-    )
+  fun spinUpWhileRidingBackwardsIsExcluded() {
+    val result = sanitize(listOf(sample(0, -20.0, -10.0), sample(500, -40.0, -5.0)))
 
-    val result = sanitize(point)
-
-    assertFalse(result.excludedFromMaxSpeed)
-    assertTrue(result.exclusions.isEmpty())
+    assertEquals(listOf(false, true), result.freeSpin())
   }
 
   @Test
-  fun usesNearestPreciseGpsFromNeighboringSample() {
-    val points = listOf(
-      pointWithGps(
-        capturedAtMs = 1000L,
-        speedCentiKmh = 1000,
-        gpsSpeedCentiMps = 100,
-        gpsTimestampMs = 1000L,
+  fun samplesTooFarApartAreNotReadAsAClimb() {
+    val result = sanitize(listOf(sample(0, 20.0, 5.0), sample(1_600, 45.0, 5.0)))
+
+    assertEquals(listOf(false, false), result.freeSpin())
+  }
+
+  @Test
+  fun steadySpinningAfterASpinUpStaysExcludedUntilThreeLoadedSamples() {
+    val result = sanitize(
+      spinUp + listOf(
+        sample(1_000, 40.0, 10.0),
+        sample(1_500, 40.0, 10.0),
+        // Landed: braking that takes a rider's worth of current.
+        sample(2_000, 38.0, -60.0),
+        sample(2_500, 36.0, -60.0),
+        sample(3_000, 34.0, -60.0),
+        sample(3_500, 34.0, 10.0),
       ),
-      point(capturedAtMs = 3000L, speedCentiKmh = 5000),
     )
-    val context = contextFor(points)
 
-    val result = FreeSpinMetricSanitizer(maxSpeedDeltaCentiKmh = 1200, stationaryBoardCapCentiKmh = 1500).sanitize(1, points[1].point, context)
-
-    assertTrue(result.excludedFromMaxSpeed)
-    assertEquals(EXCLUSION_REASON_FREE_SPIN, result.exclusions.single().reason)
+    assertEquals(listOf(false, true, true, true, true, true, false, false), result.freeSpin())
   }
 
-  /**
-   * A multi-Board track interleaves fixes, so the nearest same-Board fix can sit well past the
-   * immediate neighbours of the binary-search landing index.
-   */
   @Test
-  fun findsASameBoardFixBehindOtherBoardsFixes() {
-    val captured = pointWithGps(
-      capturedAtMs = 5_000L,
-      speedCentiKmh = 5000,
-      gpsSpeedCentiMps = 100,
-      gpsTimestampMs = 1_000L,
+  fun oneLoadedLookingSampleDoesNotEndTheSpin() {
+    val result = sanitize(
+      spinUp + listOf(
+        sample(1_000, 38.0, -60.0),
+        sample(1_500, 38.0, 10.0),
+        sample(2_000, 36.0, -60.0),
+      ),
     )
-    val otherBoardFixes = listOf(2_000L, 3_000L, 4_000L, 4_500L).map { fixAtMs ->
-      pointWithGps(
-        deviceId = "board-2",
-        gpsSpeedCentiMps = 100,
-        gpsTimestampMs = fixAtMs,
-      )
-    }
-    val context = contextFor(listOf(captured) + otherBoardFixes)
 
-    val result = FreeSpinMetricSanitizer(maxSpeedDeltaCentiKmh = 1200, stationaryBoardCapCentiKmh = 1500)
-      .sanitize(0, captured.point, context)
-
-    assertTrue(result.excludedFromMaxSpeed)
+    assertEquals(listOf(false, true, true, true, true), result.freeSpin())
   }
 
-  private fun sanitize(captured: Captured): MetricSanitizerOutput =
-    FreeSpinMetricSanitizer(maxSpeedDeltaCentiKmh = 1200, stationaryBoardCapCentiKmh = 1500)
-      .sanitize(0, captured.point, contextFor(listOf(captured)))
+  @Test
+  fun spinEndsWhenSpeedReturnsToWhereItStarted() {
+    val result = sanitize(spinUp + listOf(sample(1_000, 30.0, 0.0), sample(1_500, 24.0, 0.0)))
 
-  private fun contextFor(captured: List<Captured>) = MetricSanitizationContext(
-    samples = captured.map { it.point },
-    track = preciseGpsTrack(captured.mapNotNull { it.fix }.sortedBy { it.fixAtMs }),
-  )
+    assertEquals(listOf(false, true, true, false), result.freeSpin())
+  }
 
-  /** A sample paired with the Ride Track fix that was current when it was captured. */
-  private data class Captured(
-    val point: BucketTelemetryPoint,
-    val fix: RideTrackPointEntity? = null,
-  )
+  @Test
+  fun spinTimesOutAfterFifteenSecondsWhileTheMotorWorks() {
+    val result = sanitize(spinUp + (1..17).map { sample(500L + it * 1_000L, 40.0, 10.0) })
 
-  private fun point(
-    capturedAtMs: Long = 0L,
-    deviceId: String? = "board-1",
-    speedCentiKmh: Int = 0,
-    dutyPermille: Int = 0,
-  ) = Captured(
+    assertTrue(result.freeSpin().subList(1, 16).all { it })
+    assertEquals(listOf(false, false), result.freeSpin().takeLast(2))
+  }
+
+  @Test
+  fun wheelHeldAtTheSpeedLimitInTheAirStaysExcludedPastTheTimeout() {
+    val result = sanitize(spinUp + (1..30).map { sample(500L + it * 1_000L, 40.0, 1.0) })
+
+    assertTrue(result.freeSpin().drop(1).all { it })
+  }
+
+  @Test
+  fun aSpinCrossingTwoBatchesStaysExcluded() {
+    val first = sanitize(spinUp)
+    val second = sanitizeTelemetrySamples(
+      listOf(sample(1_000, 40.0, 10.0), sample(1_500, 40.0, 10.0)),
+      freeSpinCarry = first.freeSpinCarry,
+    )
+
+    assertEquals(listOf(true, true), second.freeSpin())
+  }
+
+  @Test
+  fun boardsAreReadSeparately() {
+    val result = sanitize(
+      listOf(
+        sample(0, 20.0, 10.0, board = "a"),
+        sample(250, 0.0, 0.0, board = "b"),
+        sample(500, 40.0, 5.0, board = "a"),
+        sample(750, 0.0, 0.0, board = "b"),
+      ),
+    )
+
+    assertEquals(listOf(false, false, true, false), result.freeSpin())
+  }
+
+  private fun sanitize(samples: List<BucketTelemetryPoint>) = sanitizeTelemetrySamples(samples)
+
+  private fun SanitizationResult.freeSpin() = samples.map { it.excludedFromMaxSpeed }
+
+  private fun sample(atMs: Long, speedKmh: Double, motorCurrentA: Double, board: String = "board-1") =
     BucketTelemetryPoint(
-      capturedAtMs = capturedAtMs,
-      boardId = deviceId,
-      speedCentiKmh = speedCentiKmh,
-      batteryVoltageMv = 70_000,
-      motorCurrentMa = 0,
+      capturedAtMs = atMs,
+      boardId = board,
+      speedCentiKmh = (speedKmh * 100).toInt(),
+      batteryVoltageMv = 80_000,
+      motorCurrentMa = (motorCurrentA * 1_000).toInt(),
       batteryCurrentMa = 0,
-      dutyPermille = dutyPermille,
+      dutyPermille = 500,
       odometerCm = null,
-    ),
-  )
-
-  private fun pointWithGps(
-    capturedAtMs: Long = 0L,
-    deviceId: String? = "board-1",
-    speedCentiKmh: Int = 0,
-    dutyPermille: Int = 0,
-    gpsSpeedCentiMps: Int,
-    gpsTimestampMs: Long,
-    gpsAccuracyCm: Int = 500,
-  ) = Captured(
-    point(capturedAtMs, deviceId, speedCentiKmh, dutyPermille).point,
-    RideTrackPointEntity(
-      boardId = deviceId,
-      fixAtMs = gpsTimestampMs,
-      latitudeE7 = 500_000_000,
-      longitudeE7 = 190_000_000,
-      accuracyCm = gpsAccuracyCm,
-      gpsSpeedCentiMps = gpsSpeedCentiMps,
-      bearingCentiDeg = null,
-      altitudeCm = null,
-    ),
-  )
+    )
 }

@@ -1531,8 +1531,6 @@ class VescapeCoreModule : Module() {
         key == "movingSpeedThresholdKmh" ||
         key == "avgSpeedCutoffKmh" ||
         key == "movingAvgSpeedThresholdKmh" ||
-        key == "freeSpinMaxSpeedDeltaKmh" ||
-        key == "freeSpinStationaryBoardCapKmh" ||
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
         key == "wearAutoLaunchOnConnect" ||

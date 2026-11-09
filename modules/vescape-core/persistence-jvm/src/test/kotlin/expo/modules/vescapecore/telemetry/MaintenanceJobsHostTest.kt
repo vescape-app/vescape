@@ -8,7 +8,6 @@ import org.junit.Test
 import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.database.DatabaseReplacementFence
 import expo.modules.vescapecore.database.MetricExclusionRangeEntity
-import expo.modules.vescapecore.database.RideTrackPointEntity
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeDao
@@ -34,19 +33,14 @@ class MaintenanceJobsHostTest {
 
   private fun db() = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
 
-  private fun frame(at: Long, speed: Int = 1_000) = TelemetryFrameEntity(
+  private fun frame(at: Long, speed: Int = 1_000, motorCurrentMa: Int = 1_000) = TelemetryFrameEntity(
     capturedAtMs = at, elapsedRealtimeMs = at, boardId = board, canId = null,
     flags = TELEMETRY_FLAG_KEYFRAME, changedMask1 = Int.MAX_VALUE, changedMask2 = 0,
-    speedCentiKmh = speed, batteryVoltageMv = 80_000, motorCurrentMa = 1_000,
+    speedCentiKmh = speed, batteryVoltageMv = 80_000, motorCurrentMa = motorCurrentMa,
     batteryCurrentMa = 500, dutyPermille = 100, pitchCentiDeg = 0, rollCentiDeg = 0,
     balancePitchCentiDeg = 0, balanceCurrentMa = 0, erpm = 1_000, state = 1,
     switchState = 1, adc1Milli = 0, adc2Milli = 0, odometerCm = at,
     tempMosfetDeciC = 300, tempMotorDeciC = 300,
-  )
-
-  private fun fix(at: Long, speedCentiMps: Int, lat: Int = 520_000_000) = RideTrackPointEntity(
-    boardId = board, fixAtMs = at, latitudeE7 = lat + (at / 1_000).toInt(), longitudeE7 = 210_000_000,
-    accuracyCm = 500, gpsSpeedCentiMps = speedCentiMps, bearingCentiDeg = null, altitudeCm = null,
   )
 
   private suspend fun VescapeDao.persisted() = Triple(
@@ -59,17 +53,19 @@ class MaintenanceJobsHostTest {
     val db = db()
     val dao = db.vescapeDao()
     val edge = 10 * hour
-    // A ride across the hour edge: fast board, a standing GPS fix just before the edge, so free
-    // spin needs the nearest-fix context from the previous chunk.
-    dao.insertFrames((edge - 5 * minute until edge + 5 * minute step 2_000).map { frame(it, speed = 3_000) })
-    dao.insertRideTrackPoints(listOf(fix(edge - 3_000, 0)) + (edge + 20_000 until edge + 4 * minute step 5_000).map { fix(it, 800) })
+    // A ride across the hour edge with a free spin crossing it: the wheel spins up just before the
+    // edge and keeps spinning after it, so the next chunk needs the spin carried from this one.
+    val spinning = edge - 500 until edge + 5_000
+    dao.insertFrames((edge - 5 * minute until edge + 5 * minute step 500).map {
+      if (it in spinning) frame(it, speed = 5_000, motorCurrentMa = 1_000) else frame(it, speed = 3_000, motorCurrentMa = 20_000)
+    })
     // A live-written range crossing the edge; its outside portion is not another chunk's output.
     dao.insertExclusionRange(MetricExclusionRangeEntity(boardId = board, reason = "live", startMs = edge - 90_000, endMs = edge + 90_000, sampleCount = 4))
 
     assertEquals(MaintenanceJobOutcome.Completed, rebuildRideSummaries(dao))
     val first = dao.persisted()
     assertEquals(10, first.first.size)
-    assertTrue("free spin sees the fix across the edge",
+    assertTrue("free spin carries across the edge",
       first.second.any { it.reason == EXCLUSION_REASON_FREE_SPIN && it.startMs >= edge && it.startMs < edge + 10_000 })
     assertFalse("rebuild replaces both owned portions of the live range", first.second.any { it.reason == "live" })
     assertEquals(MaintenanceJobOutcome.Completed, rebuildRideSummaries(dao))
@@ -131,10 +127,10 @@ class MaintenanceJobsHostTest {
     assertEquals(MaintenanceJobOutcome.Completed, rebuildRideSummaries(dao))
     val settings = AppSettings(movingSpeedThresholdKmh = 2.999_999)
     val fingerprint = RideSummariesJob.fingerprint(settings)
-    assertEquals("1|moving=300|freeSpinDelta=1200|freeSpinCap=1500", fingerprint)
+    assertEquals("2|moving=300", fingerprint)
     dao.publishMaintenanceFingerprint(RideSummariesJob.id, fingerprint, 1)
     assertEquals(fingerprint, dao.storedMaintenanceFingerprint(RideSummariesJob.id))
-    assertNotEquals(fingerprint, RideSummariesJob.fingerprint(settings.copy(freeSpinMaxSpeedDeltaKmh = 10.0)))
+    assertNotEquals(fingerprint, RideSummariesJob.fingerprint(settings.copy(movingSpeedThresholdKmh = 5.0)))
     db.close()
   }
 }

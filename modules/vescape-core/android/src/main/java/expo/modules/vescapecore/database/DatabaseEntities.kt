@@ -7,8 +7,6 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import expo.modules.vescapecore.telemetry.DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH
-import expo.modules.vescapecore.telemetry.DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH
 import expo.modules.vescapecore.telemetry.DEFAULT_HISTORY_METRIC_HOT_RANGES
 import expo.modules.vescapecore.telemetry.DEFAULT_RIDE_SPLIT_GAP_MINUTES
 import expo.modules.vescapecore.telemetry.RideWeather
@@ -427,8 +425,6 @@ data class AppSettings(
   val directionPointLatitude: Double? = null,
   val directionPointLongitude: Double? = null,
   val movingSpeedThresholdKmh: Double = 3.0,
-  val freeSpinMaxSpeedDeltaKmh: Double = DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
-  val freeSpinStationaryBoardCapKmh: Double = DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
   val rideSplitGapMinutes: Int = DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   val distanceUnit: String = "km",
   val temperatureUnit: String = "celsius",
