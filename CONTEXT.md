@@ -459,6 +459,10 @@ _Avoid_: Rider profile, User, Profile
 A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, the phone's own battery, their **Direction Point** when set, plus optional speed, **Battery SoC Estimate**, motor and controller temperatures and Board name when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale. A Rider whose connection closed without leaving stays in the Group Ride as away, frozen at their last Rider Presence, until they leave or the Group Ride ends.
 _Avoid_: Position update, presence ping, location share, group telemetry
 
+**Rider Signal**:
+A **Rider's** call to their **Group Ride** that something is wrong: one fixed kind (board problem, out of battery, rider down, wait for me, need help), pinned at the location it was sent from. Every other Rider hears it and sees it on the map. Distinct from **Rider Presence**: it keeps its own frozen location and lifetime, and it is shared even inside a **Privacy Zone**, because sending one is an explicit opt-in. A Rider has at most one; a new kind replaces it, and it ends when the Rider clears it, after 10 minutes, or when they leave. Away Riders keep theirs until it ends. Ephemeral and server-relayed like Rider Presence. Agreed, not yet built (#638).
+_Avoid_: SOS, alarm, alert, distress call, help request
+
 ## Relationships
 
 - A **Board** has at most one **Board Link**; absence means the Board is offline-only or not yet linked.
