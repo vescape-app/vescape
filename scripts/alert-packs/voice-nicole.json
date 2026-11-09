@@ -164,7 +164,7 @@
     "groupRide.signal.board": {
       "start": ["Rider has a board problem."],
       "full": {
-        "start": ["Someone's board is acting up.", "A rider has a board problem. Not it."]
+        "start": ["Someone's board is acting up.", "A rider's board gave up."]
       }
     },
     "groupRide.signal.battery": {

@@ -31,6 +31,13 @@ internal func appCuePriority(_ cue: String) -> AnnouncementPriority? {
   }
 }
 
+/// Whether app cue `cue` speaks its voice line after the effect at `voiceLevel`. Rider Signal cues
+/// are safety calls and speak at every level but `off`; the rest only at `full`.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AnnouncementQueue.kt `appCueSpeaks`
+internal func appCueSpeaks(_ cue: String, voiceLevel: String) -> Bool {
+  GroupRideCues.isSignalCue(cue) ? voiceLevel != "off" : voiceLevel == "full"
+}
+
 /// Quiet time after a connect before anything but a `.connection` item plays.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AnnouncementQueue.kt `ANNOUNCEMENT_SETTLE_MS`
 let announcementSettleMs: Int64 = 4_000

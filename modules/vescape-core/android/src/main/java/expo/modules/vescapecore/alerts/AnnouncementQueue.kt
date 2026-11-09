@@ -30,6 +30,15 @@ internal fun appCuePriority(cue: String): AnnouncementPriority? = when {
 }
 
 /**
+ * Whether app cue [cue] speaks its voice line after the effect at [voiceLevel]. Rider Signal cues
+ * are safety calls and speak at every level but `off`; the rest only at `full`.
+ *
+ * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `appCueSpeaks`
+ */
+internal fun appCueSpeaks(cue: String, voiceLevel: String): Boolean =
+    if (GroupRideCues.isSignalCue(cue)) voiceLevel != "off" else voiceLevel == "full"
+
+/**
  * Quiet time after a connect before anything but a [AnnouncementPriority.CONNECTION] item plays.
  *
  * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `announcementSettleMs`

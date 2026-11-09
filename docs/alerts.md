@@ -93,7 +93,9 @@ Speech comes from a second app-wide choice next to Sound effects:
   speaks app cues and Group Ride events:
   the cue's effect, then its voice line (`on` → `boardConnection.connected`, `off` → `boardConnection.lost`, `error` →
   `system.error`, `ride.end`, and each `groupRide.*` cue under its own key). Off, Minimal and
-  Standard play their effect only; settings previews of a pack's cues never speak. Custom rules
+  Standard play their effect only, except Rider Signal cues (`groupRide.signal.*`): safety calls
+  that speak at Minimal and Standard too, so a group hears who sent what. Settings previews of a
+  pack's cues never speak. Custom rules
   speak whatever the level, with its wording (Off reads as Standard).
 - **Group Ride cues**, all native from `GroupRideObserver`: `groupRide.created` (a new ride the
   rider created, or one within the 40 km nearby radius of the latest GPS position), `groupRide.joined` (the rider joined),
@@ -124,7 +126,8 @@ Speech comes from a second app-wide choice next to Sound effects:
   roster after joining or our reconnect play nothing. A signal cue wins over a social cue from the
   same roster, and `down`/`help` over the other kinds; another Rider's new signal wins over `sent`,
   and `ok` over `cleared`. They are safety calls, so the app sounds
-  switch does not mute them; Voice level and muted alerts apply as for any app cue.
+  switch does not mute them, and they speak at every Voice level but Off; muted alerts apply as for
+  any app cue.
 
 A `voice(<severity>):<key>:<value>` sound plays the effects pack's `severity.<severity>` sound
 once, then the voice line, starting once the sound has finished, or 1.5 s after it starts if it runs longer (the same timing as TTS). Native
