@@ -118,8 +118,10 @@ internal fun MirrorScreen(
     // Tap or back: hide the card on the wrist and land on the gauges.
     val hideRideNotice = {
         rideNotice?.let { notice ->
-            // #652 sends the dismiss to the phone from here.
+            // Hide locally first, then ask the phone to dismiss for real. A lost command leaves the
+            // notice hidden only on the wrist; the phone card stays until dismissed there.
             MirrorIntakeState.apply { hideRideNotice(notice.id, notice.rev) }
+            sender.sendDismissNotice(notice.id)
         }
         showClosePrompt = false
         scope.launch {

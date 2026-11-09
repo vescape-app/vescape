@@ -24,6 +24,7 @@ private const val COMMAND_KIND_MIRROR_AWAKE: Byte = 2
 private const val COMMAND_KIND_LIGHTS: Byte = 3
 private const val COMMAND_KIND_TILT_LOCK: Byte = 4
 private const val COMMAND_KIND_TILT_CANCEL: Byte = 5
+private const val COMMAND_KIND_DISMISS_NOTICE: Byte = 6
 
 /**
  * How often the Mirror re-states its wake level while it is on screen. The phone stops pushing
@@ -94,6 +95,10 @@ fun encodeTiltLockCommand(value: Int): ByteArray =
 
 /** `[kind, 0]`: ease whatever tilt is commanded back to neutral — the phone pad's cancel. */
 fun encodeTiltCancelCommand(): ByteArray = byteArrayOf(COMMAND_KIND_TILT_CANCEL, 0)
+
+/** Dismiss the Ride Notice holding [id] on the phone; one value byte, like every other kind. */
+fun encodeDismissNoticeCommand(id: Int): ByteArray =
+    byteArrayOf(COMMAND_KIND_DISMISS_NOTICE, id.coerceIn(0, 255).toByte())
 
 /**
  * Fire-and-forget send of the rider's *current* intent to every connected node, off the UI thread.
@@ -178,6 +183,21 @@ class CommandSender(context: Context) {
         } catch (rejected: RejectedExecutionException) {
             // The wrist app is going away; the board keeps whatever the last accepted write set.
             Log.w("VescapeWear", "Lights command dropped after shutdown", rejected)
+        }
+    }
+
+    /**
+     * Dismiss Ride Notice [id] on the phone. Queued in order like [sendLights]. No retry: a lost
+     * command degrades to "hidden only on the wrist" — the wrist's local hide still holds, and the
+     * phone keeps showing the notice until the rider dismisses it there.
+     *
+     * @parity /watch/watchos/PhoneLink.swift `hideRideNotice`
+     */
+    fun sendDismissNotice(id: Int) {
+        try {
+            sends.execute { sendPayload(encodeDismissNoticeCommand(id)) }
+        } catch (rejected: RejectedExecutionException) {
+            Log.w("VescapeWear", "Notice dismiss dropped after shutdown", rejected)
         }
     }
 

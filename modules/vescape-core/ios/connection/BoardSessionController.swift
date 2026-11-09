@@ -2833,6 +2833,8 @@ internal final class BoardSessionController: VescGattListener {
     case .move(let direction): watchMoveRelay.accept(direction)
     case .tiltLock(let value): watchTiltLock(value)
     case .tiltCancel: watchTiltCancel()
+    // Process-wide like the notices themselves: the same dismiss the phone card calls.
+    case .dismissNotice(let id): RideNotices.shared.dismiss(id: id)
     }
   }
 

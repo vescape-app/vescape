@@ -22,6 +22,7 @@ internal const val WATCH_COMMAND_KIND_MIRROR_AWAKE = 2
 internal const val WATCH_COMMAND_KIND_LIGHTS = 3
 internal const val WATCH_COMMAND_KIND_TILT_LOCK = 4
 internal const val WATCH_COMMAND_KIND_TILT_CANCEL = 5
+internal const val WATCH_COMMAND_KIND_DISMISS_NOTICE = 6
 
 /**
  * How long the phone keeps pushing frames after the last wrist wake-level tick. The Mirror re-sends
@@ -108,6 +109,12 @@ internal sealed interface WatchCommand {
 
     /** Ease tilt back to neutral — the same cancel the phone pad sends. */
     data object TiltCancel : WatchCommand
+
+    /**
+     * Dismiss the Ride Notice holding [id] now (0..255). Process-wide, no Board Session needed; an
+     * id that is no longer active is ignored by the engine.
+     */
+    data class DismissNotice(val id: Int) : WatchCommand
 }
 
 /** Pure bytes -> [WatchCommand] decoder. Returns null for a short buffer or an unknown kind. */
@@ -129,6 +136,7 @@ internal object WatchCommandDecoder {
             }
             WATCH_COMMAND_KIND_TILT_LOCK -> WatchCommand.TiltLock(bytes[1].toInt() and 0xff)
             WATCH_COMMAND_KIND_TILT_CANCEL -> WatchCommand.TiltCancel
+            WATCH_COMMAND_KIND_DISMISS_NOTICE -> WatchCommand.DismissNotice(bytes[1].toInt() and 0xff)
             else -> null
         }
     }

@@ -36,6 +36,12 @@ class WatchCommandTest {
     }
 
     @Test
+    fun `a notice dismiss carries the id as one unsigned byte`() {
+        assertArrayEquals(byteArrayOf(6, 1), encodeDismissNoticeCommand(1))
+        assertArrayEquals(byteArrayOf(6, -1), encodeDismissNoticeCommand(255))
+    }
+
+    @Test
     fun `a direction is clamped so the wrist can never ask for more than one board move`() {
         assertArrayEquals(byteArrayOf(1, 1), encodeMoveCommand(127))
         assertArrayEquals(byteArrayOf(1, -1), encodeMoveCommand(-127))

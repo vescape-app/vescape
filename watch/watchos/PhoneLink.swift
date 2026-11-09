@@ -372,13 +372,17 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   /// The rider tapped the card away: hidden on the wrist until the phone posts a new revision.
-  /// #652 sends the dismiss to the phone from here.
+  /// Also asks the phone to dismiss it, so the card leaves both devices.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `hideRideNotice`
   @MainActor
   func hideRideNotice(_ notice: RideNoticeFrameItem) {
     intake.hideRideNotice(id: notice.id, rev: notice.rev)
     publishIntake()
+    // The phone dismisses for real and pushes the shorter list back. Fire-and-forget like every
+    // command: a lost one (phone unreachable included) leaves the notice hidden only on the wrist,
+    // and the phone card stays until dismissed there.
+    send(.dismissNotice(notice.id))
   }
 
   private func acceptRideNotices(_ bytes: Data) {
