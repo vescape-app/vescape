@@ -188,6 +188,24 @@ internal class GroupRideObserver(
         emitConnection("idle")
     }
 
+    /**
+     * [stop] for a deliberate Exit: a participating rider with an open socket first sends `leave`,
+     * so the relay drops them now instead of holding them as away until its expiry. OkHttp writes
+     * queued frames before the close frame, so the `leave` is flushed ahead of the close. With the
+     * socket down nothing is sent; the relay's away expiry removes the rider. Every other stop path
+     * (App Status block, Auto close, JS runtime restarts) uses plain [stop] and keeps them away.
+     *
+     * @platform-diff iOS has no deliberate Exit: its Live Activity offers only Stop ride and the
+     * `exitApp` caller is the Android back button, so an iOS rider is removed by the away expiry.
+     */
+    fun leaveAndStop() {
+        handler.post {
+            val ws = webSocket
+            if (participating && ws != null && linkOpen) send(ws, JSONObject().put("type", "leave"))
+            stop()
+        }
+    }
+
     /** Replay the current observe state to a JS runtime that just re-subscribed. */
     private fun resync() {
         emitConnection(lastConnection)
@@ -491,7 +509,8 @@ internal class GroupRideObserver(
                 }
                 val rideId = if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() }
                 if (rideId != null && rideId == joinedRideId) {
-                    cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, riderId)?.let(onCue)
+                    val awayIds = riders.filter { it["away"] == true }.mapNotNull { it["id"] as? String }.toSet()
+                    cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, awayIds, riderId)?.let(onCue)
                 }
                 emitRoster(rideId, riders)
             }

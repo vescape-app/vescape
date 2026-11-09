@@ -1114,6 +1114,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         notificationController.cancel()
         stopCurrentBoardSession(emitDisconnected = true)
         forceStopGps()
+        // The rider is done riding, so a joined Group Ride hears them leave rather than go away.
+        // Posted ahead of `stopSelf`, so it runs before `onServiceDestroy` stops the observer.
+        groupRideObserver.leaveAndStop()
         closeAppTask()
         service.stopSelf()
     }

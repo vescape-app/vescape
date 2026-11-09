@@ -98,10 +98,16 @@ Speech comes from a second app-wide choice next to Sound effects:
 - **Group Ride cues**, all native from `GroupRideObserver`: `groupRide.created` (a new ride the
   rider created, or one within the 40 km nearby radius of the latest GPS position), `groupRide.joined` (the rider joined),
   `groupRide.riderJoined` (a Rider id not seen before in the joined ride), `groupRide.riderLeft`
-  (another Rider's id left the roster, which the relay does only on a manual leave),
+  (another Rider who was live in the previous roster left it: a manual leave, or an Android Exit),
   `groupRide.lost` (the joined ride's relay socket has been down for 15 s), `groupRide.restored`
   (rejoined after a `lost`). A Rider whose link drops stays in the roster as away, so going away
-  or coming back plays nothing. The seen ids are kept per joined ride: the first roster after
+  or coming back plays nothing, and an away Rider leaving the roster (the relay drops them after
+  30 min away, or their late `leave` arrives) plays nothing either. Several Riders leaving in one
+  roster play one `riderLeft` when at least one of them was live. Exit from the Android
+  notification or the back button (and swiping the app away) sends `leave` before closing the
+  socket when the rider is in a ride and connected, so the others hear them leave; with the socket
+  down nothing is sent and the relay's away expiry removes them. No other stop sends `leave`, and
+  iOS has no Exit. The seen ids are kept per joined ride: the first roster after
   joining seeds them silently, and leaving, joining another ride, stopping, an online block or the
   ride ending clears them. A rejoin within the 15 s plays neither `lost` nor `restored`, a longer
   outage plays one `lost`, and the first roster after our own rejoin only catches up, so our

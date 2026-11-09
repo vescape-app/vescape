@@ -10,11 +10,12 @@ import org.junit.Test
 class GroupRideCuesTest {
     private val cues = GroupRideCues()
 
-    private fun roster(vararg ids: String, rideId: String = "ride") = cues.roster(rideId, ids.toList(), "me")
+    private fun roster(vararg ids: String, away: Set<String> = emptySet(), rideId: String = "ride") =
+        cues.roster(rideId, ids.toList(), away, "me")
 
-    private fun joinedWith(vararg ids: String) {
+    private fun joinedWith(vararg ids: String, away: Set<String> = emptySet()) {
         assertEquals("groupRide.joined", cues.joined("ride"))
-        assertNull(roster(*ids))
+        assertNull(roster(*ids, away = away))
     }
 
     @Test
@@ -39,6 +40,38 @@ class GroupRideCuesTest {
 
         assertEquals("groupRide.riderLeft", roster("me", "ola"))
         assertNull(roster("me", "ola"))
+    }
+
+    @Test
+    fun `a rider removed while away plays nothing`() {
+        joinedWith("me", "ola", "kai")
+
+        assertNull(roster("me", "ola", "kai", away = setOf("kai")))
+        assertNull(roster("me", "ola"))
+    }
+
+    @Test
+    fun `a rider away in the first roster leaves silently`() {
+        joinedWith("me", "ola", "kai", away = setOf("kai"))
+
+        assertNull(roster("me", "ola"))
+    }
+
+    @Test
+    fun `a rider back from away who then leaves cues riderLeft`() {
+        joinedWith("me", "ola")
+        assertNull(roster("me", "ola", away = setOf("ola")))
+        assertNull(roster("me", "ola"))
+
+        assertEquals("groupRide.riderLeft", roster("me"))
+    }
+
+    @Test
+    fun `several riders removed at once cue one riderLeft only when one was live`() {
+        joinedWith("me", "ola", "kai", "zoe", "ian", away = setOf("kai", "zoe"))
+
+        assertNull(roster("me", "ola", "ian", away = setOf("ian")))
+        assertEquals("groupRide.riderLeft", roster("me"))
     }
 
     @Test

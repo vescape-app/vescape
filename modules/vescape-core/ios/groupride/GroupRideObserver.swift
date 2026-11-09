@@ -440,8 +440,14 @@ internal final class GroupRideObserver: NSObject {
     case "roster":
       let riders = (json["riders"] as? [Any] ?? []).compactMap { riderView($0 as? [String: Any]) }
       let rideId = (json["rideId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+      let awayIds = Set(riders.filter { $0["away"] as? Bool == true }.compactMap { $0["id"] as? String })
       if let rideId, rideId == joinedRideId,
-        let cue = cues.roster(rideId: rideId, riderIds: riders.compactMap { $0["id"] as? String }, ownRiderId: riderId)
+        let cue = cues.roster(
+          rideId: rideId,
+          riderIds: riders.compactMap { $0["id"] as? String },
+          awayIds: awayIds,
+          ownRiderId: riderId
+        )
       {
         onCue(cue)
       }

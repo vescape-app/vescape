@@ -5,13 +5,13 @@ import XCTest
 final class GroupRideCuesTests: XCTestCase {
   private var cues = GroupRideCues()
 
-  private func roster(_ ids: String..., rideId: String = "ride") -> String? {
-    cues.roster(rideId: rideId, riderIds: ids, ownRiderId: "me")
+  private func roster(_ ids: String..., away: Set<String> = [], rideId: String = "ride") -> String? {
+    cues.roster(rideId: rideId, riderIds: ids, awayIds: away, ownRiderId: "me")
   }
 
-  private func joined(with ids: String...) {
+  private func joined(with ids: String..., away: Set<String> = []) {
     XCTAssertEqual(cues.joined("ride"), "groupRide.joined")
-    XCTAssertNil(cues.roster(rideId: "ride", riderIds: ids, ownRiderId: "me"))
+    XCTAssertNil(cues.roster(rideId: "ride", riderIds: ids, awayIds: away, ownRiderId: "me"))
   }
 
   func testTheFirstRosterAfterJoiningSeedsTheRideSilently() {
@@ -33,6 +33,34 @@ final class GroupRideCuesTests: XCTestCase {
 
     XCTAssertEqual(roster("me", "ola"), "groupRide.riderLeft")
     XCTAssertNil(roster("me", "ola"))
+  }
+
+  func testARiderRemovedWhileAwayPlaysNothing() {
+    joined(with: "me", "ola", "kai")
+
+    XCTAssertNil(roster("me", "ola", "kai", away: ["kai"]))
+    XCTAssertNil(roster("me", "ola"))
+  }
+
+  func testARiderAwayInTheFirstRosterLeavesSilently() {
+    joined(with: "me", "ola", "kai", away: ["kai"])
+
+    XCTAssertNil(roster("me", "ola"))
+  }
+
+  func testARiderBackFromAwayWhoThenLeavesCuesRiderLeft() {
+    joined(with: "me", "ola")
+    XCTAssertNil(roster("me", "ola", away: ["ola"]))
+    XCTAssertNil(roster("me", "ola"))
+
+    XCTAssertEqual(roster("me"), "groupRide.riderLeft")
+  }
+
+  func testSeveralRidersRemovedAtOnceCueOneRiderLeftOnlyWhenOneWasLive() {
+    joined(with: "me", "ola", "kai", "zoe", "ian", away: ["kai", "zoe"])
+
+    XCTAssertNil(roster("me", "ola", "ian", away: ["ian"]))
+    XCTAssertEqual(roster("me"), "groupRide.riderLeft")
   }
 
   func testANewRiderWinsOverOneLeavingInTheSameRoster() {
