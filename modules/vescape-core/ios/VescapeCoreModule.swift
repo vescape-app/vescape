@@ -308,6 +308,7 @@ public class VescapeCoreModule: Module {
       // Emits were gated while hidden; the screen must not keep a stale running state.
       self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
       self.emitRideNotices(RideNotices.shared.current)
+      RideNotices.shared.expireNow()
     }
     OnAppEntersBackground {
       self.frontendActive = false
@@ -508,22 +509,29 @@ public class VescapeCoreModule: Module {
       RideNotices.shared.dismiss(id: id)
     }
     Function("devPostRideNotice") { (notice: [String: Any]) in
-      guard let severity = RideNoticeSeverity(rawValue: notice["severity"] as? String ?? "") else {
-        throw NSError(domain: "VescapeCore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown Ride Notice severity"])
+      guard
+        let severity = RideNoticeSeverity(rawValue: notice["severity"] as? String ?? ""),
+        let key = notice["key"] as? String,
+        let title = notice["title"] as? String,
+        let details = notice["details"] as? String,
+        let postedAt = (notice["postedAt"] as? NSNumber)?.int64Value,
+        let revision = notice["revision"] as? String
+      else {
+        throw NSError(domain: "VescapeCore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid Ride Notice"])
       }
       let lat = (notice["lat"] as? NSNumber)?.doubleValue
       let lng = (notice["lng"] as? NSNumber)?.doubleValue
       RideNotices.shared.post(
-        key: notice["key"] as? String ?? "",
+        key: key,
         content: RideNoticeContent(
           severity: severity,
-          title: notice["title"] as? String ?? "",
-          details: notice["details"] as? String ?? "",
-          postedAt: (notice["postedAt"] as? NSNumber)?.int64Value ?? 0,
+          title: title,
+          details: details,
+          postedAt: postedAt,
           location: lat.flatMap { lat in lng.map { RideNoticeLocation(lat: lat, lng: $0) } },
           expiresAt: (notice["expiresAt"] as? NSNumber)?.int64Value
         ),
-        revision: notice["revision"] as? String ?? ""
+        revision: revision
       )
     }
     Function("devClearRideNotice") { (key: String) in
@@ -2253,14 +2261,14 @@ public class VescapeCoreModule: Module {
     ]
   }
 
-  /// True only when the app is foregrounded and JS is actively listening to `name`. Gates the
-  /// coordinator's JS-facing emits so the telemetry firehose sleeps in the background.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `shouldEmitToFrontend`
   private func emitRideNotices(_ notices: [RideNotice]) {
     guard shouldEmitToFrontend("onRideNotices") else { return }
     sendEvent("onRideNotices", ["notices": notices.map { $0.toMap() }])
   }
 
+  /// True only when the app is foregrounded and JS is actively listening to `name`. Gates the
+  /// coordinator's JS-facing emits so the telemetry firehose sleeps in the background.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `shouldEmitToFrontend`
   private func shouldEmitToFrontend(_ name: String) -> Bool {
     frontendActive && observedEvents.contains(name)
   }

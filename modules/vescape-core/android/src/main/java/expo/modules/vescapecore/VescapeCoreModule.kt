@@ -477,6 +477,7 @@ class VescapeCoreModule : Module() {
       // Emits were gated while hidden; the screen must not keep a stale running state.
       emitMaintenanceState(MaintenanceRunner.snapshot())
       emitRideNotices(RideNotices.current)
+      RideNotices.expireNow()
     }
     OnActivityEntersBackground {
       frontendActive = false

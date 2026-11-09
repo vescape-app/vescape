@@ -4058,7 +4058,6 @@ export async function clearDiagnosticEvents(): Promise<void> {
 // Board Warnings
 // ---------------------------------------------------------------------------
 
-/** Pull the full current Board Warning list across all boards — used for the foreground catch-up. */
 /**
  * One visible Ride Notice. `id` (1–255) addresses it in a dismiss; `rev` (1–255, wraps) bumps when
  * the source posts a new revision. `postedAt` and `expiresAt` are source-supplied epoch ms.
@@ -4116,6 +4115,7 @@ export function addRideNoticesListener(cb: (event: RideNoticesEvent) => void): E
   return emitter.addListener('onRideNotices', cb)
 }
 
+/** Pull the full current Board Warning list across all boards — used for the foreground catch-up. */
 export async function getBoardWarnings(): Promise<BoardWarning[]> {
   return native.getBoardWarnings()
 }

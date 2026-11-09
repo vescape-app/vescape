@@ -22,7 +22,7 @@ object RideNotices {
     private val handler = Handler(Looper.getMainLooper())
     private val engine = RideNoticeEngine()
     private val listeners = CopyOnWriteArrayList<(List<RideNotice>) -> Unit>()
-    private val expiryTick = Runnable { mutate { engine.tick(System.currentTimeMillis()) } }
+    private val expiryTick = Runnable { expireNow() }
 
     /** The visible notices, most urgent first. Safe to read from any thread. */
     @Volatile
@@ -43,6 +43,12 @@ object RideNotices {
     fun clear(key: String) = mutate { engine.clear(key) }
 
     fun dismiss(id: Int) = mutate { engine.dismiss(id) }
+
+    /**
+     * Drop anything already past `expiresAt`. The expiry timer runs on uptime, which stops while the
+     * device sleeps, so a surface coming back calls this before trusting [current].
+     */
+    fun expireNow() = mutate { engine.tick(System.currentTimeMillis()) }
 
     /** Listen for the ordered visible list. Returns the unsubscribe. */
     fun addListener(listener: (List<RideNotice>) -> Unit): () -> Unit {

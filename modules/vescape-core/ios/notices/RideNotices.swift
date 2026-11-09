@@ -17,8 +17,15 @@ final class RideNotices {
   private var listeners: [UUID: ([RideNotice]) -> Void] = [:]
   private var expiryWork: DispatchWorkItem?
 
-  /// The visible notices, most urgent first. Read on main.
-  private(set) var current: [RideNotice] = []
+  private let currentLock = NSLock()
+  private var currentStorage: [RideNotice] = []
+
+  /// The visible notices, most urgent first. Safe to read from any thread.
+  var current: [RideNotice] {
+    currentLock.lock()
+    defer { currentLock.unlock() }
+    return currentStorage
+  }
 
   private init() {}
 
@@ -42,6 +49,12 @@ final class RideNotices {
     mutate { $0.dismiss(id: id) }
   }
 
+  /// Drop anything already past `expiresAt`. The expiry timer is suspended while the app is in the
+  /// background, so a surface coming back calls this before trusting `current`.
+  func expireNow() {
+    mutate { $0.tick(nowMs: Self.nowMs()) }
+  }
+
   /// Listen for the ordered visible list, called on main. Returns the unsubscribe.
   @discardableResult
   func addListener(_ listener: @escaping ([RideNotice]) -> Void) -> () -> Void {
@@ -55,8 +68,11 @@ final class RideNotices {
       let changed = block(self.engine)
       self.scheduleExpiry()
       guard changed else { return }
-      self.current = self.engine.active
-      self.listeners.values.forEach { $0(self.current) }
+      let notices = self.engine.active
+      self.currentLock.lock()
+      self.currentStorage = notices
+      self.currentLock.unlock()
+      self.listeners.values.forEach { $0(notices) }
     }
   }
 
@@ -64,12 +80,10 @@ final class RideNotices {
     expiryWork?.cancel()
     expiryWork = nil
     guard let next = engine.nextExpiryAt() else { return }
-    let work = DispatchWorkItem { [weak self] in
-      self?.mutate { $0.tick(nowMs: Self.nowMs()) }
-    }
+    let work = DispatchWorkItem { [weak self] in self?.expireNow() }
     expiryWork = work
     let delay = max(0, Double(next - Self.nowMs()) / 1000)
-    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    DispatchQueue.main.asyncAfter(wallDeadline: .now() + delay, execute: work)
   }
 
   private func onMain(_ block: @escaping () -> Void) {

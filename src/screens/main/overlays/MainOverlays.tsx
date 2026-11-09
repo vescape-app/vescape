@@ -116,6 +116,9 @@ export function MainOverlays({
   const mapControlsBottom = Math.max(insets.bottom, 12) + 12
   const mapModeTabsTop = Math.max(insets.top, 8)
   const belowMapModeTabsTop = mapModeTabsTop + 48
+  // Telemetry: clear the top bar's left column (Social + Rider Signal trigger). Map: clear the
+  // Map Point status banner's slot.
+  const rideNoticeTop = mode === 'telemetry' ? mapModeTabsTop + 92 : belowMapModeTabsTop + 48
   const mapTargetBottom = Math.max(insets.bottom, 16) + 16
   const isMapMode = mode === 'map' || mode === 'weather' || mode === 'legalLimits'
 
@@ -225,7 +228,7 @@ export function MainOverlays({
 
       {mode === 'telemetry' || mode === 'map' ? (
         <RideNoticeOverlay
-          top={belowMapModeTabsTop}
+          top={rideNoticeTop}
           ownLocation={map.ownLocation}
           onShowOnMap={map.onFocusCoordinate}
         />
