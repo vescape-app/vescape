@@ -524,19 +524,17 @@ internal final class GroupRideObserver: NSObject {
       // Replay a signal intent made while the relay was out of reach.
       if let pendingSignal { submitSignal(pendingSignal) }
     case "roster":
-      let riderObjects = (json["riders"] as? [Any] ?? []).compactMap { $0 as? [String: Any] }
-      let riders = riderObjects.compactMap { riderView($0) }
+      var riders: [[String: Any?]] = []
+      var signals: [String: RiderSignal] = [:]
+      for obj in (json["riders"] as? [Any] ?? []).compactMap({ $0 as? [String: Any] }) {
+        let signal = RiderSignal.parse(obj["signal"] as? [String: Any])
+        guard let view = riderView(obj, signal: signal), let id = view["id"] as? String else { continue }
+        riders.append(view)
+        if let signal { signals[id] = signal }
+      }
       let rideId = (json["rideId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
       let awayIds = Set(riders.filter { $0["away"] as? Bool == true }.compactMap { $0["id"] as? String })
       let now = (json["now"] as? NSNumber)?.int64Value
-      var signals: [String: RiderSignal] = [:]
-      for obj in riderObjects {
-        if let id = obj["id"] as? String, !id.isEmpty,
-          let signal = RiderSignal.parse(obj["signal"] as? [String: Any])
-        {
-          signals[id] = signal
-        }
-      }
       if let rideId, rideId == joinedRideId,
         let cue = cues.roster(
           rideId: rideId,
@@ -630,7 +628,7 @@ internal final class GroupRideObserver: NSObject {
   }
 
   /// @parity /modules/vescape-core/src/index.ts `GroupRideRider`
-  private func riderView(_ obj: [String: Any]?) -> [String: Any?]? {
+  private func riderView(_ obj: [String: Any]?, signal: RiderSignal?) -> [String: Any?]? {
     guard let obj, let id = obj["id"] as? String, !id.isEmpty else { return nil }
     return [
       "id": id,
@@ -641,7 +639,7 @@ internal final class GroupRideObserver: NSObject {
       // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
       "away": obj["away"] as? Bool ?? false,
       "lastSeen": (obj["lastSeen"] as? NSNumber)?.int64Value ?? 0,
-      "signal": RiderSignal.parse(obj["signal"] as? [String: Any])?.toMap(),
+      "signal": signal?.toMap(),
     ]
   }
 

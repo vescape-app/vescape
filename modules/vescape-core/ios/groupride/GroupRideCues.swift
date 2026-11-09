@@ -102,7 +102,8 @@ struct GroupRideCues {
       syncing = false
       return nil
     }
-    if let signal = raised.first(where: \.kind.critical) ?? raised.first {
+    // Critical kinds first, then the latest; deterministic like the Android peer.
+    if let signal = raised.max(by: { ($0.kind.critical ? 1 : 0, $0.startedAt) < ($1.kind.critical ? 1 : 0, $1.startedAt) }) {
       return Self.signalCuePrefix + signal.kind.rawValue
     }
     if cleared { return Self.signalCuePrefix + "ok" }

@@ -97,7 +97,7 @@ internal class GroupRideCues {
             return null
         }
         return when {
-            raised.isNotEmpty() -> signalCue(raised.minBy { if (it.kind.critical) 0 else 1 }.kind.wire)
+            raised.isNotEmpty() -> signalCue(raised.maxWith(compareBy({ it.kind.critical }, { it.startedAt })).kind.wire)
             cleared.isNotEmpty() -> signalCue("ok")
             arrived.isNotEmpty() -> "groupRide.riderJoined"
             left.isNotEmpty() -> "groupRide.riderLeft"

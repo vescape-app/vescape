@@ -601,20 +601,20 @@ internal class GroupRideObserver(
             "roster" -> {
                 val ridersJson = json.optJSONArray("riders")
                 val riders = mutableListOf<Map<String, Any?>>()
+                val signals = mutableMapOf<String, RiderSignal>()
                 if (ridersJson != null) {
                     for (i in 0 until ridersJson.length()) {
-                        riderView(ridersJson.optJSONObject(i))?.let(riders::add)
+                        val obj = ridersJson.optJSONObject(i)
+                        val signal = RiderSignal.parse(obj?.optJSONObject("signal"))
+                        val view = riderView(obj, signal) ?: continue
+                        riders += view
+                        signal?.let { signals[view["id"] as String] = it }
                     }
                 }
                 val rideId = if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() }
                 val now = if (json.has("now")) json.optLong("now") else null
                 if (rideId != null && rideId == joinedRideId) {
                     val awayIds = riders.filter { it["away"] == true }.mapNotNull { it["id"] as? String }.toSet()
-                    val signals = (0 until (ridersJson?.length() ?: 0)).mapNotNull { i ->
-                        val obj = ridersJson?.optJSONObject(i) ?: return@mapNotNull null
-                        val signal = RiderSignal.parse(obj.optJSONObject("signal")) ?: return@mapNotNull null
-                        obj.optString("id").takeIf { it.isNotEmpty() }?.let { it to signal }
-                    }.toMap()
                     cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, awayIds, riderId, signals, now)?.let(onCue)
                 }
                 emitRoster(rideId, riders, now)
@@ -701,7 +701,7 @@ internal class GroupRideObserver(
     }
 
     /** @parity /modules/vescape-core/src/index.ts `GroupRideRider` */
-    private fun riderView(obj: JSONObject?): Map<String, Any?>? {
+    private fun riderView(obj: JSONObject?, signal: RiderSignal?): Map<String, Any?>? {
         obj ?: return null
         val id = obj.optString("id")
         if (id.isEmpty()) return null
@@ -714,7 +714,7 @@ internal class GroupRideObserver(
             // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
             "away" to obj.optBoolean("away"),
             "lastSeen" to obj.optLong("lastSeen"),
-            "signal" to RiderSignal.parse(obj.optJSONObject("signal"))?.toMap(),
+            "signal" to signal?.toMap(),
         )
     }
 
