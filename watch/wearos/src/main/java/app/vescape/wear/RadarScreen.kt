@@ -94,7 +94,6 @@ fun RadarScreen(visible: Boolean) {
 
     val isRound = LocalConfiguration.current.isScreenRound
     val image = RadarState.images[frame.timeSec]
-    val riderColor = navColor()
     val timelineColor = weatherColor("cloud-rain")
     val progress = if (loaded.size <= 1) 1f else frameIndex / (loaded.size - 1).toFloat()
     // How far out each ring sits, as a fraction of the face. A ring is dropped rather than clipped
@@ -131,7 +130,7 @@ fun RadarScreen(visible: Boolean) {
                 for ((_, fraction) in rings) {
                     drawCircle(GuideColor, faceRadius * fraction, centre, style = ringStroke)
                 }
-                drawRiderDot(centre, riderColor)
+                drawRiderDot(centre, NavColor)
             }
             drawTimeline(centre, size.minDimension / 2f, progress, timelineColor)
         }

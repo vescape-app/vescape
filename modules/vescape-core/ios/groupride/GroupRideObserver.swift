@@ -29,16 +29,20 @@ internal final class GroupRideObserver: NSObject {
   private var stopped = true { didSet { notifyParticipationIfChanged() } }
   private var riderId: String?
   private var riderName: String?
-  private var riderColor: String?
   private var joinedRideId: String? { didSet { notifyParticipationIfChanged() } }
   private var desiredRideId: String? {
     didSet {
-      if desiredRideId != oldValue { rideLinkLost = false }
+      if desiredRideId != oldValue { forgetRideCues() }
       notifyParticipationIfChanged()
     }
   }
-  /// The joined ride's socket dropped; its next `joined` is a restore, not a fresh join.
-  private var rideLinkLost = false
+  /// Cue decisions for the joined ride; any change of the wanted ride forgets them.
+  private var cues = GroupRideCues()
+  /// The rider left while the socket was down, so the relay still holds them in the ride as away.
+  /// Sent once right after the next `hello`; a create/join before then supersedes it, since the
+  /// relay leaves the previous ride itself.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `pendingLeave`
+  private var pendingLeave = false
   /// Last `participating` value handed to the owner, so only real transitions are reported.
   private var lastParticipating = false
   private var lastPresence: RiderPresence?
@@ -54,6 +58,8 @@ internal final class GroupRideObserver: NSObject {
   /// Remover for the App Status listener; non-nil only while observing.
   private var onlineUnsub: (() -> Void)?
   private var reconnectWork: Cancellable?
+  /// The pending `groupRide.lost`, armed when the joined ride's link drops.
+  private var lostWork: Cancellable?
   private var heartbeatWork: Cancellable?
   private var pingWork: Cancellable?
 
@@ -194,6 +200,9 @@ internal final class GroupRideObserver: NSObject {
     emitConnection("blocked")
   }
 
+  /// The socket is open: frames sent now reach the relay after this connection's `hello`.
+  private var linkOpen: Bool { webSocket != nil && lastConnection == "connected" }
+
   /// Callback may arrive after its socket was closed or superseded.
   private func isCurrentSocket(_ task: URLSessionWebSocketTask) -> Bool {
     !stopped && !online.onlineBlocked && webSocket === task
@@ -204,7 +213,7 @@ internal final class GroupRideObserver: NSObject {
   /// location egress while observing. The server fans the result back as `ride-created`, so there
   /// is no local optimistic insert here. No-op when not connected. With `auto` the relay joins the
   /// nearest ride in range instead, creating only when none is.
-  func create(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Bool) {
+  func create(riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Bool) {
     onMain { [self] in
       guard !stopped, let ws = webSocket else {
         NSLog("[GroupRide] create ignored: observe socket not connected")
@@ -216,7 +225,8 @@ internal final class GroupRideObserver: NSObject {
         desiredRideId = nil
         stopHeartbeat()
       }
-      sendHello(ws, riderId: riderId, riderName: riderName, riderColor: riderColor)
+      pendingLeave = false
+      sendHello(ws, riderId: riderId, riderName: riderName)
       lastPresence = RiderPresence(lat: lat, lng: lng)
       var create: [String: Any] = ["type": "create", "location": ["lat": lat, "lng": lng]]
       if let name, !name.trimmingCharacters(in: .whitespaces).isEmpty { create["name"] = name }
@@ -225,7 +235,7 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  func join(riderId: String, riderName: String, riderColor: String?, rideId: String, presence: RiderPresence?) {
+  func join(riderId: String, riderName: String, rideId: String, presence: RiderPresence?) {
     onMain { [self] in
       guard !stopped, let ws = webSocket else {
         NSLog("[GroupRide] join ignored: observe socket not connected")
@@ -237,7 +247,8 @@ internal final class GroupRideObserver: NSObject {
         joinedRideId = nil
         stopHeartbeat()
       }
-      sendHello(ws, riderId: riderId, riderName: riderName, riderColor: riderColor)
+      pendingLeave = false
+      sendHello(ws, riderId: riderId, riderName: riderName)
       desiredRideId = rideId
       if let presence { lastPresence = presence }
       var join: [String: Any] = ["type": "join", "rideId": rideId]
@@ -246,10 +257,16 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
+  /// Leave the ride now, connected or not: no rejoin on reconnect, no cues for it, and JS sees the
+  /// same departure as a live leave. While the socket is down the relay keeps the rider as away, so
+  /// the leave waits in `pendingLeave` for the next connection.
   func leave() {
     onMain { [self] in
-      guard let ws = webSocket else { return }
-      send(ws, ["type": "leave"])
+      if let ws = webSocket, linkOpen {
+        send(ws, ["type": "leave"])
+      } else if joinedRideId != nil || desiredRideId != nil {
+        pendingLeave = true
+      }
       joinedRideId = nil
       desiredRideId = nil
       stopHeartbeat()
@@ -258,17 +275,16 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  /// Re-bind this connection's Rider identity after a name/color change. Updates the remembered
-  /// identity (so a reconnect re-announces the fresh values) and, while the socket is live,
-  /// re-sends `hello` — the server re-emits the roster so peers update without a rejoin. No-op when
-  /// the observe socket is not connected.
-  func updateIdentity(riderId: String, riderName: String, riderColor: String?) {
+  /// Re-bind this connection's Rider identity after a name change. Updates the remembered identity
+  /// (so a reconnect re-announces the fresh values) and, while the socket is live, re-sends `hello`
+  /// — the server re-emits the roster so peers update without a rejoin. No-op when the observe
+  /// socket is not connected.
+  func updateIdentity(riderId: String, riderName: String) {
     onMain { [self] in
       self.riderId = riderId
       self.riderName = riderName
-      self.riderColor = riderColor
       guard !stopped, let ws = webSocket else { return }
-      sendHello(ws, riderId: riderId, riderName: riderName, riderColor: riderColor)
+      sendHello(ws, riderId: riderId, riderName: riderName)
     }
   }
 
@@ -324,7 +340,11 @@ internal final class GroupRideObserver: NSObject {
       reconnectAttempt = 0
       emitConnection("connected")
       guard let id = riderId, let name = riderName else { return }
-      sendHello(task, riderId: id, riderName: name, riderColor: riderColor)
+      sendHello(task, riderId: id, riderName: name)
+      if pendingLeave {
+        pendingLeave = false
+        send(task, ["type": "leave"])
+      }
       if let rideId = desiredRideId { sendJoin(task, rideId: rideId, presence: lastPresence) }
     }
   }
@@ -347,9 +367,11 @@ internal final class GroupRideObserver: NSObject {
     webSocket = nil
     stopPing()
     if stopped { return }
-    if joinedRideId != nil {
-      rideLinkLost = true
-      onCue("groupRide.lost")
+    if cues.linkDropped() {
+      lostWork = scheduler.postDelayed(GroupRideCues.lostGraceMs) { [weak self] in
+        guard let self, let cue = self.cues.graceElapsed() else { return }
+        self.onCue(cue)
+      }
     }
     joinedRideId = nil
     stopHeartbeat()
@@ -408,15 +430,28 @@ internal final class GroupRideObserver: NSObject {
       }
     case "joined":
       guard let rideId = json["rideId"] as? String, !rideId.isEmpty else { return }
-      if rideId != joinedRideId { onCue(rideLinkLost ? "groupRide.restored" : "groupRide.joined") }
-      rideLinkLost = false
-      joinedRideId = rideId
+      // The wanted ride first: switching rides forgets the old ride's cues.
       desiredRideId = rideId
+      cancelLost()
+      if let cue = cues.joined(rideId) { onCue(cue) }
+      joinedRideId = rideId
       startHeartbeat()
       emit("onGroupRideJoined", ["rideId": rideId])
     case "roster":
       let riders = (json["riders"] as? [Any] ?? []).compactMap { riderView($0 as? [String: Any]) }
-      emitRoster((json["rideId"] as? String).flatMap { $0.isEmpty ? nil : $0 }, riders)
+      let rideId = (json["rideId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+      let awayIds = Set(riders.filter { $0["away"] as? Bool == true }.compactMap { $0["id"] as? String })
+      if let rideId, rideId == joinedRideId,
+        let cue = cues.roster(
+          rideId: rideId,
+          riderIds: riders.compactMap { $0["id"] as? String },
+          awayIds: awayIds,
+          ownRiderId: riderId
+        )
+      {
+        onCue(cue)
+      }
+      emitRoster(rideId, riders)
     case "error":
       if let message = json["message"] as? String, !message.isEmpty { handleError(message) }
     default:
@@ -439,15 +474,10 @@ internal final class GroupRideObserver: NSObject {
     emit("onGroupRideError", ["message": message])
   }
 
-  private func sendHello(_ task: URLSessionWebSocketTask, riderId: String, riderName: String, riderColor: String?) {
+  private func sendHello(_ task: URLSessionWebSocketTask, riderId: String, riderName: String) {
     self.riderId = riderId
     self.riderName = riderName
-    self.riderColor = riderColor
-    var hello: [String: Any] = ["type": "hello", "riderId": riderId, "name": riderName]
-    if let riderColor, !riderColor.trimmingCharacters(in: .whitespaces).isEmpty {
-      hello["color"] = riderColor
-    }
-    send(task, hello)
+    send(task, ["type": "hello", "riderId": riderId, "name": riderName])
   }
 
   private func sendJoin(_ task: URLSessionWebSocketTask, rideId: String, presence: RiderPresence?) {
@@ -501,15 +531,17 @@ internal final class GroupRideObserver: NSObject {
     ]
   }
 
+  /// @parity /modules/vescape-core/src/index.ts `GroupRideRider`
   private func riderView(_ obj: [String: Any]?) -> [String: Any?]? {
     guard let obj, let id = obj["id"] as? String, !id.isEmpty else { return nil }
     return [
       "id": id,
       "name": obj["name"] as? String ?? "",
-      "color": (obj["color"] as? String).flatMap { $0.isEmpty ? nil : $0 },
       "presence": Self.presenceMap(obj["presence"] as? [String: Any]),
       "trail": trailList(obj["trail"] as? [Any]),
       "stale": obj["stale"] as? Bool ?? false,
+      // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
+      "away": obj["away"] as? Bool ?? false,
       "lastSeen": (obj["lastSeen"] as? NSNumber)?.int64Value ?? 0,
     ]
   }
@@ -566,19 +598,6 @@ internal final class GroupRideObserver: NSObject {
     return GeoMath.distanceMeters(own.lat, own.lng, rideLat, rideLng) <= nearbyRadiusM
   }
 
-  /// Cue for a joined ride's roster going from `previous` to `next` rider ids: `riderJoined` when
-  /// someone else arrived, else `riderLeft` when someone else left. An empty `previous` is the first
-  /// roster after joining, so nobody "joined" then.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `rosterCue`
-  static func rosterCue(previous: [String], next: [String], ownRiderId: String?) -> String? {
-    if previous.isEmpty { return nil }
-    let before = Set(previous.filter { $0 != ownRiderId })
-    let after = Set(next.filter { $0 != ownRiderId })
-    if !after.subtracting(before).isEmpty { return "groupRide.riderJoined" }
-    if !before.subtracting(after).isEmpty { return "groupRide.riderLeft" }
-    return nil
-  }
-
   /// A `riderView` map as the typed entry native keeps; nil when it carries no id. No presence
   /// leaves the Rider unplaced.
   ///
@@ -591,9 +610,9 @@ internal final class GroupRideObserver: NSObject {
     return GroupRideRosterRider(
       id: id,
       name: view["name"] as? String ?? "",
-      color: view["color"] as? String,
       position: lat.flatMap { lat in lng.map { WatchGeoPoint(latitude: lat, longitude: $0) } },
       stale: view["stale"] as? Bool ?? false,
+      away: view["away"] as? Bool ?? false,
       lastSeenMs: view["lastSeen"] as? Int64 ?? 0,
       soc: presence?["soc"] as? Double,
       motorTempC: presence?["motorTemp"] as? Double,
@@ -611,15 +630,6 @@ internal final class GroupRideObserver: NSObject {
   }
 
   private func emitRoster(_ rideId: String?, _ riders: [[String: Any?]]) {
-    if let rideId, rideId == joinedRideId, rideId == lastRosterRideId,
-      let cue = Self.rosterCue(
-        previous: lastRoster.compactMap { $0["id"] as? String },
-        next: riders.compactMap { $0["id"] as? String },
-        ownRiderId: riderId
-      )
-    {
-      onCue(cue)
-    }
     lastRosterRideId = rideId
     lastRoster = riders
     lastRosterRiders = riders.compactMap(Self.rosterRider)
@@ -630,6 +640,17 @@ internal final class GroupRideObserver: NSObject {
   private func emitConnection(_ state: String) {
     lastConnection = state
     emit("onGroupRideConnection", ["state": state])
+  }
+
+  /// The rider is out of the ride: drop its cue state, a pending `lost` included.
+  private func forgetRideCues() {
+    cues.reset()
+    cancelLost()
+  }
+
+  private func cancelLost() {
+    lostWork?.cancel()
+    lostWork = nil
   }
 
   private func startHeartbeat() {

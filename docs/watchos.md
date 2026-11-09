@@ -459,9 +459,7 @@ push of a cold process races session activation — a write refused then is retr
 `activationDidCompleteWith`, not mistaken for a write that landed.
 
 The settings bag itself is Android's, key for key. A missing key is the wrist default, never a
-zero: an absent Board Move strength coerced to a number reads as a rider choosing 0 %. A cleared
-rider colour rides as a blank string rather than an absent key, so the wrist can tell "cleared"
-from "phone too old to send it".
+zero: an absent Board Move strength coerced to a number reads as a rider choosing 0 %.
 
 `WatchSettings.swift` and `WatchCommand.swift` are compiled into both the phone and the watch
 target, the arrangement `WatchFrame.swift` already used — Android duplicates both by convention
@@ -987,7 +985,7 @@ Mark unavailable checks as not run. First confirm `frames` increases and inspect
    Record the network arrangement used; airplane mode may also disconnect the phone.
 8. **Routes:** start, replace and clear navigation. Check replacement redraws without interpolating
    across route origins. Reopen the watch app and confirm a cleared route stays cleared.
-9. **Settings:** change rider color, nav arrow and Move strength, both with the watch app open and
+9. **Settings:** change nav arrow and Move strength, both with the watch app open and
    closed. Confirm the latest values after reopening.
 10. **Cadence:** record receive/apply Hz and separately measured render cadence for each configured
     refresh rate, awake and wrist-down. Explain any gaps.

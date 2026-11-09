@@ -64,7 +64,6 @@ internal class GroupRideObserver(
         }
     private var riderId: String? = null
     private var riderName: String? = null
-    private var riderColor: String? = null
     private var joinedRideId: String? = null
         set(value) {
             field = value
@@ -72,12 +71,20 @@ internal class GroupRideObserver(
         }
     private var desiredRideId: String? = null
         set(value) {
-            if (value != field) rideLinkLost = false
+            if (value != field) forgetRideCues()
             field = value
             notifyParticipationIfChanged()
         }
-    /** The joined ride's socket dropped; its next `joined` is a restore, not a fresh join. */
-    private var rideLinkLost = false
+    /** Cue decisions for the joined ride; any change of the wanted ride forgets them. */
+    private val cues = GroupRideCues()
+    /**
+     * The rider left while the socket was down, so the relay still holds them in the ride as away.
+     * Sent once right after the next `hello`; a create/join before then supersedes it, since the
+     * relay leaves the previous ride itself.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `pendingLeave`
+     */
+    private var pendingLeave = false
 
     /** Last `participating` value handed to the owner, so only real transitions are reported. */
     private var lastParticipating = false
@@ -94,6 +101,7 @@ internal class GroupRideObserver(
     /** Remover for the App Status listener; non-null only while observing. */
     private var onlineUnsub: (() -> Unit)? = null
     private val reconnectRunnable = Runnable { connect() }
+    private val lostRunnable = Runnable { cues.graceElapsed()?.let(onCue) }
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
             val ws = webSocket
@@ -180,6 +188,24 @@ internal class GroupRideObserver(
         emitConnection("idle")
     }
 
+    /**
+     * [stop] for a deliberate Exit: a participating rider with an open socket first sends `leave`,
+     * so the relay drops them now instead of holding them as away until its expiry. OkHttp writes
+     * queued frames before the close frame, so the `leave` is flushed ahead of the close. With the
+     * socket down nothing is sent; the relay's away expiry removes the rider. Every other stop path
+     * (App Status block, Auto close, JS runtime restarts) uses plain [stop] and keeps them away.
+     *
+     * @platform-diff iOS has no deliberate Exit: its Live Activity offers only Stop ride and the
+     * `exitApp` caller is the Android back button, so an iOS rider is removed by the away expiry.
+     */
+    fun leaveAndStop() {
+        handler.post {
+            val ws = webSocket
+            if (participating && ws != null && linkOpen) send(ws, JSONObject().put("type", "leave"))
+            stop()
+        }
+    }
+
     /** Replay the current observe state to a JS runtime that just re-subscribed. */
     private fun resync() {
         emitConnection(lastConnection)
@@ -221,6 +247,9 @@ internal class GroupRideObserver(
         emitConnection("blocked")
     }
 
+    /** The socket is open: frames sent now reach the relay after this connection's `hello`. */
+    private val linkOpen: Boolean get() = webSocket != null && lastConnection == "connected"
+
     /** Callback may arrive after its socket was closed or superseded. */
     private fun isCurrentSocket(ws: WebSocket): Boolean =
         !stopped && !online.onlineBlocked && webSocket === ws
@@ -232,7 +261,7 @@ internal class GroupRideObserver(
      * `ride-created`, so there is no local optimistic insert here. No-op when not connected.
      * With [auto] the relay joins the nearest ride in range instead, creating only when none is.
      */
-    fun create(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Boolean) {
+    fun create(riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Boolean) {
         handler.post {
             val ws = webSocket
             if (stopped || ws == null) {
@@ -245,7 +274,8 @@ internal class GroupRideObserver(
                 desiredRideId = null
                 stopHeartbeat()
             }
-            sendHello(ws, riderId, riderName, riderColor)
+            pendingLeave = false
+            sendHello(ws, riderId, riderName)
             lastPresence = RiderPresence(lat = lat, lng = lng, heading = null, speed = null, soc = null, motorTemp = null, ctrlTemp = null, phoneBattery = null, boardName = null)
             val create = JSONObject()
                 .put("type", "create")
@@ -256,7 +286,7 @@ internal class GroupRideObserver(
         }
     }
 
-    fun join(riderId: String, riderName: String, riderColor: String?, rideId: String, presence: RiderPresence?) {
+    fun join(riderId: String, riderName: String, rideId: String, presence: RiderPresence?) {
         handler.post {
             val ws = webSocket
             if (stopped || ws == null) {
@@ -269,7 +299,8 @@ internal class GroupRideObserver(
                 joinedRideId = null
                 stopHeartbeat()
             }
-            sendHello(ws, riderId, riderName, riderColor)
+            pendingLeave = false
+            sendHello(ws, riderId, riderName)
             desiredRideId = rideId
             presence?.let { lastPresence = it }
             val join = JSONObject()
@@ -280,10 +311,19 @@ internal class GroupRideObserver(
         }
     }
 
+    /**
+     * Leave the ride now, connected or not: no rejoin on reconnect, no cues for it, and JS sees the
+     * same departure as a live leave. While the socket is down the relay keeps the rider as away,
+     * so the leave waits in [pendingLeave] for the next connection.
+     */
     fun leave() {
         handler.post {
-            val ws = webSocket ?: return@post
-            send(ws, JSONObject().put("type", "leave"))
+            val ws = webSocket
+            if (ws != null && linkOpen) {
+                send(ws, JSONObject().put("type", "leave"))
+            } else if (joinedRideId != null || desiredRideId != null) {
+                pendingLeave = true
+            }
             joinedRideId = null
             desiredRideId = null
             stopHeartbeat()
@@ -293,19 +333,18 @@ internal class GroupRideObserver(
     }
 
     /**
-     * Re-bind this connection's Rider identity after a name/color change. Updates the
-     * remembered identity (so a reconnect re-announces the fresh values) and, while the
-     * socket is live, re-sends `hello` — the server re-emits the roster so peers update
-     * without a rejoin. No-op when the observe socket is not connected.
+     * Re-bind this connection's Rider identity after a name change. Updates the remembered
+     * identity (so a reconnect re-announces the fresh values) and, while the socket is live,
+     * re-sends `hello` — the server re-emits the roster so peers update without a rejoin.
+     * No-op when the observe socket is not connected.
      */
-    fun updateIdentity(riderId: String, riderName: String, riderColor: String?) {
+    fun updateIdentity(riderId: String, riderName: String) {
         handler.post {
             this.riderId = riderId
             this.riderName = riderName
-            this.riderColor = riderColor
             val ws = webSocket
             if (stopped || ws == null) return@post
-            sendHello(ws, riderId, riderName, riderColor)
+            sendHello(ws, riderId, riderName)
         }
     }
 
@@ -343,9 +382,13 @@ internal class GroupRideObserver(
                 emitConnection("connected")
                 val id = riderId
                 val name = riderName
-                if (id != null && name != null) sendHello(ws, id, name, riderColor)
-                val rideId = desiredRideId
-                if (rideId != null && id != null && name != null) sendJoin(ws, rideId, lastPresence)
+                if (id == null || name == null) return@post
+                sendHello(ws, id, name)
+                if (pendingLeave) {
+                    pendingLeave = false
+                    send(ws, JSONObject().put("type", "leave"))
+                }
+                desiredRideId?.let { sendJoin(ws, it, lastPresence) }
             }
         }
 
@@ -385,10 +428,7 @@ internal class GroupRideObserver(
     private fun scheduleReconnect() {
         webSocket = null
         if (stopped) return
-        if (joinedRideId != null) {
-            rideLinkLost = true
-            onCue("groupRide.lost")
-        }
+        if (cues.linkDropped()) handler.postDelayed(lostRunnable, GroupRideCues.LOST_GRACE_MS)
         joinedRideId = null
         stopHeartbeat()
         emitConnection("disconnected")
@@ -450,11 +490,11 @@ internal class GroupRideObserver(
             "joined" -> {
                 val rideId = json.optString("rideId")
                 if (rideId.isNotEmpty()) {
-                    val restored = rideLinkLost
-                    if (rideId != joinedRideId) onCue(if (restored) "groupRide.restored" else "groupRide.joined")
-                    rideLinkLost = false
-                    joinedRideId = rideId
+                    // The wanted ride first: switching rides forgets the old ride's cues.
                     desiredRideId = rideId
+                    handler.removeCallbacks(lostRunnable)
+                    cues.joined(rideId)?.let(onCue)
+                    joinedRideId = rideId
                     startHeartbeat()
                     emit("onGroupRideJoined", mapOf("rideId" to rideId))
                 }
@@ -467,10 +507,12 @@ internal class GroupRideObserver(
                         riderView(ridersJson.optJSONObject(i))?.let(riders::add)
                     }
                 }
-                emitRoster(
-                    if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() },
-                    riders,
-                )
+                val rideId = if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() }
+                if (rideId != null && rideId == joinedRideId) {
+                    val awayIds = riders.filter { it["away"] == true }.mapNotNull { it["id"] as? String }.toSet()
+                    cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, awayIds, riderId)?.let(onCue)
+                }
+                emitRoster(rideId, riders)
             }
             "error" -> {
                 val message = json.optString("message")
@@ -495,16 +537,15 @@ internal class GroupRideObserver(
         emit("onGroupRideError", mapOf("message" to message))
     }
 
-    private fun sendHello(ws: WebSocket, riderId: String, riderName: String, riderColor: String?) {
+    private fun sendHello(ws: WebSocket, riderId: String, riderName: String) {
         this.riderId = riderId
         this.riderName = riderName
-        this.riderColor = riderColor
-        val hello = JSONObject()
-            .put("type", "hello")
-            .put("riderId", riderId)
-            .put("name", riderName)
-        if (!riderColor.isNullOrBlank()) hello.put("color", riderColor)
-        send(ws, hello)
+        send(ws,
+            JSONObject()
+                .put("type", "hello")
+                .put("riderId", riderId)
+                .put("name", riderName),
+        )
     }
 
     private fun sendJoin(ws: WebSocket, rideId: String, presence: RiderPresence?) {
@@ -554,6 +595,7 @@ internal class GroupRideObserver(
         )
     }
 
+    /** @parity /modules/vescape-core/src/index.ts `GroupRideRider` */
     private fun riderView(obj: JSONObject?): Map<String, Any?>? {
         obj ?: return null
         val id = obj.optString("id")
@@ -561,11 +603,11 @@ internal class GroupRideObserver(
         return mapOf(
             "id" to id,
             "name" to obj.optString("name"),
-            // optString turns JSON null into the literal string "null" — guard with isNull.
-            "color" to if (obj.isNull("color")) null else obj.optString("color").takeIf { it.isNotEmpty() },
             "presence" to presenceMap(obj.optJSONObject("presence")),
             "trail" to trailList(obj.optJSONArray("trail")),
             "stale" to obj.optBoolean("stale"),
+            // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
+            "away" to obj.optBoolean("away"),
             "lastSeen" to obj.optLong("lastSeen"),
         )
     }
@@ -585,10 +627,6 @@ internal class GroupRideObserver(
     }
 
     private fun emitRoster(rideId: String?, riders: List<Map<String, Any?>>) {
-        if (rideId != null && rideId == joinedRideId && rideId == lastRosterRideId) {
-            rosterCue(lastRoster.mapNotNull { it["id"] as? String }, riders.mapNotNull { it["id"] as? String }, riderId)
-                ?.let(onCue)
-        }
         lastRosterRideId = rideId
         lastRoster = riders
         lastRosterRiders = riders.mapNotNull(::rosterRider)
@@ -599,6 +637,12 @@ internal class GroupRideObserver(
     private fun emitConnection(state: String) {
         lastConnection = state
         emit("onGroupRideConnection", mapOf("state" to state))
+    }
+
+    /** The rider is out of the ride: drop its cue state, a pending `lost` included. */
+    private fun forgetRideCues() {
+        cues.reset()
+        handler.removeCallbacks(lostRunnable)
     }
 
     private fun startHeartbeat() {
@@ -673,25 +717,6 @@ internal class GroupRideObserver(
         }
 
         /**
-         * Cue for a joined ride's roster going from [previous] to [next] rider ids: `riderJoined`
-         * when someone else arrived, else `riderLeft` when someone else left. An empty [previous]
-         * is the first roster after joining, so nobody "joined" then.
-         *
-         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterCue`
-         */
-        internal fun rosterCue(previous: List<String>, next: List<String>, ownRiderId: String?): String? {
-            if (previous.isEmpty()) return null
-            val others = { ids: List<String> -> ids.filter { it != ownRiderId }.toSet() }
-            val before = others(previous)
-            val after = others(next)
-            return when {
-                (after - before).isNotEmpty() -> "groupRide.riderJoined"
-                (before - after).isNotEmpty() -> "groupRide.riderLeft"
-                else -> null
-            }
-        }
-
-        /**
          * A [riderView] map as the typed entry native keeps; null when it carries no id. No presence
          * leaves the Rider unplaced.
          *
@@ -705,9 +730,9 @@ internal class GroupRideObserver(
             return GroupRideRosterRider(
                 id = id,
                 name = view["name"] as? String ?: "",
-                color = view["color"] as? String,
                 position = if (lat != null && lng != null) GeoPoint(lat, lng) else null,
                 stale = view["stale"] as? Boolean ?: false,
+                away = view["away"] as? Boolean ?: false,
                 lastSeenMs = view["lastSeen"] as? Long ?: 0L,
                 soc = presence?.get("soc") as? Double,
                 motorTempC = presence?.get("motorTemp") as? Double,

@@ -1088,23 +1088,23 @@ internal class BoardSessionController(private val service: CoreForegroundService
         stopIfIdle()
     }
 
-    fun createGroupRide(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Boolean) {
-        groupRideObserver.create(riderId, riderName, riderColor, name, lat, lng, auto)
+    fun createGroupRide(riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Boolean) {
+        groupRideObserver.create(riderId, riderName, name, lat, lng, auto)
     }
 
-    fun joinGroupRide(riderId: String, riderName: String, riderColor: String?, rideId: String) {
+    fun joinGroupRide(riderId: String, riderName: String, rideId: String) {
         isStoppingService = false
         // No refresh here: the observer reports its own participation edge, which is both correctly
         // ordered behind its `handler.post` and the only way server-driven departures get seen.
-        groupRideObserver.join(riderId, riderName, riderColor, rideId, latestRiderPresence())
+        groupRideObserver.join(riderId, riderName, rideId, latestRiderPresence())
     }
 
     fun leaveGroupRide() {
         groupRideObserver.leave()
     }
 
-    fun updateGroupRideIdentity(riderId: String, riderName: String, riderColor: String?) {
-        groupRideObserver.updateIdentity(riderId, riderName, riderColor)
+    fun updateGroupRideIdentity(riderId: String, riderName: String) {
+        groupRideObserver.updateIdentity(riderId, riderName)
     }
 
     fun exitFromNotification() {
@@ -1114,6 +1114,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         notificationController.cancel()
         stopCurrentBoardSession(emitDisconnected = true)
         forceStopGps()
+        // The rider is done riding, so a joined Group Ride hears them leave rather than go away.
+        // Posted ahead of `stopSelf`, so it runs before `onServiceDestroy` stops the observer.
+        groupRideObserver.leaveAndStop()
         closeAppTask()
         service.stopSelf()
     }

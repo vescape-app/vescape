@@ -17,8 +17,6 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt
 enum WatchSettingsKey {
-  /// Rider colour as the phone stores it: a `#RRGGBB` string, or blank for "no colour chosen".
-  static let riderColor = "riderColor"
   /// Board Move strength as a percentage of full scale; the wrist displays it but never applies it.
   static let boardMoveStrengthPercent = "boardMoveStrengthPercent"
   /// Whether the wrist draws the direction arrow over the route. Off hides the arrow, not the route.
@@ -57,7 +55,6 @@ let watchSettingsChannel = "settings"
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettings.kt `WATCH_SOURCE_SETTING_KEYS`
 let watchSourceSettingKeys: Set<String> = [
-  "riderColor",
   "boardMoveStrengthPercent",
   "wearNavArrowEnabled",
   "wearTelemetryTrailEnabled",
@@ -71,8 +68,6 @@ let watchSourceSettingKeys: Set<String> = [
 ]
 
 struct WatchSettings: Equatable {
-  /// `#RRGGBB` / `#AARRGGBB` as the phone's rider palette stores it; nil when the rider has none.
-  var riderColor: String?
   /// Null until a phone new enough to send it has pushed; the wrist then shows no number.
   var boardMoveStrengthPercent: Int?
   /// Off by default: an older phone never sends the key, and the arrow is opt-in until it works.
@@ -88,13 +83,11 @@ struct WatchSettings: Equatable {
   /// What the wrist holds before the first push lands, and what a cleared channel reads as.
   static let wristDefaults = WatchSettings()
 
-  /// The wire bag. Blank, not absent, for a cleared colour: an absent key would look like an older
-  /// phone that never sent one, and the wrist could not tell the two apart.
+  /// The wire bag.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettingsPusher.kt `push`
   var payload: [String: Any] {
     var payload: [String: Any] = [
-      WatchSettingsKey.riderColor: riderColor ?? "",
       WatchSettingsKey.navArrowEnabled: navArrowEnabled,
       WatchSettingsKey.telemetryTrailEnabled: telemetryTrailEnabled,
       WatchSettingsKey.telemetryGroupEnabled: telemetryGroupEnabled,
@@ -114,10 +107,7 @@ struct WatchSettings: Equatable {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `decode`
   static func decode(_ payload: [String: Any]?) -> WatchSettings {
     guard let payload else { return wristDefaults }
-    let color = (payload[WatchSettingsKey.riderColor] as? String)?
-      .trimmingCharacters(in: .whitespaces)
     return WatchSettings(
-      riderColor: (color?.isEmpty ?? true) ? nil : color,
       boardMoveStrengthPercent: (payload[WatchSettingsKey.boardMoveStrengthPercent] as? NSNumber)?.intValue,
       navArrowEnabled: payload[WatchSettingsKey.navArrowEnabled] as? Bool ?? wristDefaults.navArrowEnabled,
       telemetryTrailEnabled: payload[WatchSettingsKey.telemetryTrailEnabled] as? Bool ?? wristDefaults.telemetryTrailEnabled,

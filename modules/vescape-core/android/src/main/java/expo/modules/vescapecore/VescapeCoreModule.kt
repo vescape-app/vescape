@@ -1653,17 +1653,17 @@ class VescapeCoreModule : Module() {
     Function("stopGroupRideObserve") {
       CoreForegroundService.stopGroupRideObserve(context.applicationContext)
     }
-    Function("createGroupRide") { riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Boolean ->
-      CoreForegroundService.createGroupRide(context.applicationContext, riderId, riderName, riderColor, name, lat, lng, auto)
+    Function("createGroupRide") { riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Boolean ->
+      CoreForegroundService.createGroupRide(context.applicationContext, riderId, riderName, name, lat, lng, auto)
     }
-    Function("joinGroupRide") { riderId: String, riderName: String, riderColor: String?, rideId: String ->
-      CoreForegroundService.joinGroupRide(context.applicationContext, riderId, riderName, riderColor, rideId)
+    Function("joinGroupRide") { riderId: String, riderName: String, rideId: String ->
+      CoreForegroundService.joinGroupRide(context.applicationContext, riderId, riderName, rideId)
     }
     Function("leaveGroupRide") {
       CoreForegroundService.leaveGroupRide(context.applicationContext)
     }
-    Function("updateGroupRideIdentity") { riderId: String, riderName: String, riderColor: String? ->
-      CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName, riderColor)
+    Function("updateGroupRideIdentity") { riderId: String, riderName: String ->
+      CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName)
     }
   }
 

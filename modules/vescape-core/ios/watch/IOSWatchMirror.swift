@@ -107,7 +107,6 @@ extension WatchMirrorCoordinator {
       ?? AppDataRepository.defaultWearPushRateHz
     let strength = AppDataRepository.boardMoveStrengthPercent(settings["boardMoveStrengthPercent"] ?? nil)
     applySettings(WatchSettings(
-      riderColor: (settings["riderColor"] ?? nil) as? String,
       boardMoveStrengthPercent: strength,
       navArrowEnabled: (settings["wearNavArrowEnabled"] ?? nil) as? Bool ?? false,
       telemetryTrailEnabled: (settings["wearTelemetryTrailEnabled"] ?? nil) as? Bool ?? true,

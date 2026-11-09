@@ -20,12 +20,12 @@ enum Palette {
   static let warning = Color(red: 0.976, green: 0.451, blue: 0.086)  // orange #F97316
   static let critical = Color(red: 0.937, green: 0.267, blue: 0.267)  // red #EF4444 (status.error)
 
-  /// Phone live-trail violet, used until the Rider chooses a colour.
+  /// Phone live-trail violet.
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `TrailColor`
   /// @parity /src/constants/theme.ts `accentColors.dark.violet`
   static let trail = Color(red: 124.0 / 255, green: 111.0 / 255, blue: 239.0 / 255)
 
-  /// Navigation accent, used when the rider has not picked a colour of their own.
+  /// Navigation accent.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `NavColor`
   /// @parity /src/screens/main/map/NavigationMapLayers.tsx `NAVIGATION_ROUTE_COLOR`
@@ -48,14 +48,6 @@ enum Palette {
 
   /// The one colour ambient invents: a dimmed near-white the always-on panel can hold cheaply.
   static let ambientText = Color(red: 0.722, green: 0.769, blue: 0.808)  // #B8C4CE
-
-  /// The rider's chosen colour, resolved from the mirrored setting. Nil — unset, or a form this
-  /// build cannot parse — leaves the caller on the wrist's own palette.
-  ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `parseRiderColor`
-  static func rider(_ hex: String?) -> Color? {
-    parseWatchRiderColor(hex).map { Color(red: $0.red, green: $0.green, blue: $0.blue) }
-  }
 
   /// Condition slug into its colour. The phone resolves the slug from the WMO code, so the wrist
   /// never classifies weather — an unknown slug from a newer phone takes the neutral grey rather

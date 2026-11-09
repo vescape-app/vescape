@@ -6,7 +6,7 @@ import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { makeTrailLineString } from '@/helpers/mapGeometry'
-import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
+import { riderMapColor } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 
@@ -14,16 +14,14 @@ import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 // the group-ride counterpart to the device's own live trail.
 export function RiderTrail({
   rider,
-  index,
   highContrastRoutes,
 }: {
   rider: RosterRider
-  index: number
   highContrastRoutes: boolean
 }) {
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
-  const color = rosterRiderColor(rider, index, accents)
+  const color = riderMapColor(rider, accents)
   const shape = useMemo(
     () =>
       rider.trail && rider.trail.length >= 2
@@ -66,9 +64,9 @@ export function RiderTrail({
   )
 }
 
-export function RiderPresencePin({ rider, index }: { rider: RosterRider; index: number }) {
+export function RiderPresencePin({ rider }: { rider: RosterRider }) {
   const accents = useResolvedAccentColors()
-  const color = rosterRiderColor(rider, index, accents)
+  const color = riderMapColor(rider, accents)
   const heading = rider.presence?.heading ?? null
   if (!rider.presence) return null
 

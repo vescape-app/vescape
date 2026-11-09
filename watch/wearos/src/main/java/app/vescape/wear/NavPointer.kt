@@ -52,7 +52,7 @@ internal fun NavPointer(
     /** Rides the distance's line after it, e.g. the locked-tilt badge. */
     trailing: @Composable () -> Unit = {},
 ) {
-    val color = if (muted) DimText else navColor()
+    val color = if (muted) DimText else NavColor
 
     // The chevron alone is opt-in (phone: Settings > Watch) while its bearing is being worked on.
     // Everything else nav draws — route, rider dot, pin, distance — is untouched by the switch.

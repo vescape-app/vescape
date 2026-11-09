@@ -1,6 +1,5 @@
 package app.vescape.wear
 
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import expo.modules.vescapecore.telemetry.TelemetryLevel
 
@@ -19,28 +18,18 @@ internal val CtrlTempColor = Color(0xFFF97316) // orange.color (controllerTemp)
 internal val BatteryColor = Color(0xFF22C55E) // green.color
 internal val WarningColor = Color(0xFFF97316) // orange.color
 internal val CriticalColor = Color(0xFFEF4444) // red.color (status.error)
-/** Phone live-trail violet, used until the Rider chooses a colour.
+/** Phone live-trail violet.
  * @parity /watch/watchos/Palette.swift `trail`
  * @parity /src/constants/theme.ts `accentColors.dark.violet`
  */
 internal val TrailColor = Color(0xFF7C6FEF)
-/** Navigation route purple, used until the Rider chooses a colour.
+/** Navigation route purple.
  * @parity /src/screens/main/map/NavigationMapLayers.tsx `NAVIGATION_ROUTE_COLOR`
  */
 internal val NavColor = Color(0xFFA855F7) // purple.color (theme.map.user)
 internal val LightsColor = Color(0xFFF59E0B) // amber.color (theme.light.accent, board lights)
 internal val TiltColor = Color(0xFF06B6D4) // cyan.color (Remote Tilt)
 internal val ArmedColor = Color(0xFFF59E0B) // amber.color (a reset one tap away)
-
-/**
- * Nav accent the wrist actually draws with: the rider's own colour when they picked one on the
- * phone, so route, chevron and rider dot match the phone map instead of a hardcoded purple.
- */
-@Composable
-internal fun navColor(): Color = SettingsState.settings.value.riderColor ?: NavColor
-
-@Composable
-internal fun trailColor(): Color = SettingsState.settings.value.riderColor ?: TrailColor
 internal val AmbientText = Color(0xFFB8C4CE)
 
 /**

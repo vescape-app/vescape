@@ -1,7 +1,6 @@
 package app.vescape.wear
 
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.graphics.Color
 import expo.modules.vescapecore.watch.WatchMapGauges
 
 /**
@@ -17,9 +16,6 @@ import expo.modules.vescapecore.watch.WatchMapGauges
  * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
  */
 const val SETTINGS_PATH = "/settings"
-
-/** Rider colour as a `#RRGGBB` string; blank means the rider has not chosen one. */
-const val SETTING_RIDER_COLOR = "riderColor"
 
 /** Board Move strength, percent of full scale. Displayed on the wrist; the phone applies it. */
 const val SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
@@ -53,7 +49,6 @@ const val DEFAULT_TILT_RATE_PERCENT = 20
 
 /** Phone settings the wrist mirrors. Every field defaults to the wrist's own look. */
 data class WatchSettings(
-    val riderColor: Color? = null,
     val distanceUnit: String = "km",
     /** Off by default: an older phone never sends the key, and the arrow is opt-in until it works. */
     val navArrowEnabled: Boolean = false,
@@ -69,7 +64,6 @@ data class WatchSettings(
     companion object {
         /** Missing or unknown preference values from older/newer phones always mean metric. */
         fun decode(payload: Map<String, Any?>): WatchSettings = WatchSettings(
-            riderColor = parseRiderColor(payload[SETTING_RIDER_COLOR] as? String),
             navArrowEnabled = payload[SETTING_NAV_ARROW] as? Boolean ?: false,
             telemetryTrailEnabled = payload[SETTING_TELEMETRY_TRAIL] as? Boolean ?: true,
             telemetryGroupEnabled = payload[SETTING_TELEMETRY_GROUP] as? Boolean ?: true,
@@ -90,16 +84,4 @@ object SettingsState {
     fun accept(settings: WatchSettings) {
         this.settings.value = settings
     }
-}
-
-/**
- * `#RRGGBB` / `#AARRGGBB` (the form the phone's rider palette stores) into a [Color]. Anything else
- * — blank, a colour name, a future format — is null, which leaves the wrist on its own palette
- * rather than drawing a route in a colour nobody picked.
- */
-fun parseRiderColor(value: String?): Color? {
-    val hex = value?.trim()?.removePrefix("#") ?: return null
-    if (hex.length != 6 && hex.length != 8) return null
-    val rgb = hex.toLongOrNull(radix = 16) ?: return null
-    return Color(if (hex.length == 6) rgb or 0xFF000000L else rgb)
 }

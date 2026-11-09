@@ -415,23 +415,21 @@ class CoreForegroundService : Service() {
             @Suppress("UNUSED_PARAMETER") context: Context,
             riderId: String,
             riderName: String,
-            riderColor: String?,
             name: String?,
             lat: Double,
             lng: Double,
             auto: Boolean,
         ) {
-            instance?.controller?.createGroupRide(riderId, riderName, riderColor, name, lat, lng, auto)
+            instance?.controller?.createGroupRide(riderId, riderName, name, lat, lng, auto)
         }
 
         fun joinGroupRide(
             @Suppress("UNUSED_PARAMETER") context: Context,
             riderId: String,
             riderName: String,
-            riderColor: String?,
             rideId: String,
         ) {
-            instance?.controller?.joinGroupRide(riderId, riderName, riderColor, rideId)
+            instance?.controller?.joinGroupRide(riderId, riderName, rideId)
         }
 
         fun leaveGroupRide(@Suppress("UNUSED_PARAMETER") context: Context) {
@@ -442,9 +440,8 @@ class CoreForegroundService : Service() {
             @Suppress("UNUSED_PARAMETER") context: Context,
             riderId: String,
             riderName: String,
-            riderColor: String?,
         ) {
-            instance?.controller?.updateGroupRideIdentity(riderId, riderName, riderColor)
+            instance?.controller?.updateGroupRideIdentity(riderId, riderName)
         }
 
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {

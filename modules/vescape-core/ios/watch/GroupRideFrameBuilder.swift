@@ -23,60 +23,25 @@ enum GroupRideFrameBuilder {
     return GroupRideFrame(courseDeg: courseDeg, spanM: span, riders: riders)
   }
 
-  private struct Entry {
-    let rider: GroupRideRosterRider
-    let offset: (east: Double, north: Double)?
-    let stale: Bool
-    var distanceM: Double? { offset.map { ($0.east * $0.east + $0.north * $0.north).squareRoot() } }
-  }
-
   private static func place(roster: GroupRideRoster, own: WatchGeoPoint, nowMs: Int64) -> [GroupRideFrameRider] {
-    let fresh = roster.riders.filter { nowMs - $0.lastSeenMs < GROUP_RIDE_DROP_AFTER_MS }
-    let entries = fresh
+    let placed: [GroupRideFrameRider] = roster.riders
       .filter { $0.id != roster.ownRiderId }
-      .map { rider in
-        Entry(
-          rider: rider,
-          offset: rider.position.map { watchOffsetMeters(origin: own, point: $0) },
-          stale: rider.stale || nowMs - rider.lastSeenMs >= GROUP_RIDE_STALE_AFTER_MS
+      .compactMap { rider in
+        guard let position = rider.position else { return nil }
+        let offset = watchOffsetMeters(origin: own, point: position)
+        return GroupRideFrameRider(
+          id: rider.id,
+          name: rider.name,
+          // Stale riders keep their slot; the wrist mutes them at draw time.
+          colorArgb: groupRideRiderColor(rider.id),
+          eastM: offset.east,
+          northM: offset.north,
+          stale: rider.stale || rider.away || nowMs - rider.lastSeenMs >= GROUP_RIDE_STALE_AFTER_MS,
+          batteryPercent: rider.soc.flatMap { $0.isFinite ? Int((min(max($0, 0), 1) * 100).rounded()) : nil },
+          batteryLevel: TelemetryThresholds.batteryLevel(rider.soc),
+          heatLevel: TelemetryThresholds.heatLevel(motorTempC: rider.motorTempC, ctrlTempC: rider.ctrlTempC)
         )
       }
-      // The phone map's roster order, which is what its fallback tints are indexed by: fresh before
-      // stale, nearest first, the unplaced last by name.
-      .sorted { a, b in
-        if a.stale != b.stale { return !a.stale }
-        switch (a.distanceM, b.distanceM) {
-        case let (x?, y?) where x != y: return x < y
-        case (nil, _?): return false
-        case (_?, nil): return true
-        default: return a.rider.name < b.rider.name
-        }
-      }
-    // The phone roster pins the Rider's own entry first, so everyone else's index starts after it.
-    let first = fresh.contains { $0.id == roster.ownRiderId } ? 1 : 0
-    let placed: [GroupRideFrameRider] = entries.enumerated().compactMap { index, entry in
-      guard let offset = entry.offset else { return nil }
-      return GroupRideFrameRider(
-        id: entry.rider.id,
-        name: entry.rider.name,
-        colorArgb: parseRiderColor(entry.rider.color)
-          ?? GROUP_RIDE_FALLBACK_COLORS[(first + index) % GROUP_RIDE_FALLBACK_COLORS.count],
-        eastM: offset.east,
-        northM: offset.north,
-        stale: entry.stale,
-        batteryPercent: entry.rider.soc.flatMap { $0.isFinite ? Int((min(max($0, 0), 1) * 100).rounded()) : nil },
-        batteryLevel: TelemetryThresholds.batteryLevel(entry.rider.soc),
-        heatLevel: TelemetryThresholds.heatLevel(motorTempC: entry.rider.motorTempC, ctrlTempC: entry.rider.ctrlTempC)
-      )
-    }
     return Array(placed.sorted { $0.distanceM < $1.distanceM }.prefix(GROUP_RIDE_FRAME_MAX_RIDERS))
-  }
-
-  /// `#RRGGBB` -> opaque ARGB; anything else is no colour.
-  private static func parseRiderColor(_ color: String?) -> UInt32? {
-    guard var hex = color else { return nil }
-    if hex.hasPrefix("#") { hex.removeFirst() }
-    guard hex.count == 6, let rgb = UInt32(hex, radix: 16) else { return nil }
-    return 0xFF00_0000 | rgb
   }
 }

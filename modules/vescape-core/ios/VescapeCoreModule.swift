@@ -470,11 +470,10 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopGroupRideObserve()
     }
 
-    Function("createGroupRide") { (riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double, auto: Bool) in
+    Function("createGroupRide") { (riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Bool) in
       self.coordinator.createGroupRide(
         riderId: riderId,
         riderName: riderName,
-        riderColor: riderColor,
         name: name,
         lat: lat,
         lng: lng,
@@ -482,21 +481,16 @@ public class VescapeCoreModule: Module {
       )
     }
 
-    Function("joinGroupRide") { (riderId: String, riderName: String, riderColor: String?, rideId: String) in
-      self.coordinator.joinGroupRide(
-        riderId: riderId,
-        riderName: riderName,
-        riderColor: riderColor,
-        rideId: rideId
-      )
+    Function("joinGroupRide") { (riderId: String, riderName: String, rideId: String) in
+      self.coordinator.joinGroupRide(riderId: riderId, riderName: riderName, rideId: rideId)
     }
 
     Function("leaveGroupRide") {
       self.coordinator.leaveGroupRide()
     }
 
-    Function("updateGroupRideIdentity") { (riderId: String, riderName: String, riderColor: String?) in
-      self.coordinator.updateGroupRideIdentity(riderId: riderId, riderName: riderName, riderColor: riderColor)
+    Function("updateGroupRideIdentity") { (riderId: String, riderName: String) in
+      self.coordinator.updateGroupRideIdentity(riderId: riderId, riderName: riderName)
     }
 
     // MARK: Telemetry recording toggle

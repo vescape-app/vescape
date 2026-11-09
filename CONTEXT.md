@@ -456,7 +456,7 @@ An optional online identity that never gates the app's local, offline-first capa
 _Avoid_: Rider profile, User, Profile
 
 **Rider Presence**:
-A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, the phone's own battery, their **Direction Point** when set, plus optional speed, **Battery SoC Estimate**, motor and controller temperatures and Board name when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale, then drops from the Group Ride.
+A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, the phone's own battery, their **Direction Point** when set, plus optional speed, **Battery SoC Estimate**, motor and controller temperatures and Board name when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale. A Rider whose connection closed without leaving stays in the Group Ride as away, frozen at their last Rider Presence, until they leave or the Group Ride ends.
 _Avoid_: Position update, presence ping, location share, group telemetry
 
 ## Relationships

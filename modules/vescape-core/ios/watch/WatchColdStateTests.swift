@@ -65,11 +65,11 @@ final class WatchColdStateTests: XCTestCase {
   func testAChangedPayloadReplacesTheChannelWholesale() {
     let wire = Wire()
     let coldState = wire.coldState()
-    coldState.put(channel: watchSettingsChannel, payload: ["riderColor": "#FF0000", "navArrowEnabled": true])
-    coldState.put(channel: watchSettingsChannel, payload: ["riderColor": "", "navArrowEnabled": false])
+    coldState.put(channel: watchSettingsChannel, payload: ["distanceUnit": "mi", "navArrowEnabled": true])
+    coldState.put(channel: watchSettingsChannel, payload: ["distanceUnit": "km", "navArrowEnabled": false])
     XCTAssertEqual(wire.writes, 2)
     let settings = wire.context[watchSettingsChannel] as? [String: Any]
-    XCTAssertEqual(settings?["riderColor"] as? String, "")
+    XCTAssertEqual(settings?["distanceUnit"] as? String, "km")
     XCTAssertEqual(settings?["navArrowEnabled"] as? Bool, false)
   }
 

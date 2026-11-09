@@ -41,15 +41,6 @@ export const useRiderStore = create<RiderState>((set) => ({
           riderId = generateId()
           await updateSetting('riderId', riderId)
         }
-        // Clear the retired Social color without touching the Rider's id or name.
-        if (settings.riderColor != null) {
-          // A cleanup failure must not hide the Rider's existing identity.
-          try {
-            await updateSetting('riderColor', null)
-          } catch {
-            // Retried on the next load.
-          }
-        }
         set({
           riderId,
           riderName: settings.riderName ?? null,

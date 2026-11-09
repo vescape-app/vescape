@@ -6,6 +6,23 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * Shared test vector: the same ids must land in the same palette slots on every platform.
+ *
+ * @parity /src/modules/group-ride/lib/riderColor.test.ts `RIDER_COLOR_VECTOR`
+ * @parity /modules/vescape-core/ios/watch/GroupRideFrameBuilderTests.swift `riderColorVector`
+ */
+private val RIDER_COLOR_VECTOR = listOf(
+    "" to 1,
+    "a" to 0,
+    "rider-1" to 2,
+    "rider-7" to 3,
+    "rider-3" to 4,
+    "550e8400-e29b-41d4-a716-446655440000" to 2,
+    "Jonáš" to 4,
+    "Zoë" to 0,
+)
+
 /** @parity /modules/vescape-core/ios/watch/GroupRideFrameBuilderTests.swift */
 class GroupRideFrameBuilderTest {
     private val me = GeoPoint(52.0, 21.0)
@@ -14,10 +31,10 @@ class GroupRideFrameBuilderTest {
     private fun rider(
         id: String,
         position: GeoPoint? = GeoPoint(52.001, 21.0),
-        color: String? = "#FF0000",
         stale: Boolean = false,
+        away: Boolean = false,
         lastSeenMs: Long = nowMs,
-    ) = GroupRideRosterRider(id, id.uppercase(), color, position, stale, lastSeenMs)
+    ) = GroupRideRosterRider(id, id.uppercase(), position, stale, away, lastSeenMs)
 
     private fun build(
         riders: List<GroupRideRosterRider>,
@@ -66,16 +83,18 @@ class GroupRideFrameBuilderTest {
     }
 
     @Test
-    fun `riders without a position or silent past the drop window are left out`() {
-        val frame = build(
-            listOf(
-                rider("nowhere", position = null),
-                rider("gone", lastSeenMs = nowMs - GROUP_RIDE_DROP_AFTER_MS),
-                rider("ola"),
-            ),
-        )
+    fun `riders without a position are left out`() {
+        val frame = build(listOf(rider("nowhere", position = null), rider("ola")))
 
         assertEquals(listOf("ola"), frame.riders.map { it.id })
+    }
+
+    @Test
+    fun `an away rider stays at their last position, stale, however long silent`() {
+        val frame = build(listOf(rider("away", away = true, lastSeenMs = nowMs - 3_600_000L)))
+
+        assertEquals(listOf("away"), frame.riders.map { it.id })
+        assertTrue(frame.riders.single().stale)
     }
 
     @Test
@@ -91,35 +110,22 @@ class GroupRideFrameBuilderTest {
     }
 
     @Test
-    fun `a chosen colour is kept and a missing one falls back by roster position`() {
-        val frame = build(
-            listOf(
-                rider("picked", color = "#10C69A", position = GeoPoint(52.001, 21.0)),
-                rider("unpicked", color = null, position = GeoPoint(52.002, 21.0)),
-            ),
-        )
-
-        assertEquals(0xFF10C69A.toInt(), frame.riders[0].colorArgb)
-        // Second in the roster -> second fallback tint (green).
-        assertEquals(0xFF22C55E.toInt(), frame.riders[1].colorArgb)
+    fun `riders land in the shared palette slots by id`() {
+        for ((id, index) in RIDER_COLOR_VECTOR) assertEquals(id, index, groupRideRiderPaletteIndex(id))
     }
 
     @Test
-    fun `fallback colours follow the phone roster order - own rider first, then nearest`() {
-        val frame = GroupRideFrameBuilder.build(
-            GroupRideRoster(
-                "me",
-                listOf(
-                    rider("me", color = null),
-                    rider("far", position = GeoPoint(52.002, 21.0), color = null),
-                    rider("near", position = GeoPoint(52.001, 21.0), color = null),
-                ),
-            ),
-            me, courseDeg = null, spanM = null, nowMs = nowMs,
-        )
+    fun `a rider's colour follows their id, not distance, stale or the roster order`() {
+        val near = rider("rider-7", GeoPoint(52.001, 21.0))
+        val far = rider("rider-1", GeoPoint(52.002, 21.0))
+        val before = build(listOf(rider("me"), far, near))
+        // They swap places and one goes stale: nobody's colour moves.
+        val after = build(listOf(near.copy(position = GeoPoint(52.003, 21.0), stale = true), far))
 
-        // Index 0 is the Rider's own entry; near is 1 (green), far is 2 (amber).
-        assertEquals(listOf(0xFF22C55E.toInt(), 0xFFF59E0B.toInt()), frame.riders.map { it.colorArgb })
+        val expected = mapOf("rider-7" to GROUP_RIDE_RIDER_COLORS[3], "rider-1" to GROUP_RIDE_RIDER_COLORS[2])
+        assertEquals(expected, before.riders.associate { it.id to it.colorArgb })
+        assertEquals(expected, after.riders.associate { it.id to it.colorArgb })
+        assertEquals(listOf("rider-1", "rider-7"), after.riders.map { it.id })
     }
 
     @Test

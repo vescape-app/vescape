@@ -21,11 +21,10 @@ const updateGroupRideIdentity = mock(() => {})
 const startGroupRideObserve = mock(() => {})
 const stopGroupRideObserve = mock(() => {})
 const getSettings = mock(
-  async (): Promise<{
-    riderId: string | null
-    riderName: string | null
-    riderColor?: string | null
-  }> => ({ riderId: null, riderName: null }),
+  async (): Promise<{ riderId: string | null; riderName: string | null }> => ({
+    riderId: null,
+    riderName: null,
+  }),
 )
 const updateSetting = mock(async () => {})
 
@@ -166,25 +165,6 @@ test('identity load is single-flight and queued edits cannot be overwritten by s
   })
 })
 
-test('legacy Social color is cleared without changing Rider identity', async () => {
-  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
-  getSettings.mockImplementationOnce(async () => ({
-    riderId: 'rider-1',
-    riderName: 'Rider name',
-    riderColor: '#38bdf8',
-  }))
-
-  await useRiderStore.getState().load()
-
-  expect(updateSetting).toHaveBeenCalledTimes(1)
-  expect(updateSetting).toHaveBeenCalledWith('riderColor', null)
-  expect(useRiderStore.getState()).toMatchObject({
-    riderId: 'rider-1',
-    riderName: 'Rider name',
-    loaded: true,
-  })
-})
-
 test('rapid rider name edits persist and apply in request order', async () => {
   const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
   let finishNameWrite!: () => void
@@ -218,7 +198,14 @@ test('snapshot clears active ride when server no longer has it', async () => {
   useGroupRideStore.setState({
     activeRideId: 'old-ride',
     roster: [
-      { id: 'rider', name: 'Rider', color: null, presence: null, stale: false, lastSeen: 1 },
+      {
+        id: 'rider',
+        name: 'Rider',
+        presence: null,
+        stale: false,
+        away: false,
+        lastSeen: 1,
+      },
     ],
     rosterRows: [],
     error: 'no such ride: old-ride',
@@ -241,7 +228,7 @@ test('online block clears stale ride state and marks the connection blocked', as
     nearby: [{ ride: ride('r1'), distanceM: 10 }] as unknown as NearbyRide[],
     badge: true,
     activeRideId: 'r1',
-    roster: [{ id: 'x', name: 'X', color: null, presence: null, stale: false, lastSeen: 1 }],
+    roster: [{ id: 'x', name: 'X', presence: null, stale: false, away: false, lastSeen: 1 }],
     rosterRows: [{ id: 'x' }] as unknown as RosterRider[],
     error: 'boom',
   })
@@ -283,13 +270,12 @@ test('joining another ride clears stale relay error immediately', async () => {
   expect(joinGroupRide).toHaveBeenCalledWith({
     riderId: 'rider-1',
     riderName: 'Kupa',
-    riderColor: null,
     rideId: 'new-ride',
   })
   expect(useGroupRideStore.getState().error).toBeNull()
 })
 
-test('name/board color edits while observing push the new identity to peers', async () => {
+test('name edits while observing push the new identity to peers', async () => {
   const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
   const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
 
@@ -300,67 +286,7 @@ test('name/board color edits while observing push the new identity to peers', as
   expect(updateGroupRideIdentity).toHaveBeenLastCalledWith({
     riderId: 'rider-1',
     riderName: 'New Name',
-    riderColor: null,
   })
-
-  const { useBoardStore } = await import('@/modules/board/store/boardStore')
-  useBoardStore.setState({
-    activeBoardId: 'board-1',
-    boards: [{ id: 'board-1', personalization: { railId: 'x7', railColorId: 'cyan' } } as never],
-  })
-  expect(updateGroupRideIdentity).toHaveBeenLastCalledWith({
-    riderId: 'rider-1',
-    riderName: 'New Name',
-    riderColor: expect.any(String),
-  })
-})
-
-test('selected Board rail color follows Board and appearance; no Board clears it', async () => {
-  const { useBoardStore } = await import('@/modules/board/store/boardStore')
-  const { useThemeStore } = await import('@/hooks/useTheme')
-  const { selectedBoardRailColor } = await import('@/modules/group-ride/lib/selectedBoardRailColor')
-  const { accentColors, personalizationColorOptions } = await import('@/constants/theme')
-
-  useBoardStore.setState({ boards: [], activeBoardId: null })
-  expect(selectedBoardRailColor('dark')).toBeNull()
-  useBoardStore.setState({
-    boards: [
-      { id: 'first', personalization: { railId: 'x7', railColorId: 'cyan' } },
-      { id: 'second', personalization: { railId: 'x7', railColorId: 'amber' } },
-    ] as never,
-    activeBoardId: 'first',
-  })
-  expect(selectedBoardRailColor('dark')).toBe(accentColors.dark.cyan.color)
-  useBoardStore.setState({ activeBoardId: 'second' })
-  expect(selectedBoardRailColor('dark')).toBe(accentColors.dark.amber.color)
-  expect(selectedBoardRailColor('light')).toBe(accentColors.light.amber.color)
-  useBoardStore.setState({
-    boards: [{ id: 'mint', personalization: { railId: 'x7', railColorId: 'group-ride' } }] as never,
-    activeBoardId: 'mint',
-  })
-  expect(selectedBoardRailColor('dark')).not.toBeNull()
-  expect(selectedBoardRailColor('dark')).toBe(accentColors.dark.mint.color)
-  expect(selectedBoardRailColor('light')).toBe(accentColors.light.mint.color)
-  for (const { id } of personalizationColorOptions) {
-    useBoardStore.setState({
-      boards: [{ id: 'choice', personalization: { railId: 'x7', railColorId: id } }] as never,
-      activeBoardId: 'choice',
-    })
-    for (const appearance of ['light', 'dark'] as const) {
-      expect(selectedBoardRailColor(appearance)).toBe(
-        accentColors[appearance][id === 'group-ride' ? 'mint' : id].color,
-      )
-    }
-  }
-  expect(accentColors.light.mint.color).not.toBe(accentColors.light.teal.color)
-  useBoardStore.setState({
-    boards: [{ id: 'unknown', personalization: { railId: 'x7', railColorId: 'unknown' } }] as never,
-    activeBoardId: 'unknown',
-  })
-  expect(selectedBoardRailColor('dark')).toBeNull()
-  useThemeStore.setState({ resolvedTheme: 'light' })
-  useBoardStore.setState({ activeBoardId: null })
-  expect(selectedBoardRailColor(useThemeStore.getState().resolvedTheme)).toBeNull()
 })
 
 test('native departure clears membership instead of retaining the previous ride id', async () => {
@@ -374,9 +300,9 @@ test('native departure clears membership instead of retaining the previous ride 
         {
           id: 'peer',
           name: 'Peer',
-          color: null,
           presence: null,
           stale: false,
+          away: false,
           lastSeen: Date.now(),
         },
       ],
@@ -399,7 +325,14 @@ test('queued roster events cannot restore membership after an explicit leave', a
   const queuedRoster = {
     rideId: 'r1',
     riders: [
-      { id: 'peer', name: 'Peer', color: null, presence: null, stale: false, lastSeen: Date.now() },
+      {
+        id: 'peer',
+        name: 'Peer',
+        presence: null,
+        stale: false,
+        away: false,
+        lastSeen: Date.now(),
+      },
     ],
   }
   joinedListeners.forEach((listener) => listener({ rideId: 'r1' }))
@@ -428,4 +361,33 @@ test('queued roster events cannot restore membership after an explicit leave', a
   rosterListeners.forEach((listener) => listener(queuedRoster))
   expect(useGroupRideStore.getState().activeRideId).toBe('r1')
   expect(useGroupRideStore.getState().rosterRows).toHaveLength(1)
+})
+
+test('own GPS fixes keep the rosterRows reference', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  useGroupRideStore.getState().startObserving()
+  joinedListeners.forEach((listener) => listener({ rideId: 'r1' }))
+  rosterListeners.forEach((listener) =>
+    listener({
+      rideId: 'r1',
+      riders: [
+        {
+          id: 'peer',
+          name: 'Peer',
+          presence: { lat: 50.07, lng: 19.94 },
+          stale: false,
+          away: false,
+          lastSeen: Date.now(),
+        },
+      ],
+    }),
+  )
+  const rows = useGroupRideStore.getState().rosterRows
+  expect(rows).toHaveLength(1)
+
+  locationListeners.forEach((listener) => listener({ latitude: 50.06, longitude: 19.93 }))
+  locationListeners.forEach((listener) => listener({ latitude: 50.05, longitude: 19.92 }))
+
+  expect(useGroupRideStore.getState().ownLocation).toEqual({ lat: 50.05, lng: 19.92 })
+  expect(useGroupRideStore.getState().rosterRows).toBe(rows)
 })

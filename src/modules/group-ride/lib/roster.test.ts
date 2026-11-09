@@ -1,22 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 import type { GroupRideRider } from 'vescape-core'
 
-import {
-  RIDER_DROP_AFTER_MS,
-  RIDER_STALE_AFTER_MS,
-  clientFreshRoster,
-  riderRoster,
-  rosterRowsEqual,
-} from '@/modules/group-ride/lib/roster'
+import { RIDER_STALE_AFTER_MS, riderRoster, rosterRowsEqual } from '@/modules/group-ride/lib/roster'
 
 const OWN = { lat: 50.0619, lng: 19.9368 }
 
-function rider(id: string, lat: number | null, stale = false): GroupRideRider {
+function rider(id: string, lat: number | null, stale = false, name = id): GroupRideRider {
   return {
     id,
-    name: id,
-    color: null,
+    name,
     stale,
+    away: false,
     lastSeen: 0,
     presence: lat == null ? null : { lat, lng: OWN.lng },
   }
@@ -24,32 +18,27 @@ function rider(id: string, lat: number | null, stale = false): GroupRideRider {
 
 describe('riderRoster', () => {
   test('pins the current Rider to the front, flagged as self', () => {
-    const rows = riderRoster([rider('bob', OWN.lat), rider('me', OWN.lat)], 'me', OWN, 0)
+    const rows = riderRoster([rider('bob', OWN.lat), rider('me', OWN.lat)], 'me', 0)
     expect(rows.map((r) => r.id)).toEqual(['me', 'bob'])
     expect(rows[0].isSelf).toBe(true)
     expect(rows[1].isSelf).toBe(false)
   })
 
-  test('sorts self first, then fresh riders with locations before stale or locationless', () => {
-    const result = riderRoster(
-      [
-        rider('stale', OWN.lat, true),
-        rider('far', OWN.lat + 0.02),
-        rider('near', OWN.lat + 0.001),
-        rider('none', null),
-        rider('me', OWN.lat + 0.05),
-      ],
-      'me',
-      OWN,
-      0,
-    )
+  test('sorts self first, then by name, then by id; distance, stale and away never move a row', () => {
+    const riders = [
+      rider('zed', OWN.lat + 0.001, false, 'Zed'),
+      { ...rider('ana-2', OWN.lat + 0.02, false, 'Ana'), away: true },
+      rider('ana-1', null, true, 'Ana'),
+      rider('bea', OWN.lat + 0.05, false, 'Bea'),
+      rider('me', OWN.lat, false, 'Zz me'),
+    ]
 
-    expect(result.map((r) => r.id)).toEqual(['me', 'near', 'far', 'none', 'stale'])
-    expect(result[1].distanceM).toBeLessThan(result[2].distanceM!)
-  })
+    const ids = riderRoster(riders, 'me', 0).map((r) => r.id)
+    expect(ids).toEqual(['me', 'ana-1', 'ana-2', 'bea', 'zed'])
 
-  test('keeps null distance when own location is unavailable', () => {
-    expect(riderRoster([rider('bob', OWN.lat)], null, null, 0)[0].distanceM).toBeNull()
+    // Everyone swapping places, going stale or coming back keeps the same order.
+    const shuffled = [riders[3], { ...riders[2], stale: false }, riders[0], riders[4], riders[1]]
+    expect(riderRoster(shuffled, 'me', RIDER_STALE_AFTER_MS * 10).map((r) => r.id)).toEqual(ids)
   })
 
   test('greys riders from the client clock before the server marks stale', () => {
@@ -57,42 +46,40 @@ describe('riderRoster', () => {
     const rows = riderRoster(
       [{ ...rider('bob', OWN.lat), lastSeen: now - RIDER_STALE_AFTER_MS }],
       null,
-      OWN,
       now,
     )
 
     expect(rows[0].stale).toBe(true)
   })
 
-  test('drops silent riders from the client clock', () => {
-    const now = 40_000
-    const fresh = { ...rider('fresh', OWN.lat), lastSeen: now - RIDER_DROP_AFTER_MS + 1 }
-    const dropped = { ...rider('dropped', OWN.lat), lastSeen: now - RIDER_DROP_AFTER_MS }
+  test('keeps riders however long silent, greyed at their last presence', () => {
+    const now = 3_600_000
+    const away = { ...rider('away', OWN.lat), away: true, lastSeen: now }
+    const silent = { ...rider('silent', OWN.lat), lastSeen: 0 }
 
-    expect(clientFreshRoster([fresh, dropped], now).map((r) => r.id)).toEqual(['fresh'])
+    const rows = riderRoster([away, silent], null, now)
+
+    expect(rows.map((r) => [r.id, r.stale])).toEqual([
+      ['away', true],
+      ['silent', true],
+    ])
+    expect(rows[0].presence).toBe(away.presence)
   })
 })
 
 describe('rosterRowsEqual', () => {
   test('recomputed rows from identical inputs compare equal (freshness-tick no-op)', () => {
     const riders = [rider('bob', OWN.lat), rider('me', OWN.lat)]
-    const a = riderRoster(riders, 'me', OWN, 0)
-    const b = riderRoster(riders, 'me', OWN, 100)
+    const a = riderRoster(riders, 'me', 0)
+    const b = riderRoster(riders, 'me', 100)
     expect(a).not.toBe(b)
     expect(rosterRowsEqual(a, b)).toBe(true)
   })
 
   test('detects a rider crossing the stale threshold', () => {
     const riders = [rider('bob', OWN.lat)]
-    const before = riderRoster(riders, null, OWN, 0)
-    const after = riderRoster(riders, null, OWN, RIDER_STALE_AFTER_MS)
+    const before = riderRoster(riders, null, 0)
+    const after = riderRoster(riders, null, RIDER_STALE_AFTER_MS)
     expect(rosterRowsEqual(before, after)).toBe(false)
-  })
-
-  test('detects a distance change from own-location movement', () => {
-    const riders = [rider('bob', OWN.lat + 0.01)]
-    const near = riderRoster(riders, null, OWN, 0)
-    const far = riderRoster(riders, null, { ...OWN, lat: OWN.lat - 0.01 }, 0)
-    expect(rosterRowsEqual(near, far)).toBe(false)
   })
 })
