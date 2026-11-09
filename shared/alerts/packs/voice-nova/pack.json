@@ -237,6 +237,24 @@
         ]
       }
     },
+    "groupRide.signal.sent": {
+      "start": ["lines/groupRide.signal.sent.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.sent.full.start.0.m4a",
+          "lines/groupRide.signal.sent.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.cleared": {
+      "start": ["lines/groupRide.signal.cleared.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.cleared.full.start.0.m4a",
+          "lines/groupRide.signal.cleared.full.start.1.m4a"
+        ]
+      }
+    },
     "ride.end": {
       "start": ["lines/ride.end.start.0.m4a"],
       "full": {
@@ -941,6 +959,12 @@
     "lines/groupRide.signal.ok.full.start.0.m4a": "944f027ae8d19c5d",
     "lines/groupRide.signal.ok.full.start.1.m4a": "8cb8567f577da46d",
     "lines/groupRide.signal.ok.start.0.m4a": "6e87514d585f805a",
+    "lines/groupRide.signal.sent.full.start.0.m4a": "427d8297c344315b",
+    "lines/groupRide.signal.sent.full.start.1.m4a": "685ee656ba5ee0a7",
+    "lines/groupRide.signal.sent.start.0.m4a": "9a3475e166687048",
+    "lines/groupRide.signal.cleared.full.start.0.m4a": "907326f990dfe5c6",
+    "lines/groupRide.signal.cleared.full.start.1.m4a": "52f8ff554406ed28",
+    "lines/groupRide.signal.cleared.start.0.m4a": "4ef199f0cba51ae5",
     "lines/ride.end.full.start.0.m4a": "d15e6eebd6b7842e",
     "lines/ride.end.full.start.1.m4a": "bad4375f5a85e1bb",
     "lines/ride.end.full.start.2.m4a": "acc839f91950bfbe",

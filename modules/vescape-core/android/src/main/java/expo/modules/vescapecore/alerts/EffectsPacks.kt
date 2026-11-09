@@ -57,6 +57,8 @@ internal val GROUP_RIDE_CUES = listOf(
     "groupRide.signal.wait",
     "groupRide.signal.help",
     "groupRide.signal.ok",
+    "groupRide.signal.sent",
+    "groupRide.signal.cleared",
 )
 
 /**
@@ -71,9 +73,9 @@ internal fun appCueSlot(cue: String): String? = when (cue) {
     "error" -> "severity.critical"
     "ride.end" -> "cue.ride.end"
     "groupRide.created", "groupRide.joined" -> "cue.$cue"
-    "groupRide.riderJoined" -> "severity.info"
+    "groupRide.riderJoined", "groupRide.signal.sent" -> "severity.info"
     "groupRide.riderLeft", "groupRide.lost" -> "severity.warning"
-    "groupRide.restored", "groupRide.signal.ok" -> "severity.positive"
+    "groupRide.restored", "groupRide.signal.ok", "groupRide.signal.cleared" -> "severity.positive"
     "groupRide.signal.down", "groupRide.signal.help" -> "severity.critical"
     "groupRide.signal.board", "groupRide.signal.battery", "groupRide.signal.wait" -> "severity.warning"
     else -> null

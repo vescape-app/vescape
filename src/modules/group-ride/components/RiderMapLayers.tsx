@@ -9,7 +9,10 @@ import { makeTrailLineString } from '@/helpers/mapGeometry'
 import { riderMapColor } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
-import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
+import {
+  riderSignalHue,
+  riderSignalKindInfo,
+} from '@/modules/group-ride/constants/riderSignalKinds'
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
@@ -103,9 +106,9 @@ export function RiderSignalPins() {
 
 /**
  * A Rider's active signal, pinned where it was sent. Apart from the presence pin, so it stays put
- * while the sender moves on or goes away. Always in the sender's own color: a live call for help
- * is never muted by a stale presence. The pin stands on a stem above its spot, clear of a presence
- * dot and name label that sit on the same spot while the sender has not moved.
+ * while the sender moves on or goes away. In its kind's hue, like its Ride Notice, roster badge,
+ * and picker tile, and never muted by a stale presence. The pin stands on a stem above its spot,
+ * clear of a presence dot and name label that sit on the same spot while the sender has not moved.
  */
 function RiderSignalPin({ rider }: { rider: RosterRider }) {
   const accents = useResolvedAccentColors()
@@ -113,7 +116,7 @@ function RiderSignalPin({ rider }: { rider: RosterRider }) {
   const signal = useActiveRiderSignal(rider.signal)
   const info = signal ? riderSignalKindInfo(signal.kind) : null
   if (!signal || !info) return null
-  const color = riderMapColor({ id: rider.id, stale: false }, accents)
+  const color = accents[riderSignalHue(info)].color
   const KindIcon = info.icon
 
   return (
@@ -128,7 +131,7 @@ function RiderSignalPin({ rider }: { rider: RosterRider }) {
             { borderColor: color, backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85) },
           ]}
         >
-          <KindIcon size={18} color={color} weight="fill" />
+          <KindIcon size={18} color={color} weight="bold" />
         </View>
         <View style={[styles.signalStem, { backgroundColor: color }]} />
       </View>

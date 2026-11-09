@@ -117,10 +117,13 @@ Speech comes from a second app-wide choice next to Sound effects:
 - **Rider Signal cues** `groupRide.signal.<kind>` (`board`, `battery`, `wait` ⇒ warning; `down`,
   `help` ⇒ critical) play once when another Rider sends a signal or replaces it (new `startedAt`);
   `groupRide.signal.ok` (positive) plays when a Rider still in the roster drops their signal while
-  the roster's relay `now` is before its `expiresAt`. Expiry (relay `now` at or past `expiresAt`, or
-  no `now`), a Rider leaving, the rider's own signal, and signals already active in the catch-up
+  the roster's relay `now` is before its `expiresAt`. The rider's own signal confirms what the relay
+  accepted: `groupRide.signal.sent` (info) when the roster carries a new own `startedAt`, and
+  `groupRide.signal.cleared` (positive) when it is gone before its `expiresAt`. Expiry (relay `now`
+  at or past `expiresAt`, or no `now`), a Rider leaving, and signals already active in the catch-up
   roster after joining or our reconnect play nothing. A signal cue wins over a social cue from the
-  same roster, and `down`/`help` over the other kinds. They are safety calls, so the app sounds
+  same roster, and `down`/`help` over the other kinds; another Rider's new signal wins over `sent`,
+  and `ok` over `cleared`. They are safety calls, so the app sounds
   switch does not mute them; Voice level and muted alerts apply as for any app cue.
 
 A `voice(<severity>):<key>:<value>` sound plays the effects pack's `severity.<severity>` sound
@@ -205,7 +208,7 @@ shared/alerts/packs/
 - **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `speed`, `dutyCycle`
   (number), `boardConnection.connected`,
   `boardConnection.lost`, `system.error`, `groupRide.created|joined|riderJoined|riderLeft|lost|restored`,
-  `groupRide.signal.board|battery|down|wait|help|ok`,
+  `groupRide.signal.board|battery|down|wait|help|ok|sent|cleared`,
   `ride.end`. Each key needs a
   generic line; `<key>.<severity>` lines are optional. A line has `start` (one fixed phrase in Radio
   and Nova), an optional `minimal` (generic lines only; a short form such as "Motor…"), and an

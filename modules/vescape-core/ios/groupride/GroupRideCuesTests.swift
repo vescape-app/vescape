@@ -185,11 +185,30 @@ final class GroupRideCuesTests: XCTestCase {
     XCTAssertEqual(signals("me", "kai", signals: [:]), "groupRide.riderLeft")
   }
 
-  func testTheRidersOwnSignalNeverCues() {
+  func testTheRidersOwnSignalConfirmsSentOnceAndClearedBeforeExpiry() {
     joined(with: "me", "ola")
+    let own = ["me": signal(.down)]
 
-    XCTAssertNil(signals("me", "ola", signals: ["me": signal(.down)]))
-    XCTAssertNil(signals("me", "ola", signals: [:]))
+    XCTAssertEqual(signals("me", "ola", signals: own), "groupRide.signal.sent")
+    XCTAssertNil(signals("me", "ola", signals: own))
+    XCTAssertEqual(signals("me", "ola", signals: [:]), "groupRide.signal.cleared")
+
+    _ = signals("me", "ola", signals: ["me": signal(.wait, startedAt: 2_000)])
+    XCTAssertNil(signals("me", "ola", signals: [:], now: 61_000))
+  }
+
+  func testAnotherRidersNewSignalWinsOverTheOwnConfirmation() {
+    joined(with: "me", "ola")
+    let both = ["me": signal(.wait), "ola": signal(.board)]
+
+    XCTAssertEqual(signals("me", "ola", signals: both), "groupRide.signal.board")
+  }
+
+  func testAnOwnSignalAlreadyActiveAtJoinStaysSilent() {
+    _ = cues.joined("ride")
+    let own = ["me": signal(.help)]
+    XCTAssertNil(signals("me", "ola", signals: own))
+    XCTAssertNil(signals("me", "ola", signals: own))
   }
 
   func testSignalsAlreadyActiveAtJoinOrReconnectStaySilent() {

@@ -58,6 +58,8 @@ internal let voiceKeyValueTypes: [String: String?] = [
   "groupRide.signal.wait": nil,
   "groupRide.signal.help": nil,
   "groupRide.signal.ok": nil,
+  "groupRide.signal.sent": nil,
+  "groupRide.signal.cleared": nil,
   "ride.end": nil,
   "weather.storm": nil,
   "weather.storm.now": nil,

@@ -25,6 +25,12 @@ export const RIDER_SIGNAL_KIND_INFO: Record<
   help: { label: 'Need help', icon: LifebuoyIcon, critical: true },
 }
 
+/** Hue a kind wears everywhere (picker, roster badge, Social takeover), matching its Ride Notice:
+ *  red like `status.error` when critical, else orange like `status.warning`. */
+export function riderSignalHue(kind: { critical: boolean }): 'red' | 'orange' {
+  return kind.critical ? 'red' : 'orange'
+}
+
 /** The kind's info, or null for a wire kind this build does not know. */
 export function riderSignalKindInfo(kind: string) {
   return (RIDER_SIGNAL_KINDS as readonly string[]).includes(kind)

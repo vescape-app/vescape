@@ -21,6 +21,8 @@ internal class GroupRideCues {
     private var away: Set<String> = emptySet()
     /** Active signals of other Riders in the last roster of [rideId], by rider id. */
     private var signals: Map<String, RiderSignal> = emptyMap()
+    /** The rider's own active signal in the last roster of `rideId`. */
+    private var ownSignal: RiderSignal? = null
     /** The next roster only catches up: the first after joining, or after our own link came back. */
     private var syncing = true
     /** Our socket to [rideId] dropped and the rider has not rejoined yet. */
@@ -65,9 +67,12 @@ internal class GroupRideCues {
      * their active signals, [now] the relay's clock. A Rider Signal cue wins over social cues of
      * the same roster: `groupRide.signal.<kind>` for a new or replaced signal (new `startedAt`),
      * else `groupRide.signal.ok` for a still-present Rider whose signal is gone before its
-     * `expiresAt` by relay [now]. Expiry, a Rider leaving, and a missing [now] are silent. Social:
-     * `riderJoined` for an id never seen in this ride, else `riderLeft` when another Rider's id is
-     * gone and the previous roster had them live. The rider's own id never cues. Rosters of any
+     * `expiresAt` by relay [now]. Expiry, a Rider leaving, and a missing [now] are silent. The
+     * rider's own signal confirms what the relay accepted: `groupRide.signal.sent` for a new own
+     * `startedAt` (after other Riders' new signals), `groupRide.signal.cleared` when it is gone before
+     * its `expiresAt` (after `ok`). Social: `riderJoined` for an id never seen in this ride, else
+     * `riderLeft` when another Rider's id is gone and the previous roster had them live; the rider's
+     * own id never makes a social cue. Rosters of any
      * other ride, or arriving while our link is down, are ignored; the first roster after joining
      * or our own reconnect only catches up, so signals already active then stay silent.
      */
@@ -88,17 +93,23 @@ internal class GroupRideCues {
         val cleared = signals.filter { (id, signal) ->
             id in others && id !in current && now != null && now < signal.expiresAt
         }
+        val own = ownRiderId?.let { riderSignals[it] }
+        val ownSent = own != null && own.startedAt != ownSignal?.startedAt
+        val ownCleared = own == null && ownSignal.let { it != null && now != null && now < it.expiresAt }
         seen += others
         members = others
         away = awayIds intersect others
         signals = current
+        ownSignal = own
         if (syncing) {
             syncing = false
             return null
         }
         return when {
             raised.isNotEmpty() -> signalCue(raised.maxWith(compareBy({ it.kind.critical }, { it.startedAt })).kind.wire)
+            ownSent -> signalCue("sent")
             cleared.isNotEmpty() -> signalCue("ok")
+            ownCleared -> signalCue("cleared")
             arrived.isNotEmpty() -> "groupRide.riderJoined"
             left.isNotEmpty() -> "groupRide.riderLeft"
             else -> null
@@ -112,6 +123,7 @@ internal class GroupRideCues {
         members = emptySet()
         away = emptySet()
         signals = emptyMap()
+        ownSignal = null
         syncing = true
         linkDown = false
         lostPlayed = false

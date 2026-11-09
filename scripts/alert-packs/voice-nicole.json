@@ -197,6 +197,18 @@
         "start": ["Rider is OK. Panic over.", "All good, the rider is OK."]
       }
     },
+    "groupRide.signal.sent": {
+      "start": ["Signal sent."],
+      "full": {
+        "start": ["Signal sent. Help is on its way.", "Your signal is out. The group can see you."]
+      }
+    },
+    "groupRide.signal.cleared": {
+      "start": ["Signal cleared."],
+      "full": {
+        "start": ["Signal cleared. Carry on.", "All good, your signal is cleared."]
+      }
+    },
     "ride.end": {
       "start": ["Ride ended."],
       "full": {

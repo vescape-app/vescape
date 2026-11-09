@@ -16,7 +16,7 @@ import { BoardSelectorSheet } from '@/modules/board/components/BoardSelectorShee
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { IconButton } from '@/components/base/IconButton'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
-import { RiderSignalTrigger } from '@/modules/group-ride/components/RiderSignalSheet'
+import { useOwnSignalTakeover } from '@/modules/group-ride/components/RiderSignalPicker'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
 import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
@@ -121,6 +121,8 @@ export function TopBar({
   const issues = useBoardIssues(activeBoardId, sessionBoardId)
   const nearbyBadge = useGroupRideStore((s) => s.badge)
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
+  // While the Rider's own signal is live, Social wears its kind until dismissed or expired.
+  const signalTakeover = useOwnSignalTakeover()
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
   // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
@@ -195,8 +197,8 @@ export function TopBar({
             testID="social-drawer-trigger"
             dot={nearbyBadge && !rideActive ? theme.palette.groupRide.color : undefined}
             accent={rideActive ? theme.palette.groupRide.color : undefined}
+            takeover={signalTakeover}
           />
-          <RiderSignalTrigger style={styles.signal} />
         </View>
         {activeNavigationTarget ? (
           <View ref={pillRef} collapsable={false}>
@@ -393,8 +395,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 10,
-  },
-  signal: {
-    marginTop: 8,
   },
 })

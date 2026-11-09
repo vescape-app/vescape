@@ -21,6 +21,8 @@
     "groupRide.signal.wait": null,
     "groupRide.signal.help": null,
     "groupRide.signal.ok": null,
+    "groupRide.signal.sent": null,
+    "groupRide.signal.cleared": null,
     "ride.end": null,
     "weather.storm": null,
     "weather.storm.now": null,

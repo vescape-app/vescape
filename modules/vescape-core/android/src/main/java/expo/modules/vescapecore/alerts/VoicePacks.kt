@@ -81,6 +81,8 @@ internal val VOICE_KEY_VALUE_TYPES: Map<String, String?> = mapOf(
     "groupRide.signal.wait" to null,
     "groupRide.signal.help" to null,
     "groupRide.signal.ok" to null,
+    "groupRide.signal.sent" to null,
+    "groupRide.signal.cleared" to null,
     "ride.end" to null,
     "weather.storm" to null,
     "weather.storm.now" to null,

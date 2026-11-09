@@ -4,6 +4,7 @@ import { Text } from '@/components/base/Text'
 import {
   BroadcastIcon,
   CrosshairIcon,
+  MegaphoneIcon,
   UserCircleIcon,
   PlusIcon,
   SignOutIcon,
@@ -22,6 +23,15 @@ import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterList } from '@/modules/group-ride/components/GroupRideRoster'
+import {
+  ImOkButton,
+  RiderSignalPicker,
+  useOwnRiderSignal,
+} from '@/modules/group-ride/components/RiderSignalPicker'
+import {
+  riderSignalHue,
+  riderSignalKindInfo,
+} from '@/modules/group-ride/constants/riderSignalKinds'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 
 type FocusSignal = (point: { latitude: number; longitude: number }) => void
@@ -81,8 +91,11 @@ function GroupRideWidget({ onFocusSignal }: { onFocusSignal?: FocusSignal }) {
   const joinRide = useGroupRideStore((s) => s.joinRide)
   const publicRiding = useGroupRideStore((s) => s.publicRiding)
   const setPublicRiding = useGroupRideStore((s) => s.setPublicRiding)
+  // Hidden against a relay that does not advertise signals, which would reject them.
+  const signalsSupported = useGroupRideStore((s) => s.signalAvailability.supported)
 
   const [nearbyDismissed, setNearbyDismissed] = useState(false)
+  const [pickingSignal, setPickingSignal] = useState(false)
 
   const activeRide = rides.find((r) => r.id === activeRideId)
   const active = activeRideId != null
@@ -93,6 +106,7 @@ function GroupRideWidget({ onFocusSignal }: { onFocusSignal?: FocusSignal }) {
   const showNearby = !active && nearby.length > 0 && !nearbyDismissed
   const accent = theme.palette.groupRide.color
   const rideName = activeRide?.name?.trim() || 'Your group ride'
+  const picking = active && signalsSupported && pickingSignal
 
   if (blocked) {
     return (
@@ -119,14 +133,19 @@ function GroupRideWidget({ onFocusSignal }: { onFocusSignal?: FocusSignal }) {
     )
   }
 
-  const footer = active ? (
+  const footer = picking ? (
     <Button
-      label="Leave"
-      variant="destructive"
-      icon={SignOutIcon}
-      onPress={leaveRide}
+      label="Cancel"
+      variant="secondary"
+      onPress={() => setPickingSignal(false)}
       style={styles.fill}
-      accessibilityLabel="Leave group ride"
+      accessibilityLabel="Cancel rider signal"
+    />
+  ) : active ? (
+    <ActiveRideFooter
+      signalsSupported={signalsSupported}
+      onSignal={() => setPickingSignal(true)}
+      onLeave={leaveRide}
     />
   ) : showNearby ? (
     <Button
@@ -181,11 +200,13 @@ function GroupRideWidget({ onFocusSignal }: { onFocusSignal?: FocusSignal }) {
       accent={accent}
       surface="secondary"
       active={active}
-      height={active && rosterRows.length > 0 ? undefined : 240}
+      height={picking || (active && rosterRows.length > 0) ? undefined : 240}
       footer={footer}
       action={action}
     >
-      {active ? (
+      {picking ? (
+        <RiderSignalPicker onDone={() => setPickingSignal(false)} />
+      ) : active ? (
         rosterRows.length > 0 ? (
           <JoinedRoster rows={rosterRows} onFocusSignal={onFocusSignal} />
         ) : (
@@ -206,6 +227,47 @@ function GroupRideWidget({ onFocusSignal }: { onFocusSignal?: FocusSignal }) {
         <Placeholder icon={BroadcastIcon} description="No group rides near you right now." />
       )}
     </CanvasWidget>
+  )
+}
+
+/** The joined ride's footer: the Rider Signal button (wearing the own active signal), "I'm OK"
+ *  while one is active, and a small Leave kept apart so it is hard to hit by accident. */
+function ActiveRideFooter({
+  signalsSupported,
+  onSignal,
+  onLeave,
+}: {
+  signalsSupported: boolean
+  onSignal: () => void
+  onLeave: () => void
+}) {
+  const ownSignal = useOwnRiderSignal()
+  const ownSignalInfo = ownSignal ? riderSignalKindInfo(ownSignal.kind) : null
+  return (
+    <View style={styles.activeFooter}>
+      {signalsSupported ? (
+        <Button
+          label={ownSignalInfo ? ownSignalInfo.label : 'Signal'}
+          variant="secondary"
+          accent={ownSignalInfo ? theme.palette[riderSignalHue(ownSignalInfo)].color : undefined}
+          icon={ownSignalInfo ? ownSignalInfo.icon : MegaphoneIcon}
+          onPress={onSignal}
+          style={styles.fill}
+          accessibilityLabel="Rider signal"
+        />
+      ) : (
+        <View style={styles.fill} />
+      )}
+      {ownSignalInfo ? <ImOkButton size="md" /> : null}
+      <Button
+        label="Leave"
+        variant="destructive"
+        size="sm"
+        icon={SignOutIcon}
+        onPress={onLeave}
+        accessibilityLabel="Leave group ride"
+      />
+    </View>
   )
 }
 
@@ -264,6 +326,12 @@ const styles = StyleSheet.create({
   },
   fill: {
     flex: 1,
+  },
+  activeFooter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   headerActions: {
     flexDirection: 'row',

@@ -212,12 +212,32 @@ class GroupRideCuesTest {
     }
 
     @Test
-    fun `the rider's own signal never cues`() {
+    fun `the rider's own signal confirms sent once and cleared before expiry`() {
         joinedWith("me", "ola")
         val own = mapOf("me" to signal(RiderSignalKind.DOWN))
 
+        assertEquals("groupRide.signal.sent", signals("me", "ola", signals = own))
         assertNull(signals("me", "ola", signals = own))
-        assertNull(signals("me", "ola", signals = emptyMap()))
+        assertEquals("groupRide.signal.cleared", signals("me", "ola", signals = emptyMap()))
+
+        signals("me", "ola", signals = mapOf("me" to signal(RiderSignalKind.WAIT, startedAt = 2_000)))
+        assertNull(signals("me", "ola", signals = emptyMap(), now = 61_000))
+    }
+
+    @Test
+    fun `another rider's new signal wins over the own confirmation`() {
+        joinedWith("me", "ola")
+        val both = mapOf("me" to signal(RiderSignalKind.WAIT), "ola" to signal(RiderSignalKind.BOARD))
+
+        assertEquals("groupRide.signal.board", signals("me", "ola", signals = both))
+    }
+
+    @Test
+    fun `an own signal already active at join stays silent`() {
+        cues.joined("ride")
+        val own = mapOf("me" to signal(RiderSignalKind.HELP))
+        assertNull(signals("me", "ola", signals = own))
+        assertNull(signals("me", "ola", signals = own))
     }
 
     @Test

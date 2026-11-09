@@ -37,6 +37,8 @@ struct GroupRideCues {
   private var away: Set<String> = []
   /// Active signals of other Riders in the last roster of `rideId`, by rider id.
   private var signals: [String: RiderSignal] = [:]
+  /// The rider's own active signal in the last roster of `rideId`.
+  private var ownSignal: RiderSignal?
   /// The next roster only catches up: the first after joining, or after our own link came back.
   private var syncing = true
   /// Our socket to `rideId` dropped and the rider has not rejoined yet.
@@ -78,9 +80,12 @@ struct GroupRideCues {
   /// their active signals, `now` the relay's clock. A Rider Signal cue wins over social cues of the
   /// same roster: `groupRide.signal.<kind>` for a new or replaced signal (new `startedAt`), else
   /// `groupRide.signal.ok` for a still-present Rider whose signal is gone before its `expiresAt` by
-  /// relay `now`. Expiry, a Rider leaving, and a missing `now` are silent. Social: `riderJoined` for
-  /// an id never seen in this ride, else `riderLeft` when another Rider's id is gone and the previous
-  /// roster had them live. The rider's own id never cues. Rosters of any other ride, or arriving
+  /// relay `now`. Expiry, a Rider leaving, and a missing `now` are silent. The rider's own signal
+  /// confirms what the relay accepted: `groupRide.signal.sent` for a new own `startedAt` (after other
+  /// Riders' new signals), `groupRide.signal.cleared` when it is gone before its `expiresAt` (after
+  /// `ok`). Social: `riderJoined` for an id never seen in this ride, else `riderLeft` when another
+  /// Rider's id is gone and the previous roster had them live; the rider's own id never makes a
+  /// social cue. Rosters of any other ride, or arriving
   /// while our link is down, are ignored; the first roster after joining or our own reconnect only
   /// catches up, so signals already active then stay silent.
   mutating func roster(
@@ -101,10 +106,17 @@ struct GroupRideCues {
       guard let now else { return false }
       return others.contains(id) && current[id] == nil && now < signal.expiresAt
     }
+    let own = ownRiderId.flatMap { riderSignals[$0] }
+    let ownSent = own != nil && own?.startedAt != ownSignal?.startedAt
+    let ownCleared: Bool = {
+      guard own == nil, let previous = ownSignal, let now else { return false }
+      return now < previous.expiresAt
+    }()
     seen.formUnion(others)
     members = others
     away = awayIds.intersection(others)
     signals = current
+    ownSignal = own
     if syncing {
       syncing = false
       return nil
@@ -113,7 +125,9 @@ struct GroupRideCues {
     if let signal = raised.max(by: { ($0.kind.critical ? 1 : 0, $0.startedAt) < ($1.kind.critical ? 1 : 0, $1.startedAt) }) {
       return Self.signalCuePrefix + signal.kind.rawValue
     }
+    if ownSent { return Self.signalCuePrefix + "sent" }
     if cleared { return Self.signalCuePrefix + "ok" }
+    if ownCleared { return Self.signalCuePrefix + "cleared" }
     if !arrived.isEmpty { return "groupRide.riderJoined" }
     if !left.isEmpty { return "groupRide.riderLeft" }
     return nil
@@ -126,6 +140,7 @@ struct GroupRideCues {
     members = []
     away = []
     signals = [:]
+    ownSignal = nil
     syncing = true
     linkDown = false
     lostPlayed = false

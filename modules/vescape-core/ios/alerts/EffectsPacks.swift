@@ -53,6 +53,8 @@ internal let groupRideCues = [
   "groupRide.signal.wait",
   "groupRide.signal.help",
   "groupRide.signal.ok",
+  "groupRide.signal.sent",
+  "groupRide.signal.cleared",
 ]
 
 /// App cue id (the `playAppCue` cue names) → effects slot. Error and the rider and link Group Ride
@@ -65,9 +67,9 @@ internal func appCueSlot(_ cue: String) -> String? {
   case "error": return "severity.critical"
   case "ride.end": return "cue.ride.end"
   case "groupRide.created", "groupRide.joined": return "cue.\(cue)"
-  case "groupRide.riderJoined": return "severity.info"
+  case "groupRide.riderJoined", "groupRide.signal.sent": return "severity.info"
   case "groupRide.riderLeft", "groupRide.lost": return "severity.warning"
-  case "groupRide.restored", "groupRide.signal.ok": return "severity.positive"
+  case "groupRide.restored", "groupRide.signal.ok", "groupRide.signal.cleared": return "severity.positive"
   case "groupRide.signal.down", "groupRide.signal.help": return "severity.critical"
   case "groupRide.signal.board", "groupRide.signal.battery", "groupRide.signal.wait": return "severity.warning"
   default: return nil

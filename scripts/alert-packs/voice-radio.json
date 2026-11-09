@@ -189,6 +189,18 @@
         "start": ["Squad member status OK.", "All clear. Rider is OK."]
       }
     },
+    "groupRide.signal.sent": {
+      "start": ["Signal transmitted."],
+      "full": {
+        "start": ["Signal transmitted to the squad.", "Your signal is on the net."]
+      }
+    },
+    "groupRide.signal.cleared": {
+      "start": ["Signal cleared."],
+      "full": {
+        "start": ["Signal cleared. Squad informed.", "Stand down. Your signal is cleared."]
+      }
+    },
     "ride.end": {
       "start": ["Ride session terminated."],
       "full": {

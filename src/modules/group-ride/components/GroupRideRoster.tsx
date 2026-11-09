@@ -22,7 +22,10 @@ import {
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
 import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
-import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
+import {
+  riderSignalHue,
+  riderSignalKindInfo,
+} from '@/modules/group-ride/constants/riderSignalKinds'
 import { riderHue } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
@@ -192,13 +195,14 @@ function SignalBadge({ kind }: { kind: string }) {
   const info = riderSignalKindInfo(kind)
   if (!info) return null
   const KindIcon = info.icon
+  const hue = riderSignalHue(info)
   return (
     <View
-      style={[styles.signalTag, { backgroundColor: accents.red.bg }]}
+      style={[styles.signalTag, { backgroundColor: accents[hue].bg }]}
       accessibilityLabel={`Signal: ${info.label}`}
     >
-      <KindIcon size={11} color={theme.palette.red.light} weight="fill" />
-      <Text style={styles.signalTagLabel} numberOfLines={1}>
+      <KindIcon size={11} color={theme.palette[hue].light} weight="bold" />
+      <Text style={[styles.signalTagLabel, { color: theme.palette[hue].light }]} numberOfLines={1}>
         {info.label}
       </Text>
     </View>
@@ -244,7 +248,6 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   signalTagLabel: {
-    color: theme.palette.red.light,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.3,
