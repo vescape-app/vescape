@@ -3016,7 +3016,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   clearDiagnosticEvents(): Promise<void>
   getBoardWarnings(): Promise<BoardWarning[]>
   getRideNotices(): RideNotice[]
-  dismissRideNotice(id: number): void
+  dismissRideNotice(id: number, rev: number): void
   devPostRideNotice(notice: DevRideNoticeParams): void
   devClearRideNotice(key: string): void
   clearBoardWarning(boardId: string, kind: string): Promise<void>
@@ -4098,9 +4098,12 @@ export function getRideNotices(): RideNotice[] {
   return native.getRideNotices()
 }
 
-/** Hide a notice until its source clears it or posts a new revision. */
-export function dismissRideNotice(id: number): void {
-  native.dismissRideNotice(id)
+/**
+ * Hide a notice until its source clears it or posts a new revision. `rev` is the revision the rider
+ * saw; native ignores the dismiss once the notice has moved on to a newer one.
+ */
+export function dismissRideNotice(id: number, rev: number): void {
+  native.dismissRideNotice(id, rev)
 }
 
 export function devPostRideNotice(notice: DevRideNoticeParams): void {

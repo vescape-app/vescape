@@ -382,7 +382,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     // The phone dismisses for real and pushes the shorter list back. Fire-and-forget like every
     // command: a lost one (phone unreachable included) leaves the notice hidden only on the wrist,
     // and the phone card stays until dismissed there.
-    send(.dismissNotice(notice.id))
+    send(.dismissNotice(id: notice.id, rev: notice.rev))
   }
 
   private func acceptRideNotices(_ bytes: Data) {

@@ -45,7 +45,6 @@ import expo.modules.vescapecore.location.isPreciseGpsFix
 import expo.modules.vescapecore.GroupRideCues
 import expo.modules.vescapecore.GroupRideObserver
 import expo.modules.vescapecore.RiderSignalContext
-import expo.modules.vescapecore.RiderSignals
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
 import expo.modules.vescapecore.telemetry.ProcessedTelemetry
@@ -146,7 +145,6 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.File
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.launch
 import expo.modules.kotlin.jni.NativeArrayBuffer
@@ -176,13 +174,11 @@ import expo.modules.vescapecore.telemetry.IDLE_PAUSE_POLL_INTERVAL_MS
 import expo.modules.vescapecore.telemetry.IdlePauseDetector
 import expo.modules.vescapecore.telemetry.IdlePauseTransition
 import expo.modules.vescapecore.telemetry.METRIC_MAX_DUTY
-import expo.modules.vescapecore.database.PrivacyZoneEntity
 import expo.modules.vescapecore.telemetry.SocMedianWindow
 import expo.modules.vescapecore.telemetry.TelemetryCapture
 import expo.modules.vescapecore.telemetry.isRefloatEngaged
 import expo.modules.vescapecore.telemetry.TelemetryPipeline
 import expo.modules.vescapecore.telemetry.TelemetryRepository
-import expo.modules.vescapecore.telemetry.isInsideAnyPrivacyZone
 import expo.modules.vescapecore.telemetry.toMetricSanitizerConfig
 
 private const val CHANNEL_ID = "vesc_monitoring_v5"
@@ -309,6 +305,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             sessionActive = { boardConfig != null },
             canConnect = { boardConfig == null && selectedBoardName != null },
             // Wall-clock filter: the engine's expiry timer runs on uptime and lags while the phone sleeps.
+            // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `liveActivityNoticeContent`
             rideNotice = {
                 notificationNotice?.content?.takeUnless { c -> c.expiresAt?.let { it <= System.currentTimeMillis() } == true }
             },
@@ -485,9 +482,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // rider-initiated. Reporting from inside the observer also lands after its `handler.post`
             // has actually mutated the state, which a caller refreshing inline cannot.
             onParticipationChanged = ::refreshGpsDemand,
-            // Rider Signal cues are safety calls, not connection sounds: the toggle does not mute them.
             onCue = { cue ->
-                if (connectionSoundsEnabled || GroupRideCues.isSignalCue(cue)) alertFeedback.playAppCue(cue)
+                if (GroupRideCues.audible(cue, connectionSoundsEnabled)) alertFeedback.playAppCue(cue)
             },
             ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
             signalContext = ::riderSignalContext,
@@ -3431,11 +3427,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
     private fun latestRiderPresence(): RiderPresence? {
-        if (!groupRidePrivacy.allowsLocationEgress) return null
-        val location = locationTracker.latestPreciseLocation ?: locationTracker.latestLocation ?: return null
-        // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
-        // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
-        if (isInsidePrivacyZone(location)) return null
+        val location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?: locationTracker.latestLocation)
+            ?: return null
         val currentTelemetry = telemetry
         val telemetryFresh = currentTelemetry != null && !isTelemetryStale()
         return RiderPresence(
@@ -3452,22 +3445,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         )
     }
 
-    /**
-     * What a Rider Signal send is checked against: the latest fix while it is recent, and whether it
-     * lies inside a Privacy Zone (assumed so until zones load). Not the presence egress gate: a
-     * signal carries its own location even inside a zone; the zone flag only drives the warning.
-     *
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderSignalContext`
-     */
-    private fun riderSignalContext(): RiderSignalContext {
-        val location = locationTracker.latestLocation
-            ?.takeIf { System.currentTimeMillis() - it.timestamp <= RiderSignals.FIX_MAX_AGE_MS }
-        return RiderSignalContext(
-            fix = location?.let { it.latitude to it.longitude },
-            insidePrivacyZone = !groupRidePrivacy.allowsLocationEgress ||
-                (location != null && isInsidePrivacyZone(location)),
-        )
-    }
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderSignalContext` */
+    private fun riderSignalContext(): RiderSignalContext =
+        groupRidePrivacy.signalContext(locationTracker.latestLocation, System.currentTimeMillis())
 
     /**
      * Device battery as a 0–1 fraction, or null when the platform can't report it.
@@ -3477,14 +3457,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val manager = service.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
         val level = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return if (level in 0..100) level / 100.0 else null
-    }
-
-    private fun isInsidePrivacyZone(location: LocationSnapshot): Boolean {
-        val zones = groupRidePrivacy.zones
-        if (zones.isEmpty()) return false
-        val latitudeE7 = (location.latitude * 10_000_000.0).roundToInt()
-        val longitudeE7 = (location.longitude * 10_000_000.0).roundToInt()
-        return isInsideAnyPrivacyZone(latitudeE7, longitudeE7, zones)
     }
 
     /**

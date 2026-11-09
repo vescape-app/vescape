@@ -42,7 +42,7 @@ object RideNotices {
 
     fun clear(key: String) = mutate { engine.clear(key) }
 
-    fun dismiss(id: Int) = mutate { engine.dismiss(id) }
+    fun dismiss(id: Int, rev: Int) = mutate { engine.dismiss(id, rev) }
 
     /**
      * Drop anything already past `expiresAt`. The expiry timer runs on uptime, which stops while the

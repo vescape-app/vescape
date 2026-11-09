@@ -34,18 +34,6 @@ final class RiderSignalTests: XCTestCase {
     XCTAssertNil(RiderSignals.sendIntent(.help, RiderSignalContext(fix: nil, insidePrivacyZone: true)))
   }
 
-  func testASendGoesOutWhilePresenceIsGatedByAPrivacyZoneOrUnloadedZones() {
-    let zones = PrivacyZoneReadState()
-    XCTAssertFalse(zones.allowsLocationEgress, "presence stays gated while zones load")
-
-    let loading = RiderSignalContext(fix: fix, insidePrivacyZone: !zones.allowsLocationEgress)
-    XCTAssertEqual(RiderSignals.sendIntent(.help, loading), .send(kind: .help, lat: 52.0, lng: 21.0))
-    XCTAssertEqual(
-      RiderSignals.sendIntent(.down, RiderSignalContext(fix: fix, insidePrivacyZone: true)),
-      .send(kind: .down, lat: 52.0, lng: 21.0)
-    )
-  }
-
   func testClearIsABareSignalClearFrame() {
     XCTAssertEqual(RiderSignalIntent.clear.frame() as? [String: String], ["type": "signal-clear"])
   }

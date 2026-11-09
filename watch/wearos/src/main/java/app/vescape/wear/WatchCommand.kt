@@ -96,9 +96,12 @@ fun encodeTiltLockCommand(value: Int): ByteArray =
 /** `[kind, 0]`: ease whatever tilt is commanded back to neutral — the phone pad's cancel. */
 fun encodeTiltCancelCommand(): ByteArray = byteArrayOf(COMMAND_KIND_TILT_CANCEL, 0)
 
-/** Dismiss the Ride Notice holding [id] on the phone; one value byte, like every other kind. */
-fun encodeDismissNoticeCommand(id: Int): ByteArray =
-    byteArrayOf(COMMAND_KIND_DISMISS_NOTICE, id.coerceIn(0, 255).toByte())
+/**
+ * `[kind, id, rev]`: dismiss the Ride Notice holding [id] on the phone, but only at [rev] — the
+ * revision the rider saw. A notice the phone re-posted since is not hidden unseen.
+ */
+fun encodeDismissNoticeCommand(id: Int, rev: Int): ByteArray =
+    byteArrayOf(COMMAND_KIND_DISMISS_NOTICE, id.coerceIn(0, 255).toByte(), rev.coerceIn(0, 255).toByte())
 
 /**
  * Fire-and-forget send of the rider's *current* intent to every connected node, off the UI thread.
@@ -187,15 +190,15 @@ class CommandSender(context: Context) {
     }
 
     /**
-     * Dismiss Ride Notice [id] on the phone. Queued in order like [sendLights]. No retry: a lost
+     * Dismiss Ride Notice [id] at [rev] on the phone. Queued in order like [sendLights]. No retry: a lost
      * command degrades to "hidden only on the wrist" — the wrist's local hide still holds, and the
      * phone keeps showing the notice until the rider dismisses it there.
      *
      * @parity /watch/watchos/PhoneLink.swift `hideRideNotice`
      */
-    fun sendDismissNotice(id: Int) {
+    fun sendDismissNotice(id: Int, rev: Int) {
         try {
-            sends.execute { sendPayload(encodeDismissNoticeCommand(id)) }
+            sends.execute { sendPayload(encodeDismissNoticeCommand(id, rev)) }
         } catch (rejected: RejectedExecutionException) {
             Log.w("VescapeWear", "Notice dismiss dropped after shutdown", rejected)
         }

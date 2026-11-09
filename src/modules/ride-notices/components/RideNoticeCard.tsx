@@ -24,7 +24,7 @@ interface RideNoticeCardProps {
   moreCount: number
   /** The rider's latest position; distance is hidden without it. */
   ownLocation: { latitude: number; longitude: number } | null
-  onDismiss: (id: number) => void
+  onDismiss: (id: number, rev: number) => void
   /** Present when the screen can focus the map; hidden for a notice without a location. */
   onShowOnMap?: (location: { latitude: number; longitude: number }) => void
   style?: StyleProp<ViewStyle>
@@ -83,7 +83,7 @@ export function RideNoticeCard({
           icon={XIcon}
           variant="ghost"
           accessibilityLabel="Dismiss notice"
-          onPress={() => onDismiss(notice.id)}
+          onPress={() => onDismiss(notice.id, notice.rev)}
         />
       </View>
       {target && onShowOnMap ? (

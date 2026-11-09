@@ -25,7 +25,7 @@ data class RideNoticeContent(
 
 /**
  * One visible Ride Notice. `id` (1–255) and `rev` (1–255, wraps) each fit one byte, so the watch can
- * address and version a notice in a `[kind, value]` command.
+ * address and version a notice in a `[kind, id, rev]` command.
  *
  * @parity /modules/vescape-core/ios/notices/RideNoticeEngine.swift `RideNotice`
  * @parity /modules/vescape-core/src/index.ts `RideNotice`
@@ -50,6 +50,7 @@ data class RideNotice(val id: Int, val rev: Int, val key: String, val content: R
  *
  * - A post with the same `revision` updates content in place and keeps a dismissed notice hidden.
  *   A new `revision` bumps `rev` and shows it again.
+ * - A dismiss names `(id, rev)`; a stale `rev` is ignored, so a re-sent revision is never hidden unseen.
  * - A dismissed notice keeps its key and id until the source clears it or it expires.
  * - Ids are allocated round-robin over 1–255, skipping ids in use; a full table drops the post.
  *
@@ -96,8 +97,12 @@ class RideNoticeEngine {
 
     fun clear(key: String): Boolean = entries.remove(key) != null && refresh()
 
-    fun dismiss(id: Int): Boolean {
-        val entry = entries.values.firstOrNull { it.id == id && !it.dismissed } ?: return false
+    /**
+     * Hide the notice holding [id] at [rev]. A mismatched [rev] is a dismiss aimed at a revision the
+     * rider never saw (the source re-posted in between), so it is ignored.
+     */
+    fun dismiss(id: Int, rev: Int): Boolean {
+        val entry = entries.values.firstOrNull { it.id == id && it.rev == rev && !it.dismissed } ?: return false
         entry.dismissed = true
         return refresh()
     }

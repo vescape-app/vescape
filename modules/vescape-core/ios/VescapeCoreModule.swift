@@ -505,8 +505,8 @@ public class VescapeCoreModule: Module {
     Function("getRideNotices") { () -> [[String: Any?]] in
       RideNotices.shared.current.map { $0.toMap() }
     }
-    Function("dismissRideNotice") { (id: Int) in
-      RideNotices.shared.dismiss(id: id)
+    Function("dismissRideNotice") { (id: Int, rev: Int) in
+      RideNotices.shared.dismiss(id: id, rev: rev)
     }
     Function("devPostRideNotice") { (notice: [String: Any]) in
       guard

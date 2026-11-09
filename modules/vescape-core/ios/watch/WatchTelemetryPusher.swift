@@ -193,7 +193,7 @@ final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
     if activationState == .activated { DispatchQueue.main.async { self.coldState.flush(); self.wakeComplication() } }
   }
 
-  /// Wrist commands (ADR-0033). Two bytes, decoded off the delegate queue and handed to the owner;
+  /// Wrist commands (ADR-0033). A few bytes, decoded off the delegate queue and handed to the owner;
   /// an undecodable payload is dropped rather than guessed at.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommandListenerService.kt

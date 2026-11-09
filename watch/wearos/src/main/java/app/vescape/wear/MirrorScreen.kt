@@ -121,7 +121,7 @@ internal fun MirrorScreen(
             // Hide locally first, then ask the phone to dismiss for real. A lost command leaves the
             // notice hidden only on the wrist; the phone card stays until dismissed there.
             MirrorIntakeState.apply { hideRideNotice(notice.id, notice.rev) }
-            sender.sendDismissNotice(notice.id)
+            sender.sendDismissNotice(notice.id, notice.rev)
         }
         showClosePrompt = false
         scope.launch {

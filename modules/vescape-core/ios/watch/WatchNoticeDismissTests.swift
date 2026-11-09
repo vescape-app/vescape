@@ -1,58 +1,73 @@
 import XCTest
 @testable import VescapeCore
 
-/// Wrist dismiss (#652): the wire bytes a wrist sends land on the same engine dismiss the phone card
-/// uses, and nothing else.
+/// Wrist dismiss (#652): the wire bytes a wrist sends go through `BoardSessionController`'s real
+/// command routing into the process-wide `RideNotices` the phone card dismisses, and nothing else.
 ///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchNoticeDismissTest.kt
 final class WatchNoticeDismissTests: XCTestCase {
-  private var engine = RideNoticeEngine()
+  private var controller: BoardSessionController!
+  private let keys = ["watch-dismiss-a", "watch-dismiss-b"]
 
   override func setUp() {
-    engine = RideNoticeEngine()
+    super.setUp()
+    controller = BoardSessionController(scheduler: TestScheduler())
+    keys.forEach { RideNotices.shared.clear(key: $0) }
   }
 
-  private func post(_ key: String) {
-    _ = engine.post(
+  override func tearDown() {
+    keys.forEach { RideNotices.shared.clear(key: $0) }
+    controller = nil
+    super.tearDown()
+  }
+
+  private func post(_ key: String, revision: String = "r1") {
+    RideNotices.shared.post(
       key: key,
       content: RideNoticeContent(
         severity: .info, title: key, details: "Details", postedAt: 0,
         location: RideNoticeLocation(lat: 52, lng: 21), expiresAt: nil
       ),
-      revision: "r1", nowMs: 0
+      revision: revision
     )
   }
 
-  /// What `BoardSessionController.acceptWatchCommand` does with a decoded dismiss.
-  private func relay(_ bytes: [UInt8]) -> Bool {
-    guard case .dismissNotice(let id) = WatchCommandCodec.decode(Data(bytes)) else { return false }
-    return engine.dismiss(id: id)
+  private func notice(_ key: String) -> RideNotice? {
+    RideNotices.shared.current.first { $0.key == key }
   }
 
-  func testADismissRoundTripsItsIdOverTheWholeUnsignedByte() {
-    XCTAssertEqual(WatchCommandCodec.decode(Data([WatchCommandKind.dismissNotice, 1])), .dismissNotice(1))
-    XCTAssertEqual(WatchCommandCodec.decode(Data([WatchCommandKind.dismissNotice, 255])), .dismissNotice(255))
-    XCTAssertEqual(WatchCommandCodec.encode(.dismissNotice(7)), Data([6, 7]))
+  private func relay(_ bytes: [UInt8]) {
+    guard let command = WatchCommandCodec.decode(Data(bytes)) else { return }
+    controller.acceptWatchCommand(command)
   }
 
-  func testADismissWithoutItsIdByteIsDropped() {
+  func testADismissRoundTripsItsIdAndRevOverTheWholeUnsignedByte() {
+    XCTAssertEqual(WatchCommandCodec.decode(Data([6, 1, 2])), .dismissNotice(id: 1, rev: 2))
+    XCTAssertEqual(WatchCommandCodec.decode(Data([6, 255, 255])), .dismissNotice(id: 255, rev: 255))
+    XCTAssertEqual(WatchCommandCodec.encode(.dismissNotice(id: 7, rev: 3)), Data([6, 7, 3]))
+  }
+
+  func testADismissWithoutItsRevByteIsDropped() {
     XCTAssertNil(WatchCommandCodec.decode(Data([WatchCommandKind.dismissNotice])))
+    XCTAssertNil(WatchCommandCodec.decode(Data([WatchCommandKind.dismissNotice, 1])))
   }
 
-  func testAWristDismissRemovesTheNoticeHoldingThatIdAndLeavesTheRest() {
-    post("a")
-    post("b")
-    let id = engine.active.first { $0.key == "a" }!.id
-    XCTAssertTrue(relay([6, UInt8(id)]))
-    XCTAssertEqual(engine.active.map(\.key), ["b"])
+  func testAWristDismissRemovesTheNoticeHoldingThatIdAndLeavesTheRest() throws {
+    post(keys[0])
+    post(keys[1])
+    let a = try XCTUnwrap(notice(keys[0]))
+    relay([6, UInt8(a.id), UInt8(a.rev)])
+    XCTAssertNil(notice(keys[0]))
+    XCTAssertNotNil(notice(keys[1]))
   }
 
-  func testADismissForAnIdThatIsNotActiveIsIgnored() {
-    post("a")
-    XCTAssertFalse(relay([6, 42]))
-    let id = engine.active[0].id
-    _ = relay([6, UInt8(id)])
-    XCTAssertFalse(relay([6, UInt8(id)]))
-    XCTAssertTrue(engine.active.isEmpty)
+  func testADismissForTheRevisionTheWristSawLeavesAReSentRevisionShowing() throws {
+    post(keys[0])
+    let seen = try XCTUnwrap(notice(keys[0]))
+    post(keys[0], revision: "r2")
+    relay([6, UInt8(seen.id), UInt8(seen.rev)])
+    XCTAssertEqual(notice(keys[0])?.rev, seen.rev + 1)
+    relay([6, UInt8(seen.id), UInt8(seen.rev + 1)])
+    XCTAssertNil(notice(keys[0]))
   }
 }

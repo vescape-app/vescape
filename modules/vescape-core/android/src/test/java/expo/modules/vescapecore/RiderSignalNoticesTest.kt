@@ -83,7 +83,7 @@ class RiderSignalNoticesTest {
     @Test
     fun `a dismissed notice stays hidden across re-sends and a rename, and shows again on a new startedAt`() {
         roster(SignalRider("ola", "Ola", signal(RiderSignalKind.BOARD)))
-        engine.dismiss(engine.active.single().id)
+        engine.active.single().let { engine.dismiss(it.id, it.rev) }
 
         roster(SignalRider("ola", "Ola", signal(RiderSignalKind.BOARD)))
         roster(SignalRider("ola", "Ola K", signal(RiderSignalKind.BOARD)))

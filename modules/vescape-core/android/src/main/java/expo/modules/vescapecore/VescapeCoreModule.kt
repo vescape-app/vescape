@@ -1686,7 +1686,7 @@ class VescapeCoreModule : Module() {
     // source until one exists.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `dismissRideNotice`
     Function("getRideNotices") { RideNotices.current.map { it.toMap() } }
-    Function("dismissRideNotice") { id: Int -> RideNotices.dismiss(id) }
+    Function("dismissRideNotice") { id: Int, rev: Int -> RideNotices.dismiss(id, rev) }
     Function("devPostRideNotice") { notice: Map<String, Any?> ->
       val severity = RideNoticeSeverity.fromWire(notice["severity"] as? String)
         ?: throw IllegalArgumentException("Unknown Ride Notice severity")

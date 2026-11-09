@@ -45,8 +45,8 @@ final class RideNotices {
     mutate { $0.clear(key: key) }
   }
 
-  func dismiss(id: Int) {
-    mutate { $0.dismiss(id: id) }
+  func dismiss(id: Int, rev: Int) {
+    mutate { $0.dismiss(id: id, rev: rev) }
   }
 
   /// Drop anything already past `expiresAt`. The expiry timer is suspended while the app is in the

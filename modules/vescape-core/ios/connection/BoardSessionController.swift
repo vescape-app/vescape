@@ -255,9 +255,8 @@ internal final class BoardSessionController: VescGattListener {
     scheduler: scheduler,
     // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
     onParticipationChanged: { [weak self] in self?.refreshGpsDemand() },
-    // Rider Signal cues are safety calls, not connection sounds: the toggle does not mute them.
     onCue: { [weak self] cue in
-      guard let self, self.connectionSoundsEnabled || GroupRideCues.isSignalCue(cue) else { return }
+      guard let self, GroupRideCues.audible(cue, connectionSoundsEnabled: self.connectionSoundsEnabled) else { return }
       self.alertAudioPlayer.playAppCue(cue)
     },
     ownLocation: { [weak self] in
@@ -1117,11 +1116,8 @@ internal final class BoardSessionController: VescGattListener {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`
   private func latestRiderPresence() -> RiderPresence? {
-    guard groupRidePrivacy.allowsLocationEgress else { return nil }
-    guard let location = locationTracker.latestPreciseLocation ?? locationTracker.latestLocation else { return nil }
-    // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
-    // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
-    if isInsidePrivacyZone(location) { return nil }
+    guard let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)
+    else { return nil }
     let telemetry = latestTelemetry
     let telemetryFresh = telemetry != nil && !isTelemetryStale()
     return RiderPresence(
@@ -1138,19 +1134,9 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
-  /// What a Rider Signal send is checked against: the latest fix while it is recent, and whether it
-  /// lies inside a Privacy Zone (assumed so until zones load). Not the presence egress gate: a signal
-  /// carries its own location even inside a zone; the zone flag only drives the warning.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `riderSignalContext`
   private func riderSignalContext() -> RiderSignalContext {
-    let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-    let location = locationTracker.latestLocation.flatMap {
-      nowMs - $0.timestamp <= RiderSignals.fixMaxAgeMs ? $0 : nil
-    }
-    return RiderSignalContext(
-      fix: location.map { (lat: $0.latitude, lng: $0.longitude) },
-      insidePrivacyZone: !groupRidePrivacy.allowsLocationEgress || location.map(isInsidePrivacyZone) == true
-    )
+    groupRidePrivacy.signalContext(locationTracker.latestLocation, nowMs: Int64(Date().timeIntervalSince1970 * 1000))
   }
 
   /// Device battery as a 0–1 fraction, or nil when the platform can't report it.
@@ -1159,15 +1145,6 @@ internal final class BoardSessionController: VescGattListener {
     UIDevice.current.isBatteryMonitoringEnabled = true
     let level = UIDevice.current.batteryLevel
     return level < 0 ? nil : Double(level)
-  }
-
-  private func isInsidePrivacyZone(_ location: TelemetryLocationCapture) -> Bool {
-    guard !groupRidePrivacy.zones.isEmpty else { return false }
-    return isInsideAnyPrivacyZone(
-      latitudeE7: Int((location.latitude * 10_000_000.0).rounded()),
-      longitudeE7: Int((location.longitude * 10_000_000.0).rounded()),
-      zones: groupRidePrivacy.zones
-    )
   }
 
   /// Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD).
@@ -2835,7 +2812,8 @@ internal final class BoardSessionController: VescGattListener {
 
   /// Mirror coordination already hops WCSession commands onto this controller's scheduler.
   /// Board safety, command truth, and dead-man ownership stay in the existing relays.
-  private func acceptWatchCommand(_ command: WatchCommand) {
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommandListenerService.kt `routeWatchCommand`
+  func acceptWatchCommand(_ command: WatchCommand) {
     switch command {
     case .mirrorAwake: break // consumed by WatchMirrorCoordinator
     case .lights(let switchValue, let on): watchLightsRelay.accept(switchValue, on: on)
@@ -2843,7 +2821,7 @@ internal final class BoardSessionController: VescGattListener {
     case .tiltLock(let value): watchTiltLock(value)
     case .tiltCancel: watchTiltCancel()
     // Process-wide like the notices themselves: the same dismiss the phone card calls.
-    case .dismissNotice(let id): RideNotices.shared.dismiss(id: id)
+    case .dismissNotice(let id, let rev): RideNotices.shared.dismiss(id: id, rev: rev)
     }
   }
 
@@ -2943,8 +2921,17 @@ internal final class BoardSessionController: VescGattListener {
       batteryPercent: liveBatteryPercent,
       batteryVoltage: liveBatteryVoltage,
       faultCode: liveFaultCode,
-      notice: liveActivityNotice?.content
+      notice: liveActivityNoticeContent()
     )
+  }
+
+  /// Wall-clock filter: the engine's expiry timer is suspended in the background and lags, so a
+  /// notice already past `expiresAt` is never painted.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `presenter`
+  private func liveActivityNoticeContent() -> RideNoticeContent? {
+    guard let content = liveActivityNotice?.content else { return nil }
+    if let expiresAt = content.expiresAt, expiresAt <= Int64(Date().timeIntervalSince1970 * 1000) { return nil }
+    return content
   }
 
   /// Ride Notice on the Live Activity (#653). The listener fires only on visible-list changes; the

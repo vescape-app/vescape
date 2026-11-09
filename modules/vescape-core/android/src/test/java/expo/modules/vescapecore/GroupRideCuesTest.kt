@@ -242,4 +242,21 @@ class GroupRideCuesTest {
         assertEquals("groupRide.signal.help", signals("me", "ola", "kai", signals = both))
         assertEquals("groupRide.signal.ok", signals("me", "kai", "zoe", signals = emptyMap()))
     }
+
+    @Test
+    fun `with connection sounds off only signal cues play`() {
+        joinedWith("me", "ola")
+        val down = signals("me", "ola", signals = mapOf("ola" to signal(RiderSignalKind.DOWN)))!!
+        val ok = signals("me", "ola", signals = emptyMap())!!
+        val joined = roster("me", "ola", "kai")!!
+        cues.linkDropped()
+        cues.linkDropped()
+        val lost = cues.graceElapsed()!!
+
+        for (cue in listOf(down, ok)) assertTrue(cue, GroupRideCues.audible(cue, connectionSoundsEnabled = false))
+        for (cue in listOf(joined, lost, "groupRide.joined", "groupRide.created")) {
+            assertFalse(cue, GroupRideCues.audible(cue, connectionSoundsEnabled = false))
+            assertTrue(cue, GroupRideCues.audible(cue, connectionSoundsEnabled = true))
+        }
+    }
 }

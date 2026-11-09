@@ -212,4 +212,20 @@ final class GroupRideCuesTests: XCTestCase {
     XCTAssertEqual(signals("me", "ola", "kai", signals: both), "groupRide.signal.help")
     XCTAssertEqual(signals("me", "kai", "zoe", signals: [:]), "groupRide.signal.ok")
   }
+
+  func testWithConnectionSoundsOffOnlySignalCuesPlay() throws {
+    joined(with: "me", "ola")
+    let down = try XCTUnwrap(signals("me", "ola", signals: ["ola": signal(.down)]))
+    let ok = try XCTUnwrap(signals("me", "ola", signals: [:]))
+    let joinedCue = try XCTUnwrap(roster("me", "ola", "kai"))
+    _ = cues.linkDropped()
+    _ = cues.linkDropped()
+    let lost = try XCTUnwrap(cues.graceElapsed())
+
+    for cue in [down, ok] { XCTAssertTrue(GroupRideCues.audible(cue, connectionSoundsEnabled: false), cue) }
+    for cue in [joinedCue, lost, "groupRide.joined", "groupRide.created"] {
+      XCTAssertFalse(GroupRideCues.audible(cue, connectionSoundsEnabled: false), cue)
+      XCTAssertTrue(GroupRideCues.audible(cue, connectionSoundsEnabled: true), cue)
+    }
+  }
 }

@@ -123,11 +123,20 @@ internal class GroupRideCues {
         private fun signalCue(name: String) = SIGNAL_CUE_PREFIX + name
 
         /**
-         * A Rider Signal cue: a safety call, so it plays even with connection sounds off.
+         * A Rider Signal cue: a safety call, announced at advisory priority.
          *
          * @parity /modules/vescape-core/ios/groupride/GroupRideCues.swift `isSignalCue`
          */
         fun isSignalCue(cue: String): Boolean = cue.startsWith(SIGNAL_CUE_PREFIX)
+
+        /**
+         * Whether [cue] plays. The connection sounds toggle mutes every Group Ride cue except a Rider
+         * Signal cue: that is a safety call, not a connection sound.
+         *
+         * @parity /modules/vescape-core/ios/groupride/GroupRideCues.swift `audible`
+         */
+        fun audible(cue: String, connectionSoundsEnabled: Boolean): Boolean =
+            connectionSoundsEnabled || isSignalCue(cue)
 
         /**
          * How long our joined ride's link may stay down before `lost` plays. A rejoin inside it is

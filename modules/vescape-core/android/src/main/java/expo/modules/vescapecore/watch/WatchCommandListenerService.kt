@@ -13,21 +13,32 @@ import expo.modules.vescapecore.service.CoreForegroundService
  * The service can wake a cold process, which is harmless: with no live Board Session there is
  * nothing to move and no lights to state, so the command is dropped by
  * [CoreForegroundService.watchMove] / [CoreForegroundService.watchLights].
- *
- * A notice dismiss skips the service: Ride Notices are process-wide, so it goes straight into the
- * same [RideNotices.dismiss] the phone card calls, Board Session or not.
  */
 class WatchCommandListenerService : WearableListenerService() {
     override fun onMessageReceived(event: MessageEvent) {
         if (event.path != WATCH_COMMAND_PATH) return
-        when (val command = WatchCommandDecoder.decode(event.data)) {
-            is WatchCommand.Move -> CoreForegroundService.watchMove(command.direction)
-            is WatchCommand.MirrorAwake -> CoreForegroundService.watchMirrorWakeLevel(command.level)
-            is WatchCommand.Lights -> CoreForegroundService.watchLights(command.switch, command.on)
-            is WatchCommand.TiltLock -> CoreForegroundService.watchTiltLock(command.value)
-            WatchCommand.TiltCancel -> CoreForegroundService.watchTiltCancel()
-            is WatchCommand.DismissNotice -> RideNotices.dismiss(command.id)
-            null -> Unit
-        }
+        routeWatchCommand(event.data)
+    }
+}
+
+/**
+ * Decode and route one wrist command. A notice dismiss skips the service: Ride Notices are
+ * process-wide, so it goes straight into the same [RideNotices.dismiss] the phone card calls, Board
+ * Session or not. [dismissNotice] is the seam tests drive with a bare engine.
+ *
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `acceptWatchCommand`
+ */
+internal fun routeWatchCommand(
+    bytes: ByteArray,
+    dismissNotice: (id: Int, rev: Int) -> Unit = RideNotices::dismiss,
+) {
+    when (val command = WatchCommandDecoder.decode(bytes)) {
+        is WatchCommand.Move -> CoreForegroundService.watchMove(command.direction)
+        is WatchCommand.MirrorAwake -> CoreForegroundService.watchMirrorWakeLevel(command.level)
+        is WatchCommand.Lights -> CoreForegroundService.watchLights(command.switch, command.on)
+        is WatchCommand.TiltLock -> CoreForegroundService.watchTiltLock(command.value)
+        WatchCommand.TiltCancel -> CoreForegroundService.watchTiltCancel()
+        is WatchCommand.DismissNotice -> dismissNotice(command.id, command.rev)
+        null -> Unit
     }
 }

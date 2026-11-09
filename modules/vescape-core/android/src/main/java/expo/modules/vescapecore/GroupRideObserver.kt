@@ -56,10 +56,11 @@ internal class GroupRideObserver(
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `signalContext`
      */
     private val signalContext: () -> RiderSignalContext = { RiderSignalContext(fix = null, insidePrivacyZone = true) },
-) {
-    private val client = OkHttpClient.Builder()
+    /** Opens the relay socket; tests stand in a fake to see the frames. */
+    private val sockets: WebSocket.Factory = OkHttpClient.Builder()
         .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
-        .build()
+        .build(),
+) {
 
     private var webSocket: WebSocket? = null
     private var serverUrl: String? = null
@@ -469,7 +470,7 @@ internal class GroupRideObserver(
             return
         }
         emitConnection("connecting")
-        webSocket = client.newWebSocket(GroupRideOnlineGate.buildObserveRequest(url, online.appVersion), listener)
+        webSocket = sockets.newWebSocket(GroupRideOnlineGate.buildObserveRequest(url, online.appVersion), listener)
     }
 
     private val listener = object : WebSocketListener() {
@@ -764,7 +765,7 @@ internal class GroupRideObserver(
     /** The rider is out of the ride: drop its cue state, a pending `lost` included, and signal notices. */
     private fun forgetRideCues() {
         cues.reset()
-        signalNotices.reset().forEach(RideNotices::clear)
+        signalNotices.reset().forEach { RideNotices.clear(it) }
         handler.removeCallbacks(lostRunnable)
     }
 

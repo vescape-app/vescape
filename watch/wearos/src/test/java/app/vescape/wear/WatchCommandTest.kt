@@ -36,9 +36,9 @@ class WatchCommandTest {
     }
 
     @Test
-    fun `a notice dismiss carries the id as one unsigned byte`() {
-        assertArrayEquals(byteArrayOf(6, 1), encodeDismissNoticeCommand(1))
-        assertArrayEquals(byteArrayOf(6, -1), encodeDismissNoticeCommand(255))
+    fun `a notice dismiss carries the id and rev as unsigned bytes`() {
+        assertArrayEquals(byteArrayOf(6, 1, 3), encodeDismissNoticeCommand(1, 3))
+        assertArrayEquals(byteArrayOf(6, -1, -1), encodeDismissNoticeCommand(255, 255))
     }
 
     @Test

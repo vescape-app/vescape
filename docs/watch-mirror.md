@@ -586,9 +586,11 @@ in place redraws without a buzz; a new `rev`, or an id reused after it left the 
 Ambient draws the card quieter and never replays the buzz. A frame whose `sentAtMs` is not newer
 than the one held is ignored, so the live message and its retained copy never buzz twice. Tapping
 the card (or back on Wear OS) hides that notice on the wrist and returns both axes to the gauges.
-The hide also sends the `dismissNotice` watch command (kind `6`, value = id) to the phone, which
-relays it into the same native dismiss the phone card uses, with or without a Board Session; the
-shorter list then reaches both devices. An id no longer active is ignored. A lost command leaves
+The hide also sends the `dismissNotice` watch command to the phone, the one three-byte command:
+`[6, id, rev]`. The phone relays it into the same native dismiss the phone card uses (which also
+passes `(id, rev)`), with or without a Board Session; the shorter list then reaches both devices.
+An id no longer active is ignored, and so is a `rev` other than the one the notice holds now: a
+signal re-sent while the command was in flight is not hidden unseen. A lost command leaves
 the notice hidden only on the wrist. The local hide is dropped when the id leaves the list or its
 `rev` changes. The wrist drops
 a notice once `expiresAt` passes on its own clock, without a phone write. The card has no actions.

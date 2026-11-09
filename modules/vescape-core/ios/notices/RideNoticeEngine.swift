@@ -25,7 +25,7 @@ struct RideNoticeContent: Equatable {
 }
 
 /// One visible Ride Notice. `id` (1–255) and `rev` (1–255, wraps) each fit one byte, so the watch can
-/// address and version a notice in a `[kind, value]` command.
+/// address and version a notice in a `[kind, id, rev]` command.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notices/RideNoticeEngine.kt `RideNotice`
 /// @parity /modules/vescape-core/src/index.ts `RideNotice`
 struct RideNotice: Equatable {
@@ -54,6 +54,7 @@ struct RideNotice: Equatable {
 ///
 /// - A post with the same `revision` updates content in place and keeps a dismissed notice hidden.
 ///   A new `revision` bumps `rev` and shows it again.
+/// - A dismiss names `(id, rev)`; a stale `rev` is ignored, so a re-sent revision is never hidden unseen.
 /// - A dismissed notice keeps its key and id until the source clears it or it expires.
 /// - Ids are allocated round-robin over 1–255, skipping ids in use; a full table drops the post.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notices/RideNoticeEngine.kt `RideNoticeEngine`
@@ -99,8 +100,11 @@ final class RideNoticeEngine {
     entries.removeValue(forKey: key) != nil && refresh()
   }
 
-  func dismiss(id: Int) -> Bool {
-    guard let key = entries.first(where: { $0.value.id == id && !$0.value.dismissed })?.key else { return false }
+  /// Hide the notice holding `id` at `rev`. A mismatched `rev` is a dismiss aimed at a revision the
+  /// rider never saw (the source re-posted in between), so it is ignored.
+  func dismiss(id: Int, rev: Int) -> Bool {
+    guard let key = entries.first(where: { $0.value.id == id && $0.value.rev == rev && !$0.value.dismissed })?.key
+    else { return false }
     entries[key]?.dismissed = true
     return refresh()
   }

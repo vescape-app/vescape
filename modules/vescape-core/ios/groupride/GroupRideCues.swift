@@ -16,9 +16,16 @@ struct GroupRideCues {
 
   private static let signalCuePrefix = "groupRide.signal."
 
-  /// A Rider Signal cue: a safety call, so it plays even with connection sounds off.
+  /// A Rider Signal cue: a safety call, announced at advisory priority.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideCues.kt `isSignalCue`
   static func isSignalCue(_ cue: String) -> Bool { cue.hasPrefix(signalCuePrefix) }
+
+  /// Whether `cue` plays. The connection sounds toggle mutes every Group Ride cue except a Rider
+  /// Signal cue: that is a safety call, not a connection sound.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideCues.kt `audible`
+  static func audible(_ cue: String, connectionSoundsEnabled: Bool) -> Bool {
+    connectionSoundsEnabled || isSignalCue(cue)
+  }
 
   /// The ride the rider joined; `seen` and `members` belong to it. Kept through our own outage.
   private var rideId: String?

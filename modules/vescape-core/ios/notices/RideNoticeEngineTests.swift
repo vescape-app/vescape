@@ -47,17 +47,26 @@ final class RideNoticeEngineTests: XCTestCase {
 
   func testADismissedNoticeStaysHiddenOnASameRevisionUpdate() {
     _ = engine.post(key: "a", content: content(), revision: "r1", nowMs: 0)
-    XCTAssertTrue(engine.dismiss(id: 1))
+    XCTAssertTrue(engine.dismiss(id: 1, rev: 1))
     XCTAssertEqual(engine.post(key: "a", content: content(title: "New"), revision: "r1", nowMs: 0), .unchanged)
     XCTAssertTrue(engine.active.isEmpty)
   }
 
   func testANewRevisionShowsADismissedNoticeAgainAndBumpsRev() {
     _ = engine.post(key: "a", content: content(), revision: "r1", nowMs: 0)
-    _ = engine.dismiss(id: 1)
+    _ = engine.dismiss(id: 1, rev: 1)
     XCTAssertEqual(engine.post(key: "a", content: content(), revision: "r2", nowMs: 0), .changed)
     XCTAssertEqual(engine.active.first?.rev, 2)
     XCTAssertEqual(engine.active.first?.id, 1)
+  }
+
+  func testADismissNamingAnOlderRevIsIgnoredSoAReSentRevisionIsNeverHiddenUnseen() {
+    _ = engine.post(key: "a", content: content(), revision: "r1", nowMs: 0)
+    _ = engine.post(key: "a", content: content(), revision: "r2", nowMs: 0)
+    XCTAssertFalse(engine.dismiss(id: 1, rev: 1))
+    XCTAssertEqual(engine.active.first?.rev, 2)
+    XCTAssertTrue(engine.dismiss(id: 1, rev: 2))
+    XCTAssertTrue(engine.active.isEmpty)
   }
 
   func testRevWrapsFrom255To1() {
@@ -70,9 +79,9 @@ final class RideNoticeEngineTests: XCTestCase {
 
   func testDismissingAnUnknownOrAlreadyDismissedIdChangesNothing() {
     _ = engine.post(key: "a", content: content(), revision: "r1", nowMs: 0)
-    XCTAssertFalse(engine.dismiss(id: 9))
-    _ = engine.dismiss(id: 1)
-    XCTAssertFalse(engine.dismiss(id: 1))
+    XCTAssertFalse(engine.dismiss(id: 9, rev: 1))
+    _ = engine.dismiss(id: 1, rev: 1)
+    XCTAssertFalse(engine.dismiss(id: 1, rev: 1))
   }
 
   func testClearRemovesANoticeAndClearingADismissedOneEmitsNothing() {
@@ -80,7 +89,7 @@ final class RideNoticeEngineTests: XCTestCase {
     _ = engine.post(key: "b", content: content(), revision: "r1", nowMs: 0)
     XCTAssertTrue(engine.clear(key: "a"))
     XCTAssertEqual(keys, ["b"])
-    _ = engine.dismiss(id: 2)
+    _ = engine.dismiss(id: 2, rev: 1)
     XCTAssertFalse(engine.clear(key: "b"))
     XCTAssertFalse(engine.clear(key: "missing"))
     // Cleared: a fresh post of the key shows again even with the old revision.
@@ -94,7 +103,7 @@ final class RideNoticeEngineTests: XCTestCase {
     XCTAssertFalse(engine.tick(nowMs: 4_999))
     XCTAssertTrue(engine.tick(nowMs: 5_000))
     XCTAssertEqual(keys, ["b"])
-    _ = engine.dismiss(id: 2)
+    _ = engine.dismiss(id: 2, rev: 1)
     XCTAssertFalse(engine.tick(nowMs: 9_000))
     XCTAssertNil(engine.nextExpiryAt())
   }

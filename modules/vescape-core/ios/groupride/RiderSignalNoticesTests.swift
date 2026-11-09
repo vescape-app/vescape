@@ -68,7 +68,8 @@ final class RiderSignalNoticesTests: XCTestCase {
 
   func testADismissedNoticeStaysHiddenAcrossReSendsAndARenameAndShowsAgainOnANewStartedAt() throws {
     roster(rider("ola", "Ola", signal(.board)))
-    _ = engine.dismiss(id: try XCTUnwrap(engine.active.first).id)
+    let shown = try XCTUnwrap(engine.active.first)
+    _ = engine.dismiss(id: shown.id, rev: shown.rev)
 
     roster(rider("ola", "Ola", signal(.board)))
     roster(rider("ola", "Ola K", signal(.board)))

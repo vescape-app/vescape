@@ -45,7 +45,7 @@ class RideNoticeEngineTest {
     @Test
     fun `a dismissed notice stays hidden on a same-revision update`() {
         engine.post("a", content(), "r1", 0)
-        assertTrue(engine.dismiss(1))
+        assertTrue(engine.dismiss(1, 1))
         assertEquals(PostResult.UNCHANGED, engine.post("a", content(title = "New"), "r1", 0))
         assertTrue(engine.active.isEmpty())
     }
@@ -53,11 +53,21 @@ class RideNoticeEngineTest {
     @Test
     fun `a new revision shows a dismissed notice again and bumps rev`() {
         engine.post("a", content(), "r1", 0)
-        engine.dismiss(1)
+        engine.dismiss(1, 1)
         assertEquals(PostResult.CHANGED, engine.post("a", content(), "r2", 0))
         val notice = engine.active.single()
         assertEquals(2, notice.rev)
         assertEquals(1, notice.id)
+    }
+
+    @Test
+    fun `a dismiss naming an older rev is ignored, so a re-sent revision is never hidden unseen`() {
+        engine.post("a", content(), "r1", 0)
+        engine.post("a", content(), "r2", 0)
+        assertFalse(engine.dismiss(1, 1))
+        assertEquals(2, engine.active.single().rev)
+        assertTrue(engine.dismiss(1, 2))
+        assertTrue(engine.active.isEmpty())
     }
 
     @Test
@@ -72,9 +82,9 @@ class RideNoticeEngineTest {
     @Test
     fun `dismissing an unknown or already dismissed id changes nothing`() {
         engine.post("a", content(), "r1", 0)
-        assertFalse(engine.dismiss(9))
-        engine.dismiss(1)
-        assertFalse(engine.dismiss(1))
+        assertFalse(engine.dismiss(9, 1))
+        engine.dismiss(1, 1)
+        assertFalse(engine.dismiss(1, 1))
     }
 
     @Test
@@ -83,7 +93,7 @@ class RideNoticeEngineTest {
         engine.post("b", content(), "r1", 0)
         assertTrue(engine.clear("a"))
         assertEquals(listOf("b"), engine.active.map { it.key })
-        engine.dismiss(2)
+        engine.dismiss(2, 1)
         assertFalse(engine.clear("b"))
         assertFalse(engine.clear("missing"))
         // Cleared: a fresh post of the key shows again even with the old revision.
@@ -98,7 +108,7 @@ class RideNoticeEngineTest {
         assertFalse(engine.tick(4_999))
         assertTrue(engine.tick(5_000))
         assertEquals(listOf("b"), engine.active.map { it.key })
-        engine.dismiss(2)
+        engine.dismiss(2, 1)
         assertFalse(engine.tick(9_000))
         assertEquals(null, engine.nextExpiryAt())
     }

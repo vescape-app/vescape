@@ -23,7 +23,7 @@ internal final class GroupRideObserver: NSObject {
     delegateQueue: nil
   )
 
-  private var webSocket: URLSessionWebSocketTask?
+  private var webSocket: GroupRideSocket?
   private var serverUrl: String?
   private var reconnectAttempt = 0
   private var stopped = true { didSet { notifyParticipationIfChanged() } }
@@ -96,6 +96,9 @@ internal final class GroupRideObserver: NSObject {
   /// The fix and Privacy Zone state a Rider Signal send is checked against.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `signalContext`
   private let signalContext: () -> RiderSignalContext
+  /// Opens the relay socket; tests stand in a fake to see the frames. Nil opens a URLSession task.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `sockets`
+  private let makeSocket: ((URLRequest) -> GroupRideSocket)?
 
   init(
     emit: @escaping (String, [String: Any?]) -> Void,
@@ -104,9 +107,11 @@ internal final class GroupRideObserver: NSObject {
     onParticipationChanged: @escaping () -> Void = {},
     onCue: @escaping (String) -> Void = { _ in },
     ownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil },
-    signalContext: @escaping () -> RiderSignalContext = { RiderSignalContext(fix: nil, insidePrivacyZone: true) }
+    signalContext: @escaping () -> RiderSignalContext = { RiderSignalContext(fix: nil, insidePrivacyZone: true) },
+    makeSocket: ((URLRequest) -> GroupRideSocket)? = nil
   ) {
     self.signalContext = signalContext
+    self.makeSocket = makeSocket
     self.onCue = onCue
     self.ownLocation = ownLocation
     self.emit = emit
@@ -167,7 +172,7 @@ internal final class GroupRideObserver: NSObject {
     cancelReconnect()
     onlineUnsub?()
     onlineUnsub = nil
-    webSocket?.cancel(with: .normalClosure, reason: nil)
+    webSocket?.close()
     webSocket = nil
     joinedRideId = nil
     desiredRideId = nil
@@ -215,7 +220,7 @@ internal final class GroupRideObserver: NSObject {
   /// untouched — this only gates Group Ride.
   private func tearDownForBlock() {
     cancelReconnect()
-    webSocket?.cancel(with: .normalClosure, reason: nil)
+    webSocket?.close()
     webSocket = nil
     reconnectAttempt = 0
     joinedRideId = nil
@@ -232,7 +237,7 @@ internal final class GroupRideObserver: NSObject {
   private var linkOpen: Bool { webSocket != nil && lastConnection == "connected" }
 
   /// Callback may arrive after its socket was closed or superseded.
-  private func isCurrentSocket(_ task: URLSessionWebSocketTask) -> Bool {
+  private func isCurrentSocket(_ task: GroupRideSocket) -> Bool {
     !stopped && !online.onlineBlocked && webSocket === task
   }
 
@@ -393,23 +398,23 @@ internal final class GroupRideObserver: NSObject {
       return
     }
     emitConnection("connecting")
-    let task = session.webSocketTask(with: request)
+    let task = makeSocket?(request) ?? session.webSocketTask(with: request)
     webSocket = task
-    task.resume()
+    task.open()
     receive(on: task)
     schedulePing()
   }
 
   /// Re-arming receive loop. Failures are ignored here: the delegate's completion callback owns
   /// teardown and reconnect, so a socket error is handled once rather than twice.
-  private func receive(on task: URLSessionWebSocketTask) {
-    task.receive { [weak self] result in
+  private func receive(on task: GroupRideSocket) {
+    task.receiveText { [weak self] result in
       guard let self else { return }
       switch result {
-      case .success(let message):
+      case .success(let text):
         self.onMain {
           guard self.isCurrentSocket(task) else { return }
-          if case .string(let text) = message { self.handleMessage(text) }
+          if let text { self.handleMessage(text) }
         }
         self.receive(on: task)
       case .failure:
@@ -418,7 +423,7 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  private func onOpen(_ task: URLSessionWebSocketTask) {
+  func onOpen(_ task: GroupRideSocket) {
     onMain { [self] in
       guard isCurrentSocket(task) else { return }
       reconnectAttempt = 0
@@ -433,7 +438,7 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  private func onClosed(_ task: URLSessionWebSocketTask, responseCode: Int?) {
+  func onClosed(_ task: GroupRideSocket, responseCode: Int?) {
     onMain { [self] in
       guard isCurrentSocket(task) else { return }
       if responseCode == GroupRideOnlineGate.versionRejectionCode {
@@ -582,19 +587,19 @@ internal final class GroupRideObserver: NSObject {
     emit("onGroupRideError", ["message": message])
   }
 
-  private func sendHello(_ task: URLSessionWebSocketTask, riderId: String, riderName: String) {
+  private func sendHello(_ task: GroupRideSocket, riderId: String, riderName: String) {
     self.riderId = riderId
     self.riderName = riderName
     send(task, ["type": "hello", "riderId": riderId, "name": riderName])
   }
 
-  private func sendJoin(_ task: URLSessionWebSocketTask, rideId: String, presence: RiderPresence?) {
+  private func sendJoin(_ task: GroupRideSocket, rideId: String, presence: RiderPresence?) {
     var join: [String: Any] = ["type": "join", "rideId": rideId]
     if let presence { join["presence"] = presence.toJson() }
     send(task, join)
   }
 
-  private func send(_ task: URLSessionWebSocketTask, _ frame: [String: Any]) {
+  private func send(_ task: GroupRideSocket, _ frame: [String: Any]) {
     let text: String
     do {
       let data = try JSONSerialization.data(withJSONObject: frame)
@@ -606,7 +611,7 @@ internal final class GroupRideObserver: NSObject {
       UnexpectedNativeError.report(operation: "group_ride_frame_encode", category: "encode_failed", error: error)
       return
     }
-    task.send(.string(text)) { [weak self] error in
+    task.sendText(text) { [weak self] error in
       guard let error, let self else { return }
       self.onMain {
         guard self.isCurrentSocket(task) else { return }
@@ -790,7 +795,7 @@ internal final class GroupRideObserver: NSObject {
   private func schedulePing() {
     pingWork = scheduler.postDelayed(Int64(Self.pingIntervalSeconds * 1000)) { [weak self] in
       guard let self, !self.stopped, let ws = self.webSocket else { return }
-      ws.sendPing { _ in }
+      ws.ping()
       self.schedulePing()
     }
   }
@@ -836,6 +841,38 @@ extension GroupRideObserver: URLSessionWebSocketDelegate {
     if let error { NSLog("[GroupRide] observe WS failure: \(error.localizedDescription)") }
     onClosed(webSocketTask, responseCode: (task.response as? HTTPURLResponse)?.statusCode)
   }
+}
+
+/// The relay socket as the observer drives it: a `URLSessionWebSocketTask` in production, a fake in
+/// tests. Text frames only; the relay sends nothing else.
+protocol GroupRideSocket: AnyObject {
+  func open()
+  func sendText(_ text: String, completion: @escaping (Error?) -> Void)
+  /// One received frame; `nil` text for a binary frame, which the observer ignores.
+  func receiveText(_ completion: @escaping (Result<String?, Error>) -> Void)
+  func ping()
+  func close()
+}
+
+extension URLSessionWebSocketTask: GroupRideSocket {
+  func open() { resume() }
+
+  func sendText(_ text: String, completion: @escaping (Error?) -> Void) {
+    send(.string(text), completionHandler: completion)
+  }
+
+  func receiveText(_ completion: @escaping (Result<String?, Error>) -> Void) {
+    receive { result in
+      completion(result.map { message in
+        if case .string(let text) = message { return text }
+        return nil
+      })
+    }
+  }
+
+  func ping() { sendPing { _ in } }
+
+  func close() { cancel(with: .normalClosure, reason: nil) }
 }
 
 /// The Rider's shared map target (their direction Map Point).
