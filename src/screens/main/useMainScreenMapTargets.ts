@@ -190,7 +190,7 @@ export function useMainScreenMapTargets(
     },
     [controller, mapRef],
   )
-  /** Enter map mode centred on a point, e.g. a Ride Notice's location. */
+  /** Enter map mode centred on a point: a Ride Notice's location or a roster Rider Signal. */
   const handleFocusCoordinate = useCallback(
     (coordinate: { latitude: number; longitude: number }) => {
       controller.dismissMapSelector()

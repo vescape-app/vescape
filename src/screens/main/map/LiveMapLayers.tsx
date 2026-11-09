@@ -3,7 +3,11 @@ import { processColor } from 'react-native'
 
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
-import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
+import {
+  RiderPresencePin,
+  RiderSignalPins,
+  RiderTrail,
+} from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { GpsPuck } from '@/modules/map/components/GpsPuck'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
@@ -97,6 +101,7 @@ export function LiveMapLayers({
       {riders.map((rider) =>
         rider.presence ? <RiderPresencePin key={rider.id} rider={rider} /> : null,
       )}
+      <RiderSignalPins />
     </>
   )
 }

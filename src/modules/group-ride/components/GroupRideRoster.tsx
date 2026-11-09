@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import {
   ArrowsHorizontalIcon,
   BatteryMediumIcon,
@@ -25,6 +25,7 @@ import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
 import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
 import { riderHue } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
+import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
 
 type OwnLocation = { lat: number; lng: number } | null
 
@@ -32,13 +33,21 @@ type OwnLocation = { lat: number; lng: number } | null
  *  so each Rider's stats wrap into two lines of three. */
 const ONE_LINE_STATS_MIN_WIDTH = 290
 
-/** The joined ride's Riders as full-width rows whose stat columns line up like a table. */
+interface SignalPoint {
+  latitude: number
+  longitude: number
+}
+
+/** The joined ride's Riders as full-width rows whose stat columns line up like a table. A row with
+ *  an active signal is tappable and hands the signal's location to `onFocusSignal`. */
 export function RosterList({
   rows,
   ownLocation,
+  onFocusSignal,
 }: {
   rows: RosterRider[]
   ownLocation: OwnLocation
+  onFocusSignal?: (point: SignalPoint) => void
 }) {
   const neutral = useResolvedNeutralColors()
   const divider = theme.alpha(neutral.border, 0.6)
@@ -54,6 +63,7 @@ export function RosterList({
           ownLocation={ownLocation}
           divider={index > 0 ? divider : undefined}
           wrapStats={wrapStats}
+          onFocusSignal={onFocusSignal}
         />
       ))}
     </View>
@@ -103,12 +113,15 @@ function RiderRow({
   ownLocation,
   divider,
   wrapStats,
+  onFocusSignal,
 }: {
   rider: RosterRider
   ownLocation: OwnLocation
   divider?: string
   wrapStats: boolean
+  onFocusSignal?: (point: SignalPoint) => void
 }) {
+  const signal = useActiveRiderSignal(rider.signal)
   const { formatDistance } = useFormat()
   const s = useRiderStats(rider.presence)
   // An away Rider's stats stay frozen at their last presence; the minute clock ages the label.
@@ -140,7 +153,13 @@ function RiderRow({
   ]
 
   return (
-    <View style={[styles.row, divider ? [styles.rowDivided, { borderTopColor: divider }] : null]}>
+    <Pressable
+      disabled={!signal || !onFocusSignal}
+      onPress={() => signal && onFocusSignal?.({ latitude: signal.lat, longitude: signal.lng })}
+      accessibilityRole={signal && onFocusSignal ? 'button' : undefined}
+      accessibilityHint={signal && onFocusSignal ? 'Shows the signal on the map' : undefined}
+      style={[styles.row, divider ? [styles.rowDivided, { borderTopColor: divider }] : null]}
+    >
       <View style={styles.head}>
         <View style={[styles.dot, { backgroundColor: dotColor }]} />
         <Text style={styles.name} numberOfLines={1}>
@@ -151,7 +170,7 @@ function RiderRow({
           {boardName}
         </Text>
         {rider.away ? <Text style={styles.awayTag}>{awayLabel(rider.lastSeen, now)}</Text> : null}
-        {rider.signal ? <SignalBadge kind={rider.signal.kind} /> : null}
+        {signal ? <SignalBadge kind={signal.kind} /> : null}
       </View>
       {/* An away Rider's numbers are their last presence: dimmed, while the badge stays legible. */}
       <View style={[styles.statLines, rider.away && styles.statsAway]}>
@@ -163,7 +182,7 @@ function RiderRow({
           </View>
         ))}
       </View>
-    </View>
+    </Pressable>
   )
 }
 

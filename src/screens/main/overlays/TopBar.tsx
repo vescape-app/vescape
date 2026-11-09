@@ -65,6 +65,7 @@ interface TopBarProps {
   activeNavigationTarget: MapSelection | null
   onNavigationPress: () => void
   onCancelNavigation: () => void
+  onFocusCoordinate: (coordinate: { latitude: number; longitude: number }) => void
 }
 
 const TAKEOVER_ICONS: Record<NonNullable<SettingsTriggerTakeover>, Icon> = {
@@ -85,6 +86,7 @@ export function TopBar({
   activeNavigationTarget,
   onNavigationPress,
   onCancelNavigation,
+  onFocusCoordinate,
 }: TopBarProps) {
   const { formatDistance } = useFormat()
   const insets = useSafeAreaInsets()
@@ -277,7 +279,12 @@ export function TopBar({
         backdropTestID="social-drawer-backdrop"
         onClose={() => setSocialOpen(false)}
       >
-        <SocialSheet />
+        <SocialSheet
+          onFocusSignal={(point) => {
+            setSocialOpen(false)
+            onFocusCoordinate(point)
+          }}
+        />
       </EdgeDrawer>
 
       <EdgeDrawer

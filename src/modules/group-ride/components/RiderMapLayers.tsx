@@ -9,6 +9,9 @@ import { makeTrailLineString } from '@/helpers/mapGeometry'
 import { riderMapColor } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
+import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
+import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
+import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
 // A peer's recent path, tinted like their marker and fading out toward the tail —
 // the group-ride counterpart to the device's own live trail.
@@ -90,7 +93,52 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
   )
 }
 
+/** Every Rider's active signal, your own included (the presence layers leave you out). */
+export function RiderSignalPins() {
+  const rows = useGroupRideStore((s) => s.rosterRows)
+  return rows.map((rider) =>
+    rider.signal ? <RiderSignalPin key={`signal-${rider.id}`} rider={rider} /> : null,
+  )
+}
+
+/**
+ * A Rider's active signal, pinned where it was sent. Apart from the presence pin, so it stays put
+ * while the sender moves on or goes away. Always in the sender's own color: a live call for help
+ * is never muted by a stale presence.
+ */
+function RiderSignalPin({ rider }: { rider: RosterRider }) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
+  const signal = useActiveRiderSignal(rider.signal)
+  const info = signal ? riderSignalKindInfo(signal.kind) : null
+  if (!signal || !info) return null
+  const color = riderMapColor({ id: rider.id, stale: false }, accents)
+  const KindIcon = info.icon
+
+  return (
+    <MarkerView coordinate={[signal.lng, signal.lat]} allowOverlap>
+      <View
+        style={[
+          styles.signalPin,
+          { borderColor: color, backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85) },
+        ]}
+        accessibilityLabel={`${rider.name || 'Rider'}: ${info.label}`}
+      >
+        <KindIcon size={18} color={color} weight="fill" />
+      </View>
+    </MarkerView>
+  )
+}
+
 const styles = StyleSheet.create({
+  signalPin: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   riderMarker: {
     alignItems: 'center',
     gap: 4,
