@@ -43,6 +43,8 @@ internal struct RiderSignal: Equatable {
 
 /// What the device knows when the Rider asks to send a signal. `fix` is the latest GPS fix no older
 /// than `RiderSignals.fixMaxAgeMs`; `insidePrivacyZone` is also true while zones have not loaded.
+/// A send ignores `insidePrivacyZone`: it is an explicit opt-in to share that spot (ADR-0020). The
+/// flag only drives the picker's location warning.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalContext`
 internal struct RiderSignalContext {
@@ -71,10 +73,10 @@ internal enum RiderSignals {
   /// A send needs a GPS fix at most this old.
   static let fixMaxAgeMs: Int64 = 30_000
 
-  /// The intent for a send request, or nil when it must be rejected: inside (or not yet sure about)
-  /// a Privacy Zone, or without a recent fix.
+  /// The intent for a send request, or nil without a recent fix. Goes out inside a Privacy Zone and
+  /// while zones are loading; presence keeps its own gates.
   static func sendIntent(_ kind: RiderSignalKind, _ context: RiderSignalContext) -> RiderSignalIntent? {
-    guard !context.insidePrivacyZone, let fix = context.fix else { return nil }
+    guard let fix = context.fix else { return nil }
     return .send(kind: kind, lat: fix.lat, lng: fix.lng)
   }
 }

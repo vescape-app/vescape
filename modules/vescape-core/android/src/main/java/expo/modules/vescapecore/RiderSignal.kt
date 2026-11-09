@@ -58,6 +58,8 @@ internal data class RiderSignal(
 /**
  * What the device knows when the Rider asks to send a signal. [fix] is the latest GPS fix no older
  * than [RiderSignals.FIX_MAX_AGE_MS]; [insidePrivacyZone] is also true while zones have not loaded.
+ * A send ignores [insidePrivacyZone]: it is an explicit opt-in to share that spot (ADR-0020). The
+ * flag only drives the picker's location warning.
  *
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalContext`
  */
@@ -92,11 +94,10 @@ internal object RiderSignals {
     const val FIX_MAX_AGE_MS = 30_000L
 
     /**
-     * The intent for a send request, or null when it must be rejected: inside (or not yet sure
-     * about) a Privacy Zone, or without a recent fix.
+     * The intent for a send request, or null without a recent fix. Goes out inside a Privacy Zone
+     * and while zones are loading; presence keeps its own gates.
      */
     fun sendIntent(kind: RiderSignalKind, context: RiderSignalContext): RiderSignalIntent.Send? {
-        if (context.insidePrivacyZone) return null
         val fix = context.fix ?: return null
         return RiderSignalIntent.Send(kind, fix.first, fix.second)
     }

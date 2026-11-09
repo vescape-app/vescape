@@ -57,26 +57,25 @@ export function RiderSignalTrigger({ style }: { style?: StyleProp<ViewStyle> }) 
 
 /**
  * The Rider Signal picker: the own active signal with its time left and a dismiss, then the fixed
- * kinds. Picking a kind replaces the active one. Sending stays off without a recent GPS fix and,
- * for now, inside a Privacy Zone.
+ * kinds. Picking a kind replaces the active one. Sending stays off without a recent GPS fix; inside
+ * a Privacy Zone it still sends, and the hint warns that it shares the Rider's location.
  */
 function RiderSignalSheet({ onSent }: { onSent: () => void }) {
   const availability = useGroupRideStore((s) => s.signalAvailability)
   const sendSignal = useGroupRideStore((s) => s.sendSignal)
   const ownSignal = useOwnSignal()
 
-  const blockedReason = availability.insidePrivacyZone
-    ? 'Not available inside a Privacy Zone yet.'
-    : !availability.hasRecentFix
-      ? 'Waiting for GPS…'
-      : null
+  const blockedReason = availability.hasRecentFix ? null : 'Waiting for GPS…'
+  const hint =
+    blockedReason ??
+    (availability.insidePrivacyZone
+      ? "You're inside a Privacy Zone. Sending shares your location with the group."
+      : 'Everyone in the group ride sees it where you are now.')
 
   return (
     <View style={styles.sheet}>
       {ownSignal ? <OwnSignal signal={ownSignal} /> : null}
-      <Text style={styles.hint}>
-        {blockedReason ?? 'Everyone in the group ride sees it where you are now.'}
-      </Text>
+      <Text style={styles.hint}>{hint}</Text>
       <View style={styles.kinds}>
         {RIDER_SIGNAL_KINDS.map((kind) => {
           const { label, icon } = RIDER_SIGNAL_KIND_INFO[kind]

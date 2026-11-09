@@ -3417,7 +3417,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /**
      * What a Rider Signal send is checked against: the latest fix while it is recent, and whether it
      * lies inside a Privacy Zone (assumed so until zones load). Not the presence egress gate: a
-     * signal has its own location and will be allowed inside a zone in a later slice.
+     * signal carries its own location even inside a zone; the zone flag only drives the warning.
      *
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderSignalContext`
      */

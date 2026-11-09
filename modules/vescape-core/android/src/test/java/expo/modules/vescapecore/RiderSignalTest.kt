@@ -1,7 +1,9 @@
 package expo.modules.vescapecore
 
 import org.json.JSONObject
+import expo.modules.vescapecore.connection.PrivacyZoneReadState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -41,9 +43,22 @@ class RiderSignalTest {
     }
 
     @Test
-    fun `a send is rejected without a recent fix or inside a Privacy Zone`() {
+    fun `a send is rejected without a recent fix`() {
         assertNull(RiderSignals.sendIntent(RiderSignalKind.HELP, RiderSignalContext(null, insidePrivacyZone = false)))
-        assertNull(RiderSignals.sendIntent(RiderSignalKind.HELP, RiderSignalContext(fix, insidePrivacyZone = true)))
+        assertNull(RiderSignals.sendIntent(RiderSignalKind.HELP, RiderSignalContext(null, insidePrivacyZone = true)))
+    }
+
+    @Test
+    fun `a send goes out while presence is gated by a Privacy Zone or unloaded zones`() {
+        val zones = PrivacyZoneReadState()
+        assertFalse("presence stays gated while zones load", zones.allowsLocationEgress)
+
+        val loading = RiderSignalContext(fix, insidePrivacyZone = !zones.allowsLocationEgress)
+        assertEquals(RiderSignalIntent.Send(RiderSignalKind.HELP, 52.0, 21.0), RiderSignals.sendIntent(RiderSignalKind.HELP, loading))
+        assertEquals(
+            RiderSignalIntent.Send(RiderSignalKind.DOWN, 52.0, 21.0),
+            RiderSignals.sendIntent(RiderSignalKind.DOWN, RiderSignalContext(fix, insidePrivacyZone = true)),
+        )
     }
 
     @Test
