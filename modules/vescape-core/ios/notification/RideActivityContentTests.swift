@@ -67,4 +67,26 @@ final class RideActivityContentTests: XCTestCase {
       "75.1V"
     )
   }
+
+  func testTopRideNoticeRidesInContentState() {
+    let notice = RideNoticeContent(
+      severity: .warning, title: "Rider stopped", details: "Details", postedAt: 0, location: nil, expiresAt: nil)
+    let state = RideActivityContent.state(
+      deviceName: "ADV", phase: .reconnecting, batteryPercent: nil, batteryVoltage: nil, faultCode: nil, notice: notice)
+
+    XCTAssertEqual(state.noticeTitle, "Rider stopped")
+    XCTAssertEqual(state.noticeSeverity, "warning")
+  }
+
+  /// An activity started by a build without notice fields must still decode.
+  func testContentStateFromOlderBuildDecodesWithoutNotice() throws {
+    let json = Data(
+      #"{"deviceName":"ADV","phase":"connected","statusText":"Connected","shortCritical":"45%","batteryPercent":45}"#
+        .utf8)
+    let state = try JSONDecoder().decode(RideActivityAttributes.ContentState.self, from: json)
+
+    XCTAssertEqual(state.deviceName, "ADV")
+    XCTAssertNil(state.noticeTitle)
+    XCTAssertNil(state.noticeSeverity)
+  }
 }

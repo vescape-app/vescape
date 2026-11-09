@@ -36,6 +36,25 @@ Android foreground notification. JS never touches it.
   `setPhase(.reconnecting)` just refreshes the same card.
 - Faults fold into the card's state (no separate banner), which is what killed the notification mess.
 
+### Ride Notice
+
+The card shows the top visible **Ride Notice** (most severe, then newest) as a line above the ride
+status: title plus a severity symbol and color (critical / warning / info), on the Lock Screen and in
+the expanded Dynamic Island. The compact and minimal island presentations stay ride status only.
+When the last notice clears, the line goes away. A stale card hides it with the rest of its state.
+
+- `BoardSessionController` listens to `RideNotices` and pushes a new `ContentState` only when the top
+  notice's `(id, rev, title)` changes, never per engine tick, so notices do not eat the ActivityKit
+  update budget.
+- `noticeTitle` / `noticeSeverity` are optional `ContentState` fields, so a state from an activity
+  started by an older build still decodes.
+- A notice never starts a Live Activity and never posts a notification. With no activity running it
+  is shown only in the app and on the watch.
+- The Live Activity exists only during a Board Session, so a board-less Group Ride shows no notice on
+  the Lock Screen. Android's peer is the foreground-service notification, which leads its status line
+  with the notice (`⚠ Title · status`) for as long as that notification is up; it is never posted
+  for a notice either.
+
 ### Cross-target type sharing
 
 A Live Activity's `ActivityAttributes` type must be compiled into **both** binaries: the `vescape-core`

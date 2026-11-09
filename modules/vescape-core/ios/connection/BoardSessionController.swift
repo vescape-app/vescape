@@ -295,6 +295,9 @@ internal final class BoardSessionController: VescGattListener {
   )
   private var removeWeatherListener: (() -> Void)?
   private var removeRideNoticesListener: (() -> Void)?
+  private var removeLiveActivityNoticesListener: (() -> Void)?
+  /// Top Ride Notice the Live Activity shows; pushed only when its `(id, rev, title)` changes.
+  private var liveActivityNotice: RideNotice?
   private let legalPolicyCatalog = LegalPolicyCatalog()
   /// Persistent Board Session status surface (Live Activity) — the iOS peer of Android's foreground
   /// notification. Native-driven so it survives screen-off and a dead JS runtime.
@@ -415,6 +418,11 @@ internal final class BoardSessionController: VescGattListener {
       self?.weatherAlerts.evaluate(weather)
       Self.storeWeatherObservation(weather)
     }
+    // Rides on the activity that exists; a notice never starts one. Fires on main.
+    liveActivityNotice = RideNotices.shared.current.first
+    removeLiveActivityNoticesListener = RideNotices.shared.addListener { [weak self] in
+      self?.onRideNoticesChanged($0)
+    }
   }
 
   /// Ride weather (#604): every successful refresh offers its current conditions to the store, off
@@ -434,6 +442,7 @@ internal final class BoardSessionController: VescGattListener {
   deinit {
     removeWeatherListener?()
     removeRideNoticesListener?()
+    removeLiveActivityNoticesListener?()
   }
 
   // MARK: - Scan API
@@ -2933,8 +2942,22 @@ internal final class BoardSessionController: VescGattListener {
       phase: phase,
       batteryPercent: liveBatteryPercent,
       batteryVoltage: liveBatteryVoltage,
-      faultCode: liveFaultCode
+      faultCode: liveFaultCode,
+      notice: liveActivityNotice?.content
     )
+  }
+
+  /// Ride Notice on the Live Activity (#653). The listener fires only on visible-list changes; the
+  /// push is further limited to a change of the top notice's headline, keeping within the update
+  /// budget. `update` is a no-op without a running activity.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onRideNoticesChanged`
+  private func onRideNoticesChanged(_ notices: [RideNotice]) {
+    let top = notices.first
+    let shown = liveActivityNotice
+    guard top?.id != shown?.id || top?.rev != shown?.rev || top?.content.title != shown?.content.title
+    else { return }
+    liveActivityNotice = top
+    refreshLiveActivity()
   }
 
   private func refreshLiveActivity() {

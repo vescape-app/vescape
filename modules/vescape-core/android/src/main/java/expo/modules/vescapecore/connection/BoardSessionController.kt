@@ -88,6 +88,8 @@ import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchBoard
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
 import expo.modules.vescapecore.watch.WatchRideNoticePusher
+import expo.modules.vescapecore.notices.RideNotice
+import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.watch.androidWatchMirror
 import expo.modules.vescapecore.watch.WatchLightsRelay
 import expo.modules.vescapecore.watch.WatchLightsSwitch
@@ -306,6 +308,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             deviceName = { boardConfig?.deviceName ?: selectedBoardName },
             sessionActive = { boardConfig != null },
             canConnect = { boardConfig == null && selectedBoardName != null },
+            rideNotice = { notificationNotice?.content },
         )
     }
     private val notificationGate = NotificationUpdateGate(NOTIFICATION_TELEMETRY_INTERVAL_MS)
@@ -401,6 +404,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         speak = { line -> alertFeedback.speakAdvisory(line.voiceAnnouncement()) },
     )
     private var weatherUnsubscribe: (() -> Unit)? = null
+    private var rideNoticeUnsubscribe: (() -> Unit)? = null
+    /** Top Ride Notice the notification shows; repaint only when its `(id, rev, title)` changes. */
+    private var notificationNotice: RideNotice? = null
     private var weatherObservationUnsubscribe: (() -> Unit)? = null
     private val watchMoveRelay by lazy {
         WatchMoveRelay(
@@ -836,6 +842,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // Process-scoped and idempotent; started here too for a service started without the module.
         WatchRideNoticePusher.start(service)
         weatherUnsubscribe = weatherCoordinator.addChangeListener(::onWeatherChanged)
+        // Rides on the notification that exists; a notice never starts the service or posts its own.
+        notificationNotice = RideNotices.current.firstOrNull()
+        rideNoticeUnsubscribe = RideNotices.addListener(::onRideNoticesChanged)
         // Listeners fire only on a successful refresh; the replay below is not one and stores nothing.
         weatherObservationUnsubscribe = weatherCoordinator.addChangeListener(::storeWeatherObservation)
         // The forecast survives a service restart, so replay what is already known rather than
@@ -1007,6 +1016,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
     fun onServiceDestroy() {
         weatherUnsubscribe?.invoke()
         weatherUnsubscribe = null
+        rideNoticeUnsubscribe?.invoke()
+        rideNoticeUnsubscribe = null
         weatherObservationUnsubscribe?.invoke()
         weatherObservationUnsubscribe = null
         watchMirror.stop()
@@ -3110,6 +3121,20 @@ internal class BoardSessionController(private val service: CoreForegroundService
             errorMessage = errorMessage,
         )
     }
+
+    /**
+     * Ride Notice on the ride notification (#653). Fires on the main looper, only when the visible
+     * list changes; the repaint is further limited to a change of the top notice's headline.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRideNoticesChanged`
+     */
+    private fun onRideNoticesChanged(notices: List<RideNotice>) {
+        val top = notices.firstOrNull()
+        if (top?.headline() == notificationNotice?.headline()) return
+        notificationNotice = top
+        refreshNotification(force = true)
+    }
+
+    private fun RideNotice.headline() = Triple(id, rev, content.title)
 
     /** Swallows the repaints of an intermediate teardown whose end state is never rider-visible. */
     private inline fun withNotificationRepaintSuppressed(block: () -> Unit) {
