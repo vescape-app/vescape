@@ -87,7 +87,7 @@ class GroupRideObserverTest {
 
     private fun joined() = receive(JSONObject().put("type", "joined").put("rideId", "ride"))
 
-    private fun joinRide(features: List<String> = listOf(RiderSignals.RELAY_FEATURE)) {
+    private fun joinRide(features: List<String> = listOf(PinSlot.SIGNAL.relayFeature, PinSlot.HAZARD.relayFeature)) {
         observer.start("ws://relay.test")
         connect(features)
         observer.join("me", "Me", "ride", null)
@@ -105,10 +105,10 @@ class GroupRideObserverTest {
     @Test
     fun `a send emits a signal frame at the fix`() {
         joinRide()
-        observer.sendSignal("help")
+        observer.sendSignal("down")
 
         val frame = frames("signal").single()
-        assertEquals("help", frame.getString("kind"))
+        assertEquals("down", frame.getString("kind"))
         assertEquals(52.0, frame.getDouble("lat"), 0.0)
         assertEquals(21.0, frame.getDouble("lng"), 0.0)
     }
@@ -124,7 +124,7 @@ class GroupRideObserverTest {
     @Test
     fun `a relay without rider-signals is sent nothing`() {
         joinRide(features = emptyList())
-        observer.sendSignal("help")
+        observer.sendSignal("down")
         observer.clearSignal()
 
         assertTrue(frames("signal").isEmpty())
@@ -139,7 +139,7 @@ class GroupRideObserverTest {
         assertTrue(frames("signal").isEmpty())
 
         runDelayed()
-        connect(listOf(RiderSignals.RELAY_FEATURE))
+        connect(listOf(PinSlot.SIGNAL.relayFeature, PinSlot.HAZARD.relayFeature))
         assertTrue("held until the ride is rejoined", frames("signal").isEmpty())
         joined()
         joined()
@@ -164,9 +164,9 @@ class GroupRideObserverTest {
         assertNull(zones.presenceFix(fix))
         context = zones.signalContext(fix, nowMs = 2_000)
         assertTrue(context.insidePrivacyZone)
-        observer.sendSignal("help")
+        observer.sendSignal("down")
 
-        assertEquals(listOf("down", "help"), frames("signal").map { it.getString("kind") })
+        assertEquals(listOf("down", "down"), frames("signal").map { it.getString("kind") })
         assertTrue(frames("signal").all { it.getDouble("lat") == 52.0 && it.getDouble("lng") == 21.0 })
         assertTrue(frames("presence").isEmpty())
         // The gate opens again outside every zone.

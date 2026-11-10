@@ -153,10 +153,22 @@
         "start": ["Squad link restored.", "Squad channel back online."]
       }
     },
-    "groupRide.signal.board": {
-      "start": ["Rider reports board fault."],
+    "groupRide.signal.down": {
+      "start": ["Rider down."],
       "full": {
-        "start": ["Squad member reports board fault.", "Board fault in the squad."]
+        "start": ["Rider down. Check in on them.", "Rider took a spill."]
+      }
+    },
+    "groupRide.signal.minor": {
+      "start": ["Minor injury."],
+      "full": {
+        "start": ["Minor injury. Rider hurt.", "Rider hurt, not critical."]
+      }
+    },
+    "groupRide.signal.serious": {
+      "start": ["Mayday. Serious injury."],
+      "full": {
+        "start": ["Mayday. Serious injury.", "Medic needed. Rider badly hurt."]
       }
     },
     "groupRide.signal.battery": {
@@ -165,22 +177,28 @@
         "start": ["Squad member out of battery.", "Squad member power depleted."]
       }
     },
-    "groupRide.signal.down": {
-      "start": ["Warning. Rider down."],
+    "groupRide.signal.tire": {
+      "start": ["Rider reports flat tire."],
       "full": {
-        "start": ["Warning. Rider down.", "Man down in the squad."]
+        "start": ["Squad member reports flat tire.", "Flat tire in the squad."]
+      }
+    },
+    "groupRide.signal.overheat": {
+      "start": ["Rider reports overheating."],
+      "full": {
+        "start": ["Squad member reports overheating.", "Rider holding to cool down."]
+      }
+    },
+    "groupRide.signal.board": {
+      "start": ["Rider reports board fault."],
+      "full": {
+        "start": ["Squad member reports board fault.", "Board fault in the squad."]
       }
     },
     "groupRide.signal.wait": {
       "start": ["Rider requests hold."],
       "full": {
         "start": ["Squad member requests hold.", "Hold position. Rider requests wait."]
-      }
-    },
-    "groupRide.signal.help": {
-      "start": ["Rider requests assistance."],
-      "full": {
-        "start": ["Squad member requests assistance.", "Assistance requested in the squad."]
       }
     },
     "groupRide.signal.ok": {
@@ -199,6 +217,36 @@
       "start": ["Signal cleared."],
       "full": {
         "start": ["Signal cleared. Squad informed.", "Stand down. Your signal is cleared."]
+      }
+    },
+    "groupRide.hazard.water": {
+      "start": ["Water ahead."],
+      "full": {
+        "start": ["Caution. Water ahead.", "Water on the route ahead."]
+      }
+    },
+    "groupRide.hazard.mud": {
+      "start": ["Mud ahead."],
+      "full": {
+        "start": ["Caution. Mud ahead.", "Mud on the route ahead."]
+      }
+    },
+    "groupRide.hazard.obstacle": {
+      "start": ["Obstacle ahead."],
+      "full": {
+        "start": ["Caution. Obstacle ahead.", "Obstacle on the route ahead."]
+      }
+    },
+    "groupRide.hazard.descent": {
+      "start": ["Steep descent ahead."],
+      "full": {
+        "start": ["Caution. Steep descent ahead.", "Steep descent on the route ahead."]
+      }
+    },
+    "groupRide.hazard.sent": {
+      "start": ["Hazard marked."],
+      "full": {
+        "start": ["Hazard marked for the squad.", "Your hazard is on the net."]
       }
     },
     "ride.end": {

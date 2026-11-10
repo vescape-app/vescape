@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { CheckIcon } from 'phosphor-react-native'
-import type { GroupRideSignal, RiderSignalKind } from 'vescape-core'
+import { CheckIcon, XIcon } from 'phosphor-react-native'
+import {
+  RIDE_HAZARD_KINDS,
+  type GroupRidePin,
+  type RideHazardKind,
+  type RiderSignalKind,
+} from 'vescape-core'
 
 import { Banner } from '@/components/base/Banner'
 import { Button } from '@/components/base/Button'
 import type { IconButtonTakeover } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { interaction, theme } from '@/constants/theme'
-import { useResolvedAccentColors } from '@/hooks/useTheme'
 import {
+  RIDE_HAZARD_KIND_INFO,
   RIDER_SIGNAL_KIND_INFO,
-  riderSignalHue,
+  rideHazardKindInfo,
   riderSignalKindInfo,
+  type PinKindInfo,
 } from '@/modules/group-ride/constants/riderSignalKinds'
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
 import {
@@ -23,29 +29,35 @@ import {
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
 /** The device's own Rider Signal while it is active on the relay clock, else null. */
-export function useOwnRiderSignal(): GroupRideSignal | null {
+export function useOwnRiderSignal(): GroupRidePin | null {
   const signal = useGroupRideStore((s) => s.rosterRows.find((row) => row.isSelf)?.signal ?? null)
   return useActiveRiderSignal(signal)
 }
 
+/** The device's own Ride Hazard while it is active on the relay clock, else null. */
+function useOwnRideHazard(): GroupRidePin | null {
+  const hazard = useGroupRideStore((s) => s.rosterRows.find((row) => row.isSelf)?.hazard ?? null)
+  return useActiveRiderSignal(hazard)
+}
+
 /** The most urgent signal another Rider has active, see `topRiderSignal`, else null. */
-function useOthersTopSignal(): GroupRideSignal | null {
+function useOthersTopSignal(): GroupRidePin | null {
   // Picks a signal object the roster already holds, so the selector result stays stable.
   const signal = useGroupRideStore((s) =>
     s.relayClock
       ? topRiderSignal(
           s.rosterRows.flatMap((row) => (!row.isSelf && row.signal ? [row.signal] : [])),
           s.relayClock,
-          (kind) => riderSignalKindInfo(kind)?.critical ?? null,
+          (kind) => riderSignalKindInfo(kind)?.rank ?? null,
         )
       : null,
   )
   return useActiveRiderSignal(signal)
 }
 
-function signalTakeover(signal: GroupRideSignal | null): IconButtonTakeover | null {
+function signalTakeover(signal: GroupRidePin | null): IconButtonTakeover | null {
   const info = signal ? riderSignalKindInfo(signal.kind) : null
-  return info ? { icon: info.icon, accent: theme.palette[riderSignalHue(info)].color } : null
+  return info ? { icon: info.icon, accent: theme.palette[info.hue].color } : null
 }
 
 /** The Rider Signal button's takeover while the own signal is live: its kind's icon and hue. */
@@ -59,34 +71,43 @@ export function useOthersSignalTakeover(): IconButtonTakeover | null {
   return signalTakeover(useOthersTopSignal())
 }
 
-/** Critical kinds lead on a row of their own; the rest share the row below. */
-const CRITICAL_KINDS = (Object.keys(RIDER_SIGNAL_KIND_INFO) as RiderSignalKind[]).filter(
-  (kind) => RIDER_SIGNAL_KIND_INFO[kind].critical,
-)
-const OTHER_KINDS = (Object.keys(RIDER_SIGNAL_KIND_INFO) as RiderSignalKind[]).filter(
-  (kind) => !RIDER_SIGNAL_KIND_INFO[kind].critical,
-)
+/** The injury ladder first, the common crash under the thumb on the right and the serious injury
+ *  furthest from it (picking a higher step replaces the lower), then what broke on the board, then
+ *  a wait. */
+const SIGNAL_ROWS: readonly (readonly RiderSignalKind[])[] = [
+  ['serious', 'minor', 'down'],
+  ['battery', 'tire', 'overheat', 'board'],
+  ['wait'],
+]
 
 /**
- * The Rider Signal picker, in the drawer behind Social's signal shortcut: the own active signal with its time left
- * and a dismiss, then a tile per kind. Picking a kind replaces the active one. Sending stays off
- * without a recent GPS fix; inside a Privacy Zone it still sends, and a warning says the signal
- * reveals the position the zone otherwise hides.
+ * The Rider Signal picker, in the drawer behind Social's signal shortcut: a tile per signal kind,
+ * the own active signal with its time left and "I'm OK" right under them, then the Ride Hazard
+ * tiles and the own active hazard. Picking a kind replaces the active one in its slot. Sending
+ * stays off without a recent GPS fix; inside a Privacy Zone it still sends, and a warning says the
+ * pin reveals the position the zone otherwise hides.
  */
 export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
   const availability = useGroupRideStore((s) => s.signalAvailability)
   const sendSignal = useGroupRideStore((s) => s.sendSignal)
+  const clearSignal = useGroupRideStore((s) => s.clearSignal)
+  const sendHazard = useGroupRideStore((s) => s.sendHazard)
+  const clearHazard = useGroupRideStore((s) => s.clearHazard)
   const ownSignal = useOwnRiderSignal()
+  const ownHazard = useOwnRideHazard()
   const disabled = !availability.hasRecentFix
-
-  const send = (kind: RiderSignalKind) => {
-    sendSignal(kind)
+  const then = (action: () => void) => () => {
+    action()
     onDone()
   }
 
   return (
     <View style={styles.picker}>
-      {ownSignal ? <OwnSignal signal={ownSignal} onCleared={onDone} /> : null}
+      <Text style={styles.section}>Signal</Text>
+      <Text style={styles.hint}>
+        Tell your crew what's up. They hear it and see where you are, for 10 min or until you tap
+        I'm OK.
+      </Text>
       {disabled ? (
         <Banner variant="info" title="Waiting for GPS…" message="Signals need your location." />
       ) : availability.insidePrivacyZone ? (
@@ -96,112 +117,151 @@ export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
           message="Your position is hidden here, but a signal shows the group where you are."
         />
       ) : null}
-      <View style={styles.row}>
-        {CRITICAL_KINDS.map((kind) => (
-          <SignalTile key={kind} kind={kind} disabled={disabled} onPress={() => send(kind)} />
-        ))}
-      </View>
-      <View style={styles.row}>
-        {OTHER_KINDS.map((kind) => (
-          <SignalTile key={kind} kind={kind} disabled={disabled} onPress={() => send(kind)} />
-        ))}
-      </View>
+      {SIGNAL_ROWS.map((row) => (
+        <View key={row.join()} style={styles.row}>
+          {row.map((kind) => (
+            <PinTile
+              key={kind}
+              info={RIDER_SIGNAL_KIND_INFO[kind]}
+              emphasis={RIDER_SIGNAL_KIND_INFO[kind].emphasis}
+              disabled={disabled}
+              onPress={then(() => sendSignal(kind))}
+            />
+          ))}
+        </View>
+      ))}
+      {ownSignal ? (
+        <OwnPin pin={ownSignal} info={riderSignalKindInfo(ownSignal.kind)}>
+          <Button
+            label="I'm OK"
+            icon={CheckIcon}
+            variant="success"
+            size="sm"
+            onPress={then(clearSignal)}
+            accessibilityLabel="Dismiss my signal"
+          />
+        </OwnPin>
+      ) : null}
+      {availability.hazardsSupported ? (
+        <>
+          <Text style={styles.section}>Hazard ahead</Text>
+          <Text style={styles.hint}>Pins this spot. Riders hear it when they get close.</Text>
+          <View style={styles.row}>
+            {RIDE_HAZARD_KINDS.map((kind: RideHazardKind) => (
+              <PinTile
+                key={kind}
+                info={RIDE_HAZARD_KIND_INFO[kind]}
+                disabled={disabled}
+                onPress={then(() => sendHazard(kind))}
+              />
+            ))}
+          </View>
+          {ownHazard ? (
+            <OwnPin pin={ownHazard} info={rideHazardKindInfo(ownHazard.kind)}>
+              <Button
+                label="Clear"
+                icon={XIcon}
+                variant="secondary"
+                size="sm"
+                onPress={then(clearHazard)}
+                accessibilityLabel="Clear my hazard"
+              />
+            </OwnPin>
+          ) : null}
+        </>
+      ) : null}
     </View>
   )
 }
 
-function SignalTile({
-  kind,
+function PinTile({
+  info,
+  emphasis = false,
   disabled,
   onPress,
 }: {
-  kind: RiderSignalKind
+  info: PinKindInfo
+  /** A faint wash and border of the kind's hue, for the injuries that need the group to act. */
+  emphasis?: boolean
   disabled: boolean
   onPress: () => void
 }) {
-  const accents = useResolvedAccentColors()
-  const info = RIDER_SIGNAL_KIND_INFO[kind]
-  const { label, icon: KindIcon } = info
-  const hue = riderSignalHue(info)
+  const { label, icon: KindIcon, hue } = info
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={`Signal: ${label}`}
+      accessibilityLabel={label}
       style={({ pressed }) => [
         styles.tile,
-        { backgroundColor: theme.control.background, borderColor: theme.control.border },
+        {
+          backgroundColor: theme.control.background,
+          borderColor: emphasis ? theme.alpha(theme.palette[hue].color, 0.4) : theme.control.border,
+        },
         disabled && styles.disabled,
         pressed && !disabled && { opacity: interaction.pressedOpacity },
       ]}
     >
-      <View
-        style={[
-          styles.tileIcon,
-          { backgroundColor: accents[hue].bg, borderColor: accents[hue].border },
-        ]}
-      >
-        <KindIcon size={22} color={theme.palette[hue].color} weight="bold" />
+      {emphasis ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            styles.tileWash,
+            { backgroundColor: theme.alpha(theme.palette[hue].color, 0.12) },
+          ]}
+        />
+      ) : null}
+      <View style={[styles.tileIcon, { borderColor: theme.palette[hue].color }]}>
+        <KindIcon size={22} color={theme.palette[hue].color} weight="duotone" />
       </View>
-      <Text style={styles.tileLabel} numberOfLines={2}>
+      <Text
+        style={styles.tileLabel}
+        numberOfLines={label.includes(' ') ? 2 : 1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
         {label}
       </Text>
     </Pressable>
   )
 }
 
-/** Dismisses the Rider's own active signal. */
-function ImOkButton({ onCleared }: { onCleared: () => void }) {
-  const clearSignal = useGroupRideStore((s) => s.clearSignal)
-  return (
-    <Button
-      label="I'm OK"
-      icon={CheckIcon}
-      variant="success"
-      size="sm"
-      onPress={() => {
-        clearSignal()
-        onCleared()
-      }}
-      accessibilityLabel="Dismiss my signal"
-    />
-  )
-}
-
-function OwnSignal({ signal, onCleared }: { signal: GroupRideSignal; onCleared: () => void }) {
+/** The Rider's own active pin: its kind, time left, and the action that ends it. */
+function OwnPin({
+  pin,
+  info,
+  children,
+}: {
+  pin: GroupRidePin
+  info: PinKindInfo | null
+  children: ReactNode
+}) {
   const relayClock = useGroupRideStore((s) => s.relayClock)
-  const accents = useResolvedAccentColors()
-  const info = riderSignalKindInfo(signal.kind)
   if (!info) return null
-  const KindIcon = info.icon
-  const hue = riderSignalHue(info)
+  const { icon: KindIcon, hue } = info
   return (
     <View
       style={[
         styles.own,
-        { borderColor: theme.palette[hue].color, backgroundColor: theme.control.background },
+        { borderColor: theme.control.border, backgroundColor: theme.control.background },
       ]}
     >
-      <View
-        style={[
-          styles.ownIcon,
-          { backgroundColor: accents[hue].bg, borderColor: accents[hue].border },
-        ]}
-      >
-        <KindIcon size={20} color={theme.palette[hue].color} weight="bold" />
+      <View style={[styles.ownIcon, { borderColor: theme.palette[hue].color }]}>
+        <KindIcon size={20} color={theme.palette[hue].color} weight="duotone" />
       </View>
       <View style={styles.ownText}>
         <Text style={styles.ownLabel}>{info.label}</Text>
-        {relayClock ? <TimeLeft signal={signal} clock={relayClock} /> : null}
+        {relayClock ? <TimeLeft signal={pin} clock={relayClock} /> : null}
       </View>
-      <ImOkButton onCleared={onCleared} />
+      {children}
     </View>
   )
 }
 
 /** Time left on the relay clock, ticking every second. */
-function TimeLeft({ signal, clock }: { signal: GroupRideSignal; clock: RelayClock }) {
+function TimeLeft({ signal, clock }: { signal: GroupRidePin; clock: RelayClock }) {
   const [leftMs, setLeftMs] = useState(() => signalTimeLeftMs(signal, clock))
   useEffect(() => {
     setLeftMs(signalTimeLeftMs(signal, clock))
@@ -222,6 +282,19 @@ const styles = StyleSheet.create({
   picker: {
     gap: 12,
   },
+  hint: {
+    color: theme.neutral.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  section: {
+    marginTop: 4,
+    color: theme.neutral.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   row: {
     flexDirection: 'row',
     gap: 8,
@@ -235,11 +308,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
   },
+  tileWash: {
+    borderRadius: 13,
+  },
   tileIcon: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 1,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -261,10 +337,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   ownIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },

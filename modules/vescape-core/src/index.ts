@@ -1993,18 +1993,36 @@ export interface TrailPoint {
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalKind`
  */
-export const RIDER_SIGNAL_KINDS = ['board', 'battery', 'down', 'wait', 'help'] as const
+export const RIDER_SIGNAL_KINDS = [
+  'down',
+  'minor',
+  'serious',
+  'battery',
+  'tire',
+  'overheat',
+  'board',
+  'wait',
+] as const
 
 export type RiderSignalKind = (typeof RIDER_SIGNAL_KINDS)[number]
 
 /**
- * A Rider's active Rider Signal, stamped by the relay. Times are relay epoch ms: compare them with
- * the roster's relay `now`, never `Date.now()`. `kind` is one of `RIDER_SIGNAL_KINDS`; native drops
- * a signal of any other kind.
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignal`
- * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignal`
+ * The fixed Ride Hazard kinds, by their relay wire name, in picker order.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RideHazardKind`
+ * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RideHazardKind`
  */
-export interface GroupRideSignal {
+export const RIDE_HAZARD_KINDS = ['water', 'mud', 'obstacle', 'descent'] as const
+
+export type RideHazardKind = (typeof RIDE_HAZARD_KINDS)[number]
+
+/**
+ * A Rider's active pin (Rider Signal or Ride Hazard), stamped by the relay. Times are relay epoch
+ * ms: compare them with the roster's relay `now`, never `Date.now()`. `kind` is one of the slot's
+ * kinds; native drops a pin of any other kind.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderPin`
+ * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderPin`
+ */
+export interface GroupRidePin {
   kind: string
   lat: number
   lng: number
@@ -2031,7 +2049,9 @@ export interface GroupRideRider {
   away: boolean
   lastSeen: number
   /** The Rider's active signal; null/omitted when none. Kept while the Rider is away. */
-  signal?: GroupRideSignal | null
+  signal?: GroupRidePin | null
+  /** The Rider's active hazard; null/omitted when none. Kept while the Rider is away. */
+  hazard?: GroupRidePin | null
 }
 
 /**
@@ -2076,14 +2096,15 @@ export interface GroupRideRosterEvent {
 }
 
 /**
- * Whether the joined Rider can send a Rider Signal right now. `supported` is false against a relay
- * that does not advertise signals. `insidePrivacyZone` is also true while zones have not loaded.
+ * Whether the joined Rider can send a Rider Signal or Ride Hazard right now. `supported` and
+ * `hazardsSupported` are false against a relay that does not advertise them. `insidePrivacyZone` is also true while zones have not loaded.
  * `hasRecentFix` needs a GPS fix at most 30 s old. Emitted on change.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `refreshSignalAvailability`
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `refreshSignalAvailability`
  */
 export interface GroupRideSignalAvailability {
   supported: boolean
+  hazardsSupported: boolean
   insidePrivacyZone: boolean
   hasRecentFix: boolean
 }
@@ -2917,6 +2938,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   leaveGroupRide(): void
   sendGroupRideSignal(kind: RiderSignalKind): void
   clearGroupRideSignal(): void
+  sendGroupRideHazard(kind: RideHazardKind): void
+  clearGroupRideHazard(): void
   updateGroupRideIdentity(riderId: string, riderName: string): void
   setTelemetryRecordingEnabled(enabled: boolean): void
   setBmsSeriesFocused(focused: boolean): void
@@ -3376,6 +3399,18 @@ export function sendGroupRideSignal(kind: RiderSignalKind): void {
 export function clearGroupRideSignal(): void {
   if (E2E_ENABLED) return
   native.clearGroupRideSignal()
+}
+
+/** Mark a Ride Hazard at the latest GPS fix; gated like `sendGroupRideSignal`. */
+export function sendGroupRideHazard(kind: RideHazardKind): void {
+  if (E2E_ENABLED) return
+  native.sendGroupRideHazard(kind)
+}
+
+/** Clear the Rider's active hazard; held for the rejoin while the relay is out of reach. */
+export function clearGroupRideHazard(): void {
+  if (E2E_ENABLED) return
+  native.clearGroupRideHazard()
 }
 
 export interface UpdateGroupRideIdentityParams {

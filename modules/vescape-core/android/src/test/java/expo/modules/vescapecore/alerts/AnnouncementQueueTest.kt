@@ -115,10 +115,10 @@ class AnnouncementQueueTest {
     @Test
     fun riderSignalCuesSpeakAtEveryVoiceLevelButOff() {
         for (level in listOf("minimal", "standard", "full")) {
-            assertTrue(appCueSpeaks("groupRide.signal.help", level))
+            assertTrue(appCueSpeaks("groupRide.signal.down", level))
             assertTrue(appCueSpeaks("groupRide.signal.sent", level))
         }
-        assertFalse(appCueSpeaks("groupRide.signal.help", "off"))
+        assertFalse(appCueSpeaks("groupRide.signal.down", "off"))
         assertFalse(appCueSpeaks("groupRide.riderJoined", "standard"))
         assertTrue(appCueSpeaks("groupRide.riderJoined", "full"))
         assertFalse(appCueSpeaks("on", "standard"))

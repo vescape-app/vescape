@@ -1,41 +1,113 @@
 import Foundation
 
-/// The fixed **Rider Signal** kinds, by their relay wire name.
+/// The two pinned slots a Rider holds in a Group Ride, independently: one Rider Signal and one Ride
+/// Hazard. The raw value is the relay's send message type (`<raw>-clear` clears) and roster field.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
-/// @parity /modules/vescape-core/src/index.ts `RIDER_SIGNAL_KINDS`
-internal enum RiderSignalKind: String, CaseIterable {
-  case board
-  case battery
-  case down
-  case wait
-  case help
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `PinSlot`
+internal enum PinSlot: String {
+  case signal
+  case hazard
 
-  /// A call for help rather than a heads-up; it wins when several signals cue at once.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `critical`
-  /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
-  var critical: Bool { self == .down || self == .help }
-
-  /// Titles Ride Notices.
-  /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
-  var label: String {
+  var relayFeature: String {
     switch self {
-    case .board: "Board problem"
-    case .battery: "Out of battery"
-    case .down: "Rider down"
-    case .wait: "Wait for me"
-    case .help: "Need help"
+    case .signal: "rider-signals"
+    case .hazard: "ride-hazards"
     }
   }
 }
 
-/// A Rider's active signal as the relay stamps it. Times are relay epoch ms: compare them against the
+/// A fixed kind of pin, by its relay wire name.
+internal protocol PinKind: Equatable {
+  init?(rawValue: String)
+  var rawValue: String { get }
+  /// Titles Ride Notices.
+  var label: String { get }
+  static var slot: PinSlot { get }
+}
+
+/// The fixed **Rider Signal** kinds, by their relay wire name.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
+/// @parity /modules/vescape-core/src/index.ts `RIDER_SIGNAL_KINDS`
+internal enum RiderSignalKind: String, CaseIterable, PinKind {
+  case down
+  case minor
+  case serious
+  case battery
+  case tire
+  case overheat
+  case board
+  case wait
+
+  static let slot = PinSlot.signal
+
+  /// Orders kinds when several cue at once: a serious injury over a minor injury or a board
+  /// problem, those over a heads-up (a rider down after a small crash, a wait).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
+  /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
+  var rank: Int {
+    switch self {
+    case .serious: 2
+    case .minor, .battery, .tire, .overheat, .board: 1
+    case .down, .wait: 0
+    }
+  }
+
+  /// A serious injury is critical, a minor injury or a problem a warning, a rider down or a wait information.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `severity`
+  var severity: RideNoticeSeverity {
+    switch rank {
+    case 2: .critical
+    case 1: .warning
+    default: .info
+    }
+  }
+
+  /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
+  var label: String {
+    switch self {
+    case .down: "Rider down"
+    case .minor: "Minor injury"
+    case .serious: "Serious injury"
+    case .battery: "Battery dead"
+    case .tire: "Flat tire"
+    case .overheat: "Overheating"
+    case .board: "Board fault"
+    case .wait: "Wait for me"
+    }
+  }
+}
+
+/// The fixed **Ride Hazard** kinds, by their relay wire name.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RideHazardKind`
+/// @parity /modules/vescape-core/src/index.ts `RIDE_HAZARD_KINDS`
+internal enum RideHazardKind: String, CaseIterable, PinKind {
+  case water
+  case mud
+  case obstacle
+  case descent
+
+  static let slot = PinSlot.hazard
+
+  /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDE_HAZARD_KIND_INFO`
+  var label: String {
+    switch self {
+    case .water: "Water"
+    case .mud: "Mud"
+    case .obstacle: "Obstacle"
+    case .descent: "Steep descent"
+    }
+  }
+}
+
+/// A Rider's active pin as the relay stamps it. Times are relay epoch ms: compare them against the
 /// roster's relay `now`, never the phone clock.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignal`
-/// @parity /modules/vescape-core/src/index.ts `GroupRideSignal`
-internal struct RiderSignal: Equatable {
-  let kind: RiderSignalKind
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderPin`
+/// @parity /modules/vescape-core/src/index.ts `GroupRidePin`
+internal struct RiderPin<Kind: PinKind>: Equatable {
+  let kind: Kind
   let lat: Double
   let lng: Double
   let startedAt: Int64
@@ -46,17 +118,20 @@ internal struct RiderSignal: Equatable {
   }
 
   /// Nil when absent, of an unknown kind, or missing a coordinate or time.
-  static func parse(_ obj: [String: Any]?) -> RiderSignal? {
+  static func parse(_ obj: [String: Any]?) -> RiderPin? {
     guard let obj,
-      let kind = (obj["kind"] as? String).flatMap(RiderSignalKind.init(rawValue:)),
+      let kind = (obj["kind"] as? String).flatMap(Kind.init(rawValue:)),
       let lat = (obj["lat"] as? NSNumber)?.doubleValue, lat.isFinite,
       let lng = (obj["lng"] as? NSNumber)?.doubleValue, lng.isFinite,
       let startedAt = (obj["startedAt"] as? NSNumber)?.int64Value,
       let expiresAt = (obj["expiresAt"] as? NSNumber)?.int64Value
     else { return nil }
-    return RiderSignal(kind: kind, lat: lat, lng: lng, startedAt: startedAt, expiresAt: expiresAt)
+    return RiderPin(kind: kind, lat: lat, lng: lng, startedAt: startedAt, expiresAt: expiresAt)
   }
 }
+
+internal typealias RiderSignal = RiderPin<RiderSignalKind>
+internal typealias RideHazard = RiderPin<RideHazardKind>
 
 /// What the device knows when the Rider asks to send a signal. `fix` is the latest GPS fix no older
 /// than `RiderSignals.fixMaxAgeMs`; `insidePrivacyZone` is also true while zones have not loaded.
@@ -69,31 +144,35 @@ internal struct RiderSignalContext {
   let insidePrivacyZone: Bool
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalIntent`
-internal enum RiderSignalIntent: Equatable {
-  case send(kind: RiderSignalKind, lat: Double, lng: Double)
-  case clear
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderPinIntent`
+internal enum RiderPinIntent: Equatable {
+  case send(slot: PinSlot, kind: String, lat: Double, lng: Double)
+  case clear(PinSlot)
+
+  var slot: PinSlot {
+    switch self {
+    case let .send(slot, _, _, _): slot
+    case let .clear(slot): slot
+    }
+  }
 
   func frame() -> [String: Any] {
     switch self {
-    case let .send(kind, lat, lng): ["type": "signal", "kind": kind.rawValue, "lat": lat, "lng": lng]
-    case .clear: ["type": "signal-clear"]
+    case let .send(slot, kind, lat, lng): ["type": slot.rawValue, "kind": kind, "lat": lat, "lng": lng]
+    case let .clear(slot): ["type": "\(slot.rawValue)-clear"]
     }
   }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignals`
 internal enum RiderSignals {
-  /// The relay feature advertised in `snapshot` when it accepts `signal`/`signal-clear`.
-  static let relayFeature = "rider-signals"
-
   /// A send needs a GPS fix at most this old.
   static let fixMaxAgeMs: Int64 = 30_000
 
   /// The intent for a send request, or nil without a recent fix. Goes out inside a Privacy Zone and
   /// while zones are loading; presence keeps its own gates.
-  static func sendIntent(_ kind: RiderSignalKind, _ context: RiderSignalContext) -> RiderSignalIntent? {
+  static func sendIntent<Kind: PinKind>(_ kind: Kind, _ context: RiderSignalContext) -> RiderPinIntent? {
     guard let fix = context.fix else { return nil }
-    return .send(kind: kind, lat: fix.lat, lng: fix.lng)
+    return .send(slot: Kind.slot, kind: kind.rawValue, lat: fix.lat, lng: fix.lng)
   }
 }

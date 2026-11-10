@@ -444,6 +444,14 @@ class CoreForegroundService : Service() {
             instance?.controller?.clearGroupRideSignal()
         }
 
+        fun sendGroupRideHazard(kind: String) {
+            instance?.controller?.sendGroupRideHazard(kind)
+        }
+
+        fun clearGroupRideHazard() {
+            instance?.controller?.clearGroupRideHazard()
+        }
+
         fun updateGroupRideIdentity(
             @Suppress("UNUSED_PARAMETER") context: Context,
             riderId: String,

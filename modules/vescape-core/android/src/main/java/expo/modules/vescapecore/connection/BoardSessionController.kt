@@ -1131,6 +1131,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
         groupRideObserver.clearSignal()
     }
 
+    fun sendGroupRideHazard(kind: String) {
+        groupRideObserver.sendHazard(kind)
+    }
+
+    fun clearGroupRideHazard() {
+        groupRideObserver.clearHazard()
+    }
+
     fun updateGroupRideIdentity(riderId: String, riderName: String) {
         groupRideObserver.updateIdentity(riderId, riderName)
     }
@@ -3315,6 +3323,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         recordRideTrackFix(snapshot)
         latestRiderPresence()?.let(groupRideObserver::pushPresence)
         groupRideObserver.refreshSignalAvailability()
+        groupRideObserver.onFix(location.latitude, location.longitude)
         // Offered on every Fix; the coordinator owns the freshness and distance gates.
         weatherCoordinator.onPosition(location.latitude, location.longitude)
     }

@@ -66,6 +66,8 @@ mock.module('vescape-core', () => ({
     subscribe(signalAvailabilityListeners, listener),
   sendGroupRideSignal: () => {},
   clearGroupRideSignal: () => {},
+  sendGroupRideHazard: () => {},
+  clearGroupRideHazard: () => {},
   addGroupRideErrorListener: (listener: Listener<{ message: string }>) =>
     subscribe(errorListeners, listener),
   addLocationListener: (listener: Listener<{ latitude: number; longitude: number }>) =>

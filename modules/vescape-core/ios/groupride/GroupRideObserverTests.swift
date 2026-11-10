@@ -66,7 +66,7 @@ final class GroupRideObserverTests: XCTestCase {
     try receive(["type": "joined", "rideId": "ride"])
   }
 
-  private func joinRide(features: [String] = [RiderSignals.relayFeature]) throws {
+  private func joinRide(features: [String] = [PinSlot.signal.relayFeature, PinSlot.hazard.relayFeature]) throws {
     observer.start("ws://relay.test")
     try connect(features: features)
     observer.join(riderId: "me", riderName: "Me", rideId: "ride", presence: nil)
@@ -79,11 +79,11 @@ final class GroupRideObserverTests: XCTestCase {
 
   func testASendEmitsASignalFrameAtTheFix() throws {
     try joinRide()
-    observer.sendSignal("help")
+    observer.sendSignal("down")
 
     let frame = try XCTUnwrap(frames("signal").first)
     XCTAssertEqual(frames("signal").count, 1)
-    XCTAssertEqual(frame["kind"] as? String, "help")
+    XCTAssertEqual(frame["kind"] as? String, "down")
     XCTAssertEqual(frame["lat"] as? Double, 52)
     XCTAssertEqual(frame["lng"] as? Double, 21)
   }
@@ -97,7 +97,7 @@ final class GroupRideObserverTests: XCTestCase {
 
   func testARelayWithoutRiderSignalsIsSentNothing() throws {
     try joinRide(features: [])
-    observer.sendSignal("help")
+    observer.sendSignal("down")
     observer.clearSignal()
 
     XCTAssertTrue(frames("signal").isEmpty)
@@ -112,7 +112,7 @@ final class GroupRideObserverTests: XCTestCase {
 
     scheduler.advance(1_000)
     XCTAssertEqual(sockets.count, 2)
-    try connect(features: [RiderSignals.relayFeature])
+    try connect(features: [PinSlot.signal.relayFeature, PinSlot.hazard.relayFeature])
     XCTAssertTrue(frames("signal").isEmpty, "held until the ride is rejoined")
     try joined()
     try joined()
@@ -140,9 +140,9 @@ final class GroupRideObserverTests: XCTestCase {
     XCTAssertNil(zones.presenceFix(fix))
     context = zones.signalContext(fix, nowMs: 2_000)
     XCTAssertTrue(context.insidePrivacyZone)
-    observer.sendSignal("help")
+    observer.sendSignal("down")
 
-    XCTAssertEqual(frames("signal").map { $0["kind"] as? String }, ["down", "help"])
+    XCTAssertEqual(frames("signal").map { $0["kind"] as? String }, ["down", "down"])
     XCTAssertTrue(frames("signal").allSatisfy { $0["lat"] as? Double == 52 && $0["lng"] as? Double == 21 })
     XCTAssertTrue(frames("presence").isEmpty)
     // The gate opens again outside every zone.

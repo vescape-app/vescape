@@ -185,7 +185,7 @@ class GroupRideCuesTest {
     @Test
     fun `a signal cleared before it expires by relay now cues ok, expiry is silent`() {
         joinedWith("me", "ola", "kai")
-        val help = mapOf("ola" to signal(RiderSignalKind.HELP), "kai" to signal(RiderSignalKind.BOARD))
+        val help = mapOf("ola" to signal(RiderSignalKind.DOWN), "kai" to signal(RiderSignalKind.BOARD))
         signals("me", "ola", "kai", signals = help)
 
         assertEquals("groupRide.signal.ok", signals("me", "ola", "kai", signals = help - "ola", now = 60_999))
@@ -235,7 +235,7 @@ class GroupRideCuesTest {
     @Test
     fun `an own signal already active at join stays silent`() {
         cues.joined("ride")
-        val own = mapOf("me" to signal(RiderSignalKind.HELP))
+        val own = mapOf("me" to signal(RiderSignalKind.DOWN))
         assertNull(signals("me", "ola", signals = own))
         assertNull(signals("me", "ola", signals = own))
     }
@@ -255,12 +255,14 @@ class GroupRideCuesTest {
     }
 
     @Test
-    fun `a signal wins over social cues and a critical signal over others`() {
+    fun `a signal wins over social cues and the highest-ranked signal over others`() {
         joinedWith("me", "ola")
-        val both = mapOf("ola" to signal(RiderSignalKind.WAIT), "kai" to signal(RiderSignalKind.HELP))
+        val both = mapOf("ola" to signal(RiderSignalKind.WAIT), "kai" to signal(RiderSignalKind.BOARD))
 
-        assertEquals("groupRide.signal.help", signals("me", "ola", "kai", signals = both))
+        assertEquals("groupRide.signal.board", signals("me", "ola", "kai", signals = both))
         assertEquals("groupRide.signal.ok", signals("me", "kai", "zoe", signals = emptyMap()))
+        val crash = mapOf("ola" to signal(RiderSignalKind.DOWN), "kai" to signal(RiderSignalKind.SERIOUS))
+        assertEquals("groupRide.signal.serious", signals("me", "ola", "kai", signals = crash))
     }
 
     @Test
@@ -278,5 +280,17 @@ class GroupRideCuesTest {
             assertFalse(cue, GroupRideCues.audible(cue, connectionSoundsEnabled = false))
             assertTrue(cue, GroupRideCues.audible(cue, connectionSoundsEnabled = true))
         }
+    }
+
+    @Test
+    fun `the rider's own new hazard confirms once, after its own signal`() {
+        joinedWith("me", "ola")
+        val mud = RideHazard(RideHazardKind.MUD, 50.0, 19.0, 2_000, 62_000)
+
+        assertEquals("groupRide.hazard.sent", cues.roster("ride", listOf("me", "ola"), emptySet(), "me", emptyMap(), 10_000, mud))
+        assertNull(cues.roster("ride", listOf("me", "ola"), emptySet(), "me", emptyMap(), 11_000, mud))
+        val own = mapOf("me" to signal(RiderSignalKind.TIRE, startedAt = 3_000))
+        val water = mud.copy(kind = RideHazardKind.WATER, startedAt = 3_000)
+        assertEquals("groupRide.signal.sent", cues.roster("ride", listOf("me", "ola"), emptySet(), "me", own, 12_000, water))
     }
 }

@@ -323,6 +323,7 @@ export function IconButtonExtensionShowcase() {
   const [direction, setDirection] = useState<'up' | 'down'>('up')
   const [dot, setDot] = useState(false)
   const [disabled, setDisabled] = useState(false)
+  const [blink, setBlink] = useState(false)
 
   const extension = {
     none: null,
@@ -360,6 +361,7 @@ export function IconButtonExtensionShowcase() {
             onSelect={(v) => setDirection(v as typeof direction)}
           />
           <ToggleRow label="button dot" value={dot} onToggle={setDot} />
+          <ToggleRow label="blink" value={blink} onToggle={setBlink} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
         </>
       }
@@ -368,6 +370,7 @@ export function IconButtonExtensionShowcase() {
         <IconButtonExtension
           extension={extension}
           direction={direction}
+          blink={blink}
           onPress={noop}
           disabled={disabled}
         >

@@ -11,7 +11,7 @@ import expo.modules.vescapecore.GroupRideCues
 enum class AnnouncementPriority(val ttlMs: Long) {
     /** Board connect, disconnect, connection error. */
     CONNECTION(10_000L),
-    /** Ride state, Rider Signals and, later, weather and battery lines. */
+    /** Ride state, Rider Signals, Ride Hazards and, later, weather and battery lines. */
     ADVISORY(30_000L),
     /** Social Group Ride events. */
     SOCIAL(20_000L),
@@ -25,18 +25,18 @@ enum class AnnouncementPriority(val ttlMs: Long) {
 internal fun appCuePriority(cue: String): AnnouncementPriority? = when {
     appCueSlot(cue) == null -> null
     cue == "on" || cue == "off" || cue == "error" -> AnnouncementPriority.CONNECTION
-    cue == "ride.end" || GroupRideCues.isSignalCue(cue) -> AnnouncementPriority.ADVISORY
+    cue == "ride.end" || GroupRideCues.isSafetyCue(cue) -> AnnouncementPriority.ADVISORY
     else -> AnnouncementPriority.SOCIAL
 }
 
 /**
- * Whether app cue [cue] speaks its voice line after the effect at [voiceLevel]. Rider Signal cues
- * are safety calls and speak at every level but `off`; the rest only at `full`.
+ * Whether app cue [cue] speaks its voice line after the effect at [voiceLevel]. Rider Signal and
+ * Ride Hazard cues are safety calls and speak at every level but `off`; the rest only at `full`.
  *
  * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `appCueSpeaks`
  */
 internal fun appCueSpeaks(cue: String, voiceLevel: String): Boolean =
-    if (GroupRideCues.isSignalCue(cue)) voiceLevel != "off" else voiceLevel == "full"
+    if (GroupRideCues.isSafetyCue(cue)) voiceLevel != "off" else voiceLevel == "full"
 
 /**
  * Quiet time after a connect before anything but a [AnnouncementPriority.CONNECTION] item plays.

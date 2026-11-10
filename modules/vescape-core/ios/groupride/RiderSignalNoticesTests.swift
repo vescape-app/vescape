@@ -28,7 +28,7 @@ final class RiderSignalNoticesTests: XCTestCase {
 
     XCTAssertEqual(post.key, "riderSignal:ola")
     XCTAssertEqual(post.revision, "1000")
-    XCTAssertEqual(post.content.title, "Ola: Board problem")
+    XCTAssertEqual(post.content.title, "Ola: Board fault")
     XCTAssertEqual(post.content.details, "")
     XCTAssertEqual(post.content.severity, .warning)
     XCTAssertEqual(post.content.location, RideNoticeLocation(lat: 50, lng: 19))
@@ -36,13 +36,16 @@ final class RiderSignalNoticesTests: XCTestCase {
     XCTAssertEqual(post.content.expiresAt, 5_601_000)
   }
 
-  func testDownAndHelpAreCritical() {
-    let posts = roster(rider("a", "A", signal(.down)), rider("b", "B", signal(.help)), rider("c", "C", signal(.wait))).posts
-    XCTAssertEqual(posts.map(\.content.severity), [.critical, .critical, .warning])
+  func testASeriousInjuryIsCriticalProblemsWarnARiderDownInforms() {
+    let posts = roster(
+      rider("a", "A", signal(.serious)), rider("c", "C", signal(.tire)),
+      rider("d", "D", signal(.down))
+    ).posts
+    XCTAssertEqual(posts.map(\.content.severity), [.critical, .warning, .info])
   }
 
   func testTheRidersOwnSignalPostsNothing() {
-    XCTAssertTrue(roster(rider("me", "Me", signal(.help))).posts.isEmpty)
+    XCTAssertTrue(roster(rider("me", "Me", signal(.down))).posts.isEmpty)
   }
 
   func testAReSentRosterWithAnotherRelayNowKeepsTheFirstConversion() {

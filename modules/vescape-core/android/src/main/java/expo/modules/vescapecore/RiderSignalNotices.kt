@@ -2,7 +2,6 @@ package expo.modules.vescapecore
 
 import expo.modules.vescapecore.notices.RideNoticeContent
 import expo.modules.vescapecore.notices.RideNoticeLocation
-import expo.modules.vescapecore.notices.RideNoticeSeverity
 
 /** A roster Rider as [RiderSignalNotices] sees it. */
 internal data class SignalRider(val id: String, val name: String, val signal: RiderSignal?)
@@ -53,7 +52,7 @@ internal class RiderSignalNotices {
         fun key(riderId: String) = KEY_PREFIX + riderId
 
         private fun content(name: String, signal: RiderSignal, pinned: Pinned) = RideNoticeContent(
-            severity = if (signal.kind.critical) RideNoticeSeverity.CRITICAL else RideNoticeSeverity.WARNING,
+            severity = signal.kind.severity,
             title = "${name.ifBlank { "Rider" }}: ${signal.kind.label}",
             // The card renders "N min ago" from postedAt.
             details = "",

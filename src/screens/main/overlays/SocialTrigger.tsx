@@ -43,6 +43,8 @@ export function SocialTrigger({ onFocusCoordinate }: SocialTriggerProps) {
         <IconButtonExtension
           direction="down"
           onPress={() => setSignalOpen(true)}
+          // The Rider's own live signal blinks until they clear it, so a forgotten one gets noticed.
+          blink={ownSignal !== null}
           testID="rider-signal-trigger"
           accessibilityLabel="Rider signal"
           extension={

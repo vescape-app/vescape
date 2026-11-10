@@ -23,6 +23,8 @@ internal class GroupRideCues {
     private var signals: Map<String, RiderSignal> = emptyMap()
     /** The rider's own active signal in the last roster of `rideId`. */
     private var ownSignal: RiderSignal? = null
+    /** The rider's own active hazard in the last roster of `rideId`. */
+    private var ownHazard: RideHazard? = null
     /** The next roster only catches up: the first after joining, or after our own link came back. */
     private var syncing = true
     /** Our socket to [rideId] dropped and the rider has not rejoined yet. */
@@ -69,8 +71,9 @@ internal class GroupRideCues {
      * else `groupRide.signal.ok` for a still-present Rider whose signal is gone before its
      * `expiresAt` by relay [now]. Expiry, a Rider leaving, and a missing [now] are silent. The
      * rider's own signal confirms what the relay accepted: `groupRide.signal.sent` for a new own
-     * `startedAt` (after other Riders' new signals), `groupRide.signal.cleared` when it is gone before
-     * its `expiresAt` (after `ok`). Social: `riderJoined` for an id never seen in this ride, else
+     * `startedAt` (after other Riders' new signals), `groupRide.hazard.sent` for a new own hazard
+     * [ownHazardNow] (after that), `groupRide.signal.cleared` when the own signal is gone before its
+     * `expiresAt` (after `ok`). Other Riders' hazards cue on approach, in [RideHazardCues]. Social: `riderJoined` for an id never seen in this ride, else
      * `riderLeft` when another Rider's id is gone and the previous roster had them live; the rider's
      * own id never makes a social cue. Rosters of any
      * other ride, or arriving while our link is down, are ignored; the first roster after joining
@@ -83,6 +86,7 @@ internal class GroupRideCues {
         ownRiderId: String?,
         riderSignals: Map<String, RiderSignal> = emptyMap(),
         now: Long? = null,
+        ownHazardNow: RideHazard? = null,
     ): String? {
         if (rideId != this.rideId || linkDown) return null
         val others = riderIds.filter { it != ownRiderId }.toSet()
@@ -96,18 +100,21 @@ internal class GroupRideCues {
         val own = ownRiderId?.let { riderSignals[it] }
         val ownSent = own != null && own.startedAt != ownSignal?.startedAt
         val ownCleared = own == null && ownSignal.let { it != null && now != null && now < it.expiresAt }
+        val hazardSent = ownHazardNow != null && ownHazardNow.startedAt != ownHazard?.startedAt
         seen += others
         members = others
         away = awayIds intersect others
         signals = current
         ownSignal = own
+        ownHazard = ownHazardNow
         if (syncing) {
             syncing = false
             return null
         }
         return when {
-            raised.isNotEmpty() -> signalCue(raised.maxWith(compareBy({ it.kind.critical }, { it.startedAt })).kind.wire)
+            raised.isNotEmpty() -> signalCue(raised.maxWith(compareBy({ it.kind.rank }, { it.startedAt })).kind.wire)
             ownSent -> signalCue("sent")
+            hazardSent -> RideHazardCues.CUE_PREFIX + "sent"
             cleared.isNotEmpty() -> signalCue("ok")
             ownCleared -> signalCue("cleared")
             arrived.isNotEmpty() -> "groupRide.riderJoined"
@@ -124,6 +131,7 @@ internal class GroupRideCues {
         away = emptySet()
         signals = emptyMap()
         ownSignal = null
+        ownHazard = null
         syncing = true
         linkDown = false
         lostPlayed = false
@@ -135,20 +143,21 @@ internal class GroupRideCues {
         private fun signalCue(name: String) = SIGNAL_CUE_PREFIX + name
 
         /**
-         * A Rider Signal cue: a safety call, announced at advisory priority.
+         * A Rider Signal or Ride Hazard cue: a safety call, announced at advisory priority.
          *
-         * @parity /modules/vescape-core/ios/groupride/GroupRideCues.swift `isSignalCue`
+         * @parity /modules/vescape-core/ios/groupride/GroupRideCues.swift `isSafetyCue`
          */
-        fun isSignalCue(cue: String): Boolean = cue.startsWith(SIGNAL_CUE_PREFIX)
+        fun isSafetyCue(cue: String): Boolean =
+            cue.startsWith(SIGNAL_CUE_PREFIX) || cue.startsWith(RideHazardCues.CUE_PREFIX)
 
         /**
-         * Whether [cue] plays. The connection sounds toggle mutes every Group Ride cue except a Rider
-         * Signal cue: that is a safety call, not a connection sound.
+         * Whether [cue] plays. The connection sounds toggle mutes every Group Ride cue except a safety
+         * cue: that is a safety call, not a connection sound.
          *
          * @parity /modules/vescape-core/ios/groupride/GroupRideCues.swift `audible`
          */
         fun audible(cue: String, connectionSoundsEnabled: Boolean): Boolean =
-            connectionSoundsEnabled || isSignalCue(cue)
+            connectionSoundsEnabled || isSafetyCue(cue)
 
         /**
          * How long our joined ride's link may stay down before `lost` plays. A rejoin inside it is

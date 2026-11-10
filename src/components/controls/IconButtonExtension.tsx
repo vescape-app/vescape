@@ -1,5 +1,13 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
 import { interaction, theme } from '@/constants/theme'
@@ -14,6 +22,8 @@ interface IconButtonExtensionProps {
   /** Makes the extension pressable, normally the same action as the button. */
   onPress?: () => void
   disabled?: boolean
+  /** Pulses the extension's content: a state the Rider should act on, like clearing a signal. */
+  blink?: boolean
   testID?: string
   accessibilityLabel?: string
 }
@@ -28,11 +38,26 @@ export function IconButtonExtension({
   children,
   onPress,
   disabled = false,
+  blink = false,
   testID,
   accessibilityLabel,
 }: IconButtonExtensionProps) {
   // The capsule takes the button's width, so content never widens it, whatever the button size.
   const [width, setWidth] = useState<number>()
+  const fade = useSharedValue(0)
+  useEffect(() => {
+    if (!blink) {
+      cancelAnimation(fade)
+      fade.value = 0
+      return
+    }
+    fade.value = withRepeat(
+      withTiming(1, { duration: 700, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    )
+  }, [blink, fade])
+  const blinkStyle = useAnimatedStyle(() => ({ opacity: 1 - fade.value * 0.75 }))
   if (extension == null) return children
 
   return (
@@ -55,7 +80,7 @@ export function IconButtonExtension({
           pressed && { opacity: interaction.pressedOpacity },
         ]}
       >
-        {extension}
+        <Animated.View style={[styles.content, blinkStyle]}>{extension}</Animated.View>
       </Pressable>
       <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>{children}</View>
     </View>
@@ -97,10 +122,14 @@ const styles = StyleSheet.create({
   extension: {
     alignSelf: 'stretch',
     alignItems: 'center',
-    gap: 6,
     paddingTop: 14,
     paddingBottom: 8,
     paddingHorizontal: 4,
+  },
+  content: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    gap: 6,
   },
   extensionDown: {
     paddingTop: 8,

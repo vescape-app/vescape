@@ -34,8 +34,8 @@ internal final class GroupRideObserver: NSObject {
     didSet {
       if desiredRideId != oldValue {
         forgetRideCues()
-        // A signal intent belongs to the ride it was made in.
-        pendingSignal = nil
+        // A pin intent belongs to the ride it was made in.
+        pendingPins = [:]
       }
       notifyParticipationIfChanged()
     }
@@ -44,13 +44,15 @@ internal final class GroupRideObserver: NSObject {
   private var cues = GroupRideCues()
   /// Other Riders' signals as Ride Notices; forgotten with `cues`.
   private var signalNotices = RiderSignalNotices()
-  /// The latest Rider Signal intent made while the relay was out of reach, replayed once the ride is
-  /// rejoined. A later intent overwrites it; leaving the ride drops it.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `pendingSignal`
-  private var pendingSignal: RiderSignalIntent?
+  /// Other Riders' hazards, announced on approach; forgotten with `cues`.
+  private var hazardCues = RideHazardCues()
+  /// The latest pin intent per slot made while the relay was out of reach, replayed once the ride is
+  /// rejoined. A later intent in the same slot overwrites it; leaving the ride drops them.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `pendingPins`
+  private var pendingPins: [PinSlot: RiderPinIntent] = [:]
   /// Optional capabilities the connected relay advertised in its `snapshot`.
   private var relayFeatures: Set<String> = []
-  private var signalsSupported: Bool { relayFeatures.contains(RiderSignals.relayFeature) }
+  private func supports(_ slot: PinSlot) -> Bool { relayFeatures.contains(slot.relayFeature) }
   /// Last availability handed to JS, so only changes are emitted.
   private var lastSignalAvailability: [String: Bool]?
   /// Relay clock (epoch ms) of `lastRoster`; nil from relays that predate it.
@@ -326,23 +328,36 @@ internal final class GroupRideObserver: NSObject {
   /// does not advertise signals. While the relay is out of reach the intent waits for the rejoin.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `sendSignal`
   func sendSignal(_ kind: String) {
+    sendPin(kind, RiderSignalKind(rawValue: kind))
+  }
+
+  /// Mark a Ride Hazard of `kind` at the latest GPS fix; gated like `sendSignal`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `sendHazard`
+  func sendHazard(_ kind: String) {
+    sendPin(kind, RideHazardKind(rawValue: kind))
+  }
+
+  private func sendPin<Kind: PinKind>(_ wire: String, _ kind: Kind?) {
     onMain { [self] in
-      guard let signalKind = RiderSignalKind(rawValue: kind),
-        let intent = RiderSignals.sendIntent(signalKind, signalContext())
-      else {
-        NSLog("[GroupRide] signal rejected: kind=\(kind), unknown kind or no recent fix")
+      guard let kind, let intent = RiderSignals.sendIntent(kind, signalContext()) else {
+        NSLog("[GroupRide] pin rejected: kind=\(wire), unknown kind or no recent fix")
         return
       }
-      submitSignal(intent)
+      submitPin(intent)
     }
   }
 
   /// Clear the Rider's active signal; held like a send while the relay is out of reach.
   func clearSignal() {
-    onMain { [self] in submitSignal(.clear) }
+    onMain { [self] in submitPin(.clear(.signal)) }
   }
 
-  /// Recompute what JS needs to offer a signal; emits only on change.
+  /// Clear the Rider's active hazard; held like a send while the relay is out of reach.
+  func clearHazard() {
+    onMain { [self] in submitPin(.clear(.hazard)) }
+  }
+
+  /// Recompute what JS needs to offer a signal or hazard; emits only on change.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `refreshSignalAvailability`
   /// @parity /modules/vescape-core/src/index.ts `GroupRideSignalAvailability`
   func refreshSignalAvailability() {
@@ -350,7 +365,8 @@ internal final class GroupRideObserver: NSObject {
       guard !stopped else { return }
       let context = signalContext()
       let availability = [
-        "supported": signalsSupported,
+        "supported": supports(.signal),
+        "hazardsSupported": supports(.hazard),
         "insidePrivacyZone": context.insidePrivacyZone,
         "hasRecentFix": context.fix != nil,
       ]
@@ -360,20 +376,29 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-  private func submitSignal(_ intent: RiderSignalIntent) {
+  /// A new device GPS fix: plays the approach cue of another Rider's hazard it just closed in on.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `onFix`
+  func onFix(lat: Double, lng: Double) {
+    onMain { [self] in
+      guard !stopped, joinedRideId != nil, let cue = hazardCues.fix(lat: lat, lng: lng) else { return }
+      onCue(cue)
+    }
+  }
+
+  private func submitPin(_ intent: RiderPinIntent) {
     guard !stopped, participating else {
-      NSLog("[GroupRide] signal ignored: not in a ride")
+      NSLog("[GroupRide] pin ignored: not in a ride")
       return
     }
     guard let ws = webSocket, linkOpen, joinedRideId != nil else {
-      pendingSignal = intent
+      pendingPins[intent.slot] = intent
       return
     }
-    pendingSignal = nil
-    if signalsSupported {
+    pendingPins[intent.slot] = nil
+    if supports(intent.slot) {
       send(ws, intent.frame())
     } else {
-      NSLog("[GroupRide] signal ignored: relay does not support rider signals")
+      NSLog("[GroupRide] pin ignored: relay does not support \(intent.slot.relayFeature)")
     }
   }
 
@@ -528,20 +553,26 @@ internal final class GroupRideObserver: NSObject {
       joinedRideId = rideId
       startHeartbeat()
       emit("onGroupRideJoined", ["rideId": rideId])
-      // Replay a signal intent made while the relay was out of reach.
-      if let pendingSignal { submitSignal(pendingSignal) }
+      // Replay pin intents made while the relay was out of reach.
+      pendingPins.values.forEach(submitPin)
     case "roster":
       var riders: [[String: Any?]] = []
       var signals: [String: RiderSignal] = [:]
+      var hazards: [String: RideHazard] = [:]
       for obj in (json["riders"] as? [Any] ?? []).compactMap({ $0 as? [String: Any] }) {
         let signal = RiderSignal.parse(obj["signal"] as? [String: Any])
-        guard let view = riderView(obj, signal: signal), let id = view["id"] as? String else { continue }
+        let hazard = RideHazard.parse(obj["hazard"] as? [String: Any])
+        guard let view = riderView(obj, signal: signal, hazard: hazard), let id = view["id"] as? String else { continue }
         riders.append(view)
         if let signal { signals[id] = signal }
+        if let hazard { hazards[id] = hazard }
       }
       let rideId = (json["rideId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
       let awayIds = Set(riders.filter { $0["away"] as? Bool == true }.compactMap { $0["id"] as? String })
       let now = (json["now"] as? NSNumber)?.int64Value
+      if let rideId, rideId == joinedRideId {
+        hazardCues.roster(hazards.filter { $0.key != riderId })
+      }
       if let rideId, rideId == joinedRideId,
         let cue = cues.roster(
           rideId: rideId,
@@ -549,7 +580,8 @@ internal final class GroupRideObserver: NSObject {
           awayIds: awayIds,
           ownRiderId: riderId,
           riderSignals: signals,
-          now: now
+          now: now,
+          ownHazardNow: riderId.flatMap { hazards[$0] }
         )
       {
         onCue(cue)
@@ -645,7 +677,7 @@ internal final class GroupRideObserver: NSObject {
   }
 
   /// @parity /modules/vescape-core/src/index.ts `GroupRideRider`
-  private func riderView(_ obj: [String: Any]?, signal: RiderSignal?) -> [String: Any?]? {
+  private func riderView(_ obj: [String: Any]?, signal: RiderSignal?, hazard: RideHazard?) -> [String: Any?]? {
     guard let obj, let id = obj["id"] as? String, !id.isEmpty else { return nil }
     return [
       "id": id,
@@ -657,6 +689,7 @@ internal final class GroupRideObserver: NSObject {
       "away": obj["away"] as? Bool ?? false,
       "lastSeen": (obj["lastSeen"] as? NSNumber)?.int64Value ?? 0,
       "signal": signal?.toMap(),
+      "hazard": hazard?.toMap(),
     ]
   }
 
@@ -760,6 +793,7 @@ internal final class GroupRideObserver: NSObject {
   /// The rider is out of the ride: drop its cue state, a pending `lost` included, and signal notices.
   private func forgetRideCues() {
     cues.reset()
+    hazardCues.reset()
     signalNotices.reset().forEach { RideNotices.shared.clear(key: $0) }
     cancelLost()
   }

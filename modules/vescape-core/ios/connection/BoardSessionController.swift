@@ -1110,6 +1110,14 @@ internal final class BoardSessionController: VescGattListener {
     groupRideObserver.clearSignal()
   }
 
+  func sendGroupRideHazard(_ kind: String) {
+    groupRideObserver.sendHazard(kind)
+  }
+
+  func clearGroupRideHazard() {
+    groupRideObserver.clearHazard()
+  }
+
   func updateGroupRideIdentity(riderId: String, riderName: String) {
     groupRideObserver.updateIdentity(riderId: riderId, riderName: riderName)
   }
@@ -3251,6 +3259,7 @@ internal final class BoardSessionController: VescGattListener {
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
     groupRideObserver.refreshSignalAvailability()
+    groupRideObserver.onFix(lat: location.latitude, lng: location.longitude)
     emit?("onLocation", location.map)
   }
 

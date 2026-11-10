@@ -184,12 +184,30 @@
         ]
       }
     },
-    "groupRide.signal.board": {
-      "start": ["lines/groupRide.signal.board.start.0.m4a"],
+    "groupRide.signal.down": {
+      "start": ["lines/groupRide.signal.down.start.0.m4a"],
       "full": {
         "start": [
-          "lines/groupRide.signal.board.full.start.0.m4a",
-          "lines/groupRide.signal.board.full.start.1.m4a"
+          "lines/groupRide.signal.down.full.start.0.m4a",
+          "lines/groupRide.signal.down.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.minor": {
+      "start": ["lines/groupRide.signal.minor.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.minor.full.start.0.m4a",
+          "lines/groupRide.signal.minor.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.serious": {
+      "start": ["lines/groupRide.signal.serious.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.serious.full.start.0.m4a",
+          "lines/groupRide.signal.serious.full.start.1.m4a"
         ]
       }
     },
@@ -202,12 +220,30 @@
         ]
       }
     },
-    "groupRide.signal.down": {
-      "start": ["lines/groupRide.signal.down.start.0.m4a"],
+    "groupRide.signal.tire": {
+      "start": ["lines/groupRide.signal.tire.start.0.m4a"],
       "full": {
         "start": [
-          "lines/groupRide.signal.down.full.start.0.m4a",
-          "lines/groupRide.signal.down.full.start.1.m4a"
+          "lines/groupRide.signal.tire.full.start.0.m4a",
+          "lines/groupRide.signal.tire.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.overheat": {
+      "start": ["lines/groupRide.signal.overheat.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.overheat.full.start.0.m4a",
+          "lines/groupRide.signal.overheat.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.board": {
+      "start": ["lines/groupRide.signal.board.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.board.full.start.0.m4a",
+          "lines/groupRide.signal.board.full.start.1.m4a"
         ]
       }
     },
@@ -217,15 +253,6 @@
         "start": [
           "lines/groupRide.signal.wait.full.start.0.m4a",
           "lines/groupRide.signal.wait.full.start.1.m4a"
-        ]
-      }
-    },
-    "groupRide.signal.help": {
-      "start": ["lines/groupRide.signal.help.start.0.m4a"],
-      "full": {
-        "start": [
-          "lines/groupRide.signal.help.full.start.0.m4a",
-          "lines/groupRide.signal.help.full.start.1.m4a"
         ]
       }
     },
@@ -253,6 +280,51 @@
         "start": [
           "lines/groupRide.signal.cleared.full.start.0.m4a",
           "lines/groupRide.signal.cleared.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.water": {
+      "start": ["lines/groupRide.hazard.water.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.water.full.start.0.m4a",
+          "lines/groupRide.hazard.water.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.mud": {
+      "start": ["lines/groupRide.hazard.mud.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.mud.full.start.0.m4a",
+          "lines/groupRide.hazard.mud.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.obstacle": {
+      "start": ["lines/groupRide.hazard.obstacle.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.obstacle.full.start.0.m4a",
+          "lines/groupRide.hazard.obstacle.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.descent": {
+      "start": ["lines/groupRide.hazard.descent.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.descent.full.start.0.m4a",
+          "lines/groupRide.hazard.descent.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.sent": {
+      "start": ["lines/groupRide.hazard.sent.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.sent.full.start.0.m4a",
+          "lines/groupRide.hazard.sent.full.start.1.m4a"
         ]
       }
     },
@@ -955,21 +1027,30 @@
     "lines/groupRide.restored.full.start.0.m4a": "24c2cea690b5c663",
     "lines/groupRide.restored.full.start.1.m4a": "10313318125b3316",
     "lines/groupRide.restored.start.0.m4a": "24c2cea690b5c663",
-    "lines/groupRide.signal.board.full.start.0.m4a": "dcbfdec43c583ffd",
-    "lines/groupRide.signal.board.full.start.1.m4a": "3ac1cfbdf6412300",
-    "lines/groupRide.signal.board.start.0.m4a": "9c412a8e02c51913",
+    "lines/groupRide.signal.down.full.start.0.m4a": "1c9be65b96be8881",
+    "lines/groupRide.signal.down.full.start.1.m4a": "afb7ee187cfead24",
+    "lines/groupRide.signal.down.start.0.m4a": "29c2a8f691076f54",
+    "lines/groupRide.signal.minor.full.start.0.m4a": "6fecab5287c66896",
+    "lines/groupRide.signal.minor.full.start.1.m4a": "82241e1317678076",
+    "lines/groupRide.signal.minor.start.0.m4a": "9330ab3eb7c746d9",
+    "lines/groupRide.signal.serious.full.start.0.m4a": "65389c4cfb7d5d34",
+    "lines/groupRide.signal.serious.full.start.1.m4a": "d4c6475785c2c524",
+    "lines/groupRide.signal.serious.start.0.m4a": "65389c4cfb7d5d34",
     "lines/groupRide.signal.battery.full.start.0.m4a": "17418f853b526129",
     "lines/groupRide.signal.battery.full.start.1.m4a": "d28e03e4cde35d7a",
     "lines/groupRide.signal.battery.start.0.m4a": "801d9c4e2e8c927e",
-    "lines/groupRide.signal.down.full.start.0.m4a": "53a81da9cf7a42ad",
-    "lines/groupRide.signal.down.full.start.1.m4a": "be2b72dcdaffdcd5",
-    "lines/groupRide.signal.down.start.0.m4a": "53a81da9cf7a42ad",
+    "lines/groupRide.signal.tire.full.start.0.m4a": "4638498bf301f4d0",
+    "lines/groupRide.signal.tire.full.start.1.m4a": "705997fee20952f6",
+    "lines/groupRide.signal.tire.start.0.m4a": "5ed61301a034950b",
+    "lines/groupRide.signal.overheat.full.start.0.m4a": "3d0f0b3533793f52",
+    "lines/groupRide.signal.overheat.full.start.1.m4a": "e8f92f4cdbc78640",
+    "lines/groupRide.signal.overheat.start.0.m4a": "76198b342c7458b4",
+    "lines/groupRide.signal.board.full.start.0.m4a": "dcbfdec43c583ffd",
+    "lines/groupRide.signal.board.full.start.1.m4a": "3ac1cfbdf6412300",
+    "lines/groupRide.signal.board.start.0.m4a": "9c412a8e02c51913",
     "lines/groupRide.signal.wait.full.start.0.m4a": "8b0a4a19fb1c4042",
     "lines/groupRide.signal.wait.full.start.1.m4a": "bc0c0b922693a413",
     "lines/groupRide.signal.wait.start.0.m4a": "a23d5054c7ab7a1c",
-    "lines/groupRide.signal.help.full.start.0.m4a": "8f8fd3685cb6b7db",
-    "lines/groupRide.signal.help.full.start.1.m4a": "16975fd3aff04934",
-    "lines/groupRide.signal.help.start.0.m4a": "03f50af0bec15d35",
     "lines/groupRide.signal.ok.full.start.0.m4a": "92e1c0f90a49a054",
     "lines/groupRide.signal.ok.full.start.1.m4a": "63e7eb083c389b2f",
     "lines/groupRide.signal.ok.start.0.m4a": "6a2a9685a7777ac8",
@@ -979,6 +1060,21 @@
     "lines/groupRide.signal.cleared.full.start.0.m4a": "e82ae5157698013a",
     "lines/groupRide.signal.cleared.full.start.1.m4a": "0fd65653f0378052",
     "lines/groupRide.signal.cleared.start.0.m4a": "2ef9ae7ad811d018",
+    "lines/groupRide.hazard.water.full.start.0.m4a": "7e6be5be6f978b1a",
+    "lines/groupRide.hazard.water.full.start.1.m4a": "8fe2ff7f8ca1cbbd",
+    "lines/groupRide.hazard.water.start.0.m4a": "fe8044065e26ef04",
+    "lines/groupRide.hazard.mud.full.start.0.m4a": "384c65c31759d39c",
+    "lines/groupRide.hazard.mud.full.start.1.m4a": "20fe5c939f163c89",
+    "lines/groupRide.hazard.mud.start.0.m4a": "1894b2e7e1f3338f",
+    "lines/groupRide.hazard.obstacle.full.start.0.m4a": "44a353e5409f68ea",
+    "lines/groupRide.hazard.obstacle.full.start.1.m4a": "8295e70f2b2da67e",
+    "lines/groupRide.hazard.obstacle.start.0.m4a": "3c687f838f20b9ce",
+    "lines/groupRide.hazard.descent.full.start.0.m4a": "8384a688d73d2a28",
+    "lines/groupRide.hazard.descent.full.start.1.m4a": "47fa64002ca0a5d4",
+    "lines/groupRide.hazard.descent.start.0.m4a": "0354c74b1c1d68c3",
+    "lines/groupRide.hazard.sent.full.start.0.m4a": "f0decae0a857da92",
+    "lines/groupRide.hazard.sent.full.start.1.m4a": "f5584e5ba04aaa41",
+    "lines/groupRide.hazard.sent.start.0.m4a": "28e2d4c3c4298c55",
     "lines/ride.end.full.start.0.m4a": "8ce4bda3b9e79306",
     "lines/ride.end.full.start.1.m4a": "97ed51f8a6d2696d",
     "lines/ride.end.full.start.2.m4a": "2b27f4ea05da9203",

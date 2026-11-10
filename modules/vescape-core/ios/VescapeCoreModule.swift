@@ -552,6 +552,15 @@ public class VescapeCoreModule: Module {
       self.coordinator.clearGroupRideSignal()
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `sendGroupRideHazard`
+    Function("sendGroupRideHazard") { (kind: String) in
+      self.coordinator.sendGroupRideHazard(kind)
+    }
+
+    Function("clearGroupRideHazard") {
+      self.coordinator.clearGroupRideHazard()
+    }
+
     Function("updateGroupRideIdentity") { (riderId: String, riderName: String) in
       self.coordinator.updateGroupRideIdentity(riderId: riderId, riderName: riderName)
     }

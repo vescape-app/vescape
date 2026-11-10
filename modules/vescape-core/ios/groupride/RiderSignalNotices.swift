@@ -67,7 +67,7 @@ internal struct RiderSignalNotices {
   private static func content(_ name: String, _ signal: RiderSignal, _ pinned: Pinned) -> RideNoticeContent {
     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
     return RideNoticeContent(
-      severity: signal.kind.critical ? .critical : .warning,
+      severity: signal.kind.severity,
       title: "\(trimmed.isEmpty ? "Rider" : name): \(signal.kind.label)",
       // The card renders "N min ago" from postedAt.
       details: "",

@@ -464,8 +464,12 @@ A **Rider's** live shared snapshot within a **Group Ride**: location and heading
 _Avoid_: Position update, presence ping, location share, group telemetry
 
 **Rider Signal**:
-A **Rider's** call to their **Group Ride** that something is wrong: one fixed kind (board problem, out of battery, rider down, wait for me, need help), pinned at the location it was sent from. Every other Rider hears it and sees it on the map. Distinct from **Rider Presence**: it keeps its own frozen location and lifetime, and it is shared even inside a **Privacy Zone**, because sending one is an explicit opt-in. A Rider has at most one; a new kind replaces it, and it ends when the Rider clears it, after 10 minutes, or when they leave. Away Riders keep theirs until it ends. Ephemeral and server-relayed like Rider Presence.
+A **Rider's** call to their **Group Ride** that something is wrong with them: one fixed kind (rider down, minor injury, serious injury; battery dead, flat tire, overheating, board fault; wait for me), pinned at the location it was sent from. Kinds rank by what the group should do: a serious injury first, then a minor injury or a board problem, then the heads-ups: a rider down (a small crash; the Rider escalates it by sending a minor or serious injury) and a wait. Every other Rider hears it and sees it on the map. Distinct from **Rider Presence**: it keeps its own frozen location and lifetime, and it is shared even inside a **Privacy Zone**, because sending one is an explicit opt-in. A Rider has at most one; a new kind replaces it, and it ends when the Rider clears it, after 10 minutes, or when they leave. Away Riders keep theirs until it ends. Ephemeral and server-relayed like Rider Presence.
 _Avoid_: SOS, alarm, alert, distress call, help request
+
+**Ride Hazard**:
+A danger a **Rider** marks on the trail for their **Group Ride**: one fixed kind (water, mud, obstacle, steep descent), pinned where it was marked. About the place, not the Rider: a Rider holds one Ride Hazard alongside their **Rider Signal**, and a new one replaces only the previous hazard. It follows the Rider Signal's lifetime (10 minutes, cleared only by the sender) and Privacy Zone exception, but other Riders hear it only as they approach it, never when it is marked.
+_Avoid_: Hazard signal, warning, POI, map point
 
 ## Relationships
 

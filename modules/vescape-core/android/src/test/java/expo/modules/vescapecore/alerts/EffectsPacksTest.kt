@@ -1,6 +1,11 @@
 package expo.modules.vescapecore.alerts
 
+import expo.modules.vescapecore.RideHazardCues
+import expo.modules.vescapecore.RideHazardKind
+import expo.modules.vescapecore.RiderSignalKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** @parity /modules/vescape-core/ios/alerts/EffectsPacksTests.swift */
@@ -38,12 +43,32 @@ class EffectsPacksTest {
 
     @Test
     fun riderSignalCuesPlayTheirSeverityAtAdvisoryPriority() {
-        assertEquals("severity.critical", appCueSlot("groupRide.signal.down"))
-        assertEquals("severity.critical", appCueSlot("groupRide.signal.help"))
+        assertEquals("severity.critical", appCueSlot("groupRide.signal.serious"))
+        assertEquals("severity.warning", appCueSlot("groupRide.signal.minor"))
+        assertEquals("severity.info", appCueSlot("groupRide.signal.down"))
         assertEquals("severity.warning", appCueSlot("groupRide.signal.board"))
+        assertEquals("severity.info", appCueSlot("groupRide.signal.wait"))
+        assertEquals("severity.warning", appCueSlot("groupRide.hazard.mud"))
+        assertEquals("severity.info", appCueSlot("groupRide.hazard.sent"))
+        assertNull(appCueSlot("groupRide.hazard.lava"))
+        assertEquals(AnnouncementPriority.ADVISORY, appCuePriority("groupRide.hazard.water"))
         assertEquals("severity.positive", appCueSlot("groupRide.signal.ok"))
         assertEquals("groupRide.signal.wait", appCueVoiceKey("groupRide.signal.wait"))
         assertEquals(AnnouncementPriority.ADVISORY, appCuePriority("groupRide.signal.battery"))
         assertEquals(AnnouncementPriority.SOCIAL, appCuePriority("groupRide.riderJoined"))
+    }
+
+    @Test
+    fun everySignalAndHazardKindHasACueWithItsSeverity() {
+        for (kind in RiderSignalKind.entries) {
+            val cue = "groupRide.signal.${kind.wire}"
+            assertTrue(cue, cue in GROUP_RIDE_CUES)
+            assertEquals(cue, "severity.${kind.severity.wire}", appCueSlot(cue))
+        }
+        for (kind in RideHazardKind.entries) {
+            val cue = RideHazardCues.CUE_PREFIX + kind.wire
+            assertTrue(cue, cue in GROUP_RIDE_CUES)
+            assertEquals(cue, "severity.warning", appCueSlot(cue))
+        }
     }
 }

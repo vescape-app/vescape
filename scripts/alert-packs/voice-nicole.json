@@ -161,34 +161,52 @@
         "start": ["There they are. Act natural.", "Back together. I knew they'd miss us."]
       }
     },
-    "groupRide.signal.board": {
-      "start": ["Rider has a board problem."],
-      "full": {
-        "start": ["Someone's board is acting up.", "A rider's board gave up."]
-      }
-    },
-    "groupRide.signal.battery": {
-      "start": ["Rider is out of battery."],
-      "full": {
-        "start": ["Someone ran out of juice.", "A rider is out of battery. Should've charged."]
-      }
-    },
     "groupRide.signal.down": {
       "start": ["Rider down."],
       "full": {
         "start": ["Rider down. Go check on them.", "A rider is down."]
       }
     },
+    "groupRide.signal.minor": {
+      "start": ["Minor injury."],
+      "full": {
+        "start": ["Minor injury. Go check on them.", "A rider got hurt."]
+      }
+    },
+    "groupRide.signal.serious": {
+      "start": ["Serious injury."],
+      "full": {
+        "start": ["Serious injury. Get to them now.", "A rider needs help now."]
+      }
+    },
+    "groupRide.signal.battery": {
+      "start": ["Rider's battery is dead."],
+      "full": {
+        "start": ["Someone ran out of juice.", "A rider's battery is dead. Should've charged."]
+      }
+    },
+    "groupRide.signal.tire": {
+      "start": ["Rider has a flat tire."],
+      "full": {
+        "start": ["Someone got a flat. Bring the pump.", "A rider has a flat tire."]
+      }
+    },
+    "groupRide.signal.overheat": {
+      "start": ["Rider is overheating."],
+      "full": {
+        "start": ["Someone's board is too hot. Give it a minute.", "A rider is overheating."]
+      }
+    },
+    "groupRide.signal.board": {
+      "start": ["Rider has a board fault."],
+      "full": {
+        "start": ["Someone's board is acting up.", "A rider's board gave up."]
+      }
+    },
     "groupRide.signal.wait": {
       "start": ["Rider asks to wait."],
       "full": {
         "start": ["Someone asks you to wait. Be nice.", "A rider asks to wait."]
-      }
-    },
-    "groupRide.signal.help": {
-      "start": ["Rider needs help."],
-      "full": {
-        "start": ["A rider needs help.", "Someone needs help. Go."]
       }
     },
     "groupRide.signal.ok": {
@@ -207,6 +225,36 @@
       "start": ["Signal cleared."],
       "full": {
         "start": ["Signal cleared. Carry on.", "All good, your signal is cleared."]
+      }
+    },
+    "groupRide.hazard.water": {
+      "start": ["Water ahead."],
+      "full": {
+        "start": ["Water ahead. Don't lose your board.", "Careful, water ahead."]
+      }
+    },
+    "groupRide.hazard.mud": {
+      "start": ["Mud ahead."],
+      "full": {
+        "start": ["Mud ahead. Hold on tight.", "Careful, mud ahead."]
+      }
+    },
+    "groupRide.hazard.obstacle": {
+      "start": ["Obstacle ahead."],
+      "full": {
+        "start": ["Something's blocking the path ahead.", "Careful, obstacle ahead."]
+      }
+    },
+    "groupRide.hazard.descent": {
+      "start": ["Steep descent ahead."],
+      "full": {
+        "start": ["Steep descent ahead. Easy does it.", "Careful, steep descent ahead."]
+      }
+    },
+    "groupRide.hazard.sent": {
+      "start": ["Hazard marked."],
+      "full": {
+        "start": ["Hazard marked. Nice catch.", "Your hazard is on the map."]
       }
     },
     "ride.end": {

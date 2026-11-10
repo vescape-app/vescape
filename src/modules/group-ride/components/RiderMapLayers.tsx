@@ -1,6 +1,7 @@
 import { LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
+import type { GroupRidePin } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
@@ -10,8 +11,9 @@ import { riderMapColor } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import {
-  riderSignalHue,
+  rideHazardKindInfo,
   riderSignalKindInfo,
+  type PinKindInfo,
 } from '@/modules/group-ride/constants/riderSignalKinds'
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
@@ -99,28 +101,54 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
 /** Every Rider's active signal, your own included (the presence layers leave you out). */
 export function RiderSignalPins() {
   const rows = useGroupRideStore((s) => s.rosterRows)
-  return rows.map((rider) =>
-    rider.signal ? <RiderSignalPin key={`signal-${rider.id}`} rider={rider} /> : null,
-  )
+  return rows.flatMap((rider) => [
+    rider.signal ? (
+      <RiderPinMarker
+        key={`signal-${rider.id}`}
+        rider={rider}
+        pin={rider.signal}
+        info={riderSignalKindInfo(rider.signal.kind)}
+      />
+    ) : null,
+    rider.hazard ? (
+      <RiderPinMarker
+        key={`hazard-${rider.id}`}
+        rider={rider}
+        pin={rider.hazard}
+        info={rideHazardKindInfo(rider.hazard.kind)}
+        place
+      />
+    ) : null,
+  ])
 }
 
 /**
- * A Rider's active signal, pinned where it was sent. Apart from the presence pin, so it stays put
- * while the sender moves on or goes away. In its kind's hue, like its Ride Notice, roster badge,
- * and picker tile, and never muted by a stale presence. The pin stands on a stem above its spot,
- * clear of a presence dot and name label that sit on the same spot while the sender has not moved.
+ * A Rider's active signal or hazard, pinned where it was sent. Apart from the presence pin, so it
+ * stays put while the sender moves on or goes away. In its kind's hue, like its Ride Notice, roster
+ * badge, and picker tile, and never muted by a stale presence. The pin stands on a stem above its
+ * spot, clear of a presence dot and name label that sit on the same spot while the sender has not
+ * moved. A hazard (`place`) is a rounded square: it marks the trail, not the Rider.
  */
-function RiderSignalPin({ rider }: { rider: RosterRider }) {
+function RiderPinMarker({
+  rider,
+  pin: rawPin,
+  info,
+  place = false,
+}: {
+  rider: RosterRider
+  pin: GroupRidePin
+  info: PinKindInfo | null
+  place?: boolean
+}) {
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
-  const signal = useActiveRiderSignal(rider.signal)
-  const info = signal ? riderSignalKindInfo(signal.kind) : null
-  if (!signal || !info) return null
-  const color = accents[riderSignalHue(info)].color
+  const pin = useActiveRiderSignal(rawPin)
+  if (!pin || !info) return null
+  const color = accents[info.hue].color
   const KindIcon = info.icon
 
   return (
-    <MarkerView coordinate={[signal.lng, signal.lat]} anchor={SIGNAL_PIN_ANCHOR} allowOverlap>
+    <MarkerView coordinate={[pin.lng, pin.lat]} anchor={SIGNAL_PIN_ANCHOR} allowOverlap>
       <View
         style={styles.signalMarker}
         accessibilityLabel={`${rider.name || 'Rider'}: ${info.label}`}
@@ -128,6 +156,7 @@ function RiderSignalPin({ rider }: { rider: RosterRider }) {
         <View
           style={[
             styles.signalPin,
+            place && styles.hazardPin,
             { borderColor: color, backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85) },
           ]}
         >
@@ -161,6 +190,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  hazardPin: {
+    borderRadius: 8,
   },
   riderMarker: {
     alignItems: 'center',

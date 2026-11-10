@@ -22,10 +22,7 @@ import {
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
 import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
-import {
-  riderSignalHue,
-  riderSignalKindInfo,
-} from '@/modules/group-ride/constants/riderSignalKinds'
+import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
 import { riderHue } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
@@ -195,7 +192,7 @@ function SignalBadge({ kind }: { kind: string }) {
   const info = riderSignalKindInfo(kind)
   if (!info) return null
   const KindIcon = info.icon
-  const hue = riderSignalHue(info)
+  const hue = info.hue
   return (
     <View
       style={[styles.signalTag, { backgroundColor: accents[hue].bg }]}

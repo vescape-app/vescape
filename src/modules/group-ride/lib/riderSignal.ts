@@ -1,4 +1,4 @@
-import type { GroupRideSignal } from 'vescape-core'
+import type { GroupRidePin } from 'vescape-core'
 
 /**
  * The relay clock as of the last roster: its `now`, and the local monotonic time it arrived. Signal
@@ -19,7 +19,7 @@ export function relayNow(clock: RelayClock, localNow = monotonicNow()): number {
 
 /** Milliseconds until the signal expires, never negative. */
 export function signalTimeLeftMs(
-  signal: GroupRideSignal,
+  signal: GroupRidePin,
   clock: RelayClock,
   localNow = monotonicNow(),
 ): number {
@@ -27,28 +27,24 @@ export function signalTimeLeftMs(
 }
 
 /**
- * The signal to surface first among several active ones: a critical kind over the rest, then the
- * newest. Expired signals and unknown kinds (`isCritical` returns null) never win. Null when none
- * is active.
+ * The signal to surface first among several active ones: the highest `rank` (a rider down over a
+ * problem, a problem over a wait), then the newest. Expired signals and unknown kinds (`rankOf`
+ * returns null) never win. Null when none is active.
  */
 export function topRiderSignal(
-  signals: readonly GroupRideSignal[],
+  signals: readonly GroupRidePin[],
   clock: RelayClock,
-  isCritical: (kind: string) => boolean | null,
+  rankOf: (kind: string) => number | null,
   localNow = monotonicNow(),
-): GroupRideSignal | null {
-  let top: GroupRideSignal | null = null
-  let topCritical = false
+): GroupRidePin | null {
+  let top: GroupRidePin | null = null
+  let topRank = -Infinity
   for (const signal of signals) {
-    const critical = isCritical(signal.kind)
-    if (critical === null || signalTimeLeftMs(signal, clock, localNow) <= 0) continue
-    const wins =
-      top === null ||
-      (critical && !topCritical) ||
-      (critical === topCritical && signal.startedAt > top.startedAt)
-    if (wins) {
+    const rank = rankOf(signal.kind)
+    if (rank === null || signalTimeLeftMs(signal, clock, localNow) <= 0) continue
+    if (top === null || rank > topRank || (rank === topRank && signal.startedAt > top.startedAt)) {
       top = signal
-      topCritical = critical
+      topRank = rank
     }
   }
   return top

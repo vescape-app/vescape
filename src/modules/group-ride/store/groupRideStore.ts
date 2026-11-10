@@ -10,11 +10,13 @@ import {
   addGroupRideSnapshotListener,
   addGroupRideUpdatedListener,
   addLocationListener,
+  clearGroupRideHazard,
   clearGroupRideSignal,
   createGroupRide,
   getSettings,
   joinGroupRide,
   leaveGroupRide,
+  sendGroupRideHazard,
   sendGroupRideSignal,
   startGroupRideObserve,
   stopGroupRideObserve,
@@ -24,6 +26,7 @@ import {
   type GroupRideRider,
   type GroupRideSignalAvailability,
   type GroupRideSummary,
+  type RideHazardKind,
   type RiderSignalKind,
 } from 'vescape-core'
 
@@ -71,6 +74,9 @@ interface GroupRideState {
   /** Raise a Rider Signal; replaces the current one. The roster brings it back once the relay has it. */
   sendSignal: (kind: RiderSignalKind) => void
   clearSignal: () => void
+  /** Mark a Ride Hazard; replaces the current hazard, never the signal. */
+  sendHazard: (kind: RideHazardKind) => void
+  clearHazard: () => void
   focusRider: (riderId: string) => void
   clearError: () => void
 }
@@ -78,6 +84,7 @@ interface GroupRideState {
 /** Until native reports, assume nothing can be sent: an old relay must never see a `signal`. */
 const NO_SIGNAL_AVAILABILITY: GroupRideSignalAvailability = {
   supported: false,
+  hazardsSupported: false,
   insidePrivacyZone: true,
   hasRecentFix: false,
 }
@@ -276,6 +283,14 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
 
   clearSignal() {
     clearGroupRideSignal()
+  },
+
+  sendHazard(kind) {
+    sendGroupRideHazard(kind)
+  },
+
+  clearHazard() {
+    clearGroupRideHazard()
   },
 
   focusRider(riderId) {

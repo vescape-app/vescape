@@ -29,7 +29,7 @@ class RiderSignalNoticesTest {
 
         assertEquals("riderSignal:ola", post.key)
         assertEquals("1000", post.revision)
-        assertEquals("Ola: Board problem", post.content.title)
+        assertEquals("Ola: Board fault", post.content.title)
         assertEquals("", post.content.details)
         assertEquals(RideNoticeSeverity.WARNING, post.content.severity)
         assertEquals(RideNoticeLocation(50.0, 19.0), post.content.location)
@@ -38,21 +38,25 @@ class RiderSignalNoticesTest {
     }
 
     @Test
-    fun `down and help are critical`() {
+    fun `a serious injury is critical, problems warn, a rider down informs`() {
         val posts = roster(
-            SignalRider("a", "A", signal(RiderSignalKind.DOWN)),
-            SignalRider("b", "B", signal(RiderSignalKind.HELP)),
-            SignalRider("c", "C", signal(RiderSignalKind.WAIT)),
+            SignalRider("a", "A", signal(RiderSignalKind.SERIOUS)),
+            SignalRider("c", "C", signal(RiderSignalKind.TIRE)),
+            SignalRider("d", "D", signal(RiderSignalKind.DOWN)),
         ).posts
         assertEquals(
-            listOf(RideNoticeSeverity.CRITICAL, RideNoticeSeverity.CRITICAL, RideNoticeSeverity.WARNING),
+            listOf(
+                RideNoticeSeverity.CRITICAL,
+                RideNoticeSeverity.WARNING,
+                RideNoticeSeverity.INFO,
+            ),
             posts.map { it.content.severity },
         )
     }
 
     @Test
     fun `the rider's own signal posts nothing`() {
-        assertTrue(roster(SignalRider("me", "Me", signal(RiderSignalKind.HELP))).posts.isEmpty())
+        assertTrue(roster(SignalRider("me", "Me", signal(RiderSignalKind.DOWN))).posts.isEmpty())
     }
 
     @Test

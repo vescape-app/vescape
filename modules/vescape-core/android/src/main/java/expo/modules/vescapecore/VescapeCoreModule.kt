@@ -1717,6 +1717,13 @@ class VescapeCoreModule : Module() {
     Function("clearGroupRideSignal") {
       CoreForegroundService.clearGroupRideSignal()
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendGroupRideHazard`
+    Function("sendGroupRideHazard") { kind: String ->
+      CoreForegroundService.sendGroupRideHazard(kind)
+    }
+    Function("clearGroupRideHazard") {
+      CoreForegroundService.clearGroupRideHazard()
+    }
     Function("updateGroupRideIdentity") { riderId: String, riderName: String ->
       CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName)
     }

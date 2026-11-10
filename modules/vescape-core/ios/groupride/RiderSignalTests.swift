@@ -21,20 +21,31 @@ final class RiderSignalTests: XCTestCase {
   }
 
   func testASendCarriesTheRecentFix() {
-    let intent = RiderSignals.sendIntent(.help, RiderSignalContext(fix: fix, insidePrivacyZone: false))
+    let intent = RiderSignals.sendIntent(RiderSignalKind.down, RiderSignalContext(fix: fix, insidePrivacyZone: false))
 
-    XCTAssertEqual(intent, .send(kind: .help, lat: 52.0, lng: 21.0))
+    XCTAssertEqual(intent, .send(slot: .signal, kind: "down", lat: 52.0, lng: 21.0))
     let frame = intent?.frame()
     XCTAssertEqual(frame?["type"] as? String, "signal")
-    XCTAssertEqual(frame?["kind"] as? String, "help")
+    XCTAssertEqual(frame?["kind"] as? String, "down")
   }
 
   func testASendIsRejectedWithoutARecentFix() {
-    XCTAssertNil(RiderSignals.sendIntent(.help, RiderSignalContext(fix: nil, insidePrivacyZone: false)))
-    XCTAssertNil(RiderSignals.sendIntent(.help, RiderSignalContext(fix: nil, insidePrivacyZone: true)))
+    XCTAssertNil(RiderSignals.sendIntent(RiderSignalKind.down, RiderSignalContext(fix: nil, insidePrivacyZone: false)))
+    XCTAssertNil(RiderSignals.sendIntent(RiderSignalKind.down, RiderSignalContext(fix: nil, insidePrivacyZone: true)))
   }
 
   func testClearIsABareSignalClearFrame() {
-    XCTAssertEqual(RiderSignalIntent.clear.frame() as? [String: String], ["type": "signal-clear"])
+    XCTAssertEqual(RiderPinIntent.clear(.signal).frame() as? [String: String], ["type": "signal-clear"])
+  }
+
+  func testAHazardParsesInItsOwnKindsAndSendsAndClearsInItsOwnSlot() {
+    let hazard: [String: Any] = ["kind": "mud", "lat": 1.0, "lng": 2.0, "startedAt": 1, "expiresAt": 2]
+    XCTAssertEqual(RideHazard.parse(hazard)?.kind, .mud)
+    XCTAssertNil(RiderSignal.parse(hazard))
+
+    let frame = RiderSignals.sendIntent(RideHazardKind.mud, RiderSignalContext(fix: fix, insidePrivacyZone: false))?.frame()
+    XCTAssertEqual(frame?["type"] as? String, "hazard")
+    XCTAssertEqual(frame?["kind"] as? String, "mud")
+    XCTAssertEqual(RiderPinIntent.clear(.hazard).frame() as? [String: String], ["type": "hazard-clear"])
   }
 }
