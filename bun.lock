@@ -83,12 +83,13 @@
     "@shopify/react-native-skia",
   ],
   "patchedDependencies": {
-    "expo-router@57.0.22": "patches/expo-router@57.0.22.patch",
+    "@maplibre/maplibre-react-native@11.5.1": "patches/@maplibre%2Fmaplibre-react-native@11.5.1.patch",
     "react-native@0.86.3": "patches/react-native@0.86.3.patch",
     "expo-modules-autolinking@57.0.13": "patches/expo-modules-autolinking@57.0.13.patch",
     "@bacons/apple-targets@4.0.7": "patches/@bacons%2Fapple-targets@4.0.7.patch",
     "phosphor-react-native@3.0.6": "patches/phosphor-react-native@3.0.6.patch",
     "@rnmapbox/maps@10.3.2": "patches/@rnmapbox%2Fmaps@10.3.2.patch",
+    "expo-router@57.0.22": "patches/expo-router@57.0.22.patch",
   },
   "packages": {
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.11.1", "", {}, "sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ=="],

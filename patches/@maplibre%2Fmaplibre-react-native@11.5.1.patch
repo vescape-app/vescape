@@ -1,0 +1,156 @@
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt
+index 961d6495cdfdc605e342a6a2c4977b54eb1a1876..8f058048be612eaa8988e2ad723a8e677fb0beca 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt
+@@ -6,18 +6,18 @@ import com.facebook.react.bridge.ReactApplicationContext
+ import com.facebook.react.bridge.ReadableArray
+ import com.facebook.react.module.annotations.ReactModule
+ import org.maplibre.android.MapLibre
+-import org.maplibre.reactnative.NativeMapViewModuleSpec
++import org.maplibre.reactnative.NativeMLRNMapViewModuleSpec
+ import org.maplibre.reactnative.utils.ConvertUtils
+ import org.maplibre.reactnative.utils.ExpressionParser
+ import org.maplibre.reactnative.utils.GeoJSONUtils
+ import org.maplibre.reactnative.utils.ReactTag
+ import org.maplibre.reactnative.utils.ReactTagResolver
+ 
+-@ReactModule(name = NativeMapViewModuleSpec.NAME)
++@ReactModule(name = NativeMLRNMapViewModuleSpec.NAME)
+ class MLRNMapViewModule(
+     reactContext: ReactApplicationContext,
+     private val reactTagResolver: ReactTagResolver,
+-) : NativeMapViewModuleSpec(reactContext) {
++) : NativeMLRNMapViewModuleSpec(reactContext) {
+     companion object {
+         const val NAME = "MLRNMapViewModule"
+     }
+diff --git a/ios/components/map-view/MLRNMapViewModule.h b/ios/components/map-view/MLRNMapViewModule.h
+index 9365b822dd6b417d4582c33b8513ef2799624bc5..410eb251beeb9e91794e2823806b1a710ce1ea8e 100644
+--- a/ios/components/map-view/MLRNMapViewModule.h
++++ b/ios/components/map-view/MLRNMapViewModule.h
+@@ -1,4 +1,4 @@
+ #import <MapLibreReactNativeSpec/MapLibreReactNativeSpec.h>
+ 
+-@interface MLRNMapViewModule : NSObject <NativeMapViewModuleSpec>
++@interface MLRNMapViewModule : NSObject <NativeMLRNMapViewModuleSpec>
+ @end
+diff --git a/ios/components/map-view/MLRNMapViewModule.mm b/ios/components/map-view/MLRNMapViewModule.mm
+index ea96279dcfaaed2ab3a69e4f11883613472778d7..848b780f0c578cb0765976e382585135ec1b5023 100644
+--- a/ios/components/map-view/MLRNMapViewModule.mm
++++ b/ios/components/map-view/MLRNMapViewModule.mm
+@@ -17,7 +17,7 @@
+ 
+ - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+     (const facebook::react::ObjCTurboModule::InitParams &)params {
+-  return std::make_shared<facebook::react::NativeMapViewModuleSpecJSI>(params);
++  return std::make_shared<facebook::react::NativeMLRNMapViewModuleSpecJSI>(params);
+ }
+ 
+ - (void)withMapView:(NSInteger)reactTag
+diff --git a/lib/commonjs/components/map/Map.js b/lib/commonjs/components/map/Map.js
+index 67fcdb21a5121aec93cd16504f55599997e3c659..6cedbad0173a547872cfc00aa03b40c56445624d 100644
+--- a/lib/commonjs/components/map/Map.js
++++ b/lib/commonjs/components/map/Map.js
+@@ -8,7 +8,7 @@ var _react = require("react");
+ var _reactNative = require("react-native");
+ var _AndroidTextureMapViewNativeComponent = _interopRequireDefault(require("./AndroidTextureMapViewNativeComponent"));
+ var _MapViewNativeComponent = _interopRequireDefault(require("./MapViewNativeComponent"));
+-var _NativeMapViewModule = _interopRequireDefault(require("./NativeMapViewModule.js"));
++var _NativeMapViewModule = _interopRequireDefault(require("./NativeMLRNMapViewModule.js"));
+ var _LogManager = require("../../modules/log/LogManager.js");
+ var _StyleValue = require("../../utils/StyleValue.js");
+ var _convertStyleSpec = require("../../utils/convertStyleSpec.js");
+diff --git a/lib/commonjs/components/map/NativeMapViewModule.js b/lib/commonjs/components/map/NativeMLRNMapViewModule.js
+similarity index 84%
+rename from lib/commonjs/components/map/NativeMapViewModule.js
+rename to lib/commonjs/components/map/NativeMLRNMapViewModule.js
+index 1d76581079cfd8ddaaedba599f2e72c5f47951ac..9746def6155796ca0e977ef11f40bb172e8191e9 100644
+--- a/lib/commonjs/components/map/NativeMapViewModule.js
++++ b/lib/commonjs/components/map/NativeMLRNMapViewModule.js
+@@ -6,4 +6,3 @@ Object.defineProperty(exports, "__esModule", {
+ exports.default = void 0;
+ var _reactNative = require("react-native");
+ var _default = exports.default = _reactNative.TurboModuleRegistry.getEnforcing("MLRNMapViewModule");
+-//# sourceMappingURL=NativeMapViewModule.js.map
+\ No newline at end of file
+diff --git a/lib/commonjs/components/map/NativeMapViewModule.js.map b/lib/commonjs/components/map/NativeMapViewModule.js.map
+deleted file mode 100644
+index c55d0fd347e97832d86ee0ee1a6d11ed36a48c07..0000000000000000000000000000000000000000
+diff --git a/lib/module/components/map/Map.js b/lib/module/components/map/Map.js
+index ee4ada4a24420b957e96ef881c626f5dea06f2ce..7df82ae5840336ec4b2f5408f6a8b3cf0f6e99bb 100644
+--- a/lib/module/components/map/Map.js
++++ b/lib/module/components/map/Map.js
+@@ -4,7 +4,7 @@ import { memo, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState }
+ import { Platform, StyleSheet, View } from "react-native";
+ import AndroidTextureMapViewNativeComponent from "./AndroidTextureMapViewNativeComponent";
+ import MapViewNativeComponent from "./MapViewNativeComponent";
+-import NativeMapViewModule from "./NativeMapViewModule.js";
++import NativeMapViewModule from "./NativeMLRNMapViewModule.js";
+ import { LogManager } from "../../modules/log/LogManager.js";
+ import { transformStyle } from "../../utils/StyleValue.js";
+ import { convertToInternalStyle } from "../../utils/convertStyleSpec.js";
+diff --git a/lib/module/components/map/NativeMapViewModule.js b/lib/module/components/map/NativeMLRNMapViewModule.js
+similarity index 74%
+rename from lib/module/components/map/NativeMapViewModule.js
+rename to lib/module/components/map/NativeMLRNMapViewModule.js
+index 1f70a0f8da8f869f7e36483552e9215eede5d233..80dda5a74c62b7a59592e182fc93ca7d63055df1 100644
+--- a/lib/module/components/map/NativeMapViewModule.js
++++ b/lib/module/components/map/NativeMLRNMapViewModule.js
+@@ -2,4 +2,3 @@
+ 
+ import { TurboModuleRegistry } from "react-native";
+ export default TurboModuleRegistry.getEnforcing("MLRNMapViewModule");
+-//# sourceMappingURL=NativeMapViewModule.js.map
+\ No newline at end of file
+diff --git a/lib/module/components/map/NativeMapViewModule.js.map b/lib/module/components/map/NativeMapViewModule.js.map
+deleted file mode 100644
+index 1f0fc36206f2c8a05f396a265353b04f5a135372..0000000000000000000000000000000000000000
+diff --git a/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts b/lib/typescript/commonjs/components/map/NativeMLRNMapViewModule.d.ts
+similarity index 97%
+rename from lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts
+rename to lib/typescript/commonjs/components/map/NativeMLRNMapViewModule.d.ts
+index d784f0f37da1a6d636aab366002f54db461cce1c..35c42639c5c00ff8b2e8be380397726b3b3c7f81 100644
+--- a/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts
++++ b/lib/typescript/commonjs/components/map/NativeMLRNMapViewModule.d.ts
+@@ -28,4 +28,3 @@ export interface Spec extends TurboModule {
+ }
+ declare const _default: Spec;
+ export default _default;
+-//# sourceMappingURL=NativeMapViewModule.d.ts.map
+\ No newline at end of file
+diff --git a/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts.map b/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts.map
+deleted file mode 100644
+index 8eedcd31c74b6cbbdd6411c3d9ed1b8a2fdea2df..0000000000000000000000000000000000000000
+diff --git a/lib/typescript/module/components/map/NativeMapViewModule.d.ts b/lib/typescript/module/components/map/NativeMLRNMapViewModule.d.ts
+similarity index 97%
+rename from lib/typescript/module/components/map/NativeMapViewModule.d.ts
+rename to lib/typescript/module/components/map/NativeMLRNMapViewModule.d.ts
+index d784f0f37da1a6d636aab366002f54db461cce1c..35c42639c5c00ff8b2e8be380397726b3b3c7f81 100644
+--- a/lib/typescript/module/components/map/NativeMapViewModule.d.ts
++++ b/lib/typescript/module/components/map/NativeMLRNMapViewModule.d.ts
+@@ -28,4 +28,3 @@ export interface Spec extends TurboModule {
+ }
+ declare const _default: Spec;
+ export default _default;
+-//# sourceMappingURL=NativeMapViewModule.d.ts.map
+\ No newline at end of file
+diff --git a/lib/typescript/module/components/map/NativeMapViewModule.d.ts.map b/lib/typescript/module/components/map/NativeMapViewModule.d.ts.map
+deleted file mode 100644
+index 8eedcd31c74b6cbbdd6411c3d9ed1b8a2fdea2df..0000000000000000000000000000000000000000
+diff --git a/src/components/map/Map.tsx b/src/components/map/Map.tsx
+index b193cda77510b23b6a7b8cd50c2b66adfe2c92c9..accc5548fa3fe86a6c229c29d70479a9dc2bc93e 100644
+--- a/src/components/map/Map.tsx
++++ b/src/components/map/Map.tsx
+@@ -26,7 +26,7 @@ import {
+ 
+ import AndroidTextureMapViewNativeComponent from "./AndroidTextureMapViewNativeComponent";
+ import MapViewNativeComponent from "./MapViewNativeComponent";
+-import NativeMapViewModule from "./NativeMapViewModule";
++import NativeMapViewModule from "./NativeMLRNMapViewModule";
+ import { LogManager } from "../../modules/log/LogManager";
+ import type { BaseProps } from "../../types/BaseProps";
+ import type { LngLat } from "../../types/LngLat";
+diff --git a/src/components/map/NativeMapViewModule.ts b/src/components/map/NativeMLRNMapViewModule.ts
+similarity index 100%
+rename from src/components/map/NativeMapViewModule.ts
+rename to src/components/map/NativeMLRNMapViewModule.ts
