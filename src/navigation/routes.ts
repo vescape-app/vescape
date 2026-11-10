@@ -53,6 +53,7 @@ export const routes = {
   settingsAbout: '/settings/about' as Href,
   settingsReleaseNotes: '/settings/release-notes' as Href,
   devMapPlayground: '/dev/map-playground' as Href,
+  devMapLibrePlayground: '/dev/maplibre-playground' as Href,
   devRailGeneratorPrototype: '/dev/rail-generator-prototype' as Href,
   historyCharts: '/history/charts' as Href,
 } as const
@@ -100,6 +101,7 @@ export const stackScreens = {
   settingsAbout: 'settings/about',
   settingsReleaseNotes: 'settings/release-notes',
   devMapPlayground: 'dev/map-playground',
+  devMapLibrePlayground: 'dev/maplibre-playground',
   devRailGeneratorPrototype: 'dev/rail-generator-prototype',
   historyCharts: 'history/charts',
 } as const

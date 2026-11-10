@@ -149,6 +149,8 @@ const config: ExpoConfig = {
       },
     ],
     '@rnmapbox/maps',
+    // Spike #654: MapLibre beside Mapbox. `default` location engine keeps Play Services out.
+    ['@maplibre/maplibre-react-native', { android: { locationEngine: 'default' } }],
     'expo-sharing',
     [
       'expo-image-picker',

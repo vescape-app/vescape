@@ -42,6 +42,13 @@ const DEV_PAGE_SHORTCUTS = [
     iconColor: theme.palette.violet.color,
   },
   {
+    label: 'MapLibre playground',
+    hint: 'Spike: OpenFreeMap style on MapLibre',
+    route: routes.devMapLibrePlayground,
+    icon: CameraRotateIcon,
+    iconColor: theme.palette.cyan.color,
+  },
+  {
     label: 'Rail generator prototype',
     hint: 'Build and copy rail profile point presets',
     route: routes.devRailGeneratorPrototype,

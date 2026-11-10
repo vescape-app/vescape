@@ -49,6 +49,12 @@ const DEV_PAGE_SHORTCUTS = [
     iconColor: theme.palette.violet.color,
   },
   {
+    label: 'MapLibre playground',
+    route: routes.devMapLibrePlayground,
+    icon: CameraRotateIcon,
+    iconColor: theme.palette.cyan.color,
+  },
+  {
     label: 'Rail generator prototype',
     route: routes.devRailGeneratorPrototype,
     icon: PathIcon,

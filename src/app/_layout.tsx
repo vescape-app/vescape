@@ -248,6 +248,10 @@ function RootLayout() {
                     options={{ title: 'Camera playground' }}
                   />
                   <Stack.Screen
+                    name={stackScreens.devMapLibrePlayground}
+                    options={{ title: 'MapLibre playground' }}
+                  />
+                  <Stack.Screen
                     name={stackScreens.devRailGeneratorPrototype}
                     options={{ title: 'Rail generator prototype' }}
                   />
