@@ -5,13 +5,16 @@ import {
   Layer,
   Map,
   type CameraRef,
+  type StyleSpecification,
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native'
 import { useLocalSearchParams } from 'expo-router'
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { View, type NativeSyntheticEvent } from 'react-native'
 
+import { ChipRow } from '@/components/dev/ShowcaseControls'
 import { makeCircleFeature } from '@/helpers/mapGeometry'
+import { ONE_DARK_OPENMAPTILES_STYLE } from '@/modules/map/constants/oneDarkOpenMapTilesStyle'
 import type { EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 import {
   PLAYGROUND_START,
@@ -22,10 +25,30 @@ import {
 import {
   parseSceneLayers,
   useMapLibreLayersScene,
+  type SceneAnchors,
 } from '@/modules/map/screens/layersPlayground/MapLibreLayersScene'
 
-// Spike #642: MapLibre twin of the Mapbox playground, OpenFreeMap style, no key.
-const OPENFREEMAP_LIBERTY = 'https://tiles.openfreemap.org/styles/liberty'
+// Spike #642: MapLibre twin of the Mapbox playground on OpenFreeMap tiles, no key.
+type BaseStyle = 'one-dark' | 'liberty'
+const BASE_STYLES: Record<
+  BaseStyle,
+  { style: string | StyleSpecification; anchors: SceneAnchors }
+> = {
+  // Spike #656: One Dark ported to OpenMapTiles.
+  'one-dark': {
+    style: ONE_DARK_OPENMAPTILES_STYLE as StyleSpecification,
+    anchors: { satelliteBeforeId: 'road-path', labelBeforeId: 'water-label' },
+  },
+  liberty: {
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    anchors: {
+      satelliteBeforeId: 'tunnel_motorway_link_casing',
+      labelBeforeId: 'road_one_way_arrow',
+    },
+  },
+}
+const isBaseStyle = (value: string | undefined): value is BaseStyle =>
+  value === 'one-dark' || value === 'liberty'
 
 /**
  * Spike #655: the same engine and drivers as the Mapbox playground, written through the patched
@@ -39,7 +62,11 @@ export function MapLibrePlaygroundScreen() {
     view?: 'europe' | 'ride'
     gps?: string
     marker?: 'Marker' | 'ViewAnnotation'
+    style?: string
   }>()
+  const [baseStyle, setBaseStyle] = useState<BaseStyle>(
+    isBaseStyle(params.style) ? params.style : 'one-dark',
+  )
   const accents = useResolvedAccentColors()
   const cameraRef = useRef<CameraRef>(null)
 
@@ -67,6 +94,7 @@ export function MapLibrePlaygroundScreen() {
   const scene = useMapLibreLayersScene({
     snapCamera,
     gpsFix,
+    anchors: BASE_STYLES[baseStyle].anchors,
     initialLayers: parseSceneLayers(params.layers),
     initialView: params.view,
     initialMarkerKind: params.marker,
@@ -88,7 +116,7 @@ export function MapLibrePlaygroundScreen() {
       <View style={playgroundStyles.mapPane}>
         <Map
           style={playgroundStyles.map}
-          mapStyle={OPENFREEMAP_LIBERTY}
+          mapStyle={BASE_STYLES[baseStyle].style}
           logo={false}
           attribution={false}
           compass={false}
@@ -111,7 +139,17 @@ export function MapLibrePlaygroundScreen() {
           {scene.mapChildren}
         </Map>
       </View>
-      {renderPanel(scene.panel)}
+      {renderPanel(
+        <>
+          <ChipRow
+            label="style"
+            options={['one-dark', 'liberty']}
+            selected={baseStyle}
+            onSelect={(value) => setBaseStyle(value as BaseStyle)}
+          />
+          {scene.panel}
+        </>,
+      )}
     </View>
   )
 }

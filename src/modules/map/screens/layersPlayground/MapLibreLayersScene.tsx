@@ -37,8 +37,6 @@ type MarkerKind = 'Marker' | 'ViewAnnotation'
 type MarkerRate = 'frame' | '1 Hz' | 'paused'
 
 const RIDER_COUNT = 10
-/** First road layer of the OpenFreeMap liberty style: imagery goes under roads and labels. */
-const SATELLITE_BEFORE_ID = 'tunnel_motorway_link_casing'
 const SATELLITE_TILES = [
   `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg90?access_token=${process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? ''}`,
 ]
@@ -124,14 +122,24 @@ export function parseSceneLayers(param: string | undefined): SceneLayer[] {
   return (param ?? '').split(',').filter(isLayer)
 }
 
+/** Base-style layer ids app layers are inserted under; they differ per base style. */
+export interface SceneAnchors {
+  /** First road layer: satellite imagery goes under roads and labels. */
+  satelliteBeforeId: string
+  /** First label layer: fills go under it so labels stay on top. Unset = on top of the style. */
+  labelBeforeId?: string
+}
+
 export function useMapLibreLayersScene({
   snapCamera,
   gpsFix,
+  anchors,
   initialLayers,
   initialView,
   initialMarkerKind,
 }: {
   snapCamera: (center: [number, number], zoom: number) => void
+  anchors: SceneAnchors
   gpsFix: [number, number]
   initialLayers: SceneLayer[]
   initialView?: 'europe' | 'ride'
@@ -242,7 +250,7 @@ export function useMapLibreLayersScene({
     <>
       {on.satellite && (
         <RasterSource id="layers-satellite" tiles={SATELLITE_TILES} tileSize={256}>
-          <Layer id="layers-satellite-layer" type="raster" beforeId={SATELLITE_BEFORE_ID} />
+          <Layer id="layers-satellite-layer" type="raster" beforeId={anchors.satelliteBeforeId} />
         </RasterSource>
       )}
       {on.countries && (
@@ -254,6 +262,7 @@ export function useMapLibreLayersScene({
           <Layer
             id="layers-countries-fill"
             type="fill"
+            beforeId={anchors.labelBeforeId}
             paint={{
               'fill-color': [
                 'match',
@@ -272,6 +281,7 @@ export function useMapLibreLayersScene({
           <Layer
             id="layers-countries-outline"
             type="line"
+            beforeId={anchors.labelBeforeId}
             paint={{
               'line-color': theme.palette.mono.white,
               'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.75, 6, 1.6],
