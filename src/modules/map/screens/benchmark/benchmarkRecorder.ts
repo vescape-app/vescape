@@ -16,14 +16,28 @@ export interface CameraEcho {
 
 const angleDelta = (a: number, b: number) => Math.abs(((((a - b) % 360) + 540) % 360) - 180)
 
-export function echoMatches(written: EngineCamera, echo: CameraEcho): boolean {
+// Tolerances cover Mapbox, which reports the center rounded to 7 decimals and zoom, heading and
+// pitch to 3. MapLibre echoes are exact.
+const CENTER_EPS = 6e-8
+const POSE_EPS = 6e-4
+
+function centerMatches(written: EngineCamera, echo: CameraEcho): boolean {
   return (
-    Math.abs(written.centerCoordinate[0] - echo.center[0]) < 1e-6 &&
-    Math.abs(written.centerCoordinate[1] - echo.center[1]) < 1e-6 &&
-    Math.abs(written.zoomLevel - echo.zoom) < 1e-5 &&
-    angleDelta(written.heading, echo.heading) < 1e-3 &&
-    Math.abs(written.pitch - echo.pitch) < 1e-3
+    Math.abs(written.centerCoordinate[0] - echo.center[0]) < CENTER_EPS &&
+    Math.abs(written.centerCoordinate[1] - echo.center[1]) < CENTER_EPS
   )
+}
+
+function poseMatches(written: EngineCamera, echo: CameraEcho): boolean {
+  return (
+    Math.abs(written.zoomLevel - echo.zoom) < POSE_EPS &&
+    angleDelta(written.heading, echo.heading) < POSE_EPS &&
+    Math.abs(written.pitch - echo.pitch) < POSE_EPS
+  )
+}
+
+export function echoMatches(written: EngineCamera, echo: CameraEcho): boolean {
+  return centerMatches(written, echo) && poseMatches(written, echo)
 }
 
 const centerMeters = (a: [number, number], b: [number, number]) =>
@@ -38,6 +52,7 @@ interface PhaseBuffers {
   jsDeltas: number[]
   writeMs: number[]
   echoes: number
+  mixed: number
   lagFrames: number[]
   lagMs: number[]
   maxDrawnJumpM: number
@@ -50,6 +65,7 @@ const emptyPhase = (): PhaseBuffers => ({
   jsDeltas: [],
   writeMs: [],
   echoes: 0,
+  mixed: 0,
   lagFrames: [],
   lagMs: [],
   maxDrawnJumpM: 0,
@@ -103,7 +119,11 @@ export interface PhaseResult {
   write: { n: number; avg: number; p95: number; max: number }
   echo: {
     n: number
+    /** Echoes whose center and pose both match a recent write (possibly different writes). */
     matched: number
+    /** Matched echoes whose center came from a different write than zoom/heading/pitch. */
+    mixed: number
+    /** Writes between the oldest matched part of the echo and the newest write. */
     lagP50: number
     lagP95: number
     lagMax: number
@@ -179,13 +199,15 @@ export function createBenchRecorder() {
         p.maxDrawnJumpM = Math.max(p.maxDrawnJumpM, centerMeters(lastEcho.center, echo.center))
       }
       lastEcho = echo
-      for (let i = ring.length - 1; i >= 0; i--) {
-        const entry = ring[i]!
-        if (!echoMatches(entry.camera, echo)) continue
-        p.lagFrames.push(seq - entry.seq)
-        p.lagMs.push(now - entry.at)
-        return
-      }
+      const newest = (matches: (written: EngineCamera, e: CameraEcho) => boolean) =>
+        ring.findLast((entry) => matches(entry.camera, echo))
+      const center = newest(centerMatches)
+      const pose = newest(poseMatches)
+      if (!center || !pose) return
+      const oldest = center.seq < pose.seq ? center : pose
+      if (center.seq !== pose.seq) p.mixed++
+      p.lagFrames.push(seq - oldest.seq)
+      p.lagMs.push(now - oldest.at)
     },
     summarize(
       meta: BenchMeta,
@@ -221,6 +243,7 @@ export function createBenchRecorder() {
           echo: {
             n: buffers.echoes,
             matched: lag.length,
+            mixed: buffers.mixed,
             lagP50: percentile(lag, 50),
             lagP95: percentile(lag, 95),
             lagMax: lag.at(-1) ?? 0,
@@ -239,6 +262,7 @@ export function createBenchRecorder() {
             jsDeltas: acc.jsDeltas.concat(b.jsDeltas),
             writeMs: acc.writeMs.concat(b.writeMs),
             echoes: acc.echoes + b.echoes,
+            mixed: acc.mixed + b.mixed,
             lagFrames: acc.lagFrames.concat(b.lagFrames),
             lagMs: acc.lagMs.concat(b.lagMs),
             maxDrawnJumpM: Math.max(acc.maxDrawnJumpM, b.maxDrawnJumpM),

@@ -67,6 +67,7 @@ const METRICS: Metric[] = [
   ['write max ms', (p) => p.write.max],
   ['echo/write %', (p) => (p.write.n ? Math.round((p.echo.n / p.write.n) * 100) : 0)],
   ['matched %', (p) => (p.echo.n ? Math.round((p.echo.matched / p.echo.n) * 100) : 0)],
+  ['mixed %', (p) => (p.echo.matched ? Math.round((p.echo.mixed / p.echo.matched) * 100) : 0)],
   ['lag p95 writes', (p) => p.echo.lagP95],
   ['lag max writes', (p) => p.echo.lagMax],
   ['lag p95 ms', (p) => p.echo.lagMsP95],
