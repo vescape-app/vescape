@@ -7,6 +7,7 @@ import {
   type CameraRef,
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native'
+import { useLocalSearchParams } from 'expo-router'
 import { useCallback, useRef } from 'react'
 import { View, type NativeSyntheticEvent } from 'react-native'
 
@@ -18,6 +19,10 @@ import {
   playgroundStyles,
   useCameraPlayground,
 } from '@/modules/map/screens/cameraPlayground'
+import {
+  parseSceneLayers,
+  useMapLibreLayersScene,
+} from '@/modules/map/screens/layersPlayground/MapLibreLayersScene'
 
 // Spike #642: MapLibre twin of the Mapbox playground, OpenFreeMap style, no key.
 const OPENFREEMAP_LIBERTY = 'https://tiles.openfreemap.org/styles/liberty'
@@ -28,6 +33,13 @@ const OPENFREEMAP_LIBERTY = 'https://tiles.openfreemap.org/styles/liberty'
  * `cancelCameraAnimations`. Camera-changed echoes are matched against the written frames.
  */
 export function MapLibrePlaygroundScreen() {
+  // Spike #657 deep link: ?layers=route,markers&view=europe&gps=off&marker=ViewAnnotation
+  const params = useLocalSearchParams<{
+    layers?: string
+    view?: 'europe' | 'ride'
+    gps?: string
+    marker?: 'Marker' | 'ViewAnnotation'
+  }>()
   const accents = useResolvedAccentColors()
   const cameraRef = useRef<CameraRef>(null)
 
@@ -46,10 +58,18 @@ export function MapLibrePlaygroundScreen() {
     })
   }, [])
   const cancelNativeMotion = useCallback(() => cameraRef.current?.cancelCameraAnimations(), [])
-  const { gpsFix, panel, onCameraEcho } = useCameraPlayground({
+  const { gpsFix, renderPanel, snapCamera, onCameraEcho } = useCameraPlayground({
     name: 'maplibre',
     applyCamera,
     cancelNativeMotion,
+    initialGpsRunning: params.gps !== 'off',
+  })
+  const scene = useMapLibreLayersScene({
+    snapCamera,
+    gpsFix,
+    initialLayers: parseSceneLayers(params.layers),
+    initialView: params.view,
+    initialMarkerKind: params.marker,
   })
 
   const onRegionIsChanging = useCallback(
@@ -88,9 +108,10 @@ export function MapLibrePlaygroundScreen() {
               }}
             />
           </GeoJSONSource>
+          {scene.mapChildren}
         </Map>
       </View>
-      {panel}
+      {renderPanel(scene.panel)}
     </View>
   )
 }

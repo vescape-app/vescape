@@ -105,6 +105,8 @@ interface CameraPlaygroundOptions {
   /** Writes one engine frame to the map. */
   applyCamera: (camera: EngineCamera) => void
   cancelNativeMotion?: () => void
+  /** Spike #657: lets a deep link start with the GPS driver off. */
+  initialGpsRunning?: boolean
 }
 
 /**
@@ -116,6 +118,7 @@ export function useCameraPlayground({
   name,
   applyCamera,
   cancelNativeMotion,
+  initialGpsRunning = true,
 }: CameraPlaygroundOptions) {
   const engineRef = useRef<CameraEngine | null>(null)
   const cameraStateRef = useRef<EngineCamera>(INITIAL_CAMERA)
@@ -141,7 +144,7 @@ export function useCameraPlayground({
   const [ballisticOn, setBallisticOn] = useState(true)
   const [zoom, setZoom] = useState(PLAYGROUND_START_ZOOM)
   const [gpsMode, setGpsMode] = useState<FakeGpsMode>('curvy')
-  const [gpsRunning, setGpsRunning] = useState(true)
+  const [gpsRunning, setGpsRunning] = useState(initialGpsRunning)
   const [speedKmh, setSpeedKmh] = useState(20)
   const [compassOn, setCompassOn] = useState(false)
   const [compassNoise, setCompassNoise] = useState(false)
@@ -333,8 +336,9 @@ export function useCameraPlayground({
 
   const { camera, animating } = readout
 
-  const panel: ReactNode = (
+  const renderPanel = (extra?: ReactNode): ReactNode => (
     <ScrollView style={playgroundStyles.panel} contentContainerStyle={styles.panelContent}>
+      {extra}
       <Text style={styles.section}>GPS driver</Text>
       <ChipRow
         label="mode"
@@ -450,7 +454,14 @@ export function useCameraPlayground({
     </ScrollView>
   )
 
-  return { gpsFix, panel, onCameraEcho }
+  /** Spike #657: move the camera through the engine, so its next frame does not undo the move. */
+  const snapCamera = (center: [number, number], zoomLevel: number) => {
+    targetRef.current.center = center
+    setZoom(zoomLevel)
+    engineRef.current?.snap({ center, zoom: zoomLevel })
+  }
+
+  return { gpsFix, panel: renderPanel(), renderPanel, snapCamera, onCameraEcho }
 }
 
 export const playgroundStyles = StyleSheet.create({
