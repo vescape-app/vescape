@@ -5,8 +5,10 @@ import { Text } from '@/components/base/Text'
 import { interaction, theme } from '@/constants/theme'
 
 interface IconButtonExtensionProps {
-  /** Shown above the button, inside the capsule. Null renders the button alone. */
+  /** Shown beside the button, inside the capsule. Null renders the button alone. */
   extension: ReactNode
+  /** Which way the capsule grows: up for a button on the bottom edge, down for one on the top. */
+  direction?: 'up' | 'down'
   /** The round button the capsule grows out of, usually an `IconButton`. */
   children: ReactNode
   /** Makes the extension pressable, normally the same action as the button. */
@@ -17,11 +19,12 @@ interface IconButtonExtensionProps {
 }
 
 /**
- * Grows a round button upward into a translucent capsule of the button's own width, holding any
+ * Grows a round button up or down into a translucent capsule of the button's own width, holding any
  * content. The button keeps every one of its own props; the capsule only wraps it.
  */
 export function IconButtonExtension({
   extension,
+  direction = 'up',
   children,
   onPress,
   disabled = false,
@@ -33,7 +36,13 @@ export function IconButtonExtension({
   if (extension == null) return children
 
   return (
-    <View style={[styles.capsule, width != null && { width: width + 2, borderRadius: width }]}>
+    <View
+      style={[
+        styles.capsule,
+        direction === 'down' && styles.capsuleDown,
+        width != null && { width: width + 2, borderRadius: width },
+      ]}
+    >
       <Pressable
         testID={testID}
         accessibilityLabel={accessibilityLabel}
@@ -41,6 +50,7 @@ export function IconButtonExtension({
         disabled={disabled || !onPress}
         style={({ pressed }) => [
           styles.extension,
+          direction === 'down' && styles.extensionDown,
           disabled && styles.disabled,
           pressed && { opacity: interaction.pressedOpacity },
         ]}
@@ -80,6 +90,10 @@ const styles = StyleSheet.create({
     borderColor: theme.control.border,
     backgroundColor: theme.alpha(theme.control.background, 0.6),
   },
+  // The button leads and the extension trails it, so a top-edge button keeps its own spot.
+  capsuleDown: {
+    flexDirection: 'column-reverse',
+  },
   extension: {
     alignSelf: 'stretch',
     alignItems: 'center',
@@ -87,6 +101,10 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 8,
     paddingHorizontal: 4,
+  },
+  extensionDown: {
+    paddingTop: 8,
+    paddingBottom: 14,
   },
   disabled: {
     opacity: 0.35,

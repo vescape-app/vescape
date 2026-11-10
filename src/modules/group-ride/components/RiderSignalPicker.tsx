@@ -15,7 +15,11 @@ import {
   riderSignalKindInfo,
 } from '@/modules/group-ride/constants/riderSignalKinds'
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
-import { signalTimeLeftMs, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
+import {
+  signalTimeLeftMs,
+  topRiderSignal,
+  type RelayClock,
+} from '@/modules/group-ride/lib/riderSignal'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
 /** The device's own Rider Signal while it is active on the relay clock, else null. */
@@ -24,11 +28,35 @@ export function useOwnRiderSignal(): GroupRideSignal | null {
   return useActiveRiderSignal(signal)
 }
 
-/** Social's trigger takeover while the own signal is live: its kind's icon and hue, else null. */
-export function useOwnSignalTakeover(): IconButtonTakeover | null {
-  const signal = useOwnRiderSignal()
+/** The most urgent signal another Rider has active, see `topRiderSignal`, else null. */
+function useOthersTopSignal(): GroupRideSignal | null {
+  // Picks a signal object the roster already holds, so the selector result stays stable.
+  const signal = useGroupRideStore((s) =>
+    s.relayClock
+      ? topRiderSignal(
+          s.rosterRows.flatMap((row) => (!row.isSelf && row.signal ? [row.signal] : [])),
+          s.relayClock,
+          (kind) => riderSignalKindInfo(kind)?.critical ?? null,
+        )
+      : null,
+  )
+  return useActiveRiderSignal(signal)
+}
+
+function signalTakeover(signal: GroupRideSignal | null): IconButtonTakeover | null {
   const info = signal ? riderSignalKindInfo(signal.kind) : null
   return info ? { icon: info.icon, accent: theme.palette[riderSignalHue(info)].color } : null
+}
+
+/** The Rider Signal button's takeover while the own signal is live: its kind's icon and hue. */
+export function useOwnSignalTakeover(): IconButtonTakeover | null {
+  return signalTakeover(useOwnRiderSignal())
+}
+
+/** Social's takeover while another Rider's signal is live, so "someone needs help" never reads
+ *  as the Rider's own signal, which the Rider Signal button wears instead. */
+export function useOthersSignalTakeover(): IconButtonTakeover | null {
+  return signalTakeover(useOthersTopSignal())
 }
 
 /** Critical kinds lead on a row of their own; the rest share the row below. */
@@ -40,7 +68,7 @@ const OTHER_KINDS = (Object.keys(RIDER_SIGNAL_KIND_INFO) as RiderSignalKind[]).f
 )
 
 /**
- * The Rider Signal picker, shown in the Group Ride card: the own active signal with its time left
+ * The Rider Signal picker, in the drawer behind Social's signal shortcut: the own active signal with its time left
  * and a dismiss, then a tile per kind. Picking a kind replaces the active one. Sending stays off
  * without a recent GPS fix; inside a Privacy Zone it still sends, and a warning says the signal
  * reveals the position the zone otherwise hides.
@@ -124,23 +152,17 @@ function SignalTile({
 }
 
 /** Dismisses the Rider's own active signal. */
-export function ImOkButton({
-  size = 'sm',
-  onCleared,
-}: {
-  size?: 'sm' | 'md'
-  onCleared?: () => void
-}) {
+function ImOkButton({ onCleared }: { onCleared: () => void }) {
   const clearSignal = useGroupRideStore((s) => s.clearSignal)
   return (
     <Button
       label="I'm OK"
       icon={CheckIcon}
       variant="success"
-      size={size}
+      size="sm"
       onPress={() => {
         clearSignal()
-        onCleared?.()
+        onCleared()
       }}
       accessibilityLabel="Dismiss my signal"
     />
