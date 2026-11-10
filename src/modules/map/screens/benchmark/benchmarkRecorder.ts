@@ -1,6 +1,8 @@
 /**
  * Spike #658: per-phase sample buffers and the summary shape both SDKs report.
  */
+import { Platform } from 'react-native'
+
 import { distanceMeters } from '@/helpers/mapGeometry'
 import type { EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 
@@ -289,8 +291,11 @@ export function createBenchRecorder() {
 
 export type BenchRecorder = ReturnType<typeof createBenchRecorder>
 
-/** Logcat truncates entries just above 4 KB, so long results go out as numbered parts. */
-const LOG_CHUNK = 3900
+/**
+ * Logcat truncates entries just above 4 KB and the iOS unified log at 1 KB, so longer results go
+ * out as numbered `SPIKE_RESULT_PART` lines; `scripts/spike/compare-runs.ts` joins them.
+ */
+const LOG_CHUNK = Platform.OS === 'ios' ? 900 : 3900
 
 export function logBenchResult(result: BenchResult) {
   const json = JSON.stringify(result)
