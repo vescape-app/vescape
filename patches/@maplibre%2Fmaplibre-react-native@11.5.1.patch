@@ -1,3 +1,281 @@
+diff --git a/android/src/main/java/org/maplibre/android/maps/MLRNDirectCamera.java b/android/src/main/java/org/maplibre/android/maps/MLRNDirectCamera.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..86885a4d982054c7abc0e01886ba50bb916bc88c
+--- /dev/null
++++ b/android/src/main/java/org/maplibre/android/maps/MLRNDirectCamera.java
+@@ -0,0 +1,68 @@
++package org.maplibre.android.maps;
++
++import androidx.annotation.NonNull;
++import androidx.annotation.Nullable;
++import androidx.annotation.UiThread;
++
++import org.maplibre.android.geometry.LatLng;
++
++import java.lang.reflect.Field;
++
++/**
++ * Spike #655: camera write without MapLibreMap.moveCamera. That path runs
++ * Transform.moveCamera, which calls the Java cancelTransitions() (fling and
++ * easeTo callbacks cancelled, move-canceled/idle dispatched), fires
++ * onCameraMoveStarted and onCameraIdle per write, and posts the callback.
++ * This writes straight into NativeMap.jumpTo, then refreshes the Transform's
++ * cached CameraPosition, which dispatches a single onCameraMove.
++ *
++ * Gesture ValueAnimators (pinch-zoom and rotate deceleration) keep running:
++ * nothing here touches MapGestureDetector. A core transition (pan fling,
++ * Transform.moveBy with duration) is still replaced: mbgl Transform::jumpTo
++ * goes through startTransition, which finishes any running transition.
++ *
++ * Lives in the SDK package for the package-private Transform and NativeMap.
++ */
++public final class MLRNDirectCamera {
++  private static Field nativeMapField;
++
++  private final MapLibreMap map;
++  private final Transform transform;
++  private final NativeMap nativeMap;
++
++  public MLRNDirectCamera(@NonNull MapLibreMap map) {
++    this.map = map;
++    this.transform = map.getTransform();
++    try {
++      if (nativeMapField == null) {
++        Field field = MapLibreMap.class.getDeclaredField("nativeMapView");
++        field.setAccessible(true);
++        nativeMapField = field;
++      }
++      this.nativeMap = (NativeMap) nativeMapField.get(map);
++    } catch (ReflectiveOperationException e) {
++      throw new IllegalStateException("MapLibreMap.nativeMapView not reachable", e);
++    }
++  }
++
++  public boolean isFor(@NonNull MapLibreMap other) {
++    return map == other;
++  }
++
++  /**
++   * NaN keeps a field. Padding in pixels, CameraPosition order: left, top,
++   * right, bottom; null keeps the current padding.
++   */
++  @UiThread
++  public void write(double lng, double lat, double zoom, double pitch, double bearing,
++                    @Nullable double[] paddingPx) {
++    LatLng center = Double.isNaN(lng) || Double.isNaN(lat)
++      ? nativeMap.getLatLng()
++      : new LatLng(lat, lng);
++    // -1 is the native "keep" sentinel for zoom, pitch and bearing.
++    double nativeBearing = Double.isNaN(bearing) ? -1 : ((bearing % 360) + 360) % 360;
++    nativeMap.jumpTo(center, Double.isNaN(zoom) ? -1 : zoom, Double.isNaN(pitch) ? -1 : pitch,
++      nativeBearing, paddingPx);
++    transform.invalidateCameraPosition();
++  }
++}
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt
+index a789f4d1200e409bb1b3cf9f702dfbf247e10c06..428caf7b485af12351c719f57937f83a072225ce 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt
+@@ -17,6 +17,7 @@ import org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition
+ import org.maplibre.android.geometry.LatLngBounds
+ import org.maplibre.android.location.OnCameraTrackingChangedListener
+ import org.maplibre.android.location.permissions.PermissionsManager
++import org.maplibre.android.maps.MLRNDirectCamera
+ import org.maplibre.android.maps.MapLibreMap
+ import org.maplibre.android.maps.MapLibreMap.CancelableCallback
+ import org.maplibre.android.maps.Style
+@@ -385,6 +386,42 @@ class MLRNCamera(
+         }
+     }
+ 
++    private var directCamera: MLRNDirectCamera? = null
++
++    /**
++     * Spike #655: one camera write per call, no transition, nothing queued. NaN keeps a field;
++     * padding arrives in points and applies only when all four sides are set.
++     * @parity /node_modules/@maplibre/maplibre-react-native/ios/components/camera/MLRNCamera.m `setCameraDirect`
++     */
++    fun setCameraDirect(
++        lng: Double, lat: Double, zoom: Double, pitch: Double, bearing: Double,
++        top: Double, right: Double, bottom: Double, left: Double,
++    ) {
++        val map = maplibreMap ?: return
++        val direct = directCamera?.takeIf { it.isFor(map) } ?: MLRNDirectCamera(map).also { directCamera = it }
++        val padding =
++            if (top.isNaN() || right.isNaN() || bottom.isNaN() || left.isNaN()) {
++                null
++            } else {
++                val d = resources.displayMetrics.density.toDouble()
++                doubleArrayOf(left * d, top * d, right * d, bottom * d)
++            }
++        direct.write(lng, lat, zoom, pitch, bearing, padding)
++        mapView?.emitDirectCameraChange()
++    }
++
++    /**
++     * Spike #655: stop native motion once, when an app move claims the camera. cancelTransitions
++     * stops core transitions (pan fling, easeTo); cancelAllVelocityAnimations stops the gesture
++     * detector's pinch-zoom and rotate deceleration ValueAnimators, which are not transitions.
++     * @parity /node_modules/@maplibre/maplibre-react-native/ios/components/camera/MLRNCamera.m `cancelCameraAnimations`
++     */
++    fun cancelCameraAnimations() {
++        val map = maplibreMap ?: return
++        map.cancelTransitions()
++        map.cancelAllVelocityAnimations()
++    }
++
+     private val maplibreMap: MapLibreMap?
+         get() {
+             if (mapView == null) {
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt
+index d2e3675f75e87041d0e58659a983dc552f8dec53..6cab17ea2e2324076c04e32c99a37f8a6394a02a 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt
+@@ -1,5 +1,7 @@
+ package org.maplibre.reactnative.components.camera
+ 
++import android.os.SystemClock
++import android.util.Log
+ import com.facebook.react.bridge.Promise
+ import com.facebook.react.bridge.ReactApplicationContext
+ import com.facebook.react.bridge.ReadableMap
+@@ -33,4 +35,57 @@ class MLRNCameraModule(
+             promise.resolve(null)
+         }
+     }
++
++    // Spike #655: void, no promise per frame. The TurboModule call lands on the native modules
++    // thread; withViewResolved hops to the UI thread, where the write runs synchronously.
++    override fun setCameraDirect(
++        reactTag: ReactTag,
++        centerLng: Double, centerLat: Double, zoom: Double, pitch: Double, bearing: Double,
++        paddingTop: Double, paddingRight: Double, paddingBottom: Double, paddingLeft: Double,
++    ) {
++        val calledAt = SystemClock.elapsedRealtimeNanos()
++        val callThread = Thread.currentThread().name
++        reactTagResolver.withViewResolved<MLRNCamera>(reactTag.toInt(), null) {
++            val startedAt = SystemClock.elapsedRealtimeNanos()
++            it.setCameraDirect(centerLng, centerLat, zoom, pitch, bearing, paddingTop, paddingRight, paddingBottom, paddingLeft)
++            DirectWriteStats.record(callThread, calledAt, startedAt, SystemClock.elapsedRealtimeNanos())
++        }
++    }
++
++    override fun cancelCameraAnimations(reactTag: ReactTag) {
++        reactTagResolver.withViewResolved<MLRNCamera>(reactTag.toInt(), null) {
++            it.cancelCameraAnimations()
++        }
++    }
++
++    /** Spike #655 instrumentation: hop latency and write cost, logged every 120 writes. */
++    private object DirectWriteStats {
++        private var count = 0
++        private var hopSum = 0L
++        private var hopMax = 0L
++        private var writeSum = 0L
++        private var writeMax = 0L
++
++        fun record(callThread: String, calledAt: Long, startedAt: Long, endedAt: Long) {
++            val hop = startedAt - calledAt
++            val write = endedAt - startedAt
++            count++
++            hopSum += hop
++            hopMax = maxOf(hopMax, hop)
++            writeSum += write
++            writeMax = maxOf(writeMax, write)
++            if (count < 120) return
++            Log.i(
++                "MLRNDirect",
++                "setCameraDirect n=$count call=$callThread write=${Thread.currentThread().name} " +
++                    "hop avg=${hopSum / count / 1000}us max=${hopMax / 1000}us " +
++                    "write avg=${writeSum / count / 1000}us max=${writeMax / 1000}us",
++            )
++            count = 0
++            hopSum = 0
++            hopMax = 0
++            writeSum = 0
++            writeMax = 0
++        }
++    }
+ }
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
+index b088909a48c4265219e4e95c529f6c0a63ae7e11..8f80bebf850af2a7b86c549c3ff48947c4c866da 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
+@@ -520,18 +520,18 @@ open class MLRNMapView(
+ 
+         mapLibreMap.addOnCameraMoveStartedListener { reason ->
+             cameraChangeTracker.setReason(reason)
+-            handleMapChangedEvent("onRegionWillChange", true)
++            handleMapChangedEvent("onRegionWillChange", true, includeBounds = false)
+         }
+ 
+         mapLibreMap.addOnCameraMoveListener {
+-            handleMapChangedEvent("onRegionIsChanging", true)
++            handleMapChangedEvent("onRegionIsChanging", true, includeBounds = false)
+         }
+ 
+         mapLibreMap.addOnMoveListener(
+             object : MapLibreMap.OnMoveListener {
+                 override fun onMoveBegin(detector: MoveGestureDetector) {
+                     cameraChangeTracker.setReason(CameraChangeTracker.USER_GESTURE)
+-                    handleMapChangedEvent("onRegionWillChange", true)
++                    handleMapChangedEvent("onRegionWillChange", true, includeBounds = false)
+                 }
+ 
+                 override fun onMove(detector: MoveGestureDetector) {
+@@ -1434,7 +1434,11 @@ open class MLRNMapView(
+         reactContext.addLifecycleEventListener(lifeCycleListener)
+     }
+ 
+-    private fun makeViewState(isAnimated: Boolean?): WritableMap {
++    // Spike #655: `bounds` costs a viewport unprojection (projection.visibleRegion) and the
++    // will-change / is-changing events fire per camera write. They carry an empty `bounds`;
++    // did-change, once per rest, keeps it.
++    // @parity /node_modules/@maplibre/maplibre-react-native/ios/components/map-view/MLRNMapView.m `makeViewState`
++    private fun makeViewState(isAnimated: Boolean?, includeBounds: Boolean = true): WritableMap {
+         val position = mapLibreMap!!.cameraPosition
+         val viewState: WritableMap = Arguments.createMap()
+ 
+@@ -1454,7 +1458,9 @@ open class MLRNMapView(
+         viewState.putDouble("bearing", position.bearing)
+         viewState.putDouble("pitch", position.tilt)
+ 
+-        try {
++        if (!includeBounds) {
++            viewState.putArray("bounds", Arguments.createArray())
++        } else try {
+             val visibleRegion = mapLibreMap!!.projection.visibleRegion
+             viewState.putArray(
+                 "bounds",
+@@ -1556,6 +1562,15 @@ open class MLRNMapView(
+         return null
+     }
+ 
++    /**
++     * Spike #655: the one lean event per direct camera write. CameraChangeDispatcher drops
++     * onCameraMove while it is idle, and a direct write never reports move-started.
++     * @parity /node_modules/@maplibre/maplibre-react-native/ios/components/map-view/MLRNMapView.m `emitDirectCameraChange`
++     */
++    fun emitDirectCameraChange() {
++        handleMapChangedEvent("onRegionIsChanging", true, includeBounds = false)
++    }
++
+     fun sendRegionDidChangeEvent() {
+         handleMapChangedEvent("onRegionDidChange", true)
+         cameraChangeTracker.setReason(CameraChangeTracker.EMPTY)
+@@ -1564,10 +1579,11 @@ open class MLRNMapView(
+     private fun handleMapChangedEvent(
+         eventName: String,
+         withViewState: Boolean? = null,
++        includeBounds: Boolean = true,
+     ) {
+         val event =
+             if (withViewState == true) {
+-                MapChangeEvent(surfaceId, id, eventName, makeViewState(null))
++                MapChangeEvent(surfaceId, id, eventName, makeViewState(null, includeBounds))
+             } else {
+                 MapChangeEvent(surfaceId, id, eventName)
+             }
 diff --git a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt
 index 961d6495cdfdc605e342a6a2c4977b54eb1a1876..8f058048be612eaa8988e2ad723a8e677fb0beca 100644
 --- a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt
@@ -24,6 +302,298 @@ index 961d6495cdfdc605e342a6a2c4977b54eb1a1876..8f058048be612eaa8988e2ad723a8e67
      companion object {
          const val NAME = "MLRNMapViewModule"
      }
+diff --git a/ios/components/camera/MLRNCamera.h b/ios/components/camera/MLRNCamera.h
+index 28d5e6066dac808636edcd9c350474708fcef74f..a646641449d151900bd80a3e856cb4f93ecd60dc 100644
+--- a/ios/components/camera/MLRNCamera.h
++++ b/ios/components/camera/MLRNCamera.h
+@@ -23,4 +23,16 @@
+ - (void)handleImperativeStop:(NSDictionary<NSString *, id> *)stop;
+ - (void)updateCamera;
+ 
++// Spike #655 @parity /node_modules/@maplibre/maplibre-react-native/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt
++- (void)setCameraDirect:(double)centerLng
++              centerLat:(double)centerLat
++                   zoom:(double)zoom
++                  pitch:(double)pitch
++                bearing:(double)bearing
++             paddingTop:(double)paddingTop
++           paddingRight:(double)paddingRight
++          paddingBottom:(double)paddingBottom
++            paddingLeft:(double)paddingLeft;
++- (void)cancelCameraAnimations;
++
+ @end
+diff --git a/ios/components/camera/MLRNCamera.m b/ios/components/camera/MLRNCamera.m
+index f5c8dece682b7cfa8617e0b9483e669e878480f3..dda57d1fbec498440252d4cf1f455fed3b13e6a8 100644
+--- a/ios/components/camera/MLRNCamera.m
++++ b/ios/components/camera/MLRNCamera.m
+@@ -8,9 +8,65 @@
+ #import "MLRNLocationManager.h"
+ #import "MLRNUtils.h"
+ 
++// Implemented in MLNMapView.mm, absent from the public header.
++@interface MLNMapView (MLRNCancelTransitions)
++- (void)cancelTransitions;
++@end
++
+ @implementation MLRNCamera {
+   CameraUpdateQueue *cameraUpdateQueue;
+   MLRNCamera *followCamera;
++  UIEdgeInsets directPadding;
++}
++
++/**
++ Spike #655: one camera write, no animation, nothing queued. NaN keeps a field; padding (points)
++ applies when all four sides are set, else the last direct padding is kept. Runs on the main
++ thread, where MLNMapView also renders (next CADisplayLink tick).
++
++ setCamera:withDuration:0 calls -cancelTransitions and mbgl easeTo with zero duration; mbgl
++ Transform::startTransition finishes any running transition, so pan, pinch and rotate deceleration
++ (all mbgl transitions on iOS) stop on a write. There is no public write that avoids it.
++ */
++- (void)setCameraDirect:(double)centerLng
++              centerLat:(double)centerLat
++                   zoom:(double)zoom
++                  pitch:(double)pitch
++                bearing:(double)bearing
++             paddingTop:(double)paddingTop
++           paddingRight:(double)paddingRight
++          paddingBottom:(double)paddingBottom
++            paddingLeft:(double)paddingLeft {
++  MLRNMapView *map = _map;
++  if (map == nil) return;
++  MLNMapCamera *current = map.camera;
++  CLLocationCoordinate2D center = (isnan(centerLng) || isnan(centerLat))
++                                      ? current.centerCoordinate
++                                      : CLLocationCoordinate2DMake(centerLat, centerLng);
++  double z = isnan(zoom) ? map.zoomLevel : zoom;
++  CGFloat p = isnan(pitch) ? current.pitch : pitch;
++  CLLocationDirection h = isnan(bearing) ? current.heading : fmod(fmod(bearing, 360) + 360, 360);
++  if (!isnan(paddingTop) && !isnan(paddingRight) && !isnan(paddingBottom) && !isnan(paddingLeft)) {
++    directPadding = UIEdgeInsetsMake(paddingTop, paddingLeft, paddingBottom, paddingRight);
++  }
++  CLLocationDistance altitude = MLNAltitudeForZoomLevel(z, p, center.latitude, map.frame.size);
++  MLNMapCamera *camera = [MLNMapCamera cameraLookingAtCenterCoordinate:center
++                                                              altitude:altitude
++                                                                 pitch:p
++                                                               heading:h];
++  map.directCameraWrite = YES;
++  [map setCamera:camera
++                 withDuration:0
++      animationTimingFunction:nil
++                  edgePadding:directPadding
++            completionHandler:nil];
++  map.directCameraWrite = NO;
++  [map emitDirectCameraChange];
++}
++
++/** Spike #655: stop every mbgl transition, which on iOS is every gesture deceleration too. */
++- (void)cancelCameraAnimations {
++  [_map cancelTransitions];
+ }
+ 
+ - (instancetype)init {
+diff --git a/ios/components/camera/MLRNCameraModule.mm b/ios/components/camera/MLRNCameraModule.mm
+index b60e6c65243e1a99a2cfe503212f2fb9fec9b218..192e58e0fbea69ea2e606b82d844df5032e2b87f 100644
+--- a/ios/components/camera/MLRNCameraModule.mm
++++ b/ios/components/camera/MLRNCameraModule.mm
+@@ -1,5 +1,7 @@
+ #import "MLRNCameraModule.h"
+ 
++#import <QuartzCore/QuartzCore.h>
++
+ #import "CameraEasing.h"
+ #import "MLRNCamera.h"
+ #import "MLRNCameraComponentView.h"
+@@ -98,4 +100,78 @@
+         methodName:@"setStop"];
+ }
+ 
++// Spike #655 instrumentation: hop latency (TurboModule call -> main-thread block) and write cost,
++// logged every 120 writes.
++static void MLRNRecordDirectWrite(NSString *callThread, CFTimeInterval calledAt,
++                                  CFTimeInterval startedAt, CFTimeInterval endedAt) {
++  static int count = 0;
++  static double hopSum = 0, hopMax = 0, writeSum = 0, writeMax = 0;
++  double hop = (startedAt - calledAt) * 1e6;
++  double write = (endedAt - startedAt) * 1e6;
++  count++;
++  hopSum += hop;
++  hopMax = MAX(hopMax, hop);
++  writeSum += write;
++  writeMax = MAX(writeMax, write);
++  if (count < 120) return;
++  NSLog(@"MLRNDirect setCameraDirect n=%d call=%@ write=%@ hop avg=%.0fus max=%.0fus write "
++        @"avg=%.0fus max=%.0fus",
++        count, callThread, [NSThread isMainThread] ? @"main" : @"other", hopSum / count, hopMax,
++        writeSum / count, writeMax);
++  count = 0;
++  hopSum = hopMax = writeSum = writeMax = 0;
++}
++
++static NSString *MLRNCurrentQueueLabel(void) {
++  if ([NSThread isMainThread]) return @"main";
++  const char *label = dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL);
++  return label ? [NSString stringWithUTF8String:label] : @"?";
++}
++
++// Spike #655: void, no promise per frame. The TurboModule call lands on this module's method
++// queue; withCamera hops to the main thread (addUIBlock), where the write runs synchronously.
++// @parity /node_modules/@maplibre/maplibre-react-native/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt `setCameraDirect`
++- (void)setCameraDirect:(NSInteger)reactTag
++              centerLng:(double)centerLng
++              centerLat:(double)centerLat
++                   zoom:(double)zoom
++                  pitch:(double)pitch
++                bearing:(double)bearing
++             paddingTop:(double)paddingTop
++           paddingRight:(double)paddingRight
++          paddingBottom:(double)paddingBottom
++            paddingLeft:(double)paddingLeft {
++  CFTimeInterval calledAt = CACurrentMediaTime();
++  NSString *callThread = MLRNCurrentQueueLabel();
++  [self withCamera:reactTag
++             block:^(MLRNCamera *view) {
++               CFTimeInterval startedAt = CACurrentMediaTime();
++               [view setCameraDirect:centerLng
++                           centerLat:centerLat
++                                zoom:zoom
++                               pitch:pitch
++                             bearing:bearing
++                          paddingTop:paddingTop
++                        paddingRight:paddingRight
++                       paddingBottom:paddingBottom
++                         paddingLeft:paddingLeft];
++               MLRNRecordDirectWrite(callThread, calledAt, startedAt, CACurrentMediaTime());
++             }
++            reject:^(NSString *code, NSString *message, NSError *error) {
++              NSLog(@"setCameraDirect: %@ %@", code, message);
++            }
++        methodName:@"setCameraDirect"];
++}
++
++- (void)cancelCameraAnimations:(NSInteger)reactTag {
++  [self withCamera:reactTag
++             block:^(MLRNCamera *view) {
++               [view cancelCameraAnimations];
++             }
++            reject:^(NSString *code, NSString *message, NSError *error) {
++              NSLog(@"cancelCameraAnimations: %@ %@", code, message);
++            }
++        methodName:@"cancelCameraAnimations"];
++}
++
+ @end
+diff --git a/ios/components/map-view/MLRNMapView.h b/ios/components/map-view/MLRNMapView.h
+index f24e51034fa9ec7f8eeff2595e8bbe193b594e9c..baeeb52cb3dc0441a2745f921b03b4d2fda24f9c 100644
+--- a/ios/components/map-view/MLRNMapView.h
++++ b/ios/components/map-view/MLRNMapView.h
+@@ -66,6 +66,9 @@ typedef void (^StyleLoadedBlock)(MLNStyle *__nonnull style);
+ @property (nonatomic, assign) MLNCoordinateBounds maxBounds;
+ 
+ @property (nonatomic, assign) BOOL isUserInteraction;
++// Spike #655: set while MLRNCamera writes the camera directly; will/did-change delegates skip.
++@property (nonatomic, assign) BOOL directCameraWrite;
++- (void)emitDirectCameraChange;
+ @property (nonatomic, assign) BOOL useNativeUserLocationAnnotationView;
+ @property (nonatomic, assign) BOOL annotationSelected;
+ 
+diff --git a/ios/components/map-view/MLRNMapView.m b/ios/components/map-view/MLRNMapView.m
+index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..42764c56ac224a5743b2832e9cd36aef983a398d 100644
+--- a/ios/components/map-view/MLRNMapView.m
++++ b/ios/components/map-view/MLRNMapView.m
+@@ -747,21 +747,31 @@ static double const M2PI = M_PI * 2;
+ - (void)mapView:(MLNMapView *)mapView
+     regionWillChangeWithReason:(MLNCameraChangeReason)reason
+                       animated:(BOOL)animated {
++  if (self.directCameraWrite) return;
+   ((MLRNMapView *)mapView).isUserInteraction = (BOOL)(reason & ~MLNCameraChangeReasonProgrammatic);
+-  NSDictionary *viewState = [self makeViewState:mapView animated:animated];
++  NSDictionary *viewState = [self makeViewState:mapView animated:animated includeBounds:NO];
+ 
+   self.reactOnRegionWillChange(viewState);
+ }
+ 
+ - (void)mapViewRegionIsChanging:(MLNMapView *)mapView {
+-  NSDictionary *viewState = [self makeViewState:mapView animated:false];
++  NSDictionary *viewState = [self makeViewState:mapView animated:false includeBounds:NO];
+ 
+   self.reactOnRegionIsChanging(viewState);
+ }
+ 
++// Spike #655: a direct write raises will/did-change synchronously (an immediate core camera
++// change). Both are skipped while directCameraWrite is set; this emits the one lean per-write
++// event instead, the same onRegionIsChanging Android's onCameraMove sends.
++- (void)emitDirectCameraChange {
++  if (!self.reactOnRegionIsChanging) return;
++  self.reactOnRegionIsChanging([self makeViewState:self animated:NO includeBounds:NO]);
++}
++
+ - (void)mapView:(MLNMapView *)mapView
+     regionDidChangeWithReason:(MLNCameraChangeReason)reason
+                      animated:(BOOL)animated {
++  if (self.directCameraWrite) return;
+   if (((reason & MLNCameraChangeReasonTransitionCancelled) ==
+        MLNCameraChangeReasonTransitionCancelled) &&
+       ((reason & MLNCameraChangeReasonGesturePan) != MLNCameraChangeReasonGesturePan))
+@@ -769,7 +779,7 @@ static double const M2PI = M_PI * 2;
+ 
+   ((MLRNMapView *)mapView).isUserInteraction = (BOOL)(reason & ~MLNCameraChangeReasonProgrammatic);
+ 
+-  NSDictionary *viewState = [self makeViewState:mapView animated:animated];
++  NSDictionary *viewState = [self makeViewState:mapView animated:animated includeBounds:YES];
+ 
+   self.reactOnRegionDidChange(viewState);
+ }
+@@ -881,8 +891,14 @@ static double const M2PI = M_PI * 2;
+   }
+ }
+ 
+-- (NSDictionary *)makeViewState:(MLNMapView *)mapView animated:(BOOL)animated {
++// Spike #655: `bounds` costs a viewport unprojection (visibleCoordinateBounds) and will-change /
++// is-changing fire per camera write. They carry an empty `bounds`; did-change keeps it.
++// @parity /node_modules/@maplibre/maplibre-react-native/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt `makeViewState`
++- (NSDictionary *)makeViewState:(MLNMapView *)mapView
++                       animated:(BOOL)animated
++                  includeBounds:(BOOL)includeBounds {
+   MLRNMapView *rctMapView = (MLRNMapView *)mapView;
++  MLNMapCamera *camera = mapView.camera;
+ 
+   NSDictionary *viewState = @{
+     @"center" : @[
+@@ -890,9 +906,9 @@ static double const M2PI = M_PI * 2;
+       [NSNumber numberWithDouble:mapView.centerCoordinate.latitude]
+     ],
+     @"zoom" : [NSNumber numberWithDouble:mapView.zoomLevel],
+-    @"pitch" : [NSNumber numberWithDouble:mapView.camera.pitch],
+-    @"bearing" : [NSNumber numberWithDouble:mapView.camera.heading],
+-    @"bounds" : [MLRNUtils fromCoordinateBounds:mapView.visibleCoordinateBounds],
++    @"pitch" : [NSNumber numberWithDouble:camera.pitch],
++    @"bearing" : [NSNumber numberWithDouble:camera.heading],
++    @"bounds" : includeBounds ? [MLRNUtils fromCoordinateBounds:mapView.visibleCoordinateBounds] : @[],
+     @"animated" : [NSNumber numberWithBool:animated],
+     @"userInteraction" : @(rctMapView.isUserInteraction),
+   };
+diff --git a/ios/components/map-view/MLRNMapViewComponentView.mm b/ios/components/map-view/MLRNMapViewComponentView.mm
+index f354c7b06786c0383dc64200aa40bd673ac5f785..addd3874c4293943d0d67b60e5da72465a4ca0f0 100644
+--- a/ios/components/map-view/MLRNMapViewComponentView.mm
++++ b/ios/components/map-view/MLRNMapViewComponentView.mm
+@@ -48,9 +48,12 @@ ViewState createViewState(NSDictionary *dict) {
+   result.bearing = [dict[@"bearing"] doubleValue];
+   result.pitch = [dict[@"pitch"] doubleValue];
+ 
+-  result.bounds =
+-      folly::dynamic::array([dict[@"bounds"][0] doubleValue], [dict[@"bounds"][1] doubleValue],
+-                            [dict[@"bounds"][2] doubleValue], [dict[@"bounds"][3] doubleValue]);
++  // Spike #655: lean per-frame events carry an empty `bounds`.
++  NSArray *bounds = dict[@"bounds"];
++  result.bounds = bounds.count == 4
++                      ? folly::dynamic::array([bounds[0] doubleValue], [bounds[1] doubleValue],
++                                              [bounds[2] doubleValue], [bounds[3] doubleValue])
++                      : folly::dynamic::array();
+ 
+   result.animated = [dict[@"animated"] boolValue];
+   result.userInteraction = [dict[@"userInteraction"] boolValue];
 diff --git a/ios/components/map-view/MLRNMapViewModule.h b/ios/components/map-view/MLRNMapViewModule.h
 index 9365b822dd6b417d4582c33b8513ef2799624bc5..410eb251beeb9e91794e2823806b1a710ce1ea8e 100644
 --- a/ios/components/map-view/MLRNMapViewModule.h
@@ -47,6 +617,37 @@ index ea96279dcfaaed2ab3a69e4f11883613472778d7..848b780f0c578cb0765976e382585135
  }
  
  - (void)withMapView:(NSInteger)reactTag
+diff --git a/lib/commonjs/components/camera/Camera.js b/lib/commonjs/components/camera/Camera.js
+index f852dab7c642ab8b88ae7baaea60e890d075f50a..c3d1616000dd566b668ed88c60babce1d1bf94db 100644
+--- a/lib/commonjs/components/camera/Camera.js
++++ b/lib/commonjs/components/camera/Camera.js
+@@ -77,8 +77,26 @@ const Camera = exports.Camera = /*#__PURE__*/(0, _react.memo)(({
+     }
+     return _NativeCameraModule.default.setStop(nodeHandle, stop);
+   };
++
++  // Spike #655: the tag is resolved once; the per-frame path does no lookup and allocates no promise.
++  const tagRef = (0, _react.useRef)(null);
++  const resolveTag = () => {
++    if (tagRef.current == null) tagRef.current = (0, _reactNative.findNodeHandle)(nativeRef.current) ?? null;
++    return tagRef.current;
++  };
++  const setCameraDirect = ({ center, zoom, bearing, pitch, padding }) => {
++    const tag = resolveTag();
++    if (tag == null) return;
++    _NativeCameraModule.default.setCameraDirect(tag, center?.[0] ?? NaN, center?.[1] ?? NaN, zoom ?? NaN, pitch ?? NaN, bearing ?? NaN, padding ? padding.top ?? 0 : NaN, padding ? padding.right ?? 0 : NaN, padding ? padding.bottom ?? 0 : NaN, padding ? padding.left ?? 0 : NaN);
++  };
++  const cancelCameraAnimations = () => {
++    const tag = resolveTag();
++    if (tag != null) _NativeCameraModule.default.cancelCameraAnimations(tag);
++  };
+   (0, _react.useImperativeHandle)(ref, () => ({
+     setStop,
++    setCameraDirect,
++    cancelCameraAnimations,
+     jumpTo: ({
+       center,
+       ...options
 diff --git a/lib/commonjs/components/map/Map.js b/lib/commonjs/components/map/Map.js
 index 67fcdb21a5121aec93cd16504f55599997e3c659..6cedbad0173a547872cfc00aa03b40c56445624d 100644
 --- a/lib/commonjs/components/map/Map.js
@@ -76,6 +677,37 @@ index 1d76581079cfd8ddaaedba599f2e72c5f47951ac..9746def6155796ca0e977ef11f40bb17
 diff --git a/lib/commonjs/components/map/NativeMapViewModule.js.map b/lib/commonjs/components/map/NativeMapViewModule.js.map
 deleted file mode 100644
 index c55d0fd347e97832d86ee0ee1a6d11ed36a48c07..0000000000000000000000000000000000000000
+diff --git a/lib/module/components/camera/Camera.js b/lib/module/components/camera/Camera.js
+index 8db05c46e7f67d6110e977534cd51afad63a2fbc..a451463adc25dbfcce22ffc641725363d88344cf 100644
+--- a/lib/module/components/camera/Camera.js
++++ b/lib/module/components/camera/Camera.js
+@@ -72,8 +72,26 @@ export const Camera = /*#__PURE__*/memo(({
+     }
+     return NativeCameraModule.setStop(nodeHandle, stop);
+   };
++
++  // Spike #655: the tag is resolved once; the per-frame path does no lookup and allocates no promise.
++  const tagRef = useRef(null);
++  const resolveTag = () => {
++    if (tagRef.current == null) tagRef.current = findNodeHandle(nativeRef.current) ?? null;
++    return tagRef.current;
++  };
++  const setCameraDirect = ({ center, zoom, bearing, pitch, padding }) => {
++    const tag = resolveTag();
++    if (tag == null) return;
++    NativeCameraModule.setCameraDirect(tag, center?.[0] ?? NaN, center?.[1] ?? NaN, zoom ?? NaN, pitch ?? NaN, bearing ?? NaN, padding ? padding.top ?? 0 : NaN, padding ? padding.right ?? 0 : NaN, padding ? padding.bottom ?? 0 : NaN, padding ? padding.left ?? 0 : NaN);
++  };
++  const cancelCameraAnimations = () => {
++    const tag = resolveTag();
++    if (tag != null) NativeCameraModule.cancelCameraAnimations(tag);
++  };
+   useImperativeHandle(ref, () => ({
+     setStop,
++    setCameraDirect,
++    cancelCameraAnimations,
+     jumpTo: ({
+       center,
+       ...options
 diff --git a/lib/module/components/map/Map.js b/lib/module/components/map/Map.js
 index ee4ada4a24420b957e96ef881c626f5dea06f2ce..7df82ae5840336ec4b2f5408f6a8b3cf0f6e99bb 100644
 --- a/lib/module/components/map/Map.js
@@ -105,6 +737,38 @@ index 1f70a0f8da8f869f7e36483552e9215eede5d233..80dda5a74c62b7a59592e182fc93ca7d
 diff --git a/lib/module/components/map/NativeMapViewModule.js.map b/lib/module/components/map/NativeMapViewModule.js.map
 deleted file mode 100644
 index 1f0fc36206f2c8a05f396a265353b04f5a135372..0000000000000000000000000000000000000000
+diff --git a/lib/typescript/commonjs/components/camera/Camera.d.ts b/lib/typescript/commonjs/components/camera/Camera.d.ts
+index f112d58ddd2671e96559cc60f70c9733a43b426a..e2368c7d20e97cef01e35362cce8363529f2b60d 100644
+--- a/lib/typescript/commonjs/components/camera/Camera.d.ts
++++ b/lib/typescript/commonjs/components/camera/Camera.d.ts
+@@ -171,6 +171,14 @@ export interface CameraRef {
+      * ```
+      */
+     setStop(stop: CameraStop): Promise<void>;
++    setCameraDirect(options: {
++        center?: LngLat;
++        zoom?: number;
++        bearing?: number;
++        pitch?: number;
++        padding?: ViewPadding;
++    }): void;
++    cancelCameraAnimations(): void;
+ }
+ export type CameraProps = BaseProps & Partial<CameraStop> & {
+     /**
+diff --git a/lib/typescript/commonjs/components/camera/NativeCameraModule.d.ts b/lib/typescript/commonjs/components/camera/NativeCameraModule.d.ts
+index dc7fddf670bdf9f9b0ff8dab5c13e2264a57638e..2118cfc98f0e97b2fb152ff5d41fa71bab5be2a7 100644
+--- a/lib/typescript/commonjs/components/camera/NativeCameraModule.d.ts
++++ b/lib/typescript/commonjs/components/camera/NativeCameraModule.d.ts
+@@ -20,6 +20,8 @@ type NativeCameraStop = NativeViewState & {
+ };
+ export interface Spec extends TurboModule {
+     setStop(reactTag: CodegenTypes.Int32, stop: NativeCameraStop): Promise<void>;
++    setCameraDirect(reactTag: CodegenTypes.Int32, centerLng: CodegenTypes.Double, centerLat: CodegenTypes.Double, zoom: CodegenTypes.Double, pitch: CodegenTypes.Double, bearing: CodegenTypes.Double, paddingTop: CodegenTypes.Double, paddingRight: CodegenTypes.Double, paddingBottom: CodegenTypes.Double, paddingLeft: CodegenTypes.Double): void;
++    cancelCameraAnimations(reactTag: CodegenTypes.Int32): void;
+ }
+ declare const _default: Spec;
+ export default _default;
 diff --git a/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts b/lib/typescript/commonjs/components/map/NativeMLRNMapViewModule.d.ts
 similarity index 97%
 rename from lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts
@@ -121,6 +785,38 @@ index d784f0f37da1a6d636aab366002f54db461cce1c..35c42639c5c00ff8b2e8be380397726b
 diff --git a/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts.map b/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts.map
 deleted file mode 100644
 index 8eedcd31c74b6cbbdd6411c3d9ed1b8a2fdea2df..0000000000000000000000000000000000000000
+diff --git a/lib/typescript/module/components/camera/Camera.d.ts b/lib/typescript/module/components/camera/Camera.d.ts
+index f112d58ddd2671e96559cc60f70c9733a43b426a..e2368c7d20e97cef01e35362cce8363529f2b60d 100644
+--- a/lib/typescript/module/components/camera/Camera.d.ts
++++ b/lib/typescript/module/components/camera/Camera.d.ts
+@@ -171,6 +171,14 @@ export interface CameraRef {
+      * ```
+      */
+     setStop(stop: CameraStop): Promise<void>;
++    setCameraDirect(options: {
++        center?: LngLat;
++        zoom?: number;
++        bearing?: number;
++        pitch?: number;
++        padding?: ViewPadding;
++    }): void;
++    cancelCameraAnimations(): void;
+ }
+ export type CameraProps = BaseProps & Partial<CameraStop> & {
+     /**
+diff --git a/lib/typescript/module/components/camera/NativeCameraModule.d.ts b/lib/typescript/module/components/camera/NativeCameraModule.d.ts
+index dc7fddf670bdf9f9b0ff8dab5c13e2264a57638e..2118cfc98f0e97b2fb152ff5d41fa71bab5be2a7 100644
+--- a/lib/typescript/module/components/camera/NativeCameraModule.d.ts
++++ b/lib/typescript/module/components/camera/NativeCameraModule.d.ts
+@@ -20,6 +20,8 @@ type NativeCameraStop = NativeViewState & {
+ };
+ export interface Spec extends TurboModule {
+     setStop(reactTag: CodegenTypes.Int32, stop: NativeCameraStop): Promise<void>;
++    setCameraDirect(reactTag: CodegenTypes.Int32, centerLng: CodegenTypes.Double, centerLat: CodegenTypes.Double, zoom: CodegenTypes.Double, pitch: CodegenTypes.Double, bearing: CodegenTypes.Double, paddingTop: CodegenTypes.Double, paddingRight: CodegenTypes.Double, paddingBottom: CodegenTypes.Double, paddingLeft: CodegenTypes.Double): void;
++    cancelCameraAnimations(reactTag: CodegenTypes.Int32): void;
+ }
+ declare const _default: Spec;
+ export default _default;
 diff --git a/lib/typescript/module/components/map/NativeMapViewModule.d.ts b/lib/typescript/module/components/map/NativeMLRNMapViewModule.d.ts
 similarity index 97%
 rename from lib/typescript/module/components/map/NativeMapViewModule.d.ts
@@ -137,6 +833,88 @@ index d784f0f37da1a6d636aab366002f54db461cce1c..35c42639c5c00ff8b2e8be380397726b
 diff --git a/lib/typescript/module/components/map/NativeMapViewModule.d.ts.map b/lib/typescript/module/components/map/NativeMapViewModule.d.ts.map
 deleted file mode 100644
 index 8eedcd31c74b6cbbdd6411c3d9ed1b8a2fdea2df..0000000000000000000000000000000000000000
+diff --git a/src/components/camera/Camera.tsx b/src/components/camera/Camera.tsx
+index fbd228e541d7366a5f694174bafa64c4cf600b15..ea6456ddbc983292fa30320bd8386ffb0c36b984 100644
+--- a/src/components/camera/Camera.tsx
++++ b/src/components/camera/Camera.tsx
+@@ -224,6 +224,21 @@ export interface CameraRef {
+    * ```
+    */
+   setStop(stop: CameraStop): Promise<void>;
++
++  /**
++   * Spike #655: write the camera in one native update, no transition, nothing queued. Omitted
++   * fields keep their current value. Per-frame use; returns nothing.
++   */
++  setCameraDirect(options: {
++    center?: LngLat;
++    zoom?: number;
++    bearing?: number;
++    pitch?: number;
++    padding?: ViewPadding;
++  }): void;
++
++  /** Spike #655: stop native camera transitions and gesture momentum. */
++  cancelCameraAnimations(): void;
+ }
+ 
+ export type CameraProps = BaseProps &
+@@ -306,8 +321,27 @@ export const Camera = memo(
+       return NativeCameraModule.setStop(nodeHandle, stop);
+     };
+ 
++
++    // Spike #655: the tag is resolved once; the per-frame path does no lookup and allocates no promise.
++    const tagRef = useRef<number | null>(null);
++    const resolveTag = () => {
++      if (tagRef.current == null) tagRef.current = findNodeHandle(nativeRef.current) ?? null;
++      return tagRef.current;
++    };
++    const setCameraDirect = ({ center, zoom, bearing, pitch, padding }: Parameters<CameraRef["setCameraDirect"]>[0]) => {
++      const tag = resolveTag();
++      if (tag == null) return;
++      NativeCameraModule.setCameraDirect(tag, center?.[0] ?? NaN, center?.[1] ?? NaN, zoom ?? NaN, pitch ?? NaN, bearing ?? NaN, padding ? padding.top ?? 0 : NaN, padding ? padding.right ?? 0 : NaN, padding ? padding.bottom ?? 0 : NaN, padding ? padding.left ?? 0 : NaN);
++    };
++    const cancelCameraAnimations = () => {
++      const tag = resolveTag();
++      if (tag != null) NativeCameraModule.cancelCameraAnimations(tag);
++    };
++
+     useImperativeHandle(ref, () => ({
+       setStop,
++      setCameraDirect,
++      cancelCameraAnimations,
+ 
+       jumpTo: ({ center, ...options }) =>
+         setStop({ ...options, center, duration: 0, easing: undefined }),
+diff --git a/src/components/camera/NativeCameraModule.ts b/src/components/camera/NativeCameraModule.ts
+index 90e536e1d9a80d8bb672bd1954ceb14da2f12021..7ac1d2002a1afa9e4f2ae042a0888f0e9f23480c 100644
+--- a/src/components/camera/NativeCameraModule.ts
++++ b/src/components/camera/NativeCameraModule.ts
+@@ -33,6 +33,23 @@ type NativeCameraStop = NativeViewState & {
+ 
+ export interface Spec extends TurboModule {
+   setStop(reactTag: CodegenTypes.Int32, stop: NativeCameraStop): Promise<void>;
++
++  // Spike #655: one full camera write, no transition and no promise. NaN leaves a field as is.
++  setCameraDirect(
++    reactTag: CodegenTypes.Int32,
++    centerLng: CodegenTypes.Double,
++    centerLat: CodegenTypes.Double,
++    zoom: CodegenTypes.Double,
++    pitch: CodegenTypes.Double,
++    bearing: CodegenTypes.Double,
++    paddingTop: CodegenTypes.Double,
++    paddingRight: CodegenTypes.Double,
++    paddingBottom: CodegenTypes.Double,
++    paddingLeft: CodegenTypes.Double,
++  ): void;
++
++  // Spike #655: stop every native camera motion (transitions and gesture momentum).
++  cancelCameraAnimations(reactTag: CodegenTypes.Int32): void;
+ }
+ 
+ export default TurboModuleRegistry.getEnforcing<Spec>("MLRNCameraModule");
 diff --git a/src/components/map/Map.tsx b/src/components/map/Map.tsx
 index b193cda77510b23b6a7b8cd50c2b66adfe2c92c9..accc5548fa3fe86a6c229c29d70479a9dc2bc93e 100644
 --- a/src/components/map/Map.tsx
