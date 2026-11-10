@@ -1,0 +1,284 @@
+/**
+ * Spike #658: per-phase sample buffers and the summary shape both SDKs report.
+ */
+import { distanceMeters } from '@/helpers/mapGeometry'
+import type { EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
+
+import { BENCH_PHASES, type BenchPhase } from './benchmarkScript'
+
+/** Camera the map reports back after a write, from its camera-changed event. */
+export interface CameraEcho {
+  center: [number, number]
+  zoom: number
+  heading: number
+  pitch: number
+}
+
+const angleDelta = (a: number, b: number) => Math.abs(((((a - b) % 360) + 540) % 360) - 180)
+
+export function echoMatches(written: EngineCamera, echo: CameraEcho): boolean {
+  return (
+    Math.abs(written.centerCoordinate[0] - echo.center[0]) < 1e-6 &&
+    Math.abs(written.centerCoordinate[1] - echo.center[1]) < 1e-6 &&
+    Math.abs(written.zoomLevel - echo.zoom) < 1e-5 &&
+    angleDelta(written.heading, echo.heading) < 1e-3 &&
+    Math.abs(written.pitch - echo.pitch) < 1e-3
+  )
+}
+
+const centerMeters = (a: [number, number], b: [number, number]) =>
+  distanceMeters({ longitude: a[0], latitude: a[1] }, { longitude: b[0], latitude: b[1] })
+
+/** Writes kept to match echoes against. */
+const WRITE_RING = 32
+
+interface PhaseBuffers {
+  startMs: number
+  endMs: number
+  jsDeltas: number[]
+  writeMs: number[]
+  echoes: number
+  lagFrames: number[]
+  lagMs: number[]
+  maxDrawnJumpM: number
+  maxWrittenJumpM: number
+}
+
+const emptyPhase = (): PhaseBuffers => ({
+  startMs: 0,
+  endMs: 0,
+  jsDeltas: [],
+  writeMs: [],
+  echoes: 0,
+  lagFrames: [],
+  lagMs: [],
+  maxDrawnJumpM: 0,
+  maxWrittenJumpM: 0,
+})
+
+const round = (value: number, digits = 2) => {
+  const f = 10 ** digits
+  return Math.round(value * f) / f
+}
+
+function percentile(sorted: number[], p: number) {
+  if (sorted.length === 0) return 0
+  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))]!
+}
+
+export interface FrameStats {
+  n: number
+  p50: number
+  p95: number
+  p99: number
+  max: number
+  /** Frames longer than 20 ms / 33 ms. */
+  over20: number
+  over33: number
+  /** Missed refresh slots: sum of round(delta / refresh) - 1. */
+  dropped: number
+}
+
+export function frameStats(deltas: number[], refreshMs: number): FrameStats {
+  const sorted = [...deltas].sort((a, b) => a - b)
+  let dropped = 0
+  for (const d of deltas) dropped += Math.max(0, Math.round(d / refreshMs) - 1)
+  return {
+    n: deltas.length,
+    p50: round(percentile(sorted, 50)),
+    p95: round(percentile(sorted, 95)),
+    p99: round(percentile(sorted, 99)),
+    max: round(sorted.at(-1) ?? 0),
+    over20: deltas.filter((d) => d > 20).length,
+    over33: deltas.filter((d) => d > 33).length,
+    dropped,
+  }
+}
+
+export interface PhaseResult {
+  ms: number
+  js: FrameStats
+  /** Reanimated frame callback on the UI thread. Absent when no UI samples arrived. */
+  ui?: FrameStats
+  write: { n: number; avg: number; p95: number; max: number }
+  echo: {
+    n: number
+    matched: number
+    lagP50: number
+    lagP95: number
+    lagMax: number
+    lagMsP95: number
+    maxDrawnJumpM: number
+    maxWrittenJumpM: number
+  }
+}
+
+export interface BenchResult {
+  v: 1
+  sdk: string
+  style: string
+  platform: string
+  osVersion: string
+  device: string
+  build: 'debug' | 'release'
+  appVersion: string
+  startedAt: string
+  durationMs: number
+  jsRefreshMs: number
+  uiRefreshMs: number
+  phases: Record<BenchPhase, PhaseResult>
+  total: PhaseResult
+}
+
+export type BenchMeta = Pick<
+  BenchResult,
+  'sdk' | 'style' | 'platform' | 'osVersion' | 'device' | 'build' | 'appVersion'
+>
+
+/** Collects samples for one run. All timestamps are `performance.now()` ms. */
+export function createBenchRecorder() {
+  const phases = Object.fromEntries(BENCH_PHASES.map((p) => [p, emptyPhase()])) as Record<
+    BenchPhase,
+    PhaseBuffers
+  >
+  let phase: BenchPhase = 'follow'
+  let seq = 0
+  const ring: { seq: number; at: number; camera: EngineCamera }[] = []
+  let lastWritten: EngineCamera | null = null
+  let lastEcho: CameraEcho | null = null
+
+  return {
+    setPhase(next: BenchPhase, now: number) {
+      phases[phase].endMs = now
+      phase = next
+      phases[next].startMs = now
+    },
+    finish(now: number) {
+      phases[phase].endMs = now
+    },
+    jsFrame(deltaMs: number) {
+      phases[phase].jsDeltas.push(deltaMs)
+    },
+    write(camera: EngineCamera, callMs: number, now: number) {
+      const p = phases[phase]
+      p.writeMs.push(callMs)
+      if (lastWritten) {
+        p.maxWrittenJumpM = Math.max(
+          p.maxWrittenJumpM,
+          centerMeters(lastWritten.centerCoordinate, camera.centerCoordinate),
+        )
+      }
+      lastWritten = camera
+      ring.push({ seq: ++seq, at: now, camera })
+      if (ring.length > WRITE_RING) ring.shift()
+    },
+    echo(echo: CameraEcho, now: number) {
+      const p = phases[phase]
+      p.echoes++
+      if (lastEcho) {
+        p.maxDrawnJumpM = Math.max(p.maxDrawnJumpM, centerMeters(lastEcho.center, echo.center))
+      }
+      lastEcho = echo
+      for (let i = ring.length - 1; i >= 0; i--) {
+        const entry = ring[i]!
+        if (!echoMatches(entry.camera, echo)) continue
+        p.lagFrames.push(seq - entry.seq)
+        p.lagMs.push(now - entry.at)
+        return
+      }
+    },
+    summarize(
+      meta: BenchMeta,
+      uiDeltas: Record<BenchPhase, number[]>,
+      startedAt: string,
+    ): BenchResult {
+      const allJs = BENCH_PHASES.flatMap((p) => phases[p].jsDeltas)
+      const allUi = BENCH_PHASES.flatMap((p) => uiDeltas[p])
+      const jsRefreshMs =
+        percentile(
+          [...allJs].sort((a, b) => a - b),
+          50,
+        ) || 16.67
+      const uiRefreshMs =
+        percentile(
+          [...allUi].sort((a, b) => a - b),
+          50,
+        ) || 16.67
+      const toResult = (buffers: PhaseBuffers, ui: number[]): PhaseResult => {
+        const writes = [...buffers.writeMs].sort((a, b) => a - b)
+        const lag = [...buffers.lagFrames].sort((a, b) => a - b)
+        const lagMs = [...buffers.lagMs].sort((a, b) => a - b)
+        return {
+          ms: Math.round(buffers.endMs - buffers.startMs),
+          js: frameStats(buffers.jsDeltas, jsRefreshMs),
+          ...(ui.length > 0 && { ui: frameStats(ui, uiRefreshMs) }),
+          write: {
+            n: writes.length,
+            avg: round(writes.reduce((s, v) => s + v, 0) / (writes.length || 1), 3),
+            p95: round(percentile(writes, 95), 3),
+            max: round(writes.at(-1) ?? 0, 3),
+          },
+          echo: {
+            n: buffers.echoes,
+            matched: lag.length,
+            lagP50: percentile(lag, 50),
+            lagP95: percentile(lag, 95),
+            lagMax: lag.at(-1) ?? 0,
+            lagMsP95: round(percentile(lagMs, 95), 1),
+            maxDrawnJumpM: round(buffers.maxDrawnJumpM, 1),
+            maxWrittenJumpM: round(buffers.maxWrittenJumpM, 1),
+          },
+        }
+      }
+      const merged = BENCH_PHASES.reduce<PhaseBuffers>(
+        (acc, p) => {
+          const b = phases[p]
+          return {
+            startMs: Math.min(acc.startMs, b.startMs),
+            endMs: Math.max(acc.endMs, b.endMs),
+            jsDeltas: acc.jsDeltas.concat(b.jsDeltas),
+            writeMs: acc.writeMs.concat(b.writeMs),
+            echoes: acc.echoes + b.echoes,
+            lagFrames: acc.lagFrames.concat(b.lagFrames),
+            lagMs: acc.lagMs.concat(b.lagMs),
+            maxDrawnJumpM: Math.max(acc.maxDrawnJumpM, b.maxDrawnJumpM),
+            maxWrittenJumpM: Math.max(acc.maxWrittenJumpM, b.maxWrittenJumpM),
+          }
+        },
+        { ...emptyPhase(), startMs: Infinity, endMs: -Infinity },
+      )
+      return {
+        v: 1,
+        ...meta,
+        startedAt,
+        durationMs: Math.round(merged.endMs - merged.startMs),
+        jsRefreshMs: round(jsRefreshMs),
+        uiRefreshMs: round(uiRefreshMs),
+        phases: Object.fromEntries(
+          BENCH_PHASES.map((p) => [p, toResult(phases[p], uiDeltas[p])]),
+        ) as Record<BenchPhase, PhaseResult>,
+        total: toResult(merged, allUi),
+      }
+    },
+  }
+}
+
+export type BenchRecorder = ReturnType<typeof createBenchRecorder>
+
+/** Logcat truncates entries just above 4 KB, so long results go out as numbered parts. */
+const LOG_CHUNK = 3900
+
+export function logBenchResult(result: BenchResult) {
+  const json = JSON.stringify(result)
+  if (json.length <= LOG_CHUNK) {
+    console.log(`SPIKE_RESULT ${json}`)
+    return
+  }
+  const id = result.startedAt
+  const parts = Math.ceil(json.length / LOG_CHUNK)
+  for (let i = 0; i < parts; i++) {
+    console.log(
+      `SPIKE_RESULT_PART ${id} ${i + 1}/${parts} ${json.slice(i * LOG_CHUNK, (i + 1) * LOG_CHUNK)}`,
+    )
+  }
+}

@@ -23,10 +23,10 @@ import {
   useCameraPlayground,
 } from '@/modules/map/screens/cameraPlayground'
 import {
-  parseSceneLayers,
   useMapLibreLayersScene,
   type SceneAnchors,
 } from '@/modules/map/screens/layersPlayground/MapLibreLayersScene'
+import { BENCH_LAYERS, parseSceneLayers } from '@/modules/map/screens/layersPlayground/sceneData'
 
 // Spike #642: MapLibre twin of the Mapbox playground on OpenFreeMap tiles, no key.
 type BaseStyle = 'one-dark' | 'liberty'
@@ -57,18 +57,22 @@ const isBaseStyle = (value: string | undefined): value is BaseStyle =>
  */
 export function MapLibrePlaygroundScreen() {
   // Spike #657 deep link: ?layers=route,markers&view=europe&gps=off&marker=ViewAnnotation
+  // Spike #658: ?bench=1 starts the benchmark after mount.
   const params = useLocalSearchParams<{
     layers?: string
     view?: 'europe' | 'ride'
     gps?: string
     marker?: 'Marker' | 'ViewAnnotation'
     style?: string
+    bench?: string
   }>()
   const [baseStyle, setBaseStyle] = useState<BaseStyle>(
     isBaseStyle(params.style) ? params.style : 'one-dark',
   )
   const accents = useResolvedAccentColors()
   const cameraRef = useRef<CameraRef>(null)
+  // The scene hook needs the playground's snapCamera, so the playground reaches the scene late.
+  const setSceneLayersRef = useRef<(on: boolean) => void>(() => {})
 
   const applyCamera = useCallback((camera: EngineCamera) => {
     cameraRef.current?.setCameraDirect({
@@ -90,6 +94,9 @@ export function MapLibrePlaygroundScreen() {
     applyCamera,
     cancelNativeMotion,
     initialGpsRunning: params.gps !== 'off',
+    style: baseStyle,
+    autoBenchmark: params.bench === '1',
+    setSceneLayers: (on) => setSceneLayersRef.current(on),
   })
   const scene = useMapLibreLayersScene({
     snapCamera,
@@ -99,6 +106,8 @@ export function MapLibrePlaygroundScreen() {
     initialView: params.view,
     initialMarkerKind: params.marker,
   })
+
+  setSceneLayersRef.current = (on) => scene.setLayers(on ? BENCH_LAYERS : [])
 
   const onRegionIsChanging = useCallback(
     ({ nativeEvent }: NativeSyntheticEvent<ViewStateChangeEvent>) =>

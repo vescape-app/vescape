@@ -22,6 +22,9 @@ import {
   type FakeGpsMode,
   type FakeGpsState,
 } from '@/modules/map/lib/fakeGps'
+import { echoMatches, type CameraEcho } from '@/modules/map/screens/benchmark/benchmarkRecorder'
+import { BENCH_START_ZOOM } from '@/modules/map/screens/benchmark/benchmarkScript'
+import { useBenchmark } from '@/modules/map/screens/benchmark/useBenchmark'
 
 export const PLAYGROUND_START: [number, number] = [17.0385, 51.1079]
 export const PLAYGROUND_START_ZOOM = 16
@@ -59,14 +62,6 @@ const INITIAL_CAMERA: EngineCamera = {
   pitch: 0,
 }
 
-/** Camera the map reports back after a write, from its camera-changed event. */
-export interface CameraEcho {
-  center: [number, number]
-  zoom: number
-  heading: number
-  pitch: number
-}
-
 interface WriteStats {
   writes: number
   callMsSum: number
@@ -87,18 +82,6 @@ const emptyWriteStats = (now: number): WriteStats => ({
   windowStart: now,
 })
 
-const angleDelta = (a: number, b: number) => Math.abs(((((a - b) % 360) + 540) % 360) - 180)
-
-function echoMatches(written: EngineCamera, echo: CameraEcho): boolean {
-  return (
-    Math.abs(written.centerCoordinate[0] - echo.center[0]) < 1e-6 &&
-    Math.abs(written.centerCoordinate[1] - echo.center[1]) < 1e-6 &&
-    Math.abs(written.zoomLevel - echo.zoom) < 1e-5 &&
-    angleDelta(written.heading, echo.heading) < 1e-3 &&
-    Math.abs(written.pitch - echo.pitch) < 1e-3
-  )
-}
-
 interface CameraPlaygroundOptions {
   /** Label shown in the stats log, e.g. `maplibre`. */
   name: string
@@ -107,6 +90,12 @@ interface CameraPlaygroundOptions {
   cancelNativeMotion?: () => void
   /** Spike #657: lets a deep link start with the GPS driver off. */
   initialGpsRunning?: boolean
+  /** Spike #658: base style name reported with benchmark results. */
+  style: string
+  /** Spike #658: start the benchmark shortly after mount (deep link `?bench=1`). */
+  autoBenchmark?: boolean
+  /** Spike #658: switch the full layer scene on or off. */
+  setSceneLayers?: (on: boolean) => void
 }
 
 /**
@@ -119,6 +108,9 @@ export function useCameraPlayground({
   applyCamera,
   cancelNativeMotion,
   initialGpsRunning = true,
+  style,
+  autoBenchmark = false,
+  setSceneLayers,
 }: CameraPlaygroundOptions) {
   const engineRef = useRef<CameraEngine | null>(null)
   const cameraStateRef = useRef<EngineCamera>(INITIAL_CAMERA)
@@ -131,10 +123,10 @@ export function useCameraPlayground({
   const compassElapsedRef = useRef(0)
   const writeRingRef = useRef<EngineCamera[]>([])
   const writeStatsRef = useRef<WriteStats>(emptyWriteStats(Date.now()))
-  const sinkRef = useRef({ applyCamera, cancelNativeMotion })
+  const sinkRef = useRef({ applyCamera, cancelNativeMotion, setSceneLayers })
   useEffect(() => {
-    sinkRef.current = { applyCamera, cancelNativeMotion }
-  }, [applyCamera, cancelNativeMotion])
+    sinkRef.current = { applyCamera, cancelNativeMotion, setSceneLayers }
+  }, [applyCamera, cancelNativeMotion, setSceneLayers])
 
   const [omegaCenter, setOmegaCenter] = useState(CAMERA_ENGINE_DEFAULT_OMEGA.center)
   const [omegaZoom, setOmegaZoom] = useState(CAMERA_ENGINE_DEFAULT_OMEGA.zoom)
@@ -157,6 +149,35 @@ export function useCameraPlayground({
   })
   const [statsLine, setStatsLine] = useState('')
 
+  const bench = useBenchmark({
+    sdk: name,
+    style,
+    autoStart: autoBenchmark,
+    driver: {
+      setTarget: (target) => engineRef.current?.setTarget(target),
+      snap: (target) => engineRef.current?.snap(target),
+      setFix: (center) => {
+        targetRef.current.center = center
+        setGpsFix(center)
+      },
+      setHeadingTarget: (heading) => {
+        targetRef.current.heading = heading
+      },
+      resetTuning: () => {
+        setOmegaCenter(CAMERA_ENGINE_DEFAULT_OMEGA.center)
+        setOmegaZoom(CAMERA_ENGINE_DEFAULT_OMEGA.zoom)
+        setOmegaHeading(CAMERA_ENGINE_DEFAULT_OMEGA.heading)
+        setOmegaPitch(CAMERA_ENGINE_DEFAULT_OMEGA.pitch)
+        setDerivePitchOn(true)
+        setBallisticOn(true)
+        setZoom(BENCH_START_ZOOM)
+      },
+      setSceneLayers: (on) => sinkRef.current.setSceneLayers?.(on),
+    },
+  })
+  const benchRef = useRef(bench)
+  benchRef.current = bench
+
   const zoomRef = useRef(zoom)
   // Drivers read live settings without restarting their timers.
   const driversRef = useRef({ gpsMode, gpsRunning, speedKmh, compassOn, compassNoise, stressOn })
@@ -169,7 +190,9 @@ export function useCameraPlayground({
     cameraStateRef.current = camera
     const callStart = performance.now()
     sinkRef.current.applyCamera(camera)
-    const callMs = performance.now() - callStart
+    const callEnd = performance.now()
+    const callMs = callEnd - callStart
+    benchRef.current.recorderRef.current?.write(camera, callMs, callEnd)
     const stats = writeStatsRef.current
     stats.writes++
     stats.callMsSum += callMs
@@ -199,6 +222,7 @@ export function useCameraPlayground({
    * eased or coalesced in between.
    */
   const onCameraEcho = useCallback((echo: CameraEcho) => {
+    benchRef.current.recorderRef.current?.echo(echo, performance.now())
     const stats = writeStatsRef.current
     stats.echoes++
     const ring = writeRingRef.current
@@ -245,7 +269,7 @@ export function useCameraPlayground({
   useEffect(() => {
     const id = setInterval(() => {
       const { gpsMode: mode, gpsRunning: running, speedKmh: speed } = driversRef.current
-      if (!running) return
+      if (!running || benchRef.current.isRunning()) return
       const sample = advanceFakeGps({
         state: gpsStateRef.current,
         mode,
@@ -263,7 +287,7 @@ export function useCameraPlayground({
   useEffect(() => {
     const id = setInterval(() => {
       const { compassOn: on, compassNoise: noise } = driversRef.current
-      if (!on) return
+      if (!on || benchRef.current.isRunning()) return
       compassElapsedRef.current += COMPASS_TICK_MS / 1000
       const heading = fakeCompassHeading({
         elapsedS: compassElapsedRef.current,
@@ -281,7 +305,7 @@ export function useCameraPlayground({
   useEffect(() => {
     const startedAt = Date.now()
     const id = setInterval(() => {
-      if (!driversRef.current.stressOn) return
+      if (!driversRef.current.stressOn || benchRef.current.isRunning()) return
       const elapsedS = (Date.now() - startedAt) / 1000
       const sweepZoom =
         STRESS_SWEEP_MID +
@@ -338,6 +362,7 @@ export function useCameraPlayground({
 
   const renderPanel = (extra?: ReactNode): ReactNode => (
     <ScrollView style={playgroundStyles.panel} contentContainerStyle={styles.panelContent}>
+      {bench.panel}
       {extra}
       <Text style={styles.section}>GPS driver</Text>
       <ChipRow

@@ -1,6 +1,7 @@
 import { useResolvedAccentColors } from '@/hooks/useTheme'
 import Mapbox, { type Camera as CameraRef } from '@rnmapbox/maps'
-import { useCallback, useRef } from 'react'
+import { useLocalSearchParams } from 'expo-router'
+import { useCallback, useRef, useState } from 'react'
 import { View } from 'react-native'
 
 import { makeCircleFeature } from '@/helpers/mapGeometry'
@@ -11,12 +12,16 @@ import {
   playgroundStyles,
   useCameraPlayground,
 } from '@/modules/map/screens/cameraPlayground'
+import { MapboxBenchScene } from '@/modules/map/screens/layersPlayground/MapboxLayersScene'
 
 /**
  * Dev-only bench for `cameraEngine` on Mapbox. Drivers, tuning and telemetry live in
  * `useCameraPlayground`, shared with the MapLibre playground.
  */
 export function MapPlaygroundScreen() {
+  // Spike #658 deep link: ?bench=1 starts the benchmark after mount.
+  const params = useLocalSearchParams<{ bench?: string }>()
+  const [sceneOn, setSceneOn] = useState(false)
   const accents = useResolvedAccentColors()
   const cameraRef = useRef<CameraRef>(null)
 
@@ -30,7 +35,23 @@ export function MapPlaygroundScreen() {
       animationDuration: 0,
     })
   }, [])
-  const { gpsFix, panel } = useCameraPlayground({ name: 'mapbox', applyCamera })
+  const { gpsFix, panel, onCameraEcho } = useCameraPlayground({
+    name: 'mapbox',
+    applyCamera,
+    style: 'mapbox-dark-v11',
+    autoBenchmark: params.bench === '1',
+    setSceneLayers: setSceneOn,
+  })
+  const onCameraChanged = useCallback(
+    ({ properties }: Mapbox.MapState) =>
+      onCameraEcho({
+        center: [properties.center[0]!, properties.center[1]!],
+        zoom: properties.zoom,
+        heading: properties.heading,
+        pitch: properties.pitch,
+      }),
+    [onCameraEcho],
+  )
 
   return (
     <View style={playgroundStyles.screen}>
@@ -42,6 +63,7 @@ export function MapPlaygroundScreen() {
           logoEnabled={false}
           attributionEnabled={false}
           compassEnabled={false}
+          onCameraChanged={onCameraChanged}
         >
           <Mapbox.Camera
             ref={cameraRef}
@@ -65,6 +87,7 @@ export function MapPlaygroundScreen() {
               }}
             />
           </Mapbox.ShapeSource>
+          {sceneOn && <MapboxBenchScene gpsFix={gpsFix} />}
         </Mapbox.MapView>
       </View>
       {panel}
