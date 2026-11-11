@@ -1,4 +1,4 @@
-import { LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
+import { GeoJSONSource, Layer } from '@maplibre/maplibre-react-native'
 import { useMemo } from 'react'
 
 import { theme } from '@/constants/theme'
@@ -73,30 +73,35 @@ export function RadarRangeRings({ visible, fix }: RadarRangeRingsProps) {
 
   return (
     <>
-      <ShapeSource id="radar-range-rings" shape={rings}>
-        <LineLayer
+      <GeoJSONSource id="radar-range-rings" data={rings}>
+        <Layer
+          type="line"
           id="radar-range-ring-line"
-          style={{
-            lineColor: theme.alpha(neutral.textSecondary, 0.6),
-            lineWidth: RING_LINE_WIDTH,
-            lineDasharray: RING_DASH,
+          paint={{
+            'line-color': theme.alpha(neutral.textSecondary, 0.6),
+            'line-width': RING_LINE_WIDTH,
+            'line-dasharray': RING_DASH,
           }}
         />
-      </ShapeSource>
-      <ShapeSource id="radar-range-ring-labels" shape={labels}>
-        <SymbolLayer
+      </GeoJSONSource>
+      <GeoJSONSource id="radar-range-ring-labels" data={labels}>
+        <Layer
+          type="symbol"
           id="radar-range-ring-label"
-          style={{
-            textField: ['get', 'label'],
-            textSize: 12,
-            textColor: neutral.textPrimary,
-            textHaloColor: neutral.surfaceDeep,
-            textHaloWidth: 1.6,
-            textAnchor: 'right',
-            textOffset: [-0.4, 0],
+          layout={{
+            'text-field': ['get', 'label'],
+            'text-size': 12,
+            'text-font': [...theme.map.fontRegular],
+            'text-anchor': 'right',
+            'text-offset': [-0.4, 0],
+          }}
+          paint={{
+            'text-color': neutral.textPrimary,
+            'text-halo-color': neutral.surfaceDeep,
+            'text-halo-width': 1.6,
           }}
         />
-      </ShapeSource>
+      </GeoJSONSource>
     </>
   )
 }

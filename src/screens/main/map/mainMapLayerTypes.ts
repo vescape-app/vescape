@@ -22,12 +22,7 @@ import type { DirectionPoint } from '@/modules/map/store/mapStore'
 export interface MainMapLayersProps {
   historyActive: boolean
   expandSelectedMapPoints: boolean
-  // TODO(maplibre phase 2): drop isMapy/isOneDark/showBuildings3d once the settings showcase
-  // stops passing them; the base style variant owns raster tiles and 3D buildings now.
-  isMapy?: boolean
-  isOneDark?: boolean
   isSatellite: boolean
-  showBuildings3d?: boolean
   /** First label layer of the loaded style; app fill layers go below it. */
   fillBeforeId?: string
   weatherActive: boolean

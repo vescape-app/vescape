@@ -1,5 +1,4 @@
-import { HISTORY_ENDPOINT_LAYER_ID } from '@/modules/history/lib/historyMapLayers'
-import { LineLayer, ShapeSource, type LineLayerStyle } from '@rnmapbox/maps'
+import { GeoJSONSource, Layer } from '@maplibre/maplibre-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAnimatedReaction } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
@@ -10,6 +9,7 @@ import { zoomWindowMs } from '@/modules/history/lib/chartFocus'
 import {
   getHistoryMetricBaseColor,
   getHistoryRouteMetricGradient,
+  type LineGradient,
 } from '@/modules/history/lib/historyRouteGradient'
 import type {
   HistoryMetricHotRanges,
@@ -23,19 +23,23 @@ import {
 import type { HistoryGpsSample, TelemetrySample } from '@/modules/history/store/historyStore'
 import { useResolvedAccentColors, useResolvedTelemetryColors } from '@/hooks/useTheme'
 
+/** The scrub glow; the zoom focus goes under it. */
+export const HISTORY_ROUTE_HIGHLIGHT_LAYER_ID = 'center-ride-route-highlight'
+const ROUND_LINE = { 'line-cap': 'round', 'line-join': 'round' } as const
+
 const DIM_COLOR = theme.alpha(theme.palette.slate.bg, 0.75)
 const CLEAR_COLOR = theme.alpha(theme.palette.slate.bg, 0)
 /** Distance over which the dim fades in, as a fraction of the route. Keeps the edge from banding. */
 const FADE = 0.004
 /**
- * How often the dim follows a pinch. A gradient is a Mapbox expression that has to be rebuilt and
+ * How often the dim follows a pinch. A gradient is a style expression that has to be rebuilt and
  * re-uploaded, so it samples the zoom instead of tracking it frame by frame — the chart itself is
  * what the eye is on while zooming, and the map only has to agree by the time the fingers stop.
  */
 const REFRESH_MS = 80
 /** Wide enough to cover the route line and its high-contrast casing in one pass. */
 const DIM_WIDTH = 6
-/** Smallest gap Mapbox will accept between two stops. */
+/** Smallest gap MapLibre will accept between two stops. */
 const STOP_EPSILON = 1e-6
 
 interface RouteZoomFocusProps {
@@ -154,52 +158,46 @@ export function RouteZoomFocus({
   if (routeShape == null || gradient == null) return null
   return (
     <>
-      <ShapeSource id="center-ride-zoom-focus-source" shape={routeShape} lineMetrics>
-        <LineLayer
-          belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
+      <GeoJSONSource id="center-ride-zoom-focus-source" data={routeShape} lineMetrics>
+        <Layer
+          type="line"
+          beforeId={HISTORY_ROUTE_HIGHLIGHT_LAYER_ID}
           id="center-ride-zoom-focus-line"
-          style={{
-            lineGradient: gradient,
-            lineWidth: DIM_WIDTH,
-            lineCap: 'round',
-            lineJoin: 'round',
-          }}
+          layout={ROUND_LINE}
+          paint={{ 'line-gradient': gradient, 'line-width': DIM_WIDTH }}
         />
-      </ShapeSource>
+      </GeoJSONSource>
       {focus ? (
-        <ShapeSource id="center-ride-zoom-slice-source" shape={focus.shape} lineMetrics>
-          <LineLayer
-            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
+        <GeoJSONSource id="center-ride-zoom-slice-source" data={focus.shape} lineMetrics>
+          <Layer
+            type="line"
+            beforeId={HISTORY_ROUTE_HIGHLIGHT_LAYER_ID}
             id="center-ride-zoom-slice-casing"
-            style={{
-              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
-              lineWidth: highContrastRoutes ? 8 : 0,
-              lineCap: 'round',
-              lineJoin: 'round',
+            layout={ROUND_LINE}
+            paint={{
+              'line-color': theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+              'line-width': highContrastRoutes ? 8 : 0,
             }}
           />
-          <LineLayer
-            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
+          <Layer
+            type="line"
+            beforeId={HISTORY_ROUTE_HIGHLIGHT_LAYER_ID}
             id="center-ride-zoom-slice-line"
-            style={{
-              lineColor: getHistoryMetricBaseColor(metric, telemetryColors),
-              lineWidth: highContrastRoutes ? 5 : 4,
-              lineCap: 'round',
-              lineJoin: 'round',
-              ...(focus.gradient ? { lineGradient: focus.gradient } : {}),
+            layout={ROUND_LINE}
+            paint={{
+              'line-color': getHistoryMetricBaseColor(metric, telemetryColors),
+              'line-width': highContrastRoutes ? 5 : 4,
+              ...(focus.gradient ? { 'line-gradient': focus.gradient } : {}),
             }}
           />
-        </ShapeSource>
+        </GeoJSONSource>
       ) : null}
     </>
   )
 }
 
 /** Opaque outside the window, transparent inside it, with a short fade at either edge. */
-function dimOutsideGradient(
-  window: ChartTimeRange,
-  progress: RouteTimeProgress,
-): NonNullable<LineLayerStyle['lineGradient']> {
+function dimOutsideGradient(window: ChartTimeRange, progress: RouteTimeProgress): LineGradient {
   const from = progressAtTime(window.startMs, progress)
   const to = progressAtTime(window.endMs, progress)
   const stops: (number | string)[] = [0, DIM_COLOR]
@@ -209,7 +207,7 @@ function dimOutsideGradient(
   if (to < 1) stops.push(Math.min(1, to + FADE), DIM_COLOR)
   stops.push(1, DIM_COLOR)
 
-  // Mapbox rejects an expression whose stops are not strictly increasing, which two edges landing
+  // MapLibre rejects an expression whose stops are not strictly increasing, which two edges landing
   // on the same sample would produce.
   const strict: (number | string)[] = []
   for (let i = 0; i < stops.length; i += 2) {
@@ -218,7 +216,5 @@ function dimOutsideGradient(
     strict.push(at <= previous ? previous + STOP_EPSILON : at, stops[i + 1])
   }
 
-  return ['interpolate', ['linear'], ['line-progress'], ...strict] as unknown as NonNullable<
-    LineLayerStyle['lineGradient']
-  >
+  return ['interpolate', ['linear'], ['line-progress'], ...strict] as unknown as LineGradient
 }

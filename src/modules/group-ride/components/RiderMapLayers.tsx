@@ -1,4 +1,4 @@
-import { LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
+import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 
@@ -32,24 +32,24 @@ export function RiderTrail({
   if (!shape) return null
 
   return (
-    <ShapeSource id={`center-rider-trail-source-${rider.id}`} shape={shape} lineMetrics>
-      <LineLayer
+    <GeoJSONSource id={`center-rider-trail-source-${rider.id}`} data={shape} lineMetrics>
+      <Layer
+        type="line"
         id={`center-rider-trail-casing-${rider.id}`}
-        style={{
-          lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
-          lineWidth: highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
-          lineCap: 'round',
-          lineJoin: 'round',
+        layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+        paint={{
+          'line-color': theme.alpha(neutral.surfaceDeep, 0.85),
+          'line-width': highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
         }}
       />
-      <LineLayer
+      <Layer
+        type="line"
         id={`center-rider-trail-line-${rider.id}`}
-        style={{
-          lineColor: color,
-          lineWidth: MAP_DEFAULTS.trailWidth,
-          lineCap: 'round',
-          lineJoin: 'round',
-          lineGradient: [
+        layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+        paint={{
+          'line-color': color,
+          'line-width': MAP_DEFAULTS.trailWidth,
+          'line-gradient': [
             'interpolate',
             ['linear'],
             ['line-progress'],
@@ -60,7 +60,7 @@ export function RiderTrail({
           ],
         }}
       />
-    </ShapeSource>
+    </GeoJSONSource>
   )
 }
 
@@ -71,7 +71,7 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
   if (!rider.presence) return null
 
   return (
-    <MarkerView coordinate={[rider.presence.lng, rider.presence.lat]} allowOverlap>
+    <Marker lngLat={[rider.presence.lng, rider.presence.lat]}>
       <View style={styles.riderMarker}>
         <View style={[styles.riderDot, { backgroundColor: color }]}>
           {heading != null && (
@@ -86,7 +86,7 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
           {rider.name || 'Rider'}
         </Text>
       </View>
-    </MarkerView>
+    </Marker>
   )
 }
 

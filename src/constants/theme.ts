@@ -464,6 +464,10 @@ export const map = {
   target: accentColors.dark.green.color,
   buildingDark: palette.slate.mapBuildingDark,
   buildingLight: palette.slate.mapBuildingLight,
+  /** Glyph stacks the map styles' glyph server (OpenFreeMap) serves; it has no Medium cut. */
+  fontRegular: ['Noto Sans Regular'],
+  fontBold: ['Noto Sans Bold'],
+  fontItalic: ['Noto Sans Italic'],
 } as const
 
 export const status = {

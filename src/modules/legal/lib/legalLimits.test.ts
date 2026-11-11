@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
+import legalCountryBoundaries from '@/modules/legal/constants/legalCountryBoundaries.json'
 import {
+  LEGAL_BOUNDARY_CODE_KEY,
   LEGAL_LIMIT_COUNTRIES,
   getLegalLimitCountryDetail,
   legalLimitLabelShape,
@@ -32,5 +34,16 @@ describe('Legal Policy display units', () => {
     expect(legalLimitLabelShape('km')).toEqual(metric)
     expect(JSON.stringify(LEGAL_LIMIT_COUNTRIES)).toBe(catalog)
     expect(LEGAL_LIMIT_COUNTRIES.map(getLegalLimitCountryDetail)).toEqual(descriptions)
+  })
+})
+
+describe('Legal country boundaries', () => {
+  // The bundled Natural Earth file is cut down to the Legal Policy countries; a new policy country
+  // needs its polygon regenerated into it, or it shows a label with no fill.
+  test('cover every Legal Policy country by alpha-3', () => {
+    const codes = new Set(
+      legalCountryBoundaries.features.map((f) => f.properties[LEGAL_BOUNDARY_CODE_KEY]),
+    )
+    expect(LEGAL_LIMIT_COUNTRIES.filter((c) => !codes.has(c.alpha3))).toEqual([])
   })
 })

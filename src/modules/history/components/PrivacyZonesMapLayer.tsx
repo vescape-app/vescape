@@ -1,6 +1,5 @@
-import { FillLayer, LineLayer, ShapeSource } from '@rnmapbox/maps'
+import { GeoJSONSource, Layer } from '@maplibre/maplibre-react-native'
 import { useEffect, useMemo } from 'react'
-import { processColor } from 'react-native'
 
 import { theme } from '@/constants/theme'
 import { makeCircleFeature } from '@/helpers/mapGeometry'
@@ -11,7 +10,8 @@ import { usePrivacyZoneStore } from '@/modules/history/store/privacyZoneStore'
 const ZONE_LINE_WIDTH = 1.5
 const ZONE_DASH: [number, number] = [3, 3]
 
-export function PrivacyZonesMapLayer() {
+/** `fillBeforeId`: first label layer of the loaded style, so the fill stays under labels. */
+export function PrivacyZonesMapLayer({ fillBeforeId }: { fillBeforeId?: string }) {
   const neutral = useResolvedNeutralColors()
   const zones = usePrivacyZoneStore((s) => s.zones)
   const loaded = usePrivacyZoneStore((s) => s.loaded)
@@ -36,22 +36,22 @@ export function PrivacyZonesMapLayer() {
   if (shape.features.length === 0) return null
 
   return (
-    <ShapeSource id="privacy-zones" shape={shape}>
-      <FillLayer
+    <GeoJSONSource id="privacy-zones" data={shape}>
+      <Layer
+        type="fill"
         id="privacy-zone-fill"
-        style={{
-          fillColor: processColor(theme.palette.mono.black) as never,
-          fillOpacity: 0.12,
-        }}
+        beforeId={fillBeforeId}
+        paint={{ 'fill-color': theme.palette.mono.black, 'fill-opacity': 0.12 }}
       />
-      <LineLayer
+      <Layer
+        type="line"
         id="privacy-zone-outline"
-        style={{
-          lineColor: theme.alpha(neutral.textSecondary, 0.7),
-          lineWidth: ZONE_LINE_WIDTH,
-          lineDasharray: ZONE_DASH,
+        paint={{
+          'line-color': theme.alpha(neutral.textSecondary, 0.7),
+          'line-width': ZONE_LINE_WIDTH,
+          'line-dasharray': ZONE_DASH,
         }}
       />
-    </ShapeSource>
+    </GeoJSONSource>
   )
 }

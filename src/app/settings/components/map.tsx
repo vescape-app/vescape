@@ -87,7 +87,6 @@ export default function MapComponentsShowcase() {
   const isOneDark = renderedStyleKey === 'onedark'
   const isSatellite = renderedStyleKey === 'satellite'
   const useCustomJSON = isMapy || isOneDark || isSatellite
-  const showBuildings3d = renderedStyleKey === 'outdoors' || isOneDark
 
   return (
     <View style={styles.container}>
@@ -130,10 +129,7 @@ export default function MapComponentsShowcase() {
         <MainMapLayers
           historyActive={false}
           expandSelectedMapPoints
-          isMapy={isMapy}
-          isOneDark={isOneDark}
           isSatellite={isSatellite}
-          showBuildings3d={showBuildings3d}
           weatherActive={weatherActive}
           legalLimitsActive={legalLimitsActive}
           liveTrailShape={FIXTURE_LIVE_TRAIL_SHAPE}

@@ -1,4 +1,4 @@
-import { LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
+import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native'
 import { WarningIcon } from 'phosphor-react-native'
 import { useMemo } from 'react'
 import Animated, { withTiming } from 'react-native-reanimated'
@@ -35,7 +35,7 @@ const NAVIGATION_DOT_SPACING_PX = 11
 /**
  * A dotted line: a zero-length dash under a round cap draws a circle, and the gap does the spacing.
  *
- * Mapbox measures a dash pattern in multiples of the line's own width, so the same pattern on the
+ * MapLibre measures a dash pattern in multiples of the line's own width, so the same pattern on the
  * casing would space its dots wider than the line's. Dividing by the width converts the spacing back
  * to pixels and keeps the two layers dot for dot.
  */
@@ -65,11 +65,11 @@ function PendingNavigationTargetPin({
   color: string
 }) {
   return (
-    <MarkerView coordinate={coordinate} allowOverlap>
+    <Marker lngLat={coordinate}>
       <Animated.View entering={pendingNavigationTargetEntering}>
         <MapTargetReticle color={color} />
       </Animated.View>
-    </MarkerView>
+    </Marker>
   )
 }
 
@@ -137,38 +137,39 @@ export function NavigationMapLayers({
     <>
       {showDirectionPoint && navigationShape && (
         // Passed and remaining sections are split at native's projection, see navigationPath.ts.
-        <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
-          <LineLayer
+        <GeoJSONSource id="center-navigation-source" data={navigationShape} lineMetrics>
+          <Layer
+            type="line"
             id="center-navigation-casing"
-            style={{
-              lineOpacity: ['get', 'opacity'],
-              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
-              lineWidth: NAVIGATION_CASING_WIDTH,
-              lineCap: 'round',
-              lineJoin: 'round',
-              lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{
+              'line-opacity': ['get', 'opacity'],
+              'line-color': theme.alpha(neutral.surfaceDeep, 0.85),
+              'line-width': NAVIGATION_CASING_WIDTH,
+              'line-dasharray': navigationDots(NAVIGATION_CASING_WIDTH),
             }}
           />
-          <LineLayer
+          <Layer
+            type="line"
             id="center-navigation-line"
-            style={{
-              lineOpacity: ['get', 'opacity'],
-              lineColor: routeColor,
-              lineWidth: MAP_DEFAULTS.navigationWidth,
-              lineCap: 'round',
-              lineJoin: 'round',
-              lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{
+              'line-opacity': ['get', 'opacity'],
+              'line-color': routeColor,
+              'line-width': MAP_DEFAULTS.navigationWidth,
+              'line-dasharray': navigationDots(MAP_DEFAULTS.navigationWidth),
             }}
           />
-        </ShapeSource>
+        </GeoJSONSource>
       )}
       {connector && showDirectionPoint && (
-        <ShapeSource id="navigation-projection-source" shape={connector}>
-          <LineLayer
+        <GeoJSONSource id="navigation-projection-source" data={connector}>
+          <Layer
+            type="line"
             id="navigation-projection-line"
-            style={{ lineColor: routeColor, lineOpacity: 0.8, lineWidth: 3 }}
+            paint={{ 'line-color': routeColor, 'line-opacity': 0.8, 'line-width': 3 }}
           />
-        </ShapeSource>
+        </GeoJSONSource>
       )}
       {showDirectionPoint && (
         <MapPin

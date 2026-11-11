@@ -1,4 +1,4 @@
-import { RasterLayer, RasterSource } from '@rnmapbox/maps'
+import { Layer, RasterSource } from '@maplibre/maplibre-react-native'
 import { useEffect } from 'react'
 
 import {
@@ -46,17 +46,17 @@ export function RainViewerOverlay({ visible }: RainViewerOverlayProps) {
           <RasterSource
             key={sourceId}
             id={sourceId}
-            tileUrlTemplates={[tileTemplate]}
+            tiles={[tileTemplate]}
             tileSize={512}
-            maxZoomLevel={6}
+            maxzoom={6}
           >
-            <RasterLayer
+            <Layer
+              type="raster"
               id={layerId}
-              sourceID={sourceId}
-              style={{
-                rasterOpacity: index === selectedFrameIndex ? RADAR_OPACITY : 0,
-                rasterOpacityTransition: { duration: fadeMs, delay: 0 },
-                rasterFadeDuration: fadeMs,
+              paint={{
+                'raster-opacity': index === selectedFrameIndex ? RADAR_OPACITY : 0,
+                'raster-opacity-transition': { duration: fadeMs, delay: 0 },
+                'raster-fade-duration': fadeMs,
               }}
             />
           </RasterSource>

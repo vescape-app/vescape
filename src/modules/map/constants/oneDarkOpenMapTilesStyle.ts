@@ -26,10 +26,9 @@ interface StyleLayer {
 
 const SOURCE = 'openmaptiles'
 
-/** OpenFreeMap serves Noto Sans Regular, Bold and Italic; it has no Medium cut. */
-const FONT_REGULAR = ['Noto Sans Regular']
-const FONT_BOLD = ['Noto Sans Bold']
-const FONT_ITALIC = ['Noto Sans Italic']
+const FONT_REGULAR = [...theme.map.fontRegular]
+const FONT_BOLD = [...theme.map.fontBold]
+const FONT_ITALIC = [...theme.map.fontItalic]
 
 const MAPBOX_LAYERS = [...ONE_DARK_BASE_LAYERS, ...ONE_DARK_OVERLAY_LAYERS] as StyleLayer[]
 

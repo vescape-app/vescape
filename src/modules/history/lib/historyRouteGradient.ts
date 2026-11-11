@@ -1,4 +1,8 @@
-import type { LineLayerStyle } from '@rnmapbox/maps'
+import type { LineLayerSpecification } from '@maplibre/maplibre-react-native'
+
+export type LineGradient = NonNullable<
+  NonNullable<LineLayerSpecification['paint']>['line-gradient']
+>
 
 import { theme } from '@/constants/theme'
 import type { ResolvedTelemetryColors } from '@/constants/theme'
@@ -20,9 +24,7 @@ const HISTORY_ROUTE_HIGHLIGHT_MIN_DURATION_MS = 1400
 const HISTORY_ROUTE_HIGHLIGHT_MAX_DURATION_MS = 5200
 const HISTORY_ROUTE_HIGHLIGHT_MS_PER_KM = 260
 
-export function getHistoryRouteHighlightGradient(
-  progress: number,
-): NonNullable<LineLayerStyle['lineGradient']> {
+export function getHistoryRouteHighlightGradient(progress: number): LineGradient {
   const peak = -HISTORY_ROUTE_HIGHLIGHT_WIDTH + progress * (1 + HISTORY_ROUTE_HIGHLIGHT_WIDTH * 2)
   const leadingEdge = Math.max(0, peak - HISTORY_ROUTE_HIGHLIGHT_WIDTH)
   const trailingEdge = Math.min(1, peak + HISTORY_ROUTE_HIGHLIGHT_WIDTH)
@@ -37,7 +39,7 @@ export function getHistoryRouteHighlightGradient(
         HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
         1,
         HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
-      ] as unknown as NonNullable<LineLayerStyle['lineGradient']>
+      ] as unknown as LineGradient
     }
     return [
       'interpolate',
@@ -49,7 +51,7 @@ export function getHistoryRouteHighlightGradient(
       HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
       1,
       HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
-    ] as unknown as NonNullable<LineLayerStyle['lineGradient']>
+    ] as unknown as LineGradient
   }
 
   if (peak >= 1) {
@@ -62,7 +64,7 @@ export function getHistoryRouteHighlightGradient(
         HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
         1,
         HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
-      ] as unknown as NonNullable<LineLayerStyle['lineGradient']>
+      ] as unknown as LineGradient
     }
     return [
       'interpolate',
@@ -74,7 +76,7 @@ export function getHistoryRouteHighlightGradient(
       HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
       1,
       HISTORY_ROUTE_HIGHLIGHT_COLOR,
-    ] as unknown as NonNullable<LineLayerStyle['lineGradient']>
+    ] as unknown as LineGradient
   }
 
   if (leadingEdge <= 0) {
@@ -90,7 +92,7 @@ export function getHistoryRouteHighlightGradient(
       HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
       1,
       HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
-    ] as unknown as NonNullable<LineLayerStyle['lineGradient']>
+    ] as unknown as LineGradient
   }
 
   if (trailingEdge >= 1) {
@@ -106,7 +108,7 @@ export function getHistoryRouteHighlightGradient(
       HISTORY_ROUTE_HIGHLIGHT_COLOR,
       1,
       HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
-    ] as unknown as NonNullable<LineLayerStyle['lineGradient']>
+    ] as unknown as LineGradient
   }
 
   return [
@@ -123,7 +125,7 @@ export function getHistoryRouteHighlightGradient(
     HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
     1,
     HISTORY_ROUTE_HIGHLIGHT_TRANSPARENT,
-  ] as unknown as NonNullable<LineLayerStyle['lineGradient']>
+  ] as unknown as LineGradient
 }
 
 export function getHistoryMetricBaseColor(
@@ -201,7 +203,7 @@ export function getHistoryRouteMetricGradient({
   gradientsEnabled: boolean
   colors: ResolvedTelemetryColors
   hotColor: string
-}): NonNullable<LineLayerStyle['lineGradient']> | null {
+}): LineGradient | null {
   if (gpsSamples.length < 2 || telemetrySamples.length === 0) return null
   const baseColor = getHistoryMetricBaseColor(metric, colors)
   const range = getHistoryMetricColorRange(metric, baseColor, hotRanges, gradientsEnabled, hotColor)
@@ -243,7 +245,7 @@ export function getHistoryRouteMetricGradient({
     expression.push(1, lastValue == null ? baseColor : getMetricRampColor(lastValue, range))
   }
 
-  return expression as unknown as NonNullable<LineLayerStyle['lineGradient']>
+  return expression as unknown as LineGradient
 }
 
 export function getHistoryRouteHighlightDurationMs(route: [number, number][]) {

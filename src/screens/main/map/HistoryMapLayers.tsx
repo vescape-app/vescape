@@ -1,7 +1,6 @@
-import { HISTORY_ENDPOINT_LAYER_ID } from '@/modules/history/lib/historyMapLayers'
 import Svg, { Line, Polygon, Rect } from 'react-native-svg'
 import { View } from 'react-native'
-import { LineLayer, PointAnnotation, PointAnnotationManager, ShapeSource } from '@rnmapbox/maps'
+import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native'
 import { useEffect, useMemo, useState } from 'react'
 
 import { theme } from '@/constants/theme'
@@ -29,12 +28,14 @@ import {
 } from '@/modules/history/lib/mediaHistory'
 import type { HistoryGpsSample } from '@/modules/history/store/historyStore'
 import { MapPin } from '@/modules/map/components/MapPin'
-import { RouteZoomFocus } from '@/screens/main/map/RouteZoomFocus'
-import { SeekPositionPin } from '@/screens/main/map/SeekPositionPin'
+import { HISTORY_ROUTE_HIGHLIGHT_LAYER_ID, RouteZoomFocus } from '@/screens/main/map/RouteZoomFocus'
+import { SEEK_POSITION_LAYER_ID, SeekPositionPin } from '@/screens/main/map/SeekPositionPin'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
 const HISTORY_ROUTE_HIGHLIGHT_INTERVAL_MS = 50
+const HISTORY_ROUTE_CASING_LAYER_ID = 'center-ride-route-casing'
+const ROUND_LINE = { 'line-cap': 'round', 'line-join': 'round' } as const
 const HISTORY_ROUTE_HIGHLIGHT_DELAY_MS = 500
 
 // Live sub-range highlight while trimming a Favorite. Subscribes to the trim range directly so a
@@ -62,18 +63,15 @@ function TrimRouteHighlight({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSamp
 
   if (!shape) return null
   return (
-    <ShapeSource id="center-ride-trim-source" shape={shape}>
-      <LineLayer
-        belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
+    <GeoJSONSource id="center-ride-trim-source" data={shape}>
+      <Layer
+        type="line"
+        beforeId={SEEK_POSITION_LAYER_ID}
         id="center-ride-trim-line"
-        style={{
-          lineColor: accents.amber.color,
-          lineWidth: 5,
-          lineCap: 'round',
-          lineJoin: 'round',
-        }}
+        layout={ROUND_LINE}
+        paint={{ 'line-color': accents.amber.color, 'line-width': 5 }}
       />
-    </ShapeSource>
+    </GeoJSONSource>
   )
 }
 
@@ -101,19 +99,19 @@ function FavoriteRouteBorder({
 
   if (!shape) return null
   return (
-    <ShapeSource id="center-ride-favorites-source" shape={shape}>
-      <LineLayer
+    <GeoJSONSource id="center-ride-favorites-source" data={shape}>
+      <Layer
+        type="line"
         id="center-ride-favorites-border"
-        belowLayerID="center-ride-route-casing"
-        style={{
-          lineColor: accents.yellow.color,
-          lineWidth: highContrastRoutes ? 10 : 6,
-          lineOpacity: trimming ? 1 : 0.9,
-          lineCap: 'round',
-          lineJoin: 'round',
+        beforeId={HISTORY_ROUTE_CASING_LAYER_ID}
+        layout={ROUND_LINE}
+        paint={{
+          'line-color': accents.yellow.color,
+          'line-width': highContrastRoutes ? 10 : 6,
+          'line-opacity': trimming ? 1 : 0.9,
         }}
       />
-    </ShapeSource>
+    </GeoJSONSource>
   )
 }
 
@@ -216,11 +214,6 @@ export function HistoryMapLayers({
 
   return (
     <>
-      {/* Create the native symbol layer before strokes that reference it for ordering. */}
-      <PointAnnotationManager id={HISTORY_ENDPOINT_LAYER_ID} iconAllowOverlap iconIgnorePlacement>
-        {rideRoute[0] && renderHistoryEndpointFlag(rideRoute[0], telemetryColors.duty, 'start')}
-        {rideRoute.at(-1) && renderHistoryEndpointFlag(rideRoute.at(-1)!, accents.red.color, 'end')}
-      </PointAnnotationManager>
       <FavoriteRouteBorder
         rideGpsSamples={rideGpsSamples}
         favoriteRanges={favoriteRanges}
@@ -228,31 +221,29 @@ export function HistoryMapLayers({
         trimming={trimming}
       />
       {rideRouteShape && (
-        <ShapeSource id="center-ride-route-source" shape={rideRouteShape} lineMetrics>
-          <LineLayer
-            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
-            id="center-ride-route-casing"
-            style={{
-              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
-              lineWidth: highContrastRoutes ? 8 : 0,
-              lineCap: 'round',
-              lineJoin: 'round',
-              lineOpacity: trimming ? 0.3 : 1,
+        <GeoJSONSource id="center-ride-route-source" data={rideRouteShape} lineMetrics>
+          <Layer
+            type="line"
+            id={HISTORY_ROUTE_CASING_LAYER_ID}
+            layout={ROUND_LINE}
+            paint={{
+              'line-color': theme.alpha(neutral.surfaceDeep, 0.85),
+              'line-width': highContrastRoutes ? 8 : 0,
+              'line-opacity': trimming ? 0.3 : 1,
             }}
           />
-          <LineLayer
-            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
+          <Layer
+            type="line"
             id="center-ride-route-line"
-            style={{
-              lineColor: getHistoryMetricBaseColor(activeHistoryMapMetric, telemetryColors),
-              lineWidth: highContrastRoutes ? 5 : 4,
-              lineCap: 'round',
-              lineJoin: 'round',
-              lineOpacity: trimming ? 0.3 : 1,
-              ...(routeMetricGradient ? { lineGradient: routeMetricGradient } : {}),
+            layout={ROUND_LINE}
+            paint={{
+              'line-color': getHistoryMetricBaseColor(activeHistoryMapMetric, telemetryColors),
+              'line-width': highContrastRoutes ? 5 : 4,
+              'line-opacity': trimming ? 0.3 : 1,
+              ...(routeMetricGradient ? { 'line-gradient': routeMetricGradient } : {}),
             }}
           />
-        </ShapeSource>
+        </GeoJSONSource>
       )}
       {/* Over the route, under the pins: the pins are landmarks of the whole ride and stay
           readable however far the chart is zoomed in. */}
@@ -268,22 +259,24 @@ export function HistoryMapLayers({
       {/* Its own source, above the zoom focus: the scrub glow marks where the finger is on the
           chart, which stays true whether or not that stretch is the one zoomed into. */}
       {rideRouteShape && (
-        <ShapeSource id="center-ride-route-highlight-source" shape={rideRouteShape} lineMetrics>
-          <LineLayer
-            belowLayerID={HISTORY_ENDPOINT_LAYER_ID}
-            id="center-ride-route-highlight"
-            style={{
-              lineGradient: routeHighlightGradient,
-              lineWidth: highContrastRoutes ? 5 : 4,
-              lineCap: 'round',
-              lineJoin: 'round',
-              lineOpacity: trimming ? 0.3 : 1,
+        <GeoJSONSource id="center-ride-route-highlight-source" data={rideRouteShape} lineMetrics>
+          <Layer
+            type="line"
+            id={HISTORY_ROUTE_HIGHLIGHT_LAYER_ID}
+            layout={ROUND_LINE}
+            paint={{
+              'line-gradient': routeHighlightGradient,
+              'line-width': highContrastRoutes ? 5 : 4,
+              'line-opacity': trimming ? 0.3 : 1,
             }}
           />
-        </ShapeSource>
+        </GeoJSONSource>
       )}
       <TrimRouteHighlight rideGpsSamples={rideGpsSamples} />
       <SeekPositionPin rideGpsSamples={rideGpsSamples} />
+      {/* Markers draw above every layer, so the endpoint flags stay on top of the strokes. */}
+      {rideRoute[0] && renderHistoryEndpointFlag(rideRoute[0], telemetryColors.duty, 'start')}
+      {rideRoute.at(-1) && renderHistoryEndpointFlag(rideRoute.at(-1)!, accents.red.color, 'end')}
 
       {resolveMarkerRenderData(rideMarkers, rideGpsSamples).map(
         ({ marker, gps, renderCoordinate }) => (
@@ -314,22 +307,30 @@ export function HistoryMapLayers({
   )
 }
 
-// PointAnnotation snapshots the flag into the map renderer, like saved Map Points.
-// The pole's base is (2, 28) inside a 22 × 30 viewport, exactly at the map coordinate.
+// The pole's base is (2, 28) inside a 22 × 30 viewport, exactly at the map coordinate: the view
+// is anchored by its bottom-left corner and shifted so the pole base lands on it.
+const FLAG_WIDTH = 55 / 3
+const FLAG_HEIGHT = 25
+const FLAG_OFFSET: [number, number] = [
+  -(2 / 22) * FLAG_WIDTH,
+  FLAG_HEIGHT - (28 / 30) * FLAG_HEIGHT,
+]
+
 function renderHistoryEndpointFlag(
   coordinate: [number, number],
   stroke: string,
   kind: 'start' | 'end',
 ) {
   return (
-    <PointAnnotation
-      key={`history-${kind}-${stroke}`}
+    <Marker
+      key={`history-${kind}`}
       id={`center-ride-${kind}`}
-      coordinate={coordinate}
-      anchor={{ x: 2 / 22, y: 28 / 30 }}
+      lngLat={coordinate}
+      anchor="bottom-left"
+      offset={FLAG_OFFSET}
     >
-      <View collapsable={false} style={{ width: 55 / 3, height: 25 }}>
-        <Svg width={55 / 3} height={25} viewBox="-2 -28 22 30">
+      <View style={{ width: FLAG_WIDTH, height: FLAG_HEIGHT }}>
+        <Svg width={FLAG_WIDTH} height={FLAG_HEIGHT} viewBox="-2 -28 22 30">
           <Line
             x1={0}
             y1={0}
@@ -378,6 +379,6 @@ function renderHistoryEndpointFlag(
           )}
         </Svg>
       </View>
-    </PointAnnotation>
+    </Marker>
   )
 }

@@ -1,4 +1,4 @@
-import { MarkerView } from '@rnmapbox/maps'
+import { Marker } from '@maplibre/maplibre-react-native'
 import { Image } from 'expo-image'
 import { PlayIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
@@ -17,7 +17,7 @@ export function MediaHistoryPin({
   const first = cluster.assets[0]
   const clustered = cluster.assets.length > 1
   return (
-    <MarkerView coordinate={cluster.coordinate} allowOverlap>
+    <Marker lngLat={cluster.coordinate}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={
@@ -43,7 +43,7 @@ export function MediaHistoryPin({
           </>
         )}
       </Pressable>
-    </MarkerView>
+    </Marker>
   )
 }
 

@@ -2,6 +2,7 @@ import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native'
 
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
+import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { GpsPuck } from '@/modules/map/components/GpsPuck'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
@@ -14,6 +15,7 @@ export function LiveMapLayers({
   puckBearing,
   mapPose,
   fillBeforeId,
+  riders,
   highContrastRoutes,
 }: {
   liveTrailShape: MainMapLayersProps['liveTrailShape']
@@ -22,6 +24,7 @@ export function LiveMapLayers({
   puckBearing: MainMapLayersProps['puckBearing']
   mapPose: MainMapLayersProps['mapPose']
   fillBeforeId: MainMapLayersProps['fillBeforeId']
+  riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
 }) {
   const riderColor = useSelectedBoardRailColor()
@@ -89,7 +92,14 @@ export function LiveMapLayers({
           </Marker>
         </>
       )}
-      {/* TODO(maplibre phase 2): RiderTrail, RiderPresencePin */}
+      {riders.map((rider) =>
+        rider.trail && rider.trail.length >= 2 ? (
+          <RiderTrail key={rider.id} rider={rider} highContrastRoutes={highContrastRoutes} />
+        ) : null,
+      )}
+      {riders.map((rider) =>
+        rider.presence ? <RiderPresencePin key={rider.id} rider={rider} /> : null,
+      )}
     </>
   )
 }

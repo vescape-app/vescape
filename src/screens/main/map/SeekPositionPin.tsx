@@ -1,4 +1,4 @@
-import { CircleLayer, ShapeSource } from '@rnmapbox/maps'
+import { GeoJSONSource, Layer, type GeoJSONSourceRef } from '@maplibre/maplibre-react-native'
 import { useCallback, useMemo, useRef } from 'react'
 import { useAnimatedReaction } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
@@ -10,20 +10,20 @@ import type { HistoryGpsSample } from '@/modules/history/store/historyStore'
 const EMPTY_SEEK_SHAPE: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 const SEEK_PIN_RADIUS = 7
 const SEEK_SOURCE_ID = 'center-seek-position-source'
+export const SEEK_POSITION_LAYER_ID = 'center-seek-position-circle'
 
 /**
  * The marker following the finger on the telemetry chart.
  *
- * A GL circle updated imperatively, not an annotation and not React state. Every step of a scrub
- * moved this marker, and a `PointAnnotation` carrying child views re-snapshots those views to a
- * bitmap on every coordinate change — enough work per touch sample to stall the whole app. A
+ * A GL circle updated imperatively, not a marker view and not React state: every step of a scrub
+ * moves it, and a React render per touch sample is enough work to stall the whole app. A
  * circle layer takes a new position as one tiny GeoJSON, so the drag needs no render at all and
  * no throttling: the ride's track is read on the UI thread, and only the result crosses over.
  */
 export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
-  const sourceRef = useRef<ShapeSource>(null)
+  const sourceRef = useRef<GeoJSONSourceRef>(null)
 
   // Parallel arrays so the lookup can run in a worklet; the samples themselves cannot cross.
   const track = useMemo(() => {
@@ -46,8 +46,8 @@ export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGps
           properties: {},
         }
       : EMPTY_SEEK_SHAPE
-    // `id` is required by the native prop type but never changes; the shape is the update.
-    sourceRef.current?.setNativeProps({ id: SEEK_SOURCE_ID, shape: JSON.stringify(shape) })
+    // The native `data` prop is the update; nothing on the React side re-renders.
+    sourceRef.current?.getAnimatableRef()?.setNativeProps({ data: JSON.stringify(shape) })
   }, [])
 
   useAnimatedReaction(
@@ -74,16 +74,17 @@ export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGps
   )
 
   return (
-    <ShapeSource id={SEEK_SOURCE_ID} ref={sourceRef} shape={EMPTY_SEEK_SHAPE}>
-      <CircleLayer
-        id="center-seek-position-circle"
-        style={{
-          circleRadius: SEEK_PIN_RADIUS,
-          circleColor: accents.violet.color,
-          circleStrokeWidth: 2,
-          circleStrokeColor: neutral.bg,
+    <GeoJSONSource id={SEEK_SOURCE_ID} ref={sourceRef} data={EMPTY_SEEK_SHAPE}>
+      <Layer
+        type="circle"
+        id={SEEK_POSITION_LAYER_ID}
+        paint={{
+          'circle-radius': SEEK_PIN_RADIUS,
+          'circle-color': accents.violet.color,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': neutral.bg,
         }}
       />
-    </ShapeSource>
+    </GeoJSONSource>
   )
 }

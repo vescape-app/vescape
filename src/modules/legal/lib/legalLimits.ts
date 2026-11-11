@@ -19,6 +19,9 @@ export interface LegalLimitCountry {
   checkedAt: string
 }
 
+/** Country code property of the bundled Natural Earth boundaries. */
+export const LEGAL_BOUNDARY_CODE_KEY = 'ADM0_A3'
+
 export const LEGAL_LIMIT_COUNTRIES = legalPolicies as unknown as readonly LegalLimitCountry[]
 
 export interface LegalLimitCountryDetail {
@@ -404,21 +407,18 @@ export function getLegalLimitCountryDetail(
   return LEGAL_LIMIT_COUNTRY_DETAILS[country.code] ?? null
 }
 
+/**
+ * Fill colour per country of `legalCountryBoundaries.json`. Natural Earth's `ADM0_A3` matches the
+ * Legal Policy alpha-3 for every country covered (`ISO_A3` does not: it is `-99` for France and
+ * Norway).
+ */
 export function legalStatusColorExpression(colors: Record<LegalRoadStatus, string>) {
-  const expression: unknown[] = ['match', ['get', 'iso_3166_1_alpha_3']]
+  const expression: unknown[] = ['match', ['get', LEGAL_BOUNDARY_CODE_KEY]]
   for (const country of LEGAL_LIMIT_COUNTRIES) {
     expression.push(country.alpha3, colors[country.status])
   }
   expression.push('transparent')
   return expression
-}
-
-export function legalCountryFilterExpression() {
-  return [
-    'in',
-    ['get', 'iso_3166_1_alpha_3'],
-    ['literal', LEGAL_LIMIT_COUNTRIES.map((c) => c.alpha3)],
-  ]
 }
 
 export function legalReferenceSpeedLabel(kmh: number | null, distanceUnit: DistanceUnit): string {
