@@ -1,6 +1,7 @@
 /**
  * Spike #658: per-phase sample buffers and the summary shape both SDKs report.
  */
+import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 
 import { distanceMeters } from '@/helpers/mapGeometry'
@@ -16,7 +17,7 @@ export interface CameraEcho {
   pitch: number
 }
 
-const angleDelta = (a: number, b: number) => Math.abs(((((a - b) % 360) + 540) % 360) - 180)
+export const angleDelta = (a: number, b: number) => Math.abs(((((a - b) % 360) + 540) % 360) - 180)
 
 // Tolerances cover Mapbox, which reports the center rounded to 7 decimals and zoom, heading and
 // pitch to 3. MapLibre echoes are exact.
@@ -150,12 +151,43 @@ export interface BenchResult {
   uiRefreshMs: number
   phases: Record<BenchPhase, PhaseResult>
   total: PhaseResult
+  /** Replay runs on the real main map (spike #642); absent for playground runs. */
+  replay?: ReplayRunInfo
+}
+
+export interface ReplayRunInfo {
+  recording: string
+  /** Git identity the bench script passed in the deep link; `?` when started by hand. */
+  branch: string
+  commit: string
+  mapStyle: string
+  orientation: string
+  windowMs: number
+  writesPerSec: number
+  echoesPerSec: number
+  /** Sum of absolute heading steps between consecutive writes: proof the map rotated. */
+  headingTravelDeg: number
 }
 
 export type BenchMeta = Pick<
   BenchResult,
   'sdk' | 'style' | 'platform' | 'osVersion' | 'device' | 'build' | 'appVersion'
 >
+
+export function deviceMeta(): Omit<BenchMeta, 'sdk' | 'style'> {
+  const c = Platform.constants as Record<string, unknown>
+  const device =
+    Platform.OS === 'android'
+      ? `${String(c.Manufacturer ?? '')} ${String(c.Model ?? '')}`.trim()
+      : (Constants.deviceName ?? 'iOS')
+  return {
+    platform: Platform.OS,
+    osVersion: String(Platform.Version),
+    device,
+    build: __DEV__ ? 'debug' : 'release',
+    appVersion: Constants.expoConfig?.version ?? '?',
+  }
+}
 
 /** Collects samples for one run. All timestamps are `performance.now()` ms. */
 export function createBenchRecorder() {
@@ -258,9 +290,11 @@ export function createBenchRecorder() {
       const merged = BENCH_PHASES.reduce<PhaseBuffers>(
         (acc, p) => {
           const b = phases[p]
+          // A replay run records only `follow`; phases never entered do not bound the run.
+          const entered = b.endMs > 0
           return {
-            startMs: Math.min(acc.startMs, b.startMs),
-            endMs: Math.max(acc.endMs, b.endMs),
+            startMs: entered ? Math.min(acc.startMs, b.startMs) : acc.startMs,
+            endMs: entered ? Math.max(acc.endMs, b.endMs) : acc.endMs,
             jsDeltas: acc.jsDeltas.concat(b.jsDeltas),
             writeMs: acc.writeMs.concat(b.writeMs),
             echoes: acc.echoes + b.echoes,

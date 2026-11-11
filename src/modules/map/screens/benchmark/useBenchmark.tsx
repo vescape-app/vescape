@@ -1,7 +1,6 @@
 import * as Clipboard from 'expo-clipboard'
-import Constants from 'expo-constants'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Platform, Share, StyleSheet, View } from 'react-native'
+import { Share, StyleSheet, View } from 'react-native'
 import { useFrameCallback, useSharedValue } from 'react-native-reanimated'
 
 import { Button } from '@/components/base/Button'
@@ -14,8 +13,8 @@ import { SCENE_CENTER } from '@/modules/map/screens/layersPlayground/sceneData'
 
 import {
   createBenchRecorder,
+  deviceMeta,
   logBenchResult,
-  type BenchMeta,
   type BenchRecorder,
   type BenchResult,
 } from './benchmarkRecorder'
@@ -42,21 +41,6 @@ export interface BenchDriver {
   /** Restore default springs, derivePitch and ballistic. */
   resetTuning: () => void
   setSceneLayers: (on: boolean) => void
-}
-
-function deviceMeta(): Omit<BenchMeta, 'sdk' | 'style'> {
-  const c = Platform.constants as Record<string, unknown>
-  const device =
-    Platform.OS === 'android'
-      ? `${String(c.Manufacturer ?? '')} ${String(c.Model ?? '')}`.trim()
-      : (Constants.deviceName ?? 'iOS')
-  return {
-    platform: Platform.OS,
-    osVersion: String(Platform.Version),
-    device,
-    build: __DEV__ ? 'debug' : 'release',
-    appVersion: Constants.expoConfig?.version ?? '?',
-  }
 }
 
 const fmt = (v: number | undefined) => (v === undefined ? '-' : String(v))

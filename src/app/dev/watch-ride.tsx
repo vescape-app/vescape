@@ -13,7 +13,7 @@ const REPLAY_FIX_RADIUS_M = 5_000
 const FIRST_FIX_TIMEOUT_MS = 60_000
 
 /** Resolves on the first fix of the replayed ride; the replay keeps emitting, so none is missed. */
-function firstReplayedFix(target: { latitude: number; longitude: number }) {
+export function firstReplayedFix(target: { latitude: number; longitude: number }) {
   return new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       subscription.remove()

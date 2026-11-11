@@ -12,6 +12,7 @@ import {
 } from '@/modules/map/lib/cameraController'
 import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 import { toDirectCamera } from '@/modules/map/lib/directCamera'
+import { mainMapCameraProbe } from '@/modules/map/screens/benchmark/cameraProbe'
 import {
   type CameraPadding,
   getMapCameraProfileForOrientationMode,
@@ -78,6 +79,8 @@ export function useCameraControls({
       cancelNativeMotion: () => cameraRef.current?.cancelCameraAnimations(),
       applyFrame: (camera: EngineCamera) => {
         currentCameraRef.current = camera
+        const probe = mainMapCameraProbe.current
+        const writeStart = probe ? performance.now() : 0
         cameraRef.current?.setCameraDirect(
           toDirectCamera({
             center: camera.centerCoordinate,
@@ -87,6 +90,7 @@ export function useCameraControls({
             padding: camera.padding,
           }),
         )
+        probe?.write(camera, performance.now() - writeStart)
       },
     }),
   )

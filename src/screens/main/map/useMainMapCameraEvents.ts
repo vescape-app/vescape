@@ -8,6 +8,7 @@ import type { MapCameraControllerState } from '@/modules/map/lib/cameraControlle
 import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 import { getLiveFollowCameraProfile, getPitchForZoom } from '@/modules/map/lib/cameraProfiles'
 import { toDirectCamera } from '@/modules/map/lib/directCamera'
+import { mainMapCameraProbe } from '@/modules/map/screens/benchmark/cameraProbe'
 import { shouldPreserveLiveFollowGesture } from '@/modules/map/lib/cameraGestureState'
 import type { MainViewState } from '@/screens/main/mainViewState'
 import type { CameraSnapshot, HistoryPreviewTarget } from '@/screens/main/map/useCameraControls'
@@ -143,6 +144,7 @@ export function useMainMapCameraEvents({
         heading,
         pitch,
       } satisfies CameraSnapshot
+      mainMapCameraProbe.current?.echo({ center: [longitude, latitude], zoom, heading, pitch })
       onWatchRouteSpanChange(latitude, zoom)
       // The reveal gesture writes the camera and drives the engine itself; its
       // echoes arrive a frame late and would only add phantom velocity.
