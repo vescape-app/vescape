@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 
 import type { MapStyleKey } from '@/modules/map/constants/mapStyles'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -32,13 +32,21 @@ export function useMapStyleLoadGuard({
     return () => cancelAnimationFrame(frame)
   }, [state.phase])
 
-  const notifyLoaded = useEffectEvent(() => {
-    lastLoadedStyleKeyRef.current = state.applied.styleKey
-    onStyleLoaded(state.loadCount > 1)
-  })
+  // A ref, not `useEffectEvent`: under the React Compiler the effect event read the first
+  // render's `loadCount`, so every style swap reported a fresh map and reset the camera.
+  const onStyleLoadedRef = useRef(onStyleLoaded)
   useEffect(() => {
-    if (state.loadCount > 0) notifyLoaded()
-  }, [state.generation, state.loadCount])
+    onStyleLoadedRef.current = onStyleLoaded
+  })
+  const { loadCount, generation } = state
+  const loadedStyleKey = state.applied.styleKey
+  useEffect(() => {
+    if (loadCount === 0) return
+    lastLoadedStyleKeyRef.current = loadedStyleKey
+    onStyleLoadedRef.current(loadCount > 1)
+    // Once per completed load; the applied key is read with it, not a trigger of its own.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generation, loadCount])
 
   const handleStyleLoaded = useCallback(() => {
     dispatch({ type: 'loaded', generation: state.generation })
