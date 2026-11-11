@@ -14,7 +14,16 @@
   "ignoreExportsUsedInFile": true,
   "workspaces": {
     ".": {
-      "entry": ["plugins/**/*", "e2e/flows/**/*.js"]
+      "entry": [
+        "plugins/**/*",
+        "e2e/flows/**/*.js",
+        "src/modules/group-ride/components/RiderMapLayers.tsx",
+        "src/modules/history/components/PrivacyZonesMapLayer.tsx",
+        "src/modules/legal/components/LegalLimitsMapLayer.tsx",
+        "src/modules/weather/components/RadarRangeRings.tsx",
+        "src/modules/weather/components/RainViewerOverlay.tsx",
+        "src/screens/main/map/NavigationMapLayers.tsx"
+      ]
     },
     "modules/*": {}
   }

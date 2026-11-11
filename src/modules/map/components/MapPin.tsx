@@ -1,7 +1,7 @@
 import type { ThemeColor } from '@/constants/theme'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { MarkerView, PointAnnotation } from '@rnmapbox/maps'
+import { Marker } from '@maplibre/maplibre-react-native'
 import type { Icon } from 'phosphor-react-native'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
@@ -69,19 +69,17 @@ export function MapPin({
     if (selected && expandSelected && label) {
       const metrics = MAP_PIN_ICON_METRICS.expanded
       return (
-        <MarkerView coordinate={coordinate} allowOverlap>
+        <Marker id={id} lngLat={coordinate} onPress={onSelected}>
           <View style={styles.selectedMapPoint}>
-            <Pressable
+            <View
               style={[
                 styles.iconPin,
                 iconPinStyle(metrics, resolvedColor),
-                styles.iconPinExpanded,
                 { backgroundColor: neutral.surface },
               ]}
-              onPress={onSelected}
             >
               <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
-            </Pressable>
+            </View>
             <View style={[styles.selectedMapPointExtension, { backgroundColor: neutral.surface }]}>
               <Text
                 numberOfLines={1}
@@ -91,7 +89,7 @@ export function MapPin({
               </Text>
             </View>
           </View>
-        </MarkerView>
+        </Marker>
       )
     }
 
@@ -100,76 +98,31 @@ export function MapPin({
       : selected
         ? MAP_PIN_ICON_METRICS.selected
         : MAP_PIN_ICON_METRICS.default
-    const pin = (
-      <View
-        style={[
-          styles.iconPin,
-          iconPinStyle(metrics, resolvedColor),
-          selected && styles.iconPinSelected,
-          { backgroundColor: neutral.surface },
-        ]}
-      >
-        <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
-      </View>
-    )
-    // iOS PointAnnotation snapshots can omit the SVG even after refresh. Keep the single
-    // active navigation target live so its icon renders and updates with the view.
-    if (navigationActive) {
-      return (
-        <MarkerView coordinate={coordinate} allowOverlap>
-          <Pressable style={styles.iconPinFrame} onPress={onSelected}>
-            {pin}
-          </Pressable>
-        </MarkerView>
-      )
-    }
-
-    const annotationKey = getIconAnnotationKey(
-      id,
-      selected,
-      resolvedColor,
-      resolvedIconColor,
-      neutral.surface,
-    )
     return (
-      <PointAnnotation key={annotationKey} id={id} coordinate={coordinate} onSelected={onSelected}>
-        {/* collapsable={false}: on iOS New Arch (Fabric) a layout-only wrapper is
-            flattened, hoisting its children as direct PointAnnotation subviews and
-            triggering "supports max 1 subview" + a broken snapshot (rnmapbox #3682,
-            fixed in 10.3.2). Remove once we bump past 10.3.1. */}
-        <View collapsable={false} style={styles.iconPinFrame}>
-          {pin}
+      <Marker id={id} lngLat={coordinate} onPress={onSelected}>
+        <View style={styles.iconPinFrame}>
+          <View
+            style={[
+              styles.iconPin,
+              iconPinStyle(metrics, resolvedColor),
+              selected && styles.iconPinSelected,
+              { backgroundColor: neutral.surface },
+            ]}
+          >
+            <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
+          </View>
         </View>
-      </PointAnnotation>
+      </Marker>
     )
   }
 
   return (
-    <PointAnnotation
-      key={`${id}-${resolvedColor}-${neutral.surface}`}
-      id={id}
-      coordinate={coordinate}
-      onSelected={onSelected}
-    >
-      {/* collapsable={false}: see icon branch above (rnmapbox #3682). */}
-      <View
-        collapsable={false}
-        style={[styles.pin, { backgroundColor: neutral.surface, borderColor: resolvedColor }]}
-      >
+    <Marker id={id} lngLat={coordinate} onPress={onSelected}>
+      <View style={[styles.pin, { backgroundColor: neutral.surface, borderColor: resolvedColor }]}>
         <View style={[styles.pinCore, { backgroundColor: resolvedColor }]} />
       </View>
-    </PointAnnotation>
+    </Marker>
   )
-}
-
-function getIconAnnotationKey(
-  id: string,
-  selected: boolean,
-  color: string,
-  iconColor: string | undefined,
-  surfaceColor: string,
-) {
-  return `${id}-${selected ? 'selected' : 'default'}-${color}-${iconColor ?? color}-${surfaceColor}`
 }
 
 function iconPinStyle(
@@ -209,7 +162,6 @@ const styles = StyleSheet.create({
     opacity: 1,
     zIndex: 2,
   },
-  iconPinExpanded: {},
   selectedMapPoint: {
     width: 42,
     height: 42,

@@ -1,9 +1,7 @@
-import { FillLayer, LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
-import { processColor } from 'react-native'
+import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native'
 
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
-import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { GpsPuck } from '@/modules/map/components/GpsPuck'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
@@ -15,7 +13,7 @@ export function LiveMapLayers({
   accuracyShape,
   puckBearing,
   mapPose,
-  riders,
+  fillBeforeId,
   highContrastRoutes,
 }: {
   liveTrailShape: MainMapLayersProps['liveTrailShape']
@@ -23,7 +21,7 @@ export function LiveMapLayers({
   accuracyShape: MainMapLayersProps['accuracyShape']
   puckBearing: MainMapLayersProps['puckBearing']
   mapPose: MainMapLayersProps['mapPose']
-  riders: MainMapLayersProps['riders']
+  fillBeforeId: MainMapLayersProps['fillBeforeId']
   highContrastRoutes: boolean
 }) {
   const riderColor = useSelectedBoardRailColor()
@@ -42,26 +40,26 @@ export function LiveMapLayers({
   return (
     <>
       {liveTrailShape && (
-        <ShapeSource id="center-live-trail-source" shape={liveTrailShape} lineMetrics>
-          <LineLayer
+        <GeoJSONSource id="center-live-trail-source" data={liveTrailShape} lineMetrics>
+          <Layer
+            type="line"
             id="center-live-trail-casing"
-            style={{
-              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
-              lineWidth: highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
-              lineCap: 'round',
-              lineJoin: 'round',
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{
+              'line-color': theme.alpha(neutral.surfaceDeep, 0.85),
+              'line-width': highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
             }}
           />
-          <LineLayer
+          <Layer
+            type="line"
             id="center-live-trail-line"
-            style={{
-              lineColor: trailColor,
-              lineWidth: MAP_DEFAULTS.trailWidth,
-              lineCap: 'round',
-              lineJoin: 'round',
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{
+              'line-color': trailColor,
+              'line-width': MAP_DEFAULTS.trailWidth,
               // @parity /watch/wearos/src/main/java/app/vescape/wear/RiderTrail.kt
               // @parity /watch/watchos/RiderTrail.swift
-              lineGradient: [
+              'line-gradient': [
                 'interpolate',
                 ['linear'],
                 ['line-progress'],
@@ -72,31 +70,26 @@ export function LiveMapLayers({
               ],
             }}
           />
-        </ShapeSource>
+        </GeoJSONSource>
       )}
       {accuracyFix && (
         <>
           {accuracyShape && (
-            <ShapeSource id="center-gps-accuracy-source" shape={accuracyShape}>
-              <FillLayer
+            <GeoJSONSource id="center-gps-accuracy-source" data={accuracyShape}>
+              <Layer
+                type="fill"
                 id="center-gps-accuracy-fill"
-                style={{ fillColor: processColor(accuracyFillColor) as never }}
+                beforeId={fillBeforeId}
+                paint={{ 'fill-color': accuracyFillColor }}
               />
-            </ShapeSource>
+            </GeoJSONSource>
           )}
-          <MarkerView coordinate={[accuracyFix.longitude, accuracyFix.latitude]} allowOverlap>
+          <Marker lngLat={[accuracyFix.longitude, accuracyFix.latitude]}>
             <GpsPuck color={gpsPointColor} bearing={puckBearing} mapPose={mapPose} />
-          </MarkerView>
+          </Marker>
         </>
       )}
-      {riders.map((rider) =>
-        rider.trail && rider.trail.length >= 2 ? (
-          <RiderTrail key={rider.id} rider={rider} highContrastRoutes={highContrastRoutes} />
-        ) : null,
-      )}
-      {riders.map((rider) =>
-        rider.presence ? <RiderPresencePin key={rider.id} rider={rider} /> : null,
-      )}
+      {/* TODO(maplibre phase 2): RiderTrail, RiderPresencePin */}
     </>
   )
 }

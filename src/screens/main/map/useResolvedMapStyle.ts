@@ -123,6 +123,8 @@ export function useResolvedMapStyle({
       mapDetailsVisible,
       mapStyle,
       styleSignature,
+      // One Dark and the satellite variant both start their labels with water names.
+      fillBeforeId: styleKey === 'onedark' || isSatellite ? 'water-label' : undefined,
     }),
     [isSatellite, mapDetailsVisible, mapStyle, styleKey, styleSignature],
   )

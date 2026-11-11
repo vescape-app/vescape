@@ -10,7 +10,7 @@ import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from '
 import { theme } from '@/constants/theme'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { MainViewState } from '@/screens/main/mainViewState'
-import type { MainMapLayers } from '@/screens/main/map/MainMapLayers'
+import { MainMapLayers } from '@/screens/main/map/MainMapLayers'
 import { MainMapOverlays } from '@/screens/main/map/MainMapOverlays'
 import type { MainMapHistoryProps, MainMapPointsProps } from '@/screens/main/map/MainMap'
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
@@ -155,7 +155,43 @@ export function MainMapScene({
           // Native styles own their sources and layers. Mount a fresh React layer tree only after
           // the replacement document is ready; never update nodes the previous style removed.
           <Fragment key={mapStyle.styleSignature}>
-            {/* TODO(#642 step 3): MainMapLayers */}
+            <MainMapLayers
+              historyActive={historyActive}
+              expandSelectedMapPoints={mode === 'map'}
+              isSatellite={mapStyle.isSatellite}
+              fillBeforeId={mapStyle.fillBeforeId}
+              weatherActive={weatherActive}
+              legalLimitsActive={legalLimitsActive}
+              liveTrailShape={liveTrailShape}
+              rideRouteShape={rideRouteShape}
+              accuracyFix={accuracyFix}
+              accuracyShape={accuracyShape}
+              puckBearing={puckBearing}
+              mapPose={mapPose}
+              riders={riders}
+              rideRoute={rideRoute}
+              rideTelemetrySamples={history.telemetrySamples}
+              activeHistoryMapMetric={history.activeMapMetric}
+              rideMarkers={history.markers}
+              rideGpsSamples={history.gpsSamples}
+              mediaAssets={history.mediaAssets}
+              favoriteRanges={history.favoriteRanges}
+              mapZoom={cameraZoom}
+              historyMetricGradientsEnabled={historyMetricGradientsEnabled}
+              historyMetricHotRanges={historyMetricHotRanges}
+              directionPoint={directionPoint}
+              activeNavigationTarget={activeNavigationTarget}
+              selectedNavigationTarget={selectedNavigationTarget}
+              mapPoints={mapPointProps.points}
+              selectedMapPointId={mapPointProps.selectedId}
+              hiddenMapPointCategories={mapPointProps.hiddenCategories}
+              onToggleMapPointSelection={mapPointProps.onToggleSelection}
+              onSuppressNextMapPress={onSuppressNextMapPress}
+              onSelectMarker={onSelectMarker}
+              onOpenMedia={history.onOpenMedia}
+              onSelectLegalCountry={onSelectLegalCountry}
+              onFocusDirectionPoint={onFocusDirectionPoint}
+            />
           </Fragment>
         )}
       </MapLibreMap>
