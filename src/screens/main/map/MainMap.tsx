@@ -444,6 +444,17 @@ export const MainMap = memo(
       onStyleLoaded: handleMapLoaded,
     })
 
+    // Mode and outdoor-light changes restyle the loaded base map in place, never reload it. Also
+    // re-run once a document is ready: it was built with the values of its own moment.
+    const { layerUpdates } = mapStyle
+    useEffect(() => {
+      if (!styleReady) return
+      const map = mapViewRef.current
+      for (const { layerId, paint, layout } of layerUpdates) {
+        void map?.setStyleLayerProperties(layerId, { paint, layout })
+      }
+    }, [layerUpdates, mapViewRef, styleReady])
+
     const { handleMapPress, handleLongPress, suppressNextMapPress } = useMapPressHandlers({
       mapViewRef,
       enabled: mode === 'map' && !historyActive,

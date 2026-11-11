@@ -197,8 +197,82 @@ index d2e3675f75e87041d0e58659a983dc552f8dec53..6cab17ea2e2324076c04e32c99a37f8a
 +        }
 +    }
  }
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/layer/MLRNLayer.kt b/android/src/main/java/org/maplibre/reactnative/components/layer/MLRNLayer.kt
+index 0c6baf8d4930cd29aac76f61d04038cf937f75d2..94795c976153a4f37069df9ef99e0f12afe7567a 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/layer/MLRNLayer.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/layer/MLRNLayer.kt
+@@ -213,19 +213,8 @@ class MLRNLayer(
+     private fun addStyles() {
+         val reactStyle = mReactStyle ?: return
+         val map = mMap ?: return
+-        val style = MLRNStyle(context, reactStyle, map)
+-        when (mLayer) {
+-            is BackgroundLayer -> MLRNStyleFactory.setBackgroundLayerStyle(mLayer as BackgroundLayer, style)
+-            is CircleLayer -> MLRNStyleFactory.setCircleLayerStyle(mLayer as CircleLayer, style)
+-            is ColorReliefLayer -> MLRNStyleFactory.setColorReliefLayerStyle(mLayer as ColorReliefLayer, style)
+-            is FillLayer -> MLRNStyleFactory.setFillLayerStyle(mLayer as FillLayer, style)
+-            is FillExtrusionLayer -> MLRNStyleFactory.setFillExtrusionLayerStyle(mLayer as FillExtrusionLayer, style)
+-            is HeatmapLayer -> MLRNStyleFactory.setHeatmapLayerStyle(mLayer as HeatmapLayer, style)
+-            is HillshadeLayer -> MLRNStyleFactory.setHillshadeLayerStyle(mLayer as HillshadeLayer, style)
+-            is LineLayer -> MLRNStyleFactory.setLineLayerStyle(mLayer as LineLayer, style)
+-            is RasterLayer -> MLRNStyleFactory.setRasterLayerStyle(mLayer as RasterLayer, style)
+-            is SymbolLayer -> MLRNStyleFactory.setSymbolLayerStyle(mLayer as SymbolLayer, style)
+-        }
++        val layer = mLayer ?: return
++        MLRNStyle(context, reactStyle, map).applyTo(layer)
+     }
+ 
+     private fun updateFilter(expression: Expression?) {
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyle.kt b/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyle.kt
+index 880cb7984677de4ae7092812b2cbd52676e52e0f..cd7220feb797735e58c1d342b925b7f266a485ba 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyle.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyle.kt
+@@ -3,6 +3,17 @@ package org.maplibre.reactnative.components.layer.style
+ import android.content.Context
+ import com.facebook.react.bridge.ReadableMap
+ import org.maplibre.android.maps.MapLibreMap
++import org.maplibre.android.style.layers.BackgroundLayer
++import org.maplibre.android.style.layers.CircleLayer
++import org.maplibre.android.style.layers.ColorReliefLayer
++import org.maplibre.android.style.layers.FillExtrusionLayer
++import org.maplibre.android.style.layers.FillLayer
++import org.maplibre.android.style.layers.HeatmapLayer
++import org.maplibre.android.style.layers.HillshadeLayer
++import org.maplibre.android.style.layers.Layer
++import org.maplibre.android.style.layers.LineLayer
++import org.maplibre.android.style.layers.RasterLayer
++import org.maplibre.android.style.layers.SymbolLayer
+ import org.maplibre.reactnative.utils.DownloadMapImageTask
+ import org.maplibre.reactnative.utils.DownloadMapImageTask.OnAllImagesLoaded
+ import org.maplibre.reactnative.utils.ImageEntry
+@@ -16,6 +27,25 @@ class MLRNStyle(
+     private val mReactStyle: ReadableMap = reactStyle
+     private val mMap: MapLibreMap = map
+ 
++    /**
++     * #642: apply this style to a layer of any type. Shared by `MLRNLayer` (its own layer) and
++     * `MLRNMapView.setStyleLayerProperties` (a layer the style document owns).
++     */
++    fun applyTo(layer: Layer) {
++        when (layer) {
++            is BackgroundLayer -> MLRNStyleFactory.setBackgroundLayerStyle(layer, this)
++            is CircleLayer -> MLRNStyleFactory.setCircleLayerStyle(layer, this)
++            is ColorReliefLayer -> MLRNStyleFactory.setColorReliefLayerStyle(layer, this)
++            is FillLayer -> MLRNStyleFactory.setFillLayerStyle(layer, this)
++            is FillExtrusionLayer -> MLRNStyleFactory.setFillExtrusionLayerStyle(layer, this)
++            is HeatmapLayer -> MLRNStyleFactory.setHeatmapLayerStyle(layer, this)
++            is HillshadeLayer -> MLRNStyleFactory.setHillshadeLayerStyle(layer, this)
++            is LineLayer -> MLRNStyleFactory.setLineLayerStyle(layer, this)
++            is RasterLayer -> MLRNStyleFactory.setRasterLayerStyle(layer, this)
++            is SymbolLayer -> MLRNStyleFactory.setSymbolLayerStyle(layer, this)
++        }
++    }
++
+     val allStyleKeys: MutableList<String>
+         get() {
+             val it = mReactStyle.keySetIterator()
 diff --git a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
-index b088909a48c4265219e4e95c529f6c0a63ae7e11..2b11af2bdd11dc1dfdb3fd6edf3bef56a34e3bf3 100644
+index b088909a48c4265219e4e95c529f6c0a63ae7e11..0b6f65611b38f58e3e9d7b78717e2c3baa39d6eb 100644
 --- a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
 +++ b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
 @@ -520,18 +520,18 @@ open class MLRNMapView(
@@ -223,7 +297,41 @@ index b088909a48c4265219e4e95c529f6c0a63ae7e11..2b11af2bdd11dc1dfdb3fd6edf3bef56
                  }
  
                  override fun onMove(detector: MoveGestureDetector) {
-@@ -1434,7 +1434,15 @@ open class MLRNMapView(
+@@ -814,6 +814,10 @@ open class MLRNMapView(
+         get() = context.resources.displayMetrics.density
+ 
+     fun setReactMapStyle(value: String?) {
++        // #642: Fabric re-delivers the unchanged style with any other prop change (logo,
++        // attribution...). Reloading it then threw away every in-place layer change. iOS compares
++        // old and new props before calling its setter; this is the same guard.
++        if (value == mapStyle) return
+         if (value != null) {
+             mapStyle = value
+ 
+@@ -1189,6 +1193,22 @@ open class MLRNMapView(
+         }
+     }
+ 
++    /**
++     * #642: restyle a layer of the loaded style document in place, the same paint and layout
++     * conversion a `Layer` component uses. A missing layer is ignored: style layers come and go
++     * with the document.
++     */
++    fun setStyleLayerProperties(
++        layerId: String,
++        reactStyle: ReadableMap,
++    ) {
++        val map = mapLibreMap ?: return
++        map.getStyle { style ->
++            val layer = style.getLayer(layerId) ?: return@getStyle
++            MLRNStyle(context, reactStyle, map).applyTo(layer)
++        }
++    }
++
+     fun init() {
+         // Required for rendering properly in Android Oreo
+         viewTreeObserver.dispatchOnGlobalLayout()
+@@ -1434,7 +1454,15 @@ open class MLRNMapView(
          reactContext.addLifecycleEventListener(lifeCycleListener)
      }
  
@@ -240,7 +348,7 @@ index b088909a48c4265219e4e95c529f6c0a63ae7e11..2b11af2bdd11dc1dfdb3fd6edf3bef56
          val position = mapLibreMap!!.cameraPosition
          val viewState: WritableMap = Arguments.createMap()
  
-@@ -1454,7 +1462,9 @@ open class MLRNMapView(
+@@ -1454,7 +1482,9 @@ open class MLRNMapView(
          viewState.putDouble("bearing", position.bearing)
          viewState.putDouble("pitch", position.tilt)
  
@@ -251,7 +359,7 @@ index b088909a48c4265219e4e95c529f6c0a63ae7e11..2b11af2bdd11dc1dfdb3fd6edf3bef56
              val visibleRegion = mapLibreMap!!.projection.visibleRegion
              viewState.putArray(
                  "bounds",
-@@ -1474,7 +1484,7 @@ open class MLRNMapView(
+@@ -1474,7 +1504,7 @@ open class MLRNMapView(
              "animated",
              isAnimated ?: cameraChangeTracker.isAnimated,
          )
@@ -260,7 +368,7 @@ index b088909a48c4265219e4e95c529f6c0a63ae7e11..2b11af2bdd11dc1dfdb3fd6edf3bef56
  
          return viewState
      }
-@@ -1556,6 +1566,17 @@ open class MLRNMapView(
+@@ -1556,6 +1586,17 @@ open class MLRNMapView(
          return null
      }
  
@@ -278,7 +386,7 @@ index b088909a48c4265219e4e95c529f6c0a63ae7e11..2b11af2bdd11dc1dfdb3fd6edf3bef56
      fun sendRegionDidChangeEvent() {
          handleMapChangedEvent("onRegionDidChange", true)
          cameraChangeTracker.setReason(CameraChangeTracker.EMPTY)
-@@ -1564,10 +1585,12 @@ open class MLRNMapView(
+@@ -1564,10 +1605,12 @@ open class MLRNMapView(
      private fun handleMapChangedEvent(
          eventName: String,
          withViewState: Boolean? = null,
@@ -293,10 +401,14 @@ index b088909a48c4265219e4e95c529f6c0a63ae7e11..2b11af2bdd11dc1dfdb3fd6edf3bef56
                  MapChangeEvent(surfaceId, id, eventName)
              }
 diff --git a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt
-index 961d6495cdfdc605e342a6a2c4977b54eb1a1876..8f058048be612eaa8988e2ad723a8e677fb0beca 100644
+index 961d6495cdfdc605e342a6a2c4977b54eb1a1876..2323a0ed4311fdddb6985d8c5c5dd7e37bc47bfd 100644
 --- a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt
 +++ b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt
-@@ -6,18 +6,18 @@ import com.facebook.react.bridge.ReactApplicationContext
+@@ -3,21 +3,22 @@ package org.maplibre.reactnative.components.mapview
+ import android.graphics.RectF
+ import com.facebook.react.bridge.Promise
+ import com.facebook.react.bridge.ReactApplicationContext
++import com.facebook.react.bridge.ReadableMap
  import com.facebook.react.bridge.ReadableArray
  import com.facebook.react.module.annotations.ReactModule
  import org.maplibre.android.MapLibre
@@ -318,6 +430,26 @@ index 961d6495cdfdc605e342a6a2c4977b54eb1a1876..8f058048be612eaa8988e2ad723a8e67
      companion object {
          const val NAME = "MLRNMapViewModule"
      }
+@@ -178,6 +179,19 @@ class MLRNMapViewModule(
+         }
+     }
+ 
++    // @parity /node_modules/@maplibre/maplibre-react-native/ios/components/map-view/MLRNMapViewModule.mm `setStyleLayerProperties`
++    override fun setStyleLayerProperties(
++        reactTag: Double,
++        layerId: String,
++        reactStyle: ReadableMap,
++        promise: Promise,
++    ) {
++        withViewportOnUIThread(reactTag, promise) {
++            it.setStyleLayerProperties(layerId, reactStyle)
++            promise.resolve(null)
++        }
++    }
++
+     override fun createStaticMapImage(
+         reactTag: Double,
+         output: String,
 diff --git a/ios/components/camera/MLRNCamera.h b/ios/components/camera/MLRNCamera.h
 index 28d5e6066dac808636edcd9c350474708fcef74f..a646641449d151900bd80a3e856cb4f93ecd60dc 100644
 --- a/ios/components/camera/MLRNCamera.h
@@ -500,8 +632,116 @@ index b60e6c65243e1a99a2cfe503212f2fb9fec9b218..192e58e0fbea69ea2e606b82d844df50
 +}
 +
  @end
+diff --git a/ios/components/layer/MLRNLayer.h b/ios/components/layer/MLRNLayer.h
+index ce2ed5a4e8e6f825948ef43798050fceaae89341..36fad4aebc7d7f53526df76ac23e9114bb86d383 100644
+--- a/ios/components/layer/MLRNLayer.h
++++ b/ios/components/layer/MLRNLayer.h
+@@ -42,6 +42,12 @@ typedef NS_ENUM(NSInteger, MLRNLayerType) {
+ - (void)removeFromMap:(nonnull MLNStyle *)style;
+ - (nullable MLNStyleLayer *)makeLayer:(nonnull MLNStyle *)style;
+ - (void)addStyles;
++/// #642: apply a converted React style to a layer of any type. Shared by `addStyles` and
++/// `-[MLRNMapView setStyleLayerProperties:reactStyle:]`.
+++ (void)applyReactStyle:(nonnull NSDictionary *)reactStyle
++                toLayer:(nonnull MLNStyleLayer *)styleLayer
++                  style:(nonnull MLNStyle *)style
++                isValid:(nonnull BOOL (^)(void))isValid;
+ - (void)insertAbove:(nonnull NSString *)layer;
+ - (void)insertBelow:(nonnull NSString *)layer;
+ - (void)insertAtIndex:(NSUInteger)index;
+diff --git a/ios/components/layer/MLRNLayer.m b/ios/components/layer/MLRNLayer.m
+index 052406f27761fe2f21421ca462cdbc15b4ce712f..9a3f5d907b9c26a334a519551dcc8b97cfc291f5 100644
+--- a/ios/components/layer/MLRNLayer.m
++++ b/ios/components/layer/MLRNLayer.m
+@@ -221,48 +221,50 @@
+ // MARK: - Style application (type-based dispatch)
+ 
+ - (void)addStyles {
+-  MLRNStyle *style = [[MLRNStyle alloc] initWithMLNStyle:self.style];
+-
+-  BOOL (^isValid)(void) = ^{
+-    return [self isAddedToMap];
+-  };
++  if (_styleLayer == nil || _reactStyle == nil || self.style == nil) return;
++  [MLRNLayer applyReactStyle:_reactStyle
++                     toLayer:_styleLayer
++                       style:self.style
++                     isValid:^{
++                       return [self isAddedToMap];
++                     }];
++}
+ 
+-  if ([_styleLayer isKindOfClass:[MLNBackgroundStyleLayer class]]) {
+-    [style backgroundLayer:(MLNBackgroundStyleLayer *)_styleLayer
+-            withReactStyle:_reactStyle
+++ (void)applyReactStyle:(NSDictionary *)reactStyle
++                toLayer:(MLNStyleLayer *)styleLayer
++                  style:(MLNStyle *)mlnStyle
++                isValid:(BOOL (^)(void))isValid {
++  MLRNStyle *style = [[MLRNStyle alloc] initWithMLNStyle:mlnStyle];
++  if ([styleLayer isKindOfClass:[MLNBackgroundStyleLayer class]]) {
++    [style backgroundLayer:(MLNBackgroundStyleLayer *)styleLayer
++            withReactStyle:reactStyle
+                    isValid:isValid];
+-  } else if ([_styleLayer isKindOfClass:[MLNCircleStyleLayer class]]) {
+-    [style circleLayer:(MLNCircleStyleLayer *)_styleLayer
+-        withReactStyle:_reactStyle
+-               isValid:isValid];
+-  } else if ([_styleLayer isKindOfClass:[MLNColorReliefStyleLayer class]]) {
+-    [style colorReliefLayer:(MLNColorReliefStyleLayer *)_styleLayer
+-             withReactStyle:_reactStyle
++  } else if ([styleLayer isKindOfClass:[MLNCircleStyleLayer class]]) {
++    [style circleLayer:(MLNCircleStyleLayer *)styleLayer withReactStyle:reactStyle isValid:isValid];
++  } else if ([styleLayer isKindOfClass:[MLNColorReliefStyleLayer class]]) {
++    [style colorReliefLayer:(MLNColorReliefStyleLayer *)styleLayer
++             withReactStyle:reactStyle
+                     isValid:isValid];
+-  } else if ([_styleLayer isKindOfClass:[MLNFillStyleLayer class]]) {
+-    [style fillLayer:(MLNFillStyleLayer *)_styleLayer withReactStyle:_reactStyle isValid:isValid];
+-  } else if ([_styleLayer isKindOfClass:[MLNFillExtrusionStyleLayer class]]) {
+-    [style fillExtrusionLayer:(MLNFillExtrusionStyleLayer *)_styleLayer
+-               withReactStyle:_reactStyle
++  } else if ([styleLayer isKindOfClass:[MLNFillStyleLayer class]]) {
++    [style fillLayer:(MLNFillStyleLayer *)styleLayer withReactStyle:reactStyle isValid:isValid];
++  } else if ([styleLayer isKindOfClass:[MLNFillExtrusionStyleLayer class]]) {
++    [style fillExtrusionLayer:(MLNFillExtrusionStyleLayer *)styleLayer
++               withReactStyle:reactStyle
+                       isValid:isValid];
+-  } else if ([_styleLayer isKindOfClass:[MLNHeatmapStyleLayer class]]) {
+-    [style heatmapLayer:(MLNHeatmapStyleLayer *)_styleLayer
+-         withReactStyle:_reactStyle
++  } else if ([styleLayer isKindOfClass:[MLNHeatmapStyleLayer class]]) {
++    [style heatmapLayer:(MLNHeatmapStyleLayer *)styleLayer
++         withReactStyle:reactStyle
+                 isValid:isValid];
+-  } else if ([_styleLayer isKindOfClass:[MLNHillshadeStyleLayer class]]) {
+-    [style hillshadeLayer:(MLNHillshadeStyleLayer *)_styleLayer
+-           withReactStyle:_reactStyle
++  } else if ([styleLayer isKindOfClass:[MLNHillshadeStyleLayer class]]) {
++    [style hillshadeLayer:(MLNHillshadeStyleLayer *)styleLayer
++           withReactStyle:reactStyle
+                   isValid:isValid];
+-  } else if ([_styleLayer isKindOfClass:[MLNLineStyleLayer class]]) {
+-    [style lineLayer:(MLNLineStyleLayer *)_styleLayer withReactStyle:_reactStyle isValid:isValid];
+-  } else if ([_styleLayer isKindOfClass:[MLNRasterStyleLayer class]]) {
+-    [style rasterLayer:(MLNRasterStyleLayer *)_styleLayer
+-        withReactStyle:_reactStyle
+-               isValid:isValid];
+-  } else if ([_styleLayer isKindOfClass:[MLNSymbolStyleLayer class]]) {
+-    [style symbolLayer:(MLNSymbolStyleLayer *)_styleLayer
+-        withReactStyle:_reactStyle
+-               isValid:isValid];
++  } else if ([styleLayer isKindOfClass:[MLNLineStyleLayer class]]) {
++    [style lineLayer:(MLNLineStyleLayer *)styleLayer withReactStyle:reactStyle isValid:isValid];
++  } else if ([styleLayer isKindOfClass:[MLNRasterStyleLayer class]]) {
++    [style rasterLayer:(MLNRasterStyleLayer *)styleLayer withReactStyle:reactStyle isValid:isValid];
++  } else if ([styleLayer isKindOfClass:[MLNSymbolStyleLayer class]]) {
++    [style symbolLayer:(MLNSymbolStyleLayer *)styleLayer withReactStyle:reactStyle isValid:isValid];
+   }
+ }
+ 
 diff --git a/ios/components/map-view/MLRNMapView.h b/ios/components/map-view/MLRNMapView.h
-index f24e51034fa9ec7f8eeff2595e8bbe193b594e9c..baeeb52cb3dc0441a2745f921b03b4d2fda24f9c 100644
+index f24e51034fa9ec7f8eeff2595e8bbe193b594e9c..9b91f3a25421b407e4c5ce34d0ddb8e5ee816f5b 100644
 --- a/ios/components/map-view/MLRNMapView.h
 +++ b/ios/components/map-view/MLRNMapView.h
 @@ -66,6 +66,9 @@ typedef void (^StyleLoadedBlock)(MLNStyle *__nonnull style);
@@ -514,11 +754,51 @@ index f24e51034fa9ec7f8eeff2595e8bbe193b594e9c..baeeb52cb3dc0441a2745f921b03b4d2
  @property (nonatomic, assign) BOOL useNativeUserLocationAnnotationView;
  @property (nonatomic, assign) BOOL annotationSelected;
  
+@@ -110,6 +113,10 @@ typedef void (^StyleLoadedBlock)(MLNStyle *__nonnull style);
+ - (void)waitForLayerWithId:(nonnull NSString *)layerId
+                       then:(void (^_Nonnull)(MLNStyleLayer *_Nonnull layer))foundLayer;
+ 
++/// #642: restyle a layer of the loaded style document in place; a missing layer is ignored.
++- (void)setStyleLayerProperties:(nonnull NSString *)layerId
++                     reactStyle:(nonnull NSDictionary *)reactStyle;
++
+ - (void)setSourceVisibility:(BOOL)visibility
+                    sourceId:(nonnull NSString *)sourceId
+               sourceLayerId:(nullable NSString *)sourceLayerId;
 diff --git a/ios/components/map-view/MLRNMapView.m b/ios/components/map-view/MLRNMapView.m
-index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..35e9aef37fb7e042e53cc40aabe418844db05e61 100644
+index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..c701a0c7ca38cf3ec29249be67f5e8010fb767f7 100644
 --- a/ios/components/map-view/MLRNMapView.m
 +++ b/ios/components/map-view/MLRNMapView.m
-@@ -747,21 +747,36 @@ static double const M2PI = M_PI * 2;
+@@ -4,6 +4,7 @@
+ #import "MLRNGeoJSONSource.h"
+ #import "MLRNImageUtils.h"
+ #import "MLRNImages.h"
++#import "MLRNLayer.h"
+ #import "MLRNLogging.h"
+ #import "MLRNMapTouchEvent.h"
+ #import "MLRNNativeUserLocation.h"
+@@ -205,6 +206,20 @@ static double const M2PI = M_PI * 2;
+   }
+ }
+ 
++// @parity /node_modules/@maplibre/maplibre-react-native/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt `setStyleLayerProperties`
++- (void)setStyleLayerProperties:(NSString *)layerId reactStyle:(NSDictionary *)reactStyle {
++  [self getStyle:^(MLNStyle *style) {
++    MLNStyleLayer *layer = [style layerWithIdentifier:layerId];
++    if (layer == nil) return;
++    [MLRNLayer applyReactStyle:reactStyle
++                       toLayer:layer
++                         style:style
++                       isValid:^{
++                         return YES;
++                       }];
++  }];
++}
++
+ - (void)setSourceVisibility:(BOOL)visible
+                    sourceId:(NSString *)sourceId
+               sourceLayerId:(NSString *)sourceLayerId {
+@@ -747,21 +762,36 @@ static double const M2PI = M_PI * 2;
  - (void)mapView:(MLNMapView *)mapView
      regionWillChangeWithReason:(MLNCameraChangeReason)reason
                        animated:(BOOL)animated {
@@ -533,9 +813,9 @@ index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..35e9aef37fb7e042e53cc40aabe41884
  - (void)mapViewRegionIsChanging:(MLNMapView *)mapView {
 -  NSDictionary *viewState = [self makeViewState:mapView animated:false];
 +  NSDictionary *viewState = [self makeViewState:mapView animated:false includeBounds:NO];
- 
-   self.reactOnRegionIsChanging(viewState);
- }
++
++  self.reactOnRegionIsChanging(viewState);
++}
  
 +// Spike #655: a direct write raises will/did-change synchronously (an immediate core camera
 +// change). Both are skipped while directCameraWrite is set; this emits the one lean per-write
@@ -547,9 +827,9 @@ index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..35e9aef37fb7e042e53cc40aabe41884
 +  NSMutableDictionary *viewState =
 +      [[self makeViewState:self animated:NO includeBounds:NO] mutableCopy];
 +  viewState[@"userInteraction"] = @NO;
-+  self.reactOnRegionIsChanging(viewState);
-+}
-+
+   self.reactOnRegionIsChanging(viewState);
+ }
+ 
  - (void)mapView:(MLNMapView *)mapView
      regionDidChangeWithReason:(MLNCameraChangeReason)reason
                       animated:(BOOL)animated {
@@ -557,7 +837,7 @@ index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..35e9aef37fb7e042e53cc40aabe41884
    if (((reason & MLNCameraChangeReasonTransitionCancelled) ==
         MLNCameraChangeReasonTransitionCancelled) &&
        ((reason & MLNCameraChangeReasonGesturePan) != MLNCameraChangeReasonGesturePan))
-@@ -769,7 +784,7 @@ static double const M2PI = M_PI * 2;
+@@ -769,7 +799,7 @@ static double const M2PI = M_PI * 2;
  
    ((MLRNMapView *)mapView).isUserInteraction = (BOOL)(reason & ~MLNCameraChangeReasonProgrammatic);
  
@@ -566,7 +846,7 @@ index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..35e9aef37fb7e042e53cc40aabe41884
  
    self.reactOnRegionDidChange(viewState);
  }
-@@ -881,8 +896,14 @@ static double const M2PI = M_PI * 2;
+@@ -881,8 +911,14 @@ static double const M2PI = M_PI * 2;
    }
  }
  
@@ -582,7 +862,7 @@ index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..35e9aef37fb7e042e53cc40aabe41884
  
    NSDictionary *viewState = @{
      @"center" : @[
-@@ -890,9 +911,9 @@ static double const M2PI = M_PI * 2;
+@@ -890,9 +926,9 @@ static double const M2PI = M_PI * 2;
        [NSNumber numberWithDouble:mapView.centerCoordinate.latitude]
      ],
      @"zoom" : [NSNumber numberWithDouble:mapView.zoomLevel],
@@ -626,7 +906,7 @@ index 9365b822dd6b417d4582c33b8513ef2799624bc5..410eb251beeb9e91794e2823806b1a71
 +@interface MLRNMapViewModule : NSObject <NativeMLRNMapViewModuleSpec>
  @end
 diff --git a/ios/components/map-view/MLRNMapViewModule.mm b/ios/components/map-view/MLRNMapViewModule.mm
-index ea96279dcfaaed2ab3a69e4f11883613472778d7..848b780f0c578cb0765976e382585135ec1b5023 100644
+index ea96279dcfaaed2ab3a69e4f11883613472778d7..2c8528862ab185d8649dc530186d2c053a0fe060 100644
 --- a/ios/components/map-view/MLRNMapViewModule.mm
 +++ b/ios/components/map-view/MLRNMapViewModule.mm
 @@ -17,7 +17,7 @@
@@ -638,6 +918,26 @@ index ea96279dcfaaed2ab3a69e4f11883613472778d7..848b780f0c578cb0765976e382585135
  }
  
  - (void)withMapView:(NSInteger)reactTag
+@@ -245,4 +245,19 @@
+          methodName:@"setSourceVisibility"];
+ }
+ 
++// @parity /node_modules/@maplibre/maplibre-react-native/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapViewModule.kt `setStyleLayerProperties`
++- (void)setStyleLayerProperties:(NSInteger)reactTag
++                        layerId:(nonnull NSString *)layerId
++                     reactStyle:(nonnull NSDictionary *)reactStyle
++                        resolve:(RCTPromiseResolveBlock)resolve
++                         reject:(RCTPromiseRejectBlock)reject {
++  [self withMapView:reactTag
++              block:^(MLRNMapView *view) {
++                [view setStyleLayerProperties:layerId reactStyle:reactStyle];
++                resolve(nil);
++              }
++             reject:reject
++         methodName:@"setStyleLayerProperties"];
++}
++
+ @end
 diff --git a/lib/commonjs/components/camera/Camera.js b/lib/commonjs/components/camera/Camera.js
 index f852dab7c642ab8b88ae7baaea60e890d075f50a..c3d1616000dd566b668ed88c60babce1d1bf94db 100644
 --- a/lib/commonjs/components/camera/Camera.js
@@ -670,7 +970,7 @@ index f852dab7c642ab8b88ae7baaea60e890d075f50a..c3d1616000dd566b668ed88c60babce1
        center,
        ...options
 diff --git a/lib/commonjs/components/map/Map.js b/lib/commonjs/components/map/Map.js
-index 67fcdb21a5121aec93cd16504f55599997e3c659..6cedbad0173a547872cfc00aa03b40c56445624d 100644
+index 67fcdb21a5121aec93cd16504f55599997e3c659..ec36ce8b09162d5916fca1e5cc8d2b60aef9c4a7 100644
 --- a/lib/commonjs/components/map/Map.js
 +++ b/lib/commonjs/components/map/Map.js
 @@ -8,7 +8,7 @@ var _react = require("react");
@@ -682,6 +982,17 @@ index 67fcdb21a5121aec93cd16504f55599997e3c659..6cedbad0173a547872cfc00aa03b40c5
  var _LogManager = require("../../modules/log/LogManager.js");
  var _StyleValue = require("../../utils/StyleValue.js");
  var _convertStyleSpec = require("../../utils/convertStyleSpec.js");
+@@ -75,6 +75,10 @@ const Map = exports.Map = /*#__PURE__*/(0, _react.memo)(({
+       }
+     },
+     createStaticMapImage: options => _NativeMapViewModule.default.createStaticMapImage((0, _findNodeHandle.findNodeHandle)(nativeRef.current), options.output),
++    setStyleLayerProperties: (layerId, {
++      paint,
++      layout
++    }) => _NativeMapViewModule.default.setStyleLayerProperties((0, _findNodeHandle.findNodeHandle)(nativeRef.current), layerId, (0, _StyleValue.transformStyle)((0, _convertStyleSpec.mergeStyleProps)(paint, layout, undefined)) ?? {}),
+     setSourceVisibility: (visible, source, sourceLayer) => _NativeMapViewModule.default.setSourceVisibility((0, _findNodeHandle.findNodeHandle)(nativeRef.current), visible, source, sourceLayer ?? null),
+     showAttribution: () => _NativeMapViewModule.default.showAttribution((0, _findNodeHandle.findNodeHandle)(nativeRef.current))
+   }));
 diff --git a/lib/commonjs/components/map/NativeMapViewModule.js b/lib/commonjs/components/map/NativeMLRNMapViewModule.js
 similarity index 84%
 rename from lib/commonjs/components/map/NativeMapViewModule.js
@@ -730,10 +1041,10 @@ index 8db05c46e7f67d6110e977534cd51afad63a2fbc..a451463adc25dbfcce22ffc641725363
        center,
        ...options
 diff --git a/lib/module/components/map/Map.js b/lib/module/components/map/Map.js
-index ee4ada4a24420b957e96ef881c626f5dea06f2ce..7df82ae5840336ec4b2f5408f6a8b3cf0f6e99bb 100644
+index ee4ada4a24420b957e96ef881c626f5dea06f2ce..de881f7862e13d4883f2902d810ca2a4aaccd1ee 100644
 --- a/lib/module/components/map/Map.js
 +++ b/lib/module/components/map/Map.js
-@@ -4,7 +4,7 @@ import { memo, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState }
+@@ -4,10 +4,10 @@ import { memo, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState }
  import { Platform, StyleSheet, View } from "react-native";
  import AndroidTextureMapViewNativeComponent from "./AndroidTextureMapViewNativeComponent";
  import MapViewNativeComponent from "./MapViewNativeComponent";
@@ -741,7 +1052,22 @@ index ee4ada4a24420b957e96ef881c626f5dea06f2ce..7df82ae5840336ec4b2f5408f6a8b3cf
 +import NativeMapViewModule from "./NativeMLRNMapViewModule.js";
  import { LogManager } from "../../modules/log/LogManager.js";
  import { transformStyle } from "../../utils/StyleValue.js";
- import { convertToInternalStyle } from "../../utils/convertStyleSpec.js";
+-import { convertToInternalStyle } from "../../utils/convertStyleSpec.js";
++import { convertToInternalStyle, mergeStyleProps } from "../../utils/convertStyleSpec.js";
+ import { findNodeHandle } from "../../utils/findNodeHandle.js";
+ import { getNativeFilter } from "../../utils/getNativeFilter.js";
+ import { jsx as _jsx } from "react/jsx-runtime";
+@@ -70,6 +70,10 @@ export const Map = /*#__PURE__*/memo(({
+       }
+     },
+     createStaticMapImage: options => NativeMapViewModule.createStaticMapImage(findNodeHandle(nativeRef.current), options.output),
++    setStyleLayerProperties: (layerId, {
++      paint,
++      layout
++    }) => NativeMapViewModule.setStyleLayerProperties(findNodeHandle(nativeRef.current), layerId, transformStyle(mergeStyleProps(paint, layout, undefined)) ?? {}),
+     setSourceVisibility: (visible, source, sourceLayer) => NativeMapViewModule.setSourceVisibility(findNodeHandle(nativeRef.current), visible, source, sourceLayer ?? null),
+     showAttribution: () => NativeMapViewModule.showAttribution(findNodeHandle(nativeRef.current))
+   }));
 diff --git a/lib/module/components/map/NativeMapViewModule.js b/lib/module/components/map/NativeMLRNMapViewModule.js
 similarity index 74%
 rename from lib/module/components/map/NativeMapViewModule.js
@@ -790,14 +1116,37 @@ index dc7fddf670bdf9f9b0ff8dab5c13e2264a57638e..2118cfc98f0e97b2fb152ff5d41fa71b
  }
  declare const _default: Spec;
  export default _default;
+diff --git a/lib/typescript/commonjs/components/map/Map.d.ts b/lib/typescript/commonjs/components/map/Map.d.ts
+index 25657578618e1ce75273fc672ece61f347da1cab..9048c8999eb4c5ff7768bdb5471ffddde1f1a42a 100644
+--- a/lib/typescript/commonjs/components/map/Map.d.ts
++++ b/lib/typescript/commonjs/components/map/Map.d.ts
+@@ -212,6 +212,11 @@ export interface MapRef {
+      * ```
+      */
+     setSourceVisibility(visible: boolean, source: string, sourceLayer?: string): Promise<void>;
++    /** #642: restyle a layer of the loaded style document in place. */
++    setStyleLayerProperties(layerId: string, properties: {
++        paint?: Record<string, unknown>;
++        layout?: Record<string, unknown>;
++    }): Promise<void>;
+     /**
+      * Show the attribution dialog
+      *
 diff --git a/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts b/lib/typescript/commonjs/components/map/NativeMLRNMapViewModule.d.ts
-similarity index 97%
+similarity index 93%
 rename from lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts
 rename to lib/typescript/commonjs/components/map/NativeMLRNMapViewModule.d.ts
-index d784f0f37da1a6d636aab366002f54db461cce1c..35c42639c5c00ff8b2e8be380397726b3b3c7f81 100644
+index d784f0f37da1a6d636aab366002f54db461cce1c..62ff1a4e66c288239507a81a03eabb5c3e86bb8b 100644
 --- a/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts
 +++ b/lib/typescript/commonjs/components/map/NativeMLRNMapViewModule.d.ts
-@@ -28,4 +28,3 @@ export interface Spec extends TurboModule {
+@@ -22,10 +22,10 @@ export interface Spec extends TurboModule {
+     unproject: (reactTag: CodegenTypes.Int32, pixelPoint: CodegenTypes.Double[]) => Promise<[longitude: CodegenTypes.Double, latitude: CodegenTypes.Double]>;
+     queryRenderedFeaturesWithPoint: (reactTag: CodegenTypes.Int32, pixelPoint: CodegenTypes.Double[], layers: string[], filter: string[]) => Promise<GeoJSON.Feature[]>;
+     queryRenderedFeaturesWithBounds: (reactTag: CodegenTypes.Int32, pixelPointBounds: CodegenTypes.Double[][] | null, layers: string[], filter: string[]) => Promise<GeoJSON.Feature[]>;
++    setStyleLayerProperties: (reactTag: CodegenTypes.Int32, layerId: string, reactStyle: CodegenTypes.UnsafeObject) => Promise<void>;
+     setSourceVisibility: (reactTag: CodegenTypes.Int32, visible: boolean, source: string, sourceLayer: string | null) => Promise<void>;
+     createStaticMapImage: (reactTag: CodegenTypes.Int32, output: "base64" | "file") => Promise<string>;
+     showAttribution: (reactTag: CodegenTypes.Int32) => Promise<void>;
  }
  declare const _default: Spec;
  export default _default;
@@ -838,14 +1187,37 @@ index dc7fddf670bdf9f9b0ff8dab5c13e2264a57638e..2118cfc98f0e97b2fb152ff5d41fa71b
  }
  declare const _default: Spec;
  export default _default;
+diff --git a/lib/typescript/module/components/map/Map.d.ts b/lib/typescript/module/components/map/Map.d.ts
+index 25657578618e1ce75273fc672ece61f347da1cab..9048c8999eb4c5ff7768bdb5471ffddde1f1a42a 100644
+--- a/lib/typescript/module/components/map/Map.d.ts
++++ b/lib/typescript/module/components/map/Map.d.ts
+@@ -212,6 +212,11 @@ export interface MapRef {
+      * ```
+      */
+     setSourceVisibility(visible: boolean, source: string, sourceLayer?: string): Promise<void>;
++    /** #642: restyle a layer of the loaded style document in place. */
++    setStyleLayerProperties(layerId: string, properties: {
++        paint?: Record<string, unknown>;
++        layout?: Record<string, unknown>;
++    }): Promise<void>;
+     /**
+      * Show the attribution dialog
+      *
 diff --git a/lib/typescript/module/components/map/NativeMapViewModule.d.ts b/lib/typescript/module/components/map/NativeMLRNMapViewModule.d.ts
-similarity index 97%
+similarity index 93%
 rename from lib/typescript/module/components/map/NativeMapViewModule.d.ts
 rename to lib/typescript/module/components/map/NativeMLRNMapViewModule.d.ts
-index d784f0f37da1a6d636aab366002f54db461cce1c..35c42639c5c00ff8b2e8be380397726b3b3c7f81 100644
+index d784f0f37da1a6d636aab366002f54db461cce1c..62ff1a4e66c288239507a81a03eabb5c3e86bb8b 100644
 --- a/lib/typescript/module/components/map/NativeMapViewModule.d.ts
 +++ b/lib/typescript/module/components/map/NativeMLRNMapViewModule.d.ts
-@@ -28,4 +28,3 @@ export interface Spec extends TurboModule {
+@@ -22,10 +22,10 @@ export interface Spec extends TurboModule {
+     unproject: (reactTag: CodegenTypes.Int32, pixelPoint: CodegenTypes.Double[]) => Promise<[longitude: CodegenTypes.Double, latitude: CodegenTypes.Double]>;
+     queryRenderedFeaturesWithPoint: (reactTag: CodegenTypes.Int32, pixelPoint: CodegenTypes.Double[], layers: string[], filter: string[]) => Promise<GeoJSON.Feature[]>;
+     queryRenderedFeaturesWithBounds: (reactTag: CodegenTypes.Int32, pixelPointBounds: CodegenTypes.Double[][] | null, layers: string[], filter: string[]) => Promise<GeoJSON.Feature[]>;
++    setStyleLayerProperties: (reactTag: CodegenTypes.Int32, layerId: string, reactStyle: CodegenTypes.UnsafeObject) => Promise<void>;
+     setSourceVisibility: (reactTag: CodegenTypes.Int32, visible: boolean, source: string, sourceLayer: string | null) => Promise<void>;
+     createStaticMapImage: (reactTag: CodegenTypes.Int32, output: "base64" | "file") => Promise<string>;
+     showAttribution: (reactTag: CodegenTypes.Int32) => Promise<void>;
  }
  declare const _default: Spec;
  export default _default;
@@ -937,7 +1309,7 @@ index 90e536e1d9a80d8bb672bd1954ceb14da2f12021..7ac1d2002a1afa9e4f2ae042a0888f0e
  
  export default TurboModuleRegistry.getEnforcing<Spec>("MLRNCameraModule");
 diff --git a/src/components/map/Map.tsx b/src/components/map/Map.tsx
-index b193cda77510b23b6a7b8cd50c2b66adfe2c92c9..accc5548fa3fe86a6c229c29d70479a9dc2bc93e 100644
+index b193cda77510b23b6a7b8cd50c2b66adfe2c92c9..0f894efcad8aada271f03c02ef08f6e02bcb4fea 100644
 --- a/src/components/map/Map.tsx
 +++ b/src/components/map/Map.tsx
 @@ -26,7 +26,7 @@ import {
@@ -949,7 +1321,70 @@ index b193cda77510b23b6a7b8cd50c2b66adfe2c92c9..accc5548fa3fe86a6c229c29d70479a9
  import { LogManager } from "../../modules/log/LogManager";
  import type { BaseProps } from "../../types/BaseProps";
  import type { LngLat } from "../../types/LngLat";
+@@ -37,7 +37,10 @@ import type { PressEvent } from "../../types/PressEvent";
+ import type { PressEventWithFeatures } from "../../types/PressEventWithFeatures";
+ import type { ViewPadding } from "../../types/ViewPadding";
+ import { transformStyle } from "../../utils/StyleValue";
+-import { convertToInternalStyle } from "../../utils/convertStyleSpec";
++import {
++  convertToInternalStyle,
++  mergeStyleProps,
++} from "../../utils/convertStyleSpec";
+ import { findNodeHandle } from "../../utils/findNodeHandle";
+ import { getNativeFilter } from "../../utils/getNativeFilter";
+ 
+@@ -268,6 +271,19 @@ export interface MapRef {
+     sourceLayer?: string,
+   ): Promise<void>;
+ 
++  /**
++   * #642: restyle a layer of the loaded style document in place: paint and layout properties,
++   * including `visibility` and `*-transition`. Same conversion as a `Layer` component. A layer the
++   * style does not have is ignored.
++   */
++  setStyleLayerProperties(
++    layerId: string,
++    properties: {
++      paint?: Record<string, unknown>;
++      layout?: Record<string, unknown>;
++    },
++  ): Promise<void>;
++
+   /**
+    * Show the attribution dialog
+    *
+@@ -638,6 +654,13 @@ export const Map = memo(
+           options.output,
+         ),
+ 
++      setStyleLayerProperties: (layerId, { paint, layout }) =>
++        NativeMapViewModule.setStyleLayerProperties(
++          findNodeHandle(nativeRef.current),
++          layerId,
++          transformStyle(mergeStyleProps(paint, layout, undefined)) ?? {},
++        ),
++
+       setSourceVisibility: (visible, source, sourceLayer) =>
+         NativeMapViewModule.setSourceVisibility(
+           findNodeHandle(nativeRef.current),
 diff --git a/src/components/map/NativeMapViewModule.ts b/src/components/map/NativeMLRNMapViewModule.ts
-similarity index 100%
+similarity index 89%
 rename from src/components/map/NativeMapViewModule.ts
 rename to src/components/map/NativeMLRNMapViewModule.ts
+index 38d0244d7103e69cc89dd36dd50a6e609a96ad90..577e231140669943b88a0f72fa7a1e7ee54b6ddd 100644
+--- a/src/components/map/NativeMapViewModule.ts
++++ b/src/components/map/NativeMLRNMapViewModule.ts
+@@ -67,6 +67,13 @@ export interface Spec extends TurboModule {
+     sourceLayer: string | null,
+   ) => Promise<void>;
+ 
++  // #642: restyle a layer of the loaded style in place. `reactStyle` is a converted Layer style.
++  setStyleLayerProperties: (
++    reactTag: CodegenTypes.Int32,
++    layerId: string,
++    reactStyle: CodegenTypes.UnsafeObject,
++  ) => Promise<void>;
++
+   createStaticMapImage: (
+     reactTag: CodegenTypes.Int32,
+     output: "base64" | "file",

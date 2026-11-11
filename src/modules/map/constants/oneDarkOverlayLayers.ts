@@ -1,4 +1,4 @@
-import { theme } from '@/constants/theme'
+import { resolveAdaptiveColor, theme } from '@/constants/theme'
 
 /** Fixed icon tint for the One Dark map style. */
 const ONE_DARK_POI_ICON_COLOR = '#8ba4bf'
@@ -45,8 +45,9 @@ export const ONE_DARK_OVERLAY_LAYERS = [
       'text-size': ['interpolate', ['linear'], ['zoom'], 8, 10, 14, 13],
     },
     paint: {
-      'text-color': theme.palette.sky.color,
-      'text-halo-color': theme.palette.sky.bg,
+      // A style document takes plain colours; the adaptive token is a native colour object.
+      'text-color': resolveAdaptiveColor(theme.palette.sky.color, 'dark'),
+      'text-halo-color': resolveAdaptiveColor(theme.palette.sky.bg, 'dark'),
       'text-halo-width': 1,
     },
   },

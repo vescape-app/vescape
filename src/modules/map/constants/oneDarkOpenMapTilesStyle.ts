@@ -8,7 +8,7 @@ import type { StyleSpecification } from '@maplibre/maplibre-react-native'
 import { ONE_DARK_BASE_LAYERS } from '@/modules/map/constants/oneDarkBaseLayers'
 import { ONE_DARK_OVERLAY_LAYERS } from '@/modules/map/constants/oneDarkOverlayLayers'
 import { theme, type ResolvedTheme } from '@/constants/theme'
-import { BLANK_STYLE } from '@/modules/map/constants/mapStyles'
+import { BLANK_STYLE, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
 
 type Expression = unknown[]
@@ -294,15 +294,27 @@ const OPENMAPTILES_LAYERS = new Map(
 )
 const DETAIL_LAYER_IDS = new Set(['poi-label', 'transit-label'])
 
+/** A paint or layout change to one layer of a loaded style, applied in place by the map. */
+export interface StyleLayerUpdate {
+  layerId: string
+  paint?: Record<string, unknown>
+  layout?: Record<string, unknown>
+}
+
+const detailsLayout = (detailsVisible: boolean) => ({
+  visibility: detailsVisible ? 'visible' : 'none',
+})
+
 /** Points of interest and transit stops follow the mode; the rest of the map does not. */
 function withDetails(layer: StyleLayer, detailsVisible: boolean): StyleLayer {
-  if (!DETAIL_LAYER_IDS.has(layer.id) || detailsVisible) return layer
-  return { ...layer, layout: { ...layer.layout, visibility: 'none' } }
+  if (!DETAIL_LAYER_IDS.has(layer.id)) return layer
+  return { ...layer, layout: { ...layer.layout, ...detailsLayout(detailsVisible) } }
 }
 
 /**
- * MapLibre cannot restyle a base-style layer from JSX, so every runtime change the main map makes
- * to the base map is a variant of the style document, built here.
+ * The style documents below carry the initial values of everything the main map changes at
+ * runtime; the map then changes those in place with these updates, so only a different base map
+ * reloads the style.
  */
 export function buildOneDarkStyle({ detailsVisible }: { detailsVisible: boolean }) {
   return {
@@ -318,6 +330,89 @@ export function buildOneDarkStyle({ detailsVisible }: { detailsVisible: boolean 
   }
 }
 
+interface SatelliteImagery {
+  opacity: number
+  saturation: number
+  contrast: number
+}
+
+const SATELLITE_IMAGERY_LAYER_ID = 'satellite-imagery'
+const imageryPaint = (imagery: SatelliteImagery) => ({
+  'raster-opacity': imagery.opacity,
+  'raster-saturation': imagery.saturation,
+  'raster-contrast': imagery.contrast,
+})
+/** Eases the imagery between telemetry dimming and the full map. */
+const IMAGERY_TRANSITION = { duration: 260, delay: 0 }
+
+/** Street lines of the satellite variant; their opacity follows the mode. */
+const SATELLITE_ROAD_LINE_LAYER_IDS = (
+  JSON.parse(getSatelliteDarkMapStyle(true, true, false, true)) as { layers: StyleLayer[] }
+).layers
+  .filter((layer) => layer.type === 'line' && layer.id.startsWith('road-'))
+  .map((layer) => layer.id)
+
+/** OpenFreeMap liberty, the light base map: its POI layers and its first label layer. */
+const LIGHT_STYLE_DETAIL_LAYER_IDS = ['poi_r20', 'poi_r7', 'poi_r1', 'poi_transit']
+const LIGHT_STYLE_FIRST_LABEL_LAYER_ID = 'road_one_way_arrow'
+
+/**
+ * First label layer of a base style: app fills go below it so labels stay readable. One Dark and
+ * the satellite variant both start their labels with water names. Mapy has none to go under; its
+ * labels are baked into the raster tiles.
+ */
+export function firstLabelLayerId(styleKey: MapStyleKey): string | undefined {
+  switch (styleKey) {
+    case 'onedark':
+    case 'satellite':
+      return 'water-label'
+    case 'outdoors':
+      return LIGHT_STYLE_FIRST_LABEL_LAYER_ID
+    case 'mapy':
+      return undefined
+  }
+}
+
+/** The in-place changes a loaded base style takes as the mode and outdoor light change. */
+export function styleLayerUpdates({
+  styleKey,
+  detailsVisible,
+  imagery,
+  roadLineOpacity,
+}: {
+  styleKey: MapStyleKey
+  detailsVisible: boolean
+  imagery: SatelliteImagery
+  roadLineOpacity: number
+}): StyleLayerUpdate[] {
+  const layout = detailsLayout(detailsVisible)
+  switch (styleKey) {
+    case 'onedark':
+      return [...DETAIL_LAYER_IDS].map((layerId) => ({ layerId, layout }))
+    case 'outdoors':
+      return LIGHT_STYLE_DETAIL_LAYER_IDS.map((layerId) => ({ layerId, layout }))
+    case 'satellite':
+      return [
+        ...[...DETAIL_LAYER_IDS].map((layerId) => ({ layerId, layout })),
+        {
+          layerId: SATELLITE_IMAGERY_LAYER_ID,
+          paint: {
+            ...imageryPaint(imagery),
+            'raster-opacity-transition': IMAGERY_TRANSITION,
+            'raster-saturation-transition': IMAGERY_TRANSITION,
+            'raster-contrast-transition': IMAGERY_TRANSITION,
+          },
+        },
+        ...SATELLITE_ROAD_LINE_LAYER_IDS.map((layerId) => ({
+          layerId,
+          paint: { 'line-opacity': roadLineOpacity },
+        })),
+      ]
+    case 'mapy':
+      return []
+  }
+}
+
 /** The Mapbox satellite raster plus street lines and labels from OpenMapTiles. */
 export function buildSatelliteStyle({
   detailsVisible,
@@ -330,7 +425,7 @@ export function buildSatelliteStyle({
   detailsVisible: boolean
   /** XYZ template, token included. */
   tileUrl: string
-  imagery: { opacity: number; saturation: number; contrast: number }
+  imagery: SatelliteImagery
   roadLineOpacity: number
   backgroundColor: string
   roadColor: string
@@ -383,14 +478,10 @@ export function buildSatelliteStyle({
     layers: [
       { id: 'background', type: 'background', paint: { 'background-color': backgroundColor } },
       {
-        id: 'satellite-imagery',
+        id: SATELLITE_IMAGERY_LAYER_ID,
         type: 'raster',
         source: 'satellite',
-        paint: {
-          'raster-opacity': imagery.opacity,
-          'raster-saturation': imagery.saturation,
-          'raster-contrast': imagery.contrast,
-        },
+        paint: imageryPaint(imagery),
       },
       ...ported,
     ],
