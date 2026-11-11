@@ -1,43 +1,47 @@
-import Mapbox, { Camera } from '@rnmapbox/maps'
-import { Fragment, type ComponentProps, type ComponentRef, type RefObject } from 'react'
+import {
+  Camera,
+  Map as MapLibreMap,
+  type CameraRef,
+  type MapRef,
+} from '@maplibre/maplibre-react-native'
+import { Fragment, type ComponentProps, type RefObject } from 'react'
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { theme } from '@/constants/theme'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { MainViewState } from '@/screens/main/mainViewState'
-import { MainMapLayers } from '@/screens/main/map/MainMapLayers'
+import type { MainMapLayers } from '@/screens/main/map/MainMapLayers'
 import { MainMapOverlays } from '@/screens/main/map/MainMapOverlays'
-import { MapBaseStyleLayers } from '@/screens/main/map/MapBaseStyleLayers'
-import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import type { MainMapHistoryProps, MainMapPointsProps } from '@/screens/main/map/MainMap'
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
+import { toDirectCamera } from '@/modules/map/lib/directCamera'
 import type { MapStyleDocument } from '@/screens/main/map/mapStyleLifecycle'
 import type { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
 
 type LayerProps = ComponentProps<typeof MainMapLayers>
 type OverlayProps = ComponentProps<typeof MainMapOverlays>
-type MapViewProps = ComponentProps<typeof Mapbox.MapView>
+type MapViewProps = ComponentProps<typeof MapLibreMap>
 
 interface MainMapSceneProps {
   mapOpacity: Animated.Value
   onLayout: ComponentProps<typeof Animated.View>['onLayout']
   onTouchStart: ComponentProps<typeof Animated.View>['onTouchStart']
-  mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
-  cameraRef: RefObject<Camera | null>
+  mapViewRef: RefObject<MapRef | null>
+  cameraRef: RefObject<CameraRef | null>
   mapStyle: ReturnType<typeof useResolvedMapStyle>
   appliedStyle: MapStyleDocument
   styleReady: boolean
   rotationLocked: boolean
   onDidFinishLoadingStyle: MapViewProps['onDidFinishLoadingStyle']
-  onMapLoadingError: MapViewProps['onMapLoadingError']
+  onMapLoadingError: MapViewProps['onDidFailLoadingMap']
   mapLoading: boolean
   mapLoadFailed: boolean
   onRetryStyleLoad: () => void
   styleRetryNonce: number
   onPress: MapViewProps['onPress']
   onLongPress: MapViewProps['onLongPress']
-  onMapIdle: MapViewProps['onMapIdle']
-  onCameraChanged: MapViewProps['onCameraChanged']
+  onMapIdle: MapViewProps['onDidFinishRenderingMapFully']
+  onCameraChanged: MapViewProps['onRegionIsChanging']
   getLiveFollowCamera: () => CameraSnapshot
   historyActive: boolean
   accuracyFix: LayerProps['accuracyFix']
@@ -119,94 +123,42 @@ export function MainMapScene({
       onLayout={onLayout}
       onTouchStart={onTouchStart}
     >
-      <Mapbox.MapView
+      <MapLibreMap
         // Style swaps stay inside the existing native map so its camera, renderer, and tile cache
         // survive. An explicit retry still recreates a map whose loader entered a failed state.
         key={styleRetryNonce}
         ref={mapViewRef}
         style={styles.map}
-        styleURL={appliedStyle.styleURL}
-        styleJSON={appliedStyle.styleJSON}
-        pitchEnabled={false}
-        rotateEnabled={!rotationLocked}
-        compassEnabled={false}
-        scaleBarEnabled={false}
-        logoEnabled={mapStyle.mapDetailsVisible}
+        mapStyle={appliedStyle.mapStyle}
+        touchPitch={false}
+        touchRotate={!rotationLocked}
+        compass={false}
+        scaleBar={false}
+        logo={mapStyle.mapDetailsVisible}
         logoPosition={{ bottom: 8, left: 8 }}
-        attributionEnabled={mapStyle.mapDetailsVisible}
+        attribution={mapStyle.mapDetailsVisible}
         attributionPosition={{ bottom: 8, left: 92 }}
         onDidFinishLoadingStyle={onDidFinishLoadingStyle}
-        onMapLoadingError={onMapLoadingError}
+        onDidFailLoadingMap={onMapLoadingError}
         onPress={onPress}
         onLongPress={onLongPress}
-        onMapIdle={onMapIdle}
-        onCameraChanged={onCameraChanged}
+        // Rendered fully with nothing pending: the map's idle, after a gesture or an engine move.
+        onDidFinishRenderingMapFully={onMapIdle}
+        onRegionIsChanging={onCameraChanged}
       >
         <Camera
           ref={cameraRef}
-          defaultSettings={{ ...getLiveFollowCamera() }}
-          maxZoomLevel={MAP_DEFAULTS.maxZoom}
-          animationMode="easeTo"
+          initialViewState={initialViewState(getLiveFollowCamera())}
+          maxZoom={MAP_DEFAULTS.maxZoom}
         />
         {styleReady && (
           // Native styles own their sources and layers. Mount a fresh React layer tree only after
           // the replacement document is ready; never update nodes the previous style removed.
           <Fragment key={mapStyle.styleSignature}>
-            {mapStyle.isSatelliteOverlay && (
-              <SatelliteImageryLayer paint={mapStyle.satelliteImageryPaint} />
-            )}
-            <MapBaseStyleLayers
-              enabled={!mapStyle.isMapy}
-              existingLayerIds={mapStyle.existingLayerIds}
-              styleKey={mapStyle.styleKey}
-              isOneDark={mapStyle.isOneDark}
-              isSatellite={mapStyle.isSatellite}
-              isSatelliteOverlay={mapStyle.isSatelliteOverlay}
-              mapDetailsVisible={mapStyle.mapDetailsVisible}
-              satelliteRoadLineOpacity={mapStyle.satelliteRoadLineOpacity}
-            />
-            <MainMapLayers
-              historyActive={historyActive}
-              expandSelectedMapPoints={mode === 'map'}
-              isMapy={mapStyle.isMapy}
-              isOneDark={mapStyle.isOneDark}
-              isSatellite={mapStyle.isSatelliteOverlay}
-              showBuildings3d={mapStyle.showBuildings3d && !mapStyle.isMapy}
-              weatherActive={weatherActive}
-              legalLimitsActive={legalLimitsActive}
-              liveTrailShape={liveTrailShape}
-              rideRouteShape={rideRouteShape}
-              accuracyFix={accuracyFix}
-              accuracyShape={accuracyShape}
-              puckBearing={puckBearing}
-              mapPose={mapPose}
-              riders={riders}
-              rideRoute={rideRoute}
-              rideTelemetrySamples={history.telemetrySamples}
-              activeHistoryMapMetric={history.activeMapMetric}
-              rideMarkers={history.markers}
-              rideGpsSamples={history.gpsSamples}
-              mediaAssets={history.mediaAssets}
-              favoriteRanges={history.favoriteRanges}
-              mapZoom={cameraZoom}
-              historyMetricGradientsEnabled={historyMetricGradientsEnabled}
-              historyMetricHotRanges={historyMetricHotRanges}
-              directionPoint={directionPoint}
-              activeNavigationTarget={activeNavigationTarget}
-              selectedNavigationTarget={selectedNavigationTarget}
-              mapPoints={mapPointProps.points}
-              selectedMapPointId={mapPointProps.selectedId}
-              hiddenMapPointCategories={mapPointProps.hiddenCategories}
-              onToggleMapPointSelection={mapPointProps.onToggleSelection}
-              onSuppressNextMapPress={onSuppressNextMapPress}
-              onSelectMarker={onSelectMarker}
-              onOpenMedia={history.onOpenMedia}
-              onSelectLegalCountry={onSelectLegalCountry}
-              onFocusDirectionPoint={onFocusDirectionPoint}
-            />
+            {/* TODO(#642 step 3): MainMapLayers */}
           </Fragment>
         )}
-      </Mapbox.MapView>
+      </MapLibreMap>
       <MainMapOverlays {...overlays} />
       {mapLoading && !mapLoadFailed && (
         <View style={styles.styleLoading} pointerEvents="none">
@@ -229,6 +181,18 @@ export function MainMapScene({
       )}
     </Animated.View>
   )
+}
+
+function initialViewState(camera: CameraSnapshot) {
+  return {
+    ...toDirectCamera({
+      zoom: camera.zoomLevel,
+      heading: camera.heading,
+      pitch: camera.pitch,
+      padding: camera.padding,
+    }),
+    center: camera.centerCoordinate,
+  }
 }
 
 const styles = StyleSheet.create({

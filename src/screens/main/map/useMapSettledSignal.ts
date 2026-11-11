@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 /**
- * Mapbox gives Maestro no idle signal, so a screenshot flow would otherwise have to guess with a
+ * The map gives Maestro no idle signal, so a screenshot flow would otherwise have to guess with a
  * sleep and can catch a half-drawn map. Publish the map's own idle event as a waitable marker.
  */
 export function useMapSettledSignal({

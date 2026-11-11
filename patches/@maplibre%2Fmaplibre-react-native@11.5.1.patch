@@ -198,7 +198,7 @@ index d2e3675f75e87041d0e58659a983dc552f8dec53..6cab17ea2e2324076c04e32c99a37f8a
 +    }
  }
 diff --git a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
-index b088909a48c4265219e4e95c529f6c0a63ae7e11..8f80bebf850af2a7b86c549c3ff48947c4c866da 100644
+index b088909a48c4265219e4e95c529f6c0a63ae7e11..2b11af2bdd11dc1dfdb3fd6edf3bef56a34e3bf3 100644
 --- a/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
 +++ b/android/src/main/java/org/maplibre/reactnative/components/mapview/MLRNMapView.kt
 @@ -520,18 +520,18 @@ open class MLRNMapView(
@@ -223,7 +223,7 @@ index b088909a48c4265219e4e95c529f6c0a63ae7e11..8f80bebf850af2a7b86c549c3ff48947
                  }
  
                  override fun onMove(detector: MoveGestureDetector) {
-@@ -1434,7 +1434,11 @@ open class MLRNMapView(
+@@ -1434,7 +1434,15 @@ open class MLRNMapView(
          reactContext.addLifecycleEventListener(lifeCycleListener)
      }
  
@@ -232,11 +232,15 @@ index b088909a48c4265219e4e95c529f6c0a63ae7e11..8f80bebf850af2a7b86c549c3ff48947
 +    // will-change / is-changing events fire per camera write. They carry an empty `bounds`;
 +    // did-change, once per rest, keeps it.
 +    // @parity /node_modules/@maplibre/maplibre-react-native/ios/components/map-view/MLRNMapView.m `makeViewState`
-+    private fun makeViewState(isAnimated: Boolean?, includeBounds: Boolean = true): WritableMap {
++    private fun makeViewState(
++        isAnimated: Boolean?,
++        includeBounds: Boolean = true,
++        userInteraction: Boolean? = null,
++    ): WritableMap {
          val position = mapLibreMap!!.cameraPosition
          val viewState: WritableMap = Arguments.createMap()
  
-@@ -1454,7 +1458,9 @@ open class MLRNMapView(
+@@ -1454,7 +1462,9 @@ open class MLRNMapView(
          viewState.putDouble("bearing", position.bearing)
          viewState.putDouble("pitch", position.tilt)
  
@@ -247,32 +251,44 @@ index b088909a48c4265219e4e95c529f6c0a63ae7e11..8f80bebf850af2a7b86c549c3ff48947
              val visibleRegion = mapLibreMap!!.projection.visibleRegion
              viewState.putArray(
                  "bounds",
-@@ -1556,6 +1562,15 @@ open class MLRNMapView(
+@@ -1474,7 +1484,7 @@ open class MLRNMapView(
+             "animated",
+             isAnimated ?: cameraChangeTracker.isAnimated,
+         )
+-        viewState.putBoolean("userInteraction", cameraChangeTracker.isUserInteraction)
++        viewState.putBoolean("userInteraction", userInteraction ?: cameraChangeTracker.isUserInteraction)
+ 
+         return viewState
+     }
+@@ -1556,6 +1566,17 @@ open class MLRNMapView(
          return null
      }
  
 +    /**
 +     * Spike #655: the one lean event per direct camera write. CameraChangeDispatcher drops
 +     * onCameraMove while it is idle, and a direct write never reports move-started.
++     * #642: a direct write is the app's own move, so it never reports `userInteraction`, even
++     * when it lands while a gesture is still tracked.
 +     * @parity /node_modules/@maplibre/maplibre-react-native/ios/components/map-view/MLRNMapView.m `emitDirectCameraChange`
 +     */
 +    fun emitDirectCameraChange() {
-+        handleMapChangedEvent("onRegionIsChanging", true, includeBounds = false)
++        handleMapChangedEvent("onRegionIsChanging", true, includeBounds = false, userInteraction = false)
 +    }
 +
      fun sendRegionDidChangeEvent() {
          handleMapChangedEvent("onRegionDidChange", true)
          cameraChangeTracker.setReason(CameraChangeTracker.EMPTY)
-@@ -1564,10 +1579,11 @@ open class MLRNMapView(
+@@ -1564,10 +1585,12 @@ open class MLRNMapView(
      private fun handleMapChangedEvent(
          eventName: String,
          withViewState: Boolean? = null,
 +        includeBounds: Boolean = true,
++        userInteraction: Boolean? = null,
      ) {
          val event =
              if (withViewState == true) {
 -                MapChangeEvent(surfaceId, id, eventName, makeViewState(null))
-+                MapChangeEvent(surfaceId, id, eventName, makeViewState(null, includeBounds))
++                MapChangeEvent(surfaceId, id, eventName, makeViewState(null, includeBounds, userInteraction))
              } else {
                  MapChangeEvent(surfaceId, id, eventName)
              }
@@ -499,10 +515,10 @@ index f24e51034fa9ec7f8eeff2595e8bbe193b594e9c..baeeb52cb3dc0441a2745f921b03b4d2
  @property (nonatomic, assign) BOOL annotationSelected;
  
 diff --git a/ios/components/map-view/MLRNMapView.m b/ios/components/map-view/MLRNMapView.m
-index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..42764c56ac224a5743b2832e9cd36aef983a398d 100644
+index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..35e9aef37fb7e042e53cc40aabe418844db05e61 100644
 --- a/ios/components/map-view/MLRNMapView.m
 +++ b/ios/components/map-view/MLRNMapView.m
-@@ -747,21 +747,31 @@ static double const M2PI = M_PI * 2;
+@@ -747,21 +747,36 @@ static double const M2PI = M_PI * 2;
  - (void)mapView:(MLNMapView *)mapView
      regionWillChangeWithReason:(MLNCameraChangeReason)reason
                        animated:(BOOL)animated {
@@ -526,7 +542,12 @@ index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..42764c56ac224a5743b2832e9cd36aef
 +// event instead, the same onRegionIsChanging Android's onCameraMove sends.
 +- (void)emitDirectCameraChange {
 +  if (!self.reactOnRegionIsChanging) return;
-+  self.reactOnRegionIsChanging([self makeViewState:self animated:NO includeBounds:NO]);
++  // #642: a direct write is the app's own move. isUserInteraction keeps the last gesture's
++  // reason until the next will/did-change, so the echo reports NO without clearing it.
++  NSMutableDictionary *viewState =
++      [[self makeViewState:self animated:NO includeBounds:NO] mutableCopy];
++  viewState[@"userInteraction"] = @NO;
++  self.reactOnRegionIsChanging(viewState);
 +}
 +
  - (void)mapView:(MLNMapView *)mapView
@@ -536,7 +557,7 @@ index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..42764c56ac224a5743b2832e9cd36aef
    if (((reason & MLNCameraChangeReasonTransitionCancelled) ==
         MLNCameraChangeReasonTransitionCancelled) &&
        ((reason & MLNCameraChangeReasonGesturePan) != MLNCameraChangeReasonGesturePan))
-@@ -769,7 +779,7 @@ static double const M2PI = M_PI * 2;
+@@ -769,7 +784,7 @@ static double const M2PI = M_PI * 2;
  
    ((MLRNMapView *)mapView).isUserInteraction = (BOOL)(reason & ~MLNCameraChangeReasonProgrammatic);
  
@@ -545,7 +566,7 @@ index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..42764c56ac224a5743b2832e9cd36aef
  
    self.reactOnRegionDidChange(viewState);
  }
-@@ -881,8 +891,14 @@ static double const M2PI = M_PI * 2;
+@@ -881,8 +896,14 @@ static double const M2PI = M_PI * 2;
    }
  }
  
@@ -561,7 +582,7 @@ index 22212748b1f1ca2eb73b5a1688ddb848b5c8ab0c..42764c56ac224a5743b2832e9cd36aef
  
    NSDictionary *viewState = @{
      @"center" : @[
-@@ -890,9 +906,9 @@ static double const M2PI = M_PI * 2;
+@@ -890,9 +911,9 @@ static double const M2PI = M_PI * 2;
        [NSNumber numberWithDouble:mapView.centerCoordinate.latitude]
      ],
      @"zoom" : [NSNumber numberWithDouble:mapView.zoomLevel],

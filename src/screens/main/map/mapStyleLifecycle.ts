@@ -1,10 +1,13 @@
+import type { StyleSpecification } from '@maplibre/maplibre-react-native'
+
 import type { MapStyleKey } from '@/modules/map/constants/mapStyles'
 
 export interface MapStyleDocument {
   styleKey: MapStyleKey
+  /** Changes whenever `mapStyle` does; the guard compares signatures, not documents. */
   styleSignature: string
-  styleURL?: string
-  styleJSON?: string
+  /** A style URL or a style document built in JS. */
+  mapStyle: string | StyleSpecification
 }
 
 interface StyleLifecycle {
@@ -25,7 +28,7 @@ export function initialMapStyleLifecycle(document: MapStyleDocument): StyleLifec
   return { applied: document, requested: document, phase: 'loading', generation: 0, loadCount: 0 }
 }
 
-/** Mapbox completion events have no document ID. Never overlap native style requests. */
+/** Native style completion events have no document ID. Never overlap native style requests. */
 export function mapStyleLifecycle(state: StyleLifecycle, action: Action): StyleLifecycle {
   switch (action.type) {
     case 'request': {

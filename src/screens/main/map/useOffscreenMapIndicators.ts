@@ -1,5 +1,5 @@
-import type Mapbox from '@rnmapbox/maps'
-import { useCallback, useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
+import type { MapRef } from '@maplibre/maplibre-react-native'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 import {
   applyOffscreenIndicatorDrafts,
@@ -30,7 +30,7 @@ export function useOffscreenMapIndicators({
   trackedPoints,
   enabled,
 }: {
-  mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
+  mapViewRef: RefObject<MapRef | null>
   currentCameraRef: RefObject<CameraSnapshot | null>
   mapLayout: MapLayout
   trackedPoints: TrackedMapPoint[]
@@ -80,7 +80,7 @@ export function useOffscreenMapIndicators({
     void Promise.all(
       trackedPoints.map(async (trackedPoint) => ({
         ...trackedPoint,
-        point: await mapView.getPointInView(trackedPoint.coordinate),
+        point: await mapView.project(trackedPoint.coordinate),
       })),
     )
       .then((projectedPoints) => {

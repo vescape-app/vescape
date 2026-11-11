@@ -10,7 +10,8 @@ import { getOneDarkMapStyle } from '@/modules/map/constants/oneDarkMapStyle'
 import { resolveMapThemeTone } from '@/modules/map/lib/mapThemeTone'
 import { useThemeStore } from '@/hooks/useTheme'
 import { mapStyleForTheme } from '@/modules/map/lib/mapTheme'
-import Mapbox from '@rnmapbox/maps'
+import type { StyleSpecification } from '@maplibre/maplibre-react-native'
+import { ONE_DARK_OPENMAPTILES_STYLE } from '@/modules/map/constants/oneDarkOpenMapTilesStyle'
 
 import type { MainViewState } from '@/screens/main/mainViewState'
 import { baseStyleLayerIds } from '@/screens/main/map/baseStyleLayerIds'
@@ -43,7 +44,7 @@ export function useResolvedMapStyle({
   const renderedStyleKey = mapStyleForTheme(mapStyleKey, resolvedTheme)
   const requestedMapStyle =
     renderedStyleKey === 'outdoors'
-      ? { key: 'outdoors' as const, styleURL: Mapbox.StyleURL.Outdoors }
+      ? { key: 'outdoors' as const, styleURL: null }
       : (MAP_STYLES.find((style) => style.key === renderedStyleKey) ?? MAP_STYLES[0])
   const selectedMapStyle =
     requestedMapStyle.key === 'mapy' && !mapyConfigured ? MAP_STYLES[0] : requestedMapStyle
@@ -51,7 +52,6 @@ export function useResolvedMapStyle({
   const isOneDark = selectedMapStyle.key === 'onedark'
   const isSatellite = selectedMapStyle.key === 'satellite'
   const isSatelliteOverlay = isSatellite && satelliteOverlayEnabled
-  const useCustomJSON = isMapy || isOneDark || isSatelliteOverlay
   const mapDetailsVisible = mode === 'map' || (mode === 'telemetry' && !hideTelemetryMapDetails)
 
   const effectiveSatelliteImageryOpacity =
@@ -106,7 +106,7 @@ export function useResolvedMapStyle({
       : isSatelliteOverlay
         ? `json:satellite:${resolvedTheme}`
         : 'json:onedark'
-    : String(selectedMapStyle.styleURL)
+    : String(selectedMapStyle.key)
 
   return useMemo(
     () => ({
@@ -117,8 +117,8 @@ export function useResolvedMapStyle({
       isSatelliteOverlay,
       mapDetailsVisible,
       showBuildings3d: selectedMapStyle.key === 'outdoors' || selectedMapStyle.key === 'onedark',
-      styleURL: useCustomJSON ? undefined : selectedMapStyle.styleURL,
-      styleJSON,
+      // TODO(#642 step 2): style variants per key.
+      mapStyle: ONE_DARK_OPENMAPTILES_STYLE as StyleSpecification,
       existingLayerIds,
       satelliteImageryPaint,
       satelliteRoadLineOpacity: satelliteTone.roadLineOpacity * (mode === 'telemetry' ? 0.6 : 1),
@@ -137,7 +137,6 @@ export function useResolvedMapStyle({
       styleJSON,
       existingLayerIds,
       styleSignature,
-      useCustomJSON,
     ],
   )
 }

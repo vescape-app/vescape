@@ -9,17 +9,17 @@ import {
 const dark: MapStyleDocument = {
   styleKey: 'satellite',
   styleSignature: 'json:satellite:dark',
-  styleJSON: '{"name":"dark"}',
+  mapStyle: '{"name":"dark"}',
 }
 const light: MapStyleDocument = {
   ...dark,
   styleSignature: 'json:satellite:light',
-  styleJSON: '{"name":"light"}',
+  mapStyle: '{"name":"light"}',
 }
 const streets: MapStyleDocument = {
   styleKey: 'onedark',
   styleSignature: 'json:onedark',
-  styleJSON: '{"name":"streets"}',
+  mapStyle: '{"name":"streets"}',
 }
 
 describe('serialized map style loading', () => {
@@ -27,7 +27,7 @@ describe('serialized map style loading', () => {
     let state = initialMapStyleLifecycle(dark)
     state = mapStyleLifecycle(state, { type: 'request', document: light })
     state = mapStyleLifecycle(state, { type: 'request', document: streets })
-    // Until the old native load completes, neither intermediate request reaches Mapbox.
+    // Until the old native load completes, neither intermediate request reaches the native map.
     expect(state.applied).toBe(dark)
     expect(state.phase).toBe('loading')
     state = mapStyleLifecycle(state, { type: 'loaded', generation: 0 })

@@ -20,10 +20,10 @@ export function useMapStyleLoadGuard({
   const [state, dispatch] = useReducer(mapStyleLifecycle, document, initialMapStyleLifecycle)
   const lastLoadedStyleKeyRef = useRef<MapStyleKey | null>(null)
 
-  const { styleKey, styleSignature, styleURL, styleJSON } = document
+  const { styleKey, styleSignature, mapStyle } = document
   useEffect(() => {
-    dispatch({ type: 'request', document: { styleKey, styleSignature, styleURL, styleJSON } })
-  }, [styleKey, styleSignature, styleURL, styleJSON])
+    dispatch({ type: 'request', document: { styleKey, styleSignature, mapStyle } })
+  }, [styleKey, styleSignature, mapStyle])
 
   useEffect(() => {
     if (state.phase !== 'detaching') return

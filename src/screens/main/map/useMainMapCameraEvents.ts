@@ -1,11 +1,13 @@
-import type { Camera } from '@rnmapbox/maps'
+import type { CameraRef, ViewStateChangeEvent } from '@maplibre/maplibre-react-native'
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react'
+import type { NativeSyntheticEvent } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 
 import { distanceMeters } from '@/helpers/mapGeometry'
 import type { MapCameraControllerState } from '@/modules/map/lib/cameraController'
 import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 import { getLiveFollowCameraProfile, getPitchForZoom } from '@/modules/map/lib/cameraProfiles'
+import { toDirectCamera } from '@/modules/map/lib/directCamera'
 import { shouldPreserveLiveFollowGesture } from '@/modules/map/lib/cameraGestureState'
 import type { MainViewState } from '@/screens/main/mainViewState'
 import type { CameraSnapshot, HistoryPreviewTarget } from '@/screens/main/map/useCameraControls'
@@ -43,7 +45,7 @@ export function useMainMapCameraEvents({
   setCameraReady,
   setCameraZoom,
 }: {
-  cameraRef: RefObject<Camera | null>
+  cameraRef: RefObject<CameraRef | null>
   controllerStateRef: RefObject<MapCameraControllerState>
   currentCameraRef: RefObject<CameraSnapshot | null>
   engine: CameraEngine
@@ -94,12 +96,15 @@ export function useMainMapCameraEvents({
             ? 0
             : getFollowHeadingDeg()
       const initialPitch = getPitchForZoom(camera.zoomLevel, perspectiveEnabled)
-      cameraRef.current?.setCamera({
-        ...camera,
-        heading: initialHeading,
-        pitch: initialPitch,
-        animationDuration: 0,
-      })
+      cameraRef.current?.setCameraDirect(
+        toDirectCamera({
+          center: camera.centerCoordinate,
+          zoom: camera.zoomLevel,
+          heading: initialHeading,
+          pitch: initialPitch,
+          padding: 'padding' in camera ? camera.padding : undefined,
+        }),
+      )
       // Park the springs on the load camera so the first target animates from it.
       engine.reset({
         centerCoordinate: camera.centerCoordinate,
@@ -124,21 +129,21 @@ export function useMainMapCameraEvents({
   )
 
   const handleCameraChanged = useCallback(
-    (state: {
-      properties: { center: number[]; zoom: number; heading: number; pitch: number }
-      gestures: { isGestureActive: boolean }
-    }) => {
-      const [longitude, latitude] = state.properties.center
-      mapPose.set({ heading: state.properties.heading, pitch: state.properties.pitch })
-      const automaticHeadingFollow =
-        followGps && headingFollowMode && !state.gestures.isGestureActive
+    ({ nativeEvent }: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+      const [longitude, latitude] = nativeEvent.center
+      const { zoom, bearing: heading, pitch } = nativeEvent
+      // MapLibre reports `userInteraction` for a gesture and its deceleration; the echo of a direct
+      // camera write never carries it (patched, see #642).
+      const gestureActive = nativeEvent.userInteraction
+      mapPose.set({ heading, pitch })
+      const automaticHeadingFollow = followGps && headingFollowMode && !gestureActive
       const camera = {
         centerCoordinate: [longitude, latitude],
-        zoomLevel: state.properties.zoom,
-        heading: state.properties.heading,
-        pitch: state.properties.pitch,
+        zoomLevel: zoom,
+        heading,
+        pitch,
       } satisfies CameraSnapshot
-      onWatchRouteSpanChange(latitude, state.properties.zoom)
+      onWatchRouteSpanChange(latitude, zoom)
       // The reveal gesture writes the camera and drives the engine itself; its
       // echoes arrive a frame late and would only add phantom velocity.
       const previewPanActive = previewPanActiveRef.current
@@ -149,7 +154,7 @@ export function useMainMapCameraEvents({
       // echoes of its own writes itself, which it can do accurately and this
       // callback cannot.
       if (!previewPanActive) {
-        engine.driveExternal(camera, { gesture: state.gestures.isGestureActive })
+        engine.driveExternal(camera, { gesture: gestureActive })
       }
       repositionOffscreenIndicatorsForCamera(camera)
       const [targetLongitude, targetLatitude] = gpsCameraCenter
@@ -170,12 +175,12 @@ export function useMainMapCameraEvents({
         mode === 'map' &&
         !(followGps && headingFollowMode)
       ) {
-        const pitch = getPitchForZoom(state.properties.zoom, perspectiveEnabled)
-        if (Math.abs(state.properties.pitch - pitch) > 0.5) {
-          cameraRef.current?.setCameraDirect({ pitch })
+        const profilePitch = getPitchForZoom(zoom, perspectiveEnabled)
+        if (Math.abs(pitch - profilePitch) > 0.5) {
+          cameraRef.current?.setCameraDirect({ pitch: profilePitch })
         }
       }
-      if (state.gestures.isGestureActive) {
+      if (gestureActive) {
         const gestureCenterDistanceM = cameraFix
           ? distanceMeters({ longitude, latitude }, cameraFix)
           : Number.POSITIVE_INFINITY
@@ -183,22 +188,22 @@ export function useMainMapCameraEvents({
           followGps,
           historyActive,
           centerDistanceM: gestureCenterDistanceM,
-          headingDeg: state.properties.heading,
+          headingDeg: heading,
           followHeadingDeg: getFollowHeadingDeg(),
         })
         if (preservesLiveFollow) {
-          setFollowZoomLevel(state.properties.zoom)
+          setFollowZoomLevel(zoom)
           const followCamera = getLiveFollowCameraProfile({
             gpsCamera: {
               centerCoordinate: [longitude, latitude],
-              zoomLevel: state.properties.zoom,
+              zoomLevel: zoom,
             },
             followHeadingDeg: getFollowHeadingDeg(),
             gpsHeadingMode: headingFollowMode,
             profileKey: phoneHeadingMode ? 'compass' : undefined,
             perspectiveEnabled,
           })
-          if (Math.abs(state.properties.pitch - followCamera.pitch) > 0.5) {
+          if (Math.abs(pitch - followCamera.pitch) > 0.5) {
             cameraRef.current?.setCameraDirect({ pitch: followCamera.pitch })
           }
         } else {
@@ -206,7 +211,7 @@ export function useMainMapCameraEvents({
         }
       }
       if (!automaticHeadingFollow) {
-        onHeadingChange(state.properties.heading)
+        onHeadingChange(heading)
         updateOffscreenMapIndicators()
       } else {
         // Heading follow skips the per-frame check, and MapLibre reports no idle after a direct
@@ -215,9 +220,7 @@ export function useMainMapCameraEvents({
         scheduleOffscreenMapIndicatorRefresh()
       }
       if (historyActive && mediaAssetCount > 0) {
-        setCameraZoom((current) =>
-          Math.abs(current - state.properties.zoom) > 0.25 ? state.properties.zoom : current,
-        )
+        setCameraZoom((current) => (Math.abs(current - zoom) > 0.25 ? zoom : current))
       }
     },
     [

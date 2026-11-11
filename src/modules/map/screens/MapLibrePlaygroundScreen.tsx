@@ -16,6 +16,7 @@ import { ChipRow } from '@/components/dev/ShowcaseControls'
 import { makeCircleFeature } from '@/helpers/mapGeometry'
 import { ONE_DARK_OPENMAPTILES_STYLE } from '@/modules/map/constants/oneDarkOpenMapTilesStyle'
 import type { EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
+import { toDirectCamera } from '@/modules/map/lib/directCamera'
 import {
   PLAYGROUND_START,
   PLAYGROUND_START_ZOOM,
@@ -75,18 +76,15 @@ export function MapLibrePlaygroundScreen() {
   const setSceneLayersRef = useRef<(on: boolean) => void>(() => {})
 
   const applyCamera = useCallback((camera: EngineCamera) => {
-    cameraRef.current?.setCameraDirect({
-      center: camera.centerCoordinate,
-      zoom: camera.zoomLevel,
-      bearing: camera.heading,
-      pitch: camera.pitch,
-      padding: camera.padding && {
-        top: camera.padding.paddingTop,
-        right: camera.padding.paddingRight,
-        bottom: camera.padding.paddingBottom,
-        left: camera.padding.paddingLeft,
-      },
-    })
+    cameraRef.current?.setCameraDirect(
+      toDirectCamera({
+        center: camera.centerCoordinate,
+        zoom: camera.zoomLevel,
+        heading: camera.heading,
+        pitch: camera.pitch,
+        padding: camera.padding,
+      }),
+    )
   }, [])
   const cancelNativeMotion = useCallback(() => cameraRef.current?.cancelCameraAnimations(), [])
   const { gpsFix, renderPanel, snapCamera, onCameraEcho } = useCameraPlayground({

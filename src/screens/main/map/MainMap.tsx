@@ -32,7 +32,7 @@ import type { MainViewState } from '@/screens/main/mainViewState'
 import { type HistoryPreviewTarget, useCameraControls } from '@/screens/main/map/useCameraControls'
 import type { PhoneHeadingStatus } from '@/modules/map/lib/phoneHeading'
 import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMapIndicators'
-import { MapLoadingPlaceholder, MapUnavailable } from '@/screens/main/map/MainMapOverlays'
+import { MapLoadingPlaceholder } from '@/screens/main/map/MainMapOverlays'
 import { MainMapScene } from '@/screens/main/map/MainMapScene'
 import { useLiveMapModel } from '@/screens/main/map/useLiveMapModel'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
@@ -50,7 +50,6 @@ import { useNavigationPathFraming } from '@/screens/main/map/useNavigationPathFr
 import { useOffscreenMapIndicators } from '@/screens/main/map/useOffscreenMapIndicators'
 import { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
 import { watchRouteSpanMeters } from '@/modules/map/lib/nearbyRadius'
-import { useMapServicesStore } from '@/modules/map/store/mapServicesStore'
 import { usePhoneHeading } from '@/modules/map/hooks/usePhoneHeading'
 import { usePuckBearing } from '@/screens/main/map/usePuckBearing'
 import type { MapPose } from '@/modules/map/components/GpsPuck'
@@ -239,7 +238,6 @@ export const MainMap = memo(
     const mapStyle = useResolvedMapStyle({ ...styleProps, mode })
 
     const settingsLoaded = useSettingsStore((s) => s.loaded)
-    const mapboxToken = useMapServicesStore((s) => s.mapboxToken)
     const lastGpsLatitude = useSettingsStore((s) => s.lastGpsLatitude)
     const lastGpsLongitude = useSettingsStore((s) => s.lastGpsLongitude)
     const historyMetricGradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
@@ -468,17 +466,13 @@ export const MainMap = memo(
       }
     }, [mode, offscreenMapIndicators, onOffscreenMapIndicatorsChange])
 
-    // Mapbox gives Maestro no idle signal, so a screenshot flow would otherwise have to guess with a
+    // The map gives Maestro no idle signal, so a screenshot flow would otherwise have to guess with a
     // sleep and can catch a half-drawn map. Publish the map's own idle event as a waitable marker.
     const { mapSettled, handleIdle } = useMapSettledSignal({
       enabled: captureMode,
       mode,
       onMapIdle: handleMapIdle,
     })
-
-    if (!mapboxToken) {
-      return <MapUnavailable />
-    }
 
     if (!settingsLoaded) {
       return <MapLoadingPlaceholder />

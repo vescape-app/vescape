@@ -1,4 +1,4 @@
-import type { Camera as CameraRef } from '@rnmapbox/maps'
+import type { CameraRef } from '@maplibre/maplibre-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions } from 'react-native'
 
@@ -11,6 +11,7 @@ import {
   type MapCameraMode,
 } from '@/modules/map/lib/cameraController'
 import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
+import { toDirectCamera } from '@/modules/map/lib/directCamera'
 import {
   type CameraPadding,
   getMapCameraProfileForOrientationMode,
@@ -72,19 +73,20 @@ export function useCameraControls({
   // eslint-disable-next-line react-hooks/refs
   const [engine] = useState(() =>
     createCameraEngine({
-      // setCameraDirect deliberately does not interrupt native camera
-      // animations (see docs/agents/mapbox-patches.md), so a fling outlives
-      // every frame the engine writes unless it is cancelled outright.
+      // Native motion (a fling, a pinch deceleration) is stopped outright when an app move
+      // claims the camera. On MapLibre any direct write also ends a running core transition.
       cancelNativeMotion: () => cameraRef.current?.cancelCameraAnimations(),
       applyFrame: (camera: EngineCamera) => {
         currentCameraRef.current = camera
-        cameraRef.current?.setCameraDirect({
-          center: camera.centerCoordinate,
-          zoom: camera.zoomLevel,
-          heading: camera.heading,
-          pitch: camera.pitch,
-          padding: camera.padding,
-        })
+        cameraRef.current?.setCameraDirect(
+          toDirectCamera({
+            center: camera.centerCoordinate,
+            zoom: camera.zoomLevel,
+            heading: camera.heading,
+            pitch: camera.pitch,
+            padding: camera.padding,
+          }),
+        )
       },
     }),
   )

@@ -1,5 +1,6 @@
-import type Mapbox from '@rnmapbox/maps'
-import { useCallback, useEffect, useRef, type ComponentRef, type RefObject } from 'react'
+import type { MapRef, PressEvent } from '@maplibre/maplibre-react-native'
+import { useCallback, useEffect, useRef, type RefObject } from 'react'
+import type { NativeSyntheticEvent } from 'react-native'
 
 import {
   coordinateSelection,
@@ -8,12 +9,7 @@ import {
 } from '@/modules/map/lib/mapSelection'
 import { reportUnexpectedError } from '@/config/sentry'
 
-const SELECTABLE_BASE_MAP_LAYER_IDS = [
-  'poi-label',
-  'poi-icon',
-  'transit-label',
-  'transit-stop-icon',
-] as const
+const SELECTABLE_BASE_MAP_LAYER_IDS = ['poi-label', 'transit-label']
 
 const SUPPRESSED_PRESS_WINDOW_MS = 250
 
@@ -25,7 +21,7 @@ export function useMapPressHandlers({
   onMapInteraction,
   onLongPressTarget,
 }: {
-  mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
+  mapViewRef: RefObject<MapRef | null>
   enabled: boolean
   onRawMapPress: (selection: MapSelection) => boolean | undefined
   onMapPress: (selection: MapSelection) => void
@@ -52,9 +48,9 @@ export function useMapPressHandlers({
   }, [clearSuppressTimeout])
 
   const handleLongPress = useCallback(
-    (feature: { geometry: { coordinates: number[] } }) => {
+    ({ nativeEvent }: NativeSyntheticEvent<PressEvent>) => {
       if (!enabled) return
-      const [longitude, latitude] = feature.geometry.coordinates
+      const [longitude, latitude] = nativeEvent.lngLat
       if (onRawMapPress(coordinateSelection(longitude, latitude, 'long-press'))) return
       onMapInteraction()
       onLongPressTarget({ latitude, longitude })
@@ -63,37 +59,24 @@ export function useMapPressHandlers({
   )
 
   const handleMapPress = useCallback(
-    (feature: GeoJSON.Feature<GeoJSON.Point, { screenPointX: number; screenPointY: number }>) => {
+    ({ nativeEvent }: NativeSyntheticEvent<PressEvent>) => {
       if (suppressNextPressRef.current) {
         suppressNextPressRef.current = false
         clearSuppressTimeout()
         return
       }
       if (!enabled) return
-      const [longitude, latitude] = feature.geometry?.coordinates ?? []
-      if (typeof longitude !== 'number' || typeof latitude !== 'number') return
+      const [longitude, latitude] = nativeEvent.lngLat
       if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return
 
       const fallbackSelection = coordinateSelection(longitude, latitude, 'coordinate')
       if (onRawMapPress(fallbackSelection)) return
 
-      const screenPointX = feature.properties?.screenPointX
-      const screenPointY = feature.properties?.screenPointY
-      if (typeof screenPointX !== 'number' || typeof screenPointY !== 'number') {
-        onMapPress(fallbackSelection)
-        return
-      }
-
       void mapViewRef.current
-        ?.queryRenderedFeaturesAtPoint(
-          [screenPointX, screenPointY],
-          [],
-          [...SELECTABLE_BASE_MAP_LAYER_IDS],
-        )
+        ?.queryRenderedFeatures(nativeEvent.point, { layers: SELECTABLE_BASE_MAP_LAYER_IDS })
         .then((features) => {
           onMapPress(
-            placeSelectionFromFeatures(features?.features, { longitude, latitude }) ??
-              fallbackSelection,
+            placeSelectionFromFeatures(features, { longitude, latitude }) ?? fallbackSelection,
           )
         })
         .catch((error: unknown) => {

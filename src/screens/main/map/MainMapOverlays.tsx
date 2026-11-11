@@ -76,17 +76,6 @@ export function MainMapOverlays({
   )
 }
 
-export function MapUnavailable() {
-  return (
-    <View style={styles.unavailable}>
-      <Text style={styles.unavailableTitle}>Map unavailable</Text>
-      <Text style={styles.unavailableMessage}>
-        The map service is not configured yet. Connect to the internet and reopen the app.
-      </Text>
-    </View>
-  )
-}
-
 export function MapLoadingPlaceholder() {
   return <View style={styles.loading} />
 }
@@ -121,25 +110,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 4,
-  },
-  unavailable: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.neutral.bg,
-    paddingHorizontal: 28,
-    gap: 8,
-  },
-  unavailableTitle: {
-    color: theme.neutral.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  unavailableMessage: {
-    color: theme.neutral.textSecondary,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 19,
   },
   loading: {
     ...StyleSheet.absoluteFill,

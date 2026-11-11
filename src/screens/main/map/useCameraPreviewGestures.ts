@@ -7,6 +7,7 @@ import {
   getPitchForZoom,
 } from '@/modules/map/lib/cameraProfiles'
 import { getCameraAfterScreenDrag } from '@/modules/map/lib/cameraPanProjection'
+import { toDirectCamera } from '@/modules/map/lib/directCamera'
 import type { reduceMapCameraIntent } from '@/modules/map/lib/cameraController'
 import {
   clamp,
@@ -134,12 +135,14 @@ export function useCameraPreviewGestures({
         },
         { gesture: true },
       )
-      cameraRef.current?.setCameraDirect({
-        center: previewCamera.centerCoordinate,
-        zoom: previewCamera.zoomLevel,
-        heading: previewCamera.heading,
-        pitch: previewCamera.pitch,
-      })
+      cameraRef.current?.setCameraDirect(
+        toDirectCamera({
+          center: previewCamera.centerCoordinate,
+          zoom: previewCamera.zoomLevel,
+          heading: previewCamera.heading,
+          pitch: previewCamera.pitch,
+        }),
+      )
     },
     [cameraRef, currentCameraRef, engine, ownsCamera],
   )
@@ -216,13 +219,15 @@ export function useCameraPreviewGestures({
         },
         { gesture: true },
       )
-      cameraRef.current?.setCameraDirect({
-        center: previewCamera.centerCoordinate,
-        zoom: previewCamera.zoomLevel,
-        heading: previewCamera.heading,
-        pitch: previewCamera.pitch,
-        padding: previewCamera.padding,
-      })
+      cameraRef.current?.setCameraDirect(
+        toDirectCamera({
+          center: previewCamera.centerCoordinate,
+          zoom: previewCamera.zoomLevel,
+          heading: previewCamera.heading,
+          pitch: previewCamera.pitch,
+          padding: previewCamera.padding,
+        }),
+      )
     },
     [cameraFix, cameraRef, currentCameraRef, engine, followingLive, lastFollowKeyRef],
   )

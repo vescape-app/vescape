@@ -1,11 +1,11 @@
-import type Mapbox from '@rnmapbox/maps'
-import { useCallback, useRef, useState, type ComponentRef } from 'react'
+import type { MapRef } from '@maplibre/maplibre-react-native'
+import { useCallback, useRef, useState } from 'react'
 import type { LayoutChangeEvent } from 'react-native'
 
 import type { MapLayout } from '@/screens/main/map/offscreenMapIndicators'
 
 export function useMapViewport() {
-  const mapViewRef = useRef<ComponentRef<typeof Mapbox.MapView> | null>(null)
+  const mapViewRef = useRef<MapRef | null>(null)
   const [mapLayout, setMapLayout] = useState<MapLayout>({ width: 0, height: 0 })
 
   const handleMapLayout = useCallback((event: LayoutChangeEvent) => {
@@ -21,10 +21,7 @@ export function useMapViewport() {
     const mapView = mapViewRef.current
     if (!mapView || mapLayout.width <= 0 || mapLayout.height <= 0) return null
 
-    const coordinate = await mapView.getCoordinateFromView([
-      mapLayout.width / 2,
-      mapLayout.height / 2,
-    ])
+    const coordinate = await mapView.unproject([mapLayout.width / 2, mapLayout.height / 2])
     const [longitude, latitude] = coordinate
     if (typeof longitude !== 'number' || typeof latitude !== 'number') return null
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null

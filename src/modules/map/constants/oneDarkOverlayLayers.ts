@@ -1,7 +1,7 @@
 import { theme } from '@/constants/theme'
 
 /** Fixed icon tint for the One Dark map style. */
-export const ONE_DARK_POI_ICON_COLOR = '#8ba4bf'
+const ONE_DARK_POI_ICON_COLOR = '#8ba4bf'
 
 /** One Dark admin boundaries and every label drawn over the ground layers. */
 export const ONE_DARK_OVERLAY_LAYERS = [

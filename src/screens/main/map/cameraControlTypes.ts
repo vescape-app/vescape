@@ -1,4 +1,4 @@
-import type { Camera as CameraRef } from '@rnmapbox/maps'
+import type { CameraRef } from '@maplibre/maplibre-react-native'
 import type { ForwardedRef, RefObject } from 'react'
 
 import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
