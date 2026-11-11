@@ -1,7 +1,7 @@
-import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
+import { Camera, Map as MapLibreMap } from '@maplibre/maplibre-react-native'
 import { useNavigation } from 'expo-router'
 import { PencilSimpleIcon, TrashIcon } from 'phosphor-react-native'
-import { useLayoutEffect } from 'react'
+import { useLayoutEffect, useMemo } from 'react'
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -17,7 +17,7 @@ import {
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
 import { useThemeStore } from '@/hooks/useTheme'
-import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
+import { mapStyleForAppTheme } from '@/modules/map/constants/oneDarkOpenMapTilesStyle'
 import { usePrivacyZoneEditor } from '@/screens/privacyZones/usePrivacyZoneEditor'
 import { ZoneNameModal } from '@/screens/privacyZones/ZoneNameModal'
 
@@ -29,7 +29,7 @@ export function PrivacyZonesScreen() {
   const navigation = useNavigation()
   const editor = usePrivacyZoneEditor()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const isDark = resolvedTheme === 'dark'
+  const mapStyle = useMemo(() => mapStyleForAppTheme(resolvedTheme), [resolvedTheme])
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerTransparent: true })
@@ -53,27 +53,23 @@ export function PrivacyZonesScreen() {
 
   return (
     <View style={styles.container}>
-      <MapView
+      <MapLibreMap
         style={StyleSheet.absoluteFill}
-        styleURL={isDark ? undefined : Mapbox.StyleURL.Outdoors}
-        styleJSON={isDark ? ONE_DARK_MAP_STYLE : undefined}
-        onCameraChanged={editor.handleCameraChanged}
+        mapStyle={mapStyle}
+        onRegionIsChanging={editor.handleCameraChanged}
+        onRegionDidChange={editor.handleCameraChanged}
         onDidFinishLoadingMap={() => editor.setMapReady(true)}
-        scaleBarEnabled={false}
-        attributionEnabled={false}
-        logoEnabled={false}
-        compassEnabled={false}
-        rotateEnabled={false}
-        pitchEnabled={false}
-        scrollEnabled={mapInteractive}
-        zoomEnabled={mapInteractive}
+        scaleBar={false}
+        attribution={false}
+        logo={false}
+        compass={false}
+        touchRotate={false}
+        touchPitch={false}
+        dragPan={mapInteractive}
+        touchZoom={mapInteractive}
       >
-        <Camera
-          ref={cameraRef}
-          defaultSettings={{ centerCoordinate: cameraCenter, zoomLevel: cameraZoom }}
-          animationMode="none"
-        />
-      </MapView>
+        <Camera ref={cameraRef} initialViewState={{ center: cameraCenter, zoom: cameraZoom }} />
+      </MapLibreMap>
 
       <View style={styles.circleWrapper} pointerEvents="none">
         <View

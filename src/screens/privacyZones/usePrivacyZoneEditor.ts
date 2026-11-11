@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useWindowDimensions } from 'react-native'
-import type { Camera } from '@rnmapbox/maps'
+import { useWindowDimensions, type NativeSyntheticEvent } from 'react-native'
+import type { CameraRef, ViewStateChangeEvent } from '@maplibre/maplibre-react-native'
 
 import {
   generateZoneId,
@@ -49,7 +49,7 @@ export function usePrivacyZoneEditor() {
   const [mapReady, setMapReady] = useState(false)
   const editStartRef = useRef<{ center: [number, number]; zoom: number } | null>(null)
 
-  const cameraRef = useRef<Camera>(null)
+  const cameraRef = useRef<CameraRef>(null)
   const prevSelectedRef = useRef<string | null>(null)
   useEffect(() => {
     void storeLoad()
@@ -64,8 +64,8 @@ export function usePrivacyZoneEditor() {
     [zones],
   )
 
-  const flyToZone = useCallback(
-    (id: string, animationDuration: number) => {
+  const jumpToZone = useCallback(
+    (id: string) => {
       const saved = savedZoneForId(id)
       if (saved) {
         const zoom = zoomFromRadius(saved.radiusMeters, circleRadiusPx, saved.centerLatitude)
@@ -73,20 +73,12 @@ export function usePrivacyZoneEditor() {
         const zoomLevel = Math.max(10, Math.min(19, zoom))
         setCameraCenter(center)
         setCameraZoom(zoomLevel)
-        cameraRef.current?.setCamera({
-          centerCoordinate: center,
-          zoomLevel,
-          animationDuration,
-        })
+        cameraRef.current?.jumpTo({ center, zoom: zoomLevel })
       } else {
         const center = currentLocation()
         setCameraCenter(center)
         setCameraZoom(DEFAULT_ZONE_ZOOM)
-        cameraRef.current?.setCamera({
-          centerCoordinate: center,
-          zoomLevel: DEFAULT_ZONE_ZOOM,
-          animationDuration,
-        })
+        cameraRef.current?.jumpTo({ center, zoom: DEFAULT_ZONE_ZOOM })
       }
     },
     [circleRadiusPx, savedZoneForId],
@@ -97,15 +89,15 @@ export function usePrivacyZoneEditor() {
     const isInitial = prevSelectedRef.current === null
     if (isInitial || prevSelectedRef.current !== selectedId) {
       prevSelectedRef.current = selectedId
-      flyToZone(selectedId, 0)
+      jumpToZone(selectedId)
     }
-  }, [selectedId, loaded, mapReady, flyToZone])
+  }, [selectedId, loaded, mapReady, jumpToZone])
 
   const handleCameraChanged = useCallback(
-    (state: { properties: { center: number[]; zoom: number } }) => {
-      const [lon, lat] = state.properties.center
+    ({ nativeEvent }: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+      const [lon, lat] = nativeEvent.center
       setCameraCenter([lon, lat])
-      setCameraZoom(state.properties.zoom)
+      setCameraZoom(nativeEvent.zoom)
     },
     [],
   )
@@ -209,11 +201,7 @@ export function usePrivacyZoneEditor() {
   const handleCancelEdit = useCallback(() => {
     const snap = editStartRef.current
     if (snap) {
-      cameraRef.current?.setCamera({
-        centerCoordinate: snap.center,
-        zoomLevel: snap.zoom,
-        animationDuration: 300,
-      })
+      cameraRef.current?.easeTo({ center: snap.center, zoom: snap.zoom, duration: 300 })
     }
     setIsEditing(false)
   }, [])

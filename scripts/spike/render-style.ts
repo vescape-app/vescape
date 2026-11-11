@@ -171,7 +171,18 @@ async function main() {
   })
   const { ONE_DARK_OPENMAPTILES_STYLE } =
     await import('../../src/modules/map/constants/oneDarkOpenMapTilesStyle')
-  const { ONE_DARK_MAP_STYLE } = await import('../../src/modules/map/constants/oneDarkMapStyle')
+  const { ONE_DARK_BASE_LAYERS, ONE_DARK_SOURCES } =
+    await import('../../src/modules/map/constants/oneDarkBaseLayers')
+  const { ONE_DARK_OVERLAY_LAYERS } =
+    await import('../../src/modules/map/constants/oneDarkOverlayLayers')
+  const ONE_DARK_MAP_STYLE = JSON.stringify({
+    version: 8,
+    name: 'One Dark',
+    sprite: 'mapbox://sprites/mapbox/streets-v12',
+    sources: ONE_DARK_SOURCES,
+    glyphs: 'mapbox://fonts/mapbox/{fontstack}/{range}.pbf',
+    layers: [...ONE_DARK_BASE_LAYERS, ...ONE_DARK_OVERLAY_LAYERS],
+  })
   writeFileSync(
     join(OUT, 'one-dark-omt.json'),
     JSON.stringify(ONE_DARK_OPENMAPTILES_STYLE, null, 1),

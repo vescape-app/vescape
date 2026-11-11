@@ -1,6 +1,6 @@
-import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
+import { Camera, Map as MapLibreMap } from '@maplibre/maplibre-react-native'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
-import { useCallback, useRef, useState, type ComponentRef } from 'react'
+import { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
@@ -12,15 +12,13 @@ import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
-import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
+import type { MapStyleKey } from '@/modules/map/constants/mapStyles'
 import {
-  getSatelliteDarkMapStyle,
-  getSatelliteImageryPaint,
+  DEFAULT_SATELLITE_IMAGERY_OPACITY,
+  DEFAULT_SATELLITE_IMAGERY_SATURATION,
+  DEFAULT_SATELLITE_MAP_IMAGERY_OPACITY,
 } from '@/modules/map/constants/satelliteDarkMapStyle'
-import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
 import { theme } from '@/constants/theme'
-import { useThemeStore } from '@/hooks/useTheme'
-import { mapStyleForTheme } from '@/modules/map/lib/mapTheme'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import {
   FIXTURE_ACCURACY_FIX,
@@ -42,7 +40,7 @@ import {
   FIXTURE_RIDERS,
 } from '@/screens/showcase/mapShowcaseFixtures'
 import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayers'
-import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
+import { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
 import { DASH } from '@/helpers/format'
 
 const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
@@ -57,7 +55,6 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 
 export default function MapComponentsShowcase() {
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
-  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   // Fixture camera is north-up and flat, so the arrow shows the raw fixture bearing.
   const mapPose = useSharedValue({ heading: 0, pitch: 0 })
   const puckBearing = useSharedValue<number | null>(FIXTURE_GPS_PUCK_BEARING_DEG)
@@ -70,120 +67,101 @@ export default function MapComponentsShowcase() {
   const [lastEvent, setLastEvent] = useState<string | null>(null)
   const [sheetVisible, setSheetVisible] = useState(false)
   const [navigationProfile, setNavigationProfile] = useState<NavigationProfile>('walking')
-  const cameraRef = useRef<ComponentRef<typeof Camera>>(null)
+  const [loadedSignature, setLoadedSignature] = useState<string | null>(null)
   const moreTriggerRef = useTriggerRef()
-
-  const handleMapLoaded = useCallback(() => {
-    cameraRef.current?.setCamera({
-      centerCoordinate: FIXTURE_CAMERA_CENTER,
-      zoomLevel: FIXTURE_CAMERA_ZOOM,
-      animationDuration: 0,
-    })
-  }, [])
-
-  const renderedStyleKey = mapStyleForTheme(styleKey, resolvedTheme)
-  const selectedStyle = MAP_STYLES.find((s) => s.key === styleKey) ?? MAP_STYLES[0]
-  const isMapy = renderedStyleKey === 'mapy'
-  const isOneDark = renderedStyleKey === 'onedark'
-  const isSatellite = renderedStyleKey === 'satellite'
-  const useCustomJSON = isMapy || isOneDark || isSatellite
+  // The main map's own style resolution, in map mode with default satellite tone.
+  const mapStyle = useResolvedMapStyle({
+    mapStyleKey: styleKey,
+    mode: 'map',
+    satelliteOverlayEnabled: true,
+    satelliteImageryOpacity: DEFAULT_SATELLITE_IMAGERY_OPACITY,
+    satelliteMapImageryOpacity: DEFAULT_SATELLITE_MAP_IMAGERY_OPACITY,
+    satelliteImagerySaturation: DEFAULT_SATELLITE_IMAGERY_SATURATION,
+    hideTelemetryMapDetails: false,
+  })
+  const { isSatellite } = mapStyle
+  const styleLoaded = loadedSignature === mapStyle.styleSignature
 
   return (
     <View style={styles.container}>
-      <MapView
+      <MapLibreMap
+        // A fresh map per style: app layers mount once their base style has loaded.
+        key={mapStyle.styleSignature}
         style={StyleSheet.absoluteFill}
-        styleURL={
-          useCustomJSON
-            ? undefined
-            : renderedStyleKey === 'outdoors'
-              ? Mapbox.StyleURL.Outdoors
-              : (selectedStyle.styleURL ?? undefined)
-        }
-        styleJSON={
-          isOneDark
-            ? ONE_DARK_MAP_STYLE
-            : isMapy
-              ? BLANK_STYLE
-              : isSatellite
-                ? getSatelliteDarkMapStyle()
-                : undefined
-        }
-        pitchEnabled={false}
-        rotateEnabled={false}
-        compassEnabled={false}
-        scaleBarEnabled={false}
-        logoEnabled={false}
-        attributionEnabled={false}
-        onDidFinishLoadingMap={handleMapLoaded}
+        mapStyle={mapStyle.mapStyle}
+        touchPitch={false}
+        touchRotate={false}
+        compass={false}
+        scaleBar={false}
+        logo={false}
+        attribution={false}
+        onDidFinishLoadingStyle={() => setLoadedSignature(mapStyle.styleSignature)}
       >
-        <Camera
-          ref={cameraRef}
-          defaultSettings={{
-            centerCoordinate: FIXTURE_CAMERA_CENTER,
-            zoomLevel: FIXTURE_CAMERA_ZOOM,
-          }}
-          animationMode="none"
-        />
-        {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
-        {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
-        <MainMapLayers
-          historyActive={false}
-          expandSelectedMapPoints
-          isSatellite={isSatellite}
-          weatherActive={weatherActive}
-          legalLimitsActive={legalLimitsActive}
-          liveTrailShape={FIXTURE_LIVE_TRAIL_SHAPE}
-          rideRouteShape={null}
-          accuracyFix={FIXTURE_ACCURACY_FIX}
-          accuracyShape={FIXTURE_ACCURACY_SHAPE}
-          puckBearing={puckBearing}
-          mapPose={mapPose}
-          riders={FIXTURE_RIDERS}
-          rideRoute={[]}
-          rideTelemetrySamples={[]}
-          activeHistoryMapMetric={activeHistoryMapMetric}
-          rideMarkers={[]}
-          rideGpsSamples={[]}
-          mediaAssets={[]}
-          favoriteRanges={[]}
-          mapZoom={FIXTURE_CAMERA_ZOOM}
-          historyMetricGradientsEnabled
-          historyMetricHotRanges={FIXTURE_HISTORY_METRIC_HOT_RANGES}
-          directionPoint={FIXTURE_DIRECTION_POINT}
-          activeNavigationTarget={null}
-          selectedNavigationTarget={null}
-          mapPoints={mapPoints}
-          selectedMapPointId={selectedMapPointId}
-          hiddenMapPointCategories={[]}
-          onToggleMapPointSelection={(id) =>
-            setSelectedMapPointId((current) => (current === id ? null : id))
-          }
-          onSuppressNextMapPress={() => {}}
-          onSelectMarker={() => {}}
-          onOpenMedia={() => {}}
-          onSelectLegalCountry={() => {}}
-          onFocusDirectionPoint={() => {}}
-        />
-        {/* Rendered alongside the live layer (not behind historyActive) so the ride route,
+        <Camera initialViewState={{ center: FIXTURE_CAMERA_CENTER, zoom: FIXTURE_CAMERA_ZOOM }} />
+        {styleLoaded && (
+          <>
+            {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
+            <MainMapLayers
+              historyActive={false}
+              expandSelectedMapPoints
+              isSatellite={isSatellite}
+              fillBeforeId={mapStyle.fillBeforeId}
+              weatherActive={weatherActive}
+              legalLimitsActive={legalLimitsActive}
+              liveTrailShape={FIXTURE_LIVE_TRAIL_SHAPE}
+              rideRouteShape={null}
+              accuracyFix={FIXTURE_ACCURACY_FIX}
+              accuracyShape={FIXTURE_ACCURACY_SHAPE}
+              puckBearing={puckBearing}
+              mapPose={mapPose}
+              riders={FIXTURE_RIDERS}
+              rideRoute={[]}
+              rideTelemetrySamples={[]}
+              activeHistoryMapMetric={activeHistoryMapMetric}
+              rideMarkers={[]}
+              rideGpsSamples={[]}
+              mediaAssets={[]}
+              favoriteRanges={[]}
+              mapZoom={FIXTURE_CAMERA_ZOOM}
+              historyMetricGradientsEnabled
+              historyMetricHotRanges={FIXTURE_HISTORY_METRIC_HOT_RANGES}
+              directionPoint={FIXTURE_DIRECTION_POINT}
+              activeNavigationTarget={null}
+              selectedNavigationTarget={null}
+              mapPoints={mapPoints}
+              selectedMapPointId={selectedMapPointId}
+              hiddenMapPointCategories={[]}
+              onToggleMapPointSelection={(id) =>
+                setSelectedMapPointId((current) => (current === id ? null : id))
+              }
+              onSuppressNextMapPress={() => {}}
+              onSelectMarker={() => {}}
+              onOpenMedia={() => {}}
+              onSelectLegalCountry={() => {}}
+              onFocusDirectionPoint={() => {}}
+            />
+            {/* Rendered alongside the live layer (not behind historyActive) so the ride route,
             markers and media pins are always visible together with everything above. */}
-        <HistoryMapLayers
-          rideRouteShape={FIXTURE_RIDE_ROUTE_SHAPE}
-          rideRoute={FIXTURE_RIDE_ROUTE}
-          rideTelemetrySamples={FIXTURE_RIDE_TELEMETRY_SAMPLES}
-          activeHistoryMapMetric={activeHistoryMapMetric}
-          rideMarkers={FIXTURE_RIDE_MARKERS}
-          rideGpsSamples={FIXTURE_RIDE_GPS_SAMPLES}
-          mediaAssets={FIXTURE_MEDIA_ASSETS}
-          favoriteRanges={FIXTURE_FAVORITE_RANGES}
-          mapZoom={FIXTURE_CAMERA_ZOOM}
-          historyMetricGradientsEnabled
-          historyMetricHotRanges={FIXTURE_HISTORY_METRIC_HOT_RANGES}
-          onSuppressNextMapPress={() => {}}
-          onSelectMarker={(selection) => setLastEvent(`Marker: ${selection.marker.type}`)}
-          onOpenMedia={(asset) => setLastEvent(`Media: ${asset.filename}`)}
-          highContrastRoutes={isSatellite}
-        />
-      </MapView>
+            <HistoryMapLayers
+              rideRouteShape={FIXTURE_RIDE_ROUTE_SHAPE}
+              rideRoute={FIXTURE_RIDE_ROUTE}
+              rideTelemetrySamples={FIXTURE_RIDE_TELEMETRY_SAMPLES}
+              activeHistoryMapMetric={activeHistoryMapMetric}
+              rideMarkers={FIXTURE_RIDE_MARKERS}
+              rideGpsSamples={FIXTURE_RIDE_GPS_SAMPLES}
+              mediaAssets={FIXTURE_MEDIA_ASSETS}
+              favoriteRanges={FIXTURE_FAVORITE_RANGES}
+              mapZoom={FIXTURE_CAMERA_ZOOM}
+              historyMetricGradientsEnabled
+              historyMetricHotRanges={FIXTURE_HISTORY_METRIC_HOT_RANGES}
+              onSuppressNextMapPress={() => {}}
+              onSelectMarker={(selection) => setLastEvent(`Marker: ${selection.marker.type}`)}
+              onOpenMedia={(asset) => setLastEvent(`Media: ${asset.filename}`)}
+              highContrastRoutes={isSatellite}
+            />
+          </>
+        )}
+      </MapLibreMap>
 
       <View style={styles.topRight} pointerEvents="box-none">
         <MapStyleSwitch
@@ -242,8 +220,7 @@ export default function MapComponentsShowcase() {
         />
         <ValueRow label="Last interaction" value={lastEvent ?? DASH} />
         <Text style={styles.hint}>
-          Tap a pin to expand its label + delete button. Buildings 3D follows the style (Outdoors,
-          One Dark).
+          Tap a pin to expand its label + delete button. 3D buildings follow the base style.
         </Text>
       </EdgeDrawer>
     </View>

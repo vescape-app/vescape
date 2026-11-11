@@ -4,9 +4,10 @@
  * Paint, zoom ramps and label sizes are read from the Mapbox One Dark layers by id, so the palette
  * has one source. Only the source, `source-layer`, filters, field names and fonts are translated.
  */
+import type { StyleSpecification } from '@maplibre/maplibre-react-native'
 import { ONE_DARK_BASE_LAYERS } from '@/modules/map/constants/oneDarkBaseLayers'
 import { ONE_DARK_OVERLAY_LAYERS } from '@/modules/map/constants/oneDarkOverlayLayers'
-import { theme } from '@/constants/theme'
+import { theme, type ResolvedTheme } from '@/constants/theme'
 import { BLANK_STYLE } from '@/modules/map/constants/mapStyles'
 import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
 
@@ -406,4 +407,14 @@ export function buildRasterStyle({ tileUrl, maxzoom }: { tileUrl: string; maxzoo
     ...STYLE_RESOURCES,
     layers: [...blank.layers, { id: 'raster', type: 'raster', source: 'raster' }],
   }
+}
+
+/** OpenFreeMap's light style stands in for Mapbox Outdoors in the light theme. */
+export const LIGHT_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
+
+/** The plain base map for a theme, for maps that have no style picker of their own. */
+export function mapStyleForAppTheme(resolvedTheme: ResolvedTheme) {
+  return resolvedTheme === 'dark'
+    ? (buildOneDarkStyle({ detailsVisible: true }) as StyleSpecification)
+    : LIGHT_STYLE_URL
 }

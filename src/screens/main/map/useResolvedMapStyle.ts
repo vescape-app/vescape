@@ -7,6 +7,7 @@ import {
   buildOneDarkStyle,
   buildRasterStyle,
   buildSatelliteStyle,
+  LIGHT_STYLE_URL,
 } from '@/modules/map/constants/oneDarkOpenMapTilesStyle'
 import {
   getSatelliteImageryPaint,
@@ -16,9 +17,6 @@ import { mapStyleForTheme } from '@/modules/map/lib/mapTheme'
 import { resolveMapThemeTone } from '@/modules/map/lib/mapThemeTone'
 import { useMapServicesStore } from '@/modules/map/store/mapServicesStore'
 import type { MainViewState } from '@/screens/main/mainViewState'
-
-/** OpenFreeMap's light style stands in for Mapbox Outdoors in the light theme. */
-const LIGHT_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
 
 /**
  * Tone values move with outdoor light. Each distinct value is a new style document (a native style

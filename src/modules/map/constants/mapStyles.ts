@@ -1,4 +1,3 @@
-import Mapbox from '@rnmapbox/maps'
 import { MapTrifoldIcon, MountainsIcon, PlanetIcon } from 'phosphor-react-native'
 import { theme } from '@/constants/theme'
 
@@ -38,14 +37,9 @@ export const BLANK_STYLE = JSON.stringify({
 })
 
 export const MAP_STYLES = [
-  { key: 'onedark', label: 'Streets', styleURL: null, Icon: MapTrifoldIcon },
-  {
-    key: 'satellite',
-    label: 'Satellite',
-    styleURL: Mapbox.StyleURL.SatelliteStreet,
-    Icon: PlanetIcon,
-  },
-  { key: 'mapy', label: 'Mapy.cz', styleURL: null, Icon: MountainsIcon },
+  { key: 'onedark', label: 'Streets', Icon: MapTrifoldIcon },
+  { key: 'satellite', label: 'Satellite', Icon: PlanetIcon },
+  { key: 'mapy', label: 'Mapy.cz', Icon: MountainsIcon },
 ] as const
 
 /** Outdoors remains a valid saved key for existing installations. */

@@ -24,12 +24,6 @@ export function getSatelliteOverlayColors(resolvedTheme: ResolvedTheme) {
   }
 }
 
-/** Dashboard and Explore share this layer document; backdrop and roads follow app theme. */
-export function getSatelliteOverlayMapStyle(resolvedTheme: ResolvedTheme) {
-  const { backgroundColor, roadColor } = getSatelliteOverlayColors(resolvedTheme)
-  return getSatelliteDarkMapStyle(true, true, false, true, 0.8, backgroundColor, roadColor)
-}
-
 export function getSatelliteImageryPaint(
   imageryOpacity = DEFAULT_SATELLITE_IMAGERY_OPACITY,
   imagerySaturation = DEFAULT_SATELLITE_IMAGERY_SATURATION,
@@ -46,10 +40,8 @@ export function getSatelliteImageryPaint(
 }
 
 /**
- * The imagery raster is deliberately absent: it is mounted as an owned `RasterSource`/`RasterLayer`
- * child instead (see `SatelliteImageryLayer`). Adopting a style-JSON layer through `existing` does
- * not receive paint updates on iOS in Release builds (#423), so the style owns only the backdrop,
- * street lines, and labels, and the imagery stays a first-class layer we control.
+ * The Mapbox satellite-streets document whose layer paint `buildSatelliteStyle` ports to MapLibre.
+ * It has no imagery layer; the MapLibre builder adds its own raster.
  */
 export function getSatelliteDarkMapStyle(
   showPoiLabels = true,
