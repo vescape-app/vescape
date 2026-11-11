@@ -7,6 +7,8 @@
 import { ONE_DARK_BASE_LAYERS } from '@/modules/map/constants/oneDarkBaseLayers'
 import { ONE_DARK_OVERLAY_LAYERS } from '@/modules/map/constants/oneDarkOverlayLayers'
 import { theme } from '@/constants/theme'
+import { BLANK_STYLE } from '@/modules/map/constants/mapStyles'
+import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
 
 type Expression = unknown[]
 
@@ -269,14 +271,140 @@ const OVERLAY_LAYERS: StyleLayer[] = [
   }),
 ]
 
+const OPENMAPTILES_SOURCES = {
+  [SOURCE]: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' },
+}
+/** Every variant carries sprite and glyphs, so app symbol layers render on any of them. */
+const STYLE_RESOURCES = {
+  sprite: 'https://tiles.openfreemap.org/sprites/ofm_f384/ofm',
+  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+}
+
 /** One Dark for MapLibre on OpenFreeMap tiles. No Mapbox URL, no token. */
 export const ONE_DARK_OPENMAPTILES_STYLE = {
   version: 8,
   name: 'One Dark (OpenMapTiles)',
-  sources: {
-    [SOURCE]: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' },
-  },
-  sprite: 'https://tiles.openfreemap.org/sprites/ofm_f384/ofm',
-  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  sources: OPENMAPTILES_SOURCES,
+  ...STYLE_RESOURCES,
   layers: [...GROUND_LAYERS, ...OVERLAY_LAYERS],
+}
+
+const OPENMAPTILES_LAYERS = new Map(
+  ONE_DARK_OPENMAPTILES_STYLE.layers.map((layer) => [layer.id, layer]),
+)
+const DETAIL_LAYER_IDS = new Set(['poi-label', 'transit-label'])
+
+/** Points of interest and transit stops follow the mode; the rest of the map does not. */
+function withDetails(layer: StyleLayer, detailsVisible: boolean): StyleLayer {
+  if (!DETAIL_LAYER_IDS.has(layer.id) || detailsVisible) return layer
+  return { ...layer, layout: { ...layer.layout, visibility: 'none' } }
+}
+
+/**
+ * MapLibre cannot restyle a base-style layer from JSX, so every runtime change the main map makes
+ * to the base map is a variant of the style document, built here.
+ */
+export function buildOneDarkStyle({ detailsVisible }: { detailsVisible: boolean }) {
+  return {
+    ...ONE_DARK_OPENMAPTILES_STYLE,
+    layers: ONE_DARK_OPENMAPTILES_STYLE.layers.map((layer) =>
+      withDetails(
+        DETAIL_LAYER_IDS.has(layer.id)
+          ? { ...layer, paint: { ...layer.paint, 'icon-opacity': 0.76, 'icon-halo-width': 0 } }
+          : layer,
+        detailsVisible,
+      ),
+    ),
+  }
+}
+
+/** The Mapbox satellite raster plus street lines and labels from OpenMapTiles. */
+export function buildSatelliteStyle({
+  detailsVisible,
+  tileUrl,
+  imagery,
+  roadLineOpacity,
+  backgroundColor,
+  roadColor,
+}: {
+  detailsVisible: boolean
+  /** XYZ template, token included. */
+  tileUrl: string
+  imagery: { opacity: number; saturation: number; contrast: number }
+  roadLineOpacity: number
+  backgroundColor: string
+  roadColor: string
+}) {
+  // Paint comes from the Mapbox satellite document by layer id; source, filters, fonts and icon
+  // names come from the One Dark port, the same translation it already does.
+  const mapboxLayers = (
+    JSON.parse(
+      getSatelliteDarkMapStyle(
+        true,
+        true,
+        false,
+        true,
+        roadLineOpacity,
+        backgroundColor,
+        roadColor,
+      ),
+    ) as { layers: StyleLayer[] }
+  ).layers
+  const ported = mapboxLayers.flatMap((mapbox): StyleLayer[] => {
+    const omt = OPENMAPTILES_LAYERS.get(mapbox.id)
+    if (!omt || omt.type !== mapbox.type || omt.type === 'background') return []
+    const { layout: omtLayout = {} } = omt
+    // Mapbox maki icon names do not exist in the OpenFreeMap sprite.
+    const { 'icon-image': _makiIcon, ...mapboxLayout } = mapbox.layout ?? {}
+    const layout = { ...mapboxLayout }
+    for (const key of ['text-font', 'text-field', 'icon-image', 'symbol-placement']) {
+      if (key in omtLayout) layout[key] = omtLayout[key]
+    }
+    return [
+      withDetails(
+        {
+          ...omt,
+          minzoom: mapbox.minzoom ?? omt.minzoom,
+          layout,
+          paint: mapbox.paint,
+        },
+        detailsVisible,
+      ),
+    ]
+  })
+  return {
+    version: 8,
+    name: 'Satellite (OpenMapTiles)',
+    sources: {
+      ...OPENMAPTILES_SOURCES,
+      satellite: { type: 'raster', tiles: [tileUrl], tileSize: 256, maxzoom: 22 },
+    },
+    ...STYLE_RESOURCES,
+    layers: [
+      { id: 'background', type: 'background', paint: { 'background-color': backgroundColor } },
+      {
+        id: 'satellite-imagery',
+        type: 'raster',
+        source: 'satellite',
+        paint: {
+          'raster-opacity': imagery.opacity,
+          'raster-saturation': imagery.saturation,
+          'raster-contrast': imagery.contrast,
+        },
+      },
+      ...ported,
+    ],
+  }
+}
+
+/** Mapy.cz raster tiles over the blank backdrop. */
+export function buildRasterStyle({ tileUrl, maxzoom }: { tileUrl: string; maxzoom: number }) {
+  const blank = JSON.parse(BLANK_STYLE) as { layers: StyleLayer[] }
+  return {
+    version: 8,
+    name: 'Raster',
+    sources: { raster: { type: 'raster', tiles: [tileUrl], tileSize: 256, maxzoom } },
+    ...STYLE_RESOURCES,
+    layers: [...blank.layers, { id: 'raster', type: 'raster', source: 'raster' }],
+  }
 }

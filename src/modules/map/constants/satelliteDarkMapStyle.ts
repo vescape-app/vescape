@@ -16,17 +16,18 @@ const SATELLITE_HALO = 'hsl(0, 5%, 0%)'
 const SATELLITE_SOFT_HALO = 'hsla(0, 5%, 0%, 0.75)'
 const FULL_IMAGERY_OPACITY = 1
 
+/** Backdrop and road colors of the satellite overlay; both follow the app theme. */
+export function getSatelliteOverlayColors(resolvedTheme: ResolvedTheme) {
+  return {
+    backgroundColor: resolvedTheme === 'light' ? '#e8eef5' : '#172033',
+    roadColor: resolvedTheme === 'light' ? theme.palette.mono.black : theme.palette.mono.white,
+  }
+}
+
 /** Dashboard and Explore share this layer document; backdrop and roads follow app theme. */
 export function getSatelliteOverlayMapStyle(resolvedTheme: ResolvedTheme) {
-  return getSatelliteDarkMapStyle(
-    true,
-    true,
-    false,
-    true,
-    0.8,
-    resolvedTheme === 'light' ? '#e8eef5' : '#172033',
-    resolvedTheme === 'light' ? theme.palette.mono.black : theme.palette.mono.white,
-  )
+  const { backgroundColor, roadColor } = getSatelliteOverlayColors(resolvedTheme)
+  return getSatelliteDarkMapStyle(true, true, false, true, 0.8, backgroundColor, roadColor)
 }
 
 export function getSatelliteImageryPaint(
