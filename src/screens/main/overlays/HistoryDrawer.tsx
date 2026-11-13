@@ -6,7 +6,7 @@ import {
   StarIcon,
   WarningCircleIcon,
 } from 'phosphor-react-native'
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
@@ -14,7 +14,11 @@ import { SectionHeader } from '@/components/base/SectionHeader'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FavoriteRideCard } from '@/modules/history/components/FavoriteRideCard'
-import { RidePreviewCardList } from '@/modules/history/components/RidePreviewCardList'
+import {
+  RidePreviewCardList,
+  RidePreviewStrip,
+  RidePreviewStripSkeleton,
+} from '@/modules/history/components/RidePreviewCardList'
 import { HistorySessionSheet } from '@/modules/history/components/HistorySessionSheet'
 import { favoriteSessionId, favoriteToSession } from '@/modules/history/lib/favorites'
 import type { HistorySession } from '@/modules/history/lib/sessions'
@@ -180,7 +184,10 @@ export function HistoryDrawer({
             }
           />
           {!ridesLoaded || historyLoading ? (
-            <RideListSkeleton />
+            <RidePreviewStripSkeleton
+              bleed={CARD_BLEED}
+              accessibilityLabel="Loading recent rides"
+            />
           ) : sessions.length === 0 && historyError ? (
             <Placeholder
               icon={WarningCircleIcon}
@@ -221,11 +228,7 @@ export function HistoryDrawer({
             }
           />
           {favorites.length === 0 && (!favoritesLoaded || favoritesLoading) ? (
-            <ActivityIndicator
-              size="small"
-              color={theme.palette.amber.color}
-              style={styles.loading}
-            />
+            <RidePreviewStripSkeleton bleed={CARD_BLEED} accessibilityLabel="Loading favorites" />
           ) : favorites.length === 0 && favoritesError ? (
             <Placeholder
               icon={WarningCircleIcon}
@@ -244,12 +247,7 @@ export function HistoryDrawer({
               style={styles.placeholder}
             />
           ) : (
-            <ScrollView
-              horizontal
-              style={styles.cardScroll}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.cardList}
-            >
+            <RidePreviewStrip bleed={CARD_BLEED}>
               {favorites.slice(0, 8).map((favorite, index) => (
                 <FavoriteRideCard
                   key={favorite.id}
@@ -258,7 +256,7 @@ export function HistoryDrawer({
                   onPress={() => openFavorite(favorite)}
                 />
               ))}
-            </ScrollView>
+            </RidePreviewStrip>
           )}
         </View>
       </EdgeDrawer>
@@ -289,42 +287,13 @@ export function HistoryDrawer({
   )
 }
 
-function RideListSkeleton() {
-  return (
-    <View style={styles.cardList} accessibilityLabel="Loading recent rides">
-      {[0, 1, 2].map((index) => (
-        <View key={index} style={styles.rideSkeleton} />
-      ))}
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
   content: {
     padding: 12,
     gap: 12,
   },
-  rideSkeleton: {
-    width: 172,
-    height: 165,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surfaceDeep,
-    opacity: 0.55,
-  },
-  cardList: {
-    gap: 10,
-    paddingHorizontal: CARD_BLEED,
-  },
-  cardScroll: {
-    marginHorizontal: -CARD_BLEED,
-  },
   placeholder: {
     minHeight: 170,
     paddingVertical: 24,
-  },
-  loading: {
-    marginVertical: 70,
   },
 })

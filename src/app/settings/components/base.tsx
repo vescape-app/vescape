@@ -35,6 +35,7 @@ import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { Placeholder } from '@/components/base/Placeholder'
+import { SkeletonLine, SkeletonPulse } from '@/components/base/Skeleton'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme, type MonoWeight } from '@/constants/theme'
@@ -196,13 +197,37 @@ function SectionHeaderShowcase() {
   )
 }
 
+function SkeletonShowcase() {
+  const [staggered, setStaggered] = useState(true)
+  return (
+    <ShowcaseCard
+      name="Skeleton"
+      controls={<ToggleRow label="staggered" value={staggered} onToggle={setStaggered} />}
+    >
+      <View style={styles.skeletonRow}>
+        {[0, 1, 2].map((index) => (
+          <SkeletonPulse key={index} index={staggered ? index : 0} style={styles.skeletonTile}>
+            <SkeletonLine lineHeight={18} width="80%" />
+            <SkeletonLine lineHeight={15} width="60%" />
+            <SkeletonLine lineHeight={15} width="45%" />
+          </SkeletonPulse>
+        ))}
+      </View>
+    </ShowcaseCard>
+  )
+}
+
 export default function BaseComponentsPage() {
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <PageScrollView contentContainerStyle={styles.content}>
-        <IconHero icon={CubeIcon} description="SectionHeader, Banner, Placeholder, TickText." />
+        <IconHero
+          icon={CubeIcon}
+          description="SectionHeader, Banner, Placeholder, Skeleton, TickText."
+        />
         <SectionHeaderShowcase />
         <PlaceholderShowcase />
+        <SkeletonShowcase />
         <BannerShowcase />
         <TickTextShowcase />
       </PageScrollView>
@@ -213,6 +238,8 @@ export default function BaseComponentsPage() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
+  skeletonRow: { flexDirection: 'row', gap: 10 },
+  skeletonTile: { flex: 1, gap: 4 },
   tickBox: {
     gap: 6,
     borderWidth: 1,

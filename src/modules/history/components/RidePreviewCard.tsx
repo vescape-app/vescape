@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native'
 
+import { SkeletonLine, SkeletonPulse } from '@/components/base/Skeleton'
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
@@ -11,6 +12,8 @@ import type { RideWeather } from 'vescape-core'
 const CARD_WIDTH = 172
 const CARD_PADDING = 8
 const PREVIEW_HEIGHT = 88
+const TITLE_LINE = 18
+const META_LINE = 15
 
 interface RidePreviewCardProps {
   title: string
@@ -81,6 +84,30 @@ export function RidePreviewCard({
   )
 }
 
+interface RidePreviewCardSkeletonProps {
+  /** Position in the strip; offsets the pulse so it ripples across the tiles. */
+  index?: number
+}
+
+/** Loading stand-in with the exact footprint of a RidePreviewCard. */
+export function RidePreviewCardSkeleton({ index = 0 }: RidePreviewCardSkeletonProps) {
+  const neutral = useResolvedNeutralColors()
+  return (
+    <View
+      style={[styles.card, { backgroundColor: neutral.surfaceDeep, borderColor: neutral.border }]}
+    >
+      <SkeletonPulse index={index}>
+        <View style={[styles.preview, { height: PREVIEW_HEIGHT }]} />
+        <View style={styles.details}>
+          <SkeletonLine lineHeight={TITLE_LINE} width="70%" />
+          <SkeletonLine lineHeight={META_LINE} width="55%" />
+          <SkeletonLine lineHeight={META_LINE} width="40%" />
+        </View>
+      </SkeletonPulse>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
@@ -102,7 +129,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 14,
     fontWeight: '700',
-    lineHeight: 18,
+    lineHeight: TITLE_LINE,
     fontVariant: ['tabular-nums'],
   },
   dateRow: {
@@ -113,10 +140,10 @@ const styles = StyleSheet.create({
   date: {
     flexShrink: 1,
     fontSize: 11,
-    lineHeight: 15,
+    lineHeight: META_LINE,
   },
   subtitle: {
     fontSize: 11,
-    lineHeight: 15,
+    lineHeight: META_LINE,
   },
 })

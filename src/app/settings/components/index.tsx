@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, type Href } from 'expo-router'
 import {
   ChartLineUpIcon,
+  ClockCounterClockwiseIcon,
   ListIcon,
   MapTrifoldIcon,
   SwatchesIcon,
@@ -148,6 +149,13 @@ const groups = [
         route: '/settings/components/tune',
         icon: ToolboxIcon,
         color: theme.palette.amber.color,
+      },
+      {
+        label: 'History',
+        hint: 'Ride tiles, route previews, and ride rows from recorded history',
+        route: '/settings/components/history',
+        icon: ClockCounterClockwiseIcon,
+        color: theme.palette.purple.color,
       },
       {
         label: 'Weather',
