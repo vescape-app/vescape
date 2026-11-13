@@ -77,3 +77,19 @@ the same pure native conversion helper on each platform; shared distance fixture
 - Converted values, chart scales, and unit labels agree.
 - Step snapping works in both directions, including values already on a step boundary.
 - Custom alert text stays unchanged while placeholders use the selected units.
+
+## Clock format
+
+Units settings also selects `24h` or `12h` clock presentation, independently of distance,
+temperature and phone region. The native app-wide `timeFormat` preference defaults to `24h`
+when missing or invalid. The `12h` format includes AM/PM, with midnight as `12:00 AM` and noon
+as `12:00 PM`.
+
+Phone ride times, chart axes and scrub labels, weather and radar times, sun-theme hints, tune
+history and diagnostic timestamp displays follow this preference. Forecast minutes stay local
+to the forecast location. Durations, stored timestamps and export formats do not change.
+
+Both companion settings channels retain the preference. Wear OS uses it for its app clock,
+weather, radar and diagnostic timestamps; watchOS uses it for weather, radar and diagnostic
+timestamps. The watchOS system clock continues
+to follow watchOS settings.

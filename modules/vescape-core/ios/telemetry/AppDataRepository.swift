@@ -566,6 +566,11 @@ final class AppDataRepository {
     } else if key == "voiceLevel" {
       guard let level = Self.voiceLevel(rawValue) else { return }
       value = level
+    } else if key == "timeFormat" {
+      guard let format = validTimeFormat(rawValue) else {
+        throw CocoaError(.coderInvalidValue)
+      }
+      value = format
     } else if key == "temperatureUnit" {
       guard let unit = validTemperatureUnit(rawValue) else { return }
       value = unit
@@ -666,6 +671,7 @@ final class AppDataRepository {
     "rideSplitGapMinutes": DEFAULT_RIDE_SPLIT_GAP_MINUTES,
     "distanceUnit": "km",
     "temperatureUnit": "celsius",
+    "timeFormat": "24h",
     "themeMode": "system",
     "satelliteOverlayEnabled": true,
     "satelliteImageryOpacity": 0.2,
@@ -751,6 +757,7 @@ final class AppDataRepository {
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
     normalized["distanceUnit"] = validDistanceUnit(settings["distanceUnit"]) ?? "km"
     normalized["temperatureUnit"] = validTemperatureUnit(settings["temperatureUnit"]) ?? "celsius"
+    normalized["timeFormat"] = validTimeFormat(settings["timeFormat"]) ?? "24h"
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     normalized["voice"] = voice(settings["voice"]) ?? voiceMatching

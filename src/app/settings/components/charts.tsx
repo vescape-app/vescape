@@ -1,3 +1,5 @@
+import { TimeFormatContext, useTimeFormat } from '@/hooks/useTimeFormat'
+import type { TimeFormat } from '@/helpers/time'
 import { PageScrollView } from '@/components/base/PageScrollView'
 import { DistanceUnitContext, useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedUnit, type DistanceUnit } from '@/helpers/units'
@@ -443,35 +445,45 @@ function BmsCellVoltagesShowcase() {
 }
 
 export default function ChartsPage() {
+  const currentTimeFormat = useTimeFormat()
+  const [timeFormat, setTimeFormat] = useState<TimeFormat>(currentTimeFormat)
   const [distanceUnit, setUnits] = useState<DistanceUnit>('km')
   return (
-    <DistanceUnitContext value={distanceUnit}>
-      <SafeAreaView style={styles.container} edges={[]}>
-        <PageScrollView contentContainerStyle={styles.content}>
-          <IconHero
-            icon={ChartLineUpIcon}
-            description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
-          />
-          <ChartStackShowcase />
-          <SparklineShowcase />
-          <LinearGaugeShowcase />
-          <ChipRow
-            label="units"
-            options={['km', 'mi']}
-            selected={distanceUnit}
-            onSelect={(value) => setUnits(value as DistanceUnit)}
-          />
-          <AnimatedSingleGaugeShowcase />
-          <AnimatedDualGaugeShowcase />
-          <ChartLoadingOverlayShowcase />
-          <ShowcaseCard name="ChartGestureHint">
-            <ChartGestureHint />
-            <ChartGestureHint compact />
-          </ShowcaseCard>
-          <BmsCellVoltagesShowcase />
-        </PageScrollView>
-      </SafeAreaView>
-    </DistanceUnitContext>
+    <TimeFormatContext value={timeFormat}>
+      <DistanceUnitContext value={distanceUnit}>
+        <SafeAreaView style={styles.container} edges={[]}>
+          <PageScrollView contentContainerStyle={styles.content}>
+            <IconHero
+              icon={ChartLineUpIcon}
+              description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
+            />
+            <ChipRow
+              label="time format"
+              options={['24h', '12h']}
+              selected={timeFormat}
+              onSelect={(value) => setTimeFormat(value as TimeFormat)}
+            />
+            <ChartStackShowcase />
+            <SparklineShowcase />
+            <LinearGaugeShowcase />
+            <ChipRow
+              label="units"
+              options={['km', 'mi']}
+              selected={distanceUnit}
+              onSelect={(value) => setUnits(value as DistanceUnit)}
+            />
+            <AnimatedSingleGaugeShowcase />
+            <AnimatedDualGaugeShowcase />
+            <ChartLoadingOverlayShowcase />
+            <ShowcaseCard name="ChartGestureHint">
+              <ChartGestureHint />
+              <ChartGestureHint compact />
+            </ShowcaseCard>
+            <BmsCellVoltagesShowcase />
+          </PageScrollView>
+        </SafeAreaView>
+      </DistanceUnitContext>
+    </TimeFormatContext>
   )
 }
 

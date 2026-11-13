@@ -1,3 +1,4 @@
+import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import {
   CaretDownIcon,
   ChartLineIcon,
@@ -13,7 +14,7 @@ import { Text } from '@/components/base/Text'
 import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
 import { interaction, theme } from '@/constants/theme'
 import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
-import { formatRideMeta, formatRideTime } from '@/modules/history/lib/rideFormat'
+import { formatRideMeta } from '@/modules/history/lib/rideFormat'
 
 interface HistoryPanelNavProps {
   titleStartMs: number
@@ -63,6 +64,7 @@ export function HistoryPanelNav({
   onOpenShareInfo,
   onOpenCharts,
 }: HistoryPanelNavProps) {
+  const { formatRideTime } = useRideFormat()
   const primaryLabel = title ?? formatRideTime(titleStartMs, titleEndMs)
   const secondaryLabel = subtitle ?? formatRideMeta(titleStartMs, titleEndMs, boardName)
 

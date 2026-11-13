@@ -9,7 +9,6 @@ import { SectionHeader } from '@/components/base/SectionHeader'
 import { theme } from '@/constants/theme'
 import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { formatRideTime } from '@/modules/history/lib/rideFormat'
 import { isLiveRide, rideMovingWindow } from '@/modules/history/lib/sessions'
 import { useRideDaySessions } from '@/modules/history/hooks/useRideDaySessions'
 import { formatRideDay } from '@/modules/history/lib/rideDay'
@@ -39,7 +38,7 @@ export function RideDayScreen() {
 function RideDayContent({ day }: { day: RideDay }) {
   const stats = useDayStats(day)
   const rides = useRideDaySessions(day)
-  const { formatRideDetails } = useRideFormat()
+  const { formatRideDetails, formatRideTime } = useRideFormat()
   const insets = useSafeAreaInsets()
   const items = useProfileStatItems(stats.value, undefined, openRecordRide)
 

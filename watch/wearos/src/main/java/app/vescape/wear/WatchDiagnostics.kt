@@ -3,16 +3,13 @@ package app.vescape.wear
 import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 private const val TAG = "VescMirror"
 /** @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `maxEvents` */
 private const val MAX_EVENTS = 50
 
 /** @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `WatchDiagnosticEvent` */
-data class DiagnosticEvent(val time: String, val text: String, val warn: Boolean)
+data class DiagnosticEvent(val atMs: Long, val text: String, val warn: Boolean)
 
 data class DiagnosticCounters(
     val framesDecoded: Long = 0,
@@ -111,7 +108,6 @@ object WatchDiagnostics {
 
     private fun event(text: String, warn: Boolean = false) {
         if (warn) Log.w(TAG, text) else Log.d(TAG, text)
-        val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
-        events.value = (listOf(DiagnosticEvent(time, text, warn)) + events.value).take(MAX_EVENTS)
+        events.value = (listOf(DiagnosticEvent(System.currentTimeMillis(), text, warn)) + events.value).take(MAX_EVENTS)
     }
 }

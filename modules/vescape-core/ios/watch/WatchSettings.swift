@@ -32,6 +32,7 @@ enum WatchSettingsKey {
   /// Street map opacity behind the gauges, integer percent from ``WatchMapGauges/steps``.
   static let mapGaugesPercent = "mapGaugesPercent"
   static let distanceUnit = "distanceUnit"
+  static let timeFormat = "timeFormat"
   /// Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist.
   static let tiltRatePercent = "tiltRatePercent"
 }
@@ -63,6 +64,7 @@ let watchSourceSettingKeys: Set<String> = [
   "wearStreetMapEnabled",
   "wearMapGaugesPercent",
   "distanceUnit",
+  "timeFormat",
   "wearTiltRatePercent",
   "wearPushRateHz",
 ]
@@ -78,6 +80,7 @@ struct WatchSettings: Equatable {
   var streetMapEnabled: Bool = true
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
   var distanceUnit: String = "km"
+  var timeFormat: String = "24h"
   var tiltRatePercent: Int = watchDefaultTiltRatePercent
 
   /// What the wrist holds before the first push lands, and what a cleared channel reads as.
@@ -95,6 +98,7 @@ struct WatchSettings: Equatable {
       WatchSettingsKey.streetMapEnabled: streetMapEnabled,
       WatchSettingsKey.mapGaugesPercent: mapGaugesPercent,
       WatchSettingsKey.distanceUnit: distanceUnit,
+      WatchSettingsKey.timeFormat: timeFormat,
       WatchSettingsKey.tiltRatePercent: tiltRatePercent,
     ]
     if let boardMoveStrengthPercent { payload[WatchSettingsKey.boardMoveStrengthPercent] = boardMoveStrengthPercent }
@@ -116,6 +120,7 @@ struct WatchSettings: Equatable {
       streetMapEnabled: payload[WatchSettingsKey.streetMapEnabled] as? Bool ?? wristDefaults.streetMapEnabled,
       mapGaugesPercent: WatchMapGauges.percent(payload[WatchSettingsKey.mapGaugesPercent]) ?? wristDefaults.mapGaugesPercent,
       distanceUnit: payload[WatchSettingsKey.distanceUnit] as? String == "mi" ? "mi" : "km",
+      timeFormat: payload[WatchSettingsKey.timeFormat] as? String == "12h" ? "12h" : "24h",
       // Held to the range the phone repositories accept (1–100) on read too: the wrist integrates
       // this every frame, and a rate from a newer or broken phone must not spin the stick.
       tiltRatePercent: (payload[WatchSettingsKey.tiltRatePercent] as? NSNumber)

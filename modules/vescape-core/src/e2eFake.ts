@@ -68,6 +68,7 @@ const e2eSettings: AppSettings = {
   rideSplitGapMinutes: 30,
   distanceUnit: 'km',
   temperatureUnit: 'celsius',
+  timeFormat: '24h',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,

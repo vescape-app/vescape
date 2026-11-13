@@ -1,11 +1,13 @@
+import { formatClock, type TimeFormat } from '@/helpers/time'
 import { formatRideDistanceMeters, type DistanceUnit } from '@/helpers/units'
 
-export function formatRideTime(startMs: number, endMs: number, live = false): string {
-  const start = new Date(startMs)
-  const end = new Date(endMs)
-  const h = (d: Date) => d.getHours().toString().padStart(2, '0')
-  const m = (d: Date) => d.getMinutes().toString().padStart(2, '0')
-  return `${h(start)}:${m(start)} – ${live ? 'now' : `${h(end)}:${m(end)}`}`
+export function formatRideTime(
+  startMs: number,
+  endMs: number,
+  live = false,
+  timeFormat: TimeFormat = '24h',
+): string {
+  return `${formatClock(startMs, false, timeFormat)} – ${live ? 'now' : formatClock(endMs, false, timeFormat)}`
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

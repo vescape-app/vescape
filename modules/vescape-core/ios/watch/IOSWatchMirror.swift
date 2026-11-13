@@ -115,6 +115,7 @@ extension WatchMirrorCoordinator {
       streetMapEnabled: (settings["wearStreetMapEnabled"] ?? nil) as? Bool ?? true,
       mapGaugesPercent: WatchMapGauges.percent(settings["wearMapGaugesPercent"] ?? nil) ?? WatchMapGauges.defaultPercent,
       distanceUnit: (settings["distanceUnit"] ?? nil) as? String == "mi" ? "mi" : "km",
+      timeFormat: (settings["timeFormat"] ?? nil) as? String == "12h" ? "12h" : "24h",
       tiltRatePercent: AppDataRepository.wearTiltRatePercent(settings["wearTiltRatePercent"] ?? nil) ?? watchDefaultTiltRatePercent
     ), intervalMs: Int64(1000 / hz))
     return strength

@@ -7,7 +7,7 @@ import {
   RidePreviewCardSkeleton,
 } from '@/modules/history/components/RidePreviewCard'
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { formatRideDate, formatRideTime } from '@/modules/history/lib/rideFormat'
+import { formatRideDate } from '@/modules/history/lib/rideFormat'
 import { isLiveRide, rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
 
 const SKELETON_COUNT = 3
@@ -69,7 +69,7 @@ export function RidePreviewCardList({
   firstTestID,
   bleed,
 }: RidePreviewCardListProps) {
-  const { formatRideDetails } = useRideFormat()
+  const { formatRideDetails, formatRideTime } = useRideFormat()
   return (
     <RidePreviewStrip bleed={bleed}>
       {sessions.map((session, index) => {

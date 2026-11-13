@@ -116,7 +116,7 @@ private fun StatLine(label: String, value: String, warn: Boolean = false) {
 private fun EventLine(event: DiagnosticEvent) {
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text(
-            text = event.time,
+            text = formatClock(event.atMs, SettingsState.settings.value.timeFormat, withSeconds = true),
             style = MaterialTheme.typography.caption3,
             color = DimText,
         )

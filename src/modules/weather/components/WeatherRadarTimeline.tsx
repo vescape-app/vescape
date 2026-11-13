@@ -1,3 +1,5 @@
+import { formatClock } from '@/helpers/time'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { TargetIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LayoutChangeEvent } from 'react-native'
@@ -19,7 +21,6 @@ import { theme } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import {
   findClosestRainViewerFrameIndex,
-  formatRainViewerFrameTime,
   useRainViewerRadarStore,
 } from '@/modules/weather/store/rainViewerRadarStore'
 
@@ -86,6 +87,7 @@ function createRadarScrubGesture({
 }
 
 export function WeatherRadarTimeline() {
+  const timeFormat = useTimeFormat()
   const neutral = useResolvedNeutralColors()
   const frames = useRainViewerRadarStore((state) => state.frames)
   const fetchRadar = useRainViewerRadarStore((state) => state.fetch)
@@ -108,7 +110,7 @@ export function WeatherRadarTimeline() {
   useEffect(() => {
     frameCountRef.current = frames.length
     frameCount.value = frames.length
-    labelsRef.current = frames.map((frame) => formatRainViewerFrameTime(frame.time))
+    labelsRef.current = frames.map((frame) => formatClock(frame.time * 1_000, false, timeFormat))
 
     let selectedFrameIndex = useRainViewerRadarStore.getState().selectedFrameIndex
     if (!initialFrameSelectedRef.current && frames.length > 0) {
@@ -124,7 +126,7 @@ export function WeatherRadarTimeline() {
     frameIndexRef.current = Math.max(0, Math.min(frames.length - 1, selectedFrameIndex))
     progress.value = frames.length <= 1 ? 1 : frameIndexRef.current / (frames.length - 1)
     frameLabel.value = labelsRef.current[frameIndexRef.current] ?? 'Radar'
-  }, [frameCount, frames, frameLabel, progress])
+  }, [frameCount, frames, frameLabel, progress, timeFormat])
 
   useEffect(() => {
     const unsubscribe = useRainViewerRadarStore.subscribe((state, previous) => {

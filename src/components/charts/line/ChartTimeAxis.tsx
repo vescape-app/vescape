@@ -2,7 +2,9 @@ import { StyleSheet } from 'react-native'
 import { Canvas, Text } from '@shopify/react-native-skia'
 import { useDerivedValue } from 'react-native-reanimated'
 
-import { formatClock, formatRelative } from '@/components/charts/line/chartFormat'
+import { formatClock } from '@/helpers/time'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { formatRelative } from '@/components/charts/line/chartFormat'
 import {
   AXIS_WIDTH,
   TIME_AXIS_BASELINE,
@@ -34,6 +36,7 @@ export interface ChartTimeAxisProps {
 export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
+  const timeFormat = useTimeFormat()
   const neutral = useResolvedNeutralColors()
   const {
     camera,
@@ -54,18 +57,24 @@ export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
   const startLabel = useDerivedValue(() => {
     const { startMs, endMs } = viewport.value
     if (timeMode === 'relative') return formatRelative(domainEndMs - startMs)
-    return formatClock(toRealMs(startMs, timeline), endMs - startMs < CLOCK_SECONDS_BELOW_MS)
-  }, [domainEndMs, timeMode, timeline, viewport])
+    return formatClock(
+      toRealMs(startMs, timeline),
+      endMs - startMs < CLOCK_SECONDS_BELOW_MS,
+      timeFormat,
+    )
+  }, [domainEndMs, timeMode, timeFormat, timeline, viewport])
   const endLabel = useDerivedValue(() => {
     const { startMs, endMs } = viewport.value
     if (timeMode === 'relative') return formatRelative(domainEndMs - endMs)
-    return formatClock(toRealMs(endMs, timeline), endMs - startMs < CLOCK_SECONDS_BELOW_MS)
-  }, [domainEndMs, timeMode, timeline, viewport])
+    return formatClock(
+      toRealMs(endMs, timeline),
+      endMs - startMs < CLOCK_SECONDS_BELOW_MS,
+      timeFormat,
+    )
+  }, [domainEndMs, timeMode, timeFormat, timeline, viewport])
   const endLabelX = useDerivedValue(() => {
-    const { startMs, endMs } = viewport.value
-    const withSeconds = endMs - startMs < CLOCK_SECONDS_BELOW_MS
-    return AXIS_WIDTH + plotWidth - glyphWidth * (withSeconds ? 8 : 5)
-  }, [glyphWidth, plotWidth, viewport])
+    return AXIS_WIDTH + Math.max(0, plotWidth - glyphWidth * endLabel.value.length)
+  }, [endLabel, glyphWidth, plotWidth])
   const scrubTimeX = useDerivedValue(() => {
     const width = readout.value.time.length * glyphWidth
     const centered = readout.value.cursorX - width / 2

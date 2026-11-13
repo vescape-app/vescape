@@ -15,18 +15,19 @@ import kotlinx.coroutines.delay
 
 /**
  * Wall clock for the Watch Frame: the mirror runs fullscreen, so the system time is hidden while
- * riding. Always 24h, matching the frame's metric-only readouts. Minute resolution only — the tick
+ * riding. Uses the phone time-format preference. Minute resolution only — the tick
  * sleeps to the next minute boundary instead of polling, so an idle wrist costs one recomposition
  * per minute.
  */
 @Composable
 internal fun WatchClock(modifier: Modifier = Modifier, color: Color = SecondaryText) {
+    val timeFormat = SettingsState.settings.value.timeFormat
     var text by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(timeFormat) {
         while (true) {
             val now = Calendar.getInstance()
-            text = String.format("%02d:%02d", now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE))
+            text = formatHour(now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE), timeFormat)
             val msIntoMinute = now.get(Calendar.SECOND) * 1_000L + now.get(Calendar.MILLISECOND)
             delay(60_000L - msIntoMinute)
         }

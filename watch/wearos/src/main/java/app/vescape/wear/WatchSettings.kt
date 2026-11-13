@@ -40,6 +40,7 @@ const val SETTING_MAP_GAUGES = "mapGaugesPercent"
 
 /** App-wide speed and distance preference; older phones default to metric. */
 const val SETTING_DISTANCE_UNIT = "distanceUnit"
+const val SETTING_TIME_FORMAT = "timeFormat"
 
 /** Tilt stick speed at full deflection, percent of full tilt per second. */
 const val SETTING_TILT_RATE = "tiltRatePercent"
@@ -50,6 +51,7 @@ const val DEFAULT_TILT_RATE_PERCENT = 20
 /** Phone settings the wrist mirrors. Every field defaults to the wrist's own look. */
 data class WatchSettings(
     val distanceUnit: String = "km",
+    val timeFormat: String = "24h",
     /** Off by default: an older phone never sends the key, and the arrow is opt-in until it works. */
     val navArrowEnabled: Boolean = false,
     /** Null until a phone new enough to send it has pushed; the wrist then shows no number. */
@@ -72,6 +74,7 @@ data class WatchSettings(
             mapGaugesPercent = WatchMapGauges.percent(payload[SETTING_MAP_GAUGES]) ?: WatchMapGauges.DEFAULT_PERCENT,
             boardMoveStrengthPercent = payload[SETTING_BOARD_MOVE_STRENGTH] as? Int,
             distanceUnit = if (payload[SETTING_DISTANCE_UNIT] == "mi") "mi" else "km",
+            timeFormat = if (payload[SETTING_TIME_FORMAT] == "12h") "12h" else "24h",
             tiltRatePercent = (payload[SETTING_TILT_RATE] as? Int)?.coerceIn(1, 100) ?: DEFAULT_TILT_RATE_PERCENT,
         )
     }

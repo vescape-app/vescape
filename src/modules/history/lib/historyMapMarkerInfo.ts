@@ -1,3 +1,4 @@
+import { formatDateTime, type TimeFormat } from '@/helpers/time'
 import { formatLengthMeters, type DistanceUnit } from '@/helpers/units'
 import {
   ClockCountdownIcon,
@@ -50,17 +51,6 @@ export const HISTORY_MARKER_COLORS: Record<HistoryMarker['type'], ThemeColor> = 
   recording_stop: theme.palette.yellow.color,
 }
 
-function formatMarkerTime(ms: number): string {
-  return new Date(ms).toLocaleString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-}
-
 function formatDuration(ms: number): string {
   if (ms < 1_000) return `${ms} ms`
   const seconds = Math.round(ms / 1_000)
@@ -73,13 +63,14 @@ function formatDuration(ms: number): string {
 export function buildHistoryMarkerMessage(
   selection: SelectedHistoryMarker,
   distanceUnit: DistanceUnit,
+  timeFormat: TimeFormat = '24h',
 ): string {
   const { marker, gps } = selection
   const lines = [
     `Type: ${marker.type}`,
     `Meaning: ${HISTORY_MARKER_LABELS[marker.type]}`,
-    `Marker time: ${formatMarkerTime(marker.occurredAtMs)}`,
-    `Nearest GPS time: ${formatMarkerTime(gps.capturedAtMs)}`,
+    `Marker time: ${formatDateTime(marker.occurredAtMs, timeFormat)}`,
+    `Nearest GPS time: ${formatDateTime(gps.capturedAtMs, timeFormat)}`,
     `Time offset: ${formatDuration(Math.abs(gps.capturedAtMs - marker.occurredAtMs))}`,
     `Coordinate: ${gps.latitude.toFixed(7)}, ${gps.longitude.toFixed(7)}`,
   ]

@@ -4,6 +4,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class WatchSettingsTest {
+    @org.junit.Test fun timeFormatDefaultsAndClockBoundaries() {
+        assertEquals("24h", WatchSettings.decode(emptyMap()).timeFormat)
+        assertEquals("24h", WatchSettings.decode(mapOf(SETTING_TIME_FORMAT to "system")).timeFormat)
+        assertEquals("12h", WatchSettings.decode(mapOf(SETTING_TIME_FORMAT to "12h")).timeFormat)
+        assertEquals("12:00 AM", formatHour(0, "12h"))
+        assertEquals("12:00 PM", formatHour(720, "12h"))
+        assertEquals("2:05 PM", formatHour(845, "12h"))
+        assertEquals("2:05:09 PM", formatHour(845, "12h", 9))
+    }
+
     @Test fun `telemetry trail is enabled for older phones and false survives settings reload`() {
         assertEquals(true, WatchSettings.decode(emptyMap()).telemetryTrailEnabled)
         assertEquals(true, WatchSettings.decode(mapOf(SETTING_TELEMETRY_TRAIL to "false")).telemetryTrailEnabled)

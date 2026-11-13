@@ -32,6 +32,7 @@ const DEFAULTS: AppSettings = {
   rideSplitGapMinutes: DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   distanceUnit: 'km',
   temperatureUnit: 'celsius',
+  timeFormat: '24h',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,

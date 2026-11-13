@@ -54,3 +54,12 @@ test('existing ride totals use miles even below the nearby-distance cutoff', () 
   expect(formatRideListDetails(0, 0, 'mi')).toBe('1 min · 0.00 mi')
   expect(record.distanceM).toBe(80)
 })
+
+test('12h ride ranges identify noon, midnight and live endpoints', () => {
+  const beforeNoon = new Date(2026, 10, 13, 11, 45).getTime()
+  const afterNoon = new Date(2026, 10, 13, 12, 15).getTime()
+  const midnight = new Date(2026, 10, 14, 0, 0).getTime()
+  expect(formatRideTime(beforeNoon, afterNoon, false, '12h')).toBe('11:45 AM – 12:15 PM')
+  expect(formatRideTime(afterNoon, midnight, false, '12h')).toBe('12:15 PM – 12:00 AM')
+  expect(formatRideTime(afterNoon, midnight, true, '12h')).toBe('12:15 PM – now')
+})

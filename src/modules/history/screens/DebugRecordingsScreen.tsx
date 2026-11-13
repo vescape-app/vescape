@@ -1,3 +1,5 @@
+import { formatDateTime } from '@/helpers/time'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -15,11 +17,8 @@ import { theme } from '@/constants/theme'
 import { formatBytes } from '@/helpers/format'
 import { useDebugRecordings } from '@/modules/history/hooks/useDebugRecordings'
 
-function formatCreatedAt(createdAt: number): string {
-  return new Date(createdAt).toLocaleString()
-}
-
 export function DebugRecordingsScreen() {
+  const timeFormat = useTimeFormat()
   const debug = useDebugRecordings()
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
 
@@ -93,7 +92,7 @@ export function DebugRecordingsScreen() {
                 icon={RecordIcon}
                 iconColor={theme.palette.sky.color}
                 label={recording.name}
-                hint={`device · ${formatCreatedAt(recording.createdAt)} · ${formatBytes(recording.sizeBytes)}`}
+                hint={`device · ${formatDateTime(recording.createdAt, timeFormat)} · ${formatBytes(recording.sizeBytes)}`}
                 right={
                   <View style={styles.rowActions}>
                     {replayButton(recording.name)}

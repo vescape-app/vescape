@@ -41,7 +41,7 @@ import {
   HISTORY_RIDE_ROW_GAP,
 } from '@/modules/history/lib/historyList'
 import { favoriteSessionId } from '@/modules/history/lib/favorites'
-import { formatFavoriteName, formatRideTime } from '@/modules/history/lib/rideFormat'
+import { formatFavoriteName } from '@/modules/history/lib/rideFormat'
 import { isLiveRide } from '@/modules/history/lib/sessions'
 import { rideDayOf } from '@/modules/history/lib/rideDay'
 import {
@@ -90,7 +90,7 @@ export function HistorySessionSheet({
   onSelectTab,
   onOpenDay,
 }: HistorySessionSheetProps) {
-  const { formatRideDetails } = useRideFormat()
+  const { formatRideDetails, formatRideTime } = useRideFormat()
   const { fontScale } = useWindowDimensions()
   const dateHeaderHeight = 24 + 38 * fontScale
   useHistoryAutoRefresh(visible && !favoriteMode)
@@ -253,6 +253,7 @@ export function HistorySessionSheet({
       onSelectSession,
       selectedSessionId,
       formatRideDetails,
+      formatRideTime,
       dateHeaderHeight,
       openDay,
       dayIds,

@@ -1,3 +1,4 @@
+import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
 
@@ -9,11 +10,7 @@ import { InfoModal } from '@/components/modals/InfoModal'
 import { rideExportOptions } from '@/modules/history/lib/rideExport'
 import { rideExportLabels, shareRideExport } from '@/modules/history/lib/shareRideExport'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
-import {
-  formatFavoriteName,
-  formatRideTime,
-  suggestFavoriteName,
-} from '@/modules/history/lib/rideFormat'
+import { formatFavoriteName, suggestFavoriteName } from '@/modules/history/lib/rideFormat'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
 import { HistoryTelemetryPanel } from '@/screens/main/history/HistoryTelemetryPanel'
@@ -48,6 +45,7 @@ export function HistoryRideDetail({
   onPanelHeightChange,
   listButtonRef,
 }: HistoryRideDetailProps) {
+  const { formatRideTime } = useRideFormat()
   const [deleteVisible, setDeleteVisible] = useState(false)
   const [trimName, setTrimName] = useState('')
   const [actionsVisible, setActionsVisible] = useState(false)

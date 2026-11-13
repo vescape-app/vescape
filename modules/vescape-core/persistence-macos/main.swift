@@ -591,6 +591,13 @@ for invalid in unitFixture["invalid"] as! [Any] {
   try require(validDistanceUnit(invalid) == nil, "invalid units accepted")
 }
 try boardPersistence.saveSetting(.init(key: "distanceUnit", valueJson: "\"\(validDistanceUnit(unitFixture["selected"])!)\"", updatedAt: contractCreatedAt))
+let clockFixture = boardFixture["timeFormat"] as! [String: Any]
+let clockDefault = clockFixture["default"] as! String
+try require(validTimeFormat(nil) ?? "24h" == clockDefault, "clock default")
+for invalid in clockFixture["invalid"] as! [Any] {
+  try require(validTimeFormat(invalid) == nil, "invalid time format accepted")
+}
+try boardPersistence.saveSetting(.init(key: "timeFormat", valueJson: "\"\(validTimeFormat(clockFixture["selected"])!)\"", updatedAt: contractCreatedAt))
 let rerouteFixture = boardFixture["navigationReroute"] as! [String: Any]
 let rerouteKey = rerouteFixture["key"] as! String
 let rerouteDefault = rerouteFixture["default"] as! Double
@@ -602,6 +609,11 @@ try boardPersistence.saveSetting(.init(key: trailKey, valueJson: String(trailFix
 try boardQueue!.close()
 boardQueue = try DatabaseQueue(path: boardURL.path)
 boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
+let reopenedClock = try boardPersistence.settings(defaults: ["timeFormat": clockDefault])
+try require(reopenedClock["timeFormat"] as? String == clockFixture["selected"] as? String, "time format survives reopen")
+try boardPersistence.deleteSetting("timeFormat")
+let defaultClock = try boardPersistence.settings(defaults: ["timeFormat": clockDefault])
+try require(defaultClock["timeFormat"] as? String == clockDefault, "time format returns to 24h default")
 let reopenedReroute = try boardPersistence.settings(defaults: [rerouteKey: rerouteDefault])
 try require(reopenedReroute[rerouteKey] as? Double == rerouteFixture["selected"] as? Double, "reroute threshold survives reopen")
 try boardPersistence.deleteSetting(rerouteKey)

@@ -6,7 +6,8 @@ import { Text } from '@/components/base/Text'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { interaction, theme } from '@/constants/theme'
-import { formatHour } from '@/helpers/format'
+import { formatTimeOfDay } from '@/helpers/time'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 
 interface WeatherPillProps {
@@ -32,6 +33,7 @@ export function WeatherPill({
   expanded,
   onPress,
 }: WeatherPillProps) {
+  const timeFormat = useTimeFormat()
   const iconColor = weatherIconColor(icon)
 
   if (expanded) {
@@ -48,12 +50,16 @@ export function WeatherPill({
               <View style={styles.sunTime}>
                 <SunHorizonIcon size={14} color={theme.weather.sun} weight="duotone" />
                 <ArrowUpIcon size={10} color={theme.weather.sun} weight="bold" />
-                <Text style={styles.sunTimeText}>{formatHour(sunriseMinuteOfDay)}</Text>
+                <Text style={styles.sunTimeText}>
+                  {formatTimeOfDay(sunriseMinuteOfDay, timeFormat)}
+                </Text>
               </View>
               <View style={styles.sunTime}>
                 <SunHorizonIcon size={14} color={theme.weather.moonPartly} weight="duotone" />
                 <ArrowDownIcon size={10} color={theme.weather.moonPartly} weight="bold" />
-                <Text style={styles.sunTimeText}>{formatHour(sunsetMinuteOfDay)}</Text>
+                <Text style={styles.sunTimeText}>
+                  {formatTimeOfDay(sunsetMinuteOfDay, timeFormat)}
+                </Text>
               </View>
             </View>
           )}

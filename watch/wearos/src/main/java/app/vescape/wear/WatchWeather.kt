@@ -188,6 +188,24 @@ fun minuteOfDay(epochMs: Long): Int = Calendar.getInstance().let {
     it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
 }
 
-/** `HH:MM` for a minute-of-day, matching [WatchClock]'s always-24h readout. */
-fun formatHour(minuteOfDay: Int): String =
-    String.format("%02d:%02d", (minuteOfDay / 60) % 24, minuteOfDay % 60)
+/** Clock labels honor the phone preference, including forecast-local minute values.
+ * @parity /modules/vescape-core/ios/watch/WatchWeather.swift `watchFormatHour`
+ * @parity /src/helpers/time.ts `formatTimeOfDay`
+ */
+fun formatHour(minuteOfDay: Int, timeFormat: String = "24h", seconds: Int? = null): String {
+    val wrapped = ((minuteOfDay % 1440) + 1440) % 1440
+    val hour = wrapped / 60
+    val minute = wrapped % 60
+    val clock = if (timeFormat == "12h") {
+        String.format(java.util.Locale.ROOT, "%d:%02d", if (hour % 12 == 0) 12 else hour % 12, minute)
+    } else String.format(java.util.Locale.ROOT, "%02d:%02d", hour, minute)
+    val precise = if (seconds == null) clock else clock + String.format(java.util.Locale.ROOT, ":%02d", seconds)
+    return if (timeFormat == "12h") "$precise ${if (hour < 12) "AM" else "PM"}" else precise
+}
+
+/** @parity /modules/vescape-core/ios/watch/WatchWeather.swift `watchFormatClock` */
+fun formatClock(epochMs: Long, timeFormat: String = "24h", withSeconds: Boolean = false): String =
+    Calendar.getInstance().let {
+        it.timeInMillis = epochMs
+        formatHour(it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE), timeFormat, if (withSeconds) it.get(Calendar.SECOND) else null)
+    }

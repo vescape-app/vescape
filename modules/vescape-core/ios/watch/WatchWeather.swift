@@ -224,13 +224,21 @@ func watchMinuteOfDay(epochMs: Int64, calendar: Calendar = .current) -> Int {
   return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
 }
 
-/// `HH:MM` for a minute-of-day. Always 24 h, matching Wear OS, so a forecast hour and a frame time
-/// never disagree about what "13:00" is.
-///
+/// Clock labels honor the phone preference without changing forecast-local minutes.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `formatHour`
-func watchFormatHour(_ minuteOfDay: Int) -> String {
-  // Floor-mod: a negative minute-of-day can only come from a corrupt bag, and `%` would print a
-  // minus sign into a clock face.
-  let wrapped = ((minuteOfDay % (24 * 60)) + 24 * 60) % (24 * 60)
-  return String(format: "%02d:%02d", wrapped / 60, wrapped % 60)
+/// @parity /src/helpers/time.ts `formatTimeOfDay`
+func watchFormatHour(_ minuteOfDay: Int, timeFormat: String = "24h", seconds: Int? = nil) -> String {
+  let wrapped = ((minuteOfDay % 1440) + 1440) % 1440
+  let hour = wrapped / 60
+  let displayHour = timeFormat == "12h" ? (hour % 12 == 0 ? 12 : hour % 12) : hour
+  let clock = String(format: timeFormat == "12h" ? "%d:%02d" : "%02d:%02d", displayHour, wrapped % 60)
+  let precise = seconds.map { clock + String(format: ":%02d", $0) } ?? clock
+  return timeFormat == "12h" ? precise + (hour < 12 ? " AM" : " PM") : precise
+}
+
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `formatClock`
+func watchFormatClock(_ epochMs: Int64, timeFormat: String = "24h", withSeconds: Bool = false) -> String {
+  let date = Date(timeIntervalSince1970: Double(epochMs) / 1000)
+  let parts = Calendar.current.dateComponents([.hour, .minute, .second], from: date)
+  return watchFormatHour((parts.hour ?? 0) * 60 + (parts.minute ?? 0), timeFormat: timeFormat, seconds: withSeconds ? parts.second : nil)
 }

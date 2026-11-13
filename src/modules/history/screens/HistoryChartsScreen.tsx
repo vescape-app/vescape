@@ -1,3 +1,4 @@
+import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { useRouter } from 'expo-router'
 import { ArrowLeftIcon } from 'phosphor-react-native'
 import { useCallback, useMemo, useState } from 'react'
@@ -29,7 +30,7 @@ import {
   useVisibleRideSamples,
 } from '@/modules/history/hooks/useHistoryChartData'
 import { zoomWindowMs } from '@/modules/history/lib/chartFocus'
-import { formatRideMeta, formatRideTime } from '@/modules/history/lib/rideFormat'
+import { formatRideMeta } from '@/modules/history/lib/rideFormat'
 import { useFavoriteStore } from '@/modules/history/store/favoriteStore'
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
@@ -58,6 +59,7 @@ const MIN_METRIC_HEIGHT = 24
  */
 export function HistoryChartsScreen() {
   useRenderRateWarning('HistoryChartsScreen')
+  const { formatRideTime } = useRideFormat()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const session = useHistoryStore((s) => s.selectedSession)

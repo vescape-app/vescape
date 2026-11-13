@@ -1,7 +1,8 @@
 import { Circle, Group, Rect, RoundedRect, Text } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
-import { formatClock } from '@/components/charts/line/chartFormat'
+import { formatClock } from '@/helpers/time'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { projectX, projectY, viewportFor } from '@/components/charts/line/projection'
 import { sampleAtSec } from '@/components/charts/line/seriesPaths'
 import type { ScrubTarget } from '@/components/charts/line/scrubTargets'
@@ -102,6 +103,7 @@ export function useScrubReadout({
 }: ScrubReadoutOptions): SharedValue<StackReadout> {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
+  const timeFormat = useTimeFormat()
   return useDerivedValue<StackReadout>(() => {
     const timeMs = scrubTimeMs.value
     if (timeMs == null) return EMPTY_READOUT
@@ -109,7 +111,7 @@ export function useScrubReadout({
     const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
     // The reading is of a real moment; the plot it is drawn on runs in compacted time.
     const chartMs = toChartMs(timeMs, timeline)
-    const time = formatClock(timeMs, true)
+    const time = formatClock(timeMs, true, timeFormat)
 
     // The stack shares one x scale, so the cursor sits at the same place in every plot.
     const plotWidth = charts.length > 0 ? charts[0].plot.width : 0
@@ -165,7 +167,7 @@ export function useScrubReadout({
     }
 
     return { time, cursorX, charts: measured }
-  }, [camera, charts, dataKey, domainEndMs, domainStartMs, glyphWidth, timeline])
+  }, [camera, charts, dataKey, domainEndMs, domainStartMs, glyphWidth, timeFormat, timeline])
 }
 
 /**
