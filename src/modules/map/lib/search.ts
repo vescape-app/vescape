@@ -45,6 +45,11 @@ function normalizeSearchQuery(query: string) {
   return query.trim()
 }
 
+// React Native's AbortSignal has no `throwIfAborted`.
+function throwIfAborted(signal: AbortSignal | undefined) {
+  if (signal?.aborted) throw new Error('Map search aborted')
+}
+
 function getFeatureCoordinates(feature: MapboxGeocodingFeature) {
   const coordinates = feature.geometry?.coordinates
   if (!Array.isArray(coordinates)) return null
@@ -126,7 +131,7 @@ export async function searchMapResults(query: string, options: SearchMapResultsO
     ? `${options.proximity.longitude},${options.proximity.latitude}`
     : null
   const body = await searchMap(normalized, SEARCH_FETCH_LIMIT, proximity)
-  options.signal?.throwIfAborted()
+  throwIfAborted(options.signal)
 
   const data = JSON.parse(body) as MapboxGeocodingResponse
   const results = (data.features ?? []).map(toMapSearchResult).filter((result) => result != null)
@@ -139,7 +144,7 @@ export async function reverseGeocodeMapCoordinate(
   options: { signal?: AbortSignal } = {},
 ): Promise<MapReverseGeocodeResult | null> {
   const body = await reverseGeocodeMap(latitude, longitude)
-  options.signal?.throwIfAborted()
+  throwIfAborted(options.signal)
 
   const data = JSON.parse(body) as MapboxGeocodingResponse
   const feature = data.features?.[0]
