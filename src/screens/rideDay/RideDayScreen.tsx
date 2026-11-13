@@ -90,6 +90,8 @@ function RideDayContent({ day }: { day: RideDay }) {
               startMs: session.startAtMs,
               endMs: session.endAtMs,
             }
+            const boardName = session.boardName?.trim() || null
+            const details = formatRideDetails(window.endMs - window.startMs, session.distanceM)
             return (
               <HistoryRideRow
                 key={session.id}
@@ -99,11 +101,8 @@ function RideDayContent({ day }: { day: RideDay }) {
                   window.endMs,
                   isLiveRide(session, Date.now()),
                 )}
-                subtitle={formatRideDetails(
-                  window.endMs - window.startMs,
-                  session.distanceM,
-                  session.boardName,
-                )}
+                subtitle={details}
+                details={boardName ?? undefined}
                 routePoints={session.routePoints}
                 weather={session.weather}
                 onPress={() => router.dismissTo(rideHref({ rideId: session.id, focus: null }))}

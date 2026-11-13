@@ -17,8 +17,8 @@ interface HistoryDistance {
 export function useRideFormat() {
   const distanceUnit = useDistanceUnit()
   const formatRideDetails = useCallback(
-    (durationMs: number, distanceM: number | null, boardName: string | null) =>
-      formatRideListDetails(durationMs, distanceM, boardName, distanceUnit),
+    (durationMs: number, distanceM: number | null) =>
+      formatRideListDetails(durationMs, distanceM, distanceUnit),
     [distanceUnit],
   )
   const formatHistoryDistance = useCallback(

@@ -83,7 +83,7 @@ export function RidePreviewCardList({
             testID={index === 0 ? firstTestID : undefined}
             title={formatRideTime(window.startMs, window.endMs, isLiveRide(session, Date.now()))}
             date={formatRideDate(window.startMs, window.endMs)}
-            subtitle={formatRideDetails(window.endMs - window.startMs, session.distanceM, null)}
+            subtitle={formatRideDetails(window.endMs - window.startMs, session.distanceM)}
             routePoints={session.routePoints}
             color={theme.palette.purple.color}
             weather={session.weather}

@@ -35,13 +35,11 @@ export function formatRideMeta(startAtMs: number, endAtMs: number, boardName: st
 export function formatRideListDetails(
   durationMs: number,
   distanceM: number | null,
-  boardName: string | null,
   distanceUnit: DistanceUnit = 'km',
 ): string {
   return [
     formatRideListDuration(durationMs),
     distanceM == null ? null : formatRideDistanceMeters(distanceM, distanceUnit, 2),
-    boardName?.trim() || null,
   ]
     .filter((part): part is string => part != null)
     .join(' · ')
