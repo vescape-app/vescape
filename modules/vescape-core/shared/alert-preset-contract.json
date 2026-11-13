@@ -46,7 +46,7 @@
         {
           "threshold": 75,
           "thresholdMax": 90,
-          "spec": "geiger:hard"
+          "spec": "geiger:soft"
         }
       ]
     },
