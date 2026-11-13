@@ -35,10 +35,25 @@ export function usePhoneHeading({
   // Effect events, not dependencies: the callbacks change identity as the rider moves — the
   // tracked-point list they close over is rebuilt every metre — and must not restart DeviceMotion
   // several times a second mid-ride.
+  // A ref, not the effect event's closure: under the React Compiler the effect event kept the
+  // `followCamera` of an earlier render, so headings arriving after follow began were dropped.
+  const followCameraRef = useRef(followCamera)
+  useEffect(() => {
+    followCameraRef.current = followCamera
+  })
   const reportHeading = useEffectEvent((headingDeg: number) => {
     onHeadingChange(headingDeg)
-    if (followCamera) onFollowHeading(headingDeg)
+    if (followCameraRef.current) onFollowHeading(headingDeg)
   })
+  // Follow can start after the last reading: switching to compass while browsing recenters a
+  // moment after the first heading arrives, and a phone lying still sends no second one. Hand
+  // the camera the heading it missed.
+  const followLatestHeading = useEffectEvent(() => {
+    if (headingDegRef.current != null) onFollowHeading(headingDegRef.current)
+  })
+  useEffect(() => {
+    if (followCamera) followLatestHeading()
+  }, [followCamera])
   const reportIdle = useEffectEvent(() => {
     onHeadingChange(null)
     onStatusChange('idle')
