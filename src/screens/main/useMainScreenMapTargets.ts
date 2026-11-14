@@ -190,6 +190,16 @@ export function useMainScreenMapTargets(
     },
     [controller, mapRef],
   )
+  /** Enter map mode centred on a point: a Ride Notice's location or a roster Rider Signal. */
+  const handleFocusCoordinate = useCallback(
+    (coordinate: { latitude: number; longitude: number }) => {
+      controller.dismissMapSelector()
+      setSelectedNavigationTarget(null)
+      controller.handleMapFocus()
+      mapRef.current?.focusCoordinate([coordinate.longitude, coordinate.latitude])
+    },
+    [controller, mapRef],
+  )
   const navigateToTarget = useCallback(
     async (target: MapSelection) => {
       await setDirectionPoint(target.latitude, target.longitude)
@@ -305,6 +315,7 @@ export function useMainScreenMapTargets(
     handleClearDirectionPoint,
     handleDismissSelectedTarget,
     handleOffscreenIndicatorPress,
+    handleFocusCoordinate,
     handleNavigateSelectedTarget,
     handleNavigateTarget,
   }

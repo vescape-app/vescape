@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import {
   ArrowsHorizontalIcon,
   BatteryMediumIcon,
@@ -15,15 +15,17 @@ import { DASH } from '@/helpers/format'
 import { distanceMeters } from '@/helpers/mapGeometry'
 import { useFormat } from '@/hooks/useFormat'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useRiderStats } from '@/modules/group-ride/hooks/useRiderStats'
 import {
   TELEMETRY_LEVEL_COLOR,
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
 import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
+import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
 import { riderHue } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
+import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
 
 type OwnLocation = { lat: number; lng: number } | null
 
@@ -31,13 +33,21 @@ type OwnLocation = { lat: number; lng: number } | null
  *  so each Rider's stats wrap into two lines of three. */
 const ONE_LINE_STATS_MIN_WIDTH = 290
 
-/** The joined ride's Riders as full-width rows whose stat columns line up like a table. */
+interface SignalPoint {
+  latitude: number
+  longitude: number
+}
+
+/** The joined ride's Riders as full-width rows whose stat columns line up like a table. A row with
+ *  an active signal is tappable and hands the signal's location to `onFocusSignal`. */
 export function RosterList({
   rows,
   ownLocation,
+  onFocusSignal,
 }: {
   rows: RosterRider[]
   ownLocation: OwnLocation
+  onFocusSignal?: (point: SignalPoint) => void
 }) {
   const neutral = useResolvedNeutralColors()
   const divider = theme.alpha(neutral.border, 0.6)
@@ -53,6 +63,7 @@ export function RosterList({
           ownLocation={ownLocation}
           divider={index > 0 ? divider : undefined}
           wrapStats={wrapStats}
+          onFocusSignal={onFocusSignal}
         />
       ))}
     </View>
@@ -102,12 +113,15 @@ function RiderRow({
   ownLocation,
   divider,
   wrapStats,
+  onFocusSignal,
 }: {
   rider: RosterRider
   ownLocation: OwnLocation
   divider?: string
   wrapStats: boolean
+  onFocusSignal?: (point: SignalPoint) => void
 }) {
+  const signal = useActiveRiderSignal(rider.signal)
   const { formatDistance } = useFormat()
   const s = useRiderStats(rider.presence)
   // An away Rider's stats stay frozen at their last presence; the minute clock ages the label.
@@ -139,7 +153,13 @@ function RiderRow({
   ]
 
   return (
-    <View style={[styles.row, divider ? [styles.rowDivided, { borderTopColor: divider }] : null]}>
+    <Pressable
+      disabled={!signal || !onFocusSignal}
+      onPress={() => signal && onFocusSignal?.({ latitude: signal.lat, longitude: signal.lng })}
+      accessibilityRole={signal && onFocusSignal ? 'button' : undefined}
+      accessibilityHint={signal && onFocusSignal ? 'Shows the signal on the map' : undefined}
+      style={[styles.row, divider ? [styles.rowDivided, { borderTopColor: divider }] : null]}
+    >
       <View style={styles.head}>
         <View style={[styles.dot, { backgroundColor: dotColor }]} />
         <Text style={styles.name} numberOfLines={1}>
@@ -150,6 +170,7 @@ function RiderRow({
           {boardName}
         </Text>
         {rider.away ? <Text style={styles.awayTag}>{awayLabel(rider.lastSeen, now)}</Text> : null}
+        {signal ? <SignalBadge kind={signal.kind} /> : null}
       </View>
       {/* An away Rider's numbers are their last presence: dimmed, while the badge stays legible. */}
       <View style={[styles.statLines, rider.away && styles.statsAway]}>
@@ -161,6 +182,26 @@ function RiderRow({
           </View>
         ))}
       </View>
+    </Pressable>
+  )
+}
+
+/** The Rider's active signal, as its kind's icon and label. */
+function SignalBadge({ kind }: { kind: string }) {
+  const accents = useResolvedAccentColors()
+  const info = riderSignalKindInfo(kind)
+  if (!info) return null
+  const KindIcon = info.icon
+  const hue = info.hue
+  return (
+    <View
+      style={[styles.signalTag, { backgroundColor: accents[hue].bg }]}
+      accessibilityLabel={`Signal: ${info.label}`}
+    >
+      <KindIcon size={11} color={theme.palette[hue].light} weight="bold" />
+      <Text style={[styles.signalTagLabel, { color: theme.palette[hue].light }]} numberOfLines={1}>
+        {info.label}
+      </Text>
     </View>
   )
 }
@@ -194,6 +235,20 @@ const DOT_SIZE = 8
 const HEAD_GAP = 6
 
 const styles = StyleSheet.create({
+  signalTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    flexShrink: 1,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  signalTagLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
   awayTag: {
     color: theme.palette.amber.light,
     backgroundColor: theme.palette.amber.bg,

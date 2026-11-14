@@ -24,11 +24,15 @@ import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterList } from '@/modules/group-ride/components/GroupRideRoster'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 
-export function SocialSheet() {
+type FocusSignal = (point: { latitude: number; longitude: number }) => void
+
+/** `onFocusSignal` fires when a roster row with an active signal is tapped; the host closes the
+ *  sheet and focuses the map there. */
+export function SocialSheet({ onFocusSignal }: { onFocusSignal?: FocusSignal }) {
   return (
     <View testID="social-sheet" style={styles.list}>
       <RiderNameWidget />
-      <GroupRideWidget />
+      <GroupRideWidget onFocusSignal={onFocusSignal} />
     </View>
   )
 }
@@ -64,7 +68,7 @@ function RiderNameWidget() {
   )
 }
 
-function GroupRideWidget() {
+function GroupRideWidget({ onFocusSignal }: { onFocusSignal?: FocusSignal }) {
   useRenderRateWarning('GroupRideWidget')
   const activeRideId = useGroupRideStore((s) => s.activeRideId)
   const rides = useGroupRideStore((s) => s.rides)
@@ -183,7 +187,7 @@ function GroupRideWidget() {
     >
       {active ? (
         rosterRows.length > 0 ? (
-          <JoinedRoster rows={rosterRows} />
+          <JoinedRoster rows={rosterRows} onFocusSignal={onFocusSignal} />
         ) : (
           <Placeholder icon={UsersIcon} description="Waiting for other riders to join." />
         )
@@ -206,9 +210,15 @@ function GroupRideWidget() {
 }
 
 /** The roster with live distances. Own GPS ticks re-render only this, not the whole widget. */
-function JoinedRoster({ rows }: { rows: RosterRider[] }) {
+function JoinedRoster({
+  rows,
+  onFocusSignal,
+}: {
+  rows: RosterRider[]
+  onFocusSignal?: FocusSignal
+}) {
   const ownLocation = useGroupRideStore((s) => s.ownLocation)
-  return <RosterList rows={rows} ownLocation={ownLocation} />
+  return <RosterList rows={rows} ownLocation={ownLocation} onFocusSignal={onFocusSignal} />
 }
 
 /** Connection-state pill in the header: green "LIVE" when the relay socket is up, amber

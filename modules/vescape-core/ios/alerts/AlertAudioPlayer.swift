@@ -547,14 +547,14 @@ internal final class AlertAudioPlayer {
     announce(priority: priority, onDone: onDone) { [weak self] done in self?.playAppCueNow(cue, done: done) }
   }
 
-  /// Play app cue `cue` from the active effects pack; at Voice level `full` its voice line follows
-  /// once the effect has finished. Standard and Off play the effect only.
+  /// Play app cue `cue` from the active effects pack; when it speaks at the current Voice level
+  /// (`appCueSpeaks`), its voice line follows once the effect has finished.
   private func playAppCueNow(_ cue: String, done: PlaybackCompletion) {
     guard let slot = appCueSlot(cue) else {
       done.finish(.failed)
       return
     }
-    if voiceLevel == "full", let key = appCueVoiceKey(cue) {
+    if appCueSpeaks(cue, voiceLevel: voiceLevel), let key = appCueVoiceKey(cue) {
       speakVoiceTracked(VoiceAnnouncement(severity: .info, key: key), slot: slot, done: done)
     } else {
       play(clipKey(slot)) { done.finish($0) }

@@ -19,6 +19,7 @@ protocol WatchMirrorTransport: AnyObject {
   func pushWeather(_ weather: WatchWeather)
   func pushRoute(_ payload: [String: Any])
   func pushBoard(_ board: WatchBoardLights)
+  func pushRideNotices(_ notices: [RideNotice])
   /// @platform-diff Android publishes committed storage directly through WatchLastBatteryPusher.
   func pushLastBattery(_ battery: WatchLastBattery?)
 }
@@ -213,5 +214,7 @@ final class WatchMirrorCoordinator {
   }
 
   func pushBoard(_ board: WatchBoardLights) { transport.pushBoard(board) }
+  /// The full visible Ride Notice list; process lifetime, like the board push.
+  func pushRideNotices(_ notices: [RideNotice]) { transport.pushRideNotices(notices) }
   func pushLastBattery(_ battery: WatchLastBattery?) { transport.pushLastBattery(battery) }
 }

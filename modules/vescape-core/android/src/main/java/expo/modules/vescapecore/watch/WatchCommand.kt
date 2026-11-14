@@ -8,7 +8,8 @@ package expo.modules.vescapecore.watch
  * stale, so fire-and-forget with no delivery guarantee is exactly right — a dropped tick is covered
  * by the next one, and a dropped release is covered by the dead-man in [WatchMoveRelay].
  *
- * The payload is two bytes — `[kind, value]` — read leniently so a wrist newer than the phone
+ * The payload is `[kind, value]`, plus a third byte for a notice dismiss (`[kind, id, rev]`), read
+ * leniently so a wrist newer than the phone
  * degrades to "unknown kind, ignored" rather than to a misread command that moves the board.
  *
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt
@@ -22,6 +23,7 @@ internal const val WATCH_COMMAND_KIND_MIRROR_AWAKE = 2
 internal const val WATCH_COMMAND_KIND_LIGHTS = 3
 internal const val WATCH_COMMAND_KIND_TILT_LOCK = 4
 internal const val WATCH_COMMAND_KIND_TILT_CANCEL = 5
+internal const val WATCH_COMMAND_KIND_DISMISS_NOTICE = 6
 
 /**
  * How long the phone keeps pushing frames after the last wrist wake-level tick. The Mirror re-sends
@@ -108,6 +110,12 @@ internal sealed interface WatchCommand {
 
     /** Ease tilt back to neutral — the same cancel the phone pad sends. */
     data object TiltCancel : WatchCommand
+
+    /**
+     * Dismiss the Ride Notice holding [id] at [rev] (each 0..255). Process-wide, no Board Session
+     * needed; an id that is no longer active, or has moved past [rev], is ignored by the engine.
+     */
+    data class DismissNotice(val id: Int, val rev: Int) : WatchCommand
 }
 
 /** Pure bytes -> [WatchCommand] decoder. Returns null for a short buffer or an unknown kind. */
@@ -129,6 +137,8 @@ internal object WatchCommandDecoder {
             }
             WATCH_COMMAND_KIND_TILT_LOCK -> WatchCommand.TiltLock(bytes[1].toInt() and 0xff)
             WATCH_COMMAND_KIND_TILT_CANCEL -> WatchCommand.TiltCancel
+            WATCH_COMMAND_KIND_DISMISS_NOTICE -> bytes.takeIf { it.size >= 3 }
+                ?.let { WatchCommand.DismissNotice(it[1].toInt() and 0xff, it[2].toInt() and 0xff) }
             else -> null
         }
     }

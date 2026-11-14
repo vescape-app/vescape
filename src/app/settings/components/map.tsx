@@ -10,6 +10,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
+import { RiderSignalPins } from '@/modules/group-ride/components/RiderMapLayers'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
@@ -39,6 +40,8 @@ import {
   FIXTURE_RIDE_ROUTE,
   FIXTURE_RIDE_ROUTE_SHAPE,
   FIXTURE_RIDE_TELEMETRY_SAMPLES,
+  FIXTURE_PIN_ROWS,
+  FIXTURE_RELAY_CLOCK,
   FIXTURE_RIDERS,
 } from '@/screens/showcase/mapShowcaseFixtures'
 import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayers'
@@ -168,6 +171,7 @@ export default function MapComponentsShowcase() {
           onSelectLegalCountry={() => {}}
           onFocusDirectionPoint={() => {}}
         />
+        <RiderSignalPins rows={FIXTURE_PIN_ROWS} clock={FIXTURE_RELAY_CLOCK} />
         {/* Rendered alongside the live layer (not behind historyActive) so the ride route,
             markers and media pins are always visible together with everything above. */}
         <HistoryMapLayers

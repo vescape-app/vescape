@@ -23,3 +23,7 @@ Privacy Zones protect places such as home or work by preventing Ride Recording d
 Readers retain their existing gap checks as they move to separate telemetry and GPS streams. A short omission below those checks' thresholds may still be joined or treated as continuous for media matching; these issues do not add a guarantee that every Privacy Zone crossing creates a visible route break.
 
 The future direction is to retain local recordings inside Privacy Zones and control sharing through prevention or warnings, together with Group Ride invisibility. Large zones motivate that rework. It requires a separate policy/design change and is outside #448, #449, #450, and #452; this amendment does not enable recording inside zones today.
+
+## Rider Signal exception
+
+(Amended 2026-11, #646.) A **Rider Signal** is sent with the current GPS location even inside a Privacy Zone or while zones are still loading, because sending one is an explicit opt-in to share that spot. The picker warns the Rider while they are inside a zone. Rider Presence stays suppressed and Ride Recording keeps dropping samples; only the signal's own location leaves the phone. See ADR-0020.

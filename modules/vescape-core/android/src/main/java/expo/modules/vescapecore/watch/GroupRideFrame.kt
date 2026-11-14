@@ -179,14 +179,17 @@ internal object GroupRideFrameCodec {
         buffer.get(bytes)
         return String(bytes, Charsets.UTF_8)
     }
+}
 
-    /** The longest prefix of [value] that fits [maxBytes] of UTF-8 without splitting a character. */
-    private fun utf8Prefix(value: String, maxBytes: Int): ByteArray {
-        val bytes = value.toByteArray(Charsets.UTF_8)
-        if (bytes.size <= maxBytes) return bytes
-        var end = maxBytes
-        // Back off continuation bytes (10xxxxxx) so the cut lands on a character boundary.
-        while (end > 0 && bytes[end].toInt() and 0xC0 == 0x80) end--
-        return bytes.copyOf(end)
-    }
+/**
+ * The longest prefix of [value] that fits [maxBytes] of UTF-8 without splitting a character. Shared
+ * by the wire codecs copied into the Wear OS Mirror.
+ */
+internal fun utf8Prefix(value: String, maxBytes: Int): ByteArray {
+    val bytes = value.toByteArray(Charsets.UTF_8)
+    if (bytes.size <= maxBytes) return bytes
+    var end = maxBytes
+    // Back off continuation bytes (10xxxxxx) so the cut lands on a character boundary.
+    while (end > 0 && bytes[end].toInt() and 0xC0 == 0x80) end--
+    return bytes.copyOf(end)
 }

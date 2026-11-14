@@ -6,9 +6,9 @@ import Foundation
 enum AnnouncementPriority: Int {
   /// Board connect, disconnect, connection error.
   case connection
-  /// Ride state and, later, weather and battery lines.
+  /// Ride state, Rider Signals and, later, weather and battery lines.
   case advisory
-  /// Group Ride events.
+  /// Social Group Ride events.
   case social
 
   var ttlMs: Int64 {
@@ -27,8 +27,15 @@ internal func appCuePriority(_ cue: String) -> AnnouncementPriority? {
   switch cue {
   case "on", "off", "error": return .connection
   case "ride.end": return .advisory
-  default: return .social
+  default: return GroupRideCues.isSafetyCue(cue) ? .advisory : .social
   }
+}
+
+/// Whether app cue `cue` speaks its voice line after the effect at `voiceLevel`. Rider Signal and
+/// Ride Hazard cues are safety calls and speak at every level but `off`; the rest only at `full`.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AnnouncementQueue.kt `appCueSpeaks`
+internal func appCueSpeaks(_ cue: String, voiceLevel: String) -> Bool {
+  GroupRideCues.isSafetyCue(cue) ? voiceLevel != "off" : voiceLevel == "full"
 }
 
 /// Quiet time after a connect before anything but a `.connection` item plays.

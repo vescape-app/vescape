@@ -114,4 +114,15 @@ final class AnnouncementQueueTests: XCTestCase {
     enqueue("joined", .social, now: 10)
     XCTAssertEqual(next(10), .play("joined"))
   }
+
+  func testRiderSignalCuesSpeakAtEveryVoiceLevelButOff() {
+    for level in ["minimal", "standard", "full"] {
+      XCTAssertTrue(appCueSpeaks("groupRide.signal.down", voiceLevel: level))
+      XCTAssertTrue(appCueSpeaks("groupRide.signal.sent", voiceLevel: level))
+    }
+    XCTAssertFalse(appCueSpeaks("groupRide.signal.down", voiceLevel: "off"))
+    XCTAssertFalse(appCueSpeaks("groupRide.riderJoined", voiceLevel: "standard"))
+    XCTAssertTrue(appCueSpeaks("groupRide.riderJoined", voiceLevel: "full"))
+    XCTAssertFalse(appCueSpeaks("on", voiceLevel: "standard"))
+  }
 }

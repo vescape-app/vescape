@@ -1,9 +1,11 @@
 package expo.modules.vescapecore
 
 import android.os.Handler
+import android.os.SystemClock
 import android.util.Log
 import expo.modules.vescapecore.appstatus.OnlineCapability
 import expo.modules.vescapecore.geo.GeoMath
+import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.GroupRideRoster
 import expo.modules.vescapecore.watch.GroupRideRosterRider
@@ -49,10 +51,17 @@ internal class GroupRideObserver(
     private val onCue: (String) -> Unit = {},
     /** The device's latest position (lat, lng), for the nearby test of `groupRide.created`. */
     private val ownLocation: () -> Pair<Double, Double>? = { null },
-) {
-    private val client = OkHttpClient.Builder()
+    /**
+     * The fix and Privacy Zone state a Rider Signal send is checked against.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `signalContext`
+     */
+    private val signalContext: () -> RiderSignalContext = { RiderSignalContext(fix = null, insidePrivacyZone = true) },
+    /** Opens the relay socket; tests stand in a fake to see the frames. */
+    private val sockets: WebSocket.Factory = OkHttpClient.Builder()
         .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
-        .build()
+        .build(),
+) {
 
     private var webSocket: WebSocket? = null
     private var serverUrl: String? = null
@@ -71,12 +80,36 @@ internal class GroupRideObserver(
         }
     private var desiredRideId: String? = null
         set(value) {
-            if (value != field) forgetRideCues()
+            if (value != field) {
+                forgetRideCues()
+                // A pin intent belongs to the ride it was made in.
+                pendingPins.clear()
+            }
             field = value
             notifyParticipationIfChanged()
         }
     /** Cue decisions for the joined ride; any change of the wanted ride forgets them. */
     private val cues = GroupRideCues()
+    /** Other Riders' signals as Ride Notices; forgotten with [cues]. */
+    private val signalNotices = RiderSignalNotices()
+    /** Other Riders' hazards, announced on approach; forgotten with [cues]. */
+    private val hazardCues = RideHazardCues()
+    /**
+     * The latest pin intent per slot made while the relay was out of reach, replayed once the ride
+     * is rejoined. A later intent in the same slot overwrites it; leaving the ride drops them.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `pendingPins`
+     */
+    private val pendingPins = mutableMapOf<PinSlot, RiderPinIntent>()
+    /** Optional capabilities the connected relay advertised in its `snapshot`. */
+    private var relayFeatures: Set<String> = emptySet()
+    private fun supports(slot: PinSlot): Boolean = slot.relayFeature in relayFeatures
+    /** Last availability handed to JS, so only changes are emitted. */
+    private var lastSignalAvailability: Map<String, Any?>? = null
+    /** Relay clock (epoch ms) of [lastRoster]; null from relays that predate it. */
+    private var lastRosterNow: Long? = null
+    /** Monotonic time [lastRosterNow] was taken at, to advance it when the roster is replayed. */
+    private var lastRosterReceivedAt = 0L
     /**
      * The rider left while the socket was down, so the relay still holds them in the ride as away.
      * Sent once right after the next `hello`; a create/join before then supersedes it, since the
@@ -106,6 +139,8 @@ internal class GroupRideObserver(
         override fun run() {
             val ws = webSocket
             if (!stopped && ws != null && joinedRideId != null) {
+                // The beat also ages the GPS fix a send needs.
+                refreshSignalAvailability()
                 if (send(ws, JSONObject().put("type", "heartbeat"))) {
                     handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
                 }
@@ -181,9 +216,13 @@ internal class GroupRideObserver(
         desiredRideId = null
         lastPresence = null
         knownRides.clear()
+        relayFeatures = emptySet()
+        // A restarted observer must re-emit availability to the fresh JS store.
+        lastSignalAvailability = null
         lastRosterRideId = null
         lastRoster = emptyList()
         lastRosterRiders = emptyList()
+        lastRosterNow = null
         stopHeartbeat()
         emitConnection("idle")
     }
@@ -212,7 +251,14 @@ internal class GroupRideObserver(
         // Snapshot first: JS drops an active ride that is missing from the ride list.
         emit("onGroupRideSnapshot", mapOf("rides" to knownRides.values.toList()))
         emit("onGroupRideJoined", mapOf("rideId" to joinedRideId))
-        emitRoster(lastRosterRideId, lastRoster)
+        // JS times pins from the replayed `now` as if it had just arrived, so advance it first.
+        emitRoster(
+            lastRosterRideId,
+            lastRoster,
+            lastRosterNow?.let { it + SystemClock.elapsedRealtime() - lastRosterReceivedAt },
+        )
+        lastSignalAvailability = null
+        refreshSignalAvailability()
     }
 
     /**
@@ -348,6 +394,97 @@ internal class GroupRideObserver(
         }
     }
 
+    /**
+     * Raise a Rider Signal of [kind] at the latest GPS fix. Rejected (logged, nothing sent) outside a
+     * ride, for an unknown kind, without a recent fix, or against a relay that
+     * does not advertise signals. While the relay is out of reach the intent waits for the rejoin.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `sendSignal`
+     */
+    fun sendSignal(kind: String) = sendPin(kind, RiderSignalKind.fromWire(kind))
+
+    /**
+     * Mark a Ride Hazard of [kind] at the latest GPS fix; gated like [sendSignal].
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `sendHazard`
+     */
+    fun sendHazard(kind: String) = sendPin(kind, RideHazardKind.fromWire(kind))
+
+    private fun sendPin(wire: String, kind: PinKind?) {
+        handler.post {
+            val intent = kind?.let { RiderSignals.sendIntent(it, signalContext()) }
+            if (intent == null) {
+                Log.w(TAG, "pin rejected: kind=$wire, unknown kind or no recent fix")
+                return@post
+            }
+            submitPin(intent)
+        }
+    }
+
+    /** Clear the Rider's active signal; held like a send while the relay is out of reach. */
+    fun clearSignal() {
+        handler.post { submitPin(RiderPinIntent.Clear(PinSlot.SIGNAL)) }
+    }
+
+    /** Clear the Rider's active hazard; held like a send while the relay is out of reach. */
+    fun clearHazard() {
+        handler.post { submitPin(RiderPinIntent.Clear(PinSlot.HAZARD)) }
+    }
+
+    /**
+     * Recompute what JS needs to offer a signal or hazard; emits only on change.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `refreshSignalAvailability`
+     * @parity /modules/vescape-core/src/index.ts `GroupRideSignalAvailability`
+     */
+    fun refreshSignalAvailability() {
+        handler.post {
+            if (stopped) return@post
+            val context = signalContext()
+            val availability = mapOf(
+                "supported" to supports(PinSlot.SIGNAL),
+                "hazardsSupported" to supports(PinSlot.HAZARD),
+                "insidePrivacyZone" to context.insidePrivacyZone,
+                "hasRecentFix" to (context.fix != null),
+            )
+            if (availability == lastSignalAvailability) return@post
+            lastSignalAvailability = availability
+            emit("onGroupRideSignalAvailability", availability)
+        }
+    }
+
+    /**
+     * A new device GPS fix: plays the approach cue of another Rider's hazard it just closed in on.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onFix`
+     */
+    fun onFix(lat: Double, lng: Double) {
+        handler.post {
+            if (stopped || joinedRideId == null) return@post
+            hazardCues.fix(lat, lng)?.let(onCue)
+        }
+    }
+
+    private fun submitPin(intent: RiderPinIntent) {
+        if (stopped || !participating) {
+            Log.w(TAG, "pin ignored: not in a ride")
+            return
+        }
+        val ws = webSocket?.takeIf { linkOpen && joinedRideId != null }
+        if (ws == null) {
+            pendingPins[intent.slot] = intent
+            return
+        }
+        pendingPins.remove(intent.slot)
+        if (supports(intent.slot)) {
+            // A socket already closing refuses the frame: hold it for the rejoin like an offline
+            // intent, unless a newer one took the slot meanwhile.
+            if (!send(ws, intent.frame())) pendingPins.putIfAbsent(intent.slot, intent)
+        } else {
+            Log.w(TAG, "pin ignored: relay does not support ${intent.slot.relayFeature}")
+        }
+    }
+
     fun pushPresence(presence: RiderPresence) {
         handler.post {
             val ws = webSocket
@@ -371,7 +508,7 @@ internal class GroupRideObserver(
             return
         }
         emitConnection("connecting")
-        webSocket = client.newWebSocket(GroupRideOnlineGate.buildObserveRequest(url, online.appVersion), listener)
+        webSocket = sockets.newWebSocket(GroupRideOnlineGate.buildObserveRequest(url, online.appVersion), listener)
     }
 
     private val listener = object : WebSocketListener() {
@@ -455,7 +592,9 @@ internal class GroupRideObserver(
                 }
                 knownRides.clear()
                 rides.forEach { ride -> (ride["id"] as? String)?.let { knownRides[it] = ride } }
+                relayFeatures = stringSet(json.optJSONArray("features"))
                 emit("onGroupRideSnapshot", mapOf("rides" to rides))
+                refreshSignalAvailability()
             }
             "ride-created" -> rideSummary(json.optJSONObject("ride"))?.let {
                 val isNew = it["id"] !in knownRides
@@ -497,22 +636,42 @@ internal class GroupRideObserver(
                     joinedRideId = rideId
                     startHeartbeat()
                     emit("onGroupRideJoined", mapOf("rideId" to rideId))
+                    // Replay pin intents made while the relay was out of reach.
+                    pendingPins.values.toList().forEach(::submitPin)
                 }
             }
             "roster" -> {
                 val ridersJson = json.optJSONArray("riders")
                 val riders = mutableListOf<Map<String, Any?>>()
+                val signals = mutableMapOf<String, RiderSignal>()
+                val hazards = mutableMapOf<String, RideHazard>()
                 if (ridersJson != null) {
                     for (i in 0 until ridersJson.length()) {
-                        riderView(ridersJson.optJSONObject(i))?.let(riders::add)
+                        val obj = ridersJson.optJSONObject(i)
+                        val signal = RiderPin.parse(obj?.optJSONObject("signal"), RiderSignalKind::fromWire)
+                        val hazard = RiderPin.parse(obj?.optJSONObject("hazard"), RideHazardKind::fromWire)
+                        val view = riderView(obj, signal, hazard) ?: continue
+                        riders += view
+                        signal?.let { signals[view["id"] as String] = it }
+                        hazard?.let { hazards[view["id"] as String] = it }
                     }
                 }
                 val rideId = if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() }
+                val now = if (json.has("now")) json.optLong("now") else null
                 if (rideId != null && rideId == joinedRideId) {
                     val awayIds = riders.filter { it["away"] == true }.mapNotNull { it["id"] as? String }.toSet()
-                    cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, awayIds, riderId)?.let(onCue)
+                    val ownHazard = riderId?.let { hazards[it] }
+                    hazardCues.roster(hazards.filterKeys { it != riderId })
+                    cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, awayIds, riderId, signals, now, ownHazard)?.let(onCue)
+                    val signalRiders = riders.map {
+                        val id = it["id"] as String
+                        SignalRider(id, it["name"] as? String ?: "", signals[id])
+                    }
+                    val update = signalNotices.roster(signalRiders, riderId, now, System.currentTimeMillis())
+                    update.clears.forEach(RideNotices::clear)
+                    update.posts.forEach { RideNotices.post(it.key, it.content, it.revision) }
                 }
-                emitRoster(rideId, riders)
+                emitRoster(rideId, riders, now)
             }
             "error" -> {
                 val message = json.optString("message")
@@ -596,7 +755,7 @@ internal class GroupRideObserver(
     }
 
     /** @parity /modules/vescape-core/src/index.ts `GroupRideRider` */
-    private fun riderView(obj: JSONObject?): Map<String, Any?>? {
+    private fun riderView(obj: JSONObject?, signal: RiderSignal?, hazard: RideHazard?): Map<String, Any?>? {
         obj ?: return null
         val id = obj.optString("id")
         if (id.isEmpty()) return null
@@ -609,7 +768,14 @@ internal class GroupRideObserver(
             // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
             "away" to obj.optBoolean("away"),
             "lastSeen" to obj.optLong("lastSeen"),
+            "signal" to signal?.toMap(),
+            "hazard" to hazard?.toMap(),
         )
+    }
+
+    private fun stringSet(arr: JSONArray?): Set<String> {
+        arr ?: return emptySet()
+        return (0 until arr.length()).mapNotNull { arr.optString(it).takeIf(String::isNotEmpty) }.toSet()
     }
 
     private fun trailList(arr: JSONArray?): List<Map<String, Any?>>? {
@@ -626,11 +792,13 @@ internal class GroupRideObserver(
         (ride["id"] as? String)?.let { knownRides[it] = ride }
     }
 
-    private fun emitRoster(rideId: String?, riders: List<Map<String, Any?>>) {
+    private fun emitRoster(rideId: String?, riders: List<Map<String, Any?>>, now: Long? = null) {
         lastRosterRideId = rideId
         lastRoster = riders
         lastRosterRiders = riders.mapNotNull(::rosterRider)
-        emit("onGroupRideRoster", mapOf("rideId" to rideId, "riders" to riders))
+        lastRosterNow = now
+        lastRosterReceivedAt = SystemClock.elapsedRealtime()
+        emit("onGroupRideRoster", mapOf("rideId" to rideId, "riders" to riders, "now" to now))
     }
 
     // @parity /modules/vescape-core/src/index.ts `GroupRideConnectionState`
@@ -639,9 +807,11 @@ internal class GroupRideObserver(
         emit("onGroupRideConnection", mapOf("state" to state))
     }
 
-    /** The rider is out of the ride: drop its cue state, a pending `lost` included. */
+    /** The rider is out of the ride: drop its cue state, a pending `lost` included, and signal notices. */
     private fun forgetRideCues() {
         cues.reset()
+        hazardCues.reset()
+        signalNotices.reset().forEach { RideNotices.clear(it) }
         handler.removeCallbacks(lostRunnable)
     }
 

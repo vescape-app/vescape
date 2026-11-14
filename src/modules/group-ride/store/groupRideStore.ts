@@ -6,24 +6,33 @@ import {
   addGroupRideErrorListener,
   addGroupRideJoinedListener,
   addGroupRideRosterListener,
+  addGroupRideSignalAvailabilityListener,
   addGroupRideSnapshotListener,
   addGroupRideUpdatedListener,
   addLocationListener,
+  clearGroupRideHazard,
+  clearGroupRideSignal,
   createGroupRide,
   getSettings,
   joinGroupRide,
   leaveGroupRide,
+  sendGroupRideHazard,
+  sendGroupRideSignal,
   startGroupRideObserve,
   stopGroupRideObserve,
   updateGroupRideIdentity,
   updateSetting,
   type GroupRideConnectionState,
   type GroupRideRider,
+  type GroupRideSignalAvailability,
   type GroupRideSummary,
+  type RideHazardKind,
+  type RiderSignalKind,
 } from 'vescape-core'
 
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { nearbyRides, type NearbyRide } from '@/modules/group-ride/lib/nearby'
+import { monotonicNow, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
 import { riderRoster, rosterRowsEqual, type RosterRider } from '@/modules/group-ride/lib/roster'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { SERVER_WS_URL } from '@/config/server'
@@ -43,6 +52,10 @@ interface GroupRideState {
   activeRideId: string | null
   roster: GroupRideRider[]
   rosterRows: RosterRider[]
+  /** Relay clock of the last roster that carried one; signal times are read against it. */
+  relayClock: RelayClock | null
+  /** Whether the joined Rider can send a Rider Signal now, as native judges it. */
+  signalAvailability: GroupRideSignalAvailability
   error: string | null
   focusRequest: { riderId: string; nonce: number } | null
   observing: boolean
@@ -58,8 +71,22 @@ interface GroupRideState {
   setPublicRiding: (on: boolean) => void
   joinRide: (rideId: string) => void
   leaveRide: () => void
+  /** Raise a Rider Signal; replaces the current one. The roster brings it back once the relay has it. */
+  sendSignal: (kind: RiderSignalKind) => void
+  clearSignal: () => void
+  /** Mark a Ride Hazard; replaces the current hazard, never the signal. */
+  sendHazard: (kind: RideHazardKind) => void
+  clearHazard: () => void
   focusRider: (riderId: string) => void
   clearError: () => void
+}
+
+/** Until native reports, assume nothing can be sent: an old relay must never see a `signal`. */
+const NO_SIGNAL_AVAILABILITY: GroupRideSignalAvailability = {
+  supported: false,
+  hazardsSupported: false,
+  insidePrivacyZone: true,
+  hasRecentFix: false,
 }
 
 let subscriptions: { remove: () => void }[] = []
@@ -76,6 +103,8 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   activeRideId: null,
   roster: [],
   rosterRows: [],
+  relayClock: null,
+  signalAvailability: NO_SIGNAL_AVAILABILITY,
   error: null,
   focusRequest: null,
   observing: false,
@@ -138,17 +167,26 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           error: null,
         }))
       }),
-      addGroupRideRosterListener(({ rideId, riders }) =>
+      addGroupRideRosterListener(({ rideId, riders, now }) =>
         set((state) => {
+          const relayClock =
+            typeof now === 'number'
+              ? { relayNow: now, receivedAt: monotonicNow() }
+              : state.relayClock
           if (!rideId) {
             return { ...deriveRoster({ activeRideId: null, roster: [] }, state), error: null }
           }
           // Membership comes from join intents/native join events. A queued presence roster
           // must not restore the ride after Leave has already cleared it.
           if (state.activeRideId !== rideId) return state
-          return { ...deriveRoster({ activeRideId: rideId, roster: riders }, state), error: null }
+          return {
+            ...deriveRoster({ activeRideId: rideId, roster: riders }, state),
+            relayClock,
+            error: null,
+          }
         }),
       ),
+      addGroupRideSignalAvailabilityListener((signalAvailability) => set({ signalAvailability })),
       addGroupRideErrorListener(({ message }) => {
         autoPending = false
         set({ error: message })
@@ -201,6 +239,8 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
       activeRideId: null,
       roster: [],
       rosterRows: [],
+      relayClock: null,
+      signalAvailability: NO_SIGNAL_AVAILABILITY,
       error: null,
       focusRequest: null,
     })
@@ -235,6 +275,22 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
     }
     leaveGroupRide()
     set({ activeRideId: null, roster: [], rosterRows: [], error: null })
+  },
+
+  sendSignal(kind) {
+    sendGroupRideSignal(kind)
+  },
+
+  clearSignal() {
+    clearGroupRideSignal()
+  },
+
+  sendHazard(kind) {
+    sendGroupRideHazard(kind)
+  },
+
+  clearHazard() {
+    clearGroupRideHazard()
   },
 
   focusRider(riderId) {

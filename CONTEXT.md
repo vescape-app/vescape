@@ -431,6 +431,10 @@ _Avoid_: Force Update, hard block, kill switch
 A server-authored, rider-facing communication that may inform, warn, or announce without changing capability availability.
 _Avoid_: Release warning, push notification, server error
 
+**Ride Notice**:
+A short-lived, rider-facing card that a native source posts on the phone so the rider can see what needs attention: severity, title, details and, optionally, a location and phone-only actions such as Show on map. Keyed per source, so a re-post updates it in place. It ends when the source clears it or it expires, is never saved, and a dismiss on the phone or the **Watch Mirror** dismisses it on both. The wrist mirrors it as a card with a haptic. It never becomes a system notification, but it shows on the ride notification or Live Activity while one exists. It is not an **Announcement Queue** item (sound), a **Board Warning** (durable Board finding) or a **Community Message** (server-authored).
+_Avoid_: Notification, alert, toast, banner, inbox
+
 **Online Capability**:
 An app capability that depends on the Vescape server and remains separate from local Board, recording, history, and tuning capabilities.
 _Avoid_: Server feature, cloud feature, online mode
@@ -458,6 +462,14 @@ _Avoid_: Rider profile, User, Profile
 **Rider Presence**:
 A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, the phone's own battery, their **Direction Point** when set, plus optional speed, **Battery SoC Estimate**, motor and controller temperatures and Board name when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale. A Rider whose connection closed without leaving stays in the Group Ride as away, frozen at their last Rider Presence, until they leave or the Group Ride ends.
 _Avoid_: Position update, presence ping, location share, group telemetry
+
+**Rider Signal**:
+A **Rider's** call to their **Group Ride** about themselves, whether something is wrong or they just stopped: one fixed kind (rider down, minor injury, serious injury; battery dead, flat tire, overheating, board fault; wait for me, break), pinned at the location it was sent from. Kinds rank by what the group should do: a serious injury first, then a minor injury or a board problem, then the heads-ups: a rider down (a small crash; the Rider escalates it by sending a minor or serious injury), a wait, and a break. Every other Rider hears it and sees it on the map. Distinct from **Rider Presence**: it keeps its own frozen location and lifetime, and it is shared even inside a **Privacy Zone**, because sending one is an explicit opt-in. A Rider has at most one; a new kind replaces it, and it ends when the Rider clears it, after 90 minutes, or when they leave. Away Riders keep theirs until it ends. Ephemeral and server-relayed like Rider Presence.
+_Avoid_: SOS, alarm, alert, distress call, help request
+
+**Ride Hazard**:
+A danger a **Rider** marks on the trail for their **Group Ride**: one fixed kind (water's edge, rough terrain, obstacle, police), pinned where it was marked. About the place, not the Rider: a Rider holds one Ride Hazard alongside their **Rider Signal**, and a new one replaces only the previous hazard. It follows the Rider Signal's lifetime (90 minutes, cleared only by the sender) and Privacy Zone exception, but other Riders hear it only as they approach it, never when it is marked.
+_Avoid_: Hazard signal, warning, POI, map point
 
 ## Relationships
 

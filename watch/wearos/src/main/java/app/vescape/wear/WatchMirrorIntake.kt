@@ -1,6 +1,8 @@
 package app.vescape.wear
 
 import expo.modules.vescapecore.watch.GroupRideFrameCodec
+import expo.modules.vescapecore.watch.RideNoticeFrameCodec
+import expo.modules.vescapecore.watch.RideNoticeFrameItem
 import expo.modules.vescapecore.watch.WatchRouteStatus
 import expo.modules.vescapecore.watch.WatchRouteStatusCodec
 
@@ -11,7 +13,10 @@ import expo.modules.vescapecore.watch.WatchRouteStatusCodec
  *
  * @parity /modules/vescape-core/ios/watch/WatchMirrorIntake.swift
  */
-internal class WatchMirrorIntake {
+internal class WatchMirrorIntake(
+    /** Ride Notice expiry is phone wall-clock time, unlike frame freshness. */
+    private val wallClockMs: () -> Long = System::currentTimeMillis,
+) {
     var mirror = MirrorStateReducer.reduce(null, null, 0)
         private set
     var route: WatchRoute? = null
@@ -28,6 +33,9 @@ internal class WatchMirrorIntake {
         private set
     var lastFrameAtMs: Long? = null
         private set
+    private val rideNotices = WatchRideNotices()
+    /** The Ride Notice the full-screen card shows, or null for the gauges. */
+    val rideNoticeCard: RideNoticeFrameItem? get() = rideNotices.card
     private var latestFrame: WatchFrame? = null
     /** Newest last, at most [MIRROR_CADENCE_WINDOW_GAPS] long. */
     private val recentGapsMs = ArrayDeque<Long>()
@@ -64,19 +72,45 @@ internal class WatchMirrorIntake {
     fun acceptWeather(payload: Map<String, Any?>?) { weather = decodeWatchWeather(payload) }
     fun acceptBoard(payload: Map<String, Any?>?) { board = decodeBoardLightsPayload(payload) }
 
+    /**
+     * Null is deletion. An unreadable frame keeps the list held: dropping it could hide a "Rider
+     * down" the phone still shows. True when a notice the wrist has not shown arrived (buzz).
+     */
+    fun acceptRideNotices(bytes: ByteArray?): Boolean {
+        if (bytes == null) {
+            rideNotices.clear()
+            return false
+        }
+        val frame = RideNoticeFrameCodec.decode(bytes) ?: return false
+        return rideNotices.accept(frame, wallClockMs())
+    }
+
+    /**
+     * The rider tapped the card away. Wrist-local: it returns while the phone posts a new revision.
+     * The dismiss command to the phone is sent next to this call.
+     */
+    fun hideRideNotice(id: Int, rev: Int) = rideNotices.hide(id, rev)
+
     /** A complete cold snapshot on startup/reconnect also clears channels absent from the phone. */
     fun restoreColdState(
-        route: ByteArray?, settings: Map<String, Any?>?, weather: Map<String, Any?>?, board: Map<String, Any?>?,
-    ) {
+        route: ByteArray?,
+        settings: Map<String, Any?>?,
+        weather: Map<String, Any?>?,
+        board: Map<String, Any?>?,
+        rideNotices: ByteArray?,
+    ): Boolean {
         acceptRoute(route)
         acceptSettings(settings)
         acceptWeather(weather)
         acceptBoard(board)
+        // The phone never deletes this item: absent means not written yet, which keeps what is held.
+        return rideNotices?.let(::acceptRideNotices) ?: false
     }
 
     fun refresh(nowMs: Long) {
         mirror = MirrorStateReducer.reduce(latestFrame, lastFrameAtMs, nowMs, mirrorDisconnectedTimeoutMs(recentGapsMs.maxOrNull()))
         if (mirror.status == MirrorStatus.DISCONNECTED) routeStatus = null
+        rideNotices.prune(wallClockMs())
         lastGroupRideAtMs?.let {
             if (nowMs - it > GROUP_RIDE_TIMEOUT_MS) {
                 groupRide = null
@@ -99,6 +133,14 @@ internal object MirrorIntakeState {
         WeatherState.accept(intake.weather)
         BoardState.accept(intake.board)
         GroupRideState.group.value = intake.groupRide
+        RideNoticeState.card.value = intake.rideNoticeCard
+    }
+
+    /** A Ride Notice delivery; buzzes once for a pair the wrist has not shown. */
+    fun acceptRideNotices(change: WatchMirrorIntake.() -> Boolean) {
+        var fresh = false
+        apply { fresh = change() }
+        if (fresh) RideNoticeState.buzz()
     }
 
     fun acceptTelemetry(bytes: ByteArray, receivedAtMs: Long, appliedAtMs: Long) = apply {

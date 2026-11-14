@@ -5,6 +5,7 @@ import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 import { DEFAULT_HISTORY_METRIC_HOT_RANGES } from '@/modules/history/lib/metricColorScale'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
+import { monotonicNow, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
 
 const NOW = Date.now()
 const BASE_LON = 14.4378
@@ -305,6 +306,50 @@ export const FIXTURE_ROSTER_ROWS: RosterRider[] = [
     isSelf: true,
   },
   ...FIXTURE_RIDERS,
+]
+
+/** A relay clock at the fixture's `NOW`, so fixture pins count as active. */
+export const FIXTURE_RELAY_CLOCK: RelayClock = { relayNow: NOW, receivedAt: monotonicNow() }
+
+const fixturePin = (kind: string, lat: number, lng: number) => ({
+  kind,
+  lat,
+  lng,
+  startedAt: NOW,
+  // Long enough that a showcase left open does not watch the pins expire.
+  expiresAt: NOW + 24 * 60 * 60_000,
+})
+
+/**
+ * Every signal and hazard kind on the map, spread around the riders: one rider's signal sits on its
+ * presence, the rest where the sender used to be.
+ */
+export const FIXTURE_PIN_ROWS: RosterRider[] = [
+  {
+    ...FIXTURE_RIDERS[0],
+    signal: fixturePin('serious', BASE_LAT + 0.005, BASE_LON + 0.0005),
+    hazard: fixturePin('water', BASE_LAT + 0.0025, BASE_LON - 0.0035),
+  },
+  {
+    ...FIXTURE_RIDERS[1],
+    signal: fixturePin('minor', BASE_LAT + 0.0015, BASE_LON - 0.0045),
+    hazard: fixturePin('terrain', BASE_LAT - 0.001, BASE_LON - 0.006),
+  },
+  {
+    ...FIXTURE_RIDERS[2],
+    signal: fixturePin('down', BASE_LAT + 0.0075, BASE_LON - 0.003),
+    hazard: fixturePin('obstacle', BASE_LAT + 0.009, BASE_LON + 0.0015),
+  },
+  {
+    ...FIXTURE_RIDERS[3],
+    signal: fixturePin('battery', BASE_LAT - 0.0005, BASE_LON + 0.0055),
+    hazard: fixturePin('police', BASE_LAT - 0.006, BASE_LON + 0.0005),
+  },
+  ...(['tire', 'overheat', 'board', 'wait', 'break'] as const).map((kind, i) => ({
+    ...FIXTURE_ROSTER_ROWS[0],
+    id: `fixture-rider-pin-${kind}`,
+    signal: fixturePin(kind, BASE_LAT - 0.0075, BASE_LON - 0.0045 + i * 0.0025),
+  })),
 ]
 
 export const FIXTURE_HISTORY_METRIC_HOT_RANGES = DEFAULT_HISTORY_METRIC_HOT_RANGES

@@ -1,7 +1,9 @@
 package expo.modules.vescapecore.alerts
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** @parity /modules/vescape-core/ios/alerts/AnnouncementQueueTests.swift */
@@ -108,5 +110,17 @@ class AnnouncementQueueTest {
         assertNull(queue.playing)
         enqueue("joined", AnnouncementPriority.SOCIAL, now = 10)
         assertEquals("joined", next(10))
+    }
+
+    @Test
+    fun riderSignalCuesSpeakAtEveryVoiceLevelButOff() {
+        for (level in listOf("minimal", "standard", "full")) {
+            assertTrue(appCueSpeaks("groupRide.signal.down", level))
+            assertTrue(appCueSpeaks("groupRide.signal.sent", level))
+        }
+        assertFalse(appCueSpeaks("groupRide.signal.down", "off"))
+        assertFalse(appCueSpeaks("groupRide.riderJoined", "standard"))
+        assertTrue(appCueSpeaks("groupRide.riderJoined", "full"))
+        assertFalse(appCueSpeaks("on", "standard"))
     }
 }

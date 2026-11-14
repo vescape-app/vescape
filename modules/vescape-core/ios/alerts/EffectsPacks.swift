@@ -38,7 +38,8 @@ internal func lookupSlot(_ slot: String, hasOverride: (String) -> Bool, packHas:
   return optionalSlotFallback[slot].map { lookupSlot($0, hasOverride: hasOverride, packHas: packHas) } ?? slot
 }
 
-/// Group Ride events with an app cue and a line under the same key in every voice pack.
+/// Group Ride events with an app cue and a line under the same key in every voice pack. Spelled out:
+/// this file also builds into the persistence host, which has no Group Ride types.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `GROUP_RIDE_CUES`
 internal let groupRideCues = [
   "groupRide.created",
@@ -47,10 +48,28 @@ internal let groupRideCues = [
   "groupRide.riderLeft",
   "groupRide.lost",
   "groupRide.restored",
+  "groupRide.signal.down",
+  "groupRide.signal.minor",
+  "groupRide.signal.serious",
+  "groupRide.signal.battery",
+  "groupRide.signal.tire",
+  "groupRide.signal.overheat",
+  "groupRide.signal.board",
+  "groupRide.signal.wait",
+  "groupRide.signal.break",
+  "groupRide.signal.ok",
+  "groupRide.signal.sent",
+  "groupRide.signal.cleared",
+  "groupRide.hazard.water",
+  "groupRide.hazard.terrain",
+  "groupRide.hazard.obstacle",
+  "groupRide.hazard.police",
+  "groupRide.hazard.sent",
 ]
 
 /// App cue id (the `playAppCue` cue names) → effects slot. Error and the rider and link Group Ride
-/// events have no slot of their own and play a fixed severity sound.
+/// events have no slot of their own and play a fixed severity sound. A signal kind sounds its notice
+/// severity (`RiderSignalKind.severity`); a hazard approach always warns.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
 internal func appCueSlot(_ cue: String) -> String? {
   switch cue {
@@ -59,9 +78,16 @@ internal func appCueSlot(_ cue: String) -> String? {
   case "error": return "severity.critical"
   case "ride.end": return "cue.ride.end"
   case "groupRide.created", "groupRide.joined": return "cue.\(cue)"
-  case "groupRide.riderJoined": return "severity.info"
+  case "groupRide.riderJoined", "groupRide.signal.sent", "groupRide.hazard.sent", "groupRide.signal.down",
+    "groupRide.signal.wait", "groupRide.signal.break":
+    return "severity.info"
   case "groupRide.riderLeft", "groupRide.lost": return "severity.warning"
-  case "groupRide.restored": return "severity.positive"
+  case "groupRide.restored", "groupRide.signal.ok", "groupRide.signal.cleared": return "severity.positive"
+  case "groupRide.signal.serious": return "severity.critical"
+  case "groupRide.signal.minor", "groupRide.signal.battery", "groupRide.signal.tire", "groupRide.signal.overheat", "groupRide.signal.board":
+    return "severity.warning"
+  case "groupRide.hazard.water", "groupRide.hazard.terrain", "groupRide.hazard.obstacle", "groupRide.hazard.police":
+    return "severity.warning"
   default: return nil
   }
 }

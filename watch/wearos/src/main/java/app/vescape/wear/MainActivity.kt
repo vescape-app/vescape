@@ -23,6 +23,7 @@ import com.google.android.gms.tasks.Tasks
 import expo.modules.vescapecore.watch.WATCH_MAP_TILE_ASSET
 import expo.modules.vescapecore.watch.WatchMapTile
 import expo.modules.vescapecore.watch.WATCH_GROUP_RIDE_PATH
+import expo.modules.vescapecore.watch.WATCH_RIDE_NOTICES_PATH
 import expo.modules.vescapecore.watch.WATCH_ROUTE_STATUS_PATH
 import java.util.concurrent.TimeUnit
 
@@ -87,8 +88,12 @@ class MainActivity : ComponentActivity() {
                     continue
                 }
                 val battery = if (!deleted && path == LAST_BATTERY_PATH) decodeLastBatteryItem(item) else null
-                val bytes = if (!deleted && path == ROUTE_PATH) item.data else null
+                val bytes = if (!deleted && (path == ROUTE_PATH || path == WATCH_RIDE_NOTICES_PATH)) item.data else null
                 val payload = if (!deleted && path in setOf(SETTINGS_PATH, WEATHER_PATH, BOARD_PATH)) dataMapOf(item) else null
+                if (path == WATCH_RIDE_NOTICES_PATH) {
+                    runOnUiThread { MirrorIntakeState.acceptRideNotices { acceptRideNotices(bytes) } }
+                    continue
+                }
                 runOnUiThread {
                     MirrorIntakeState.apply {
                         when (path) {
@@ -125,6 +130,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         lifecycle.addObserver(ambientObserver)
+        RideNoticeState.attach(this)
         setContent {
             MirrorScreen(
                 sender = commandSender,
@@ -165,7 +171,8 @@ class MainActivity : ComponentActivity() {
                 val settings = items.firstOrNull { it.uri.path == SETTINGS_PATH }?.let(::dataMapOf)
                 val weather = items.firstOrNull { it.uri.path == WEATHER_PATH }?.let(::dataMapOf)
                 val board = items.firstOrNull { it.uri.path == BOARD_PATH }?.let(::dataMapOf)
-                MirrorIntakeState.apply { restoreColdState(route, settings, weather, board) }
+                val rideNotices = items.firstOrNull { it.uri.path == WATCH_RIDE_NOTICES_PATH }?.data
+                MirrorIntakeState.acceptRideNotices { restoreColdState(route, settings, weather, board, rideNotices) }
                 LastBatteryState.battery.value = items.firstOrNull { it.uri.path == LAST_BATTERY_PATH }?.let(::decodeLastBatteryItem)
                 MapTileState.replace(
                     items.mapNotNull { item ->

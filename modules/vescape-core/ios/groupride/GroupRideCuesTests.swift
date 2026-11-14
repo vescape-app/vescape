@@ -9,6 +9,14 @@ final class GroupRideCuesTests: XCTestCase {
     cues.roster(rideId: rideId, riderIds: ids, awayIds: away, ownRiderId: "me")
   }
 
+  private func signal(_ kind: RiderSignalKind, startedAt: Int64 = 1_000, expiresAt: Int64 = 61_000) -> RiderSignal {
+    RiderSignal(kind: kind, lat: 50, lng: 19, startedAt: startedAt, expiresAt: expiresAt)
+  }
+
+  private func signals(_ ids: String..., signals: [String: RiderSignal], now: Int64? = 10_000) -> String? {
+    cues.roster(rideId: "ride", riderIds: ids, awayIds: [], ownRiderId: "me", riderSignals: signals, now: now)
+  }
+
   private func joined(with ids: String..., away: Set<String> = []) {
     XCTAssertEqual(cues.joined("ride"), "groupRide.joined")
     XCTAssertNil(cues.roster(rideId: "ride", riderIds: ids, awayIds: away, ownRiderId: "me"))
@@ -134,5 +142,124 @@ final class GroupRideCuesTests: XCTestCase {
     XCTAssertNil(cues.graceElapsed())
     XCTAssertFalse(cues.linkDropped())
     XCTAssertEqual(cues.joined("ride"), "groupRide.joined")
+  }
+
+  func testAnotherRidersNewSignalCuesItsKindOnce() {
+    joined(with: "me", "ola")
+    let down = ["ola": signal(.down)]
+
+    XCTAssertEqual(signals("me", "ola", signals: down), "groupRide.signal.down")
+    XCTAssertNil(signals("me", "ola", signals: down))
+  }
+
+  func testAReplacedSignalCuesTheNewKind() {
+    joined(with: "me", "ola")
+    _ = signals("me", "ola", signals: ["ola": signal(.wait)])
+
+    XCTAssertEqual(
+      signals("me", "ola", signals: ["ola": signal(.battery, startedAt: 5_000)]), "groupRide.signal.battery")
+  }
+
+  func testASignalClearedBeforeItExpiresByRelayNowCuesOkExpiryIsSilent() {
+    joined(with: "me", "ola", "kai")
+    let help = ["ola": signal(.down), "kai": signal(.board)]
+    _ = signals("me", "ola", "kai", signals: help)
+
+    XCTAssertEqual(signals("me", "ola", "kai", signals: ["kai": signal(.board)], now: 60_999), "groupRide.signal.ok")
+    XCTAssertNil(signals("me", "ola", "kai", signals: [:], now: 61_000))
+  }
+
+  func testASignalGoneASecondLateOrWithoutRelayNowStaysSilent() {
+    joined(with: "me", "ola")
+    _ = signals("me", "ola", signals: ["ola": signal(.board)])
+    XCTAssertNil(signals("me", "ola", signals: [:], now: 62_000))
+
+    _ = signals("me", "ola", signals: ["ola": signal(.board, startedAt: 2_000)])
+    XCTAssertNil(signals("me", "ola", signals: [:], now: nil))
+  }
+
+  func testARiderLeavingWithAnActiveSignalCuesRiderLeftNotOk() {
+    joined(with: "me", "ola", "kai")
+    _ = signals("me", "ola", "kai", signals: ["ola": signal(.wait)])
+
+    XCTAssertEqual(signals("me", "kai", signals: [:]), "groupRide.riderLeft")
+  }
+
+  func testTheRidersOwnSignalConfirmsSentOnceAndClearedBeforeExpiry() {
+    joined(with: "me", "ola")
+    let own = ["me": signal(.down)]
+
+    XCTAssertEqual(signals("me", "ola", signals: own), "groupRide.signal.sent")
+    XCTAssertNil(signals("me", "ola", signals: own))
+    XCTAssertEqual(signals("me", "ola", signals: [:]), "groupRide.signal.cleared")
+
+    _ = signals("me", "ola", signals: ["me": signal(.wait, startedAt: 2_000)])
+    XCTAssertNil(signals("me", "ola", signals: [:], now: 61_000))
+  }
+
+  func testAnotherRidersNewSignalWinsOverTheOwnConfirmation() {
+    joined(with: "me", "ola")
+    let both = ["me": signal(.wait), "ola": signal(.board)]
+
+    XCTAssertEqual(signals("me", "ola", signals: both), "groupRide.signal.board")
+  }
+
+  func testAnOwnSignalAlreadyActiveAtJoinStaysSilent() {
+    _ = cues.joined("ride")
+    let own = ["me": signal(.down)]
+    XCTAssertNil(signals("me", "ola", signals: own))
+    XCTAssertNil(signals("me", "ola", signals: own))
+  }
+
+  func testSignalsAlreadyActiveAtJoinOrReconnectStaySilent() {
+    let down = ["ola": signal(.down)]
+    XCTAssertEqual(cues.joined("ride"), "groupRide.joined")
+    XCTAssertNil(signals("me", "ola", signals: down))
+    XCTAssertNil(signals("me", "ola", signals: down))
+
+    _ = cues.linkDropped()
+    _ = cues.joined("ride")
+    let wait = ["ola": signal(.wait, startedAt: 3_000)]
+    XCTAssertNil(signals("me", "ola", signals: wait))
+    XCTAssertNil(signals("me", "ola", signals: wait))
+  }
+
+  func testASignalWinsOverSocialCuesAndACriticalSignalOverOthers() {
+    joined(with: "me", "ola")
+    let both = ["ola": signal(.wait), "kai": signal(.board)]
+
+    XCTAssertEqual(signals("me", "ola", "kai", signals: both), "groupRide.signal.board")
+    XCTAssertEqual(signals("me", "kai", "zoe", signals: [:]), "groupRide.signal.ok")
+    let crash = ["ola": signal(.down), "kai": signal(.serious)]
+    XCTAssertEqual(signals("me", "ola", "kai", signals: crash), "groupRide.signal.serious")
+  }
+
+  func testWithConnectionSoundsOffOnlySignalCuesPlay() throws {
+    joined(with: "me", "ola")
+    let down = try XCTUnwrap(signals("me", "ola", signals: ["ola": signal(.down)]))
+    let ok = try XCTUnwrap(signals("me", "ola", signals: [:]))
+    let joinedCue = try XCTUnwrap(roster("me", "ola", "kai"))
+    _ = cues.linkDropped()
+    _ = cues.linkDropped()
+    let lost = try XCTUnwrap(cues.graceElapsed())
+
+    for cue in [down, ok] { XCTAssertTrue(GroupRideCues.audible(cue, connectionSoundsEnabled: false), cue) }
+    for cue in [joinedCue, lost, "groupRide.joined", "groupRide.created"] {
+      XCTAssertFalse(GroupRideCues.audible(cue, connectionSoundsEnabled: false), cue)
+      XCTAssertTrue(GroupRideCues.audible(cue, connectionSoundsEnabled: true), cue)
+    }
+  }
+
+  func testTheRidersOwnNewHazardConfirmsOnceAfterItsOwnSignal() {
+    joined(with: "me", "ola")
+    let mud = RideHazard(kind: .terrain, lat: 50, lng: 19, startedAt: 2_000, expiresAt: 62_000)
+    func roster(_ own: [String: RiderSignal], _ hazard: RideHazard, now: Int64) -> String? {
+      cues.roster(rideId: "ride", riderIds: ["me", "ola"], awayIds: [], ownRiderId: "me", riderSignals: own, now: now, ownHazardNow: hazard)
+    }
+
+    XCTAssertEqual(roster([:], mud, now: 10_000), "groupRide.hazard.sent")
+    XCTAssertNil(roster([:], mud, now: 11_000))
+    let water = RideHazard(kind: .water, lat: 50, lng: 19, startedAt: 3_000, expiresAt: 63_000)
+    XCTAssertEqual(roster(["me": signal(.tire, startedAt: 3_000)], water, now: 12_000), "groupRide.signal.sent")
   }
 }

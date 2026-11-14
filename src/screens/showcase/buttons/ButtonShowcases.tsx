@@ -320,8 +320,10 @@ const EXTENSION_SIZES = ['sm', 'md', 'lg'] as const
 export function IconButtonExtensionShowcase() {
   const [content, setContent] = useState<'none' | 'one stat' | 'two stats' | 'custom'>('two stats')
   const [size, setSize] = useState<(typeof EXTENSION_SIZES)[number]>('lg')
+  const [direction, setDirection] = useState<'up' | 'down'>('up')
   const [dot, setDot] = useState(false)
   const [disabled, setDisabled] = useState(false)
+  const [blink, setBlink] = useState(false)
 
   const extension = {
     none: null,
@@ -352,13 +354,26 @@ export function IconButtonExtensionShowcase() {
             selected={size}
             onSelect={(v) => setSize(v as typeof size)}
           />
+          <ChipRow
+            label="direction"
+            options={['up', 'down']}
+            selected={direction}
+            onSelect={(v) => setDirection(v as typeof direction)}
+          />
           <ToggleRow label="button dot" value={dot} onToggle={setDot} />
+          <ToggleRow label="blink" value={blink} onToggle={setBlink} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
         </>
       }
     >
       <View style={styles.centeredPreview}>
-        <IconButtonExtension extension={extension} onPress={noop} disabled={disabled}>
+        <IconButtonExtension
+          extension={extension}
+          direction={direction}
+          blink={blink}
+          onPress={noop}
+          disabled={disabled}
+        >
           <IconButton
             icon={ClockCounterClockwiseIcon}
             size={size}

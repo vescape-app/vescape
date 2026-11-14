@@ -1,8 +1,14 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.notices.RideNotice
+import expo.modules.vescapecore.notices.RideNoticeContent
+import expo.modules.vescapecore.notices.RideNoticeLocation
+import expo.modules.vescapecore.notices.RideNoticeSeverity
+import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.weather.WeatherAlertLevel
 import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
+import expo.modules.vescapecore.watch.WatchRideNoticePusher
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 
@@ -147,6 +153,7 @@ class VescapeCoreModule : Module() {
   private var alertTestControlId: String? = null
   /** Remover for this module's App Status mirror listener; cleared in OnDestroy. */
   private var appStatusUnsub: (() -> Unit)? = null
+  private var rideNoticesUnsub: (() -> Unit)? = null
   private var serviceConfigUnsub: (() -> Unit)? = null
   private val companionPresence by lazy {
     CompanionPresence(context.applicationContext, activityProvider = { appContext.currentActivity })
@@ -202,6 +209,7 @@ class VescapeCoreModule : Module() {
       "onGroupRideJoined",
       "onGroupRideRoster",
       "onGroupRideError",
+      "onGroupRideSignalAvailability",
       "onAppDataChanged",
       "onBoardWarnings",
       "onVescFaults",
@@ -218,6 +226,7 @@ class VescapeCoreModule : Module() {
       "onAccessoryScanError",
       "onAccessoryState",
       "onAccessoryReading",
+      "onRideNotices",
     )
 
     // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
@@ -356,6 +365,8 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onGroupRideRoster") { stopObserving("onGroupRideRoster") }
     OnStartObserving("onGroupRideError") { startObserving("onGroupRideError") }
     OnStopObserving("onGroupRideError") { stopObserving("onGroupRideError") }
+    OnStartObserving("onGroupRideSignalAvailability") { startObserving("onGroupRideSignalAvailability") }
+    OnStopObserving("onGroupRideSignalAvailability") { stopObserving("onGroupRideSignalAvailability") }
     OnStartObserving("onBoardWarnings") {
       startObserving("onBoardWarnings")
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
@@ -433,6 +444,12 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onAccessoryState") { stopObserving("onAccessoryState") }
     OnStartObserving("onAccessoryReading") { startObserving("onAccessoryReading") }
     OnStopObserving("onAccessoryReading") { stopObserving("onAccessoryReading") }
+    OnStartObserving("onRideNotices") {
+      startObserving("onRideNotices")
+      // Late subscriber: replay the active list so the card is consistent immediately.
+      emitRideNotices(RideNotices.current)
+    }
+    OnStopObserving("onRideNotices") { stopObserving("onRideNotices") }
 
     OnCreate {
       val storageOutageEvents = StorageOutageEventBridge(
@@ -448,6 +465,8 @@ class VescapeCoreModule : Module() {
       ServiceConfigCoordinator.get(context).refresh()
       MaintenanceRunner.onChange = ::emitMaintenanceState
       MaintenanceRunner.start(context.applicationContext)
+      rideNoticesUnsub = RideNotices.addListener(::emitRideNotices)
+      WatchRideNoticePusher.start(context)
     }
 
     OnActivityEntersForeground {
@@ -459,6 +478,8 @@ class VescapeCoreModule : Module() {
       ServiceConfigCoordinator.get(context).refresh()
       // Emits were gated while hidden; the screen must not keep a stale running state.
       emitMaintenanceState(MaintenanceRunner.snapshot())
+      emitRideNotices(RideNotices.current)
+      RideNotices.expireNow()
     }
     OnActivityEntersBackground {
       frontendActive = false
@@ -486,6 +507,8 @@ class VescapeCoreModule : Module() {
       appStatusUnsub = null
       serviceConfigUnsub?.invoke()
       serviceConfigUnsub = null
+      rideNoticesUnsub?.invoke()
+      rideNoticesUnsub = null
       previewAlertFeedback?.release()
       previewAlertFeedback = null
       stopAlertTest()
@@ -1659,8 +1682,47 @@ class VescapeCoreModule : Module() {
     Function("joinGroupRide") { riderId: String, riderName: String, rideId: String ->
       CoreForegroundService.joinGroupRide(context.applicationContext, riderId, riderName, rideId)
     }
+    // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair posts test notices.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `dismissRideNotice`
+    Function("getRideNotices") { RideNotices.current.map { it.toMap() } }
+    Function("dismissRideNotice") { id: Int, rev: Int -> RideNotices.dismiss(id, rev) }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `devPostRideNotice`
+    // @parity /modules/vescape-core/src/index.ts `DevRideNoticeParams`
+    Function("devPostRideNotice") { notice: Map<String, Any?> ->
+      val severity = RideNoticeSeverity.fromWire(notice["severity"] as? String)
+        ?: throw IllegalArgumentException("Unknown Ride Notice severity")
+      val lat = (notice["lat"] as? Number)?.toDouble()
+      val lng = (notice["lng"] as? Number)?.toDouble()
+      RideNotices.post(
+        key = notice["key"] as String,
+        content = RideNoticeContent(
+          severity = severity,
+          title = notice["title"] as String,
+          details = notice["details"] as String,
+          postedAt = (notice["postedAt"] as Number).toLong(),
+          location = if (lat != null && lng != null) RideNoticeLocation(lat, lng) else null,
+          expiresAt = (notice["expiresAt"] as? Number)?.toLong(),
+        ),
+        revision = notice["revision"] as String,
+      )
+    }
+    Function("devClearRideNotice") { key: String -> RideNotices.clear(key) }
     Function("leaveGroupRide") {
       CoreForegroundService.leaveGroupRide(context.applicationContext)
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendGroupRideSignal`
+    Function("sendGroupRideSignal") { kind: String ->
+      CoreForegroundService.sendGroupRideSignal(kind)
+    }
+    Function("clearGroupRideSignal") {
+      CoreForegroundService.clearGroupRideSignal()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendGroupRideHazard`
+    Function("sendGroupRideHazard") { kind: String ->
+      CoreForegroundService.sendGroupRideHazard(kind)
+    }
+    Function("clearGroupRideHazard") {
+      CoreForegroundService.clearGroupRideHazard()
     }
     Function("updateGroupRideIdentity") { riderId: String, riderName: String ->
       CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName)
@@ -1712,6 +1774,16 @@ class VescapeCoreModule : Module() {
     mainHandler.post {
       if (shouldEmitToFrontend("onMaintenanceState")) sendEvent("onMaintenanceState", state)
     }
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `emitRideNotices`
+   * @parity /modules/vescape-core/src/index.ts `RideNoticesEvent`
+   */
+  private fun emitRideNotices(notices: List<RideNotice>) {
+    if (!shouldEmitToFrontend("onRideNotices")) return
+    val body = mapOf("notices" to notices.map { it.toMap() })
+    mainHandler.post { if (shouldEmitToFrontend("onRideNotices")) sendEvent("onRideNotices", body) }
   }
 
   private fun shouldEmitToFrontend(name: String): Boolean = frontendActive && observedEvents.contains(name)

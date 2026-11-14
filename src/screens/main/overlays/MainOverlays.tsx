@@ -19,6 +19,7 @@ import { MapVignette } from '@/screens/main/map/MapVignette'
 import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMapIndicators'
 import { useMainScreenStore, type MapSelector } from '@/screens/main/mainScreenStore'
 import type { MainViewState } from '@/screens/main/mainViewState'
+import { RideNoticeOverlay } from '@/screens/main/overlays/RideNoticeOverlay'
 import { MapPointStatusBanner } from '@/modules/map-points/components/MapPointStatusBanner'
 import { TelemetryOverlay } from '@/screens/main/overlays/TelemetryOverlay'
 import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
@@ -53,6 +54,9 @@ interface MainMapOverlayProps {
   enterLegalLimits: () => void
   exitLegalLimits: () => void
   weatherLocation: { latitude: number; longitude: number } | null
+  /** The rider's latest precise fix, for live distances; null without one. */
+  ownLocation: { latitude: number; longitude: number } | null
+  onFocusCoordinate: (coordinate: { latitude: number; longitude: number }) => void
   directionPoint: DirectionPoint | null
   activeNavigationTarget: MapSelection | null
   selectedNavigationTarget: MapSelection | null
@@ -112,6 +116,8 @@ export function MainOverlays({
   const mapControlsBottom = Math.max(insets.bottom, 12) + 12
   const mapModeTabsTop = Math.max(insets.top, 8)
   const belowMapModeTabsTop = mapModeTabsTop + 48
+  // Telemetry: clear the top bar. Map: clear the Map Point status banner's slot.
+  const rideNoticeTop = mode === 'telemetry' ? belowMapModeTabsTop : belowMapModeTabsTop + 48
   const mapTargetBottom = Math.max(insets.bottom, 16) + 16
   const isMapMode = mode === 'map' || mode === 'weather' || mode === 'legalLimits'
 
@@ -147,6 +153,7 @@ export function MainOverlays({
         onOffscreenIndicatorPress={map.onOffscreenIndicatorPress}
         activeNavigationTarget={map.activeNavigationTarget}
         onCancelNavigation={map.onCancelNavigation}
+        onFocusCoordinate={map.onFocusCoordinate}
       />
 
       {weather && (mode === 'telemetry' || mode === 'map') ? (
@@ -218,6 +225,14 @@ export function MainOverlays({
         top={mapModeTabsTop}
         onExit={map.exitLegalLimits}
       />
+
+      {mode === 'telemetry' || mode === 'map' ? (
+        <RideNoticeOverlay
+          top={rideNoticeTop}
+          ownLocation={map.ownLocation}
+          onShowOnMap={map.onFocusCoordinate}
+        />
+      ) : null}
 
       <HistoryOverlay
         visible={mode === 'history'}
