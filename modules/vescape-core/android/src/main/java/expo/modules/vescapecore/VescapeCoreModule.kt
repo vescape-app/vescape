@@ -1,5 +1,6 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.splash.LaunchSplash
 import expo.modules.vescapecore.weather.WeatherAlertLevel
 import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
@@ -584,6 +585,8 @@ class VescapeCoreModule : Module() {
       AccessorySessionManager.clearGroundClearance(accessoryId, capabilityId) { promise.resolve(it) }
     }
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `hideLaunchSplash`
+    AsyncFunction("hideLaunchSplash") { LaunchSplash.hide() }.runOnQueue(Queues.MAIN)
     // Nudge, not a command: native owns whether GPS runs (see `GpsDemand`). JS calls this once the
     // location permission is answered, because a grant is the one demand input native cannot observe
     // for itself.
