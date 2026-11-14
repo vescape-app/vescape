@@ -127,7 +127,7 @@ export default function BoardConfigScreen() {
         ) : (
           <>
             <View style={styles.tabs}>
-              <PillSelector activeId={activeTab} showFullLabel variant="lightTabs">
+              <PillSelector activeId={activeTab} showFullLabel centerActive variant="lightTabs">
                 {tabs.map((tab) => (
                   <PillSelectorItem
                     key={tab.id}
@@ -172,7 +172,7 @@ export default function BoardConfigScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 16, gap: 24 },
-  tabs: { backgroundColor: theme.neutral.bg, paddingVertical: 8, marginHorizontal: -16 },
+  tabs: { backgroundColor: theme.neutral.bg, paddingVertical: 8 },
   groups: { gap: 28 },
   search: {
     justifyContent: 'center',

@@ -10,7 +10,12 @@ import {
 import { Pressable, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native'
 import { PlusIcon } from 'phosphor-react-native'
 import type { Icon } from 'phosphor-react-native'
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
 import { Dropdown, useTriggerRef } from '@/components/forms/Dropdown'
@@ -48,6 +53,8 @@ interface PillSelectorProps {
   contained?: boolean
   fitContent?: boolean
   showFullLabel?: boolean
+  /** Center the selected full-label tab, clamped to the padded ends of the row. */
+  centerActive?: boolean
   variant?: 'control' | 'lightTabs'
   style?: StyleProp<ViewStyle>
   contentContainerStyle?: StyleProp<ViewStyle>
@@ -126,6 +133,7 @@ export function PillSelector({
   contained = false,
   fitContent = false,
   showFullLabel = false,
+  centerActive = false,
   variant = 'control',
   style,
   contentContainerStyle,
@@ -135,9 +143,12 @@ export function PillSelector({
   const [viewportWidth, setViewportWidth] = useState(0)
   const [contentWidth, setContentWidth] = useState(0)
   const scrollRef = useRef<ScrollView>(null)
+  const didCenter = useRef(false)
+  const reducedMotion = useReducedMotion()
   const addRef = useTriggerRef()
   const scrollEnabled = viewportWidth > 0 && contentWidth > viewportWidth + 1
   const gap = contained ? 0 : 8
+  const shouldCenterActive = centerActive && showFullLabel && !contained
   const fullLabelHighlight = getFullLabelHighlight(children, activeId, gap, contained, size)
   const highlightX = useSharedValue(fullLabelHighlight.x)
   const highlightWidth = useSharedValue(fullLabelHighlight.width)
@@ -162,6 +173,26 @@ export function PillSelector({
   useEffect(() => {
     if (!scrollEnabled) scrollRef.current?.scrollTo({ x: 0, animated: false })
   }, [scrollEnabled])
+
+  useEffect(() => {
+    if (!shouldCenterActive || !viewportWidth || !contentWidth || !fullLabelHighlight.width) return
+    const x = Math.max(
+      0,
+      Math.min(
+        fullLabelHighlight.x + fullLabelHighlight.width / 2 - viewportWidth / 2,
+        contentWidth - viewportWidth,
+      ),
+    )
+    scrollRef.current?.scrollTo({ x, animated: didCenter.current && !reducedMotion })
+    didCenter.current = true
+  }, [
+    shouldCenterActive,
+    viewportWidth,
+    contentWidth,
+    fullLabelHighlight.x,
+    fullLabelHighlight.width,
+    reducedMotion,
+  ])
 
   useEffect(() => {
     highlightX.value = withTiming(fullLabelHighlight.x, TUNE_ANIMATION)

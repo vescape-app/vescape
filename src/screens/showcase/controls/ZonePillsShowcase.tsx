@@ -156,9 +156,9 @@ export function ZonePillsShowcase() {
         </View>
 
         <View style={styles.selectorVariant}>
-          <Text style={styles.selectorCaption}>regular labels, six items, horizontal scroll</Text>
+          <Text style={styles.selectorCaption}>regular labels, selected item centered</Text>
           <View style={styles.narrowPreviewWide}>
-            <PillSelector activeId={regularScrollId} showFullLabel>
+            <PillSelector activeId={regularScrollId} showFullLabel centerActive>
               {regularScrollOptions.map((option) => (
                 <PillSelectorItem
                   key={option.id}
