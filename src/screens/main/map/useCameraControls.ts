@@ -12,6 +12,7 @@ import {
 } from '@/modules/map/lib/cameraController'
 import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 import { toDirectCamera } from '@/modules/map/lib/directCamera'
+import { puckLayerChannel } from '@/modules/map/lib/nativePuck'
 import { mainMapCameraProbe } from '@/modules/map/screens/benchmark/cameraProbe'
 import {
   type CameraPadding,
@@ -100,6 +101,11 @@ export function useCameraControls({
     engine.resume()
     return () => engine.destroy()
   }, [engine])
+  // Puck spike: the layer puck goes through the camera module, the same path as camera writes.
+  useEffect(() => {
+    puckLayerChannel.attach((puck) => cameraRef.current?.setPuckDirect(puck))
+    return () => puckLayerChannel.attach(null)
+  }, [])
   const cameraRefs = useMemo(
     () => ({
       cameraRef,

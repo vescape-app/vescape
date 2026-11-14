@@ -3,6 +3,7 @@ import { useSharedValue } from 'react-native-reanimated'
 
 import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
 import { getGpsPuckBearing } from '@/modules/map/lib/gpsPuckHeading'
+import { puckLayerChannel } from '@/modules/map/lib/nativePuck'
 
 /**
  * The puck arrow's map bearing. The compass writes it from its own callback, so a 60 Hz sensor
@@ -22,9 +23,14 @@ export function usePuckBearing({
   const puckBearing = useSharedValue<number | null>(null)
   const syncPuckBearing = useCallback(
     (phoneHeadingDeg: number | null) => {
-      puckBearing.set(
-        getGpsPuckBearing({ orientationMode, approximateFix, phoneHeadingDeg, gpsBearingDeg }),
-      )
+      const bearing = getGpsPuckBearing({
+        orientationMode,
+        approximateFix,
+        phoneHeadingDeg,
+        gpsBearingDeg,
+      })
+      puckBearing.set(bearing)
+      puckLayerChannel.setBearing(bearing)
     },
     [approximateFix, gpsBearingDeg, orientationMode, puckBearing],
   )

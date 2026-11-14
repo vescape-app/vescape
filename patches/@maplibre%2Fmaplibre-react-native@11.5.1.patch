@@ -1,3 +1,513 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 19e14a28384746c1b70a05cb256c5b26f31d0af9..63ed049c6493b1557d2981101587bb799538a4e7 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -58,6 +58,21 @@ android {
+         buildConfig true
+     }
+ 
++    // Puck spike: native CustomLayer host (src/main/cpp).
++    ndkVersion getExtOrDefault("ndkVersion")
++    externalNativeBuild {
++        cmake {
++            path "src/main/cpp/CMakeLists.txt"
++        }
++    }
++    defaultConfig {
++        externalNativeBuild {
++            cmake {
++                arguments "-DANDROID_STL=c++_static"
++            }
++        }
++    }
++
+     buildTypes {
+         release {
+             minifyEnabled false
+diff --git a/android/src/main/cpp/CMakeLists.txt b/android/src/main/cpp/CMakeLists.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..5dc549996b5fc89658d91328d025d3c2697e76b2
+--- /dev/null
++++ b/android/src/main/cpp/CMakeLists.txt
+@@ -0,0 +1,10 @@
++cmake_minimum_required(VERSION 3.22.1)
++project(mlrnpuck CXX)
++
++# Puck spike: CustomLayer host for the rider puck. Does not link libmaplibre.so; MapLibre only
++# calls this through the CustomLayerHost vtable, so the vendored header must match its version.
++add_library(mlrnpuck SHARED MLRNPuckLayer.cpp)
++target_compile_features(mlrnpuck PRIVATE cxx_std_17)
++target_compile_options(mlrnpuck PRIVATE -Wall -Werror=return-type -fvisibility=hidden)
++target_link_options(mlrnpuck PRIVATE -Wl,-z,max-page-size=16384)
++target_link_libraries(mlrnpuck GLESv3 log)
+diff --git a/android/src/main/cpp/MLRNPuckLayer.cpp b/android/src/main/cpp/MLRNPuckLayer.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..469e13ef55918dd9b3f96ebdc1951579ed53fba2
+--- /dev/null
++++ b/android/src/main/cpp/MLRNPuckLayer.cpp
+@@ -0,0 +1,398 @@
++// Puck spike: the rider puck as a MapLibre CustomLayer host, drawn with GLES 3 inside MapLibre's
++// own render pass, so it moves with the map in the same frame.
++// @parity /node_modules/@maplibre/maplibre-react-native/ios/components/camera/MLRNPuckLayer.m
++// TODO(ios parity): iOS still draws the flat disc and ignores shadowAlpha.
++//
++// The coin of GpsPuck (src/modules/map/components/GpsPuck.tsx) as real geometry: ground shadow,
++// shaded base and side wall, top face with a white rim, heading arrow in the top face's plane.
++// Units: x/y in MapLibre world pixels at the current zoom (512 << zoom across the world), which
++// are dp on the ground plane, so the coin keeps its on-screen size at any zoom. The projection
++// matrix takes z in metres (fill-extrusion heights), so the vertex shader turns the coin's pixel
++// heights into metres with the metres-per-pixel the matrix itself was built with.
++// No depth test: the coin is an overlay, drawn back to front (painter's order below).
++
++#include <GLES3/gl3.h>
++#include <android/log.h>
++#include <jni.h>
++
++#include <cmath>
++#include <memory>
++#include <mutex>
++#include <vector>
++
++#include "mln_custom_layer_host.h"
++
++#define LOG_TAG "MLRNPuckLayer"
++#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
++#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
++
++namespace {
++
++// GpsPuck's sizes, in dp.
++constexpr float kCoinRadius = 11.f;      // COIN_SIZE / 2
++constexpr float kCoinHeight = 12.f;      // COIN_HEIGHT
++constexpr float kRimWidth = 3.f;         // coinTop borderWidth
++constexpr float kShadowRadius = 15.f;  // COIN_SHADOW_SIZE / 2
++constexpr double kShadowDrop = 2.0;      // COIN_SHADOW_DROP, towards the bottom of the screen
++constexpr float kWallShade = 0.6f;       // wallShade: 40% black over the rider colour
++constexpr float kArrowHalfWidth = 9.f;   // ARROW_WIDTH / 2
++constexpr float kArrowLength = 14.f;   // ARROW_LENGTH
++constexpr float kArrowTuck = 4.f;        // ARROW_TUCK
++constexpr float kArrowBase = kCoinRadius - kArrowTuck;
++constexpr float kArrowTip = kArrowBase + kArrowLength;
++constexpr int kSegments = 48;
++constexpr double kPi = 3.14159265358979323846;
++constexpr double kEarthRadius = 6378137.0;  // mbgl::util::EARTH_RADIUS_M
++
++// Buffer layout, in draw order.
++constexpr GLint kShadowFirst = 0;
++constexpr GLsizei kDiscCount = 3 * kSegments;
++constexpr GLint kBodyFirst = kShadowFirst + kDiscCount;          // base disc + side wall
++constexpr GLsizei kBodyCount = kDiscCount + 6 * kSegments;
++constexpr GLint kArrowFirst = kBodyFirst + kBodyCount;
++constexpr GLsizei kArrowCount = 3;
++constexpr GLint kTopFirst = kArrowFirst + kArrowCount;           // white rim disc + colour disc
++constexpr GLsizei kTopCount = 2 * kDiscCount;
++constexpr GLsizei kVertexCount = kTopFirst + kTopCount;
++
++/** Written on the UI thread by setPuckDirect, read on the render thread at draw time. */
++struct PuckState {
++  std::mutex mutex;
++  double lng = 0;
++  double lat = 0;
++  double bearing = NAN;
++  uint32_t argb = 0;
++  float shadowAlpha = 0;
++  bool placed = false;
++  /** Bumped when the vertex data (colour or shadow) changes. Bearing is a draw-time rotation. */
++  uint64_t geometryVersion = 1;
++};
++
++struct Snapshot {
++  double lng, lat, bearing;
++  uint32_t argb;
++  float shadowAlpha;
++  bool placed;
++  uint64_t geometryVersion;
++};
++
++struct Vertex {
++  float x, y, z;
++  float r, g, b, a;  // premultiplied
++};
++
++struct Rgba {
++  float r, g, b, a;
++};
++
++const char* kVertexShader =
++    "#version 300 es\n"
++    "uniform mat4 u_mvp;\n"
++    "uniform float u_metersPerPixel;\n"
++    "in vec3 a_pos;\n"
++    "in vec4 a_color;\n"
++    "out vec4 v_color;\n"
++    "void main() {\n"
++    "  vec4 p = u_mvp * vec4(a_pos.xy, a_pos.z * u_metersPerPixel, 1.0);\n"
++    // Clip depth pinned inside [-w, w]: the puck is an overlay, never depth-tested.
++    "  p.z = 0.0;\n"
++    "  gl_Position = p;\n"
++    "  v_color = a_color;\n"
++    "}\n";
++
++const char* kFragmentShader =
++    "#version 300 es\n"
++    "precision mediump float;\n"
++    "in vec4 v_color;\n"
++    "out vec4 fragColor;\n"
++    "void main() { fragColor = v_color; }\n";
++
++Vertex vertex(float x, float y, float z, Rgba c) {
++  return {x, y, z, c.r * c.a, c.g * c.a, c.b * c.a, c.a};
++}
++
++float ringX(int i, float radius) {
++  return std::cos(2.f * static_cast<float>(kPi) * i / kSegments) * radius;
++}
++
++float ringY(int i, float radius) {
++  return std::sin(2.f * static_cast<float>(kPi) * i / kSegments) * radius;
++}
++
++void appendDisc(std::vector<Vertex>& out, float radius, float z, Rgba c) {
++  for (int i = 0; i < kSegments; i++) {
++    out.push_back(vertex(0, 0, z, c));
++    out.push_back(vertex(ringX(i, radius), ringY(i, radius), z, c));
++    out.push_back(vertex(ringX(i + 1, radius), ringY(i + 1, radius), z, c));
++  }
++}
++
++void appendWall(std::vector<Vertex>& out, float radius, float height, Rgba c) {
++  for (int i = 0; i < kSegments; i++) {
++    Vertex b0 = vertex(ringX(i, radius), ringY(i, radius), 0, c);
++    Vertex b1 = vertex(ringX(i + 1, radius), ringY(i + 1, radius), 0, c);
++    Vertex t0 = vertex(ringX(i, radius), ringY(i, radius), height, c);
++    Vertex t1 = vertex(ringX(i + 1, radius), ringY(i + 1, radius), height, c);
++    out.insert(out.end(), {b0, b1, t1, b0, t1, t0});
++  }
++}
++
++/**
++ * projection * translate(x, y) * rotateZ(angle), column-major. The translation is done in doubles:
++ * at zoom 20 the world is ~5e8 px wide, past float.
++ */
++void compose(const std::array<double, 16>& P, double x, double y, double angle, float out[16]) {
++  double c = std::cos(angle), s = std::sin(angle);
++  for (int r = 0; r < 4; r++) {
++    out[r] = static_cast<float>(P[r] * c + P[4 + r] * s);
++    out[4 + r] = static_cast<float>(-P[r] * s + P[4 + r] * c);
++    out[8 + r] = static_cast<float>(P[8 + r]);
++    out[12 + r] = static_cast<float>(P[r] * x + P[4 + r] * y + P[12 + r]);
++  }
++}
++
++GLuint compile(GLenum type, const char* source) {
++  GLuint shader = glCreateShader(type);
++  glShaderSource(shader, 1, &source, nullptr);
++  glCompileShader(shader);
++  GLint ok = 0;
++  glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
++  if (!ok) {
++    char log[512];
++    glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
++    LOGE("shader compile failed: %s", log);
++    glDeleteShader(shader);
++    return 0;
++  }
++  return shader;
++}
++
++class PuckHost final : public mln::style::CustomLayerHost {
++ public:
++  explicit PuckHost(std::shared_ptr<PuckState> state) : state_(std::move(state)) {
++    vertices_.reserve(kVertexCount);
++  }
++
++  void initialize(const mln::style::CustomLayerInitParameters&) override {
++    GLuint vs = compile(GL_VERTEX_SHADER, kVertexShader);
++    GLuint fs = compile(GL_FRAGMENT_SHADER, kFragmentShader);
++    if (!vs || !fs) return;
++    program_ = glCreateProgram();
++    glAttachShader(program_, vs);
++    glAttachShader(program_, fs);
++    glBindAttribLocation(program_, 0, "a_pos");
++    glBindAttribLocation(program_, 1, "a_color");
++    glLinkProgram(program_);
++    glDeleteShader(vs);
++    glDeleteShader(fs);
++    GLint ok = 0;
++    glGetProgramiv(program_, GL_LINK_STATUS, &ok);
++    if (!ok) {
++      LOGE("program link failed");
++      glDeleteProgram(program_);
++      program_ = 0;
++      return;
++    }
++    mvpLocation_ = glGetUniformLocation(program_, "u_mvp");
++    metersPerPixelLocation_ = glGetUniformLocation(program_, "u_metersPerPixel");
++
++    GLint prevVao = 0, prevBuffer = 0;
++    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prevVao);
++    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &prevBuffer);
++    glGenVertexArrays(1, &vao_);
++    glGenBuffers(1, &buffer_);
++    glBindVertexArray(vao_);
++    glBindBuffer(GL_ARRAY_BUFFER, buffer_);
++    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(kVertexCount * sizeof(Vertex)), nullptr,
++                 GL_DYNAMIC_DRAW);
++    glEnableVertexAttribArray(0);
++    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(0));
++    glEnableVertexAttribArray(1);
++    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex),
++                          reinterpret_cast<void*>(3 * sizeof(float)));
++    glBindVertexArray(static_cast<GLuint>(prevVao));
++    glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(prevBuffer));
++    uploadedVersion_ = 0;
++    LOGI("initialized");
++  }
++
++  void render(const mln::style::CustomLayerRenderParameters& params) override {
++    if (!program_) return;
++    Snapshot s;
++    {
++      std::lock_guard<std::mutex> lock(state_->mutex);
++      s = {state_->lng,     state_->lat,    state_->bearing,        state_->argb,
++           state_->shadowAlpha, state_->placed, state_->geometryVersion};
++    }
++    if (!s.placed) return;
++
++    // Save what this draw touches; MapLibre also marks its state cache dirty afterwards.
++    GLint prevProgram = 0, prevVao = 0, prevBuffer = 0;
++    GLint prevBlendSrcRgb = 0, prevBlendDstRgb = 0, prevBlendSrcA = 0, prevBlendDstA = 0;
++    GLboolean prevDepthMask = GL_TRUE;
++    glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
++    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prevVao);
++    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &prevBuffer);
++    glGetIntegerv(GL_BLEND_SRC_RGB, &prevBlendSrcRgb);
++    glGetIntegerv(GL_BLEND_DST_RGB, &prevBlendDstRgb);
++    glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevBlendSrcA);
++    glGetIntegerv(GL_BLEND_DST_ALPHA, &prevBlendDstA);
++    glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
++    GLboolean prevBlend = glIsEnabled(GL_BLEND);
++    GLboolean prevDepth = glIsEnabled(GL_DEPTH_TEST);
++    GLboolean prevStencil = glIsEnabled(GL_STENCIL_TEST);
++    GLboolean prevCull = glIsEnabled(GL_CULL_FACE);
++
++    glBindVertexArray(vao_);
++    glBindBuffer(GL_ARRAY_BUFFER, buffer_);
++    if (uploadedVersion_ != s.geometryVersion) upload(s);
++
++    double worldSize = 512.0 * std::pow(2.0, params.zoom);
++    double lat = std::fmax(std::fmin(s.lat, 85.051128), -85.051128) * kPi / 180.0;
++    double x = (s.lng + 180.0) / 360.0 * worldSize;
++    double y = (1.0 - std::log(std::tan(lat) + 1.0 / std::cos(lat)) / kPi) / 2.0 * worldSize;
++    // TransformState::getProjMatrix scales z by 1 / metres-per-pixel at the camera's latitude.
++    double metersPerPixel =
++        std::cos(params.latitude * kPi / 180.0) * 2.0 * kPi * kEarthRadius / worldSize;
++    // Screen-down on the ground: the map's bearing turns world north to screen up.
++    double mapBearing = params.bearing * kPi / 180.0;
++    double dropX = -std::sin(mapBearing) * kShadowDrop;
++    double dropY = std::cos(mapBearing) * kShadowDrop;
++
++    glUseProgram(program_);
++    glUniform1f(metersPerPixelLocation_, static_cast<float>(metersPerPixel));
++    glDisable(GL_DEPTH_TEST);
++    glDisable(GL_STENCIL_TEST);
++    glDisable(GL_CULL_FACE);
++    glDepthMask(GL_FALSE);
++    glEnable(GL_BLEND);
++    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
++
++    // Painter's order, valid from any heading and pitch: the camera is always above the coin, so
++    // the top face covers everything under it; the wall is one flat shade, so its back and front
++    // halves need no sorting; the arrow lies in the top plane, in front of the wall below it.
++    compose(params.projectionMatrix, x + dropX, y + dropY, 0, mvp_);
++    glUniformMatrix4fv(mvpLocation_, 1, GL_FALSE, mvp_);
++    glDrawArrays(GL_TRIANGLES, kShadowFirst, kDiscCount);
++    compose(params.projectionMatrix, x, y, 0, mvp_);
++    glUniformMatrix4fv(mvpLocation_, 1, GL_FALSE, mvp_);
++    glDrawArrays(GL_TRIANGLES, kBodyFirst, kBodyCount);
++    if (!std::isnan(s.bearing)) {
++      compose(params.projectionMatrix, x, y, s.bearing * kPi / 180.0, mvp_);
++      glUniformMatrix4fv(mvpLocation_, 1, GL_FALSE, mvp_);
++      glDrawArrays(GL_TRIANGLES, kArrowFirst, kArrowCount);
++      compose(params.projectionMatrix, x, y, 0, mvp_);
++      glUniformMatrix4fv(mvpLocation_, 1, GL_FALSE, mvp_);
++    }
++    glDrawArrays(GL_TRIANGLES, kTopFirst, kTopCount);
++
++    GLenum err = glGetError();
++    if (err != GL_NO_ERROR && !loggedError_) {
++      LOGE("GL error 0x%x after draw", err);
++      loggedError_ = true;
++    }
++
++    glUseProgram(static_cast<GLuint>(prevProgram));
++    glBindVertexArray(static_cast<GLuint>(prevVao));
++    glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(prevBuffer));
++    glBlendFuncSeparate(prevBlendSrcRgb, prevBlendDstRgb, prevBlendSrcA, prevBlendDstA);
++    glDepthMask(prevDepthMask);
++    if (!prevBlend) glDisable(GL_BLEND);
++    if (prevDepth) glEnable(GL_DEPTH_TEST);
++    if (prevStencil) glEnable(GL_STENCIL_TEST);
++    if (prevCull) glEnable(GL_CULL_FACE);
++  }
++
++  void contextLost() override {
++    // The GL objects died with the context; forget the handles, initialize runs again.
++    program_ = 0;
++    vao_ = 0;
++    buffer_ = 0;
++    uploadedVersion_ = 0;
++  }
++
++  void deinitialize() override {
++    if (program_) glDeleteProgram(program_);
++    if (buffer_) glDeleteBuffers(1, &buffer_);
++    if (vao_) glDeleteVertexArrays(1, &vao_);
++    contextLost();
++  }
++
++ private:
++  /** Rebuilds the vertex data into the reserved vector; only when colour or shadow change. */
++  void upload(const Snapshot& s) {
++    Rgba color{((s.argb >> 16) & 0xFF) / 255.f, ((s.argb >> 8) & 0xFF) / 255.f,
++               (s.argb & 0xFF) / 255.f, ((s.argb >> 24) & 0xFF) / 255.f};
++    Rgba shade{color.r * kWallShade, color.g * kWallShade, color.b * kWallShade, color.a};
++    Rgba white{1, 1, 1, 1};
++    vertices_.clear();
++    appendDisc(vertices_, kShadowRadius, 0, {0, 0, 0, s.shadowAlpha});
++    appendDisc(vertices_, kCoinRadius, 0, shade);
++    appendWall(vertices_, kCoinRadius, kCoinHeight, shade);
++    // Pointing north (world y is south); the draw rotates it clockwise by the bearing.
++    vertices_.push_back(vertex(0, -kArrowTip, kCoinHeight, white));
++    vertices_.push_back(vertex(kArrowHalfWidth, -kArrowBase, kCoinHeight, white));
++    vertices_.push_back(vertex(-kArrowHalfWidth, -kArrowBase, kCoinHeight, white));
++    appendDisc(vertices_, kCoinRadius, kCoinHeight, white);
++    appendDisc(vertices_, kCoinRadius - kRimWidth, kCoinHeight, color);
++    glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(vertices_.size() * sizeof(Vertex)),
++                    vertices_.data());
++    uploadedVersion_ = s.geometryVersion;
++  }
++
++  std::shared_ptr<PuckState> state_;
++  std::vector<Vertex> vertices_;
++  float mvp_[16] = {};
++  GLuint program_ = 0;
++  GLint mvpLocation_ = -1;
++  GLint metersPerPixelLocation_ = -1;
++  GLuint vao_ = 0;
++  GLuint buffer_ = 0;
++  uint64_t uploadedVersion_ = 0;
++  bool loggedError_ = false;
++};
++
++std::shared_ptr<PuckState>* handle(jlong ptr) {
++  return reinterpret_cast<std::shared_ptr<PuckState>*>(ptr);
++}
++
++}  // namespace
++
++extern "C" {
++
++JNIEXPORT jlong JNICALL
++Java_org_maplibre_reactnative_components_camera_MLRNPuck_nativeCreateState(JNIEnv*, jclass) {
++  return reinterpret_cast<jlong>(new std::shared_ptr<PuckState>(std::make_shared<PuckState>()));
++}
++
++JNIEXPORT void JNICALL
++Java_org_maplibre_reactnative_components_camera_MLRNPuck_nativeReleaseState(JNIEnv*, jclass,
++                                                                            jlong state) {
++  delete handle(state);
++}
++
++/** A new host for one CustomLayer; libmaplibre takes ownership and deletes it with the layer. */
++JNIEXPORT jlong JNICALL
++Java_org_maplibre_reactnative_components_camera_MLRNPuck_nativeCreateHost(JNIEnv*, jclass,
++                                                                          jlong state) {
++  mln::style::CustomLayerHost* host = new PuckHost(*handle(state));
++  return reinterpret_cast<jlong>(host);
++}
++
++JNIEXPORT void JNICALL Java_org_maplibre_reactnative_components_camera_MLRNPuck_nativeSet(
++    JNIEnv*, jclass, jlong state, jdouble lng, jdouble lat, jdouble bearing, jint argb,
++    jfloat shadowAlpha) {
++  PuckState& s = **handle(state);
++  std::lock_guard<std::mutex> lock(s.mutex);
++  if (static_cast<uint32_t>(argb) != s.argb || shadowAlpha != s.shadowAlpha || !s.placed) {
++    s.geometryVersion++;
++  }
++  s.lng = lng;
++  s.lat = lat;
++  s.bearing = bearing;
++  s.argb = static_cast<uint32_t>(argb);
++  s.shadowAlpha = shadowAlpha;
++  s.placed = true;
++}
++
++}  // extern "C"
+diff --git a/android/src/main/cpp/mln_custom_layer_host.h b/android/src/main/cpp/mln_custom_layer_host.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..daa52a00eb6fdd365f038228cf0422ff1693fe11
+--- /dev/null
++++ b/android/src/main/cpp/mln_custom_layer_host.h
+@@ -0,0 +1,58 @@
++#pragma once
++
++// Puck spike: a copy of the two MapLibre Native declarations a CustomLayer host needs, from
++// maplibre-native tag android-v13.6.1 (c7506d6aff3800e946f89e1a51432fc22d1a6534), the commit
++// libmaplibre.so in org.maplibre.gl:android-sdk-opengl:13.6.1 reports. The AAR ships no headers.
++//   include/mln/style/layers/custom_layer_host.hpp
++//   include/mln/style/layers/custom_layer_init_parameters.hpp
++//   include/mln/style/layers/custom_layer_render_parameters.hpp
++// libmaplibre.so calls these through the vtable and reads the struct by offset, so both must
++// match the shipped binary exactly. Re-check them on any MapLibre Android version change.
++
++#include <array>
++#include <cstddef>
++
++namespace mln {
++
++class PaintParameters;
++
++namespace gfx {
++class Context;
++}  // namespace gfx
++
++namespace style {
++
++struct CustomLayerInitParameters {
++  virtual ~CustomLayerInitParameters() = default;
++};
++
++struct CustomLayerRenderParameters {
++  double width;
++  double height;
++  double latitude;
++  double longitude;
++  double zoom;
++  double bearing;
++  double pitch;
++  double fieldOfView;
++  std::array<double, 16> projectionMatrix;
++  std::array<double, 16> nearClippedProjectionMatrix;
++};
++
++static_assert(offsetof(CustomLayerRenderParameters, projectionMatrix) == 64, "layout");
++static_assert(sizeof(CustomLayerRenderParameters) == 64 + 2 * 128, "layout");
++
++// Vtable order is load-bearing: ~dtor (complete, deleting), initialize, preRender, render,
++// contextLost, deinitialize.
++class CustomLayerHost {
++ public:
++  virtual ~CustomLayerHost() = default;
++  virtual void initialize(const CustomLayerInitParameters&) = 0;
++  virtual void preRender(const gfx::Context&, const CustomLayerRenderParameters&) {}
++  virtual void render(const CustomLayerRenderParameters&) = 0;
++  virtual void contextLost() = 0;
++  virtual void deinitialize() = 0;
++};
++
++}  // namespace style
++}  // namespace mln
 diff --git a/android/src/main/java/org/maplibre/android/maps/MLRNDirectCamera.java b/android/src/main/java/org/maplibre/android/maps/MLRNDirectCamera.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..86885a4d982054c7abc0e01886ba50bb916bc88c
@@ -73,22 +583,66 @@ index 0000000000000000000000000000000000000000..86885a4d982054c7abc0e01886ba50bb
 +  }
 +}
 diff --git a/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt
-index a789f4d1200e409bb1b3cf9f702dfbf247e10c06..428caf7b485af12351c719f57937f83a072225ce 100644
+index a789f4d1200e409bb1b3cf9f702dfbf247e10c06..40e066d38e7dbecfef4ac7026064c341b15e90d9 100644
 --- a/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt
 +++ b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt
-@@ -17,6 +17,7 @@ import org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition
+@@ -17,7 +17,9 @@ import org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition
  import org.maplibre.android.geometry.LatLngBounds
  import org.maplibre.android.location.OnCameraTrackingChangedListener
  import org.maplibre.android.location.permissions.PermissionsManager
 +import org.maplibre.android.maps.MLRNDirectCamera
  import org.maplibre.android.maps.MapLibreMap
++import org.maplibre.android.maps.MapView
  import org.maplibre.android.maps.MapLibreMap.CancelableCallback
  import org.maplibre.android.maps.Style
-@@ -385,6 +386,42 @@ class MLRNCamera(
+ import org.maplibre.reactnative.components.AbstractMapFeature
+@@ -125,7 +127,11 @@ class MLRNCamera(
+         }
+     }
+ 
+-    override fun removeFromMap(mapView: MLRNMapView) {}
++    override fun removeFromMap(mapView: MLRNMapView) {
++        mapView.removeOnDidFinishLoadingStyleListener(puckStyleListener)
++        puckListenerOn = null
++        puck.release()
++    }
+ 
+     fun handleImperativeStop(stop: ReadableMap?) {
+         val mapView = this.mapView ?: return
+@@ -385,6 +391,71 @@ class MLRNCamera(
          }
      }
  
 +    private var directCamera: MLRNDirectCamera? = null
++
++    private val puck = MLRNPuck()
++    private var puckListenerOn: MLRNMapView? = null
++    private val puckStyleListener =
++        MapView.OnDidFinishLoadingStyleListener { maplibreMap?.let { puck.apply(it) } }
++
++    /**
++     * Puck spike: place the rider puck, drawn by a CustomLayer inside the map's own frame.
++     * NaN bearing hides the arrow; `shadowAlpha` is the ground shadow's black alpha; `visible` false removes the layer. A style swap drops the
++     * layer; the style listener puts it back.
++     * @parity /node_modules/@maplibre/maplibre-react-native/ios/components/camera/MLRNCamera.m `setPuckDirect`
++     */
++    fun setPuckDirect(
++        lng: Double,
++        lat: Double,
++        bearing: Double,
++        argb: Int,
++        shadowAlpha: Float,
++        visible: Boolean,
++    ) {
++        val view = mapView ?: return
++        val map = maplibreMap ?: return
++        if (puckListenerOn !== view) {
++            puckListenerOn?.removeOnDidFinishLoadingStyleListener(puckStyleListener)
++            view.addOnDidFinishLoadingStyleListener(puckStyleListener)
++            puckListenerOn = view
++        }
++        puck.set(map, lng, lat, bearing, argb, shadowAlpha, visible)
++    }
 +
 +    /**
 +     * Spike #655: one camera write per call, no transition, nothing queued. NaN keeps a field;
@@ -128,7 +682,7 @@ index a789f4d1200e409bb1b3cf9f702dfbf247e10c06..428caf7b485af12351c719f57937f83a
          get() {
              if (mapView == null) {
 diff --git a/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt
-index d2e3675f75e87041d0e58659a983dc552f8dec53..6cab17ea2e2324076c04e32c99a37f8a6394a02a 100644
+index d2e3675f75e87041d0e58659a983dc552f8dec53..455961b93ae407bbe347ea7e6a49a77738289b3a 100644
 --- a/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt
 +++ b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt
 @@ -1,5 +1,7 @@
@@ -139,7 +693,7 @@ index d2e3675f75e87041d0e58659a983dc552f8dec53..6cab17ea2e2324076c04e32c99a37f8a
  import com.facebook.react.bridge.Promise
  import com.facebook.react.bridge.ReactApplicationContext
  import com.facebook.react.bridge.ReadableMap
-@@ -33,4 +35,57 @@ class MLRNCameraModule(
+@@ -33,4 +35,74 @@ class MLRNCameraModule(
              promise.resolve(null)
          }
      }
@@ -163,6 +717,23 @@ index d2e3675f75e87041d0e58659a983dc552f8dec53..6cab17ea2e2324076c04e32c99a37f8a
 +    override fun cancelCameraAnimations(reactTag: ReactTag) {
 +        reactTagResolver.withViewResolved<MLRNCamera>(reactTag.toInt(), null) {
 +            it.cancelCameraAnimations()
++        }
++    }
++
++    // Puck spike: same thread hop as setCameraDirect, so a puck write and a camera write sent in
++    // one JS tick reach the map in order. `color` is a signed ARGB int carried as a double.
++    // @parity /node_modules/@maplibre/maplibre-react-native/ios/components/camera/MLRNCameraModule.mm `setPuckDirect`
++    override fun setPuckDirect(
++        reactTag: ReactTag,
++        lng: Double,
++        lat: Double,
++        bearing: Double,
++        color: Double,
++        shadowAlpha: Double,
++        visible: Boolean,
++    ) {
++        reactTagResolver.withViewResolved<MLRNCamera>(reactTag.toInt(), null) {
++            it.setPuckDirect(lng, lat, bearing, color.toLong().toInt(), shadowAlpha.toFloat(), visible)
 +        }
 +    }
 +
@@ -197,6 +768,99 @@ index d2e3675f75e87041d0e58659a983dc552f8dec53..6cab17ea2e2324076c04e32c99a37f8a
 +        }
 +    }
  }
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNPuck.kt b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNPuck.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..48fffa20a857b69d2079deac532c05dd12fda7d3
+--- /dev/null
++++ b/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNPuck.kt
+@@ -0,0 +1,87 @@
++package org.maplibre.reactnative.components.camera
++
++import android.util.Log
++import org.maplibre.android.maps.MapLibreMap
++import org.maplibre.android.style.layers.CustomLayer
++
++/**
++ * Puck spike: the rider puck as a MapLibre CustomLayer whose C++ host (src/main/cpp) draws with GL
++ * inside the map's own render pass, so it moves with the map in the same frame. The puck state
++ * lives in native memory shared by every host this creates, so updates never re-create the layer.
++ * Added on top of the current style on first use and again after a style swap; removed when hidden.
++ * UI thread only.
++ * @parity /node_modules/@maplibre/maplibre-react-native/ios/components/camera/MLRNCamera.m `setPuckDirect`
++ */
++internal class MLRNPuck {
++    private var state = 0L
++    private var shown = false
++
++    fun set(
++        map: MapLibreMap,
++        lng: Double,
++        lat: Double,
++        bearing: Double,
++        argb: Int,
++        shadowAlpha: Float,
++        visible: Boolean,
++    ) {
++        if (!loaded) return
++        shown = visible && !lng.isNaN() && !lat.isNaN()
++        if (shown) {
++            if (state == 0L) state = nativeCreateState()
++            nativeSet(state, lng, lat, bearing, argb, shadowAlpha)
++        }
++        apply(map)
++    }
++
++    /** Puts the layer in the style or takes it out, to match the last call. */
++    fun apply(map: MapLibreMap) {
++        val style = map.style ?: return
++        if (!style.isFullyLoaded) return
++        val existing = style.getLayer(LAYER_ID)
++        if (!shown) {
++            if (existing != null) style.removeLayer(existing)
++            return
++        }
++        if (existing == null) {
++            style.addLayer(CustomLayer(LAYER_ID, nativeCreateHost(state)))
++            Log.i(TAG, "layer added")
++        }
++        map.triggerRepaint()
++    }
++
++    fun release() {
++        if (state != 0L) nativeReleaseState(state)
++        state = 0L
++        shown = false
++    }
++
++    companion object {
++        private const val TAG = "MLRNPuckLayer"
++        private const val LAYER_ID = "mlrn-puck"
++
++        private val loaded: Boolean =
++            try {
++                System.loadLibrary("mlrnpuck")
++                true
++            } catch (e: UnsatisfiedLinkError) {
++                Log.e(TAG, "libmlrnpuck.so not loaded", e)
++                false
++            }
++
++        @JvmStatic external fun nativeCreateState(): Long
++
++        @JvmStatic external fun nativeReleaseState(state: Long)
++
++        @JvmStatic external fun nativeCreateHost(state: Long): Long
++
++        @JvmStatic external fun nativeSet(
++            state: Long,
++            lng: Double,
++            lat: Double,
++            bearing: Double,
++            argb: Int,
++            shadowAlpha: Float,
++        )
++    }
++}
 diff --git a/android/src/main/java/org/maplibre/reactnative/components/layer/MLRNLayer.kt b/android/src/main/java/org/maplibre/reactnative/components/layer/MLRNLayer.kt
 index 0c6baf8d4930cd29aac76f61d04038cf937f75d2..94795c976153a4f37069df9ef99e0f12afe7567a 100644
 --- a/android/src/main/java/org/maplibre/reactnative/components/layer/MLRNLayer.kt
@@ -451,10 +1115,10 @@ index 961d6495cdfdc605e342a6a2c4977b54eb1a1876..2323a0ed4311fdddb6985d8c5c5dd7e3
          reactTag: Double,
          output: String,
 diff --git a/ios/components/camera/MLRNCamera.h b/ios/components/camera/MLRNCamera.h
-index 28d5e6066dac808636edcd9c350474708fcef74f..a646641449d151900bd80a3e856cb4f93ecd60dc 100644
+index 28d5e6066dac808636edcd9c350474708fcef74f..1aac021665279d0d5ee28561f4b9ccd85d8cf105 100644
 --- a/ios/components/camera/MLRNCamera.h
 +++ b/ios/components/camera/MLRNCamera.h
-@@ -23,4 +23,16 @@
+@@ -23,4 +23,24 @@
  - (void)handleImperativeStop:(NSDictionary<NSString *, id> *)stop;
  - (void)updateCamera;
  
@@ -470,13 +1134,24 @@ index 28d5e6066dac808636edcd9c350474708fcef74f..a646641449d151900bd80a3e856cb4f9
 +            paddingLeft:(double)paddingLeft;
 +- (void)cancelCameraAnimations;
 +
++// Puck spike: the rider puck as a custom style layer.
++// @parity /node_modules/@maplibre/maplibre-react-native/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCamera.kt `setPuckDirect`
++- (void)setPuckDirect:(double)lng
++                  lat:(double)lat
++              bearing:(double)bearing
++                 argb:(uint32_t)argb
++              visible:(BOOL)visible;
++
  @end
 diff --git a/ios/components/camera/MLRNCamera.m b/ios/components/camera/MLRNCamera.m
-index f5c8dece682b7cfa8617e0b9483e669e878480f3..dda57d1fbec498440252d4cf1f455fed3b13e6a8 100644
+index f5c8dece682b7cfa8617e0b9483e669e878480f3..474c32ac11b04b46f03ff405cf016d5a8bd92594 100644
 --- a/ios/components/camera/MLRNCamera.m
 +++ b/ios/components/camera/MLRNCamera.m
-@@ -8,9 +8,65 @@
+@@ -6,11 +6,95 @@
+ #import "MLRNEventTypes.h"
+ #import "MLRNLocation.h"
  #import "MLRNLocationManager.h"
++#import "MLRNPuckLayer.h"
  #import "MLRNUtils.h"
  
 +// Implemented in MLNMapView.mm, absent from the public header.
@@ -538,11 +1213,38 @@ index f5c8dece682b7cfa8617e0b9483e669e878480f3..dda57d1fbec498440252d4cf1f455fed
 +/** Spike #655: stop every mbgl transition, which on iOS is every gesture deceleration too. */
 +- (void)cancelCameraAnimations {
 +  [_map cancelTransitions];
++}
++
++static NSString *const MLRNPuckLayerId = @"mlrn-puck";
++
++/**
++ Puck spike: the puck is a custom style layer, drawn inside the map's render pass from the state
++ set here, so it moves with the map in the same frame. Added on top of the current style on first
++ use and again after a style swap drops it; removed when hidden.
++ */
++- (void)setPuckDirect:(double)lng
++                  lat:(double)lat
++              bearing:(double)bearing
++                 argb:(uint32_t)argb
++              visible:(BOOL)visible {
++  MLNStyle *style = _map.style;
++  if (style == nil) return;
++  MLNStyleLayer *existing = [style layerWithIdentifier:MLRNPuckLayerId];
++  if (!visible || isnan(lng) || isnan(lat)) {
++    if (existing) [style removeLayer:existing];
++    return;
++  }
++  MLRNPuckLayer *layer = [existing isKindOfClass:[MLRNPuckLayer class]] ? (MLRNPuckLayer *)existing : nil;
++  if (layer == nil) {
++    layer = [[MLRNPuckLayer alloc] initWithIdentifier:MLRNPuckLayerId];
++    [style addLayer:layer];
++  }
++  [layer setLng:lng lat:lat bearing:bearing argb:argb];
  }
  
  - (instancetype)init {
 diff --git a/ios/components/camera/MLRNCameraModule.mm b/ios/components/camera/MLRNCameraModule.mm
-index b60e6c65243e1a99a2cfe503212f2fb9fec9b218..192e58e0fbea69ea2e606b82d844df5032e2b87f 100644
+index b60e6c65243e1a99a2cfe503212f2fb9fec9b218..bf98c466349e110880b593dd4db2ed702f4ae29b 100644
 --- a/ios/components/camera/MLRNCameraModule.mm
 +++ b/ios/components/camera/MLRNCameraModule.mm
 @@ -1,5 +1,7 @@
@@ -553,7 +1255,7 @@ index b60e6c65243e1a99a2cfe503212f2fb9fec9b218..192e58e0fbea69ea2e606b82d844df50
  #import "CameraEasing.h"
  #import "MLRNCamera.h"
  #import "MLRNCameraComponentView.h"
-@@ -98,4 +100,78 @@
+@@ -98,4 +100,99 @@
          methodName:@"setStop"];
  }
  
@@ -620,6 +1322,27 @@ index b60e6c65243e1a99a2cfe503212f2fb9fec9b218..192e58e0fbea69ea2e606b82d844df50
 +        methodName:@"setCameraDirect"];
 +}
 +
++// Puck spike: same queue and main-thread hop as setCameraDirect, so a puck write and a camera write
++// sent in one JS tick reach the map in order, before its next frame.
++// @parity /node_modules/@maplibre/maplibre-react-native/android/src/main/java/org/maplibre/reactnative/components/camera/MLRNCameraModule.kt `setPuckDirect`
++- (void)setPuckDirect:(NSInteger)reactTag
++                  lng:(double)lng
++                  lat:(double)lat
++              bearing:(double)bearing
++                color:(NSInteger)color
++          shadowAlpha:(double)shadowAlpha
++              visible:(BOOL)visible {
++  // TODO(ios parity): the iOS layer still draws the flat disc; shadowAlpha is not used yet.
++  [self withCamera:reactTag
++             block:^(MLRNCamera *view) {
++               [view setPuckDirect:lng lat:lat bearing:bearing argb:(uint32_t)color visible:visible];
++             }
++            reject:^(NSString *code, NSString *message, NSError *error) {
++              NSLog(@"setPuckDirect: %@ %@", code, message);
++            }
++        methodName:@"setPuckDirect"];
++}
++
 +- (void)cancelCameraAnimations:(NSInteger)reactTag {
 +  [self withCamera:reactTag
 +             block:^(MLRNCamera *view) {
@@ -632,6 +1355,233 @@ index b60e6c65243e1a99a2cfe503212f2fb9fec9b218..192e58e0fbea69ea2e606b82d844df50
 +}
 +
  @end
+diff --git a/ios/components/camera/MLRNPuckLayer.h b/ios/components/camera/MLRNPuckLayer.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..b51f0265c7d1576bd27c7c5785da8c3bdbcabf6f
+--- /dev/null
++++ b/ios/components/camera/MLRNPuckLayer.h
+@@ -0,0 +1,12 @@
++#import <MapLibre/MapLibre.h>
++
++/**
++ Puck spike: the rider puck as a custom style layer, drawn with Metal inside MapLibre's own render
++ pass. Position and bearing are read at draw time, so the puck can never trail the map.
++ */
++@interface MLRNPuckLayer : MLNCustomStyleLayer
++
++/** Places the puck. NaN bearing hides the arrow. Main thread only. */
++- (void)setLng:(double)lng lat:(double)lat bearing:(double)bearing argb:(uint32_t)argb;
++
++@end
+diff --git a/ios/components/camera/MLRNPuckLayer.m b/ios/components/camera/MLRNPuckLayer.m
+new file mode 100644
+index 0000000000000000000000000000000000000000..a403e33c604badff53708cc9080ffad26c7f4c57
+--- /dev/null
++++ b/ios/components/camera/MLRNPuckLayer.m
+@@ -0,0 +1,203 @@
++#import "MLRNPuckLayer.h"
++
++// @parity /node_modules/@maplibre/maplibre-react-native/android/src/main/cpp/MLRNPuckLayer.cpp
++
++#import <Metal/Metal.h>
++#import <simd/simd.h>
++
++// Puck spike. Units: MapLibre world pixels at the current zoom (512 << zoom across the world),
++// which are screen points on the ground plane, so the puck keeps its on-screen size at any zoom
++// and is foreshortened by pitch like the map.
++static const float kShadowRadius = 13.5f;
++static const float kRingRadius = 11.f;
++static const float kBodyRadius = 8.5f;
++static const float kArrowTip = 21.f;
++static const float kArrowBase = 11.5f;
++static const float kArrowHalfWidth = 7.f;
++static const int kSegments = 32;
++
++typedef struct {
++  simd_float2 position;
++  simd_float4 color;  // premultiplied
++} MLRNPuckVertex;
++
++static NSString *const kShaderSource =
++    @"#include <metal_stdlib>\n"
++     "using namespace metal;\n"
++     "struct V { float2 position; float4 color; };\n"
++     "struct O { float4 position [[position]]; float4 color; };\n"
++     "vertex O puck_vertex(const device V *v [[buffer(0)]], constant float4x4 &mvp [[buffer(1)]],\n"
++     "                     uint i [[vertex_id]]) {\n"
++     "  O o;\n"
++     "  float4 p = mvp * float4(v[i].position, 0.0, 1.0);\n"
++     // Clip depth pinned inside Metal's [0, w]: the puck is an overlay, never depth-tested.
++     "  p.z = 0.0;\n"
++     "  o.position = p;\n"
++     "  o.color = v[i].color;\n"
++     "  return o;\n"
++     "}\n"
++     "fragment float4 puck_fragment(O in [[stage_in]]) { return in.color; }\n";
++
++static simd_float4 MLRNPremultiplied(float r, float g, float b, float a) {
++  return simd_make_float4(r * a, g * a, b * a, a);
++}
++
++static void MLRNAppendDisc(NSMutableData *data, float radius, simd_float2 offset, simd_float4 color) {
++  for (int i = 0; i < kSegments; i++) {
++    float a0 = 2.f * (float)M_PI * i / kSegments;
++    float a1 = 2.f * (float)M_PI * (i + 1) / kSegments;
++    MLRNPuckVertex tri[3] = {
++        {offset, color},
++        {offset + simd_make_float2(cosf(a0), sinf(a0)) * radius, color},
++        {offset + simd_make_float2(cosf(a1), sinf(a1)) * radius, color},
++    };
++    [data appendBytes:tri length:sizeof(tri)];
++  }
++}
++
++@implementation MLRNPuckLayer {
++  double _lng;
++  double _lat;
++  double _bearing;
++  uint32_t _argb;
++  BOOL _placed;
++
++  id<MTLRenderPipelineState> _pipeline;
++  id<MTLDepthStencilState> _depthState;
++  MTLPixelFormat _colorFormat;
++  MTLPixelFormat _depthFormat;
++  MTLPixelFormat _stencilFormat;
++  NSUInteger _sampleCount;
++
++  id<MTLBuffer> _vertices;
++  NSUInteger _vertexCount;
++  BOOL _geometryDirty;
++}
++
++- (void)setLng:(double)lng lat:(double)lat bearing:(double)bearing argb:(uint32_t)argb {
++  BOOL bearingChanged = !(isnan(bearing) && isnan(_bearing)) && bearing != _bearing;
++  if (bearingChanged || argb != _argb || !_placed) _geometryDirty = YES;
++  _lng = lng;
++  _lat = lat;
++  _bearing = bearing;
++  _argb = argb;
++  _placed = YES;
++  [self setNeedsDisplay];
++}
++
++- (BOOL)preparePipelineFor:(id<MTLDevice>)device pass:(MTLRenderPassDescriptor *)pass {
++  MTLPixelFormat color = pass.colorAttachments[0].texture.pixelFormat;
++  MTLPixelFormat depth =
++      pass.depthAttachment.texture ? pass.depthAttachment.texture.pixelFormat : MTLPixelFormatInvalid;
++  MTLPixelFormat stencil = pass.stencilAttachment.texture ? pass.stencilAttachment.texture.pixelFormat
++                                                          : MTLPixelFormatInvalid;
++  NSUInteger samples = MAX(pass.colorAttachments[0].texture.sampleCount, 1);
++  if (_pipeline && color == _colorFormat && depth == _depthFormat && stencil == _stencilFormat &&
++      samples == _sampleCount) {
++    return YES;
++  }
++  NSError *error = nil;
++  id<MTLLibrary> library = [device newLibraryWithSource:kShaderSource options:nil error:&error];
++  if (!library) {
++    NSLog(@"MLRNPuckLayer: shader compile failed %@", error);
++    return NO;
++  }
++  MTLRenderPipelineDescriptor *desc = [MTLRenderPipelineDescriptor new];
++  desc.vertexFunction = [library newFunctionWithName:@"puck_vertex"];
++  desc.fragmentFunction = [library newFunctionWithName:@"puck_fragment"];
++  desc.rasterSampleCount = samples;
++  desc.colorAttachments[0].pixelFormat = color;
++  desc.colorAttachments[0].blendingEnabled = YES;
++  desc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorOne;
++  desc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
++  desc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
++  desc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
++  desc.depthAttachmentPixelFormat = depth;
++  desc.stencilAttachmentPixelFormat = stencil;
++  _pipeline = [device newRenderPipelineStateWithDescriptor:desc error:&error];
++  if (!_pipeline) {
++    NSLog(@"MLRNPuckLayer: pipeline failed %@", error);
++    return NO;
++  }
++  MTLDepthStencilDescriptor *depthDesc = [MTLDepthStencilDescriptor new];
++  depthDesc.depthCompareFunction = MTLCompareFunctionAlways;
++  depthDesc.depthWriteEnabled = NO;
++  _depthState = [device newDepthStencilStateWithDescriptor:depthDesc];
++  _colorFormat = color;
++  _depthFormat = depth;
++  _stencilFormat = stencil;
++  _sampleCount = samples;
++  return YES;
++}
++
++- (void)rebuildGeometry:(id<MTLDevice>)device {
++  float a = ((_argb >> 24) & 0xFF) / 255.f;
++  float r = ((_argb >> 16) & 0xFF) / 255.f;
++  float g = ((_argb >> 8) & 0xFF) / 255.f;
++  float b = (_argb & 0xFF) / 255.f;
++  NSMutableData *data = [NSMutableData data];
++  MLRNAppendDisc(data, kShadowRadius, simd_make_float2(0, 1.5f), MLRNPremultiplied(0, 0, 0, 0.25f));
++  MLRNAppendDisc(data, kRingRadius, simd_make_float2(0, 0), MLRNPremultiplied(1, 1, 1, 1));
++  MLRNAppendDisc(data, kBodyRadius, simd_make_float2(0, 0), MLRNPremultiplied(r, g, b, a));
++  if (!isnan(_bearing)) {
++    // World y points south; rotating "up" by the bearing clockwise gives (sin b, -cos b).
++    float rad = (float)(_bearing * M_PI / 180.0);
++    float c = cosf(rad), s = sinf(rad);
++    simd_float2 local[3] = {{0, -kArrowTip}, {kArrowHalfWidth, -kArrowBase}, {-kArrowHalfWidth, -kArrowBase}};
++    MLRNPuckVertex tri[3];
++    for (int i = 0; i < 3; i++) {
++      simd_float2 p = local[i];
++      tri[i].position = simd_make_float2(p.x * c - p.y * s, p.x * s + p.y * c);
++      tri[i].color = MLRNPremultiplied(1, 1, 1, 1);
++    }
++    [data appendBytes:tri length:sizeof(tri)];
++  }
++  _vertexCount = data.length / sizeof(MLRNPuckVertex);
++  _vertices = [device newBufferWithBytes:data.bytes
++                                  length:data.length
++                                 options:MTLResourceStorageModeShared];
++  _geometryDirty = NO;
++}
++
++- (void)drawInMapView:(MLNMapView *)mapView withContext:(MLNStyleLayerDrawingContext)context {
++  if (!_placed) return;
++  id<MTLRenderCommandEncoder> encoder = self.renderEncoder;
++  MTLRenderPassDescriptor *pass = self.renderPassDesc;
++  if (!encoder || !pass) return;
++  id<MTLDevice> device = encoder.device;
++  if (![self preparePipelineFor:device pass:pass]) return;
++  if (_geometryDirty || !_vertices) [self rebuildGeometry:device];
++
++  // Puck center in world pixels, in doubles: at zoom 20 the world is ~5e8 px wide, past float.
++  double worldSize = 512.0 * pow(2.0, context.zoomLevel);
++  double lat = fmax(fmin(_lat, 85.051128), -85.051128) * M_PI / 180.0;
++  double x = (_lng + 180.0) / 360.0 * worldSize;
++  double y = (1.0 - log(tan(lat) + 1.0 / cos(lat)) / M_PI) / 2.0 * worldSize;
++
++  // mvp = projection * translate(x, y): only the fourth column changes. MLNMatrix4 is mbgl's
++  // column-major mat4, so m0x is column 0.
++  MLNMatrix4 P = context.projectionMatrix;
++  double col[4][4] = {
++      {P.m00, P.m01, P.m02, P.m03},
++      {P.m10, P.m11, P.m12, P.m13},
++      {P.m20, P.m21, P.m22, P.m23},
++      {P.m30, P.m31, P.m32, P.m33},
++  };
++  simd_float4x4 mvp;
++  for (int c = 0; c < 3; c++) {
++    mvp.columns[c] = simd_make_float4((float)col[c][0], (float)col[c][1], (float)col[c][2],
++                                      (float)col[c][3]);
++  }
++  double t[4];
++  for (int r = 0; r < 4; r++) t[r] = col[0][r] * x + col[1][r] * y + col[3][r];
++  mvp.columns[3] = simd_make_float4((float)t[0], (float)t[1], (float)t[2], (float)t[3]);
++
++  [encoder setRenderPipelineState:_pipeline];
++  [encoder setDepthStencilState:_depthState];
++  [encoder setCullMode:MTLCullModeNone];
++  [encoder setVertexBuffer:_vertices offset:0 atIndex:0];
++  [encoder setVertexBytes:&mvp length:sizeof(mvp) atIndex:1];
++  [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:_vertexCount];
++}
++
++@end
 diff --git a/ios/components/layer/MLRNLayer.h b/ios/components/layer/MLRNLayer.h
 index ce2ed5a4e8e6f825948ef43798050fceaae89341..36fad4aebc7d7f53526df76ac23e9114bb86d383 100644
 --- a/ios/components/layer/MLRNLayer.h
@@ -939,10 +1889,10 @@ index ea96279dcfaaed2ab3a69e4f11883613472778d7..2c8528862ab185d8649dc530186d2c05
 +
  @end
 diff --git a/lib/commonjs/components/camera/Camera.js b/lib/commonjs/components/camera/Camera.js
-index f852dab7c642ab8b88ae7baaea60e890d075f50a..c3d1616000dd566b668ed88c60babce1d1bf94db 100644
+index f852dab7c642ab8b88ae7baaea60e890d075f50a..974f041726a1e56bd983334f65955fbbbd59d12a 100644
 --- a/lib/commonjs/components/camera/Camera.js
 +++ b/lib/commonjs/components/camera/Camera.js
-@@ -77,8 +77,26 @@ const Camera = exports.Camera = /*#__PURE__*/(0, _react.memo)(({
+@@ -77,8 +77,32 @@ const Camera = exports.Camera = /*#__PURE__*/(0, _react.memo)(({
      }
      return _NativeCameraModule.default.setStop(nodeHandle, stop);
    };
@@ -962,10 +1912,16 @@ index f852dab7c642ab8b88ae7baaea60e890d075f50a..c3d1616000dd566b668ed88c60babce1
 +    const tag = resolveTag();
 +    if (tag != null) _NativeCameraModule.default.cancelCameraAnimations(tag);
 +  };
++  const setPuckDirect = puck => {
++    const tag = resolveTag();
++    if (tag == null) return;
++    if (puck == null) _NativeCameraModule.default.setPuckDirect(tag, NaN, NaN, NaN, 0, 0, false);else _NativeCameraModule.default.setPuckDirect(tag, puck.lngLat[0], puck.lngLat[1], puck.bearing ?? NaN, puck.color | 0, puck.shadowAlpha, true);
++  };
    (0, _react.useImperativeHandle)(ref, () => ({
      setStop,
 +    setCameraDirect,
 +    cancelCameraAnimations,
++    setPuckDirect,
      jumpTo: ({
        center,
        ...options
@@ -1010,10 +1966,10 @@ diff --git a/lib/commonjs/components/map/NativeMapViewModule.js.map b/lib/common
 deleted file mode 100644
 index c55d0fd347e97832d86ee0ee1a6d11ed36a48c07..0000000000000000000000000000000000000000
 diff --git a/lib/module/components/camera/Camera.js b/lib/module/components/camera/Camera.js
-index 8db05c46e7f67d6110e977534cd51afad63a2fbc..a451463adc25dbfcce22ffc641725363d88344cf 100644
+index 8db05c46e7f67d6110e977534cd51afad63a2fbc..fc4afc5215b3110dce31350939c4049b604cf481 100644
 --- a/lib/module/components/camera/Camera.js
 +++ b/lib/module/components/camera/Camera.js
-@@ -72,8 +72,26 @@ export const Camera = /*#__PURE__*/memo(({
+@@ -72,8 +72,32 @@ export const Camera = /*#__PURE__*/memo(({
      }
      return NativeCameraModule.setStop(nodeHandle, stop);
    };
@@ -1033,10 +1989,16 @@ index 8db05c46e7f67d6110e977534cd51afad63a2fbc..a451463adc25dbfcce22ffc641725363
 +    const tag = resolveTag();
 +    if (tag != null) NativeCameraModule.cancelCameraAnimations(tag);
 +  };
++  const setPuckDirect = puck => {
++    const tag = resolveTag();
++    if (tag == null) return;
++    if (puck == null) NativeCameraModule.setPuckDirect(tag, NaN, NaN, NaN, 0, 0, false);else NativeCameraModule.setPuckDirect(tag, puck.lngLat[0], puck.lngLat[1], puck.bearing ?? NaN, puck.color | 0, puck.shadowAlpha, true);
++  };
    useImperativeHandle(ref, () => ({
      setStop,
 +    setCameraDirect,
 +    cancelCameraAnimations,
++    setPuckDirect,
      jumpTo: ({
        center,
        ...options
@@ -1085,10 +2047,10 @@ diff --git a/lib/module/components/map/NativeMapViewModule.js.map b/lib/module/c
 deleted file mode 100644
 index 1f0fc36206f2c8a05f396a265353b04f5a135372..0000000000000000000000000000000000000000
 diff --git a/lib/typescript/commonjs/components/camera/Camera.d.ts b/lib/typescript/commonjs/components/camera/Camera.d.ts
-index f112d58ddd2671e96559cc60f70c9733a43b426a..e2368c7d20e97cef01e35362cce8363529f2b60d 100644
+index f112d58ddd2671e96559cc60f70c9733a43b426a..9c3a9202d5681db971fb2a7c91b6ac04dcced8bb 100644
 --- a/lib/typescript/commonjs/components/camera/Camera.d.ts
 +++ b/lib/typescript/commonjs/components/camera/Camera.d.ts
-@@ -171,6 +171,14 @@ export interface CameraRef {
+@@ -171,6 +171,20 @@ export interface CameraRef {
       * ```
       */
      setStop(stop: CameraStop): Promise<void>;
@@ -1100,19 +2062,26 @@ index f112d58ddd2671e96559cc60f70c9733a43b426a..e2368c7d20e97cef01e35362cce83635
 +        padding?: ViewPadding;
 +    }): void;
 +    cancelCameraAnimations(): void;
++    setPuckDirect(puck: {
++        lngLat: LngLat;
++        bearing: number | null;
++        color: number;
++        shadowAlpha: number;
++    } | null): void;
  }
  export type CameraProps = BaseProps & Partial<CameraStop> & {
      /**
 diff --git a/lib/typescript/commonjs/components/camera/NativeCameraModule.d.ts b/lib/typescript/commonjs/components/camera/NativeCameraModule.d.ts
-index dc7fddf670bdf9f9b0ff8dab5c13e2264a57638e..2118cfc98f0e97b2fb152ff5d41fa71bab5be2a7 100644
+index dc7fddf670bdf9f9b0ff8dab5c13e2264a57638e..9c8da33ab931eb857699651fa44cc39a2e7f8fe5 100644
 --- a/lib/typescript/commonjs/components/camera/NativeCameraModule.d.ts
 +++ b/lib/typescript/commonjs/components/camera/NativeCameraModule.d.ts
-@@ -20,6 +20,8 @@ type NativeCameraStop = NativeViewState & {
+@@ -20,6 +20,9 @@ type NativeCameraStop = NativeViewState & {
  };
  export interface Spec extends TurboModule {
      setStop(reactTag: CodegenTypes.Int32, stop: NativeCameraStop): Promise<void>;
 +    setCameraDirect(reactTag: CodegenTypes.Int32, centerLng: CodegenTypes.Double, centerLat: CodegenTypes.Double, zoom: CodegenTypes.Double, pitch: CodegenTypes.Double, bearing: CodegenTypes.Double, paddingTop: CodegenTypes.Double, paddingRight: CodegenTypes.Double, paddingBottom: CodegenTypes.Double, paddingLeft: CodegenTypes.Double): void;
 +    cancelCameraAnimations(reactTag: CodegenTypes.Int32): void;
++    setPuckDirect(reactTag: CodegenTypes.Int32, lng: CodegenTypes.Double, lat: CodegenTypes.Double, bearing: CodegenTypes.Double, color: CodegenTypes.Int32, shadowAlpha: CodegenTypes.Double, visible: boolean): void;
  }
  declare const _default: Spec;
  export default _default;
@@ -1156,10 +2125,10 @@ diff --git a/lib/typescript/commonjs/components/map/NativeMapViewModule.d.ts.map
 deleted file mode 100644
 index 8eedcd31c74b6cbbdd6411c3d9ed1b8a2fdea2df..0000000000000000000000000000000000000000
 diff --git a/lib/typescript/module/components/camera/Camera.d.ts b/lib/typescript/module/components/camera/Camera.d.ts
-index f112d58ddd2671e96559cc60f70c9733a43b426a..e2368c7d20e97cef01e35362cce8363529f2b60d 100644
+index f112d58ddd2671e96559cc60f70c9733a43b426a..9c3a9202d5681db971fb2a7c91b6ac04dcced8bb 100644
 --- a/lib/typescript/module/components/camera/Camera.d.ts
 +++ b/lib/typescript/module/components/camera/Camera.d.ts
-@@ -171,6 +171,14 @@ export interface CameraRef {
+@@ -171,6 +171,20 @@ export interface CameraRef {
       * ```
       */
      setStop(stop: CameraStop): Promise<void>;
@@ -1171,19 +2140,26 @@ index f112d58ddd2671e96559cc60f70c9733a43b426a..e2368c7d20e97cef01e35362cce83635
 +        padding?: ViewPadding;
 +    }): void;
 +    cancelCameraAnimations(): void;
++    setPuckDirect(puck: {
++        lngLat: LngLat;
++        bearing: number | null;
++        color: number;
++        shadowAlpha: number;
++    } | null): void;
  }
  export type CameraProps = BaseProps & Partial<CameraStop> & {
      /**
 diff --git a/lib/typescript/module/components/camera/NativeCameraModule.d.ts b/lib/typescript/module/components/camera/NativeCameraModule.d.ts
-index dc7fddf670bdf9f9b0ff8dab5c13e2264a57638e..2118cfc98f0e97b2fb152ff5d41fa71bab5be2a7 100644
+index dc7fddf670bdf9f9b0ff8dab5c13e2264a57638e..9c8da33ab931eb857699651fa44cc39a2e7f8fe5 100644
 --- a/lib/typescript/module/components/camera/NativeCameraModule.d.ts
 +++ b/lib/typescript/module/components/camera/NativeCameraModule.d.ts
-@@ -20,6 +20,8 @@ type NativeCameraStop = NativeViewState & {
+@@ -20,6 +20,9 @@ type NativeCameraStop = NativeViewState & {
  };
  export interface Spec extends TurboModule {
      setStop(reactTag: CodegenTypes.Int32, stop: NativeCameraStop): Promise<void>;
 +    setCameraDirect(reactTag: CodegenTypes.Int32, centerLng: CodegenTypes.Double, centerLat: CodegenTypes.Double, zoom: CodegenTypes.Double, pitch: CodegenTypes.Double, bearing: CodegenTypes.Double, paddingTop: CodegenTypes.Double, paddingRight: CodegenTypes.Double, paddingBottom: CodegenTypes.Double, paddingLeft: CodegenTypes.Double): void;
 +    cancelCameraAnimations(reactTag: CodegenTypes.Int32): void;
++    setPuckDirect(reactTag: CodegenTypes.Int32, lng: CodegenTypes.Double, lat: CodegenTypes.Double, bearing: CodegenTypes.Double, color: CodegenTypes.Int32, shadowAlpha: CodegenTypes.Double, visible: boolean): void;
  }
  declare const _default: Spec;
  export default _default;
@@ -1227,10 +2203,10 @@ diff --git a/lib/typescript/module/components/map/NativeMapViewModule.d.ts.map b
 deleted file mode 100644
 index 8eedcd31c74b6cbbdd6411c3d9ed1b8a2fdea2df..0000000000000000000000000000000000000000
 diff --git a/src/components/camera/Camera.tsx b/src/components/camera/Camera.tsx
-index fbd228e541d7366a5f694174bafa64c4cf600b15..ea6456ddbc983292fa30320bd8386ffb0c36b984 100644
+index fbd228e541d7366a5f694174bafa64c4cf600b15..a44aac3b6a9adf97056397e45930032086e19340 100644
 --- a/src/components/camera/Camera.tsx
 +++ b/src/components/camera/Camera.tsx
-@@ -224,6 +224,21 @@ export interface CameraRef {
+@@ -224,6 +224,34 @@ export interface CameraRef {
     * ```
     */
    setStop(stop: CameraStop): Promise<void>;
@@ -1249,10 +2225,23 @@ index fbd228e541d7366a5f694174bafa64c4cf600b15..ea6456ddbc983292fa30320bd8386ffb
 +
 +  /** Spike #655: stop native camera transitions and gesture momentum. */
 +  cancelCameraAnimations(): void;
++
++  /**
++   * Puck spike: place the rider puck, drawn as a custom style layer inside the map's own frame.
++   * `color` is ARGB as a 32-bit int, `shadowAlpha` the ground shadow's black alpha, `bearing` null hides the arrow, `null` hides the puck.
++   */
++  setPuckDirect(
++    puck: {
++      lngLat: LngLat;
++      bearing: number | null;
++      color: number;
++      shadowAlpha: number;
++    } | null,
++  ): void;
  }
  
  export type CameraProps = BaseProps &
-@@ -306,8 +321,27 @@ export const Camera = memo(
+@@ -306,8 +334,34 @@ export const Camera = memo(
        return NativeCameraModule.setStop(nodeHandle, stop);
      };
  
@@ -1272,19 +2261,26 @@ index fbd228e541d7366a5f694174bafa64c4cf600b15..ea6456ddbc983292fa30320bd8386ffb
 +      const tag = resolveTag();
 +      if (tag != null) NativeCameraModule.cancelCameraAnimations(tag);
 +    };
++    const setPuckDirect: CameraRef["setPuckDirect"] = (puck) => {
++      const tag = resolveTag();
++      if (tag == null) return;
++      if (puck == null) NativeCameraModule.setPuckDirect(tag, NaN, NaN, NaN, 0, 0, false);
++      else NativeCameraModule.setPuckDirect(tag, puck.lngLat[0], puck.lngLat[1], puck.bearing ?? NaN, puck.color | 0, puck.shadowAlpha, true);
++    };
 +
      useImperativeHandle(ref, () => ({
        setStop,
 +      setCameraDirect,
 +      cancelCameraAnimations,
++      setPuckDirect,
  
        jumpTo: ({ center, ...options }) =>
          setStop({ ...options, center, duration: 0, easing: undefined }),
 diff --git a/src/components/camera/NativeCameraModule.ts b/src/components/camera/NativeCameraModule.ts
-index 90e536e1d9a80d8bb672bd1954ceb14da2f12021..7ac1d2002a1afa9e4f2ae042a0888f0e9f23480c 100644
+index 90e536e1d9a80d8bb672bd1954ceb14da2f12021..3bf81d7307402143988a7683111ca44eb9bca02c 100644
 --- a/src/components/camera/NativeCameraModule.ts
 +++ b/src/components/camera/NativeCameraModule.ts
-@@ -33,6 +33,23 @@ type NativeCameraStop = NativeViewState & {
+@@ -33,6 +33,35 @@ type NativeCameraStop = NativeViewState & {
  
  export interface Spec extends TurboModule {
    setStop(reactTag: CodegenTypes.Int32, stop: NativeCameraStop): Promise<void>;
@@ -1305,6 +2301,18 @@ index 90e536e1d9a80d8bb672bd1954ceb14da2f12021..7ac1d2002a1afa9e4f2ae042a0888f0e
 +
 +  // Spike #655: stop every native camera motion (transitions and gesture momentum).
 +  cancelCameraAnimations(reactTag: CodegenTypes.Int32): void;
++
++  // Puck spike: the rider puck as a custom style layer drawn in the map's own frame. Same queue and
++  // main-thread hop as setCameraDirect. NaN bearing hides the arrow; shadowAlpha is the ground shadow's black alpha; visible=false hides the puck.
++  setPuckDirect(
++    reactTag: CodegenTypes.Int32,
++    lng: CodegenTypes.Double,
++    lat: CodegenTypes.Double,
++    bearing: CodegenTypes.Double,
++    color: CodegenTypes.Int32,
++    shadowAlpha: CodegenTypes.Double,
++    visible: boolean,
++  ): void;
  }
  
  export default TurboModuleRegistry.getEnforcing<Spec>("MLRNCameraModule");

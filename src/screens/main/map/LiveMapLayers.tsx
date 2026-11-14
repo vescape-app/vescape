@@ -1,11 +1,14 @@
 import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native'
+import { useEffect } from 'react'
+import { processColor } from 'react-native'
 
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
-import { GpsPuck } from '@/modules/map/components/GpsPuck'
+import { coinShadowAlpha, GpsPuck } from '@/modules/map/components/GpsPuck'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
+import { puckLayerChannel, puckViewEnabled } from '@/modules/map/lib/nativePuck'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
 export function LiveMapLayers({
@@ -40,6 +43,23 @@ export function LiveMapLayers({
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
     : theme.alpha(accents.violet.color, 0.85)
+  const puckLng = accuracyFix?.longitude
+  const puckLat = accuracyFix?.latitude
+  const puckLight = useThemeStore((state) => state.resolvedTheme === 'light')
+  // Puck spike: place the native layer puck (no-op unless it is switched on).
+  useEffect(() => {
+    if (puckLng == null || puckLat == null) {
+      puckLayerChannel.setPlacement(null)
+      return
+    }
+    const color = processColor(gpsPointColor)
+    puckLayerChannel.setPlacement({
+      lngLat: [puckLng, puckLat],
+      color: typeof color === 'number' ? color : 0,
+      shadowAlpha: coinShadowAlpha(puckLight),
+    })
+  }, [puckLng, puckLat, gpsPointColor, puckLight])
+  useEffect(() => () => puckLayerChannel.setPlacement(null), [])
   return (
     <>
       {liveTrailShape && (
@@ -87,9 +107,11 @@ export function LiveMapLayers({
               />
             </GeoJSONSource>
           )}
-          <Marker lngLat={[accuracyFix.longitude, accuracyFix.latitude]}>
-            <GpsPuck color={gpsPointColor} bearing={puckBearing} mapPose={mapPose} />
-          </Marker>
+          {puckViewEnabled && (
+            <Marker lngLat={[accuracyFix.longitude, accuracyFix.latitude]}>
+              <GpsPuck color={gpsPointColor} bearing={puckBearing} mapPose={mapPose} />
+            </Marker>
+          )}
         </>
       )}
       {riders.map((rider) =>
