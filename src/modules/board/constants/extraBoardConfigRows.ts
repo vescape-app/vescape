@@ -184,6 +184,34 @@ export const START_STOP_EXTRA_ROWS = [
   row('parking_brake_mode', 'Parking brake', choice(['Always', 'Idle', 'Never'])),
   row('brake_current', 'Brake current', unit('A', 1)),
 ]
+export const SPEED_EXTRA_ROWS = [row('tiltback_speed', 'Speed threshold', unit('km/h', 0))]
+export const FOOTPAD_EXTRA_ROWS = [row('hardware.swap_footpad_adcs', 'Swap footpad zones', onOff)]
+export const BOOST_DETAIL_ROWS = [
+  row('booster_angle', 'Booster start angle', unit('°', 1)),
+  row('booster_ramp', 'Booster ramp angle', unit('°', 1)),
+  row('brkbooster_angle', 'Brake booster start angle', unit('°', 1)),
+  row('brkbooster_ramp', 'Brake booster ramp angle', unit('°', 1)),
+]
+export const TUNE_RESPONSE_ROWS = [
+  row('noseangling_speed', 'Nose angling speed', unit('°/s', 1)),
+  row('atr.transition_boost', 'ATR transition boost', unit('x', 1)),
+  ...['atr', 'torque_tilt'].flatMap((prefix) => {
+    const name = prefix === 'atr' ? 'ATR' : 'Torque tilt'
+    return [
+      row(`${prefix}.filter.time_constant`, `${name} smoothing`, unit('s', 2)),
+      row(`${prefix}.filter.on_speed_time_constant`, `${name} on-speed smoothing`, unit('s', 2)),
+      row(`${prefix}.filter.off_speed_time_constant`, `${name} off-speed smoothing`, unit('s', 2)),
+      row(`${prefix}.filter.on_speed_limit`, `${name} max tiltback speed`, unit('°/s', 1)),
+      row(`${prefix}.filter.off_speed_limit`, `${name} max release speed`, unit('°/s', 1)),
+    ]
+  }),
+  row('turn_tilt.filter.time_constant', 'Turn tilt smoothing', unit('s', 2)),
+]
+export const PACKAGE_ROWS = [
+  row('disabled', 'Disable Refloat', onOff),
+  row('persistent_fatal_error', 'Persistent fatal error', onOff),
+  row('meta.is_default', 'Config is default', onOff),
+]
 export const REMOTE_ROWS = [
   row('inputtilt_remote_type', 'Remote input', choice(['None', 'UART', 'PPM'])),
   row('inputtilt_angle_limit', 'Remote tilt angle limit', unit('°', 1)),

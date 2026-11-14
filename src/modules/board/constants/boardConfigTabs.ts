@@ -25,6 +25,10 @@ import {
   LED_HARDWARE_ROWS,
   REMOTE_ROWS,
   START_STOP_EXTRA_ROWS,
+  SPEED_EXTRA_ROWS,
+  FOOTPAD_EXTRA_ROWS,
+  BOOST_DETAIL_ROWS,
+  PACKAGE_ROWS,
 } from '@/modules/board/constants/extraBoardConfigRows'
 import type { ConfigRow } from '@/modules/board/lib/boardConfigReadout'
 
@@ -140,12 +144,24 @@ export const BOARD_CONFIG_TABS: { id: string; label: string; groups: BoardConfig
           ['booster_current', 'brkbooster_current'].includes(row.id),
         ),
       },
+      {
+        title: 'Current boost response',
+        source: 'refloat',
+        rows: BOOST_DETAIL_ROWS,
+        advanced: true,
+      },
     ],
   },
   {
     id: 'footpad',
     label: 'Footpad',
-    groups: [{ title: 'Board config', source: 'refloat', rows: FOOTPAD_CONFIG_ROWS }],
+    groups: [
+      {
+        title: 'Board config',
+        source: 'refloat',
+        rows: [...FOOTPAD_CONFIG_ROWS, ...FOOTPAD_EXTRA_ROWS],
+      },
+    ],
   },
   {
     id: 'imu',
@@ -156,7 +172,11 @@ export const BOARD_CONFIG_TABS: { id: string; label: string; groups: BoardConfig
     id: 'speed',
     label: 'Speed',
     groups: [
-      { title: 'Board config', source: 'refloat', rows: SPEED_CONFIG_ROWS },
+      {
+        title: 'Board config',
+        source: 'refloat',
+        rows: [...SPEED_CONFIG_ROWS, ...SPEED_EXTRA_ROWS],
+      },
       { title: 'Motor config', source: 'motor', rows: SPEED_MOTOR_CONFIG_ROWS },
     ],
   },
@@ -191,5 +211,9 @@ export const BOARD_CONFIG_TABS: { id: string; label: string; groups: BoardConfig
       { title: 'Motor temperature', source: 'motor', rows: MOTOR_TEMP_CONFIG_ROWS },
     ],
   },
-  { id: 'other', label: 'Other', groups: [] },
+  {
+    id: 'other',
+    label: 'Other',
+    groups: [{ title: 'Refloat package', source: 'refloat', rows: PACKAGE_ROWS }],
+  },
 ]

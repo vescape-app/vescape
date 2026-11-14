@@ -4,6 +4,13 @@ import { inflateSync } from 'node:zlib'
 import { APP_TUNE_GROUPS } from '@/modules/tune/lib/fields'
 import { SPEED_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { BOARD_CONFIG_TABS } from '@/modules/board/constants/boardConfigTabs'
+import {
+  BOOST_DETAIL_ROWS,
+  FOOTPAD_EXTRA_ROWS,
+  PACKAGE_ROWS,
+  SPEED_EXTRA_ROWS,
+  TUNE_RESPONSE_ROWS,
+} from '@/modules/board/constants/extraBoardConfigRows'
 import { splitConfigGroups } from '@/modules/board/lib/splitConfigGroups'
 import { boardConfigTabs } from './boardConfigGroups'
 
@@ -100,6 +107,55 @@ describe('Board config browsing', () => {
     )
     const footpad = boardConfigTabs().find((tab) => tab.id === 'footpad')!
     expect(splitConfigGroups(footpad.groups).advancedCount).toBe(0)
+  })
+
+  test.each(versions)(
+    'known extra fields have readable labels and schema units in Refloat %s',
+    async (version) => {
+      const bytes = await Bun.file(
+        `${import.meta.dir}/../../../shared/fixtures/refloat-schema/settings-${version}.xml.zlib`,
+      ).arrayBuffer()
+      const xml = inflateSync(Buffer.from(bytes)).toString('utf8')
+      const rows = [
+        ...BOOST_DETAIL_ROWS,
+        ...FOOTPAD_EXTRA_ROWS,
+        ...PACKAGE_ROWS,
+        ...SPEED_EXTRA_ROWS,
+        ...TUNE_RESPONSE_ROWS,
+      ]
+      const values: Record<string, number> = {}
+      for (const row of rows) {
+        const start = xml.indexOf(`<${row.id}>`)
+        if (start < 0) continue
+        values[row.id] = 1
+        const field = xml.slice(start, xml.indexOf(`</${row.id}>`, start))
+        expect(row.label).not.toBe(row.id)
+        if (field.includes('<type>5</type>')) {
+          expect(row.format(1)).toBe('On')
+          expect(row.format(0)).toBe('Off')
+        } else {
+          const suffix = field.match(/<suffix>(.*?)<\/suffix>/)?.[1]?.trim()
+          expect(suffix).toBeTruthy()
+          expect(row.format(1).endsWith(suffix!)).toBe(true)
+        }
+      }
+      const displayedRows = boardConfigTabs(values).flatMap((tab) =>
+        tab.groups.flatMap((group) => group.rows),
+      )
+      for (const row of rows.filter((candidate) => candidate.id in values)) {
+        expect(displayedRows.filter((candidate) => candidate.id === row.id)).toContain(row)
+      }
+    },
+  )
+
+  test('routes future flat and nested torque and turn tilt fields to Tune', () => {
+    const ids = ['torquetilt_future', 'turntilt_future', 'torque_tilt.future', 'turn_tilt.future']
+    const tabs = boardConfigTabs(Object.fromEntries(ids.map((id) => [id, 1])))
+    expect(
+      tabs
+        .find((tab) => tab.id === 'tune')!
+        .groups.flatMap((group) => group.rows.map((row) => row.id)),
+    ).toEqual([...ids].sort())
   })
 
   test.each(versions)(

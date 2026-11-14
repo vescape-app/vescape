@@ -1,6 +1,10 @@
 import { BOARD_CONFIG_TABS, type BoardConfigGroup } from '@/modules/board/constants/boardConfigTabs'
 import { remainingConfigRows } from '@/modules/board/lib/remainingConfigRows'
 import { APP_TUNE_GROUPS, formatTuneValue, tuneDisplayValue } from '@/modules/tune/lib/fields'
+import {
+  BOOST_DETAIL_ROWS,
+  TUNE_RESPONSE_ROWS,
+} from '@/modules/board/constants/extraBoardConfigRows'
 
 const namedRows = BOARD_CONFIG_TABS.flatMap((tab) => tab.groups)
 const refloatRows = new Map(
@@ -32,6 +36,10 @@ const tuneGroups: BoardConfigGroup[] = APP_TUNE_GROUPS.map((group) => ({
       },
   ),
 }))
+tuneGroups.push(
+  { title: 'Current boosts', source: 'refloat', rows: BOOST_DETAIL_ROWS, advanced: true },
+  { title: 'Tilt response', source: 'refloat', rows: TUNE_RESPONSE_ROWS, advanced: true },
+)
 const tuneIds = new Set(tuneGroups.flatMap((group) => group.rows.map((row) => row.id)))
 const coveredRefloat = new Set([...refloatRows.keys(), ...tuneIds])
 const coveredMotor = new Set(
@@ -43,7 +51,7 @@ const tabs: { id: string; label: string; groups: BoardConfigGroup[] }[] = [
   ...BOARD_CONFIG_TABS.filter((tab) => tab.id === 'quick'),
   ...BOARD_CONFIG_TABS.filter((tab) => tab.id !== 'quick' && tab.id !== 'other'),
   { id: 'tune', label: 'Tune', groups: tuneGroups },
-  { id: 'other', label: 'Other', groups: [] },
+  ...BOARD_CONFIG_TABS.filter((tab) => tab.id === 'other'),
 ]
 
 function refloatDestination(id: string): string {
@@ -51,7 +59,7 @@ function refloatDestination(id: string): string {
   if (id.startsWith('haptic.') || id.includes('beep')) return 'haptic'
   if (id.startsWith('bms.')) return 'battery'
   if (id.startsWith('remote') || id.startsWith('inputtilt_')) return 'remote'
-  if (/^(atr[._]|torque_tilt[._]|turn_tilt[._]|booster_|brkbooster_|noseangling_)/.test(id))
+  if (/^(atr[._]|torque_?tilt[._]|turn_?tilt[._]|booster_|brkbooster_|noseangling_)/.test(id))
     return 'tune'
   if (id.startsWith('startup_') || id === 'enable_quickstop') return 'start-stop'
   if (id === 'tiltback_speed') return 'speed'
