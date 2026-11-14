@@ -1,8 +1,9 @@
-import { LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
+import { LineLayer, ShapeSource } from '@rnmapbox/maps'
 import { WarningIcon } from 'phosphor-react-native'
 import { useMemo } from 'react'
 import Animated, { withTiming } from 'react-native-reanimated'
 
+import { InMapMarker } from '@/components/map/InMapMarker'
 import { theme } from '@/constants/theme'
 import { useResolvedNeutralColors, useResolvedColor } from '@/hooks/useTheme'
 import { MapTargetReticle } from '@/modules/map/components/MapTargetReticle'
@@ -43,6 +44,8 @@ function navigationDots(lineWidth: number): [number, number] {
   return [0, NAVIGATION_DOT_SPACING_PX / lineWidth]
 }
 
+const PENDING_TARGET_ENTERING_MS = 260
+
 const pendingNavigationTargetEntering = () => {
   'worklet'
   return {
@@ -51,8 +54,8 @@ const pendingNavigationTargetEntering = () => {
       transform: [{ scale: 1.8 }],
     },
     animations: {
-      opacity: withTiming(1, { duration: 260 }),
-      transform: [{ scale: withTiming(1, { duration: 260 }) }],
+      opacity: withTiming(1, { duration: PENDING_TARGET_ENTERING_MS }),
+      transform: [{ scale: withTiming(1, { duration: PENDING_TARGET_ENTERING_MS }) }],
     },
   }
 }
@@ -65,11 +68,11 @@ function PendingNavigationTargetPin({
   color: string
 }) {
   return (
-    <MarkerView coordinate={coordinate} allowOverlap>
+    <InMapMarker coordinate={coordinate} animationMs={PENDING_TARGET_ENTERING_MS}>
       <Animated.View entering={pendingNavigationTargetEntering}>
         <MapTargetReticle color={color} />
       </Animated.View>
-    </MarkerView>
+    </InMapMarker>
   )
 }
 

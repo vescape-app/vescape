@@ -5,6 +5,7 @@ import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from '
 import { theme } from '@/constants/theme'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { MainViewState } from '@/screens/main/mainViewState'
+import { InMapLayerHostContext } from '@/components/map/inMapLayer'
 import { MainMapLayers } from '@/screens/main/map/MainMapLayers'
 import { MainMapOverlays } from '@/screens/main/map/MainMapOverlays'
 import { MapBaseStyleLayers } from '@/screens/main/map/MapBaseStyleLayers'
@@ -165,45 +166,47 @@ export function MainMapScene({
               mapDetailsVisible={mapStyle.mapDetailsVisible}
               satelliteRoadLineOpacity={mapStyle.satelliteRoadLineOpacity}
             />
-            <MainMapLayers
-              historyActive={historyActive}
-              expandSelectedMapPoints={mode === 'map'}
-              isMapy={mapStyle.isMapy}
-              isOneDark={mapStyle.isOneDark}
-              isSatellite={mapStyle.isSatelliteOverlay}
-              showBuildings3d={mapStyle.showBuildings3d && !mapStyle.isMapy}
-              weatherActive={weatherActive}
-              legalLimitsActive={legalLimitsActive}
-              liveTrailShape={liveTrailShape}
-              rideRouteShape={rideRouteShape}
-              accuracyFix={accuracyFix}
-              accuracyShape={accuracyShape}
-              puckBearing={puckBearing}
-              mapPose={mapPose}
-              riders={riders}
-              rideRoute={rideRoute}
-              rideTelemetrySamples={history.telemetrySamples}
-              activeHistoryMapMetric={history.activeMapMetric}
-              rideMarkers={history.markers}
-              rideGpsSamples={history.gpsSamples}
-              mediaAssets={history.mediaAssets}
-              favoriteRanges={history.favoriteRanges}
-              mapZoom={cameraZoom}
-              historyMetricGradientsEnabled={historyMetricGradientsEnabled}
-              historyMetricHotRanges={historyMetricHotRanges}
-              directionPoint={directionPoint}
-              activeNavigationTarget={activeNavigationTarget}
-              selectedNavigationTarget={selectedNavigationTarget}
-              mapPoints={mapPointProps.points}
-              selectedMapPointId={mapPointProps.selectedId}
-              hiddenMapPointCategories={mapPointProps.hiddenCategories}
-              onToggleMapPointSelection={mapPointProps.onToggleSelection}
-              onSuppressNextMapPress={onSuppressNextMapPress}
-              onSelectMarker={onSelectMarker}
-              onOpenMedia={history.onOpenMedia}
-              onSelectLegalCountry={onSelectLegalCountry}
-              onFocusDirectionPoint={onFocusDirectionPoint}
-            />
+            <InMapLayerHostContext value>
+              <MainMapLayers
+                historyActive={historyActive}
+                expandSelectedMapPoints={mode === 'map'}
+                isMapy={mapStyle.isMapy}
+                isOneDark={mapStyle.isOneDark}
+                isSatellite={mapStyle.isSatelliteOverlay}
+                showBuildings3d={mapStyle.showBuildings3d && !mapStyle.isMapy}
+                weatherActive={weatherActive}
+                legalLimitsActive={legalLimitsActive}
+                liveTrailShape={liveTrailShape}
+                rideRouteShape={rideRouteShape}
+                accuracyFix={accuracyFix}
+                accuracyShape={accuracyShape}
+                puckBearing={puckBearing}
+                mapPose={mapPose}
+                riders={riders}
+                rideRoute={rideRoute}
+                rideTelemetrySamples={history.telemetrySamples}
+                activeHistoryMapMetric={history.activeMapMetric}
+                rideMarkers={history.markers}
+                rideGpsSamples={history.gpsSamples}
+                mediaAssets={history.mediaAssets}
+                favoriteRanges={history.favoriteRanges}
+                mapZoom={cameraZoom}
+                historyMetricGradientsEnabled={historyMetricGradientsEnabled}
+                historyMetricHotRanges={historyMetricHotRanges}
+                directionPoint={directionPoint}
+                activeNavigationTarget={activeNavigationTarget}
+                selectedNavigationTarget={selectedNavigationTarget}
+                mapPoints={mapPointProps.points}
+                selectedMapPointId={mapPointProps.selectedId}
+                hiddenMapPointCategories={mapPointProps.hiddenCategories}
+                onToggleMapPointSelection={mapPointProps.onToggleSelection}
+                onSuppressNextMapPress={onSuppressNextMapPress}
+                onSelectMarker={onSelectMarker}
+                onOpenMedia={history.onOpenMedia}
+                onSelectLegalCountry={onSelectLegalCountry}
+                onFocusDirectionPoint={onFocusDirectionPoint}
+              />
+            </InMapLayerHostContext>
           </Fragment>
         )}
       </Mapbox.MapView>

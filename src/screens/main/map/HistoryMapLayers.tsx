@@ -1,5 +1,5 @@
 import { HISTORY_ENDPOINT_LAYER_ID } from '@/modules/history/lib/historyMapLayers'
-import Svg, { Line, Polygon, Rect } from 'react-native-svg'
+import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg'
 import { View } from 'react-native'
 import { LineLayer, PointAnnotation, PointAnnotationManager, ShapeSource } from '@rnmapbox/maps'
 import { useEffect, useMemo, useState } from 'react'
@@ -219,7 +219,8 @@ export function HistoryMapLayers({
       {/* Create the native symbol layer before strokes that reference it for ordering. */}
       <PointAnnotationManager id={HISTORY_ENDPOINT_LAYER_ID} iconAllowOverlap iconIgnorePlacement>
         {rideRoute[0] && renderHistoryEndpointFlag(rideRoute[0], telemetryColors.duty, 'start')}
-        {rideRoute.at(-1) && renderHistoryEndpointFlag(rideRoute.at(-1)!, accents.red.color, 'end')}
+        {rideRoute.at(-1) &&
+          renderHistoryEndpointFlag(rideRoute.at(-1)!, neutral.textPrimary, 'end')}
       </PointAnnotationManager>
       <FavoriteRouteBorder
         rideGpsSamples={rideGpsSamples}
@@ -314,66 +315,94 @@ export function HistoryMapLayers({
   )
 }
 
+/**
+ * Endpoint flag geometry, in SVG units with the pole's foot at the origin: a pole with a cloth at
+ * its top, stroked like the app's outline icons, the cloth tinted rather than filled.
+ */
+const FLAG = {
+  /** Screen pixels per unit. */
+  scale: 1.2,
+  stroke: 2.2,
+  poleHeight: 28,
+  /** Start pennant: how far its tip reaches and how tall it is at the pole. */
+  pennant: { length: 15, height: 15 },
+  /** Finish cloth, with its checks as columns × rows. */
+  cloth: { width: 16, height: 12, radius: 3, columns: 4, rows: 3 },
+  tintOpacity: 0.25,
+  checkOpacity: 0.45,
+} as const
+const FLAG_PAD = FLAG.stroke / 2
+const FLAG_WIDTH = FLAG.cloth.width + FLAG.stroke
+const FLAG_HEIGHT = FLAG.poleHeight + FLAG.stroke
+const FLAG_TOP = -FLAG.poleHeight
+
 // PointAnnotation snapshots the flag into the map renderer, like saved Map Points.
-// The pole's base is (2, 28) inside a 22 × 30 viewport, exactly at the map coordinate.
 function renderHistoryEndpointFlag(
   coordinate: [number, number],
-  stroke: string,
+  color: string,
   kind: 'start' | 'end',
 ) {
+  const { cloth, pennant } = FLAG
+  const outline = {
+    stroke: color,
+    strokeWidth: FLAG.stroke,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  } as const
   return (
     <PointAnnotation
-      key={`history-${kind}-${stroke}`}
+      key={`history-${kind}-${color}`}
       id={`center-ride-${kind}`}
       coordinate={coordinate}
-      anchor={{ x: 2 / 22, y: 28 / 30 }}
+      anchor={{ x: FLAG_PAD / FLAG_WIDTH, y: (FLAG_HEIGHT - FLAG_PAD) / FLAG_HEIGHT }}
     >
-      <View collapsable={false} style={{ width: 55 / 3, height: 25 }}>
-        <Svg width={55 / 3} height={25} viewBox="-2 -28 22 30">
-          <Line
-            x1={0}
-            y1={0}
-            x2={0}
-            y2={-26}
-            stroke={stroke}
-            strokeWidth={2}
-            strokeLinecap="round"
-          />
+      <View
+        collapsable={false}
+        style={{ width: FLAG_WIDTH * FLAG.scale, height: FLAG_HEIGHT * FLAG.scale }}
+      >
+        <Svg
+          width={FLAG_WIDTH * FLAG.scale}
+          height={FLAG_HEIGHT * FLAG.scale}
+          viewBox={`${-FLAG_PAD} ${FLAG_TOP - FLAG_PAD} ${FLAG_WIDTH} ${FLAG_HEIGHT}`}
+        >
+          <Path d={`M0 0V${FLAG_TOP}`} {...outline} />
           {kind === 'start' ? (
-            <Polygon
-              points="0,-26 16,-18 0,-10"
-              fill={stroke}
-              fillOpacity={0.25}
-              stroke={stroke}
-              strokeWidth={2}
-              strokeLinejoin="round"
+            <Path
+              d={`M0 ${FLAG_TOP}L${pennant.length} ${FLAG_TOP + pennant.height / 2}L0 ${FLAG_TOP + pennant.height}Z`}
+              fill={color}
+              fillOpacity={FLAG.tintOpacity}
+              {...outline}
             />
           ) : (
             <>
-              <Rect
-                x={0}
-                y={-26}
-                width={18}
-                height={14}
-                fill="none"
-                stroke={stroke}
-                strokeWidth={2}
-                strokeLinejoin="round"
-              />
-              {[0, 1, 2].flatMap((row) =>
-                [0, 1, 2, 3]
-                  .filter((col) => (row + col) % 2 === 0)
-                  .map((col) => (
+              <Defs>
+                <ClipPath id="history-flag-cloth">
+                  <Rect y={FLAG_TOP} width={cloth.width} height={cloth.height} rx={cloth.radius} />
+                </ClipPath>
+              </Defs>
+              <G clipPath="url(#history-flag-cloth)">
+                {Array.from({ length: cloth.rows * cloth.columns }, (_, index) => {
+                  const row = Math.floor(index / cloth.columns)
+                  const column = index % cloth.columns
+                  if ((row + column) % 2 !== 0) return null
+                  return (
                     <Rect
-                      key={`${row}-${col}`}
-                      x={col * 4.5}
-                      y={-26 + row * (14 / 3)}
-                      width={4.5}
-                      height={14 / 3}
-                      fill={stroke}
+                      key={index}
+                      x={(column * cloth.width) / cloth.columns}
+                      y={FLAG_TOP + (row * cloth.height) / cloth.rows}
+                      width={cloth.width / cloth.columns}
+                      height={cloth.height / cloth.rows}
+                      fill={color}
+                      fillOpacity={FLAG.checkOpacity}
                     />
-                  )),
-              )}
+                  )
+                })}
+              </G>
+              <Path
+                d={`M0 ${FLAG_TOP}H${cloth.width - cloth.radius}a${cloth.radius} ${cloth.radius} 0 0 1 ${cloth.radius} ${cloth.radius}v${cloth.height - 2 * cloth.radius}a${cloth.radius} ${cloth.radius} 0 0 1 ${-cloth.radius} ${cloth.radius}H0`}
+                fill="none"
+                {...outline}
+              />
             </>
           )}
         </Svg>

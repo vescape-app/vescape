@@ -1,5 +1,5 @@
 diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
-index a471e13ca74a7e7b47626da77accb6fada753f65..8bc31d1ab14cc05b5df5743856bcb9669ea6c7cc 100644
+index a471e13ca74a7e7b47626da77accb6fada753f65..1df186c17bfd5af36c97848b91dde1043dc2db36 100644
 --- a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
 +++ b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
 @@ -7,6 +7,7 @@ import com.facebook.react.bridge.Dynamic
@@ -18,7 +18,7 @@ index a471e13ca74a7e7b47626da77accb6fada753f65..8bc31d1ab14cc05b5df5743856bcb966
              return super.removeFromMap(mapView, reason);
          }
      }
-@@ -542,6 +544,30 @@ class RNMBXCamera(private val mContext: Context, private val mManager: RNMBXCame
+@@ -542,6 +544,40 @@ class RNMBXCamera(private val mContext: Context, private val mManager: RNMBXCame
              null
          } else mMapView!!.getMapboxMap()
  
@@ -39,27 +39,39 @@ index a471e13ca74a7e7b47626da77accb6fada753f65..8bc31d1ab14cc05b5df5743856bcb966
 +     * Place the rider puck, drawn by a custom layer inside the map's own frame. NaN bearing hides
 +     * the arrow; `visible` false removes the layer. Dropped while the map is not live, like
 +     * cancelCameraAnimations: the next write carries the full state again.
-+     * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraModule.mm `setPuckDirect`
++     * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCamera.swift `setPuckDirect`
 +     */
 +    fun setPuckDirect(lng: Double, lat: Double, bearing: Double, argb: Int, shadowAlpha: Float, visible: Boolean) {
 +        val map = mapboxMap ?: return
 +        puck.set(map, lng, lat, bearing, argb, shadowAlpha, visible)
 +    }
 +
++    /**
++     * Draw marker views inside the map's own frame; see RNMBXMarkerSprites. Dropped while the map
++     * is not live: the next write carries the full list again.
++     * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCamera.swift `setMarkersDirect`
++     */
++    fun setMarkersDirect(values: DoubleArray, resolve: (Int) -> android.view.View?) {
++        val map = mapboxMap ?: return
++        puck.setMarkers(map, values, resolve)
++    }
++
      /**
       * Create a payload of the location data per the web api geolocation spec
       * https://dev.w3.org/geo/api/spec-source.html#position
 diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt
-index 722903d70657a81d7f78bcff50c03ea424887b5b..c920c4892cf5e36366dd3c2779cbde9845577503 100644
+index 722903d70657a81d7f78bcff50c03ea424887b5b..da9061615d28ffe164ec1d7a1c1cead82b2236d5 100644
 --- a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt
 +++ b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt
-@@ -3,11 +3,15 @@ package com.rnmapbox.rnmbx.components.camera
+@@ -3,11 +3,17 @@ package com.rnmapbox.rnmbx.components.camera
  import android.view.animation.AccelerateDecelerateInterpolator
  import android.view.animation.LinearInterpolator
  import com.facebook.react.bridge.Promise
 +import com.facebook.react.bridge.PromiseImpl
  import com.facebook.react.bridge.ReactApplicationContext
++import com.facebook.react.bridge.ReadableArray
  import com.facebook.react.bridge.ReadableMap
++import com.facebook.react.uimanager.UIManagerHelper
  import com.facebook.react.bridge.WritableMap
  import com.facebook.react.bridge.WritableNativeMap
  import com.mapbox.maps.ScreenCoordinate
@@ -69,7 +81,7 @@ index 722903d70657a81d7f78bcff50c03ea424887b5b..c920c4892cf5e36366dd3c2779cbde98
  import com.mapbox.maps.plugin.animation.MapAnimationOptions
  import com.mapbox.maps.plugin.animation.easeTo
  import com.mapbox.maps.plugin.animation.moveBy
-@@ -57,6 +61,70 @@ class RNMBXCameraModule(context: ReactApplicationContext, val viewTagResolver: V
+@@ -57,6 +63,88 @@ class RNMBXCameraModule(context: ReactApplicationContext, val viewTagResolver: V
          }
      }
  
@@ -132,6 +144,24 @@ index 722903d70657a81d7f78bcff50c03ea424887b5b..c920c4892cf5e36366dd3c2779cbde98
 +    }
 +
 +    /**
++     * Void and through the same UI-thread hop as setPuckDirect. `values` is
++     * `[tag, lng, lat, version, burstMs, hide]` per marker view; tags resolve to the marker's ghost view.
++     * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraModule.mm `setMarkersDirect`
++     */
++    override fun setMarkersDirect(viewRef: ViewRefTag?, values: ReadableArray) {
++        val flat = DoubleArray(values.size()) { values.getDouble(it) }
++        withViewportOnUIThread(viewRef, ignoredPromise()) {
++            it.setMarkersDirect(flat) { tag ->
++                try {
++                    UIManagerHelper.getUIManagerForReactTag(reactApplicationContext, tag)?.resolveView(tag)
++                } catch (e: RuntimeException) {
++                    null
++                }
++            }
++        }
++    }
++
++    /**
 +     * Resolver plumbing needs a Promise; a void command has nobody to answer.
 +     * PromiseImpl no-ops on null callbacks for both resolve and reject.
 +     */
@@ -140,12 +170,456 @@ index 722903d70657a81d7f78bcff50c03ea424887b5b..c920c4892cf5e36366dd3c2779cbde98
      private fun getAnimationOptions(
          animationMode: Double,
          animationDuration: Double
+diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXMarkerSprites.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXMarkerSprites.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..72d9efcaa699044876b76cca84b8153769b11539
+--- /dev/null
++++ b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXMarkerSprites.kt
+@@ -0,0 +1,438 @@
++package com.rnmapbox.rnmbx.components.camera
++
++import android.graphics.Bitmap
++import android.graphics.Canvas
++import android.graphics.Picture
++import android.graphics.RectF
++import android.opengl.GLES30
++import android.opengl.GLUtils
++import android.os.SystemClock
++import android.util.Log
++import android.view.Choreographer
++import android.view.View
++import android.view.ViewGroup
++import java.lang.ref.WeakReference
++import java.nio.ByteBuffer
++import java.nio.ByteOrder
++import kotlin.math.PI
++import kotlin.math.ceil
++import kotlin.math.cos
++import kotlin.math.floor
++import kotlin.math.ln
++import kotlin.math.pow
++import kotlin.math.tan
++
++/**
++ * Marker views drawn inside the map's own render pass, so they move with the map in the same
++ * frame instead of trailing it. JS keeps rendering each marker as a marker view (the "ghost"),
++ * which stays the look and the touch target; this class snapshots the ghost's view tree into a
++ * bitmap and draws it as a screen-aligned sprite at the marker's coordinate, centred like the
++ * marker view's default anchor and snapped to whole pixels so it stays crisp. Once a snapshot is
++ * in, a ghost JS marks hidden is hidden on screen through its alpha, which neither `View.draw` nor
++ * touch dispatch looks at.
++ *
++ * Snapshots are taken on the UI thread only when JS reports a change (a new `version`), then every
++ * frame for `burstMs` after it, which covers the mount landing a frame late (the ghost is looked
++ * up again until it is there), entering animations, pressed feedback and image decodes. The render thread uploads a snapshot once and then only
++ * draws the texture.
++ *
++ * State is shared with [RNMBXPuck] under its lock; the puck's layer host calls [initialize],
++ * [render], [contextLost] and [deinitialize]. Draw order is the order JS sends.
++ *
++ * @parity /src/components/map/markerLayerChannel.ts `createMarkerLayerChannel`
++ * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXMarkerSprites.swift
++ * @platform-diff The ghost hides through its own alpha here; on iOS a hit test skips a view under
++ * 1% alpha, so there the view annotation that hosts the ghost is masked instead.
++ */
++internal class RNMBXMarkerSprites(private val lock: Any, private val repaint: () -> Unit) {
++    private class Sprite(val tag: Int) {
++        var view: WeakReference<View>? = null
++        var lng = 0.0
++        var lat = 0.0
++        var version = Double.NaN
++        var burstUntil = 0L
++        /** JS wants the ghost hidden on screen. */
++        var hide = false
++        /** The ghost this class has hidden, to show again when that changes. */
++        var hidden: WeakReference<View>? = null
++        // Written on the UI thread, uploaded on the render thread, both under the lock.
++        var bitmap: Bitmap? = null
++        /** The coordinate's position inside [bitmap], in pixels from its top-left corner. */
++        var anchorX = 0f
++        var anchorY = 0f
++        var dirty = false
++        // Render thread only.
++        var texture = 0
++        var textureWidth = 0
++        var textureHeight = 0
++    }
++
++    private val sprites = ArrayList<Sprite>()
++    private val byTag = HashMap<Int, Sprite>()
++    /** Textures of removed sprites, deleted on the render thread. */
++    private val retired = ArrayList<Int>()
++
++    // UI thread scratch.
++    private val bounds = RectF()
++    private val childRect = RectF()
++    private val canvas = Canvas()
++    private var frameScheduled = false
++    private val frame = Choreographer.FrameCallback { onFrame() }
++    /** The last resolver JS's call came with; a ghost can mount after its first snapshot request. */
++    private var resolve: (Int) -> View? = { null }
++
++    /** Guarded by the lock. */
++    val isEmpty: Boolean
++        get() = sprites.isEmpty()
++
++    /**
++     * UI thread. [values] is `[tag, lng, lat, version, burstMs, hide]` per marker, in draw order;
++     * [resolve] finds a ghost view by its React tag.
++     */
++    fun set(values: DoubleArray, resolve: (Int) -> View?) {
++        this.resolve = resolve
++        val now = SystemClock.uptimeMillis()
++        val changed = ArrayList<Sprite>()
++        synchronized(lock) {
++            val keep = HashSet<Int>()
++            sprites.clear()
++            var i = 0
++            while (i + STRIDE <= values.size) {
++                val tag = values[i].toInt()
++                val sprite = byTag.getOrPut(tag) { Sprite(tag) }
++                sprite.lng = values[i + 1]
++                sprite.lat = values[i + 2]
++                sprite.hide = values[i + 5] != 0.0
++                if (!sprite.hide) show(sprite)
++                val version = values[i + 3]
++                if (version != sprite.version) {
++                    sprite.version = version
++                    sprite.burstUntil = now + values[i + 4].toLong()
++                    changed.add(sprite)
++                }
++                sprites.add(sprite)
++                keep.add(tag)
++                i += STRIDE
++            }
++            val gone = byTag.values.filter { it.tag !in keep }
++            for (sprite in gone) {
++                byTag.remove(sprite.tag)
++                show(sprite)
++                if (sprite.texture != 0) retired.add(sprite.texture)
++            }
++        }
++        for (sprite in changed) snapshot(sprite)
++        if (changed.isNotEmpty()) scheduleFrame()
++    }
++
++    /** UI thread. Drops every sprite, e.g. when the camera leaves the map. */
++    fun clear() {
++        resolve = { null }
++        synchronized(lock) {
++            for (sprite in byTag.values) {
++                show(sprite)
++                if (sprite.texture != 0) retired.add(sprite.texture)
++            }
++            sprites.clear()
++            byTag.clear()
++        }
++    }
++
++    private fun scheduleFrame() {
++        if (frameScheduled) return
++        frameScheduled = true
++        Choreographer.getInstance().postFrameCallback(frame)
++    }
++
++    private fun onFrame() {
++        frameScheduled = false
++        val now = SystemClock.uptimeMillis()
++        var live = false
++        synchronized(lock) {
++            for (sprite in sprites) {
++                if (sprite.burstUntil < now) continue
++                snapshotLocked(sprite)
++                live = true
++            }
++        }
++        if (live) {
++            repaint()
++            scheduleFrame()
++        }
++    }
++
++    private fun snapshot(sprite: Sprite) {
++        synchronized(lock) { snapshotLocked(sprite) }
++        repaint()
++    }
++
++    /** UI thread. Undoes [snapshotLocked]'s hiding. */
++    private fun show(sprite: Sprite) {
++        sprite.hidden?.get()?.alpha = 1f
++        sprite.hidden = null
++    }
++
++    /** Draws the ghost's tree, overflowing children included, into the sprite's bitmap. */
++    private fun snapshotLocked(sprite: Sprite) {
++        if (sprite.view?.get() == null) sprite.view = resolve(sprite.tag)?.let { WeakReference(it) }
++        val view = sprite.view?.get() ?: return
++        if (view.width == 0 || view.height == 0) return
++        bounds.set(0f, 0f, view.width.toFloat(), view.height.toFloat())
++        accumulate(view, 0f, 0f)
++        val left = floor(bounds.left)
++        val top = floor(bounds.top)
++        val width = (ceil(bounds.right) - left).toInt()
++        val height = (ceil(bounds.bottom) - top).toInt()
++        var bitmap = sprite.bitmap
++        if (bitmap == null || bitmap.width != width || bitmap.height != height) {
++            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
++            sprite.bitmap = bitmap
++        } else {
++            bitmap.eraseColor(0)
++        }
++        var software = true
++        canvas.setBitmap(bitmap)
++        val saveCount = canvas.save()
++        try {
++            canvas.translate(-left, -top)
++            // View.draw leaves out the view's own alpha, which is how the ghost hides on screen.
++            view.draw(canvas)
++        } catch (e: IllegalArgumentException) {
++            // A hardware bitmap (a decoded photo) cannot go on a software canvas.
++            software = false
++        } finally {
++            canvas.restoreToCount(saveCount)
++            canvas.setBitmap(null)
++        }
++        if (!software) {
++            // Record instead, let the GPU render it, then read it back.
++            val picture = Picture()
++            val recording = picture.beginRecording(width, height)
++            recording.translate(-left, -top)
++            view.draw(recording)
++            picture.endRecording()
++            val rendered = Bitmap.createBitmap(picture)
++            // A mutable copy: the next snapshot erases it and draws into it.
++            sprite.bitmap = rendered.copy(Bitmap.Config.ARGB_8888, true)
++            rendered.recycle()
++            bitmap.recycle()
++        }
++        // The marker view centres the ghost on the coordinate.
++        sprite.anchorX = view.width / 2f - left
++        sprite.anchorY = view.height / 2f - top
++        sprite.dirty = true
++        if (sprite.hide && sprite.hidden == null) {
++            view.alpha = 0f
++            sprite.hidden = WeakReference(view)
++        }
++    }
++
++    /** Grows [bounds] by every visible descendant, with each child's own transform. */
++    private fun accumulate(view: View, dx: Float, dy: Float) {
++        if (view !is ViewGroup) return
++        for (index in 0 until view.childCount) {
++            val child = view.getChildAt(index)
++            if (child.visibility != View.VISIBLE) continue
++            childRect.set(0f, 0f, child.width.toFloat(), child.height.toFloat())
++            child.matrix.mapRect(childRect)
++            val x = dx + child.left
++            val y = dy + child.top
++            childRect.offset(x, y)
++            bounds.union(childRect)
++            accumulate(child, x, y)
++        }
++    }
++
++    // Render thread.
++    private val quad =
++        ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
++            put(floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f))
++            flip()
++        }
++    private val viewport = IntArray(4)
++    private val ids = IntArray(1)
++    private var program = 0
++    private var clipLocation = -1
++    private var viewportLocation = -1
++    private var rectLocation = -1
++    private var textureLocation = -1
++    private var vao = 0
++    private var buffer = 0
++
++    fun initialize() {
++        program = link(VERTEX_SHADER, FRAGMENT_SHADER)
++        if (program == 0) return
++        clipLocation = GLES30.glGetUniformLocation(program, "u_clip")
++        viewportLocation = GLES30.glGetUniformLocation(program, "u_viewport")
++        rectLocation = GLES30.glGetUniformLocation(program, "u_rect")
++        textureLocation = GLES30.glGetUniformLocation(program, "u_texture")
++        GLES30.glGenVertexArrays(1, ids, 0)
++        vao = ids[0]
++        GLES30.glGenBuffers(1, ids, 0)
++        buffer = ids[0]
++        GLES30.glBindVertexArray(vao)
++        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffer)
++        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, 8 * 4, quad, GLES30.GL_STATIC_DRAW)
++        GLES30.glEnableVertexAttribArray(0)
++        GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 2 * 4, 0)
++    }
++
++    /**
++     * Called by the puck's host with its GL state saved and blending set up, VAO and array
++     * buffer free to change. [projection] is the frame's world-pixel projection.
++     */
++    fun render(projection: DoubleArray, zoom: Double) {
++        if (program == 0) return
++        synchronized(lock) {
++            if (retired.isNotEmpty()) {
++                for (texture in retired) {
++                    ids[0] = texture
++                    GLES30.glDeleteTextures(1, ids, 0)
++                }
++                retired.clear()
++            }
++            if (sprites.isEmpty()) return
++            GLES30.glGetIntegerv(GLES30.GL_VIEWPORT, viewport, 0)
++            GLES30.glUseProgram(program)
++            GLES30.glBindVertexArray(vao)
++            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
++            GLES30.glUniform1i(textureLocation, 0)
++            GLES30.glUniform2f(viewportLocation, viewport[2].toFloat(), viewport[3].toFloat())
++            val worldSize = 512.0 * 2.0.pow(zoom)
++            val p = projection
++            for (sprite in sprites) {
++                val bitmap = sprite.bitmap ?: continue
++                if (sprite.texture == 0 || sprite.dirty) upload(sprite, bitmap)
++                val latRad = sprite.lat.coerceIn(-MAX_LAT, MAX_LAT) * PI / 180.0
++                val x = (sprite.lng + 180.0) / 360.0 * worldSize
++                val y = (1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * worldSize
++                val w = p[3] * x + p[7] * y + p[15]
++                // Behind the camera: nothing on screen to draw.
++                if (w <= 0.0) continue
++                GLES30.glUniform4f(
++                    clipLocation,
++                    (p[0] * x + p[4] * y + p[12]).toFloat(),
++                    (p[1] * x + p[5] * y + p[13]).toFloat(),
++                    0f,
++                    w.toFloat(),
++                )
++                GLES30.glUniform4f(
++                    rectLocation,
++                    -sprite.anchorX,
++                    -sprite.anchorY,
++                    sprite.textureWidth.toFloat(),
++                    sprite.textureHeight.toFloat(),
++                )
++                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, sprite.texture)
++                GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
++            }
++        }
++    }
++
++    /** Under the lock: the UI thread may be about to redraw the same bitmap. */
++    private fun upload(sprite: Sprite, bitmap: Bitmap) {
++        if (sprite.texture == 0) {
++            GLES30.glGenTextures(1, ids, 0)
++            sprite.texture = ids[0]
++            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, sprite.texture)
++            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
++            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
++            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
++            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
++            sprite.textureWidth = 0
++        } else {
++            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, sprite.texture)
++        }
++        if (bitmap.width == sprite.textureWidth && bitmap.height == sprite.textureHeight) {
++            GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, bitmap)
++        } else {
++            GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bitmap, 0)
++            sprite.textureWidth = bitmap.width
++            sprite.textureHeight = bitmap.height
++        }
++        sprite.dirty = false
++    }
++
++    fun contextLost() {
++        // Textures died with the context; the bitmaps are still here and upload again.
++        program = 0
++        vao = 0
++        buffer = 0
++        synchronized(lock) {
++            for (sprite in byTag.values) sprite.texture = 0
++            retired.clear()
++        }
++    }
++
++    fun deinitialize() {
++        synchronized(lock) {
++            for (sprite in byTag.values) {
++                if (sprite.texture != 0) retired.add(sprite.texture)
++            }
++            for (texture in retired) {
++                ids[0] = texture
++                GLES30.glDeleteTextures(1, ids, 0)
++            }
++        }
++        if (program != 0) GLES30.glDeleteProgram(program)
++        ids[0] = buffer
++        if (buffer != 0) GLES30.glDeleteBuffers(1, ids, 0)
++        ids[0] = vao
++        if (vao != 0) GLES30.glDeleteVertexArrays(1, ids, 0)
++        contextLost()
++    }
++
++    companion object {
++        private const val TAG = "RNMBXMarkerSprites"
++        /** Doubles per marker in [set]. */
++        private const val STRIDE = 6
++        private const val MAX_LAT = 85.051128
++
++        // The coordinate is projected on the CPU in doubles; the shader snaps it to a whole pixel
++        // and spans the bitmap 1:1 from there, with y flipped from screen-down to GL-up.
++        private const val VERTEX_SHADER = """#version 300 es
++uniform vec4 u_clip;
++uniform vec2 u_viewport;
++uniform vec4 u_rect;
++in vec2 a_corner;
++out vec2 v_uv;
++void main() {
++  vec2 anchor = floor((u_clip.xy / u_clip.w * 0.5 + 0.5) * u_viewport + 0.5);
++  vec2 offset = u_rect.xy + a_corner * u_rect.zw;
++  vec2 pixel = anchor + vec2(offset.x, -offset.y);
++  gl_Position = vec4(pixel / u_viewport * 2.0 - 1.0, 0.0, 1.0);
++  v_uv = a_corner;
++}
++"""
++
++        // The bitmap is premultiplied, as the host's blend function expects.
++        private const val FRAGMENT_SHADER = """#version 300 es
++precision mediump float;
++uniform sampler2D u_texture;
++in vec2 v_uv;
++out vec4 fragColor;
++void main() { fragColor = texture(u_texture, v_uv); }
++"""
++
++        private fun link(vertex: String, fragment: String): Int {
++            val vs = RNMBXPuck.compile(GLES30.GL_VERTEX_SHADER, vertex)
++            val fs = RNMBXPuck.compile(GLES30.GL_FRAGMENT_SHADER, fragment)
++            if (vs == 0 || fs == 0) return 0
++            val program = GLES30.glCreateProgram()
++            GLES30.glAttachShader(program, vs)
++            GLES30.glAttachShader(program, fs)
++            GLES30.glBindAttribLocation(program, 0, "a_corner")
++            GLES30.glLinkProgram(program)
++            GLES30.glDeleteShader(vs)
++            GLES30.glDeleteShader(fs)
++            val ok = IntArray(1)
++            GLES30.glGetProgramiv(program, GLES30.GL_LINK_STATUS, ok, 0)
++            if (ok[0] == 0) {
++                Log.e(TAG, "program link failed: ${GLES30.glGetProgramInfoLog(program)}")
++                GLES30.glDeleteProgram(program)
++                return 0
++            }
++            return program
++        }
++    }
++}
 diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt
 new file mode 100644
-index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f6e5835f9
+index 0000000000000000000000000000000000000000..6602ae749863eb87efc2bf21a19f8952e64f6dbf
 --- /dev/null
 +++ b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt
-@@ -0,0 +1,404 @@
+@@ -0,0 +1,442 @@
 +package com.rnmapbox.rnmbx.components.camera
 +
 +import android.opengl.GLES30
@@ -175,13 +649,16 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 + * into metres with the metres-per-pixel at the camera's latitude. Column-major.
 + * No depth test: the coin is an overlay, drawn back to front (painter's order in [render]).
 + *
-+ * Written on the UI thread by [set], read on the render thread by the layer host. The layer is
-+ * persistent, so Mapbox keeps it across style reloads; it is added on first use and removed when
-+ * hidden. Mercator only: under globe projection (zoom below ~5) the coin is misplaced.
++ * The same layer draws the app's in-map markers ([RNMBXMarkerSprites]) after the coin, so one
++ * layer keeps all of them above the style's layers and in a fixed order among themselves.
++ *
++ * Written on the UI thread by [set] and [setMarkers], read on the render thread by the layer
++ * host. The layer is persistent, so Mapbox keeps it across style reloads; it is added on first use
++ * and removed when neither the puck nor a marker is left. Mercator only: under globe projection (zoom below ~5)
++ * the coin and markers are misplaced.
 + *
 + * @parity /src/modules/map/lib/nativePuck.ts `PuckLayerState`
-+ * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraModule.mm `setPuckDirect`
-+ * @platform-diff Android only; iOS keeps the marker-view puck.
++ * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXPuck.swift
 + */
 +internal class RNMBXPuck {
 +    private val lock = Any()
@@ -193,6 +670,9 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +    private var shown = false
 +    /** Bumped when the vertex data (colour or shadow) changes. Bearing is a draw-time rotation. */
 +    private var geometryVersion = 1L
++
++    private var map: MapboxMap? = null
++    private val markers = RNMBXMarkerSprites(lock) { map?.triggerRepaint() }
 +
 +    private val host = Host()
 +
@@ -222,12 +702,24 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +            }
 +            shown = show
 +        }
++        this.map = map
 +        apply(map, keepOnTop = moved)
++    }
++
++    /**
++     * UI thread. [values] is `[tag, lng, lat, version, burstMs, hide]` per marker view, in draw order;
++     * [resolve] finds a marker's ghost view by its React tag.
++     */
++    fun setMarkers(map: MapboxMap, values: DoubleArray, resolve: (Int) -> android.view.View?) {
++        this.map = map
++        markers.set(values, resolve)
++        apply(map, keepOnTop = true)
 +    }
 +
 +    /** UI thread. Takes the layer out of the map; a later [set] puts it back. */
 +    fun remove(map: MapboxMap?) {
 +        synchronized(lock) { shown = false }
++        markers.clear()
 +        val style = map?.style ?: return
 +        if (style.styleLayerExists(LAYER_ID)) style.removeStyleLayer(LAYER_ID)
 +    }
@@ -236,7 +728,7 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +    private fun apply(map: MapboxMap, keepOnTop: Boolean) {
 +        val style = map.style ?: return
 +        val exists = style.styleLayerExists(LAYER_ID)
-+        if (!shown) {
++        if (!shown && synchronized(lock) { markers.isEmpty }) {
 +            if (exists) style.removeStyleLayer(LAYER_ID)
 +            return
 +        }
@@ -245,8 +737,9 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +                Log.e(TAG, "add layer failed: $it")
 +            }
 +        } else if (keepOnTop && style.styleLayers.lastOrNull()?.id != LAYER_ID) {
-+            // Layers the app adds later (trails, rider pins) land above it; the puck stays on top.
-+            // Only on a position change, never per bearing sample: listing layers allocates.
++            // Layers the app adds later (trails, routes) land above it; the puck and markers stay on
++            // top. Only on a position or marker change, never per bearing sample: listing layers
++            // allocates.
 +            style.moveStyleLayer(LAYER_ID, TOP)
 +        }
 +        map.triggerRepaint()
@@ -258,6 +751,7 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +        private val projection = DoubleArray(16)
 +        private val mvp = FloatArray(16)
 +        private val saved = IntArray(8)
++        private val textureBinding = IntArray(1)
 +        private val savedFlag = BooleanArray(1)
 +        private var program = 0
 +        private var mvpLocation = -1
@@ -274,6 +768,7 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +        private var sArgb = 0
 +        private var sShadowAlpha = 0f
 +        private var sShown = false
++        private var sMarkers = false
 +        private var sVersion = 0L
 +
 +        override fun initialize() {
@@ -309,6 +804,7 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +            GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, STRIDE, 0)
 +            GLES30.glEnableVertexAttribArray(1)
 +            GLES30.glVertexAttribPointer(1, 4, GLES30.GL_FLOAT, false, STRIDE, 3 * 4)
++            markers.initialize()
 +            GLES30.glBindVertexArray(saved[0])
 +            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, saved[1])
 +            uploadedVersion = 0
@@ -324,8 +820,9 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +                sShadowAlpha = shadowAlpha
 +                sShown = shown
 +                sVersion = geometryVersion
++                sMarkers = !markers.isEmpty
 +            }
-+            if (!sShown) return
++            if (!sShown && !sMarkers) return
 +            val matrix = parameters.projectionMatrix
 +            for (i in 0 until 16) projection[i] = matrix[i]
 +
@@ -342,6 +839,9 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +            val prevDepth = GLES30.glIsEnabled(GLES30.GL_DEPTH_TEST)
 +            val prevStencil = GLES30.glIsEnabled(GLES30.GL_STENCIL_TEST)
 +            val prevCull = GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
++            GLES30.glGetIntegerv(GLES30.GL_ACTIVE_TEXTURE, saved, 7)
++            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
++            GLES30.glGetIntegerv(GLES30.GL_TEXTURE_BINDING_2D, textureBinding, 0)
 +
 +            GLES30.glBindVertexArray(vao[0])
 +            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffer[0])
@@ -371,10 +871,14 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +            // Painter's order, valid from any heading and pitch: the camera is always above the
 +            // coin, so the top face covers everything under it; the wall is one flat shade, so its
 +            // back and front halves need no sorting; the arrow lies in the top plane.
-+            draw(x + dropX, y + dropY, 0.0, SHADOW_FIRST, DISC_COUNT)
-+            draw(x, y, 0.0, BODY_FIRST, BODY_COUNT)
-+            if (!sBearing.isNaN()) draw(x, y, sBearing * PI / 180.0, ARROW_FIRST, ARROW_COUNT)
-+            draw(x, y, 0.0, TOP_FIRST, TOP_COUNT)
++            if (sShown) {
++                draw(x + dropX, y + dropY, 0.0, SHADOW_FIRST, DISC_COUNT)
++                draw(x, y, 0.0, BODY_FIRST, BODY_COUNT)
++                if (!sBearing.isNaN()) draw(x, y, sBearing * PI / 180.0, ARROW_FIRST, ARROW_COUNT)
++                draw(x, y, 0.0, TOP_FIRST, TOP_COUNT)
++            }
++            // Above the coin, as marker views stacked above it.
++            if (sMarkers) markers.render(projection, parameters.zoom)
 +
 +            val err = GLES30.glGetError()
 +            if (err != GLES30.GL_NO_ERROR && !loggedError) {
@@ -382,6 +886,9 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +                loggedError = true
 +            }
 +
++            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
++            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textureBinding[0])
++            GLES30.glActiveTexture(saved[7])
 +            GLES30.glUseProgram(saved[0])
 +            GLES30.glBindVertexArray(saved[1])
 +            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, saved[2])
@@ -399,9 +906,11 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +            vao[0] = 0
 +            buffer[0] = 0
 +            uploadedVersion = 0
++            markers.contextLost()
 +        }
 +
 +        override fun deinitialize() {
++            markers.deinitialize()
 +            if (program != 0) GLES30.glDeleteProgram(program)
 +            if (buffer[0] != 0) GLES30.glDeleteBuffers(1, buffer, 0)
 +            if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
@@ -448,10 +957,13 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +
 +    companion object {
 +        private const val TAG = "RNMBXPuck"
-+        private const val LAYER_ID = "rnmbx-puck"
++        /** Layers added without a position go under this one, see `RNMBXLayer.add`. */
++        const val LAYER_ID = "rnmbx-puck"
 +        private val TOP = LayerPosition(null, null, null)
 +
 +        // GpsPuck's coin, in dp.
++        // @parity /src/modules/map/components/GpsPuck.tsx `COIN_SIZE`
++        // @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXPuck.swift `coinRadius`
 +        private const val COIN_RADIUS = 11f
 +        private const val COIN_HEIGHT = 12f
 +        private const val RIM_WIDTH = 3f
@@ -503,7 +1015,7 @@ index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f
 +void main() { fragColor = v_color; }
 +"""
 +
-+        private fun compile(type: Int, source: String): Int {
++        internal fun compile(type: Int, source: String): Int {
 +            val shader = GLES30.glCreateShader(type)
 +            GLES30.glShaderSource(shader, source)
 +            GLES30.glCompileShader(shader)
@@ -604,11 +1116,36 @@ index 9043e025629638d25d3cef4bc4774c2cbf278b4a..33b45602d5003b061afbf2a1bb443f4f
          }
          val gestures = WritableNativeMap()
          gestures.putBoolean("isGestureActive", wasGestureActive/*mCameraChangeTracker.isUserInteraction*/)
+diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/styles/layers/RNMBXLayer.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/styles/layers/RNMBXLayer.kt
+index be1a597f6bafe056b483634d357bbed775eb6286..3b3afacbe891001b8656052ebdca8c9daaf80d6a 100644
+--- a/android/src/main/java/com/rnmapbox/rnmbx/components/styles/layers/RNMBXLayer.kt
++++ b/android/src/main/java/com/rnmapbox/rnmbx/components/styles/layers/RNMBXLayer.kt
+@@ -1,5 +1,6 @@
+ package com.rnmapbox.rnmbx.components.styles.layers
+ 
++import com.rnmapbox.rnmbx.components.camera.RNMBXPuck
+ import android.content.Context
+ import com.mapbox.maps.extension.style.layers.Layer
+ import com.rnmapbox.rnmbx.components.mapview.RNMBXMapView
+@@ -162,7 +163,12 @@ abstract class RNMBXLayer<T : Layer?>(protected var mContext: Context) : Abstrac
+         } */
+ 
+         Logger.logged("RNMBXLayer.add") {
+-            style!!.addLayer(mLayer!!)
++            // Under the rider puck and in-map markers, which stay on top of the style's layers.
++            if (style!!.styleLayerExists(RNMBXPuck.LAYER_ID)) {
++                style!!.addLayerBelow(mLayer!!, RNMBXPuck.LAYER_ID)
++            } else {
++                style!!.addLayer(mLayer!!)
++            }
+             mMapView!!.layerAdded(mLayer!!)
+         }
+     }
 diff --git a/ios/RNMBX/RNMBXCamera.swift b/ios/RNMBX/RNMBXCamera.swift
-index bc3f6321a79d21ed1294b2e23c6d661dd1b8f50d..9b7d3a42a05d66e4e05db9925cf884bb3f1f3682 100644
+index bc3f6321a79d21ed1294b2e23c6d661dd1b8f50d..a863b5581760a25a9818c1ea02227167fc737fe9 100644
 --- a/ios/RNMBX/RNMBXCamera.swift
 +++ b/ios/RNMBX/RNMBXCamera.swift
-@@ -313,7 +313,40 @@ open class RNMBXCamera : RNMBXMapAndMapViewComponentBase {
+@@ -313,7 +313,67 @@ open class RNMBXCamera : RNMBXMapAndMapViewComponentBase {
    @objc public func updateCameraStop(_ stop: [String: Any]) {
      self.stop = stop
    }
@@ -647,14 +1184,49 @@ index bc3f6321a79d21ed1294b2e23c6d661dd1b8f50d..9b7d3a42a05d66e4e05db9925cf884bb
 +    map.camera.cancelAnimations()
 +  }
 +
++  private let puck = RNMBXPuck()
++
++  /**
++   Place the rider puck, drawn by a custom layer inside the map's own frame. NaN bearing hides
++   the arrow; `visible` false removes the layer. Dropped while the map is not live, like
++   cancelCameraAnimations: the next write carries the full state again.
++   @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt `setPuckDirect`
++   */
++  @objc public func setPuckDirect(_ lng: Double, lat: Double, bearing: Double, color: Double, shadowAlpha: Double, visible: Bool) {
++    guard let map = self.map?.mapView?.mapboxMap else { return }
++    // `color` is a signed ARGB int carried as a double.
++    let argb = UInt32(truncatingIfNeeded: Int64(color))
++    puck.set(map: map, lng: lng, lat: lat, bearing: bearing, argb: argb, shadowAlpha: Float(shadowAlpha), visible: visible)
++  }
++
++  /**
++   Draw marker views inside the map's own frame; see RNMBXMarkerSprites. Dropped while the map
++   is not live: the next write carries the full list again.
++   @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt `setMarkersDirect`
++   */
++  @objc public func setMarkersDirect(_ values: [NSNumber]) {
++    guard let rnmbxMap = self.map, let map = rnmbxMap.mapView?.mapboxMap else { return }
++    // Fabric sets each component view's `tag` to its React tag. The ghosts sit inside the map's
++    // view annotations, so search from the map view.
++    puck.setMarkers(map: map, values: values.map { $0.doubleValue }) { [weak rnmbxMap] in rnmbxMap?.viewWithTag($0) }
++  }
++
    func _toCoordinateBounds(_ bounds: FeatureCollection) throws -> CoordinateBounds  {
      guard bounds.features.count == 2 else {
        throw RNMBXError.paramError("Expected two Points in FeatureColletion")
+@@ -595,6 +655,7 @@ open class RNMBXCamera : RNMBXMapAndMapViewComponentBase {
+     }
+ 
+     mapView.viewport.removeStatusObserver(self)
++    puck.remove(map: mapView.mapboxMap)
+     return super.removeFromMap(map, mapView: mapView, reason: reason)
+   }
+ 
 diff --git a/ios/RNMBX/RNMBXCameraModule.mm b/ios/RNMBX/RNMBXCameraModule.mm
-index 6599a79f947b737709bf9bab13dfc497231eb8e2..fa438f7927bf5e2fa7d553b7868e2e446dbe25c6 100644
+index 6599a79f947b737709bf9bab13dfc497231eb8e2..dd2fc9f74b50cecf0ef0275f0c259c73fdac6f18 100644
 --- a/ios/RNMBX/RNMBXCameraModule.mm
 +++ b/ios/RNMBX/RNMBXCameraModule.mm
-@@ -50,6 +50,53 @@ RCT_EXPORT_METHOD(updateCameraStop:(nonnull NSNumber *)viewRef
+@@ -50,6 +50,73 @@ RCT_EXPORT_METHOD(updateCameraStop:(nonnull NSNumber *)viewRef
      } reject:reject methodName:@"updateCameraStop"];
  }
  
@@ -692,9 +1264,9 @@ index 6599a79f947b737709bf9bab13dfc497231eb8e2..fa438f7927bf5e2fa7d553b7868e2e44
 +    } reject:reject methodName:@"cancelCameraAnimations"];
 +}
 +
++// Void like setCameraDirect, through the same UI block queue, so a puck write and a camera write
++// sent in one JS tick reach the map in order. `color` is a signed ARGB int carried as a double.
 +// @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt `setPuckDirect`
-+// TODO(ios parity): no custom layer puck on iOS yet; JS keeps the marker-view puck there and
-+// never calls this.
 +RCT_EXPORT_METHOD(setPuckDirect:(nonnull NSNumber *)viewRef
 +                  lng:(double)lng
 +                  lat:(double)lat
@@ -703,11 +1275,48 @@ index 6599a79f947b737709bf9bab13dfc497231eb8e2..fa438f7927bf5e2fa7d553b7868e2e44
 +                  shadowAlpha:(double)shadowAlpha
 +                  visible:(BOOL)visible)
 +{
++    RCTPromiseRejectBlock reject = ^(NSString *code, NSString *message, NSError *error) {
++        NSLog(@"setPuckDirect: %@ %@", code, message);
++    };
++    [self withCamera:viewRef block:^(RNMBXCamera *view) {
++        [view setPuckDirect:lng lat:lat bearing:bearing color:color shadowAlpha:shadowAlpha visible:visible];
++    } reject:reject methodName:@"setPuckDirect"];
++}
++
++// Void and through the same UI block queue as setPuckDirect. `values` is
++// `[tag, lng, lat, version, burstMs, hide]` per marker view; tags resolve to the marker's ghost view.
++// @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt `setMarkersDirect`
++RCT_EXPORT_METHOD(setMarkersDirect:(nonnull NSNumber *)viewRef
++                  values:(NSArray *)values)
++{
++    RCTPromiseRejectBlock reject = ^(NSString *code, NSString *message, NSError *error) {
++        NSLog(@"setMarkersDirect: %@ %@", code, message);
++    };
++    [self withCamera:viewRef block:^(RNMBXCamera *view) {
++        [view setMarkersDirect:values];
++    } reject:reject methodName:@"setMarkersDirect"];
 +}
 +
  RCT_EXPORT_METHOD(moveBy:(nonnull NSNumber *)viewRef
                    x:(double)x
                    y:(double)y
+diff --git a/ios/RNMBX/RNMBXLayer.swift b/ios/RNMBX/RNMBXLayer.swift
+index 1967a5ea72e3b4027e92d285d5d3e69454a1c17e..d4329b9420a8f947c3dc14e313a9b112900e60b9 100644
+--- a/ios/RNMBX/RNMBXLayer.swift
++++ b/ios/RNMBX/RNMBXLayer.swift
+@@ -339,6 +339,12 @@ public class RNMBXLayer : UIView, RNMBXMapComponent, RNMBXSourceConsumer {
+       return
+     }
+ 
++    // Under the rider puck and in-map markers, which stay on top of the style's layers.
++    var layerPosition = layerPosition
++    if case .default = layerPosition, styleLayerExists(style, id: RNMBXPuck.layerId) {
++      layerPosition = .below(RNMBXPuck.layerId)
++    }
++
+     do {
+       try style.addLayer(styleLayer, layerPosition: layerPosition)
+       onInsert?()
 diff --git a/ios/RNMBX/RNMBXMapView.swift b/ios/RNMBX/RNMBXMapView.swift
 index 4ffb4266e9fe1c2f5e111094ca5b758051c8b333..331bd6276010f09925e132f3c21f380d9a552177 100644
 --- a/ios/RNMBX/RNMBXMapView.swift
@@ -787,11 +1396,860 @@ index 4ffb4266e9fe1c2f5e111094ca5b758051c8b333..331bd6276010f09925e132f3c21f380d
    }
  
    public func gestureManager(_ gestureManager: GestureManager, didEndAnimatingFor gestureType: GestureType) {
+diff --git a/ios/RNMBX/RNMBXMarkerSprites.swift b/ios/RNMBX/RNMBXMarkerSprites.swift
+new file mode 100644
+index 0000000000000000000000000000000000000000..5a0c607a05dcb0db2fe4011919c179bae45338f4
+--- /dev/null
++++ b/ios/RNMBX/RNMBXMarkerSprites.swift
+@@ -0,0 +1,388 @@
++import Foundation
++import Metal
++import QuartzCore
++import UIKit
++
++/**
++ Marker views drawn inside the map's own render pass, so they move with the map in the same
++ frame instead of trailing it. JS keeps rendering each marker as a marker view (the "ghost"),
++ which stays the look and the touch target; this class snapshots the ghost's layer tree into a
++ bitmap and draws it as a screen-aligned sprite at the marker's coordinate, centred like the
++ marker view's default anchor and snapped to whole pixels so it stays crisp. Once a snapshot is
++ in, a ghost JS marks hidden is hidden on screen by an empty mask on the view annotation that
++ hosts it: a mask leaves hit testing alone, where alpha under 1% would end it, and the ghost's own
++ layer renders unmasked.
++
++ Snapshots are taken on the main thread only when JS reports a change (a new `version`), then
++ every frame for `burstMs` after it, which covers the mount landing a frame late (the ghost is
++ looked up again until it is there), entering animations, pressed feedback and image decodes. The
++ render side uploads a snapshot once and then only draws the texture.
++
++ State is shared with `RNMBXPuck` under its lock; the puck's layer host calls
++ `renderingWillStart`, `render` and `renderingWillEnd`. Draw order is the order JS sends.
++
++ @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXMarkerSprites.kt
++ @parity /src/components/map/markerLayerChannel.ts `createMarkerLayerChannel`
++ @platform-diff The ghost hides through a mask on its host annotation, where Android uses the
++ ghost's own alpha: a Fabric hit test skips a view under 1% alpha. Each sprite keeps a small pool
++ of textures and only writes one no command buffer is still reading, since Metal reads textures
++ after the frame's encoding returns, where GL orders the upload itself.
++ */
++final class RNMBXMarkerSprites {
++  private final class Sprite {
++    let tag: Int
++    weak var view: UIView?
++    var lng = 0.0
++    var lat = 0.0
++    var version = Double.nan
++    var burstUntil: CFTimeInterval = 0
++    /// JS wants the ghost hidden on screen.
++    var hide = false
++    /// The host this class has masked, to unmask when that changes.
++    weak var hidden: UIView?
++    // Written on the main thread, uploaded on the render side, both under the lock.
++    var pixels: UnsafeMutableRawPointer?
++    var width = 0
++    var height = 0
++    /// The coordinate's position inside the bitmap, in pixels from its top-left corner.
++    var anchorX: Float = 0
++    var anchorY: Float = 0
++    var dirty = false
++    // Render side only.
++    var slots: [TextureSlot] = []
++    var current: TextureSlot?
++
++    init(tag: Int) {
++      self.tag = tag
++    }
++
++    deinit {
++      pixels?.deallocate()
++    }
++  }
++
++  /// A sprite texture, and how many command buffers still read it. Guarded by the lock.
++  private final class TextureSlot {
++    let texture: MTLTexture
++    var reads = 0
++
++    init(_ texture: MTLTexture) {
++      self.texture = texture
++    }
++  }
++
++  private let lock: NSLock
++  var repaint: () -> Void = {}
++  private var sprites: [Sprite] = []
++  private var byTag: [Int: Sprite] = [:]
++
++  // Main thread.
++  private var displayLink: CADisplayLink?
++  /// The last resolver JS's call came with; a ghost can mount after its first snapshot request.
++  private var resolve: (Int) -> UIView? = { _ in nil }
++
++  init(lock: NSLock) {
++    self.lock = lock
++  }
++
++  deinit {
++    displayLink?.invalidate()
++  }
++
++  /// Guarded by the lock.
++  var isEmpty: Bool { sprites.isEmpty }
++
++  /// Main thread. `values` is `[tag, lng, lat, version, burstMs, hide]` per marker, in draw order;
++  /// `resolve` finds a ghost view by its React tag.
++  func set(_ values: [Double], resolve: @escaping (Int) -> UIView?) {
++    self.resolve = resolve
++    let now = CACurrentMediaTime()
++    var changed: [Sprite] = []
++    lock.lock()
++    var keep = Set<Int>()
++    sprites.removeAll(keepingCapacity: true)
++    var i = 0
++    while i + Self.stride <= values.count {
++      let tag = Int(values[i])
++      let sprite = byTag[tag] ?? {
++        let created = Sprite(tag: tag)
++        byTag[tag] = created
++        return created
++      }()
++      sprite.lng = values[i + 1]
++      sprite.lat = values[i + 2]
++      sprite.hide = values[i + 5] != 0
++      if !sprite.hide { show(sprite) }
++      let version = values[i + 3]
++      if version != sprite.version {
++        sprite.version = version
++        sprite.burstUntil = now + values[i + 4] / 1000.0
++        changed.append(sprite)
++      }
++      sprites.append(sprite)
++      keep.insert(tag)
++      i += Self.stride
++    }
++    for (tag, sprite) in byTag where !keep.contains(tag) {
++      byTag.removeValue(forKey: tag)
++      show(sprite)
++    }
++    for sprite in changed { snapshotLocked(sprite) }
++    lock.unlock()
++    if !changed.isEmpty {
++      repaint()
++      startFrames()
++    }
++  }
++
++  /// Main thread. Drops every sprite, e.g. when the camera leaves the map.
++  func clear() {
++    resolve = { _ in nil }
++    lock.lock()
++    for sprite in byTag.values { show(sprite) }
++    sprites.removeAll()
++    byTag.removeAll()
++    lock.unlock()
++    stopFrames()
++  }
++
++  private func startFrames() {
++    guard displayLink == nil else { return }
++    let link = CADisplayLink(target: FrameTarget(self), selector: #selector(FrameTarget.onFrame))
++    link.add(to: .main, forMode: .common)
++    displayLink = link
++  }
++
++  private func stopFrames() {
++    displayLink?.invalidate()
++    displayLink = nil
++  }
++
++  /// Breaks the display link's strong reference back to the sprites.
++  private final class FrameTarget: NSObject {
++    weak var owner: RNMBXMarkerSprites?
++
++    init(_ owner: RNMBXMarkerSprites) {
++      self.owner = owner
++    }
++
++    @objc func onFrame() {
++      owner?.onFrame()
++    }
++  }
++
++  private func onFrame() {
++    let now = CACurrentMediaTime()
++    var live = false
++    lock.lock()
++    for sprite in sprites where sprite.burstUntil >= now {
++      snapshotLocked(sprite)
++      live = true
++    }
++    lock.unlock()
++    if live {
++      repaint()
++    } else {
++      stopFrames()
++    }
++  }
++
++  /// Main thread. Undoes `snapshotLocked`'s hiding.
++  private func show(_ sprite: Sprite) {
++    sprite.hidden?.layer.mask = nil
++    sprite.hidden = nil
++  }
++
++  /// Draws the ghost's tree, overflowing children included, into the sprite's bitmap.
++  private func snapshotLocked(_ sprite: Sprite) {
++    if sprite.view == nil { sprite.view = resolve(sprite.tag) }
++    guard let view = sprite.view, view.bounds.width > 0, view.bounds.height > 0 else { return }
++    let scale = view.window?.screen.scale ?? UIScreen.main.scale
++    var bounds = view.bounds
++    accumulate(view, root: view, into: &bounds)
++    let left = floor(bounds.minX * scale)
++    let top = floor(bounds.minY * scale)
++    let width = Int(ceil(bounds.maxX * scale) - left)
++    let height = Int(ceil(bounds.maxY * scale) - top)
++    if sprite.pixels == nil || sprite.width != width || sprite.height != height {
++      sprite.pixels?.deallocate()
++      sprite.pixels = UnsafeMutableRawPointer.allocate(byteCount: width * height * 4, alignment: 16)
++      sprite.width = width
++      sprite.height = height
++    }
++    guard let pixels = sprite.pixels else { return }
++    memset(pixels, 0, width * height * 4)
++    guard let context = CGContext(
++      data: pixels,
++      width: width,
++      height: height,
++      bitsPerComponent: 8,
++      bytesPerRow: width * 4,
++      space: Self.colorSpace,
++      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
++    ) else { return }
++    // Row 0 of the buffer is the top of the view, as the texture reads it.
++    context.translateBy(x: 0, y: CGFloat(height))
++    context.scaleBy(x: 1, y: -1)
++    context.translateBy(x: -left, y: -top)
++    context.scaleBy(x: scale, y: scale)
++    view.layer.render(in: context)
++    // The marker view centres the ghost on the coordinate.
++    sprite.anchorX = Float(view.bounds.midX * scale - left)
++    sprite.anchorY = Float(view.bounds.midY * scale - top)
++    sprite.dirty = true
++    if sprite.hide && sprite.hidden == nil, let host = Self.host(of: view) {
++      // Empty, so nothing of the host draws; render(in:) above starts below it.
++      let mask = CALayer()
++      host.layer.mask = mask
++      sprite.hidden = host
++    }
++  }
++
++  /// The view annotation hosting a ghost: owned by the marker view, never by Fabric, which
++  /// resets the masks of its own views.
++  private static func host(of view: UIView) -> UIView? {
++    var next = view.superview
++    while let candidate = next {
++      if candidate is RNMBXMarkerViewParentViewAnnotation { return candidate }
++      next = candidate.superview
++    }
++    return nil
++  }
++
++  /// Grows `bounds` by every visible descendant, with each one's own transform.
++  private func accumulate(_ view: UIView, root: UIView, into bounds: inout CGRect) {
++    for child in view.subviews where !child.isHidden {
++      bounds = bounds.union(child.convert(child.bounds, to: root))
++      accumulate(child, root: root, into: &bounds)
++    }
++  }
++
++  // MARK: - Render side
++
++  private var device: MTLDevice?
++  private var library: MTLLibrary?
++  private var pipeline: MTLRenderPipelineState?
++  private var pipelineKey = RNMBXPassFormat()
++  /// clip (4), viewport (2) + padding (2), rect (4), as the shader's struct lays them out.
++  private var uniforms = [Float](repeating: 0, count: 12)
++
++  func renderingWillStart(_ device: MTLDevice, library: MTLLibrary?) {
++    self.device = device
++    self.library = library
++    pipeline = nil
++  }
++
++  /**
++   Called by the puck's host inside its encoder, after the coin. `projection` is the frame's
++   world-point projection.
++   */
++  func render(_ encoder: MTLRenderCommandEncoder, commandBuffer: MTLCommandBuffer, format: RNMBXPassFormat, projection p: [Double], zoom: Double) {
++    guard let device, let library, format.width > 0, format.height > 0 else { return }
++    if pipeline == nil || format != pipelineKey {
++      pipeline = RNMBXPuck.makePipeline(device, library, format, vertex: "sprite_vertex", fragment: "sprite_fragment")
++      pipelineKey = format
++    }
++    guard let pipeline else { return }
++    lock.lock()
++    defer { lock.unlock() }
++    if sprites.isEmpty { return }
++    encoder.setRenderPipelineState(pipeline)
++    uniforms[4] = Float(format.width)
++    uniforms[5] = Float(format.height)
++    let worldSize = 512.0 * pow(2.0, zoom)
++    var read: [TextureSlot] = []
++    var waiting = false
++    for sprite in sprites {
++      if sprite.dirty && !upload(sprite, device) { waiting = true }
++      guard let slot = sprite.current else { continue }
++      let texture = slot.texture
++      let (x, y) = RNMBXPuck.worldPoint(lng: sprite.lng, lat: sprite.lat, worldSize: worldSize)
++      let w = p[3] * x + p[7] * y + p[15]
++      // Behind the camera: nothing on screen to draw.
++      if w <= 0 { continue }
++      uniforms[0] = Float(p[0] * x + p[4] * y + p[12])
++      uniforms[1] = Float(p[1] * x + p[5] * y + p[13])
++      uniforms[2] = 0
++      uniforms[3] = Float(w)
++      uniforms[8] = -sprite.anchorX
++      uniforms[9] = -sprite.anchorY
++      uniforms[10] = Float(texture.width)
++      uniforms[11] = Float(texture.height)
++      uniforms.withUnsafeBytes { encoder.setVertexBytes($0.baseAddress!, length: $0.count, index: 0) }
++      encoder.setFragmentTexture(texture, index: 0)
++      encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
++      slot.reads += 1
++      read.append(slot)
++    }
++    // Busy until the GPU is done with this frame; only then may an upload overwrite them.
++    // A waiting upload goes in on the frame after.
++    let repaint = waiting ? self.repaint : nil
++    if read.isEmpty {
++      if let repaint { DispatchQueue.main.async(execute: repaint) }
++      return
++    }
++    let lock = self.lock
++    commandBuffer.addCompletedHandler { _ in
++      lock.lock()
++      for slot in read { slot.reads -= 1 }
++      lock.unlock()
++      if let repaint { DispatchQueue.main.async(execute: repaint) }
++    }
++  }
++
++  /// Under the lock: the main thread may be about to redraw the same bitmap. Writes a texture no
++  /// command buffer reads any more, so a frame in flight keeps the one it was given. With every
++  /// texture of a full pool still in flight, the upload waits for the next frame.
++  /// Returns false when it has to wait.
++  private func upload(_ sprite: Sprite, _ device: MTLDevice) -> Bool {
++    guard let pixels = sprite.pixels else { return true }
++    var slot = sprite.slots.first {
++      $0.reads == 0 && $0.texture.width == sprite.width && $0.texture.height == sprite.height
++    }
++    if slot == nil {
++      // Any free texture left is of an old size and gives way; otherwise the pool grows up to its
++      // limit.
++      let stale = sprite.slots.firstIndex { $0.reads == 0 }
++      if stale == nil && sprite.slots.count >= Self.texturePool { return false }
++      let d = MTLTextureDescriptor.texture2DDescriptor(
++        pixelFormat: .bgra8Unorm, width: sprite.width, height: sprite.height, mipmapped: false
++      )
++      d.usage = .shaderRead
++      guard let texture = device.makeTexture(descriptor: d) else { return true }
++      if let stale { sprite.slots.remove(at: stale) }
++      slot = TextureSlot(texture)
++      sprite.slots.append(slot!)
++    }
++    guard let slot else { return true }
++    slot.texture.replace(
++      region: MTLRegionMake2D(0, 0, sprite.width, sprite.height),
++      mipmapLevel: 0,
++      withBytes: pixels,
++      bytesPerRow: sprite.width * 4
++    )
++    sprite.current = slot
++    sprite.dirty = false
++    return true
++  }
++
++  func renderingWillEnd() {
++    // Textures die with the device; the bitmaps are still here and upload again.
++    lock.lock()
++    for sprite in byTag.values {
++      sprite.slots = []
++      sprite.current = nil
++      sprite.dirty = sprite.pixels != nil
++    }
++    lock.unlock()
++    pipeline = nil
++    library = nil
++    device = nil
++  }
++
++  /// Doubles per marker in `set`.
++  private static let stride = 6
++  /// Textures per sprite at most: enough for the frames Metal keeps in flight.
++  private static let texturePool = 4
++  private static let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
++}
+diff --git a/ios/RNMBX/RNMBXPuck.swift b/ios/RNMBX/RNMBXPuck.swift
+new file mode 100644
+index 0000000000000000000000000000000000000000..c4540370746f672f7cf59ea827472b760741027e
+--- /dev/null
++++ b/ios/RNMBX/RNMBXPuck.swift
+@@ -0,0 +1,449 @@
++import Foundation
++import MapboxMaps
++import Metal
++
++/**
++ The rider puck as a Mapbox custom layer: the coin of GpsPuck (src/modules/map/components/GpsPuck.tsx)
++ drawn with Metal inside the map's own render pass, so it moves with the map in the same frame
++ instead of trailing it like a marker view. Ground shadow, shaded base and side wall, heading
++ arrow in the top face's plane, top face with a white rim.
++
++ Units, as Mapbox's projection matrix takes them: x/y are world points with 512 pt tiles
++ (512 * 2^zoom across the world), so the coin keeps its on-screen size at any zoom. z is in
++ metres, so the vertex shader turns the coin's point heights into metres with the
++ metres-per-point at the camera's latitude. Column-major. No depth test: the coin is an overlay,
++ drawn back to front (painter's order in `render`).
++
++ The same layer draws the app's in-map markers (`RNMBXMarkerSprites`) after the coin, so one
++ layer keeps all of them above the style's layers and in a fixed order among themselves.
++
++ Written on the main thread by `set` and `setMarkers`, read by the layer host on the render
++ thread, under `lock`. The layer is persistent, so Mapbox keeps it across style reloads; it is
++ added on first use and removed when neither the puck nor a marker is left. Mercator only: under
++ globe projection (zoom below ~5) the coin and markers are misplaced.
++
++ @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt
++ @parity /src/modules/map/lib/nativePuck.ts `PuckLayerState`
++ */
++final class RNMBXPuck {
++  private let lock: NSLock
++  private var lng = 0.0
++  private var lat = 0.0
++  private var bearing = Double.nan
++  private var argb: UInt32 = 0
++  private var shadowAlpha: Float = 0
++  private var shown = false
++  /// Bumped when the vertex data (colour or shadow) changes. Bearing is a draw-time rotation.
++  private var geometryVersion = 1
++
++  private weak var map: MapboxMap?
++  private let markers: RNMBXMarkerSprites
++  private lazy var host = Host(owner: self)
++
++  init() {
++    let lock = NSLock()
++    self.lock = lock
++    markers = RNMBXMarkerSprites(lock: lock)
++    markers.repaint = { [weak self] in self?.map?.triggerRepaint() }
++  }
++
++  /// Main thread. NaN bearing hides the arrow; `visible` false (or a NaN position) removes the layer.
++  func set(map: MapboxMap, lng: Double, lat: Double, bearing: Double, argb: UInt32, shadowAlpha: Float, visible: Bool) {
++    let show = visible && !lng.isNaN && !lat.isNaN
++    lock.lock()
++    if show && (argb != self.argb || shadowAlpha != self.shadowAlpha || !shown) {
++      geometryVersion += 1
++    }
++    let moved = show && (lng != self.lng || lat != self.lat || !shown)
++    if show {
++      self.lng = lng
++      self.lat = lat
++      self.bearing = bearing
++      self.argb = argb
++      self.shadowAlpha = shadowAlpha
++    }
++    shown = show
++    lock.unlock()
++    self.map = map
++    apply(map, keepOnTop: moved)
++  }
++
++  /// Main thread. `values` is `[tag, lng, lat, version, burstMs, hide]` per marker view, in draw order;
++  /// `resolve` finds a marker's ghost view by its React tag.
++  func setMarkers(map: MapboxMap, values: [Double], resolve: @escaping (Int) -> UIView?) {
++    self.map = map
++    markers.set(values, resolve: resolve)
++    apply(map, keepOnTop: true)
++  }
++
++  /// Main thread. Takes the layer out of the map; a later `set` puts it back.
++  func remove(map: MapboxMap?) {
++    lock.lock()
++    shown = false
++    lock.unlock()
++    markers.clear()
++    guard let map, map.isStyleLoaded, map.layerExists(withId: Self.layerId) else { return }
++    try? map.removeLayer(withId: Self.layerId)
++  }
++
++  /// Puts the layer in the style or takes it out, to match the last `set`.
++  private func apply(_ map: MapboxMap, keepOnTop: Bool) {
++    guard map.isStyleLoaded else { return }
++    let exists = map.layerExists(withId: Self.layerId)
++    lock.lock()
++    let empty = !shown && markers.isEmpty
++    lock.unlock()
++    if empty {
++      if exists { try? map.removeLayer(withId: Self.layerId) }
++      return
++    }
++    do {
++      if !exists {
++        try map.addPersistentCustomLayer(withId: Self.layerId, layerHost: host, layerPosition: nil)
++      } else if keepOnTop && map.allLayerIdentifiers.last?.id != Self.layerId {
++        // Layers the app adds later (trails, routes) land above it; the puck and markers stay on
++        // top. Only on a position or marker change, never per bearing sample: listing layers
++        // allocates.
++        try map.moveLayer(withId: Self.layerId, to: .default)
++      }
++    } catch {
++      Logger.log(level: .error, message: "RNMBXPuck: layer update failed: \(error)")
++    }
++    map.triggerRepaint()
++  }
++
++  private final class Host: NSObject, CustomLayerHost {
++    private unowned let owner: RNMBXPuck
++    private var device: MTLDevice?
++    private var library: MTLLibrary?
++    private var pipeline: MTLRenderPipelineState?
++    private var depthState: MTLDepthStencilState?
++    private var pipelineKey = RNMBXPassFormat()
++    private var vertexBuffer: MTLBuffer?
++    private var uploadedVersion = 0
++    private var projection = [Double](repeating: 0, count: 16)
++    /// mvp (16) + metres per point (1), padded to the shader struct's 80 bytes.
++    private var uniforms = [Float](repeating: 0, count: 20)
++    private var loggedError = false
++
++    // Render-thread copy of the shared state.
++    private var sLng = 0.0
++    private var sLat = 0.0
++    private var sBearing = Double.nan
++    private var sArgb: UInt32 = 0
++    private var sShadowAlpha: Float = 0
++    private var sShown = false
++    private var sMarkers = false
++    private var sVersion = 0
++
++    init(owner: RNMBXPuck) {
++      self.owner = owner
++    }
++
++    func renderingWillStart(_ metalDevice: MTLDevice, colorPixelFormat: UInt, depthStencilPixelFormat: UInt) {
++      device = metalDevice
++      do {
++        library = try metalDevice.makeLibrary(source: RNMBXPuck.shaders, options: nil)
++      } catch {
++        Logger.log(level: .error, message: "RNMBXPuck: shader compile failed: \(error)")
++        library = nil
++      }
++      let depth = MTLDepthStencilDescriptor()
++      depth.depthCompareFunction = .always
++      depth.isDepthWriteEnabled = false
++      depthState = metalDevice.makeDepthStencilState(descriptor: depth)
++      pipeline = nil
++      vertexBuffer = nil
++      uploadedVersion = 0
++      owner.markers.renderingWillStart(metalDevice, library: library)
++    }
++
++    func render(_ parameters: CustomLayerRenderParameters, mtlCommandBuffer: MTLCommandBuffer, mtlRenderPassDescriptor: MTLRenderPassDescriptor) {
++      guard let device, let library, let depthState else { return }
++      owner.lock.lock()
++      sLng = owner.lng
++      sLat = owner.lat
++      sBearing = owner.bearing
++      sArgb = owner.argb
++      sShadowAlpha = owner.shadowAlpha
++      sShown = owner.shown
++      sVersion = owner.geometryVersion
++      sMarkers = !owner.markers.isEmpty
++      owner.lock.unlock()
++      if !sShown && !sMarkers { return }
++
++      let format = RNMBXPassFormat(mtlRenderPassDescriptor)
++      if pipeline == nil || format != pipelineKey {
++        pipeline = RNMBXPuck.makePipeline(device, library, format, vertex: "puck_vertex", fragment: "puck_fragment")
++        pipelineKey = format
++        if pipeline == nil { return }
++      }
++      guard let pipeline else { return }
++      if sShown && uploadedVersion != sVersion { upload(device) }
++
++      let matrix = parameters.projectionMatrix
++      for i in 0..<16 { projection[i] = matrix[i].doubleValue }
++
++      guard let encoder = mtlCommandBuffer.makeRenderCommandEncoder(descriptor: mtlRenderPassDescriptor) else {
++        if !loggedError {
++          Logger.log(level: .error, message: "RNMBXPuck: no render encoder")
++          loggedError = true
++        }
++        return
++      }
++      encoder.label = "rnmbx-puck"
++      encoder.setDepthStencilState(depthState)
++      encoder.setCullMode(.none)
++
++      // Painter's order, valid from any heading and pitch: the camera is always above the coin,
++      // so the top face covers everything under it; the wall is one flat shade, so its back and
++      // front halves need no sorting; the arrow lies in the top plane.
++      if sShown, let vertexBuffer {
++        let worldSize = 512.0 * pow(2.0, parameters.zoom)
++        let (x, y) = RNMBXPuck.worldPoint(lng: sLng, lat: sLat, worldSize: worldSize)
++        uniforms[16] = Float(cos(parameters.latitude * .pi / 180.0) * 2.0 * .pi * RNMBXPuck.earthRadius / worldSize)
++        // Screen-down on the ground: the map's bearing turns world north to screen up.
++        let mapBearing = parameters.bearing * .pi / 180.0
++        let dropX = -sin(mapBearing) * RNMBXPuck.shadowDrop
++        let dropY = cos(mapBearing) * RNMBXPuck.shadowDrop
++        encoder.setRenderPipelineState(pipeline)
++        encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
++        draw(encoder, x + dropX, y + dropY, 0, RNMBXPuck.shadowFirst, RNMBXPuck.discCount)
++        draw(encoder, x, y, 0, RNMBXPuck.bodyFirst, RNMBXPuck.bodyCount)
++        if !sBearing.isNaN { draw(encoder, x, y, sBearing * .pi / 180.0, RNMBXPuck.arrowFirst, RNMBXPuck.arrowCount) }
++        draw(encoder, x, y, 0, RNMBXPuck.topFirst, RNMBXPuck.topCount)
++      }
++      // Above the coin, as marker views stacked above it.
++      if sMarkers {
++        owner.markers.render(encoder, commandBuffer: mtlCommandBuffer, format: format, projection: projection, zoom: parameters.zoom)
++      }
++      encoder.endEncoding()
++    }
++
++    func renderingWillEnd() {
++      owner.markers.renderingWillEnd()
++      pipeline = nil
++      depthState = nil
++      vertexBuffer = nil
++      library = nil
++      device = nil
++      uploadedVersion = 0
++    }
++
++    /// projection * translate(x, y) * rotateZ(angle), column-major; translation in doubles.
++    private func draw(_ encoder: MTLRenderCommandEncoder, _ x: Double, _ y: Double, _ angle: Double, _ first: Int, _ count: Int) {
++      let c = cos(angle)
++      let s = sin(angle)
++      let p = projection
++      for r in 0..<4 {
++        uniforms[r] = Float(p[r] * c + p[4 + r] * s)
++        uniforms[4 + r] = Float(-p[r] * s + p[4 + r] * c)
++        uniforms[8 + r] = Float(p[8 + r])
++        uniforms[12 + r] = Float(p[r] * x + p[4 + r] * y + p[12 + r])
++      }
++      uniforms.withUnsafeBytes { encoder.setVertexBytes($0.baseAddress!, length: $0.count, index: 1) }
++      encoder.drawPrimitives(type: .triangle, vertexStart: first, vertexCount: count)
++    }
++
++    /// Rebuilds the vertex data; only when colour or shadow change. A new buffer each time, so a
++    /// frame still in flight keeps reading the old one.
++    private func upload(_ device: MTLDevice) {
++      let a = Float((sArgb >> 24) & 0xFF) / 255
++      let r = Float((sArgb >> 16) & 0xFF) / 255
++      let g = Float((sArgb >> 8) & 0xFF) / 255
++      let b = Float(sArgb & 0xFF) / 255
++      let shade = RNMBXPuck.wallShade
++      var v = [Float]()
++      v.reserveCapacity(RNMBXPuck.vertexCount * RNMBXPuck.stride)
++      RNMBXPuck.disc(&v, RNMBXPuck.shadowRadius, 0, 0, 0, 0, sShadowAlpha)
++      RNMBXPuck.disc(&v, RNMBXPuck.coinRadius, 0, r * shade, g * shade, b * shade, a)
++      RNMBXPuck.wall(&v, r * shade, g * shade, b * shade, a)
++      // Pointing north (world y is south); the draw rotates it clockwise by the bearing.
++      RNMBXPuck.vertex(&v, 0, -RNMBXPuck.arrowTip, RNMBXPuck.coinHeight, 1, 1, 1, 1)
++      RNMBXPuck.vertex(&v, RNMBXPuck.arrowHalfWidth, -RNMBXPuck.arrowBase, RNMBXPuck.coinHeight, 1, 1, 1, 1)
++      RNMBXPuck.vertex(&v, -RNMBXPuck.arrowHalfWidth, -RNMBXPuck.arrowBase, RNMBXPuck.coinHeight, 1, 1, 1, 1)
++      RNMBXPuck.disc(&v, RNMBXPuck.coinRadius, RNMBXPuck.coinHeight, 1, 1, 1, 1)
++      RNMBXPuck.disc(&v, RNMBXPuck.coinRadius - RNMBXPuck.rimWidth, RNMBXPuck.coinHeight, r, g, b, a)
++      vertexBuffer = v.withUnsafeBytes { device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }
++      uploadedVersion = sVersion
++    }
++  }
++
++  // MARK: - Shared with RNMBXMarkerSprites
++
++  static let maxLat = 85.051128
++
++  /// Web Mercator world position in points for a frame whose world is `worldSize` across.
++  static func worldPoint(lng: Double, lat: Double, worldSize: Double) -> (Double, Double) {
++    let latRad = min(max(lat, -maxLat), maxLat) * .pi / 180.0
++    let x = (lng + 180.0) / 360.0 * worldSize
++    let y = (1.0 - log(tan(latRad) + 1.0 / cos(latRad)) / .pi) / 2.0 * worldSize
++    return (x, y)
++  }
++
++  /// Premultiplied source-over, as both programs output; no depth test; formats of the map's pass.
++  static func makePipeline(_ device: MTLDevice, _ library: MTLLibrary, _ format: RNMBXPassFormat, vertex: String, fragment: String) -> MTLRenderPipelineState? {
++    let d = MTLRenderPipelineDescriptor()
++    d.vertexFunction = library.makeFunction(name: vertex)
++    d.fragmentFunction = library.makeFunction(name: fragment)
++    d.rasterSampleCount = format.sampleCount
++    let color = d.colorAttachments[0]!
++    color.pixelFormat = format.color
++    color.isBlendingEnabled = true
++    color.sourceRGBBlendFactor = .one
++    color.sourceAlphaBlendFactor = .one
++    color.destinationRGBBlendFactor = .oneMinusSourceAlpha
++    color.destinationAlphaBlendFactor = .oneMinusSourceAlpha
++    d.depthAttachmentPixelFormat = format.depth
++    d.stencilAttachmentPixelFormat = format.stencil
++    do {
++      return try device.makeRenderPipelineState(descriptor: d)
++    } catch {
++      Logger.log(level: .error, message: "RNMBXPuck: pipeline failed: \(error)")
++      return nil
++    }
++  }
++
++  // MARK: - Geometry
++
++  /// Layers added without a position go under this one, see `RNMBXLayer.attemptInsert`.
++  static let layerId = "rnmbx-puck"
++
++  // GpsPuck's coin, in points.
++  // @parity /src/modules/map/components/GpsPuck.tsx `COIN_SIZE`
++  // @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt `COIN_RADIUS`
++  private static let coinRadius: Float = 11
++  private static let coinHeight: Float = 12
++  private static let rimWidth: Float = 3
++  private static let shadowRadius: Float = 15
++  /// Towards the bottom of the screen.
++  private static let shadowDrop = 2.0
++  /// 40% black over the rider colour.
++  private static let wallShade: Float = 0.6
++  private static let arrowHalfWidth: Float = 9
++  private static let arrowLength: Float = 14
++  private static let arrowTuck: Float = 4
++  private static let arrowBase = coinRadius - arrowTuck
++  private static let arrowTip = arrowBase + arrowLength
++  private static let segments = 48
++  private static let earthRadius = 6378137.0
++
++  // Buffer layout, in draw order.
++  private static let stride = 7
++  private static let discCount = 3 * segments
++  private static let shadowFirst = 0
++  private static let bodyFirst = shadowFirst + discCount // base disc + side wall
++  private static let bodyCount = discCount + 6 * segments
++  private static let arrowFirst = bodyFirst + bodyCount
++  private static let arrowCount = 3
++  private static let topFirst = arrowFirst + arrowCount // white rim disc + colour disc
++  private static let topCount = 2 * discCount
++  private static let vertexCount = topFirst + topCount
++
++  /// Both programs of the layer: the coin, and the marker sprites (`RNMBXMarkerSprites`).
++  private static let shaders = """
++#include <metal_stdlib>
++using namespace metal;
++
++struct PuckUniforms { float4x4 mvp; float metersPerPoint; };
++struct PuckOut { float4 position [[position]]; float4 color; };
++
++vertex PuckOut puck_vertex(uint vid [[vertex_id]],
++                           const device float *v [[buffer(0)]],
++                           constant PuckUniforms &u [[buffer(1)]]) {
++  const device float *p = v + vid * 7;
++  PuckOut out;
++  out.position = u.mvp * float4(p[0], p[1], p[2] * u.metersPerPoint, 1.0);
++  // Clip depth pinned inside [0, w]: the puck is an overlay, never depth-tested.
++  out.position.z = 0.0;
++  out.color = float4(p[3], p[4], p[5], p[6]);
++  return out;
++}
++
++fragment float4 puck_fragment(PuckOut in [[stage_in]]) { return in.color; }
++
++// The coordinate is projected on the CPU in doubles; the shader snaps it to a whole pixel and
++// spans the bitmap 1:1 from there, with y flipped from screen-down to clip-up.
++struct SpriteUniforms { float4 clip; float2 viewport; float4 rect; };
++struct SpriteOut { float4 position [[position]]; float2 uv; };
++
++vertex SpriteOut sprite_vertex(uint vid [[vertex_id]], constant SpriteUniforms &u [[buffer(0)]]) {
++  float2 corner = float2(float(vid & 1), float(vid >> 1));
++  float2 anchor = floor((u.clip.xy / u.clip.w * 0.5 + 0.5) * u.viewport + 0.5);
++  float2 offset = u.rect.xy + corner * u.rect.zw;
++  float2 pixel = anchor + float2(offset.x, -offset.y);
++  SpriteOut out;
++  out.position = float4(pixel / u.viewport * 2.0 - 1.0, 0.0, 1.0);
++  out.uv = corner;
++  return out;
++}
++
++// The bitmap is premultiplied, as the pipeline's blend expects.
++fragment float4 sprite_fragment(SpriteOut in [[stage_in]], texture2d<float> t [[texture(0)]]) {
++  constexpr sampler s(filter::linear, address::clamp_to_edge);
++  return t.sample(s, in.uv);
++}
++"""
++
++  /// Premultiplied colour.
++  private static func vertex(_ v: inout [Float], _ x: Float, _ y: Float, _ z: Float, _ r: Float, _ g: Float, _ b: Float, _ a: Float) {
++    v.append(contentsOf: [x, y, z, r * a, g * a, b * a, a])
++  }
++
++  private static func ringX(_ i: Int, _ radius: Float) -> Float {
++    Float(cos(2.0 * .pi * Double(i) / Double(segments))) * radius
++  }
++
++  private static func ringY(_ i: Int, _ radius: Float) -> Float {
++    Float(sin(2.0 * .pi * Double(i) / Double(segments))) * radius
++  }
++
++  private static func disc(_ v: inout [Float], _ radius: Float, _ z: Float, _ r: Float, _ g: Float, _ b: Float, _ a: Float) {
++    for i in 0..<segments {
++      vertex(&v, 0, 0, z, r, g, b, a)
++      vertex(&v, ringX(i, radius), ringY(i, radius), z, r, g, b, a)
++      vertex(&v, ringX(i + 1, radius), ringY(i + 1, radius), z, r, g, b, a)
++    }
++  }
++
++  private static func wall(_ v: inout [Float], _ r: Float, _ g: Float, _ b: Float, _ a: Float) {
++    for i in 0..<segments {
++      let x0 = ringX(i, coinRadius), y0 = ringY(i, coinRadius)
++      let x1 = ringX(i + 1, coinRadius), y1 = ringY(i + 1, coinRadius)
++      vertex(&v, x0, y0, 0, r, g, b, a)
++      vertex(&v, x1, y1, 0, r, g, b, a)
++      vertex(&v, x1, y1, coinHeight, r, g, b, a)
++      vertex(&v, x0, y0, 0, r, g, b, a)
++      vertex(&v, x1, y1, coinHeight, r, g, b, a)
++      vertex(&v, x0, y0, coinHeight, r, g, b, a)
++    }
++  }
++}
++
++/// The attachment formats of the map's render pass, which a pipeline has to match.
++struct RNMBXPassFormat: Equatable {
++  var color: MTLPixelFormat = .invalid
++  var depth: MTLPixelFormat = .invalid
++  var stencil: MTLPixelFormat = .invalid
++  var sampleCount = 1
++  /// Drawable size in pixels.
++  var width = 0
++  var height = 0
++
++  init() {}
++
++  init(_ pass: MTLRenderPassDescriptor) {
++    if let texture = pass.colorAttachments[0].texture {
++      color = texture.pixelFormat
++      sampleCount = texture.sampleCount
++      width = texture.width
++      height = texture.height
++    }
++    depth = pass.depthAttachment.texture?.pixelFormat ?? .invalid
++    stencil = pass.stencilAttachment.texture?.pixelFormat ?? .invalid
++  }
++
++  static func == (a: Self, b: Self) -> Bool {
++    a.color == b.color && a.depth == b.depth && a.stencil == b.stencil && a.sampleCount == b.sampleCount
++  }
++}
 diff --git a/lib/module/components/Camera.js b/lib/module/components/Camera.js
-index da6b273215f41d316fdb1d638ede2de5c73384a1..d32a29e4f578f8ff8d2ab8fda354d3dcf6ecd8e6 100644
+index da6b273215f41d316fdb1d638ede2de5c73384a1..f9a9aa9f92a227806df2bc0d9c8768a612069097 100644
 --- a/lib/module/components/Camera.js
 +++ b/lib/module/components/Camera.js
-@@ -201,6 +201,15 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
+@@ -201,6 +201,18 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
      }
    };
    const setCamera = useCallback(_setCamera, [allowUpdates, buildNativeStop, commands]);
@@ -804,24 +2262,28 @@ index da6b273215f41d316fdb1d638ede2de5c73384a1..d32a29e4f578f8ff8d2ab8fda354d3dc
 +  const setPuckDirect = useCallback(puck => {
 +    commands.call('setPuckDirect', [puck?.lngLat[0] ?? Number.NaN, puck?.lngLat[1] ?? Number.NaN, puck?.bearing ?? Number.NaN, puck?.color ?? 0, puck?.shadowAlpha ?? 0, puck != null]);
 +  }, [commands]);
++  const setMarkersDirect = useCallback(values => {
++    commands.call('setMarkersDirect', [values]);
++  }, [commands]);
    const _fitBounds = (ne, sw, paddingConfig = 0, _animationDuration = 0) => {
      let _padding = {
        paddingTop: 0,
-@@ -288,6 +297,9 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
+@@ -288,6 +300,10 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
       * @param {CameraStop | CameraStops} config
       */
      setCamera,
 +    setCameraDirect,
 +    cancelCameraAnimations,
 +    setPuckDirect,
++    setMarkersDirect,
      /**
       * Set the camera position to enclose the provided bounds, with optional
       * padding and duration.
 diff --git a/lib/typescript/src/components/Camera.d.ts b/lib/typescript/src/components/Camera.d.ts
-index 5ba484344d14d55f17afa8dd11f2bc02904f8aaf..9f224fed9aa1011a67aefa2120e9ef6d1656d7d9 100644
+index 5ba484344d14d55f17afa8dd11f2bc02904f8aaf..b7567d2d5366758e805ddc088ea9c39f5c68f4e6 100644
 --- a/lib/typescript/src/components/Camera.d.ts
 +++ b/lib/typescript/src/components/Camera.d.ts
-@@ -12,6 +12,25 @@ export type UserTrackingModeChangeCallback = (event: MapboxGLEvent<'usertracking
+@@ -12,6 +12,26 @@ export type UserTrackingModeChangeCallback = (event: MapboxGLEvent<'usertracking
  }>) => void;
  export interface CameraRef {
      setCamera: (config: CameraStop | CameraStops) => void;
@@ -844,6 +2306,7 @@ index 5ba484344d14d55f17afa8dd11f2bc02904f8aaf..9f224fed9aa1011a67aefa2120e9ef6d
 +        color: number;
 +        shadowAlpha: number;
 +    } | null) => void;
++    setMarkersDirect: (values: number[]) => void;
      fitBounds: (ne: Position, sw: Position, paddingConfig?: number | number[], animationDuration?: number) => void;
      flyTo: (centerCoordinate: Position, animationDuration?: number) => void;
      moveTo: (centerCoordinate: Position, animationDuration?: number) => void;
@@ -861,24 +2324,25 @@ index 7d4dc79ac02f1193cf763fcc2f47d4ccbfb070bb..9d74436b5621cf79e595481c7113002f
              sw: GeoJSON.Position;
          };
 diff --git a/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts b/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
-index 3fda8aa42ab2d96329be85791bee4dd0f8141557..dcf75087e085bc502da2beafe49721615d643b2a 100644
+index 3fda8aa42ab2d96329be85791bee4dd0f8141557..b9cd9571c0cd100a7a04d3c238a262a54dab2454 100644
 --- a/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
 +++ b/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
-@@ -20,6 +20,9 @@ type Stop = {
+@@ -20,6 +20,10 @@ type Stop = {
  type ObjectOr<_T> = Object;
  export interface Spec extends TurboModule {
      updateCameraStop(viewRef: ViewRef, stop: ObjectOr<Stop>): Promise<void>;
 +    setCameraDirect(viewRef: ViewRef, centerLng: number, centerLat: number, zoom: number, pitch: number, heading: number, paddingTop: number, paddingRight: number, paddingBottom: number, paddingLeft: number): void;
 +    cancelCameraAnimations(viewRef: ViewRef): void;
 +    setPuckDirect(viewRef: ViewRef, lng: number, lat: number, bearing: number, color: number, shadowAlpha: number, visible: boolean): void;
++    setMarkersDirect(viewRef: ViewRef, values: ReadonlyArray<number>): void;
      moveBy: (viewRef: ViewRef, x: number, y: number, animationMode: number, animationDuration: number) => Promise<void>;
      scaleBy: (viewRef: ViewRef, x: number, y: number, animationMode: number, animationDuration: number, scaleFactor: number) => Promise<void>;
  }
 diff --git a/src/components/Camera.tsx b/src/components/Camera.tsx
-index c8e61a0d9e528bf74e869e14153e9a5be5894be7..eec396f21c61079df4c105f3801ce81c36350ab5 100644
+index c8e61a0d9e528bf74e869e14153e9a5be5894be7..86ee4184d6f72dec1b38ca3df4394ae88a9a8e51 100644
 --- a/src/components/Camera.tsx
 +++ b/src/components/Camera.tsx
-@@ -97,6 +97,31 @@ interface NativeCameraStop {
+@@ -97,6 +97,38 @@ interface NativeCameraStop {
  
  export interface CameraRef {
    setCamera: (config: CameraStop | CameraStops) => void;
@@ -907,10 +2371,17 @@ index c8e61a0d9e528bf74e869e14153e9a5be5894be7..eec396f21c61079df4c105f3801ce81c
 +      shadowAlpha: number;
 +    } | null,
 +  ) => void;
++  /**
++   * Draws marker views inside the map's own frame: `[tag, lng, lat, version, burstMs, hide]` per
++   * marker, in draw order. A marker is snapshotted from the view with that React tag when its
++   * version changes, then every frame for `burstMs`; with `hide` 1 that view is hidden on screen
++   * once snapshotted, still laid out and touchable. An empty list clears them.
++   */
++  setMarkersDirect: (values: number[]) => void;
    fitBounds: (
      ne: Position,
      sw: Position,
-@@ -473,6 +498,52 @@ export const Camera = memo(
+@@ -473,6 +505,59 @@ export const Camera = memo(
          commands,
        ]);
  
@@ -960,16 +2431,24 @@ index c8e61a0d9e528bf74e869e14153e9a5be5894be7..eec396f21c61079df4c105f3801ce81c
 +        [commands],
 +      );
 +
++      const setMarkersDirect = useCallback<CameraRef['setMarkersDirect']>(
++        (values) => {
++          commands.call<void>('setMarkersDirect', [values]);
++        },
++        [commands],
++      );
++
        const _fitBounds: CameraRef['fitBounds'] = (
          ne,
          sw,
-@@ -605,6 +676,9 @@ export const Camera = memo(
+@@ -605,6 +690,10 @@ export const Camera = memo(
           * @param {CameraStop | CameraStops} config
           */
          setCamera,
 +        setCameraDirect,
 +        cancelCameraAnimations,
 +        setPuckDirect,
++        setMarkersDirect,
          /**
           * Set the camera position to enclose the provided bounds, with optional
           * padding and duration.
@@ -988,10 +2467,10 @@ index d7b5bf5029094bdc818a90040a6ee0ea7876c48c..ebef6586e46821df91afd3e2939d2af2
        sw: GeoJSON.Position;
      };
 diff --git a/src/specs/NativeRNMBXCameraModule.ts b/src/specs/NativeRNMBXCameraModule.ts
-index 51e22647de0011459dee4bd160ede4fcca1f4263..bf3dec77f6690c44e0068ada0d070eba6f577bee 100644
+index 51e22647de0011459dee4bd160ede4fcca1f4263..9f89d0e49ba656f15a9c5cdb9b12e3fdcb482c3b 100644
 --- a/src/specs/NativeRNMBXCameraModule.ts
 +++ b/src/specs/NativeRNMBXCameraModule.ts
-@@ -30,6 +30,28 @@ type ObjectOr<_T> = Object;
+@@ -30,6 +30,29 @@ type ObjectOr<_T> = Object;
  
  export interface Spec extends TurboModule {
    updateCameraStop(viewRef: ViewRef, stop: ObjectOr<Stop>): Promise<void>;
@@ -1017,6 +2496,7 @@ index 51e22647de0011459dee4bd160ede4fcca1f4263..bf3dec77f6690c44e0068ada0d070eba
 +    shadowAlpha: number,
 +    visible: boolean,
 +  ): void;
++  setMarkersDirect(viewRef: ViewRef, values: ReadonlyArray<number>): void;
    moveBy: (
      viewRef: ViewRef,
      x: number,

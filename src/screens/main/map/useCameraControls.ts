@@ -12,6 +12,7 @@ import {
 } from '@/modules/map/lib/cameraController'
 import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 import { puckLayerChannel } from '@/modules/map/lib/nativePuck'
+import { markerLayerChannel } from '@/components/map/markerLayerChannel'
 import {
   type CameraPadding,
   getMapCameraProfileForOrientationMode,
@@ -95,10 +96,15 @@ export function useCameraControls({
     engine.resume()
     return () => engine.destroy()
   }, [engine])
-  // The layer puck goes through the camera module, the same native path as the camera writes.
+  // The layer puck and markers go through the camera module, the same native path as the camera
+  // writes.
   useEffect(() => {
     puckLayerChannel.attach((puck) => cameraRef.current?.setPuckDirect(puck))
-    return () => puckLayerChannel.attach(null)
+    markerLayerChannel.attach((values) => cameraRef.current?.setMarkersDirect(values))
+    return () => {
+      puckLayerChannel.attach(null)
+      markerLayerChannel.attach(null)
+    }
   }, [])
   const cameraRefs = useMemo(
     () => ({
