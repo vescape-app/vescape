@@ -1,20 +1,8 @@
-import { Platform } from 'react-native'
-
-/**
- * Which renderer draws the rider puck on the main map.
- * - `view`: the marker-view `GpsPuck`, positioned on the UI thread; it trails the map by about a
- *   frame while the camera moves.
- * - `layer`: a Mapbox custom layer drawn with GL inside the map's own render frame (Android).
- * - `both`: both at once, to compare the trailing side by side.
- * TODO(ios parity): no custom layer puck on iOS; it always falls back to the view puck.
- */
-const PUCK_RENDERER = 'layer' as 'view' | 'layer' | 'both'
-
-export const puckLayerEnabled = Platform.OS === 'android' && PUCK_RENDERER !== 'view'
-export const puckViewEnabled = !puckLayerEnabled || PUCK_RENDERER === 'both'
+import { mapLayerEnabled } from '@/components/map/inMapLayer'
 
 /**
  * @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt
+ * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXPuck.swift
  */
 export interface PuckLayerState {
   lngLat: [number, number]
@@ -48,7 +36,7 @@ function createPuckLayerChannel() {
       flush()
     },
     setPlacement(next: { lngLat: [number, number]; color: number; shadowAlpha: number } | null) {
-      if (!puckLayerEnabled) return
+      if (!mapLayerEnabled) return
       lngLat = next?.lngLat ?? null
       if (next) {
         color = next.color
@@ -57,7 +45,7 @@ function createPuckLayerChannel() {
       flush()
     },
     setBearing(next: number | null) {
-      if (!puckLayerEnabled || next === bearing) return
+      if (!mapLayerEnabled || next === bearing) return
       bearing = next
       if (lngLat) flush()
     },

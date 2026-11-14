@@ -2,13 +2,14 @@ import { FillLayer, LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
 import { useEffect } from 'react'
 import { processColor } from 'react-native'
 
+import { useInMapLayer } from '@/components/map/inMapLayer'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { coinShadowAlpha, GpsPuck } from '@/modules/map/components/GpsPuck'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
-import { puckLayerChannel, puckViewEnabled } from '@/modules/map/lib/nativePuck'
+import { puckLayerChannel } from '@/modules/map/lib/nativePuck'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
 export function LiveMapLayers({
@@ -44,8 +45,10 @@ export function LiveMapLayers({
   const puckLng = accuracyFix?.longitude
   const puckLat = accuracyFix?.latitude
   const puckLight = useThemeStore((state) => state.resolvedTheme === 'light')
-  // Places the layer puck; a no-op while the view puck is the renderer.
+  const { layer: puckLayer, view: puckView } = useInMapLayer()
+  // Places the layer puck, on the map that has the layer.
   useEffect(() => {
+    if (!puckLayer) return
     if (puckLng == null || puckLat == null) {
       puckLayerChannel.setPlacement(null)
       return
@@ -56,8 +59,10 @@ export function LiveMapLayers({
       color: typeof color === 'number' ? color : 0,
       shadowAlpha: coinShadowAlpha(puckLight),
     })
-  }, [puckLng, puckLat, gpsPointColor, puckLight])
-  useEffect(() => () => puckLayerChannel.setPlacement(null), [])
+  }, [puckLayer, puckLng, puckLat, gpsPointColor, puckLight])
+  useEffect(() => {
+    if (puckLayer) return () => puckLayerChannel.setPlacement(null)
+  }, [puckLayer])
   return (
     <>
       {liveTrailShape && (
@@ -103,7 +108,7 @@ export function LiveMapLayers({
               />
             </ShapeSource>
           )}
-          {puckViewEnabled && (
+          {puckView && (
             <MarkerView coordinate={[accuracyFix.longitude, accuracyFix.latitude]} allowOverlap>
               <GpsPuck color={gpsPointColor} bearing={puckBearing} mapPose={mapPose} />
             </MarkerView>

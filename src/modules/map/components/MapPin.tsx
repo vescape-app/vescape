@@ -1,7 +1,8 @@
 import type { ThemeColor } from '@/constants/theme'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { MarkerView, PointAnnotation } from '@rnmapbox/maps'
+import { PointAnnotation } from '@rnmapbox/maps'
+import { InMapMarker } from '@/components/map/InMapMarker'
 import type { Icon } from 'phosphor-react-native'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
@@ -69,7 +70,7 @@ export function MapPin({
     if (selected && expandSelected && label) {
       const metrics = MAP_PIN_ICON_METRICS.expanded
       return (
-        <MarkerView coordinate={coordinate} allowOverlap>
+        <InMapMarker coordinate={coordinate}>
           <View style={styles.selectedMapPoint}>
             <Pressable
               style={[
@@ -91,7 +92,7 @@ export function MapPin({
               </Text>
             </View>
           </View>
-        </MarkerView>
+        </InMapMarker>
       )
     }
 
@@ -116,11 +117,11 @@ export function MapPin({
     // active navigation target live so its icon renders and updates with the view.
     if (navigationActive) {
       return (
-        <MarkerView coordinate={coordinate} allowOverlap>
+        <InMapMarker coordinate={coordinate}>
           <Pressable style={styles.iconPinFrame} onPress={onSelected}>
             {pin}
           </Pressable>
-        </MarkerView>
+        </InMapMarker>
       )
     }
 

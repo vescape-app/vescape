@@ -1,8 +1,8 @@
-import { MarkerView } from '@rnmapbox/maps'
 import { Image } from 'expo-image'
 import { PlayIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
+import { InMapMarker, useInMapMarkerRefresh } from '@/components/map/InMapMarker'
 
 import { theme } from '@/constants/theme'
 import type { MediaHistoryCluster } from '@/modules/history/lib/mediaHistory'
@@ -14,36 +14,50 @@ export function MediaHistoryPin({
   cluster: MediaHistoryCluster
   onPress: () => void
 }) {
+  return (
+    <InMapMarker coordinate={cluster.coordinate}>
+      <MediaHistoryPinButton cluster={cluster} onPress={onPress} />
+    </InMapMarker>
+  )
+}
+
+function MediaHistoryPinButton({
+  cluster,
+  onPress,
+}: {
+  cluster: MediaHistoryCluster
+  onPress: () => void
+}) {
+  const refresh = useInMapMarkerRefresh()
   const first = cluster.assets[0]
   const clustered = cluster.assets.length > 1
   return (
-    <MarkerView coordinate={cluster.coordinate} allowOverlap>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={
-          clustered ? `Open ${cluster.assets.length} ride media assets` : `Open ${first.mediaType}`
-        }
-        onPress={onPress}
-        style={({ pressed }) => [
-          styles.pin,
-          clustered && styles.cluster,
-          pressed && styles.pressed,
-        ]}
-      >
-        {clustered ? (
-          <Text style={styles.count}>{cluster.assets.length}</Text>
-        ) : (
-          <>
-            <Image source={first.uri} contentFit="cover" style={styles.thumbnail} />
-            {first.mediaType === 'video' ? (
-              <View style={styles.videoBadge}>
-                <PlayIcon size={8} color={theme.palette.purple.text} weight="fill" />
-              </View>
-            ) : null}
-          </>
-        )}
-      </Pressable>
-    </MarkerView>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={
+        clustered ? `Open ${cluster.assets.length} ride media assets` : `Open ${first.mediaType}`
+      }
+      onPress={onPress}
+      style={({ pressed }) => [styles.pin, clustered && styles.cluster, pressed && styles.pressed]}
+    >
+      {clustered ? (
+        <Text style={styles.count}>{cluster.assets.length}</Text>
+      ) : (
+        <>
+          <Image
+            source={first.uri}
+            contentFit="cover"
+            style={styles.thumbnail}
+            onDisplay={refresh}
+          />
+          {first.mediaType === 'video' ? (
+            <View style={styles.videoBadge}>
+              <PlayIcon size={8} color={theme.palette.purple.text} weight="fill" />
+            </View>
+          ) : null}
+        </>
+      )}
+    </Pressable>
   )
 }
 

@@ -62,6 +62,26 @@ retargets inside a move the engine already owns.
 The current native bridge intentionally accepts only `pitch` and `heading`. Do not broaden it to
 arbitrary camera options without a concrete use case and gesture-behavior verification.
 
+## Drawing marker views inside the map frame
+
+```ts
+cameraRef.current?.setMarkersDirect([tag, lng, lat, version, burstMs /* , ...per marker */])
+```
+
+Both platforms draw them with `RNMBXMarkerSprites`, in the same custom layer as the rider puck
+(`RNMBXPuck`, fed by `setPuckDirect`), after the coin, in the order sent:
+
+- Android: GLES 3; snapshots through `View.draw`, which leaves the ghost's own alpha out.
+- iOS: Metal; snapshots through `CALayer.render(in:)` with the ghost's opacity lifted for the call.
+
+A `MarkerView` is positioned on the UI thread and trails the map by about a frame while the camera
+moves. `src/components/map/InMapMarker.tsx` keeps the marker view mounted but transparent, as the
+look's source and the touch target, and sends its React tag here. Native snapshots that view into
+a bitmap when its `version` changes, and every frame for `burstMs` after, then draws it as a
+screen-aligned sprite at the coordinate inside the map's own frame. `src/components/map/inMapLayer.ts`
+batches every marker into one call per JS tick and holds the `view` / `layer` / `both` switch that
+the puck uses too.
+
 ## Files changed inside `@rnmapbox/maps`
 
 The patch updates all layers required by the package:
@@ -69,8 +89,8 @@ The patch updates all layers required by the package:
 - public `CameraRef` API and implementation
 - compiled JavaScript and TypeScript declarations shipped by the package
 - TurboModule specification
-- Android `RNMBXCameraModule`
-- iOS `RNMBXCamera` and `RNMBXCameraModule`
+- Android `RNMBXCamera`, `RNMBXCameraModule`, `RNMBXPuck` and `RNMBXMarkerSprites`
+- iOS `RNMBXCamera`, `RNMBXCameraModule`, `RNMBXPuck` and `RNMBXMarkerSprites`
 
 ## Camera-changed payload without bounds
 

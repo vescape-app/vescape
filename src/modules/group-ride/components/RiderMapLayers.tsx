@@ -1,8 +1,9 @@
-import { LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
+import { LineLayer, ShapeSource } from '@rnmapbox/maps'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
+import { InMapMarker } from '@/components/map/InMapMarker'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { makeTrailLineString } from '@/helpers/mapGeometry'
@@ -71,7 +72,7 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
   if (!rider.presence) return null
 
   return (
-    <MarkerView coordinate={[rider.presence.lng, rider.presence.lat]} allowOverlap>
+    <InMapMarker coordinate={[rider.presence.lng, rider.presence.lat]}>
       <View style={styles.riderMarker}>
         <View style={[styles.riderDot, { backgroundColor: color }]}>
           {heading != null && (
@@ -86,14 +87,20 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
           {rider.name || 'Rider'}
         </Text>
       </View>
-    </MarkerView>
+    </InMapMarker>
   )
 }
 
+const RIDER_LABEL_GAP = 4
+const RIDER_LABEL_HEIGHT = 20
+
 const styles = StyleSheet.create({
+  // A marker is anchored at its centre. The top padding mirrors the label below the dot, so that
+  // centre is the dot and the rider's coordinate is not somewhere between dot and label.
   riderMarker: {
     alignItems: 'center',
-    gap: 4,
+    gap: RIDER_LABEL_GAP,
+    paddingTop: RIDER_LABEL_HEIGHT + RIDER_LABEL_GAP,
   },
   riderDot: {
     width: 16,
@@ -119,8 +126,9 @@ const styles = StyleSheet.create({
   },
   riderLabel: {
     maxWidth: 96,
+    height: RIDER_LABEL_HEIGHT,
+    lineHeight: RIDER_LABEL_HEIGHT,
     paddingHorizontal: 7,
-    paddingVertical: 3,
     borderRadius: 6,
     overflow: 'hidden',
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
