@@ -1,0 +1,149 @@
+/**
+ * Hidden search words for Board Config rows: the words riders use for a setting when its label
+ * says something else. They only help find a row; they never appear on screen or claim anything
+ * the row's own label and description do not.
+ */
+const BOARD_CONFIG_SEARCH_KEYWORDS: Record<'refloat' | 'motor', Record<string, string[]>> = {
+  refloat: {
+    fault_adc1: ['footpad sensor', 'zone 1', 'sensor voltage', 'adc'],
+    fault_adc2: ['footpad sensor', 'zone 2', 'sensor voltage', 'adc'],
+    fault_is_dual_switch: [
+      'posi',
+      'one zone',
+      'single zone',
+      'footpad',
+      'heel lift',
+      'dual switch',
+    ],
+    fault_adc_half_erpm: ['heel lift', 'one zone', 'footpad', 'disengage speed'],
+    fault_delay_switch_half: [
+      'footpad cutoff delay',
+      'sensor delay',
+      'one zone',
+      'heel lift',
+      'disengage',
+    ],
+    fault_delay_switch_full: ['footpad cutoff delay', 'sensor delay', 'both zones', 'disengage'],
+    fault_moving_fault_disabled: [
+      'moving faults',
+      'sensor dropout',
+      'footpad cutout',
+      'disengage',
+      'nosedive',
+    ],
+    fault_darkride_enabled: ['upside down', 'dark ride'],
+    enable_quickstop: ['quick stop', 'dismount', 'stop'],
+    startup_simplestart_enabled: ['one zone start', 'activation', 'engage', 'wake'],
+    startup_pushstart_enabled: ['rolling start', 'slope', 'uphill', 'engage'],
+    startup_dirtylandings_enabled: ['jumps', 'drops', 'landing', 'hops', 'curbs'],
+    fault_reversestop_enabled: ['backwards dismount', 'roll back', 'stop'],
+    startup_pitch_tolerance: ['engage angle', 'start angle', 'level'],
+    startup_roll_tolerance: ['engage angle', 'start angle', 'side tilt'],
+    startup_speed: ['startup centering', 'level up', 'engage'],
+    startup_click_current: ['click', 'beep', 'engage feedback'],
+    fault_pitch: ['nose angle', 'pitch fault', 'imu', 'tilt cutoff'],
+    fault_roll: ['side angle', 'roll fault', 'imu', 'tilt cutoff', 'fall over'],
+    fault_delay_pitch: ['pitch fault delay', 'imu'],
+    fault_delay_roll: ['roll fault delay', 'imu'],
+    mahony_kp: ['imu', 'balance', 'gyro', 'accelerometer', 'filter'],
+    mahony_kp_roll: ['imu', 'balance', 'gyro', 'accelerometer', 'filter'],
+    tiltback_duty: ['duty pushback', 'tiltback', 'overpower', 'nosedive warning'],
+    tiltback_duty_angle: ['duty pushback', 'tiltback'],
+    tiltback_duty_speed: ['duty pushback', 'tiltback'],
+    is_dutybeep_enabled: ['duty beep', 'warning', 'buzzer'],
+    tiltback_lv: ['low battery', 'battery pushback', 'tiltback', 'empty battery'],
+    tiltback_lv_angle: ['low battery', 'battery pushback', 'tiltback'],
+    tiltback_lv_speed: ['low battery', 'battery pushback', 'tiltback'],
+    tiltback_hv: ['full battery', 'battery pushback', 'tiltback', 'overcharge'],
+    tiltback_hv_angle: ['full battery', 'battery pushback', 'tiltback'],
+    tiltback_hv_speed: ['full battery', 'battery pushback', 'tiltback'],
+    tiltback_speed: ['speed pushback', 'speed limit', 'tiltback'],
+    tiltback_constant: ['nose angle', 'pushback', 'nose up'],
+    tiltback_variable: ['speed tiltback', 'pushback', 'nose up'],
+    tiltback_variable_max: ['speed tiltback', 'pushback', 'nose up'],
+    tiltback_return_speed: ['pushback release', 'level'],
+    brake_current: ['parking brake', 'holding', 'idle brake'],
+    parking_brake_mode: ['holding', 'idle brake', 'rest'],
+    booster_current: ['boost', 'acceleration current', 'punch'],
+    brkbooster_current: ['brake boost', 'braking current'],
+    torquetilt_start_current: ['torque tiltback', 'acceleration'],
+    kp: ['stiffness', 'tight', 'loose', 'balance', 'pid'],
+    kp2: ['stiffness', 'responsiveness', 'balance', 'pid'],
+    kp_brake: ['braking stiffness', 'pid'],
+    kp2_brake: ['braking stiffness', 'pid'],
+    ki: ['integral', 'pid', 'hold angle'],
+    ki_limit: ['integral', 'pid'],
+    atr_strength_up: ['adaptive torque response', 'hills', 'uphill', 'nose lift'],
+    atr_strength_down: ['adaptive torque response', 'hills', 'downhill'],
+    turntilt_strength: ['carving', 'turns', 'nose lift'],
+    torquetilt_strength: ['acceleration', 'nose lift'],
+    torquetilt_strength_regen: ['braking', 'regen', 'nose'],
+    braketilt_strength: ['braking', 'nose dip'],
+    braketilt_lingering: ['braking', 'nose dip'],
+    'hardware.swap_footpad_adcs': ['swap sensors', 'footpad zones', 'adc'],
+    is_beeper_enabled: ['buzzer', 'beeper', 'sound'],
+    is_footbeep_enabled: ['footpad beep', 'sensor beep', 'sound'],
+    disabled: ['package off', 'turn off refloat'],
+  },
+  motor: {
+    l_current_max: ['motor current', 'torque', 'acceleration', 'amps'],
+    l_current_min: ['motor braking current', 'braking torque', 'amps'],
+    l_abs_current_max: ['motor current', 'overcurrent', 'fault', 'amps'],
+    l_in_current_max: ['battery current', 'discharge', 'amps'],
+    l_in_current_min: ['battery regen', 'charging', 'braking current', 'amps'],
+    l_battery_cut_start: ['low battery', 'battery cutoff', 'voltage'],
+    l_battery_cut_end: ['low battery', 'battery cutoff', 'voltage'],
+    l_min_vin: ['low voltage', 'input voltage', 'battery'],
+    l_max_vin: ['high voltage', 'overvoltage', 'battery'],
+    l_max_duty: ['duty cycle', 'top speed'],
+    l_max_erpm: ['top speed', 'speed limit'],
+    l_min_erpm: ['reverse speed', 'speed limit', 'backwards'],
+    l_temp_fet_start: ['fet', 'mosfet', 'controller temperature', 'overheat', 'thermal'],
+    l_temp_fet_end: ['fet', 'mosfet', 'controller temperature', 'overheat', 'thermal'],
+    l_temp_motor_start: ['motor temperature', 'overheat', 'thermal', 'hub'],
+    l_temp_motor_end: ['motor temperature', 'overheat', 'thermal', 'hub'],
+  },
+}
+
+/** Words shared by a whole family of fields, including ones newer firmware adds. */
+const BOARD_CONFIG_SEARCH_PREFIX_KEYWORDS: Record<'refloat' | 'motor', [string, string[]][]> = {
+  refloat: [
+    ['leds.', ['lights', 'led']],
+    ['leds.front.', ['front lights', 'headlight']],
+    ['leds.rear.', ['rear lights', 'taillight']],
+    ['leds.status', ['status bar', 'battery bar']],
+    ['hardware.leds.', ['led wiring', 'led strip']],
+    ['haptic.', ['buzz', 'vibration', 'haptic feedback', 'warning']],
+    ['bms.', ['battery management', 'cells', 'battery']],
+    ['remote', ['remote control', 'throttle', 'controller']],
+    ['inputtilt_', ['remote tilt', 'throttle']],
+    ['atr', ['adaptive torque response', 'hills']],
+    ['turntilt', ['turn tilt', 'carving', 'tiltback']],
+    ['turn_tilt', ['turn tilt', 'carving']],
+    ['torquetilt', ['torque tilt', 'tiltback']],
+    ['torque_tilt', ['torque tilt']],
+    ['booster_', ['boost']],
+    ['brkbooster_', ['brake boost']],
+    ['noseangling', ['nose angle', 'tiltback']],
+    ['tiltback_', ['pushback']],
+  ],
+  motor: [
+    ['l_temp_fet', ['fet', 'controller temperature']],
+    ['l_temp_motor', ['motor temperature']],
+    ['foc_', ['motor control', 'foc']],
+    ['bms.', ['battery management', 'cells', 'battery']],
+  ],
+}
+
+/** A row's own words, its family's, and the shared LED pattern/brightness/color words. */
+export function boardConfigSearchKeywords(source: 'refloat' | 'motor', id: string): string[] {
+  const words = [...(BOARD_CONFIG_SEARCH_KEYWORDS[source][id] ?? [])]
+  for (const [prefix, prefixWords] of BOARD_CONFIG_SEARCH_PREFIX_KEYWORDS[source])
+    if (id.startsWith(prefix)) words.push(...prefixWords)
+  if (source === 'refloat' && id.startsWith('leds.')) {
+    if (id.endsWith('.mode')) words.push('led patterns', 'animation', 'effect')
+    if (id.includes('brightness')) words.push('dim', 'light intensity')
+    if (id.includes('color')) words.push('colour')
+  }
+  return words
+}
