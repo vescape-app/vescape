@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Canvas, Group, Path, Skia, type SkPath } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
-import { personalizationColorOptions, theme } from '@/constants/theme'
+import { theme } from '@/constants/theme'
 import { useResolvedColor } from '@/hooks/useTheme'
 import { HUD_IDLE_GLYPH_COLOR } from '@/modules/board/constants/telemetry'
 import {
@@ -14,6 +14,7 @@ import {
   TIRE_HALF_WIDTH,
   TIRE_RADIUS,
 } from '@/modules/board/lib/boardAttitudeGeometry'
+import { railColorOption } from '@/modules/board/lib/railColor'
 import { railDeckProfile, railPreset, railSideFace } from '@/modules/board/lib/railPresets'
 import type { RailPoint } from '@/modules/board/lib/railProfile'
 
@@ -227,10 +228,8 @@ export function BoardAttitudeIndicator({
   const thickness = railThickness ?? (railPoints ? RAIL_THICKNESS : preset.thickness)
   const pointThicknesses =
     railPointThicknesses ?? (railPoints ? undefined : preset.pointThicknesses)
-  const accent = personalizationColorOptions.find((option) => option.id === railColorId)?.value
-  const color = useResolvedColor(
-    connected && !muted ? (accent ?? theme.palette.purple.color) : HUD_IDLE_GLYPH_COLOR,
-  )
+  const accent = railColorOption(railColorId).value
+  const color = useResolvedColor(connected && !muted ? accent : HUD_IDLE_GLYPH_COLOR)
   const fill = useResolvedColor(theme.neutral.surfaceDeep)
   const topFill = useResolvedColor(theme.neutral.surface)
   const paths = useMemo(

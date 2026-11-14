@@ -5,14 +5,12 @@ import { CaretRightIcon, PencilSimpleIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
-import { theme, personalizationColorOptions } from '@/constants/theme'
+import { theme } from '@/constants/theme'
 import { AnimatedBoardPreview } from '@/modules/board/components/add-board-wizard/AnimatedBoardPreview'
-import {
-  BoardColorPicker,
-  type RailColorId,
-} from '@/modules/board/components/add-board-wizard/BoardColorPicker'
+import { BoardColorPicker } from '@/modules/board/components/add-board-wizard/BoardColorPicker'
 import { CustomRailPickerContent } from '@/modules/board/components/CustomRailPickerContent'
 import type { RailBrand } from '@/modules/board/lib/boardPresets'
+import { railColorOption, type RailColorId } from '@/modules/board/lib/railColor'
 import { railPreset, type RailId } from '@/modules/board/lib/railPresets'
 
 export function BoardAppearanceEditorSheet({
@@ -116,7 +114,7 @@ export function BoardAppearanceEditorSheet({
 }
 
 function validColorId(value?: string): RailColorId {
-  return personalizationColorOptions.find((color) => color.id === value)?.id ?? 'cyan'
+  return railColorOption(value).id
 }
 
 const styles = StyleSheet.create({

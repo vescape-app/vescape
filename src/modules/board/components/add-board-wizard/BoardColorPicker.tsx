@@ -3,8 +3,9 @@ import { Pressable, StyleSheet, View } from 'react-native'
 
 import { personalizationColorOptions, theme } from '@/constants/theme'
 
+import type { RailColorId } from '@/modules/board/lib/railColor'
+
 const RAIL_COLORS = personalizationColorOptions
-export type RailColorId = (typeof RAIL_COLORS)[number]['id']
 
 export function BoardColorPicker({
   railColorId,

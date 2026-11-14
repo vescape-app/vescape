@@ -23,7 +23,7 @@ import {
 } from '@/modules/board/lib/boardSetup'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { generateId } from '@/helpers/id'
-import type { RailColorId } from '@/modules/board/components/add-board-wizard/BoardColorPicker'
+import { DEFAULT_RAIL_COLOR_ID, type RailColorId } from '@/modules/board/lib/railColor'
 import type { RailId } from '@/modules/board/lib/railPresets'
 import { getBoardPreset, getCustomRailOption } from '@/modules/board/lib/boardPresets'
 
@@ -123,7 +123,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [railId, setRailId] = useState<RailId>('xr')
-  const [railColorId, setRailColorId] = useState<RailColorId>('cyan')
+  const [railColorId, setRailColorId] = useState<RailColorId>(DEFAULT_RAIL_COLOR_ID)
   const [boardPresetId, setBoardPresetId] = useState<string | null>(null)
   const [customRailOptionId, setCustomRailOptionId] = useState<string | null>(null)
   const [batteryMode, setBatteryMode] = useState<BatteryMode>(DEFAULT_BATTERY_CONFIG.mode)

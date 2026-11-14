@@ -16,6 +16,7 @@ import { BoardSettingRow } from '@/modules/board/components/BoardSettingRow'
 import { Button } from '@/components/base/Button'
 import { IconHero } from '@/components/settings/IconHero'
 import { AnimatedBoardPreview } from '@/modules/board/components/add-board-wizard/AnimatedBoardPreview'
+import { railColorOption } from '@/modules/board/lib/railColor'
 import { railPreset } from '@/modules/board/lib/railPresets'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
@@ -95,7 +96,7 @@ export function EditBoardSettings({
             >
               <AnimatedBoardPreview
                 railId={railPreset(railId).id}
-                railColorId={railColorId ?? 'cyan'}
+                railColorId={railColorOption(railColorId).id}
                 size={260}
               />
               <View style={styles.editBadge}>
