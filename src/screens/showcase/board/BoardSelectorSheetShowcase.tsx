@@ -144,6 +144,7 @@ export function BoardSelectorSheetShowcase() {
           }
           onSelectBoard={(id) => setLastAction(`Select board ${id}`)}
           onAddBoard={() => setLastAction('Add new board')}
+          onBoardConfig={(id) => setLastAction(`Board config ${id}`)}
           onEditBoard={(id) => setLastAction(`Edit board ${id}`)}
         />
       </View>

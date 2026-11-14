@@ -64,7 +64,7 @@ export default function EditBoardScreen() {
         <IconButton
           icon={BracketsCurlyIcon}
           onPress={() => router.push({ pathname: routes.editBoardConfig, params: { boardId } })}
-          accessibilityLabel="Board config"
+          accessibilityLabel="Config read"
           testID="edit-board-config-button"
         />
       ),

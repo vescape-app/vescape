@@ -9,6 +9,7 @@ import { DateField } from '@/components/forms/DateField'
 import { Dropdown, useTriggerRef } from '@/components/forms/Dropdown'
 import { IconHero } from '@/components/settings/IconHero'
 import { Input } from '@/components/forms/Input'
+import { SearchInput } from '@/components/forms/SearchInput'
 import { Select, type SelectOption } from '@/components/forms/Select'
 import { SoundPicker } from '@/components/forms/SoundPicker'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
@@ -51,6 +52,16 @@ function InputShowcase() {
   return (
     <ShowcaseCard name="Input">
       <Input value={text} onChangeText={setText} placeholder="Type something…" />
+    </ShowcaseCard>
+  )
+}
+
+function SearchInputShowcase() {
+  const [query, setQuery] = useState('')
+  return (
+    <ShowcaseCard name="SearchInput">
+      <SearchInput value={query} onChangeText={setQuery} />
+      <SearchInput value="Footpad" onChangeText={() => {}} accessibilityLabel="Filled search" />
     </ShowcaseCard>
   )
 }
@@ -154,6 +165,7 @@ export default function FormsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero icon={ListIcon} description="Select, Dropdown, ColorPicker, SoundPicker." />
         <InputShowcase />
+        <SearchInputShowcase />
         <DateFieldShowcase />
         <TextareaShowcase />
         <SelectShowcase />

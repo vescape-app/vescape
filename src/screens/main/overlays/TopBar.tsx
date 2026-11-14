@@ -97,7 +97,7 @@ export function TopBar({
   // What the selector was asked for on its way out. Presenting a modal while another is still
   // dismissing is dropped, so anything opened from inside the selector waits for it to leave.
   const pendingExit = useRef<{
-    kind: 'warnings' | 'faults' | 'edit' | 'accessory'
+    kind: 'warnings' | 'faults' | 'edit' | 'config' | 'accessory'
     boardId?: string
     accessoryId?: string
   } | null>(null)
@@ -301,6 +301,9 @@ export function TopBar({
           if (exit?.kind === 'edit' && exit.boardId) {
             router.push({ pathname: routes.editBoard, params: { boardId: exit.boardId } })
           }
+          if (exit?.kind === 'config' && exit.boardId) {
+            router.push({ pathname: routes.boardConfig, params: { boardId: exit.boardId } })
+          }
           if (exit?.kind === 'accessory' && exit.accessoryId) {
             router.push({ pathname: routes.accessory, params: { accessoryId: exit.accessoryId } })
           }
@@ -312,6 +315,10 @@ export function TopBar({
         onAddBoard={() => {
           setSelectorOpen(false)
           onAddBoard()
+        }}
+        onBoardConfig={(id) => {
+          pendingExit.current = { kind: 'config', boardId: id }
+          setSelectorOpen(false)
         }}
         onEditBoard={(id) => {
           pendingExit.current = { kind: 'edit', boardId: id }

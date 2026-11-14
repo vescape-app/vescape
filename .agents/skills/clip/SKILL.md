@@ -5,7 +5,7 @@ description: Record a short Android emulator demo for Discord and propose a casu
 
 # Clip
 
-Produce a short, upload-ready MP4 with app audio and two ready-to-copy Discord messages, one in Polish and one in English. Record silently only when the user requests it.
+Produce a short, upload-ready MP4 with app audio, visible touch indicators, and two ready-to-copy Discord messages, one in Polish and one in English. Record silently or hide touches only when the user requests it.
 
 ## Choose the flow
 
@@ -18,8 +18,21 @@ Produce a short, upload-ready MP4 with app audio and two ready-to-copy Discord m
 
 1. Always record an Android emulator, never a physical phone. Use the project's emulator/navigation guidance when available. Run `adb devices -l` and explicitly select the emulator serial for every command. If none is running, start one using the project workflow; if multiple emulators remain plausible, ask which one.
 2. Stage the starting screen before recording. Inspect a screenshot and its actual pixel dimensions before choosing tap coordinates; image previews may be scaled. Use accessible elements where practical. For local UI changes, follow the repository's build/Metro verification rules before using the recording as evidence.
-3. Use the emulator's recorder, which captures app audio: `adb -s <serial> emu screenrecord start --time-limit <seconds> <absolute-host-path>.webm`. Save to a descriptive, timestamped path on the Desktop or the user's requested directory. The file is written directly on the host, so no pull is needed. Automate timed interactions in one process so tool round trips do not add idle footage. Let the time limit finish or stop with `adb -s <serial> emu screenrecord stop`; wait for finalization before inspecting or converting. Retain the original until the export is verified. `adb shell screenrecord` captures video only; use it only for an explicitly silent clip, stopping gracefully with SIGINT before pulling its MP4.
-4. Inspect the recording at the start, each transition, and the end. Confirm the intended taps worked, the result appears, and the pacing meets the requested holds. For sound demos, leave enough time for each line to finish. Verify an audio stream with `ffprobe` and check the expected sound by listening when available; `ffmpeg -af volumedetect` can confirm non-silent samples but cannot identify the spoken line. If expected audio is missing, check the app's audio output and its stream volume, then re-record. Report a blocker if audio still cannot be captured. Re-record a failed sequence instead of delivering it.
+3. Enable touch indicators with `adb -s <serial> shell settings put system show_touches 1`. Use the touchscreen events below for recorded taps. Confirm a dot appears before recording the full flow.
+4. Use the emulator's recorder, which captures app audio: `adb -s <serial> emu screenrecord start --time-limit <seconds> <absolute-host-path>.webm`. Save to a descriptive, timestamped path on the Desktop or the user's requested directory. The file is written directly on the host, so no pull is needed. Automate timed interactions in one process so tool round trips do not add idle footage. Let the time limit finish or stop with `adb -s <serial> emu screenrecord stop`; wait for finalization before inspecting or converting. Retain the original until the export is verified. `adb shell screenrecord` captures video only; use it only for an explicitly silent clip, stopping gracefully with SIGINT before pulling its MP4.
+5. Inspect the recording at the start, each transition, and the end, including frames during taps. Confirm the touch dots are visible, the intended taps worked, the result appears, and the pacing meets the requested holds. For sound demos, leave enough time for each line to finish. Verify an audio stream with `ffprobe` and check the expected sound by listening when available; `ffmpeg -af volumedetect` can confirm non-silent samples but cannot identify the spoken line. If expected audio is missing, check the app's audio output and its stream volume, then re-record. Report a blocker if audio still cannot be captured. Re-record a failed sequence instead of delivering it.
+
+### Visible touches
+
+Ordinary `adb shell input tap` events bypass Android's touch-dot display on the emulator, even with `show_touches=1`. Holding an injected `input swipe` in place does not fix this. Send emulator touchscreen events instead, using coordinates from the verified screenshot:
+
+```sh
+adb -s <serial> emu event mouse <x> <y> 0 1
+# Hold about 180 ms in the timed interaction script.
+adb -s <serial> emu event mouse <x> <y> 0 0
+```
+
+Here `0` selects the touchscreen, and `1` / `0` press and release it. Always release in a `finally` block. Keep the brief hold below long-press duration. Check the exported video's tap frames too; an enabled setting alone is not proof that dots were captured.
 
 ## Fit Discord
 

@@ -279,7 +279,15 @@ function RootLayout() {
                   />
                   <Stack.Screen
                     name={stackScreens.editBoardConfig}
+                    options={{ title: 'Config Read' }}
+                  />
+                  <Stack.Screen
+                    name={stackScreens.boardConfig}
                     options={{ title: 'Board Config' }}
+                  />
+                  <Stack.Screen
+                    name={stackScreens.boardConfigRaw}
+                    options={{ title: 'Raw Board Config' }}
                   />
                   <Stack.Screen
                     name={stackScreens.accessories}

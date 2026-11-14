@@ -1,7 +1,5 @@
-import {
-  BoardConfigSection,
-  type MotorConfigRow,
-} from '@/modules/board/components/BoardConfigSection'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import type { MotorConfigRow } from '@/modules/board/lib/boardConfigReadout'
 import {
   useMotorConfigFields,
   useMotorConfigValuesStore,
