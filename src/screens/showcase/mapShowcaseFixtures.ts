@@ -333,7 +333,7 @@ export const FIXTURE_PIN_ROWS: RosterRider[] = [
   {
     ...FIXTURE_RIDERS[1],
     signal: fixturePin('minor', BASE_LAT + 0.0015, BASE_LON - 0.0045),
-    hazard: fixturePin('mud', BASE_LAT - 0.001, BASE_LON - 0.006),
+    hazard: fixturePin('terrain', BASE_LAT - 0.001, BASE_LON - 0.006),
   },
   {
     ...FIXTURE_RIDERS[2],
@@ -343,9 +343,9 @@ export const FIXTURE_PIN_ROWS: RosterRider[] = [
   {
     ...FIXTURE_RIDERS[3],
     signal: fixturePin('battery', BASE_LAT - 0.0005, BASE_LON + 0.0055),
-    hazard: fixturePin('descent', BASE_LAT - 0.006, BASE_LON + 0.0005),
+    hazard: fixturePin('police', BASE_LAT - 0.006, BASE_LON + 0.0005),
   },
-  ...(['tire', 'overheat', 'board', 'wait'] as const).map((kind, i) => ({
+  ...(['tire', 'overheat', 'board', 'wait', 'break'] as const).map((kind, i) => ({
     ...FIXTURE_ROSTER_ROWS[0],
     id: `fixture-rider-pin-${kind}`,
     signal: fixturePin(kind, BASE_LAT - 0.0075, BASE_LON - 0.0045 + i * 0.0025),

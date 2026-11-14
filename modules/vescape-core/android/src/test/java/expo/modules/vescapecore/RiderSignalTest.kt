@@ -55,14 +55,14 @@ class RiderSignalTest {
 
     @Test
     fun `a hazard parses in its own kinds and sends and clears in its own slot`() {
-        val hazard = """{"kind":"mud","lat":1,"lng":2,"startedAt":1,"expiresAt":2}"""
-        assertEquals(RideHazardKind.MUD, RiderPin.parse(JSONObject(hazard), RideHazardKind::fromWire)?.kind)
+        val hazard = """{"kind":"terrain","lat":1,"lng":2,"startedAt":1,"expiresAt":2}"""
+        assertEquals(RideHazardKind.TERRAIN, RiderPin.parse(JSONObject(hazard), RideHazardKind::fromWire)?.kind)
         assertNull(parse(JSONObject(hazard)))
 
-        val send = RiderSignals.sendIntent(RideHazardKind.MUD, RiderSignalContext(fix, insidePrivacyZone = false))
+        val send = RiderSignals.sendIntent(RideHazardKind.TERRAIN, RiderSignalContext(fix, insidePrivacyZone = false))
         val frame = send!!.frame()
         assertEquals("hazard", frame.getString("type"))
-        assertEquals("mud", frame.getString("kind"))
+        assertEquals("terrain", frame.getString("kind"))
         assertEquals("""{"type":"hazard-clear"}""", RiderPinIntent.Clear(PinSlot.HAZARD).frame().toString())
     }
 }

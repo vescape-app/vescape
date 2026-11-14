@@ -252,7 +252,7 @@ final class GroupRideCuesTests: XCTestCase {
 
   func testTheRidersOwnNewHazardConfirmsOnceAfterItsOwnSignal() {
     joined(with: "me", "ola")
-    let mud = RideHazard(kind: .mud, lat: 50, lng: 19, startedAt: 2_000, expiresAt: 62_000)
+    let mud = RideHazard(kind: .terrain, lat: 50, lng: 19, startedAt: 2_000, expiresAt: 62_000)
     func roster(_ own: [String: RiderSignal], _ hazard: RideHazard, now: Int64) -> String? {
       cues.roster(rideId: "ride", riderIds: ["me", "ola"], awayIds: [], ownRiderId: "me", riderSignals: own, now: now, ownHazardNow: hazard)
     }

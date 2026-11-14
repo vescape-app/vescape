@@ -38,22 +38,23 @@ internal enum RiderSignalKind: String, CaseIterable, PinKind {
   case overheat
   case board
   case wait
+  case `break`
 
   static let slot = PinSlot.signal
 
   /// Orders kinds when several cue at once: a serious injury over a minor injury or a board
-  /// problem, those over a heads-up (a rider down after a small crash, a wait).
+  /// problem, those over a heads-up (a rider down after a small crash, a wait, a break).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
   /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
   var rank: Int {
     switch self {
     case .serious: 2
     case .minor, .battery, .tire, .overheat, .board: 1
-    case .down, .wait: 0
+    case .down, .wait, .break: 0
     }
   }
 
-  /// A serious injury is critical, a minor injury or a problem a warning, a rider down or a wait information.
+  /// A serious injury is critical, a minor injury or a problem a warning, a rider down, a wait, or a break information.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `severity`
   var severity: RideNoticeSeverity {
     switch rank {
@@ -74,6 +75,7 @@ internal enum RiderSignalKind: String, CaseIterable, PinKind {
     case .overheat: "Overheating"
     case .board: "Board fault"
     case .wait: "Wait for me"
+    case .break: "Break"
     }
   }
 }
@@ -84,19 +86,19 @@ internal enum RiderSignalKind: String, CaseIterable, PinKind {
 /// @parity /modules/vescape-core/src/index.ts `RIDE_HAZARD_KINDS`
 internal enum RideHazardKind: String, CaseIterable, PinKind {
   case water
-  case mud
+  case terrain
   case obstacle
-  case descent
+  case police
 
   static let slot = PinSlot.hazard
 
   /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDE_HAZARD_KIND_INFO`
   var label: String {
     switch self {
-    case .water: "Water"
-    case .mud: "Mud"
+    case .water: "Water's edge"
+    case .terrain: "Rough terrain"
     case .obstacle: "Obstacle"
-    case .descent: "Steep descent"
+    case .police: "Police"
     }
   }
 }

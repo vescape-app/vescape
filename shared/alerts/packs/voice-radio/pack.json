@@ -256,6 +256,15 @@
         ]
       }
     },
+    "groupRide.signal.break": {
+      "start": ["lines/groupRide.signal.break.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.break.full.start.0.m4a",
+          "lines/groupRide.signal.break.full.start.1.m4a"
+        ]
+      }
+    },
     "groupRide.signal.ok": {
       "start": ["lines/groupRide.signal.ok.start.0.m4a"],
       "full": {
@@ -292,12 +301,12 @@
         ]
       }
     },
-    "groupRide.hazard.mud": {
-      "start": ["lines/groupRide.hazard.mud.start.0.m4a"],
+    "groupRide.hazard.terrain": {
+      "start": ["lines/groupRide.hazard.terrain.start.0.m4a"],
       "full": {
         "start": [
-          "lines/groupRide.hazard.mud.full.start.0.m4a",
-          "lines/groupRide.hazard.mud.full.start.1.m4a"
+          "lines/groupRide.hazard.terrain.full.start.0.m4a",
+          "lines/groupRide.hazard.terrain.full.start.1.m4a"
         ]
       }
     },
@@ -310,12 +319,12 @@
         ]
       }
     },
-    "groupRide.hazard.descent": {
-      "start": ["lines/groupRide.hazard.descent.start.0.m4a"],
+    "groupRide.hazard.police": {
+      "start": ["lines/groupRide.hazard.police.start.0.m4a"],
       "full": {
         "start": [
-          "lines/groupRide.hazard.descent.full.start.0.m4a",
-          "lines/groupRide.hazard.descent.full.start.1.m4a"
+          "lines/groupRide.hazard.police.full.start.0.m4a",
+          "lines/groupRide.hazard.police.full.start.1.m4a"
         ]
       }
     },
@@ -1051,6 +1060,9 @@
     "lines/groupRide.signal.wait.full.start.0.m4a": "8b0a4a19fb1c4042",
     "lines/groupRide.signal.wait.full.start.1.m4a": "bc0c0b922693a413",
     "lines/groupRide.signal.wait.start.0.m4a": "a23d5054c7ab7a1c",
+    "lines/groupRide.signal.break.full.start.0.m4a": "1543912602fa6800",
+    "lines/groupRide.signal.break.full.start.1.m4a": "69132b90eaf3a7d8",
+    "lines/groupRide.signal.break.start.0.m4a": "fea4c738b45c72c8",
     "lines/groupRide.signal.ok.full.start.0.m4a": "92e1c0f90a49a054",
     "lines/groupRide.signal.ok.full.start.1.m4a": "63e7eb083c389b2f",
     "lines/groupRide.signal.ok.start.0.m4a": "6a2a9685a7777ac8",
@@ -1063,15 +1075,15 @@
     "lines/groupRide.hazard.water.full.start.0.m4a": "7e6be5be6f978b1a",
     "lines/groupRide.hazard.water.full.start.1.m4a": "8fe2ff7f8ca1cbbd",
     "lines/groupRide.hazard.water.start.0.m4a": "fe8044065e26ef04",
-    "lines/groupRide.hazard.mud.full.start.0.m4a": "384c65c31759d39c",
-    "lines/groupRide.hazard.mud.full.start.1.m4a": "20fe5c939f163c89",
-    "lines/groupRide.hazard.mud.start.0.m4a": "1894b2e7e1f3338f",
+    "lines/groupRide.hazard.terrain.full.start.0.m4a": "9d9d111c4bb84aab",
+    "lines/groupRide.hazard.terrain.full.start.1.m4a": "a95188f219a96d9d",
+    "lines/groupRide.hazard.terrain.start.0.m4a": "b516f771a0f0dc2c",
     "lines/groupRide.hazard.obstacle.full.start.0.m4a": "44a353e5409f68ea",
     "lines/groupRide.hazard.obstacle.full.start.1.m4a": "8295e70f2b2da67e",
     "lines/groupRide.hazard.obstacle.start.0.m4a": "3c687f838f20b9ce",
-    "lines/groupRide.hazard.descent.full.start.0.m4a": "8384a688d73d2a28",
-    "lines/groupRide.hazard.descent.full.start.1.m4a": "47fa64002ca0a5d4",
-    "lines/groupRide.hazard.descent.start.0.m4a": "0354c74b1c1d68c3",
+    "lines/groupRide.hazard.police.full.start.0.m4a": "ad2bd7c5bcda7374",
+    "lines/groupRide.hazard.police.full.start.1.m4a": "bb5f2b8f3662ef18",
+    "lines/groupRide.hazard.police.start.0.m4a": "5ed061d012a43465",
     "lines/groupRide.hazard.sent.full.start.0.m4a": "f0decae0a857da92",
     "lines/groupRide.hazard.sent.full.start.1.m4a": "f5584e5ba04aaa41",
     "lines/groupRide.hazard.sent.start.0.m4a": "28e2d4c3c4298c55",

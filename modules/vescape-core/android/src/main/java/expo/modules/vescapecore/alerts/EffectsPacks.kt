@@ -59,13 +59,14 @@ internal val GROUP_RIDE_CUES = listOf(
     "groupRide.signal.overheat",
     "groupRide.signal.board",
     "groupRide.signal.wait",
+    "groupRide.signal.break",
     "groupRide.signal.ok",
     "groupRide.signal.sent",
     "groupRide.signal.cleared",
     "groupRide.hazard.water",
-    "groupRide.hazard.mud",
+    "groupRide.hazard.terrain",
     "groupRide.hazard.obstacle",
-    "groupRide.hazard.descent",
+    "groupRide.hazard.police",
     "groupRide.hazard.sent",
 )
 
@@ -83,13 +84,13 @@ internal fun appCueSlot(cue: String): String? = when (cue) {
     "ride.end" -> "cue.ride.end"
     "groupRide.created", "groupRide.joined" -> "cue.$cue"
     "groupRide.riderJoined", "groupRide.signal.sent", "groupRide.hazard.sent", "groupRide.signal.down",
-    "groupRide.signal.wait" -> "severity.info"
+    "groupRide.signal.wait", "groupRide.signal.break" -> "severity.info"
     "groupRide.riderLeft", "groupRide.lost" -> "severity.warning"
     "groupRide.restored", "groupRide.signal.ok", "groupRide.signal.cleared" -> "severity.positive"
     "groupRide.signal.serious" -> "severity.critical"
     "groupRide.signal.minor", "groupRide.signal.battery", "groupRide.signal.tire", "groupRide.signal.overheat", "groupRide.signal.board" ->
         "severity.warning"
-    "groupRide.hazard.water", "groupRide.hazard.mud", "groupRide.hazard.obstacle", "groupRide.hazard.descent" ->
+    "groupRide.hazard.water", "groupRide.hazard.terrain", "groupRide.hazard.obstacle", "groupRide.hazard.police" ->
         "severity.warning"
     else -> null
 }

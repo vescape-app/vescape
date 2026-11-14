@@ -25,7 +25,7 @@ internal sealed interface PinKind {
 /**
  * The fixed **Rider Signal** kinds, by their relay wire name. [rank] orders them when several cue at
  * once: a serious injury over a minor injury or a board problem, those over a heads-up (a rider down after a
- * small crash, a wait).
+ * small crash, a wait, a break).
  *
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalKind`
  * @parity /modules/vescape-core/src/index.ts `RIDER_SIGNAL_KINDS`
@@ -40,12 +40,13 @@ internal enum class RiderSignalKind(override val wire: String, override val labe
     TIRE("tire", "Flat tire", 1),
     OVERHEAT("overheat", "Overheating", 1),
     BOARD("board", "Board fault", 1),
-    WAIT("wait", "Wait for me", 0);
+    WAIT("wait", "Wait for me", 0),
+    BREAK("break", "Break", 0);
 
     override val slot get() = PinSlot.SIGNAL
 
     /**
-     * A serious injury is critical, a minor injury or a problem a warning, a rider down or a wait information.
+     * A serious injury is critical, a minor injury or a problem a warning, a rider down, a wait, or a break information.
      * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `severity`
      */
     val severity: RideNoticeSeverity
@@ -68,10 +69,10 @@ internal enum class RiderSignalKind(override val wire: String, override val labe
  */
 internal enum class RideHazardKind(override val wire: String, override val label: String) : PinKind {
     // @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDE_HAZARD_KIND_INFO`
-    WATER("water", "Water"),
-    MUD("mud", "Mud"),
+    WATER("water", "Water's edge"),
+    TERRAIN("terrain", "Rough terrain"),
     OBSTACLE("obstacle", "Obstacle"),
-    DESCENT("descent", "Steep descent");
+    POLICE("police", "Police");
 
     override val slot get() = PinSlot.HAZARD
 

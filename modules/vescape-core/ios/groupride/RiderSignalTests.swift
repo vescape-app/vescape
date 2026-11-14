@@ -39,13 +39,13 @@ final class RiderSignalTests: XCTestCase {
   }
 
   func testAHazardParsesInItsOwnKindsAndSendsAndClearsInItsOwnSlot() {
-    let hazard: [String: Any] = ["kind": "mud", "lat": 1.0, "lng": 2.0, "startedAt": 1, "expiresAt": 2]
-    XCTAssertEqual(RideHazard.parse(hazard)?.kind, .mud)
+    let hazard: [String: Any] = ["kind": "terrain", "lat": 1.0, "lng": 2.0, "startedAt": 1, "expiresAt": 2]
+    XCTAssertEqual(RideHazard.parse(hazard)?.kind, .terrain)
     XCTAssertNil(RiderSignal.parse(hazard))
 
-    let frame = RiderSignals.sendIntent(RideHazardKind.mud, RiderSignalContext(fix: fix, insidePrivacyZone: false))?.frame()
+    let frame = RiderSignals.sendIntent(RideHazardKind.terrain, RiderSignalContext(fix: fix, insidePrivacyZone: false))?.frame()
     XCTAssertEqual(frame?["type"] as? String, "hazard")
-    XCTAssertEqual(frame?["kind"] as? String, "mud")
+    XCTAssertEqual(frame?["kind"] as? String, "terrain")
     XCTAssertEqual(RiderPinIntent.clear(.hazard).frame() as? [String: String], ["type": "hazard-clear"])
   }
 }

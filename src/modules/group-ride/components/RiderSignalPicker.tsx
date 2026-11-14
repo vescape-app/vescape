@@ -74,11 +74,11 @@ export function useOthersSignalTakeover(): IconButtonTakeover | null {
 
 /** The injury ladder first, the common crash under the thumb on the right and the serious injury
  *  furthest from it (picking a higher step replaces the lower), then what broke on the board, then
- *  a wait. */
+ *  the calm ones: a wait, a break. */
 const SIGNAL_ROWS: readonly (readonly RiderSignalKind[])[] = [
   ['serious', 'minor', 'down'],
   ['battery', 'tire', 'overheat', 'board'],
-  ['wait'],
+  ['wait', 'break'],
 ]
 
 /**

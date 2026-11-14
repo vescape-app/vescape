@@ -56,13 +56,14 @@ internal let groupRideCues = [
   "groupRide.signal.overheat",
   "groupRide.signal.board",
   "groupRide.signal.wait",
+  "groupRide.signal.break",
   "groupRide.signal.ok",
   "groupRide.signal.sent",
   "groupRide.signal.cleared",
   "groupRide.hazard.water",
-  "groupRide.hazard.mud",
+  "groupRide.hazard.terrain",
   "groupRide.hazard.obstacle",
-  "groupRide.hazard.descent",
+  "groupRide.hazard.police",
   "groupRide.hazard.sent",
 ]
 
@@ -78,14 +79,14 @@ internal func appCueSlot(_ cue: String) -> String? {
   case "ride.end": return "cue.ride.end"
   case "groupRide.created", "groupRide.joined": return "cue.\(cue)"
   case "groupRide.riderJoined", "groupRide.signal.sent", "groupRide.hazard.sent", "groupRide.signal.down",
-    "groupRide.signal.wait":
+    "groupRide.signal.wait", "groupRide.signal.break":
     return "severity.info"
   case "groupRide.riderLeft", "groupRide.lost": return "severity.warning"
   case "groupRide.restored", "groupRide.signal.ok", "groupRide.signal.cleared": return "severity.positive"
   case "groupRide.signal.serious": return "severity.critical"
   case "groupRide.signal.minor", "groupRide.signal.battery", "groupRide.signal.tire", "groupRide.signal.overheat", "groupRide.signal.board":
     return "severity.warning"
-  case "groupRide.hazard.water", "groupRide.hazard.mud", "groupRide.hazard.obstacle", "groupRide.hazard.descent":
+  case "groupRide.hazard.water", "groupRide.hazard.terrain", "groupRide.hazard.obstacle", "groupRide.hazard.police":
     return "severity.warning"
   default: return nil
   }

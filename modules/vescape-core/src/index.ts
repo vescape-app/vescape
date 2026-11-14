@@ -2009,6 +2009,7 @@ export const RIDER_SIGNAL_KINDS = [
   'overheat',
   'board',
   'wait',
+  'break',
 ] as const
 
 export type RiderSignalKind = (typeof RIDER_SIGNAL_KINDS)[number]
@@ -2018,7 +2019,7 @@ export type RiderSignalKind = (typeof RIDER_SIGNAL_KINDS)[number]
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RideHazardKind`
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RideHazardKind`
  */
-export const RIDE_HAZARD_KINDS = ['water', 'mud', 'obstacle', 'descent'] as const
+export const RIDE_HAZARD_KINDS = ['water', 'terrain', 'obstacle', 'police'] as const
 
 export type RideHazardKind = (typeof RIDE_HAZARD_KINDS)[number]
 

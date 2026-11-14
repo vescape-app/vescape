@@ -15,11 +15,11 @@ class RideHazardCuesTest {
 
     @Test
     fun `cues once when closing in within 30 m, never on arrival`() {
-        cues.roster(mapOf("ola" to hazard(RideHazardKind.MUD)))
+        cues.roster(mapOf("ola" to hazard(RideHazardKind.TERRAIN)))
 
         assertNull(at(50.0))
         assertNull(at(35.0))
-        assertEquals("groupRide.hazard.mud", at(28.0))
+        assertEquals("groupRide.hazard.terrain", at(28.0))
         assertNull(at(20.0))
         assertNull(at(5.0))
     }
@@ -36,9 +36,9 @@ class RideHazardCuesTest {
 
     @Test
     fun `a replaced hazard is a new pin and cues again`() {
-        cues.roster(mapOf("ola" to hazard(RideHazardKind.MUD)))
+        cues.roster(mapOf("ola" to hazard(RideHazardKind.TERRAIN)))
         at(40.0)
-        assertEquals("groupRide.hazard.mud", at(25.0))
+        assertEquals("groupRide.hazard.terrain", at(25.0))
 
         cues.roster(mapOf("ola" to hazard(RideHazardKind.OBSTACLE, startedAt = 9_000L)))
         at(40.0)
@@ -49,19 +49,19 @@ class RideHazardCuesTest {
     fun `the nearest of two approached hazards cues first, the other on the next fix`() {
         cues.roster(
             mapOf(
-                "ola" to hazard(RideHazardKind.MUD),
-                "kai" to RideHazard(RideHazardKind.DESCENT, 50.0 - 10.0 / 111_195.0, 19.0, 1_000L, 601_000L),
+                "ola" to hazard(RideHazardKind.TERRAIN),
+                "kai" to RideHazard(RideHazardKind.POLICE, 50.0 - 10.0 / 111_195.0, 19.0, 1_000L, 601_000L),
             ),
         )
         at(45.0)
 
-        assertEquals("groupRide.hazard.descent", at(27.0))
-        assertEquals("groupRide.hazard.mud", at(24.0))
+        assertEquals("groupRide.hazard.police", at(27.0))
+        assertEquals("groupRide.hazard.terrain", at(24.0))
     }
 
     @Test
     fun `reset forgets every hazard`() {
-        cues.roster(mapOf("ola" to hazard(RideHazardKind.MUD)))
+        cues.roster(mapOf("ola" to hazard(RideHazardKind.TERRAIN)))
         at(40.0)
         cues.reset()
 

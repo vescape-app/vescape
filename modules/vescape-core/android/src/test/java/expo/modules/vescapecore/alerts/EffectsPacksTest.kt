@@ -48,7 +48,7 @@ class EffectsPacksTest {
         assertEquals("severity.info", appCueSlot("groupRide.signal.down"))
         assertEquals("severity.warning", appCueSlot("groupRide.signal.board"))
         assertEquals("severity.info", appCueSlot("groupRide.signal.wait"))
-        assertEquals("severity.warning", appCueSlot("groupRide.hazard.mud"))
+        assertEquals("severity.warning", appCueSlot("groupRide.hazard.terrain"))
         assertEquals("severity.info", appCueSlot("groupRide.hazard.sent"))
         assertNull(appCueSlot("groupRide.hazard.lava"))
         assertEquals(AnnouncementPriority.ADVISORY, appCuePriority("groupRide.hazard.water"))

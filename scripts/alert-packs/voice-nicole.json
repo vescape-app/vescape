@@ -209,6 +209,12 @@
         "start": ["Someone asks you to wait. Be nice.", "A rider asks to wait."]
       }
     },
+    "groupRide.signal.break": {
+      "start": ["Rider takes a break."],
+      "full": {
+        "start": ["Someone's taking a break. Coffee time.", "A rider is taking a break."]
+      }
+    },
     "groupRide.signal.ok": {
       "start": ["Rider is OK."],
       "full": {
@@ -233,10 +239,10 @@
         "start": ["Water ahead. Don't lose your board.", "Careful, water ahead."]
       }
     },
-    "groupRide.hazard.mud": {
-      "start": ["Mud ahead."],
+    "groupRide.hazard.terrain": {
+      "start": ["Rough terrain ahead."],
       "full": {
-        "start": ["Mud ahead. Hold on tight.", "Careful, mud ahead."]
+        "start": ["Rough terrain ahead. Hold on tight.", "Careful, rough terrain ahead."]
       }
     },
     "groupRide.hazard.obstacle": {
@@ -245,10 +251,10 @@
         "start": ["Something's blocking the path ahead.", "Careful, obstacle ahead."]
       }
     },
-    "groupRide.hazard.descent": {
-      "start": ["Steep descent ahead."],
+    "groupRide.hazard.police": {
+      "start": ["Police ahead."],
       "full": {
-        "start": ["Steep descent ahead. Easy does it.", "Careful, steep descent ahead."]
+        "start": ["Police ahead. Be cool.", "Heads up, police ahead."]
       }
     },
     "groupRide.hazard.sent": {

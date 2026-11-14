@@ -285,7 +285,7 @@ class GroupRideCuesTest {
     @Test
     fun `the rider's own new hazard confirms once, after its own signal`() {
         joinedWith("me", "ola")
-        val mud = RideHazard(RideHazardKind.MUD, 50.0, 19.0, 2_000, 62_000)
+        val mud = RideHazard(RideHazardKind.TERRAIN, 50.0, 19.0, 2_000, 62_000)
 
         assertEquals("groupRide.hazard.sent", cues.roster("ride", listOf("me", "ola"), emptySet(), "me", emptyMap(), 10_000, mud))
         assertNull(cues.roster("ride", listOf("me", "ola"), emptySet(), "me", emptyMap(), 11_000, mud))

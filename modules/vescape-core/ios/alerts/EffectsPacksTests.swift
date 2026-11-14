@@ -36,7 +36,7 @@ final class EffectsPacksTests: XCTestCase {
     XCTAssertEqual(appCueSlot("groupRide.signal.minor"), "severity.warning")
     XCTAssertEqual(appCueSlot("groupRide.signal.down"), "severity.info")
     XCTAssertEqual(appCueSlot("groupRide.signal.wait"), "severity.info")
-    XCTAssertEqual(appCueSlot("groupRide.hazard.mud"), "severity.warning")
+    XCTAssertEqual(appCueSlot("groupRide.hazard.terrain"), "severity.warning")
     XCTAssertEqual(appCueSlot("groupRide.hazard.sent"), "severity.info")
     XCTAssertNil(appCueSlot("groupRide.hazard.lava"))
     XCTAssertEqual(appCuePriority("groupRide.hazard.water"), .advisory)

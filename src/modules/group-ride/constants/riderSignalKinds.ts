@@ -1,14 +1,15 @@
 import {
   AmbulanceIcon,
   BatteryEmptyIcon,
-  DropHalfBottomIcon,
+  CoffeeIcon,
   FirstAidIcon,
   HandIcon,
+  MountainsIcon,
+  SirenIcon,
   SmileyXEyesIcon,
   TireIcon,
   ThermometerHotIcon,
   TrafficConeIcon,
-  TrendDownIcon,
   WavesIcon,
   WrenchIcon,
   type Icon,
@@ -24,7 +25,17 @@ import {
  *  Injuries climb yellow, orange, red with severity; the rest each get their own accent, so
  *  neighbouring tiles never share one (docs/design.md, Icons). */
 export type PinHue =
-  'red' | 'orange' | 'yellow' | 'green' | 'sky' | 'fuchsia' | 'cyan' | 'blue' | 'amber' | 'violet'
+  | 'red'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'sky'
+  | 'fuchsia'
+  | 'cyan'
+  | 'beige'
+  | 'teal'
+  | 'amber'
+  | 'blue'
 
 export interface PinKindInfo {
   label: string
@@ -56,6 +67,7 @@ export const RIDER_SIGNAL_KIND_INFO: Record<RiderSignalKind, RiderSignalKindInfo
   overheat: { label: 'Overheating', icon: ThermometerHotIcon, hue: 'orange', rank: 1 },
   board: { label: 'Board fault', icon: WrenchIcon, hue: 'fuchsia', rank: 1 },
   wait: { label: 'Wait for me', icon: HandIcon, hue: 'cyan', rank: 0 },
+  break: { label: 'Break', icon: CoffeeIcon, hue: 'beige', rank: 0 },
 }
 
 /**
@@ -65,10 +77,10 @@ export const RIDER_SIGNAL_KIND_INFO: Record<RiderSignalKind, RiderSignalKindInfo
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RideHazardKind`
  */
 export const RIDE_HAZARD_KIND_INFO: Record<RideHazardKind, PinKindInfo> = {
-  water: { label: 'Water', icon: WavesIcon, hue: 'blue' },
-  mud: { label: 'Mud', icon: DropHalfBottomIcon, hue: 'amber' },
+  water: { label: "Water's edge", icon: WavesIcon, hue: 'teal' },
+  terrain: { label: 'Rough terrain', icon: MountainsIcon, hue: 'amber' },
   obstacle: { label: 'Obstacle', icon: TrafficConeIcon, hue: 'yellow' },
-  descent: { label: 'Steep descent', icon: TrendDownIcon, hue: 'violet' },
+  police: { label: 'Police', icon: SirenIcon, hue: 'blue' },
 }
 
 /** The kind's info, or null for a wire kind this build does not know. */

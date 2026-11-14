@@ -201,6 +201,12 @@
         "start": ["Squad member requests hold.", "Hold position. Rider requests wait."]
       }
     },
+    "groupRide.signal.break": {
+      "start": ["Rider on break."],
+      "full": {
+        "start": ["Squad member on break.", "Rider stopped. Taking a break."]
+      }
+    },
     "groupRide.signal.ok": {
       "start": ["Rider status OK."],
       "full": {
@@ -225,10 +231,10 @@
         "start": ["Caution. Water ahead.", "Water on the route ahead."]
       }
     },
-    "groupRide.hazard.mud": {
-      "start": ["Mud ahead."],
+    "groupRide.hazard.terrain": {
+      "start": ["Rough terrain ahead."],
       "full": {
-        "start": ["Caution. Mud ahead.", "Mud on the route ahead."]
+        "start": ["Caution. Rough terrain ahead.", "Rough terrain on the route ahead."]
       }
     },
     "groupRide.hazard.obstacle": {
@@ -237,10 +243,10 @@
         "start": ["Caution. Obstacle ahead.", "Obstacle on the route ahead."]
       }
     },
-    "groupRide.hazard.descent": {
-      "start": ["Steep descent ahead."],
+    "groupRide.hazard.police": {
+      "start": ["Police ahead."],
       "full": {
-        "start": ["Caution. Steep descent ahead.", "Steep descent on the route ahead."]
+        "start": ["Caution. Police ahead.", "Police on the route ahead."]
       }
     },
     "groupRide.hazard.sent": {

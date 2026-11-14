@@ -13,11 +13,11 @@ final class RideHazardCuesTests: XCTestCase {
   private func at(_ metres: Double) -> String? { cues.fix(lat: 50 - metres / 111_195, lng: 19) }
 
   func testCuesOnceWhenClosingInWithin30mNeverOnArrival() {
-    cues.roster(["ola": hazard(.mud)])
+    cues.roster(["ola": hazard(.terrain)])
 
     XCTAssertNil(at(50))
     XCTAssertNil(at(35))
-    XCTAssertEqual(at(28), "groupRide.hazard.mud")
+    XCTAssertEqual(at(28), "groupRide.hazard.terrain")
     XCTAssertNil(at(20))
     XCTAssertNil(at(5))
   }
@@ -32,9 +32,9 @@ final class RideHazardCuesTests: XCTestCase {
   }
 
   func testAReplacedHazardIsANewPinAndCuesAgain() {
-    cues.roster(["ola": hazard(.mud)])
+    cues.roster(["ola": hazard(.terrain)])
     _ = at(40)
-    XCTAssertEqual(at(25), "groupRide.hazard.mud")
+    XCTAssertEqual(at(25), "groupRide.hazard.terrain")
 
     cues.roster(["ola": hazard(.obstacle, startedAt: 9_000)])
     _ = at(40)
@@ -42,15 +42,15 @@ final class RideHazardCuesTests: XCTestCase {
   }
 
   func testTheNearestOfTwoApproachedHazardsCuesFirstTheOtherOnTheNextFix() {
-    cues.roster(["ola": hazard(.mud), "kai": hazard(.descent, metresSouth: 10)])
+    cues.roster(["ola": hazard(.terrain), "kai": hazard(.police, metresSouth: 10)])
     _ = at(45)
 
-    XCTAssertEqual(at(27), "groupRide.hazard.descent")
-    XCTAssertEqual(at(24), "groupRide.hazard.mud")
+    XCTAssertEqual(at(27), "groupRide.hazard.police")
+    XCTAssertEqual(at(24), "groupRide.hazard.terrain")
   }
 
   func testResetForgetsEveryHazard() {
-    cues.roster(["ola": hazard(.mud)])
+    cues.roster(["ola": hazard(.terrain)])
     _ = at(40)
     cues.reset()
 
