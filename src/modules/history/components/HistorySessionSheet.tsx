@@ -41,7 +41,7 @@ import {
   HISTORY_RIDE_ROW_GAP,
 } from '@/modules/history/lib/historyList'
 import { favoriteSessionId } from '@/modules/history/lib/favorites'
-import { formatFavoriteName, formatRideTime } from '@/modules/history/lib/rideFormat'
+import { formatFavoriteName } from '@/modules/history/lib/rideFormat'
 import { isLiveRide } from '@/modules/history/lib/sessions'
 import { rideDayOf } from '@/modules/history/lib/rideDay'
 import {
@@ -90,7 +90,7 @@ export function HistorySessionSheet({
   onSelectTab,
   onOpenDay,
 }: HistorySessionSheetProps) {
-  const { formatRideDetails } = useRideFormat()
+  const { formatRideDetails, formatRideTime } = useRideFormat()
   const { fontScale } = useWindowDimensions()
   const dateHeaderHeight = 24 + 38 * fontScale
   useHistoryAutoRefresh(visible && !favoriteMode)
@@ -168,11 +168,8 @@ export function HistorySessionSheet({
         rideWindow.endMs,
         !favorite && isLiveRide(session, Date.now()),
       )
-      const details = formatRideDetails(
-        rideWindow.endMs - rideWindow.startMs,
-        session.distanceM,
-        favorite?.boardName ?? session.boardName,
-      )
+      const boardName = (favorite?.boardName ?? session.boardName)?.trim() || null
+      const details = formatRideDetails(rideWindow.endMs - rideWindow.startMs, session.distanceM)
       return (
         <View>
           {dateHeader && day ? (
@@ -185,7 +182,7 @@ export function HistorySessionSheet({
                   {dateHeader}
                 </Text>
                 <Text style={styles.dateHeaderDetails} numberOfLines={1}>
-                  {`${day.rides} ${day.rides === 1 ? 'ride' : 'rides'} · ${formatRideDetails(day.durationMs, day.distanceM, null)}`}
+                  {`${day.rides} ${day.rides === 1 ? 'ride' : 'rides'} · ${formatRideDetails(day.durationMs, day.distanceM)}`}
                 </Text>
               </View>
               {selectActive ? (
@@ -224,8 +221,10 @@ export function HistorySessionSheet({
             title={
               favorite ? formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs) : time
             }
-            subtitle={favorite ? time : details}
-            details={favorite ? details : undefined}
+            subtitle={details}
+            details={
+              (favorite ? [time, boardName] : [boardName]).filter(Boolean).join(' · ') || undefined
+            }
             routePoints={session.routePoints}
             selected={selected}
             accent={favorite ? theme.palette.amber.color : undefined}
@@ -254,6 +253,7 @@ export function HistorySessionSheet({
       onSelectSession,
       selectedSessionId,
       formatRideDetails,
+      formatRideTime,
       dateHeaderHeight,
       openDay,
       dayIds,

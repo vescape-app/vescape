@@ -6,19 +6,6 @@ export function formatAxisNumber(value: number): string {
   return value.toFixed(1)
 }
 
-function pad(value: number): string {
-  'worklet'
-  return value < 10 ? `0${value}` : `${value}`
-}
-
-/** Wall-clock label. Seconds appear only once the window is short enough for them to move. */
-export function formatClock(timeMs: number, withSeconds: boolean): string {
-  'worklet'
-  const date = new Date(timeMs)
-  const base = `${pad(date.getHours())}:${pad(date.getMinutes())}`
-  return withSeconds ? `${base}:${pad(date.getSeconds())}` : base
-}
-
 /** Offset from the live head, for charts whose right edge is always "now". */
 export function formatRelative(offsetMs: number): string {
   'worklet'

@@ -16,6 +16,7 @@ const BASE: AppSettings = {
   rideSplitGapMinutes: 30,
   distanceUnit: 'km',
   temperatureUnit: 'celsius',
+  timeFormat: '24h',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
@@ -241,27 +242,32 @@ test('master auto-start switch is independent from configured boards', async () 
   expect(useSettingsStore.getState().companionPresenceBoards).toEqual([])
 })
 
-test('unit preference publishes only after native save and survives a reload', async () => {
-  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
-  await useSettingsStore.getState().load()
-  expect(useSettingsStore.getState().distanceUnit).toBe('km')
-  let finish!: () => void
-  updateSetting.mockImplementationOnce(
-    () =>
-      new Promise<void>((resolve) => {
-        finish = resolve
-      }),
-  )
-  const pending = useSettingsStore.getState().set('distanceUnit', 'mi')
-  expect(useSettingsStore.getState().distanceUnit).toBe('km')
-  finish()
-  await pending
-  expect(useSettingsStore.getState().distanceUnit).toBe('mi')
-  settings = { ...BASE, distanceUnit: 'mi' }
-  useSettingsStore.setState({ distanceUnit: 'km', loaded: false })
-  await useSettingsStore.getState().load()
-  expect(useSettingsStore.getState().distanceUnit).toBe('mi')
-  updateSetting.mockRejectedValueOnce(new Error('disk failed'))
-  await expect(useSettingsStore.getState().set('distanceUnit', 'km')).rejects.toThrow('disk failed')
-  expect(useSettingsStore.getState().distanceUnit).toBe('mi')
-})
+for (const [key, initial, selected] of [
+  ['distanceUnit', 'km', 'mi'],
+  ['timeFormat', '24h', '12h'],
+] as const) {
+  test(`${key} publishes only after native save and survives a reload`, async () => {
+    const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+    await useSettingsStore.getState().load()
+    expect(useSettingsStore.getState()[key]).toBe(initial)
+    let finish!: () => void
+    updateSetting.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    const pending = useSettingsStore.getState().set(key, selected)
+    expect(useSettingsStore.getState()[key]).toBe(initial)
+    finish()
+    await pending
+    expect(useSettingsStore.getState()[key]).toBe(selected)
+    settings = { ...BASE, [key]: selected }
+    useSettingsStore.setState({ [key]: initial, loaded: false })
+    await useSettingsStore.getState().load()
+    expect(useSettingsStore.getState()[key]).toBe(selected)
+    updateSetting.mockRejectedValueOnce(new Error('disk failed'))
+    await expect(useSettingsStore.getState().set(key, initial)).rejects.toThrow('disk failed')
+    expect(useSettingsStore.getState()[key]).toBe(selected)
+  })
+}

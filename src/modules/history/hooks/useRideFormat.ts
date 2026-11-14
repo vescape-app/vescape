@@ -6,7 +6,8 @@ import {
   buildHistoryMarkerMessage,
   type SelectedHistoryMarker,
 } from '@/modules/history/lib/historyMapMarkerInfo'
-import { formatRideListDetails } from '@/modules/history/lib/rideFormat'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { formatRideTime, formatRideListDetails } from '@/modules/history/lib/rideFormat'
 
 interface HistoryDistance {
   value: string
@@ -16,9 +17,15 @@ interface HistoryDistance {
 /** Bind ride-list presentation to the rider's current units. */
 export function useRideFormat() {
   const distanceUnit = useDistanceUnit()
+  const timeFormat = useTimeFormat()
+  const formatTime = useCallback(
+    (startMs: number, endMs: number, live = false) =>
+      formatRideTime(startMs, endMs, live, timeFormat),
+    [timeFormat],
+  )
   const formatRideDetails = useCallback(
-    (durationMs: number, distanceM: number | null, boardName: string | null) =>
-      formatRideListDetails(durationMs, distanceM, boardName, distanceUnit),
+    (durationMs: number, distanceM: number | null) =>
+      formatRideListDetails(durationMs, distanceM, distanceUnit),
     [distanceUnit],
   )
   const formatHistoryDistance = useCallback(
@@ -36,8 +43,14 @@ export function useRideFormat() {
     [distanceUnit],
   )
   const formatHistoryMarker = useCallback(
-    (selection: SelectedHistoryMarker) => buildHistoryMarkerMessage(selection, distanceUnit),
-    [distanceUnit],
+    (selection: SelectedHistoryMarker) =>
+      buildHistoryMarkerMessage(selection, distanceUnit, timeFormat),
+    [distanceUnit, timeFormat],
   )
-  return { formatRideDetails, formatHistoryDistance, formatHistoryMarker }
+  return {
+    formatRideTime: formatTime,
+    formatRideDetails,
+    formatHistoryDistance,
+    formatHistoryMarker,
+  }
 }

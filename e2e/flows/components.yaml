@@ -22,6 +22,10 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: ChartStack / one canvas, shared camera
     timeout: 15000
+- openLink: 'vescape://settings/components/history'
+- extendedWaitUntil:
+    visible: RidePreviewCard · RidePreviewStrip
+    timeout: 15000
 - openLink: 'vescape://settings/components/typography'
 - extendedWaitUntil:
     visible: Typography roles

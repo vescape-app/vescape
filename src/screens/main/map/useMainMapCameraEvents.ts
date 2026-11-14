@@ -208,6 +208,11 @@ export function useMainMapCameraEvents({
       if (!automaticHeadingFollow) {
         onHeadingChange(state.properties.heading)
         updateOffscreenMapIndicators()
+      } else {
+        // Heading follow skips the per-frame check, and MapLibre reports no idle after a direct
+        // camera write, so without this nothing re-reads visibility once the camera arrives: an
+        // indicator raised while the camera was still travelling stays over a visible point.
+        scheduleOffscreenMapIndicatorRefresh()
       }
       if (historyActive && mediaAssetCount > 0) {
         setCameraZoom((current) =>
@@ -234,6 +239,7 @@ export function useMainMapCameraEvents({
       phoneHeadingMode,
       previewPanActiveRef,
       repositionOffscreenIndicatorsForCamera,
+      scheduleOffscreenMapIndicatorRefresh,
       setFollowGps,
       setFollowZoomLevel,
       setCameraReady,

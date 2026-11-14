@@ -6,7 +6,8 @@ import { PaletteIcon } from 'phosphor-react-native'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { formatHour } from '@/helpers/format'
+import { formatClock } from '@/helpers/time'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { THEME_OPTIONS } from '@/modules/settings/lib/themeOptions'
 import { useSunThemeClock } from '@/modules/settings/hooks/useSunThemeClock'
 import {
@@ -16,10 +17,6 @@ import {
   type ThemeCoordinate,
 } from '@/modules/settings/lib/themeMode'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-
-function formatClock(date: Date): string {
-  return formatHour(date.getHours() * 60 + date.getMinutes())
-}
 
 /** Next light and dark switches of the `sun` mode in time order, empty without a location or switch. */
 function upcomingSunSwitches(
@@ -35,6 +32,7 @@ function upcomingSunSwitches(
 
 /** Inline appearance choices in the quick-settings drawer. */
 export function ThemePicker() {
+  const timeFormat = useTimeFormat()
   const mode = useSettingsStore((s) => s.themeMode)
   const setSetting = useSettingsStore((s) => s.set)
   const [headerWidth, setHeaderWidth] = useState(0)
@@ -82,7 +80,9 @@ export function ThemePicker() {
               <View key={to} style={styles.switch}>
                 <option.Icon size={16} color={option.hue.color} weight="duotone" />
                 <Text style={styles.hintText}>{option.label} at</Text>
-                <Text style={[styles.hintText, styles.hintTime]}>{formatClock(at)}</Text>
+                <Text style={[styles.hintText, styles.hintTime]}>
+                  {formatClock(at.getTime(), false, timeFormat)}
+                </Text>
               </View>
             )
           })}

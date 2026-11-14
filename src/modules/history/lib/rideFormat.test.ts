@@ -7,11 +7,9 @@ import {
   suggestFavoriteName,
 } from '@/modules/history/lib/rideFormat'
 
-test('list details use contextual duration units and keep the board last', () => {
-  expect(formatRideListDetails(50 * 60_000, 1_820, 'Thor3')).toBe('50 min · 1.82 km · Thor3')
-  expect(formatRideListDetails(83 * 60_000, 12_840, 'Very Long Board Name')).toBe(
-    '1h 23m · 12.84 km · Very Long Board Name',
-  )
+test('list details use contextual duration units', () => {
+  expect(formatRideListDetails(50 * 60_000, 1_820)).toBe('50 min · 1.82 km')
+  expect(formatRideListDetails(83 * 60_000, 12_840)).toBe('1h 23m · 12.84 km')
 })
 
 test('short Favorite suggestions use rider-friendly parts of day', () => {
@@ -50,13 +48,18 @@ test('a ride still being recorded ends at now instead of a clock time', () => {
 
 test('existing ride totals use miles even below the nearby-distance cutoff', () => {
   const record = Object.freeze({ distanceM: 80, durationMs: 120_000 })
-  expect(formatRideListDetails(record.durationMs, record.distanceM, null, 'mi')).toBe(
-    '2 min · 0.05 mi',
-  )
-  expect(formatRideListDetails(record.durationMs, record.distanceM, null, 'km')).toBe(
-    '2 min · 0.08 km',
-  )
-  expect(formatRideListDetails(record.durationMs, null, null, 'mi')).toBe('2 min')
-  expect(formatRideListDetails(0, 0, null, 'mi')).toBe('1 min · 0.00 mi')
+  expect(formatRideListDetails(record.durationMs, record.distanceM, 'mi')).toBe('2 min · 0.05 mi')
+  expect(formatRideListDetails(record.durationMs, record.distanceM, 'km')).toBe('2 min · 0.08 km')
+  expect(formatRideListDetails(record.durationMs, null, 'mi')).toBe('2 min')
+  expect(formatRideListDetails(0, 0, 'mi')).toBe('1 min · 0.00 mi')
   expect(record.distanceM).toBe(80)
+})
+
+test('12h ride ranges identify noon, midnight and live endpoints', () => {
+  const beforeNoon = new Date(2026, 10, 13, 11, 45).getTime()
+  const afterNoon = new Date(2026, 10, 13, 12, 15).getTime()
+  const midnight = new Date(2026, 10, 14, 0, 0).getTime()
+  expect(formatRideTime(beforeNoon, afterNoon, false, '12h')).toBe('11:45 AM – 12:15 PM')
+  expect(formatRideTime(afterNoon, midnight, false, '12h')).toBe('12:15 PM – 12:00 AM')
+  expect(formatRideTime(afterNoon, midnight, true, '12h')).toBe('12:15 PM – now')
 })

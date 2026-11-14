@@ -1,3 +1,5 @@
+import { formatDateTime } from '@/helpers/time'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { useCallback, useEffect, useState } from 'react'
 import { FlatList, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -18,15 +20,6 @@ interface HistoryFieldDiff {
   label: string
   oldValue: string
   newValue: string
-}
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-function formatHistoryDate(ms: number): string {
-  const d = new Date(ms)
-  const h = d.getHours().toString().padStart(2, '0')
-  const m = d.getMinutes().toString().padStart(2, '0')
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()} ${h}:${m}`
 }
 
 function diffHistoryEntries(
@@ -54,6 +47,7 @@ function diffHistoryEntries(
 }
 
 export default function TuneHistoryScreen() {
+  const timeFormat = useTimeFormat()
   const router = useRouter()
   const activeProfile = useTuneProfileStore((s) => s.activeProfile)
   const loadHistory = useTuneProfileStore((s) => s.loadHistory)
@@ -94,7 +88,7 @@ export default function TuneHistoryScreen() {
             return (
               <View style={styles.entry}>
                 <View style={styles.entryInfo}>
-                  <Text style={styles.entryDate}>{formatHistoryDate(item.createdAt)}</Text>
+                  <Text style={styles.entryDate}>{formatDateTime(item.createdAt, timeFormat)}</Text>
                   {diffs.length > 0 ? (
                     <View style={styles.diffs}>
                       {diffs.map((d) => (

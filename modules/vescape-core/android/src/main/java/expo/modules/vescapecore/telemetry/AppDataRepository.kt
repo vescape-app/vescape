@@ -472,6 +472,7 @@ class AppDataRepository private constructor(private val context: Context) {
       movingSpeedThresholdKmh = req("movingSpeedThresholdKmh", 3.0) { (it as? Number)?.toDouble() },
       distanceUnit = req("distanceUnit", "km", ::validDistanceUnit),
       temperatureUnit = req("temperatureUnit", "celsius", ::validTemperatureUnit),
+      timeFormat = req("timeFormat", "24h", ::validTimeFormat),
       themeMode = req("themeMode", "system", ::validThemeMode),
       mapStyleKey = req("mapStyleKey", "onedark", ::validMapStyleKey),
       satelliteOverlayEnabled = req("satelliteOverlayEnabled", true) { it as? Boolean },
@@ -566,6 +567,8 @@ class AppDataRepository private constructor(private val context: Context) {
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
       "distanceUnit" -> requireNotNull(validDistanceUnit(value)) { "Invalid distanceUnit" }
       "temperatureUnit" -> validTemperatureUnit(value) ?: return@withContext
+      "timeFormat" -> if (value == null || value == JSONObject.NULL) "24h"
+        else requireNotNull(validTimeFormat(value)) { "Invalid timeFormat" }
       "themeMode" -> validThemeMode(value) ?: return@withContext
       "mapStyleKey" ->
         validMapStyleKey(value) ?: return@withContext
@@ -644,6 +647,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "movingSpeedThresholdKmh" -> d.movingSpeedThresholdKmh
         "distanceUnit" -> d.distanceUnit
         "temperatureUnit" -> d.temperatureUnit
+        "timeFormat" -> d.timeFormat
         "themeMode" -> d.themeMode
         "mapStyleKey" -> d.mapStyleKey
         "satelliteOverlayEnabled" -> d.satelliteOverlayEnabled
@@ -1028,6 +1032,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "movingSpeedThresholdKmh" to movingSpeedThresholdKmh,
   "distanceUnit" to distanceUnit,
   "temperatureUnit" to temperatureUnit,
+  "timeFormat" to timeFormat,
   "themeMode" to themeMode,
   "mapStyleKey" to mapStyleKey,
   "satelliteOverlayEnabled" to satelliteOverlayEnabled,

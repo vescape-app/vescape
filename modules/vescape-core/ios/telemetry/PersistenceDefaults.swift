@@ -15,3 +15,10 @@ internal func validTemperatureUnit(_ value: Any?) -> String? {
   guard let unit = value as? String, unit == "celsius" || unit == "fahrenheit" else { return nil }
   return unit
 }
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validTimeFormat`
+/// @parity /modules/vescape-core/src/index.ts `TimeFormat`
+internal func validTimeFormat(_ value: Any?) -> String? {
+  guard let format = value as? String, format == "24h" || format == "12h" else { return nil }
+  return format
+}

@@ -41,6 +41,7 @@ internal const val WATCH_SETTING_MAP_GAUGES = "mapGaugesPercent"
 
 /** App-wide speed and distance preference; older phones default to metric. */
 internal const val WATCH_SETTING_DISTANCE_UNIT = "distanceUnit"
+internal const val WATCH_SETTING_TIME_FORMAT = "timeFormat"
 
 /** Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist. */
 internal const val WATCH_SETTING_TILT_RATE = "tiltRatePercent"
@@ -62,6 +63,7 @@ internal val WATCH_SOURCE_SETTING_KEYS = setOf(
     "wearStreetMapEnabled",
     "wearMapGaugesPercent",
     "distanceUnit",
+    "timeFormat",
     "wearTiltRatePercent",
     "wearPushRateHz",
 )
@@ -71,6 +73,7 @@ internal data class WatchSettings(
     val boardMoveStrengthPercent: Int,
     val navArrowEnabled: Boolean,
     val distanceUnit: String = "km",
+    val timeFormat: String = "24h",
     val tiltRatePercent: Int = 20,
     val telemetryTrailEnabled: Boolean = true,
     val telemetryGroupEnabled: Boolean = true,
@@ -93,5 +96,6 @@ internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     streetMapEnabled = wearStreetMapEnabled,
     mapGaugesPercent = wearMapGaugesPercent,
     distanceUnit = distanceUnit,
+    timeFormat = timeFormat,
     tiltRatePercent = wearTiltRatePercent,
 )

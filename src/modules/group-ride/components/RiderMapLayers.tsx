@@ -1,9 +1,10 @@
-import { LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
+import { LineLayer, ShapeSource } from '@rnmapbox/maps'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import type { GroupRidePin } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
+import { InMapMarker } from '@/components/map/InMapMarker'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { makeTrailLineString } from '@/helpers/mapGeometry'
@@ -79,7 +80,7 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
   if (!rider.presence) return null
 
   return (
-    <MarkerView coordinate={[rider.presence.lng, rider.presence.lat]} allowOverlap>
+    <InMapMarker coordinate={[rider.presence.lng, rider.presence.lat]}>
       <View style={styles.riderMarker}>
         <View style={[styles.riderDot, { backgroundColor: color }]}>
           {heading != null && (
@@ -94,7 +95,7 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
           {rider.name || 'Rider'}
         </Text>
       </View>
-    </MarkerView>
+    </InMapMarker>
   )
 }
 
@@ -148,7 +149,7 @@ function RiderPinMarker({
   const KindIcon = info.icon
 
   return (
-    <MarkerView coordinate={[pin.lng, pin.lat]} anchor={SIGNAL_PIN_ANCHOR} allowOverlap>
+    <InMapMarker coordinate={[pin.lng, pin.lat]}>
       <View
         style={styles.signalMarker}
         accessibilityLabel={`${rider.name || 'Rider'}: ${info.label}`}
@@ -164,19 +165,22 @@ function RiderPinMarker({
         </View>
         <View style={[styles.signalStem, { backgroundColor: color }]} />
       </View>
-    </MarkerView>
+    </InMapMarker>
   )
 }
 
-// The presence marker centers its dot and label on the Rider's position, its heading ring reaching
-// ~28 px above it. The stem lifts the signal pin past that, its foot on the signal's own spot.
+// The presence marker centers its dot on the Rider's position, its heading ring reaching ~28 px
+// above it. The stem lifts the signal pin past that, its foot on the signal's own spot. A marker is
+// anchored at its centre, so bottom padding mirrors pin and stem to put that centre at the foot.
 const SIGNAL_PIN_SIZE = 32
 const SIGNAL_STEM_HEIGHT = 30
-const SIGNAL_PIN_ANCHOR = { x: 0.5, y: 1 }
+const RIDER_LABEL_GAP = 4
+const RIDER_LABEL_HEIGHT = 20
 
 const styles = StyleSheet.create({
   signalMarker: {
     alignItems: 'center',
+    paddingBottom: SIGNAL_PIN_SIZE + SIGNAL_STEM_HEIGHT,
   },
   signalStem: {
     width: 2,
@@ -194,9 +198,12 @@ const styles = StyleSheet.create({
   hazardPin: {
     borderRadius: 8,
   },
+  // A marker is anchored at its centre. The top padding mirrors the label below the dot, so that
+  // centre is the dot and the rider's coordinate is not somewhere between dot and label.
   riderMarker: {
     alignItems: 'center',
-    gap: 4,
+    gap: RIDER_LABEL_GAP,
+    paddingTop: RIDER_LABEL_HEIGHT + RIDER_LABEL_GAP,
   },
   riderDot: {
     width: 16,
@@ -222,8 +229,9 @@ const styles = StyleSheet.create({
   },
   riderLabel: {
     maxWidth: 96,
+    height: RIDER_LABEL_HEIGHT,
+    lineHeight: RIDER_LABEL_HEIGHT,
     paddingHorizontal: 7,
-    paddingVertical: 3,
     borderRadius: 6,
     overflow: 'hidden',
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),

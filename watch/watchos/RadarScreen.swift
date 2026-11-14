@@ -23,6 +23,7 @@ struct RadarScreen: View {
   /// has to read that way rather than as a dead mirror.
   var onFetchFailed: () -> Void = {}
   var distanceUnit: String = "km"
+  var timeFormat: String = "24h"
   @StateObject private var radar = RadarStore()
   @State private var index = 0
 
@@ -43,7 +44,7 @@ struct RadarScreen: View {
         RadarHeader()
         VStack {
           Spacer()
-          Text(watchFormatHour(watchMinuteOfDay(epochMs: frame.timeSec * 1_000)))
+          Text(watchFormatHour(watchMinuteOfDay(epochMs: frame.timeSec * 1_000), timeFormat: timeFormat))
             .font(WatchTypography.mono(size: 12))
             .foregroundStyle(Palette.secondaryText)
             .monospacedDigit()

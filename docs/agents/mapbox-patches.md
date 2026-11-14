@@ -62,6 +62,50 @@ retargets inside a move the engine already owns.
 The current native bridge intentionally accepts only `pitch` and `heading`. Do not broaden it to
 arbitrary camera options without a concrete use case and gesture-behavior verification.
 
+## Drawing marker views inside the map frame
+
+```ts
+cameraRef.current?.setMarkersDirect([tag, lng, lat, version, burstMs, hide /* , ...per marker */])
+```
+
+Both platforms draw them with `RNMBXMarkerSprites`, in the same custom layer as the rider puck
+(`RNMBXPuck`, fed by `setPuckDirect`), after the coin, in the order sent:
+
+- Android: GLES 3; snapshots through `View.draw`. A photo decoded to a hardware bitmap cannot go on
+  a software canvas, so that snapshot is recorded into a `Picture`, rendered by the GPU and read
+  back into a mutable bitmap.
+- iOS: Metal; snapshots through `CALayer.render(in:)`. Each sprite keeps up to four textures and
+  only overwrites one whose last command buffer has completed; with all four in flight the upload
+  waits a frame.
+
+A `MarkerView` is positioned on the UI thread and trails the map by about a frame while the camera
+moves. `src/components/map/InMapMarker.tsx` keeps the marker view mounted, as the look's source and
+the touch target, and sends its React tag here. Native snapshots that view into a bitmap when its
+`version` changes, and every frame for `burstMs` after, then draws it as a screen-aligned sprite at
+the coordinate inside the map's own frame. If the view has not mounted yet, each burst frame looks
+it up again.
+
+With `hide` 1 native hides the marker view on screen once the first snapshot is in, in a way that
+keeps hit testing intact:
+
+- Android: the view's own alpha 0. Touch dispatch ignores alpha, and `View.draw` leaves out the
+  view's own alpha, so the snapshot still sees it.
+- iOS: an empty `CALayer` mask on the marker's `RNMBXMarkerViewParentViewAnnotation`. Fabric's hit
+  test drops any view under 1% alpha, and Fabric resets the masks of its own views, so neither the
+  ghost's alpha nor its mask is usable; the annotation host is not a Fabric view.
+
+JS bumps `version` only when the look changes: a new view, content that renders differently
+(`src/components/map/sameLook.ts`), a touch (pressed feedback) or an explicit
+`useInMapMarkerRefresh()` such as an image finishing its decode. Moving a marker only moves its
+sprite. `src/components/map/markerLayerChannel.ts` batches every marker into one call per JS tick;
+`src/components/map/inMapLayer.ts` holds the `view` / `layer` / `both` switch that the puck uses
+too.
+
+The layer sits on top of the style. A layer the app adds later without `aboveLayerID`,
+`belowLayerID` or `layerIndex` (a route, a trail) is inserted below it by `RNMBXLayer`, so it never
+covers the puck or a marker. A positioned layer that still lands above is caught the next time the
+puck moves or a marker changes, when `RNMBXPuck` moves its layer back to the top.
+
 ## Files changed inside `@rnmapbox/maps`
 
 The patch updates all layers required by the package:
@@ -69,8 +113,8 @@ The patch updates all layers required by the package:
 - public `CameraRef` API and implementation
 - compiled JavaScript and TypeScript declarations shipped by the package
 - TurboModule specification
-- Android `RNMBXCameraModule`
-- iOS `RNMBXCamera` and `RNMBXCameraModule`
+- Android `RNMBXCamera`, `RNMBXCameraModule`, `RNMBXPuck`, `RNMBXMarkerSprites` and `RNMBXLayer`
+- iOS `RNMBXCamera`, `RNMBXCameraModule`, `RNMBXPuck`, `RNMBXMarkerSprites` and `RNMBXLayer`
 
 ## Camera-changed payload without bounds
 

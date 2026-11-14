@@ -4,13 +4,15 @@ import { Text } from '@/components/base/Text'
 
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { theme } from '@/constants/theme'
-import { formatHour } from '@/helpers/format'
+import { formatTimeOfDay } from '@/helpers/time'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 
 function HourItem({ item }: { item: WeatherHour }) {
+  const timeFormat = useTimeFormat()
   return (
     <View style={styles.item}>
-      <Text style={styles.hour}>{formatHour(item.minuteOfDay)}</Text>
+      <Text style={styles.hour}>{formatTimeOfDay(item.minuteOfDay, timeFormat)}</Text>
       <WeatherIcon
         icon={item.icon}
         size={20}

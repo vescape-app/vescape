@@ -1575,6 +1575,12 @@ export type DistanceUnit = 'km' | 'mi'
  * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validTemperatureUnit`
  */
 export type TemperatureUnit = 'celsius' | 'fahrenheit'
+/**
+ * Clock display preference, independent of phone region.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validTimeFormat`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validTimeFormat`
+ */
+export type TimeFormat = '24h' | '12h'
 export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
 
 /**
@@ -1600,10 +1606,11 @@ export interface AppSettings {
    * list and in profile stats. Read-time grouping, so changing it re-groups existing rides too.
    */
   rideSplitGapMinutes: number
-  /** App appearance source. `sun` resolves from local daylight at the last GPS fix. */
   distanceUnit: DistanceUnit
   /** Temperature display and spoken-alert unit; independent of `distanceUnit`. */
   temperatureUnit: TemperatureUnit
+  timeFormat: TimeFormat
+  /** App appearance source. `sun` resolves from local daylight at the last GPS fix. */
   themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   /** Use the custom satellite overlay style instead of the stock satellite style. */

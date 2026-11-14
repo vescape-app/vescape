@@ -33,3 +33,10 @@ internal fun validDistanceUnit(value: Any?): String? =
  */
 internal fun validTemperatureUnit(value: Any?): String? =
   (value as? String)?.takeIf { it == "celsius" || it == "fahrenheit" }
+
+/**
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validTimeFormat`
+ * @parity /modules/vescape-core/src/index.ts `TimeFormat`
+ */
+internal fun validTimeFormat(value: Any?): String? =
+  (value as? String)?.takeIf { it == "24h" || it == "12h" }

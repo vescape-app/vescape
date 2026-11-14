@@ -33,7 +33,8 @@ export function HistoryRideRowShowcase() {
       ) : (
         <HistoryRideRow
           title="17:15 – 17:28"
-          subtitle="13 min · 4.14 km · VESC Board"
+          subtitle="13 min · 4.14 km"
+          details="VESC Board"
           routePoints={route}
           selected={selected}
           weather={
@@ -55,8 +56,8 @@ export function HistoryRideRowShowcase() {
       ) : (
         <HistoryRideRow
           title="Evening ride"
-          subtitle="18:05 – 18:09"
-          details="4 min · 1.42 km"
+          subtitle="4 min · 1.42 km"
+          details="18:05 – 18:09"
           routePoints={route}
           selected={selected}
           accent={theme.palette.amber.color}

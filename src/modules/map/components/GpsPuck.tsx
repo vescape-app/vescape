@@ -53,10 +53,7 @@ export function GpsPuck({
     }
   })
   const light = useThemeStore((state) => state.resolvedTheme === 'light')
-  const shadowColor = theme.alpha(
-    theme.palette.mono.black,
-    light ? COIN_SHADOW_ALPHA_LIGHT : COIN_SHADOW_ALPHA_DARK,
-  )
+  const shadowColor = theme.alpha(theme.palette.mono.black, coinShadowAlpha(light))
   return (
     <View style={styles.puck}>
       <Animated.View style={[styles.coinShadow, { backgroundColor: shadowColor }, shadowStyle]} />
@@ -112,6 +109,11 @@ function GpsPuckArrow({
   )
 }
 
+/** A light basemap shows a soft shadow much darker than a dark one does. */
+export function coinShadowAlpha(light: boolean) {
+  return light ? COIN_SHADOW_ALPHA_LIGHT : COIN_SHADOW_ALPHA_DARK
+}
+
 function toRadians(deg: number) {
   'worklet'
   return (deg * Math.PI) / 180
@@ -120,11 +122,17 @@ function toRadians(deg: number) {
 /** Room for the arrow to orbit clear of the coin. */
 const PUCK_SIZE = 60
 const PUCK_CENTER = PUCK_SIZE / 2
+/**
+ * The coin's geometry from here to the arrow's, which the map layer's coin (the `'layer'`
+ * renderer) draws too.
+ *
+ * @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt `COIN_RADIUS`
+ * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXPuck.swift `coinRadius`
+ */
 const COIN_SIZE = 22
-const COIN_HEIGHT = 7
+const COIN_HEIGHT = 12
 const COIN_SHADOW_SIZE = 30
 const COIN_SHADOW_DROP = 2
-/** A light basemap shows a soft shadow much darker than a dark one does. */
 const COIN_SHADOW_ALPHA_LIGHT = 0.12
 const COIN_SHADOW_ALPHA_DARK = 0.3
 const ARROW_WIDTH = 18

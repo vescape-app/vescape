@@ -27,5 +27,10 @@
     "key": "navigationRerouteDistanceMeters",
     "default": 50.0,
     "selected": 85.0
+  },
+  "timeFormat": {
+    "default": "24h",
+    "selected": "12h",
+    "invalid": ["system", "24", "", true, 12]
   }
 }

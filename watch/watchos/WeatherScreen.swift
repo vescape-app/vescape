@@ -17,6 +17,7 @@ struct WeatherScreen: View {
   /// Whether the phone has ever pushed a forecast. A forecast that arrived and then aged out is a
   /// different thing from one that never came, and the rider is told which.
   var everReceived: Bool = false
+  var timeFormat: String = "24h"
 
   @ViewBuilder
   var body: some View {
@@ -80,7 +81,7 @@ struct WeatherScreen: View {
         sunsetMinuteOfDay: forecast.sunsetMinuteOfDay
       ) {
         Spacer(minLength: 8)
-        SunTime(event: next)
+        SunTime(timeFormat: timeFormat, event: next)
       }
       Spacer(minLength: 0)
     }
@@ -96,7 +97,7 @@ struct WeatherScreen: View {
       HStack(alignment: .top, spacing: HOUR_GAP) {
         ForEach(hourly, id: \.minuteOfDay) { hour in
           VStack(spacing: 2) {
-            Text(watchFormatHour(hour.minuteOfDay))
+            Text(watchFormatHour(hour.minuteOfDay, timeFormat: timeFormat))
               .font(WatchTypography.mono(size: 9))
               .foregroundStyle(Palette.dimText)
               .monospacedDigit()
@@ -156,6 +157,7 @@ private struct WeatherAbsent: View {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WeatherScreen.kt `SunTime`
 /// @parity /src/modules/weather/components/WeatherPillView.tsx `sunTimes`
 private struct SunTime: View {
+  var timeFormat: String = "24h"
   let event: WatchSunEvent
 
   var body: some View {
@@ -163,7 +165,7 @@ private struct SunTime: View {
     HStack(spacing: 2) {
       PhosphorGlyph(.sun, size: 10, color: tint)
       PhosphorGlyph(event.rising ? .caretUp : .caretDown, size: 7, color: tint)
-      Text(watchFormatHour(event.minuteOfDay))
+      Text(watchFormatHour(event.minuteOfDay, timeFormat: timeFormat))
         .font(WatchTypography.mono(size: 10))
         .foregroundStyle(Palette.secondaryText)
         .monospacedDigit()
@@ -171,7 +173,7 @@ private struct SunTime: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(event.rising ? "Sunrise" : "Sunset")
-    .accessibilityValue(watchFormatHour(event.minuteOfDay))
+    .accessibilityValue(watchFormatHour(event.minuteOfDay, timeFormat: timeFormat))
   }
 }
 

@@ -175,7 +175,7 @@ class AlertPresetPersistenceHostTest {
     suspend fun expanded(metric: String) = TuneAlertPersistence(dao).alertRules(board.id) { throw it }.filter { it.controlId == metric }
     dao.upsertBoardWithSettings(board, listOf(BoardSettingEntity(board.id, "topSpeedKmh", "50", 1)), emptyList(), emptyList())
     assertEquals("preset(normal)", spec("speed"))
-    assertEquals("geiger:hard", expanded("duty").single().spec)
+    assertEquals("geiger:soft", expanded("duty").single().spec)
     val manual = AlertRuleEntity(board.id, "manual", "speed", 12.0, null, enabled = true, spec = "alert:warning", createdAt = 1)
     TuneAlertPersistence(dao).saveAlert(manual)
     dao.upsertAppSetting(AppSettingEntity("distanceUnit", "\"mi\"", 1))

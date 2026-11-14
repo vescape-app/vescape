@@ -164,7 +164,7 @@ private fun HourColumn(hour: WatchWeatherHour) {
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
-            text = formatHour(hour.minuteOfDay),
+            text = formatHour(hour.minuteOfDay, SettingsState.settings.value.timeFormat),
             style = WatchTypography.mono(MaterialTheme.typography.caption3),
             color = DimText,
         )
@@ -234,7 +234,7 @@ private fun SunTime(minuteOfDay: Int, rising: Boolean) {
             modifier = Modifier.size(8.dp),
         )
         Text(
-            text = formatHour(minuteOfDay),
+            text = formatHour(minuteOfDay, SettingsState.settings.value.timeFormat),
             style = WatchTypography.mono(MaterialTheme.typography.caption3),
             color = SecondaryText,
             modifier = Modifier.padding(start = 2.dp),

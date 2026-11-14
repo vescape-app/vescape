@@ -150,7 +150,7 @@ fun RadarScreen(visible: Boolean) {
         }
         RadarHeader()
         Text(
-            text = formatHour(minuteOfDay(frame.timeSec * 1_000L)),
+            text = formatHour(minuteOfDay(frame.timeSec * 1_000L), SettingsState.settings.value.timeFormat),
             style = WatchTypography.mono(MaterialTheme.typography.caption2),
             color = SecondaryText,
             modifier = Modifier

@@ -36,9 +36,7 @@ export function useMainScreenHistoryNavigation({
     historyFavorites.resetHistoryFavorites()
     void selectSession(null)
     enterTelemetry()
-    requestAnimationFrame(() =>
-      mapRef.current?.recenterLive({ resetPadding: true, animationDuration: 0 }),
-    )
+    requestAnimationFrame(() => mapRef.current?.recenterLive({ resetPadding: true }))
   }, [enterTelemetry, historyFavorites, mapRef, selectSession, setOpenMediaAssetId])
 
   const openTarget = useCallback(

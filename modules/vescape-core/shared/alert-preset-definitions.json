@@ -2,7 +2,7 @@
   "metrics": {
     "speed": {
       "family": "geiger",
-      "spec": "geiger:soft",
+      "spec": "geiger:hard",
       "scaledByTopSpeed": true,
       "levels": {
         "safe": {
@@ -21,7 +21,7 @@
     },
     "duty": {
       "family": "geiger",
-      "spec": "geiger:hard",
+      "spec": "geiger:soft",
       "levels": {
         "safe": {
           "start": 75,

@@ -1,3 +1,5 @@
+import { TimeFormatContext, useTimeFormat } from '@/hooks/useTimeFormat'
+import type { TimeFormat } from '@/helpers/time'
 import { PageScrollView } from '@/components/base/PageScrollView'
 import { DistanceUnitContext, useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { speedFromKmh, speedUnit, type DistanceUnit } from '@/helpers/units'
@@ -36,115 +38,6 @@ import {
   getHistoryMetricHotRange,
   type HistoryMetricKey,
 } from '@/modules/history/lib/metricColorScale'
-
-import { RouteSparkline } from '@/modules/history/components/RouteSparkline'
-import { RidePreviewCard } from '@/modules/history/components/RidePreviewCard'
-import { HistoryRideRowShowcase } from '@/screens/showcase/history/HistoryRideRowShowcase'
-import type { RoutePoint } from '@/modules/history/lib/routePreview'
-
-const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
-  corners: [
-    { latitude: 52, longitude: 18 },
-    { latitude: 52.001, longitude: 18 },
-    { latitude: 52.001, longitude: 18.0015 },
-    { latitude: 52.0005, longitude: 18.0015 },
-    { latitude: 52.0005, longitude: 18.002 },
-  ],
-  straight: [
-    { latitude: 52, longitude: 18 },
-    { latitude: 52, longitude: 18.002 },
-  ],
-  gap: [
-    { latitude: 52, longitude: 18 },
-    { latitude: 52.001, longitude: 18 },
-    { latitude: 52.001, longitude: 18.0015, breakBefore: true },
-    { latitude: 52.0005, longitude: 18.0015 },
-  ],
-  empty: [],
-}
-
-function RouteSparklineShowcase() {
-  const [route, setRoute] = useState('corners')
-  const [endpoints, setEndpoints] = useState(true)
-  const [map, setMap] = useState(false)
-  return (
-    <ShowcaseCard
-      name="RouteSparkline"
-      controls={
-        <>
-          <ChipRow
-            label="route"
-            options={Object.keys(PREVIEW_ROUTES)}
-            selected={route}
-            onSelect={setRoute}
-          />
-          <ToggleRow label="endpoints" value={endpoints} onToggle={setEndpoints} />
-          <ToggleRow label="map" value={map} onToggle={setMap} />
-        </>
-      }
-    >
-      <RouteSparkline
-        points={PREVIEW_ROUTES[route]}
-        width={74}
-        height={52}
-        endpoints={endpoints}
-        map={map}
-      />
-      <RouteSparkline
-        points={PREVIEW_ROUTES[route]}
-        width={148}
-        height={104}
-        endpoints={endpoints}
-        map={map}
-      />
-    </ShowcaseCard>
-  )
-}
-
-function RidePreviewCardShowcase() {
-  const [route, setRoute] = useState('corners')
-  return (
-    <ShowcaseCard
-      name="RidePreviewCard"
-      controls={
-        <ChipRow
-          label="route"
-          options={Object.keys(PREVIEW_ROUTES)}
-          selected={route}
-          onSelect={setRoute}
-        />
-      }
-    >
-      <View style={styles.rideCards}>
-        <RidePreviewCard
-          title="15:29 – 15:30"
-          date="11 Sep 2026"
-          subtitle="1 min · 0.80 km · 23 km/h"
-          routePoints={PREVIEW_ROUTES[route]}
-          color={theme.palette.purple.color}
-          map={false}
-          weather={{
-            icon: 'cloud',
-            minTemperatureC: 8,
-            maxTemperatureC: 20,
-            maxGustKmh: 30,
-            rainMinutes: 0,
-          }}
-          onPress={() => undefined}
-        />
-        <RidePreviewCard
-          title="Evening ride"
-          date="10 Oct 2026"
-          subtitle="12 min · 3.45 km"
-          routePoints={PREVIEW_ROUTES[route]}
-          color={theme.palette.amber.color}
-          map={false}
-          onPress={() => undefined}
-        />
-      </View>
-    </ShowcaseCard>
-  )
-}
 
 const EMPTY_SERIES: ChartSeriesData = { ts: [], vs: [] }
 
@@ -552,38 +445,45 @@ function BmsCellVoltagesShowcase() {
 }
 
 export default function ChartsPage() {
+  const currentTimeFormat = useTimeFormat()
+  const [timeFormat, setTimeFormat] = useState<TimeFormat>(currentTimeFormat)
   const [distanceUnit, setUnits] = useState<DistanceUnit>('km')
   return (
-    <DistanceUnitContext value={distanceUnit}>
-      <SafeAreaView style={styles.container} edges={[]}>
-        <PageScrollView contentContainerStyle={styles.content}>
-          <IconHero
-            icon={ChartLineUpIcon}
-            description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
-          />
-          <ChartStackShowcase />
-          <SparklineShowcase />
-          <RouteSparklineShowcase />
-          <RidePreviewCardShowcase />
-          <HistoryRideRowShowcase />
-          <LinearGaugeShowcase />
-          <ChipRow
-            label="units"
-            options={['km', 'mi']}
-            selected={distanceUnit}
-            onSelect={(value) => setUnits(value as DistanceUnit)}
-          />
-          <AnimatedSingleGaugeShowcase />
-          <AnimatedDualGaugeShowcase />
-          <ChartLoadingOverlayShowcase />
-          <ShowcaseCard name="ChartGestureHint">
-            <ChartGestureHint />
-            <ChartGestureHint compact />
-          </ShowcaseCard>
-          <BmsCellVoltagesShowcase />
-        </PageScrollView>
-      </SafeAreaView>
-    </DistanceUnitContext>
+    <TimeFormatContext value={timeFormat}>
+      <DistanceUnitContext value={distanceUnit}>
+        <SafeAreaView style={styles.container} edges={[]}>
+          <PageScrollView contentContainerStyle={styles.content}>
+            <IconHero
+              icon={ChartLineUpIcon}
+              description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
+            />
+            <ChipRow
+              label="time format"
+              options={['24h', '12h']}
+              selected={timeFormat}
+              onSelect={(value) => setTimeFormat(value as TimeFormat)}
+            />
+            <ChartStackShowcase />
+            <SparklineShowcase />
+            <LinearGaugeShowcase />
+            <ChipRow
+              label="units"
+              options={['km', 'mi']}
+              selected={distanceUnit}
+              onSelect={(value) => setUnits(value as DistanceUnit)}
+            />
+            <AnimatedSingleGaugeShowcase />
+            <AnimatedDualGaugeShowcase />
+            <ChartLoadingOverlayShowcase />
+            <ShowcaseCard name="ChartGestureHint">
+              <ChartGestureHint />
+              <ChartGestureHint compact />
+            </ShowcaseCard>
+            <BmsCellVoltagesShowcase />
+          </PageScrollView>
+        </SafeAreaView>
+      </DistanceUnitContext>
+    </TimeFormatContext>
   )
 }
 
@@ -591,5 +491,4 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   chartExample: { marginBottom: 10 },
-  rideCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
 })

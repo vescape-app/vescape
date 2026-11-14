@@ -7,6 +7,13 @@ import XCTest
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchSettingsTest.kt
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchSettingsTest.kt
 final class WatchSettingsTests: XCTestCase {
+  func testTimeFormatRoundTripAndOlderPhoneDefault() {
+    XCTAssertTrue(watchSourceSettingKeys.contains("timeFormat"))
+    XCTAssertEqual(WatchSettings.decode([:]).timeFormat, "24h")
+    XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.timeFormat: "system"]).timeFormat, "24h")
+    XCTAssertEqual(WatchSettings.decode(WatchSettings(timeFormat: "12h").payload).timeFormat, "12h")
+  }
+
   func testTelemetryTrailIsEnabledForOlderPhonesAndFalseSurvivesSettingsReload() {
     XCTAssertEqual(AppDataRepository.defaultSettings["wearTelemetryTrailEnabled"] as? Bool, true)
     XCTAssertTrue(watchSourceSettingKeys.contains("wearTelemetryTrailEnabled"))

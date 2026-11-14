@@ -1,7 +1,8 @@
 import { DashPathEffect, Group, Line, Text, vec } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
-import { formatClock } from '@/components/charts/line/chartFormat'
+import { formatClock } from '@/helpers/time'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { projectX, viewportFor } from '@/components/charts/line/projection'
 import type { ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartCamera } from '@/components/charts/line/types'
@@ -82,6 +83,7 @@ type GapMarkerProps = Omit<GapMarkersCommonProps, 'timeline'> &
 function GapMarker(props: GapMarkerProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
+  const timeFormat = useTimeFormat()
   const neutral = useResolvedNeutralColors()
   const {
     chartMs,
@@ -95,8 +97,8 @@ function GapMarker(props: GapMarkerProps) {
     plotWidth,
     font,
   } = props
-  const startLabel = formatClock(startMs, false)
-  const endLabel = formatClock(endMs, false)
+  const startLabel = formatClock(startMs, false, timeFormat)
+  const endLabel = formatClock(endMs, false, timeFormat)
   const startWidth = textAdvanceWidth(font, startLabel)
 
   const transform = useDerivedValue(() => {

@@ -428,6 +428,7 @@ data class AppSettings(
   val rideSplitGapMinutes: Int = DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   val distanceUnit: String = "km",
   val temperatureUnit: String = "celsius",
+  val timeFormat: String = "24h",
   val themeMode: String = "system",
   val mapStyleKey: String = "onedark",
   val satelliteOverlayEnabled: Boolean = true,

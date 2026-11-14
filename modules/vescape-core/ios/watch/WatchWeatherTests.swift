@@ -107,6 +107,10 @@ final class WatchWeatherTests: XCTestCase {
 
   func testHourFormattingIsAlwaysTwentyFourHour() {
     XCTAssertEqual(watchFormatHour(0), "00:00")
+    XCTAssertEqual(watchFormatHour(0, timeFormat: "12h"), "12:00 AM")
+    XCTAssertEqual(watchFormatHour(720, timeFormat: "12h"), "12:00 PM")
+    XCTAssertEqual(watchFormatHour(845, timeFormat: "12h"), "2:05 PM")
+    XCTAssertEqual(watchFormatHour(845, timeFormat: "12h", seconds: 9), "2:05:09 PM")
     XCTAssertEqual(watchFormatHour(9 * 60 + 5), "09:05")
     XCTAssertEqual(watchFormatHour(23 * 60 + 59), "23:59")
     // A minute-of-day past midnight wraps rather than printing a 24th hour.

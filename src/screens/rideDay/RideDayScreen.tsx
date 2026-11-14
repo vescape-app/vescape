@@ -9,7 +9,6 @@ import { SectionHeader } from '@/components/base/SectionHeader'
 import { theme } from '@/constants/theme'
 import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { formatRideTime } from '@/modules/history/lib/rideFormat'
 import { isLiveRide, rideMovingWindow } from '@/modules/history/lib/sessions'
 import { useRideDaySessions } from '@/modules/history/hooks/useRideDaySessions'
 import { formatRideDay } from '@/modules/history/lib/rideDay'
@@ -39,7 +38,7 @@ export function RideDayScreen() {
 function RideDayContent({ day }: { day: RideDay }) {
   const stats = useDayStats(day)
   const rides = useRideDaySessions(day)
-  const { formatRideDetails } = useRideFormat()
+  const { formatRideDetails, formatRideTime } = useRideFormat()
   const insets = useSafeAreaInsets()
   const items = useProfileStatItems(stats.value, undefined, openRecordRide)
 
@@ -90,6 +89,8 @@ function RideDayContent({ day }: { day: RideDay }) {
               startMs: session.startAtMs,
               endMs: session.endAtMs,
             }
+            const boardName = session.boardName?.trim() || null
+            const details = formatRideDetails(window.endMs - window.startMs, session.distanceM)
             return (
               <HistoryRideRow
                 key={session.id}
@@ -99,11 +100,8 @@ function RideDayContent({ day }: { day: RideDay }) {
                   window.endMs,
                   isLiveRide(session, Date.now()),
                 )}
-                subtitle={formatRideDetails(
-                  window.endMs - window.startMs,
-                  session.distanceM,
-                  session.boardName,
-                )}
+                subtitle={details}
+                details={boardName ?? undefined}
                 routePoints={session.routePoints}
                 weather={session.weather}
                 onPress={() => router.dismissTo(rideHref({ rideId: session.id, focus: null }))}

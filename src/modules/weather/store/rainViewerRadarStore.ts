@@ -48,14 +48,6 @@ export function buildRainViewerTileTemplate(host: string, frame: RainViewerRadar
   return `${host}${frame.path}/512/{z}/{x}/{y}/2/1_1.png`
 }
 
-export function formatRainViewerFrameTime(time: number): string {
-  return new Date(time * 1_000).toLocaleTimeString([], {
-    hour: '2-digit',
-    hourCycle: 'h23',
-    minute: '2-digit',
-  })
-}
-
 export function findClosestRainViewerFrameIndex(
   frames: readonly RainViewerRadarFrame[],
   targetTime: number,

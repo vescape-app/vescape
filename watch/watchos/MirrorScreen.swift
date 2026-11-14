@@ -256,10 +256,11 @@ struct MirrorScreen: View {
         visible: radarVisible,
         forecast: freshWeather,
         onFetchFailed: { link.recordRadarFailure() },
-        distanceUnit: link.settings.distanceUnit
+        distanceUnit: link.settings.distanceUnit,
+        timeFormat: link.settings.timeFormat
       )
     case .weather:
-      WeatherScreen(forecast: freshWeather, everReceived: link.weather != nil)
+      WeatherScreen(forecast: freshWeather, everReceived: link.weather != nil, timeFormat: link.settings.timeFormat)
     case .gauges:
       controls
     case .nav:

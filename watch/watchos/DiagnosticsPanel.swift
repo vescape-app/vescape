@@ -68,7 +68,7 @@ struct DiagnosticsPanel: View {
 
   private func eventLine(_ event: WatchDiagnosticEvent) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 4) {
-      Text(Self.clock.string(from: Date(timeIntervalSince1970: Double(event.atMs) / 1000)))
+      Text(watchFormatClock(event.atMs, timeFormat: link.settings.timeFormat, withSeconds: true))
         .monospacedDigit()
         .foregroundStyle(Palette.dimText)
       Text(event.text)
@@ -87,12 +87,4 @@ struct DiagnosticsPanel: View {
     .font(WatchTypography.ui(size: 12))
   }
 
-  /// Wall clock, seconds included: the ring is read against a phone log, and minute precision would
-  /// not separate a reconnect from the flap that caused it.
-  private static let clock: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = "HH:mm:ss"
-    return formatter
-  }()
 }
