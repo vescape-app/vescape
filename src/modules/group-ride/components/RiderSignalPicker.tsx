@@ -26,6 +26,7 @@ import {
   topRiderSignal,
   type RelayClock,
 } from '@/modules/group-ride/lib/riderSignal'
+import { PinKindBadge } from '@/modules/group-ride/components/PinKindBadge'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
 /** The device's own Rider Signal while it is active on the relay clock, else null. */
@@ -186,7 +187,7 @@ function PinTile({
   disabled: boolean
   onPress: () => void
 }) {
-  const { label, icon: KindIcon, hue } = info
+  const { label, hue } = info
   return (
     <Pressable
       onPress={onPress}
@@ -213,9 +214,7 @@ function PinTile({
           ]}
         />
       ) : null}
-      <View style={[styles.tileIcon, { borderColor: theme.palette[hue].color }]}>
-        <KindIcon size={22} color={theme.palette[hue].color} weight="duotone" />
-      </View>
+      <PinKindBadge info={info} color={theme.palette[hue].color} size={54} strokeWidth={1.5} />
       <Text
         style={styles.tileLabel}
         numberOfLines={label.includes(' ') ? 2 : 1}
@@ -240,7 +239,6 @@ function OwnPin({
 }) {
   const relayClock = useGroupRideStore((s) => s.relayClock)
   if (!info) return null
-  const { icon: KindIcon, hue } = info
   return (
     <View
       style={[
@@ -248,9 +246,7 @@ function OwnPin({
         { borderColor: theme.control.border, backgroundColor: theme.control.background },
       ]}
     >
-      <View style={[styles.ownIcon, { borderColor: theme.palette[hue].color }]}>
-        <KindIcon size={20} color={theme.palette[hue].color} weight="duotone" />
-      </View>
+      <PinKindBadge info={info} color={theme.palette[info.hue].color} size={48} strokeWidth={1.5} />
       <View style={styles.ownText}>
         <Text style={styles.ownLabel}>{info.label}</Text>
         {relayClock ? <TimeLeft signal={pin} clock={relayClock} /> : null}
@@ -311,14 +307,6 @@ const styles = StyleSheet.create({
   tileWash: {
     borderRadius: 13,
   },
-  tileIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   tileLabel: {
     color: theme.neutral.textPrimary,
     fontSize: 13,
@@ -335,14 +323,6 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-  },
-  ownIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   ownText: {
     flex: 1,

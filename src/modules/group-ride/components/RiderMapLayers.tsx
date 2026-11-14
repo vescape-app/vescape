@@ -5,6 +5,7 @@ import type { GroupRidePin } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { InMapMarker } from '@/components/map/InMapMarker'
+import { PinKindBadge } from '@/modules/group-ride/components/PinKindBadge'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { makeTrailLineString } from '@/helpers/mapGeometry'
@@ -132,7 +133,6 @@ export function RiderSignalPins({
         pin={rider.hazard}
         clock={clock}
         info={rideHazardKindInfo(rider.hazard.kind)}
-        place
       />
     ) : null,
   ])
@@ -143,27 +143,24 @@ export function RiderSignalPins({
  * stays put while the sender moves on or goes away. In its kind's hue, like its Ride Notice, roster
  * badge, and picker tile, and never muted by a stale presence. The pin stands on a stem above its
  * spot, clear of a presence dot and name label that sit on the same spot while the sender has not
- * moved. A hazard (`place`) is a rounded square: it marks the trail, not the Rider.
+ * moved.
  */
 function RiderPinMarker({
   rider,
   pin: rawPin,
   clock,
   info,
-  place = false,
 }: {
   rider: RosterRider
   pin: GroupRidePin
   clock: RelayClock | null
   info: PinKindInfo | null
-  place?: boolean
 }) {
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
   const pin = useActivePin(rawPin, clock)
   if (!pin || !info) return null
   const color = accents[info.hue].color
-  const KindIcon = info.icon
 
   return (
     <InMapMarker coordinate={[pin.lng, pin.lat]}>
@@ -171,15 +168,14 @@ function RiderPinMarker({
         style={styles.signalMarker}
         accessibilityLabel={`${rider.name || 'Rider'}: ${info.label}`}
       >
-        <View
-          style={[
-            styles.signalPin,
-            place && styles.hazardPin,
-            { borderColor: color, backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85) },
-          ]}
-        >
-          <KindIcon size={18} color={color} weight="bold" />
-        </View>
+        <PinKindBadge
+          info={info}
+          color={color}
+          size={SIGNAL_PIN_SIZE}
+          strokeWidth={2}
+          fill={theme.alpha(neutral.surfaceDeep, 0.85)}
+          weight="bold"
+        />
         <View style={[styles.signalStem, { backgroundColor: color }]} />
       </View>
     </InMapMarker>
@@ -189,7 +185,7 @@ function RiderPinMarker({
 // The presence marker centers its dot on the Rider's position, its heading ring reaching ~28 px
 // above it. The stem lifts the signal pin past that, its foot on the signal's own spot. A marker is
 // anchored at its centre, so bottom padding mirrors pin and stem to put that centre at the foot.
-const SIGNAL_PIN_SIZE = 32
+const SIGNAL_PIN_SIZE = 40
 const SIGNAL_STEM_HEIGHT = 30
 const RIDER_LABEL_GAP = 4
 const RIDER_LABEL_HEIGHT = 20
@@ -203,17 +199,6 @@ const styles = StyleSheet.create({
     width: 2,
     height: SIGNAL_STEM_HEIGHT,
     borderRadius: 1,
-  },
-  signalPin: {
-    width: SIGNAL_PIN_SIZE,
-    height: SIGNAL_PIN_SIZE,
-    borderRadius: SIGNAL_PIN_SIZE / 2,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hazardPin: {
-    borderRadius: 8,
   },
   // A marker is anchored at its centre. The top padding mirrors the label below the dot, so that
   // centre is the dot and the rider's coordinate is not somewhere between dot and label.
