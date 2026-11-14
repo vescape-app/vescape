@@ -10,6 +10,7 @@ import {
   LiveRiderSignalPins,
   RiderTrail,
 } from '@/modules/group-ride/components/RiderMapLayers'
+import { DEFAULT_RAIL_COLOR_ID } from '@/modules/board/lib/railColor'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { coinShadowAlpha, GpsPuck } from '@/modules/map/components/GpsPuck'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
@@ -37,7 +38,7 @@ export function LiveMapLayers({
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const accuracyFillColor = theme.alpha(accents.violet.color, 0.12)
-  const gpsPointColor = riderColor ?? accents.purple.color
+  const gpsPointColor = riderColor ?? accents[DEFAULT_RAIL_COLOR_ID].color
   const trailColor = riderColor ?? accents.violet.color
   const trailGradientStart = riderColor
     ? theme.alpha(riderColor, 0)

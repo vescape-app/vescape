@@ -2,6 +2,7 @@ import { CrosshairSimpleIcon, type Icon } from 'phosphor-react-native'
 import { createElement } from 'react'
 import { View } from 'react-native'
 import type { MapPoint } from 'vescape-core'
+import { DEFAULT_RAIL_COLOR_ID } from '@/modules/board/lib/railColor'
 
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
@@ -35,7 +36,7 @@ export function buildGpsTrackedPoint(
   accents?: ResolvedAccentColors,
 ): TrackedMapPoint[] {
   if (!coordinate) return []
-  const color = riderColor ?? accents?.purple.color ?? GPS_POINT_COLOR
+  const color = riderColor ?? accents?.[DEFAULT_RAIL_COLOR_ID].color ?? GPS_POINT_COLOR
   return [
     {
       id: 'gps',
