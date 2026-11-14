@@ -302,6 +302,30 @@ test('name edits while observing push the new identity to peers', async () => {
   })
 })
 
+test('a Rider Profile nick replaces the local name and reaches peers', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  const { useRiderProfileStore } = await import('@/modules/profile/store/riderProfileStore')
+
+  useRiderStore.setState({ riderId: 'rider-1', riderName: 'Local', loaded: true })
+  useGroupRideStore.getState().startObserving()
+
+  useRiderProfileStore.setState({
+    profile: { accountId: 'acc-1', nick: 'Kupa_99', nationality: 'PL' },
+    loaded: true,
+  })
+  expect(updateGroupRideIdentity).toHaveBeenLastCalledWith({
+    riderId: 'rider-1',
+    riderName: 'Kupa_99',
+  })
+
+  useRiderProfileStore.getState().clear()
+  expect(updateGroupRideIdentity).toHaveBeenLastCalledWith({
+    riderId: 'rider-1',
+    riderName: 'Local',
+  })
+})
+
 test('native departure clears membership instead of retaining the previous ride id', async () => {
   const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
   useGroupRideStore.getState().startObserving()

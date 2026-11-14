@@ -47,6 +47,7 @@ import { ThemeController } from '@/modules/settings/components/ThemeController'
 import { useThemeStore } from '@/hooks/useTheme'
 import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
+import { RiderProfileSync } from '@/modules/profile/components/RiderProfileSync'
 import { AppStorageFailureBanner } from '@/screens/AppStorageFailureBanner'
 
 const clerkPublishableKey = requireClerkPublishableKey()
@@ -154,6 +155,7 @@ function RootLayout() {
       <TimeFormatContext value={timeFormat}>
         <DistanceUnitContext value={distanceUnit}>
           <DeviceAuthSync />
+          <RiderProfileSync />
           <BoardConfigChangeNoticeModal />
           <DiagnosticErrorBoundary>
             <GestureHandlerRootView style={{ flex: 1 }}>

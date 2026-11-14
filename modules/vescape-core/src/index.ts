@@ -822,6 +822,28 @@ export type MapPointErrorCode =
   | 'MAP_POINT_REFUSED'
   | 'MAP_POINT_UNREACHABLE'
 
+/**
+ * The signed-in Account's public Rider Profile. Mirrors vescape-server `src/riderProfiles/protocol.ts`.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt
+ */
+export interface RiderProfile {
+  accountId: string
+  nick: string
+  /** ISO 3166-1 alpha-2, upper-case. */
+  nationality: string | null
+}
+
+/**
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `RiderProfileApiError`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `RiderProfileApiException`
+ */
+export type RiderProfileErrorCode =
+  | 'RIDER_PROFILE_SIGN_IN_REQUIRED'
+  | 'RIDER_PROFILE_NICK_TAKEN'
+  | 'RIDER_PROFILE_REFUSED'
+  | 'RIDER_PROFILE_UNREACHABLE'
+
 export interface TelemetryEvent {
   generation?: number
   /** Native remote-tilt snapshot paired with this telemetry tick. */
@@ -3157,6 +3179,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   updateMapPoint(id: string, patch: MapPointPatch): Promise<MapPoint>
   deleteMapPoint(id: string): Promise<void>
   setMapPointReaction(id: string, reaction: MapPointReaction | null): Promise<void>
+  getRiderProfile(): Promise<RiderProfile | null>
+  saveRiderProfile(nick: string, nationality: string | null): Promise<RiderProfile>
   setDirectionPoint(latitude: number | null, longitude: number | null): Promise<void>
   recomputeNavigation(): Promise<void>
   setNavigationProfile(profile: NavigationProfile): Promise<void>
@@ -4693,6 +4717,18 @@ export async function reverseGeocodeMap(latitude: number, longitude: number): Pr
  * Map Points nearest to a coordinate, newest server truth. Reads need no account; a stored Device
  * Token additionally resolves `ownedByMe` and `myReaction`.
  */
+/** The signed-in Account's Rider Profile; null until a nick is picked. Rejects with `RiderProfileErrorCode`. */
+export async function getRiderProfile(): Promise<RiderProfile | null> {
+  return native.getRiderProfile()
+}
+
+export async function saveRiderProfile(
+  nick: string,
+  nationality: string | null,
+): Promise<RiderProfile> {
+  return native.saveRiderProfile(nick, nationality)
+}
+
 export async function getNearbyMapPoints(
   latitude: number,
   longitude: number,

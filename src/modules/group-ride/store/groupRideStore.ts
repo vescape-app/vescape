@@ -35,6 +35,8 @@ import { nearbyRides, type NearbyRide } from '@/modules/group-ride/lib/nearby'
 import { monotonicNow, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
 import { riderRoster, rosterRowsEqual, type RosterRider } from '@/modules/group-ride/lib/roster'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+// The Rider Profile nick, when set, is the name the rider rides under.
+import { riderDisplayName, useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { SERVER_WS_URL } from '@/config/server'
 
 type TimerHandle = ReturnType<typeof setInterval>
@@ -203,6 +205,12 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           pushIdentity()
         }),
       },
+      {
+        remove: useRiderProfileStore.subscribe((profile, previous) => {
+          if (profile.profile?.nick === previous.profile?.nick) return
+          pushIdentity()
+        }),
+      },
     ]
     rosterFreshnessTimer = setInterval(() => {
       set((state) => deriveRoster({}, state))
@@ -308,7 +316,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
  */
 function currentIdentity(): { riderId: string | null; riderName: string } {
   const { riderId, riderName } = useRiderStore.getState()
-  return { riderId, riderName: riderName?.trim() || 'Rider' }
+  return { riderId, riderName: riderDisplayName(riderName)?.trim() || 'Rider' }
 }
 
 /** Merge a `rides`/`ownLocation` change with the current state and recompute the nearby view. */

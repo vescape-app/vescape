@@ -73,6 +73,7 @@ import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.vescapecore.mappoints.MapPointApi
+import expo.modules.vescapecore.riderprofiles.RiderProfileApi
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.database.DatabaseBackupManager
 import expo.modules.vescapecore.telemetry.MaintenanceRunner
@@ -1640,7 +1641,7 @@ class VescapeCoreModule : Module() {
     }
   }
 
-  /** Server-backed map calls: Map Points and the Mapbox search proxy. Split out to keep `definition()` under the JVM method size limit. */
+  /** Server-backed calls: Map Points, the Mapbox search proxy and the Rider Profile. Split out to keep `definition()` under the JVM method size limit. */
   private fun ModuleDefinitionBuilder.registerMapServices() {
     // Map Points are server-owned; native holds no copy. @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getNearbyMapPoints`
     AsyncFunction("getNearbyMapPoints") Coroutine { latitude: Double, longitude: Double, radiusMeters: Int ->
@@ -1665,6 +1666,14 @@ class VescapeCoreModule : Module() {
     }
     AsyncFunction("setMapPointReaction") Coroutine { id: String, reaction: String? ->
       MapPointApi.get(context.applicationContext).setReaction(id, reaction)
+    }
+    // The Account's Rider Profile is server-owned; native only attaches the Device Token.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRiderProfile`
+    AsyncFunction("getRiderProfile") Coroutine { ->
+      RiderProfileApi.get(context.applicationContext).mine()
+    }
+    AsyncFunction("saveRiderProfile") Coroutine { nick: String, nationality: String? ->
+      RiderProfileApi.get(context.applicationContext).save(nick, nationality)
     }
   }
 

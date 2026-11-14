@@ -23,6 +23,8 @@ import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoar
 import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterList } from '@/modules/group-ride/components/GroupRideRoster'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
+import { RiderNickForm } from '@/modules/profile/components/RiderNickForm'
+import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 
 type FocusSignal = (point: { latitude: number; longitude: number }) => void
 
@@ -37,7 +39,27 @@ export function SocialSheet({ onFocusSignal }: { onFocusSignal?: FocusSignal }) 
   )
 }
 
+/** Signed-in riders ride under their Rider Profile nick; signed-out riders keep the local name. */
 function RiderNameWidget() {
+  const profileLoaded = useRiderProfileStore((s) => s.loaded)
+  const nick = useRiderProfileStore((s) => s.profile?.nick ?? null)
+  const riderColor = useSelectedBoardRailColor()
+
+  if (!profileLoaded) return <LocalRiderNameWidget />
+  if (nick == null) return <RiderNickForm title="Pick a nick to ride under" />
+  return (
+    <View style={styles.nickRow}>
+      <UserCircleIcon
+        size={24}
+        color={riderColor ?? theme.neutral.textSecondary}
+        weight="duotone"
+      />
+      <Text style={styles.nick}>{nick}</Text>
+    </View>
+  )
+}
+
+function LocalRiderNameWidget() {
   const riderName = useRiderStore((s) => s.riderName)
   const setName = useRiderStore((s) => s.setName)
   const error = useRiderStore((s) => s.error)
@@ -272,6 +294,17 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: 12,
+  },
+  nickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  nick: {
+    color: theme.neutral.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
   },
   riderIdentity: {
     gap: 6,

@@ -8,6 +8,8 @@ import { UserCircleIcon, WifiSlashIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { RiderNickForm } from '@/modules/profile/components/RiderNickForm'
+import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
 import { revokeDeviceCredential } from 'vescape-core'
 
@@ -18,6 +20,9 @@ export function ClerkAccountScreen() {
   const networkState = useNetworkState()
   const [signingOut, setSigningOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const profileLoaded = useRiderProfileStore((s) => s.loaded)
+  const hasNick = useRiderProfileStore((s) => s.profile != null)
+  const profileError = useRiderProfileStore((s) => s.error)
 
   const leaveAccount = useCallback(() => {
     if (router.canGoBack()) router.back()
@@ -54,6 +59,11 @@ export function ClerkAccountScreen() {
       )}
       <Text style={styles.title}>{user?.fullName ?? 'Vescape account'}</Text>
       <Text style={styles.detail}>{user?.primaryEmailAddress?.emailAddress ?? 'Signed in'}</Text>
+      {profileLoaded ? (
+        <RiderNickForm title={hasNick ? 'Your nick' : 'Pick a nick to ride under'} />
+      ) : profileError ? (
+        <Text style={styles.error}>{profileError}</Text>
+      ) : null}
       {networkState.isInternetReachable === false && (
         <Text style={styles.message}>
           Signing out needs internet so this phone’s native credential can be revoked first.

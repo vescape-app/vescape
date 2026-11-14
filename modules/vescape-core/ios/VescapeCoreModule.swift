@@ -1663,6 +1663,22 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // The Account's Rider Profile is server-owned; native only attaches the Device Token.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRiderProfile`
+    AsyncFunction("getRiderProfile") { (promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.mine()) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("saveRiderProfile") { (nick: String, nationality: String?, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.save(nick: nick, nationality: nationality)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
     // The direction target is personal client state, never a Map Point. Native keeps it so Group
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") { (latitude: Double?, longitude: Double?, promise: Promise) in
@@ -2441,6 +2457,14 @@ public class VescapeCoreModule: Module {
   private static func rejectMapPoint(_ promise: Promise, _ error: Error) {
     guard let apiError = error as? MapPointApiError else {
       promise.reject(MapPointApiError.refused, error.localizedDescription)
+      return
+    }
+    promise.reject(apiError.code, apiError.message)
+  }
+
+  private static func rejectRiderProfile(_ promise: Promise, _ error: Error) {
+    guard let apiError = error as? RiderProfileApiError else {
+      promise.reject(RiderProfileApiError.refused, error.localizedDescription)
       return
     }
     promise.reject(apiError.code, apiError.message)
