@@ -3,6 +3,7 @@ import { ActivityIndicator, View, StyleSheet } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 
 import { VescapeWordmark } from '@/components/base/VescapeWordmark'
+import { SPLASH_LOGO_WIDTH } from '@/config/splash'
 import { MainMap, type MainMapHandle } from '@/screens/main/map/MainMap'
 import { MainOverlays } from '@/screens/main/overlays/MainOverlays'
 import { useMainScreenController } from '@/screens/main/useMainScreenController'
@@ -214,8 +215,15 @@ export function MainScreen({
     return (
       <View style={styles.container}>
         <View style={styles.empty}>
-          <VescapeWordmark width={220} />
-          <ActivityIndicator size="small" color={theme.palette.sky.color} />
+          {/* Only the wordmark is centered, matching the splash logo; the spinner hangs below it. */}
+          <View>
+            <VescapeWordmark width={SPLASH_LOGO_WIDTH} />
+            <ActivityIndicator
+              size="small"
+              color={theme.palette.sky.color}
+              style={styles.loadingSpinner}
+            />
+          </View>
         </View>
       </View>
     )
@@ -310,7 +318,12 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    gap: 24,
+  },
+  loadingSpinner: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 24,
   },
 })

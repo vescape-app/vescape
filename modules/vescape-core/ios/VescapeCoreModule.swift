@@ -459,6 +459,11 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopScan()
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `hideLaunchSplash`
+    AsyncFunction("hideLaunchSplash") {
+      MainActor.assumeIsolated { LaunchSplash.hide() }
+    }.runOnQueue(.main)
+
     // MARK: Group Ride
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startGroupRideObserve`
 

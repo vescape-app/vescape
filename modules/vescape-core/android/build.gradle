@@ -59,8 +59,24 @@ ksp {
   arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// expo-splash-screen ships prebuilt in its own local Maven repo.
+def expoSplashScreenDir = new File(
+  providers.exec {
+    workingDir(rootDir)
+    commandLine("node", "--print", "require.resolve('expo-splash-screen/package.json')")
+  }.standardOutput.asText.get().trim()
+).parentFile
+def expoSplashScreenVersion = new groovy.json.JsonSlurper().parse(new File(expoSplashScreenDir, "package.json")).version
+
+repositories {
+  maven { url new File(expoSplashScreenDir, "local-maven-repo").toURI() }
+}
+
 dependencies {
   implementation project(':expo-modules-core')
+  // The app ships expo-splash-screen; LaunchSplash only calls into it, so compile against the
+  // prebuilt artifact at the app's installed version.
+  compileOnly "host.exp.exponent:expo.modules.splashscreen:${expoSplashScreenVersion}"
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
   implementation "com.google.android.gms:play-services-wearable:18.2.0"
   implementation "androidx.wear:wear-remote-interactions:1.1.0"
