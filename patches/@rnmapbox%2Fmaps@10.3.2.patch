@@ -1,14 +1,5 @@
-diff --git a/node_modules/@rnmapbox/maps/.bun-tag-3bd3aaf4602e417 b/.bun-tag-3bd3aaf4602e417
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/node_modules/@rnmapbox/maps/.bun-tag-42190af1d87f72d2 b/.bun-tag-42190af1d87f72d2
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/node_modules/@rnmapbox/maps/.bun-tag-cc37716a93542075 b/.bun-tag-cc37716a93542075
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
-index a471e13ca74a7e7b47626da77accb6fada753f65..a402b2a23fa34f5043f151ea244342ebd0af5e45 100644
+index a471e13ca74a7e7b47626da77accb6fada753f65..8bc31d1ab14cc05b5df5743856bcb9669ea6c7cc 100644
 --- a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
 +++ b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
 @@ -7,6 +7,7 @@ import com.facebook.react.bridge.Dynamic
@@ -19,7 +10,15 @@ index a471e13ca74a7e7b47626da77accb6fada753f65..a402b2a23fa34f5043f151ea244342eb
  import com.mapbox.maps.plugin.animation.flyTo
  import com.rnmapbox.rnmbx.components.AbstractMapFeature
  import com.rnmapbox.rnmbx.components.mapview.RNMBXMapView
-@@ -542,6 +543,17 @@ class RNMBXCamera(private val mContext: Context, private val mManager: RNMBXCame
+@@ -113,6 +114,7 @@ class RNMBXCamera(private val mContext: Context, private val mManager: RNMBXCame
+         if (reason == RemovalReason.STYLE_CHANGE) {
+             return false
+         } else {
++            puck.remove(mapView.getMapboxMap())
+             return super.removeFromMap(mapView, reason);
+         }
+     }
+@@ -542,6 +544,30 @@ class RNMBXCamera(private val mContext: Context, private val mManager: RNMBXCame
              null
          } else mMapView!!.getMapboxMap()
  
@@ -34,11 +33,24 @@ index a471e13ca74a7e7b47626da77accb6fada753f65..a402b2a23fa34f5043f151ea244342eb
 +        mMapView?.mapView?.camera?.cancelAllAnimators()
 +    }
 +
++    private val puck = RNMBXPuck()
++
++    /**
++     * Place the rider puck, drawn by a custom layer inside the map's own frame. NaN bearing hides
++     * the arrow; `visible` false removes the layer. Dropped while the map is not live, like
++     * cancelCameraAnimations: the next write carries the full state again.
++     * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraModule.mm `setPuckDirect`
++     */
++    fun setPuckDirect(lng: Double, lat: Double, bearing: Double, argb: Int, shadowAlpha: Float, visible: Boolean) {
++        val map = mapboxMap ?: return
++        puck.set(map, lng, lat, bearing, argb, shadowAlpha, visible)
++    }
++
      /**
       * Create a payload of the location data per the web api geolocation spec
       * https://dev.w3.org/geo/api/spec-source.html#position
 diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt
-index 722903d70657a81d7f78bcff50c03ea424887b5b..7f4e012c641a90182f51b3f6f33a348c28f0b114 100644
+index 722903d70657a81d7f78bcff50c03ea424887b5b..c920c4892cf5e36366dd3c2779cbde9845577503 100644
 --- a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt
 +++ b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt
 @@ -3,11 +3,15 @@ package com.rnmapbox.rnmbx.components.camera
@@ -57,7 +69,7 @@ index 722903d70657a81d7f78bcff50c03ea424887b5b..7f4e012c641a90182f51b3f6f33a348c
  import com.mapbox.maps.plugin.animation.MapAnimationOptions
  import com.mapbox.maps.plugin.animation.easeTo
  import com.mapbox.maps.plugin.animation.moveBy
-@@ -57,6 +61,59 @@ class RNMBXCameraModule(context: ReactApplicationContext, val viewTagResolver: V
+@@ -57,6 +61,70 @@ class RNMBXCameraModule(context: ReactApplicationContext, val viewTagResolver: V
          }
      }
  
@@ -109,6 +121,17 @@ index 722903d70657a81d7f78bcff50c03ea424887b5b..7f4e012c641a90182f51b3f6f33a348c
 +    }
 +
 +    /**
++     * Void like setCameraDirect, through the same UI-thread hop, so a puck write and a camera write
++     * sent in one JS tick reach the map in order. `color` is a signed ARGB int carried as a double.
++     * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraModule.mm `setPuckDirect`
++     */
++    override fun setPuckDirect(viewRef: ViewRefTag?, lng: Double, lat: Double, bearing: Double, color: Double, shadowAlpha: Double, visible: Boolean) {
++        withViewportOnUIThread(viewRef, ignoredPromise()) {
++            it.setPuckDirect(lng, lat, bearing, color.toLong().toInt(), shadowAlpha.toFloat(), visible)
++        }
++    }
++
++    /**
 +     * Resolver plumbing needs a Promise; a void command has nobody to answer.
 +     * PromiseImpl no-ops on null callbacks for both resolve and reject.
 +     */
@@ -117,6 +140,416 @@ index 722903d70657a81d7f78bcff50c03ea424887b5b..7f4e012c641a90182f51b3f6f33a348c
      private fun getAnimationOptions(
          animationMode: Double,
          animationDuration: Double
+diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..e6a2df5603b9aa1e1e14653a79193c9f6e5835f9
+--- /dev/null
++++ b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt
+@@ -0,0 +1,404 @@
++package com.rnmapbox.rnmbx.components.camera
++
++import android.opengl.GLES30
++import android.util.Log
++import com.mapbox.maps.CustomLayerHost
++import com.mapbox.maps.CustomLayerRenderParameters
++import com.mapbox.maps.LayerPosition
++import com.mapbox.maps.MapboxMap
++import java.nio.ByteBuffer
++import java.nio.ByteOrder
++import kotlin.math.PI
++import kotlin.math.cos
++import kotlin.math.ln
++import kotlin.math.pow
++import kotlin.math.sin
++import kotlin.math.tan
++
++/**
++ * The rider puck as a Mapbox custom layer: the coin of GpsPuck (src/modules/map/components/GpsPuck.tsx)
++ * drawn with GLES 3 inside the map's own render pass, so it moves with the map in the same frame
++ * instead of trailing it like a marker view. Ground shadow, shaded base and side wall, heading
++ * arrow in the top face's plane, top face with a white rim.
++ *
++ * Units, as Mapbox's projection matrix takes them: x/y are world pixels with 512 px tiles
++ * (512 * 2^zoom across the world), which are dp on the ground plane, so the coin keeps its
++ * on-screen size at any zoom. z is in metres, so the vertex shader turns the coin's dp heights
++ * into metres with the metres-per-pixel at the camera's latitude. Column-major.
++ * No depth test: the coin is an overlay, drawn back to front (painter's order in [render]).
++ *
++ * Written on the UI thread by [set], read on the render thread by the layer host. The layer is
++ * persistent, so Mapbox keeps it across style reloads; it is added on first use and removed when
++ * hidden. Mercator only: under globe projection (zoom below ~5) the coin is misplaced.
++ *
++ * @parity /src/modules/map/lib/nativePuck.ts `PuckLayerState`
++ * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXCameraModule.mm `setPuckDirect`
++ * @platform-diff Android only; iOS keeps the marker-view puck.
++ */
++internal class RNMBXPuck {
++    private val lock = Any()
++    private var lng = 0.0
++    private var lat = 0.0
++    private var bearing = Double.NaN
++    private var argb = 0
++    private var shadowAlpha = 0f
++    private var shown = false
++    /** Bumped when the vertex data (colour or shadow) changes. Bearing is a draw-time rotation. */
++    private var geometryVersion = 1L
++
++    private val host = Host()
++
++    /** UI thread. NaN bearing hides the arrow; `visible` false (or a NaN position) removes the layer. */
++    fun set(
++        map: MapboxMap,
++        lng: Double,
++        lat: Double,
++        bearing: Double,
++        argb: Int,
++        shadowAlpha: Float,
++        visible: Boolean,
++    ) {
++        val show = visible && !lng.isNaN() && !lat.isNaN()
++        val moved: Boolean
++        synchronized(lock) {
++            if (show && (argb != this.argb || shadowAlpha != this.shadowAlpha || !shown)) {
++                geometryVersion++
++            }
++            moved = show && (lng != this.lng || lat != this.lat || !shown)
++            if (show) {
++                this.lng = lng
++                this.lat = lat
++                this.bearing = bearing
++                this.argb = argb
++                this.shadowAlpha = shadowAlpha
++            }
++            shown = show
++        }
++        apply(map, keepOnTop = moved)
++    }
++
++    /** UI thread. Takes the layer out of the map; a later [set] puts it back. */
++    fun remove(map: MapboxMap?) {
++        synchronized(lock) { shown = false }
++        val style = map?.style ?: return
++        if (style.styleLayerExists(LAYER_ID)) style.removeStyleLayer(LAYER_ID)
++    }
++
++    /** Puts the layer in the style or takes it out, to match the last [set]. */
++    private fun apply(map: MapboxMap, keepOnTop: Boolean) {
++        val style = map.style ?: return
++        val exists = style.styleLayerExists(LAYER_ID)
++        if (!shown) {
++            if (exists) style.removeStyleLayer(LAYER_ID)
++            return
++        }
++        if (!exists) {
++            style.addPersistentStyleCustomLayer(LAYER_ID, host, TOP).error?.let {
++                Log.e(TAG, "add layer failed: $it")
++            }
++        } else if (keepOnTop && style.styleLayers.lastOrNull()?.id != LAYER_ID) {
++            // Layers the app adds later (trails, rider pins) land above it; the puck stays on top.
++            // Only on a position change, never per bearing sample: listing layers allocates.
++            style.moveStyleLayer(LAYER_ID, TOP)
++        }
++        map.triggerRepaint()
++    }
++
++    private inner class Host : CustomLayerHost {
++        private val vertices =
++            ByteBuffer.allocateDirect(VERTEX_COUNT * STRIDE).order(ByteOrder.nativeOrder()).asFloatBuffer()
++        private val projection = DoubleArray(16)
++        private val mvp = FloatArray(16)
++        private val saved = IntArray(8)
++        private val savedFlag = BooleanArray(1)
++        private var program = 0
++        private var mvpLocation = -1
++        private var metersPerPixelLocation = -1
++        private val vao = IntArray(1)
++        private val buffer = IntArray(1)
++        private var uploadedVersion = 0L
++        private var loggedError = false
++
++        // Render-thread copy of the shared state.
++        private var sLng = 0.0
++        private var sLat = 0.0
++        private var sBearing = Double.NaN
++        private var sArgb = 0
++        private var sShadowAlpha = 0f
++        private var sShown = false
++        private var sVersion = 0L
++
++        override fun initialize() {
++            val vs = compile(GLES30.GL_VERTEX_SHADER, VERTEX_SHADER)
++            val fs = compile(GLES30.GL_FRAGMENT_SHADER, FRAGMENT_SHADER)
++            if (vs == 0 || fs == 0) return
++            program = GLES30.glCreateProgram()
++            GLES30.glAttachShader(program, vs)
++            GLES30.glAttachShader(program, fs)
++            GLES30.glBindAttribLocation(program, 0, "a_pos")
++            GLES30.glBindAttribLocation(program, 1, "a_color")
++            GLES30.glLinkProgram(program)
++            GLES30.glDeleteShader(vs)
++            GLES30.glDeleteShader(fs)
++            GLES30.glGetProgramiv(program, GLES30.GL_LINK_STATUS, saved, 0)
++            if (saved[0] == 0) {
++                Log.e(TAG, "program link failed: ${GLES30.glGetProgramInfoLog(program)}")
++                GLES30.glDeleteProgram(program)
++                program = 0
++                return
++            }
++            mvpLocation = GLES30.glGetUniformLocation(program, "u_mvp")
++            metersPerPixelLocation = GLES30.glGetUniformLocation(program, "u_metersPerPixel")
++
++            GLES30.glGetIntegerv(GLES30.GL_VERTEX_ARRAY_BINDING, saved, 0)
++            GLES30.glGetIntegerv(GLES30.GL_ARRAY_BUFFER_BINDING, saved, 1)
++            GLES30.glGenVertexArrays(1, vao, 0)
++            GLES30.glGenBuffers(1, buffer, 0)
++            GLES30.glBindVertexArray(vao[0])
++            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffer[0])
++            GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, VERTEX_COUNT * STRIDE, null, GLES30.GL_DYNAMIC_DRAW)
++            GLES30.glEnableVertexAttribArray(0)
++            GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, STRIDE, 0)
++            GLES30.glEnableVertexAttribArray(1)
++            GLES30.glVertexAttribPointer(1, 4, GLES30.GL_FLOAT, false, STRIDE, 3 * 4)
++            GLES30.glBindVertexArray(saved[0])
++            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, saved[1])
++            uploadedVersion = 0
++        }
++
++        override fun render(parameters: CustomLayerRenderParameters) {
++            if (program == 0) return
++            synchronized(lock) {
++                sLng = lng
++                sLat = lat
++                sBearing = bearing
++                sArgb = argb
++                sShadowAlpha = shadowAlpha
++                sShown = shown
++                sVersion = geometryVersion
++            }
++            if (!sShown) return
++            val matrix = parameters.projectionMatrix
++            for (i in 0 until 16) projection[i] = matrix[i]
++
++            // Save what this draw touches.
++            GLES30.glGetIntegerv(GLES30.GL_CURRENT_PROGRAM, saved, 0)
++            GLES30.glGetIntegerv(GLES30.GL_VERTEX_ARRAY_BINDING, saved, 1)
++            GLES30.glGetIntegerv(GLES30.GL_ARRAY_BUFFER_BINDING, saved, 2)
++            GLES30.glGetIntegerv(GLES30.GL_BLEND_SRC_RGB, saved, 3)
++            GLES30.glGetIntegerv(GLES30.GL_BLEND_DST_RGB, saved, 4)
++            GLES30.glGetIntegerv(GLES30.GL_BLEND_SRC_ALPHA, saved, 5)
++            GLES30.glGetIntegerv(GLES30.GL_BLEND_DST_ALPHA, saved, 6)
++            GLES30.glGetBooleanv(GLES30.GL_DEPTH_WRITEMASK, savedFlag, 0)
++            val prevBlend = GLES30.glIsEnabled(GLES30.GL_BLEND)
++            val prevDepth = GLES30.glIsEnabled(GLES30.GL_DEPTH_TEST)
++            val prevStencil = GLES30.glIsEnabled(GLES30.GL_STENCIL_TEST)
++            val prevCull = GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
++
++            GLES30.glBindVertexArray(vao[0])
++            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffer[0])
++            if (uploadedVersion != sVersion) upload()
++
++            val worldSize = 512.0 * 2.0.pow(parameters.zoom)
++            val latRad = sLat.coerceIn(-MAX_LAT, MAX_LAT) * PI / 180.0
++            val x = (sLng + 180.0) / 360.0 * worldSize
++            val y = (1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * worldSize
++            val metersPerPixel = cos(parameters.latitude * PI / 180.0) * 2.0 * PI * EARTH_RADIUS / worldSize
++            // Screen-down on the ground: the map's bearing turns world north to screen up.
++            val mapBearing = parameters.bearing * PI / 180.0
++            val dropX = -sin(mapBearing) * SHADOW_DROP
++            val dropY = cos(mapBearing) * SHADOW_DROP
++
++            // Mapbox leaves its own errors in the queue; drop them so the check below sees only ours.
++            repeat(4) { GLES30.glGetError() }
++            GLES30.glUseProgram(program)
++            GLES30.glUniform1f(metersPerPixelLocation, metersPerPixel.toFloat())
++            GLES30.glDisable(GLES30.GL_DEPTH_TEST)
++            GLES30.glDisable(GLES30.GL_STENCIL_TEST)
++            GLES30.glDisable(GLES30.GL_CULL_FACE)
++            GLES30.glDepthMask(false)
++            GLES30.glEnable(GLES30.GL_BLEND)
++            GLES30.glBlendFunc(GLES30.GL_ONE, GLES30.GL_ONE_MINUS_SRC_ALPHA)
++
++            // Painter's order, valid from any heading and pitch: the camera is always above the
++            // coin, so the top face covers everything under it; the wall is one flat shade, so its
++            // back and front halves need no sorting; the arrow lies in the top plane.
++            draw(x + dropX, y + dropY, 0.0, SHADOW_FIRST, DISC_COUNT)
++            draw(x, y, 0.0, BODY_FIRST, BODY_COUNT)
++            if (!sBearing.isNaN()) draw(x, y, sBearing * PI / 180.0, ARROW_FIRST, ARROW_COUNT)
++            draw(x, y, 0.0, TOP_FIRST, TOP_COUNT)
++
++            val err = GLES30.glGetError()
++            if (err != GLES30.GL_NO_ERROR && !loggedError) {
++                Log.e(TAG, "GL error 0x${Integer.toHexString(err)} after draw")
++                loggedError = true
++            }
++
++            GLES30.glUseProgram(saved[0])
++            GLES30.glBindVertexArray(saved[1])
++            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, saved[2])
++            GLES30.glBlendFuncSeparate(saved[3], saved[4], saved[5], saved[6])
++            GLES30.glDepthMask(savedFlag[0])
++            if (!prevBlend) GLES30.glDisable(GLES30.GL_BLEND)
++            if (prevDepth) GLES30.glEnable(GLES30.GL_DEPTH_TEST)
++            if (prevStencil) GLES30.glEnable(GLES30.GL_STENCIL_TEST)
++            if (prevCull) GLES30.glEnable(GLES30.GL_CULL_FACE)
++        }
++
++        override fun contextLost() {
++            // The GL objects died with the context; forget the handles, initialize runs again.
++            program = 0
++            vao[0] = 0
++            buffer[0] = 0
++            uploadedVersion = 0
++        }
++
++        override fun deinitialize() {
++            if (program != 0) GLES30.glDeleteProgram(program)
++            if (buffer[0] != 0) GLES30.glDeleteBuffers(1, buffer, 0)
++            if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
++            contextLost()
++        }
++
++        /** projection * translate(x, y) * rotateZ(angle), column-major; translation in doubles. */
++        private fun draw(x: Double, y: Double, angle: Double, first: Int, count: Int) {
++            val c = cos(angle)
++            val s = sin(angle)
++            val p = projection
++            for (r in 0 until 4) {
++                mvp[r] = (p[r] * c + p[4 + r] * s).toFloat()
++                mvp[4 + r] = (-p[r] * s + p[4 + r] * c).toFloat()
++                mvp[8 + r] = p[8 + r].toFloat()
++                mvp[12 + r] = (p[r] * x + p[4 + r] * y + p[12 + r]).toFloat()
++            }
++            GLES30.glUniformMatrix4fv(mvpLocation, 1, false, mvp, 0)
++            GLES30.glDrawArrays(GLES30.GL_TRIANGLES, first, count)
++        }
++
++        /** Rebuilds the vertex data; only when colour or shadow change. */
++        private fun upload() {
++            val a = ((sArgb ushr 24) and 0xFF) / 255f
++            val r = ((sArgb ushr 16) and 0xFF) / 255f
++            val g = ((sArgb ushr 8) and 0xFF) / 255f
++            val b = (sArgb and 0xFF) / 255f
++            val v = vertices
++            v.clear()
++            disc(v, SHADOW_RADIUS, 0f, 0f, 0f, 0f, sShadowAlpha)
++            disc(v, COIN_RADIUS, 0f, r * WALL_SHADE, g * WALL_SHADE, b * WALL_SHADE, a)
++            wall(v, r * WALL_SHADE, g * WALL_SHADE, b * WALL_SHADE, a)
++            // Pointing north (world y is south); the draw rotates it clockwise by the bearing.
++            vertex(v, 0f, -ARROW_TIP, COIN_HEIGHT, 1f, 1f, 1f, 1f)
++            vertex(v, ARROW_HALF_WIDTH, -ARROW_BASE, COIN_HEIGHT, 1f, 1f, 1f, 1f)
++            vertex(v, -ARROW_HALF_WIDTH, -ARROW_BASE, COIN_HEIGHT, 1f, 1f, 1f, 1f)
++            disc(v, COIN_RADIUS, COIN_HEIGHT, 1f, 1f, 1f, 1f)
++            disc(v, COIN_RADIUS - RIM_WIDTH, COIN_HEIGHT, r, g, b, a)
++            v.flip()
++            GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, v.limit() * 4, v)
++            uploadedVersion = sVersion
++        }
++    }
++
++    companion object {
++        private const val TAG = "RNMBXPuck"
++        private const val LAYER_ID = "rnmbx-puck"
++        private val TOP = LayerPosition(null, null, null)
++
++        // GpsPuck's coin, in dp.
++        private const val COIN_RADIUS = 11f
++        private const val COIN_HEIGHT = 12f
++        private const val RIM_WIDTH = 3f
++        private const val SHADOW_RADIUS = 15f
++        /** Towards the bottom of the screen. */
++        private const val SHADOW_DROP = 2.0
++        /** 40% black over the rider colour. */
++        private const val WALL_SHADE = 0.6f
++        private const val ARROW_HALF_WIDTH = 9f
++        private const val ARROW_LENGTH = 14f
++        private const val ARROW_TUCK = 4f
++        private const val ARROW_BASE = COIN_RADIUS - ARROW_TUCK
++        private const val ARROW_TIP = ARROW_BASE + ARROW_LENGTH
++        private const val SEGMENTS = 48
++        private const val EARTH_RADIUS = 6378137.0
++        private const val MAX_LAT = 85.051128
++
++        // Buffer layout, in draw order.
++        private const val STRIDE = 7 * 4
++        private const val DISC_COUNT = 3 * SEGMENTS
++        private const val SHADOW_FIRST = 0
++        private const val BODY_FIRST = SHADOW_FIRST + DISC_COUNT // base disc + side wall
++        private const val BODY_COUNT = DISC_COUNT + 6 * SEGMENTS
++        private const val ARROW_FIRST = BODY_FIRST + BODY_COUNT
++        private const val ARROW_COUNT = 3
++        private const val TOP_FIRST = ARROW_FIRST + ARROW_COUNT // white rim disc + colour disc
++        private const val TOP_COUNT = 2 * DISC_COUNT
++        private const val VERTEX_COUNT = TOP_FIRST + TOP_COUNT
++
++        private const val VERTEX_SHADER = """#version 300 es
++uniform mat4 u_mvp;
++uniform float u_metersPerPixel;
++in vec3 a_pos;
++in vec4 a_color;
++out vec4 v_color;
++void main() {
++  vec4 p = u_mvp * vec4(a_pos.xy, a_pos.z * u_metersPerPixel, 1.0);
++  // Clip depth pinned inside [-w, w]: the puck is an overlay, never depth-tested.
++  p.z = 0.0;
++  gl_Position = p;
++  v_color = a_color;
++}
++"""
++
++        private const val FRAGMENT_SHADER = """#version 300 es
++precision mediump float;
++in vec4 v_color;
++out vec4 fragColor;
++void main() { fragColor = v_color; }
++"""
++
++        private fun compile(type: Int, source: String): Int {
++            val shader = GLES30.glCreateShader(type)
++            GLES30.glShaderSource(shader, source)
++            GLES30.glCompileShader(shader)
++            val ok = IntArray(1)
++            GLES30.glGetShaderiv(shader, GLES30.GL_COMPILE_STATUS, ok, 0)
++            if (ok[0] == 0) {
++                Log.e(TAG, "shader compile failed: ${GLES30.glGetShaderInfoLog(shader)}")
++                GLES30.glDeleteShader(shader)
++                return 0
++            }
++            return shader
++        }
++
++        /** Premultiplied colour. */
++        private fun vertex(v: java.nio.FloatBuffer, x: Float, y: Float, z: Float, r: Float, g: Float, b: Float, a: Float) {
++            v.put(x).put(y).put(z).put(r * a).put(g * a).put(b * a).put(a)
++        }
++
++        private fun ringX(i: Int, radius: Float) = cos(2.0 * PI * i / SEGMENTS).toFloat() * radius
++
++        private fun ringY(i: Int, radius: Float) = sin(2.0 * PI * i / SEGMENTS).toFloat() * radius
++
++        private fun disc(v: java.nio.FloatBuffer, radius: Float, z: Float, r: Float, g: Float, b: Float, a: Float) {
++            for (i in 0 until SEGMENTS) {
++                vertex(v, 0f, 0f, z, r, g, b, a)
++                vertex(v, ringX(i, radius), ringY(i, radius), z, r, g, b, a)
++                vertex(v, ringX(i + 1, radius), ringY(i + 1, radius), z, r, g, b, a)
++            }
++        }
++
++        private fun wall(v: java.nio.FloatBuffer, r: Float, g: Float, b: Float, a: Float) {
++            for (i in 0 until SEGMENTS) {
++                val x0 = ringX(i, COIN_RADIUS)
++                val y0 = ringY(i, COIN_RADIUS)
++                val x1 = ringX(i + 1, COIN_RADIUS)
++                val y1 = ringY(i + 1, COIN_RADIUS)
++                vertex(v, x0, y0, 0f, r, g, b, a)
++                vertex(v, x1, y1, 0f, r, g, b, a)
++                vertex(v, x1, y1, COIN_HEIGHT, r, g, b, a)
++                vertex(v, x0, y0, 0f, r, g, b, a)
++                vertex(v, x1, y1, COIN_HEIGHT, r, g, b, a)
++                vertex(v, x0, y0, COIN_HEIGHT, r, g, b, a)
++            }
++        }
++    }
++}
 diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/mapview/RNMBXMapView.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/mapview/RNMBXMapView.kt
 index 9043e025629638d25d3cef4bc4774c2cbf278b4a..33b45602d5003b061afbf2a1bb443f4f21821ce8 100644
 --- a/android/src/main/java/com/rnmapbox/rnmbx/components/mapview/RNMBXMapView.kt
@@ -218,10 +651,10 @@ index bc3f6321a79d21ed1294b2e23c6d661dd1b8f50d..9b7d3a42a05d66e4e05db9925cf884bb
      guard bounds.features.count == 2 else {
        throw RNMBXError.paramError("Expected two Points in FeatureColletion")
 diff --git a/ios/RNMBX/RNMBXCameraModule.mm b/ios/RNMBX/RNMBXCameraModule.mm
-index 6599a79f947b737709bf9bab13dfc497231eb8e2..57d62a0bb6dc5b54b47d4eb36a64ac2600870217 100644
+index 6599a79f947b737709bf9bab13dfc497231eb8e2..fa438f7927bf5e2fa7d553b7868e2e446dbe25c6 100644
 --- a/ios/RNMBX/RNMBXCameraModule.mm
 +++ b/ios/RNMBX/RNMBXCameraModule.mm
-@@ -50,6 +50,40 @@ - (void)withCamera:(nonnull NSNumber*)viewRef block:(void (^)(RNMBXCamera *))blo
+@@ -50,6 +50,53 @@ RCT_EXPORT_METHOD(updateCameraStop:(nonnull NSNumber *)viewRef
      } reject:reject methodName:@"updateCameraStop"];
  }
  
@@ -257,6 +690,19 @@ index 6599a79f947b737709bf9bab13dfc497231eb8e2..57d62a0bb6dc5b54b47d4eb36a64ac26
 +    [self withCamera:viewRef block:^(RNMBXCamera *view) {
 +        [view cancelCameraAnimations];
 +    } reject:reject methodName:@"cancelCameraAnimations"];
++}
++
++// @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCameraModule.kt `setPuckDirect`
++// TODO(ios parity): no custom layer puck on iOS yet; JS keeps the marker-view puck there and
++// never calls this.
++RCT_EXPORT_METHOD(setPuckDirect:(nonnull NSNumber *)viewRef
++                  lng:(double)lng
++                  lat:(double)lat
++                  bearing:(double)bearing
++                  color:(double)color
++                  shadowAlpha:(double)shadowAlpha
++                  visible:(BOOL)visible)
++{
 +}
 +
  RCT_EXPORT_METHOD(moveBy:(nonnull NSNumber *)viewRef
@@ -342,10 +788,10 @@ index 4ffb4266e9fe1c2f5e111094ca5b758051c8b333..331bd6276010f09925e132f3c21f380d
  
    public func gestureManager(_ gestureManager: GestureManager, didEndAnimatingFor gestureType: GestureType) {
 diff --git a/lib/module/components/Camera.js b/lib/module/components/Camera.js
-index da6b273215f41d316fdb1d638ede2de5c73384a1..a0d34365cb58cad345d21628e9d499d50c1722ff 100644
+index da6b273215f41d316fdb1d638ede2de5c73384a1..d32a29e4f578f8ff8d2ab8fda354d3dcf6ecd8e6 100644
 --- a/lib/module/components/Camera.js
 +++ b/lib/module/components/Camera.js
-@@ -201,6 +201,12 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
+@@ -201,6 +201,15 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
      }
    };
    const setCamera = useCallback(_setCamera, [allowUpdates, buildNativeStop, commands]);
@@ -355,23 +801,27 @@ index da6b273215f41d316fdb1d638ede2de5c73384a1..a0d34365cb58cad345d21628e9d499d5
 +  const cancelCameraAnimations = useCallback(() => {
 +    commands.call('cancelCameraAnimations', []);
 +  }, [commands]);
++  const setPuckDirect = useCallback(puck => {
++    commands.call('setPuckDirect', [puck?.lngLat[0] ?? Number.NaN, puck?.lngLat[1] ?? Number.NaN, puck?.bearing ?? Number.NaN, puck?.color ?? 0, puck?.shadowAlpha ?? 0, puck != null]);
++  }, [commands]);
    const _fitBounds = (ne, sw, paddingConfig = 0, _animationDuration = 0) => {
      let _padding = {
        paddingTop: 0,
-@@ -288,6 +294,8 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
+@@ -288,6 +297,9 @@ export const Camera = /*#__PURE__*/memo(/*#__PURE__*/forwardRef((props, ref) =>
       * @param {CameraStop | CameraStops} config
       */
      setCamera,
 +    setCameraDirect,
 +    cancelCameraAnimations,
++    setPuckDirect,
      /**
       * Set the camera position to enclose the provided bounds, with optional
       * padding and duration.
 diff --git a/lib/typescript/src/components/Camera.d.ts b/lib/typescript/src/components/Camera.d.ts
-index 5ba484344d14d55f17afa8dd11f2bc02904f8aaf..58b06579a45a1bce99d526b6815738697c86525b 100644
+index 5ba484344d14d55f17afa8dd11f2bc02904f8aaf..9f224fed9aa1011a67aefa2120e9ef6d1656d7d9 100644
 --- a/lib/typescript/src/components/Camera.d.ts
 +++ b/lib/typescript/src/components/Camera.d.ts
-@@ -12,6 +12,19 @@ export type UserTrackingModeChangeCallback = (event: MapboxGLEvent<'usertracking
+@@ -12,6 +12,25 @@ export type UserTrackingModeChangeCallback = (event: MapboxGLEvent<'usertracking
  }>) => void;
  export interface CameraRef {
      setCamera: (config: CameraStop | CameraStops) => void;
@@ -388,6 +838,12 @@ index 5ba484344d14d55f17afa8dd11f2bc02904f8aaf..58b06579a45a1bce99d526b681573869
 +        };
 +    }) => void;
 +    cancelCameraAnimations: () => void;
++    setPuckDirect: (puck: {
++        lngLat: [number, number];
++        bearing: number | null;
++        color: number;
++        shadowAlpha: number;
++    } | null) => void;
      fitBounds: (ne: Position, sw: Position, paddingConfig?: number | number[], animationDuration?: number) => void;
      flyTo: (centerCoordinate: Position, animationDuration?: number) => void;
      moveTo: (centerCoordinate: Position, animationDuration?: number) => void;
@@ -405,23 +861,24 @@ index 7d4dc79ac02f1193cf763fcc2f47d4ccbfb070bb..9d74436b5621cf79e595481c7113002f
              sw: GeoJSON.Position;
          };
 diff --git a/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts b/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
-index 3fda8aa42ab2d96329be85791bee4dd0f8141557..791753e915793465da3c2398b025c0300d529c5f 100644
+index 3fda8aa42ab2d96329be85791bee4dd0f8141557..dcf75087e085bc502da2beafe49721615d643b2a 100644
 --- a/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
 +++ b/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
-@@ -20,6 +20,8 @@ type Stop = {
+@@ -20,6 +20,9 @@ type Stop = {
  type ObjectOr<_T> = Object;
  export interface Spec extends TurboModule {
      updateCameraStop(viewRef: ViewRef, stop: ObjectOr<Stop>): Promise<void>;
 +    setCameraDirect(viewRef: ViewRef, centerLng: number, centerLat: number, zoom: number, pitch: number, heading: number, paddingTop: number, paddingRight: number, paddingBottom: number, paddingLeft: number): void;
 +    cancelCameraAnimations(viewRef: ViewRef): void;
++    setPuckDirect(viewRef: ViewRef, lng: number, lat: number, bearing: number, color: number, shadowAlpha: number, visible: boolean): void;
      moveBy: (viewRef: ViewRef, x: number, y: number, animationMode: number, animationDuration: number) => Promise<void>;
      scaleBy: (viewRef: ViewRef, x: number, y: number, animationMode: number, animationDuration: number, scaleFactor: number) => Promise<void>;
  }
 diff --git a/src/components/Camera.tsx b/src/components/Camera.tsx
-index c8e61a0d9e528bf74e869e14153e9a5be5894be7..6bfa604a4747a7029bb9fdd3649581d91c2943c5 100644
+index c8e61a0d9e528bf74e869e14153e9a5be5894be7..eec396f21c61079df4c105f3801ce81c36350ab5 100644
 --- a/src/components/Camera.tsx
 +++ b/src/components/Camera.tsx
-@@ -97,6 +97,19 @@ interface NativeCameraStop {
+@@ -97,6 +97,31 @@ interface NativeCameraStop {
  
  export interface CameraRef {
    setCamera: (config: CameraStop | CameraStops) => void;
@@ -438,10 +895,22 @@ index c8e61a0d9e528bf74e869e14153e9a5be5894be7..6bfa604a4747a7029bb9fdd3649581d9
 +    };
 +  }) => void;
 +  cancelCameraAnimations: () => void;
++  /**
++   * Places the rider puck that a custom layer draws inside the map's own frame (Android only).
++   * `null` removes it; a null bearing hides the arrow; `color` is ARGB as `processColor` returns.
++   */
++  setPuckDirect: (
++    puck: {
++      lngLat: [number, number];
++      bearing: number | null;
++      color: number;
++      shadowAlpha: number;
++    } | null,
++  ) => void;
    fitBounds: (
      ne: Position,
      sw: Position,
-@@ -473,6 +486,38 @@ export const Camera = memo(
+@@ -473,6 +498,52 @@ export const Camera = memo(
          commands,
        ]);
  
@@ -477,15 +946,30 @@ index c8e61a0d9e528bf74e869e14153e9a5be5894be7..6bfa604a4747a7029bb9fdd3649581d9
 +        commands.call<void>('cancelCameraAnimations', []);
 +      }, [commands]);
 +
++      const setPuckDirect = useCallback<CameraRef['setPuckDirect']>(
++        (puck) => {
++          commands.call<void>('setPuckDirect', [
++            puck?.lngLat[0] ?? Number.NaN,
++            puck?.lngLat[1] ?? Number.NaN,
++            puck?.bearing ?? Number.NaN,
++            puck?.color ?? 0,
++            puck?.shadowAlpha ?? 0,
++            puck != null,
++          ]);
++        },
++        [commands],
++      );
++
        const _fitBounds: CameraRef['fitBounds'] = (
          ne,
          sw,
-@@ -605,6 +650,8 @@ export const Camera = memo(
+@@ -605,6 +676,9 @@ export const Camera = memo(
           * @param {CameraStop | CameraStops} config
           */
          setCamera,
 +        setCameraDirect,
 +        cancelCameraAnimations,
++        setPuckDirect,
          /**
           * Set the camera position to enclose the provided bounds, with optional
           * padding and duration.
@@ -504,10 +988,10 @@ index d7b5bf5029094bdc818a90040a6ee0ea7876c48c..ebef6586e46821df91afd3e2939d2af2
        sw: GeoJSON.Position;
      };
 diff --git a/src/specs/NativeRNMBXCameraModule.ts b/src/specs/NativeRNMBXCameraModule.ts
-index 51e22647de0011459dee4bd160ede4fcca1f4263..142cbea411d7569f5c1e0ac422e999e4faa81b13 100644
+index 51e22647de0011459dee4bd160ede4fcca1f4263..bf3dec77f6690c44e0068ada0d070eba6f577bee 100644
 --- a/src/specs/NativeRNMBXCameraModule.ts
 +++ b/src/specs/NativeRNMBXCameraModule.ts
-@@ -30,6 +30,19 @@ type ObjectOr<_T> = Object;
+@@ -30,6 +30,28 @@ type ObjectOr<_T> = Object;
  
  export interface Spec extends TurboModule {
    updateCameraStop(viewRef: ViewRef, stop: ObjectOr<Stop>): Promise<void>;
@@ -524,6 +1008,15 @@ index 51e22647de0011459dee4bd160ede4fcca1f4263..142cbea411d7569f5c1e0ac422e999e4
 +    paddingLeft: number,
 +  ): void;
 +  cancelCameraAnimations(viewRef: ViewRef): void;
++  setPuckDirect(
++    viewRef: ViewRef,
++    lng: number,
++    lat: number,
++    bearing: number,
++    color: number,
++    shadowAlpha: number,
++    visible: boolean,
++  ): void;
    moveBy: (
      viewRef: ViewRef,
      x: number,
