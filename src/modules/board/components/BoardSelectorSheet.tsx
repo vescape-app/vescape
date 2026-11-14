@@ -5,10 +5,12 @@ import {
   PencilSimpleIcon,
   PlusIcon,
   WarningDiamondIcon,
+  WrenchIcon,
   type Icon,
 } from 'phosphor-react-native'
 import type { BoardWarningSeverity } from 'vescape-core'
 
+import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { Placeholder } from '@/components/base/Placeholder'
@@ -46,6 +48,7 @@ interface BoardSelectorContentProps {
   onSelectBoard: (id: string) => void
   onAddBoard: () => void
   onEditBoard: (id: string) => void
+  onBoardConfig: (id: string) => void
 }
 
 interface BoardSelectorSheetProps extends BoardSelectorContentProps {
@@ -121,7 +124,7 @@ interface StripLink {
 }
 
 /**
- * Warnings, VESC faults and Edit — the ways into the active board that used to hide behind the
+ * Warnings, VESC faults and Board config — the ways into the active board that used to hide behind the
  * pencil on the pill. A counted link with nothing behind it grays out, so color always means
  * "there is something here".
  */
@@ -186,6 +189,7 @@ export function BoardSelectorContent({
   onSelectBoard,
   onAddBoard,
   onEditBoard,
+  onBoardConfig,
 }: BoardSelectorContentProps) {
   const neutral = useResolvedNeutralColors()
   const cardSurface = useResolvedSecondaryWidgetSurface()
@@ -204,6 +208,13 @@ export function BoardSelectorContent({
               </Text>
               <ActiveMeta board={active} live={activeBoardLive} />
             </View>
+            <IconButton
+              icon={PencilSimpleIcon}
+              onPress={() => onEditBoard(active.id)}
+              accessibilityLabel={`Edit ${active.name}`}
+              testID="board-edit-button"
+              style={styles.editButton}
+            />
           </View>
           <LinksStrip
             links={[
@@ -232,12 +243,12 @@ export function BoardSelectorContent({
                   ]
                 : []),
               {
-                key: 'edit',
-                icon: PencilSimpleIcon,
-                label: 'Edit',
+                key: 'config',
+                icon: WrenchIcon,
+                label: 'Board config',
                 color: theme.neutral.textMuted,
-                testID: 'board-edit-button',
-                onPress: () => onEditBoard(active.id),
+                testID: 'board-config-button',
+                onPress: () => onBoardConfig(active.id),
               },
             ]}
           />
@@ -359,6 +370,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
     gap: 12,
+  },
+  editButton: {
+    alignSelf: 'flex-start',
   },
   rowPressed: {
     backgroundColor: interaction.pressedBg,

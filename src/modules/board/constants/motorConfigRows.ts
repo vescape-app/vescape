@@ -1,9 +1,4 @@
-import {
-  erpm,
-  percent,
-  unit,
-  type MotorConfigRow,
-} from '@/modules/board/components/BoardConfigSection'
+import { erpm, percent, unit, type MotorConfigRow } from '@/modules/board/lib/boardConfigReadout'
 
 /**
  * Which VESC motor config (MCCONF) fields each `/control/<metric>` screen shows beside its live

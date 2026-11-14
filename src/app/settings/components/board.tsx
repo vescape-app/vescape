@@ -23,6 +23,7 @@ import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCap
 import { LiveMetricCard } from '@/modules/board/components/LiveMetricCard'
 import { RimTempArc } from '@/modules/board/components/RimTempArc'
 import { presentTelemetryMetric, telemetry } from '@/modules/board/constants/telemetry'
+import { FOOTPAD_CONFIG_ROWS, STATE_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { RemoteTiltPadShowcase } from '@/screens/showcase/board/RemoteTiltPadShowcase'
@@ -435,20 +436,31 @@ const CONFIG_SECTION_VALUES = {
 
 function BoardConfigSectionShowcase() {
   const [state, setState] = useState('fresh')
+  const [showFreshness, setShowFreshness] = useState(true)
+  const [showDescriptions, setShowDescriptions] = useState(true)
 
   return (
     <ShowcaseCard
       name="BoardConfigSection"
       controls={
-        <ChipRow
-          label="state"
-          options={['fresh', 'last known', 'empty']}
-          selected={state}
-          onSelect={setState}
-        />
+        <>
+          <ChipRow
+            label="state"
+            options={['fresh', 'last known', 'empty']}
+            selected={state}
+            onSelect={setState}
+          />
+          <ToggleRow label="show freshness" value={showFreshness} onToggle={setShowFreshness} />
+          <ToggleRow
+            label="show descriptions"
+            value={showDescriptions}
+            onToggle={setShowDescriptions}
+          />
+        </>
       }
     >
       <BoardConfigSection
+        showFreshness={showFreshness}
         title="Motor config"
         rows={MOTOR_TEMP_CONFIG_ROWS}
         values={
@@ -457,6 +469,30 @@ function BoardConfigSectionShowcase() {
             : { ...CONFIG_SECTION_VALUES, freshness: state === 'fresh' ? 'fresh' : 'last-known' }
         }
         empty="No motor config read from this board yet. Connect it to read its cutoffs."
+      />
+      <BoardConfigSection
+        title="Footpad and dismount"
+        showDescriptions={showDescriptions}
+        showFreshness={false}
+        rows={FOOTPAD_CONFIG_ROWS.filter((row) =>
+          ['fault_is_dual_switch', 'fault_delay_switch_full', 'enable_quickstop'].includes(row.id),
+        )}
+        values={{
+          freshness: 'fresh',
+          values: { fault_is_dual_switch: 1, fault_delay_switch_full: 600, enable_quickstop: 0 },
+        }}
+      />
+      <BoardConfigSection
+        title="Startup"
+        showDescriptions={showDescriptions}
+        showFreshness={false}
+        rows={STATE_CONFIG_ROWS.filter((row) =>
+          ['startup_simplestart_enabled', 'startup_pushstart_enabled'].includes(row.id),
+        )}
+        values={{
+          freshness: 'fresh',
+          values: { startup_simplestart_enabled: 1, startup_pushstart_enabled: 0 },
+        }}
       />
     </ShowcaseCard>
   )
