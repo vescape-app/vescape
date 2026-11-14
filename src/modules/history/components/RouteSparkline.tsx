@@ -18,7 +18,7 @@ interface RouteSparklineProps {
   height: number
   /** Line color; the ride list tints a selected row and Favorites use their own amber. */
   color?: ThemeColor
-  /** Tiny duty-colored start and palette-red end dots, matching the full-map flags. */
+  /** Tiny duty-colored start and neutral end dots, matching the full-map flags. */
   endpoints?: boolean
   /** Dark street map behind the route once its tiles are on disk; the plain route until then. */
   map?: boolean
@@ -42,7 +42,8 @@ export function RouteSparkline({
   const tiles = useRoutePreviewTiles(points, width, height, map)
   const resolvedColor = useResolvedColor(color)
   const startColor = useResolvedColor(theme.telemetry.duty)
-  const endColor = useResolvedColor(theme.palette.red.color)
+  // The preview map is dark in both appearances; without it the dot sits on the app's surface.
+  const endColor = useResolvedColor(tiles ? theme.palette.mono.white : theme.neutral.textPrimary)
   const path = useMemo(() => routePreviewPath(points, width, height), [height, points, width])
   const marks = useMemo(() => {
     if (!endpoints || points.length < 2) return null
