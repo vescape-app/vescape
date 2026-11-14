@@ -48,17 +48,21 @@ export const useMotorConfigValuesStore = create<MotorConfigValuesState>((set, ge
  * This Board's motor config as a reader should see it: the live session values, or the durable Last
  * Known copy while the Board is off.
  */
-export function useMotorConfigFields(): MotorConfigValues | null {
+export function useMotorConfigFields(requestedBoardId?: string): MotorConfigValues | null {
   const values = useMotorConfigValuesStore((s) => s.values)
   const lastKnown = useMotorConfigValuesStore((s) => s.lastKnown)
-  const boardId = useBoardStore((s) => s.activeBoardId)
+  const activeBoardId = useBoardStore((s) => s.activeBoardId)
+  const boardId = requestedBoardId ?? activeBoardId
   const loadLastKnown = useMotorConfigValuesStore((s) => s.loadLastKnown)
 
-  useEffect(() => {
-    if (values == null && boardId != null) void loadLastKnown(boardId)
-  }, [values, boardId, loadLastKnown])
+  const sessionValues =
+    values && (values.boardId == null || values.boardId === boardId) ? values : null
 
-  if (values != null) return values
+  useEffect(() => {
+    if (sessionValues == null && boardId != null) void loadLastKnown(boardId)
+  }, [sessionValues, boardId, loadLastKnown])
+
+  if (sessionValues != null) return sessionValues
   return lastKnown?.boardId === boardId ? lastKnown : null
 }
 

@@ -66,22 +66,26 @@ export const useBoardConfigValuesStore = create<BoardConfigValuesState>((set, ge
 
 /**
  * This Board's config as a reader should see it: the live session values, or the durable Last Known
- * copy while the Board is off.
+ * copy while the Board is off. Pass a Board id to inspect a different Board from the active one.
  *
  * A Board Session's values are cleared natively on disconnect — the session object is per-session,
  * the DB row is not — so a config readout has to ask for the durable copy itself.
  */
-export function useBoardConfigFields(): BoardConfigValues | null {
+export function useBoardConfigFields(requestedBoardId?: string): BoardConfigValues | null {
   const values = useBoardConfigValuesStore((s) => s.values)
   const lastKnown = useBoardConfigValuesStore((s) => s.lastKnown)
-  const boardId = useBoardStore((s) => s.activeBoardId)
+  const activeBoardId = useBoardStore((s) => s.activeBoardId)
+  const boardId = requestedBoardId ?? activeBoardId
   const loadLastKnown = useBoardConfigValuesStore((s) => s.loadLastKnown)
 
-  useEffect(() => {
-    if (values == null && boardId != null) void loadLastKnown(boardId)
-  }, [values, boardId, loadLastKnown])
+  const sessionValues =
+    values && (values.boardId == null || values.boardId === boardId) ? values : null
 
-  if (values != null) return values
+  useEffect(() => {
+    if (sessionValues == null && boardId != null) void loadLastKnown(boardId)
+  }, [sessionValues, boardId, loadLastKnown])
+
+  if (sessionValues != null) return sessionValues
   return lastKnown?.boardId === boardId ? lastKnown : null
 }
 

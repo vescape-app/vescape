@@ -9,25 +9,29 @@ import { IconHero } from '@/components/settings/IconHero'
 import { RawSection } from '@/components/settings/RawSection'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useBoardConfigValuesStore } from '@/modules/board/store/boardConfigValuesStore'
-import { useMotorConfigValuesStore } from '@/modules/board/store/motorConfigValuesStore'
+import {
+  useBoardConfigFields,
+  useBoardConfigValuesStore,
+} from '@/modules/board/store/boardConfigValuesStore'
+import {
+  useMotorConfigFields,
+  useMotorConfigValuesStore,
+} from '@/modules/board/store/motorConfigValuesStore'
 
 /**
- * Raw dump of this Board Session's decoded Refloat config. Values are session-scoped (ADR 0035), so
- * the dump is empty unless the board being edited is the connected one.
+ * Raw dump of the requested Board's decoded Refloat and motor config. Current session values take
+ * priority over the durable Last Known copy; metadata identifies each config's freshness.
  */
 export default function BoardConfigScreen() {
   const { boardId } = useLocalSearchParams<{ boardId: string }>()
-  const values = useBoardConfigValuesStore((s) => s.values)
+  const values = useBoardConfigFields(boardId)
   const configError = useBoardConfigValuesStore((s) => s.error)
-  const forThisBoard = values && (values.boardId == null || values.boardId === boardId)
-  const motor = useMotorConfigValuesStore((s) => s.values)
+  const motor = useMotorConfigFields(boardId)
   const motorError = useMotorConfigValuesStore((s) => s.error)
-  const motorForThisBoard = motor && (motor.boardId == null || motor.boardId === boardId)
 
   const meta = useMemo(
     () =>
-      forThisBoard && values
+      values
         ? {
             boardId: values.boardId,
             refloatBaseVersion: values.refloatBaseVersion,
@@ -36,12 +40,12 @@ export default function BoardConfigScreen() {
             fieldCount: Object.keys(values.values).length,
           }
         : null,
-    [forThisBoard, values],
+    [values],
   )
 
   const motorMeta = useMemo(
     () =>
-      motorForThisBoard && motor
+      motor
         ? {
             boardId: motor.boardId,
             signature: motor.signature,
@@ -51,7 +55,7 @@ export default function BoardConfigScreen() {
             fieldCount: Object.keys(motor.values).length,
           }
         : null,
-    [motorForThisBoard, motor],
+    [motor],
   )
 
   /**
@@ -59,16 +63,16 @@ export default function BoardConfigScreen() {
    * own prefixes together — `bms.*`, `foc_*`, `l_*`, `m_*`, `si_*` — so related settings sit adjacent.
    */
   const motorValues = useMemo(() => {
-    if (!motorForThisBoard || !motor) return null
+    if (!motor) return null
     return Object.fromEntries(Object.entries(motor.values).sort(([a], [b]) => a.localeCompare(b)))
-  }, [motorForThisBoard, motor])
+  }, [motor])
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={BracketsCurlyIcon}
-          description="Decoded Refloat and VESC motor config for the current Board Session, exactly as read."
+          description="Decoded Refloat and VESC motor config for this board, from the current session or its last saved read."
         />
         {configError ? <Text style={styles.error}>{configError}</Text> : null}
         {motorError ? <Text style={styles.error}>{motorError}</Text> : null}
@@ -77,28 +81,28 @@ export default function BoardConfigScreen() {
           title="Config read"
           data={meta}
           exportName="board-config-meta"
-          empty="No config read — connect this board"
+          empty="No saved config — connect this board to read it"
         />
 
         <RawSection
           title="Refloat config"
-          data={forThisBoard && values ? values.values : null}
+          data={values ? values.values : null}
           exportName="refloat-config"
-          empty="No config read — connect this board"
+          empty="No saved config — connect this board to read it"
         />
 
         <RawSection
           title="Motor config read"
           data={motorMeta}
           exportName="motor-config-meta"
-          empty="No motor config read — connect this board"
+          empty="No saved motor config — connect this board to read it"
         />
 
         <RawSection
           title="Motor config (MCCONF)"
           data={motorValues}
           exportName="motor-config"
-          empty="No motor config read — connect this board"
+          empty="No saved motor config — connect this board to read it"
         />
       </PageScrollView>
     </SafeAreaView>
