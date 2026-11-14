@@ -177,16 +177,20 @@ function RiderPinMarker({
           weight="bold"
         />
         <View style={[styles.signalStem, { backgroundColor: color }]} />
+        <View
+          style={[styles.signalFoot, { backgroundColor: color, borderColor: neutral.surfaceDeep }]}
+        />
       </View>
     </InMapMarker>
   )
 }
 
-// The presence marker centers its dot on the Rider's position, its heading ring reaching ~28 px
-// above it. The stem lifts the signal pin past that, its foot on the signal's own spot. A marker is
-// anchored at its centre, so bottom padding mirrors pin and stem to put that centre at the foot.
+// The stem lifts the signal pin off its spot, clear of most of a presence marker on the same spot,
+// and ends in a dot on the spot itself. A marker is anchored at its centre, so bottom padding
+// mirrors pin and stem to put that centre on the dot's centre.
 const SIGNAL_PIN_SIZE = 40
-const SIGNAL_STEM_HEIGHT = 30
+const SIGNAL_STEM_HEIGHT = 22
+const SIGNAL_FOOT_SIZE = 8
 const RIDER_LABEL_GAP = 4
 const RIDER_LABEL_HEIGHT = 20
 
@@ -194,6 +198,12 @@ const styles = StyleSheet.create({
   signalMarker: {
     alignItems: 'center',
     paddingBottom: SIGNAL_PIN_SIZE + SIGNAL_STEM_HEIGHT,
+  },
+  signalFoot: {
+    width: SIGNAL_FOOT_SIZE,
+    height: SIGNAL_FOOT_SIZE,
+    borderRadius: SIGNAL_FOOT_SIZE / 2,
+    borderWidth: 1.5,
   },
   signalStem: {
     width: 2,
