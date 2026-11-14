@@ -12,7 +12,7 @@ import {
 } from '@/modules/map/lib/cameraController'
 import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 import { puckLayerChannel } from '@/modules/map/lib/nativePuck'
-import { markerLayerChannel } from '@/components/map/inMapLayer'
+import { markerLayerChannel } from '@/components/map/markerLayerChannel'
 import {
   type CameraPadding,
   getMapCameraProfileForOrientationMode,

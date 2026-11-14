@@ -122,8 +122,15 @@ function toRadians(deg: number) {
 /** Room for the arrow to orbit clear of the coin. */
 const PUCK_SIZE = 60
 const PUCK_CENTER = PUCK_SIZE / 2
+/**
+ * The coin's geometry from here to the arrow's, which the map layer's coin (the `'layer'`
+ * renderer) draws too.
+ *
+ * @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXPuck.kt `COIN_RADIUS`
+ * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXPuck.swift `coinRadius`
+ */
 const COIN_SIZE = 22
-const COIN_HEIGHT = 7
+const COIN_HEIGHT = 12
 const COIN_SHADOW_SIZE = 30
 const COIN_SHADOW_DROP = 2
 const COIN_SHADOW_ALPHA_LIGHT = 0.12
