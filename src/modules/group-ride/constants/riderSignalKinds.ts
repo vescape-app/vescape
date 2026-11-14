@@ -4,7 +4,7 @@ import {
   CoffeeIcon,
   FirstAidIcon,
   HandIcon,
-  MountainsIcon,
+  LegoIcon,
   SirenIcon,
   SmileyXEyesIcon,
   TireIcon,
@@ -78,7 +78,7 @@ export const RIDER_SIGNAL_KIND_INFO: Record<RiderSignalKind, RiderSignalKindInfo
  */
 export const RIDE_HAZARD_KIND_INFO: Record<RideHazardKind, PinKindInfo> = {
   water: { label: "Water's edge", icon: WavesIcon, hue: 'teal' },
-  terrain: { label: 'Rough terrain', icon: MountainsIcon, hue: 'amber' },
+  terrain: { label: 'Rough terrain', icon: LegoIcon, hue: 'amber' },
   obstacle: { label: 'Obstacle', icon: TrafficConeIcon, hue: 'yellow' },
   police: { label: 'Police', icon: SirenIcon, hue: 'blue' },
 }
