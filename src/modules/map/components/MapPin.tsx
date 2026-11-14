@@ -34,13 +34,6 @@ const MAP_PIN_ICON_METRICS = {
     iconSize: 18,
     opacity: 1,
   },
-  navigation: {
-    size: 40,
-    radius: 20,
-    borderWidth: 3,
-    iconSize: 23,
-    opacity: 1,
-  },
   expanded: {
     size: 42,
     radius: 21,
@@ -49,6 +42,11 @@ const MAP_PIN_ICON_METRICS = {
     opacity: 1,
   },
 } as const
+
+/** The active navigation target: a bare icon standing on its coordinate. */
+const NAVIGATION_ICON_SIZE = 36
+/** Phosphor glyphs stop short of their box; a map pin's tip sits this far above the bottom edge. */
+const NAVIGATION_ICON_TIP_INSET = NAVIGATION_ICON_SIZE / 16
 
 export function MapPin({
   id,
@@ -96,11 +94,26 @@ export function MapPin({
       )
     }
 
-    const metrics = navigationActive
-      ? MAP_PIN_ICON_METRICS.navigation
-      : selected
-        ? MAP_PIN_ICON_METRICS.selected
-        : MAP_PIN_ICON_METRICS.default
+    // iOS PointAnnotation snapshots can omit the SVG even after refresh. Keep the single
+    // active navigation target live so its icon renders and updates with the view.
+    if (navigationActive) {
+      return (
+        <InMapMarker coordinate={coordinate}>
+          {/* A marker is centred on its coordinate, so the icon fills the top half only. */}
+          <View style={styles.navigationPinFrame} pointerEvents="box-none">
+            <Pressable onPress={onSelected}>
+              <IconComponent
+                size={NAVIGATION_ICON_SIZE}
+                color={resolvedIconColor}
+                weight="regular"
+              />
+            </Pressable>
+          </View>
+        </InMapMarker>
+      )
+    }
+
+    const metrics = selected ? MAP_PIN_ICON_METRICS.selected : MAP_PIN_ICON_METRICS.default
     const pin = (
       <View
         style={[
@@ -113,18 +126,6 @@ export function MapPin({
         <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
       </View>
     )
-    // iOS PointAnnotation snapshots can omit the SVG even after refresh. Keep the single
-    // active navigation target live so its icon renders and updates with the view.
-    if (navigationActive) {
-      return (
-        <InMapMarker coordinate={coordinate}>
-          <Pressable style={styles.iconPinFrame} onPress={onSelected}>
-            {pin}
-          </Pressable>
-        </InMapMarker>
-      )
-    }
-
     const annotationKey = getIconAnnotationKey(
       id,
       selected,
@@ -205,6 +206,10 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  navigationPinFrame: {
+    width: NAVIGATION_ICON_SIZE,
+    height: (NAVIGATION_ICON_SIZE - NAVIGATION_ICON_TIP_INSET) * 2,
   },
   iconPinSelected: {
     opacity: 1,
