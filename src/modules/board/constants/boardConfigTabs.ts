@@ -46,7 +46,7 @@ export interface BoardConfigGroup {
 export const BOARD_CONFIG_TABS: { id: string; label: string; groups: BoardConfigGroup[] }[] = [
   {
     id: 'quick',
-    label: 'Quick',
+    label: 'Common',
     groups: [
       {
         title: 'Footpad and dismount',
