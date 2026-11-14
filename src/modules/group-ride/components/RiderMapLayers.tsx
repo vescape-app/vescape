@@ -16,7 +16,8 @@ import {
   riderSignalKindInfo,
   type PinKindInfo,
 } from '@/modules/group-ride/constants/riderSignalKinds'
-import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
+import { useActivePin } from '@/modules/group-ride/hooks/useActiveRiderSignal'
+import type { RelayClock } from '@/modules/group-ride/lib/riderSignal'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
 // A peer's recent path, tinted like their marker and fading out toward the tail —
@@ -100,14 +101,27 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
 }
 
 /** Every Rider's active signal, your own included (the presence layers leave you out). */
-export function RiderSignalPins() {
+export function LiveRiderSignalPins() {
   const rows = useGroupRideStore((s) => s.rosterRows)
+  const clock = useGroupRideStore((s) => s.relayClock)
+  return <RiderSignalPins rows={rows} clock={clock} />
+}
+
+/** The signals and hazards in `rows` still active on `clock`. */
+export function RiderSignalPins({
+  rows,
+  clock,
+}: {
+  rows: RosterRider[]
+  clock: RelayClock | null
+}) {
   return rows.flatMap((rider) => [
     rider.signal ? (
       <RiderPinMarker
         key={`signal-${rider.id}`}
         rider={rider}
         pin={rider.signal}
+        clock={clock}
         info={riderSignalKindInfo(rider.signal.kind)}
       />
     ) : null,
@@ -116,6 +130,7 @@ export function RiderSignalPins() {
         key={`hazard-${rider.id}`}
         rider={rider}
         pin={rider.hazard}
+        clock={clock}
         info={rideHazardKindInfo(rider.hazard.kind)}
         place
       />
@@ -133,17 +148,19 @@ export function RiderSignalPins() {
 function RiderPinMarker({
   rider,
   pin: rawPin,
+  clock,
   info,
   place = false,
 }: {
   rider: RosterRider
   pin: GroupRidePin
+  clock: RelayClock | null
   info: PinKindInfo | null
   place?: boolean
 }) {
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
-  const pin = useActiveRiderSignal(rawPin)
+  const pin = useActivePin(rawPin, clock)
   if (!pin || !info) return null
   const color = accents[info.hue].color
   const KindIcon = info.icon

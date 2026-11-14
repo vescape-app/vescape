@@ -7,7 +7,7 @@ import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import {
   RiderPresencePin,
-  RiderSignalPins,
+  LiveRiderSignalPins,
   RiderTrail,
 } from '@/modules/group-ride/components/RiderMapLayers'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
@@ -127,7 +127,7 @@ export function LiveMapLayers({
       {riders.map((rider) =>
         rider.presence ? <RiderPresencePin key={rider.id} rider={rider} /> : null,
       )}
-      <RiderSignalPins />
+      <LiveRiderSignalPins />
     </>
   )
 }

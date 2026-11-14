@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import type { GroupRidePin } from 'vescape-core'
 
-import { signalTimeLeftMs } from '@/modules/group-ride/lib/riderSignal'
+import { type RelayClock, signalTimeLeftMs } from '@/modules/group-ride/lib/riderSignal'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
 /**
@@ -10,7 +10,17 @@ import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
  * signal the relay has not cleared yet still drops off on time.
  */
 export function useActiveRiderSignal(signal: GroupRidePin | null | undefined): GroupRidePin | null {
-  const relayClock = useGroupRideStore((s) => s.relayClock)
+  return useActivePin(
+    signal,
+    useGroupRideStore((s) => s.relayClock),
+  )
+}
+
+/** `useActiveRiderSignal` against a given relay clock rather than the live one. */
+export function useActivePin(
+  signal: GroupRidePin | null | undefined,
+  relayClock: RelayClock | null,
+): GroupRidePin | null {
   const [expired, setExpired] = useState<GroupRidePin | null>(null)
 
   // Delay computed inside: depending on a render-time `leftMs` would re-arm the timer every render.
