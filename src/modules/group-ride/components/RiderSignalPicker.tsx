@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { CheckIcon, XIcon } from 'phosphor-react-native'
 import {
@@ -21,11 +21,7 @@ import {
   type PinKindInfo,
 } from '@/modules/group-ride/constants/riderSignalKinds'
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
-import {
-  signalTimeLeftMs,
-  topRiderSignal,
-  type RelayClock,
-} from '@/modules/group-ride/lib/riderSignal'
+import { topRiderSignal } from '@/modules/group-ride/lib/riderSignal'
 import { PinKindBadge } from '@/modules/group-ride/components/PinKindBadge'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
@@ -83,7 +79,7 @@ const SIGNAL_ROWS: readonly (readonly RiderSignalKind[])[] = [
 
 /**
  * The Rider Signal picker, in the drawer behind Social's signal shortcut: a tile per signal kind,
- * the own active signal with its time left and "I'm OK" right under them, then the Ride Hazard
+ * the own active signal with "I'm OK" right under them, then the Ride Hazard
  * tiles and the own active hazard. Picking a kind replaces the active one in its slot. Sending
  * stays off without a recent GPS fix; inside a Privacy Zone it still sends, and a warning says the
  * pin reveals the position the zone otherwise hides.
@@ -106,8 +102,7 @@ export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
     <View style={styles.picker}>
       <Text style={styles.section}>Signal</Text>
       <Text style={styles.hint}>
-        Tell your crew what's up. They hear it and see where you are, for 10 min or until you tap
-        I'm OK.
+        Tell your crew what's up. They hear it and see where you are until you tap I'm OK.
       </Text>
       {disabled ? (
         <Banner variant="info" title="Waiting for GPS…" message="Signals need your location." />
@@ -132,7 +127,7 @@ export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
         </View>
       ))}
       {ownSignal ? (
-        <OwnPin pin={ownSignal} info={riderSignalKindInfo(ownSignal.kind)}>
+        <OwnPin info={riderSignalKindInfo(ownSignal.kind)}>
           <Button
             label="I'm OK"
             icon={CheckIcon}
@@ -158,7 +153,7 @@ export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
             ))}
           </View>
           {ownHazard ? (
-            <OwnPin pin={ownHazard} info={rideHazardKindInfo(ownHazard.kind)}>
+            <OwnPin info={rideHazardKindInfo(ownHazard.kind)}>
               <Button
                 label="Clear"
                 icon={XIcon}
@@ -227,17 +222,8 @@ function PinTile({
   )
 }
 
-/** The Rider's own active pin: its kind, time left, and the action that ends it. */
-function OwnPin({
-  pin,
-  info,
-  children,
-}: {
-  pin: GroupRidePin
-  info: PinKindInfo | null
-  children: ReactNode
-}) {
-  const relayClock = useGroupRideStore((s) => s.relayClock)
+/** The Rider's own active pin: its kind and the action that ends it. */
+function OwnPin({ info, children }: { info: PinKindInfo | null; children: ReactNode }) {
   if (!info) return null
   return (
     <View
@@ -249,28 +235,10 @@ function OwnPin({
       <PinKindBadge info={info} color={theme.palette[info.hue].color} size={48} strokeWidth={1.5} />
       <View style={styles.ownText}>
         <Text style={styles.ownLabel}>{info.label}</Text>
-        {relayClock ? <TimeLeft signal={pin} clock={relayClock} /> : null}
+        <Text style={styles.ownMeta}>Active</Text>
       </View>
       {children}
     </View>
-  )
-}
-
-/** Time left on the relay clock, ticking every second. */
-function TimeLeft({ signal, clock }: { signal: GroupRidePin; clock: RelayClock }) {
-  const [leftMs, setLeftMs] = useState(() => signalTimeLeftMs(signal, clock))
-  useEffect(() => {
-    setLeftMs(signalTimeLeftMs(signal, clock))
-    const id = setInterval(() => setLeftMs(signalTimeLeftMs(signal, clock)), 1_000)
-    return () => clearInterval(id)
-  }, [signal, clock])
-  const totalSeconds = Math.ceil(leftMs / 1_000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = String(totalSeconds % 60).padStart(2, '0')
-  return (
-    <Text style={styles.ownMeta}>
-      Active · {minutes}:{seconds} left
-    </Text>
   )
 }
 
@@ -336,6 +304,5 @@ const styles = StyleSheet.create({
   ownMeta: {
     color: theme.neutral.textSecondary,
     fontSize: 12,
-    fontVariant: ['tabular-nums'],
   },
 })
