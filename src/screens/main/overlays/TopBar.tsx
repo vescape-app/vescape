@@ -2,11 +2,9 @@ import { useMemo, useRef, useState } from 'react'
 import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import {
   ArrowFatLinesUpIcon,
-  BroadcastIcon,
   ArrowsClockwiseIcon,
   DatabaseIcon,
   GearSixIcon,
-  UsersThreeIcon,
   type Icon,
 } from 'phosphor-react-native'
 import { router } from 'expo-router'
@@ -15,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BoardSelectorSheet } from '@/modules/board/components/BoardSelectorSheet'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { IconButton } from '@/components/base/IconButton'
-import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
+import { SocialTrigger } from '@/screens/main/overlays/SocialTrigger'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
 import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
@@ -30,7 +28,6 @@ import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
 import { routes } from '@/navigation/routes'
 import type { Board } from '@/modules/board/store/boardStore'
-import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { theme } from '@/constants/theme'
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import {
@@ -64,6 +61,7 @@ interface TopBarProps {
   activeNavigationTarget: MapSelection | null
   onNavigationPress: () => void
   onCancelNavigation: () => void
+  onFocusCoordinate: (coordinate: { latitude: number; longitude: number }) => void
 }
 
 const TAKEOVER_ICONS: Record<NonNullable<SettingsTriggerTakeover>, Icon> = {
@@ -84,13 +82,13 @@ export function TopBar({
   activeNavigationTarget,
   onNavigationPress,
   onCancelNavigation,
+  onFocusCoordinate,
 }: TopBarProps) {
   const { formatDistance } = useFormat()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const boardPillMaxWidth = width - 116
   const pillRef = useRef<View>(null)
-  const socialRef = useRef<View>(null)
   const warningRef = useRef<View>(null)
   const faultRef = useRef<View>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
@@ -103,7 +101,6 @@ export function TopBar({
     boardId?: string
     accessoryId?: string
   } | null>(null)
-  const [socialOpen, setSocialOpen] = useState(false)
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const riderColor = useSelectedBoardRailColor() ?? theme.palette.green.color
@@ -116,8 +113,6 @@ export function TopBar({
   const sessionBoardId = isReplay ? connectedId : activeBoardId
   // Read once here: the pill wears the badges, the selector offers the same two ways in.
   const issues = useBoardIssues(activeBoardId, sessionBoardId)
-  const nearbyBadge = useGroupRideStore((s) => s.badge)
-  const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
   // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
@@ -184,16 +179,7 @@ export function TopBar({
   return (
     <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">
       <View style={styles.row}>
-        <View ref={socialRef} collapsable={false} style={styles.iconLeft}>
-          <IconButton
-            icon={rideActive ? BroadcastIcon : UsersThreeIcon}
-            onPress={() => setSocialOpen(true)}
-            accessibilityLabel="Social"
-            testID="social-drawer-trigger"
-            dot={nearbyBadge && !rideActive ? theme.palette.groupRide.color : undefined}
-            accent={rideActive ? theme.palette.groupRide.color : undefined}
-          />
-        </View>
+        <SocialTrigger onFocusCoordinate={onFocusCoordinate} />
         {activeNavigationTarget ? (
           <View ref={pillRef} collapsable={false}>
             <ActiveNavigationTopBar
@@ -266,18 +252,6 @@ export function TopBar({
           />
         </View>
       </View>
-      <EdgeDrawer
-        visible={socialOpen}
-        triggerRef={socialRef}
-        edge="top"
-        title="Social"
-        icon={UsersThreeIcon}
-        backdropTestID="social-drawer-backdrop"
-        onClose={() => setSocialOpen(false)}
-      >
-        <SocialSheet />
-      </EdgeDrawer>
-
       <EdgeDrawer
         visible={settingsOpen}
         triggerRef={settingsRef}
@@ -379,10 +353,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     right: 10,
-  },
-  iconLeft: {
-    position: 'absolute',
-    top: 0,
-    left: 10,
   },
 })

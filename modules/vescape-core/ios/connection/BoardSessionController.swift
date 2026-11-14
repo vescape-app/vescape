@@ -256,11 +256,14 @@ internal final class BoardSessionController: VescGattListener {
     // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
     onParticipationChanged: { [weak self] in self?.refreshGpsDemand() },
     onCue: { [weak self] cue in
-      guard let self, self.connectionSoundsEnabled else { return }
+      guard let self, GroupRideCues.audible(cue, connectionSoundsEnabled: self.connectionSoundsEnabled) else { return }
       self.alertAudioPlayer.playAppCue(cue)
     },
     ownLocation: { [weak self] in
       self?.locationTracker.latestLocation.map { (lat: $0.latitude, lng: $0.longitude) }
+    },
+    signalContext: { [weak self] in
+      self?.riderSignalContext() ?? RiderSignalContext(fix: nil, insidePrivacyZone: true)
     }
   )
 
@@ -290,6 +293,10 @@ internal final class BoardSessionController: VescGattListener {
     speak: { [weak self] line in self?.alertAudioPlayer.speakAdvisory(line.voiceAnnouncement) }
   )
   private var removeWeatherListener: (() -> Void)?
+  private var removeRideNoticesListener: (() -> Void)?
+  private var removeLiveActivityNoticesListener: (() -> Void)?
+  /// Top Ride Notice the Live Activity shows; pushed only when its `(id, rev, title)` changes.
+  private var liveActivityNotice: RideNotice?
   private let legalPolicyCatalog = LegalPolicyCatalog()
   /// Persistent Board Session status surface (Live Activity) — the iOS peer of Android's foreground
   /// notification. Native-driven so it survives screen-off and a dead JS runtime.
@@ -410,6 +417,11 @@ internal final class BoardSessionController: VescGattListener {
       self?.weatherAlerts.evaluate(weather)
       Self.storeWeatherObservation(weather)
     }
+    // Rides on the activity that exists; a notice never starts one. Fires on main.
+    liveActivityNotice = RideNotices.shared.current.first
+    removeLiveActivityNoticesListener = RideNotices.shared.addListener { [weak self] in
+      self?.onRideNoticesChanged($0)
+    }
   }
 
   /// Ride weather (#604): every successful refresh offers its current conditions to the store, off
@@ -428,6 +440,8 @@ internal final class BoardSessionController: VescGattListener {
 
   deinit {
     removeWeatherListener?()
+    removeRideNoticesListener?()
+    removeLiveActivityNoticesListener?()
   }
 
   // MARK: - Scan API
@@ -1088,17 +1102,30 @@ internal final class BoardSessionController: VescGattListener {
     groupRideObserver.leave()
   }
 
+  func sendGroupRideSignal(_ kind: String) {
+    groupRideObserver.sendSignal(kind)
+  }
+
+  func clearGroupRideSignal() {
+    groupRideObserver.clearSignal()
+  }
+
+  func sendGroupRideHazard(_ kind: String) {
+    groupRideObserver.sendHazard(kind)
+  }
+
+  func clearGroupRideHazard() {
+    groupRideObserver.clearHazard()
+  }
+
   func updateGroupRideIdentity(riderId: String, riderName: String) {
     groupRideObserver.updateIdentity(riderId: riderId, riderName: riderName)
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`
   private func latestRiderPresence() -> RiderPresence? {
-    guard groupRidePrivacy.allowsLocationEgress else { return nil }
-    guard let location = locationTracker.latestPreciseLocation ?? locationTracker.latestLocation else { return nil }
-    // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
-    // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
-    if isInsidePrivacyZone(location) { return nil }
+    guard let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)
+    else { return nil }
     let telemetry = latestTelemetry
     let telemetryFresh = telemetry != nil && !isTelemetryStale()
     return RiderPresence(
@@ -1115,21 +1142,17 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `riderSignalContext`
+  private func riderSignalContext() -> RiderSignalContext {
+    groupRidePrivacy.signalContext(locationTracker.latestLocation, nowMs: Int64(Date().timeIntervalSince1970 * 1000))
+  }
+
   /// Device battery as a 0–1 fraction, or nil when the platform can't report it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `readPhoneBattery`
   private func readPhoneBattery() -> Double? {
     UIDevice.current.isBatteryMonitoringEnabled = true
     let level = UIDevice.current.batteryLevel
     return level < 0 ? nil : Double(level)
-  }
-
-  private func isInsidePrivacyZone(_ location: TelemetryLocationCapture) -> Bool {
-    guard !groupRidePrivacy.zones.isEmpty else { return false }
-    return isInsideAnyPrivacyZone(
-      latitudeE7: Int((location.latitude * 10_000_000.0).rounded()),
-      longitudeE7: Int((location.longitude * 10_000_000.0).rounded()),
-      zones: groupRidePrivacy.zones
-    )
   }
 
   /// Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD).
@@ -2789,17 +2812,24 @@ internal final class BoardSessionController: VescGattListener {
     pushWatchLastBattery()
     reloadWatchSettings()
     pushWatchBoard()
+    // Written once at launch, empty included, so a list a dead process left on the wrist does not
+    // outlive it. The listener fires on main, where the cold state is written.
+    removeRideNoticesListener = RideNotices.shared.addListener { [weak self] in self?.watchMirror.pushRideNotices($0) }
+    watchMirror.pushRideNotices(RideNotices.shared.current)
   }
 
   /// Mirror coordination already hops WCSession commands onto this controller's scheduler.
   /// Board safety, command truth, and dead-man ownership stay in the existing relays.
-  private func acceptWatchCommand(_ command: WatchCommand) {
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommandListenerService.kt `routeWatchCommand`
+  func acceptWatchCommand(_ command: WatchCommand) {
     switch command {
     case .mirrorAwake: break // consumed by WatchMirrorCoordinator
     case .lights(let switchValue, let on): watchLightsRelay.accept(switchValue, on: on)
     case .move(let direction): watchMoveRelay.accept(direction)
     case .tiltLock(let value): watchTiltLock(value)
     case .tiltCancel: watchTiltCancel()
+    // Process-wide like the notices themselves: the same dismiss the phone card calls.
+    case .dismissNotice(let id, let rev): RideNotices.shared.dismiss(id: id, rev: rev)
     }
   }
 
@@ -2898,8 +2928,33 @@ internal final class BoardSessionController: VescGattListener {
       phase: phase,
       batteryPercent: liveBatteryPercent,
       batteryVoltage: liveBatteryVoltage,
-      faultCode: liveFaultCode
+      faultCode: liveFaultCode,
+      notice: liveActivityNoticeContent()
     )
+  }
+
+  /// Wall-clock filter: the engine's expiry timer is suspended in the background and lags, so a
+  /// notice already past `expiresAt` is never painted.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `presenter`
+  private func liveActivityNoticeContent() -> RideNoticeContent? {
+    guard let content = liveActivityNotice?.content else { return nil }
+    if let expiresAt = content.expiresAt, expiresAt <= Int64(Date().timeIntervalSince1970 * 1000) { return nil }
+    return content
+  }
+
+  /// Ride Notice on the Live Activity. The listener fires only on visible-list changes; the
+  /// push is further limited to a change of the top notice's `(id, rev, title, severity)`, keeping within the update
+  /// budget. `update` is a no-op without a running activity.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onRideNoticesChanged`
+  private func onRideNoticesChanged(_ notices: [RideNotice]) {
+    let top = notices.first
+    let shown = liveActivityNotice
+    // Always keep the latest content: a same-revision repost replaces it in place.
+    liveActivityNotice = top
+    guard top?.id != shown?.id || top?.rev != shown?.rev || top?.content.title != shown?.content.title
+      || top?.content.severity != shown?.content.severity
+    else { return }
+    refreshLiveActivity()
   }
 
   private func refreshLiveActivity() {
@@ -3203,6 +3258,8 @@ internal final class BoardSessionController: VescGattListener {
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
+    groupRideObserver.refreshSignalAvailability()
+    groupRideObserver.onFix(lat: location.latitude, lng: location.longitude)
     emit?("onLocation", location.map)
   }
 

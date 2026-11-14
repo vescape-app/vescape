@@ -667,13 +667,13 @@ internal class AlertFeedback(
     }
 
     /**
-     * Play app cue [cue] from the active effects pack; at Voice level `full` its voice line follows
-     * once the effect has finished. Standard and Off play the effect only.
+     * Play app cue [cue] from the active effects pack; when it speaks at the current Voice level
+     * ([appCueSpeaks]), its voice line follows once the effect has finished.
      */
     private fun playAppCueNow(cue: String, done: PlaybackCompletion) {
         val slot = appCueSlot(cue) ?: run { done.finish(PlaybackOutcome.FAILED); return }
-        val key = appCueVoiceKey(cue)
-        if (voiceLevel == "full" && key != null) speakVoiceTracked(VoiceAnnouncement(AlertSeverity.INFO, key), slot, SystemClock.uptimeMillis(), done)
+        val key = if (appCueSpeaks(cue, voiceLevel)) appCueVoiceKey(cue) else null
+        if (key != null) speakVoiceTracked(VoiceAnnouncement(AlertSeverity.INFO, key), slot, SystemClock.uptimeMillis(), done)
         else playOnce(slot, onDone = { done.finish(it) })
     }
 

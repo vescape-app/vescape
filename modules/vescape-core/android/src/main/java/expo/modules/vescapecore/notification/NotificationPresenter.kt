@@ -5,6 +5,8 @@ import expo.modules.vescapecore.protocol.RefloatTelemetry
 import expo.modules.vescapecore.connection.BoardPhase
 import expo.modules.vescapecore.connection.displayText
 import android.app.Notification
+import expo.modules.vescapecore.notices.RideNoticeContent
+import expo.modules.vescapecore.notices.RideNoticeSeverity
 
 /**
  * Foreground notification contract:
@@ -26,6 +28,7 @@ internal class NotificationPresenter(
     private val deviceName: () -> String?,
     private val sessionActive: () -> Boolean,
     private val canConnect: () -> Boolean,
+    private val rideNotice: () -> RideNoticeContent?,
 ) {
     fun show(
         phase: BoardPhase,
@@ -33,7 +36,7 @@ internal class NotificationPresenter(
         batteryPercent: Double? = null,
         errorMessage: String? = null,
     ) {
-        val presentation = NotificationPresentation.resolve(phase, telemetry, batteryPercent, errorMessage)
+        val presentation = NotificationPresentation.resolve(phase, telemetry, batteryPercent, errorMessage, rideNotice())
         controller.show(
             presentation.text,
             deviceName(),
@@ -50,7 +53,7 @@ internal class NotificationPresenter(
         batteryPercent: Double? = null,
         errorMessage: String? = null,
     ): Notification {
-        val presentation = NotificationPresentation.resolve(phase, telemetry, batteryPercent, errorMessage)
+        val presentation = NotificationPresentation.resolve(phase, telemetry, batteryPercent, errorMessage, rideNotice())
         return controller.build(
             presentation.text,
             deviceName(),
@@ -74,11 +77,15 @@ internal data class NotificationPresentation(
             telemetry: RefloatTelemetry? = null,
             batteryPercent: Double? = null,
             errorMessage: String? = null,
+            rideNotice: RideNoticeContent? = null,
         ): NotificationPresentation {
             val visibleTelemetry = telemetry.takeIf { phase == BoardPhase.Connected }
             val visibleBatteryPercent = batteryPercent.takeIf { phase == BoardPhase.Connected }
             return NotificationPresentation(
-                text = resolveText(phase, visibleTelemetry, visibleBatteryPercent, errorMessage),
+                text = withRideNotice(
+                    resolveText(phase, visibleTelemetry, visibleBatteryPercent, errorMessage),
+                    rideNotice,
+                ),
                 shortCriticalText = NotificationFormatter.formatShortCriticalText(
                     phase,
                     visibleTelemetry,
@@ -108,6 +115,20 @@ private fun BoardPhase.canDisconnect(): Boolean = when (this) {
     BoardPhase.Error -> true
     BoardPhase.Idle,
     BoardPhase.Disconnecting -> false
+}
+
+/**
+ * The top Ride Notice leads the status line, severity as a glyph: `⚠ Low battery · Connected`.
+ * @parity /targets/ride-activity/RideActivityWidget.swift `noticeSymbol`
+ */
+private fun withRideNotice(text: String, notice: RideNoticeContent?): String {
+    notice ?: return text
+    val glyph = when (notice.severity) {
+        RideNoticeSeverity.CRITICAL -> "‼"
+        RideNoticeSeverity.WARNING -> "⚠"
+        RideNoticeSeverity.INFO -> "ℹ"
+    }
+    return "$glyph ${notice.title} · $text"
 }
 
 private fun resolveText(

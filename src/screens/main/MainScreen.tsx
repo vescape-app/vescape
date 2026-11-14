@@ -279,6 +279,8 @@ export function MainScreen({
           enterLegalLimits: controller.enterLegalLimitsMode,
           exitLegalLimits: controller.exitLegalLimitsMode,
           weatherLocation: controller.liveLocations.at(-1) ?? controller.latestApproximateLocation,
+          ownLocation: controller.liveLocations.at(-1) ?? null,
+          onFocusCoordinate: targets.handleFocusCoordinate,
           directionPoint: controller.directionPoint,
           activeNavigationTarget,
           selectedNavigationTarget,

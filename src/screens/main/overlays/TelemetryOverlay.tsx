@@ -69,6 +69,7 @@ interface TelemetryOverlayProps {
   onOffscreenIndicatorPress: (indicator: OffscreenMapIndicatorState) => void
   activeNavigationTarget: MapSelection | null
   onCancelNavigation: () => void
+  onFocusCoordinate: (coordinate: { latitude: number; longitude: number }) => void
 }
 
 /**
@@ -99,6 +100,7 @@ export function TelemetryOverlay({
   onOffscreenIndicatorPress,
   activeNavigationTarget,
   onCancelNavigation,
+  onFocusCoordinate,
 }: TelemetryOverlayProps) {
   const [revealGestureActive, setRevealGestureActive] = useState(false)
   const [tuneDrawerOpen, setTuneDrawerOpen] = useState(false)
@@ -217,6 +219,7 @@ export function TelemetryOverlay({
             activeNavigationTarget={activeNavigationTarget}
             onNavigationPress={onEnterMapFocus}
             onCancelNavigation={onCancelNavigation}
+            onFocusCoordinate={onFocusCoordinate}
           />
           {/* The floating controls step aside for the panel, drifting toward it as they fade. */}
           <Animated.View

@@ -4,7 +4,7 @@ Connection cues, the ride-end cue and Group Ride cues used to play the moment th
 
 ## Decision
 
-- **Priority first, then age.** `CONNECTION` (connect, disconnect, connection error) › `ADVISORY` (ride end, later weather and battery) › `SOCIAL` (Group Ride). Each item has an expiry (10 s / 30 s / 20 s by priority). An item still waiting past it is dropped, because a stale "rider joined" is worse than none.
+- **Priority first, then age.** `CONNECTION` (connect, disconnect, connection error) › `ADVISORY` (ride end, Rider Signals, later weather and battery) › `SOCIAL` (other Group Ride events). Each item has an expiry (10 s / 30 s / 20 s by priority). An item still waiting past it is dropped, because a stale "rider joined" is worse than none.
 - **One at a time, on completion.** The queue waits on the item's `PlaybackOutcome` (#602), not on a timer guess. The 30 s playback timeout bounds a lost completion.
 - **Settle window after connect.** For 4 s after a connect only connection items play, so the connect cue is heard first and the rest follow once it finishes.
 - **Critical audio pre-empts.** A single-threshold alert's severity sound or spoken line plays immediately. The queued item playing at that moment is stopped and put back once, unless it expired meanwhile. The queue resumes 2 s after the last critical item ends, so a queued line does not run straight into the alert.

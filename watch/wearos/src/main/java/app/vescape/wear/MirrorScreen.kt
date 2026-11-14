@@ -80,7 +80,12 @@ internal fun MirrorScreen(
     val navFocus = { (verticalPosition() - VERTICAL_PAGE_GAUGES).coerceIn(0f, 1f) }
     // The Group Ride page taking over from nav focus: the map and nav readout leave for it.
     val groupFocus = { (verticalPosition() - VERTICAL_PAGE_NAV).coerceIn(0f, 1f) }
+    // Page 0 = gauges centre (empty), 1 = Remote Tilt, 2 = Board Move, 3 = board Lights,
+    // 4 = diagnostics. Dismiss stays on the left edge; interior horizontal swipes page. Hoisted
+    // above the close prompt so the Ride Notice card can return both axes to the gauges.
+    val controlPagerState = rememberPagerState(pageCount = { CONTROL_PAGE_COUNT })
     val scope = rememberCoroutineScope()
+    val rideNotice by RideNoticeState.card
     // Which page owns the vertical axis right now. The radar page fetches while it is on screen and
     // nowhere else, so this is the difference between an idle wrist and a fetching one.
     val onGauges = verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
@@ -110,6 +115,24 @@ internal fun MirrorScreen(
         showClosePrompt = true
     }
 
+    // Tap or back: hide the card on the wrist and land on the gauges.
+    val hideRideNotice = {
+        rideNotice?.let { notice ->
+            // Hide locally first, then ask the phone to dismiss for real. A lost command leaves the
+            // notice hidden only on the wrist; the phone card stays until dismissed there.
+            MirrorIntakeState.apply { hideRideNotice(notice.id, notice.rev) }
+            sender.sendDismissNotice(notice.id, notice.rev)
+        }
+        showClosePrompt = false
+        scope.launch {
+            verticalPagerState.scrollToPage(VERTICAL_PAGE_GAUGES)
+            controlPagerState.scrollToPage(CONTROL_PAGE_GAUGES)
+        }
+        Unit
+    }
+    // Declared last, so it wins while the card is up.
+    BackHandler(enabled = rideNotice != null, onBack = hideRideNotice)
+
     // Leaving the ride on the Group Ride page lands on nav focus, one page up, rather than wherever
     // the pager's own clamp would settle.
     LaunchedEffect(joined) {
@@ -126,203 +149,205 @@ internal fun MirrorScreen(
     }
 
     MaterialTheme(typography = WatchTypography.material) {
-        when {
-            showClosePrompt -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ClosePrompt(onStay = { showClosePrompt = false }, onClose = onRequestClose)
-            }
-            else -> {
-                val dismissState = rememberSwipeToDismissBoxState()
-                // Page 0 = gauges centre (empty), 1 = Remote Tilt, 2 = Board Move, 3 = board Lights,
-                // 4 = diagnostics. Dismiss stays on the left edge; interior horizontal swipes page.
-                val controlPagerState = rememberPagerState(pageCount = { CONTROL_PAGE_COUNT })
-                var dismissEnabled by remember { mutableStateOf(true) }
-                // Idle clock for the auto-return.
-                var lastTouchMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-                // Both pagers are transparent: they only swap the centre of the circle. Their drag
-                // offsets are the focus progresses the pinned frame fades its readouts against.
-                val controlFocus = {
-                    (controlPagerState.currentPage + controlPagerState.currentPageOffsetFraction)
-                        .coerceIn(0f, 1f)
+        Box(modifier = Modifier.fillMaxSize()) {
+            when {
+                showClosePrompt -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    ClosePrompt(onStay = { showClosePrompt = false }, onClose = onRequestClose)
                 }
-                val weatherFocus = { (VERTICAL_PAGE_GAUGES - verticalPosition()).coerceIn(0f, 1f) }
-                // The wrist goes always-on wherever the rider left it. Ambient only ever draws the
-                // gauges, so park both axes there first — without this the arcs would be pinned
-                // over a control page the rider can no longer swipe away.
-                LaunchedEffect(isAmbient) {
-                    if (!isAmbient) return@LaunchedEffect
-                    verticalPagerState.scrollToPage(VERTICAL_PAGE_GAUGES)
-                    controlPagerState.scrollToPage(CONTROL_PAGE_GAUGES)
-                }
-                // A page is interactive only once it has settled: a tap landing mid-swipe belongs
-                // to the gesture, not to the control it happened to be over. Derived, so the drag
-                // offset does not invalidate the whole mirror on every frame of a swipe.
-                val activePage by remember(controlPagerState) {
-                    derivedStateOf {
-                        controlPagerState.currentPage.takeIf {
-                            !controlPagerState.isScrollInProgress &&
-                                controlPagerState.currentPageOffsetFraction == 0f
+                else -> {
+                    val dismissState = rememberSwipeToDismissBoxState()
+                    var dismissEnabled by remember { mutableStateOf(true) }
+                    // Idle clock for the auto-return.
+                    var lastTouchMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+                    // Both pagers are transparent: they only swap the centre of the circle. Their drag
+                    // offsets are the focus progresses the pinned frame fades its readouts against.
+                    val controlFocus = {
+                        (controlPagerState.currentPage + controlPagerState.currentPageOffsetFraction)
+                            .coerceIn(0f, 1f)
+                    }
+                    val weatherFocus = { (VERTICAL_PAGE_GAUGES - verticalPosition()).coerceIn(0f, 1f) }
+                    // The wrist goes always-on wherever the rider left it. Ambient only ever draws the
+                    // gauges, so park both axes there first — without this the arcs would be pinned
+                    // over a control page the rider can no longer swipe away.
+                    LaunchedEffect(isAmbient) {
+                        if (!isAmbient) return@LaunchedEffect
+                        verticalPagerState.scrollToPage(VERTICAL_PAGE_GAUGES)
+                        controlPagerState.scrollToPage(CONTROL_PAGE_GAUGES)
+                    }
+                    // A page is interactive only once it has settled: a tap landing mid-swipe belongs
+                    // to the gesture, not to the control it happened to be over. Derived, so the drag
+                    // offset does not invalidate the whole mirror on every frame of a swipe.
+                    val activePage by remember(controlPagerState) {
+                        derivedStateOf {
+                            controlPagerState.currentPage.takeIf {
+                                !controlPagerState.isScrollInProgress &&
+                                    controlPagerState.currentPageOffsetFraction == 0f
+                            }
                         }
                     }
-                }
-                // The readout only answers a tap while the gauges own both axes; mid-swipe or on
-                // another page the tap belongs to the page under it.
-                val weatherTappable by remember(controlPagerState, verticalPagerState, isAmbient) {
-                    derivedStateOf {
-                        !isAmbient &&
-                            activePage == CONTROL_PAGE_GAUGES &&
+                    // The readout only answers a tap while the gauges own both axes; mid-swipe or on
+                    // another page the tap belongs to the page under it.
+                    val weatherTappable by remember(controlPagerState, verticalPagerState, isAmbient) {
+                        derivedStateOf {
+                            !isAmbient &&
+                                activePage == CONTROL_PAGE_GAUGES &&
+                                !verticalPagerState.isScrollInProgress &&
+                                verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
+                        }
+                    }
+                    // PagerState.settledPage can change before the snap reaches offset zero.
+                    // Changing the parent modifier then cancels that animation mid-page.
+                    LaunchedEffect(
+                        controlPagerState.isScrollInProgress,
+                        verticalPagerState.isScrollInProgress,
+                    ) {
+                        if (!controlPagerState.isScrollInProgress &&
+                            controlPagerState.currentPageOffsetFraction == 0f &&
                             !verticalPagerState.isScrollInProgress &&
-                            verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
+                            verticalPagerState.currentPageOffsetFraction == 0f
+                        ) {
+                            dismissEnabled = controlPagerState.currentPage == CONTROL_PAGE_GAUGES &&
+                                verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
+                        }
                     }
-                }
-                // PagerState.settledPage can change before the snap reaches offset zero.
-                // Changing the parent modifier then cancels that animation mid-page.
-                LaunchedEffect(
-                    controlPagerState.isScrollInProgress,
-                    verticalPagerState.isScrollInProgress,
-                ) {
-                    if (!controlPagerState.isScrollInProgress &&
-                        controlPagerState.currentPageOffsetFraction == 0f &&
-                        !verticalPagerState.isScrollInProgress &&
-                        verticalPagerState.currentPageOffsetFraction == 0f
-                    ) {
-                        dismissEnabled = controlPagerState.currentPage == CONTROL_PAGE_GAUGES &&
-                            verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
+                    // Horizontal pages are transient controls, so an untouched wrist drifts back to
+                    // the gauges. The vertical axis is never moved: weather and the nav-focus map are
+                    // places a rider parks on deliberately. Re-keying on lastTouchMs restarts the
+                    // window; a held Move suspends it outright.
+                    LaunchedEffect(lastTouchMs, controlHeld, isAmbient) {
+                        // Ambient has already parked the pager, and an animation there is wasted panel.
+                        if (controlHeld || isAmbient) return@LaunchedEffect
+                        delay(CONTROL_IDLE_RETURN_MS)
+                        if (controlPagerState.currentPage != CONTROL_PAGE_GAUGES) {
+                            controlPagerState.animateScrollToPage(CONTROL_PAGE_GAUGES)
+                        }
                     }
-                }
-                // Horizontal pages are transient controls, so an untouched wrist drifts back to
-                // the gauges. The vertical axis is never moved: weather and the nav-focus map are
-                // places a rider parks on deliberately. Re-keying on lastTouchMs restarts the
-                // window; a held Move suspends it outright.
-                LaunchedEffect(lastTouchMs, controlHeld, isAmbient) {
-                    // Ambient has already parked the pager, and an animation there is wasted panel.
-                    if (controlHeld || isAmbient) return@LaunchedEffect
-                    delay(CONTROL_IDLE_RETURN_MS)
-                    if (controlPagerState.currentPage != CONTROL_PAGE_GAUGES) {
-                        controlPagerState.animateScrollToPage(CONTROL_PAGE_GAUGES)
-                    }
-                }
-                // The dismiss box wraps the pinned gauges. Outside it, a dismiss drag would slide
-                // the transparent pages away while the arcs stayed nailed down.
-                BasicSwipeToDismissBox(
-                    onDismissed = { showClosePrompt = true },
-                    state = dismissState,
-                    userSwipeEnabled = dismissEnabled && !isAmbient,
-                ) { isBackground ->
-                    Box(
-                        // Initial pass: the event is seen before any child consumes it, so a tap
-                        // that lands on a Move half or does nothing at all still counts as touch.
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                awaitPointerEventScope {
-                                    while (true) {
-                                        awaitPointerEvent(PointerEventPass.Initial)
-                                        lastTouchMs = SystemClock.elapsedRealtime()
+                    // The dismiss box wraps the pinned gauges. Outside it, a dismiss drag would slide
+                    // the transparent pages away while the arcs stayed nailed down.
+                    BasicSwipeToDismissBox(
+                        onDismissed = { showClosePrompt = true },
+                        state = dismissState,
+                        userSwipeEnabled = dismissEnabled && !isAmbient,
+                    ) { isBackground ->
+                        Box(
+                            // Initial pass: the event is seen before any child consumes it, so a tap
+                            // that lands on a Move half or does nothing at all still counts as touch.
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            awaitPointerEvent(PointerEventPass.Initial)
+                                            lastTouchMs = SystemClock.elapsedRealtime()
+                                        }
                                     }
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (isBackground) {
-                            ClosePrompt(onStay = { showClosePrompt = false }, onClose = onRequestClose)
-                        } else {
-                            VerticalPager(
-                                state = verticalPagerState,
-                                // The vertical axis belongs to the gauges alone: weather above,
-                                // nav focus below. From a control page it would open a blank map
-                                // over a page the rider is working on, so it is only live there.
-                                userScrollEnabled = !isAmbient && !controlHeld && activePage == CONTROL_PAGE_GAUGES,
-                                // A page swap on the wrist is a flick, not a drag: the default
-                                // half-screen threshold means a rider has to pull the weather page
-                                // most of the way down or watch it spring back.
-                                flingBehavior = PagerDefaults.flingBehavior(
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (isBackground) {
+                                ClosePrompt(onStay = { showClosePrompt = false }, onClose = onRequestClose)
+                            } else {
+                                VerticalPager(
                                     state = verticalPagerState,
-                                    snapPositionalThreshold = PAGE_SNAP_THRESHOLD,
-                                ),
-                                modifier = Modifier.fillMaxSize(),
-                            ) { verticalPage ->
-                                when (verticalPage) {
-                                    VERTICAL_PAGE_RADAR -> RadarScreen(visible = radarVisible)
-                                    VERTICAL_PAGE_WEATHER -> WeatherScreen()
-                                    // Gesture-only page: nothing is drawn here, the drag offset
-                                    // alone is the nav-focus progress. Keeping the gauges out of
-                                    // the pager is what makes this a transition rather than a page
-                                    // swap — a pager clips its pages, so content inside would
-                                    // slide away instead of pinning.
-                                    VERTICAL_PAGE_NAV -> Unit
-                                    VERTICAL_PAGE_GROUP -> GroupRidePage(settled = groupPageSettled)
-                                    else -> HorizontalPager(
-                                        state = controlPagerState,
-                                        userScrollEnabled = !isAmbient && !controlHeld,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .then(
-                                                if (dismissEnabled) {
-                                                    Modifier.edgeSwipeToDismiss(dismissState)
-                                                } else {
-                                                    Modifier
-                                                },
-                                            ),
-                                    ) { page ->
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            when (page) {
-                                                // Page 0 is empty: it is the gauges themselves,
-                                                // pinned at the root behind this transparent pager.
-                                                CONTROL_PAGE_GAUGES -> Unit
-                                                CONTROL_PAGE_TILT -> TiltScreen(
-                                                    sender = sender,
-                                                    interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_TILT,
-                                                    onHoldChanged = { controlHeld = it },
-                                                )
-                                                CONTROL_PAGE_MOVE -> MoveScreen(
-                                                    sender = sender,
-                                                    // Ambient parks the pager, but the park is a
-                                                    // scroll and this gate is not: a held Move must
-                                                    // stop the moment the wrist goes always-on, not
-                                                    // once the page has finished travelling.
-                                                    interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_MOVE,
-                                                    onHoldChanged = { controlHeld = it },
-                                                )
-                                                CONTROL_PAGE_LIGHTS -> LightsScreen(
-                                                    sender = sender,
-                                                    interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_LIGHTS,
-                                                )
-                                                CONTROL_PAGE_DIAGNOSTICS -> DiagnosticsScreen()
-                                                else -> Unit
+                                    // The vertical axis belongs to the gauges alone: weather above,
+                                    // nav focus below. From a control page it would open a blank map
+                                    // over a page the rider is working on, so it is only live there.
+                                    userScrollEnabled = !isAmbient && !controlHeld && activePage == CONTROL_PAGE_GAUGES,
+                                    // A page swap on the wrist is a flick, not a drag: the default
+                                    // half-screen threshold means a rider has to pull the weather page
+                                    // most of the way down or watch it spring back.
+                                    flingBehavior = PagerDefaults.flingBehavior(
+                                        state = verticalPagerState,
+                                        snapPositionalThreshold = PAGE_SNAP_THRESHOLD,
+                                    ),
+                                    modifier = Modifier.fillMaxSize(),
+                                ) { verticalPage ->
+                                    when (verticalPage) {
+                                        VERTICAL_PAGE_RADAR -> RadarScreen(visible = radarVisible)
+                                        VERTICAL_PAGE_WEATHER -> WeatherScreen()
+                                        // Gesture-only page: nothing is drawn here, the drag offset
+                                        // alone is the nav-focus progress. Keeping the gauges out of
+                                        // the pager is what makes this a transition rather than a page
+                                        // swap — a pager clips its pages, so content inside would
+                                        // slide away instead of pinning.
+                                        VERTICAL_PAGE_NAV -> Unit
+                                        VERTICAL_PAGE_GROUP -> GroupRidePage(settled = groupPageSettled)
+                                        else -> HorizontalPager(
+                                            state = controlPagerState,
+                                            userScrollEnabled = !isAmbient && !controlHeld,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .then(
+                                                    if (dismissEnabled) {
+                                                        Modifier.edgeSwipeToDismiss(dismissState)
+                                                    } else {
+                                                        Modifier
+                                                    },
+                                                ),
+                                        ) { page ->
+                                            Box(
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                when (page) {
+                                                    // Page 0 is empty: it is the gauges themselves,
+                                                    // pinned at the root behind this transparent pager.
+                                                    CONTROL_PAGE_GAUGES -> Unit
+                                                    CONTROL_PAGE_TILT -> TiltScreen(
+                                                        sender = sender,
+                                                        interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_TILT,
+                                                        onHoldChanged = { controlHeld = it },
+                                                    )
+                                                    CONTROL_PAGE_MOVE -> MoveScreen(
+                                                        sender = sender,
+                                                        // Ambient parks the pager, but the park is a
+                                                        // scroll and this gate is not: a held Move must
+                                                        // stop the moment the wrist goes always-on, not
+                                                        // once the page has finished travelling.
+                                                        interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_MOVE,
+                                                        onHoldChanged = { controlHeld = it },
+                                                    )
+                                                    CONTROL_PAGE_LIGHTS -> LightsScreen(
+                                                        sender = sender,
+                                                        interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_LIGHTS,
+                                                    )
+                                                    CONTROL_PAGE_DIAGNOSTICS -> DiagnosticsScreen()
+                                                    else -> Unit
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                            // Rim arcs, drawn once at the root and never inside a pager: the rider
-                            // keeps speed, duty, battery and temps on every page. Drawn *over* the
-                            // pagers, because the forecast readout is the one thing here a rider
-                            // taps and a full-screen pager above it would eat the tap. Nothing else
-                            // in the frame takes pointer input, so the pages stay reachable.
-                            MirrorContent(
-                                state = state,
-                                ambient = ambient,
-                                focus = navFocus,
-                                controlFocus = controlFocus,
-                                weatherFocus = weatherFocus,
-                                groupFocus = groupFocus,
-                                onWeatherClick = if (weatherTappable) {
-                                    {
-                                        scope.launch {
-                                            verticalPagerState.animateScrollToPage(VERTICAL_PAGE_WEATHER)
+                                // Rim arcs, drawn once at the root and never inside a pager: the rider
+                                // keeps speed, duty, battery and temps on every page. Drawn *over* the
+                                // pagers, because the forecast readout is the one thing here a rider
+                                // taps and a full-screen pager above it would eat the tap. Nothing else
+                                // in the frame takes pointer input, so the pages stay reachable.
+                                MirrorContent(
+                                    state = state,
+                                    ambient = ambient,
+                                    focus = navFocus,
+                                    controlFocus = controlFocus,
+                                    weatherFocus = weatherFocus,
+                                    groupFocus = groupFocus,
+                                    onWeatherClick = if (weatherTappable) {
+                                        {
+                                            scope.launch {
+                                                verticalPagerState.animateScrollToPage(VERTICAL_PAGE_WEATHER)
+                                            }
                                         }
-                                    }
-                                } else {
-                                    null
-                                },
-                            )
+                                    } else {
+                                        null
+                                    },
+                                )
+                            }
                         }
                     }
                 }
             }
+            // Over everything, close prompt included: a "Rider down" outranks whatever the rider was
+            // doing. Ambient draws it too, quieter; the buzz already fired when it arrived.
+            rideNotice?.let { RideNoticeCard(it, ambient, onTap = hideRideNotice) }
         }
     }
 }

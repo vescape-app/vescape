@@ -463,6 +463,7 @@ Channels are split by how often the data changes:
 | `/route`        | Data Layer item      | per route change              | encoded polyline, versioned binary            |
 | `/settings`     | Data Layer `DataMap` | per settings change           | rider settings, key-value                     |
 | `/map-tile/…`   | Data Layer item      | per planned street-map tile   | 512 px JPEG as an Asset, one item per tile    |
+| `/ride-notices` | Data Layer item      | per Ride Notice list change   | Ride Notice Frame: versioned binary           |
 
 `MessageClient` drops undelivered sends, which is right for a frame that is stale in 250 ms and wrong
 for cold state — hence the Data Layer for the other two, where the last value stays on the watch
@@ -561,6 +562,44 @@ route geometry, and gauge proportions stay metric.
 
 The watchOS Mirror carries the same bag on its own channel — see `docs/watchos.md` for how the two
 transports differ.
+
+### Ride Notices
+
+`/ride-notices` carries the phone's whole visible Ride Notice list (dismissed notices are not in it),
+most urgent first, as the Ride Notice Frame: `id`, `rev`, `severity`, `title`, `details` and
+`expiresAt` per notice, plus the phone wall-clock `sentAtMs` of the write. The codec is one file
+per language, `watch/RideNoticeFrame.kt` (copied into the Wear module like the Group Ride Frame) and
+`ios/watch/RideNoticeFrame.swift` (symlinked by watchOS), versioned the same way: a notice record is
+length-prefixed, so a new field is appended without a version bump and an older wrist skips it; the
+version byte moves only for a change older wrists must not read, and they then keep what they hold.
+
+Android writes it as an urgent Data Layer item. iOS puts it in the merged Application Context under
+`rideNotices` and, while the watch is reachable, also sends the same bytes as a `sendMessage`: the
+context alone is delivered opportunistically, too slow for "Rider down". The phone writes the
+channel whenever the visible list changes and once on every start, empty included, so a list left
+by a phone process that died is replaced. Both phones write from process start, independent of the
+core service, like the Ride Notice list itself. `sentAtMs` is strictly increasing per process.
+
+The wrist keys on `(id, rev)`. A pair it has not shown since the watch app started draws a
+full-screen card (severity ring, title, details) over everything and buzzes; the same pair updated
+in place redraws without a buzz; a new `rev`, or an id reused after it left the list, buzzes again.
+Ambient draws the card quieter and never replays the buzz. A frame whose `sentAtMs` is not newer
+than the one held is ignored, so the live message and its retained copy never buzz twice. Tapping
+the card (or back on Wear OS) hides that notice on the wrist and returns both axes to the gauges.
+The hide also sends the `dismissNotice` watch command to the phone, the one three-byte command:
+`[6, id, rev]`. The phone relays it into the same native dismiss the phone card uses (which also
+passes `(id, rev)`), with or without a Board Session; the shorter list then reaches both devices.
+An id no longer active is ignored, and so is a `rev` other than the one the notice holds now: a
+signal re-sent while the command was in flight is not hidden unseen. A lost command leaves
+the notice hidden only on the wrist. The local hide is dropped when the id leaves the list or its
+`rev` changes. The wrist drops
+a notice once `expiresAt` passes on its own clock, without a phone write. The card has no actions.
+
+**Limit: the card and buzz happen only while the watch app runs.** There is no wrist system
+notification. watchOS runs no workout or extended-runtime session for the Mirror, so a suspended app
+receives nothing until it is opened; it then reads the retained list and shows any notice still
+active. Wear OS receives Data Layer changes only while `MainActivity` is started, with the same
+catch-up on the next start.
 
 ## Board battery complication
 

@@ -2,6 +2,8 @@ package expo.modules.vescapecore.notification
 import expo.modules.vescapecore.connection.BoardPhase
 import expo.modules.vescapecore.protocol.RefloatTelemetry
 import expo.modules.vescapecore.connection.displayText
+import expo.modules.vescapecore.notices.RideNoticeContent
+import expo.modules.vescapecore.notices.RideNoticeSeverity
 import java.util.Locale
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -211,6 +213,16 @@ class NotificationPresenterTest {
         assertEquals("45%", presentation.shortCriticalText)
         assertEquals(45, presentation.batteryProgressPercent)
         assertEquals(true, presentation.canDisconnect)
+    }
+
+    @Test
+    fun `top ride notice leads the status line with its severity`() {
+        val presentation = NotificationPresentation.resolve(
+            phase = BoardPhase.Reconnecting,
+            rideNotice = RideNoticeContent(RideNoticeSeverity.WARNING, "Rider stopped", "Details", postedAt = 0),
+        )
+
+        assertEquals("⚠ Rider stopped · Reconnecting…", presentation.text)
     }
 
     private fun telemetry(

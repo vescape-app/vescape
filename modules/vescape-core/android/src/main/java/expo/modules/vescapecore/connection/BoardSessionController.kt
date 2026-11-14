@@ -42,7 +42,9 @@ import expo.modules.vescapecore.location.GpsMonitor
 import expo.modules.vescapecore.location.GpsPowerMode
 import expo.modules.vescapecore.location.RIDE_DROPOUT_GRACE_MS
 import expo.modules.vescapecore.location.isPreciseGpsFix
+import expo.modules.vescapecore.GroupRideCues
 import expo.modules.vescapecore.GroupRideObserver
+import expo.modules.vescapecore.RiderSignalContext
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
 import expo.modules.vescapecore.telemetry.ProcessedTelemetry
@@ -84,6 +86,9 @@ import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchBoard
 import expo.modules.vescapecore.watch.WatchLastBatteryPusher
+import expo.modules.vescapecore.watch.WatchRideNoticePusher
+import expo.modules.vescapecore.notices.RideNotice
+import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.watch.androidWatchMirror
 import expo.modules.vescapecore.watch.WatchLightsRelay
 import expo.modules.vescapecore.watch.WatchLightsSwitch
@@ -140,7 +145,6 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.File
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.launch
 import expo.modules.kotlin.jni.NativeArrayBuffer
@@ -170,13 +174,11 @@ import expo.modules.vescapecore.telemetry.IDLE_PAUSE_POLL_INTERVAL_MS
 import expo.modules.vescapecore.telemetry.IdlePauseDetector
 import expo.modules.vescapecore.telemetry.IdlePauseTransition
 import expo.modules.vescapecore.telemetry.METRIC_MAX_DUTY
-import expo.modules.vescapecore.database.PrivacyZoneEntity
 import expo.modules.vescapecore.telemetry.SocMedianWindow
 import expo.modules.vescapecore.telemetry.TelemetryCapture
 import expo.modules.vescapecore.telemetry.isRefloatEngaged
 import expo.modules.vescapecore.telemetry.TelemetryPipeline
 import expo.modules.vescapecore.telemetry.TelemetryRepository
-import expo.modules.vescapecore.telemetry.isInsideAnyPrivacyZone
 import expo.modules.vescapecore.telemetry.toMetricSanitizerConfig
 
 private const val CHANNEL_ID = "vesc_monitoring_v5"
@@ -302,6 +304,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
             deviceName = { boardConfig?.deviceName ?: selectedBoardName },
             sessionActive = { boardConfig != null },
             canConnect = { boardConfig == null && selectedBoardName != null },
+            // Wall-clock filter: the engine's expiry timer runs on uptime and lags while the phone sleeps.
+            // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `liveActivityNoticeContent`
+            rideNotice = {
+                notificationNotice?.content?.takeUnless { c -> c.expiresAt?.let { it <= System.currentTimeMillis() } == true }
+            },
         )
     }
     private val notificationGate = NotificationUpdateGate(NOTIFICATION_TELEMETRY_INTERVAL_MS)
@@ -397,6 +404,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         speak = { line -> alertFeedback.speakAdvisory(line.voiceAnnouncement()) },
     )
     private var weatherUnsubscribe: (() -> Unit)? = null
+    private var rideNoticeUnsubscribe: (() -> Unit)? = null
+    /** Top Ride Notice the notification shows; repaint only when its `(id, rev, title)` changes. */
+    private var notificationNotice: RideNotice? = null
     private var weatherObservationUnsubscribe: (() -> Unit)? = null
     private val watchMoveRelay by lazy {
         WatchMoveRelay(
@@ -472,8 +482,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // rider-initiated. Reporting from inside the observer also lands after its `handler.post`
             // has actually mutated the state, which a caller refreshing inline cannot.
             onParticipationChanged = ::refreshGpsDemand,
-            onCue = { cue -> if (connectionSoundsEnabled) alertFeedback.playAppCue(cue) },
+            onCue = { cue ->
+                if (GroupRideCues.audible(cue, connectionSoundsEnabled)) alertFeedback.playAppCue(cue)
+            },
             ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
+            signalContext = ::riderSignalContext,
         )
     }
 
@@ -825,7 +838,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // The wrist mirrors the phone, not the board session. Keep presence + frames alive while
         // this service owns GPS/navigation even when no board is selected or connected.
         watchMirror.start()
+        // Process-scoped and idempotent; started here too for a service started without the module.
+        WatchRideNoticePusher.start(service)
         weatherUnsubscribe = weatherCoordinator.addChangeListener(::onWeatherChanged)
+        // Rides on the notification that exists; a notice never starts the service or posts its own.
+        notificationNotice = RideNotices.current.firstOrNull()
+        rideNoticeUnsubscribe = RideNotices.addListener(::onRideNoticesChanged)
         // Listeners fire only on a successful refresh; the replay below is not one and stores nothing.
         weatherObservationUnsubscribe = weatherCoordinator.addChangeListener(::storeWeatherObservation)
         // The forecast survives a service restart, so replay what is already known rather than
@@ -997,6 +1015,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
     fun onServiceDestroy() {
         weatherUnsubscribe?.invoke()
         weatherUnsubscribe = null
+        rideNoticeUnsubscribe?.invoke()
+        rideNoticeUnsubscribe = null
         weatherObservationUnsubscribe?.invoke()
         weatherObservationUnsubscribe = null
         watchMirror.stop()
@@ -1101,6 +1121,22 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     fun leaveGroupRide() {
         groupRideObserver.leave()
+    }
+
+    fun sendGroupRideSignal(kind: String) {
+        groupRideObserver.sendSignal(kind)
+    }
+
+    fun clearGroupRideSignal() {
+        groupRideObserver.clearSignal()
+    }
+
+    fun sendGroupRideHazard(kind: String) {
+        groupRideObserver.sendHazard(kind)
+    }
+
+    fun clearGroupRideHazard() {
+        groupRideObserver.clearHazard()
     }
 
     fun updateGroupRideIdentity(riderId: String, riderName: String) {
@@ -3093,6 +3129,23 @@ internal class BoardSessionController(private val service: CoreForegroundService
         )
     }
 
+    /**
+     * Ride Notice on the ride notification. Fires on the main looper, only when the visible
+     * list changes; the repaint is further limited to a change of the top notice's headline.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRideNoticesChanged`
+     */
+    private fun onRideNoticesChanged(notices: List<RideNotice>) {
+        val top = notices.firstOrNull()
+        val changed = top?.headline() != notificationNotice?.headline()
+        // Always keep the latest content: a same-revision repost replaces it in place.
+        notificationNotice = top
+        // Only repaint a notification that is up; a plain-started service has none to ride on.
+        if (changed && notificationController.isShowing()) refreshNotification(force = true)
+    }
+
+    /** What the notification renders, plus `rev`: `(id, rev, title, severity)`. */
+    private fun RideNotice.headline() = listOf(id, rev, content.title, content.severity)
+
     /** Swallows the repaints of an intermediate teardown whose end state is never rider-visible. */
     private inline fun withNotificationRepaintSuppressed(block: () -> Unit) {
         notificationRepaintSuppressed = true
@@ -3269,6 +3322,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val snapshot = locationTracker.onLocationUpdated(location)
         recordRideTrackFix(snapshot)
         latestRiderPresence()?.let(groupRideObserver::pushPresence)
+        groupRideObserver.refreshSignalAvailability()
+        groupRideObserver.onFix(location.latitude, location.longitude)
         // Offered on every Fix; the coordinator owns the freshness and distance gates.
         weatherCoordinator.onPosition(location.latitude, location.longitude)
     }
@@ -3381,11 +3436,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
     private fun latestRiderPresence(): RiderPresence? {
-        if (!groupRidePrivacy.allowsLocationEgress) return null
-        val location = locationTracker.latestPreciseLocation ?: locationTracker.latestLocation ?: return null
-        // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
-        // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
-        if (isInsidePrivacyZone(location)) return null
+        val location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?: locationTracker.latestLocation)
+            ?: return null
         val currentTelemetry = telemetry
         val telemetryFresh = currentTelemetry != null && !isTelemetryStale()
         return RiderPresence(
@@ -3402,6 +3454,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         )
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderSignalContext` */
+    private fun riderSignalContext(): RiderSignalContext =
+        groupRidePrivacy.signalContext(locationTracker.latestLocation, System.currentTimeMillis())
+
     /**
      * Device battery as a 0–1 fraction, or null when the platform can't report it.
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `readPhoneBattery`
@@ -3410,14 +3466,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val manager = service.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
         val level = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return if (level in 0..100) level / 100.0 else null
-    }
-
-    private fun isInsidePrivacyZone(location: LocationSnapshot): Boolean {
-        val zones = groupRidePrivacy.zones
-        if (zones.isEmpty()) return false
-        val latitudeE7 = (location.latitude * 10_000_000.0).roundToInt()
-        val longitudeE7 = (location.longitude * 10_000_000.0).roundToInt()
-        return isInsideAnyPrivacyZone(latitudeE7, longitudeE7, zones)
     }
 
     /**

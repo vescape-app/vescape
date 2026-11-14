@@ -183,6 +183,159 @@
         ]
       }
     },
+    "groupRide.signal.down": {
+      "start": ["lines/groupRide.signal.down.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.down.full.start.0.m4a",
+          "lines/groupRide.signal.down.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.minor": {
+      "start": ["lines/groupRide.signal.minor.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.minor.full.start.0.m4a",
+          "lines/groupRide.signal.minor.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.serious": {
+      "start": ["lines/groupRide.signal.serious.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.serious.full.start.0.m4a",
+          "lines/groupRide.signal.serious.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.battery": {
+      "start": ["lines/groupRide.signal.battery.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.battery.full.start.0.m4a",
+          "lines/groupRide.signal.battery.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.tire": {
+      "start": ["lines/groupRide.signal.tire.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.tire.full.start.0.m4a",
+          "lines/groupRide.signal.tire.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.overheat": {
+      "start": ["lines/groupRide.signal.overheat.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.overheat.full.start.0.m4a",
+          "lines/groupRide.signal.overheat.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.board": {
+      "start": ["lines/groupRide.signal.board.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.board.full.start.0.m4a",
+          "lines/groupRide.signal.board.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.wait": {
+      "start": ["lines/groupRide.signal.wait.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.wait.full.start.0.m4a",
+          "lines/groupRide.signal.wait.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.break": {
+      "start": ["lines/groupRide.signal.break.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.break.full.start.0.m4a",
+          "lines/groupRide.signal.break.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.ok": {
+      "start": ["lines/groupRide.signal.ok.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.ok.full.start.0.m4a",
+          "lines/groupRide.signal.ok.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.sent": {
+      "start": ["lines/groupRide.signal.sent.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.sent.full.start.0.m4a",
+          "lines/groupRide.signal.sent.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.signal.cleared": {
+      "start": ["lines/groupRide.signal.cleared.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.signal.cleared.full.start.0.m4a",
+          "lines/groupRide.signal.cleared.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.water": {
+      "start": ["lines/groupRide.hazard.water.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.water.full.start.0.m4a",
+          "lines/groupRide.hazard.water.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.terrain": {
+      "start": ["lines/groupRide.hazard.terrain.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.terrain.full.start.0.m4a",
+          "lines/groupRide.hazard.terrain.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.obstacle": {
+      "start": ["lines/groupRide.hazard.obstacle.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.obstacle.full.start.0.m4a",
+          "lines/groupRide.hazard.obstacle.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.police": {
+      "start": ["lines/groupRide.hazard.police.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.police.full.start.0.m4a",
+          "lines/groupRide.hazard.police.full.start.1.m4a"
+        ]
+      }
+    },
+    "groupRide.hazard.sent": {
+      "start": ["lines/groupRide.hazard.sent.start.0.m4a"],
+      "full": {
+        "start": [
+          "lines/groupRide.hazard.sent.full.start.0.m4a",
+          "lines/groupRide.hazard.sent.full.start.1.m4a"
+        ]
+      }
+    },
     "ride.end": {
       "start": ["lines/ride.end.start.0.m4a"],
       "full": {
@@ -869,6 +1022,57 @@
     "lines/groupRide.restored.full.start.0.m4a": "679a56e82f0962fb",
     "lines/groupRide.restored.full.start.1.m4a": "60f31dcce28d7abc",
     "lines/groupRide.restored.start.0.m4a": "679a56e82f0962fb",
+    "lines/groupRide.signal.down.full.start.0.m4a": "d87e08b52c33d3e2",
+    "lines/groupRide.signal.down.full.start.1.m4a": "a549b63166165cbe",
+    "lines/groupRide.signal.down.start.0.m4a": "59fa341685b783c4",
+    "lines/groupRide.signal.minor.full.start.0.m4a": "311f046fc894665d",
+    "lines/groupRide.signal.minor.full.start.1.m4a": "0c768c1116f4791f",
+    "lines/groupRide.signal.minor.start.0.m4a": "a64a55a6c2368424",
+    "lines/groupRide.signal.serious.full.start.0.m4a": "236e2afee556124e",
+    "lines/groupRide.signal.serious.full.start.1.m4a": "a83902bc4690214c",
+    "lines/groupRide.signal.serious.start.0.m4a": "53041e835498966b",
+    "lines/groupRide.signal.battery.full.start.0.m4a": "b6f7d05c977027a1",
+    "lines/groupRide.signal.battery.full.start.1.m4a": "df176eaf0dcfd3a5",
+    "lines/groupRide.signal.battery.start.0.m4a": "0f5fa44f569b2db2",
+    "lines/groupRide.signal.tire.full.start.0.m4a": "986fa76a673874cb",
+    "lines/groupRide.signal.tire.full.start.1.m4a": "e2489ffdc87496e5",
+    "lines/groupRide.signal.tire.start.0.m4a": "80ace39d6175596f",
+    "lines/groupRide.signal.overheat.full.start.0.m4a": "9c6fbc7c6d46459f",
+    "lines/groupRide.signal.overheat.full.start.1.m4a": "156d271f7b862ec9",
+    "lines/groupRide.signal.overheat.start.0.m4a": "6a7ffbb1724bc8d7",
+    "lines/groupRide.signal.board.full.start.0.m4a": "92362f4504ba5b27",
+    "lines/groupRide.signal.board.full.start.1.m4a": "d3396e9fa62c4b6f",
+    "lines/groupRide.signal.board.start.0.m4a": "3c4d761c90310937",
+    "lines/groupRide.signal.wait.full.start.0.m4a": "d8e2f9ba1aa5411f",
+    "lines/groupRide.signal.wait.full.start.1.m4a": "b2eb0229a152529d",
+    "lines/groupRide.signal.wait.start.0.m4a": "94dbc79b250834a6",
+    "lines/groupRide.signal.break.full.start.0.m4a": "8f76255441deac5c",
+    "lines/groupRide.signal.break.full.start.1.m4a": "343c248d8b2531e6",
+    "lines/groupRide.signal.break.start.0.m4a": "2f6a913723304547",
+    "lines/groupRide.signal.ok.full.start.0.m4a": "944f027ae8d19c5d",
+    "lines/groupRide.signal.ok.full.start.1.m4a": "8cb8567f577da46d",
+    "lines/groupRide.signal.ok.start.0.m4a": "6e87514d585f805a",
+    "lines/groupRide.signal.sent.full.start.0.m4a": "427d8297c344315b",
+    "lines/groupRide.signal.sent.full.start.1.m4a": "685ee656ba5ee0a7",
+    "lines/groupRide.signal.sent.start.0.m4a": "9a3475e166687048",
+    "lines/groupRide.signal.cleared.full.start.0.m4a": "907326f990dfe5c6",
+    "lines/groupRide.signal.cleared.full.start.1.m4a": "52f8ff554406ed28",
+    "lines/groupRide.signal.cleared.start.0.m4a": "4ef199f0cba51ae5",
+    "lines/groupRide.hazard.water.full.start.0.m4a": "b8105bfee92ea2bb",
+    "lines/groupRide.hazard.water.full.start.1.m4a": "19067b0a16f9f2ef",
+    "lines/groupRide.hazard.water.start.0.m4a": "e12d67a89f4fd7d1",
+    "lines/groupRide.hazard.terrain.full.start.0.m4a": "50d6eb0f707a0ec8",
+    "lines/groupRide.hazard.terrain.full.start.1.m4a": "8612da10fee615a1",
+    "lines/groupRide.hazard.terrain.start.0.m4a": "e789392cd753456e",
+    "lines/groupRide.hazard.obstacle.full.start.0.m4a": "cd5b965746b66a78",
+    "lines/groupRide.hazard.obstacle.full.start.1.m4a": "49b0e8176d1b93f8",
+    "lines/groupRide.hazard.obstacle.start.0.m4a": "c6730bbcc26237b8",
+    "lines/groupRide.hazard.police.full.start.0.m4a": "8e243e5c0e2ee058",
+    "lines/groupRide.hazard.police.full.start.1.m4a": "f06eb95478a9944b",
+    "lines/groupRide.hazard.police.start.0.m4a": "e13ff5aaf4b6717d",
+    "lines/groupRide.hazard.sent.full.start.0.m4a": "a46a558866224179",
+    "lines/groupRide.hazard.sent.full.start.1.m4a": "6742ac67cdc51986",
+    "lines/groupRide.hazard.sent.start.0.m4a": "290c25488a50aa54",
     "lines/ride.end.full.start.0.m4a": "d15e6eebd6b7842e",
     "lines/ride.end.full.start.1.m4a": "bad4375f5a85e1bb",
     "lines/ride.end.full.start.2.m4a": "acc839f91950bfbe",

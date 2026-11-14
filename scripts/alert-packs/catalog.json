@@ -15,6 +15,23 @@
     "groupRide.riderLeft": null,
     "groupRide.lost": null,
     "groupRide.restored": null,
+    "groupRide.signal.down": null,
+    "groupRide.signal.minor": null,
+    "groupRide.signal.serious": null,
+    "groupRide.signal.battery": null,
+    "groupRide.signal.tire": null,
+    "groupRide.signal.overheat": null,
+    "groupRide.signal.board": null,
+    "groupRide.signal.wait": null,
+    "groupRide.signal.break": null,
+    "groupRide.signal.ok": null,
+    "groupRide.signal.sent": null,
+    "groupRide.signal.cleared": null,
+    "groupRide.hazard.water": null,
+    "groupRide.hazard.terrain": null,
+    "groupRide.hazard.obstacle": null,
+    "groupRide.hazard.police": null,
+    "groupRide.hazard.sent": null,
     "ride.end": null,
     "weather.storm": null,
     "weather.storm.now": null,
@@ -24,9 +41,18 @@
     "weather.rain.now": null
   },
   "values": {
-    "percent": { "min": 0, "max": 100 },
-    "degrees": { "min": -30, "max": 300 },
-    "number": { "min": 0, "max": 100 },
+    "percent": {
+      "min": 0,
+      "max": 100
+    },
+    "degrees": {
+      "min": -30,
+      "max": 300
+    },
+    "number": {
+      "min": 0,
+      "max": 100
+    },
     "duration": [15, 30, 45, 60, 90, 120, 150, 180]
   }
 }

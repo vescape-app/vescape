@@ -51,11 +51,29 @@ internal val GROUP_RIDE_CUES = listOf(
     "groupRide.riderLeft",
     "groupRide.lost",
     "groupRide.restored",
+    "groupRide.signal.down",
+    "groupRide.signal.minor",
+    "groupRide.signal.serious",
+    "groupRide.signal.battery",
+    "groupRide.signal.tire",
+    "groupRide.signal.overheat",
+    "groupRide.signal.board",
+    "groupRide.signal.wait",
+    "groupRide.signal.break",
+    "groupRide.signal.ok",
+    "groupRide.signal.sent",
+    "groupRide.signal.cleared",
+    "groupRide.hazard.water",
+    "groupRide.hazard.terrain",
+    "groupRide.hazard.obstacle",
+    "groupRide.hazard.police",
+    "groupRide.hazard.sent",
 )
 
 /**
  * App cue id (the `playAppCue` cue names) → effects slot. Error and the rider and link Group Ride
- * events have no slot of their own and play a fixed severity sound.
+ * events have no slot of their own and play a fixed severity sound. A signal kind sounds its notice
+ * severity ([expo.modules.vescapecore.RiderSignalKind.severity]); a hazard approach always warns.
  *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot`
  */
@@ -65,9 +83,15 @@ internal fun appCueSlot(cue: String): String? = when (cue) {
     "error" -> "severity.critical"
     "ride.end" -> "cue.ride.end"
     "groupRide.created", "groupRide.joined" -> "cue.$cue"
-    "groupRide.riderJoined" -> "severity.info"
+    "groupRide.riderJoined", "groupRide.signal.sent", "groupRide.hazard.sent", "groupRide.signal.down",
+    "groupRide.signal.wait", "groupRide.signal.break" -> "severity.info"
     "groupRide.riderLeft", "groupRide.lost" -> "severity.warning"
-    "groupRide.restored" -> "severity.positive"
+    "groupRide.restored", "groupRide.signal.ok", "groupRide.signal.cleared" -> "severity.positive"
+    "groupRide.signal.serious" -> "severity.critical"
+    "groupRide.signal.minor", "groupRide.signal.battery", "groupRide.signal.tire", "groupRide.signal.overheat", "groupRide.signal.board" ->
+        "severity.warning"
+    "groupRide.hazard.water", "groupRide.hazard.terrain", "groupRide.hazard.obstacle", "groupRide.hazard.police" ->
+        "severity.warning"
     else -> null
 }
 

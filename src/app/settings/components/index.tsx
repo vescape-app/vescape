@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, type Href } from 'expo-router'
 import {
+  MegaphoneIcon,
   ChartLineUpIcon,
   ClockCounterClockwiseIcon,
   ListIcon,
@@ -163,6 +164,13 @@ const groups = [
         route: '/settings/components/weather',
         icon: CloudMoonIcon,
         color: theme.palette.blue.light,
+      },
+      {
+        label: 'Ride Notices',
+        hint: 'The ride notice card with severity, distance and Show on map',
+        route: '/settings/components/notices',
+        icon: MegaphoneIcon,
+        color: theme.status.warning.color,
       },
       {
         label: 'Map',

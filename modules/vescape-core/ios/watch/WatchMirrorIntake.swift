@@ -15,6 +15,11 @@ struct WatchMirrorIntake {
   /// @platform-diff Wear OS has no list: its held tiles are its `/map-tile` Data Layer items.
   private(set) var mapTiles: WatchMapTileList?
   private(set) var lastFrameAtMs: Int64?
+  private var rideNotices = WatchRideNotices()
+  /// The Ride Notice the full-screen card shows, or nil for the gauges.
+  var rideNoticeCard: RideNoticeFrameItem? { rideNotices.card }
+  /// Ride Notice expiry is phone wall-clock time, unlike frame freshness.
+  var wallClockMs: () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
   private var latestFrame: WatchFrame?
   /// Newest last, at most `MirrorStateReducer.cadenceWindowGaps` long.
   private var recentGapsMs: [Int64] = []
@@ -54,9 +59,25 @@ struct WatchMirrorIntake {
     board = WatchBoardLights.decode(payload)
   }
 
+  /// Frame bytes from the retained context or the live message. An unreadable frame keeps the list
+  /// held: dropping it could hide a "Rider down" the phone still shows. True when a notice the wrist
+  /// has not shown arrived (buzz).
+  /// @platform-diff The Application Context channel is never deleted, so there is no Wear OS-style
+  ///   deletion path.
+  @discardableResult
+  mutating func acceptRideNotices(_ bytes: Data) -> Bool {
+    guard let frame = RideNoticeFrameCodec.decode(bytes) else { return false }
+    return rideNotices.accept(frame, nowMs: wallClockMs())
+  }
+
+  /// The rider tapped the card away. Wrist-local: it returns while the phone posts a new revision.
+  /// The dismiss command to the phone is sent next to this call.
+  mutating func hideRideNotice(id: Int, rev: Int) { rideNotices.hide(id: id, rev: rev) }
+
   /// A complete snapshot on startup/reconnect resets channels absent from the phone. Per-channel
   /// replay updates use the same setters without accidentally clearing unrelated cold channels.
-  mutating func restoreColdState(_ context: [String: Any]) {
+  @discardableResult
+  mutating func restoreColdState(_ context: [String: Any]) -> Bool {
     route = WatchRoute.decode(context: context)
     acceptSettings(context[watchSettingsChannel] as? [String: Any])
     acceptWeather(context[watchWeatherChannel] as? [String: Any])
@@ -64,6 +85,11 @@ struct WatchMirrorIntake {
     // An absent or unreadable list keeps the tiles: deleting them on a payload this build cannot
     // read would cost the rider the map until the phone re-plans.
     if let list = WatchMapTileList.decode(context[watchMapTilesChannel] as? [String: Any]) { mapTiles = list }
+    // The phone never removes this channel, and a context read before the phone's write lands has
+    // none: keeping the list is right for both, and clearing would re-buzz it on the next read.
+    guard let rideNotices = (context[watchRideNoticesChannel] as? [String: Any])?[watchRideNoticesFrameKey] as? Data
+    else { return false }
+    return acceptRideNotices(rideNotices)
   }
 
   mutating func refresh(nowMs: Int64) {
@@ -72,6 +98,7 @@ struct WatchMirrorIntake {
       timeoutMs: MirrorStateReducer.disconnectedTimeoutMs(frameGapMs: recentGapsMs.max())
     )
     if mirror.status == .disconnected { routeStatus = nil }
+    rideNotices.prune(nowMs: wallClockMs())
     if let at = lastGroupRideAtMs, nowMs - at > WatchGroupRide.timeoutMs {
       groupRide = nil
       lastGroupRideAtMs = nil

@@ -31,6 +31,11 @@ struct RideActivityAttributes: ActivityAttributes {
     var batteryPercent: Int?
     /// Active fault code, or `nil` when the board reports no fault.
     var faultCode: Int?
+    /// Top visible Ride Notice title, or `nil` with no notice. Optional so a state pushed by an older
+    /// build (no key) still decodes.
+    var noticeTitle: String? = nil
+    /// `RideNoticeSeverity` wire value of that notice (`critical` / `warning` / `info`).
+    var noticeSeverity: String? = nil
   }
 
 }

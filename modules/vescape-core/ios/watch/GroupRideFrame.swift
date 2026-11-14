@@ -114,7 +114,7 @@ enum GroupRideFrameCodec {
 
   /// Nil for another wire version or a malformed payload: the wrist then draws no group.
   static func decode(_ data: Data) -> GroupRideFrame? {
-    var reader = Reader(bytes: [UInt8](data))
+    var reader = WatchWireReader(bytes: [UInt8](data))
     guard let version = reader.byte(), Int(version) == WATCH_GROUP_RIDE_VERSION,
           let course = reader.float(), let span = reader.float(), span.isFinite, span > 0,
           let count = reader.byte()
@@ -151,42 +151,61 @@ enum GroupRideFrameCodec {
   private static func appendFloat(_ data: inout Data, _ value: Float) {
     withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
   }
+}
 
-  /// The longest prefix of `value` that fits `maxBytes` of UTF-8 without splitting a character.
-  private static func utf8Prefix(_ value: String, maxBytes: Int) -> [UInt8] {
-    let bytes = Array(value.utf8)
-    guard bytes.count > maxBytes else { return bytes }
-    var end = maxBytes
-    // Back off continuation bytes (10xxxxxx) so the cut lands on a character boundary.
-    while end > 0, bytes[end] & 0xC0 == 0x80 { end -= 1 }
-    return Array(bytes[..<end])
+/// The longest prefix of `value` that fits `maxBytes` of UTF-8 without splitting a character. Shared
+/// by the wire codecs the watchOS Mirror symlinks.
+func utf8Prefix(_ value: String, maxBytes: Int) -> [UInt8] {
+  let bytes = Array(value.utf8)
+  guard bytes.count > maxBytes else { return bytes }
+  var end = maxBytes
+  // Back off continuation bytes (10xxxxxx) so the cut lands on a character boundary.
+  while end > 0, bytes[end] & 0xC0 == 0x80 { end -= 1 }
+  return Array(bytes[..<end])
+}
+
+/// Little-endian cursor over a wire payload; every read is nil past the end.
+struct WatchWireReader {
+  let bytes: [UInt8]
+  var offset = 0
+
+  mutating func byte() -> UInt8? {
+    guard offset < bytes.count else { return nil }
+    defer { offset += 1 }
+    return bytes[offset]
   }
 
-  private struct Reader {
-    let bytes: [UInt8]
-    var offset = 0
+  mutating func uint16() -> UInt16? {
+    guard offset + 2 <= bytes.count else { return nil }
+    defer { offset += 2 }
+    return UInt16(bytes[offset]) | UInt16(bytes[offset + 1]) << 8
+  }
 
-    mutating func byte() -> UInt8? {
-      guard offset < bytes.count else { return nil }
-      defer { offset += 1 }
-      return bytes[offset]
-    }
+  mutating func uint32() -> UInt32? {
+    guard offset + 4 <= bytes.count else { return nil }
+    defer { offset += 4 }
+    return UInt32(bytes[offset])
+      | UInt32(bytes[offset + 1]) << 8
+      | UInt32(bytes[offset + 2]) << 16
+      | UInt32(bytes[offset + 3]) << 24
+  }
 
-    mutating func uint32() -> UInt32? {
-      guard offset + 4 <= bytes.count else { return nil }
-      defer { offset += 4 }
-      return UInt32(bytes[offset])
-        | UInt32(bytes[offset + 1]) << 8
-        | UInt32(bytes[offset + 2]) << 16
-        | UInt32(bytes[offset + 3]) << 24
-    }
+  mutating func int64() -> Int64? {
+    guard let low = uint32(), let high = uint32() else { return nil }
+    return Int64(bitPattern: UInt64(high) << 32 | UInt64(low))
+  }
 
-    mutating func float() -> Float? { uint32().map(Float.init(bitPattern:)) }
+  mutating func float() -> Float? { uint32().map(Float.init(bitPattern:)) }
 
-    mutating func string() -> String? {
-      guard let length = byte(), offset + Int(length) <= bytes.count else { return nil }
-      defer { offset += Int(length) }
-      return String(decoding: bytes[offset..<offset + Int(length)], as: UTF8.self)
-    }
+  mutating func string(length: Int) -> String? {
+    guard offset + length <= bytes.count else { return nil }
+    defer { offset += length }
+    return String(decoding: bytes[offset..<offset + length], as: UTF8.self)
+  }
+
+  /// A string behind a one-byte length.
+  mutating func string() -> String? {
+    guard let length = byte() else { return nil }
+    return string(length: Int(length))
   }
 }

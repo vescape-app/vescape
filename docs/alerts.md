@@ -93,7 +93,10 @@ Speech comes from a second app-wide choice next to Sound effects:
   speaks app cues and Group Ride events:
   the cue's effect, then its voice line (`on` → `boardConnection.connected`, `off` → `boardConnection.lost`, `error` →
   `system.error`, `ride.end`, and each `groupRide.*` cue under its own key). Off, Minimal and
-  Standard play their effect only; settings previews of a pack's cues never speak. Custom rules
+  Standard play their effect only, except safety cues (Rider Signal `groupRide.signal.*` and Ride
+  Hazard `groupRide.hazard.*`): they speak at Minimal and Standard too, so a group hears who sent
+  what. Settings previews of a
+  pack's cues never speak. Custom rules
   speak whatever the level, with its wording (Off reads as Standard).
 - **Group Ride cues**, all native from `GroupRideObserver`: `groupRide.created` (a new ride the
   rider created, or one within the 40 km nearby radius of the latest GPS position), `groupRide.joined` (the rider joined),
@@ -113,7 +116,27 @@ Speech comes from a second app-wide choice next to Sound effects:
   outage plays one `lost`, and the first roster after our own rejoin only catches up, so our
   reconnect never plays peer cues. Leaving, stopping, an online block or the ride ending cancels
   a pending `lost`. The decisions live in `GroupRideCues` (`.kt`, `.swift`). All are gated by the
-  app sounds switch (`connectionSoundsEnabled`).
+  app sounds switch (`connectionSoundsEnabled`) except safety cues.
+- **Rider Signal cues** `groupRide.signal.<kind>` (`serious` ⇒ critical; `battery`,
+  `tire`, `overheat`, `board`, `minor` ⇒ warning; `down`, `wait`, `break` ⇒ info, the kind's Ride Notice severity) play once when another Rider sends a signal or replaces it (new `startedAt`);
+  `groupRide.signal.ok` (positive) plays when a Rider still in the roster drops their signal while
+  the roster's relay `now` is before its `expiresAt`. The rider's own signal confirms what the relay
+  accepted: `groupRide.signal.sent` (info) when the roster carries a new own `startedAt`, and
+  `groupRide.signal.cleared` (positive) when it is gone before its `expiresAt`. Expiry (relay `now`
+  at or past `expiresAt`, or no `now`), a Rider leaving, and signals already active in the catch-up
+  roster after joining or our reconnect play nothing. A signal cue wins over a social cue from the
+  same roster, and the higher-ranked kind over the others (`serious`, then `minor` and the problems, then
+  `down`, `wait` and `break`); another Rider's new signal wins over `sent`, then the rider's own new
+  hazard `groupRide.hazard.sent` (info), and `ok` over `cleared`. They are safety calls, so the
+  app sounds switch does not mute them, and they speak at every Voice level but Off; muted alerts
+  apply as for any app cue.
+- **Ride Hazard cues** `groupRide.hazard.<kind>` (`water`, `terrain`, `obstacle`, `police` ⇒ warning)
+  never play when another Rider marks the hazard. Each phone plays one once, from its own GPS fixes
+  (`RideHazardCues`, `.kt`, `.swift`), the first time it comes within 30 m of the pin while closing
+  in (the distance shrank by 2 m or more since the previous fix, so jitter while standing next to
+  it stays silent): about 5 s ahead at 20 km/h. The nearest of several cues first. The rider's own
+  hazard never cues; a replaced hazard (new `startedAt`) is a new pin. Same safety gates as Rider
+  Signal cues.
 
 A `voice(<severity>):<key>:<value>` sound plays the effects pack's `severity.<severity>` sound
 once, then the voice line, starting once the sound has finished, or 1.5 s after it starts if it runs longer (the same timing as TTS). Native
@@ -197,6 +220,7 @@ shared/alerts/packs/
 - **Voice keys**: `battery` (percent), `motorTemp`, `controllerTemp` (degrees), `speed`, `dutyCycle`
   (number), `boardConnection.connected`,
   `boardConnection.lost`, `system.error`, `groupRide.created|joined|riderJoined|riderLeft|lost|restored`,
+  `groupRide.signal.board|battery|down|wait|help|ok|sent|cleared`,
   `ride.end`. Each key needs a
   generic line; `<key>.<severity>` lines are optional. A line has `start` (one fixed phrase in Radio
   and Nova), an optional `minimal` (generic lines only; a short form such as "Motor…"), and an
@@ -352,7 +376,7 @@ thread). See [ADR-0040](./adr/0040-announcement-queue-serializes-non-critical-au
   [Weather Alert](#weather-alerts) lines. Battery-at-connect lines are a planned producer. Phone
   only; the watch is unaffected.
 - **Priority** (`AnnouncementPriority`), then oldest first: `CONNECTION` (`on`, `off`, `error`;
-  expires after 10 s) › `ADVISORY` (`ride.end`, weather lines; 30 s) › `SOCIAL` (`groupRide.*`; 20 s). An item still
+  expires after 10 s) › `ADVISORY` (`ride.end`, `groupRide.signal.*`, weather lines; 30 s) › `SOCIAL` (other `groupRide.*`; 20 s). An item still
   waiting at its expiry is dropped, never played late.
 - **One at a time:** the next item starts once the current one reports its `PlaybackOutcome`
   (effect, then voice line at Full).

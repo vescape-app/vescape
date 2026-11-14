@@ -34,7 +34,10 @@ struct RideActivityWidget: Widget {
             .foregroundStyle(statusColor(context.state, context.isStale))
         }
         DynamicIslandExpandedRegion(.bottom) {
-          RideActivityDetails(state: context.state, isStale: context.isStale)
+          VStack(alignment: .leading, spacing: 6) {
+            RideNoticeRow(state: context.state, isStale: context.isStale)
+            RideActivityDetails(state: context.state, isStale: context.isStale)
+          }
         }
       } compactLeading: {
         Image(systemName: boardSymbol(context.state, context.isStale))
@@ -64,9 +67,43 @@ private struct RideActivityLockScreenView: View {
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(statusColor(state, isStale))
         .lineLimit(1)
+      RideNoticeRow(state: state, isStale: isStale)
       RideActivityDetails(state: state, isStale: isStale)
     }
     .opacity(isStale ? staleOpacity : 1)
+  }
+}
+
+/// Top Ride Notice next to the ride status; absent when no notice is visible. A stale activity
+/// hides it with the rest of the telemetry — the notice may have cleared since.
+private struct RideNoticeRow: View {
+  let state: RideActivityAttributes.ContentState
+  let isStale: Bool
+
+  var body: some View {
+    if let title = state.noticeTitle, !isStale {
+      Label(title, systemImage: noticeSymbol(state.noticeSeverity))
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(noticeColor(state.noticeSeverity))
+        .lineLimit(1)
+    }
+  }
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notification/NotificationPresenter.kt `withRideNotice`
+private func noticeSymbol(_ severity: String?) -> String {
+  switch severity {
+  case "critical": return "exclamationmark.octagon.fill"
+  case "warning": return "exclamationmark.triangle.fill"
+  default: return "info.circle.fill"
+  }
+}
+
+private func noticeColor(_ severity: String?) -> Color {
+  switch severity {
+  case "critical": return .red
+  case "warning": return .orange
+  default: return .blue
   }
 }
 

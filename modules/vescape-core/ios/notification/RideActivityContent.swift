@@ -12,7 +12,8 @@ enum RideActivityContent {
     phase: BoardPhase,
     batteryPercent: Int?,
     batteryVoltage: Double?,
-    faultCode: Int?
+    faultCode: Int?,
+    notice: RideNoticeContent? = nil
   ) -> RideActivityAttributes.ContentState {
     RideActivityAttributes.ContentState(
       deviceName: boardLabel(deviceName),
@@ -22,7 +23,9 @@ enum RideActivityContent {
       shortCritical: shortCritical(
         phase: phase, batteryPercent: batteryPercent, batteryVoltage: batteryVoltage, faultCode: faultCode),
       batteryPercent: batteryPercent,
-      faultCode: faultCode
+      faultCode: faultCode,
+      noticeTitle: notice?.title,
+      noticeSeverity: notice?.severity.rawValue
     )
   }
 

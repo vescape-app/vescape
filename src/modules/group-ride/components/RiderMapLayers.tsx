@@ -1,15 +1,25 @@
 import { LineLayer, ShapeSource } from '@rnmapbox/maps'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
+import type { GroupRidePin } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { InMapMarker } from '@/components/map/InMapMarker'
+import { PinKindBadge } from '@/modules/group-ride/components/PinKindBadge'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { makeTrailLineString } from '@/helpers/mapGeometry'
 import { riderMapColor } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
+import {
+  rideHazardKindInfo,
+  riderSignalKindInfo,
+  type PinKindInfo,
+} from '@/modules/group-ride/constants/riderSignalKinds'
+import { useActivePin } from '@/modules/group-ride/hooks/useActiveRiderSignal'
+import type { RelayClock } from '@/modules/group-ride/lib/riderSignal'
+import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
 // A peer's recent path, tinted like their marker and fading out toward the tail —
 // the group-ride counterpart to the device's own live trail.
@@ -91,10 +101,115 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
   )
 }
 
+/** Every Rider's active signal, your own included (the presence layers leave you out). */
+export function LiveRiderSignalPins() {
+  const rows = useGroupRideStore((s) => s.rosterRows)
+  const clock = useGroupRideStore((s) => s.relayClock)
+  return <RiderSignalPins rows={rows} clock={clock} />
+}
+
+/** The signals and hazards in `rows` still active on `clock`. */
+export function RiderSignalPins({
+  rows,
+  clock,
+}: {
+  rows: RosterRider[]
+  clock: RelayClock | null
+}) {
+  return rows.flatMap((rider) => [
+    rider.signal ? (
+      <RiderPinMarker
+        key={`signal-${rider.id}`}
+        rider={rider}
+        pin={rider.signal}
+        clock={clock}
+        info={riderSignalKindInfo(rider.signal.kind)}
+      />
+    ) : null,
+    rider.hazard ? (
+      <RiderPinMarker
+        key={`hazard-${rider.id}`}
+        rider={rider}
+        pin={rider.hazard}
+        clock={clock}
+        info={rideHazardKindInfo(rider.hazard.kind)}
+      />
+    ) : null,
+  ])
+}
+
+/**
+ * A Rider's active signal or hazard, pinned where it was sent. Apart from the presence pin, so it
+ * stays put while the sender moves on or goes away. In its kind's hue, like its Ride Notice, roster
+ * badge, and picker tile, and never muted by a stale presence. The pin stands on a stem above its
+ * spot, clear of a presence dot and name label that sit on the same spot while the sender has not
+ * moved.
+ */
+function RiderPinMarker({
+  rider,
+  pin: rawPin,
+  clock,
+  info,
+}: {
+  rider: RosterRider
+  pin: GroupRidePin
+  clock: RelayClock | null
+  info: PinKindInfo | null
+}) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
+  const pin = useActivePin(rawPin, clock)
+  if (!pin || !info) return null
+  const color = accents[info.hue].color
+
+  return (
+    <InMapMarker coordinate={[pin.lng, pin.lat]}>
+      <View
+        style={styles.signalMarker}
+        accessibilityLabel={`${rider.name || 'Rider'}: ${info.label}`}
+      >
+        <PinKindBadge
+          info={info}
+          color={color}
+          size={SIGNAL_PIN_SIZE}
+          strokeWidth={2}
+          fill={theme.alpha(neutral.surfaceDeep, 0.85)}
+          weight="bold"
+        />
+        <View style={[styles.signalStem, { backgroundColor: color }]} />
+        <View
+          style={[styles.signalFoot, { backgroundColor: color, borderColor: neutral.surfaceDeep }]}
+        />
+      </View>
+    </InMapMarker>
+  )
+}
+
+// The stem lifts the signal pin off its spot, clear of most of a presence marker on the same spot,
+// and ends in a dot on the spot itself. A marker is anchored at its centre, so bottom padding
+// mirrors pin and stem to put that centre on the dot's centre.
+const SIGNAL_PIN_SIZE = 40
+const SIGNAL_STEM_HEIGHT = 22
+const SIGNAL_FOOT_SIZE = 8
 const RIDER_LABEL_GAP = 4
 const RIDER_LABEL_HEIGHT = 20
 
 const styles = StyleSheet.create({
+  signalMarker: {
+    alignItems: 'center',
+    paddingBottom: SIGNAL_PIN_SIZE + SIGNAL_STEM_HEIGHT,
+  },
+  signalFoot: {
+    width: SIGNAL_FOOT_SIZE,
+    height: SIGNAL_FOOT_SIZE,
+    borderRadius: SIGNAL_FOOT_SIZE / 2,
+    borderWidth: 1.5,
+  },
+  signalStem: {
+    width: 2,
+    height: SIGNAL_STEM_HEIGHT,
+    borderRadius: 1,
+  },
   // A marker is anchored at its centre. The top padding mirrors the label below the dot, so that
   // centre is the dot and the rider's coordinate is not somewhere between dot and label.
   riderMarker: {

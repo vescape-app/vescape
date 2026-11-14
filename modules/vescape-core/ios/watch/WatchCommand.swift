@@ -8,7 +8,8 @@ import Foundation
 /// fire-and-forget with no delivery guarantee is exactly right — a dropped wake tick is covered by
 /// the next one, and the phone's own dead-man covers the tick that never comes.
 ///
-/// The payload is two bytes — `[kind, value]` — read leniently so a wrist newer than the phone
+/// The payload is `[kind, value]`, plus a third byte for a notice dismiss (`[kind, id, rev]`), read
+/// leniently so a wrist newer than the phone
 /// degrades to "unknown kind, ignored" rather than to a misread command. The byte layout is
 /// Android's, verbatim, so the two wrists stay one protocol.
 ///
@@ -23,6 +24,8 @@ enum WatchCommandKind {
   /// Wrist Remote Tilt: an absolute lock, and the reset that eases it back to neutral.
   static let tiltLock: UInt8 = 4
   static let tiltCancel: UInt8 = 5
+  /// Ride Notice dismiss.
+  static let dismissNotice: UInt8 = 6
 }
 
 /// How long the phone keeps pushing frames at the rider's cadence after the last wrist wake tick.
@@ -112,6 +115,10 @@ enum WatchCommand: Equatable {
 
   /// Ease tilt back to neutral — the same cancel the phone pad sends.
   case tiltCancel
+
+  /// Dismiss the Ride Notice holding this `id` at this `rev` (each 0..255). Process-wide, no Board
+  /// Session needed; an id that is no longer active, or has moved past `rev`, is ignored by the engine.
+  case dismissNotice(id: Int, rev: Int)
 }
 
 /// Pure bytes <-> command. The encoder is the wrist's, the decoder the phone's; they live together
@@ -131,6 +138,8 @@ enum WatchCommandCodec {
       return Data([WatchCommandKind.tiltLock, UInt8(min(max(value, 0), 255))])
     case .tiltCancel:
       return Data([WatchCommandKind.tiltCancel, 0])
+    case .dismissNotice(let id, let rev):
+      return Data([WatchCommandKind.dismissNotice, UInt8(min(max(id, 0), 255)), UInt8(min(max(rev, 0), 255))])
     }
   }
 
@@ -157,6 +166,9 @@ enum WatchCommandCodec {
       return .tiltLock(Int(value))
     case WatchCommandKind.tiltCancel:
       return .tiltCancel
+    case WatchCommandKind.dismissNotice:
+      guard bytes.count >= 3 else { return nil }
+      return .dismissNotice(id: Int(value), rev: Int(bytes[bytes.startIndex + 2]))
     default:
       return nil
     }

@@ -25,6 +25,7 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     func pushWeather(_ weather: WatchWeather) {}
     func pushRoute(_ payload: [String: Any]) {}
     func pushBoard(_ board: WatchBoardLights) {}
+    func pushRideNotices(_ notices: [RideNotice]) {}
     func pushLastBattery(_ battery: WatchLastBattery?) { batteries.append(battery) }
   }
   private final class Sources: WatchMirrorSources {
