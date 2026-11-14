@@ -1,6 +1,7 @@
 package expo.modules.vescapecore
 
 import android.os.Handler
+import android.os.SystemClock
 import android.util.Log
 import expo.modules.vescapecore.appstatus.OnlineCapability
 import expo.modules.vescapecore.geo.GeoMath
@@ -107,6 +108,8 @@ internal class GroupRideObserver(
     private var lastSignalAvailability: Map<String, Any?>? = null
     /** Relay clock (epoch ms) of [lastRoster]; null from relays that predate it. */
     private var lastRosterNow: Long? = null
+    /** Monotonic time [lastRosterNow] was taken at, to advance it when the roster is replayed. */
+    private var lastRosterReceivedAt = 0L
     /**
      * The rider left while the socket was down, so the relay still holds them in the ride as away.
      * Sent once right after the next `hello`; a create/join before then supersedes it, since the
@@ -248,7 +251,12 @@ internal class GroupRideObserver(
         // Snapshot first: JS drops an active ride that is missing from the ride list.
         emit("onGroupRideSnapshot", mapOf("rides" to knownRides.values.toList()))
         emit("onGroupRideJoined", mapOf("rideId" to joinedRideId))
-        emitRoster(lastRosterRideId, lastRoster, lastRosterNow)
+        // JS times pins from the replayed `now` as if it had just arrived, so advance it first.
+        emitRoster(
+            lastRosterRideId,
+            lastRoster,
+            lastRosterNow?.let { it + SystemClock.elapsedRealtime() - lastRosterReceivedAt },
+        )
         lastSignalAvailability = null
         refreshSignalAvailability()
     }
@@ -469,7 +477,9 @@ internal class GroupRideObserver(
         }
         pendingPins.remove(intent.slot)
         if (supports(intent.slot)) {
-            send(ws, intent.frame())
+            // A socket already closing refuses the frame: hold it for the rejoin like an offline
+            // intent, unless a newer one took the slot meanwhile.
+            if (!send(ws, intent.frame())) pendingPins.putIfAbsent(intent.slot, intent)
         } else {
             Log.w(TAG, "pin ignored: relay does not support ${intent.slot.relayFeature}")
         }
@@ -787,6 +797,7 @@ internal class GroupRideObserver(
         lastRoster = riders
         lastRosterRiders = riders.mapNotNull(::rosterRider)
         lastRosterNow = now
+        lastRosterReceivedAt = SystemClock.elapsedRealtime()
         emit("onGroupRideRoster", mapOf("rideId" to rideId, "riders" to riders, "now" to now))
     }
 

@@ -3395,8 +3395,9 @@ export function leaveGroupRide(): void {
 }
 
 /**
- * Raise a Rider Signal at the latest GPS fix. Native rejects it without a fix from the last 30 s or
- * inside a Privacy Zone, and holds it for the rejoin while the relay is out of reach.
+ * Raise a Rider Signal at the latest GPS fix. Native rejects it without a fix from the last 30 s,
+ * sends it from inside a Privacy Zone too (an explicit opt-in), and holds it for the rejoin while
+ * the relay is out of reach.
  */
 export function sendGroupRideSignal(kind: RiderSignalKind): void {
   if (E2E_ENABLED) return

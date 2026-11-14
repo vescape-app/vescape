@@ -57,6 +57,8 @@ internal final class GroupRideObserver: NSObject {
   private var lastSignalAvailability: [String: Bool]?
   /// Relay clock (epoch ms) of `lastRoster`; nil from relays that predate it.
   private var lastRosterNow: Int64?
+  /// Monotonic time `lastRosterNow` was taken at, to advance it when the roster is replayed.
+  private var lastRosterReceivedAt: Int64 = 0
   /// The rider left while the socket was down, so the relay still holds them in the ride as away.
   /// Sent once right after the next `hello`; a create/join before then supersedes it, since the
   /// relay leaves the previous ride itself.
@@ -198,7 +200,12 @@ internal final class GroupRideObserver: NSObject {
     // Snapshot first: JS drops an active ride that is missing from the ride list.
     emit("onGroupRideSnapshot", ["rides": knownRides.map { $0.ride }])
     emit("onGroupRideJoined", ["rideId": joinedRideId])
-    emitRoster(lastRosterRideId, lastRoster, now: lastRosterNow)
+    // JS times pins from the replayed `now` as if it had just arrived, so advance it first.
+    emitRoster(
+      lastRosterRideId,
+      lastRoster,
+      now: lastRosterNow.map { $0 + Self.monotonicMs() - lastRosterReceivedAt }
+    )
     lastSignalAvailability = nil
     refreshSignalAvailability()
   }
@@ -396,7 +403,18 @@ internal final class GroupRideObserver: NSObject {
     }
     pendingPins[intent.slot] = nil
     if supports(intent.slot) {
-      send(ws, intent.frame())
+      // A frame the socket fails to send is held for the rejoin like an offline intent, unless a
+      // newer one took the slot or the Rider moved to another ride meanwhile.
+      let rideId = desiredRideId
+      send(ws, intent.frame()) { [self] in
+        guard desiredRideId == rideId, pendingPins[intent.slot] == nil else { return }
+        // A newer socket may have rejoined already: send it there now, else hold it for the rejoin.
+        if !isCurrentSocket(ws), linkOpen, joinedRideId != nil {
+          submitPin(intent)
+        } else {
+          pendingPins[intent.slot] = intent
+        }
+      }
     } else {
       NSLog("[GroupRide] pin ignored: relay does not support \(intent.slot.relayFeature)")
     }
@@ -631,7 +649,7 @@ internal final class GroupRideObserver: NSObject {
     send(task, join)
   }
 
-  private func send(_ task: GroupRideSocket, _ frame: [String: Any]) {
+  private func send(_ task: GroupRideSocket, _ frame: [String: Any], onFailure: (() -> Void)? = nil) {
     let text: String
     do {
       let data = try JSONSerialization.data(withJSONObject: frame)
@@ -646,6 +664,7 @@ internal final class GroupRideObserver: NSObject {
     task.sendText(text) { [weak self] error in
       guard let error, let self else { return }
       self.onMain {
+        onFailure?()
         guard self.isCurrentSocket(task) else { return }
         NSLog("[GroupRide] send failed: \(error.localizedDescription)")
         self.scheduleReconnect()
@@ -781,7 +800,13 @@ internal final class GroupRideObserver: NSObject {
     lastRoster = riders
     lastRosterRiders = riders.compactMap(Self.rosterRider)
     lastRosterNow = now
+    lastRosterReceivedAt = Self.monotonicMs()
     emit("onGroupRideRoster", ["rideId": rideId, "riders": riders, "now": now])
+  }
+
+  /// Milliseconds on a clock that keeps counting while the device sleeps (Android `elapsedRealtime`).
+  private static func monotonicMs() -> Int64 {
+    Int64(clock_gettime_nsec_np(CLOCK_MONOTONIC) / 1_000_000)
   }
 
   // @parity /modules/vescape-core/src/index.ts `GroupRideConnectionState`
