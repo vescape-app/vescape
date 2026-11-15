@@ -257,7 +257,7 @@ internal final class GroupRideObserver: NSObject {
 
   func onFix(lat: Double, lng: Double) {
     onMain { [self] in
-      guard !stopped, let cue = hazardCues.fix(lat: lat, lng: lng) else { return }
+      guard !stopped, let cue = hazardCues.fix(lat: lat, lng: lng, relayNow: publicRide.relayNow()) else { return }
       onCue(cue)
     }
   }

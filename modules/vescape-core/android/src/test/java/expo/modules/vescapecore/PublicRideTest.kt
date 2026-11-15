@@ -422,4 +422,31 @@ class PublicRideTest {
         assertFalse(ride.needsLink)
     }
 
+    @Test
+    fun `link and account resets forget peers but only identity drops pending own intents`() {
+        for (changeAccount in listOf(false, true)) {
+            setUp()
+            goLive()
+            val peer = JSONObject("""{"accountId":"friend","nick":"Ola","signal":{"kind":"serious","lat":52,"lng":21,"startedAt":5,"expiresAt":9000000},"now":6}""")
+            ride.handle("public-pins", peer)
+            ride.linkLost()
+            assertTrue(pinUpdates.last().first.isEmpty())
+            assertTrue(pinUpdates.last().second.isEmpty())
+            assertTrue((events.last { it.first == "onPublicPins" }.second["pins"] as List<*>).isEmpty())
+            ride.submitPin(RiderPinIntent.Send(RiderSignalKind.WAIT, 52.0, 21.0))
+            if (changeAccount) {
+                // A former Account's far-away friend must not survive an identity reset either.
+                ride.handle("public-pins", peer)
+                ride.setAccount("other")
+                assertTrue(pinUpdates.last().first.isEmpty())
+                ride.set(PublicRideSwitch(true, null))
+            }
+            sent.clear()
+            ride.linkReady(setOf("public-ride"), if (changeAccount) "other" else "acc")
+            ride.handle("public-status", JSONObject().put("on", true))
+            assertEquals(!changeAccount, "public-signal" in types())
+            assertTrue((events.last { it.first == "onPublicPins" }.second["pins"] as List<*>).isEmpty())
+        }
+    }
+
 }

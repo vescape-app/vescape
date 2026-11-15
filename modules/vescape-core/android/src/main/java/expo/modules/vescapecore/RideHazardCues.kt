@@ -27,10 +27,10 @@ internal class RideHazardCues {
     }
 
     /** A new device fix: `groupRide.hazard.<kind>` of the nearest hazard just approached, else null. */
-    fun fix(lat: Double, lng: Double): String? {
+    fun fix(lat: Double, lng: Double, relayNow: Long): String? {
         var cue: Pair<Key, Double>? = null
         for ((key, hazard) in hazards) {
-            if (key in announced) continue
+            if (hazard.expiresAt <= relayNow || key in announced) continue
             val distance = GeoMath.distanceMeters(lat, lng, hazard.lat, hazard.lng)
             val previous = distances.put(key, distance)
             val closing = previous != null && previous - distance >= MIN_CLOSING_M

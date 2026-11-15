@@ -280,7 +280,7 @@ internal class GroupRideObserver(
     fun onFix(lat: Double, lng: Double) {
         handler.post {
             if (stopped) return@post
-            hazardCues.fix(lat, lng)?.let(onCue)
+            hazardCues.fix(lat, lng, publicRide.relayNow())?.let(onCue)
         }
     }
 
@@ -481,7 +481,7 @@ internal class GroupRideObserver(
     private fun onPublicPins(signals: List<SignalRider>, hazards: Map<String, RideHazard>, relayNow: Long?) {
         hazardCues.roster(hazards)
         val update = signalNotices.roster(signals, null, relayNow, System.currentTimeMillis())
-        update.clears.forEach(RideNotices::clear)
+        update.clears.forEach { RideNotices.clear(it) }
         update.posts.forEach { RideNotices.post(it.key, it.content, it.revision) }
     }
 

@@ -394,4 +394,29 @@ final class PublicRideTests: XCTestCase {
     XCTAssertFalse(ride.needsLink)
   }
 
+  func testLinkAndAccountResetsForgetPeersButOnlyIdentityDropsPendingOwnIntents() {
+    for changeAccount in [false, true] {
+      setUp()
+      goLive()
+      let peer: [String: Any] = ["accountId": "friend", "nick": "Ola", "signal": ["kind": "serious", "lat": 52, "lng": 21, "startedAt": 5, "expiresAt": 9_000_000], "now": 6]
+      ride.handle(type: "public-pins", json: peer)
+      ride.linkLost()
+      XCTAssertTrue(pinUpdates.last!.0.isEmpty)
+      XCTAssertTrue(pinUpdates.last!.1.isEmpty)
+      XCTAssertTrue((events.last { $0.0 == "onPublicPins" }!.1["pins"] as! [Any]).isEmpty)
+      ride.submitPin(.send(slot: .signal, kind: "wait", lat: 52, lng: 21))
+      if changeAccount {
+        ride.handle(type: "public-pins", json: peer)
+        ride.setAccount("other")
+        XCTAssertTrue(pinUpdates.last!.0.isEmpty)
+        ride.set(PublicRideSwitch(on: true, until: nil))
+      }
+      sent = []
+      ride.linkReady(features: ["public-ride"], authenticatedAccount: changeAccount ? "other" : "acc")
+      ride.handle(type: "public-status", json: ["on": true])
+      XCTAssertEqual(types.contains("public-signal"), !changeAccount)
+      XCTAssertTrue((events.last { $0.0 == "onPublicPins" }!.1["pins"] as! [Any]).isEmpty)
+    }
+  }
+
 }

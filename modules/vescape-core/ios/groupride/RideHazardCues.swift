@@ -32,9 +32,9 @@ struct RideHazardCues {
   }
 
   /// A new device fix: `groupRide.hazard.<kind>` of the nearest hazard just approached, else nil.
-  mutating func fix(lat: Double, lng: Double) -> String? {
+  mutating func fix(lat: Double, lng: Double, relayNow: Int64) -> String? {
     var cue: (key: Key, distance: Double)?
-    for (key, hazard) in hazards where !announced.contains(key) {
+    for (key, hazard) in hazards where hazard.expiresAt > relayNow && !announced.contains(key) {
       let distance = GeoMath.distanceMeters(lat, lng, hazard.lat, hazard.lng)
       let previous = distances.updateValue(distance, forKey: key)
       let closing = previous.map { $0 - distance >= Self.minClosingM } ?? false

@@ -154,6 +154,7 @@ internal class PublicRide(
         linkReady = false
         authenticatedAccount = null
         dropOwnPins()
+        resetReceived()
         // Kept positions are the old Account's: never sent under another.
         discardMissed()
         if (hadAccount && switch.on) {
@@ -202,10 +203,7 @@ internal class PublicRide(
         missedInFlight = 0
         sentOn = false
         live = false
-        if (riders.isNotEmpty()) {
-            riders.clear()
-            emitRiders()
-        }
+        resetReceived()
         emitStatus()
     }
 
@@ -457,6 +455,18 @@ internal class PublicRide(
         onLinkDemandChanged()
     }
 
+    /** Link and identity resets must forget peer pins, including far-away friends. */
+    private fun resetReceived() {
+        riders.clear()
+        ridersNow = null
+        emitRiders()
+        pins.clear()
+        pinsNow = null
+        pinsReceivedAt = 0L
+        emitPins()
+        onPins(emptyList(), emptyMap(), null)
+    }
+
     private fun dropOwnPins() {
         pendingPins.clear()
         if (ownPins.isEmpty()) return
@@ -465,7 +475,7 @@ internal class PublicRide(
     }
 
     /** The relay clock now, advanced from the last `public-pins`; the phone clock before one. */
-    private fun relayNow(): Long = pinsNow?.let { it + now() - pinsReceivedAt } ?: now()
+    fun relayNow(): Long = pinsNow?.let { it + now() - pinsReceivedAt } ?: now()
 
     private fun sendNearby(point: Pair<Double, Double>) {
         send(JSONObject().put("type", "nearby").put("lat", point.first).put("lng", point.second))
