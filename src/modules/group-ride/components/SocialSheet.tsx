@@ -1,40 +1,30 @@
-import { useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
+import { useRouter } from 'expo-router'
+import { SignInIcon, UserCircleIcon, WarningIcon } from 'phosphor-react-native'
+import type { PublicRideStatus } from 'vescape-core'
 import { Text } from '@/components/base/Text'
-import {
-  BroadcastIcon,
-  CrosshairIcon,
-  UserCircleIcon,
-  PlusIcon,
-  SignOutIcon,
-  UsersIcon,
-  WarningIcon,
-  XIcon,
-} from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
-import { Switch } from '@/components/controls/Switch'
-import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { InputWidget } from '@/components/widgets/InputWidget'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
+import { publicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { theme } from '@/constants/theme'
-import { NearbyRideBody, RosterList } from '@/modules/group-ride/components/GroupRideRoster'
-import type { RosterRider } from '@/modules/group-ride/lib/roster'
+import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
 import { RiderNickForm } from '@/modules/profile/components/RiderNickForm'
+import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
+import { routes } from '@/navigation/routes'
 
-type FocusSignal = (point: { latitude: number; longitude: number }) => void
-
-/** `onFocusSignal` fires when a roster row with an active signal is tapped; the host closes the
- *  sheet and focuses the map there. */
-export function SocialSheet({ onFocusSignal }: { onFocusSignal?: FocusSignal }) {
+/** `onNavigate` fires before the sheet routes away (sign-in), so the host can close it. */
+export function SocialSheet({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <View testID="social-sheet" style={styles.list}>
       <RiderNameWidget />
-      <GroupRideWidget onFocusSignal={onFocusSignal} />
+      <PublicRideWidget onNavigate={onNavigate} />
     </View>
   )
 }
@@ -90,207 +80,95 @@ function LocalRiderNameWidget() {
   )
 }
 
-function GroupRideWidget({ onFocusSignal }: { onFocusSignal?: FocusSignal }) {
-  useRenderRateWarning('GroupRideWidget')
-  const activeRideId = useGroupRideStore((s) => s.activeRideId)
-  const rides = useGroupRideStore((s) => s.rides)
-  const nearby = useGroupRideStore((s) => s.nearby)
-  const rosterRows = useGroupRideStore((s) => s.rosterRows)
+/** Why the switch turned itself off, for the rider. */
+const ENDED: Record<NonNullable<PublicRideStatus['reason']>, string> = {
+  replaced: 'Turned off: you went public on another phone.',
+  'end-time': 'Your public ride time is up.',
+  'away-expired': 'You were offline too long. Back on when you reconnect.',
+  'signed-out': 'Turned off: you signed out.',
+  refused: 'The server turned it off. Check your nick and sign-in.',
+}
+
+/** The public ride switch. Native owns it; this only shows it and sends the rider's choice. */
+function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
+  useRenderRateWarning('PublicRideWidget')
+  const router = useRouter()
   const connection = useGroupRideStore((s) => s.connection)
-  const hasLocation = useGroupRideStore((s) => s.ownLocation !== null)
-  const createRide = useGroupRideStore((s) => s.createRide)
-  const leaveRide = useGroupRideStore((s) => s.leaveRide)
-  const joinRide = useGroupRideStore((s) => s.joinRide)
-  const publicRiding = useGroupRideStore((s) => s.publicRiding)
-  const setPublicRiding = useGroupRideStore((s) => s.setPublicRiding)
+  const status = useGroupRideStore((s) => s.publicRide)
+  const setPublicRide = useGroupRideStore((s) => s.setPublicRide)
+  const signedIn = useDeviceAccountReady()
+  const hasNick = useRiderProfileStore((s) => s.profile?.nick != null)
+  const nowMs = useMinuteNow()
 
-  const [nearbyDismissed, setNearbyDismissed] = useState(false)
-
-  const activeRide = rides.find((r) => r.id === activeRideId)
-  const active = activeRideId != null
-  const connected = connection === 'connected'
   // Native gates the relay socket when the installed version is Online/App Blocked and reports it
-  // as `blocked`; Group Ride is unusable until the app updates, so replace the live UI entirely.
-  const blocked = connection === 'blocked'
-  const showNearby = !active && nearby.length > 0 && !nearbyDismissed
-  const accent = theme.palette.groupRide.color
-  const rideName = activeRide?.name?.trim() || 'Your group ride'
-
-  if (blocked) {
+  // as `blocked`; the public ride is unusable until the app updates.
+  if (connection === 'blocked') {
     return (
-      <CanvasWidget
-        icon={BroadcastIcon}
-        title="Group Ride"
-        accent={accent}
-        surface="secondary"
-        height={240}
-        footer={
-          <Button
-            label="Create"
-            variant="groupRide"
-            icon={PlusIcon}
-            onPress={() => {}}
-            disabled
-            style={styles.fill}
-            accessibilityLabel="Create group ride"
-          />
-        }
-      >
+      <View style={styles.card}>
         <Placeholder icon={WarningIcon} description="Not available in this version." />
-      </CanvasWidget>
+      </View>
     )
   }
 
-  const footer = active ? (
-    <Button
-      label="Leave"
-      variant="destructive"
-      icon={SignOutIcon}
-      onPress={leaveRide}
-      style={styles.fill}
-      accessibilityLabel="Leave group ride"
-    />
-  ) : showNearby ? (
-    <Button
-      label="Join"
-      variant="groupRide"
-      onPress={() => joinRide(nearby[0].ride.id)}
-      disabled={!connected}
-      style={styles.fill}
-      accessibilityLabel="Join nearest group ride"
-    />
-  ) : (
-    <Button
-      label="Create"
-      variant="groupRide"
-      icon={PlusIcon}
-      onPress={() => createRide('')}
-      disabled={!hasLocation || !connected}
-      style={styles.fill}
-      accessibilityLabel="Create group ride"
-    />
-  )
+  const ready = signedIn && hasNick && status.supported
+  const hint = !signedIn
+    ? null
+    : !hasNick
+      ? 'Pick a nick above to ride public.'
+      : !status.supported
+        ? connection === 'connected'
+          ? 'Public ride is not available on the server yet.'
+          : 'Connecting to server…'
+        : status.on && !status.live
+          ? 'You go public when your board connects.'
+          : !status.on && status.reason
+            ? ENDED[status.reason]
+            : null
 
-  const status = active ? (
-    <LiveBadge connected={connection === 'connected'} />
-  ) : showNearby ? (
-    <Pressable
-      onPress={() => setNearbyDismissed(true)}
-      hitSlop={10}
-      accessibilityLabel="Dismiss nearby rides"
-    >
-      <XIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
-    </Pressable>
-  ) : null
-
-  const action = (
-    <View style={styles.headerActions}>
-      {status}
-      <Text style={styles.fieldLabel}>Auto</Text>
-      <Switch
-        value={publicRiding}
-        onValueChange={setPublicRiding}
-        accent={accent}
-        accessibilityLabel="Ride publicly"
+  return (
+    <View style={styles.card}>
+      <PublicRideSelector
+        value={publicRideChoice(status, nowMs)}
+        live={status.live}
+        disabled={!ready}
+        onValueChange={setPublicRide}
       />
-    </View>
-  )
-
-  return (
-    <CanvasWidget
-      icon={BroadcastIcon}
-      title={active ? rideName : 'Group Ride'}
-      accent={accent}
-      surface="secondary"
-      active={active}
-      height={active && rosterRows.length > 0 ? undefined : 240}
-      footer={footer}
-      action={action}
-    >
-      {active ? (
-        rosterRows.length > 0 ? (
-          <JoinedRoster rows={rosterRows} onFocusSignal={onFocusSignal} />
-        ) : (
-          <Placeholder icon={UsersIcon} description="Waiting for other riders to join." />
-        )
-      ) : publicRiding ? (
-        <Placeholder
-          icon={BroadcastIcon}
-          description="Auto is on. When your board connects, you join the nearest group ride or start one."
-        />
-      ) : showNearby ? (
-        <NearbyRideBody nearby={nearby} />
-      ) : !connected ? (
-        <Placeholder icon={BroadcastIcon} description="Connecting to server…" />
-      ) : !hasLocation ? (
-        <Placeholder icon={CrosshairIcon} description="Finding your location…" />
-      ) : (
-        <Placeholder icon={BroadcastIcon} description="No group rides near you right now." />
-      )}
-    </CanvasWidget>
-  )
-}
-
-/** The roster with live distances. Own GPS ticks re-render only this, not the whole widget. */
-function JoinedRoster({
-  rows,
-  onFocusSignal,
-}: {
-  rows: RosterRider[]
-  onFocusSignal?: FocusSignal
-}) {
-  const ownLocation = useGroupRideStore((s) => s.ownLocation)
-  return <RosterList rows={rows} ownLocation={ownLocation} onFocusSignal={onFocusSignal} />
-}
-
-/** Connection-state pill in the header: green "LIVE" when the relay socket is up, amber
- *  "OFFLINE" when presence can't reach the server (e.g. no internet). */
-function LiveBadge({ connected }: { connected: boolean }) {
-  const tone = connected ? theme.palette.groupRide : theme.palette.amber
-  return (
-    <View style={[styles.badge, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-      <View style={[styles.badgeDot, { backgroundColor: tone.color }]} />
-      <Text style={[styles.badgeLabel, { color: tone.light }]}>
-        {connected ? 'LIVE' : 'OFFLINE'}
+      <Text style={styles.notice}>
+        Your ride is stored on the server and may appear on vescape.app when you ride with others.
       </Text>
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      {signedIn ? null : (
+        <Button
+          label="Sign in to ride public"
+          variant="groupRide"
+          icon={SignInIcon}
+          onPress={() => {
+            onNavigate?.()
+            router.push(routes.signIn)
+          }}
+          accessibilityLabel="Sign in to ride public"
+        />
+      )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  badgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  badgeLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  fieldLabel: {
-    color: theme.neutral.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  fill: {
-    flex: 1,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  card: {
     gap: 10,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: theme.neutral.surfaceDeep,
+  },
+  notice: {
+    color: theme.neutral.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  hint: {
+    color: theme.neutral.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   list: {
     gap: 12,

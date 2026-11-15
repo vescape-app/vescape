@@ -103,6 +103,16 @@ internal final class GroupRideObserver: NSObject {
   /// Opens the relay socket; tests stand in a fake to see the frames. Nil opens a URLSession task.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `sockets`
   private let makeSocket: ((URLRequest) -> GroupRideSocket)?
+  /// The Device Token the upgrade carries, so the relay knows the Account; nil signed out.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `deviceToken`
+  private let deviceToken: () -> String?
+  /// The last position the phone knew, for looking around without a fresh fix.
+  private let lastKnownLocation: () -> (lat: Double, lng: Double)?
+  private var expiryWork: Cancellable?
+
+  /// The public ride half of this socket. Main thread, like the rest of the observer.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `publicRide`
+  private var publicRide: PublicRide!
 
   init(
     emit: @escaping (String, [String: Any?]) -> Void,
@@ -112,8 +122,14 @@ internal final class GroupRideObserver: NSObject {
     onCue: @escaping (String) -> Void = { _ in },
     ownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil },
     signalContext: @escaping () -> RiderSignalContext = { RiderSignalContext(fix: nil, insidePrivacyZone: true) },
+    deviceToken: @escaping () -> String? = { nil },
+    persistPublicRide: @escaping (PublicRideSwitch) -> Void = { _ in },
+    lastKnownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil },
+    now: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
     makeSocket: ((URLRequest) -> GroupRideSocket)? = nil
   ) {
+    self.deviceToken = deviceToken
+    self.lastKnownLocation = lastKnownLocation
     self.signalContext = signalContext
     self.makeSocket = makeSocket
     self.onCue = onCue
@@ -122,10 +138,31 @@ internal final class GroupRideObserver: NSObject {
     self.online = online
     self.onParticipationChanged = onParticipationChanged
     self.scheduler = scheduler
+    super.init()
+    publicRide = PublicRide(
+      now: now,
+      persist: persistPublicRide,
+      scheduleExpiry: { [weak self] delay in
+        guard let self else { return }
+        self.expiryWork?.cancel()
+        self.expiryWork = delay.map { delay in
+          scheduler.postDelayed(delay) { [weak self] in self?.publicRide.expire() }
+        }
+      },
+      emit: emit,
+      send: { [weak self] frame in
+        guard let self, self.linkOpen, let ws = self.webSocket else { return false }
+        self.send(ws, frame)
+        return true
+      }
+    )
   }
 
   /// True while the observe connection should be kept alive.
   var active: Bool { !stopped }
+
+  /// The public ride or a look-around needs the socket, so the owner keeps it up.
+  var publicRideNeedsLink: Bool { publicRide.needsLink }
 
   /// True while the rider is in (or rejoining) a specific ride. Distinct from `active`: the app
   /// observes the lobby whenever it is open, but only real ride participation should block
@@ -169,6 +206,8 @@ internal final class GroupRideObserver: NSObject {
     // directly rather than through JS — tearing down on a block, resuming when it clears.
     onlineUnsub = online.addListener { [weak self] in self?.onOnlineChanged() }
     connect()
+    // A fresh JS runtime learns the switch even before the relay answers.
+    publicRide.resync()
   }
 
   func stop() {
@@ -191,6 +230,7 @@ internal final class GroupRideObserver: NSObject {
     lastRosterNow = nil
     stopHeartbeat()
     stopPing()
+    publicRide.linkLost()
     emitConnection("idle")
   }
 
@@ -208,6 +248,7 @@ internal final class GroupRideObserver: NSObject {
     )
     lastSignalAvailability = nil
     refreshSignalAvailability()
+    publicRide.resync()
   }
 
   /// React to an App Status change while observing: tear down the moment online work is blocked,
@@ -237,6 +278,7 @@ internal final class GroupRideObserver: NSObject {
     knownRides = []
     stopHeartbeat()
     stopPing()
+    publicRide.linkLost()
     emit("onGroupRideJoined", ["rideId": nil])
     emitRoster(nil, [])
     emitConnection("blocked")
@@ -422,10 +464,57 @@ internal final class GroupRideObserver: NSObject {
 
   func pushPresence(_ presence: RiderPresence) {
     onMain { [self] in
-      guard !stopped, let ws = webSocket, joinedRideId != nil else { return }
+      guard !stopped else { return }
+      if let at = presence.at { publicRide.position(presence, at: at) }
+      guard let ws = webSocket, joinedRideId != nil else { return }
       lastPresence = presence
       send(ws, ["type": "presence", "presence": presence.toJson()])
     }
+  }
+
+  /// Start the public ride from the persisted switch and the signed-in Account.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `loadPublicRide`
+  func loadPublicRide(_ stored: PublicRideSwitch, accountId: String?) {
+    onMain { [self] in publicRide.load(stored, accountId: accountId) }
+  }
+
+  /// The rider moved the switch; a refused change (signed out, end time past) re-emits the status.
+  func setPublicRide(_ next: PublicRideSwitch) {
+    onMain { [self] in
+      if !publicRide.set(next) { publicRide.resync() }
+    }
+  }
+
+  func setBoardConnected(_ connected: Bool) {
+    onMain { [self] in publicRide.setBoardConnected(connected) }
+  }
+
+  /// The signed-in Account changed. The public ride ends, and a live socket reconnects so the relay
+  /// sees the new credential.
+  func setAccount(_ accountId: String?) {
+    onMain { [self] in
+      guard publicRide.setAccount(accountId), !stopped, let ws = webSocket else { return }
+      webSocket = nil
+      ws.close()
+      reconnectAttempt = 0
+      scheduleReconnect()
+    }
+  }
+
+  /// Look around: watch public riders near the latest fix, or the last known position without one.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `watchPublicRiders`
+  func watchPublicRiders() {
+    onMain { [self] in
+      guard let point = ownLocation() ?? lastKnownLocation() else {
+        NSLog("[GroupRide] look-around ignored: no known position")
+        return
+      }
+      publicRide.watchNearby(point)
+    }
+  }
+
+  func stopWatchingPublicRiders() {
+    onMain { [self] in publicRide.stopWatchingNearby() }
   }
 
   private func connect() {
@@ -436,7 +525,9 @@ internal final class GroupRideObserver: NSObject {
       emitConnection("blocked")
       return
     }
-    guard let request = GroupRideOnlineGate.buildObserveRequest(url: url, appVersion: online.appVersion) else {
+    guard let request = GroupRideOnlineGate.buildObserveRequest(
+      url: url, appVersion: online.appVersion, deviceToken: deviceToken()
+    ) else {
       NSLog("[GroupRide] observe URL is not usable: \(url)")
       return
     }
@@ -507,6 +598,7 @@ internal final class GroupRideObserver: NSObject {
     }
     joinedRideId = nil
     stopHeartbeat()
+    publicRide.linkLost()
     emitConnection("disconnected")
     let delay = Self.reconnectDelaysSeconds[min(reconnectAttempt, Self.reconnectDelaysSeconds.count - 1)]
     reconnectAttempt += 1
@@ -533,6 +625,7 @@ internal final class GroupRideObserver: NSObject {
       relayFeatures = Set((json["features"] as? [Any] ?? []).compactMap { $0 as? String })
       emit("onGroupRideSnapshot", ["rides": rides])
       refreshSignalAvailability()
+      publicRide.linkReady(features: relayFeatures)
     case "ride-created":
       if let ride = rideSummary(json["ride"] as? [String: Any]) {
         let isNew = !knownRides.contains { $0.id == ride["id"] as? String }
@@ -616,7 +709,12 @@ internal final class GroupRideObserver: NSObject {
       }
       emitRoster(rideId, riders, now: now)
     case "error":
-      if let message = json["message"] as? String, !message.isEmpty { handleError(message) }
+      if let message = json["message"] as? String, !message.isEmpty {
+        publicRide.handleError(message)
+        handleError(message)
+      }
+    case let type?:
+      if publicRide.handle(type: type, json: json) && publicRide.riding { startHeartbeat() }
     default:
       break
     }
@@ -702,7 +800,7 @@ internal final class GroupRideObserver: NSObject {
       "id": id,
       "name": obj["name"] as? String ?? "",
       "presence": Self.presenceMap(obj["presence"] as? [String: Any]),
-      "trail": trailList(obj["trail"] as? [Any]),
+      "trail": Self.trailList(obj["trail"] as? [Any]),
       "stale": obj["stale"] as? Bool ?? false,
       // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
       "away": obj["away"] as? Bool ?? false,
@@ -712,7 +810,8 @@ internal final class GroupRideObserver: NSObject {
     ]
   }
 
-  private func trailList(_ arr: [Any]?) -> [[String: Any?]]? {
+  /// A rider's recent path as JS reads it; nil when the relay sent none.
+  static func trailList(_ arr: [Any]?) -> [[String: Any?]]? {
     guard let arr else { return nil }
     return arr.compactMap { entry in
       guard let point = entry as? [String: Any] else { return nil }
@@ -835,7 +934,9 @@ internal final class GroupRideObserver: NSObject {
 
   private func scheduleHeartbeat() {
     heartbeatWork = scheduler.postDelayed(Int64(Self.heartbeatIntervalSeconds * 1000)) { [weak self] in
-      guard let self, !self.stopped, let ws = self.webSocket, self.joinedRideId != nil else { return }
+      guard let self, !self.stopped, let ws = self.webSocket,
+            self.joinedRideId != nil || self.publicRide.riding
+      else { return }
       // The beat also ages the GPS fix a send needs.
       self.refreshSignalAvailability()
       self.send(ws, ["type": "heartbeat"])
@@ -953,6 +1054,8 @@ internal struct RiderPresence {
   var phoneBattery: Double?
   var boardName: String?
   var target: TargetPoint?
+  /// GPS time of the fix (epoch ms); sent beside the presence on a public ride, never inside it.
+  var at: Int64?
 
   func toJson() -> [String: Any] {
     var json: [String: Any] = ["lat": lat, "lng": lng]

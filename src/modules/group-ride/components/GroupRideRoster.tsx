@@ -21,7 +21,6 @@ import {
   TELEMETRY_LEVEL_COLOR,
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
-import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
 import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
 import { riderHue } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
@@ -206,31 +205,6 @@ function SignalBadge({ kind }: { kind: string }) {
   )
 }
 
-export function NearbyRideBody({ nearby }: { nearby: NearbyRide[] }) {
-  const { formatDistance } = useFormat()
-  const nearest = nearby[0]
-  const ride = nearest.ride
-  const name = ride.name?.trim() || `${ride.creator.name || 'Rider'}'s ride`
-  const extra = nearby.length - 1
-
-  return (
-    <>
-      <Text style={styles.rideName} numberOfLines={1}>
-        {name}
-      </Text>
-      <Text style={styles.rideMeta} numberOfLines={1}>
-        {ride.riderCount} {ride.riderCount === 1 ? 'rider' : 'riders'} ·{' '}
-        {formatDistance(nearest.distanceM)} away
-      </Text>
-      {extra > 0 ? (
-        <Text style={styles.rideMetaDim}>
-          +{extra} more {extra === 1 ? 'ride' : 'rides'} nearby
-        </Text>
-      ) : null}
-    </>
-  )
-}
-
 const DOT_SIZE = 8
 const HEAD_GAP = 6
 
@@ -281,20 +255,6 @@ const styles = StyleSheet.create({
     maxWidth: '45%',
     color: theme.neutral.textPrimary,
     fontSize: 15,
-    fontWeight: '700',
-  },
-  rideMeta: {
-    color: theme.neutral.textSecondary,
-    fontSize: 13,
-  },
-  rideMetaDim: {
-    color: theme.neutral.textSecondary,
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  rideName: {
-    color: theme.neutral.textPrimary,
-    fontSize: 17,
     fontWeight: '700',
   },
   row: {

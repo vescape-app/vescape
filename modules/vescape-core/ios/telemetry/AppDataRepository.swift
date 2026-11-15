@@ -606,7 +606,7 @@ final class AppDataRepository {
     } else if key == "wearMapGaugesPercent" {
       guard let percent = WatchMapGauges.percent(rawValue) else { return }
       value = percent
-    } else if key == "wearAutoLaunchOnConnect" || key == "wearNavArrowEnabled" || key == "wearTelemetryTrailEnabled" || key == "wearTelemetryGroupEnabled" || key == "wearTelemetryRouteEnabled" || key == "wearStreetMapEnabled" || key == "groupRidePublicEnabled" {
+    } else if key == "wearAutoLaunchOnConnect" || key == "wearNavArrowEnabled" || key == "wearTelemetryTrailEnabled" || key == "wearTelemetryGroupEnabled" || key == "wearTelemetryRouteEnabled" || key == "wearStreetMapEnabled" {
       // Strict Bool, like Android: a truthy string persisted here would reach the wrist as a
       // setting the rider never chose.
       guard let flag = rawValue as? Bool else { return }
@@ -661,7 +661,6 @@ final class AppDataRepository {
     "selectedBoardId": NSNull(),
     "riderId": NSNull(),
     "riderName": NSNull(),
-    "groupRidePublicEnabled": false,
     "lastGpsLatitude": NSNull(),
     "lastGpsLongitude": NSNull(),
     "directionPointLatitude": NSNull(),

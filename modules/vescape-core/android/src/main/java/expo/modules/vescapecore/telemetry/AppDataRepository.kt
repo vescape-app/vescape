@@ -509,7 +509,6 @@ class AppDataRepository private constructor(private val context: Context) {
       wearTelemetryRouteEnabled = req("wearTelemetryRouteEnabled", true) { it as? Boolean },
       wearStreetMapEnabled = req("wearStreetMapEnabled", true) { it as? Boolean },
       wearMapGaugesPercent = req("wearMapGaugesPercent", WatchMapGauges.DEFAULT_PERCENT, WatchMapGauges::percent),
-      groupRidePublicEnabled = req("groupRidePublicEnabled", false) { it as? Boolean },
       wearTiltRatePercent = req("wearTiltRatePercent", 20, ::validWearTiltRatePercent),
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },
@@ -608,7 +607,6 @@ class AppDataRepository private constructor(private val context: Context) {
       "wearTelemetryRouteEnabled" -> value as? Boolean ?: return@withContext
       "wearStreetMapEnabled" -> value as? Boolean ?: return@withContext
       "wearMapGaugesPercent" -> WatchMapGauges.percent(value) ?: return@withContext
-      "groupRidePublicEnabled" -> value as? Boolean ?: return@withContext
       "wearTiltRatePercent" ->
         validWearTiltRatePercent(value) ?: return@withContext
       "companionPresenceEnabled" -> value as? Boolean ?: return@withContext
@@ -678,7 +676,6 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearTelemetryRouteEnabled" -> d.wearTelemetryRouteEnabled
         "wearStreetMapEnabled" -> d.wearStreetMapEnabled
         "wearMapGaugesPercent" -> d.wearMapGaugesPercent
-        "groupRidePublicEnabled" -> d.groupRidePublicEnabled
         "wearTiltRatePercent" -> d.wearTiltRatePercent
         "companionPresenceEnabled" -> d.companionPresenceEnabled
         "boardWarningsEnabled" -> d.boardWarningsEnabled
@@ -1063,7 +1060,6 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearTelemetryRouteEnabled" to wearTelemetryRouteEnabled,
   "wearStreetMapEnabled" to wearStreetMapEnabled,
   "wearMapGaugesPercent" to wearMapGaugesPercent,
-  "groupRidePublicEnabled" to groupRidePublicEnabled,
   "wearTiltRatePercent" to wearTiltRatePercent,
   "companionPresenceEnabled" to companionPresenceEnabled,
   "boardWarningsEnabled" to boardWarningsEnabled,

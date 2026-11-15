@@ -18,6 +18,9 @@ const rosterListeners: Listener<{
 const signalAvailabilityListeners: Listener<unknown>[] = []
 const errorListeners: Listener<{ message: string }>[] = []
 const locationListeners: Listener<{ latitude: number; longitude: number }>[] = []
+const publicRideStatusListeners: Listener<unknown>[] = []
+const publicRidersListeners: Listener<{ riders: unknown[]; now: number | null }>[] = []
+const setPublicRide = mock((_on: boolean, _until: number | null) => {})
 
 const createGroupRide = mock(() => {})
 const joinGroupRide = mock(() => {})
@@ -72,6 +75,11 @@ mock.module('vescape-core', () => ({
     subscribe(errorListeners, listener),
   addLocationListener: (listener: Listener<{ latitude: number; longitude: number }>) =>
     subscribe(locationListeners, listener),
+  addPublicRideStatusListener: (listener: Listener<unknown>) =>
+    subscribe(publicRideStatusListeners, listener),
+  addPublicRidersListener: (listener: Listener<{ riders: unknown[]; now: number | null }>) =>
+    subscribe(publicRidersListeners, listener),
+  setPublicRide,
   createGroupRide,
   joinGroupRide,
   leaveGroupRide,
@@ -108,6 +116,8 @@ function resetListeners() {
   signalAvailabilityListeners.length = 0
   errorListeners.length = 0
   locationListeners.length = 0
+  publicRideStatusListeners.length = 0
+  publicRidersListeners.length = 0
 }
 
 beforeEach(async () => {
@@ -118,6 +128,7 @@ beforeEach(async () => {
   updateGroupRideIdentity.mockClear()
   startGroupRideObserve.mockClear()
   stopGroupRideObserve.mockClear()
+  setPublicRide.mockClear()
   getSettings.mockReset()
   getSettings.mockImplementation(async () => ({ riderId: null, riderName: null }))
   updateSetting.mockReset()
@@ -438,4 +449,22 @@ test('a roster carrying the relay clock sets it; one without keeps the last', as
 
   rosterListeners.forEach((listener) => listener({ rideId: 'r1', riders: [], now: null }))
   expect(useGroupRideStore.getState().relayClock?.relayNow).toBe(5_000)
+})
+
+test('the public ride switch mirrors native and sends the end time for hours', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  useGroupRideStore.getState().startObserving()
+
+  const before = Date.now()
+  useGroupRideStore.getState().setPublicRide({ mode: 'hours', hours: 2 })
+  const [on, until] = setPublicRide.mock.calls[0]
+  expect(on).toBe(true)
+  expect(until).toBeGreaterThanOrEqual(before + 2 * 3_600_000)
+
+  useGroupRideStore.getState().setPublicRide({ mode: 'always' })
+  expect(setPublicRide.mock.calls[1]).toEqual([true, null])
+
+  const status = { on: true, until: null, live: true, supported: true, reason: null }
+  publicRideStatusListeners.forEach((listener) => listener(status))
+  expect(useGroupRideStore.getState().publicRide).toEqual(status)
 })

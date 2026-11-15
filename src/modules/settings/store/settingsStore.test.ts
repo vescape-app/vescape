@@ -56,7 +56,6 @@ const BASE: AppSettings = {
   wearTiltRatePercent: 20,
   riderId: null,
   riderName: null,
-  groupRidePublicEnabled: false,
   legalPolicy: null,
   dismissedCommunityMessageIds: [],
 }

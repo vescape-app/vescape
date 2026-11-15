@@ -44,6 +44,10 @@ import expo.modules.vescapecore.location.RIDE_DROPOUT_GRACE_MS
 import expo.modules.vescapecore.location.isPreciseGpsFix
 import expo.modules.vescapecore.GroupRideCues
 import expo.modules.vescapecore.GroupRideObserver
+import expo.modules.vescapecore.GroupRideOnlineGate
+import expo.modules.vescapecore.PublicRideStore
+import expo.modules.vescapecore.PublicRideSwitch
+import expo.modules.vescapecore.auth.DeviceCredentialStore
 import expo.modules.vescapecore.RiderSignalContext
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
@@ -487,8 +491,19 @@ internal class BoardSessionController(private val service: CoreForegroundService
             },
             ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
             signalContext = ::riderSignalContext,
+            deviceToken = { DeviceCredentialStore(service.applicationContext).read()?.token },
+            persistPublicRide = { PublicRideStore(service.applicationContext).write(it) },
+            lastKnownLocation = {
+                val latitude = lastAppliedSettings.lastGpsLatitude
+                val longitude = lastAppliedSettings.lastGpsLongitude
+                if (latitude != null && longitude != null) latitude to longitude else null
+            },
         )
     }
+
+    /** JS asked for the observe socket; without it the public ride owns the socket's lifetime. */
+    private var jsObserving = false
+    private var credentialUnsubscribe: (() -> Unit)? = null
 
     /**
      * Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
@@ -849,6 +864,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         // The forecast survives a service restart, so replay what is already known rather than
         // leaving the wrist blank until the rider moves a kilometre.
         weatherCoordinator.current?.let(::onWeatherChanged)
+        loadPublicRide()
         // Arm Auto close even when the service starts without a session (companion/GPS-only):
         // applyTelemetrySettings caches the auto-close config and (re)schedules the countdown.
         CoreForegroundService.appDataScope.launch { loadTelemetrySettings(service.applicationContext) }
@@ -1029,6 +1045,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         alertFeedback.release()
         alertAudioThread.quitSafely()
         forceStopGps()
+        credentialUnsubscribe?.invoke()
+        credentialUnsubscribe = null
         groupRideObserver.stop()
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
     }
@@ -1095,6 +1113,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             loadPrivacyZones(service.applicationContext)
             loadGroupRideTarget(service.applicationContext)
         }
+        jsObserving = true
         groupRideObserver.start(url)
         reassertForeground()
     }
@@ -1102,6 +1121,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `stopGroupRideObserve` */
     fun stopGroupRideObserve() {
         CoreForegroundService.pendingGroupRideUrl = null
+        jsObserving = false
+        // A public ride keeps riding without the screen that started observing.
+        if (groupRideObserver.publicRideNeedsLink) return
         // `stop()` reports the participation edge, which refreshes demand; `stopIfIdle` then finds
         // nothing left holding the host.
         groupRideObserver.stop()
@@ -1141,6 +1163,86 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     fun updateGroupRideIdentity(riderId: String, riderName: String) {
         groupRideObserver.updateIdentity(riderId, riderName)
+    }
+
+    /**
+     * Public ride from the persisted switch and the stored Account; follows every later credential
+     * change, so signing out or switching Account ends it.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadPublicRide`
+     */
+    private fun loadPublicRide() {
+        val context = service.applicationContext
+        CoreForegroundService.appDataScope.launch {
+            val stored = PublicRideStore(context).read()
+            val accountId = DeviceCredentialStore(context).read()?.accountId
+            mainHandler.post {
+                groupRideObserver.loadPublicRide(stored, accountId)
+                credentialUnsubscribe?.invoke()
+                credentialUnsubscribe = DeviceCredentialStore.addChangeListener {
+                    CoreForegroundService.appDataScope.launch {
+                        val account = DeviceCredentialStore(context).read()?.accountId
+                        mainHandler.post { groupRideObserver.setAccount(account) }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * The rider moved the public ride switch: off, on until [until] (epoch ms), or on with no end.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setPublicRide`
+     */
+    fun setPublicRide(on: Boolean, until: Long?) {
+        groupRideObserver.setPublicRide(if (on) PublicRideSwitch(true, until) else PublicRideSwitch.OFF)
+        syncPublicRideLink()
+    }
+
+    fun watchPublicRiders() {
+        groupRideObserver.watchPublicRiders()
+        syncPublicRideLink()
+    }
+
+    fun stopWatchingPublicRiders() {
+        groupRideObserver.stopWatchingPublicRiders()
+        syncPublicRideLink()
+    }
+
+    /**
+     * A board session counts for the public ride from the first Connected until it ends; reconnect
+     * phases in between keep it, so a short link drop does not take the rider off the map.
+     */
+    private fun publicRideBoardPhase(phase: BoardPhase) {
+        val connected = when (phase) {
+            BoardPhase.Connected -> true
+            BoardPhase.Idle, BoardPhase.Disconnecting, BoardPhase.Error -> false
+            else -> return
+        }
+        groupRideObserver.setBoardConnected(connected)
+        syncPublicRideLink()
+    }
+
+    /**
+     * Open the relay socket when the public ride needs it and nothing else did (a board connecting
+     * with the app in the background), and close it when only the public ride held it. Posted, so it
+     * reads the observer after the change queued before it.
+     */
+    private fun syncPublicRideLink() {
+        mainHandler.post {
+            if (isStoppingService) return@post
+            val needed = groupRideObserver.publicRideNeedsLink
+            if (needed && !groupRideObserver.active) {
+                CoreForegroundService.appDataScope.launch {
+                    loadPrivacyZones(service.applicationContext)
+                    loadGroupRideTarget(service.applicationContext)
+                }
+                groupRideObserver.start(GroupRideOnlineGate.webSocketUrl(AppStatusCoordinator.serverBaseUrl(service.applicationContext)))
+            } else if (!needed && !jsObserving && groupRideObserver.active) {
+                groupRideObserver.stop()
+                stopIfIdle()
+            }
+        }
     }
 
     fun exitFromNotification() {
@@ -2986,6 +3088,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         recordProperties: Map<String, Any?> = emptyMap(),
     ) {
         boardStatus = next
+        publicRideBoardPhase(next)
         // A phase change can flip whether a light write would be accepted, with the lights
         // themselves unchanged. See [pushWatchBoard].
         pushWatchBoard()
@@ -3451,6 +3554,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             phoneBattery = readPhoneBattery(),
             boardName = if (boardConfig != null) (boardConfig?.deviceName ?: selectedBoardName) else null,
             target = groupRideTarget,
+            at = location.timestamp,
         )
     }
 

@@ -452,6 +452,18 @@ class CoreForegroundService : Service() {
             instance?.controller?.clearGroupRideHazard()
         }
 
+        fun setPublicRide(on: Boolean, until: Long?) {
+            instance?.controller?.setPublicRide(on, until)
+        }
+
+        fun watchPublicRiders() {
+            instance?.controller?.watchPublicRiders()
+        }
+
+        fun stopWatchingPublicRiders() {
+            instance?.controller?.stopWatchingPublicRiders()
+        }
+
         fun updateGroupRideIdentity(
             @Suppress("UNUSED_PARAMETER") context: Context,
             riderId: String,

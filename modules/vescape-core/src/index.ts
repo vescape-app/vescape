@@ -1813,8 +1813,6 @@ export interface AppSettings {
   riderId: string | null
   /** Rider-chosen display name shown to other Riders in a Group Ride. */
   riderName: string | null
-  /** Group Ride header switch: ride publicly, auto-joining the nearest Group Ride or creating one. */
-  groupRidePublicEnabled: boolean
   /** Native-resolved| null
   /** Native-resolved app-wide jurisdiction reference. Policy values live in shared catalog data. */
   legalPolicy: LegalPolicyReference | null
@@ -2141,6 +2139,45 @@ export interface GroupRideSignalAvailability {
 
 export interface GroupRideErrorEvent {
   message: string
+}
+
+/**
+ * The public ride switch and where the public ride stands. `on` with `until` null is "always";
+ * with `until` (epoch ms) it ends itself then. `live` is true while the relay confirms the rider
+ * public (switch on, board connected, signed in). `supported` is false against a relay without the
+ * `public-ride` feature. `reason` says why the ride last ended on its own: `replaced` (newer phone
+ * of the Account), `end-time`, `away-expired`, `signed-out`, or `refused` (no Account or nick).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `emitStatus`
+ * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `emitStatus`
+ */
+export interface PublicRideStatus {
+  on: boolean
+  until: number | null
+  live: boolean
+  supported: boolean
+  reason: 'replaced' | 'end-time' | 'away-expired' | 'signed-out' | 'refused' | null
+}
+
+/**
+ * A public rider around this phone, the relay's `PublicRiderView` as native decodes it.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `publicRiderView`
+ * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `publicRiderView`
+ */
+export interface PublicRider {
+  accountId: string
+  nick: string
+  presence: RiderPresence | null
+  trail?: TrailPoint[] | null
+  stale: boolean
+  /** Lost connection: frozen at the last position, no trail. */
+  away: boolean
+  lastSeen: number
+}
+
+/** Every public rider native knows around this phone, nearest first; `now` is the relay clock. */
+export interface PublicRidersEvent {
+  riders: PublicRider[]
+  now: number | null
 }
 
 /**
@@ -2865,6 +2902,8 @@ type VescapeCoreEvents = {
   onGroupRideRoster: (event: GroupRideRosterEvent) => void
   onGroupRideError: (event: GroupRideErrorEvent) => void
   onGroupRideSignalAvailability: (event: GroupRideSignalAvailability) => void
+  onPublicRideStatus: (event: PublicRideStatus) => void
+  onPublicRiders: (event: PublicRidersEvent) => void
   /** Persisted board/app data changed natively — reload the matching store. */
   onAppDataChanged: (event: AppDataChangedEvent) => void
   /** Full current Board Warning list for a board, on every registry change and on subscribe. */
@@ -2970,6 +3009,9 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   clearGroupRideSignal(): void
   sendGroupRideHazard(kind: RideHazardKind): void
   clearGroupRideHazard(): void
+  setPublicRide(on: boolean, until: number | null): void
+  watchPublicRiders(): void
+  stopWatchingPublicRiders(): void
   updateGroupRideIdentity(riderId: string, riderName: string): void
   setTelemetryRecordingEnabled(enabled: boolean): void
   setBmsSeriesFocused(focused: boolean): void
@@ -3444,6 +3486,29 @@ export function sendGroupRideHazard(kind: RideHazardKind): void {
 export function clearGroupRideHazard(): void {
   if (E2E_ENABLED) return
   native.clearGroupRideHazard()
+}
+
+/**
+ * Move the public ride switch: off, on until `until` (epoch ms), or on with `until` null (always).
+ * Native owns the switch, its timer, and going public when the board connects; the result comes
+ * back as `onPublicRideStatus`.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setPublicRide`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setPublicRide`
+ */
+export function setPublicRide(on: boolean, until: number | null): void {
+  if (E2E_ENABLED) return
+  native.setPublicRide(on, until)
+}
+
+/** Look around: watch public riders near this phone, switch on or off. Riders arrive as `onPublicRiders`. */
+export function watchPublicRiders(): void {
+  if (E2E_ENABLED) return
+  native.watchPublicRiders()
+}
+
+export function stopWatchingPublicRiders(): void {
+  if (E2E_ENABLED) return
+  native.stopWatchingPublicRiders()
 }
 
 export interface UpdateGroupRideIdentityParams {
@@ -5113,6 +5178,16 @@ export function addGroupRideSignalAvailabilityListener(
   cb: (event: GroupRideSignalAvailability) => void,
 ): EventSubscription {
   return emitter.addListener('onGroupRideSignalAvailability', cb)
+}
+
+export function addPublicRideStatusListener(
+  cb: (event: PublicRideStatus) => void,
+): EventSubscription {
+  return emitter.addListener('onPublicRideStatus', cb)
+}
+
+export function addPublicRidersListener(cb: (event: PublicRidersEvent) => void): EventSubscription {
+  return emitter.addListener('onPublicRiders', cb)
 }
 
 /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `saveBrakeLightSettings`

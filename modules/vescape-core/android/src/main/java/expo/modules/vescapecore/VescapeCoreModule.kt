@@ -211,6 +211,8 @@ class VescapeCoreModule : Module() {
       "onGroupRideRoster",
       "onGroupRideError",
       "onGroupRideSignalAvailability",
+      "onPublicRideStatus",
+      "onPublicRiders",
       "onAppDataChanged",
       "onBoardWarnings",
       "onVescFaults",
@@ -368,6 +370,10 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onGroupRideError") { stopObserving("onGroupRideError") }
     OnStartObserving("onGroupRideSignalAvailability") { startObserving("onGroupRideSignalAvailability") }
     OnStopObserving("onGroupRideSignalAvailability") { stopObserving("onGroupRideSignalAvailability") }
+    OnStartObserving("onPublicRideStatus") { startObserving("onPublicRideStatus") }
+    OnStopObserving("onPublicRideStatus") { stopObserving("onPublicRideStatus") }
+    OnStartObserving("onPublicRiders") { startObserving("onPublicRiders") }
+    OnStopObserving("onPublicRiders") { stopObserving("onPublicRiders") }
     OnStartObserving("onBoardWarnings") {
       startObserving("onBoardWarnings")
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
@@ -1732,6 +1738,16 @@ class VescapeCoreModule : Module() {
     }
     Function("clearGroupRideHazard") {
       CoreForegroundService.clearGroupRideHazard()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setPublicRide`
+    Function("setPublicRide") { on: Boolean, until: Double? ->
+      CoreForegroundService.setPublicRide(on, until?.toLong())
+    }
+    Function("watchPublicRiders") {
+      CoreForegroundService.watchPublicRiders()
+    }
+    Function("stopWatchingPublicRiders") {
+      CoreForegroundService.stopWatchingPublicRiders()
     }
     Function("updateGroupRideIdentity") { riderId: String, riderName: String ->
       CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName)

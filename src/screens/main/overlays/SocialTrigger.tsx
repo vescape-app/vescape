@@ -14,16 +14,12 @@ import {
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
-interface SocialTriggerProps {
-  onFocusCoordinate: (coordinate: { latitude: number; longitude: number }) => void
-}
-
 /**
  * The top bar's Social button and its drawer. In a ride it grows the Rider Signal button below it,
  * the way History grows today's stats; every signal action lives behind that one, and the Social
  * drawer only shows the ride.
  */
-export function SocialTrigger({ onFocusCoordinate }: SocialTriggerProps) {
+export function SocialTrigger() {
   const triggerRef = useRef<View>(null)
   const [socialOpen, setSocialOpen] = useState(false)
   const [signalOpen, setSignalOpen] = useState(false)
@@ -77,12 +73,7 @@ export function SocialTrigger({ onFocusCoordinate }: SocialTriggerProps) {
         backdropTestID="social-drawer-backdrop"
         onClose={() => setSocialOpen(false)}
       >
-        <SocialSheet
-          onFocusSignal={(point) => {
-            setSocialOpen(false)
-            onFocusCoordinate(point)
-          }}
-        />
+        <SocialSheet onNavigate={() => setSocialOpen(false)} />
       </EdgeDrawer>
       <EdgeDrawer
         visible={signalOpen}
