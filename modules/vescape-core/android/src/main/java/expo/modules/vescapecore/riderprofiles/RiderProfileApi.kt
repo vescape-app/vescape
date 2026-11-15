@@ -44,7 +44,7 @@ class RiderProfileApi(private val api: VescapeApi) {
   /** `null` when the Account has no Rider Profile. */
   suspend fun rider(accountId: String): Map<String, Any?>? {
     val result = api.request(HttpMethod.GET, "$RIDERS_PATH/$accountId", auth = AuthMode.Required) {
-      profile(JSONObject(it))
+      detail(JSONObject(it))
     }
     return if (result == ApiResult.NotFound) null else unwrap(result)
   }
@@ -168,6 +168,36 @@ class RiderProfileApi(private val api: VescapeApi) {
     val item = items.getJSONObject(index)
     profile(item) + ("requestedAt" to item.optString("requestedAt"))
   }
+
+  /** @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `detail`
+   * @parity /modules/vescape-core/src/index.ts `RiderDetail`
+   */
+  private fun detail(json: JSONObject): Map<String, Any?> {
+    val stats = json.getJSONObject("stats")
+    val months = stats.getJSONArray("months")
+    return profile(json) + mapOf("stats" to mapOf(
+      "total" to stats.optJSONObject("total")?.let(::stats),
+      "months" to List(months.length()) { index ->
+        val month = months.getJSONObject(index)
+        stats(month) + ("month" to month.getString("month"))
+      },
+    ))
+  }
+
+  /** @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `stats`
+   * @parity /modules/vescape-core/src/index.ts `RiderStats`
+   * @parity /modules/vescape-core/src/index.ts `RiderMonthStats`
+   */
+  private fun stats(json: JSONObject): Map<String, Any?> = mapOf(
+    "distanceM" to if (json.isNull("distanceM")) null else json.getDouble("distanceM"),
+    "rideCount" to json.getInt("rideCount"),
+    "rideTimeMs" to json.getDouble("rideTimeMs"),
+    "topSpeedKmh" to json.getDouble("topSpeedKmh"),
+    "avgSpeedKmh" to json.getDouble("avgSpeedKmh"),
+    "longestRideM" to if (json.isNull("longestRideM")) null else json.getDouble("longestRideM"),
+    "batteryUsedWh" to if (json.isNull("batteryUsedWh")) null else json.getDouble("batteryUsedWh"),
+    "batteryRegenWh" to if (json.isNull("batteryRegenWh")) null else json.getDouble("batteryRegenWh"),
+  )
 
   private fun profile(json: JSONObject): Map<String, Any?> = mapOf(
     "accountId" to json.getString("accountId"),

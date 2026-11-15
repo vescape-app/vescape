@@ -160,14 +160,14 @@ final class VescapeApi {
       return .unauthorized
     case 403: return .forbidden
     case 404: return .notFound
-    case 400..<500: return .invalid(errorSlug(response.body))
-    default:
+    case 200..<300:
       do {
         return .ok(try parse(response.body))
       } catch {
         if Self.isCancellation(error) { return .cancelled }
         return .malformed(error.localizedDescription)
       }
+    default: return .invalid(errorSlug(response.body))
     }
   }
 

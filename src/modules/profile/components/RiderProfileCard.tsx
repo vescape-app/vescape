@@ -1,12 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { UserCircleIcon, UserMinusIcon } from 'phosphor-react-native'
-import { getRider, type RiderProfile } from 'vescape-core'
+import { getRider, type RiderProfile, type RiderDetail, type RiderStats } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
+import { formatMonthLabel } from '@/modules/profile/lib/profileStats'
+import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { FriendAction } from '@/modules/profile/components/FriendAction'
 import { friendStatus } from '@/modules/profile/lib/friends'
@@ -24,7 +26,7 @@ export function RiderProfileCard({
   rider: RiderProfile
   children?: ReactNode
 }) {
-  const [fetched, setFetched] = useState<RiderProfile | null>(null)
+  const [fetched, setFetched] = useState<RiderDetail | null>(null)
   useEffect(() => {
     let live = true
     // intentional-suppression: the card keeps what the opener knew when the fetch fails
@@ -37,6 +39,10 @@ export function RiderProfileCard({
     }
   }, [seen.accountId])
   const rider = fetched?.accountId === seen.accountId ? fetched : seen
+  const stats = fetched?.accountId === seen.accountId ? fetched.stats : null
+  const now = new Date()
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const monthly = stats?.months.find((month) => month.month === monthKey)
   const friend = useFriendsStore((s) =>
     s.lists.friends.find((row) => row.accountId === rider.accountId),
   )
@@ -65,6 +71,13 @@ export function RiderProfileCard({
         <FriendAction accountId={rider.accountId} nick={rider.nick} />
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {monthly ? (
+        <RiderStatsReadout
+          label={formatMonthLabel({ year: now.getFullYear(), month: now.getMonth() + 1 })}
+          stats={monthly}
+        />
+      ) : null}
+      {stats?.total ? <RiderStatsReadout label="Total" stats={stats.total} /> : null}
       {children}
       {friend ? (
         <Button
@@ -88,6 +101,20 @@ export function RiderProfileCard({
         }}
         onCancel={() => setConfirmRemove(false)}
       />
+    </View>
+  )
+}
+
+function RiderStatsReadout({ label, stats }: { label: string; stats: RiderStats }) {
+  const rows = useProfileStatItems(stats)
+  return (
+    <View>
+      <Text>{label}</Text>
+      {rows.map(({ key, label: name, value }) => (
+        <Text key={key}>
+          {name}: {value}
+        </Text>
+      ))}
     </View>
   )
 }

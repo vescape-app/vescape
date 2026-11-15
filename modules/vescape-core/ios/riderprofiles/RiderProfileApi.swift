@@ -70,7 +70,7 @@ final class RiderProfileApi {
   /// `nil` when the Account has no Rider Profile.
   func rider(_ accountId: String) async throws -> [String: Any?]? {
     let result = await api.request(.get, path: "\(Self.ridersPath)/\(accountId)", auth: .required) {
-      try Self.profile(try Self.object($0))
+      try Self.detail(try Self.object($0))
     }
     if case .notFound = result { return nil }
     return try unwrap(result)
@@ -217,6 +217,43 @@ final class RiderProfileApi {
           let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     else { throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable response") }
     return json
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `detail`
+  /// @parity /modules/vescape-core/src/index.ts `RiderDetail`
+  private static func detail(_ json: [String: Any]) throws -> [String: Any?] {
+    guard let stats = json["stats"] as? [String: Any],
+          let months = stats["months"] as? [[String: Any]] else {
+      throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable rider stats")
+    }
+    var row = try profile(json)
+    let monthly = try months.map { month -> [String: Any?] in
+      guard let key = month["month"] as? String else {
+        throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable rider month")
+      }
+      var values = try Self.stats(month)
+      values["month"] = key
+      return values
+    }
+    row["stats"] = [
+      "total": try (stats["total"] as? [String: Any]).map(Self.stats) ?? NSNull(),
+      "months": monthly,
+    ] as [String: Any]
+    return row
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `stats`
+  /// @parity /modules/vescape-core/src/index.ts `RiderStats`
+  /// @parity /modules/vescape-core/src/index.ts `RiderMonthStats`
+  private static func stats(_ json: [String: Any]) throws -> [String: Any?] {
+    var values: [String: Any?] = [:]
+    let nullable: Set<String> = ["distanceM", "longestRideM", "batteryUsedWh", "batteryRegenWh"]
+    for key in ["distanceM", "rideCount", "rideTimeMs", "topSpeedKmh", "avgSpeedKmh", "longestRideM", "batteryUsedWh", "batteryRegenWh"] {
+      if nullable.contains(key), json[key] is NSNull { values[key] = .some(nil) }
+      else if let value = json[key] as? NSNumber { values[key] = value }
+      else { throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable rider stats") }
+    }
+    return values
   }
 
   private static func profile(_ json: [String: Any]) throws -> [String: Any?] {

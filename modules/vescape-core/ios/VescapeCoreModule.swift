@@ -273,6 +273,7 @@ public class VescapeCoreModule: Module {
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
       ServiceConfigCoordinator.shared.refresh()
+      Task { await RiderStatsSender.shared.foreground() }
       self.attachToCoordinator()
       self.rideNoticesUnsubscribe = RideNotices.shared.addListener { [weak self] in self?.emitRideNotices($0) }
       // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
@@ -299,6 +300,7 @@ public class VescapeCoreModule: Module {
       self.coordinator.appVisible = true
       AppStatusCoordinator.shared.refresh()
       ServiceConfigCoordinator.shared.refresh()
+      Task { await RiderStatsSender.shared.foreground() }
       // Emits were gated while hidden; the screen must not keep a stale running state.
       self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
       self.emitRideNotices(RideNotices.shared.current)

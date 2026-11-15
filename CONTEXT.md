@@ -460,6 +460,9 @@ A Vescape Account with a unique nick and optional nationality. The newest phone 
 An optional online identity that never gates the app's local, offline-first capabilities or ownership of local data.
 _Avoid_: Rider profile, User, Profile
 
+**Rider Month Stats**:
+A Rider's locally computed Ride History aggregates for one phone-local calendar month, shared with the server while signed in and shown on the Rider's profile alongside totals. Contains distance, ride count, ride time, speed records and averages, longest ride, and battery energy totals; no tracks or local ride identifiers.
+
 **Rider Presence**:
 A **Rider's** live shared snapshot during a **Public Ride**: location and heading from the phone **GPS Fix**, the phone's own battery, their **Direction Point** when set, plus optional speed, **Battery SoC Estimate**, motor and controller temperatures and Board name when a **Board Session** is live. Ephemeral and server-relayed, not persisted on the phone; public positions are stored by the server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale. A disconnected Rider stays away at the last position until the relay expires it.
 _Avoid_: Position update, presence ping, location share, group telemetry

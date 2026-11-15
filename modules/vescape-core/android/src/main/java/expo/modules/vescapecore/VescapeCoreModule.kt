@@ -1,5 +1,6 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.riderprofiles.RiderStatsSender
 import expo.modules.vescapecore.notices.RideNotice
 import expo.modules.vescapecore.notices.RideNoticeContent
 import expo.modules.vescapecore.notices.RideNoticeLocation
@@ -452,6 +453,7 @@ class VescapeCoreModule : Module() {
       // coalesced into this request.
       AppStatusCoordinator.get(context).refresh()
       ServiceConfigCoordinator.get(context).refresh()
+      RiderStatsSender.get(context).foreground()
       MaintenanceRunner.onChange = ::emitMaintenanceState
       MaintenanceRunner.start(context.applicationContext)
       rideNoticesUnsub = RideNotices.addListener(::emitRideNotices)
@@ -465,6 +467,7 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.setAppVisible(context.applicationContext, true)
       AppStatusCoordinator.get(context).refresh()
       ServiceConfigCoordinator.get(context).refresh()
+      RiderStatsSender.get(context).foreground()
       // Emits were gated while hidden; the screen must not keep a stale running state.
       emitMaintenanceState(MaintenanceRunner.snapshot())
       emitRideNotices(RideNotices.current)

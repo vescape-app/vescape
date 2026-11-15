@@ -12,7 +12,7 @@ import {
   TrophyIcon,
 } from 'phosphor-react-native'
 import type { Icon } from 'phosphor-react-native'
-import type { ProfileStats } from 'vescape-core'
+import type { ProfileStats, RiderStats } from 'vescape-core'
 
 import { formatDistance, formatDuration, formatEnergy } from '@/modules/profile/lib/profileStats'
 import { theme, type ThemeColor } from '@/constants/theme'
@@ -38,7 +38,7 @@ export interface ProfileStatItem {
 /** Every riding total as a labelled, formatted, tinted figure — one definition for every surface
  *  that shows profile stats, so a number never carries two different labels. */
 export function useProfileStatItems(
-  stats: ProfileStats,
+  stats: RiderStats & Partial<Pick<ProfileStats, 'topSpeedRideId' | 'longestRideId'>>,
   keys?: ProfileStatKey[],
   /** Makes Top speed and Longest ride link to the ride that set them. */
   onOpenRecordRide?: OpenRecordRide,
@@ -112,7 +112,7 @@ export function useProfileStatItems(
 }
 
 function recordPress(
-  rideId: string | null,
+  rideId: string | null | undefined,
   record: ProfileRecordKey,
   onOpenRecordRide: OpenRecordRide | undefined,
 ): (() => void) | undefined {

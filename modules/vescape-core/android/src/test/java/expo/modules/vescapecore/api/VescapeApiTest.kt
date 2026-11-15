@@ -67,6 +67,14 @@ class VescapeApiTest {
   ) = runBlocking { request(method, path, query, body, auth) { it } }
 
   @Test
+  fun `empty 204 is successful but redirects never count as an upload`() = runBlocking {
+    val success = api(FakeTransport(status(204))).request(HttpMethod.PUT, "/api/rider-stats/2026-01") { }
+    assertTrue(success is ApiResult.Ok)
+    val redirect = api(FakeTransport(status(302))).request(HttpMethod.PUT, "/api/rider-stats/2026-01") { }
+    assertTrue(redirect is ApiResult.Invalid)
+  }
+
+  @Test
   fun `attaches the credential and the app version to an authenticated call`() {
     val transport = FakeTransport(ok())
     api(transport).text(query = mapOf("radiusMeters" to "5000"))

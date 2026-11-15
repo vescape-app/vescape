@@ -834,6 +834,36 @@ export interface RiderProfile {
   nationality: string | null
 }
 
+/** Public riding aggregates, without local record ride IDs.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `stats`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `stats`
+ */
+export interface RiderStats {
+  distanceM: number | null
+  rideCount: number
+  rideTimeMs: number
+  topSpeedKmh: number
+  avgSpeedKmh: number
+  longestRideM: number | null
+  batteryUsedWh: number | null
+  batteryRegenWh: number | null
+}
+
+/** @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `detail`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `detail`
+ */
+export interface RiderMonthStats extends RiderStats {
+  /** Phone-local calendar month, YYYY-MM. */
+  month: string
+}
+
+/** @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `detail`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `detail`
+ */
+export interface RiderDetail extends RiderProfile {
+  stats: { total: RiderStats | null; months: RiderMonthStats[] }
+}
+
 /**
  * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `RiderProfileApiError`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `RiderProfileApiException`
@@ -3254,7 +3284,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getRiderProfile(): Promise<RiderProfile | null>
   saveRiderProfile(nick: string, nationality: string | null): Promise<RiderProfile>
   searchRiders(nick: string): Promise<RiderProfile[]>
-  getRider(accountId: string): Promise<RiderProfile | null>
+  getRider(accountId: string): Promise<RiderDetail | null>
   getFriends(): Promise<Friends>
   sendFriendRequest(accountId: string): Promise<FriendRequestStatus>
   acceptFriendRequest(accountId: string): Promise<void>
@@ -4771,7 +4801,7 @@ export async function searchRiders(prefix: string): Promise<RiderProfile[]> {
 }
 
 /** Another rider's public profile; null when they have none. */
-export async function getRider(accountId: string): Promise<RiderProfile | null> {
+export async function getRider(accountId: string): Promise<RiderDetail | null> {
   return native.getRider(accountId)
 }
 

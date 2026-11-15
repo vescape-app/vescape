@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.recording
 
+import expo.modules.vescapecore.riderprofiles.RiderStatsSender
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import android.content.Context
 import expo.modules.vescapecore.service.SessionConfig
@@ -206,6 +207,7 @@ internal class RecordingCoordinator(
 
     private fun flushTelemetryBlocking() {
         telemetryStore?.flushBlocking()
+        RiderStatsSender.get(context).recordingEnded()
     }
 
     private fun configuredTelemetryStore(config: SessionConfig?): TelemetryRepository? {
