@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { AppState } from 'react-native'
 
-import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
+import { useDeviceAccountId } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 
 /** How often the open app asks who is riding; the server has no push for it. */
@@ -12,7 +12,7 @@ const REFRESH_MS = 60_000
  * Social button can light up when a friend starts riding. Forgets them when the token goes away.
  */
 export function FriendsSync() {
-  const ready = useDeviceAccountReady()
+  const ready = useDeviceAccountId()
   useEffect(() => {
     const store = useFriendsStore.getState()
     if (!ready) {

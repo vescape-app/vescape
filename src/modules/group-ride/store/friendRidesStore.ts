@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { getDeviceCredentialState } from 'vescape-core'
 import { getFriendRideTrack, getFriendRides, type FriendRide } from 'vescape-core'
 
 import { rodeWithWindows } from '@/modules/group-ride/lib/rodeWith'
@@ -33,6 +34,17 @@ interface FriendRidesState {
 
 let nonce = 0
 
+function viewer() {
+  try {
+    const credential = getDeviceCredentialState()
+    return credential.state === 'ready' ? credential.accountId : null
+  } catch {
+    return null
+  }
+}
+
+let generation = 0
+
 export const useFriendRidesStore = create<FriendRidesState>((set, get) => ({
   accountId: null,
   rides: [],
@@ -40,15 +52,19 @@ export const useFriendRidesStore = create<FriendRidesState>((set, get) => ({
   failed: false,
   track: null,
   load: async (accountId) => {
+    const current = ++generation
+    const account = viewer()
     set({ accountId, rides: [], loading: true, failed: false })
     try {
       const rides = await getFriendRides(accountId)
-      if (get().accountId === accountId) set({ rides, loading: false })
+      if (current === generation && account === viewer()) set({ rides, loading: false })
     } catch {
-      if (get().accountId === accountId) set({ loading: false, failed: true })
+      if (current === generation && account === viewer()) set({ loading: false, failed: true })
     }
   },
   toggleTrack: async (accountId, ride) => {
+    const current = ++generation
+    const account = viewer()
     const key = `${accountId}-${ride.startedAt}`
     if (get().track?.key === key) {
       set({ track: null })
@@ -62,10 +78,14 @@ export const useFriendRidesStore = create<FriendRidesState>((set, get) => ({
         ),
       )
       const coordinates = pages.flat().map((point): [number, number] => [point.lng, point.lat])
+      if (current !== generation || account !== viewer()) return
       set({ track: coordinates.length ? { key, accountId, coordinates, nonce: ++nonce } : null })
     } catch {
-      set({ failed: true })
+      if (current === generation && account === viewer()) set({ failed: true })
     }
   },
-  clear: () => set({ accountId: null, rides: [], loading: false, failed: false, track: null }),
+  clear: () => {
+    generation++
+    set({ accountId: null, rides: [], loading: false, failed: false, track: null })
+  },
 }))

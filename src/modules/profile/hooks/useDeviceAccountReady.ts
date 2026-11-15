@@ -19,3 +19,11 @@ export function useDeviceAccountReady(): boolean {
     () => readDeviceCredential(getDeviceCredentialState).status?.state === 'ready',
   )
 }
+
+/** Native account identity, observed through credential provisioning notifications. */
+export function useDeviceAccountId(): string | null {
+  return useSyncExternalStore(useDeviceAuthStore.subscribe, () => {
+    const credential = readDeviceCredential(getDeviceCredentialState).status
+    return credential?.state === 'ready' ? credential.accountId : null
+  })
+}

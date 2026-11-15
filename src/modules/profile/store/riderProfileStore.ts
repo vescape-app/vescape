@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { getDeviceCredentialState } from 'vescape-core'
 import { getRiderProfile, saveRiderProfile, type RiderProfile } from 'vescape-core'
 
 import {
@@ -19,6 +20,15 @@ interface RiderProfileState {
   clear: () => void
 }
 
+function viewer() {
+  try {
+    const credential = getDeviceCredentialState()
+    return credential.state === 'ready' ? credential.accountId : null
+  } catch {
+    return null
+  }
+}
+
 let generation = 0
 
 /**
@@ -32,21 +42,27 @@ export const useRiderProfileStore = create<RiderProfileState>((set) => ({
 
   async load() {
     const current = ++generation
+    const account = viewer()
     try {
       const profile = await getRiderProfile()
-      if (current === generation) set({ profile, loaded: true, error: null })
+      if (current === generation && account === viewer())
+        set({ profile, loaded: true, error: null })
     } catch (error) {
-      if (current === generation) set({ error: riderProfileErrorMessage(error) })
+      if (current === generation && account === viewer())
+        set({ error: riderProfileErrorMessage(error) })
     }
   },
 
   async save(draft) {
+    const current = ++generation
+    const account = viewer()
     try {
       const profile = await saveRiderProfile(draft.nick, draft.nationality)
-      generation++
+      if (current !== generation || account !== viewer()) throw new Error('Account changed')
       set({ profile, loaded: true, error: null })
       return profile
     } catch (error) {
+      if (current !== generation || account !== viewer()) throw new Error('Account changed')
       throw new Error(riderProfileErrorMessage(error))
     }
   },

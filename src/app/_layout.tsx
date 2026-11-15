@@ -1,3 +1,4 @@
+import '@/bootstrap/accountCacheSync'
 import * as Sentry from '@sentry/react-native'
 import { TimeFormatContext } from '@/hooks/useTimeFormat'
 import { DistanceUnitContext } from '@/hooks/useDistanceUnit'
