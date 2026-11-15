@@ -11,6 +11,7 @@ import {
   useOthersSignalTakeover,
   useOwnSignalTakeover,
 } from '@/modules/group-ride/components/RiderSignalPicker'
+import { PulsingBroadcastIcon } from '@/modules/group-ride/components/BroadcastGlyph'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
@@ -66,7 +67,7 @@ export function SocialTrigger() {
           }
         >
           <IconButton
-            icon={sharingOn ? BroadcastIcon : UsersThreeIcon}
+            icon={rideActive ? PulsingBroadcastIcon : sharingOn ? BroadcastIcon : UsersThreeIcon}
             onPress={() => setSocialOpen(true)}
             accessibilityLabel="Social"
             testID="social-drawer-trigger"

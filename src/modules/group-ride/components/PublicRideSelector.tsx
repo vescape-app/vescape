@@ -26,6 +26,11 @@ import {
   publicRideStableIndexAt,
   publicRideSector,
 } from '@/modules/group-ride/lib/publicRideArc'
+import {
+  BROADCAST_WAVE_MS,
+  BroadcastGlyph,
+  RING_START,
+} from '@/modules/group-ride/components/BroadcastGlyph'
 import { createPublicRideInteraction } from '@/modules/group-ride/lib/publicRideInteraction'
 import {
   PublicRideReadout,
@@ -35,6 +40,8 @@ import {
 } from '@/modules/group-ride/components/PublicRideReadout'
 
 const BROADCAST_Y = PUBLIC_RIDE_ARC.cy - 22
+const BROADCAST_SIZE = 24
+const WAVE_RADIUS = PUBLIC_RIDE_ARC.innerRadius - (PUBLIC_RIDE_ARC.cy - BROADCAST_Y)
 const RULER_EDGE_INSET =
   (Math.asin(PUBLIC_RIDE_ARC.gap / 2 / PUBLIC_RIDE_ARC.outerRadius) * 180) / Math.PI
 const RULER_START = PUBLIC_RIDE_ARC.startAngle + PUBLIC_RIDE_ARC.sectorAngle + RULER_EDGE_INSET
@@ -132,9 +139,7 @@ function PreviewGlyph({
   size?: number
 }) {
   const style = useAnimatedStyle(() => ({
-    opacity: (index < 0 ? readout.get().sector > 0 : index > 0 && readout.get().sector === index)
-      ? 1
-      : 0,
+    opacity: index > 0 && readout.get().sector === index ? 1 : 0,
   }))
   return (
     <View style={{ width: size, height: size }} pointerEvents="none">
@@ -223,7 +228,11 @@ export function PublicRideSelector({
 
   useEffect(() => {
     cancelAnimation(wave)
-    if (previous.current === 'off' && value.mode !== 'off') {
+    if (live) {
+      // Sharing: the radar keeps pinging for as long as the rider is public.
+      wave.set(0)
+      wave.set(withRepeat(withTiming(1, { duration: BROADCAST_WAVE_MS }), -1, false))
+    } else if (previous.current === 'off' && value.mode !== 'off') {
       wave.set(0)
       wave.set(withRepeat(withTiming(1, { duration: 700 }), 2, false))
     } else {
@@ -231,16 +240,21 @@ export function PublicRideSelector({
     }
     previous.current = value.mode
     return () => cancelAnimation(wave)
-  }, [value.mode, wave])
+  }, [live, value.mode, wave])
 
   const rulerProps = useAnimatedProps(() => ({
     stroke: readout.get().timed ? neutral.textSecondary : neutral.border,
   }))
 
-  const waveStyle = useAnimatedStyle(() => ({
-    opacity: (1 - wave.get()) * 0.65,
-    transform: [{ scale: 0.7 + wave.get() * 1.3 }],
-  }))
+  // One wave: the icon lights from the centre out (dot, inner arcs, outer arcs), then the ring
+  // carries the same motion on to the inner arc.
+  const waveStyle = useAnimatedStyle(() => {
+    const ring = Math.min(1, Math.max(0, (wave.get() - RING_START) / (1 - RING_START)))
+    return {
+      opacity: ring > 0 ? (1 - ring) * 0.65 : 0,
+      transform: [{ scale: 0.2 + ring * 0.8 }],
+    }
+  })
 
   const select = useCallback(
     (index: number) => {
@@ -369,21 +383,34 @@ export function PublicRideSelector({
               strokeLinecap="round"
             />
           </Svg>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.wave,
+              {
+                // Rings out from the icon and fades where it meets the inner arc.
+                left: (PUBLIC_RIDE_ARC.cx - WAVE_RADIUS) * scale,
+                top: (BROADCAST_Y - WAVE_RADIUS) * scale,
+                width: WAVE_RADIUS * 2 * scale,
+                height: WAVE_RADIUS * 2 * scale,
+                borderColor: accent,
+              },
+              waveStyle,
+            ]}
+          />
           <View
             pointerEvents="none"
             style={{
               position: 'absolute',
-              left: (PUBLIC_RIDE_ARC.cx - 9) * scale,
-              top: (BROADCAST_Y - 9) * scale,
+              left: (PUBLIC_RIDE_ARC.cx - BROADCAST_SIZE / 2) * scale,
+              top: (BROADCAST_Y - BROADCAST_SIZE / 2) * scale,
             }}
           >
-            <PreviewGlyph
-              icon={BroadcastIcon}
-              index={-1}
-              readout={readout}
-              accent={accent}
-              muted={neutral.textSecondary}
-              size={18 * scale}
+            <BroadcastGlyph
+              size={BROADCAST_SIZE * scale}
+              color={live ? accent : neutral.textSecondary}
+              wave={wave}
+              pulsing={live}
             />
           </View>
           <Animated.View
@@ -405,18 +432,6 @@ export function PublicRideSelector({
               ]}
             />
           </Animated.View>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.wave,
-              {
-                left: PUBLIC_RIDE_ARC.cx * scale - 15,
-                top: BROADCAST_Y * scale - 15,
-                borderColor: accent,
-              },
-              waveStyle,
-            ]}
-          />
           {options.map((option, index) => {
             const target = index === 0 ? 0 : index === 2 ? ALWAYS_STOP : durationStop
             return (
@@ -493,7 +508,7 @@ const styles = StyleSheet.create({
     maxWidth: 340,
     alignSelf: 'center',
   },
-  wave: { position: 'absolute', width: 30, height: 30, borderRadius: 15, borderWidth: 1 },
+  wave: { position: 'absolute', borderRadius: 999, borderWidth: 1.5 },
   choice: {
     position: 'absolute',
     width: 70,
