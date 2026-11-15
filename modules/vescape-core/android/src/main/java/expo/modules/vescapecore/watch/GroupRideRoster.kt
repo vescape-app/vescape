@@ -68,8 +68,14 @@ internal data class GroupRideRosterRider(
 )
 
 /**
- * The joined Group Ride as native holds it: who the Rider is and everyone in the ride.
+ * The riders the wrist draws, as native holds them: a joined Group Ride (who the Rider is and
+ * everyone in the ride), or the nearby public riders while the Rider rides public ([nearby]).
  *
  * @parity /modules/vescape-core/ios/watch/GroupRideRoster.swift `GroupRideRoster`
  */
-internal data class GroupRideRoster(val ownRiderId: String?, val riders: List<GroupRideRosterRider>)
+internal data class GroupRideRoster(
+    val ownRiderId: String?,
+    val riders: List<GroupRideRosterRider>,
+    /** Nearby public riders in relay order, not a room: ordered and capped like the phone's list. */
+    val nearby: Boolean = false,
+)

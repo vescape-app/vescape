@@ -1,5 +1,6 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.watch.GroupRideRoster
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -232,6 +233,21 @@ internal class PublicRide(
         emitPins()
         return true
     }
+
+    /**
+     * The nearby public riders for the Watch Mirror while the rider rides public, in relay order;
+     * null otherwise. The wrist orders and caps them.
+     *
+     * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `nearbyRoster`
+     */
+    val nearbyRoster: GroupRideRoster?
+        get() {
+            if (!riding) return null
+            val rows = riders.values.mapNotNull { view ->
+                GroupRideObserver.rosterRider(view + mapOf("id" to view["accountId"], "name" to view["nick"]))
+            }
+            return GroupRideRoster(ownRiderId = accountId, riders = rows, nearby = true)
+        }
 
     /** Replay state to a JS runtime that just subscribed. */
     fun resync() {

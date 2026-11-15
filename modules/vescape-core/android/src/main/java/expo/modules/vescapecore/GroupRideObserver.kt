@@ -210,6 +210,14 @@ internal class GroupRideObserver(
         }
 
     /**
+     * What the Watch Mirror draws: the joined Group Ride, else the nearby public riders while the
+     * rider rides public, else null.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `watchRoster`
+     */
+    val watchRoster: GroupRideRoster? get() = joinedRoster ?: publicRide.nearbyRoster.takeIf { !stopped }
+
+    /**
      * Watches the three fields [participating] is derived from, so no mutation site has to remember
      * to report — and so the report lands *after* the state changed, which a caller refreshing right
      * after an enqueued `handler.post` cannot do. Edge-triggered: the fields are cleared together in

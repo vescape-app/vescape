@@ -2969,12 +2969,12 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
-  /// The joined Group Ride as the wrist draws it, or nil while the Rider is not in one. Measured from
+  /// The joined Group Ride, or the nearby public riders, as the wrist draws them; nil with neither. Measured from
   /// the Rider's latest GPS Fix, never from Board telemetry, so it needs no Board Session.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groupRideFrame`
   private func groupRideFrame() -> GroupRideFrame? {
-    guard let roster = groupRideObserver.joinedRoster else { return nil }
+    guard let roster = groupRideObserver.watchRoster else { return nil }
     let rider = locationTracker.riderPosition
     return GroupRideFrameBuilder.build(
       roster: roster,

@@ -2522,13 +2522,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
     }
 
     /**
-     * The joined Group Ride as the wrist draws it, or null while the Rider is not in one. Measured
+     * The joined Group Ride, or the nearby public riders, as the wrist draws them; null with neither. Measured
      * from the Rider's latest GPS Fix, never from Board telemetry, so it needs no Board Session.
      *
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groupRideFrame`
      */
     private fun groupRideFrame(): GroupRideFrame? {
-        val roster = groupRideObserver.joinedRoster ?: return null
+        val roster = groupRideObserver.watchRoster ?: return null
         val rider = locationTracker.riderPosition
         return GroupRideFrameBuilder.build(
             roster = roster,

@@ -230,6 +230,21 @@ internal final class PublicRide {
     return true
   }
 
+  /// The nearby public riders for the Watch Mirror while the rider rides public, in relay order;
+  /// nil otherwise. The wrist orders and caps them.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `nearbyRoster`
+  var nearbyRoster: GroupRideRoster? {
+    guard riding else { return nil }
+    let rows = riders.compactMap { entry -> GroupRideRosterRider? in
+      var view = entry.view
+      view["id"] = entry.accountId
+      view["name"] = entry.view["nick"] ?? nil
+      return GroupRideObserver.rosterRider(view)
+    }
+    return GroupRideRoster(ownRiderId: accountId, riders: rows, nearby: true)
+  }
+
   /// Replay state to a JS runtime that just subscribed.
   func resync() {
     emitStatus(force: true)

@@ -61,8 +61,13 @@ export function riderRoster(
 /** Most public riders the nearby list and map show; the relay already caps at 50 within 40 km. */
 export const NEARBY_RIDER_LIMIT = 20
 
-/** Distance band for the nearby order: riders inside one band keep a fixed order, so rows only
- *  move when someone is a band nearer or farther, not on every GPS tick. */
+/**
+ * Distance band for the nearby order: riders inside one band keep a fixed order, so rows only
+ * move when someone is a band nearer or farther, not on every GPS tick.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrameBuilder.kt `GROUP_RIDE_NEARBY_BAND_M`
+ * @parity /modules/vescape-core/ios/watch/GroupRideFrameBuilder.swift `GROUP_RIDE_NEARBY_BAND_M`
+ */
 export const NEARBY_RIDER_BAND_M = 250
 
 /**
@@ -71,6 +76,9 @@ export const NEARBY_RIDER_BAND_M = 250
  * relay's order (nearest to the look-around point) is kept. An away rider stays at their last
  * position, muted. Each rider wears its `pins`; a rider whose pins arrive without it among the
  * riders (a far-away friend's signal) follows as an unplaced row, so the pin still shows.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrameBuilder.kt `nearbyOrder`
+ * @parity /modules/vescape-core/ios/watch/GroupRideFrameBuilder.swift `nearbyOrder`
  */
 export function publicRiderRoster(
   riders: PublicRider[],

@@ -186,6 +186,12 @@ internal final class GroupRideObserver: NSObject {
     return GroupRideRoster(ownRiderId: riderId, riders: lastRosterRideId == rideId ? lastRosterRiders : [])
   }
 
+  /// What the Watch Mirror draws: the joined Group Ride, else the nearby public riders while the
+  /// rider rides public, else nil.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `watchRoster`
+  var watchRoster: GroupRideRoster? { joinedRoster ?? (stopped ? nil : publicRide.nearbyRoster) }
+
   /// Watches the three fields `participating` is derived from, so no mutation site has to remember
   /// to report. Reporting is edge-triggered: the fields are cleared together in several places and
   /// the owner must not see a departure per field.
