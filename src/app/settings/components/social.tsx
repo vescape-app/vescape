@@ -8,6 +8,7 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'
 import { FriendRow } from '@/modules/profile/components/FriendRow'
+import { PublicRideRow } from '@/modules/group-ride/components/FriendRides'
 
 const STATUSES = {
   riding: 'Riding now',
@@ -22,6 +23,7 @@ export default function SocialShowcase() {
   const [nationality, setNationality] = useState(true)
   const [action, setAction] = useState(true)
   const [longNick, setLongNick] = useState(false)
+  const [rideShown, setRideShown] = useState(false)
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
@@ -58,6 +60,16 @@ export default function SocialShowcase() {
                 />
               ) : null
             }
+          />
+        </ShowcaseCard>
+        <ShowcaseCard
+          name="PublicRideRow"
+          controls={<ToggleRow label="shown" value={rideShown} onToggle={setRideShown} />}
+        >
+          <PublicRideRow
+            ride={{ startedAt: '2026-11-14T16:05:00.000Z', endedAt: '2026-11-14T17:12:00.000Z' }}
+            shown={rideShown}
+            onPress={() => setRideShown((shown) => !shown)}
           />
         </ShowcaseCard>
       </PageScrollView>

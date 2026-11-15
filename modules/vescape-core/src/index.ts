@@ -870,8 +870,8 @@ export interface Friends {
 /** `friends` when the other side had already asked, so the request made it mutual. */
 export type FriendRequestStatus = 'requested' | 'friends'
 
-/** One position of another rider's stored track, thinned to one per 5 s. */
-export interface RodeWithTrackPoint {
+/** One position of another rider's stored public track, thinned to one per 5 s. */
+export interface PublicTrackPoint {
   /** Epoch ms. */
   at: number
   lat: number
@@ -884,7 +884,7 @@ export interface RodeWithRider extends RiderProfile {
   startedAt: string
   /** ISO time. */
   endedAt: string
-  track: RodeWithTrackPoint[]
+  track: PublicTrackPoint[]
 }
 
 /**
@@ -899,6 +899,19 @@ export interface RodeWithCrewRide {
   /** ISO time. */
   endedAt: string
   riders: RodeWithRider[]
+}
+
+/**
+ * One of a Friend's public rides, solo included. Mirrors vescape-server `src/rides/protocol.ts`;
+ * no id on the wire, the time range addresses it.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `friendRides`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friendRides`
+ */
+export interface FriendRide {
+  /** ISO time. */
+  startedAt: string
+  /** ISO time. */
+  endedAt: string
 }
 
 export interface TelemetryEvent {
@@ -3311,6 +3324,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteFriendRequest(accountId: string): Promise<void>
   removeFriend(accountId: string): Promise<void>
   getRodeWith(from: string, to: string): Promise<RodeWithCrewRide[]>
+  getFriendRides(accountId: string): Promise<FriendRide[]>
+  getFriendRideTrack(accountId: string, from: string, to: string): Promise<PublicTrackPoint[]>
   setDirectionPoint(latitude: number | null, longitude: number | null): Promise<void>
   recomputeNavigation(): Promise<void>
   setNavigationProfile(profile: NavigationProfile): Promise<void>
@@ -4921,6 +4936,20 @@ export async function removeFriend(accountId: string): Promise<void> {
  */
 export async function getRodeWith(from: string, to: string): Promise<RodeWithCrewRide[]> {
   return native.getRodeWith(from, to)
+}
+
+/** A Friend's public rides, newest first. Rejects with `RiderProfileErrorCode` (refused for non-friends). */
+export async function getFriendRides(accountId: string): Promise<FriendRide[]> {
+  return native.getFriendRides(accountId)
+}
+
+/** A Friend's public track between `from` and `to` (ISO, at most 24 h apart). */
+export async function getFriendRideTrack(
+  accountId: string,
+  from: string,
+  to: string,
+): Promise<PublicTrackPoint[]> {
+  return native.getFriendRideTrack(accountId, from, to)
 }
 
 export async function getNearbyMapPoints(

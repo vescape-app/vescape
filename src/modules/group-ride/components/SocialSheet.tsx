@@ -23,6 +23,8 @@ import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSe
 import { RiderNickForm } from '@/modules/profile/components/RiderNickForm'
 import { FriendsCard } from '@/modules/profile/components/FriendsCard'
 import { RiderProfileCard } from '@/modules/profile/components/RiderProfileCard'
+import { useFriendsStore } from '@/modules/profile/store/friendsStore'
+import { FriendRides } from '@/modules/group-ride/components/FriendRides'
 import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
@@ -58,6 +60,9 @@ function RiderProfilePage({ rider, onNavigate }: { rider: RiderProfile; onNaviga
   const onMap = useGroupRideStore((s) =>
     s.rosterRows.some((row) => row.id === rider.accountId && row.presence),
   )
+  const isFriend = useFriendsStore((s) =>
+    s.lists.friends.some((row) => row.accountId === rider.accountId),
+  )
   return (
     <View testID="social-rider-profile" style={styles.list}>
       <Button
@@ -84,6 +89,9 @@ function RiderProfilePage({ rider, onNavigate }: { rider: RiderProfile; onNaviga
                 onNavigate?.()
               }}
             />
+          ) : null}
+          {isFriend ? (
+            <FriendRides accountId={rider.accountId} onOpen={() => onNavigate?.()} />
           ) : null}
         </RiderProfileCard>
       </View>

@@ -155,14 +155,55 @@ final class RiderProfileApi {
     var row = try profile(json)
     row["startedAt"] = startedAt
     row["endedAt"] = endedAt
-    row["track"] = try track.map { point -> [String: Any?] in
+    row["track"] = try Self.track(track)
+    return row
+  }
+
+  /// A Friend's public rides (solo included), newest first, at most 50. Refused (`not-friends`)
+  /// for anyone else. Private Ride Recordings never leave the phone, so they are not here.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friendRides`
+  /// @parity /modules/vescape-core/src/index.ts `FriendRide`
+  func friendRides(_ accountId: String) async throws -> [[String: Any?]] {
+    try unwrap(
+      await api.request(.get, path: "\(Self.friendsPath)/\(accountId)/rides", auth: .required) { body in
+        guard let rides = try Self.object(body)["rides"] as? [[String: Any]] else {
+          throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable rides")
+        }
+        return try rides.map { ride -> [String: Any?] in
+          guard let startedAt = ride["startedAt"] as? String, let endedAt = ride["endedAt"] as? String
+          else { throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable ride") }
+          return ["startedAt": startedAt, "endedAt": endedAt]
+        }
+      }
+    )
+  }
+
+  /// A Friend's public track between `from` and `to` (ISO, at most 24 h apart). A ride has no id;
+  /// its time range addresses it.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friendRideTrack`
+  func friendRideTrack(_ accountId: String, from: String, to: String) async throws -> [[String: Any?]] {
+    try unwrap(
+      await api.request(
+        .get, path: "\(Self.friendsPath)/\(accountId)/rides/track", query: ["from": from, "to": to], auth: .required
+      ) { body in
+        guard let track = try Self.object(body)["track"] as? [[String: Any]] else {
+          throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable track")
+        }
+        return try Self.track(track)
+      }
+    )
+  }
+
+  private static func track(_ points: [[String: Any]]) throws -> [[String: Any?]] {
+    try points.map { point -> [String: Any?] in
       guard let at = (point["at"] as? NSNumber)?.doubleValue,
             let lat = (point["lat"] as? NSNumber)?.doubleValue,
             let lng = (point["lng"] as? NSNumber)?.doubleValue
       else { throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable track point") }
       return ["at": at, "lat": lat, "lng": lng]
     }
-    return row
   }
 
   private static func request(_ json: [String: Any]) throws -> [String: Any?] {

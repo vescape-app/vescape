@@ -11,25 +11,43 @@ import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 
 /** The other riders' tracks on a past ride's map, in their live colors, under `belowLayerID`. */
 export function RodeWithTracks({ belowLayerID }: { belowLayerID: string }) {
-  const accents = useResolvedAccentColors()
   const tracks = useRodeWithStore((s) => s.tracks)
   const hidden = useRodeWithStore((s) => s.hidden)
   if (hidden) return null
   return tracks.map((track) => (
-    <ShapeSource
+    <RiderTrackLine
       key={track.key}
-      id={`center-rode-with-source-${track.key}`}
-      shape={{
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: track.coordinates },
-        properties: {},
-      }}
+      id={`rode-with-${track.key}`}
+      accountId={track.accountId}
+      coordinates={track.coordinates}
+      belowLayerID={belowLayerID}
+    />
+  ))
+}
+
+/** Another rider's stored track, in their live color. */
+export function RiderTrackLine({
+  id,
+  accountId,
+  coordinates,
+  belowLayerID,
+}: {
+  id: string
+  accountId: string
+  coordinates: [number, number][]
+  belowLayerID?: string
+}) {
+  const accents = useResolvedAccentColors()
+  return (
+    <ShapeSource
+      id={`center-${id}-source`}
+      shape={{ type: 'Feature', geometry: { type: 'LineString', coordinates }, properties: {} }}
     >
       <LineLayer
-        id={`center-rode-with-line-${track.key}`}
+        id={`center-${id}-line`}
         belowLayerID={belowLayerID}
         style={{
-          lineColor: riderMapColor({ id: track.accountId, stale: false }, accents),
+          lineColor: riderMapColor({ id: accountId, stale: false }, accents),
           lineWidth: MAP_DEFAULTS.trailWidth,
           lineOpacity: 0.85,
           lineCap: 'round',
@@ -37,7 +55,7 @@ export function RodeWithTracks({ belowLayerID }: { belowLayerID: string }) {
         }}
       />
     </ShapeSource>
-  ))
+  )
 }
 
 /** Who the rider rode with, with the toggle that hides them from the map. Empty when alone. */

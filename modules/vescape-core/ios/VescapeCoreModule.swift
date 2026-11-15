@@ -1758,6 +1758,23 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // A Friend's public rides and one ride's track; fetched per view, never stored.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFriendRides`
+    AsyncFunction("getFriendRides") { (accountId: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.friendRides(accountId)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFriendRideTrack`
+    AsyncFunction("getFriendRideTrack") { (accountId: String, from: String, to: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.friendRideTrack(accountId, from: from, to: to)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
     // The direction target is personal client state, never a Map Point. Native keeps it so Group
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") { (latitude: Double?, longitude: Double?, promise: Promise) in

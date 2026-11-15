@@ -120,15 +120,48 @@ class RiderProfileApi(private val api: VescapeApi) {
   )
 
   private fun rodeWithRider(json: JSONObject): Map<String, Any?> {
-    val track = json.getJSONArray("track")
     return profile(json) + mapOf(
       "startedAt" to json.getString("startedAt"),
       "endedAt" to json.getString("endedAt"),
-      "track" to List(track.length()) { index ->
-        val point = track.getJSONObject(index)
-        mapOf("at" to point.getDouble("at"), "lat" to point.getDouble("lat"), "lng" to point.getDouble("lng"))
-      },
+      "track" to track(json.getJSONArray("track")),
     )
+  }
+
+  /**
+   * A Friend's public rides (solo included), newest first, at most 50. Refused (`not-friends`)
+   * for anyone else. Private Ride Recordings never leave the phone, so they are not here.
+   *
+   * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `friendRides`
+   * @parity /modules/vescape-core/src/index.ts `FriendRide`
+   */
+  suspend fun friendRides(accountId: String): List<Map<String, Any?>> = unwrap(
+    api.request(HttpMethod.GET, "$FRIENDS_PATH/$accountId/rides", auth = AuthMode.Required) { body ->
+      val rides = JSONObject(body).getJSONArray("rides")
+      List(rides.length()) { index ->
+        val ride = rides.getJSONObject(index)
+        mapOf("startedAt" to ride.getString("startedAt"), "endedAt" to ride.getString("endedAt"))
+      }
+    },
+  )
+
+  /**
+   * A Friend's public track between `from` and `to` (ISO, at most 24 h apart). A ride has no id;
+   * its time range addresses it.
+   *
+   * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `friendRideTrack`
+   */
+  suspend fun friendRideTrack(accountId: String, from: String, to: String): List<Map<String, Any?>> = unwrap(
+    api.request(
+      HttpMethod.GET,
+      "$FRIENDS_PATH/$accountId/rides/track",
+      query = mapOf("from" to from, "to" to to),
+      auth = AuthMode.Required,
+    ) { body -> track(JSONObject(body).getJSONArray("track")) },
+  )
+
+  private fun track(points: JSONArray): List<Map<String, Any?>> = List(points.length()) { index ->
+    val point = points.getJSONObject(index)
+    mapOf("at" to point.getDouble("at"), "lat" to point.getDouble("lat"), "lng" to point.getDouble("lng"))
   }
 
   private fun requests(items: JSONArray): List<Map<String, Any?>> = List(items.length()) { index ->
