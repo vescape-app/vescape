@@ -42,7 +42,6 @@ import expo.modules.vescapecore.location.GpsMonitor
 import expo.modules.vescapecore.location.GpsPowerMode
 import expo.modules.vescapecore.location.RIDE_DROPOUT_GRACE_MS
 import expo.modules.vescapecore.location.isPreciseGpsFix
-import expo.modules.vescapecore.GroupRideCues
 import expo.modules.vescapecore.GroupRideObserver
 import expo.modules.vescapecore.GroupRideOnlineGate
 import expo.modules.vescapecore.PublicRideStore
@@ -482,13 +481,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
             handler = mainHandler,
             emit = ::emitEvent,
             online = AppStatusCoordinator.get(service.applicationContext),
-            // Participation is a GPS demand input, and most of the ways it ends are not
-            // rider-initiated. Reporting from inside the observer also lands after its `handler.post`
-            // has actually mutated the state, which a caller refreshing inline cannot.
-            onParticipationChanged = ::refreshGpsDemand,
-            onCue = { cue ->
-                if (GroupRideCues.audible(cue, connectionSoundsEnabled)) alertFeedback.playAppCue(cue)
-            },
+            // Only Ride Hazard approach cues come from here: safety calls, never muted.
+            onCue = alertFeedback::playAppCue,
             ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
             signalContext = ::riderSignalContext,
             deviceToken = { DeviceCredentialStore(service.applicationContext).read()?.token },
@@ -1124,25 +1118,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         jsObserving = false
         // A public ride keeps riding without the screen that started observing.
         if (groupRideObserver.publicRideNeedsLink) return
-        // `stop()` reports the participation edge, which refreshes demand; `stopIfIdle` then finds
-        // nothing left holding the host.
         groupRideObserver.stop()
         stopIfIdle()
-    }
-
-    fun createGroupRide(riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Boolean) {
-        groupRideObserver.create(riderId, riderName, name, lat, lng, auto)
-    }
-
-    fun joinGroupRide(riderId: String, riderName: String, rideId: String) {
-        isStoppingService = false
-        // No refresh here: the observer reports its own participation edge, which is both correctly
-        // ordered behind its `handler.post` and the only way server-driven departures get seen.
-        groupRideObserver.join(riderId, riderName, rideId, latestRiderPresence())
-    }
-
-    fun leaveGroupRide() {
-        groupRideObserver.leave()
     }
 
     fun sendGroupRideSignal(kind: String) {
@@ -1159,10 +1136,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     fun clearGroupRideHazard() {
         groupRideObserver.clearHazard()
-    }
-
-    fun updateGroupRideIdentity(riderId: String, riderName: String) {
-        groupRideObserver.updateIdentity(riderId, riderName)
     }
 
     /**
@@ -1252,9 +1225,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
         notificationController.cancel()
         stopCurrentBoardSession(emitDisconnected = true)
         forceStopGps()
-        // The rider is done riding, so a joined Group Ride hears them leave rather than go away.
-        // Posted ahead of `stopSelf`, so it runs before `onServiceDestroy` stops the observer.
-        groupRideObserver.leaveAndStop()
         closeAppTask()
         service.stopSelf()
     }
@@ -3137,13 +3107,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
             rescheduleAutoClose()
             return
         }
-        // Riding in a Group Ride is deliberate board-less use: push the countdown instead of
-        // closing. Lobby observing doesn't count — the app observes whenever it is open.
-        if (groupRideObserver.participating) {
-            Log.i(VESC_SESSION_TAG, "Auto close postponed: Group Ride participation active")
-            rescheduleAutoClose()
-            return
-        }
         Log.i(VESC_SESSION_TAG, "Auto close: no board link for ${autoCloseDelayMinutes}min, exiting app")
         recordLocalDiagnostic("auto_close_app", boardConfig, "session", mapOf("delayMinutes" to autoCloseDelayMinutes))
         isStoppingService = true
@@ -3294,7 +3257,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val mode = GpsDemand.resolve(
             appVisible = appVisible,
             riding = riding,
-            groupRideParticipating = groupRideObserver.participating,
             watchNavigating = watchMirror.navigating,
             replayOwnsPosition = replayTransport != null || boardConfig?.replayRecordingName != null,
         )

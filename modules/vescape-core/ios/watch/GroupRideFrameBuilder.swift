@@ -53,8 +53,7 @@ enum GroupRideFrameBuilder {
           heatLevel: TelemetryThresholds.heatLevel(motorTempC: rider.motorTempC, ctrlTempC: rider.ctrlTempC)
         )
       }
-    if roster.nearby { return nearbyOrder(placed) }
-    return Array(placed.sorted { $0.distanceM < $1.distanceM }.prefix(GROUP_RIDE_FRAME_MAX_RIDERS))
+    return nearbyOrder(placed)
   }
 
   /// The phone's nearby rule: the `GROUP_RIDE_NEARBY_RIDER_LIMIT` nearest by exact distance (relay

@@ -1,23 +1,14 @@
 import { create } from 'zustand'
 import {
   addGroupRideConnectionListener,
-  addGroupRideCreatedListener,
-  addGroupRideEndedListener,
   addGroupRideErrorListener,
-  addGroupRideJoinedListener,
-  addGroupRideRosterListener,
   addGroupRideSignalAvailabilityListener,
-  addGroupRideSnapshotListener,
-  addGroupRideUpdatedListener,
   addLocationListener,
   addPublicPinsListener,
   addPublicRidersListener,
   addPublicRideStatusListener,
   clearGroupRideHazard,
   clearGroupRideSignal,
-  createGroupRide,
-  joinGroupRide,
-  leaveGroupRide,
   sendGroupRideHazard,
   sendGroupRideSignal,
   setPublicRide,
@@ -27,9 +18,7 @@ import {
   updateGroupRideIdentity,
   watchPublicRiders,
   type GroupRideConnectionState,
-  type GroupRideRider,
   type GroupRideSignalAvailability,
-  type GroupRideSummary,
   type GroupRidePin,
   type PublicRider,
   type PublicRiderPins,
@@ -39,12 +28,10 @@ import {
   type RiderSignalKind,
 } from 'vescape-core'
 
-import { nearbyRides, type NearbyRide } from '@/modules/group-ride/lib/nearby'
 import { publicRideUntil, type PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { monotonicNow, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
 import {
   publicRiderRoster,
-  riderRoster,
   rosterRowsEqual,
   type RosterRider,
 } from '@/modules/group-ride/lib/roster'
@@ -58,16 +45,12 @@ type TimerHandle = ReturnType<typeof setInterval>
 interface GroupRideState {
   connection: GroupRideConnectionState
   /** Raw active-ride list from the relay (unfiltered). */
-  rides: GroupRideSummary[]
   /** Device's own location, mirrored from native GPS for local distance filtering. */
   ownLocation: { lat: number; lng: number } | null
   /** Active rides within range of {@link ownLocation}, nearest first. */
-  nearby: NearbyRide[]
   /** Social-button badge state: true when at least one nearby ride exists. */
-  badge: boolean
-  activeRideId: string | null
-  roster: GroupRideRider[]
-  /** The joined ride's roster; outside a ride, the nearest public riders (nearest first, limited). */
+
+  /** Nearby public riders, nearest first and limited. */
   rosterRows: RosterRider[]
   /** Relay clock of the last roster that carried one; signal times are read against it. */
   relayClock: RelayClock | null
@@ -90,12 +73,8 @@ interface GroupRideState {
   startObserving: () => void
   /** Close the observe WebSocket and clear observed state. */
   stopObserving: () => void
-  /** Create a Group Ride from the device's own location; result arrives via `ride-created`. */
-  createRide: (name: string) => void
   /** Move the public ride switch; native persists it and goes public when the board connects. */
   setPublicRide: (choice: PublicRideChoice) => void
-  joinRide: (rideId: string) => void
-  leaveRide: () => void
   /** Raise a Rider Signal; replaces the current one. The roster brings it back once the relay has it. */
   sendSignal: (kind: RiderSignalKind) => void
   clearSignal: () => void
@@ -138,12 +117,9 @@ let rosterFreshnessTimer: TimerHandle | null = null
 
 export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   connection: 'idle',
-  rides: [],
+
   ownLocation: null,
-  nearby: [],
-  badge: false,
-  activeRideId: null,
-  roster: [],
+
   rosterRows: [],
   relayClock: null,
   signalAvailability: NO_SIGNAL_AVAILABILITY,
@@ -166,70 +142,13 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           state === 'blocked'
             ? {
                 connection: state,
-                rides: [],
-                nearby: [],
-                badge: false,
-                activeRideId: null,
-                roster: [],
+
                 rosterRows: [],
                 error: null,
               }
             : { connection: state },
         )
       }),
-      addGroupRideSnapshotListener(({ rides }) =>
-        set((state) => ({
-          ...deriveNearby({ rides }, state),
-          ...(!state.activeRideId || rides.some((ride) => ride.id === state.activeRideId)
-            ? {}
-            : { activeRideId: null, roster: [], rosterRows: [] }),
-        })),
-      ),
-      addGroupRideCreatedListener(({ ride }) =>
-        set((state) => ({
-          ...deriveNearby({ rides: upsertRide(state.rides, ride) }, state),
-          error: null,
-        })),
-      ),
-      addGroupRideUpdatedListener(({ ride }) =>
-        set((state) => ({
-          ...deriveNearby({ rides: upsertRide(state.rides, ride) }, state),
-          error: null,
-        })),
-      ),
-      addGroupRideEndedListener(({ rideId }) =>
-        set((state) => ({
-          ...deriveNearby({ rides: state.rides.filter((ride) => ride.id !== rideId) }, state),
-          ...(state.activeRideId === rideId
-            ? { activeRideId: null, roster: [], rosterRows: [], error: null }
-            : {}),
-        })),
-      ),
-      addGroupRideJoinedListener(({ rideId }) => {
-        set((state) => ({
-          ...deriveRoster({ activeRideId: rideId, roster: [] }, state),
-          error: null,
-        }))
-      }),
-      addGroupRideRosterListener(({ rideId, riders, now }) =>
-        set((state) => {
-          const relayClock =
-            typeof now === 'number'
-              ? { relayNow: now, receivedAt: monotonicNow() }
-              : state.relayClock
-          if (!rideId) {
-            return { ...deriveRoster({ activeRideId: null, roster: [] }, state), error: null }
-          }
-          // Membership comes from join intents/native join events. A queued presence roster
-          // must not restore the ride after Leave has already cleared it.
-          if (state.activeRideId !== rideId) return state
-          return {
-            ...deriveRoster({ activeRideId: rideId, roster: riders }, state),
-            relayClock,
-            error: null,
-          }
-        }),
-      ),
       addGroupRideSignalAvailabilityListener((signalAvailability) => set({ signalAvailability })),
       addGroupRideErrorListener(({ message }) => set({ error: message })),
       addPublicRideStatusListener((publicRide) => set({ publicRide })),
@@ -242,9 +161,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           publicPins: pins,
           publicOwnPins: own,
           // Outside a ride the public pins are what the relay clock is read for.
-          ...(state.activeRideId
-            ? {}
-            : { relayClock: { relayNow: now, receivedAt: monotonicNow() } }),
+          relayClock: { relayNow: now, receivedAt: monotonicNow() },
         })),
       ),
       // A ride roster neither sorts nor stores distance, so a fix leaves it untouched; the public
@@ -255,7 +172,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
         set((state) => {
           const next = {
             ...state,
-            ...deriveNearby({ ownLocation: { lat: latitude, lng: longitude } }, state),
+            ownLocation: { lat: latitude, lng: longitude },
           }
           return { ...next, ...deriveRoster({}, next) }
         })
@@ -297,12 +214,9 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
     set({
       observing: false,
       connection: 'idle',
-      rides: [],
+
       ownLocation: null,
-      nearby: [],
-      badge: false,
-      activeRideId: null,
-      roster: [],
+
       rosterRows: [],
       relayClock: null,
       signalAvailability: NO_SIGNAL_AVAILABILITY,
@@ -315,27 +229,8 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
     })
   },
 
-  createRide(name) {
-    startRide(get, set, name.trim() || null)
-  },
-
   setPublicRide(choice) {
     setPublicRide(choice.mode !== 'off', publicRideUntil(choice, Date.now()))
-  },
-
-  joinRide(rideId) {
-    const { riderId, riderName } = currentIdentity()
-    if (!riderId) return
-    set((state) => ({
-      ...deriveRoster({ activeRideId: rideId, roster: [] }, state),
-      error: null,
-    }))
-    joinGroupRide({ riderId, riderName, rideId })
-  },
-
-  leaveRide() {
-    leaveGroupRide()
-    set((state) => ({ ...deriveRoster({ activeRideId: null, roster: [] }, state), error: null }))
   },
 
   sendSignal(kind) {
@@ -371,10 +266,9 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   },
 }))
 
-/** The rider's own signal or hazard: its row in a joined ride, else as sent on the public ride. */
+/** The rider's own public signal or hazard. */
 export function ownPin(state: GroupRideState, slot: keyof OwnPins): GroupRidePin | null {
-  if (!state.activeRideId) return state.publicOwnPins[slot]
-  return state.rosterRows.find((row) => row.isSelf)?.[slot] ?? null
+  return state.publicOwnPins[slot]
 }
 
 /**
@@ -386,66 +280,17 @@ function currentIdentity(): { riderId: string | null; riderName: string } {
   return { riderId, riderName: riderDisplayName(riderName)?.trim() || 'Rider' }
 }
 
-/** Merge a `rides`/`ownLocation` change with the current state and recompute the nearby view. */
-function deriveNearby(
-  patch: Partial<Pick<GroupRideState, 'rides' | 'ownLocation'>>,
-  current: GroupRideState,
-): Pick<GroupRideState, 'rides' | 'ownLocation' | 'nearby' | 'badge'> {
-  const rides = patch.rides ?? current.rides
-  const ownLocation = patch.ownLocation ?? current.ownLocation
-  const { rides: nearby, badge } = nearbyRides(rides, ownLocation)
-  return { rides, ownLocation, nearby, badge }
-}
-
-function upsertRide(rides: GroupRideSummary[], ride: GroupRideSummary): GroupRideSummary[] {
-  const index = rides.findIndex((existing) => existing.id === ride.id)
-  if (index === -1) return [...rides, ride]
-  const next = rides.slice()
-  next[index] = ride
-  return next
-}
-
 function deriveRoster(
-  patch: Partial<Pick<GroupRideState, 'activeRideId' | 'roster'>>,
+  _patch: Record<string, never>,
   current: GroupRideState,
-): Pick<GroupRideState, 'activeRideId' | 'roster' | 'rosterRows' | 'publicRiders'> {
-  const activeRideId = patch.activeRideId === undefined ? current.activeRideId : patch.activeRideId
-  const roster = patch.roster ?? current.roster
-  // Outside a ride, the public riders around this phone take the roster's place.
-  const rows = activeRideId
-    ? riderRoster(roster, useRiderStore.getState().riderId)
-    : publicRiderRoster(current.publicRiders, current.ownLocation, current.publicPins)
+): Pick<GroupRideState, 'rosterRows' | 'publicRiders'> {
+  const rows = publicRiderRoster(current.publicRiders, current.ownLocation, current.publicPins)
   return {
-    activeRideId,
-    roster,
     publicRiders: current.publicRiders,
     // Keep the previous reference when nothing visible changed, so the 1s
     // freshness tick doesn't fan out to selectors as a new array.
     rosterRows: rosterRowsEqual(rows, current.rosterRows) ? current.rosterRows : rows,
   }
-}
-
-function startRide(
-  get: () => GroupRideState,
-  set: (partial: (state: GroupRideState) => Partial<GroupRideState>) => void,
-  name: string | null,
-) {
-  const { ownLocation } = get()
-  if (!ownLocation) return
-  const { riderId, riderName } = currentIdentity()
-  if (!riderId) return
-  set((state) => ({
-    ...deriveRoster({ activeRideId: null, roster: [] }, state),
-    error: null,
-  }))
-  createGroupRide({
-    riderId,
-    riderName,
-    name,
-    lat: ownLocation.lat,
-    lng: ownLocation.lng,
-    auto: false,
-  })
 }
 
 function pushIdentity() {

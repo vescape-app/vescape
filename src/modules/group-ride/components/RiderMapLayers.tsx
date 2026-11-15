@@ -113,7 +113,7 @@ export function LiveRiderSignalPins() {
   const rosterRows = useGroupRideStore((s) => s.rosterRows)
   const clock = useGroupRideStore((s) => s.relayClock)
   // On the public ride the rider has no row: its own pins come as sent.
-  const publicOwn = useGroupRideStore((s) => (s.activeRideId ? null : s.publicOwnPins))
+  const publicOwn = useGroupRideStore((s) => s.publicOwnPins)
   const rows = useMemo(
     () =>
       publicOwn && (publicOwn.signal || publicOwn.hazard)

@@ -254,9 +254,8 @@ internal final class BoardSessionController: VescGattListener {
     online: AppStatusCoordinator.shared,
     scheduler: scheduler,
     // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
-    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() },
     onCue: { [weak self] cue in
-      guard let self, GroupRideCues.audible(cue, connectionSoundsEnabled: self.connectionSoundsEnabled) else { return }
+      guard let self else { return }
       self.alertAudioPlayer.playAppCue(cue)
     },
     ownLocation: { [weak self] in
@@ -1041,7 +1040,6 @@ internal final class BoardSessionController: VescGattListener {
     let mode = GpsDemand.resolve(
       appVisible: appVisible,
       riding: riding,
-      groupRideParticipating: groupRideObserver.participating,
       watchNavigating: watchMirror.navigating,
       replayOwnsPosition: replayTransport != nil
     )
@@ -1166,24 +1164,11 @@ internal final class BoardSessionController: VescGattListener {
     }
   }
 
-  func createGroupRide(riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Bool) {
-    groupRideObserver.create(riderId: riderId, riderName: riderName, name: name, lat: lat, lng: lng, auto: auto)
-  }
 
-  func joinGroupRide(riderId: String, riderName: String, rideId: String) {
-    // No refresh here: the observer reports its own participation edge, which is the only way the
-    // server-driven departures get seen too.
-    groupRideObserver.join(
-      riderId: riderId,
-      riderName: riderName,
-      rideId: rideId,
-      presence: latestRiderPresence()
-    )
-  }
 
-  func leaveGroupRide() {
-    groupRideObserver.leave()
-  }
+
+
+
 
   func sendGroupRideSignal(_ kind: String) {
     groupRideObserver.sendSignal(kind)

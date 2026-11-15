@@ -132,16 +132,16 @@ final class GroupRideFrameBuilderTests: XCTestCase {
 
     let riders = build([low, hot, walking]).riders
 
-    XCTAssertEqual(riders.map(\.id), ["low", "hot", "walking"])
-    XCTAssertEqual(riders[0].batteryPercent, 8)
-    XCTAssertEqual(riders[0].batteryLevel, .critical)
-    XCTAssertEqual(riders[0].heatLevel, .warning)
-    XCTAssertEqual(riders[1].batteryPercent, 50)
-    XCTAssertEqual(riders[1].batteryLevel, .normal)
-    XCTAssertEqual(riders[1].heatLevel, .critical)
-    XCTAssertNil(riders[2].batteryPercent)
-    XCTAssertEqual(riders[2].batteryLevel, .normal)
-    XCTAssertEqual(riders[2].heatLevel, .normal)
+    XCTAssertEqual(Set(riders.map(\.id)), Set(["low", "hot", "walking"]))
+    XCTAssertEqual(riders.first { $0.id == "low" }!.batteryPercent, 8)
+    XCTAssertEqual(riders.first { $0.id == "low" }!.batteryLevel, .critical)
+    XCTAssertEqual(riders.first { $0.id == "low" }!.heatLevel, .warning)
+    XCTAssertEqual(riders.first { $0.id == "hot" }!.batteryPercent, 50)
+    XCTAssertEqual(riders.first { $0.id == "hot" }!.batteryLevel, .normal)
+    XCTAssertEqual(riders.first { $0.id == "hot" }!.heatLevel, .critical)
+    XCTAssertNil(riders.first { $0.id == "walking" }!.batteryPercent)
+    XCTAssertEqual(riders.first { $0.id == "walking" }!.batteryLevel, .normal)
+    XCTAssertEqual(riders.first { $0.id == "walking" }!.heatLevel, .normal)
   }
 
   func testNearbyPublicRidersAreCappedThenOrderedByDistanceBandAndAccountId() {
@@ -152,7 +152,7 @@ final class GroupRideFrameBuilderTests: XCTestCase {
       rider("b", at: WatchGeoPoint(latitude: 52.0027, longitude: 21.0)),
     ] + far.reversed()
     let frame = GroupRideFrameBuilder.build(
-      roster: GroupRideRoster(ownRiderId: "me", riders: nearby, nearby: true),
+      roster: GroupRideRoster(ownRiderId: "me", riders: nearby),
       own: me, courseDeg: nil, spanM: nil, nowMs: nowMs
     )
 

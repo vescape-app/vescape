@@ -67,7 +67,7 @@ internal object GroupRideFrameBuilder {
                     heatLevel = TelemetryThresholds.heatLevel(rider.motorTempC, rider.ctrlTempC),
                 )
             }
-            .let { placed -> if (roster.nearby) nearbyOrder(placed) else placed.sortedBy { it.distanceM }.take(GROUP_RIDE_FRAME_MAX_RIDERS) }
+            .let(::nearbyOrder)
 
     /**
      * The phone's nearby rule: the [GROUP_RIDE_NEARBY_RIDER_LIMIT] nearest by exact distance (relay

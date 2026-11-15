@@ -203,13 +203,6 @@ class VescapeCoreModule : Module() {
       "onMaintenanceState",
       "onBoardProbeProgress",
       "onGroupRideConnection",
-      "onGroupRideSnapshot",
-      "onGroupRideCreated",
-      "onGroupRideUpdated",
-      "onGroupRideEnded",
-      "onGroupRideJoined",
-      "onGroupRideRoster",
-      "onGroupRideError",
       "onGroupRideSignalAvailability",
       "onPublicRideStatus",
       "onPublicRiders",
@@ -355,20 +348,6 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onBoardProbeProgress") { stopObserving("onBoardProbeProgress") }
     OnStartObserving("onGroupRideConnection") { startObserving("onGroupRideConnection") }
     OnStopObserving("onGroupRideConnection") { stopObserving("onGroupRideConnection") }
-    OnStartObserving("onGroupRideSnapshot") { startObserving("onGroupRideSnapshot") }
-    OnStopObserving("onGroupRideSnapshot") { stopObserving("onGroupRideSnapshot") }
-    OnStartObserving("onGroupRideCreated") { startObserving("onGroupRideCreated") }
-    OnStopObserving("onGroupRideCreated") { stopObserving("onGroupRideCreated") }
-    OnStartObserving("onGroupRideUpdated") { startObserving("onGroupRideUpdated") }
-    OnStopObserving("onGroupRideUpdated") { stopObserving("onGroupRideUpdated") }
-    OnStartObserving("onGroupRideEnded") { startObserving("onGroupRideEnded") }
-    OnStopObserving("onGroupRideEnded") { stopObserving("onGroupRideEnded") }
-    OnStartObserving("onGroupRideJoined") { startObserving("onGroupRideJoined") }
-    OnStopObserving("onGroupRideJoined") { stopObserving("onGroupRideJoined") }
-    OnStartObserving("onGroupRideRoster") { startObserving("onGroupRideRoster") }
-    OnStopObserving("onGroupRideRoster") { stopObserving("onGroupRideRoster") }
-    OnStartObserving("onGroupRideError") { startObserving("onGroupRideError") }
-    OnStopObserving("onGroupRideError") { stopObserving("onGroupRideError") }
     OnStartObserving("onGroupRideSignalAvailability") { startObserving("onGroupRideSignalAvailability") }
     OnStopObserving("onGroupRideSignalAvailability") { stopObserving("onGroupRideSignalAvailability") }
     OnStartObserving("onPublicRideStatus") { startObserving("onPublicRideStatus") }
@@ -1731,12 +1710,6 @@ class VescapeCoreModule : Module() {
     Function("stopGroupRideObserve") {
       CoreForegroundService.stopGroupRideObserve(context.applicationContext)
     }
-    Function("createGroupRide") { riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Boolean ->
-      CoreForegroundService.createGroupRide(context.applicationContext, riderId, riderName, name, lat, lng, auto)
-    }
-    Function("joinGroupRide") { riderId: String, riderName: String, rideId: String ->
-      CoreForegroundService.joinGroupRide(context.applicationContext, riderId, riderName, rideId)
-    }
     // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair posts test notices.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `dismissRideNotice`
     Function("getRideNotices") { RideNotices.current.map { it.toMap() } }
@@ -1762,9 +1735,6 @@ class VescapeCoreModule : Module() {
       )
     }
     Function("devClearRideNotice") { key: String -> RideNotices.clear(key) }
-    Function("leaveGroupRide") {
-      CoreForegroundService.leaveGroupRide(context.applicationContext)
-    }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendGroupRideSignal`
     Function("sendGroupRideSignal") { kind: String ->
       CoreForegroundService.sendGroupRideSignal(kind)
@@ -1788,9 +1758,6 @@ class VescapeCoreModule : Module() {
     }
     Function("stopWatchingPublicRiders") {
       CoreForegroundService.stopWatchingPublicRiders()
-    }
-    Function("updateGroupRideIdentity") { riderId: String, riderName: String ->
-      CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName)
     }
   }
 

@@ -2,8 +2,8 @@ package expo.modules.vescapecore.watch
 
 /**
  * Client-side presence ageing, the same rule the phone roster applies: a Rider unheard for
- * [GROUP_RIDE_STALE_AFTER_MS] is stale. Nobody is dropped client-side; the relay's roster decides
- * who is in the ride.
+ * [GROUP_RIDE_STALE_AFTER_MS] is stale. Nobody is dropped client-side; the relay decides who is
+ * nearby.
  *
  * @parity /src/modules/group-ride/lib/roster.ts `RIDER_STALE_AFTER_MS`
  * @parity /modules/vescape-core/ios/watch/GroupRideRoster.swift `GROUP_RIDE_STALE_AFTER_MS`
@@ -68,14 +68,12 @@ internal data class GroupRideRosterRider(
 )
 
 /**
- * The riders the wrist draws, as native holds them: a joined Group Ride (who the Rider is and
- * everyone in the ride), or the nearby public riders while the Rider rides public ([nearby]).
+ * The riders the wrist draws, as native holds them: the nearby public riders while the Rider rides
+ * public, in relay order, ordered and capped like the phone's list.
  *
  * @parity /modules/vescape-core/ios/watch/GroupRideRoster.swift `GroupRideRoster`
  */
 internal data class GroupRideRoster(
     val ownRiderId: String?,
     val riders: List<GroupRideRosterRider>,
-    /** Nearby public riders in relay order, not a room: ordered and capped like the phone's list. */
-    val nearby: Boolean = false,
 )

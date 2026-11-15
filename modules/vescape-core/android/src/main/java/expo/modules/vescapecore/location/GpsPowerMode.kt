@@ -22,7 +22,7 @@ internal enum class GpsPowerMode(val slug: String) {
      */
     Map("map"),
 
-    /** The rider is riding (or sharing position in a Group Ride). Background delivery at full rate. */
+    /** The rider is riding. Background delivery at full rate. */
     Ride("ride"),
 }
 
@@ -68,8 +68,6 @@ internal object GpsDemand {
      * @param riding a Board Session is delivering telemetry and Idle Pause is not holding it. A
      *   paused ride is deliberately *not* riding: Idle Pause already stops recording fixes
      *   (ADR 0021), so keeping the chip warm through a 30s+ stop buys nothing but drain.
-     * @param groupRideParticipating the rider's position is being broadcast to a Group Ride, which
-     *   must keep working with the phone in a pocket and no Board connected.
      * @param watchNavigating a Watch Mirror is taking frames while Navigation has a drawable route.
      *   The wrist draws that route around the rider's live position, so it must keep moving from a
      *   pocket too (ADR-0039).
@@ -79,12 +77,11 @@ internal object GpsDemand {
     fun resolve(
         appVisible: Boolean,
         riding: Boolean,
-        groupRideParticipating: Boolean,
         watchNavigating: Boolean,
         replayOwnsPosition: Boolean,
     ): GpsPowerMode {
         if (replayOwnsPosition) return GpsPowerMode.Off
-        if (riding || groupRideParticipating || watchNavigating) return GpsPowerMode.Ride
+        if (riding || watchNavigating) return GpsPowerMode.Ride
         if (appVisible) return GpsPowerMode.Map
         return GpsPowerMode.Off
     }

@@ -17,7 +17,7 @@ internal enum GpsPowerMode: String {
   /// The rider is looking at the app. Foreground-only delivery, gated by a small distance filter so
   /// standing still costs nothing.
   case map
-  /// The rider is riding (or sharing position in a Group Ride). Background delivery at full rate.
+  /// The rider is riding. Background delivery at full rate.
   case ride
 }
 
@@ -52,8 +52,6 @@ internal enum GpsDemand {
   ///   - riding: a Board Session is delivering telemetry and Idle Pause is not holding it. A paused
   ///     ride is deliberately *not* riding: Idle Pause already stops recording fixes (ADR 0021), so
   ///     keeping the chip warm through a 30s+ stop buys nothing but drain.
-  ///   - groupRideParticipating: the rider's position is being broadcast to a Group Ride, which must
-  ///     keep working with the phone in a pocket and no Board connected.
   ///   - watchNavigating: a Watch Mirror is taking frames while Navigation has a drawable route. The
   ///     wrist draws that route around the rider's live position, so it must keep moving from a
   ///     pocket too (ADR-0039).
@@ -62,12 +60,11 @@ internal enum GpsDemand {
   static func resolve(
     appVisible: Bool,
     riding: Bool,
-    groupRideParticipating: Bool,
     watchNavigating: Bool,
     replayOwnsPosition: Bool
   ) -> GpsPowerMode {
     if replayOwnsPosition { return .off }
-    if riding || groupRideParticipating || watchNavigating { return .ride }
+    if riding || watchNavigating { return .ride }
     if appVisible { return .map }
     return .off
   }

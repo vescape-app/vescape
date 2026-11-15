@@ -138,7 +138,7 @@ class GroupRideFrameBuilderTest {
             ),
         )
 
-        val (low, hot, walking) = frame.riders
+        val (low, hot, walking) = listOf("low", "hot", "walking").map { id -> frame.riders.first { it.id == id } }
         assertEquals(8, low.batteryPercent)
         assertEquals(TelemetryLevel.CRITICAL, low.batteryLevel)
         assertEquals(TelemetryLevel.WARNING, low.heatLevel)
@@ -154,7 +154,7 @@ class GroupRideFrameBuilderTest {
     fun `nearby public riders are capped, then ordered by distance band and account id`() {
         val far = (0 until 10).map { rider("f$it", GeoPoint(52.02 + it * 0.001, 21.0)) }
         val nearby = listOf(rider("z", GeoPoint(52.0009, 21.0)), rider("a", GeoPoint(52.0018, 21.0)), rider("b", GeoPoint(52.0027, 21.0))) + far.reversed()
-        val frame = GroupRideFrameBuilder.build(GroupRideRoster("me", nearby, nearby = true), me, courseDeg = null, spanM = null, nowMs = nowMs)
+        val frame = GroupRideFrameBuilder.build(GroupRideRoster("me", nearby), me, courseDeg = null, spanM = null, nowMs = nowMs)
 
         assertEquals(listOf("a", "z", "b") + (0..6).map { "f$it" }, frame.riders.map { it.id })
         assertEquals(GROUP_RIDE_NEARBY_RIDER_LIMIT, frame.riders.size)

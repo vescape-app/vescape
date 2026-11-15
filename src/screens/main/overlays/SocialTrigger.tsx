@@ -24,7 +24,6 @@ export function SocialTrigger() {
   const triggerRef = useRef<View>(null)
   const [socialOpen, setSocialOpen] = useState(false)
   const [signalOpen, setSignalOpen] = useState(false)
-  const nearbyBadge = useGroupRideStore((s) => s.badge)
   const friendRiding = useFriendsStore((s) => s.friendRiding)
   // A rider tapped on the map opens the drawer on their profile.
   const profileOpen = useGroupRideStore((s) => s.profileRider !== null)
@@ -35,7 +34,7 @@ export function SocialTrigger() {
   useEffect(() => {
     if (socialOpen) useFriendsStore.getState().acknowledgeRiding()
   }, [socialOpen, friendRiding])
-  const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
+  const rideActive = useGroupRideStore((s) => s.publicRide.live)
   // Native judges it: in a ride on a relay with signals, or public. Hidden otherwise.
   const signalsSupported = useGroupRideStore((s) => s.signalAvailability.supported)
   // Two places so the two never blur: Social wears a signal another Rider needs help with, the
@@ -69,13 +68,7 @@ export function SocialTrigger() {
             onPress={() => setSocialOpen(true)}
             accessibilityLabel="Social"
             testID="social-drawer-trigger"
-            dot={
-              friendRiding
-                ? theme.palette.green.color
-                : nearbyBadge && !rideActive
-                  ? theme.palette.groupRide.color
-                  : undefined
-            }
+            dot={friendRiding ? theme.palette.green.color : undefined}
             accent={rideActive ? theme.palette.groupRide.color : undefined}
             takeover={othersSignal}
           />

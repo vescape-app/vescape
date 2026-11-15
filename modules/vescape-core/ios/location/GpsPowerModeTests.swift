@@ -8,14 +8,12 @@ final class GpsPowerModeTests: XCTestCase {
   private func resolve(
     appVisible: Bool = false,
     riding: Bool = false,
-    groupRideParticipating: Bool = false,
     watchNavigating: Bool = false,
     replayOwnsPosition: Bool = false
   ) -> GpsPowerMode {
     GpsDemand.resolve(
       appVisible: appVisible,
       riding: riding,
-      groupRideParticipating: groupRideParticipating,
       watchNavigating: watchNavigating,
       replayOwnsPosition: replayOwnsPosition
     )
@@ -40,12 +38,6 @@ final class GpsPowerModeTests: XCTestCase {
     XCTAssertEqual(resolve(appVisible: true, riding: true), .ride)
   }
 
-  /// Group Ride is deliberate board-less use — the rider's position is being broadcast to others,
-  /// so it must keep flowing from a pocket.
-  func testGroupRideParticipationPaysForBackgroundFixes() {
-    XCTAssertEqual(resolve(groupRideParticipating: true), .ride)
-  }
-
   /// Issue #550: Navigation on the wrist with no Board and no Group Ride. A pocketed phone stopped
   /// GPS, so the wrist route froze or never appeared until a Group Ride started paying for fixes.
   func testWatchNavigationPaysForBackgroundFixes() {
@@ -57,7 +49,7 @@ final class GpsPowerModeTests: XCTestCase {
   func testReplayOutranksEveryLiveReason() {
     XCTAssertEqual(
       resolve(
-        appVisible: true, riding: true, groupRideParticipating: true, watchNavigating: true,
+        appVisible: true, riding: true, watchNavigating: true,
         replayOwnsPosition: true
       ),
       .off

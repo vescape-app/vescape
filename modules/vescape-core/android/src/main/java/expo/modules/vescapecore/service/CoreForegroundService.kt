@@ -410,32 +410,6 @@ class CoreForegroundService : Service() {
             service.controller.stopGroupRideObserve()
         }
 
-        /** Create a Group Ride over the live observe socket. No-op when the service is not running. */
-        fun createGroupRide(
-            @Suppress("UNUSED_PARAMETER") context: Context,
-            riderId: String,
-            riderName: String,
-            name: String?,
-            lat: Double,
-            lng: Double,
-            auto: Boolean,
-        ) {
-            instance?.controller?.createGroupRide(riderId, riderName, name, lat, lng, auto)
-        }
-
-        fun joinGroupRide(
-            @Suppress("UNUSED_PARAMETER") context: Context,
-            riderId: String,
-            riderName: String,
-            rideId: String,
-        ) {
-            instance?.controller?.joinGroupRide(riderId, riderName, rideId)
-        }
-
-        fun leaveGroupRide(@Suppress("UNUSED_PARAMETER") context: Context) {
-            instance?.controller?.leaveGroupRide()
-        }
-
         fun sendGroupRideSignal(kind: String) {
             instance?.controller?.sendGroupRideSignal(kind)
         }
@@ -462,14 +436,6 @@ class CoreForegroundService : Service() {
 
         fun stopWatchingPublicRiders() {
             instance?.controller?.stopWatchingPublicRiders()
-        }
-
-        fun updateGroupRideIdentity(
-            @Suppress("UNUSED_PARAMETER") context: Context,
-            riderId: String,
-            riderName: String,
-        ) {
-            instance?.controller?.updateGroupRideIdentity(riderId, riderName)
         }
 
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {

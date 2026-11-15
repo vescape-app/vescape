@@ -274,11 +274,9 @@ const styles = StyleSheet.create({
 /** The public riders around the phone, nearest first; tapping one opens their profile. Shown
  *  with the switch off too: look-around runs from the last known position. */
 function NearbyRidersWidget() {
-  const inRide = useGroupRideStore((s) => s.activeRideId !== null)
   const rows = useGroupRideStore((s) => s.rosterRows)
   const ownLocation = useGroupRideStore((s) => s.ownLocation)
   const openRiderProfile = useGroupRideStore((s) => s.openRiderProfile)
-  if (inRide) return null
   return (
     <View style={styles.card} testID="nearby-riders">
       <Text style={styles.nearbyTitle}>Riders nearby</Text>

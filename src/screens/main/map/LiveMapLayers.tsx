@@ -38,7 +38,6 @@ export function LiveMapLayers({
   highContrastRoutes: boolean
 }) {
   const riderColor = useSelectedBoardRailColor()
-  const inRide = useGroupRideStore((s) => s.activeRideId !== null)
   const openRiderProfile = useGroupRideStore((s) => s.openRiderProfile)
   const friendRide = useFriendRidesStore((s) => s.track)
   const neutral = useResolvedNeutralColors()
@@ -146,7 +145,7 @@ export function LiveMapLayers({
             rider={rider}
             // Outside a Group Ride the riders are public riders, keyed by account: open their profile.
             onPress={
-              inRide || rider.isSelf
+              rider.isSelf
                 ? undefined
                 : () =>
                     openRiderProfile({ accountId: rider.id, nick: rider.name, nationality: null })

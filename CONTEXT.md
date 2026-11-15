@@ -111,8 +111,8 @@ _Avoid_: Location event, GPS point
 **GPS Power Mode**:
 How hard the phone's GPS is currently being driven, and therefore what it costs: `off` when nothing
 justifies a fix, `map` for foreground-only delivery to a **Rider** looking at the app, `ride` for
-background delivery at full rate during a **Board Session** or a **Group Ride**. Native resolves it
-from app visibility, the Board Session, **Idle Pause**, Group Ride participation and replay; JS reads
+background delivery at full rate during a **Board Session** or a **Public Ride**. Native resolves it
+from app visibility, the Board Session, **Idle Pause**, public sharing and replay; JS reads
 it and never asks for a mode. The GPS is armed for a reason, and the mode names the reason.
 _Avoid_: GPS accuracy setting, location mode, tracking level
 
@@ -356,11 +356,11 @@ The compact, throttled telemetry snapshot the phone pushes to a **Watch Mirror**
 _Avoid_: Watch payload, wear message
 
 **Watch Map**:
-The **Watch Mirror** presentation of the Rider's position, recent ridden trail, Navigation and nearby **Group Ride** Riders. It shares one camera across its layers and can remain visible without a **Board Session** or Navigation. The phone supplies its data; it owns no separate recording or location history.
+The **Watch Mirror** presentation of the Rider's position, recent ridden trail, Navigation and nearby **Public Ride** Riders. It shares one camera across its layers and can remain visible without a **Board Session** or Navigation. The phone supplies its data; it owns no separate recording or location history.
 _Avoid_: Navigation overlay (the map also works without Navigation), watch recording
 
 **Group Ride Frame**:
-The compact snapshot of a joined **Group Ride** the phone pushes to a **Watch Mirror**: the Rider's own course and, for every other **Rider**, where they are relative to the Rider plus the few facts worth a glance. Independent of the **Watch Frame**, so it flows with or without a **Board Session**.
+The compact snapshot of nearby public riders the phone pushes to a **Watch Mirror**: the Rider's own course and, for every other **Rider**, where they are relative to the Rider plus the few facts worth a glance. Independent of the **Watch Frame**, so it flows with or without a **Board Session**.
 _Avoid_: Group watch payload, roster push, rider feed
 
 **Board Warning**:
@@ -404,7 +404,7 @@ An app-wide preference for the units used to show, enter, and announce speed and
 _Avoid_: Board units, telemetry units
 
 **Settings Drawer**:
-The edge drawer behind the top-right button on the main screen: the **Vescape Account**, the app's live self-status (backup, version, storage), the few settings worth one tap, and one link to More settings for everything else. Its button wears whatever inside it needs attention — a required update, or a running backup with its progress — the way the Social button wears an active **Group Ride**.
+The edge drawer behind the top-right button on the main screen: the **Vescape Account**, the app's live self-status (backup, version, storage), the few settings worth one tap, and one link to More settings for everything else. Its button wears whatever inside it needs attention — a required update, or a running backup with its progress — the way the Social button wears an active **Public Ride**.
 _Avoid_: settings menu, settings popover, quick settings
 
 **Board Setting**:
@@ -447,28 +447,29 @@ _Avoid_: API keys, env config, remote config
 An app-observed abnormal condition that helps explain board connection, telemetry, tuning, recording, or UI failures.
 _Avoid_: Error log, debug session, crash report
 
-**Group Ride**:
-A live, ephemeral, server-relayed room of **Riders** sharing **Rider Presence** so they can see each other on the live map while riding together. It has no owner and lives only while at least one Rider is present; the server reaps it when empty. Network-backed and multi-device — the first app concept that is not local-only truth. Strictly distinct from a **Ride Recording** (each Rider may still make their own private Ride Recording during a Group Ride) and from **Ride History**.
-_Avoid_: Group session, room, party, ride session, group ride recording
+**Public Ride**:
+An Account's opt-in live sharing, controlled by a native off, hours or always switch. The relay stores positions by Account and GPS time. Private Ride Recording stays local and independent.
+
+**Crew Ride**:
+A server-derived shared ride from Public Rides that stayed together. Each participant contributes their together stretch. Solo Public Rides are never listed on the web.
 
 **Rider**:
-An anonymous participant in **Group Rides**, identified by a persistent device-generated id plus a rider-chosen display name. Carries no login, account, or server-side identity record, and is not a **Board**. The same person on two phones is two Riders.
-_Avoid_: User, account, member, profile, friend
+A Vescape Account with a unique nick and optional nationality. The newest phone connection represents the Account.
 
 **Vescape Account**:
 An optional online identity that never gates the app's local, offline-first capabilities or ownership of local data.
 _Avoid_: Rider profile, User, Profile
 
 **Rider Presence**:
-A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, the phone's own battery, their **Direction Point** when set, plus optional speed, **Battery SoC Estimate**, motor and controller temperatures and Board name when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale. A Rider whose connection closed without leaving stays in the Group Ride as away, frozen at their last Rider Presence, until they leave or the Group Ride ends.
+A **Rider's** live shared snapshot during a **Public Ride**: location and heading from the phone **GPS Fix**, the phone's own battery, their **Direction Point** when set, plus optional speed, **Battery SoC Estimate**, motor and controller temperatures and Board name when a **Board Session** is live. Ephemeral and server-relayed, not persisted on the phone; public positions are stored by the server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale. A disconnected Rider stays away at the last position until the relay expires it.
 _Avoid_: Position update, presence ping, location share, group telemetry
 
 **Rider Signal**:
-A **Rider's** call to their **Group Ride** about themselves, whether something is wrong or they just stopped: one fixed kind (rider down, minor injury, serious injury; battery dead, flat tire, overheating, board fault; wait for me, break), pinned at the location it was sent from. Kinds rank by what the group should do: a serious injury first, then a minor injury or a board problem, then the heads-ups: a rider down (a small crash; the Rider escalates it by sending a minor or serious injury), a wait, and a break. Every other Rider hears it and sees it on the map. Distinct from **Rider Presence**: it keeps its own frozen location and lifetime, and it is shared even inside a **Privacy Zone**, because sending one is an explicit opt-in. A Rider has at most one; a new kind replaces it, and it ends when the Rider clears it, after 90 minutes, or when they leave. Away Riders keep theirs until it ends. Ephemeral and server-relayed like Rider Presence.
+A **Rider's** call to nearby public riders and friends about themselves, whether something is wrong or they just stopped: one fixed kind (rider down, minor injury, serious injury; battery dead, flat tire, overheating, board fault; wait for me, break), pinned at the location it was sent from. Kinds rank by what the group should do: a serious injury first, then a minor injury or a board problem, then the heads-ups: a rider down (a small crash; the Rider escalates it by sending a minor or serious injury), a wait, and a break. Every other Rider hears it and sees it on the map. Distinct from **Rider Presence**: it keeps its own frozen location and lifetime, and it is shared even inside a **Privacy Zone**, because sending one is an explicit opt-in. A Rider has at most one; a new kind replaces it, and it ends when the Rider clears it, after 90 minutes, or when they leave. Away Riders keep theirs until it ends. Ephemeral and server-relayed like Rider Presence.
 _Avoid_: SOS, alarm, alert, distress call, help request
 
 **Ride Hazard**:
-A danger a **Rider** marks on the trail for their **Group Ride**: one fixed kind (water's edge, rough terrain, obstacle, police), pinned where it was marked. About the place, not the Rider: a Rider holds one Ride Hazard alongside their **Rider Signal**, and a new one replaces only the previous hazard. It follows the Rider Signal's lifetime (90 minutes, cleared only by the sender) and Privacy Zone exception, but other Riders hear it only as they approach it, never when it is marked.
+A danger a **Rider** marks on the trail for nearby public riders: one fixed kind (water's edge, rough terrain, obstacle, police), pinned where it was marked. About the place, not the Rider: a Rider holds one Ride Hazard alongside their **Rider Signal**, and a new one replaces only the previous hazard. It follows the Rider Signal's lifetime (90 minutes, cleared only by the sender) and Privacy Zone exception, but other Riders hear it only as they approach it, never when it is marked.
 _Avoid_: Hazard signal, warning, POI, map point
 
 ## Relationships
@@ -514,7 +515,7 @@ _Avoid_: Hazard signal, warning, POI, map point
 - A **Ride Track** belongs to one **Ride Recording** and is independent of its **Telemetry Samples**: either stream may have gaps the other does not.
 - A **Map Point** is placed by a signed-in **Vescape Account** on the live map and does not belong to **Ride Recording** or **Ride History**; the server owns it, and the app reads the ones near the camera without keeping a durable copy.
 - A **Map Point Reaction** belongs to one **Vescape Account** and one **Map Point**; the server derives the score from its reaction rows.
-- A **Direction Point** is one rider's private navigation target, is never a **Map Point**, and stays on the phone so **Group Ride** presence can share it.
+- A **Direction Point** is one rider's private navigation target, is never a **Map Point**, and stays on the phone so **Public Ride** presence can share it.
 - A **Navigation** belongs to exactly one **Direction Point**: setting a Direction Point creates it and clearing one ends it, so a rider never has more than one Navigation.
 - A **Navigation** is produced under one **Navigation Profile** and keeps it: choosing a different profile does not redraw the existing path, it produces a new Navigation in its place.
 - A **Navigation** outlives the app process and any single **Ride Recording**: a rider who restarts, crashes, or starts riding another day finds the same Direction Point and the same path waiting.
@@ -584,21 +585,18 @@ _Avoid_: Hazard signal, warning, POI, map point
 - An **Alert Message Template** belongs to one **Alert Rule**.
 - A **Watch Mirror** receives **Watch Frames** from the phone and can send rider commands and its own awake state back; it is not a **Board**, a **Board Session**, or a source of **Telemetry Samples**.
 - A **Watch Frame** is derived from **Live State** and is pushed whenever the phone feeds an awake **Watch Mirror**, with or without a **Board Session**; without one its Board readings are empty (ADR 0039).
-- A **Group Ride Frame** is derived from the joined **Group Ride**'s **Rider Presences** and is only pushed while the Rider is joined and the **Watch Mirror** is awake.
-- A **Watch Mirror** shows the **Group Ride** its Rider has joined whether or not a **Board Session** is live. Without Board telemetry its gauges show no reading rather than a "Board not connected" notice; a missing phone link is still said.
+- A **Group Ride Frame** is the legacy wire name for nearby public riders sent to an awake **Watch Mirror**.
+- A **Watch Mirror** shows nearby public riders independently of Board telemetry.
 - An **App Setting** affects app behavior and is not part of a **Tune Profile** or **Board** identity.
 - A **Release Policy** may issue an **Update Warning**, impose an **Online Block**, or impose an **App Block** for affected app versions.
 - An **Update Warning** does not change local or online capability availability.
 - An **Online Block** denies every **Online Capability** while preserving local app capabilities.
 - An **App Block** also denies every **Online Capability**, but does not end an already-running **Board Session** or **Ride Recording**.
 - A **Community Message** never changes whether an **Online Capability** is available.
-- A **Group Ride** is an **Online Capability**; a **Board Session**, **Ride Recording**, **Ride History**, and tuning are not.
+- A **Public Ride** is an **Online Capability**; a **Board Session**, **Ride Recording**, **Ride History**, and tuning are not.
 - A **Diagnostic Event** may describe failures around a **Board**, **Live State**, **Telemetry Sample**, **Ride Recording**, or **Tune Profile** workflow.
-- A **Group Ride** contains zero or more **Riders** and exists only while at least one **Rider** is present; it owns no durable truth and is never written to **Ride History**.
-- A **Rider** may be in at most one **Group Ride** at a time and is identified independently of any **Board**.
 - A **Vescape Account** is independent of a **Rider** and may enable optional online services such as backup, sync, or paid entitlements, but is not required to use local Boards, Ride Recording, Ride History, or tuning.
-- A **Rider Presence** belongs to one **Rider** in one **Group Ride**, derives location from a **GPS Fix** and optional speed, **Battery SoC Estimate** and temperatures from a live **Board Session**, and is not produced while the Rider is inside a **Privacy Zone**.
-- A **Group Ride** requires only a phone **GPS Fix** to join; a **Board Session** is optional and only enriches a **Rider Presence**, never gates it.
+- A **Rider Presence** belongs to one **Rider** during a **Public Ride**, derives location from a **GPS Fix** and optional speed, **Battery SoC Estimate** and temperatures from a live **Board Session**, and is not produced while the Rider is inside a **Privacy Zone**.
 
 ## Example Dialogue
 
@@ -646,9 +644,9 @@ _Avoid_: Hazard signal, warning, POI, map point
 - "smoother" is avoided in the raw-telemetry layer (see **Metric Sanitizer**) but is legitimate for the **Battery SoC Estimate**, a processed derived value that smooths the percentage only — never the raw voltage **Telemetry Sample**.
 - "BMS telemetry" may mean live smart-BMS cell values or a durable battery-health archive; resolved: use **Live BMS Series** for the ephemeral in-memory cell-voltage window (retained by `liveHistoryLimit`, never persisted), distinct from scalar **Telemetry Samples**. No durable BMS/battery-health store exists; if one is ever added it needs its own term and a rest-normalized capture trigger.
 - "pause" may mean stopping the **Board Session** versus temporarily halting sample persistence; resolved: **Idle Pause** halts both **Telemetry Sample** and **Ride Track** persistence — the **Board Session** stays connected and live at a reduced poll rate.
-- "ride" may mean a personal persisted capture or a live shared room; resolved terms: use **Ride Recording** for the local persisted capture and **Group Ride** for the live shared room. The two are independent — a Rider can do either, both, or neither.
-- "presence" / "location share" may mean a one-off map dot or the live group feed; resolved term: use **Rider Presence** for what a **Rider** shares into a **Group Ride**.
-- "account", "profile", and "Rider" were used interchangeably; resolved: a **Vescape Account** is optional online identity, while a **Rider** remains an anonymous device-local Group Ride participant.
+- Use **Ride Recording** for private local captures, **Public Ride** for live account sharing, and **Crew Ride** for the server-derived together result.
+- "presence" / "location share" may mean a one-off map dot or the live group feed; resolved term: use **Rider Presence** for what a **Rider** shares into a **Public Ride**.
+- A **Rider** is a **Vescape Account** with a nick; device credentials authenticate its current phone.
 - "force update" was used to mean both denying server compatibility and locking app UI; resolved terms: use **Online Block** for denying **Online Capabilities** and **App Block** for the exceptional update-only UI state.
 - "version warning" was used for both an update prompt and denial of server features; resolved terms: use **Update Warning** for the non-blocking prompt and **Online Block** when **Online Capabilities** are denied.
 - "message" may mean version compatibility or general communication; resolved: compatibility belongs to the **Release Policy**, while a **Community Message** never changes capability availability.

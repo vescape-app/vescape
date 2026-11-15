@@ -27,15 +27,21 @@ internal func appCuePriority(_ cue: String) -> AnnouncementPriority? {
   switch cue {
   case "on", "off", "error": return .connection
   case "ride.end": return .advisory
-  default: return GroupRideCues.isSafetyCue(cue) ? .advisory : .social
+  default: return isSafetyCue(cue) ? .advisory : .social
   }
+}
+
+/// A Rider Signal or Ride Hazard cue: a safety call, announced at advisory priority.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AnnouncementQueue.kt `isSafetyCue`
+internal func isSafetyCue(_ cue: String) -> Bool {
+  cue.hasPrefix("groupRide.signal.") || cue.hasPrefix(RideHazardCues.cuePrefix)
 }
 
 /// Whether app cue `cue` speaks its voice line after the effect at `voiceLevel`. Rider Signal and
 /// Ride Hazard cues are safety calls and speak at every level but `off`; the rest only at `full`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AnnouncementQueue.kt `appCueSpeaks`
 internal func appCueSpeaks(_ cue: String, voiceLevel: String) -> Bool {
-  GroupRideCues.isSafetyCue(cue) ? voiceLevel != "off" : voiceLevel == "full"
+  isSafetyCue(cue) ? voiceLevel != "off" : voiceLevel == "full"
 }
 
 /// Quiet time after a connect before anything but a `.connection` item plays.

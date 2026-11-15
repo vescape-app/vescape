@@ -263,7 +263,7 @@ internal final class PublicRide {
       view["name"] = entry.view["nick"] ?? nil
       return GroupRideObserver.rosterRider(view)
     }
-    return GroupRideRoster(ownRiderId: accountId, riders: rows, nearby: true)
+    return GroupRideRoster(ownRiderId: accountId, riders: rows)
   }
 
   /// Replay state to a JS runtime that just subscribed.

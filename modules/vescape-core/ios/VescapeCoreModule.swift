@@ -94,7 +94,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onGroupRideSignalAvailability", "onPublicRideStatus", "onPublicRiders", "onPublicPins", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading", "onRideNotices")
+    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideError", "onGroupRideSignalAvailability", "onPublicRideStatus", "onPublicRiders", "onPublicPins", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading", "onRideNotices")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -127,18 +127,6 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onGroupRideConnection`
     OnStartObserving("onGroupRideConnection") { self.observedEvents.insert("onGroupRideConnection") }
     OnStopObserving("onGroupRideConnection") { self.observedEvents.remove("onGroupRideConnection") }
-    OnStartObserving("onGroupRideSnapshot") { self.observedEvents.insert("onGroupRideSnapshot") }
-    OnStopObserving("onGroupRideSnapshot") { self.observedEvents.remove("onGroupRideSnapshot") }
-    OnStartObserving("onGroupRideCreated") { self.observedEvents.insert("onGroupRideCreated") }
-    OnStopObserving("onGroupRideCreated") { self.observedEvents.remove("onGroupRideCreated") }
-    OnStartObserving("onGroupRideUpdated") { self.observedEvents.insert("onGroupRideUpdated") }
-    OnStopObserving("onGroupRideUpdated") { self.observedEvents.remove("onGroupRideUpdated") }
-    OnStartObserving("onGroupRideEnded") { self.observedEvents.insert("onGroupRideEnded") }
-    OnStopObserving("onGroupRideEnded") { self.observedEvents.remove("onGroupRideEnded") }
-    OnStartObserving("onGroupRideJoined") { self.observedEvents.insert("onGroupRideJoined") }
-    OnStopObserving("onGroupRideJoined") { self.observedEvents.remove("onGroupRideJoined") }
-    OnStartObserving("onGroupRideRoster") { self.observedEvents.insert("onGroupRideRoster") }
-    OnStopObserving("onGroupRideRoster") { self.observedEvents.remove("onGroupRideRoster") }
     OnStartObserving("onGroupRideError") { self.observedEvents.insert("onGroupRideError") }
     OnStopObserving("onGroupRideError") { self.observedEvents.remove("onGroupRideError") }
     OnStartObserving("onGroupRideSignalAvailability") { self.observedEvents.insert("onGroupRideSignalAvailability") }
@@ -490,20 +478,9 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopGroupRideObserve()
     }
 
-    Function("createGroupRide") { (riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Bool) in
-      self.coordinator.createGroupRide(
-        riderId: riderId,
-        riderName: riderName,
-        name: name,
-        lat: lat,
-        lng: lng,
-        auto: auto
-      )
-    }
 
-    Function("joinGroupRide") { (riderId: String, riderName: String, rideId: String) in
-      self.coordinator.joinGroupRide(riderId: riderId, riderName: riderName, rideId: rideId)
-    }
+
+
 
     // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair posts test notices.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `dismissRideNotice`
@@ -545,9 +522,7 @@ public class VescapeCoreModule: Module {
       RideNotices.shared.clear(key: key)
     }
 
-    Function("leaveGroupRide") {
-      self.coordinator.leaveGroupRide()
-    }
+
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `sendGroupRideSignal`
     Function("sendGroupRideSignal") { (kind: String) in

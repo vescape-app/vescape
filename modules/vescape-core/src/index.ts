@@ -2048,16 +2048,6 @@ export interface FocusedSeriesEvent {
 // ---------------------------------------------------------------------------
 
 /** Globally-broadcast ride view; identical in `snapshot` and `ride-created`. */
-export interface GroupRideSummary {
-  id: string
-  name: string
-  /** Epoch ms when the ride was created. */
-  createdAt: number
-  riderCount: number
-  /** Reference point = creator's latest location, for client-side distance filtering. */
-  location: { lat: number; lng: number }
-  creator: { id: string; name: string }
-}
 
 export interface RiderPresence {
   lat: number
@@ -2164,33 +2154,6 @@ export type GroupRideConnectionState =
 
 export interface GroupRideConnectionEvent {
   state: GroupRideConnectionState
-}
-
-export interface GroupRideSnapshotEvent {
-  rides: GroupRideSummary[]
-}
-
-export interface GroupRideCreatedEvent {
-  ride: GroupRideSummary
-}
-
-export interface GroupRideUpdatedEvent {
-  ride: GroupRideSummary
-}
-
-export interface GroupRideEndedEvent {
-  rideId: string
-}
-
-export interface GroupRideJoinedEvent {
-  rideId: string | null
-}
-
-export interface GroupRideRosterEvent {
-  rideId: string | null
-  riders: GroupRideRider[]
-  /** Relay clock (epoch ms) when the roster was sent; null from relays that predate it. */
-  now: number | null
 }
 
 /**
@@ -2986,12 +2949,6 @@ type VescapeCoreEvents = {
   /** Observe WebSocket connection state to the Group Ride relay. */
   onGroupRideConnection: (event: GroupRideConnectionEvent) => void
   /** Full active-ride list, sent once on connect. */
-  onGroupRideSnapshot: (event: GroupRideSnapshotEvent) => void
-  onGroupRideCreated: (event: GroupRideCreatedEvent) => void
-  onGroupRideUpdated: (event: GroupRideUpdatedEvent) => void
-  onGroupRideEnded: (event: GroupRideEndedEvent) => void
-  onGroupRideJoined: (event: GroupRideJoinedEvent) => void
-  onGroupRideRoster: (event: GroupRideRosterEvent) => void
   onGroupRideError: (event: GroupRideErrorEvent) => void
   onGroupRideSignalAvailability: (event: GroupRideSignalAvailability) => void
   onPublicRideStatus: (event: PublicRideStatus) => void
@@ -3088,16 +3045,6 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   refreshLocationDemand(): void
   startGroupRideObserve(serverUrl: string): void
   stopGroupRideObserve(): void
-  createGroupRide(
-    riderId: string,
-    riderName: string,
-    name: string | null,
-    lat: number,
-    lng: number,
-    auto: boolean,
-  ): void
-  joinGroupRide(riderId: string, riderName: string, rideId: string): void
-  leaveGroupRide(): void
   sendGroupRideSignal(kind: RiderSignalKind): void
   clearGroupRideSignal(): void
   sendGroupRideHazard(kind: RideHazardKind): void
@@ -3510,57 +3457,6 @@ export function startGroupRideObserve(serverUrl: string): void {
 export function stopGroupRideObserve(): void {
   if (E2E_ENABLED) return
   native.stopGroupRideObserve()
-}
-
-export interface CreateGroupRideParams {
-  /** Persistent device-scoped Rider id. */
-  riderId: string
-  /** Rider display name bound to the connection (used for the auto-name fallback). */
-  riderName: string
-  /** Optional custom ride name; server auto-names `"<name>'s ride"` when blank/null. */
-  name: string | null
-  lat: number
-  lng: number
-  /** Public riding: the relay joins the nearest ride in range and only creates when none is. */
-  auto: boolean
-}
-
-/**
- * Create a Group Ride over the live observe socket. Sends the creator's location once — the
- * only location egress while observing. The new ride arrives back via the `ride-created`
- * fan-out, so callers update state from that event rather than optimistically.
- */
-export function createGroupRide({
-  riderId,
-  riderName,
-  name,
-  lat,
-  lng,
-  auto,
-}: CreateGroupRideParams): void {
-  if (E2E_ENABLED) return
-  native.createGroupRide(riderId, riderName, name, lat, lng, auto)
-}
-
-export interface JoinGroupRideParams {
-  riderId: string
-  riderName: string
-  rideId: string
-}
-
-/** Join a Group Ride by id. Native sends Rider Presence from the foreground GPS stream. */
-export function joinGroupRide({ riderId, riderName, rideId }: JoinGroupRideParams): void {
-  if (E2E_ENABLED) return
-  native.joinGroupRide(riderId, riderName, rideId)
-}
-
-/**
- * Leave the current Group Ride. Native drops the ride at once; while the observe socket is down
- * it tells the relay on the next connection, unless a new create/join gets there first.
- */
-export function leaveGroupRide(): void {
-  if (E2E_ENABLED) return
-  native.leaveGroupRide()
 }
 
 /**
@@ -5288,42 +5184,6 @@ export function addGroupRideConnectionListener(
   cb: (event: GroupRideConnectionEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onGroupRideConnection', cb)
-}
-
-export function addGroupRideSnapshotListener(
-  cb: (event: GroupRideSnapshotEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideSnapshot', cb)
-}
-
-export function addGroupRideCreatedListener(
-  cb: (event: GroupRideCreatedEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideCreated', cb)
-}
-
-export function addGroupRideUpdatedListener(
-  cb: (event: GroupRideUpdatedEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideUpdated', cb)
-}
-
-export function addGroupRideEndedListener(
-  cb: (event: GroupRideEndedEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideEnded', cb)
-}
-
-export function addGroupRideJoinedListener(
-  cb: (event: GroupRideJoinedEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideJoined', cb)
-}
-
-export function addGroupRideRosterListener(
-  cb: (event: GroupRideRosterEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideRoster', cb)
 }
 
 export function addGroupRideErrorListener(

@@ -65,5 +65,4 @@ struct GroupRideRoster: Equatable {
   var ownRiderId: String?
   var riders: [GroupRideRosterRider]
   /// Nearby public riders in relay order, not a room: ordered and capped like the phone's list.
-  var nearby: Bool = false
 }

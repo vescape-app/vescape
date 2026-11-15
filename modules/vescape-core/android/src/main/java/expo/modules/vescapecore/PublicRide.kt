@@ -269,7 +269,7 @@ internal class PublicRide(
             val rows = riders.values.mapNotNull { view ->
                 GroupRideObserver.rosterRider(view + mapOf("id" to view["accountId"], "name" to view["nick"]))
             }
-            return GroupRideRoster(ownRiderId = accountId, riders = rows, nearby = true)
+            return GroupRideRoster(ownRiderId = accountId, riders = rows)
         }
 
     /** Replay state to a JS runtime that just subscribed. */
