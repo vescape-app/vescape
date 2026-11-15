@@ -25,7 +25,7 @@ export function SocialTrigger() {
   const [signalOpen, setSignalOpen] = useState(false)
   const nearbyBadge = useGroupRideStore((s) => s.badge)
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
-  // Hidden against a relay that does not advertise signals, which would reject them.
+  // Native judges it: in a ride on a relay with signals, or public. Hidden otherwise.
   const signalsSupported = useGroupRideStore((s) => s.signalAvailability.supported)
   // Two places so the two never blur: Social wears a signal another Rider needs help with, the
   // Rider Signal button wears the one this Rider sent, each until cleared or expired.
@@ -44,7 +44,7 @@ export function SocialTrigger() {
           testID="rider-signal-trigger"
           accessibilityLabel="Rider signal"
           extension={
-            rideActive && signalsSupported ? (
+            signalsSupported ? (
               <OwnSignalIcon
                 size={20}
                 color={ownSignal?.accent ?? theme.control.icon}

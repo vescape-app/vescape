@@ -10,6 +10,7 @@ import {
   addGroupRideSnapshotListener,
   addGroupRideUpdatedListener,
   addLocationListener,
+  addPublicPinsListener,
   addPublicRidersListener,
   addPublicRideStatusListener,
   clearGroupRideHazard,
@@ -29,7 +30,9 @@ import {
   type GroupRideRider,
   type GroupRideSignalAvailability,
   type GroupRideSummary,
+  type GroupRidePin,
   type PublicRider,
+  type PublicRiderPins,
   type PublicRideStatus,
   type RideHazardKind,
   type RiderSignalKind,
@@ -76,6 +79,10 @@ interface GroupRideState {
   publicRide: PublicRideStatus
   /** Public riders native knows around this phone, nearest first. */
   publicRiders: PublicRider[]
+  /** Other public riders' pins this phone may see, a far-away friend's signal included. */
+  publicPins: PublicRiderPins[]
+  /** The rider's own pins on the public ride, as sent. */
+  publicOwnPins: OwnPins
   /** Open the native observe WebSocket and mirror its lifecycle events into the store. */
   startObserving: () => void
   /** Close the observe WebSocket and clear observed state. */
@@ -95,6 +102,13 @@ interface GroupRideState {
   focusRider: (riderId: string) => void
   clearError: () => void
 }
+
+interface OwnPins {
+  signal: GroupRidePin | null
+  hazard: GroupRidePin | null
+}
+
+const NO_OWN_PINS: OwnPins = { signal: null, hazard: null }
 
 /** Until native reports, assume nothing can be sent: an old relay must never see a `signal`. */
 const NO_SIGNAL_AVAILABILITY: GroupRideSignalAvailability = {
@@ -132,6 +146,8 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   observing: false,
   publicRide: PUBLIC_RIDE_OFF,
   publicRiders: [],
+  publicPins: [],
+  publicOwnPins: NO_OWN_PINS,
 
   startObserving() {
     if (get().observing) return
@@ -213,6 +229,17 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
       addPublicRidersListener(({ riders }) =>
         set((state) => deriveRoster({}, { ...state, publicRiders: riders })),
       ),
+      addPublicPinsListener(({ pins, own, now }) =>
+        set((state) => ({
+          ...deriveRoster({}, { ...state, publicPins: pins }),
+          publicPins: pins,
+          publicOwnPins: own,
+          // Outside a ride the public pins are what the relay clock is read for.
+          ...(state.activeRideId
+            ? {}
+            : { relayClock: { relayNow: now, receivedAt: monotonicNow() } }),
+        })),
+      ),
       // A ride roster neither sorts nor stores distance, so a fix leaves it untouched; the public
       // riders sort in distance bands, so rows only move when someone changes band.
       addLocationListener(({ latitude, longitude }) => {
@@ -276,6 +303,8 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
       focusRequest: null,
       publicRide: PUBLIC_RIDE_OFF,
       publicRiders: [],
+      publicPins: [],
+      publicOwnPins: NO_OWN_PINS,
     })
   },
 
@@ -327,6 +356,12 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   },
 }))
 
+/** The rider's own signal or hazard: its row in a joined ride, else as sent on the public ride. */
+export function ownPin(state: GroupRideState, slot: keyof OwnPins): GroupRidePin | null {
+  if (!state.activeRideId) return state.publicOwnPins[slot]
+  return state.rosterRows.find((row) => row.isSelf)?.[slot] ?? null
+}
+
 /**
  * The device's Group Ride identity, with the same blank-name fallback the relay would
  * otherwise auto-apply. `riderId` is null until the rider identity has loaded.
@@ -364,7 +399,7 @@ function deriveRoster(
   // Outside a ride, the public riders around this phone take the roster's place.
   const rows = activeRideId
     ? riderRoster(roster, useRiderStore.getState().riderId)
-    : publicRiderRoster(current.publicRiders, current.ownLocation)
+    : publicRiderRoster(current.publicRiders, current.ownLocation, current.publicPins)
   return {
     activeRideId,
     roster,

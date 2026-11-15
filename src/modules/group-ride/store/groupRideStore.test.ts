@@ -20,6 +20,7 @@ const errorListeners: Listener<{ message: string }>[] = []
 const locationListeners: Listener<{ latitude: number; longitude: number }>[] = []
 const publicRideStatusListeners: Listener<unknown>[] = []
 const publicRidersListeners: Listener<{ riders: unknown[]; now: number | null }>[] = []
+const publicPinsListeners: Listener<unknown>[] = []
 const setPublicRide = mock((_on: boolean, _until: number | null) => {})
 
 const createGroupRide = mock(() => {})
@@ -81,6 +82,7 @@ mock.module('vescape-core', () => ({
     subscribe(publicRideStatusListeners, listener),
   addPublicRidersListener: (listener: Listener<{ riders: unknown[]; now: number | null }>) =>
     subscribe(publicRidersListeners, listener),
+  addPublicPinsListener: (listener: Listener<unknown>) => subscribe(publicPinsListeners, listener),
   setPublicRide,
   createGroupRide,
   joinGroupRide,
@@ -122,6 +124,7 @@ function resetListeners() {
   locationListeners.length = 0
   publicRideStatusListeners.length = 0
   publicRidersListeners.length = 0
+  publicPinsListeners.length = 0
 }
 
 beforeEach(async () => {
@@ -502,4 +505,23 @@ test('looks around with the switch off and shows public riders outside a ride', 
 
   useGroupRideStore.getState().stopObserving()
   expect(stopWatchingPublicRiders).toHaveBeenCalledTimes(1)
+})
+
+test('public pins pin other riders, a far-away friend included, and keep the own pins apart', async () => {
+  const { ownPin, useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  useGroupRideStore.getState().startObserving()
+  const signal = { kind: 'serious', lat: 1, lng: 2, startedAt: 5, expiresAt: 9 }
+  const own = { kind: 'wait', lat: 1, lng: 2, startedAt: 6, expiresAt: 10 }
+  publicPinsListeners.forEach((listener) =>
+    listener({
+      pins: [{ accountId: 'friend', nick: 'Ola', signal, hazard: null }],
+      own: { signal: own, hazard: null },
+      now: 7,
+    }),
+  )
+  const state = useGroupRideStore.getState()
+  expect(state.rosterRows).toMatchObject([{ id: 'friend', name: 'Ola', signal, isSelf: false }])
+  expect(state.relayClock?.relayNow).toBe(7)
+  expect(ownPin(state, 'signal')).toBe(own)
+  useGroupRideStore.getState().stopObserving()
 })

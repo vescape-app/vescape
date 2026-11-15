@@ -9,6 +9,7 @@ final class PublicRideTests: XCTestCase {
   private var events: [(String, [String: Any?])] = []
   private var sent: [[String: Any]] = []
   private var ride: PublicRide!
+  private var pinUpdates: [([SignalRider], [String: RideHazard])] = []
 
   private let presence = RiderPresence(lat: 52, lng: 21)
 
@@ -19,6 +20,7 @@ final class PublicRideTests: XCTestCase {
     timer = nil
     events = []
     sent = []
+    pinUpdates = []
     ride = PublicRide(
       now: { [unowned self] in self.now },
       persist: { [unowned self] in self.persisted.append($0) },
@@ -27,7 +29,8 @@ final class PublicRideTests: XCTestCase {
       send: { [unowned self] frame in
         self.sent.append(frame)
         return true
-      }
+      },
+      onPins: { [unowned self] signals, hazards, _ in self.pinUpdates.append((signals, hazards)) }
     )
   }
 
@@ -156,5 +159,67 @@ final class PublicRideTests: XCTestCase {
     let first = events.first { $0.0 == "onPublicRiders" }!.1
     XCTAssertEqual(first["now"] as? Int64, 9)
     XCTAssertEqual(((first["riders"] as? [[String: Any?]])?.first?["nick"] as? String), "Ola")
+  }
+
+  private var ownPins: [String: Any?] { events.last { $0.0 == "onPublicPins" }!.1["own"] as! [String: Any?] }
+
+  private func goLive() {
+    ride.load(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+    ride.setBoardConnected(true)
+    ready()
+    ride.handle(type: "public-status", json: ["on": true])
+  }
+
+  func testAPublicRiderSendsAndClearsASignalAndAHazard() {
+    goLive()
+    XCTAssertTrue(ride.submitPin(.send(slot: .signal, kind: "wait", lat: 52, lng: 21)))
+    XCTAssertTrue(ride.submitPin(.send(slot: .hazard, kind: "water", lat: 52, lng: 21)))
+    XCTAssertEqual(types, ["public-on", "public-signal", "public-hazard"])
+    XCTAssertEqual(sent[1]["kind"] as? String, "wait")
+    XCTAssertEqual((ownPins["signal"] as? [String: Any?])?["kind"] as? String, "wait")
+    XCTAssertTrue(ride.submitPin(.clear(.signal)))
+    XCTAssertEqual(types.last, "public-signal-clear")
+    XCTAssertNil(ownPins["signal"] ?? nil)
+  }
+
+  func testAPinWaitsForTheRelayToConfirmThePublicRide() {
+    ride.load(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+    ride.setBoardConnected(true)
+    ready()
+    XCTAssertTrue(ride.submitPin(.send(slot: .signal, kind: "down", lat: 52, lng: 21)))
+    XCTAssertTrue(ride.submitPin(.send(slot: .signal, kind: "serious", lat: 52, lng: 21)))
+    XCTAssertEqual(types, ["public-on"])
+    ride.handle(type: "public-status", json: ["on": true])
+    XCTAssertEqual(types, ["public-on", "public-signal"])
+    XCTAssertEqual(sent.last?["kind"] as? String, "serious")
+  }
+
+  func testNoPinGoesOutOffThePublicRideAndEndingItDropsTheOwnPins() {
+    ride.load(.off, accountId: "acc")
+    ready()
+    XCTAssertFalse(ride.submitPin(.send(slot: .signal, kind: "wait", lat: 52, lng: 21)))
+    goLive()
+    ride.submitPin(.send(slot: .signal, kind: "wait", lat: 52, lng: 21))
+    ride.setBoardConnected(false)
+    XCTAssertNil(ownPins["signal"] ?? nil)
+  }
+
+  func testOtherRidersPinsFollowTheRelayAMissingSlotMeaningNone() {
+    ride.load(.off, accountId: nil)
+    ready()
+    let pin: [String: Any] = ["kind": "serious", "lat": 52, "lng": 21, "startedAt": 5, "expiresAt": 9]
+    let hazard: [String: Any] = ["kind": "police", "lat": 52, "lng": 21, "startedAt": 5, "expiresAt": 9]
+    ride.handle(type: "public-pins", json: ["accountId": "f", "nick": "Ola", "signal": pin, "hazard": hazard, "now": 6])
+    XCTAssertEqual(pinUpdates.last?.0.first?.signal?.kind, .serious)
+    XCTAssertEqual(pinUpdates.last?.0.first?.name, "Ola")
+    XCTAssertEqual(pinUpdates.last?.1["f"]?.kind, .police)
+    ride.handle(type: "public-pins", json: ["accountId": "f", "nick": "Ola", "hazard": hazard, "now": 7])
+    XCTAssertNil(pinUpdates.last?.0.first?.signal)
+    ride.handle(type: "public-pins", json: ["accountId": "f", "nick": "Ola", "now": 8])
+    XCTAssertEqual(pinUpdates.last?.0.count, 0)
+    XCTAssertEqual(pinUpdates.last?.1.count, 0)
+    let event = events.last { $0.0 == "onPublicPins" }!.1
+    XCTAssertEqual((event["pins"] as? [Any])?.count, 0)
+    XCTAssertEqual(event["now"] as? Int64, 8)
   }
 }

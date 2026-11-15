@@ -23,18 +23,16 @@ import {
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
 import { topRiderSignal } from '@/modules/group-ride/lib/riderSignal'
 import { PinKindBadge } from '@/modules/group-ride/components/PinKindBadge'
-import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import { ownPin, useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
 /** The device's own Rider Signal while it is active on the relay clock, else null. */
 export function useOwnRiderSignal(): GroupRidePin | null {
-  const signal = useGroupRideStore((s) => s.rosterRows.find((row) => row.isSelf)?.signal ?? null)
-  return useActiveRiderSignal(signal)
+  return useActiveRiderSignal(useGroupRideStore((s) => ownPin(s, 'signal')))
 }
 
 /** The device's own Ride Hazard while it is active on the relay clock, else null. */
 function useOwnRideHazard(): GroupRidePin | null {
-  const hazard = useGroupRideStore((s) => s.rosterRows.find((row) => row.isSelf)?.hazard ?? null)
-  return useActiveRiderSignal(hazard)
+  return useActiveRiderSignal(useGroupRideStore((s) => ownPin(s, 'hazard')))
 }
 
 /** The most urgent signal another Rider has active, see `topRiderSignal`, else null. */

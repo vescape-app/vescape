@@ -213,6 +213,7 @@ class VescapeCoreModule : Module() {
       "onGroupRideSignalAvailability",
       "onPublicRideStatus",
       "onPublicRiders",
+      "onPublicPins",
       "onAppDataChanged",
       "onBoardWarnings",
       "onVescFaults",
@@ -374,6 +375,8 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onPublicRideStatus") { stopObserving("onPublicRideStatus") }
     OnStartObserving("onPublicRiders") { startObserving("onPublicRiders") }
     OnStopObserving("onPublicRiders") { stopObserving("onPublicRiders") }
+    OnStartObserving("onPublicPins") { startObserving("onPublicPins") }
+    OnStopObserving("onPublicPins") { stopObserving("onPublicPins") }
     OnStartObserving("onBoardWarnings") {
       startObserving("onBoardWarnings")
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }

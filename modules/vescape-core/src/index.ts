@@ -2124,8 +2124,9 @@ export interface GroupRideRosterEvent {
 }
 
 /**
- * Whether the joined Rider can send a Rider Signal or Ride Hazard right now. `supported` and
- * `hazardsSupported` are false against a relay that does not advertise them. `insidePrivacyZone` is also true while zones have not loaded.
+ * Whether the Rider can send a Rider Signal or Ride Hazard right now. `supported` and
+ * `hazardsSupported` need a joined ride on a relay that advertises them, or else being public
+ * (switch on, board connected, signed in) on a relay with the public ride. `insidePrivacyZone` is also true while zones have not loaded.
  * `hasRecentFix` needs a GPS fix at most 30 s old. Emitted on change.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `refreshSignalAvailability`
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `refreshSignalAvailability`
@@ -2178,6 +2179,27 @@ export interface PublicRider {
 export interface PublicRidersEvent {
   riders: PublicRider[]
   now: number | null
+}
+
+/** Another public rider's Rider Signal and Ride Hazard as this phone may see them. */
+export interface PublicRiderPins {
+  accountId: string
+  nick: string
+  signal: GroupRidePin | null
+  hazard: GroupRidePin | null
+}
+
+/**
+ * Pins on the public ride: other riders' as the relay reports them by distance (a friend's signal
+ * at any distance), and the rider's own as sent, which the relay never echoes. `now` is the relay
+ * clock the pin times are read against.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `emitPins`
+ * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `emitPins`
+ */
+export interface PublicPinsEvent {
+  pins: PublicRiderPins[]
+  own: { signal: GroupRidePin | null; hazard: GroupRidePin | null }
+  now: number
 }
 
 /**
@@ -2904,6 +2926,7 @@ type VescapeCoreEvents = {
   onGroupRideSignalAvailability: (event: GroupRideSignalAvailability) => void
   onPublicRideStatus: (event: PublicRideStatus) => void
   onPublicRiders: (event: PublicRidersEvent) => void
+  onPublicPins: (event: PublicPinsEvent) => void
   /** Persisted board/app data changed natively — reload the matching store. */
   onAppDataChanged: (event: AppDataChangedEvent) => void
   /** Full current Board Warning list for a board, on every registry change and on subscribe. */
@@ -5188,6 +5211,10 @@ export function addPublicRideStatusListener(
 
 export function addPublicRidersListener(cb: (event: PublicRidersEvent) => void): EventSubscription {
   return emitter.addListener('onPublicRiders', cb)
+}
+
+export function addPublicPinsListener(cb: (event: PublicPinsEvent) => void): EventSubscription {
+  return emitter.addListener('onPublicPins', cb)
 }
 
 /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `saveBrakeLightSettings`

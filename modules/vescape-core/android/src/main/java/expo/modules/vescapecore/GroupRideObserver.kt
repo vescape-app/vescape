@@ -160,8 +160,13 @@ internal class GroupRideObserver(
             handler.removeCallbacks(expiryRunnable)
             delay?.let { handler.postDelayed(expiryRunnable, it) }
         },
-        emit = emit,
+        emit = { name, payload ->
+            emit(name, payload)
+            // Going public or off it changes whether a pin can be sent.
+            if (name == "onPublicRideStatus") refreshSignalAvailability()
+        },
         send = { frame -> webSocket?.takeIf { linkOpen }?.let { send(it, frame) } ?: false },
+        onPins = ::onPublicPins,
     )
 
     private val heartbeatRunnable = object : Runnable {
@@ -432,8 +437,8 @@ internal class GroupRideObserver(
     }
 
     /**
-     * Raise a Rider Signal of [kind] at the latest GPS fix. Rejected (logged, nothing sent) outside a
-     * ride, for an unknown kind, without a recent fix, or against a relay that
+     * Raise a Rider Signal of [kind] at the latest GPS fix, in the joined ride or else on the public
+     * ride. Rejected (logged, nothing sent) outside both, for an unknown kind, without a recent fix, or against a relay that
      * does not advertise signals. While the relay is out of reach the intent waits for the rejoin.
      *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `sendSignal`
@@ -478,9 +483,11 @@ internal class GroupRideObserver(
         handler.post {
             if (stopped) return@post
             val context = signalContext()
+            // In a ride its relay features decide; outside one, the public ride.
+            val public = !participating && publicRide.canPin
             val availability = mapOf(
-                "supported" to supports(PinSlot.SIGNAL),
-                "hazardsSupported" to supports(PinSlot.HAZARD),
+                "supported" to (public || participating && supports(PinSlot.SIGNAL)),
+                "hazardsSupported" to (public || participating && supports(PinSlot.HAZARD)),
                 "insidePrivacyZone" to context.insidePrivacyZone,
                 "hasRecentFix" to (context.fix != null),
             )
@@ -497,14 +504,15 @@ internal class GroupRideObserver(
      */
     fun onFix(lat: Double, lng: Double) {
         handler.post {
-            if (stopped || joinedRideId == null) return@post
+            if (stopped) return@post
             hazardCues.fix(lat, lng)?.let(onCue)
         }
     }
 
     private fun submitPin(intent: RiderPinIntent) {
-        if (stopped || !participating) {
-            Log.w(TAG, "pin ignored: not in a ride")
+        if (stopped) return
+        if (!participating) {
+            if (!publicRide.submitPin(intent)) Log.w(TAG, "pin ignored: not in a ride nor public")
             return
         }
         val ws = webSocket?.takeIf { linkOpen && joinedRideId != null }
@@ -896,6 +904,20 @@ internal class GroupRideObserver(
     private fun emitConnection(state: String) {
         lastConnection = state
         emit("onGroupRideConnection", mapOf("state" to state))
+    }
+
+    /**
+     * Public riders' pins changed. Outside a ride they drive the signal notices and the hazard
+     * approach cues, the way a ride's roster does; a joined ride's roster owns them instead.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onPublicPins`
+     */
+    private fun onPublicPins(signals: List<SignalRider>, hazards: Map<String, RideHazard>, relayNow: Long?) {
+        if (participating) return
+        hazardCues.roster(hazards)
+        val update = signalNotices.roster(signals, null, relayNow, System.currentTimeMillis())
+        update.clears.forEach(RideNotices::clear)
+        update.posts.forEach { RideNotices.post(it.key, it.content, it.revision) }
     }
 
     /** The rider is out of the ride: drop its cue state, a pending `lost` included, and signal notices. */

@@ -1,4 +1,4 @@
-import type { GroupRideRider, PublicRider } from 'vescape-core'
+import type { GroupRideRider, PublicRider, PublicRiderPins } from 'vescape-core'
 
 import { distanceMeters } from '@/helpers/mapGeometry'
 
@@ -69,13 +69,16 @@ export const NEARBY_RIDER_BAND_M = 250
  * Public riders around the device as roster rows: the nearest {@link NEARBY_RIDER_LIMIT}, nearest
  * band first, then by account id. Riders without a position go last. Without an own location the
  * relay's order (nearest to the look-around point) is kept. An away rider stays at their last
- * position, muted.
+ * position, muted. Each rider wears its `pins`; a rider whose pins arrive without it among the
+ * riders (a far-away friend's signal) follows as an unplaced row, so the pin still shows.
  */
 export function publicRiderRoster(
   riders: PublicRider[],
   ownLocation: { lat: number; lng: number } | null,
+  pins: PublicRiderPins[] = [],
   limit = NEARBY_RIDER_LIMIT,
 ): RosterRider[] {
+  const pinsOf = new Map(pins.map((entry) => [entry.accountId, entry]))
   const ranked = riders.map((rider, index) => ({
     rider,
     index,
@@ -93,7 +96,7 @@ export function publicRiderRoster(
     .slice()
     .sort((a, b) => rankDistance(a) - rankDistance(b) || a.index - b.index)
     .slice(0, limit)
-  return nearest
+  const rows: RosterRider[] = nearest
     .sort((a, b) => {
       const band = rankBand(a) - rankBand(b)
       if (band) return band
@@ -112,8 +115,26 @@ export function publicRiderRoster(
       stale: rider.stale || rider.away,
       away: rider.away,
       lastSeen: rider.lastSeen,
+      signal: pinsOf.get(rider.accountId)?.signal ?? null,
+      hazard: pinsOf.get(rider.accountId)?.hazard ?? null,
       isSelf: false,
     }))
+  const shown = new Set(rows.map((row) => row.id))
+  const unplaced = pins
+    .filter((entry) => !shown.has(entry.accountId))
+    .map((entry) => ({
+      id: entry.accountId,
+      name: entry.nick,
+      presence: null,
+      trail: null,
+      stale: false,
+      away: false,
+      lastSeen: 0,
+      signal: entry.signal,
+      hazard: entry.hazard,
+      isSelf: false,
+    }))
+  return [...rows, ...unplaced]
 }
 
 function rankDistance({ distanceM }: { distanceM: number | null }): number {

@@ -18,8 +18,8 @@ internal data class PublicRideSwitch(val on: Boolean, val until: Long?) {
 
 /**
  * Public ride on the phone: the switch, its timer, when the rider goes public, and the public half of
- * the relay protocol (`public-on`/`public-off`/`public-position`, `nearby`, and the riders the relay
- * reports around the rider). Pure: the [GroupRideObserver] that owns the socket feeds it link and
+ * the relay protocol (`public-on`/`public-off`/`public-position`, `nearby`, the riders the relay
+ * reports around the rider, and Rider Signals and Ride Hazards by distance). Pure: the [GroupRideObserver] that owns the socket feeds it link and
  * relay events and hands it a [send] that only works while the link is open.
  *
  * The rider rides public while the switch is active, a board is connected and an Account is signed
@@ -38,6 +38,8 @@ internal class PublicRide(
     private val emit: (String, Map<String, Any?>) -> Unit,
     /** Send a frame on the open link; false when there is none. */
     private val send: (JSONObject) -> Boolean,
+    /** Other riders' pins changed: their signals, their hazards by Account id, and the relay clock. */
+    private val onPins: (List<SignalRider>, Map<String, RideHazard>, Long?) -> Unit = { _, _, _ -> },
 ) {
     var switch: PublicRideSwitch = PublicRideSwitch.OFF
         private set
@@ -57,12 +59,29 @@ internal class PublicRide(
     private val riders = LinkedHashMap<String, Map<String, Any?>>()
     private var ridersNow: Long? = null
     private var lastStatus: Map<String, Any?>? = null
+    /**
+     * The latest pin intent per slot made before the relay confirmed the public ride, sent once it
+     * does. A later intent in the same slot overwrites it; the public ride ending drops them.
+     *
+     * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `pendingPins`
+     */
+    private val pendingPins = mutableMapOf<PinSlot, RiderPinIntent>()
+    /** The rider's own pins as sent; the relay never echoes them back. Times are relay clock estimates. */
+    private val ownPins = mutableMapOf<PinSlot, Map<String, Any?>>()
+    /** Other riders' pins as the relay last reported them, by Account id. */
+    private val pins = LinkedHashMap<String, PublicPins>()
+    private var pinsNow: Long? = null
+    /** Phone time [pinsNow] arrived at, to advance it. */
+    private var pinsReceivedAt = 0L
 
     /** The rider should be public right now. */
     val wanted: Boolean get() = switch.activeAt(now()) && boardConnected && accountId != null
 
     /** Positions go out: the relay confirmed public riding on the open link. */
     val riding: Boolean get() = live && linkReady
+
+    /** The rider can raise a signal or mark a hazard publicly: wanted public, on a relay that has it. */
+    val canPin: Boolean get() = wanted && supported
 
     /** The socket must stay up for the public ride or for looking around. */
     val needsLink: Boolean get() = wanted || lookAround != null
@@ -114,6 +133,7 @@ internal class PublicRide(
         sentOn = false
         live = false
         accountId = account
+        dropOwnPins()
         if (hadAccount && switch.on) {
             switch = PublicRideSwitch.OFF
             reason = REASON_SIGNED_OUT
@@ -188,10 +208,36 @@ internal class PublicRide(
         }
     }
 
+    /**
+     * Raise, replace, or clear the rider's own public pin. False when the rider is not public, so
+     * the intent is not the public ride's. Held until the relay confirms the public ride.
+     */
+    fun submitPin(intent: RiderPinIntent): Boolean {
+        if (!canPin) return false
+        when (intent) {
+            is RiderPinIntent.Send -> {
+                val startedAt = relayNow()
+                ownPins[intent.slot] = mapOf(
+                    "kind" to intent.kind.wire,
+                    "lat" to intent.lat,
+                    "lng" to intent.lng,
+                    "startedAt" to startedAt,
+                    "expiresAt" to startedAt + PIN_LIFETIME_MS,
+                )
+            }
+            is RiderPinIntent.Clear -> ownPins.remove(intent.slot)
+        }
+        pendingPins[intent.slot] = intent
+        sendPendingPins()
+        emitPins()
+        return true
+    }
+
     /** Replay state to a JS runtime that just subscribed. */
     fun resync() {
         emitStatus(force = true)
         emitRiders()
+        emitPins()
     }
 
     /** A relay frame; true when it was a public ride one. */
@@ -215,6 +261,23 @@ internal class PublicRide(
             "public-rider-gone" -> {
                 if (riders.remove(json.optString("accountId")) != null) emitRiders()
             }
+            "public-pins" -> {
+                val id = json.optString("accountId").takeIf { it.isNotEmpty() } ?: return true
+                val signal = RiderPin.parse(json.optJSONObject("signal"), RiderSignalKind::fromWire)
+                val hazard = RiderPin.parse(json.optJSONObject("hazard"), RideHazardKind::fromWire)
+                // A missing slot is none: cleared, expired, out of reach, or the rider went.
+                if (signal == null && hazard == null) pins.remove(id) else pins[id] = PublicPins(json.optString("nick"), signal, hazard)
+                json.optLongOrNull("now")?.let {
+                    pinsNow = it
+                    pinsReceivedAt = now()
+                }
+                emitPins()
+                onPins(
+                    pins.map { (accountId, p) -> SignalRider(accountId, p.nick, p.signal) },
+                    pins.mapNotNull { (accountId, p) -> p.hazard?.let { accountId to it } }.toMap(),
+                    pinsNow,
+                )
+            }
             else -> return false
         }
         return true
@@ -233,6 +296,7 @@ internal class PublicRide(
         if (json.optBoolean("on")) {
             live = true
             reason = null
+            sendPendingPins()
             emitStatus()
             return
         }
@@ -243,6 +307,8 @@ internal class PublicRide(
             REASON_REPLACED, REASON_END_TIME -> switchOff(why)
             // Away too long: the relay dropped the rider; the switch still wants it, so go on again.
             else -> {
+                // The relay dropped the rider and its pins with it.
+                dropOwnPins()
                 if (why != null) reason = why
                 reconcile()
                 emitStatus()
@@ -258,11 +324,14 @@ internal class PublicRide(
         reason = why
         persist(switch)
         armTimer()
+        dropOwnPins()
         emitStatus()
     }
 
     /** Bring the relay in line with [wanted]. */
     private fun reconcile() {
+        // Off the public ride the relay drops the rider's pins.
+        if (!wanted) dropOwnPins()
         if (!linkReady || !supported) return
         if (wanted && !sentOn) {
             val frame = JSONObject().put("type", "public-on")
@@ -274,6 +343,23 @@ internal class PublicRide(
             live = false
         }
     }
+
+    private fun sendPendingPins() {
+        if (!riding) return
+        pendingPins.values.toList().forEach { intent ->
+            if (send(intent.frame(PUBLIC_PREFIX))) pendingPins.remove(intent.slot)
+        }
+    }
+
+    private fun dropOwnPins() {
+        pendingPins.clear()
+        if (ownPins.isEmpty()) return
+        ownPins.clear()
+        emitPins()
+    }
+
+    /** The relay clock now, advanced from the last `public-pins`; the phone clock before one. */
+    private fun relayNow(): Long = pinsNow?.let { it + now() - pinsReceivedAt } ?: now()
 
     private fun sendNearby(point: Pair<Double, Double>) {
         send(JSONObject().put("type", "nearby").put("lat", point.first).put("lng", point.second))
@@ -302,12 +388,30 @@ internal class PublicRide(
         emit("onPublicRiders", mapOf("riders" to riders.values.toList(), "now" to ridersNow))
     }
 
+    /** @parity /modules/vescape-core/src/index.ts `PublicPinsEvent` */
+    private fun emitPins() {
+        emit(
+            "onPublicPins",
+            mapOf(
+                "pins" to pins.map { (accountId, p) ->
+                    mapOf("accountId" to accountId, "nick" to p.nick, "signal" to p.signal?.toMap(), "hazard" to p.hazard?.toMap())
+                },
+                "own" to mapOf("signal" to ownPins[PinSlot.SIGNAL], "hazard" to ownPins[PinSlot.HAZARD]),
+                "now" to relayNow(),
+            ),
+        )
+    }
+
     companion object {
         const val PUBLIC_RIDE_FEATURE = "public-ride"
         const val REASON_REPLACED = "replaced"
         const val REASON_END_TIME = "end-time"
         const val REASON_SIGNED_OUT = "signed-out"
         const val REASON_REFUSED = "refused"
+        /** Turns a room pin frame into the public ride's: `public-signal`, `public-hazard-clear`. */
+        const val PUBLIC_PREFIX = "public-"
+        /** The relay keeps a pin this long; own pins are timed the same. */
+        const val PIN_LIFETIME_MS = 90 * 60_000L
         private val REFUSALS = setOf(
             "public ride needs an Account",
             "public ride needs a nick",
@@ -341,6 +445,13 @@ internal class PublicRide(
         }
     }
 }
+
+/**
+ * Another public rider's pins as this phone may see them.
+ *
+ * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `PublicPins`
+ */
+internal data class PublicPins(val nick: String, val signal: RiderSignal?, val hazard: RideHazard?)
 
 private fun JSONObject.optLongOrNull(key: String): Long? = if (has(key) && !isNull(key)) optLong(key) else null
 

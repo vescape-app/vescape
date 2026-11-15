@@ -47,7 +47,7 @@ describe('publicRiderRoster', () => {
   })
 
   test('without an own location keeps the relay order and the limit', () => {
-    const rows = publicRiderRoster([rider('x', 9_000), rider('y', 10), rider('z', 50)], null, 2)
+    const rows = publicRiderRoster([rider('x', 9_000), rider('y', 10), rider('z', 50)], null, [], 2)
     expect(ids(rows)).toEqual(['x', 'y'])
   })
 
@@ -55,5 +55,17 @@ describe('publicRiderRoster', () => {
     const [row] = publicRiderRoster([rider('gone', 100, true)], OWN)
     expect(row).toMatchObject({ id: 'gone', away: true, stale: true, isSelf: false })
     expect(row.presence).not.toBeNull()
+  })
+
+  test("riders wear their pins, and a far-away friend's pins follow as an unplaced row", () => {
+    const signal = { kind: 'serious', lat: 1, lng: 2, startedAt: 5, expiresAt: 9 }
+    const hazard = { kind: 'police', lat: 1, lng: 2, startedAt: 5, expiresAt: 9 }
+    const rows = publicRiderRoster([rider('near', 100)], OWN, [
+      { accountId: 'near', nick: 'near', signal: null, hazard },
+      { accountId: 'friend', nick: 'Ola', signal, hazard: null },
+    ])
+    expect(ids(rows)).toEqual(['near', 'friend'])
+    expect(rows[0]).toMatchObject({ hazard, signal: null })
+    expect(rows[1]).toMatchObject({ name: 'Ola', presence: null, signal })
   })
 })

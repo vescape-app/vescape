@@ -103,9 +103,35 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
 
 /** Every Rider's active signal, your own included (the presence layers leave you out). */
 export function LiveRiderSignalPins() {
-  const rows = useGroupRideStore((s) => s.rosterRows)
+  const rosterRows = useGroupRideStore((s) => s.rosterRows)
   const clock = useGroupRideStore((s) => s.relayClock)
+  // On the public ride the rider has no row: its own pins come as sent.
+  const publicOwn = useGroupRideStore((s) => (s.activeRideId ? null : s.publicOwnPins))
+  const rows = useMemo(
+    () =>
+      publicOwn && (publicOwn.signal || publicOwn.hazard)
+        ? [...rosterRows, ownPinsRow(publicOwn)]
+        : rosterRows,
+    [rosterRows, publicOwn],
+  )
   return <RiderSignalPins rows={rows} clock={clock} />
+}
+
+function ownPinsRow(pins: {
+  signal: GroupRidePin | null
+  hazard: GroupRidePin | null
+}): RosterRider {
+  return {
+    id: 'self',
+    name: 'You',
+    presence: null,
+    stale: false,
+    away: false,
+    lastSeen: 0,
+    signal: pins.signal,
+    hazard: pins.hazard,
+    isSelf: true,
+  }
 }
 
 /** The signals and hazards in `rows` still active on `clock`. */

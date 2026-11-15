@@ -17,6 +17,7 @@ class PublicRideTest {
     private val sent = mutableListOf<JSONObject>()
     private var linkOpen = true
     private lateinit var ride: PublicRide
+    private var pinUpdates = mutableListOf<Pair<List<SignalRider>, Map<String, RideHazard>>>()
 
     private val presence = RiderPresence(52.0, 21.0, null, null, null, null, null, null, null)
 
@@ -28,6 +29,7 @@ class PublicRideTest {
             scheduleExpiry = { timer = it },
             emit = { name, payload -> events += name to payload },
             send = { frame -> linkOpen && sent.add(frame) },
+            onPins = { signals, hazards, _ -> pinUpdates += signals to hazards },
         )
     }
 
@@ -169,5 +171,72 @@ class PublicRideTest {
         val first = events.first { it.first == "onPublicRiders" }.second
         assertEquals(9L, first["now"])
         assertEquals("Ola", ((first["riders"] as List<*>)[0] as Map<*, *>)["nick"])
+    }
+
+    private fun ownPins() = events.last { it.first == "onPublicPins" }.second["own"] as Map<*, *>
+
+    private fun goLive() {
+        ride.load(PublicRideSwitch(true, null), "acc")
+        ride.setBoardConnected(true)
+        ready()
+        ride.handle("public-status", JSONObject().put("on", true))
+    }
+
+    @Test
+    fun `a public rider sends and clears a signal and a hazard`() {
+        goLive()
+        val signal = RiderPinIntent.Send(RiderSignalKind.WAIT, 52.0, 21.0)
+        assertTrue(ride.submitPin(signal))
+        assertTrue(ride.submitPin(RiderPinIntent.Send(RideHazardKind.WATER, 52.0, 21.0)))
+        assertEquals(listOf("public-on", "public-signal", "public-hazard"), types())
+        assertEquals("wait", sent[1].getString("kind"))
+        assertEquals("wait", (ownPins()["signal"] as Map<*, *>)["kind"])
+        assertTrue(ride.submitPin(RiderPinIntent.Clear(PinSlot.SIGNAL)))
+        assertEquals("public-signal-clear", types().last())
+        assertNull(ownPins()["signal"])
+    }
+
+    @Test
+    fun `a pin waits for the relay to confirm the public ride`() {
+        ride.load(PublicRideSwitch(true, null), "acc")
+        ride.setBoardConnected(true)
+        ready()
+        assertTrue(ride.submitPin(RiderPinIntent.Send(RiderSignalKind.DOWN, 52.0, 21.0)))
+        assertTrue(ride.submitPin(RiderPinIntent.Send(RiderSignalKind.SERIOUS, 52.0, 21.0)))
+        assertEquals(listOf("public-on"), types())
+        ride.handle("public-status", JSONObject().put("on", true))
+        assertEquals(listOf("public-on", "public-signal"), types())
+        assertEquals("serious", sent.last().getString("kind"))
+    }
+
+    @Test
+    fun `no pin goes out off the public ride, and ending it drops the own pins`() {
+        ride.load(PublicRideSwitch.OFF, "acc")
+        ready()
+        assertFalse(ride.submitPin(RiderPinIntent.Send(RiderSignalKind.WAIT, 52.0, 21.0)))
+        goLive()
+        ride.submitPin(RiderPinIntent.Send(RiderSignalKind.WAIT, 52.0, 21.0))
+        ride.setBoardConnected(false)
+        assertNull(ownPins()["signal"])
+    }
+
+    @Test
+    fun `other riders' pins follow the relay, a missing slot meaning none`() {
+        ride.load(PublicRideSwitch.OFF, null)
+        ready()
+        val pin = """{"kind":"serious","lat":52,"lng":21,"startedAt":5,"expiresAt":9}"""
+        val hazard = """{"kind":"police","lat":52,"lng":21,"startedAt":5,"expiresAt":9}"""
+        ride.handle("public-pins", JSONObject("""{"accountId":"f","nick":"Ola","signal":$pin,"hazard":$hazard,"now":6}"""))
+        assertEquals(RiderSignalKind.SERIOUS, pinUpdates.last().first.single().signal?.kind)
+        assertEquals("Ola", pinUpdates.last().first.single().name)
+        assertEquals(RideHazardKind.POLICE, pinUpdates.last().second["f"]?.kind)
+        ride.handle("public-pins", JSONObject("""{"accountId":"f","nick":"Ola","hazard":$hazard,"now":7}"""))
+        assertNull(pinUpdates.last().first.single().signal)
+        ride.handle("public-pins", JSONObject("""{"accountId":"f","nick":"Ola","now":8}"""))
+        assertTrue(pinUpdates.last().first.isEmpty())
+        assertTrue(pinUpdates.last().second.isEmpty())
+        val event = events.last { it.first == "onPublicPins" }.second
+        assertTrue((event["pins"] as List<*>).isEmpty())
+        assertEquals(8L, event["now"])
     }
 }

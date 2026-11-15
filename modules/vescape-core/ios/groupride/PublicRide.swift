@@ -13,8 +13,8 @@ internal struct PublicRideSwitch: Equatable {
 }
 
 /// Public ride on the phone: the switch, its timer, when the rider goes public, and the public half
-/// of the relay protocol (`public-on`/`public-off`/`public-position`, `nearby`, and the riders the
-/// relay reports around the rider). Pure: the `GroupRideObserver` that owns the socket feeds it link
+/// of the relay protocol (`public-on`/`public-off`/`public-position`, `nearby`, the riders the relay
+/// reports around the rider, and Rider Signals and Ride Hazards by distance). Pure: the `GroupRideObserver` that owns the socket feeds it link
 /// and relay events and hands it a `send` that only works while the link is open.
 ///
 /// The rider rides public while the switch is active, a board is connected and an Account is signed
@@ -32,6 +32,8 @@ internal final class PublicRide {
   private let emit: (String, [String: Any?]) -> Void
   /// Send a frame on the open link; false when there is none.
   private let send: ([String: Any]) -> Bool
+  /// Other riders' pins changed: their signals, their hazards by Account id, and the relay clock.
+  private let onPins: ([SignalRider], [String: RideHazard], Int64?) -> Void
 
   private(set) var switchState = PublicRideSwitch.off
   private var boardConnected = false
@@ -50,19 +52,33 @@ internal final class PublicRide {
   private var riders: [(accountId: String, view: [String: Any?])] = []
   private var ridersNow: Int64?
   private var lastStatus: NSDictionary?
+  /// The latest pin intent per slot made before the relay confirmed the public ride, sent once it
+  /// does. A later intent in the same slot overwrites it; the public ride ending drops them.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `pendingPins`
+  private var pendingPins: [PinSlot: RiderPinIntent] = [:]
+  /// The rider's own pins as sent; the relay never echoes them back. Times are relay clock estimates.
+  private var ownPins: [PinSlot: [String: Any?]] = [:]
+  /// Other riders' pins as the relay last reported them, by Account id, in arrival order.
+  private var pins: [(accountId: String, pins: PublicPins)] = []
+  private var pinsNow: Int64?
+  /// Phone time `pinsNow` arrived at, to advance it.
+  private var pinsReceivedAt: Int64 = 0
 
   init(
     now: @escaping () -> Int64,
     persist: @escaping (PublicRideSwitch) -> Void,
     scheduleExpiry: @escaping (Int64?) -> Void,
     emit: @escaping (String, [String: Any?]) -> Void,
-    send: @escaping ([String: Any]) -> Bool
+    send: @escaping ([String: Any]) -> Bool,
+    onPins: @escaping ([SignalRider], [String: RideHazard], Int64?) -> Void = { _, _, _ in }
   ) {
     self.now = now
     self.persist = persist
     self.scheduleExpiry = scheduleExpiry
     self.emit = emit
     self.send = send
+    self.onPins = onPins
   }
 
   /// The rider should be public right now.
@@ -70,6 +86,9 @@ internal final class PublicRide {
 
   /// Positions go out: the relay confirmed public riding on the open link.
   var riding: Bool { live && linkReady }
+
+  /// The rider can raise a signal or mark a hazard publicly: wanted public, on a relay that has it.
+  var canPin: Bool { wanted && supported }
 
   /// The socket must stay up for the public ride or for looking around.
   var needsLink: Bool { wanted || lookAround != nil }
@@ -119,6 +138,7 @@ internal final class PublicRide {
     sentOn = false
     live = false
     accountId = account
+    dropOwnPins()
     if hadAccount && switchState.on {
       switchState = .off
       reason = Self.reasonSignedOut
@@ -186,10 +206,35 @@ internal final class PublicRide {
     }
   }
 
+  /// Raise, replace, or clear the rider's own public pin. False when the rider is not public, so
+  /// the intent is not the public ride's. Held until the relay confirms the public ride.
+  @discardableResult
+  func submitPin(_ intent: RiderPinIntent) -> Bool {
+    guard canPin else { return false }
+    switch intent {
+    case let .send(slot, kind, lat, lng):
+      let startedAt = relayNow()
+      ownPins[slot] = [
+        "kind": kind,
+        "lat": lat,
+        "lng": lng,
+        "startedAt": startedAt,
+        "expiresAt": startedAt + Self.pinLifetimeMs,
+      ]
+    case let .clear(slot):
+      ownPins[slot] = nil
+    }
+    pendingPins[intent.slot] = intent
+    sendPendingPins()
+    emitPins()
+    return true
+  }
+
   /// Replay state to a JS runtime that just subscribed.
   func resync() {
     emitStatus(force: true)
     emitRiders()
+    emitPins()
   }
 
   /// A relay frame; true when it was a public ride one.
@@ -221,6 +266,27 @@ internal final class PublicRide {
         riders.remove(at: index)
         emitRiders()
       }
+    case "public-pins":
+      guard let id = json["accountId"] as? String, !id.isEmpty else { return true }
+      let signal = RiderSignal.parse(json["signal"] as? [String: Any])
+      let hazard = RideHazard.parse(json["hazard"] as? [String: Any])
+      // A missing slot is none: cleared, expired, out of reach, or the rider went.
+      let entry = PublicPins(nick: json["nick"] as? String ?? "", signal: signal, hazard: hazard)
+      if let index = pins.firstIndex(where: { $0.accountId == id }) {
+        if signal == nil && hazard == nil { pins.remove(at: index) } else { pins[index].pins = entry }
+      } else if signal != nil || hazard != nil {
+        pins.append((accountId: id, pins: entry))
+      }
+      if let now = (json["now"] as? NSNumber)?.int64Value {
+        pinsNow = now
+        pinsReceivedAt = self.now()
+      }
+      emitPins()
+      onPins(
+        pins.map { SignalRider(id: $0.accountId, name: $0.pins.nick, signal: $0.pins.signal) },
+        Dictionary(uniqueKeysWithValues: pins.compactMap { entry in entry.pins.hazard.map { (entry.accountId, $0) } }),
+        pinsNow
+      )
     default:
       return false
     }
@@ -241,6 +307,7 @@ internal final class PublicRide {
     if json["on"] as? Bool == true {
       live = true
       reason = nil
+      sendPendingPins()
       emitStatus()
       return
     }
@@ -253,6 +320,8 @@ internal final class PublicRide {
       switchOff(why!)
     // Away too long: the relay dropped the rider; the switch still wants it, so go on again.
     default:
+      // The relay dropped the rider and its pins with it.
+      dropOwnPins()
       if let why { reason = why }
       reconcile()
       emitStatus()
@@ -267,11 +336,14 @@ internal final class PublicRide {
     reason = why
     persist(switchState)
     armTimer()
+    dropOwnPins()
     emitStatus()
   }
 
   /// Bring the relay in line with `wanted`.
   private func reconcile() {
+    // Off the public ride the relay drops the rider's pins.
+    if !wanted { dropOwnPins() }
     guard linkReady, supported else { return }
     if wanted && !sentOn {
       var frame: [String: Any] = ["type": "public-on"]
@@ -283,6 +355,23 @@ internal final class PublicRide {
       live = false
     }
   }
+
+  private func sendPendingPins() {
+    guard riding else { return }
+    for intent in pendingPins.values where send(intent.frame(prefix: Self.publicPrefix)) {
+      pendingPins[intent.slot] = nil
+    }
+  }
+
+  private func dropOwnPins() {
+    pendingPins = [:]
+    guard !ownPins.isEmpty else { return }
+    ownPins = [:]
+    emitPins()
+  }
+
+  /// The relay clock now, advanced from the last `public-pins`; the phone clock before one.
+  private func relayNow() -> Int64 { pinsNow.map { $0 + now() - pinsReceivedAt } ?? now() }
 
   private func sendNearby(_ point: (lat: Double, lng: Double)) {
     _ = send(["type": "nearby", "lat": point.lat, "lng": point.lng])
@@ -315,7 +404,22 @@ internal final class PublicRide {
     emit("onPublicRiders", ["riders": riders.map { $0.view }, "now": ridersNow])
   }
 
+  /// @parity /modules/vescape-core/src/index.ts `PublicPinsEvent`
+  private func emitPins() {
+    emit("onPublicPins", [
+      "pins": pins.map { entry -> [String: Any?] in
+        ["accountId": entry.accountId, "nick": entry.pins.nick, "signal": entry.pins.signal?.toMap(), "hazard": entry.pins.hazard?.toMap()]
+      },
+      "own": ["signal": ownPins[.signal] ?? nil, "hazard": ownPins[.hazard] ?? nil] as [String: Any?],
+      "now": relayNow(),
+    ])
+  }
+
   static let feature = "public-ride"
+  /// Turns a room pin frame into the public ride's: `public-signal`, `public-hazard-clear`.
+  static let publicPrefix = "public-"
+  /// The relay keeps a pin this long; own pins are timed the same.
+  static let pinLifetimeMs: Int64 = 90 * 60_000
   static let reasonReplaced = "replaced"
   static let reasonEndTime = "end-time"
   static let reasonSignedOut = "signed-out"
@@ -341,6 +445,15 @@ internal final class PublicRide {
       "lastSeen": (obj["lastSeen"] as? NSNumber)?.int64Value ?? 0,
     ]
   }
+}
+
+/// Another public rider's pins as this phone may see them.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `PublicPins`
+internal struct PublicPins {
+  let nick: String
+  let signal: RiderSignal?
+  let hazard: RideHazard?
 }
 
 /// Where the switch survives an app restart. Kept out of the settings table on purpose: a backup
