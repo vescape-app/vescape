@@ -1,16 +1,25 @@
 import { useUser } from '@clerk/expo'
 import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native'
 import { ArrowClockwiseIcon, CaretRightIcon, UserCircleIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
+import { useColoredAction, useColoredActionForeground } from '@/hooks/useTheme'
 import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
 
 interface AccountPillProps {
+  signInSize?: 'lg'
   /** Called before navigating away so the host can dismiss its sheet. */
   onNavigate?: () => void
 }
@@ -23,7 +32,7 @@ interface AccountPillProps {
  * Device Token exchange turns the pill into a retry button, because until it succeeds the account
  * buys the Rider nothing.
  */
-export function AccountPill({ onNavigate }: AccountPillProps) {
+export function AccountPill({ onNavigate, signInSize }: AccountPillProps) {
   const router = useRouter()
   const { isLoaded, isSignedIn, user } = useUser()
   const deviceAuthStatus = useDeviceAuthStore((s) => s.status)
@@ -45,13 +54,7 @@ export function AccountPill({ onNavigate }: AccountPillProps) {
   }
 
   if (!isSignedIn) {
-    return (
-      <Pill onPress={() => navigate(routes.signIn)}>
-        <UserCircleIcon size={18} color={theme.settingsIcon.account} weight="duotone" />
-        <Text style={styles.label}>Sign in</Text>
-        <CaretRightIcon size={13} color={theme.control.textMuted} weight="bold" />
-      </Pill>
-    )
+    return <AccountSignInPill size={signInSize} onPress={() => navigate(routes.signIn)} />
   }
 
   if (deviceAuthStatus === 'failed') {
@@ -86,12 +89,48 @@ export function AccountPill({ onNavigate }: AccountPillProps) {
   )
 }
 
+export function AccountSignInPill({
+  size = 'sm',
+  onPress,
+}: {
+  size?: 'sm' | 'lg'
+  onPress: () => void
+}) {
+  const accent = theme.palette.groupRide.color
+  const backgroundColor = useColoredAction(accent)
+  const foreground = useColoredActionForeground(accent)
+  const large = size === 'lg'
+
+  return (
+    <Pill
+      onPress={onPress}
+      style={large ? [styles.largePill, { backgroundColor, borderColor: foreground }] : undefined}
+    >
+      <UserCircleIcon
+        size={large ? 22 : 18}
+        color={large ? foreground : theme.settingsIcon.account}
+        weight="duotone"
+      />
+      <Text style={[styles.label, large && { fontSize: 16, color: foreground }]} numberOfLines={1}>
+        Sign in
+      </Text>
+      <CaretRightIcon
+        size={large ? 16 : 13}
+        color={large ? foreground : theme.control.textMuted}
+        weight="bold"
+      />
+    </Pill>
+  )
+}
+
 function Pill({
   tone,
+  style,
   onPress,
   children,
 }: {
   tone?: ThemeColor
+  style?: StyleProp<ViewStyle>
   onPress: () => void
   children: React.ReactNode
 }) {
@@ -100,9 +139,11 @@ function Pill({
       style={({ pressed }) => [
         styles.pill,
         tone ? { borderColor: tone, backgroundColor: theme.status.error.bg } : null,
+        style,
         pressed && { opacity: theme.interaction.pressedOpacity },
       ]}
       onPress={onPress}
+      accessibilityRole="button"
       testID="account-pill"
     >
       {children}
@@ -116,7 +157,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    maxWidth: '90%',
+    maxWidth: '100%',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
@@ -124,6 +165,7 @@ const styles = StyleSheet.create({
     borderColor: theme.control.border,
     backgroundColor: theme.control.background,
   },
+  largePill: { minHeight: 48 },
   avatar: {
     width: 22,
     height: 22,

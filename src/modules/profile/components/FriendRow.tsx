@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { BroadcastIcon, UserCircleIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
@@ -15,7 +15,6 @@ export function FriendRow({
   status,
   riding = false,
   trailing,
-  onPress,
   testID,
 }: {
   nick: string
@@ -23,19 +22,11 @@ export function FriendRow({
   status?: string | null
   riding?: boolean
   trailing?: ReactNode
-  onPress?: () => void
   testID?: string
 }) {
-  const label = [nick, nationality, status].filter(Boolean).join(', ')
   return (
     <View style={styles.row} testID={testID}>
-      <Pressable
-        style={styles.identity}
-        onPress={onPress}
-        disabled={!onPress}
-        accessibilityRole={onPress ? 'button' : undefined}
-        accessibilityLabel={label}
-      >
+      <View style={styles.identity}>
         <UserCircleIcon
           size={32}
           color={riding ? theme.palette.green.color : theme.neutral.textSecondary}
@@ -58,7 +49,7 @@ export function FriendRow({
             </View>
           ) : null}
         </View>
-      </Pressable>
+      </View>
       {trailing}
     </View>
   )

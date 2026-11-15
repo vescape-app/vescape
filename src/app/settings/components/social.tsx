@@ -49,7 +49,6 @@ export default function SocialShowcase() {
             nationality={nationality ? 'PL' : null}
             status={STATUSES[status]}
             riding={status === 'riding'}
-            onPress={() => undefined}
             trailing={
               action ? (
                 <Button

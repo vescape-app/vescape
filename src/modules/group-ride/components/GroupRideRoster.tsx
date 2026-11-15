@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import {
   ArrowsHorizontalIcon,
   BatteryMediumIcon,
   DeviceMobileIcon,
   GaugeIcon,
   ThermometerSimpleIcon,
+  UserCircleIcon,
   type Icon,
 } from 'phosphor-react-native'
 
@@ -32,23 +33,15 @@ type OwnLocation = { lat: number; lng: number } | null
  *  so each Rider's stats wrap into two lines of three. */
 const ONE_LINE_STATS_MIN_WIDTH = 290
 
-interface SignalPoint {
-  latitude: number
-  longitude: number
-}
-
-/** Riders as full-width rows whose stat columns line up like a table. With `onPressRider` every
- *  row is tappable; otherwise a row with an active signal hands its location to `onFocusSignal`. */
+/** Read-only rider rows. The drawer uses the compact view to keep nearby telemetry scannable. */
 export function RosterList({
   rows,
   ownLocation,
-  onFocusSignal,
-  onPressRider,
+  compact = false,
 }: {
   rows: RosterRider[]
   ownLocation: OwnLocation
-  onFocusSignal?: (point: SignalPoint) => void
-  onPressRider?: (rider: RosterRider) => void
+  compact?: boolean
 }) {
   const neutral = useResolvedNeutralColors()
   const divider = theme.alpha(neutral.border, 0.6)
@@ -64,8 +57,7 @@ export function RosterList({
           ownLocation={ownLocation}
           divider={index > 0 ? divider : undefined}
           wrapStats={wrapStats}
-          onFocusSignal={onFocusSignal}
-          onPressRider={onPressRider}
+          compact={compact}
         />
       ))}
     </View>
@@ -115,18 +107,16 @@ function RiderRow({
   ownLocation,
   divider,
   wrapStats,
-  onFocusSignal,
-  onPressRider,
+  compact,
 }: {
   rider: RosterRider
   ownLocation: OwnLocation
   divider?: string
   wrapStats: boolean
-  onFocusSignal?: (point: SignalPoint) => void
-  onPressRider?: (rider: RosterRider) => void
+  compact: boolean
 }) {
   const signal = useActiveRiderSignal(rider.signal)
-  const { formatDistance } = useFormat()
+  const { formatDistance, speedUnit } = useFormat()
   const s = useRiderStats(rider.presence)
   // An away Rider's stats stay frozen at their last presence; the minute clock ages the label.
   const now = useMinuteNow(rider.away)
@@ -156,30 +146,69 @@ function RiderRow({
     { icon: DeviceMobileIcon, color: theme.neutral.textSecondary, weight: 1.2, ...s.phone },
   ]
 
+  const divided = divider ? [styles.rowDivided, { borderTopColor: divider }] : null
+  if (compact) {
+    const speed = s.speed.value
+    const speedLabel =
+      rider.presence?.speed === 0 ? 'Stopped' : speed ? `${speed} ${speedUnit}` : 'Disconnected'
+    const batteryColor =
+      s.soc.level === 'normal' ? theme.palette.groupRide.color : TELEMETRY_LEVEL_COLOR[s.soc.level]
+    return (
+      <View style={[styles.compactRow, divided]}>
+        <View>
+          <UserCircleIcon size={30} color={theme.neutral.textSecondary} weight="thin" />
+          <View
+            style={[
+              styles.avatarDot,
+              {
+                backgroundColor: rider.stale
+                  ? theme.palette.amber.color
+                  : theme.palette.groupRide.color,
+              },
+            ]}
+          />
+        </View>
+        <View style={styles.compactIdentity}>
+          <View style={styles.head}>
+            <Text style={styles.compactName} numberOfLines={1}>
+              {rider.name}
+            </Text>
+            <SelfTag rider={rider} />
+          </View>
+          {rider.away ? <Text style={styles.awayTag}>{awayLabel(rider.lastSeen, now)}</Text> : null}
+          {signal ? <SignalBadge kind={signal.kind} /> : null}
+        </View>
+        {rider.isSelf && !rider.presence ? (
+          <Text style={styles.caption}>Sharing location</Text>
+        ) : (
+          <View style={[styles.compactStats, rider.away && styles.statsAway]}>
+            {s.soc.value ? (
+              <View style={styles.metric}>
+                <BatteryMediumIcon size={14} color={batteryColor} />
+                <Text style={styles.caption}>{s.soc.value}</Text>
+              </View>
+            ) : null}
+            <View style={styles.metric}>
+              <GaugeIcon size={13} color={theme.neutral.textSecondary} />
+              <Text style={styles.caption} numberOfLines={1}>
+                {speedLabel}
+              </Text>
+            </View>
+          </View>
+        )}
+        {distance ? <Text style={styles.caption}>{distance}</Text> : null}
+      </View>
+    )
+  }
+
   return (
-    <Pressable
-      disabled={!onPressRider && (!signal || !onFocusSignal)}
-      onPress={() =>
-        onPressRider
-          ? onPressRider(rider)
-          : signal && onFocusSignal?.({ latitude: signal.lat, longitude: signal.lng })
-      }
-      accessibilityRole={onPressRider || (signal && onFocusSignal) ? 'button' : undefined}
-      accessibilityHint={
-        onPressRider
-          ? 'Shows the rider on the map'
-          : signal && onFocusSignal
-            ? 'Shows the signal on the map'
-            : undefined
-      }
-      style={[styles.row, divider ? [styles.rowDivided, { borderTopColor: divider }] : null]}
-    >
+    <View style={[styles.row, divided]}>
       <View style={styles.head}>
         <View style={[styles.dot, { backgroundColor: dotColor }]} />
         <Text style={styles.name} numberOfLines={1}>
           {rider.name}
         </Text>
-        {rider.isSelf ? <Text style={styles.selfTag}>You</Text> : null}
+        <SelfTag rider={rider} />
         <Text style={styles.board} numberOfLines={1}>
           {boardName}
         </Text>
@@ -196,8 +225,12 @@ function RiderRow({
           </View>
         ))}
       </View>
-    </Pressable>
+    </View>
   )
+}
+
+function SelfTag({ rider }: { rider: RosterRider }) {
+  return rider.isSelf && rider.name !== 'You' ? <Text style={styles.selfTag}>You</Text> : null
 }
 
 /** The Rider's active signal, as its kind's icon and label. */
@@ -224,6 +257,24 @@ const DOT_SIZE = 8
 const HEAD_GAP = 6
 
 const styles = StyleSheet.create({
+  compactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 48,
+    paddingVertical: 7,
+  },
+  avatarDot: { position: 'absolute', top: 1, left: 1, width: 7, height: 7, borderRadius: 4 },
+  compactIdentity: { flex: 1, minWidth: 0, gap: 2, alignItems: 'flex-start' },
+  compactName: { flexShrink: 1, color: theme.neutral.textPrimary, fontSize: 14, fontWeight: '700' },
+  compactStats: { flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: '48%' },
+  metric: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
+  caption: {
+    color: theme.neutral.textSecondary,
+    fontSize: 11,
+    flexShrink: 1,
+    fontVariant: ['tabular-nums'],
+  },
   signalTag: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { BroadcastIcon, ClockIcon, PowerIcon, InfinityIcon, type Icon } from 'phosphor-react-native'
 import * as Haptics from 'expo-haptics'
@@ -177,15 +177,20 @@ function PreviewLabel({
 export function PublicRideSelector({
   value,
   live,
-  disabled = false,
+  headerAction,
+  overlayAction,
+  disabled: controlDisabled = false,
   onValueChange,
 }: {
   value: PublicRideChoice
   live: boolean
+  headerAction?: ReactNode
+  overlayAction?: ReactNode
   disabled?: boolean
   onValueChange: (choice: PublicRideChoice) => void
 }) {
   'use no memo'
+  const disabled = controlDisabled || !!overlayAction
   const neutral = useResolvedNeutralColors()
   const accent = useResolvedColor(theme.palette.groupRide.color)
   const activeFill = blend(neutral.surfaceDeep, accent, 0.12)
@@ -333,162 +338,182 @@ export function PublicRideSelector({
   }))
 
   return (
-    <View style={[styles.root, disabled ? styles.disabled : null]}>
+    <View>
       <View style={styles.header}>
         <BroadcastIcon size={22} color={accent} style={styles.headerIcon} />
         <View style={styles.heading}>
-          <Text style={[styles.title, { color: neutral.textPrimary }]}>Public ride</Text>
+          <View style={styles.titleRow}>
+            <Text style={[styles.title, { color: neutral.textPrimary }]}>Public ride</Text>
+            {live ? (
+              <View style={styles.live}>
+                <View style={[styles.liveDot, { backgroundColor: accent }]} />
+                <Text style={[styles.status, { color: accent }]}>LIVE</Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={[styles.intro, { color: neutral.textSecondary }]}>Share your location</Text>
         </View>
-        {live ? (
-          <View style={styles.live}>
-            <View style={[styles.liveDot, { backgroundColor: accent }]} />
-            <Text style={[styles.status, { color: accent }]}>LIVE</Text>
-          </View>
-        ) : null}
+        {headerAction}
       </View>
-      <GestureDetector gesture={gesture}>
-        <View
-          onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-          style={[styles.arc, { height: PUBLIC_RIDE_ARC.height * scale }]}
-          testID="public-ride-selector"
-          accessibilityRole="radiogroup"
-          accessibilityLabel="Public ride duration"
-          accessibilityState={{ disabled }}
-        >
-          <Svg
-            width={width}
-            height={PUBLIC_RIDE_ARC.height * scale}
-            viewBox={`0 0 ${PUBLIC_RIDE_ARC.width} ${PUBLIC_RIDE_ARC.height}`}
-            style={StyleSheet.absoluteFill}
-          >
-            {SECTORS.map((sector, index) => (
-              <Sector
-                key={index}
-                initialActive={selected === index}
-                path={sector.path}
-                index={index}
-                readout={readout}
-                surface={neutral.surfaceDeep}
-                border={neutral.border}
-                accent={accent}
-                activeFill={activeFill}
-                muted={neutral.textSecondary}
-              />
-            ))}
-            <AnimatedPath
-              d={TICK_PATH}
-              animatedProps={rulerProps}
-              strokeWidth={1}
-              strokeLinecap="round"
-            />
-          </Svg>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.wave,
-              {
-                // Rings out from the icon and fades where it meets the inner arc.
-                left: (PUBLIC_RIDE_ARC.cx - WAVE_RADIUS) * scale,
-                top: (BROADCAST_Y - WAVE_RADIUS) * scale,
-                width: WAVE_RADIUS * 2 * scale,
-                height: WAVE_RADIUS * 2 * scale,
-                borderColor: accent,
-              },
-              waveStyle,
-            ]}
-          />
+      <View
+        pointerEvents={overlayAction ? 'none' : 'auto'}
+        accessibilityElementsHidden={!!overlayAction}
+        importantForAccessibility={overlayAction ? 'no-hide-descendants' : 'auto'}
+      >
+        <GestureDetector gesture={gesture}>
           <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: (PUBLIC_RIDE_ARC.cx - BROADCAST_SIZE / 2) * scale,
-              top: (BROADCAST_Y - BROADCAST_SIZE / 2) * scale,
-            }}
-          >
-            <BroadcastGlyph
-              size={BROADCAST_SIZE * scale}
-              color={live ? accent : neutral.textSecondary}
-              wave={wave}
-              pulsing={live}
-            />
-          </View>
-          <Animated.View
-            pointerEvents="none"
+            onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
             style={[
-              styles.indicatorPivot,
-              { left: PUBLIC_RIDE_ARC.cx * scale, top: PUBLIC_RIDE_ARC.cy * scale },
-              indicatorStyle,
+              styles.arc,
+              { height: PUBLIC_RIDE_ARC.height * scale },
+              disabled && !overlayAction && styles.disabled,
             ]}
+            testID="public-ride-selector"
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Public ride duration"
+            accessibilityState={{ disabled }}
           >
-            <View
-              style={[
-                styles.indicator,
-                {
-                  backgroundColor: accent,
-                  top: -PUBLIC_RIDE_ARC.outerRadius * scale,
-                  height: 20 * scale,
-                },
-              ]}
-            />
-          </Animated.View>
-          {options.map((option, index) => {
-            const target = index === 0 ? 0 : index === 2 ? ALWAYS_STOP : durationStop
-            return (
-              <View
-                accessible
-                key={index}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: selected === index, disabled }}
-                accessibilityLabel={`${option.title}. ${option.subtitle}`}
-                accessibilityActions={[{ name: 'activate' }]}
-                onAccessibilityAction={(event) => {
-                  if (!disabled && event.nativeEvent.actionName === 'activate') select(target)
-                }}
-                onAccessibilityTap={() => {
-                  if (!disabled) select(target)
-                }}
-                style={[
-                  styles.choice,
-                  {
-                    left: SECTORS[index].label.x * scale - 35,
-                    top: (SECTORS[index].label.y + (index === 1 ? 7 : 0)) * scale - 24,
-                  },
-                ]}
-              >
-                <PreviewGlyph
-                  icon={ICONS[index]}
+            <Svg
+              width={width}
+              height={PUBLIC_RIDE_ARC.height * scale}
+              viewBox={`0 0 ${PUBLIC_RIDE_ARC.width} ${PUBLIC_RIDE_ARC.height}`}
+              style={StyleSheet.absoluteFill}
+            >
+              {SECTORS.map((sector, index) => (
+                <Sector
+                  key={index}
+                  initialActive={selected === index}
+                  path={sector.path}
                   index={index}
                   readout={readout}
+                  surface={neutral.surfaceDeep}
+                  border={neutral.border}
                   accent={accent}
+                  activeFill={activeFill}
                   muted={neutral.textSecondary}
                 />
-                {index === 1 ? (
-                  <PublicRideReadout
-                    readout={readout}
-                    accent={accent}
-                    muted={neutral.textSecondary}
-                  />
-                ) : (
-                  <PreviewLabel
-                    title={option.title}
+              ))}
+              <AnimatedPath
+                d={TICK_PATH}
+                animatedProps={rulerProps}
+                strokeWidth={1}
+                strokeLinecap="round"
+              />
+            </Svg>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.wave,
+                {
+                  // Rings out from the icon and fades where it meets the inner arc.
+                  left: (PUBLIC_RIDE_ARC.cx - WAVE_RADIUS) * scale,
+                  top: (BROADCAST_Y - WAVE_RADIUS) * scale,
+                  width: WAVE_RADIUS * 2 * scale,
+                  height: WAVE_RADIUS * 2 * scale,
+                  borderColor: accent,
+                },
+                waveStyle,
+              ]}
+            />
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: (PUBLIC_RIDE_ARC.cx - BROADCAST_SIZE / 2) * scale,
+                top: (BROADCAST_Y - BROADCAST_SIZE / 2) * scale,
+              }}
+            >
+              <BroadcastGlyph
+                size={BROADCAST_SIZE * scale}
+                color={live ? accent : neutral.textSecondary}
+                wave={wave}
+                pulsing={live}
+              />
+            </View>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.indicatorPivot,
+                { left: PUBLIC_RIDE_ARC.cx * scale, top: PUBLIC_RIDE_ARC.cy * scale },
+                indicatorStyle,
+              ]}
+            >
+              <View
+                style={[
+                  styles.indicator,
+                  {
+                    backgroundColor: accent,
+                    top: -PUBLIC_RIDE_ARC.outerRadius * scale,
+                    height: 20 * scale,
+                  },
+                ]}
+              />
+            </Animated.View>
+            {options.map((option, index) => {
+              const target = index === 0 ? 0 : index === 2 ? ALWAYS_STOP : durationStop
+              return (
+                <View
+                  accessible
+                  key={index}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected === index, disabled }}
+                  accessibilityLabel={`${option.title}. ${option.subtitle}`}
+                  accessibilityActions={[{ name: 'activate' }]}
+                  onAccessibilityAction={(event) => {
+                    if (!disabled && event.nativeEvent.actionName === 'activate') select(target)
+                  }}
+                  onAccessibilityTap={() => {
+                    if (!disabled) select(target)
+                  }}
+                  style={[
+                    styles.choice,
+                    {
+                      left: SECTORS[index].label.x * scale - 35,
+                      top: (SECTORS[index].label.y + (index === 1 ? 7 : 0)) * scale - 24,
+                    },
+                  ]}
+                >
+                  <PreviewGlyph
+                    icon={ICONS[index]}
                     index={index}
                     readout={readout}
                     accent={accent}
                     muted={neutral.textSecondary}
                   />
-                )}
-              </View>
-            )
-          })}
+                  {index === 1 ? (
+                    <PublicRideReadout
+                      readout={readout}
+                      accent={accent}
+                      muted={neutral.textSecondary}
+                    />
+                  ) : (
+                    <PreviewLabel
+                      title={option.title}
+                      index={index}
+                      readout={readout}
+                      accent={accent}
+                      muted={neutral.textSecondary}
+                    />
+                  )}
+                </View>
+              )
+            })}
+          </View>
+        </GestureDetector>
+        <View style={disabled && styles.disabled}>
+          <PublicRideReadout
+            readout={readout}
+            description
+            accent={accent}
+            muted={neutral.textPrimary}
+          />
         </View>
-      </GestureDetector>
-      <PublicRideReadout
-        readout={readout}
-        description
-        accent={accent}
-        muted={neutral.textPrimary}
-      />
+      </View>
+      {overlayAction ? (
+        <View style={[styles.overlay, { backgroundColor: theme.alpha(neutral.surfaceDeep, 0.75) }]}>
+          <View style={{ transform: [{ translateY: 35 * scale }] }}>{overlayAction}</View>
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -496,11 +521,12 @@ export function PublicRideSelector({
 const styles = StyleSheet.create({
   indicatorPivot: { position: 'absolute', width: 0, height: 0 },
   indicator: { position: 'absolute', width: 4, left: -2, borderRadius: 2 },
-  root: { gap: 0 },
   disabled: { opacity: 0.5 },
+  overlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6, zIndex: 1 },
   headerIcon: { marginTop: 3 },
   heading: { flex: 1, minWidth: 0, gap: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 17, fontWeight: '700' },
   intro: { fontSize: 11, lineHeight: 16, maxWidth: 210 },
   arc: {

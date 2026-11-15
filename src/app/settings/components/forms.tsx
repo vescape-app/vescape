@@ -61,6 +61,12 @@ function SearchInputShowcase() {
   return (
     <ShowcaseCard name="SearchInput">
       <SearchInput value={query} onChangeText={setQuery} />
+      <SearchInput
+        editable={false}
+        value=""
+        onChangeText={() => {}}
+        placeholder="Find riders by nick"
+      />
       <SearchInput value="Footpad" onChangeText={() => {}} accessibilityLabel="Filled search" />
     </ShowcaseCard>
   )

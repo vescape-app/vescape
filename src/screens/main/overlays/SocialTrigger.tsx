@@ -84,6 +84,7 @@ export function SocialTrigger() {
         title="Social"
         icon={UsersThreeIcon}
         backdropTestID="social-drawer-backdrop"
+        keyboardShouldPersistTaps="handled"
         onClose={() => {
           setSocialOpen(false)
           useGroupRideStore.getState().closeRiderProfile()

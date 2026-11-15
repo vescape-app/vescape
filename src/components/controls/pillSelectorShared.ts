@@ -30,7 +30,7 @@ export const TUNE_DEFAULT_ACTIVE_WIDTH = 112
 export const TUNE_ANIMATION = { duration: 180 } as const
 export const TRANSPARENT = theme.alpha(theme.palette.mono.black, 0)
 
-export type PillSelectorLabelBehavior = 'active-only' | 'always'
+export type PillSelectorLabelBehavior = 'active-only' | 'always' | 'icon-only'
 export type PillSelectorSlotVisibility = 'active' | 'inactive' | 'always'
 
 export function usePillSelectorCtx() {

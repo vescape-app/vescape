@@ -10,6 +10,8 @@ interface SearchInputProps {
   onChangeText: (value: string) => void
   placeholder?: string
   accessibilityLabel?: string
+  editable?: boolean
+  autoFocus?: boolean
   testID?: string
   style?: StyleProp<ViewStyle>
 }
@@ -19,6 +21,8 @@ export function SearchInput({
   onChangeText,
   placeholder = 'Search',
   accessibilityLabel = placeholder,
+  editable = true,
+  autoFocus,
   testID,
   style,
 }: SearchInputProps) {
@@ -31,6 +35,8 @@ export function SearchInput({
         onChangeText={onChangeText}
         placeholder={placeholder}
         returnKeyType="search"
+        editable={editable}
+        autoFocus={autoFocus}
         autoCorrect={false}
         autoCapitalize="none"
         accessibilityLabel={accessibilityLabel}
@@ -40,7 +46,7 @@ export function SearchInput({
       <View pointerEvents="none" style={styles.icon}>
         <MagnifyingGlassIcon size={18} color={control.textMuted} weight="bold" />
       </View>
-      {value ? (
+      {editable && value ? (
         <IconButton
           icon={XIcon}
           variant="ghost"

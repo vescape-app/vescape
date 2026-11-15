@@ -66,6 +66,10 @@ interface EdgeDrawerProps {
   initialFocusRef?: React.RefObject<View | null>
   /** Called after scrolling settles near the end of the drawer content. */
   onReachContentEnd?: () => void
+  /** Keep buttons in a form drawer tappable when its keyboard is open. */
+  keyboardShouldPersistTaps?: React.ComponentProps<
+    typeof Reanimated.ScrollView
+  >['keyboardShouldPersistTaps']
   backdropTestID?: string
   testID?: string
   children?: React.ReactNode
@@ -97,6 +101,7 @@ export function EdgeDrawer({
   initialFocusRef,
   onReachContentEnd,
   backdropTestID,
+  keyboardShouldPersistTaps,
   testID,
   children,
   virtualizedContent,
@@ -291,6 +296,7 @@ export function EdgeDrawer({
                     ref={
                       scrollRef as React.RefObject<React.ComponentRef<typeof Reanimated.ScrollView>>
                     }
+                    keyboardShouldPersistTaps={keyboardShouldPersistTaps}
                     onContentSizeChange={handleContentSizeChange}
                     onScroll={scrollHandler}
                     onScrollBeginDrag={handleScrollBeginDrag}

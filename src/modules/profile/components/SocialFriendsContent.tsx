@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { SignInIcon } from 'phosphor-react-native'
+import { MagnifyingGlassIcon, UsersIcon } from 'phosphor-react-native'
 import { searchRiders, type RiderProfile } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
+import { Placeholder } from '@/components/base/Placeholder'
 import { Text } from '@/components/base/Text'
-import { SearchInput } from '@/components/forms/SearchInput'
 import { theme } from '@/constants/theme'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { FriendAction } from '@/modules/profile/components/FriendAction'
 import { FriendRow } from '@/modules/profile/components/FriendRow'
-import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import {
   friendStatus,
   friendsErrorMessage,
@@ -21,66 +20,42 @@ import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 
 const SEARCH_DEBOUNCE_MS = 300
 
-/**
- * Friends in the Social drawer: search riders by nick, answer requests, and see who is riding now.
- * Signed out, it only offers sign-in.
- */
-export function FriendsCard({
-  onPressRider,
-  onSignIn,
-}: {
-  onPressRider: (rider: RiderProfile) => void
-  onSignIn: () => void
-}) {
-  const signedIn = useDeviceAccountReady()
-  const [query, setQuery] = useState('')
-  const prefix = riderSearchPrefix(query)
+export function SocialFriendsSignIn({ search }: { search: boolean }) {
+  return (
+    <Placeholder
+      compact
+      icon={search ? MagnifyingGlassIcon : UsersIcon}
+      title={search ? 'Find riders' : 'Friends'}
+      description={search ? 'Sign in to search for riders.' : 'Sign in to see your friends.'}
+    />
+  )
+}
 
-  if (!signedIn) {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.title}>Friends</Text>
-        <Text style={styles.notice}>Sign in to find riders and see when friends ride.</Text>
-        <Button
-          label="Sign in to add friends"
-          variant="groupRide"
-          icon={SignInIcon}
-          onPress={onSignIn}
-        />
-      </View>
-    )
-  }
+export function SocialRiderSearchResults({ query }: { query: string }) {
+  const prefix = riderSearchPrefix(query)
+  const error = useFriendsStore((s) => s.error)
 
   return (
-    <View style={styles.card} testID="friends-card">
-      <Text style={styles.title}>Friends</Text>
-      <SearchInput
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Find riders by nick"
-        testID="rider-search"
-      />
-      {query.trim() ? (
-        prefix ? (
-          <SearchResults prefix={prefix} onPressRider={onPressRider} />
-        ) : (
-          <Text style={styles.notice}>Nicks use letters, digits and underscores.</Text>
-        )
+    <View style={styles.sections}>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {prefix ? (
+        <SearchResults key={prefix} prefix={prefix} />
+      ) : query.trim() ? (
+        <Text style={styles.notice}>Use up to 20 letters, digits or underscores.</Text>
       ) : (
-        <FriendLists onPressRider={onPressRider} />
+        <Placeholder
+          compact
+          icon={MagnifyingGlassIcon}
+          title="Find riders"
+          description="Enter a nick to find riders."
+        />
       )}
     </View>
   )
 }
 
-function SearchResults({
-  prefix,
-  onPressRider,
-}: {
-  prefix: string
-  onPressRider: (rider: RiderProfile) => void
-}) {
-  const [result, setResult] = useState<{ prefix: string; items: RiderProfile[] } | null>(null)
+function SearchResults({ prefix }: { prefix: string }) {
+  const [result, setResult] = useState<RiderProfile[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -89,7 +64,7 @@ function SearchResults({
       searchRiders(prefix).then(
         (items) => {
           if (!live) return
-          setResult({ prefix, items })
+          setResult(items)
           setError(null)
         },
         (cause: unknown) => {
@@ -105,15 +80,22 @@ function SearchResults({
 
   if (error) return <Text style={styles.error}>{error}</Text>
   if (!result) return <Text style={styles.notice}>Searching…</Text>
-  if (!result.items.length) return <Text style={styles.notice}>No riders found.</Text>
+  if (!result.length)
+    return (
+      <Placeholder
+        compact
+        icon={MagnifyingGlassIcon}
+        title="No riders found"
+        description="Try a different nick."
+      />
+    )
   return (
     <View>
-      {result.items.map((rider) => (
+      {result.map((rider) => (
         <FriendRow
           key={rider.accountId}
           nick={rider.nick}
           nationality={rider.nationality}
-          onPress={() => onPressRider(rider)}
           trailing={<FriendAction accountId={rider.accountId} nick={rider.nick} />}
         />
       ))}
@@ -121,7 +103,7 @@ function SearchResults({
   )
 }
 
-function FriendLists({ onPressRider }: { onPressRider: (rider: RiderProfile) => void }) {
+export function SocialFriendLists({ onSearch }: { onSearch: () => void }) {
   const lists = useFriendsStore((s) => s.lists)
   const loaded = useFriendsStore((s) => s.loaded)
   const error = useFriendsStore((s) => s.error)
@@ -129,7 +111,7 @@ function FriendLists({ onPressRider }: { onPressRider: (rider: RiderProfile) => 
   const friends = sortFriends(lists.friends)
 
   return (
-    <View style={styles.sections}>
+    <View style={styles.sections} testID="friends-card">
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {lists.incoming.length ? (
         <View>
@@ -140,7 +122,6 @@ function FriendLists({ onPressRider }: { onPressRider: (rider: RiderProfile) => 
               nick={rider.nick}
               nationality={rider.nationality}
               status="Wants to be friends"
-              onPress={() => onPressRider(rider)}
               trailing={<FriendAction accountId={rider.accountId} nick={rider.nick} />}
             />
           ))}
@@ -155,12 +136,27 @@ function FriendLists({ onPressRider }: { onPressRider: (rider: RiderProfile) => 
               nationality={friend.nationality}
               status={friendStatus(friend, nowMs)}
               riding={friend.ridingNow}
-              onPress={() => onPressRider(friend)}
             />
           ))}
         </View>
       ) : loaded ? (
-        <Text style={styles.notice}>Find riders by nick to add friends.</Text>
+        <Placeholder
+          compact
+          icon={UsersIcon}
+          title="No friends yet"
+          description="Find riders by nick to add them as friends."
+          action={
+            <Button
+              label="Find riders"
+              size="sm"
+              variant="groupRide"
+              icon={MagnifyingGlassIcon}
+              onPress={onSearch}
+            />
+          }
+        />
+      ) : !error ? (
+        <Text style={styles.notice}>Loading friends…</Text>
       ) : null}
       {lists.outgoing.length ? (
         <View>
@@ -170,7 +166,6 @@ function FriendLists({ onPressRider }: { onPressRider: (rider: RiderProfile) => 
               key={rider.accountId}
               nick={rider.nick}
               nationality={rider.nationality}
-              onPress={() => onPressRider(rider)}
               trailing={<FriendAction accountId={rider.accountId} nick={rider.nick} />}
             />
           ))}
@@ -181,13 +176,6 @@ function FriendLists({ onPressRider }: { onPressRider: (rider: RiderProfile) => 
 }
 
 const styles = StyleSheet.create({
-  card: {
-    gap: 10,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: theme.neutral.surfaceDeep,
-  },
-  title: { color: theme.neutral.textPrimary, fontSize: 15, fontWeight: '700' },
   section: {
     color: theme.neutral.textSecondary,
     fontSize: 11,

@@ -75,7 +75,7 @@ function resolveItemState({
   return {
     active,
     collapseLabel,
-    showLabel: !collapseLabel || active,
+    showLabel: resolvedLabelBehavior !== 'icon-only' && (!collapseLabel || active),
     showHint: slotVisible(hintVisibility, active),
   }
 }
@@ -166,7 +166,7 @@ export function PillSelectorItem({
   const resolved = resolveItemState({
     active,
     icon: IconComp,
-    labelBehavior: showFullLabel ? 'always' : labelBehavior,
+    labelBehavior: showFullLabel && labelBehavior !== 'icon-only' ? 'always' : labelBehavior,
     hintVisibility,
   })
   const accentBorder = useResolvedColor(color?.border ?? theme.palette.green.border)
@@ -188,11 +188,12 @@ export function PillSelectorItem({
 
   const frameStyle = useAnimatedStyle(
     () => ({
-      width: showFullLabel
-        ? activeWidth
-        : resolved.collapseLabel
-          ? inactiveWidth + (activeWidth - inactiveWidth) * activeProgress.value
-          : undefined,
+      width:
+        showFullLabel || labelBehavior === 'icon-only'
+          ? activeWidth
+          : resolved.collapseLabel
+            ? inactiveWidth + (activeWidth - inactiveWidth) * activeProgress.value
+            : undefined,
       backgroundColor: interpolateColor(
         activeProgress.value,
         [0, 1],
@@ -237,6 +238,7 @@ export function PillSelectorItem({
       coloredBackground,
       control.border,
       showFullLabel,
+      labelBehavior,
       useLightTabs,
     ],
   )

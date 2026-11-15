@@ -73,7 +73,8 @@ function getFitContentWidth(
     if (!isValidElement<PillSelectorItemProps>(child)) return width
     const { id, labelBehavior, activeWidth, inactiveWidth, icon } = child.props
     if (!id) return width + PILL_SIZES[size].height
-    if (showFullLabel) return width + (activeWidth ?? PILL_SIZES[size].activeWidth)
+    if (showFullLabel || labelBehavior === 'icon-only')
+      return width + (activeWidth ?? PILL_SIZES[size].activeWidth)
     const behavior = labelBehavior ?? 'active-only'
     if (behavior === 'active-only' && icon) {
       return (
@@ -230,6 +231,7 @@ export function PillSelector({
         <ScrollView
           ref={scrollRef}
           horizontal
+          keyboardShouldPersistTaps="handled"
           scrollEnabled={scrollEnabled}
           bounces={scrollEnabled}
           showsHorizontalScrollIndicator={false}
