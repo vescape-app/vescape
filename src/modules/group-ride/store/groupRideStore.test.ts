@@ -28,6 +28,8 @@ const leaveGroupRide = mock(() => {})
 const updateGroupRideIdentity = mock(() => {})
 const startGroupRideObserve = mock(() => {})
 const stopGroupRideObserve = mock(() => {})
+const watchPublicRiders = mock(() => {})
+const stopWatchingPublicRiders = mock(() => {})
 const getSettings = mock(
   async (): Promise<{ riderId: string | null; riderName: string | null }> => ({
     riderId: null,
@@ -86,6 +88,8 @@ mock.module('vescape-core', () => ({
   updateGroupRideIdentity,
   startGroupRideObserve,
   stopGroupRideObserve,
+  watchPublicRiders,
+  stopWatchingPublicRiders,
   getCompanionPresenceBoards: async () => [],
   addCompanionPresenceBoard: async () => undefined,
   removeCompanionPresenceBoard: async () => undefined,
@@ -128,6 +132,8 @@ beforeEach(async () => {
   updateGroupRideIdentity.mockClear()
   startGroupRideObserve.mockClear()
   stopGroupRideObserve.mockClear()
+  watchPublicRiders.mockClear()
+  stopWatchingPublicRiders.mockClear()
   setPublicRide.mockClear()
   getSettings.mockReset()
   getSettings.mockImplementation(async () => ({ riderId: null, riderName: null }))
@@ -467,4 +473,33 @@ test('the public ride switch mirrors native and sends the end time for hours', a
   const status = { on: true, until: null, live: true, supported: true, reason: null }
   publicRideStatusListeners.forEach((listener) => listener(status))
   expect(useGroupRideStore.getState().publicRide).toEqual(status)
+})
+
+test('looks around with the switch off and shows public riders outside a ride', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  useGroupRideStore.getState().startObserving()
+  expect(watchPublicRiders).toHaveBeenCalledTimes(1)
+
+  const near = {
+    accountId: 'a1',
+    nick: 'Ana',
+    presence: { lat: 1, lng: 2 },
+    stale: false,
+    away: false,
+    lastSeen: 0,
+  }
+  publicRidersListeners.forEach((listener) => listener({ riders: [near], now: null }))
+  expect(useGroupRideStore.getState().rosterRows.map((row) => row.id)).toEqual(['a1'])
+
+  // The first fix re-centres look-around; later fixes do not.
+  locationListeners.forEach((listener) => listener({ latitude: 1, longitude: 2 }))
+  locationListeners.forEach((listener) => listener({ latitude: 1, longitude: 2 }))
+  expect(watchPublicRiders).toHaveBeenCalledTimes(2)
+
+  // A joined ride's roster takes the rows over.
+  joinedListeners.forEach((listener) => listener({ rideId: 'r1' }))
+  expect(useGroupRideStore.getState().rosterRows).toEqual([])
+
+  useGroupRideStore.getState().stopObserving()
+  expect(stopWatchingPublicRiders).toHaveBeenCalledTimes(1)
 })

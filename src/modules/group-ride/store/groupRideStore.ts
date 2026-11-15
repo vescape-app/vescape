@@ -22,7 +22,9 @@ import {
   setPublicRide,
   startGroupRideObserve,
   stopGroupRideObserve,
+  stopWatchingPublicRiders,
   updateGroupRideIdentity,
+  watchPublicRiders,
   type GroupRideConnectionState,
   type GroupRideRider,
   type GroupRideSignalAvailability,
@@ -36,7 +38,12 @@ import {
 import { nearbyRides, type NearbyRide } from '@/modules/group-ride/lib/nearby'
 import { publicRideUntil, type PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { monotonicNow, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
-import { riderRoster, rosterRowsEqual, type RosterRider } from '@/modules/group-ride/lib/roster'
+import {
+  publicRiderRoster,
+  riderRoster,
+  rosterRowsEqual,
+  type RosterRider,
+} from '@/modules/group-ride/lib/roster'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 // The Rider Profile nick, when set, is the name the rider rides under.
 import { riderDisplayName, useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
@@ -56,6 +63,7 @@ interface GroupRideState {
   badge: boolean
   activeRideId: string | null
   roster: GroupRideRider[]
+  /** The joined ride's roster; outside a ride, the nearest public riders (nearest first, limited). */
   rosterRows: RosterRider[]
   /** Relay clock of the last roster that carried one; signal times are read against it. */
   relayClock: RelayClock | null
@@ -202,12 +210,22 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
       addGroupRideSignalAvailabilityListener((signalAvailability) => set({ signalAvailability })),
       addGroupRideErrorListener(({ message }) => set({ error: message })),
       addPublicRideStatusListener((publicRide) => set({ publicRide })),
-      addPublicRidersListener(({ riders }) => set({ publicRiders: riders })),
-      // Own GPS only feeds the nearby list: the roster neither sorts nor stores distance, so a
-      // fix leaves `rosterRows` (and every map layer reading it) untouched.
-      addLocationListener(({ latitude, longitude }) =>
-        set((state) => deriveNearby({ ownLocation: { lat: latitude, lng: longitude } }, state)),
+      addPublicRidersListener(({ riders }) =>
+        set((state) => deriveRoster({}, { ...state, publicRiders: riders })),
       ),
+      // A ride roster neither sorts nor stores distance, so a fix leaves it untouched; the public
+      // riders sort in distance bands, so rows only move when someone changes band.
+      addLocationListener(({ latitude, longitude }) => {
+        // The first fix re-centres look-around, which native started from the last known position.
+        if (!get().ownLocation) watchPublicRiders()
+        set((state) => {
+          const next = {
+            ...state,
+            ...deriveNearby({ ownLocation: { lat: latitude, lng: longitude } }, state),
+          }
+          return { ...next, ...deriveRoster({}, next) }
+        })
+      }),
       // Push name changes to peers without rejoining.
       {
         remove: useRiderStore.subscribe((rider, previous) => {
@@ -227,10 +245,14 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
     }, 1_000)
     set({ observing: true })
     startGroupRideObserve(SERVER_WS_URL)
+    // Look around even with the public ride switch off; native uses the last known position
+    // until there is a fix.
+    watchPublicRiders()
   },
 
   stopObserving() {
     if (!get().observing) return
+    stopWatchingPublicRiders()
     stopGroupRideObserve()
     subscriptions.forEach((sub) => sub.remove())
     subscriptions = []
@@ -277,7 +299,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
 
   leaveRide() {
     leaveGroupRide()
-    set({ activeRideId: null, roster: [], rosterRows: [], error: null })
+    set((state) => ({ ...deriveRoster({ activeRideId: null, roster: [] }, state), error: null }))
   },
 
   sendSignal(kind) {
@@ -336,13 +358,17 @@ function upsertRide(rides: GroupRideSummary[], ride: GroupRideSummary): GroupRid
 function deriveRoster(
   patch: Partial<Pick<GroupRideState, 'activeRideId' | 'roster'>>,
   current: GroupRideState,
-): Pick<GroupRideState, 'activeRideId' | 'roster' | 'rosterRows'> {
+): Pick<GroupRideState, 'activeRideId' | 'roster' | 'rosterRows' | 'publicRiders'> {
   const activeRideId = patch.activeRideId === undefined ? current.activeRideId : patch.activeRideId
   const roster = patch.roster ?? current.roster
-  const rows = riderRoster(roster, useRiderStore.getState().riderId)
+  // Outside a ride, the public riders around this phone take the roster's place.
+  const rows = activeRideId
+    ? riderRoster(roster, useRiderStore.getState().riderId)
+    : publicRiderRoster(current.publicRiders, current.ownLocation)
   return {
     activeRideId,
     roster,
+    publicRiders: current.publicRiders,
     // Keep the previous reference when nothing visible changed, so the 1s
     // freshness tick doesn't fan out to selectors as a new array.
     rosterRows: rosterRowsEqual(rows, current.rosterRows) ? current.rosterRows : rows,

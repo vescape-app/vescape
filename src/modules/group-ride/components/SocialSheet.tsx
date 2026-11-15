@@ -18,6 +18,8 @@ import { RiderNickForm } from '@/modules/profile/components/RiderNickForm'
 import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
+import { RosterList } from '@/modules/group-ride/components/GroupRideRoster'
+import { NEARBY_RIDER_LIMIT } from '@/modules/group-ride/lib/roster'
 
 /** `onNavigate` fires before the sheet routes away (sign-in), so the host can close it. */
 export function SocialSheet({ onNavigate }: { onNavigate?: () => void }) {
@@ -25,6 +27,7 @@ export function SocialSheet({ onNavigate }: { onNavigate?: () => void }) {
     <View testID="social-sheet" style={styles.list}>
       <RiderNameWidget />
       <PublicRideWidget onNavigate={onNavigate} />
+      <NearbyRidersWidget onNavigate={onNavigate} />
     </View>
   )
 }
@@ -160,6 +163,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: theme.neutral.surfaceDeep,
   },
+  nearbyTitle: {
+    color: theme.neutral.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
   notice: {
     color: theme.neutral.textSecondary,
     fontSize: 12,
@@ -192,3 +200,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 })
+
+/** The public riders around the phone, nearest first; tapping one focuses them on the map. Shown
+ *  with the switch off too: look-around runs from the last known position. */
+function NearbyRidersWidget({ onNavigate }: { onNavigate?: () => void }) {
+  const inRide = useGroupRideStore((s) => s.activeRideId !== null)
+  const rows = useGroupRideStore((s) => s.rosterRows)
+  const ownLocation = useGroupRideStore((s) => s.ownLocation)
+  const focusRider = useGroupRideStore((s) => s.focusRider)
+  if (inRide) return null
+  return (
+    <View style={styles.card} testID="nearby-riders">
+      <Text style={styles.nearbyTitle}>Riders nearby</Text>
+      {rows.length ? (
+        <RosterList
+          rows={rows}
+          ownLocation={ownLocation}
+          onPressRider={(rider) => {
+            focusRider(rider.id)
+            onNavigate?.()
+          }}
+        />
+      ) : (
+        <Text style={styles.notice}>No riders nearby right now.</Text>
+      )}
+      {rows.length >= NEARBY_RIDER_LIMIT ? (
+        <Text style={styles.notice}>Showing the nearest {NEARBY_RIDER_LIMIT}.</Text>
+      ) : null}
+    </View>
+  )
+}

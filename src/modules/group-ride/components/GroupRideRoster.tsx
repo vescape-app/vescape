@@ -37,16 +37,18 @@ interface SignalPoint {
   longitude: number
 }
 
-/** The joined ride's Riders as full-width rows whose stat columns line up like a table. A row with
- *  an active signal is tappable and hands the signal's location to `onFocusSignal`. */
+/** Riders as full-width rows whose stat columns line up like a table. With `onPressRider` every
+ *  row is tappable; otherwise a row with an active signal hands its location to `onFocusSignal`. */
 export function RosterList({
   rows,
   ownLocation,
   onFocusSignal,
+  onPressRider,
 }: {
   rows: RosterRider[]
   ownLocation: OwnLocation
   onFocusSignal?: (point: SignalPoint) => void
+  onPressRider?: (rider: RosterRider) => void
 }) {
   const neutral = useResolvedNeutralColors()
   const divider = theme.alpha(neutral.border, 0.6)
@@ -63,6 +65,7 @@ export function RosterList({
           divider={index > 0 ? divider : undefined}
           wrapStats={wrapStats}
           onFocusSignal={onFocusSignal}
+          onPressRider={onPressRider}
         />
       ))}
     </View>
@@ -113,12 +116,14 @@ function RiderRow({
   divider,
   wrapStats,
   onFocusSignal,
+  onPressRider,
 }: {
   rider: RosterRider
   ownLocation: OwnLocation
   divider?: string
   wrapStats: boolean
   onFocusSignal?: (point: SignalPoint) => void
+  onPressRider?: (rider: RosterRider) => void
 }) {
   const signal = useActiveRiderSignal(rider.signal)
   const { formatDistance } = useFormat()
@@ -153,10 +158,20 @@ function RiderRow({
 
   return (
     <Pressable
-      disabled={!signal || !onFocusSignal}
-      onPress={() => signal && onFocusSignal?.({ latitude: signal.lat, longitude: signal.lng })}
-      accessibilityRole={signal && onFocusSignal ? 'button' : undefined}
-      accessibilityHint={signal && onFocusSignal ? 'Shows the signal on the map' : undefined}
+      disabled={!onPressRider && (!signal || !onFocusSignal)}
+      onPress={() =>
+        onPressRider
+          ? onPressRider(rider)
+          : signal && onFocusSignal?.({ latitude: signal.lat, longitude: signal.lng })
+      }
+      accessibilityRole={onPressRider || (signal && onFocusSignal) ? 'button' : undefined}
+      accessibilityHint={
+        onPressRider
+          ? 'Shows the rider on the map'
+          : signal && onFocusSignal
+            ? 'Shows the signal on the map'
+            : undefined
+      }
       style={[styles.row, divider ? [styles.rowDivided, { borderTopColor: divider }] : null]}
     >
       <View style={styles.head}>
