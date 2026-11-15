@@ -1,25 +1,20 @@
 import { StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import {
-  ArrowLeftIcon,
-  MapPinIcon,
-  SignInIcon,
-  UserCircleIcon,
-  WarningIcon,
-} from 'phosphor-react-native'
+import { ArrowLeftIcon, MapPinIcon, SignInIcon, WarningIcon } from 'phosphor-react-native'
 import type { PublicRideStatus, RiderProfile } from 'vescape-core'
 import { Text } from '@/components/base/Text'
+import { Banner } from '@/components/base/Banner'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
-import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { publicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { theme } from '@/constants/theme'
 import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
 import { RiderNickForm } from '@/modules/profile/components/RiderNickForm'
 import { FriendsCard } from '@/modules/profile/components/FriendsCard'
+import { AccountPill } from '@/modules/profile/components/AccountPill'
 import { RiderProfileCard } from '@/modules/profile/components/RiderProfileCard'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 import { FriendRides } from '@/modules/group-ride/components/FriendRides'
@@ -37,7 +32,7 @@ export function SocialSheet({ onNavigate }: { onNavigate?: () => void }) {
   if (profileRider) return <RiderProfilePage rider={profileRider} onNavigate={onNavigate} />
   return (
     <View testID="social-sheet" style={styles.list}>
-      <RiderNameWidget />
+      <RiderNameWidget onNavigate={onNavigate} />
       <PublicRideWidget onNavigate={onNavigate} />
       <FriendsCard
         onPressRider={openRiderProfile}
@@ -97,24 +92,18 @@ function RiderProfilePage({ rider, onNavigate }: { rider: RiderProfile; onNaviga
   )
 }
 
-/** The nick a signed-in rider rides under; signed-out riders sign in from the Public Ride card. */
-function RiderNameWidget() {
+/** Who the rider is, as the Account pill; a signed-in rider without a nick picks one first. */
+function RiderNameWidget({ onNavigate }: { onNavigate?: () => void }) {
   const profileLoaded = useRiderProfileStore((s) => s.loaded)
   const nick = useRiderProfileStore((s) => s.profile?.nick ?? null)
   const error = useRiderProfileStore((s) => s.error)
-  const riderColor = useSelectedBoardRailColor()
 
-  if (!profileLoaded) return error ? <Text style={styles.errorText}>{error}</Text> : null
-  if (nick == null) return <RiderNickForm title="Pick a nick to ride under" />
+  if (profileLoaded && nick == null) return <RiderNickForm title="Pick a nick to ride under" />
   return (
-    <View style={styles.nickRow}>
-      <UserCircleIcon
-        size={24}
-        color={riderColor ?? theme.neutral.textSecondary}
-        weight="duotone"
-      />
-      <Text style={styles.nick}>{nick}</Text>
-    </View>
+    <>
+      <AccountPill onNavigate={onNavigate} />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </>
   )
 }
 
@@ -157,11 +146,9 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         ? connection === 'connected'
           ? 'Public ride is not available on the server yet.'
           : 'Connecting to server…'
-        : status.on && !status.live
-          ? 'You go public when your board connects.'
-          : !status.on && status.reason
-            ? ENDED[status.reason]
-            : null
+        : !status.on && status.reason
+          ? ENDED[status.reason]
+          : null
 
   return (
     <View style={styles.card}>
@@ -173,6 +160,13 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         disabled={!ready}
         onValueChange={setPublicRide}
       />
+      {ready && status.on && !status.live ? (
+        <Banner
+          variant="warning"
+          title="Not visible yet"
+          message="Connect your board to go public."
+        />
+      ) : null}
       <Text style={styles.notice}>
         Your ride is stored on the server and may appear on vescape.app when you ride with others.
       </Text>
@@ -217,17 +211,6 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: 12,
-  },
-  nickRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 4,
-  },
-  nick: {
-    color: theme.neutral.textPrimary,
-    fontSize: 15,
-    fontWeight: '700',
   },
   back: {
     alignSelf: 'flex-start',

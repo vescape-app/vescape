@@ -2,8 +2,9 @@ import { useAuth, useUser } from '@clerk/expo'
 import { useNetworkState } from 'expo-network'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
-import { UserCircleIcon, WifiSlashIcon } from 'phosphor-react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
+import { ArrowLeftIcon, UserCircleIcon, WifiSlashIcon } from 'phosphor-react-native'
+import { ConfirmModal } from '@/components/modals/ConfirmModal'
 
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
@@ -20,6 +21,7 @@ export function ClerkAccountScreen() {
   const networkState = useNetworkState()
   const [signingOut, setSigningOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmSignOut, setConfirmSignOut] = useState(false)
   const profileLoaded = useRiderProfileStore((s) => s.loaded)
   const hasNick = useRiderProfileStore((s) => s.profile != null)
   const profileError = useRiderProfileStore((s) => s.error)
@@ -71,15 +73,32 @@ export function ClerkAccountScreen() {
       )}
       {error && <Text style={styles.error}>{error}</Text>}
       <View style={styles.actions}>
-        <Button label="Go back" variant="secondary" onPress={leaveAccount} />
-        <Button
-          label="Sign out"
-          variant="destructive"
-          loading={signingOut}
-          disabled={networkState.isInternetReachable === false}
-          onPress={() => void handleSignOut()}
-        />
+        <Button label="Go back" variant="primary" icon={ArrowLeftIcon} onPress={leaveAccount} />
+        <Pressable
+          disabled={signingOut || networkState.isInternetReachable === false}
+          onPress={() => setConfirmSignOut(true)}
+          hitSlop={8}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            networkState.isInternetReachable === false && styles.disabled,
+            pressed && { opacity: theme.interaction.pressedOpacity },
+          ]}
+        >
+          <Text style={styles.signOut}>{signingOut ? 'Signing out…' : 'Sign out'}</Text>
+        </Pressable>
       </View>
+      <ConfirmModal
+        visible={confirmSignOut}
+        title="Sign out?"
+        message="Public rides and friends stop until you sign in again."
+        confirmLabel="Sign out"
+        destructive
+        onConfirm={() => {
+          setConfirmSignOut(false)
+          void handleSignOut()
+        }}
+        onCancel={() => setConfirmSignOut(false)}
+      />
     </View>
   )
 }
@@ -114,8 +133,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actions: {
-    flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    gap: 28,
     marginTop: 12,
+  },
+  signOut: {
+    color: theme.status.error.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  disabled: {
+    opacity: 0.4,
   },
 })

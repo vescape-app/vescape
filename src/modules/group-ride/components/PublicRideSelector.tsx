@@ -326,9 +326,12 @@ export function PublicRideSelector({
           <Text style={[styles.title, { color: neutral.textPrimary }]}>Public ride</Text>
           <Text style={[styles.intro, { color: neutral.textSecondary }]}>Share your location</Text>
         </View>
-        <Text style={[styles.status, { color: live ? accent : neutral.textSecondary }]}>
-          {live ? 'LIVE' : 'PRIVATE'}
-        </Text>
+        {live ? (
+          <View style={styles.live}>
+            <View style={[styles.liveDot, { backgroundColor: accent }]} />
+            <Text style={[styles.status, { color: accent }]}>LIVE</Text>
+          </View>
+        ) : null}
       </View>
       <GestureDetector gesture={gesture}>
         <View
@@ -500,5 +503,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   label: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  live: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
   status: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
 })

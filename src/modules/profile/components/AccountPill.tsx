@@ -7,15 +7,17 @@ import { ArrowClockwiseIcon, CaretRightIcon, UserCircleIcon } from 'phosphor-rea
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
 import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
+import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
 
 interface AccountPillProps {
   /** Called before navigating away so the host can dismiss its sheet. */
-  onNavigate: () => void
+  onNavigate?: () => void
 }
 
 /**
- * The Vescape Account as one compact pill: sign in, or who you are signed in as.
+ * The Vescape Account as one compact pill: sign in, or who you are signed in as — the rider's
+ * nick once they have one, else their Clerk name or email.
  *
  * Credential provisioning is part of the identity, not a separate widget — a failed Clerk →
  * Device Token exchange turns the pill into a retry button, because until it succeeds the account
@@ -26,9 +28,10 @@ export function AccountPill({ onNavigate }: AccountPillProps) {
   const { isLoaded, isSignedIn, user } = useUser()
   const deviceAuthStatus = useDeviceAuthStore((s) => s.status)
   const retryDeviceAuth = useDeviceAuthStore((s) => s.retry)
+  const nick = useRiderProfileStore((s) => s.profile?.nick ?? null)
 
   const navigate = (route: typeof routes.signIn | typeof routes.account) => {
-    onNavigate()
+    onNavigate?.()
     router.push(route)
   }
 
@@ -62,7 +65,7 @@ export function AccountPill({ onNavigate }: AccountPillProps) {
     )
   }
 
-  const name = user.fullName ?? user.primaryEmailAddress?.emailAddress ?? 'Vescape rider'
+  const name = nick ?? user.fullName ?? user.primaryEmailAddress?.emailAddress ?? 'Vescape rider'
 
   return (
     <Pill onPress={() => navigate(routes.account)}>
