@@ -1749,6 +1749,15 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // Who the rider rode with during a past ride; fetched per view, never stored.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRodeWith`
+    AsyncFunction("getRodeWith") { (from: String, to: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.rodeWith(from: from, to: to)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
     // The direction target is personal client state, never a Map Point. Native keeps it so Group
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") { (latitude: Double?, longitude: Double?, promise: Promise) in

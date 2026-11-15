@@ -870,6 +870,37 @@ export interface Friends {
 /** `friends` when the other side had already asked, so the request made it mutual. */
 export type FriendRequestStatus = 'requested' | 'friends'
 
+/** One position of another rider's stored track, thinned to one per 5 s. */
+export interface RodeWithTrackPoint {
+  /** Epoch ms. */
+  at: number
+  lat: number
+  lng: number
+}
+
+/** Another rider in a Crew Ride, their stretch cut to the asked range. */
+export interface RodeWithRider extends RiderProfile {
+  /** ISO time. */
+  startedAt: string
+  /** ISO time. */
+  endedAt: string
+  track: RodeWithTrackPoint[]
+}
+
+/**
+ * A Crew Ride the Account rode in. Mirrors vescape-server `src/rides/protocol.ts`; no id on the
+ * wire. `riders` excludes the caller.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `rodeWith`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `rodeWith`
+ */
+export interface RodeWithCrewRide {
+  /** ISO time. */
+  startedAt: string
+  /** ISO time. */
+  endedAt: string
+  riders: RodeWithRider[]
+}
+
 export interface TelemetryEvent {
   generation?: number
   /** Native remote-tilt snapshot paired with this telemetry tick. */
@@ -3279,6 +3310,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   acceptFriendRequest(accountId: string): Promise<void>
   deleteFriendRequest(accountId: string): Promise<void>
   removeFriend(accountId: string): Promise<void>
+  getRodeWith(from: string, to: string): Promise<RodeWithCrewRide[]>
   setDirectionPoint(latitude: number | null, longitude: number | null): Promise<void>
   recomputeNavigation(): Promise<void>
   setNavigationProfile(profile: NavigationProfile): Promise<void>
@@ -4881,6 +4913,14 @@ export async function deleteFriendRequest(accountId: string): Promise<void> {
 /** Silent: the other side is not told. */
 export async function removeFriend(accountId: string): Promise<void> {
   return native.removeFriend(accountId)
+}
+
+/**
+ * The Crew Rides the Account rode in between `from` and `to` (ISO, at most 24 h apart). Read from
+ * the server per view, never stored. Rejects with `RiderProfileErrorCode`.
+ */
+export async function getRodeWith(from: string, to: string): Promise<RodeWithCrewRide[]> {
+  return native.getRodeWith(from, to)
 }
 
 export async function getNearbyMapPoints(

@@ -92,6 +92,45 @@ class RiderProfileApi(private val api: VescapeApi) {
     api.request(HttpMethod.DELETE, "$FRIENDS_PATH/$accountId", auth = AuthMode.Required) { },
   )
 
+  /**
+   * The Crew Rides the Account rode in between `from` and `to` (ISO, at most 24 h apart), with the
+   * other riders' tracks cut to that range. Read on demand; nothing is stored.
+   *
+   * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `rodeWith`
+   * @parity /modules/vescape-core/src/index.ts `RodeWithCrewRide`
+   */
+  suspend fun rodeWith(from: String, to: String): List<Map<String, Any?>> = unwrap(
+    api.request(
+      HttpMethod.GET,
+      RODE_WITH_PATH,
+      query = mapOf("from" to from, "to" to to),
+      auth = AuthMode.Required,
+    ) { body ->
+      val crewRides = JSONObject(body).getJSONArray("crewRides")
+      List(crewRides.length()) { index ->
+        val crewRide = crewRides.getJSONObject(index)
+        val riders = crewRide.getJSONArray("riders")
+        mapOf(
+          "startedAt" to crewRide.getString("startedAt"),
+          "endedAt" to crewRide.getString("endedAt"),
+          "riders" to List(riders.length()) { rodeWithRider(riders.getJSONObject(it)) },
+        )
+      }
+    },
+  )
+
+  private fun rodeWithRider(json: JSONObject): Map<String, Any?> {
+    val track = json.getJSONArray("track")
+    return profile(json) + mapOf(
+      "startedAt" to json.getString("startedAt"),
+      "endedAt" to json.getString("endedAt"),
+      "track" to List(track.length()) { index ->
+        val point = track.getJSONObject(index)
+        mapOf("at" to point.getDouble("at"), "lat" to point.getDouble("lat"), "lng" to point.getDouble("lng"))
+      },
+    )
+  }
+
   private fun requests(items: JSONArray): List<Map<String, Any?>> = List(items.length()) { index ->
     val item = items.getJSONObject(index)
     profile(item) + ("requestedAt" to item.optString("requestedAt"))
@@ -119,6 +158,7 @@ class RiderProfileApi(private val api: VescapeApi) {
     private const val PATH = "/api/rider-profile"
     private const val RIDERS_PATH = "/api/riders"
     private const val FRIENDS_PATH = "/api/friends"
+    private const val RODE_WITH_PATH = "/api/rides/rode-with"
     private const val NICK_TAKEN_SLUG = "nick-taken"
 
     /**

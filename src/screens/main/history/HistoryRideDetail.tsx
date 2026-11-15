@@ -1,5 +1,5 @@
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { ExportIcon, TrashIcon } from 'phosphor-react-native'
@@ -11,6 +11,7 @@ import { rideExportOptions } from '@/modules/history/lib/rideExport'
 import { rideExportLabels, shareRideExport } from '@/modules/history/lib/shareRideExport'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { formatFavoriteName, suggestFavoriteName } from '@/modules/history/lib/rideFormat'
+import { useRodeWithStore } from '@/modules/group-ride/store/rodeWithStore'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
 import { HistoryTelemetryPanel } from '@/screens/main/history/HistoryTelemetryPanel'
@@ -62,6 +63,14 @@ export function HistoryRideDetail({
     setActionsVisible(false)
   }
   const openFavorite = favoriteMode ? history.openFavorite : null
+
+  // Company is an online extra read per ride; leaving the ride forgets it.
+  const loadRodeWith = useRodeWithStore((s) => s.load)
+  const clearRodeWith = useRodeWithStore((s) => s.clear)
+  useEffect(() => {
+    void loadRodeWith(session.startAtMs, session.endAtMs)
+  }, [loadRodeWith, session.startAtMs, session.endAtMs])
+  useEffect(() => clearRodeWith, [clearRodeWith])
   const trimming = history.trimming
 
   // Stable handlers, so the panel — which rebuilds every chart series it is handed — re-renders

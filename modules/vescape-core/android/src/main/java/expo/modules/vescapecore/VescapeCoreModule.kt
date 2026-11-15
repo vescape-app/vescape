@@ -1707,6 +1707,11 @@ class VescapeCoreModule : Module() {
     AsyncFunction("removeFriend") Coroutine { accountId: String ->
       RiderProfileApi.get(context.applicationContext).removeFriend(accountId)
     }
+    // Who the rider rode with during a past ride; fetched per view, never stored.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRodeWith`
+    AsyncFunction("getRodeWith") Coroutine { from: String, to: String ->
+      RiderProfileApi.get(context.applicationContext).rodeWith(from, to)
+    }
   }
 
   private fun ModuleDefinitionBuilder.registerGroupRide() {

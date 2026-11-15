@@ -24,6 +24,7 @@ final class RiderProfileApi {
   private static let path = "/api/rider-profile"
   private static let ridersPath = "/api/riders"
   private static let friendsPath = "/api/friends"
+  private static let rodeWithPath = "/api/rides/rode-with"
   private static let nickTakenSlug = "nick-taken"
 
   private let api: VescapeApi
@@ -122,6 +123,46 @@ final class RiderProfileApi {
   /// Silent: the other side is not told.
   func removeFriend(_ accountId: String) async throws {
     try unwrap(await api.request(.delete, path: "\(Self.friendsPath)/\(accountId)", auth: .required) { _ in () })
+  }
+
+  /// The Crew Rides the Account rode in between `from` and `to` (ISO, at most 24 h apart), with the
+  /// other riders' tracks cut to that range. Read on demand; nothing is stored.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `rodeWith`
+  /// @parity /modules/vescape-core/src/index.ts `RodeWithCrewRide`
+  func rodeWith(from: String, to: String) async throws -> [[String: Any?]] {
+    try unwrap(
+      await api.request(.get, path: Self.rodeWithPath, query: ["from": from, "to": to], auth: .required) { body in
+        guard let crewRides = try Self.object(body)["crewRides"] as? [[String: Any]] else {
+          throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable rode-with")
+        }
+        return try crewRides.map { crewRide -> [String: Any?] in
+          guard let startedAt = crewRide["startedAt"] as? String,
+                let endedAt = crewRide["endedAt"] as? String,
+                let riders = crewRide["riders"] as? [[String: Any]]
+          else { throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable Crew Ride") }
+          return ["startedAt": startedAt, "endedAt": endedAt, "riders": try riders.map(Self.rodeWithRider)]
+        }
+      }
+    )
+  }
+
+  private static func rodeWithRider(_ json: [String: Any]) throws -> [String: Any?] {
+    guard let startedAt = json["startedAt"] as? String,
+          let endedAt = json["endedAt"] as? String,
+          let track = json["track"] as? [[String: Any]]
+    else { throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable Crew Ride rider") }
+    var row = try profile(json)
+    row["startedAt"] = startedAt
+    row["endedAt"] = endedAt
+    row["track"] = try track.map { point -> [String: Any?] in
+      guard let at = (point["at"] as? NSNumber)?.doubleValue,
+            let lat = (point["lat"] as? NSNumber)?.doubleValue,
+            let lng = (point["lng"] as? NSNumber)?.doubleValue
+      else { throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable track point") }
+      return ["at": at, "lat": lat, "lng": lng]
+    }
+    return row
   }
 
   private static func request(_ json: [String: Any]) throws -> [String: Any?] {
