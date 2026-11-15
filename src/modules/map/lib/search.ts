@@ -34,7 +34,10 @@ interface MapboxGeocodingFeature {
     place_formatted?: string
     poi_category?: unknown
     maki?: unknown
+    short_code?: string
   }
+  /** Geocoding v5: the enclosing place, region and country, each with its own id. */
+  context?: { id?: string; short_code?: string }[]
 }
 
 interface MapboxGeocodingResponse {
@@ -136,6 +139,20 @@ export async function searchMapResults(query: string, options: SearchMapResultsO
   const data = JSON.parse(body) as MapboxGeocodingResponse
   const results = (data.features ?? []).map(toMapSearchResult).filter((result) => result != null)
   return prioritizeNearbySearchResults(results, options.proximity)
+}
+
+/** The ISO 3166-1 alpha-2 country in a Geocoding v5 reverse body, upper-cased, or null. */
+export function countryFromReverseGeocode(body: string): string | null {
+  const feature = (JSON.parse(body) as MapboxGeocodingResponse).features?.[0]
+  if (!feature) return null
+  const country = feature.id?.startsWith('country.')
+    ? feature.properties?.short_code
+    : feature.context?.find((entry) => entry.id?.startsWith('country.'))?.short_code
+  return country && /^[a-z]{2}$/i.test(country) ? country.toUpperCase() : null
+}
+
+export async function reverseGeocodeCountry(latitude: number, longitude: number) {
+  return countryFromReverseGeocode(await reverseGeocodeMap(latitude, longitude))
 }
 
 export async function reverseGeocodeMapCoordinate(

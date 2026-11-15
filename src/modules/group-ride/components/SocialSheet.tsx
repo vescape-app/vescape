@@ -165,6 +165,8 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <View style={styles.card}>
+      {/* What still blocks the switch reads first, before the greyed-out selector. */}
+      {hint && !ready ? <Text style={styles.hint}>{hint}</Text> : null}
       <PublicRideSelector
         value={publicRideChoice(status, nowMs)}
         live={status.live}
@@ -174,7 +176,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
       <Text style={styles.notice}>
         Your ride is stored on the server and may appear on vescape.app when you ride with others.
       </Text>
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      {hint && ready ? <Text style={styles.hint}>{hint}</Text> : null}
       {signedIn ? null : (
         <Button
           label="Sign in to ride public"

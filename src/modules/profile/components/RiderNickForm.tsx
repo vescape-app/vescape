@@ -1,16 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
-import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
+import { useLocationStore } from '@/modules/location/store/locationStore'
+import { reverseGeocodeCountry } from '@/modules/map/lib/search'
+import { CountryPicker } from '@/modules/profile/components/CountryPicker'
+import { countryByCode } from '@/modules/profile/lib/countries'
 import { NICK_MAX_LENGTH, parseRiderProfileDraft } from '@/modules/profile/lib/riderProfile'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 
 /**
- * Pick or change the Rider Profile nick and optional nationality. Shows the local rule or the
- * server's reason (e.g. nick taken) next to the fields.
+ * Pick or change the Rider Profile nick and optional nationality. The nick saves when the field
+ * loses focus and the country as soon as it is picked; the rule or the server's reason (e.g. nick
+ * taken) shows only when the nick is refused. A first pick pre-selects the country the phone is in.
  */
 export function RiderNickForm({ title }: { title?: string }) {
   const profile = useRiderProfileStore((s) => s.profile)
@@ -20,6 +24,26 @@ export function RiderNickForm({ title }: { title?: string }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedNick, setSavedNick] = useState(profile?.nick)
+  const countryPicked = useRef(false)
+  const hasFix = useLocationStore((s) => s.latestApproximateLocation != null)
+
+  // Only a rider without a profile gets a suggestion; a saved "no country" is a choice.
+  const suggestCountry = profile == null && hasFix
+  useEffect(() => {
+    const fix = useLocationStore.getState().latestApproximateLocation
+    if (!suggestCountry || !fix) return
+    let live = true
+    // intentional-suppression: no suggestion offline or signed out; the rider picks by hand.
+    reverseGeocodeCountry(fix.latitude, fix.longitude)
+      .then((code) => {
+        const country = countryByCode(code)
+        if (live && !countryPicked.current && country) setNationality(country.code)
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [suggestCountry])
 
   // Adopt the server value when it arrives or changes elsewhere.
   if (profile?.nick !== savedNick) {
@@ -28,21 +52,20 @@ export function RiderNickForm({ title }: { title?: string }) {
     setNationality(profile?.nationality ?? '')
   }
 
-  const unchanged =
-    profile != null &&
-    nick.trim() === profile.nick &&
-    (nationality.trim().toUpperCase() || null) === profile.nationality
-
-  const submit = async () => {
-    const parsed = parseRiderProfileDraft(nick, nationality)
+  /** Saves what is in the fields when it differs from the profile; an empty first nick waits. */
+  const commit = async (nextNick: string, nextNationality: string) => {
+    if (profile == null && nextNick.trim() === '') return
+    const parsed = parseRiderProfileDraft(nextNick, nextNationality)
     if ('error' in parsed) {
       setError(parsed.error)
       return
     }
+    const { draft } = parsed
+    if (profile && draft.nick === profile.nick && draft.nationality === profile.nationality) return
     setSaving(true)
     setError(null)
     try {
-      await save(parsed.draft)
+      await save(draft)
     } catch (reason) {
       setError((reason as Error).message)
     } finally {
@@ -53,40 +76,34 @@ export function RiderNickForm({ title }: { title?: string }) {
   return (
     <View style={styles.container}>
       {title ? <Text style={styles.title}>{title}</Text> : null}
-      <View style={styles.fields}>
-        <Input
-          style={styles.nick}
-          value={nick}
-          onChangeText={(value) => {
-            setNick(value)
-            setError(null)
-          }}
-          placeholder="Nick"
-          maxLength={NICK_MAX_LENGTH}
-          autoCapitalize="none"
-          autoCorrect={false}
-          accessibilityLabel="Nick"
-        />
-        <Input
-          style={styles.nationality}
-          value={nationality}
-          onChangeText={(value) => {
-            setNationality(value.toUpperCase())
-            setError(null)
-          }}
-          placeholder="PL"
-          maxLength={2}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          accessibilityLabel="Nationality, two-letter country code"
-        />
+      <View style={styles.labelRow}>
+        <Text style={styles.label}>Nick</Text>
+        {saving ? <Text style={styles.saving}>Saving…</Text> : null}
       </View>
+      <Input
+        value={nick}
+        onChangeText={(value) => {
+          setNick(value)
+          setError(null)
+        }}
+        onEndEditing={() => void commit(nick, nationality)}
+        placeholder="e.g. kuba_rides"
+        maxLength={NICK_MAX_LENGTH}
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="done"
+        accessibilityLabel="Nick"
+      />
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button
-        label={profile ? 'Save nick' : 'Pick nick'}
-        loading={saving}
-        disabled={unchanged || nick.trim().length === 0}
-        onPress={() => void submit()}
+      <Text style={styles.label}>Country (optional)</Text>
+      <CountryPicker
+        value={nationality}
+        onChange={(code) => {
+          countryPicked.current = true
+          setNationality(code)
+          setError(null)
+          void commit(nick, code)
+        }}
       />
     </View>
   )
@@ -102,16 +119,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  fields: {
+  label: {
+    color: theme.neutral.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  labelRow: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
   },
-  nick: {
-    flex: 1,
-  },
-  nationality: {
-    width: 64,
-    textAlign: 'center',
+  saving: {
+    color: theme.neutral.textMuted,
+    fontSize: 12,
   },
   error: {
     color: theme.status.error.text,

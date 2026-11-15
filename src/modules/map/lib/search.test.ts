@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 
 import {
+  countryFromReverseGeocode,
   getMapSearchCategory,
   prioritizeNearbySearchResults,
   type MapSearchResult,
@@ -40,4 +41,18 @@ test('preserves Mapbox relevance order inside the nearby group', () => {
   )
 
   expect(ranked.map(({ id }) => id)).toEqual(['first', 'second'])
+})
+
+test('reads the country from the reverse-geocode context, or the feature when it is the country', () => {
+  const street = {
+    id: 'address.1',
+    context: [
+      { id: 'region.2', short_code: 'PL-MZ' },
+      { id: 'country.3', short_code: 'pl' },
+    ],
+  }
+  expect(countryFromReverseGeocode(JSON.stringify({ features: [street] }))).toBe('PL')
+  const country = { id: 'country.4', properties: { short_code: 'de' } }
+  expect(countryFromReverseGeocode(JSON.stringify({ features: [country] }))).toBe('DE')
+  expect(countryFromReverseGeocode(JSON.stringify({ features: [] }))).toBeNull()
 })
