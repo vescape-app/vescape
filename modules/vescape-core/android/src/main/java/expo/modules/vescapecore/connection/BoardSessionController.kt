@@ -485,7 +485,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
             onCue = alertFeedback::playAppCue,
             ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
             signalContext = ::riderSignalContext,
-            deviceToken = { DeviceCredentialStore(service.applicationContext).read()?.token },
+            deviceCredential = { DeviceCredentialStore(service.applicationContext).read() },
+            onLinkDemandChanged = ::syncPublicRideLink,
             persistPublicRide = { PublicRideStore(service.applicationContext).write(it) },
             lastKnownLocation = {
                 val latitude = lastAppliedSettings.lastGpsLatitude

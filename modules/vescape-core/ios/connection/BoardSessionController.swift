@@ -264,8 +264,11 @@ internal final class BoardSessionController: VescGattListener {
     signalContext: { [weak self] in
       self?.riderSignalContext() ?? RiderSignalContext(fix: nil, insidePrivacyZone: true)
     },
-    // intentional-suppression: an unreadable credential connects without an Account
-    deviceToken: { (try? DeviceCredentialStore.shared.read())?.token },
+    // intentional-suppression: an unreadable credential cannot authenticate buffered positions
+    deviceCredential: { try? DeviceCredentialStore.shared.read() },
+    onLinkDemandChanged: { [weak self] in
+      self?.scheduler.post { [weak self] in self?.syncPublicRideLink() }
+    },
     persistPublicRide: { PublicRideStore().write($0) },
     lastKnownLocation: { [weak self] in
       // intentional-suppression: unreadable settings leave look-around without a last position

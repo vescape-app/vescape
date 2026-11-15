@@ -8,6 +8,8 @@ final class PublicRideTests: XCTestCase {
   private var timer: Int64?
   private var events: [(String, [String: Any?])] = []
   private var sent: [[String: Any]] = []
+  private var retry: Int64?
+  private var linkDemands: [Bool] = []
   private var ride: PublicRide!
   private var pinUpdates: [([SignalRider], [String: RideHazard])] = []
 
@@ -21,6 +23,8 @@ final class PublicRideTests: XCTestCase {
     events = []
     sent = []
     pinUpdates = []
+    retry = nil
+    linkDemands = []
     ride = PublicRide(
       now: { [unowned self] in self.now },
       persist: { [unowned self] in self.persisted.append($0) },
@@ -30,13 +34,15 @@ final class PublicRideTests: XCTestCase {
         self.sent.append(frame)
         return true
       },
+      scheduleMissedRetry: { [unowned self] in self.retry = $0 },
+      onLinkDemandChanged: { [unowned self] in self.linkDemands.append(self.ride.needsLink) },
       onPins: { [unowned self] signals, hazards, _ in self.pinUpdates.append((signals, hazards)) }
     )
   }
 
   private var types: [String] { sent.map { $0["type"] as? String ?? "" } }
   private var status: [String: Any?] { events.last { $0.0 == "onPublicRideStatus" }!.1 }
-  private func ready(_ features: Set<String> = ["public-ride"]) { ride.linkReady(features: features) }
+  private func ready(_ features: Set<String> = ["public-ride"]) { ride.linkReady(features: features, authenticatedAccount: "acc") }
 
   func testStoredSwitchWhoseEndTimePassedLoadsOff() {
     ride.load(PublicRideSwitch(on: true, until: now - 1), accountId: "acc")
@@ -245,17 +251,23 @@ final class PublicRideTests: XCTestCase {
     for at: Int64 in [10_000, 12_000, 15_000, 21_000] { ride.position(presence, at: at) }
     ready(withMissed)
     ride.position(presence, at: 26_000)
-    XCTAssertEqual(batches, 0)
+    XCTAssertEqual(batches, 1)
+    XCTAssertEqual(batchAts, [10_000, 15_000, 21_000])
+    // Historical upload precedes even public-on; live positions still wait for status.
+    XCTAssertEqual(Array(types.suffix(2)), ["missed-positions", "public-on"])
     ride.handle(type: "public-status", json: ["on": true])
-    XCTAssertEqual(batchAts, [10_000, 15_000, 21_000, 26_000])
     ride.position(presence, at: 30_000)
     XCTAssertEqual(batches, 1)
     ride.handleError("missed positions not stored")
     XCTAssertEqual(ride.switchState, PublicRideSwitch(on: true, until: nil))
-    ride.position(presence, at: 31_000)
+    XCTAssertEqual(retry, PublicRide.missedRetryMs)
+    ride.linkLost()
+    ready(withMissed)
     XCTAssertEqual(batches, 2)
     XCTAssertEqual(batchAts, [10_000, 15_000, 21_000, 26_000])
     ride.handle(type: "missed-stored", json: ["from": 10_000, "to": 26_000, "stored": 4])
+    XCTAssertNil(retry)
+    ride.handle(type: "public-status", json: ["on": true])
     ride.position(presence, at: 32_000)
     XCTAssertEqual(batches, 2)
   }
@@ -287,8 +299,99 @@ final class PublicRideTests: XCTestCase {
     ride.position(presence, at: 20_000)
     ride.setAccount("other")
     _ = ride.set(PublicRideSwitch(on: true, until: nil))
-    ready(withMissed)
+    ride.linkReady(features: withMissed, authenticatedAccount: "other")
     ride.handle(type: "public-status", json: ["on": true])
     XCTAssertFalse(types.contains("missed-positions"))
   }
+  func testOfflineFinishByOffDisconnectOrExpiryDrainsWithoutAPublicRideOrNewGPS() {
+    for ending in ["off", "disconnect", "expiry"] {
+      setUp()
+      goLiveWithMissed()
+      ride.set(PublicRideSwitch(on: true, until: now + 60_000))
+      ride.linkLost()
+      ride.position(presence, at: 10_000)
+      switch ending {
+      case "off": ride.set(.off)
+      case "disconnect": ride.setBoardConnected(false)
+      default: now += 60_000; ride.expire()
+      }
+      ride.position(presence, at: 20_000) // Never collect private positions.
+      XCTAssertFalse(ride.wanted)
+      XCTAssertTrue(ride.needsLink)
+      sent = []
+      ready(withMissed)
+      XCTAssertEqual(types, ["missed-positions"])
+      XCTAssertEqual(batchAts, [10_000])
+      XCTAssertFalse(ride.riding)
+      XCTAssertTrue(ride.needsLink) // Still owns the socket while waiting for ack.
+      ride.handleError("missed positions not stored")
+      XCTAssertEqual(retry, PublicRide.missedRetryMs)
+      ride.linkLost()
+      XCTAssertNil(retry)
+      ready(withMissed)
+      XCTAssertEqual(types, ["missed-positions", "missed-positions"])
+      ride.handle(type: "missed-stored", json: [:])
+      XCTAssertFalse(ride.needsLink)
+      XCTAssertEqual(linkDemands.last, false)
+      XCTAssertNil(retry)
+    }
+  }
+
+  func testCompletedBufferWaitsForAuthenticatedCapabilityReadinessAndCannotCrossAccountsOrServers() {
+    for account: String? in [nil, "other"] {
+      setUp()
+      goLiveWithMissed()
+      ride.linkLost()
+      ride.position(presence, at: 10_000)
+      ride.set(.off)
+      sent = []
+      ride.linkReady(features: withMissed, authenticatedAccount: account)
+      XCTAssertTrue(sent.isEmpty)
+      XCTAssertTrue(ride.needsLink)
+      ride.linkLost()
+      ready(withMissed)
+      XCTAssertEqual(types, ["missed-positions"])
+    }
+    for clear in ["sign-out", "account", "server", "unsupported"] {
+      setUp()
+      goLiveWithMissed()
+      ride.linkLost()
+      ride.position(presence, at: 10_000)
+      ride.set(.off)
+      ready(withMissed)
+      XCTAssertNotNil(retry)
+      switch clear {
+      case "sign-out": ride.setAccount(nil)
+      case "account": ride.setAccount("other")
+      case "server": ride.discardMissed()
+      default: ride.linkReady(features: ["public-ride"], authenticatedAccount: "acc")
+      }
+      XCTAssertFalse(ride.needsLink)
+      XCTAssertNil(retry)
+      sent = []
+      ride.linkLost()
+      ready(withMissed)
+      ride.handle(type: "missed-stored", json: [:]) // Old ack cannot resurrect data.
+      XCTAssertTrue(sent.isEmpty)
+    }
+  }
+
+  func testThinningDuringAnUploadPreservesTheAcknowledgedPrefixAndWaitingTail() {
+    goLiveWithMissed()
+    ride.linkLost()
+    ride.position(presence, at: 0)
+    ride.position(presence, at: 5_000)
+    ready(withMissed)
+    // A new public ride has not been confirmed yet; its fixes still belong in the buffer.
+    let late = PublicRide.missedMaxAgeMs + 10_000
+    ride.position(presence, at: late)
+    ride.position(presence, at: late + 1_000) // Still thinned to five seconds.
+    XCTAssertEqual(batchAts, [0, 5_000])
+    ride.handle(type: "missed-stored", json: [:])
+    XCTAssertEqual(batchAts, [late])
+    ride.set(.off)
+    ride.handle(type: "missed-stored", json: [:])
+    XCTAssertFalse(ride.needsLink)
+  }
+
 }

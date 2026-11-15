@@ -32,6 +32,9 @@ internal final class PublicRide {
   private let emit: (String, [String: Any?]) -> Void
   /// Send a frame on the open link; false when there is none.
   private let send: ([String: Any]) -> Bool
+  /// Reconnect after this delay if a batch is still unacknowledged; nil cancels it.
+  private let scheduleMissedRetry: (Int64?) -> Void
+  private let onLinkDemandChanged: () -> Void
   /// Other riders' pins changed: their signals, their hazards by Account id, and the relay clock.
   private let onPins: ([SignalRider], [String: RideHazard], Int64?) -> Void
 
@@ -74,6 +77,8 @@ internal final class PublicRide {
   private var missed: [(at: Int64, presence: RiderPresence)] = []
   /// How many of the oldest `missed` positions are out as one batch, waiting for `missed-stored`.
   private var missedInFlight = 0
+  private var authenticatedAccount: String?
+  private var lastNeedsLink = false
 
   init(
     now: @escaping () -> Int64,
@@ -81,6 +86,8 @@ internal final class PublicRide {
     scheduleExpiry: @escaping (Int64?) -> Void,
     emit: @escaping (String, [String: Any?]) -> Void,
     send: @escaping ([String: Any]) -> Bool,
+    scheduleMissedRetry: @escaping (Int64?) -> Void = { _ in },
+    onLinkDemandChanged: @escaping () -> Void = {},
     onPins: @escaping ([SignalRider], [String: RideHazard], Int64?) -> Void = { _, _, _ in }
   ) {
     self.now = now
@@ -89,19 +96,21 @@ internal final class PublicRide {
     self.emit = emit
     self.send = send
     self.onPins = onPins
+    self.scheduleMissedRetry = scheduleMissedRetry
+    self.onLinkDemandChanged = onLinkDemandChanged
   }
 
   /// The rider should be public right now.
   var wanted: Bool { switchState.active(at: now()) && boardConnected && accountId != nil }
 
   /// Positions go out: the relay confirmed public riding on the open link.
-  var riding: Bool { live && linkReady }
+  var riding: Bool { wanted && live && linkReady }
 
   /// The rider can raise a signal or mark a hazard publicly: wanted public, on a relay that has it.
   var canPin: Bool { wanted && supported }
 
-  /// The socket must stay up for the public ride or for looking around.
-  var needsLink: Bool { wanted || lookAround != nil }
+  /// The socket stays up until the completed buffer is acknowledged, even off the public ride.
+  var needsLink: Bool { wanted || lookAround != nil || !missed.isEmpty }
 
   /// Start from the persisted switch and the signed-in Account.
   func load(_ stored: PublicRideSwitch, accountId account: String?) {
@@ -148,10 +157,11 @@ internal final class PublicRide {
     sentOn = false
     live = false
     accountId = account
+    linkReady = false
+    authenticatedAccount = nil
     dropOwnPins()
     // Kept positions are the old Account's: never sent under another.
-    missed = []
-    missedInFlight = 0
+    discardMissed()
     if hadAccount && switchState.on {
       switchState = .off
       reason = Self.reasonSignedOut
@@ -172,14 +182,16 @@ internal final class PublicRide {
   }
 
   /// The link opened and the relay listed its `features`.
-  func linkReady(features: Set<String>) {
+  func linkReady(features: Set<String>, authenticatedAccount: String?) {
+    self.authenticatedAccount = authenticatedAccount
     linkReady = true
     supported = features.contains(Self.feature)
     missedSupported = features.contains(Self.missedPositionsFeature)
     missedInFlight = 0
-    if !missedSupported { missed = [] }
+    if !missedSupported { discardMissed() }
     sentOn = false
     live = false
+    sendMissed()
     reconcile()
     if let lookAround { sendNearby(lookAround) }
     emitStatus()
@@ -189,6 +201,8 @@ internal final class PublicRide {
   /// without `missed-stored` is sent again. Watched riders are forgotten until the next `nearby-riders`.
   func linkLost() {
     linkReady = false
+    authenticatedAccount = nil
+    scheduleMissedRetry(nil)
     missedInFlight = 0
     sentOn = false
     live = false
@@ -201,11 +215,12 @@ internal final class PublicRide {
 
   /// A GPS fix, Privacy Zone gate already applied, taken at `at` (GPS time, epoch ms).
   func position(_ presence: RiderPresence, at: Int64) {
+    guard wanted else { return }
     guard riding else {
       keepMissed(presence, at: at)
       return
     }
-    // A batch the relay failed to store goes again with the next live position.
+    // Historical batches do not depend on the new public ride being confirmed.
     sendMissed()
     _ = send(["type": "public-position", "at": at, "presence": presence.toJson()])
   }
@@ -213,12 +228,14 @@ internal final class PublicRide {
   /// Watch public riders around `point` with the switch off.
   func watchNearby(_ point: (lat: Double, lng: Double)) {
     lookAround = point
+    emitLinkDemand()
     if linkReady { sendNearby(point) }
   }
 
   func stopWatchingNearby() {
     guard lookAround != nil else { return }
     lookAround = nil
+    emitLinkDemand()
     if linkReady { _ = send(["type": "nearby-stop"]) }
     // A public rider keeps receiving its own area.
     if !riding && !riders.isEmpty {
@@ -283,7 +300,9 @@ internal final class PublicRide {
       // The whole batch is done, positions the relay dropped included.
       missed.removeFirst(min(missedInFlight, missed.count))
       missedInFlight = 0
+      scheduleMissedRetry(nil)
       sendMissed()
+      emitLinkDemand()
     case "nearby-riders":
       riders = (json["riders"] as? [Any] ?? []).compactMap { entry in
         Self.publicRiderView(entry as? [String: Any]).map { (accountId: $0["accountId"] as! String, view: $0) }
@@ -338,8 +357,8 @@ internal final class PublicRide {
   @discardableResult
   func handleError(_ message: String) -> Bool {
     if message == Self.missedNotStored {
-      // Keep the batch; it goes again with the next live position.
-      missedInFlight = 0
+      // Keep the batch and its retry deadline. Reconnect before retrying so a late ack
+      // from this link cannot acknowledge a different batch.
       return false
     }
     guard Self.refusals.contains(message) else { return false }
@@ -391,7 +410,7 @@ internal final class PublicRide {
   private func reconcile() {
     // Off the public ride the relay drops the rider's pins.
     if !wanted { dropOwnPins() }
-    guard linkReady, supported else { return }
+    guard linkReady, supported, accountId != nil, authenticatedAccount == accountId else { return }
     if wanted && !sentOn {
       var frame: [String: Any] = ["type": "public-on"]
       if let until = switchState.until { frame["until"] = until }
@@ -415,15 +434,38 @@ internal final class PublicRide {
     guard wanted, !linkReady || missedSupported else { return }
     if let last = missed.last?.at, at - last < Self.missedSpacingMs { return }
     missed.append((at, presence))
-    while missed.count > missedInFlight, at - missed[0].at > Self.missedMaxAgeMs { missed.removeFirst() }
+    // Never remove an in-flight prefix: missed-stored acknowledges exactly that prefix.
+    while missed.count > missedInFlight,
+          at - missed[missedInFlight].at > Self.missedMaxAgeMs || missed.count > Int(Self.missedMaxAgeMs / Self.missedSpacingMs) + 1 {
+      missed.remove(at: missedInFlight)
+    }
+    emitLinkDemand()
   }
 
   /// Send the oldest kept positions as one batch, unless one is already out.
   private func sendMissed() {
-    guard riding, missedSupported, missedInFlight == 0, !missed.isEmpty else { return }
+    guard linkReady, accountId != nil, authenticatedAccount == accountId, missedSupported, missedInFlight == 0, !missed.isEmpty else { return }
     let batch = missed.prefix(Self.missedBatchMax)
     let positions: [[String: Any]] = batch.map { ["at": $0.at, "presence": $0.presence.toJson()] }
-    if send(["type": "missed-positions", "positions": positions]) { missedInFlight = batch.count }
+    if send(["type": "missed-positions", "positions": positions]) {
+      missedInFlight = batch.count
+      scheduleMissedRetry(Self.missedRetryMs)
+    }
+  }
+
+  /// Server changes and Account changes cannot carry historical positions across identities.
+  func discardMissed() {
+    missed = []
+    missedInFlight = 0
+    scheduleMissedRetry(nil)
+    emitLinkDemand()
+  }
+
+  private func emitLinkDemand() {
+    let needed = needsLink
+    guard needed != lastNeedsLink else { return }
+    lastNeedsLink = needed
+    onLinkDemandChanged()
   }
 
   private func dropOwnPins() {
@@ -458,6 +500,7 @@ internal final class PublicRide {
       "reason": reason,
     ]
     let comparable = status.mapValues { $0 ?? NSNull() } as NSDictionary
+    emitLinkDemand()
     if !force && comparable == lastStatus { return }
     lastStatus = comparable
     emit("onPublicRideStatus", status)
@@ -480,6 +523,8 @@ internal final class PublicRide {
 
   static let feature = "public-ride"
   static let missedPositionsFeature = "missed-positions"
+  /// Retry even after the rider finishes and GPS stops.
+  static let missedRetryMs: Int64 = 10_000
   /// Kept positions are thinned to one per this.
   static let missedSpacingMs: Int64 = 5_000
   /// Kept positions older than this, measured from the newest, are dropped.

@@ -3,6 +3,7 @@ package expo.modules.vescapecore
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -16,6 +17,8 @@ class PublicRideTest {
     private val events = mutableListOf<Pair<String, Map<String, Any?>>>()
     private val sent = mutableListOf<JSONObject>()
     private var linkOpen = true
+    private var retry: Long? = null
+    private val linkDemands = mutableListOf<Boolean>()
     private lateinit var ride: PublicRide
     private var pinUpdates = mutableListOf<Pair<List<SignalRider>, Map<String, RideHazard>>>()
 
@@ -23,12 +26,23 @@ class PublicRideTest {
 
     @Before
     fun setUp() {
+        now = 1_000_000L
+        persisted.clear()
+        timer = null
+        retry = null
+        events.clear()
+        sent.clear()
+        linkDemands.clear()
+        pinUpdates.clear()
+        linkOpen = true
         ride = PublicRide(
             now = { now },
             persist = { persisted += it },
             scheduleExpiry = { timer = it },
             emit = { name, payload -> events += name to payload },
             send = { frame -> linkOpen && sent.add(frame) },
+            scheduleMissedRetry = { retry = it },
+            onLinkDemandChanged = { linkDemands += ride.needsLink },
             onPins = { signals, hazards, _ -> pinUpdates += signals to hazards },
         )
     }
@@ -36,7 +50,7 @@ class PublicRideTest {
     private fun types() = sent.map { it.getString("type") }
     private fun status() = events.last { it.first == "onPublicRideStatus" }.second
 
-    private fun ready(features: Set<String> = setOf("public-ride")) = ride.linkReady(features)
+    private fun ready(features: Set<String> = setOf("public-ride")) = ride.linkReady(features, "acc")
 
     @Test
     fun `a stored switch whose end time passed loads off`() {
@@ -260,17 +274,23 @@ class PublicRideTest {
         listOf(10_000L, 12_000L, 15_000L, 21_000L).forEach { ride.position(presence, it) }
         ready(withMissed)
         ride.position(presence, 26_000L)
-        assertEquals(0, types().count { it == "missed-positions" })
+        assertEquals(1, types().count { it == "missed-positions" })
+        assertEquals(listOf(10_000L, 15_000L, 21_000L), batchAts())
+        // Historical upload precedes even public-on; live positions still wait for status.
+        assertEquals(listOf("missed-positions", "public-on"), types().takeLast(2))
         ride.handle("public-status", JSONObject().put("on", true))
-        assertEquals(listOf(10_000L, 15_000L, 21_000L, 26_000L), batchAts())
         ride.position(presence, 30_000L)
         assertEquals(1, types().count { it == "missed-positions" })
         ride.handleError("missed positions not stored")
         assertEquals(PublicRideSwitch(true, null), ride.switch)
-        ride.position(presence, 31_000L)
+        assertEquals(PublicRide.MISSED_RETRY_MS, retry)
+        ride.linkLost()
+        ready(withMissed)
         assertEquals(2, types().count { it == "missed-positions" })
         assertEquals(listOf(10_000L, 15_000L, 21_000L, 26_000L), batchAts())
         ride.handle("missed-stored", JSONObject().put("from", 10_000L).put("to", 26_000L).put("stored", 4))
+        assertNull(retry)
+        ride.handle("public-status", JSONObject().put("on", true))
         ride.position(presence, 32_000L)
         assertEquals(2, types().count { it == "missed-positions" })
     }
@@ -304,8 +324,102 @@ class PublicRideTest {
         ride.position(presence, 20_000L)
         ride.setAccount("other")
         ride.set(PublicRideSwitch(true, null))
-        ready(withMissed)
+        ride.linkReady(withMissed, "other")
         ride.handle("public-status", JSONObject().put("on", true))
         assertFalse("missed-positions" in types())
     }
+    @Test
+    fun `offline finish by off disconnect or expiry drains without a public ride or new GPS`() {
+        for (ending in listOf("off", "disconnect", "expiry")) {
+            setUp()
+            goLiveWithMissed()
+            ride.set(PublicRideSwitch(true, now + 60_000))
+            ride.linkLost()
+            ride.position(presence, 10_000)
+            when (ending) {
+                "off" -> ride.set(PublicRideSwitch.OFF)
+                "disconnect" -> ride.setBoardConnected(false)
+                else -> { now += 60_000; ride.expire() }
+            }
+            ride.position(presence, 20_000) // Never collect private positions.
+            assertFalse(ride.wanted)
+            assertTrue(ride.needsLink)
+            sent.clear()
+            ready(withMissed)
+            assertEquals(listOf("missed-positions"), types())
+            assertEquals(listOf(10_000L), batchAts())
+            assertFalse(ride.riding)
+            assertTrue(ride.needsLink) // Still owns the socket while waiting for ack.
+            ride.handleError("missed positions not stored")
+            assertEquals(PublicRide.MISSED_RETRY_MS, retry)
+            ride.linkLost()
+            assertNull(retry)
+            ready(withMissed)
+            assertEquals(listOf("missed-positions", "missed-positions"), types())
+            ride.handle("missed-stored", JSONObject())
+            assertFalse(ride.needsLink)
+            assertEquals(false, linkDemands.last())
+            assertNull(retry)
+        }
+    }
+
+    @Test
+    fun `completed buffer waits for authenticated capability readiness and cannot cross accounts or servers`() {
+        for (account in listOf<String?>(null, "other")) {
+            setUp()
+            goLiveWithMissed()
+            ride.linkLost()
+            ride.position(presence, 10_000)
+            ride.set(PublicRideSwitch.OFF)
+            sent.clear()
+            ride.linkReady(withMissed, account)
+            assertTrue(sent.isEmpty())
+            assertTrue(ride.needsLink)
+            ride.linkLost()
+            ready(withMissed)
+            assertEquals(listOf("missed-positions"), types())
+        }
+        for (clear in listOf("sign-out", "account", "server", "unsupported")) {
+            setUp()
+            goLiveWithMissed()
+            ride.linkLost()
+            ride.position(presence, 10_000)
+            ride.set(PublicRideSwitch.OFF)
+            ready(withMissed)
+            assertNotNull(retry)
+            when (clear) {
+                "sign-out" -> ride.setAccount(null)
+                "account" -> ride.setAccount("other")
+                "server" -> ride.discardMissed()
+                else -> ride.linkReady(setOf("public-ride"), "acc")
+            }
+            assertFalse(ride.needsLink)
+            assertNull(retry)
+            sent.clear()
+            ride.linkLost()
+            ready(withMissed)
+            ride.handle("missed-stored", JSONObject()) // Old ack cannot resurrect data.
+            assertTrue(sent.isEmpty())
+        }
+    }
+
+    @Test
+    fun `thinning during an upload preserves the acknowledged prefix and waiting tail`() {
+        goLiveWithMissed()
+        ride.linkLost()
+        ride.position(presence, 0)
+        ride.position(presence, 5_000)
+        ready(withMissed)
+        // A new public ride has not been confirmed yet; its fixes still belong in the buffer.
+        val late = PublicRide.MISSED_MAX_AGE_MS + 10_000
+        ride.position(presence, late)
+        ride.position(presence, late + 1_000) // Still thinned to five seconds.
+        assertEquals(listOf(0L, 5_000L), batchAts())
+        ride.handle("missed-stored", JSONObject())
+        assertEquals(listOf(late), batchAts())
+        ride.set(PublicRideSwitch.OFF)
+        ride.handle("missed-stored", JSONObject())
+        assertFalse(ride.needsLink)
+    }
+
 }

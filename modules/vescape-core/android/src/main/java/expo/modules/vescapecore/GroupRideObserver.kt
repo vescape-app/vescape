@@ -3,6 +3,7 @@ package expo.modules.vescapecore
 import android.os.Handler
 import android.util.Log
 import expo.modules.vescapecore.appstatus.OnlineCapability
+import expo.modules.vescapecore.auth.DeviceCredential
 import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.GroupRideRoster
@@ -44,11 +45,12 @@ internal class GroupRideObserver(
      */
     private val signalContext: () -> RiderSignalContext = { RiderSignalContext(fix = null, insidePrivacyZone = true) },
     /**
-     * The Device Token the upgrade carries, so the relay knows the Account; null signed out.
+     * Read Account and token together, so a credential change cannot label a new token with the old Account.
      *
-     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `deviceToken`
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `deviceCredential`
      */
-    private val deviceToken: () -> String? = { null },
+    private val deviceCredential: () -> DeviceCredential? = { null },
+    private val onLinkDemandChanged: () -> Unit = {},
     /** Persists the public ride switch. */
     persistPublicRide: (PublicRideSwitch) -> Unit = {},
     /** The last position the phone knew, for looking around without a fresh fix. */
@@ -61,6 +63,7 @@ internal class GroupRideObserver(
 ) {
 
     private var webSocket: WebSocket? = null
+    private var socketCredential: DeviceCredential? = null
     private var serverUrl: String? = null
     private var reconnectAttempt = 0
     private var stopped = true
@@ -75,6 +78,10 @@ internal class GroupRideObserver(
     /** Remover for the App Status listener; non-null only while observing. */
     private var onlineUnsub: (() -> Unit)? = null
     private val reconnectRunnable = Runnable { connect() }
+    private val missedRetryRunnable = Runnable {
+        webSocket?.close(NORMAL_CLOSURE, "missed positions retry")
+        scheduleReconnect()
+    }
     private val expiryRunnable: Runnable = Runnable { publicRide.expire() }
 
     /**
@@ -95,6 +102,11 @@ internal class GroupRideObserver(
             if (name == "onPublicRideStatus") refreshSignalAvailability()
         },
         send = { frame -> webSocket?.takeIf { linkOpen }?.let { send(it, frame) } ?: false },
+        scheduleMissedRetry = { delay ->
+            handler.removeCallbacks(missedRetryRunnable)
+            delay?.let { handler.postDelayed(missedRetryRunnable, it) }
+        },
+        onLinkDemandChanged = onLinkDemandChanged,
         onPins = ::onPublicPins,
     )
 
@@ -132,6 +144,7 @@ internal class GroupRideObserver(
             resync()
             return
         }
+        if (serverUrl != null && serverUrl != url) publicRide.discardMissed()
         stopped = false
         serverUrl = url
         reconnectAttempt = 0
@@ -309,7 +322,9 @@ internal class GroupRideObserver(
      */
     fun setAccount(accountId: String?) {
         handler.post {
-            if (!publicRide.setAccount(accountId) || stopped) return@post
+            val changed = publicRide.setAccount(accountId)
+            val credential = deviceCredential()
+            if (stopped || (!changed && credential?.token == socketCredential?.token && credential?.serverUrl == socketCredential?.serverUrl)) return@post
             val ws = webSocket ?: return@post
             webSocket = null
             ws.close(NORMAL_CLOSURE, "account changed")
@@ -348,8 +363,11 @@ internal class GroupRideObserver(
             return
         }
         emitConnection("connecting")
+        socketCredential = deviceCredential()?.takeIf {
+            it.token.isNotEmpty() && GroupRideOnlineGate.webSocketUrl(it.serverUrl) == url
+        }
         webSocket = sockets.newWebSocket(
-            GroupRideOnlineGate.buildObserveRequest(url, online.appVersion, deviceToken()),
+            GroupRideOnlineGate.buildObserveRequest(url, online.appVersion, socketCredential?.token),
             listener,
         )
     }
@@ -417,7 +435,7 @@ internal class GroupRideObserver(
         when (val type = json.optString("type")) {
             // The relay's greeting lists the optional features it speaks.
             "snapshot" -> {
-                publicRide.linkReady(stringSet(json.optJSONArray("features")))
+                publicRide.linkReady(stringSet(json.optJSONArray("features")), socketCredential?.accountId)
                 refreshSignalAvailability()
             }
             "error" -> {

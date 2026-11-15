@@ -39,6 +39,9 @@ internal class PublicRide(
     private val emit: (String, Map<String, Any?>) -> Unit,
     /** Send a frame on the open link; false when there is none. */
     private val send: (JSONObject) -> Boolean,
+    /** Reconnect after this delay if a batch is still unacknowledged; null cancels it. */
+    private val scheduleMissedRetry: (Long?) -> Unit = {},
+    private val onLinkDemandChanged: () -> Unit = {},
     /** Other riders' pins changed: their signals, their hazards by Account id, and the relay clock. */
     private val onPins: (List<SignalRider>, Map<String, RideHazard>, Long?) -> Unit = { _, _, _ -> },
 ) {
@@ -86,18 +89,20 @@ internal class PublicRide(
     private val missed = ArrayDeque<Pair<Long, RiderPresence>>()
     /** How many of the oldest [missed] positions are out as one batch, waiting for `missed-stored`. */
     private var missedInFlight = 0
+    private var authenticatedAccount: String? = null
+    private var lastNeedsLink = false
 
     /** The rider should be public right now. */
     val wanted: Boolean get() = switch.activeAt(now()) && boardConnected && accountId != null
 
     /** Positions go out: the relay confirmed public riding on the open link. */
-    val riding: Boolean get() = live && linkReady
+    val riding: Boolean get() = wanted && live && linkReady
 
     /** The rider can raise a signal or mark a hazard publicly: wanted public, on a relay that has it. */
     val canPin: Boolean get() = wanted && supported
 
-    /** The socket must stay up for the public ride or for looking around. */
-    val needsLink: Boolean get() = wanted || lookAround != null
+    /** The socket stays up until the completed buffer is acknowledged, even off the public ride. */
+    val needsLink: Boolean get() = wanted || lookAround != null || missed.isNotEmpty()
 
     /** Start from the persisted switch and the signed-in Account. */
     fun load(stored: PublicRideSwitch, account: String?) {
@@ -146,10 +151,11 @@ internal class PublicRide(
         sentOn = false
         live = false
         accountId = account
+        linkReady = false
+        authenticatedAccount = null
         dropOwnPins()
         // Kept positions are the old Account's: never sent under another.
-        missed.clear()
-        missedInFlight = 0
+        discardMissed()
         if (hadAccount && switch.on) {
             switch = PublicRideSwitch.OFF
             reason = REASON_SIGNED_OUT
@@ -170,14 +176,16 @@ internal class PublicRide(
     }
 
     /** The link opened and the relay listed its [features]. */
-    fun linkReady(features: Set<String>) {
+    fun linkReady(features: Set<String>, authenticatedAccount: String?) {
+        this.authenticatedAccount = authenticatedAccount
         linkReady = true
         supported = PUBLIC_RIDE_FEATURE in features
         missedSupported = MISSED_POSITIONS_FEATURE in features
         missedInFlight = 0
-        if (!missedSupported) missed.clear()
+        if (!missedSupported) discardMissed()
         sentOn = false
         live = false
+        sendMissed()
         reconcile()
         lookAround?.let(::sendNearby)
         emitStatus()
@@ -189,6 +197,8 @@ internal class PublicRide(
      */
     fun linkLost() {
         linkReady = false
+        authenticatedAccount = null
+        scheduleMissedRetry(null)
         missedInFlight = 0
         sentOn = false
         live = false
@@ -201,11 +211,12 @@ internal class PublicRide(
 
     /** A GPS fix, Privacy Zone gate already applied, taken at [at] (GPS time, epoch ms). */
     fun position(presence: RiderPresence, at: Long) {
+        if (!wanted) return
         if (!riding) {
             keepMissed(presence, at)
             return
         }
-        // A batch the relay failed to store goes again with the next live position.
+        // Historical batches do not depend on the new public ride being confirmed.
         sendMissed()
         send(
             JSONObject()
@@ -218,12 +229,14 @@ internal class PublicRide(
     /** Watch public riders around [point] with the switch off. */
     fun watchNearby(point: Pair<Double, Double>) {
         lookAround = point
+        emitLinkDemand()
         if (linkReady) sendNearby(point)
     }
 
     fun stopWatchingNearby() {
         if (lookAround == null) return
         lookAround = null
+        emitLinkDemand()
         if (linkReady) send(JSONObject().put("type", "nearby-stop"))
         // A public rider keeps receiving its own area.
         if (!riding && riders.isNotEmpty()) {
@@ -287,7 +300,9 @@ internal class PublicRide(
                 // The whole batch is done, positions the relay dropped included.
                 repeat(missedInFlight.coerceAtMost(missed.size)) { missed.removeFirst() }
                 missedInFlight = 0
+                scheduleMissedRetry(null)
                 sendMissed()
+                emitLinkDemand()
             }
             "nearby-riders" -> {
                 riders.clear()
@@ -331,8 +346,8 @@ internal class PublicRide(
     /** A relay `error`; true when it refused going public, which turns the switch off. */
     fun handleError(message: String): Boolean {
         if (message == MISSED_NOT_STORED) {
-            // Keep the batch; it goes again with the next live position.
-            missedInFlight = 0
+            // Keep the batch and its retry deadline. Reconnect before retrying so a late ack
+            // from this link cannot acknowledge a different batch.
             return false
         }
         if (message !in REFUSALS) return false
@@ -383,7 +398,7 @@ internal class PublicRide(
     private fun reconcile() {
         // Off the public ride the relay drops the rider's pins.
         if (!wanted) dropOwnPins()
-        if (!linkReady || !supported) return
+        if (!linkReady || !supported || accountId == null || authenticatedAccount != accountId) return
         if (wanted && !sentOn) {
             val frame = JSONObject().put("type", "public-on")
             switch.until?.let { frame.put("until", it) }
@@ -408,16 +423,38 @@ internal class PublicRide(
         val last = missed.lastOrNull()?.first
         if (last != null && at - last < MISSED_SPACING_MS) return
         missed.addLast(at to presence)
-        while (missed.size > missedInFlight && at - missed.first().first > MISSED_MAX_AGE_MS) missed.removeFirst()
+        // Never remove an in-flight prefix: missed-stored acknowledges exactly that prefix.
+        while (missed.size > missedInFlight &&
+            (at - missed[missedInFlight].first > MISSED_MAX_AGE_MS || missed.size > MISSED_MAX_AGE_MS / MISSED_SPACING_MS + 1)
+        ) missed.removeAt(missedInFlight)
+        emitLinkDemand()
     }
 
     /** Send the oldest kept positions as one batch, unless one is already out. */
     private fun sendMissed() {
-        if (!riding || !missedSupported || missedInFlight > 0 || missed.isEmpty()) return
+        if (!linkReady || accountId == null || authenticatedAccount != accountId || !missedSupported || missedInFlight > 0 || missed.isEmpty()) return
         val batch = missed.take(MISSED_BATCH_MAX)
         val positions = JSONArray()
         batch.forEach { (at, presence) -> positions.put(JSONObject().put("at", at).put("presence", presence.toJson())) }
-        if (send(JSONObject().put("type", "missed-positions").put("positions", positions))) missedInFlight = batch.size
+        if (send(JSONObject().put("type", "missed-positions").put("positions", positions))) {
+            missedInFlight = batch.size
+            scheduleMissedRetry(MISSED_RETRY_MS)
+        }
+    }
+
+    /** Server changes and Account changes cannot carry historical positions across identities. */
+    fun discardMissed() {
+        missed.clear()
+        missedInFlight = 0
+        scheduleMissedRetry(null)
+        emitLinkDemand()
+    }
+
+    private fun emitLinkDemand() {
+        val needed = needsLink
+        if (needed == lastNeedsLink) return
+        lastNeedsLink = needed
+        onLinkDemandChanged()
     }
 
     private fun dropOwnPins() {
@@ -448,6 +485,7 @@ internal class PublicRide(
             "supported" to supported,
             "reason" to reason,
         )
+        emitLinkDemand()
         if (!force && status == lastStatus) return
         lastStatus = status
         emit("onPublicRideStatus", status)
@@ -474,6 +512,8 @@ internal class PublicRide(
     companion object {
         const val PUBLIC_RIDE_FEATURE = "public-ride"
         const val MISSED_POSITIONS_FEATURE = "missed-positions"
+        /** Retry even after the rider finishes and GPS stops. */
+        const val MISSED_RETRY_MS = 10_000L
         /** Kept positions are thinned to one per this. */
         const val MISSED_SPACING_MS = 5_000L
         /** Kept positions older than this, measured from the newest, are dropped. */

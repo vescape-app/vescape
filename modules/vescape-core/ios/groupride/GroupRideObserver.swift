@@ -44,7 +44,9 @@ internal final class GroupRideObserver: NSObject {
   private let ownLocation: () -> (lat: Double, lng: Double)?
   private let signalContext: () -> RiderSignalContext
   private let makeSocket: ((URLRequest) -> GroupRideSocket)?
-  private let deviceToken: () -> String?
+  private var socketCredential: DeviceCredential?
+  private var missedRetryWork: Cancellable?
+  private let deviceCredential: () -> DeviceCredential?
   private let lastKnownLocation: () -> (lat: Double, lng: Double)?
   private var expiryWork: Cancellable?
 
@@ -57,13 +59,14 @@ internal final class GroupRideObserver: NSObject {
     onCue: @escaping (String) -> Void = { _ in },
     ownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil },
     signalContext: @escaping () -> RiderSignalContext = { RiderSignalContext(fix: nil, insidePrivacyZone: true) },
-    deviceToken: @escaping () -> String? = { nil },
+    deviceCredential: @escaping () -> DeviceCredential? = { nil },
+    onLinkDemandChanged: @escaping () -> Void = {},
     persistPublicRide: @escaping (PublicRideSwitch) -> Void = { _ in },
     lastKnownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil },
     now: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
     makeSocket: ((URLRequest) -> GroupRideSocket)? = nil
   ) {
-    self.deviceToken = deviceToken
+    self.deviceCredential = deviceCredential
     self.lastKnownLocation = lastKnownLocation
     self.signalContext = signalContext
     self.makeSocket = makeSocket
@@ -93,6 +96,18 @@ internal final class GroupRideObserver: NSObject {
         self.send(ws, frame)
         return true
       },
+      scheduleMissedRetry: { [weak self] delay in
+        guard let self else { return }
+        self.missedRetryWork?.cancel()
+        self.missedRetryWork = delay.map { delay in
+          scheduler.postDelayed(delay) { [weak self] in
+            guard let self else { return }
+            self.webSocket?.close()
+            self.scheduleReconnect()
+          }
+        }
+      },
+      onLinkDemandChanged: onLinkDemandChanged,
       onPins: { [weak self] signals, hazards, relayNow in
         self?.onPublicPins(signals, hazards: hazards, relayNow: relayNow)
       }
@@ -117,6 +132,7 @@ internal final class GroupRideObserver: NSObject {
       resync()
       return
     }
+    if serverUrl != nil && serverUrl != url { publicRide.discardMissed() }
     stopped = false
     serverUrl = url
     reconnectAttempt = 0
@@ -276,7 +292,10 @@ internal final class GroupRideObserver: NSObject {
 
   func setAccount(_ accountId: String?) {
     onMain { [self] in
-      guard publicRide.setAccount(accountId), !stopped, let ws = webSocket else { return }
+      let changed = publicRide.setAccount(accountId)
+      let credential = deviceCredential()
+      guard !stopped, changed || credential?.token != socketCredential?.token || credential?.serverUrl != socketCredential?.serverUrl,
+            let ws = webSocket else { return }
       webSocket = nil
       ws.close()
       reconnectAttempt = 0
@@ -306,8 +325,13 @@ internal final class GroupRideObserver: NSObject {
       emitConnection("blocked")
       return
     }
+    // Read Account and token together. Never authenticate a different server with this credential.
+    let credential = deviceCredential()
+    socketCredential = credential.flatMap {
+      !$0.token.isEmpty && GroupRideOnlineGate.webSocketUrl(serverBaseUrl: $0.serverUrl) == url ? $0 : nil
+    }
     guard let request = GroupRideOnlineGate.buildObserveRequest(
-      url: url, appVersion: online.appVersion, deviceToken: deviceToken()
+      url: url, appVersion: online.appVersion, deviceToken: socketCredential?.token
     ) else {
       NSLog("[GroupRide] observe URL is not usable: \(url)")
       return
@@ -389,7 +413,7 @@ internal final class GroupRideObserver: NSObject {
     case "snapshot":
       relayFeatures = Set((json["features"] as? [Any] ?? []).compactMap { $0 as? String })
       refreshSignalAvailability()
-      publicRide.linkReady(features: relayFeatures)
+      publicRide.linkReady(features: relayFeatures, authenticatedAccount: socketCredential?.accountId)
     case "error":
       if let message = json["message"] as? String, !message.isEmpty {
         publicRide.handleError(message)
