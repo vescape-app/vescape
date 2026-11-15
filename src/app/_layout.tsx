@@ -48,6 +48,7 @@ import { useThemeStore } from '@/hooks/useTheme'
 import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
 import { RiderProfileSync } from '@/modules/profile/components/RiderProfileSync'
+import { FriendsSync } from '@/modules/profile/components/FriendsSync'
 import { AppStorageFailureBanner } from '@/screens/AppStorageFailureBanner'
 
 const clerkPublishableKey = requireClerkPublishableKey()
@@ -156,6 +157,7 @@ function RootLayout() {
         <DistanceUnitContext value={distanceUnit}>
           <DeviceAuthSync />
           <RiderProfileSync />
+          <FriendsSync />
           <BoardConfigChangeNoticeModal />
           <DiagnosticErrorBoundary>
             <GestureHandlerRootView style={{ flex: 1 }}>

@@ -35,6 +35,7 @@ import {
   type PublicRiderPins,
   type PublicRideStatus,
   type RideHazardKind,
+  type RiderProfile,
   type RiderSignalKind,
 } from 'vescape-core'
 
@@ -74,6 +75,8 @@ interface GroupRideState {
   signalAvailability: GroupRideSignalAvailability
   error: string | null
   focusRequest: { riderId: string; nonce: number } | null
+  /** The rider whose profile the Social drawer shows; set from a list or a map pin. */
+  profileRider: RiderProfile | null
   observing: boolean
   /** The public ride switch and whether the rider is public now, as native reports it. */
   publicRide: PublicRideStatus
@@ -100,6 +103,9 @@ interface GroupRideState {
   sendHazard: (kind: RideHazardKind) => void
   clearHazard: () => void
   focusRider: (riderId: string) => void
+  /** Opens the Social drawer on this rider's profile. */
+  openRiderProfile: (rider: RiderProfile) => void
+  closeRiderProfile: () => void
   clearError: () => void
 }
 
@@ -143,6 +149,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   signalAvailability: NO_SIGNAL_AVAILABILITY,
   error: null,
   focusRequest: null,
+  profileRider: null,
   observing: false,
   publicRide: PUBLIC_RIDE_OFF,
   publicRiders: [],
@@ -345,6 +352,14 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
 
   clearHazard() {
     clearGroupRideHazard()
+  },
+
+  openRiderProfile(rider) {
+    set({ profileRider: rider })
+  },
+
+  closeRiderProfile() {
+    set({ profileRider: null })
   },
 
   focusRider(riderId) {

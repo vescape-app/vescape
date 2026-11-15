@@ -10,6 +10,7 @@ import {
   LiveRiderSignalPins,
   RiderTrail,
 } from '@/modules/group-ride/components/RiderMapLayers'
+import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { DEFAULT_RAIL_COLOR_ID } from '@/modules/board/lib/railColor'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { coinShadowAlpha, GpsPuck } from '@/modules/map/components/GpsPuck'
@@ -35,6 +36,8 @@ export function LiveMapLayers({
   highContrastRoutes: boolean
 }) {
   const riderColor = useSelectedBoardRailColor()
+  const inRide = useGroupRideStore((s) => s.activeRideId !== null)
+  const openRiderProfile = useGroupRideStore((s) => s.openRiderProfile)
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const accuracyFillColor = theme.alpha(accents.violet.color, 0.12)
@@ -126,7 +129,19 @@ export function LiveMapLayers({
         ) : null,
       )}
       {riders.map((rider) =>
-        rider.presence ? <RiderPresencePin key={rider.id} rider={rider} /> : null,
+        rider.presence ? (
+          <RiderPresencePin
+            key={rider.id}
+            rider={rider}
+            // Outside a Group Ride the riders are public riders, keyed by account: open their profile.
+            onPress={
+              inRide || rider.isSelf
+                ? undefined
+                : () =>
+                    openRiderProfile({ accountId: rider.id, nick: rider.name, nationality: null })
+            }
+          />
+        ) : null,
       )}
       <LiveRiderSignalPins />
     </>

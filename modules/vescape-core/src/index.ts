@@ -844,6 +844,32 @@ export type RiderProfileErrorCode =
   | 'RIDER_PROFILE_REFUSED'
   | 'RIDER_PROFILE_UNREACHABLE'
 
+/**
+ * One of the Account's Friends. Mirrors vescape-server `src/friends/protocol.ts`.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `friends`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friends`
+ */
+export interface Friend extends RiderProfile {
+  /** Holds a live public rider record right now. */
+  ridingNow: boolean
+  /** ISO time of the friend's last relay connection; null if never. */
+  lastOnlineAt: string | null
+}
+
+export interface FriendRequest extends RiderProfile {
+  /** ISO time. */
+  requestedAt: string
+}
+
+export interface Friends {
+  friends: Friend[]
+  incoming: FriendRequest[]
+  outgoing: FriendRequest[]
+}
+
+/** `friends` when the other side had already asked, so the request made it mutual. */
+export type FriendRequestStatus = 'requested' | 'friends'
+
 export interface TelemetryEvent {
   generation?: number
   /** Native remote-tilt snapshot paired with this telemetry tick. */
@@ -3246,6 +3272,13 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   setMapPointReaction(id: string, reaction: MapPointReaction | null): Promise<void>
   getRiderProfile(): Promise<RiderProfile | null>
   saveRiderProfile(nick: string, nationality: string | null): Promise<RiderProfile>
+  searchRiders(nick: string): Promise<RiderProfile[]>
+  getRider(accountId: string): Promise<RiderProfile | null>
+  getFriends(): Promise<Friends>
+  sendFriendRequest(accountId: string): Promise<FriendRequestStatus>
+  acceptFriendRequest(accountId: string): Promise<void>
+  deleteFriendRequest(accountId: string): Promise<void>
+  removeFriend(accountId: string): Promise<void>
   setDirectionPoint(latitude: number | null, longitude: number | null): Promise<void>
   recomputeNavigation(): Promise<void>
   setNavigationProfile(profile: NavigationProfile): Promise<void>
@@ -4815,6 +4848,39 @@ export async function saveRiderProfile(
   nationality: string | null,
 ): Promise<RiderProfile> {
   return native.saveRiderProfile(nick, nationality)
+}
+
+/** Riders whose nick starts with `prefix` (letters, digits, underscores), at most 20. */
+export async function searchRiders(prefix: string): Promise<RiderProfile[]> {
+  return native.searchRiders(prefix)
+}
+
+/** Another rider's public profile; null when they have none. */
+export async function getRider(accountId: string): Promise<RiderProfile | null> {
+  return native.getRider(accountId)
+}
+
+/** The Account's Friends and pending requests both ways. Rejects with `RiderProfileErrorCode`. */
+export async function getFriends(): Promise<Friends> {
+  return native.getFriends()
+}
+
+export async function sendFriendRequest(accountId: string): Promise<FriendRequestStatus> {
+  return native.sendFriendRequest(accountId)
+}
+
+export async function acceptFriendRequest(accountId: string): Promise<void> {
+  return native.acceptFriendRequest(accountId)
+}
+
+/** Declines an incoming request or withdraws an outgoing one. */
+export async function deleteFriendRequest(accountId: string): Promise<void> {
+  return native.deleteFriendRequest(accountId)
+}
+
+/** Silent: the other side is not told. */
+export async function removeFriend(accountId: string): Promise<void> {
+  return native.removeFriend(accountId)
 }
 
 export async function getNearbyMapPoints(

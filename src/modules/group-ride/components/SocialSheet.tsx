@@ -1,7 +1,13 @@
 import { StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { SignInIcon, UserCircleIcon, WarningIcon } from 'phosphor-react-native'
-import type { PublicRideStatus } from 'vescape-core'
+import {
+  ArrowLeftIcon,
+  MapPinIcon,
+  SignInIcon,
+  UserCircleIcon,
+  WarningIcon,
+} from 'phosphor-react-native'
+import type { PublicRideStatus, RiderProfile } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
@@ -15,6 +21,8 @@ import { publicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { theme } from '@/constants/theme'
 import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
 import { RiderNickForm } from '@/modules/profile/components/RiderNickForm'
+import { FriendsCard } from '@/modules/profile/components/FriendsCard'
+import { RiderProfileCard } from '@/modules/profile/components/RiderProfileCard'
 import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
@@ -23,11 +31,62 @@ import { NEARBY_RIDER_LIMIT } from '@/modules/group-ride/lib/roster'
 
 /** `onNavigate` fires before the sheet routes away (sign-in), so the host can close it. */
 export function SocialSheet({ onNavigate }: { onNavigate?: () => void }) {
+  const router = useRouter()
+  const profileRider = useGroupRideStore((s) => s.profileRider)
+  const openRiderProfile = useGroupRideStore((s) => s.openRiderProfile)
+  if (profileRider) return <RiderProfilePage rider={profileRider} onNavigate={onNavigate} />
   return (
     <View testID="social-sheet" style={styles.list}>
       <RiderNameWidget />
       <PublicRideWidget onNavigate={onNavigate} />
-      <NearbyRidersWidget onNavigate={onNavigate} />
+      <FriendsCard
+        onPressRider={openRiderProfile}
+        onSignIn={() => {
+          onNavigate?.()
+          router.push(routes.signIn)
+        }}
+      />
+      <NearbyRidersWidget />
+    </View>
+  )
+}
+
+/** One rider inside the drawer, opened from a list or a map pin; back returns to Social. */
+function RiderProfilePage({ rider, onNavigate }: { rider: RiderProfile; onNavigate?: () => void }) {
+  const closeRiderProfile = useGroupRideStore((s) => s.closeRiderProfile)
+  const focusRider = useGroupRideStore((s) => s.focusRider)
+  const onMap = useGroupRideStore((s) =>
+    s.rosterRows.some((row) => row.id === rider.accountId && row.presence),
+  )
+  return (
+    <View testID="social-rider-profile" style={styles.list}>
+      <Button
+        label="Social"
+        icon={ArrowLeftIcon}
+        size="sm"
+        variant="secondary"
+        style={styles.back}
+        onPress={closeRiderProfile}
+        accessibilityLabel="Back to Social"
+      />
+      <View style={styles.card}>
+        <RiderProfileCard rider={rider}>
+          {onMap ? (
+            <Button
+              label="Show on map"
+              icon={MapPinIcon}
+              size="sm"
+              variant="groupRide"
+              style={styles.back}
+              onPress={() => {
+                focusRider(rider.accountId)
+                closeRiderProfile()
+                onNavigate?.()
+              }}
+            />
+          ) : null}
+        </RiderProfileCard>
+      </View>
     </View>
   )
 }
@@ -192,6 +251,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  back: {
+    alignSelf: 'flex-start',
+  },
   riderIdentity: {
     gap: 6,
   },
@@ -201,13 +263,13 @@ const styles = StyleSheet.create({
   },
 })
 
-/** The public riders around the phone, nearest first; tapping one focuses them on the map. Shown
+/** The public riders around the phone, nearest first; tapping one opens their profile. Shown
  *  with the switch off too: look-around runs from the last known position. */
-function NearbyRidersWidget({ onNavigate }: { onNavigate?: () => void }) {
+function NearbyRidersWidget() {
   const inRide = useGroupRideStore((s) => s.activeRideId !== null)
   const rows = useGroupRideStore((s) => s.rosterRows)
   const ownLocation = useGroupRideStore((s) => s.ownLocation)
-  const focusRider = useGroupRideStore((s) => s.focusRider)
+  const openRiderProfile = useGroupRideStore((s) => s.openRiderProfile)
   if (inRide) return null
   return (
     <View style={styles.card} testID="nearby-riders">
@@ -216,10 +278,9 @@ function NearbyRidersWidget({ onNavigate }: { onNavigate?: () => void }) {
         <RosterList
           rows={rows}
           ownLocation={ownLocation}
-          onPressRider={(rider) => {
-            focusRider(rider.id)
-            onNavigate?.()
-          }}
+          onPressRider={(rider) =>
+            openRiderProfile({ accountId: rider.id, nick: rider.name, nationality: null })
+          }
         />
       ) : (
         <Text style={styles.notice}>No riders nearby right now.</Text>

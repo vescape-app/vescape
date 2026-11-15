@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { BroadcastIcon, MegaphoneIcon, UsersThreeIcon } from 'phosphor-react-native'
 
@@ -13,6 +13,7 @@ import {
 } from '@/modules/group-ride/components/RiderSignalPicker'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 
 /**
  * The top bar's Social button and its drawer. In a ride it grows the Rider Signal button below it,
@@ -24,6 +25,16 @@ export function SocialTrigger() {
   const [socialOpen, setSocialOpen] = useState(false)
   const [signalOpen, setSignalOpen] = useState(false)
   const nearbyBadge = useGroupRideStore((s) => s.badge)
+  const friendRiding = useFriendsStore((s) => s.friendRiding)
+  // A rider tapped on the map opens the drawer on their profile.
+  const profileOpen = useGroupRideStore((s) => s.profileRider !== null)
+  useEffect(() => {
+    if (profileOpen) setSocialOpen(true)
+  }, [profileOpen])
+  // Seeing Social is seeing who started riding.
+  useEffect(() => {
+    if (socialOpen) useFriendsStore.getState().acknowledgeRiding()
+  }, [socialOpen, friendRiding])
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
   // Native judges it: in a ride on a relay with signals, or public. Hidden otherwise.
   const signalsSupported = useGroupRideStore((s) => s.signalAvailability.supported)
@@ -58,7 +69,13 @@ export function SocialTrigger() {
             onPress={() => setSocialOpen(true)}
             accessibilityLabel="Social"
             testID="social-drawer-trigger"
-            dot={nearbyBadge && !rideActive ? theme.palette.groupRide.color : undefined}
+            dot={
+              friendRiding
+                ? theme.palette.green.color
+                : nearbyBadge && !rideActive
+                  ? theme.palette.groupRide.color
+                  : undefined
+            }
             accent={rideActive ? theme.palette.groupRide.color : undefined}
             takeover={othersSignal}
           />
@@ -71,9 +88,17 @@ export function SocialTrigger() {
         title="Social"
         icon={UsersThreeIcon}
         backdropTestID="social-drawer-backdrop"
-        onClose={() => setSocialOpen(false)}
+        onClose={() => {
+          setSocialOpen(false)
+          useGroupRideStore.getState().closeRiderProfile()
+        }}
       >
-        <SocialSheet onNavigate={() => setSocialOpen(false)} />
+        <SocialSheet
+          onNavigate={() => {
+            setSocialOpen(false)
+            useGroupRideStore.getState().closeRiderProfile()
+          }}
+        />
       </EdgeDrawer>
       <EdgeDrawer
         visible={signalOpen}

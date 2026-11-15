@@ -7,11 +7,12 @@ import expo.modules.vescapecore.api.AuthMode
 import expo.modules.vescapecore.api.HttpMethod
 import expo.modules.vescapecore.api.VescapeApi
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * The signed-in Account's public Rider Profile (nick + nationality). Server-owned; native holds no
- * copy and only attaches the Device Token.
+ * The signed-in Account's public Rider Profile (nick + nationality), other riders' profiles and the
+ * Account's Friends. Server-owned; native holds no copy and only attaches the Device Token.
  *
  * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift
  * @parity /modules/vescape-core/src/index.ts `RiderProfile`
@@ -33,6 +34,69 @@ class RiderProfileApi(private val api: VescapeApi) {
     ) { profile(JSONObject(it)) },
   )
 
+  /** Profiles whose nick starts with `prefix`, at most 20. */
+  suspend fun search(prefix: String): List<Map<String, Any?>> = unwrap(
+    api.request(HttpMethod.GET, RIDERS_PATH, query = mapOf("nick" to prefix), auth = AuthMode.Required) { body ->
+      JSONObject(body).getJSONArray("items").let { items -> List(items.length()) { profile(items.getJSONObject(it)) } }
+    },
+  )
+
+  /** `null` when the Account has no Rider Profile. */
+  suspend fun rider(accountId: String): Map<String, Any?>? {
+    val result = api.request(HttpMethod.GET, "$RIDERS_PATH/$accountId", auth = AuthMode.Required) {
+      profile(JSONObject(it))
+    }
+    return if (result == ApiResult.NotFound) null else unwrap(result)
+  }
+
+  /** @parity /modules/vescape-core/src/index.ts `Friends` */
+  suspend fun friends(): Map<String, Any?> = unwrap(
+    api.request(HttpMethod.GET, FRIENDS_PATH, auth = AuthMode.Required) { body ->
+      val json = JSONObject(body)
+      val friends = json.getJSONArray("friends")
+      mapOf(
+        "friends" to List(friends.length()) { index ->
+          val friend = friends.getJSONObject(index)
+          profile(friend) + mapOf(
+            "ridingNow" to friend.optBoolean("ridingNow", false),
+            "lastOnlineAt" to if (friend.isNull("lastOnlineAt")) null else friend.optString("lastOnlineAt"),
+          )
+        },
+        "incoming" to requests(json.getJSONArray("incoming")),
+        "outgoing" to requests(json.getJSONArray("outgoing")),
+      )
+    },
+  )
+
+  /** `requested`, or `friends` when the other side had already asked. */
+  suspend fun requestFriend(accountId: String): String = unwrap(
+    api.request(
+      method = HttpMethod.POST,
+      path = "$FRIENDS_PATH/requests",
+      body = JSONObject().put("accountId", accountId),
+      auth = AuthMode.Required,
+    ) { JSONObject(it).getString("status") },
+  )
+
+  suspend fun acceptFriend(accountId: String): Unit = unwrap(
+    api.request(HttpMethod.POST, "$FRIENDS_PATH/requests/$accountId/accept", auth = AuthMode.Required) { },
+  )
+
+  /** Declines an incoming request or withdraws an outgoing one. */
+  suspend fun deleteFriendRequest(accountId: String): Unit = unwrap(
+    api.request(HttpMethod.DELETE, "$FRIENDS_PATH/requests/$accountId", auth = AuthMode.Required) { },
+  )
+
+  /** Silent: the other side is not told. */
+  suspend fun removeFriend(accountId: String): Unit = unwrap(
+    api.request(HttpMethod.DELETE, "$FRIENDS_PATH/$accountId", auth = AuthMode.Required) { },
+  )
+
+  private fun requests(items: JSONArray): List<Map<String, Any?>> = List(items.length()) { index ->
+    val item = items.getJSONObject(index)
+    profile(item) + ("requestedAt" to item.optString("requestedAt"))
+  }
+
   private fun profile(json: JSONObject): Map<String, Any?> = mapOf(
     "accountId" to json.getString("accountId"),
     "nick" to json.getString("nick"),
@@ -53,6 +117,8 @@ class RiderProfileApi(private val api: VescapeApi) {
 
   companion object {
     private const val PATH = "/api/rider-profile"
+    private const val RIDERS_PATH = "/api/riders"
+    private const val FRIENDS_PATH = "/api/friends"
     private const val NICK_TAKEN_SLUG = "nick-taken"
 
     /**

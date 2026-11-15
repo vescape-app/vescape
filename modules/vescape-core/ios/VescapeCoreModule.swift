@@ -1698,6 +1698,57 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // Other riders' profiles and the Account's Friends, server-owned like the Rider Profile.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFriends`
+    AsyncFunction("searchRiders") { (nick: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.search(nick: nick)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("getRider") { (accountId: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.rider(accountId)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("getFriends") { (promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.friends()) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("sendFriendRequest") { (accountId: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.requestFriend(accountId)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("acceptFriendRequest") { (accountId: String, promise: Promise) in
+      Task {
+        do { try await RiderProfileApi.shared.acceptFriend(accountId); promise.resolve(nil) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("deleteFriendRequest") { (accountId: String, promise: Promise) in
+      Task {
+        do { try await RiderProfileApi.shared.deleteFriendRequest(accountId); promise.resolve(nil) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("removeFriend") { (accountId: String, promise: Promise) in
+      Task {
+        do { try await RiderProfileApi.shared.removeFriend(accountId); promise.resolve(nil) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
     // The direction target is personal client state, never a Map Point. Native keeps it so Group
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") { (latitude: Double?, longitude: Double?, promise: Promise) in

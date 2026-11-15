@@ -1684,6 +1684,29 @@ class VescapeCoreModule : Module() {
     AsyncFunction("saveRiderProfile") Coroutine { nick: String, nationality: String? ->
       RiderProfileApi.get(context.applicationContext).save(nick, nationality)
     }
+    // Other riders' profiles and the Account's Friends, server-owned like the Rider Profile.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFriends`
+    AsyncFunction("searchRiders") Coroutine { nick: String ->
+      RiderProfileApi.get(context.applicationContext).search(nick)
+    }
+    AsyncFunction("getRider") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).rider(accountId)
+    }
+    AsyncFunction("getFriends") Coroutine { ->
+      RiderProfileApi.get(context.applicationContext).friends()
+    }
+    AsyncFunction("sendFriendRequest") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).requestFriend(accountId)
+    }
+    AsyncFunction("acceptFriendRequest") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).acceptFriend(accountId)
+    }
+    AsyncFunction("deleteFriendRequest") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).deleteFriendRequest(accountId)
+    }
+    AsyncFunction("removeFriend") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).removeFriend(accountId)
+    }
   }
 
   private fun ModuleDefinitionBuilder.registerGroupRide() {

@@ -1,6 +1,6 @@
 import { LineLayer, ShapeSource } from '@rnmapbox/maps'
 import { useMemo } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import type { GroupRidePin } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
@@ -75,7 +75,8 @@ export function RiderTrail({
   )
 }
 
-export function RiderPresencePin({ rider }: { rider: RosterRider }) {
+/** `onPress` makes the pin a touch target (public riders open their profile). */
+export function RiderPresencePin({ rider, onPress }: { rider: RosterRider; onPress?: () => void }) {
   const accents = useResolvedAccentColors()
   const color = riderMapColor(rider, accents)
   const heading = rider.presence?.heading ?? null
@@ -83,7 +84,13 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
 
   return (
     <InMapMarker coordinate={[rider.presence.lng, rider.presence.lat]}>
-      <View style={styles.riderMarker}>
+      <Pressable
+        style={styles.riderMarker}
+        onPress={onPress}
+        disabled={!onPress}
+        accessibilityRole={onPress ? 'button' : undefined}
+        accessibilityLabel={onPress ? `Open ${rider.name || 'rider'}` : undefined}
+      >
         <View style={[styles.riderDot, { backgroundColor: color }]}>
           {heading != null && (
             // Rotating a ring centered on the dot keeps the arrow orbiting the dot;
@@ -96,7 +103,7 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
         <Text style={[styles.riderLabel, rider.stale && styles.riderLabelStale]} numberOfLines={1}>
           {rider.name || 'Rider'}
         </Text>
-      </View>
+      </Pressable>
     </InMapMarker>
   )
 }

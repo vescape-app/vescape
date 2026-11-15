@@ -13,8 +13,8 @@ struct RiderProfileApiError: Error {
   static let unreachable = "RIDER_PROFILE_UNREACHABLE"
 }
 
-/// The signed-in Account's public Rider Profile (nick + nationality). Server-owned; native holds no
-/// copy and only attaches the Device Token.
+/// The signed-in Account's public Rider Profile (nick + nationality), other riders' profiles and the
+/// Account's Friends. Server-owned; native holds no copy and only attaches the Device Token.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt
 /// @parity /modules/vescape-core/src/index.ts `RiderProfile`
@@ -22,6 +22,8 @@ final class RiderProfileApi {
   static let shared = RiderProfileApi(api: VescapeApi.forOrigin(AppStatusCoordinator.serverBaseUrl))
 
   private static let path = "/api/rider-profile"
+  private static let ridersPath = "/api/riders"
+  private static let friendsPath = "/api/friends"
   private static let nickTakenSlug = "nick-taken"
 
   private let api: VescapeApi
@@ -50,6 +52,82 @@ final class RiderProfileApi {
         auth: .required
       ) { try Self.profile(try Self.object($0)) }
     )
+  }
+
+  /// Profiles whose nick starts with `prefix`, at most 20.
+  func search(nick prefix: String) async throws -> [[String: Any?]] {
+    try unwrap(
+      await api.request(.get, path: Self.ridersPath, query: ["nick": prefix], auth: .required) { body in
+        guard let items = try Self.object(body)["items"] as? [[String: Any]] else {
+          throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable rider search")
+        }
+        return try items.map(Self.profile)
+      }
+    )
+  }
+
+  /// `nil` when the Account has no Rider Profile.
+  func rider(_ accountId: String) async throws -> [String: Any?]? {
+    let result = await api.request(.get, path: "\(Self.ridersPath)/\(accountId)", auth: .required) {
+      try Self.profile(try Self.object($0))
+    }
+    if case .notFound = result { return nil }
+    return try unwrap(result)
+  }
+
+  /// @parity /modules/vescape-core/src/index.ts `Friends`
+  func friends() async throws -> [String: Any?] {
+    try unwrap(
+      await api.request(.get, path: Self.friendsPath, auth: .required) { body in
+        let json = try Self.object(body)
+        guard let friends = json["friends"] as? [[String: Any]],
+              let incoming = json["incoming"] as? [[String: Any]],
+              let outgoing = json["outgoing"] as? [[String: Any]]
+        else { throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable friends") }
+        return [
+          "friends": try friends.map { friend -> [String: Any?] in
+            var row = try Self.profile(friend)
+            row["ridingNow"] = friend["ridingNow"] as? Bool ?? false
+            row["lastOnlineAt"] = .some(friend["lastOnlineAt"] as? String)
+            return row
+          },
+          "incoming": try incoming.map(Self.request),
+          "outgoing": try outgoing.map(Self.request),
+        ]
+      }
+    )
+  }
+
+  /// `requested`, or `friends` when the other side had already asked.
+  func requestFriend(_ accountId: String) async throws -> String {
+    try unwrap(
+      await api.request(.post, path: "\(Self.friendsPath)/requests", body: ["accountId": accountId], auth: .required) {
+        guard let status = try Self.object($0)["status"] as? String else {
+          throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable friend request")
+        }
+        return status
+      }
+    )
+  }
+
+  func acceptFriend(_ accountId: String) async throws {
+    try unwrap(await api.request(.post, path: "\(Self.friendsPath)/requests/\(accountId)/accept", auth: .required) { _ in () })
+  }
+
+  /// Declines an incoming request or withdraws an outgoing one.
+  func deleteFriendRequest(_ accountId: String) async throws {
+    try unwrap(await api.request(.delete, path: "\(Self.friendsPath)/requests/\(accountId)", auth: .required) { _ in () })
+  }
+
+  /// Silent: the other side is not told.
+  func removeFriend(_ accountId: String) async throws {
+    try unwrap(await api.request(.delete, path: "\(Self.friendsPath)/\(accountId)", auth: .required) { _ in () })
+  }
+
+  private static func request(_ json: [String: Any]) throws -> [String: Any?] {
+    var row = try profile(json)
+    row["requestedAt"] = .some(json["requestedAt"] as? String)
+    return row
   }
 
   private static func object(_ body: String) throws -> [String: Any] {
