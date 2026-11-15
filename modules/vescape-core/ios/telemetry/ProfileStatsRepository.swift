@@ -62,6 +62,11 @@ internal final class ProfileStatsRepository {
     computeProfileStatsForSessions(try readSessions().filter { $0.endAtMs >= sinceMs })
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `readProfileRecordingMonths`
+  func getRecordingMonths(boardId: String, sinceMs: Int64, throughMs: Int64) throws -> Set<String> {
+    recordingMonthsForSessions(try readSessions(), boardId: boardId, sinceMs: sinceMs, throughMs: throughMs)
+  }
+
   private func readSessions() throws -> [RideSessionAggregate] {
     let gapMs = try gapMsProvider()
     let pool = try poolProvider()
@@ -195,4 +200,18 @@ internal func emptyProfileStats() -> [String: Any?] {
     "topSpeedRideId": nil,
     "longestRideId": nil,
   ]
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `recordingMonthsForSessions`
+func recordingMonthsForSessions(
+  _ sessions: [RideSessionAggregate], boardId: String, sinceMs: Int64, throughMs: Int64,
+  calendar: Calendar = .current
+) -> Set<String> {
+  guard let ride = sessions
+    .filter({ $0.boardId == boardId && $0.endAtMs >= sinceMs && $0.startAtMs <= throughMs })
+    .max(by: { $0.endAtMs < $1.endAtMs }) else { return [] }
+  return Set([ride.startAtMs, min(ride.endAtMs, throughMs)].map { at in
+    let month = profileMonth(at, calendar: calendar)
+    return String(format: "%04d-%02d", month.year, month.month)
+  })
 }

@@ -63,6 +63,21 @@ internal suspend fun readProfileDayStats(
 internal suspend fun readProfileRecentStats(dao: VescapeDao, sinceMs: Long, gapMs: Long): Map<String, Any?> =
   computeProfileStatsForSessions(readProfileSessions(dao, gapMs).filter { it.endAtMs >= sinceMs })
 
+/** @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getRecordingMonths` */
+internal suspend fun readProfileRecordingMonths(
+  dao: VescapeDao, boardId: String, sinceMs: Long, throughMs: Long, gapMs: Long,
+): List<ProfileStatsMonth> = recordingMonthsForSessions(readProfileSessions(dao, gapMs), boardId, sinceMs, throughMs)
+
+/** @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `recordingMonthsForSessions` */
+internal fun recordingMonthsForSessions(
+  sessions: List<RideSessionAggregate>, boardId: String, sinceMs: Long, throughMs: Long,
+  zoneId: ZoneId = ZoneId.systemDefault(),
+): List<ProfileStatsMonth> = sessions
+  .filter { it.boardId == boardId && it.endAtMs >= sinceMs && it.startAtMs <= throughMs }
+  .maxByOrNull { it.endAtMs }
+  ?.let { listOf(profileMonth(it.startAtMs, zoneId), profileMonth(minOf(it.endAtMs, throughMs), zoneId)).distinct() }
+  ?: emptyList()
+
 private suspend fun readProfileSessions(dao: VescapeDao, gapMs: Long): List<RideSessionAggregate> {
   val buckets = dao.getAllHistoryBucketsAsc()
   val markers = readProfileMarkers(dao, buckets, gapMs)

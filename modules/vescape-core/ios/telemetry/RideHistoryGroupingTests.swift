@@ -114,6 +114,25 @@ final class RideHistoryGroupingTests: XCTestCase {
     XCTAssertFalse(map.keys.contains("recordingId"))
   }
 
+  /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryTest.kt `recordingMonthsIncludeContinuingRideStartButExcludeOtherHistory`
+  func testRecordingMonthsIncludeContinuingRideStartButExcludeOtherHistory() throws {
+    let boundary: Int64 = 1_767_225_600_000 // 2026-01-01 UTC
+    let sessions = try groupRideSessions(buckets: [
+      bucket(start: boundary - 90 * 86_400_000, end: boundary - 90 * 86_400_000 + 10_000),
+      bucket(start: boundary - 60_000, end: boundary - 30_000),
+      bucket(start: boundary + 30_000, end: boundary + 60_000),
+      bucket(start: boundary + 120_000, end: boundary + 150_000, boardId: "other"),
+      bucket(start: boundary + 10_000_000, end: boundary + 10_010_000),
+    ], markers: [], gapMs: gapMs)
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    XCTAssertEqual(recordingMonthsForSessions(sessions, boardId: "board-1", sinceMs: boundary - 100 * 86_400_000, throughMs: boundary + 90_000, calendar: calendar), ["2025-12", "2026-01"])
+    calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+    XCTAssertEqual(recordingMonthsForSessions(sessions, boardId: "board-1", sinceMs: boundary, throughMs: boundary + 90_000, calendar: calendar), ["2025-12"])
+    XCTAssertEqual(recordingMonthsForSessions(sessions, boardId: "missing", sinceMs: boundary, throughMs: boundary + 90_000, calendar: calendar), [])
+    XCTAssertEqual(recordingMonthsForSessions(sessions, boardId: "board-1", sinceMs: boundary + 500_000, throughMs: boundary + 600_000, calendar: calendar), [])
+  }
+
   private func marker(_ at: Int64, _ type: String, boardId: String = "board-1") -> Row {
     Row(["occurred_at_ms": at, "type": type, "board_id": boardId])
   }

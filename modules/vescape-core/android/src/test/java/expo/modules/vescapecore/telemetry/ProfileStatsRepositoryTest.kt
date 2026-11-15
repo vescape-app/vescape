@@ -137,6 +137,30 @@ class ProfileStatsRepositoryTest {
     assertEquals(listOf(RideRoutePoint(52.0, 18.0), RideRoutePoint(52.1, 18.1)), sessions.single().routePoints)
   }
 
+  /** @parity /modules/vescape-core/ios/telemetry/RideHistoryGroupingTests.swift `testRecordingMonthsIncludeContinuingRideStartButExcludeOtherHistory` */
+  @Test fun recordingMonthsIncludeContinuingRideStartButExcludeOtherHistory() {
+    val boundary = java.time.Instant.parse("2026-01-01T00:00:00Z").toEpochMilli()
+    val sessions = groupRideSessions(
+      listOf(
+        bucket(boundary - 90L * 86_400_000, boundary - 90L * 86_400_000 + 10_000, 0, 100),
+        bucket(boundary - 60_000, boundary - 30_000, 0, 100),
+        bucket(boundary + 30_000, boundary + 60_000, 100, 200),
+        bucket(boundary + 120_000, boundary + 150_000, 0, 100).copy(boardId = "other"),
+        bucket(boundary + 10_000_000, boundary + 10_010_000, 0, 100),
+      ), emptyList(), DEFAULT_RIDE_SPLIT_GAP_MINUTES * 60_000L,
+    )
+    assertEquals(
+      setOf(ProfileStatsMonth(2025, 12), ProfileStatsMonth(2026, 1)),
+      recordingMonthsForSessions(sessions, "board-1", boundary - 100L * 86_400_000, boundary + 90_000, utc).toSet(),
+    )
+    assertEquals(
+      listOf(ProfileStatsMonth(2025, 12)),
+      recordingMonthsForSessions(sessions, "board-1", boundary, boundary + 90_000, ZoneId.of("America/Los_Angeles")),
+    )
+    assertEquals(emptyList<ProfileStatsMonth>(), recordingMonthsForSessions(sessions, "missing", boundary, boundary + 90_000, utc))
+    assertEquals(emptyList<ProfileStatsMonth>(), recordingMonthsForSessions(sessions, "board-1", boundary + 500_000, boundary + 600_000, utc))
+  }
+
   private fun bucket(
     start: Long,
     end: Long,

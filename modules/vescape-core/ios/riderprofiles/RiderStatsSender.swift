@@ -5,69 +5,71 @@ import Foundation
 actor RiderStatsSender {
   static let shared = RiderStatsSender()
   private let defaults = UserDefaults.standard
-  private var backfilledAccount: String?
+  private let policy = RiderStatsUploadPolicy(defaults: .standard)
   private var running = false
-  private var pendingHistory = false
-  private var pendingForeground = false
-  private var pending = false
+  private var pending: [(foreground: Bool, recording: (String, Int64, Int64)?)] = []
   private var removeCredentialListener: (() -> Void)?
   /// @parity /modules/vescape-core/src/index.ts `RiderStats`
-  private static let fields = ["distanceM", "rideCount", "rideTimeMs", "topSpeedKmh", "avgSpeedKmh", "longestRideM", "batteryUsedWh", "batteryRegenWh"]
+  static let fields = ["distanceM", "rideCount", "rideTimeMs", "topSpeedKmh", "avgSpeedKmh", "longestRideM", "batteryUsedWh", "batteryRegenWh"]
 
   func foreground() async {
     if removeCredentialListener == nil {
+      do { policy.accountId = try DeviceCredentialStore.shared.read()?.accountId }
+      catch {
+        UnexpectedNativeError.report(operation: "rider_stats_credential_read", category: "monthly_stats", error: error)
+        return
+      }
       removeCredentialListener = DeviceCredentialStore.shared.addChangeListener {
-        Task { await RiderStatsSender.shared.trigger(history: true, foreground: false) }
+        do {
+          let accountId = try DeviceCredentialStore.shared.read()?.accountId
+          Task { await RiderStatsSender.shared.credentialChanged(accountId) }
+        } catch {
+          UnexpectedNativeError.report(operation: "rider_stats_credential_read", category: "monthly_stats", error: error)
+        }
       }
     }
-    await trigger(history: false, foreground: true)
+    await trigger(foreground: true)
   }
 
-  // History owns ride boundaries, including rides that began in an earlier Board Session/month.
-  func recordingEnded() async { await trigger(history: true, foreground: false) }
+  private func credentialChanged(_ accountId: String?) async {
+    if policy.accountChanged(accountId) { await trigger(foreground: false) }
+  }
 
-  private func trigger(history: Bool, foreground: Bool) async {
-    pending = true
-    pendingHistory = pendingHistory || history
-    pendingForeground = pendingForeground || foreground
+  func recordingEnded(boardId: String, sinceMs: Int64, throughMs: Int64) async {
+    await trigger(foreground: false, recording: (boardId, sinceMs, throughMs))
+  }
+
+  private func trigger(foreground: Bool, recording: (String, Int64, Int64)? = nil) async {
+    pending.append((foreground, recording))
     guard !running else { return }
     running = true
     defer { running = false }
-    while pending {
-      let history = pendingHistory
-      let foreground = pendingForeground
-      pending = false
-      pendingHistory = false
-      pendingForeground = false
-      do { try await send(history: history, foreground: foreground) }
+    while !pending.isEmpty {
+      let request = pending.removeFirst()
+      do { try await send(foreground: request.foreground, recording: request.recording) }
       catch { UnexpectedNativeError.report(operation: "rider_stats_send", category: "monthly_stats", error: error) }
     }
   }
 
-  private func send(history: Bool, foreground: Bool) async throws {
-    if history { backfilledAccount = nil }
+  private func send(foreground: Bool, recording: (String, Int64, Int64)?) async throws {
     let store = DeviceCredentialStore.shared
-    guard let credential = try store.read() else { backfilledAccount = nil; return }
+    guard let credential = try store.read() else { return }
     let origin = AppStatusCoordinator.serverBaseUrl
     guard credential.serverUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == origin,
           await onlineAllowed() else { return }
     let account = "\(origin)/\(credential.accountId)"
-    let backfill = backfilledAccount != account
-    let now = Date().timeIntervalSince1970
-    let foregroundKey = "rider_stats_foreground:\(account)"
-    let last = defaults.double(forKey: foregroundKey)
-    if foreground && !history && now >= last && now - last < 3600 { return }
-    if foreground { defaults.set(now, forKey: foregroundKey) }
-    backfilledAccount = nil
-    let calendar = Calendar.current
-    let current = calendar.dateComponents([.year, .month], from: Date())
-    let previous = calendar.dateComponents([.year, .month], from: calendar.date(byAdding: .month, value: -1, to: Date())!)
-    var months = Set([monthKey(year: current.year!, month: current.month!), monthKey(year: previous.year!, month: previous.month!)])
-    if history || backfill {
+    let backfill = policy.needsBackfill(account)
+    guard policy.begin(account, foreground: foreground, now: Date().timeIntervalSince1970) else { return }
+    let rideMonths = try recording.map { board, since, through in
+      try ProfileStatsRepository.shared.getRecordingMonths(boardId: board, sinceMs: since, throughMs: through)
+    } ?? []
+    var available = Set<String>()
+    if backfill {
       let snapshot = try ProfileStatsRepository.shared.getProfileStatsSnapshot([:])
-      guard let available = snapshot["months"] as? [[String: Int]] else { return }
-      for month in available { months.insert(monthKey(year: month["year"]!, month: month["month"]!)) }
+      guard let months = snapshot["months"] as? [[String: Int]] else { return }
+      for month in months { available.insert(String(format: "%04d-%02d", month["year"]!, month["month"]!)) }
     }
+    let months = policy.months(now: Date(), foreground: foreground, rideMonths: rideMonths, backfill: backfill ? available : nil)
     // Pin this run to its credential so an account change cannot upload A's payload as B.
     let api = VescapeApi(
       baseUrl: origin,
@@ -88,7 +90,7 @@ actor RiderStatsSender {
       let parts = month.split(separator: "-").compactMap { Int($0) }
       let snapshot = try ProfileStatsRepository.shared.getProfileStatsSnapshot(["year": parts[0], "month": parts[1]])
       guard let stats = snapshot["monthly"] as? [String: Any?] else { return }
-      let payload = Dictionary(uniqueKeysWithValues: Self.fields.map { ($0, (stats[$0] ?? nil) ?? NSNull()) })
+      let payload = normalizedRiderStats(stats)
       let encoded = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
       let key = "rider_stats_payload:\(account)/\(month)"
       if defaults.data(forKey: key) == encoded { continue }
@@ -99,12 +101,60 @@ actor RiderStatsSender {
         complete = false
       }
     }
-    if complete { backfilledAccount = account }
+    if backfill { policy.finished(account, complete: complete) }
   }
 
   private func onlineAllowed() async -> Bool {
     await MainActor.run { !AppStatusCoordinator.shared.onlineBlocked }
   }
+}
 
-  private func monthKey(year: Int, month: Int) -> String { String(format: "%04d-%02d", year, month) }
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderStatsSender.kt `RiderStatsUploadPolicy`
+final class RiderStatsUploadPolicy {
+  private let defaults: UserDefaults
+  var accountId: String?
+  init(defaults: UserDefaults) { self.defaults = defaults }
+  func accountChanged(_ next: String?) -> Bool {
+    guard accountId != next else { return false }
+    accountId = next
+    return next != nil
+  }
+  func needsBackfill(_ account: String) -> Bool { !defaults.bool(forKey: "rider_stats_backfilled:\(account)") }
+  func begin(_ account: String, foreground: Bool, now: Double) -> Bool {
+    let key = "rider_stats_foreground:\(account)"
+    let last = defaults.double(forKey: key)
+    if foreground && !needsBackfill(account) && now >= last && now - last < 3600 { return false }
+    if foreground { defaults.set(now, forKey: key) }
+    return true
+  }
+  func months(now: Date, foreground: Bool, rideMonths: Set<String>, backfill: Set<String>?, calendar: Calendar = .current) -> Set<String> {
+    if let backfill { return backfill }
+    guard foreground else { return rideMonths }
+    return Set([now, calendar.date(byAdding: .month, value: -1, to: now)!].map { date in
+      let parts = calendar.dateComponents([.year, .month], from: date)
+      return String(format: "%04d-%02d", parts.year!, parts.month!)
+    })
+  }
+  func finished(_ account: String, complete: Bool) {
+    if complete { defaults.set(true, forKey: "rider_stats_backfilled:\(account)") }
+  }
+}
+
+/// Server UploadMonthStatsSchema bounds, applied only at the upload boundary.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderStatsSender.kt `normalizedRiderStats`
+func normalizedRiderStats(_ stats: [String: Any?]) -> [String: Any] {
+  Dictionary(uniqueKeysWithValues: RiderStatsSender.fields.map { field in
+    let nullable = ["distanceM", "longestRideM", "batteryUsedWh", "batteryRegenWh"].contains(field)
+    let number = (stats[field] as? NSNumber)?.doubleValue
+    let maximum: Double
+    switch field {
+    case "rideCount": maximum = 100_000
+    case "rideTimeMs": maximum = 2_678_400_000
+    case "topSpeedKmh", "avgSpeedKmh": maximum = 1000
+    default: maximum = 1e8
+    }
+    guard let number, number.isFinite else { return (field, nullable ? NSNull() : 0) }
+    let bounded = min(maximum, max(0, number))
+    return (field, field == "rideCount" || field == "rideTimeMs" ? bounded.rounded() : bounded)
+  })
 }

@@ -835,6 +835,8 @@ export interface RiderProfile {
 }
 
 /** Public riding aggregates, without local record ride IDs.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderStatsSender.swift `fields`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderStatsSender.kt `FIELDS`
  * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `stats`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `stats`
  */
