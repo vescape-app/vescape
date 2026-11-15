@@ -34,6 +34,8 @@ export function SocialTrigger() {
   useEffect(() => {
     if (socialOpen) useFriendsStore.getState().acknowledgeRiding()
   }, [socialOpen, friendRiding])
+  // Switched on wears the broadcast icon; it lights up only once positions actually go out.
+  const sharingOn = useGroupRideStore((s) => s.publicRide.on)
   const rideActive = useGroupRideStore((s) => s.publicRide.live)
   // Native judges it: in a ride on a relay with signals, or public. Hidden otherwise.
   const signalsSupported = useGroupRideStore((s) => s.signalAvailability.supported)
@@ -64,7 +66,7 @@ export function SocialTrigger() {
           }
         >
           <IconButton
-            icon={rideActive ? BroadcastIcon : UsersThreeIcon}
+            icon={sharingOn ? BroadcastIcon : UsersThreeIcon}
             onPress={() => setSocialOpen(true)}
             accessibilityLabel="Social"
             testID="social-drawer-trigger"

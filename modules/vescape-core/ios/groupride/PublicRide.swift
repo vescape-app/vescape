@@ -326,6 +326,8 @@ internal final class PublicRide {
       }
     case "public-pins":
       guard let id = json["accountId"] as? String, !id.isEmpty else { return true }
+      // The relay echoes the rider's own pins; those live in `ownPins`, not among others'.
+      if id == accountId { return true }
       let signal = RiderSignal.parse(json["signal"] as? [String: Any])
       let hazard = RideHazard.parse(json["hazard"] as? [String: Any])
       // A missing slot is none: cleared, expired, out of reach, or the rider went.

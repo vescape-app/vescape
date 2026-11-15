@@ -321,6 +321,8 @@ internal class PublicRide(
             }
             "public-pins" -> {
                 val id = json.optString("accountId").takeIf { it.isNotEmpty() } ?: return true
+                // The relay echoes the rider's own pins; those live in `ownPins`, not among others'.
+                if (id == accountId) return true
                 val signal = RiderPin.parse(json.optJSONObject("signal"), RiderSignalKind::fromWire)
                 val hazard = RiderPin.parse(json.optJSONObject("hazard"), RideHazardKind::fromWire)
                 // A missing slot is none: cleared, expired, out of reach, or the rider went.
