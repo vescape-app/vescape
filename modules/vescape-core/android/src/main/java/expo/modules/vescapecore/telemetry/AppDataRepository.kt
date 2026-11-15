@@ -521,8 +521,6 @@ class AppDataRepository private constructor(private val context: Context) {
         DEFAULT_RIDE_SPLIT_GAP_MINUTES,
         ::validRideSplitGapMinutes,
       ),
-      riderId = opt("riderId") { it as? String },
-      riderName = opt("riderName") { it as? String },
       legalPolicy = opt("legalPolicy", ::normalizeLegalPolicy),
       dismissedCommunityMessageIds =
         req("dismissedCommunityMessageIds", emptyList(), ::validDismissedCommunityMessageIds),
@@ -619,7 +617,6 @@ class AppDataRepository private constructor(private val context: Context) {
         validAutoCloseDelayMinutes(value) ?: return@withContext
       "rideSplitGapMinutes" ->
         validRideSplitGapMinutes(value) ?: return@withContext
-      "riderId", "riderName" -> value as? String
       // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
       "legalPolicy" -> return@withContext
       "dismissedCommunityMessageIds" ->
@@ -684,8 +681,6 @@ class AppDataRepository private constructor(private val context: Context) {
         "autoCloseEnabled" -> d.autoCloseEnabled
         "autoCloseDelayMinutes" -> d.autoCloseDelayMinutes
         "rideSplitGapMinutes" -> d.rideSplitGapMinutes
-        "riderId" -> d.riderId
-        "riderName" -> d.riderName
         "legalPolicy" -> d.legalPolicy
         "dismissedCommunityMessageIds" -> d.dismissedCommunityMessageIds
         else -> null
@@ -1068,8 +1063,6 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "autoCloseEnabled" to autoCloseEnabled,
   "autoCloseDelayMinutes" to autoCloseDelayMinutes,
   "rideSplitGapMinutes" to rideSplitGapMinutes,
-  "riderId" to riderId,
-  "riderName" to riderName,
   "legalPolicy" to legalPolicy,
   "dismissedCommunityMessageIds" to dismissedCommunityMessageIds,
 )

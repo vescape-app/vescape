@@ -11,11 +11,9 @@ import type { PublicRideStatus, RiderProfile } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
-import { InputWidget } from '@/components/widgets/InputWidget'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { publicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { theme } from '@/constants/theme'
@@ -99,13 +97,14 @@ function RiderProfilePage({ rider, onNavigate }: { rider: RiderProfile; onNaviga
   )
 }
 
-/** Signed-in riders ride under their Rider Profile nick; signed-out riders keep the local name. */
+/** The nick a signed-in rider rides under; signed-out riders sign in from the Public Ride card. */
 function RiderNameWidget() {
   const profileLoaded = useRiderProfileStore((s) => s.loaded)
   const nick = useRiderProfileStore((s) => s.profile?.nick ?? null)
+  const error = useRiderProfileStore((s) => s.error)
   const riderColor = useSelectedBoardRailColor()
 
-  if (!profileLoaded) return <LocalRiderNameWidget />
+  if (!profileLoaded) return error ? <Text style={styles.errorText}>{error}</Text> : null
   if (nick == null) return <RiderNickForm title="Pick a nick to ride under" />
   return (
     <View style={styles.nickRow}>
@@ -115,37 +114,6 @@ function RiderNameWidget() {
         weight="duotone"
       />
       <Text style={styles.nick}>{nick}</Text>
-    </View>
-  )
-}
-
-function LocalRiderNameWidget() {
-  const riderName = useRiderStore((s) => s.riderName)
-  const setName = useRiderStore((s) => s.setName)
-  const error = useRiderStore((s) => s.error)
-  const riderColor = useSelectedBoardRailColor()
-
-  return (
-    <View style={styles.riderIdentity}>
-      <InputWidget
-        label="Your name"
-        value={riderName}
-        placeholder="Add a display name"
-        maxLength={32}
-        onCommit={(value) => {
-          // intentional-suppression: Rider store error is rendered by Social Sheet
-          void setName(value).catch(() => undefined) // The store exposes this failure below.
-        }}
-        accessibilityLabel="Rider display name"
-        leading={
-          <UserCircleIcon
-            size={24}
-            color={riderColor ?? theme.neutral.textSecondary}
-            weight="duotone"
-          />
-        }
-      />
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   )
 }
@@ -261,9 +229,6 @@ const styles = StyleSheet.create({
   },
   back: {
     alignSelf: 'flex-start',
-  },
-  riderIdentity: {
-    gap: 6,
   },
   errorText: {
     color: theme.status.error.text,

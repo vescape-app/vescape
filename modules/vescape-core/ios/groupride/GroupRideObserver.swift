@@ -27,8 +27,6 @@ internal final class GroupRideObserver: NSObject {
   private var serverUrl: String?
   private var reconnectAttempt = 0
   private var stopped = true
-  private var riderId: String?
-  private var riderName: String?
   private var signalNotices = RiderSignalNotices()
   private var hazardCues = RideHazardCues()
   private var relayFeatures: Set<String> = []
@@ -38,7 +36,6 @@ internal final class GroupRideObserver: NSObject {
   private var reconnectWork: Cancellable?
   private var heartbeatWork: Cancellable?
   private var pingWork: Cancellable?
-
 
   private let onCue: (String) -> Void
   private let ownLocation: () -> (lat: Double, lng: Double)?
@@ -118,11 +115,7 @@ internal final class GroupRideObserver: NSObject {
 
   var publicRideNeedsLink: Bool { publicRide.needsLink }
 
-
-
-
   var watchRoster: GroupRideRoster? { stopped ? nil : publicRide.nearbyRoster }
-
 
   func start(_ url: String) {
     // The observer outlives the JS runtime, so a relaunch re-subscribes to a socket that will emit
@@ -196,21 +189,6 @@ internal final class GroupRideObserver: NSObject {
     !stopped && !online.onlineBlocked && webSocket === task
   }
 
-
-
-
-
-
-
-  func updateIdentity(riderId: String, riderName: String) {
-    onMain { [self] in
-      self.riderId = riderId
-      self.riderName = riderName
-      guard !stopped, let ws = webSocket else { return }
-      sendHello(ws, riderId: riderId, riderName: riderName)
-    }
-  }
-
   func sendSignal(_ kind: String) {
     sendPin(kind, RiderSignalKind(rawValue: kind))
   }
@@ -261,8 +239,6 @@ internal final class GroupRideObserver: NSObject {
       onCue(cue)
     }
   }
-
-
 
   private func submitPin(_ intent: RiderPinIntent) {
     guard !stopped else { return }
@@ -365,8 +341,6 @@ internal final class GroupRideObserver: NSObject {
       guard isCurrentSocket(task) else { return }
       reconnectAttempt = 0
       emitConnection("connected")
-      guard let id = riderId, let name = riderName else { return }
-      sendHello(task, riderId: id, riderName: name)
     }
   }
 
@@ -426,16 +400,6 @@ internal final class GroupRideObserver: NSObject {
     }
   }
 
-
-
-  private func sendHello(_ task: GroupRideSocket, riderId: String, riderName: String) {
-    self.riderId = riderId
-    self.riderName = riderName
-    send(task, ["type": "hello", "riderId": riderId, "name": riderName])
-  }
-
-
-
   private func send(_ task: GroupRideSocket, _ frame: [String: Any], onFailure: (() -> Void)? = nil) {
     let text: String
     do {
@@ -458,8 +422,6 @@ internal final class GroupRideObserver: NSObject {
       }
     }
   }
-
-
 
   private func riderView(_ obj: [String: Any]?, signal: RiderSignal?, hazard: RideHazard?) -> [String: Any?]? {
     guard let obj, let id = obj["id"] as? String, !id.isEmpty else { return nil }
@@ -506,9 +468,6 @@ internal final class GroupRideObserver: NSObject {
     ]
   }
 
-
-
-
   static func rosterRider(_ view: [String: Any?]) -> GroupRideRosterRider? {
     guard let id = view["id"] as? String else { return nil }
     let presence = view["presence"] as? [String: Any?]
@@ -527,12 +486,6 @@ internal final class GroupRideObserver: NSObject {
     )
   }
 
-
-
-
-
-
-
   // @parity /modules/vescape-core/src/index.ts `GroupRideConnectionState`
   private func emitConnection(_ state: String) {
     lastConnection = state
@@ -546,10 +499,6 @@ internal final class GroupRideObserver: NSObject {
     update.clears.forEach { RideNotices.shared.clear(key: $0) }
     update.posts.forEach { RideNotices.shared.post(key: $0.key, content: $0.content, revision: $0.revision) }
   }
-
-
-
-
 
   private func startHeartbeat() {
     stopHeartbeat()

@@ -54,8 +54,6 @@ const BASE: AppSettings = {
   wearStreetMapEnabled: true,
   wearMapGaugesPercent: 60,
   wearTiltRatePercent: 20,
-  riderId: null,
-  riderName: null,
   legalPolicy: null,
   dismissedCommunityMessageIds: [],
 }

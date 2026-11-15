@@ -555,10 +555,6 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopWatchingPublicRiders()
     }
 
-    Function("updateGroupRideIdentity") { (riderId: String, riderName: String) in
-      self.coordinator.updateGroupRideIdentity(riderId: riderId, riderName: riderName)
-    }
-
     // MARK: Telemetry recording toggle
 
     // Latch the request even before connect, silently — the coordinator replays it when a board

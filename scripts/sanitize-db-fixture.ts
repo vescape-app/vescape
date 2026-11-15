@@ -43,7 +43,6 @@ const WINDOW_PADDING_MS = 60_000
 const FIXTURE_DEVICE_ID = 'A1:B2:C3:D4:E5:F6'
 const FIXTURE_DEVICE_NAME = 'Thor301'
 const FIXTURE_BOARD_NAME = 'Thor301'
-const FIXTURE_RIDER_NAME = 'Rider'
 /** Alert Preset level applied to every metric, so the alerts panel has a normal setup to show. */
 const FIXTURE_ALERT_PRESET_LEVEL: AlertPresetLevel = 'normal'
 /** Tune profiles are reassigned to the kept board and renamed, oldest first. */
@@ -260,11 +259,8 @@ function sanitize(dbPath: string, rides: number): void {
 
   // Settings that carry the rider's identity or last known position.
   db.exec(
-    "DELETE FROM app_settings WHERE key IN ('lastGpsLatitude','lastGpsLongitude','directionPointLatitude','directionPointLongitude','riderId','dismissedCommunityMessageIds')",
+    "DELETE FROM app_settings WHERE key IN ('lastGpsLatitude','lastGpsLongitude','directionPointLatitude','directionPointLongitude','riderId','riderName','dismissedCommunityMessageIds')",
   )
-  db.exec("UPDATE app_settings SET value_json = ? WHERE key = 'riderName'", [
-    JSON.stringify(FIXTURE_RIDER_NAME),
-  ])
   db.exec("UPDATE app_settings SET value_json = ? WHERE key = 'selectedBoardId'", [
     JSON.stringify(boardId),
   ])

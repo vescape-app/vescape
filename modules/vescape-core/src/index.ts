@@ -1875,15 +1875,6 @@ export interface AppSettings {
    * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
    */
   wearTiltRatePercent: number
-  /**
-   * Persistent device-scoped anonymous Group Ride Rider id. Generated once on
-   * first use and stored locally; sent to the relay server as the Rider's
-   * identity. See ADR-0020.
-   */
-  riderId: string | null
-  /** Rider-chosen display name shown to other Riders in a Group Ride. */
-  riderName: string | null
-  /** Native-resolved| null
   /** Native-resolved app-wide jurisdiction reference. Policy values live in shared catalog data. */
   legalPolicy: LegalPolicyReference | null
   /**
@@ -3052,7 +3043,6 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   setPublicRide(on: boolean, until: number | null): void
   watchPublicRiders(): void
   stopWatchingPublicRiders(): void
-  updateGroupRideIdentity(riderId: string, riderName: string): void
   setTelemetryRecordingEnabled(enabled: boolean): void
   setBmsSeriesFocused(focused: boolean): void
   setFocusedSeriesMetrics(metrics: string[]): void
@@ -3508,24 +3498,6 @@ export function watchPublicRiders(): void {
 export function stopWatchingPublicRiders(): void {
   if (E2E_ENABLED) return
   native.stopWatchingPublicRiders()
-}
-
-export interface UpdateGroupRideIdentityParams {
-  riderId: string
-  riderName: string
-}
-
-/**
- * Push a Rider name change to the live observe socket. While joined, the relay re-emits the
- * roster so peers update without a rejoin; otherwise the new identity is applied on the next
- * create/join. No-op when the observe socket is not connected.
- */
-export function updateGroupRideIdentity({
-  riderId,
-  riderName,
-}: UpdateGroupRideIdentityParams): void {
-  if (E2E_ENABLED) return
-  native.updateGroupRideIdentity(riderId, riderName)
 }
 
 /** Enable or disable native SQLite telemetry history writes. */

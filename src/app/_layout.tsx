@@ -37,7 +37,6 @@ import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore
 import { startRideNoticesSync } from '@/modules/ride-notices/store/rideNoticesStore'
 import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
 import { startNavigationSync } from '@/modules/map/store/mapStore'
 import { startAppStatusSync } from '@/modules/release/store/appStatusStore'
@@ -102,7 +101,6 @@ function RootLayout() {
   useEffect(() => {
     if (!fixturesReady) return
     void useSettingsStore.getState().load()
-    void useRiderStore.getState().load()
     useGroupRideStore.getState().startObserving()
     const stopLiveStateSync = startLiveStateSync()
     const stopAppDataSync = startAppDataSync()

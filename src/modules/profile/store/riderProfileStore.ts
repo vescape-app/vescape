@@ -33,7 +33,7 @@ let generation = 0
 
 /**
  * JS view of the server-owned Rider Profile. Once loaded with a nick, that nick is the rider's
- * name everywhere; signed-out riders keep the device-local name in `riderStore`.
+ * name everywhere.
  */
 export const useRiderProfileStore = create<RiderProfileState>((set) => ({
   profile: null,
@@ -72,8 +72,3 @@ export const useRiderProfileStore = create<RiderProfileState>((set) => ({
     set({ profile: null, loaded: false, error: null })
   },
 }))
-
-/** The name the rider rides under: the Rider Profile nick when set, else the device-local name. */
-export function riderDisplayName(localName: string | null): string | null {
-  return useRiderProfileStore.getState().profile?.nick ?? localName
-}

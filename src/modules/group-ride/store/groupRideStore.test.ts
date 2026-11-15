@@ -11,19 +11,10 @@ const publicRidersListeners: Listener<{ riders: unknown[]; now: number | null }>
 const publicPinsListeners: Listener<unknown>[] = []
 const setPublicRide = mock((_on: boolean, _until: number | null) => {})
 
-const updateGroupRideIdentity = mock(() => {})
 const startGroupRideObserve = mock(() => {})
 const stopGroupRideObserve = mock(() => {})
 const watchPublicRiders = mock(() => {})
 const stopWatchingPublicRiders = mock(() => {})
-const getSettings = mock(
-  async (): Promise<{ riderId: string | null; riderName: string | null }> => ({
-    riderId: null,
-    riderName: null,
-  }),
-)
-const updateSetting = mock(async () => {})
-
 function subscribe<T>(listeners: Listener<T>[], listener: Listener<T>) {
   listeners.push(listener)
   return {
@@ -57,7 +48,6 @@ mock.module('vescape-core', () => ({
     subscribe(publicRidersListeners, listener),
   addPublicPinsListener: (listener: Listener<unknown>) => subscribe(publicPinsListeners, listener),
   setPublicRide,
-  updateGroupRideIdentity,
   startGroupRideObserve,
   stopGroupRideObserve,
   watchPublicRiders,
@@ -66,8 +56,6 @@ mock.module('vescape-core', () => ({
   addCompanionPresenceBoard: async () => undefined,
   removeCompanionPresenceBoard: async () => undefined,
   setCompanionPresenceEnabled: async () => undefined,
-  getSettings,
-  updateSetting,
 }))
 
 function resetListeners() {
@@ -82,18 +70,12 @@ function resetListeners() {
 
 beforeEach(async () => {
   resetListeners()
-  updateGroupRideIdentity.mockClear()
   startGroupRideObserve.mockClear()
   stopGroupRideObserve.mockClear()
   watchPublicRiders.mockClear()
   stopWatchingPublicRiders.mockClear()
   setPublicRide.mockClear()
-  getSettings.mockReset()
-  getSettings.mockImplementation(async () => ({ riderId: null, riderName: null }))
-  updateSetting.mockReset()
-  updateSetting.mockImplementation(async () => {})
   const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
-  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
   useGroupRideStore.setState({
     connection: 'idle',
     ownLocation: null,
@@ -102,108 +84,6 @@ beforeEach(async () => {
     error: null,
     focusRequest: null,
     observing: false,
-  })
-  useRiderStore.setState({
-    riderId: null,
-    riderName: null,
-    loaded: false,
-    error: null,
-  })
-})
-
-test('identity load is single-flight and queued edits cannot be overwritten by stale settings', async () => {
-  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
-  let resolveSettings!: (value: { riderId: string; riderName: string }) => void
-  getSettings.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        resolveSettings = resolve
-      }),
-  )
-
-  const firstLoad = useRiderStore.getState().load()
-  const secondLoad = useRiderStore.getState().load()
-  const edit = useRiderStore.getState().setName('New name')
-  await Promise.resolve()
-
-  expect(firstLoad).toBe(secondLoad)
-  expect(getSettings).toHaveBeenCalledTimes(1)
-  expect(updateSetting).not.toHaveBeenCalled()
-
-  resolveSettings({ riderId: 'rider-1', riderName: 'Old name' })
-  await Promise.all([firstLoad, secondLoad, edit])
-
-  expect(updateSetting).toHaveBeenCalledTimes(1)
-  expect(updateSetting).toHaveBeenCalledWith('riderName', 'New name')
-  expect(useRiderStore.getState()).toMatchObject({
-    riderId: 'rider-1',
-    riderName: 'New name',
-    loaded: true,
-    error: null,
-  })
-})
-
-test('rapid rider name edits persist and apply in request order', async () => {
-  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
-  let finishNameWrite!: () => void
-  updateSetting.mockImplementationOnce(
-    () =>
-      new Promise<void>((resolve) => {
-        finishNameWrite = resolve
-      }),
-  )
-
-  const nameWrite = useRiderStore.getState().setName('First')
-  const secondNameWrite = useRiderStore.getState().setName('Second')
-  await Promise.resolve()
-
-  expect(updateSetting).toHaveBeenCalledTimes(1)
-  expect(updateSetting).toHaveBeenCalledWith('riderName', 'First')
-  finishNameWrite()
-  await Promise.all([nameWrite, secondNameWrite])
-
-  expect(updateSetting).toHaveBeenNthCalledWith(2, 'riderName', 'Second')
-  expect(useRiderStore.getState()).toMatchObject({
-    riderName: 'Second',
-    error: null,
-  })
-})
-
-test('name edits while observing push the new identity to peers', async () => {
-  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
-  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
-
-  useRiderStore.setState({ riderId: 'rider-1', riderName: 'Old', loaded: true })
-  useGroupRideStore.getState().startObserving()
-
-  await useRiderStore.getState().setName('  New Name  ')
-  expect(updateGroupRideIdentity).toHaveBeenLastCalledWith({
-    riderId: 'rider-1',
-    riderName: 'New Name',
-  })
-})
-
-test('a Rider Profile nick replaces the local name and reaches peers', async () => {
-  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
-  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
-  const { useRiderProfileStore } = await import('@/modules/profile/store/riderProfileStore')
-
-  useRiderStore.setState({ riderId: 'rider-1', riderName: 'Local', loaded: true })
-  useGroupRideStore.getState().startObserving()
-
-  useRiderProfileStore.setState({
-    profile: { accountId: 'acc-1', nick: 'Kupa_99', nationality: 'PL' },
-    loaded: true,
-  })
-  expect(updateGroupRideIdentity).toHaveBeenLastCalledWith({
-    riderId: 'rider-1',
-    riderName: 'Kupa_99',
-  })
-
-  useRiderProfileStore.getState().clear()
-  expect(updateGroupRideIdentity).toHaveBeenLastCalledWith({
-    riderId: 'rider-1',
-    riderName: 'Local',
   })
 })
 

@@ -1189,10 +1189,6 @@ internal final class BoardSessionController: VescGattListener {
     groupRideObserver.clearHazard()
   }
 
-  func updateGroupRideIdentity(riderId: String, riderName: String) {
-    groupRideObserver.updateIdentity(riderId: riderId, riderName: riderName)
-  }
-
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`
   private func latestRiderPresence() -> RiderPresence? {
     guard let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)

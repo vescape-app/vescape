@@ -15,7 +15,6 @@ import {
   startGroupRideObserve,
   stopGroupRideObserve,
   stopWatchingPublicRiders,
-  updateGroupRideIdentity,
   watchPublicRiders,
   type GroupRideConnectionState,
   type GroupRideSignalAvailability,
@@ -35,9 +34,6 @@ import {
   rosterRowsEqual,
   type RosterRider,
 } from '@/modules/group-ride/lib/roster'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
-// The Rider Profile nick, when set, is the name the rider rides under.
-import { riderDisplayName, useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { SERVER_WS_URL } from '@/config/server'
 
 type TimerHandle = ReturnType<typeof setInterval>
@@ -177,19 +173,6 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           return { ...next, ...deriveRoster({}, next) }
         })
       }),
-      // Push name changes to peers without rejoining.
-      {
-        remove: useRiderStore.subscribe((rider, previous) => {
-          if (rider.riderName === previous.riderName) return
-          pushIdentity()
-        }),
-      },
-      {
-        remove: useRiderProfileStore.subscribe((profile, previous) => {
-          if (profile.profile?.nick === previous.profile?.nick) return
-          pushIdentity()
-        }),
-      },
     ]
     rosterFreshnessTimer = setInterval(() => {
       set((state) => deriveRoster({}, state))
@@ -271,15 +254,6 @@ export function ownPin(state: GroupRideState, slot: keyof OwnPins): GroupRidePin
   return state.publicOwnPins[slot]
 }
 
-/**
- * The device's Group Ride identity, with the same blank-name fallback the relay would
- * otherwise auto-apply. `riderId` is null until the rider identity has loaded.
- */
-function currentIdentity(): { riderId: string | null; riderName: string } {
-  const { riderId, riderName } = useRiderStore.getState()
-  return { riderId, riderName: riderDisplayName(riderName)?.trim() || 'Rider' }
-}
-
 function deriveRoster(
   _patch: Record<string, never>,
   current: GroupRideState,
@@ -291,9 +265,4 @@ function deriveRoster(
     // freshness tick doesn't fan out to selectors as a new array.
     rosterRows: rosterRowsEqual(rows, current.rosterRows) ? current.rosterRows : rows,
   }
-}
-
-function pushIdentity() {
-  const { riderId, riderName } = currentIdentity()
-  if (riderId) updateGroupRideIdentity({ riderId, riderName })
 }

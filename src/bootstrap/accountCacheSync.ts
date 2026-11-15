@@ -6,17 +6,23 @@ import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 
-let previous: string | null = null
-useDeviceAuthStore.subscribe((state) => {
-  let viewer: string | null = null
+/** The account the native credential speaks for — the same source the account Sync components load from. */
+function viewer(): string | null {
   try {
     const credential = getDeviceCredentialState()
-    if (state.status === 'ready' && credential.state === 'ready') viewer = credential.accountId
+    return credential.state === 'ready' ? credential.accountId : null
   } catch {
     // Unreadable credentials cannot authorize cached account data.
+    return null
   }
-  if (viewer === previous) return
-  previous = viewer
+}
+
+// Seeded from native so a launch that is already signed in does not clear the first loads.
+let previous = viewer()
+useDeviceAuthStore.subscribe(() => {
+  const current = viewer()
+  if (current === previous) return
+  previous = current
   useFriendRidesStore.getState().clear()
   useRodeWithStore.getState().clear()
   useFriendsStore.getState().clear()

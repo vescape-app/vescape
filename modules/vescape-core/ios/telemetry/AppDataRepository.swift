@@ -659,8 +659,6 @@ final class AppDataRepository {
     "autoCloseEnabled": false,
     "autoCloseDelayMinutes": 15,
     "selectedBoardId": NSNull(),
-    "riderId": NSNull(),
-    "riderName": NSNull(),
     "lastGpsLatitude": NSNull(),
     "lastGpsLongitude": NSNull(),
     "directionPointLatitude": NSNull(),
