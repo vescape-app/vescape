@@ -239,4 +239,73 @@ class PublicRideTest {
         assertTrue((event["pins"] as List<*>).isEmpty())
         assertEquals(8L, event["now"])
     }
+
+    private val withMissed = setOf("public-ride", "missed-positions")
+
+    private fun goLiveWithMissed() {
+        ride.load(PublicRideSwitch(true, null), "acc")
+        ride.setBoardConnected(true)
+        ready(withMissed)
+        ride.handle("public-status", JSONObject().put("on", true))
+    }
+
+    private fun lastBatch() = sent.last { it.getString("type") == "missed-positions" }.getJSONArray("positions")
+
+    private fun batchAts() = lastBatch().let { arr -> (0 until arr.length()).map { arr.getJSONObject(it).getLong("at") } }
+
+    @Test
+    fun `positions missed offline go as one thinned batch after reconnect and drop only once stored`() {
+        goLiveWithMissed()
+        ride.linkLost()
+        listOf(10_000L, 12_000L, 15_000L, 21_000L).forEach { ride.position(presence, it) }
+        ready(withMissed)
+        ride.position(presence, 26_000L)
+        assertEquals(0, types().count { it == "missed-positions" })
+        ride.handle("public-status", JSONObject().put("on", true))
+        assertEquals(listOf(10_000L, 15_000L, 21_000L, 26_000L), batchAts())
+        ride.position(presence, 30_000L)
+        assertEquals(1, types().count { it == "missed-positions" })
+        ride.handleError("missed positions not stored")
+        assertEquals(PublicRideSwitch(true, null), ride.switch)
+        ride.position(presence, 31_000L)
+        assertEquals(2, types().count { it == "missed-positions" })
+        assertEquals(listOf(10_000L, 15_000L, 21_000L, 26_000L), batchAts())
+        ride.handle("missed-stored", JSONObject().put("from", 10_000L).put("to", 26_000L).put("stored", 4))
+        ride.position(presence, 32_000L)
+        assertEquals(2, types().count { it == "missed-positions" })
+    }
+
+    @Test
+    fun `kept positions are capped at three hours and sent in batches of 500`() {
+        goLiveWithMissed()
+        ride.linkLost()
+        val count = 3 * 60 * 60 / 5 + 10
+        (0 until count).forEach { ride.position(presence, it * 5_000L) }
+        ready(withMissed)
+        ride.handle("public-status", JSONObject().put("on", true))
+        assertEquals(500, lastBatch().length())
+        assertEquals(9 * 5_000L, batchAts().first())
+        ride.handle("missed-stored", JSONObject())
+        assertEquals(500 * 5_000L + 9 * 5_000L, batchAts().first())
+    }
+
+    @Test
+    fun `nothing is kept for a relay without the feature, and an Account change discards the kept`() {
+        goLive()
+        ride.linkLost()
+        ride.position(presence, 10_000L)
+        ready()
+        ride.handle("public-status", JSONObject().put("on", true))
+        assertFalse("missed-positions" in types())
+
+        sent.clear()
+        goLiveWithMissed()
+        ride.linkLost()
+        ride.position(presence, 20_000L)
+        ride.setAccount("other")
+        ride.set(PublicRideSwitch(true, null))
+        ready(withMissed)
+        ride.handle("public-status", JSONObject().put("on", true))
+        assertFalse("missed-positions" in types())
+    }
 }

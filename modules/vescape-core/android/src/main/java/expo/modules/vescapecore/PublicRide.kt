@@ -74,6 +74,18 @@ internal class PublicRide(
     private var pinsNow: Long? = null
     /** Phone time [pinsNow] arrived at, to advance it. */
     private var pinsReceivedAt = 0L
+    /** The open link takes `missed-positions`. */
+    private var missedSupported = false
+    /**
+     * Positions taken while public with the link down, oldest first: one per [MISSED_SPACING_MS],
+     * at most [MISSED_MAX_AGE_MS] back. Memory only, so an app kill loses them; they belong to
+     * [accountId] and are thrown away when it changes.
+     *
+     * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `missed`
+     */
+    private val missed = ArrayDeque<Pair<Long, RiderPresence>>()
+    /** How many of the oldest [missed] positions are out as one batch, waiting for `missed-stored`. */
+    private var missedInFlight = 0
 
     /** The rider should be public right now. */
     val wanted: Boolean get() = switch.activeAt(now()) && boardConnected && accountId != null
@@ -135,6 +147,9 @@ internal class PublicRide(
         live = false
         accountId = account
         dropOwnPins()
+        // Kept positions are the old Account's: never sent under another.
+        missed.clear()
+        missedInFlight = 0
         if (hadAccount && switch.on) {
             switch = PublicRideSwitch.OFF
             reason = REASON_SIGNED_OUT
@@ -158,6 +173,9 @@ internal class PublicRide(
     fun linkReady(features: Set<String>) {
         linkReady = true
         supported = PUBLIC_RIDE_FEATURE in features
+        missedSupported = MISSED_POSITIONS_FEATURE in features
+        missedInFlight = 0
+        if (!missedSupported) missed.clear()
         sentOn = false
         live = false
         reconcile()
@@ -166,11 +184,12 @@ internal class PublicRide(
     }
 
     /**
-     * The link is gone. Nothing is buffered: positions taken while it is down are dropped (#678
-     * keeps them for the reconnect). Watched riders are forgotten until the next `nearby-riders`.
+     * The link is gone. Positions taken while it is down are kept for the reconnect; a batch out
+     * without `missed-stored` is sent again. Watched riders are forgotten until the next `nearby-riders`.
      */
     fun linkLost() {
         linkReady = false
+        missedInFlight = 0
         sentOn = false
         live = false
         if (riders.isNotEmpty()) {
@@ -182,8 +201,12 @@ internal class PublicRide(
 
     /** A GPS fix, Privacy Zone gate already applied, taken at [at] (GPS time, epoch ms). */
     fun position(presence: RiderPresence, at: Long) {
-        // #678: unsent positions would be buffered here instead of dropped.
-        if (!riding) return
+        if (!riding) {
+            keepMissed(presence, at)
+            return
+        }
+        // A batch the relay failed to store goes again with the next live position.
+        sendMissed()
         send(
             JSONObject()
                 .put("type", "public-position")
@@ -260,6 +283,12 @@ internal class PublicRide(
     fun handle(type: String, json: JSONObject): Boolean {
         when (type) {
             "public-status" -> onStatus(json)
+            "missed-stored" -> {
+                // The whole batch is done, positions the relay dropped included.
+                repeat(missedInFlight.coerceAtMost(missed.size)) { missed.removeFirst() }
+                missedInFlight = 0
+                sendMissed()
+            }
             "nearby-riders" -> {
                 riders.clear()
                 json.optJSONArray("riders")?.let { array ->
@@ -301,6 +330,11 @@ internal class PublicRide(
 
     /** A relay `error`; true when it refused going public, which turns the switch off. */
     fun handleError(message: String): Boolean {
+        if (message == MISSED_NOT_STORED) {
+            // Keep the batch; it goes again with the next live position.
+            missedInFlight = 0
+            return false
+        }
         if (message !in REFUSALS) return false
         sentOn = false
         live = false
@@ -313,6 +347,7 @@ internal class PublicRide(
             live = true
             reason = null
             sendPendingPins()
+            sendMissed()
             emitStatus()
             return
         }
@@ -365,6 +400,24 @@ internal class PublicRide(
         pendingPins.values.toList().forEach { intent ->
             if (send(intent.frame(PUBLIC_PREFIX))) pendingPins.remove(intent.slot)
         }
+    }
+
+    /** Keep a position the link could not take, thinned and capped; only for a public rider whose relay can take it later. */
+    private fun keepMissed(presence: RiderPresence, at: Long) {
+        if (!wanted || (linkReady && !missedSupported)) return
+        val last = missed.lastOrNull()?.first
+        if (last != null && at - last < MISSED_SPACING_MS) return
+        missed.addLast(at to presence)
+        while (missed.size > missedInFlight && at - missed.first().first > MISSED_MAX_AGE_MS) missed.removeFirst()
+    }
+
+    /** Send the oldest kept positions as one batch, unless one is already out. */
+    private fun sendMissed() {
+        if (!riding || !missedSupported || missedInFlight > 0 || missed.isEmpty()) return
+        val batch = missed.take(MISSED_BATCH_MAX)
+        val positions = JSONArray()
+        batch.forEach { (at, presence) -> positions.put(JSONObject().put("at", at).put("presence", presence.toJson())) }
+        if (send(JSONObject().put("type", "missed-positions").put("positions", positions))) missedInFlight = batch.size
     }
 
     private fun dropOwnPins() {
@@ -420,6 +473,14 @@ internal class PublicRide(
 
     companion object {
         const val PUBLIC_RIDE_FEATURE = "public-ride"
+        const val MISSED_POSITIONS_FEATURE = "missed-positions"
+        /** Kept positions are thinned to one per this. */
+        const val MISSED_SPACING_MS = 5_000L
+        /** Kept positions older than this, measured from the newest, are dropped. */
+        const val MISSED_MAX_AGE_MS = 3 * 60 * 60_000L
+        /** The relay takes at most this many positions per batch. */
+        const val MISSED_BATCH_MAX = 500
+        const val MISSED_NOT_STORED = "missed positions not stored"
         const val REASON_REPLACED = "replaced"
         const val REASON_END_TIME = "end-time"
         const val REASON_SIGNED_OUT = "signed-out"

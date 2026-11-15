@@ -222,4 +222,73 @@ final class PublicRideTests: XCTestCase {
     XCTAssertEqual((event["pins"] as? [Any])?.count, 0)
     XCTAssertEqual(event["now"] as? Int64, 8)
   }
+
+  private let withMissed: Set<String> = ["public-ride", "missed-positions"]
+
+  private func goLiveWithMissed() {
+    ride.load(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+    ride.setBoardConnected(true)
+    ready(withMissed)
+    ride.handle(type: "public-status", json: ["on": true])
+  }
+
+  private var batchAts: [Int64] {
+    let batch = sent.last { $0["type"] as? String == "missed-positions" }?["positions"] as? [[String: Any]] ?? []
+    return batch.compactMap { $0["at"] as? Int64 }
+  }
+
+  private var batches: Int { types.filter { $0 == "missed-positions" }.count }
+
+  func testPositionsMissedOfflineGoAsOneThinnedBatchAfterReconnectAndDropOnlyOnceStored() {
+    goLiveWithMissed()
+    ride.linkLost()
+    for at: Int64 in [10_000, 12_000, 15_000, 21_000] { ride.position(presence, at: at) }
+    ready(withMissed)
+    ride.position(presence, at: 26_000)
+    XCTAssertEqual(batches, 0)
+    ride.handle(type: "public-status", json: ["on": true])
+    XCTAssertEqual(batchAts, [10_000, 15_000, 21_000, 26_000])
+    ride.position(presence, at: 30_000)
+    XCTAssertEqual(batches, 1)
+    ride.handleError("missed positions not stored")
+    XCTAssertEqual(ride.switchState, PublicRideSwitch(on: true, until: nil))
+    ride.position(presence, at: 31_000)
+    XCTAssertEqual(batches, 2)
+    XCTAssertEqual(batchAts, [10_000, 15_000, 21_000, 26_000])
+    ride.handle(type: "missed-stored", json: ["from": 10_000, "to": 26_000, "stored": 4])
+    ride.position(presence, at: 32_000)
+    XCTAssertEqual(batches, 2)
+  }
+
+  func testKeptPositionsAreCappedAtThreeHoursAndSentInBatchesOf500() {
+    goLiveWithMissed()
+    ride.linkLost()
+    let count = 3 * 60 * 60 / 5 + 10
+    for i in 0..<count { ride.position(presence, at: Int64(i) * 5_000) }
+    ready(withMissed)
+    ride.handle(type: "public-status", json: ["on": true])
+    XCTAssertEqual(batchAts.count, 500)
+    XCTAssertEqual(batchAts.first, 9 * 5_000)
+    ride.handle(type: "missed-stored", json: [:])
+    XCTAssertEqual(batchAts.first, 500 * 5_000 + 9 * 5_000)
+  }
+
+  func testNothingIsKeptForARelayWithoutTheFeatureAndAnAccountChangeDiscardsTheKept() {
+    goLive()
+    ride.linkLost()
+    ride.position(presence, at: 10_000)
+    ready()
+    ride.handle(type: "public-status", json: ["on": true])
+    XCTAssertFalse(types.contains("missed-positions"))
+
+    sent = []
+    goLiveWithMissed()
+    ride.linkLost()
+    ride.position(presence, at: 20_000)
+    ride.setAccount("other")
+    _ = ride.set(PublicRideSwitch(on: true, until: nil))
+    ready(withMissed)
+    ride.handle(type: "public-status", json: ["on": true])
+    XCTAssertFalse(types.contains("missed-positions"))
+  }
 }

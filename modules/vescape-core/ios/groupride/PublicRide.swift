@@ -64,6 +64,16 @@ internal final class PublicRide {
   private var pinsNow: Int64?
   /// Phone time `pinsNow` arrived at, to advance it.
   private var pinsReceivedAt: Int64 = 0
+  /// The open link takes `missed-positions`.
+  private var missedSupported = false
+  /// Positions taken while public with the link down, oldest first: one per `missedSpacingMs`, at
+  /// most `missedMaxAgeMs` back. Memory only, so an app kill loses them; they belong to `accountId`
+  /// and are thrown away when it changes.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `missed`
+  private var missed: [(at: Int64, presence: RiderPresence)] = []
+  /// How many of the oldest `missed` positions are out as one batch, waiting for `missed-stored`.
+  private var missedInFlight = 0
 
   init(
     now: @escaping () -> Int64,
@@ -139,6 +149,9 @@ internal final class PublicRide {
     live = false
     accountId = account
     dropOwnPins()
+    // Kept positions are the old Account's: never sent under another.
+    missed = []
+    missedInFlight = 0
     if hadAccount && switchState.on {
       switchState = .off
       reason = Self.reasonSignedOut
@@ -162,6 +175,9 @@ internal final class PublicRide {
   func linkReady(features: Set<String>) {
     linkReady = true
     supported = features.contains(Self.feature)
+    missedSupported = features.contains(Self.missedPositionsFeature)
+    missedInFlight = 0
+    if !missedSupported { missed = [] }
     sentOn = false
     live = false
     reconcile()
@@ -169,10 +185,11 @@ internal final class PublicRide {
     emitStatus()
   }
 
-  /// The link is gone. Nothing is buffered: positions taken while it is down are dropped (#678
-  /// keeps them for the reconnect). Watched riders are forgotten until the next `nearby-riders`.
+  /// The link is gone. Positions taken while it is down are kept for the reconnect; a batch out
+  /// without `missed-stored` is sent again. Watched riders are forgotten until the next `nearby-riders`.
   func linkLost() {
     linkReady = false
+    missedInFlight = 0
     sentOn = false
     live = false
     if !riders.isEmpty {
@@ -184,8 +201,12 @@ internal final class PublicRide {
 
   /// A GPS fix, Privacy Zone gate already applied, taken at `at` (GPS time, epoch ms).
   func position(_ presence: RiderPresence, at: Int64) {
-    // #678: unsent positions would be buffered here instead of dropped.
-    guard riding else { return }
+    guard riding else {
+      keepMissed(presence, at: at)
+      return
+    }
+    // A batch the relay failed to store goes again with the next live position.
+    sendMissed()
     _ = send(["type": "public-position", "at": at, "presence": presence.toJson()])
   }
 
@@ -258,6 +279,11 @@ internal final class PublicRide {
     switch type {
     case "public-status":
       onStatus(json)
+    case "missed-stored":
+      // The whole batch is done, positions the relay dropped included.
+      missed.removeFirst(min(missedInFlight, missed.count))
+      missedInFlight = 0
+      sendMissed()
     case "nearby-riders":
       riders = (json["riders"] as? [Any] ?? []).compactMap { entry in
         Self.publicRiderView(entry as? [String: Any]).map { (accountId: $0["accountId"] as! String, view: $0) }
@@ -311,6 +337,11 @@ internal final class PublicRide {
   /// A relay `error`; true when it refused going public, which turns the switch off.
   @discardableResult
   func handleError(_ message: String) -> Bool {
+    if message == Self.missedNotStored {
+      // Keep the batch; it goes again with the next live position.
+      missedInFlight = 0
+      return false
+    }
     guard Self.refusals.contains(message) else { return false }
     sentOn = false
     live = false
@@ -323,6 +354,7 @@ internal final class PublicRide {
       live = true
       reason = nil
       sendPendingPins()
+      sendMissed()
       emitStatus()
       return
     }
@@ -378,6 +410,22 @@ internal final class PublicRide {
     }
   }
 
+  /// Keep a position the link could not take, thinned and capped; only for a public rider whose relay can take it later.
+  private func keepMissed(_ presence: RiderPresence, at: Int64) {
+    guard wanted, !linkReady || missedSupported else { return }
+    if let last = missed.last?.at, at - last < Self.missedSpacingMs { return }
+    missed.append((at, presence))
+    while missed.count > missedInFlight, at - missed[0].at > Self.missedMaxAgeMs { missed.removeFirst() }
+  }
+
+  /// Send the oldest kept positions as one batch, unless one is already out.
+  private func sendMissed() {
+    guard riding, missedSupported, missedInFlight == 0, !missed.isEmpty else { return }
+    let batch = missed.prefix(Self.missedBatchMax)
+    let positions: [[String: Any]] = batch.map { ["at": $0.at, "presence": $0.presence.toJson()] }
+    if send(["type": "missed-positions", "positions": positions]) { missedInFlight = batch.count }
+  }
+
   private func dropOwnPins() {
     pendingPins = [:]
     guard !ownPins.isEmpty else { return }
@@ -431,6 +479,14 @@ internal final class PublicRide {
   }
 
   static let feature = "public-ride"
+  static let missedPositionsFeature = "missed-positions"
+  /// Kept positions are thinned to one per this.
+  static let missedSpacingMs: Int64 = 5_000
+  /// Kept positions older than this, measured from the newest, are dropped.
+  static let missedMaxAgeMs: Int64 = 3 * 60 * 60_000
+  /// The relay takes at most this many positions per batch.
+  static let missedBatchMax = 500
+  static let missedNotStored = "missed positions not stored"
   /// Turns a room pin frame into the public ride's: `public-signal`, `public-hazard-clear`.
   static let publicPrefix = "public-"
   /// The relay keeps a pin this long; own pins are timed the same.
