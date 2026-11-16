@@ -145,10 +145,13 @@ func runMaintenanceJobsContract() throws {
     do { try pruneDiagnosticEvents(scope { _, _ in fence.fence {} }, gapMs: 10 * minute, batch: 2) } catch is MaintenanceRunFenced { fenced = true }
     try require(fenced, "a fence stops the Diagnostic Event prune")
     try require(try remaining().count == 5, "fenced prune keeps the rest")
-    try insertFrames(queue, [frame(now - minute)])
+    // intentional-suppression: the contract asserts on the remaining events below.
+    let started = try pruneDiagnosticEvents(scope { _, _ in _ = try? insertFrames(queue, [frame(now - minute)]) }, gapMs: 10 * minute, batch: 2)
+    try require(started == 2, "recording that starts mid-prune stops later batches")
+    try require(try remaining().count == 3, "later batches leave the backlog untouched")
     try require(try pruneDiagnosticEvents(scope(), gapMs: 10 * minute, batch: 2) == 0, "an active ride defers the prune")
-    try require(try remaining().count == 5, "deferred prune deletes nothing")
-    try require(try pruneDiagnosticEvents(scope(), gapMs: 30_000, batch: 2) == 3, "prune deletes the rest in batches")
+    try require(try remaining().count == 3, "deferred prune deletes nothing")
+    try require(try pruneDiagnosticEvents(scope(), gapMs: 30_000, batch: 2) == 1, "prune deletes the rest in batches")
     try require(try remaining() == [boundary, now - 1], "the boundary event and newer stay")
   }
 }

@@ -56,8 +56,8 @@ internal const val DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
 
 /**
  * Delete Diagnostic Events older than [DIAGNOSTIC_EVENT_RETENTION_MS], one fenced batch per chunk so
- * a large backlog never holds a long write lock. Skipped while a ride may still be recording (the
- * next start prunes). [MaintenanceJobScope.progress] runs between batches. Throws [MaintenanceRunFenced] when Restore or Clear all replaced the database.
+ * a large backlog never holds a long write lock. Each batch first rechecks, at the current time, whether
+ * a ride may be recording and stops there if so (the next start prunes the rest). [MaintenanceJobScope.progress] runs between batches. Throws [MaintenanceRunFenced] when Restore or Clear all replaced the database.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `pruneDiagnosticEvents`
  */
 internal suspend fun pruneDiagnosticEvents(
@@ -65,12 +65,13 @@ internal suspend fun pruneDiagnosticEvents(
   gapMs: Long,
   batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH,
 ): Int {
-  val nowMs = scope.nowMs()
-  if (scope.chunk { it.activeRideStartMs(nowMs, gapMs) } != null) return 0
-  val beforeMs = nowMs - DIAGNOSTIC_EVENT_RETENTION_MS
+  val beforeMs = scope.nowMs() - DIAGNOSTIC_EVENT_RETENTION_MS
   var deleted = 0
   while (true) {
-    val count = scope.chunk { it.deleteDiagnosticEventsBatchBefore(beforeMs, batch) }
+    val count = scope.chunk { dao ->
+      if (dao.activeRideStartMs(scope.nowMs(), gapMs) != null) null
+      else dao.deleteDiagnosticEventsBatchBefore(beforeMs, batch)
+    } ?: return deleted
     deleted += count
     scope.progress(deleted, deleted)
     if (count < batch) return deleted

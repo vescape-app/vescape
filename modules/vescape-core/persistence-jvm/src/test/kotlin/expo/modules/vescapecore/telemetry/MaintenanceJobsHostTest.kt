@@ -160,13 +160,17 @@ class MaintenanceJobsHostTest {
     assertTrue(fenced)
     assertEquals(5, remaining().size)
 
+    // Recording starts after the first batch: later batches leave the backlog untouched.
+    assertEquals(2, pruneDiagnosticEvents(scope { _, _ -> runBlocking { dao.insertFrames(listOf(frame(now - minute))) } },
+      gapMs = 10 * minute, batch = 2))
+    assertEquals(3, remaining().size)
+
     // A ride that may still be recording defers the prune to the next start.
-    dao.insertFrames(listOf(frame(now - minute)))
     assertEquals(0, pruneDiagnosticEvents(scope(), gapMs = 10 * minute, batch = 2))
-    assertEquals(5, remaining().size)
+    assertEquals(3, remaining().size)
 
     // Once the ride is a split gap old, every batch runs; the boundary event and newer stay.
-    assertEquals(3, pruneDiagnosticEvents(scope(), gapMs = 30 * 1000, batch = 2))
+    assertEquals(1, pruneDiagnosticEvents(scope(), gapMs = 30 * 1000, batch = 2))
     assertEquals(listOf(boundary, now - 1), remaining())
     db.close()
   }

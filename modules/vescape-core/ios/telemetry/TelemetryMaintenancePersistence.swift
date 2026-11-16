@@ -100,23 +100,23 @@ internal let DIAGNOSTIC_EVENT_RETENTION_MS: Int64 = 30 * 24 * 60 * 60 * 1000
 internal let DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
 
 /// Delete Diagnostic Events older than `DIAGNOSTIC_EVENT_RETENTION_MS`, one fenced batch per chunk so
-/// a large backlog never holds a long write lock. Skipped while a ride may still be recording (the
-/// next start prunes). `scope.progress` runs between batches. Throws `MaintenanceRunFenced` when Restore or Clear all replaced the database.
+/// a large backlog never holds a long write lock. Each batch first rechecks, at the current time, whether
+/// a ride may be recording and stops there if so (the next start prunes the rest). `scope.progress` runs between batches. Throws `MaintenanceRunFenced` when Restore or Clear all replaced the database.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `pruneDiagnosticEvents`
 @discardableResult
 internal func pruneDiagnosticEvents(_ scope: MaintenanceJobScope, gapMs: Int64, batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH) throws -> Int {
-  let nowMs = scope.nowMs()
-  if try scope.chunk({ try activeRideStartMs($0, nowMs: nowMs, gapMs: gapMs) }) != nil { return 0 }
-  let beforeMs = nowMs - DIAGNOSTIC_EVENT_RETENTION_MS
+  let beforeMs = scope.nowMs() - DIAGNOSTIC_EVENT_RETENTION_MS
   var deleted = 0
   while true {
-    let count = try scope.chunk { db in
+    let count: Int? = try scope.chunk { db in
+      if try activeRideStartMs(db, nowMs: scope.nowMs(), gapMs: gapMs) != nil { return nil }
       try db.execute(
         sql: "DELETE FROM diagnostic_events WHERE id IN (SELECT id FROM diagnostic_events WHERE occurred_at_ms < ? LIMIT ?)",
         arguments: [beforeMs, batch]
       )
       return db.changesCount
     }
+    guard let count else { return deleted }
     deleted += count
     scope.progress(deleted, deleted)
     if count < batch { return deleted }
