@@ -103,7 +103,33 @@ final class MaintenanceRunner {
       self.started = true
       self.monitor.pathUpdateHandler = { [weak self] path in self?.queue.async { self?.networkChanged(path.status == .satisfied) } }
       self.monitor.start(queue: self.queue)
-      self.queue.asyncAfter(deadline: .now() + maintenanceLaunchDelay) { self.triggerLocked("launch") }
+      self.queue.asyncAfter(deadline: .now() + maintenanceLaunchDelay) {
+        self.workQueue.async {
+          self.pruneDiagnosticEventsOnLaunch()
+          self.trigger("launch")
+        }
+      }
+    }
+  }
+
+  /// Diagnostic Event retention, once per process before the launch pass.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `pruneDiagnosticEventsOnLaunch`
+  private func pruneDiagnosticEventsOnLaunch() {
+    guard RecordingStorageFailure.value() == nil else { return }
+    let fence = DatabaseReplacementFence.process
+    let scope = MaintenanceJobScope(writer: { try VescapeDatabase.requirePool() }, fence: fence, ticket: fence.ticket())
+    do {
+      let settings = try AppDataRepository.shared.getSettings()
+      let gapMs = Int64(telemetryInt(settings["rideSplitGapMinutes"] ?? nil) ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
+      let deleted = try pruneDiagnosticEvents(scope, gapMs: gapMs)
+      if deleted > 0 { breadcrumb("diagnostic_prune", ["deleted": deleted]) }
+    } catch is MaintenanceRunFenced {
+      // Restore or Clear all replaced the database; the next start prunes the new one.
+    } catch {
+      Self.log.error("Diagnostic Event prune failed: \(error.localizedDescription, privacy: .public)")
+#if canImport(Sentry)
+      SentrySDK.capture(error: error)
+#endif
     }
   }
 

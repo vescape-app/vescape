@@ -7,6 +7,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.database.DatabaseReplacementFence
+import expo.modules.vescapecore.database.DiagnosticEventEntity
 import expo.modules.vescapecore.database.MetricExclusionRangeEntity
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.TelemetryFrameEntity
@@ -131,6 +132,42 @@ class MaintenanceJobsHostTest {
     dao.publishMaintenanceFingerprint(RideSummariesJob.id, fingerprint, 1)
     assertEquals(fingerprint, dao.storedMaintenanceFingerprint(RideSummariesJob.id))
     assertNotEquals(fingerprint, RideSummariesJob.fingerprint(settings.copy(movingSpeedThresholdKmh = 5.0)))
+    db.close()
+  }
+  /** Diagnostic Event retention (#683): age boundary, batching, fence, and the active-ride deferral. */
+  @Test fun diagnosticEventPruneKeepsTheBoundaryStopsAtAFenceAndWaitsForAnActiveRide(): Unit = runBlocking {
+    val db = db()
+    val dao = db.vescapeDao()
+    val now = 100 * 24 * hour
+    val boundary = now - DIAGNOSTIC_EVENT_RETENTION_MS
+    suspend fun insertEvents() = (List(5) { boundary - 1 - it } + listOf(boundary, now - 1)).forEach {
+      dao.insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = it, elapsedRealtimeMs = 0, eventName = "e",
+        operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}"))
+    }
+    suspend fun remaining() = dao.getDiagnosticEvents(Long.MIN_VALUE, Long.MAX_VALUE, null, 100).map { it.occurredAtMs }.sorted()
+    val fence = DatabaseReplacementFence()
+    fun scope(progress: (Int, Int) -> Unit = { _, _ -> }) =
+      MaintenanceJobScope({ dao }, fence, fence.ticket(), { now }, progress)
+
+    insertEvents()
+    // Restore/Clear all lands after the first batch: the next batch throws, the rest stays.
+    var fenced = false
+    try {
+      pruneDiagnosticEvents(scope { _, _ -> runBlocking { fence.fence { } } }, gapMs = 10 * minute, batch = 2)
+    } catch (_: MaintenanceRunFenced) {
+      fenced = true
+    }
+    assertTrue(fenced)
+    assertEquals(5, remaining().size)
+
+    // A ride that may still be recording defers the prune to the next start.
+    dao.insertFrames(listOf(frame(now - minute)))
+    assertEquals(0, pruneDiagnosticEvents(scope(), gapMs = 10 * minute, batch = 2))
+    assertEquals(5, remaining().size)
+
+    // Once the ride is a split gap old, every batch runs; the boundary event and newer stay.
+    assertEquals(3, pruneDiagnosticEvents(scope(), gapMs = 30 * 1000, batch = 2))
+    assertEquals(listOf(boundary, now - 1), remaining())
     db.close()
   }
 }

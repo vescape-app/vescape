@@ -93,6 +93,36 @@ struct TelemetryMaintenancePersistence {
 
 internal let RIDE_SUMMARIES_CHUNK_MS: Int64 = 3_600_000
 
+/// Diagnostic Events older than this are pruned once per process start.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DIAGNOSTIC_EVENT_RETENTION_MS`
+internal let DIAGNOSTIC_EVENT_RETENTION_MS: Int64 = 30 * 24 * 60 * 60 * 1000
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DIAGNOSTIC_EVENT_PRUNE_BATCH`
+internal let DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
+
+/// Delete Diagnostic Events older than `DIAGNOSTIC_EVENT_RETENTION_MS`, one fenced batch per chunk so
+/// a large backlog never holds a long write lock. Skipped while a ride may still be recording (the
+/// next start prunes). `scope.progress` runs between batches. Throws `MaintenanceRunFenced` when Restore or Clear all replaced the database.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `pruneDiagnosticEvents`
+@discardableResult
+internal func pruneDiagnosticEvents(_ scope: MaintenanceJobScope, gapMs: Int64, batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH) throws -> Int {
+  let nowMs = scope.nowMs()
+  if try scope.chunk({ try activeRideStartMs($0, nowMs: nowMs, gapMs: gapMs) }) != nil { return 0 }
+  let beforeMs = nowMs - DIAGNOSTIC_EVENT_RETENTION_MS
+  var deleted = 0
+  while true {
+    let count = try scope.chunk { db in
+      try db.execute(
+        sql: "DELETE FROM diagnostic_events WHERE id IN (SELECT id FROM diagnostic_events WHERE occurred_at_ms < ? LIMIT ?)",
+        arguments: [beforeMs, batch]
+      )
+      return db.changesCount
+    }
+    deleted += count
+    scope.progress(deleted, deleted)
+    if count < batch { return deleted }
+  }
+}
+
 /// Read-only state one Ride summaries chunk hands the next: each Board's free-spin state and the
 /// last precise Ride Track fix. It shapes the next chunk's output but is never written as it, and
 /// every chunk re-checks it against the database, so a ride deleted between chunks cannot leak into

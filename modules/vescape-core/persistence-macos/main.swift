@@ -66,10 +66,6 @@ try require(reopenedZones.first?.id == remainingZone["id"] as? String, "Privacy 
 diagnosticStore = DiagnosticEventPersistence(writer: remainingQueue!)
 let diagnosticName = try diagnosticStore.events(fromMs: 0, toMs: Int64.max, boardId: nil, limit: 10).first?.eventName
 try require(diagnosticName == remainingDiagnostic["eventName"] as? String, "Diagnostic Event reopen")
-try diagnosticStore.insert(.init(id: nil, occurredAtMs: 13_000, elapsedRealtimeMs: 2, eventName: "retained", operation: nil, phase: nil, boardId: nil, message: nil, propertiesJson: "{}"))
-try diagnosticStore.delete(beforeMs: 5_000)
-let diagnosticsAfterPrune = try diagnosticStore.events(fromMs: 0, toMs: Int64.max, boardId: nil, limit: 10)
-try require(diagnosticsAfterPrune.map(\.eventName) == ["retained"], "Diagnostic Event prune")
 var warningStore = BoardWarningStore(dbWriter: remainingQueue!)
 let warningBoardId = remainingWarning["boardId"] as! String
 let warningKind = remainingWarning["kind"] as! String

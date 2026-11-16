@@ -124,4 +124,31 @@ func runMaintenanceJobsContract() throws {
     try require(try queue.read { try storedMaintenanceFingerprint($0, id: RideSummariesJob().id) } == fingerprint, "fingerprint round trip")
     try require(maintenanceFingerprint(RideSummariesJob(), settings: ["movingSpeedThresholdKmh": 5.0]) != fingerprint, "inputs change the fingerprint")
   }
+  // Diagnostic Event retention (#683): age boundary, batching, fence, and the active-ride deferral.
+  do {
+    let queue = try freshQueue()
+    let now = 100 * 24 * hour
+    let boundary = now - DIAGNOSTIC_EVENT_RETENTION_MS
+    let diagnostics = DiagnosticEventPersistence(writer: queue)
+    for at in (0..<5).map({ boundary - 1 - Int64($0) }) + [boundary, now - 1] {
+      try diagnostics.insert(.init(id: nil, occurredAtMs: at, elapsedRealtimeMs: 0, eventName: "e", operation: nil,
+                                   phase: nil, boardId: nil, message: nil, propertiesJson: "{}"))
+    }
+    func remaining() throws -> [Int64] {
+      try diagnostics.events(fromMs: Int64.min, toMs: Int64.max, boardId: nil, limit: 100).map(\.occurredAtMs).sorted()
+    }
+    let fence = DatabaseReplacementFence()
+    func scope(_ progress: @escaping (Int, Int) -> Void = { _, _ in }) -> MaintenanceJobScope {
+      MaintenanceJobScope(writer: { queue }, fence: fence, ticket: fence.ticket(), nowMs: { now }, progress: progress)
+    }
+    var fenced = false
+    do { try pruneDiagnosticEvents(scope { _, _ in fence.fence {} }, gapMs: 10 * minute, batch: 2) } catch is MaintenanceRunFenced { fenced = true }
+    try require(fenced, "a fence stops the Diagnostic Event prune")
+    try require(try remaining().count == 5, "fenced prune keeps the rest")
+    try insertFrames(queue, [frame(now - minute)])
+    try require(try pruneDiagnosticEvents(scope(), gapMs: 10 * minute, batch: 2) == 0, "an active ride defers the prune")
+    try require(try remaining().count == 5, "deferred prune deletes nothing")
+    try require(try pruneDiagnosticEvents(scope(), gapMs: 30_000, batch: 2) == 3, "prune deletes the rest in batches")
+    try require(try remaining() == [boundary, now - 1], "the boundary event and newer stay")
+  }
 }

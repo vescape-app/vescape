@@ -90,7 +90,34 @@ internal object MaintenanceRunner {
     appContext = context.applicationContext
     watchNetwork()
     delay(LAUNCH_DELAY_MS)
+    pruneDiagnosticEventsOnLaunch()
     trigger("launch")
+  }
+
+  /**
+   * Diagnostic Event retention, once per process before the launch pass.
+   * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `pruneDiagnosticEventsOnLaunch`
+   */
+  private suspend fun pruneDiagnosticEventsOnLaunch() {
+    if (RecordingStorageFailure.value() != null) return
+    val fence = DatabaseReplacementFence.process
+    val scope = MaintenanceJobScope(
+      dao = { VescapeDatabase.get(appContext).vescapeDao() },
+      fence = fence,
+      ticket = fence.ticket(),
+    )
+    try {
+      val gapMs = AppDataRepository.get(appContext).getTypedSettings().rideSplitGapMinutes * 60_000L
+      val deleted = pruneDiagnosticEvents(scope, gapMs)
+      if (deleted > 0) breadcrumb("diagnostic_prune", mapOf("deleted" to deleted))
+    } catch (fenced: MaintenanceRunFenced) {
+      // Restore or Clear all replaced the database; the next start prunes the new one.
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (error: Throwable) {
+      Log.e(TAG, "Diagnostic Event prune failed", error)
+      Sentry.captureException(error)
+    }
   }
 
   fun trigger(reason: String) = scope.launch {

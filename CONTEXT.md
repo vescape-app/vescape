@@ -444,7 +444,7 @@ The server-issued set of third-party service tokens (Mapbox, Mapy) the app needs
 _Avoid_: API keys, env config, remote config
 
 **Diagnostic Event**:
-An app-observed abnormal condition that helps explain board connection, telemetry, tuning, recording, or UI failures.
+An app-observed abnormal condition that helps explain board connection, telemetry, tuning, recording, or UI failures. Local debug evidence, not Ride History: native keeps 30 days and prunes older events at app start.
 _Avoid_: Error log, debug session, crash report
 
 **Group Ride**:

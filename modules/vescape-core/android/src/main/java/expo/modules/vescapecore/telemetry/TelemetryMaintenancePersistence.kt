@@ -47,6 +47,38 @@ internal data class RebuildState(
 internal const val RIDE_SUMMARIES_CHUNK_MS = 3_600_000L
 
 /**
+ * Diagnostic Events older than this are pruned once per process start.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DIAGNOSTIC_EVENT_RETENTION_MS`
+ */
+internal const val DIAGNOSTIC_EVENT_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
+/** @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DIAGNOSTIC_EVENT_PRUNE_BATCH` */
+internal const val DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
+
+/**
+ * Delete Diagnostic Events older than [DIAGNOSTIC_EVENT_RETENTION_MS], one fenced batch per chunk so
+ * a large backlog never holds a long write lock. Skipped while a ride may still be recording (the
+ * next start prunes). [MaintenanceJobScope.progress] runs between batches. Throws [MaintenanceRunFenced] when Restore or Clear all replaced the database.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `pruneDiagnosticEvents`
+ */
+internal suspend fun pruneDiagnosticEvents(
+  scope: MaintenanceJobScope,
+  gapMs: Long,
+  batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH,
+): Int {
+  val nowMs = scope.nowMs()
+  if (scope.chunk { it.activeRideStartMs(nowMs, gapMs) } != null) return 0
+  val beforeMs = nowMs - DIAGNOSTIC_EVENT_RETENTION_MS
+  var deleted = 0
+  while (true) {
+    val count = scope.chunk { it.deleteDiagnosticEventsBatchBefore(beforeMs, batch) }
+    deleted += count
+    scope.progress(deleted, deleted)
+    if (count < batch) return deleted
+  }
+}
+
+
+/**
  * Read-only state one Ride summaries chunk hands the next: each Board's delta chain, its free-spin
  * state, and the last precise Ride Track fix. It shapes the next chunk's output but is never written as it. Every chunk
  * re-checks it against the database, so a ride deleted between chunks cannot leak into the rebuild.

@@ -456,6 +456,13 @@ interface VescapeDao {
   @Query("DELETE FROM diagnostic_events WHERE occurred_at_ms < :beforeMs")
   suspend fun deleteDiagnosticEventsBefore(beforeMs: Long): Int
 
+  /** At most [limit] events older than [beforeMs]; one short write for Diagnostic Event retention. */
+  @Query(
+    "DELETE FROM diagnostic_events WHERE id IN " +
+      "(SELECT id FROM diagnostic_events WHERE occurred_at_ms < :beforeMs LIMIT :limit)",
+  )
+  suspend fun deleteDiagnosticEventsBatchBefore(beforeMs: Long, limit: Int): Int
+
   @Transaction
   suspend fun deleteBefore(beforeMs: Long): Int {
     val frames = deleteFramesBefore(beforeMs)
