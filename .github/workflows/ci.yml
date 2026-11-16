@@ -163,7 +163,20 @@ jobs:
           appendFileSync(process.env.GITHUB_ENV,
             `IOS_TEST_DESTINATION=platform=iOS Simulator,id=${selected.udid}\n`)
           JS
-      - run: bun run test:ios
+      - name: Run iOS tests with one retry for simulator audio cleanup timeout
+        shell: bash
+        run: |
+          log=$(mktemp /tmp/vesc-ios-tests-retry-XXXXXX)
+          if bun run test:ios 2>&1 | tee "$log"; then
+            exit 0
+          else
+            status=$?
+          fi
+          if ! grep -Fq 'Cleanup: RPC timeout. Apparently deadlocked. Aborting now.' "$log"; then
+            exit "$status"
+          fi
+          echo '::warning::Simulator audio cleanup timed out; retrying the iOS suite once in a fresh test process.'
+          bun run test:ios
         env:
           # A cold Swift build of the whole module is far past the local default.
           IOS_TEST_TIMEOUT_MS: '1800000'

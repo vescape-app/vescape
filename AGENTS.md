@@ -40,6 +40,11 @@ Do **not** add generated prefixes to branch names, including agent/tool names li
 - Use clean feature branch names, e.g. `battery-bms-diagnostics`.
 - Only add a prefix when the user explicitly asks for that exact prefix.
 
+## Worktrees
+
+Create a git worktree only when asked, or ask first; this includes subagent worktree isolation.
+Each checkout takes gigabytes of disk.
+
 ## Environment Fixes
 
 Do not fix local machine, shell, PATH, Java, Android SDK, Maestro, or other CLI/tooling environment problems in project code, package scripts, Expo config, or source files.

@@ -95,6 +95,7 @@ export default function MapComponentsShowcase() {
   return (
     <View style={styles.container}>
       <MapView
+        surfaceView={false}
         style={StyleSheet.absoluteFill}
         styleURL={
           useCustomJSON

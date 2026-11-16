@@ -125,6 +125,8 @@ export function MainMapScene({
         // survive. An explicit retry still recreates a map whose loader entered a failed state.
         key={styleRetryNonce}
         ref={mapViewRef}
+        // SurfaceView is excluded from native backdrop capture; TextureView allows drawer blur.
+        surfaceView={false}
         style={styles.map}
         styleURL={appliedStyle.styleURL}
         styleJSON={appliedStyle.styleJSON}
