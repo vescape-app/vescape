@@ -1,6 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeDao
@@ -86,7 +86,7 @@ internal suspend fun pruneDiagnosticEvents(
  */
 class RideSummariesContext {
   internal val latestStates = mutableMapOf<String?, RebuildState>()
-  internal var previousTrack: RideTrackPointEntity? = null
+  internal var previousTrack: RideTrackPoint? = null
   internal var freeSpin = FreeSpinCarry()
 }
 

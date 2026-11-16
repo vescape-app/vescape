@@ -554,6 +554,67 @@ do { _ = try profile.getProfileStatsSnapshot([:]); throw Failure(description: "p
 try historyPool.close()
 try FileManager.default.removeItem(at: historyURL)
 
+// MARK: - Board key (#684)
+//
+// The Ride Track references `boards.key`: rename, re-link and tombstone update the Board in place,
+// so the key and every fix's owner survive them; v55 keeps each fix's owner and mints orphans.
+// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/RideTrackPersistenceHostTest.kt `boardWritesKeepTheKeyTheTrackReferences`
+// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseMigrationMatrixHostTest.kt `v54RideTrackMovesToBoardKeyAndMintsOrphans`
+do {
+  let queue = try DatabaseQueue()
+  try VescapeDatabase.migrator.migrate(queue)
+  let boards = BoardSettingsPersistence(writer: queue)
+  func boardA(_ name: String, _ bleId: String) -> PersistedBoard {
+    PersistedBoard(id: "board-a", name: name, bleId: bleId, createdAt: 100, deletedAt: nil)
+  }
+  func fix(_ boardId: String?, _ at: Int64) -> RideTrackPoint {
+    RideTrackPoint(boardId: boardId, fixAtMs: at, latitudeE7: 1, longitudeE7: 2, accuracyCm: 500,
+      gpsSpeedCentiMps: nil, bearingCentiDeg: nil, altitudeCm: nil)
+  }
+  try boards.upsertBoard(PersistedBoard(id: "board-other", name: "Other", bleId: nil, createdAt: 50, deletedAt: nil), settings: [], deletedKeys: [])
+  try boards.upsertBoard(boardA("A", "ble-1"), settings: [], deletedKeys: [])
+  let key = try boards.board(id: "board-a")?.key
+  try require(key != nil, "Board has no key")
+  try queue.write { db in for point in [fix("board-a", 2000), fix(nil, 2500), fix("orphan", 2600)] { try insertRideTrackPoint(db, point) } }
+  try boards.upsertBoard(boardA("Renamed", "ble-1"), settings: [], deletedKeys: [])
+  try boards.upsertBoard(boardA("Renamed", "ble-2"), settings: [], deletedKeys: [])
+  try require(try boards.board(id: "board-a").map { [$0.name, $0.bleId] } == ["Renamed", "ble-2"], "rename/re-link lost")
+  try require(try boards.board(id: "board-a")?.key == key, "rename/re-link changed the Board key")
+  try boards.tombstoneBoard(id: "board-a", deletedAt: 3000)
+  try boards.upsertBoard(boardA("Renamed", "ble-2"), settings: [], deletedKeys: [])
+  let tombstoned = try boards.board(id: "board-a")
+  try require(tombstoned?.key == key && tombstoned?.deletedAt == 3000, "tombstone changed the Board key or was resurrected")
+  try require(try boards.board(id: "orphan")?.deletedAt != nil, "orphan fix did not mint a tombstoned Board")
+  try queue.read { db in
+    func owners(_ rows: [Row]) -> [String?] { rows.map { $0["board_id"] as String? } }
+    try require(owners(try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: "board-a")) == ["board-a"], "track by Board")
+    try require(owners(try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: nil)) == ["board-a", nil, "orphan"], "track for all Boards")
+    try require(try rideExportTrackPage(db, fromMs: 0, toMs: 10000, boardId: "board-missing", afterMs: -1, afterId: 0).isEmpty,
+      "an unknown Board matched the unowned track")
+    try require(try rideExportTrackPage(db, fromMs: 0, toMs: 10000, boardId: nil, afterMs: -1, afterId: 0).map { $0["fix_at_ms"] as Int64 } == [2500],
+      "unowned export page")
+  }
+
+  let v54 = try DatabaseQueue()
+  try VescapeDatabase.migrator.migrate(v54, upTo: "v54_shared_schema")
+  try v54.write { db in
+    try db.execute(sql: "INSERT INTO boards (id,name,created_at) VALUES ('board-b','B',200),('board-a','A',100)")
+    try db.execute(sql: "INSERT INTO boards (id,name,created_at,deleted_at) VALUES ('board-gone','Gone',300,400)")
+    try db.execute(sql: "INSERT INTO ride_track_points (id,board_id,fix_at_ms,latitude_e7,longitude_e7,accuracy_cm) VALUES (7,'board-a',1000,1,2,300),(9,'board-gone',2000,3,4,NULL),(11,NULL,3000,5,6,500),(13,'replay:orphan',4000,7,8,NULL),(15,'replay:orphan',5000,9,9,NULL)")
+    try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2) VALUES (6000,1,'frame-orphan',0,0,0),(500,1,'board-b',0,0,0)")
+  }
+  try VescapeDatabase.migrator.migrate(v54)
+  try v54.read { db in
+    try requireSharedSchema("v55-board-key", db, root: root)
+    try require(try String.fetchOne(db, sql: "SELECT group_concat(id||':'||key, ',') FROM (SELECT * FROM boards WHERE key <= 3 ORDER BY key)") == "board-a:1,board-b:2,board-gone:3", "v55 keys follow creation order")
+    try require(try String.fetchOne(db, sql: "SELECT id||'|'||name||'|'||created_at||'|'||deleted_at||'|'||IFNULL(ble_id,'') FROM boards WHERE id='replay:orphan'") == "replay:orphan|VESC Board|4000|5000|", "v55 track orphan mint")
+    try require(try String.fetchOne(db, sql: "SELECT id||'|'||created_at||'|'||deleted_at FROM boards WHERE id='frame-orphan'") == "frame-orphan|6000|6000", "v55 frame orphan mint")
+    try require(try String.fetchOne(db, sql: "SELECT group_concat(t.id||':'||IFNULL(b.id,'-')||':'||t.fix_at_ms||':'||IFNULL(t.accuracy_cm,'-'), ',') FROM (SELECT * FROM ride_track_points ORDER BY id) t LEFT JOIN boards b ON b.key=t.board_key")
+      == "7:board-a:1000:300,9:board-gone:2000:-,11:-:3000:500,13:replay:orphan:4000:-,15:replay:orphan:5000:-", "v55 track owners")
+    try require(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM pragma_foreign_key_check('ride_track_points')") == 0, "v55 foreign key")
+  }
+}
+
 let boardFixtureURL = root.appendingPathComponent("shared/board-settings-persistence-contract.json")
 let boardFixture = try JSONSerialization.jsonObject(with: Data(contentsOf: boardFixtureURL)) as! [String: Any]
 try require(boardFixture["scenario"] as? String == "board-settings-close-reopen", "unknown Board/settings scenario")

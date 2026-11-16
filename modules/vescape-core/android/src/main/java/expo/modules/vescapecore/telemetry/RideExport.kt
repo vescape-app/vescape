@@ -9,7 +9,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeRoomDatabase
@@ -284,12 +284,12 @@ internal object RideExport {
 
   private class TrackCursor(val dao: VescapeDao, val fromMs: Long, val toMs: Long,
     val boardId: String?) {
-    var rows = emptyList<RideTrackPointEntity>()
+    var rows = emptyList<RideTrackPoint>()
     var index = 0
     var afterMs = fromMs
     var afterId = Long.MIN_VALUE
     var finished = false
-    suspend fun next(): RideTrackPointEntity? {
+    suspend fun next(): RideTrackPoint? {
       while (!finished) {
         if (index == rows.size) {
           rows = dao.getRideExportTrackPage(fromMs, toMs, boardId, afterMs, afterId, BATCH_SIZE)

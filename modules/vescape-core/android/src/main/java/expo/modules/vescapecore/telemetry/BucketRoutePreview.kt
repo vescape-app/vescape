@@ -2,7 +2,7 @@ package expo.modules.vescapecore.telemetry
 
 import kotlin.math.cos
 import org.json.JSONArray
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.VescapeDao
 
 /**
@@ -19,8 +19,8 @@ internal object BucketRoutePreview {
   data class Coordinate(val latitudeE7: Long, val longitudeE7: Long)
   data class Segment(val firstAtMs: Long, val lastAtMs: Long, val points: List<Coordinate>)
 
-  fun build(track: List<RideTrackPointEntity>): String {
-    val segments = mutableListOf<MutableList<RideTrackPointEntity>>()
+  fun build(track: List<RideTrackPoint>): String {
+    val segments = mutableListOf<MutableList<RideTrackPoint>>()
     for (point in track.filter { it.isPrecise() }.sortedBy { it.fixAtMs }) {
       val previous = segments.lastOrNull()?.lastOrNull()
       if (previous == null || point.fixAtMs - previous.fixAtMs > GAP_MS ||

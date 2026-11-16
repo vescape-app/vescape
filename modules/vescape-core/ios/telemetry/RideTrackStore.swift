@@ -14,7 +14,10 @@ internal let MAX_SAMPLE_LIMIT = 20_000
 ///
 /// `fixAtMs` is the GPS clock, deliberately not aligned to any telemetry frame's capture time.
 ///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `RideTrackPointEntity`
+/// Stored rows reference the Board by its local `boards.key`; everything outside this file's SQL
+/// speaks the Board UUID (ADR 0028).
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `RideTrackPoint`
 internal struct RideTrackPoint {
   /// Owning Board (`boards.id`), or nil when the fix matched no saved Board (ADR 0028).
   let boardId: String?
@@ -31,14 +34,38 @@ internal struct RideTrackPoint {
 
 // MARK: - Storage
 
+/// Ride Track rows with the stored Board key joined back to its UUID as `board_id`, so nothing
+/// outside this SQL sees `board_key`.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `RIDE_TRACK_SELECT`
+internal let RIDE_TRACK_SELECT = """
+  SELECT t.id, b.id AS board_id, t.fix_at_ms, t.latitude_e7, t.longitude_e7, t.accuracy_cm,
+    t.gps_speed_centi_mps, t.bearing_centi_deg, t.altitude_cm
+  FROM ride_track_points t LEFT JOIN boards b ON b.key = t.board_key
+
+  """
+
+/// The `board_key` a nullable Board UUID filter means: NULL for the unowned track, the Board's key,
+/// or -1 (no row) for a UUID with no Board. Binds the UUID twice; compare with `IS`.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `BOARD_KEY_OF_BOARD_ID`
+internal let BOARD_KEY_OF_BOARD_ID = "(CASE WHEN ? IS NULL THEN NULL ELSE IFNULL((SELECT key FROM boards WHERE id = ?), -1) END)"
+
+/// Stores a fix against its Board's key. A UUID with no Board row gets a minted tombstoned Board
+/// first, the same rule v55 applied to orphans, so the key always resolves and the fix keeps its owner.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `insertRideTrackPoints`
 internal func insertRideTrackPoint(_ db: Database, _ point: RideTrackPoint) throws {
+  if let boardId = point.boardId {
+    let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+    try db.execute(
+      sql: "INSERT OR IGNORE INTO boards (id, name, ble_id, created_at, deleted_at) VALUES (?, ?, NULL, ?, ?)",
+      arguments: [boardId, UNKNOWN_TELEMETRY_BOARD_NAME, nowMs, nowMs]
+    )
+  }
   try db.execute(
     sql: """
       INSERT INTO ride_track_points (
-        board_id, fix_at_ms, latitude_e7, longitude_e7,
+        board_key, fix_at_ms, latitude_e7, longitude_e7,
         accuracy_cm, gps_speed_centi_mps, bearing_centi_deg, altitude_cm
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES ((SELECT key FROM boards WHERE id = ?), ?, ?, ?, ?, ?, ?, ?)
       """,
     arguments: [
       point.boardId, point.fixAtMs, point.latitudeE7, point.longitudeE7,
@@ -81,12 +108,11 @@ private func fetchRideTrackRows(
   boardId: String?,
   limit: Int?
 ) throws -> [Row] {
-  var sql = """
-    SELECT * FROM ride_track_points
-    WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND (? IS NULL OR board_id = ?)
-    ORDER BY fix_at_ms ASC
+  var sql = RIDE_TRACK_SELECT + """
+    WHERE t.fix_at_ms >= ? AND t.fix_at_ms <= ? AND (? IS NULL OR t.board_key = \(BOARD_KEY_OF_BOARD_ID))
+    ORDER BY t.fix_at_ms ASC
     """
-  var arguments: StatementArguments = [fromMs, toMs, boardId, boardId]
+  var arguments: StatementArguments = [fromMs, toMs, boardId, boardId, boardId]
   if let limit {
     sql += " LIMIT ?"
     arguments += [limit]

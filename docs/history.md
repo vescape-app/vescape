@@ -37,7 +37,7 @@ Main files:
 
 `telemetry_frames` stores board telemetry samples, without position. Frames are delta encoded with periodic keyframes. Queries reconstruct full samples from nearest keyframe before requested range.
 
-`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. There is no recording identity table; ride boundaries are derived from the data (ADR-0041).
+`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. It references its Board by `board_key` (the local `boards.key`), not the UUID (ADR-0028). There is no recording identity table; ride boundaries are derived from the data (ADR-0041).
 
 `telemetry_minute_buckets` stores minute-level summaries used by history lists, keyed on `(bucket_start_ms, board_id)`. Buckets include sample counts, GPS counts, distance, speed, battery/current summaries and the combined Moving Window. A minute with Ride Track fixes and no frame still gets a bucket. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
 

@@ -458,8 +458,14 @@
         "id": {
           "default": null,
           "notNull": true,
-          "primaryKey": 1,
+          "primaryKey": 0,
           "type": "TEXT"
+        },
+        "key": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
         },
         "name": {
           "default": null,
@@ -473,6 +479,11 @@
         "index_boards_created_at": {
           "columns": ["created_at"],
           "unique": false,
+          "where": null
+        },
+        "index_boards_id": {
+          "columns": ["id"],
+          "unique": true,
           "where": null
         }
       }
@@ -889,11 +900,11 @@
           "primaryKey": 0,
           "type": "INTEGER"
         },
-        "board_id": {
+        "board_key": {
           "default": null,
           "notNull": false,
           "primaryKey": 0,
-          "type": "TEXT"
+          "type": "INTEGER"
         },
         "fix_at_ms": {
           "default": null,
@@ -926,10 +937,10 @@
           "type": "INTEGER"
         }
       },
-      "foreignKeys": [],
+      "foreignKeys": ["board_key -> boards.key on delete NO ACTION on update NO ACTION"],
       "indexes": {
-        "index_ride_track_points_board_id_fix_at_ms": {
-          "columns": ["board_id", "fix_at_ms"],
+        "index_ride_track_points_board_key_fix_at_ms": {
+          "columns": ["board_key", "fix_at_ms"],
           "unique": false,
           "where": null
         },

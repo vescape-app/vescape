@@ -41,7 +41,7 @@ struct TelemetryMaintenancePersistence {
         try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ?", arguments: [range.startMs, range.endMs])
       } else {
         count += try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId]) ?? 0
-        try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId])
+        try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND board_key IS \(BOARD_KEY_OF_BOARD_ID)", arguments: [range.startMs, range.endMs, boardId, boardId])
         try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId])
         try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE last_sample_at_ms >= ? AND first_sample_at_ms <= ? AND board_id = ?", arguments: [range.startMs, range.endMs, boardId ?? UNKNOWN_TELEMETRY_BOARD_ID])
         try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId])
@@ -201,7 +201,7 @@ internal func rebuildRideSummariesChunk(
 
   // Context that a deletion removed since the last chunk no longer exists to carry.
   if let previous = context.previousTrack,
-     try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE fix_at_ms = ? AND board_id IS ?)", arguments: [previous.fixAtMs, previous.boardId]) != true {
+     try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE fix_at_ms = ? AND board_key IS \(BOARD_KEY_OF_BOARD_ID))", arguments: [previous.fixAtMs, previous.boardId, previous.boardId]) != true {
     context.previousTrack = nil
   }
   context.freeSpin.boards = try context.freeSpin.boards.filter { _, state in

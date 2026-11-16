@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
 import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeRoomDatabase
@@ -72,7 +72,7 @@ class RideReadQueriesTest {
   @Test
   fun favoriteSummaryReadsMovementBeyondTheDisplayCap() = runBlocking {
     dao.insertRideTrackPoints((0 until displayLimit + 2).map { index ->
-      RideTrackPointEntity(
+      RideTrackPoint(
         boardId = "board-1", fixAtMs = index * 60_000L,
         latitudeE7 = 500_000_000, longitudeE7 = 190_000_000, accuracyCm = 300,
         gpsSpeedCentiMps = if (index >= displayLimit) 1_000 else 0,

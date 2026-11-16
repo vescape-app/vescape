@@ -29,7 +29,7 @@ import expo.modules.vescapecore.database.DiagnosticEventEntity
 import expo.modules.vescapecore.database.FavoriteEntity
 import expo.modules.vescapecore.database.MetricExclusionRangeEntity
 import expo.modules.vescapecore.database.PrivacyZoneEntity
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.telemetry.sanitizers.FreeSpinCarry
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.TELEMETRY_MASK_ADC1
@@ -187,8 +187,8 @@ class TelemetryRepository private constructor(context: Context) {
   // Ride Track fixes admitted but not yet durable. Written on the GPS clock, never aligned to a
   // telemetry frame, and already carrying the Board and Ride Recording they were captured under —
   // a Board change flushes them under those identities rather than the new session's (ADR 0038).
-  private val pendingTrack = ArrayDeque<RideTrackPointEntity>()
-  private var lastFlushedTrackPoint: RideTrackPointEntity? = null
+  private val pendingTrack = ArrayDeque<RideTrackPoint>()
+  private var lastFlushedTrackPoint: RideTrackPoint? = null
   private var lastFlushedFreeSpin = FreeSpinCarry()
 
   private var flushScheduled = false
@@ -252,7 +252,7 @@ class TelemetryRepository private constructor(context: Context) {
     synchronized(lock) {
       if (databaseSwapInProgress || !recordingCommitBoundary.isAccepting()) return
       pendingTrack.addLast(
-        RideTrackPointEntity(
+        RideTrackPoint(
           boardId = boardId,
           fixAtMs = scaled.timestampMs,
           latitudeE7 = scaled.latitudeE7,
@@ -681,7 +681,7 @@ class TelemetryRepository private constructor(context: Context) {
    * The Ride Track over a range: every stored fix, on the GPS clock, independent of whether a
    * telemetry frame arrived near it.
    */
-  private suspend fun rideTrackPage(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPointEntity> =
+  private suspend fun rideTrackPage(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPoint> =
     dao.getRideTrackPoints(fromMs, toMs, boardId, MAX_SAMPLE_LIMIT)
 
   suspend fun getRange(options: Map<String, Any?>): Map<String, Any?> = withContext(Dispatchers.IO) {
@@ -850,7 +850,7 @@ class TelemetryRepository private constructor(context: Context) {
    */
   private fun favoriteSummary(
     states: List<HistoryTelemetryState>,
-    track: List<RideTrackPointEntity>,
+    track: List<RideTrackPoint>,
   ): FavoriteSummary {
     if (states.isEmpty() && track.isEmpty()) return FavoriteSummary()
     val telemetryPoints = states.map { it.state.toBucketPoint() }
@@ -958,8 +958,8 @@ class TelemetryRepository private constructor(context: Context) {
       val frames: List<PendingFrame>
       val bucketStates: List<FullTelemetryState>
       val markers: List<TelemetryMarkerEntity>
-      val trackPoints: List<RideTrackPointEntity>
-      val previousTrackPoint: RideTrackPointEntity?
+      val trackPoints: List<RideTrackPoint>
+      val previousTrackPoint: RideTrackPoint?
       val previousFreeSpin: FreeSpinCarry
       synchronized(lock) {
         if (pending.isEmpty() && pendingBucketStates.isEmpty() && pendingMarkers.isEmpty() && pendingTrack.isEmpty()) {

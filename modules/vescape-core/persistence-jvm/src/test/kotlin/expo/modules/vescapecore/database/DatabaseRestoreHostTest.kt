@@ -35,7 +35,7 @@ class DatabaseRestoreHostTest {
         dao.upsertTuneProfile(TuneProfileEntity("cross-tune", "cross-board", "2.0", "Cross Tune", fieldsJson = "{\"kp\":2}", createdAt = 103, updatedAt = 104))
         dao.insertFavorite(FavoriteEntity("cross-favorite", "cross-board", "Cross Favorite", 900, 1100, 105, 106, 1, 0, 200, 100, 2400, 2468, 2))
         dao.upsertBoardConfigValues(BoardConfigValuesEntity("cross-board", "2.0", "{\"motor_current_max\":55.5}", 107))
-        dao.insertRideTrackPoints(listOf(RideTrackPointEntity(boardId = "cross-board", fixAtMs = 1200, latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500, gpsSpeedCentiMps = 400, bearingCentiDeg = 9000, altitudeCm = 12300)))
+        dao.insertRideTrackPoints(listOf(RideTrackPoint(boardId = "cross-board", fixAtMs = 1200, latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500, gpsSpeedCentiMps = 400, bearingCentiDeg = 9000, altitudeCm = 12300)))
         val previewFixes = bucketPreviewFixes()
         RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), previewFixes.toBucketLocationPoints()), emptyList(), trackPoints = previewFixes)
         room.close()
@@ -90,7 +90,8 @@ class DatabaseRestoreHostTest {
           iosSchemaReconciliationStatements(hasDeletedAt = true, hasFaultCaptures = true, bootstrapLegacyTune = false)
             .forEach(connection::execSQL)
           DatabaseMigrations.MIGRATION_53_54.migrate(connection)
-          connection.execSQL("PRAGMA user_version = 54")
+          DatabaseMigrations.MIGRATION_54_55.migrate(connection)
+          connection.execSQL("PRAGMA user_version = 55")
           connection.execSQL("PRAGMA foreign_keys = ON")
           dropUnknownTables(connection)
         }

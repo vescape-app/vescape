@@ -108,17 +108,46 @@ data class TelemetryFrameEntity(
  * [fixAtMs] is the GPS clock, deliberately not aligned to any telemetry frame's capture time: a fix
  * survives a board dropout, and the two streams are joined on read, not on write.
  *
+ * Stored rows reference their Board by its local integer key ([BoardEntity.key]); every read and
+ * write outside the DAO speaks the Board UUID through [RideTrackPoint] instead.
+ *
  * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `RideTrackPoint`
  */
 @Entity(
   tableName = "ride_track_points",
   indices = [
     Index(value = ["fix_at_ms"]),
-    Index(value = ["board_id", "fix_at_ms"]),
+    Index(value = ["board_key", "fix_at_ms"]),
   ],
+  foreignKeys = [ForeignKey(entity = BoardEntity::class, parentColumns = ["key"], childColumns = ["board_key"])],
 )
 data class RideTrackPointEntity(
   @PrimaryKey(autoGenerate = true)
+  val id: Long = 0,
+  /** Owning Board (`boards.key`), or null when the fix matched no saved Board (ADR 0028). */
+  @ColumnInfo(name = "board_key")
+  val boardKey: Long?,
+  @ColumnInfo(name = "fix_at_ms")
+  val fixAtMs: Long,
+  @ColumnInfo(name = "latitude_e7")
+  val latitudeE7: Int,
+  @ColumnInfo(name = "longitude_e7")
+  val longitudeE7: Int,
+  @ColumnInfo(name = "accuracy_cm")
+  val accuracyCm: Int?,
+  @ColumnInfo(name = "gps_speed_centi_mps")
+  val gpsSpeedCentiMps: Int?,
+  @ColumnInfo(name = "bearing_centi_deg")
+  val bearingCentiDeg: Int?,
+  @ColumnInfo(name = "altitude_cm")
+  val altitudeCm: Int?,
+)
+
+/**
+ * One Ride Track fix as the rest of the app sees it: the Board by UUID. Read through
+ * `RIDE_TRACK_SELECT`, which joins the key back to `boards.id`.
+ */
+data class RideTrackPoint(
   val id: Long = 0,
   /** Owning Board (`boards.id`), or null when the fix matched no saved Board (ADR 0028). */
   @ColumnInfo(name = "board_id")
@@ -140,7 +169,10 @@ data class RideTrackPointEntity(
   val bearingCentiDeg: Int?,
   @ColumnInfo(name = "altitude_cm")
   val altitudeCm: Int?,
-)
+) {
+  fun toEntity(boardKey: Long?) = RideTrackPointEntity(id, boardKey, fixAtMs, latitudeE7, longitudeE7,
+    accuracyCm, gpsSpeedCentiMps, bearingCentiDeg, altitudeCm)
+}
 
 @Entity(
   tableName = "telemetry_minute_buckets",
@@ -274,11 +306,12 @@ data class DiagnosticEventEntity(
 @Entity(
   tableName = "boards",
   indices = [
+    Index(value = ["id"], unique = true),
     Index(value = ["created_at"]),
   ],
 )
 data class BoardEntity(
-  @PrimaryKey
+  /** Sync identity: the UUID JS, the bridge, the server and sharing know the Board by. */
   val id: String,
   val name: String,
   @ColumnInfo(name = "ble_id")
@@ -294,6 +327,13 @@ data class BoardEntity(
    */
   @ColumnInfo(name = "deleted_at")
   val deletedAt: Long? = null,
+  /**
+   * Local storage key telemetry-scale rows reference instead of repeating [id] (ADR 0028). Assigned
+   * on first insert and never changed: upserts match on [id] and update in place. Never leaves
+   * SQLite.
+   */
+  @PrimaryKey(autoGenerate = true)
+  val key: Long = 0,
 )
 
 /** Projection for Ride History name resolution — see `VescapeDao.getBoardNames`. */

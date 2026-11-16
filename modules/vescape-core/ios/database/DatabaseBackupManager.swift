@@ -7,7 +7,7 @@ import GRDB
 /// `VescapeDatabase.migrator`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeRoomDatabase.kt `VESCAPE_DATABASE_VERSION`
-internal let VESCAPE_DATABASE_VERSION = 54
+internal let VESCAPE_DATABASE_VERSION = 55
 
 /// Released schema generations that have a complete production path to the current schema.
 /// 37–39 never shipped as standalone migrations: Android deliberately jumps 36→40.

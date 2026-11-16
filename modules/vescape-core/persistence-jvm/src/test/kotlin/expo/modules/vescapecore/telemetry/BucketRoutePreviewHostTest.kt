@@ -9,7 +9,7 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 class BucketRoutePreviewHostTest {
@@ -22,7 +22,7 @@ class BucketRoutePreviewHostTest {
     Files.delete(path)
     fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
-    suspend fun flush(points: List<RideTrackPointEntity>) {
+    suspend fun flush(points: List<RideTrackPoint>) {
       RecordingPersistence(db.vescapeDao()).commit(emptyList(), buildTelemetryBuckets(emptyList(), points.toBucketLocationPoints()), emptyList(), trackPoints = points)
     }
     flush(fixes.take(3))
@@ -118,11 +118,11 @@ class BucketRoutePreviewHostTest {
 }
 
 internal val bucketPreviewFixture = JSONObject(Files.readString(Path.of("../shared/bucket-route-preview-contract.json")))
-internal fun bucketPreviewFixes(): List<RideTrackPointEntity> {
+internal fun bucketPreviewFixes(): List<RideTrackPoint> {
   val values = bucketPreviewFixture.getJSONArray("fixes")
   return (0 until values.length()).map { index ->
     val point = values.getJSONArray(index)
-    RideTrackPointEntity(boardId = bucketPreviewFixture.getString("boardId"), fixAtMs = point.getLong(0),
+    RideTrackPoint(boardId = bucketPreviewFixture.getString("boardId"), fixAtMs = point.getLong(0),
       latitudeE7 = point.getInt(1), longitudeE7 = point.getInt(2), accuracyCm = point.getInt(3),
       gpsSpeedCentiMps = 400, bearingCentiDeg = null, altitudeCm = null)
   }

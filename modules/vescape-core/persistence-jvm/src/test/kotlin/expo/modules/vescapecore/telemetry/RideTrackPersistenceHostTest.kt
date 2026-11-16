@@ -7,7 +7,8 @@ import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.BoardEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /** GPS-only commits use the same production atomic batch as telemetry. */
@@ -19,7 +20,7 @@ class RideTrackPersistenceHostTest {
     val db = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     val dao = db.vescapeDao()
     for (board in listOf("board-a", "board-b")) {
-      val point = RideTrackPointEntity(boardId = board, fixAtMs = 2000,
+      val point = RideTrackPoint(boardId = board, fixAtMs = 2000,
         latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 500,
         gpsSpeedCentiMps = 400, bearingCentiDeg = null, altitudeCm = null)
       RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), listOf(point).toBucketLocationPoints()), emptyList(), trackPoints = listOf(point))
@@ -32,12 +33,44 @@ class RideTrackPersistenceHostTest {
     Files.deleteIfExists(path)
   }
 
+  /**
+   * The Ride Track references `boards.key` (#684): rename, re-link and tombstone update the Board in
+   * place, so the key — and every fix's owner — survives them all.
+   */
+  @Test fun boardWritesKeepTheKeyTheTrackReferences(): Unit = runBlocking {
+    val path = Files.createTempFile("vescape-board-key", ".db")
+    Files.deleteIfExists(path)
+    val db = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    val dao = db.vescapeDao()
+    dao.upsertBoardWithSettings(BoardEntity("board-other", "Other", null, 50), emptyList(), emptyList(), emptyList())
+    dao.upsertBoardWithSettings(BoardEntity("board-a", "A", "ble-1", 100), emptyList(), emptyList(), emptyList())
+    val key = checkNotNull(dao.getBoardKey("board-a"))
+    val point = RideTrackPoint(boardId = "board-a", fixAtMs = 2000, latitudeE7 = 1, longitudeE7 = 2,
+      accuracyCm = 500, gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)
+    dao.insertRideTrackPoints(listOf(point, point.copy(boardId = null, fixAtMs = 2500)))
+    dao.upsertBoardWithSettings(BoardEntity("board-a", "Renamed", "ble-1", 100), emptyList(), emptyList(), emptyList())
+    dao.upsertBoardWithSettings(BoardEntity("board-a", "Renamed", "ble-2", 100), emptyList(), emptyList(), emptyList())
+    assertEquals(key, dao.getBoardKey("board-a"))
+    assertEquals("Renamed" to "ble-2", dao.getBoard("board-a")!!.let { it.name to it.bleId })
+    dao.deleteBoardWithSettings("board-a", 3000)
+    dao.upsertBoard(BoardEntity("board-a", "Renamed", "ble-2", 100))
+    assertEquals(key, dao.getBoard("board-a")!!.key)
+    assertEquals(3000L, dao.getBoard("board-a")!!.deletedAt)
+    assertEquals(listOf("board-a"), dao.getRideTrackPoints(0, 10000, "board-a", 10).map { it.boardId })
+    assertEquals(listOf("board-a", null), dao.getRideTrackPoints(0, 10000, null, 10).map { it.boardId })
+    assertEquals("an unknown Board matches nothing, not the unowned track",
+      emptyList<RideTrackPoint>(), dao.getRideExportTrackPage(0, 10000, "board-missing", -1, 0, 10))
+    assertEquals(listOf(2500L), dao.getRideExportTrackPage(0, 10000, null, -1, 0, 10).map { it.fixAtMs })
+    db.close()
+    Files.deleteIfExists(path)
+  }
+
   @Test fun gpsOnlyCommitReopensAndLateFailureRollsBackBuckets(): Unit = runBlocking {
     val path = Files.createTempFile("vescape-track-contract", ".db")
     Files.deleteIfExists(path)
     fun open() = Room.databaseBuilder<VescapeRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
     var db = open()
-    val point = RideTrackPointEntity(boardId = "board-a", fixAtMs = 2000,
+    val point = RideTrackPoint(boardId = "board-a", fixAtMs = 2000,
       latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500,
       gpsSpeedCentiMps = 400, bearingCentiDeg = null, altitudeCm = null)
     val buckets = buildTelemetryBuckets(emptyList(), listOf(point).toBucketLocationPoints())

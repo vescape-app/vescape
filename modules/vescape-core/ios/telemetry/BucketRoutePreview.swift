@@ -114,11 +114,11 @@ internal enum BucketRoutePreview {
 /// Re-read one indexed minute, so restarts and late fixes need no separate cache recovery.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `refreshBucketRoutePreview`
 internal func refreshBucketRoutePreview(_ db: Database, bucketStartMs: Int64, boardId: String) throws {
-  let rows = try Row.fetchAll(db, sql: """
-    SELECT * FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms < ?
-      AND board_id IS ? ORDER BY fix_at_ms, id
-    """, arguments: [bucketStartMs, bucketStartMs + TELEMETRY_BUCKET_SIZE_MS,
-      boardId == UNKNOWN_TELEMETRY_BOARD_ID ? nil : boardId])
+  let trackBoardId = boardId == UNKNOWN_TELEMETRY_BOARD_ID ? nil : boardId
+  let rows = try Row.fetchAll(db, sql: RIDE_TRACK_SELECT + """
+    WHERE t.fix_at_ms >= ? AND t.fix_at_ms < ?
+      AND t.board_key IS \(BOARD_KEY_OF_BOARD_ID) ORDER BY t.fix_at_ms, t.id
+    """, arguments: [bucketStartMs, bucketStartMs + TELEMETRY_BUCKET_SIZE_MS, trackBoardId, trackBoardId])
   let points = rows.map(rideTrackPoint)
   try db.execute(sql: """
     UPDATE telemetry_minute_buckets SET route_preview = ?
@@ -142,10 +142,10 @@ internal func favoriteRoutePreview(_ db: Database, startMs: Int64, endMs: Int64,
     let preview: String? = bucket["route_preview"]
     let segments: [BucketRoutePreview.Segment]
     if startMs > minuteStart || endMs < minuteEnd - 1 {
-      let rows = try Row.fetchAll(db, sql: """
-        SELECT * FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms < ?
-          AND board_id IS ? ORDER BY fix_at_ms, id
-        """, arguments: [max(startMs, minuteStart), min(endMs, minuteEnd - 1) + 1, boardId])
+      let rows = try Row.fetchAll(db, sql: RIDE_TRACK_SELECT + """
+        WHERE t.fix_at_ms >= ? AND t.fix_at_ms < ?
+          AND t.board_key IS \(BOARD_KEY_OF_BOARD_ID) ORDER BY t.fix_at_ms, t.id
+        """, arguments: [max(startMs, minuteStart), min(endMs, minuteEnd - 1) + 1, boardId, boardId])
       segments = try BucketRoutePreview.decode(BucketRoutePreview.build(rows.map(rideTrackPoint)))
     } else if let preview { segments = try BucketRoutePreview.decode(preview) }
     else if let latitude: Int64 = bucket["first_latitude_e7"], let longitude: Int64 = bucket["first_longitude_e7"] {

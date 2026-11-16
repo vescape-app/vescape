@@ -975,9 +975,37 @@ enum VescapeDatabase {
       }
       for sql in sharedSchemaV54Sql { try db.execute(sql: sql) }
     }
+    // Board key (#684, ADR 0028): `boards.key` becomes the local integer the Ride Track references
+    // instead of repeating the Board UUID; orphan `board_id`s in the track or frames are minted as
+    // tombstoned Boards first. A database whose `boards` already has `key` is left alone.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_54_55`
+    migrator.registerMigration("v55_board_key") { db in
+      guard try !db.columns(in: "boards").contains(where: { $0.name == "key" }) else { return }
+      for sql in boardKeyV55Sql { try db.execute(sql: sql) }
+    }
 
     return migrator
   }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `BOARD_KEY_V55_SQL`
+  private static let boardKeyV55Sql = [
+    "DROP INDEX IF EXISTS index_boards_created_at",
+    "CREATE TABLE boards_v55 (key INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, ble_id TEXT, created_at INTEGER NOT NULL, deleted_at INTEGER)",
+    "INSERT INTO boards_v55 (id, name, ble_id, created_at, deleted_at) SELECT id, name, ble_id, created_at, deleted_at FROM boards ORDER BY created_at, id",
+    "DROP TABLE boards",
+    "ALTER TABLE boards_v55 RENAME TO boards",
+    "CREATE UNIQUE INDEX index_boards_id ON boards(id)",
+    "CREATE INDEX index_boards_created_at ON boards(created_at)",
+    "INSERT OR IGNORE INTO boards (id, name, ble_id, created_at, deleted_at) SELECT board_id, '\(UNKNOWN_TELEMETRY_BOARD_NAME)', NULL, MIN(at_ms), MAX(at_ms) FROM (SELECT board_id, fix_at_ms AS at_ms FROM ride_track_points UNION ALL SELECT board_id, captured_at_ms FROM telemetry_frames) WHERE board_id IS NOT NULL AND board_id != '' GROUP BY board_id ORDER BY MIN(at_ms), board_id",
+    "DROP INDEX IF EXISTS index_ride_track_points_fix_at_ms",
+    "DROP INDEX IF EXISTS index_ride_track_points_board_id_fix_at_ms",
+    "CREATE TABLE ride_track_points_v55 (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, board_key INTEGER, fix_at_ms INTEGER NOT NULL, latitude_e7 INTEGER NOT NULL, longitude_e7 INTEGER NOT NULL, accuracy_cm INTEGER, gps_speed_centi_mps INTEGER, bearing_centi_deg INTEGER, altitude_cm INTEGER, FOREIGN KEY(board_key) REFERENCES boards(key) ON UPDATE NO ACTION ON DELETE NO ACTION)",
+    "INSERT INTO ride_track_points_v55 (id, board_key, fix_at_ms, latitude_e7, longitude_e7, accuracy_cm, gps_speed_centi_mps, bearing_centi_deg, altitude_cm) SELECT t.id, b.key, t.fix_at_ms, t.latitude_e7, t.longitude_e7, t.accuracy_cm, t.gps_speed_centi_mps, t.bearing_centi_deg, t.altitude_cm FROM ride_track_points t LEFT JOIN boards b ON b.id = t.board_id",
+    "DROP TABLE ride_track_points",
+    "ALTER TABLE ride_track_points_v55 RENAME TO ride_track_points",
+    "CREATE INDEX index_ride_track_points_fix_at_ms ON ride_track_points(fix_at_ms)",
+    "CREATE INDEX index_ride_track_points_board_key_fix_at_ms ON ride_track_points(board_key, fix_at_ms)",
+  ]
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `SHARED_SCHEMA_V54_SQL`
   private static let sharedSchemaV54Sql = [

@@ -17,6 +17,7 @@ import expo.modules.vescapecore.telemetry.RideSummariesContext
 import expo.modules.vescapecore.telemetry.TELEMETRY_BUCKET_SIZE_MS
 import expo.modules.vescapecore.telemetry.TelemetryTimeRange
 import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_ID
+import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_NAME
 import expo.modules.vescapecore.telemetry.WeatherBackfillCursor
 import expo.modules.vescapecore.telemetry.WeatherBackfillPage
 import expo.modules.vescapecore.telemetry.WeatherBackfillSegment
@@ -29,11 +30,29 @@ import expo.modules.vescapecore.telemetry.tuneCompatibilityVersion
 import expo.modules.vescapecore.telemetry.weatherBackfillPageImpl
 import expo.modules.vescapecore.telemetry.weatherProtectionStart
 
-private const val RIDE_TRACK_RANGE_QUERY = """
-  SELECT * FROM ride_track_points
-  WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs
-    AND (:boardId IS NULL OR board_id = :boardId)
-  ORDER BY fix_at_ms ASC
+/**
+ * Ride Track rows as [RideTrackPoint]: the stored Board key joined back to its UUID, so nothing
+ * outside this DAO sees `board_key` (ADR 0028).
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `RIDE_TRACK_SELECT`
+ */
+private const val RIDE_TRACK_SELECT = """
+  SELECT t.id, b.id AS board_id, t.fix_at_ms, t.latitude_e7, t.longitude_e7, t.accuracy_cm,
+    t.gps_speed_centi_mps, t.bearing_centi_deg, t.altitude_cm
+  FROM ride_track_points t LEFT JOIN boards b ON b.key = t.board_key
+"""
+
+/**
+ * The `board_key` a nullable `:boardId` filter means: NULL for the unowned track, the Board's key,
+ * or -1 (no row) for a UUID with no Board. Compare with `IS` to match the unowned track too.
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `BOARD_KEY_OF_BOARD_ID`
+ */
+private const val BOARD_KEY_OF_BOARD_ID =
+  "(CASE WHEN :boardId IS NULL THEN NULL ELSE IFNULL((SELECT key FROM boards WHERE id = :boardId), -1) END)"
+
+private const val RIDE_TRACK_RANGE_QUERY = RIDE_TRACK_SELECT + """
+  WHERE t.fix_at_ms >= :fromMs AND t.fix_at_ms <= :toMs
+    AND (:boardId IS NULL OR t.board_key = $BOARD_KEY_OF_BOARD_ID)
+  ORDER BY t.fix_at_ms ASC
 """
 
 // @parity /modules/vescape-core/ios/telemetry/TelemetryRows.swift
@@ -150,7 +169,7 @@ interface VescapeDao {
     buckets: Collection<TelemetryMinuteBucketEntity>,
     markers: List<TelemetryMarkerEntity>,
     exclusions: List<MetricExclusionRangeEntity> = emptyList(),
-    trackPoints: List<RideTrackPointEntity> = emptyList(),
+    trackPoints: List<RideTrackPoint> = emptyList(),
   ) {
     if (frames.isNotEmpty()) insertFrames(frames)
     if (buckets.isNotEmpty()) upsertBuckets(buckets)
@@ -175,16 +194,38 @@ interface VescapeDao {
     updateBucketRoutePreview(bucketStartMs, boardId, BucketRoutePreview.build(track))
   }
 
-  @Query("""SELECT * FROM ride_track_points WHERE fix_at_ms >= :fromMs AND fix_at_ms < :toMs
-    AND board_id IS :boardId ORDER BY fix_at_ms, id""")
-  suspend fun getBucketRouteTrack(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPointEntity>
+  @Query(RIDE_TRACK_SELECT + """WHERE t.fix_at_ms >= :fromMs AND t.fix_at_ms < :toMs
+    AND t.board_key IS $BOARD_KEY_OF_BOARD_ID ORDER BY t.fix_at_ms, t.id""")
+  suspend fun getBucketRouteTrack(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPoint>
 
   @Query("""UPDATE telemetry_minute_buckets SET route_preview = :preview
     WHERE bucket_start_ms = :bucketStartMs AND board_id = :boardId""")
   suspend fun updateBucketRoutePreview(bucketStartMs: Long, boardId: String, preview: String)
 
   @Insert
-  suspend fun insertRideTrackPoints(points: List<RideTrackPointEntity>)
+  suspend fun insertRideTrackPointRows(points: List<RideTrackPointEntity>)
+
+  /**
+   * Stores fixes against their Board's key. A UUID with no Board row gets a minted tombstoned
+   * Board first, the same rule the v55 migration applied to orphans, so the key always resolves
+   * and the fix keeps its owner.
+   * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `insertRideTrackPoint`
+   */
+  @Transaction
+  suspend fun insertRideTrackPoints(points: List<RideTrackPoint>) {
+    val keys = points.mapNotNullTo(HashSet()) { it.boardId }.associateWith { boardId ->
+      mintTombstonedBoard(boardId, UNKNOWN_TELEMETRY_BOARD_NAME, System.currentTimeMillis())
+      checkNotNull(getBoardKey(boardId))
+    }
+    insertRideTrackPointRows(points.map { it.toEntity(it.boardId?.let(keys::getValue)) })
+  }
+
+  @Query("SELECT key FROM boards WHERE id = :id")
+  suspend fun getBoardKey(id: String): Long?
+
+  @Query("""INSERT OR IGNORE INTO boards (id, name, ble_id, created_at, deleted_at)
+    VALUES (:id, :name, NULL, :nowMs, :nowMs)""")
+  suspend fun mintTombstonedBoard(id: String, name: String, nowMs: Long)
 
   /**
    * The Ride Track over a time range, on the GPS clock. Every stored fix is returned with the
@@ -198,19 +239,19 @@ interface VescapeDao {
     toMs: Long,
     boardId: String?,
     limit: Int,
-  ): List<RideTrackPointEntity>
+  ): List<RideTrackPoint>
 
   // Raw keyset pages: advance using the last RAW row, even when every row is imprecise.
   // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `rideExportTrackPage`
   @Query("""
-    SELECT * FROM ride_track_points
-    WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs
-      AND board_id IS :boardId
-      AND (fix_at_ms > :afterMs OR (fix_at_ms = :afterMs AND id > :afterId))
-    ORDER BY fix_at_ms, id LIMIT :limit
+    $RIDE_TRACK_SELECT
+    WHERE t.fix_at_ms >= :fromMs AND t.fix_at_ms <= :toMs
+      AND t.board_key IS $BOARD_KEY_OF_BOARD_ID
+      AND (t.fix_at_ms > :afterMs OR (t.fix_at_ms = :afterMs AND t.id > :afterId))
+    ORDER BY t.fix_at_ms, t.id LIMIT :limit
   """)
   suspend fun getRideExportTrackPage(fromMs: Long, toMs: Long, boardId: String?,
-    afterMs: Long, afterId: Long, limit: Int): List<RideTrackPointEntity>
+    afterMs: Long, afterId: Long, limit: Int): List<RideTrackPoint>
 
   /** Complete input for durable summaries and bucket rebuilds, without the bridge read cap. */
   // @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `fetchRideTrackForAggregation`
@@ -219,7 +260,7 @@ interface VescapeDao {
     fromMs: Long,
     toMs: Long,
     boardId: String?,
-  ): List<RideTrackPointEntity>
+  ): List<RideTrackPoint>
 
   @Query("SELECT COUNT(*) FROM ride_track_points")
   suspend fun countRideTrackPoints(): Long
@@ -242,10 +283,7 @@ interface VescapeDao {
     DELETE FROM ride_track_points
     WHERE fix_at_ms >= :fromMs
       AND fix_at_ms <= :toMs
-      AND (
-        (:boardId IS NOT NULL AND board_id = :boardId)
-        OR (:boardId IS NULL AND board_id IS NULL)
-      )
+      AND board_key IS $BOARD_KEY_OF_BOARD_ID
     """,
   )
   suspend fun deleteRideTrackPointsRange(fromMs: Long, toMs: Long, boardId: String?): Int
@@ -662,11 +700,11 @@ interface VescapeDao {
 
   // @parity /modules/vescape-core/ios/telemetry/RideWeatherBackfill.swift `firstPreciseRideTrackFix`
   @Query("""
-    SELECT * FROM ride_track_points
-    WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs AND accuracy_cm IS NOT NULL AND accuracy_cm <= :maxAccuracyCm
-    ORDER BY fix_at_ms, id LIMIT 1
+    $RIDE_TRACK_SELECT
+    WHERE t.fix_at_ms >= :fromMs AND t.fix_at_ms <= :toMs AND t.accuracy_cm IS NOT NULL AND t.accuracy_cm <= :maxAccuracyCm
+    ORDER BY t.fix_at_ms, t.id LIMIT 1
   """)
-  suspend fun getFirstPreciseRideTrackFix(fromMs: Long, toMs: Long, maxAccuracyCm: Int): RideTrackPointEntity?
+  suspend fun getFirstPreciseRideTrackFix(fromMs: Long, toMs: Long, maxAccuracyCm: Int): RideTrackPoint?
 
   /** One Ride summaries Maintenance Job chunk, read and replaced in a single transaction. */
   @Transaction
@@ -707,8 +745,25 @@ interface VescapeDao {
   @Query("SELECT * FROM boards WHERE id = :id LIMIT 1")
   suspend fun getBoard(id: String): BoardEntity?
 
-  @Insert(onConflict = OnConflictStrategy.REPLACE)
-  suspend fun insertBoardRow(board: BoardEntity)
+  @Insert
+  suspend fun insertNewBoardRow(board: BoardEntity)
+
+  @Query("""UPDATE boards SET name = :name, ble_id = :bleId, created_at = :createdAt, deleted_at = :deletedAt
+    WHERE id = :id""")
+  suspend fun updateBoardRow(id: String, name: String, bleId: String?, createdAt: Long, deletedAt: Long?): Int
+
+  /**
+   * Writes a Board by its UUID, updating the existing row in place so `boards.key` — which every
+   * telemetry-scale row references — never changes. A REPLACE would delete the row and mint a new
+   * key on the `id` conflict.
+   * @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `saveBoardRow`
+   */
+  @Transaction
+  suspend fun saveBoardRow(board: BoardEntity) {
+    if (updateBoardRow(board.id, board.name, board.bleId, board.createdAt, board.deletedAt) == 0) {
+      insertNewBoardRow(board.copy(key = 0))
+    }
+  }
 
   @Query("SELECT deleted_at FROM boards WHERE id = :id")
   suspend fun getBoardDeletedAt(id: String): Long?
@@ -719,7 +774,7 @@ interface VescapeDao {
    */
   @Transaction
   suspend fun upsertBoard(board: BoardEntity) {
-    insertBoardRow(board.copy(deletedAt = board.deletedAt ?: getBoardDeletedAt(board.id)))
+    saveBoardRow(board.copy(deletedAt = board.deletedAt ?: getBoardDeletedAt(board.id)))
   }
 
   /**
@@ -786,7 +841,7 @@ interface VescapeDao {
     deleteAlertRules(id)
     deleteBoardConfigValues(id)
     deleteBoardConfigChangeNotice(id)
-    insertBoardRow(board.copy(deletedAt = deletedAt))
+    saveBoardRow(board.copy(deletedAt = deletedAt))
   }
 
   @Query("SELECT * FROM alerts WHERE board_id = :boardId ORDER BY created_at ASC")

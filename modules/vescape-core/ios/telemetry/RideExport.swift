@@ -6,12 +6,11 @@ import GRDB
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportTrackPage`
 internal func rideExportTrackPage(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
   afterMs: Int64, afterId: Int64) throws -> [Row] {
-  try Row.fetchAll(db, sql: """
-    SELECT * FROM ride_track_points
-    WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND board_id IS ?
-      AND (fix_at_ms > ? OR (fix_at_ms = ? AND id > ?))
-    ORDER BY fix_at_ms, id LIMIT ?
-    """, arguments: [fromMs, toMs, boardId, afterMs, afterMs, afterId, RideExport.batchSize])
+  try Row.fetchAll(db, sql: RIDE_TRACK_SELECT + """
+    WHERE t.fix_at_ms >= ? AND t.fix_at_ms <= ? AND t.board_key IS \(BOARD_KEY_OF_BOARD_ID)
+      AND (t.fix_at_ms > ? OR (t.fix_at_ms = ? AND t.id > ?))
+    ORDER BY t.fix_at_ms, t.id LIMIT ?
+    """, arguments: [fromMs, toMs, boardId, boardId, afterMs, afterMs, afterId, RideExport.batchSize])
 }
 
 /// Caller holds one database snapshot across every page; only the file crosses the bridge.
