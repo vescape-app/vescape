@@ -21,7 +21,7 @@ export default function DrawersPage() {
       <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={RowsIcon}
-          description="EdgeDrawer and FloatingSheet: edge-anchored sheets, pinned chrome, and drag to dismiss."
+          description="Edge drawers blur the screen behind them on iOS and Android 12+. Drag to dismiss to see the blur fade with the drawer. Older Android versions keep the tinted backdrop. Floating sheets use a dimmed backdrop."
         />
         <EdgeDrawerResizeShowcase edge="bottom" />
         <EdgeDrawerResizeShowcase edge="top" />

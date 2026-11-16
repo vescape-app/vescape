@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { BlurView } from 'expo-blur'
 import {
   Modal,
   Pressable,
@@ -18,13 +19,14 @@ import { Text } from '@/components/base/Text'
 import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGestureContext'
 import { GrabZone, StickyChrome, useEdgeDrawerChrome } from '@/components/overlays/EdgeDrawerChrome'
 import { useEdgeDrawerDismissal } from '@/components/overlays/useEdgeDrawerDismissal'
+import { useDrawerBlurTarget } from '@/components/overlays/DrawerBlurProvider'
 import {
   useWidgetFocusHost,
   WidgetFocusOverlay,
   WidgetFocusProvider,
 } from '@/components/overlays/widgetFocus'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 
 interface EdgeDrawerVirtualizedContent {
   /** Exact data-row frames allow scrolling to rows outside the render window. */
@@ -153,6 +155,8 @@ export function EdgeDrawer({
   // JS-side resolution: baked adaptive tokens in a StyleSheet go stale inside a live Modal window
   // after the rider changes the appearance in place — the window re-resolves only on remount.
   const neutral = useResolvedNeutralColors()
+  const blurTint = useThemeStore((state) => state.resolvedTheme)
+  const { blurTarget, canBlur } = useDrawerBlurTarget()
 
   if (!mounted) return null
 
@@ -196,7 +200,7 @@ export function EdgeDrawer({
   })
 
   const scrimStyle: StyleProp<ViewStyle> = {
-    backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(neutral.surfaceDeep, 0.7),
   }
 
   const listHeader = virtualizedContent ? (
@@ -238,7 +242,18 @@ export function EdgeDrawer({
     >
       <GestureHandlerRootView testID={testID} style={styles.modalGestureRoot}>
         <View style={styles.drawer}>
-          <Reanimated.View style={[StyleSheet.absoluteFill, scrimStyle, backdropStyle]}>
+          <Reanimated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+            {canBlur ? (
+              <BlurView
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+                blurTarget={blurTarget}
+                blurMethod="dimezisBlurViewSdk31Plus"
+                intensity={40}
+                tint={blurTint}
+              />
+            ) : null}
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, scrimStyle]} />
             <Pressable style={StyleSheet.absoluteFill} onPress={close} />
           </Reanimated.View>
         </View>

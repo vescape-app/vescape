@@ -48,6 +48,7 @@ import { useThemeStore } from '@/hooks/useTheme'
 import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
 import { AppStorageFailureBanner } from '@/screens/AppStorageFailureBanner'
+import { DrawerBlurProvider } from '@/components/overlays/DrawerBlurProvider'
 
 const clerkPublishableKey = requireClerkPublishableKey()
 
@@ -69,6 +70,14 @@ configureReanimatedLogger({ strict: false })
 initSentry()
 
 function RootLayout() {
+  return (
+    <DrawerBlurProvider>
+      <RootContent />
+    </DrawerBlurProvider>
+  )
+}
+
+function RootContent() {
   const timeFormat = useSettingsStore((s) => s.timeFormat)
   const distanceUnit = useSettingsStore((state) => state.distanceUnit)
   const insets = useSafeAreaInsets()
@@ -178,7 +187,7 @@ function RootLayout() {
                   />
                   <Stack.Screen name={stackScreens.rideDay} options={{ title: 'Day' }} />
                   {/* Clerk's own dismiss control is off (its native header carries system
-                Liquid Glass); the JS header owns back/dismiss instead. */}
+              Liquid Glass); the JS header owns back/dismiss instead. */}
                   <Stack.Screen name={stackScreens.signIn} options={{ title: 'Sign in' }} />
                   <Stack.Screen name={stackScreens.account} options={{ headerShown: false }} />
                   <Stack.Screen name={stackScreens.settings} options={{ title: 'Settings' }} />
