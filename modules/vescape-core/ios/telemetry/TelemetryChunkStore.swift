@@ -315,6 +315,12 @@ internal func publishTelemetryDrained(_ db: Database, nowMs: Int64) throws -> Bo
   return true
 }
 
+/// Clear all and Restore leave a database whose buffer was never drained (ADR 0045).
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `forgetTelemetryDrained`
+internal func forgetTelemetryDrained(_ db: Database) throws {
+  try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [maintenanceJobKey(TELEMETRY_DRAINED_JOB_ID)])
+}
+
 /// Minutes starting before this are closed: their end is `TELEMETRY_SEAL_GRACE_MS` past.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `telemetryDrainCutoffMs`
 internal func telemetryDrainCutoffMs(_ nowMs: Int64) -> Int64 { telemetryMinuteStart(nowMs - TELEMETRY_SEAL_GRACE_MS) }

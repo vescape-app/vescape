@@ -21,7 +21,7 @@ import expo.modules.vescapecore.telemetry.firstTelemetrySampleAtOrAfter
 import expo.modules.vescapecore.telemetry.readTelemetryFramesImpl
 import expo.modules.vescapecore.telemetry.TelemetrySealBatch
 import expo.modules.vescapecore.telemetry.sealTelemetryMinuteImpl
-import expo.modules.vescapecore.telemetry.TELEMETRY_MAINTENANCE_MARKER_IDS
+import expo.modules.vescapecore.telemetry.TELEMETRY_DRAINED_JOB_ID
 import expo.modules.vescapecore.telemetry.drainTelemetryMinutesImpl
 import expo.modules.vescapecore.telemetry.maintenanceJobKey
 import expo.modules.vescapecore.telemetry.publishTelemetryDrainedImpl
@@ -713,7 +713,7 @@ interface VescapeDao {
     clearExclusions()
     clearRideTrackPoints()
     clearWeatherObservations()
-    forgetTelemetryMaintenanceMarkers()
+    forgetTelemetryDrained()
   }
 
   @Transaction
@@ -731,16 +731,14 @@ interface VescapeDao {
       deleteWeatherObservations(range.startMs, range.endMs)
     }
     clearDiagnosticEvents()
-    forgetTelemetryMaintenanceMarkers()
+    forgetTelemetryDrained()
   }
 
   /**
-   * Clear all and Restore leave a database whose buffer was never drained and whose space was never
-   * reclaimed (ADR 0045).
-   * @parity /modules/vescape-core/ios/telemetry/DatabaseSpaceReclaim.swift `forgetTelemetryMaintenanceMarkers`
+   * Clear all and Restore leave a database whose buffer was never drained (ADR 0045).
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `forgetTelemetryDrained`
    */
-  suspend fun forgetTelemetryMaintenanceMarkers() =
-    TELEMETRY_MAINTENANCE_MARKER_IDS.forEach { deleteAppSetting(maintenanceJobKey(it)) }
+  suspend fun forgetTelemetryDrained() = deleteAppSetting(maintenanceJobKey(TELEMETRY_DRAINED_JOB_ID))
 
   // Weather Observations (`weather_observations`)
 

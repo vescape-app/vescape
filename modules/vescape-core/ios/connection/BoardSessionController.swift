@@ -1900,7 +1900,6 @@ internal final class BoardSessionController: VescGattListener {
   private func setPhase(_ phase: BoardPhase) {
     guard self.phase != phase else { return }
     self.phase = phase
-    BoardSessionActivity.process.setLinked(phase != .idle && phase != .error)
     // A phase change can flip whether a light write would be accepted, with the lights themselves
     // unchanged. See `pushWatchBoard`.
     pushWatchBoard()

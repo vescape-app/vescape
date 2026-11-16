@@ -256,27 +256,20 @@ func runTelemetryChunkContract() throws {
   try require(try futurePool.read { try activeRideStartMs($0, nowMs: drainNow, gapMs: 10 * minute) } == nil, "future sample is not a ride")
   try require(try drainedMarker(futurePool) == "drained", "future-dated drain marker")
 
-  // Clear all forgets the drained and reclaimed markers in its own transaction, with or without protected Favorites.
-  func markers(_ pool: DatabasePool) throws -> [String?] {
-    try pool.read { db in try TELEMETRY_MAINTENANCE_MARKER_IDS.map { try storedMaintenanceFingerprint(db, id: $0) } }
-  }
+  // Clear all forgets the drained marker in its own transaction, with or without protected Favorites.
   for protected in [[], [TelemetryTimeRange(startMs: t0, endMs: t0 + minute)]] {
-    try drained.write { db in
-      for id in TELEMETRY_MAINTENANCE_MARKER_IDS { try publishMaintenanceFingerprint(db, id: id, fingerprint: "done", nowMs: drainNow) }
-    }
+    try drained.write { try publishMaintenanceFingerprint($0, id: TELEMETRY_DRAINED_JOB_ID, fingerprint: "drained", nowMs: drainNow) }
     try TelemetryMaintenancePersistence(writer: drained).clear(protectedRanges: protected)
-    try require(try markers(drained) == [nil, nil], "clear all forgets the markers")
+    try require(try drainedMarker(drained) == nil, "clear all forgets the marker")
   }
 
-  // An archive carries app_settings; the restored database must not inherit the drained or reclaimed marker.
+  // An archive carries app_settings; the restored database must not inherit the drained marker.
   let archiveDir = FileManager.default.temporaryDirectory.appendingPathComponent("drained-restore-\(UUID().uuidString)", isDirectory: true)
   try FileManager.default.createDirectory(at: archiveDir, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(at: archiveDir) }
   let sourceURL = archiveDir.appendingPathComponent("source.sqlite")
   let source = try fresh()
-  try source.write { db in
-    for id in TELEMETRY_MAINTENANCE_MARKER_IDS { try publishMaintenanceFingerprint(db, id: id, fingerprint: "done", nowMs: drainNow) }
-  }
+  try source.write { try publishMaintenanceFingerprint($0, id: TELEMETRY_DRAINED_JOB_ID, fingerprint: "drained", nowMs: drainNow) }
   let sourceCopy = try DatabaseQueue(path: sourceURL.path)
   try source.backup(to: sourceCopy)
   try sourceCopy.close()
@@ -285,7 +278,7 @@ func runTelemetryChunkContract() throws {
     platform: "ios", schemaVersion: VESCAPE_DATABASE_VERSION, appVersion: "host", dbSizeBytes: Int64(sourceData.count), createdAt: 1))
   let staged = try DatabaseBackupManager.stageBackupArchive(archive, in: archiveDir)
   let restored = try VescapeDatabase.openRestoredDatabase(at: staged.database, schemaVersion: staged.roomVersion)
-  try require(try markers(restored) == [nil, nil], "restore forgets the markers")
+  try require(try drainedMarker(restored) == nil, "restore forgets the marker")
 
   // Readers racing the sealer see every sample exactly once.
   let race = try fresh()

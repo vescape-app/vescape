@@ -58,7 +58,6 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/telemetry/WeatherObservations.kt",
       "expo/modules/vescapecore/database/DatabaseReplacementFence.kt",
       "expo/modules/vescapecore/telemetry/MaintenanceJobs.kt",
-      "expo/modules/vescapecore/telemetry/DatabaseSpaceReclaim.kt",
       "expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt",
       "expo/modules/vescapecore/weather/Weather.kt",
     ).forEach { relative ->

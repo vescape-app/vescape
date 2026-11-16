@@ -30,7 +30,6 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import expo.modules.vescapecore.database.AppSettings
-import expo.modules.vescapecore.database.DATABASE_NAME
 import expo.modules.vescapecore.database.DatabaseReplacementFence
 import expo.modules.vescapecore.database.VescapeDatabase
 
@@ -42,8 +41,6 @@ private const val INPUT_DEBOUNCE_MS = 3_000L
 private const val PROGRESS_EMIT_INTERVAL_MS = 250L
 /** Open history pages re-read at most this often while chunks commit. */
 private const val HISTORY_REVISION_INTERVAL_MS = 3_000L
-/** Reclaim skips a ride or Board Session caused; they retry once it may have ended. */
-private val SESSION_SKIP_REASONS = setOf("recording", "session_active", "interrupted")
 
 /**
  * Runs stale Maintenance Jobs one at a time, in declaration order, on one low-priority thread.
@@ -100,8 +97,8 @@ internal object MaintenanceRunner {
 
   /**
    * Seal every closed minute left in the telemetry buffer (ADR 0045), on launch and after Restore or
-   * Clear all, which forget the drained marker inside their own fenced replacement, then reclaims the
-   * freed space. One Diagnostic Event per run that found work.
+   * Clear all, which forget the drained marker inside their own fenced replacement. One Diagnostic
+   * Event per run that found work.
    * A drain that yielded to a recording ride retries once the ride may have ended.
    * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `drainTelemetry`
    */
@@ -132,7 +129,7 @@ internal object MaintenanceRunner {
       if (result.yielded) scope.launch {
         delay(gapMs)
         drainTelemetry()
-      } else reclaimSpace(gapMs)
+      }
     } catch (fenced: MaintenanceRunFenced) {
       // Restore or Clear all replaced the database; its own drain starts on the new one.
     } catch (cancelled: CancellationException) {
@@ -140,40 +137,6 @@ internal object MaintenanceRunner {
     } catch (error: Throwable) {
       Log.e(TAG, "Telemetry drain failed", error)
       Sentry.captureException(error)
-    }
-  }
-
-  /**
-   * Return freed pages to the OS once the drain has run (ADR 0045). One Diagnostic Event with the
-   * before/after size when it reclaims; a skip for a recording ride or an active Board Session retries
-   * once the ride may have ended, any other skip waits for a later start.
-   * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `reclaimSpace`
-   */
-  private suspend fun reclaimSpace(gapMs: Long) {
-    val fence = DatabaseReplacementFence.process
-    val clock = SystemClock.elapsedRealtime()
-    val directory = appContext.getDatabasePath(DATABASE_NAME).parentFile
-    val result = reclaimDatabaseSpace(
-      database = { VescapeDatabase.get(appContext) },
-      fence = fence,
-      ticket = fence.ticket(),
-      gapMs = gapMs,
-      availableDiskBytes = { directory?.usableSpace ?: 0L },
-    )
-    when (result) {
-      is DatabaseSpaceReclaimResult.Reclaimed -> TelemetryRepository.get(appContext).recordDiagnosticEvent("database_reclaim", mapOf(
-        "operation" to "database_reclaim",
-        "before_bytes" to result.beforeBytes,
-        "after_bytes" to result.afterBytes,
-        "duration_ms" to SystemClock.elapsedRealtime() - clock,
-      ))
-      is DatabaseSpaceReclaimResult.Skipped -> {
-        breadcrumb("reclaim_skip", mapOf("reason" to result.reason, "file_bytes" to result.fileBytes, "free_bytes" to result.freeBytes))
-        if (result.reason in SESSION_SKIP_REASONS) scope.launch {
-          delay(gapMs)
-          drainTelemetry()
-        }
-      }
     }
   }
 

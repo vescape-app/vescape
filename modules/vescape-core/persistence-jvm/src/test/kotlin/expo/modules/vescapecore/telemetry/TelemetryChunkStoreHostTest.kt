@@ -303,15 +303,15 @@ class TelemetryChunkStoreHostTest {
     } finally { db.close() }
   }
 
-  /** Clear all forgets the drained and reclaimed markers in its own transaction, with or without protected Favorites. */
-  @Test fun clearAllForgetsTheMaintenanceMarkers(): Unit = runBlocking {
+  /** Clear all forgets the drained marker in its own transaction, with or without protected Favorites. */
+  @Test fun clearAllForgetsTheDrainedMarker(): Unit = runBlocking {
     val db = memory()
     try {
       val dao = db.vescapeDao()
       for (protected in listOf(emptyList(), listOf(TelemetryTimeRange(t0, t0 + minute)))) {
-        TELEMETRY_MAINTENANCE_MARKER_IDS.forEach { dao.publishMaintenanceFingerprint(it, "done", drainNow) }
+        dao.publishMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID, "drained", drainNow)
         dao.clearExcept(protected)
-        TELEMETRY_MAINTENANCE_MARKER_IDS.forEach { assertNull(it, dao.storedMaintenanceFingerprint(it)) }
+        assertNull(dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
       }
     } finally { db.close() }
   }

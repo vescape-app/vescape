@@ -6,7 +6,6 @@ import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.database.RECORDING_STOP_MARKER
-import expo.modules.vescapecore.telemetry.BoardSessionActivity
 import expo.modules.vescapecore.telemetry.TelemetryCapture
 import expo.modules.vescapecore.telemetry.TelemetryLocationCapture
 import expo.modules.vescapecore.telemetry.TelemetryRepository
@@ -19,10 +18,6 @@ internal class RecordingCoordinator(
 ) {
     private var recorder: SessionRecorder? = null
     private var telemetryStore: TelemetryRepository? = null
-        set(value) {
-            field = value
-            BoardSessionActivity.process.setRecording(value != null)
-        }
     private var connectionLostMarkerAt: Long? = null
 
     /** Board the armed store records; GPS Fixes carry it because a fix has no Board of its own. */
