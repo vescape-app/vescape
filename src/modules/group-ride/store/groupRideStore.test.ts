@@ -9,6 +9,7 @@ const locationListeners: Listener<{ latitude: number; longitude: number }>[] = [
 const publicRideStatusListeners: Listener<unknown>[] = []
 const publicRidersListeners: Listener<{ riders: unknown[]; now: number | null }>[] = []
 const publicPinsListeners: Listener<unknown>[] = []
+const setManualPublicRideSharing = mock((_enabled: boolean) => {})
 const setPublicRide = mock((_on: boolean, _until: number | null) => {})
 
 const startGroupRideObserve = mock(() => {})
@@ -48,6 +49,7 @@ mock.module('vescape-core', () => ({
     subscribe(publicRidersListeners, listener),
   addPublicPinsListener: (listener: Listener<unknown>) => subscribe(publicPinsListeners, listener),
   setPublicRide,
+  setManualPublicRideSharing,
   startGroupRideObserve,
   stopGroupRideObserve,
   watchPublicRiders,
@@ -75,6 +77,7 @@ beforeEach(async () => {
   watchPublicRiders.mockClear()
   stopWatchingPublicRiders.mockClear()
   setPublicRide.mockClear()
+  setManualPublicRideSharing.mockClear()
   const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
   useGroupRideStore.setState({
     connection: 'idle',
@@ -100,9 +103,42 @@ test('the public ride switch mirrors native and sends the end time for hours', a
   useGroupRideStore.getState().setPublicRide({ mode: 'always' })
   expect(setPublicRide.mock.calls[1]).toEqual([true, null])
 
-  const status = { on: true, until: null, live: true, supported: true, reason: null }
+  const status = {
+    on: true,
+    until: null,
+    live: true,
+    manualSharing: false,
+    supported: true,
+    reason: null,
+  }
   publicRideStatusListeners.forEach((listener) => listener(status))
   expect(useGroupRideStore.getState().publicRide).toEqual(status)
+})
+
+test('manual sharing sends a separate native intent and waits for native status', async () => {
+  const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  useGroupRideStore.getState().startObserving()
+
+  const status = {
+    on: true,
+    until: Date.now() + 3_600_000,
+    live: false,
+    manualSharing: false,
+    supported: true,
+    reason: null,
+  }
+  publicRideStatusListeners.forEach((listener) => listener(status))
+  useGroupRideStore.getState().setManualPublicRideSharing(true)
+  expect(useGroupRideStore.getState().publicRide).toEqual(status)
+
+  const started = { ...status, manualSharing: true }
+  publicRideStatusListeners.forEach((listener) => listener(started))
+  expect(useGroupRideStore.getState().publicRide).toEqual(started)
+  useGroupRideStore.getState().setManualPublicRideSharing(false)
+
+  expect(setManualPublicRideSharing.mock.calls).toEqual([[true], [false]])
+  expect(setPublicRide).not.toHaveBeenCalled()
+  useGroupRideStore.getState().stopObserving()
 })
 
 test('looks around with the switch off and shows public riders outside a ride', async () => {

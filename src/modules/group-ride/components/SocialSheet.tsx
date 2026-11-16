@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router'
 import { CaretRightIcon, UserCircleGearIcon, WarningIcon } from 'phosphor-react-native'
 import type { PublicRideStatus } from 'vescape-core'
 import { Text } from '@/components/base/Text'
-import { Banner } from '@/components/base/Banner'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
@@ -13,6 +12,7 @@ import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { publicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { theme } from '@/constants/theme'
+import { PublicRideManualAction } from '@/modules/group-ride/components/PublicRideManualAction'
 import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
 import { AccountPill } from '@/modules/profile/components/AccountPill'
 import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
@@ -47,6 +47,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   const boardConnected = useBleStore((s) => s.status === 'connected')
   const status = useGroupRideStore((s) => s.publicRide)
   const setPublicRide = useGroupRideStore((s) => s.setPublicRide)
+  const setManualSharing = useGroupRideStore((s) => s.setManualPublicRideSharing)
   const signedIn = useDeviceAccountReady()
   const hasNick = useRiderProfileStore((s) => s.profile?.nick != null)
   const profileLoaded = useRiderProfileStore((s) => s.loaded)
@@ -118,12 +119,8 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         disabled={!ready}
         onValueChange={setPublicRide}
       />
-      {ready && status.on && !status.live && !boardConnected ? (
-        <Banner
-          variant="warning"
-          title="Not visible yet"
-          message="Connect your board to go public."
-        />
+      {status.on && (status.manualSharing || (ready && !status.live && !boardConnected)) ? (
+        <PublicRideManualAction sharing={status.manualSharing} onChange={setManualSharing} />
       ) : null}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       {profileError ? <Text style={styles.errorText}>{profileError}</Text> : null}

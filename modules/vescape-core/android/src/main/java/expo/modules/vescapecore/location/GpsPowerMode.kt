@@ -57,7 +57,7 @@ internal const val GPS_NETWORK_FIX_MIN_INTERVAL_MS = 2_000L
 /**
  * The one place the app decides whether the phone's GPS should be running, and how hard.
  *
- * Deliberately pure and total: every caller passes the same five facts and gets the same answer on
+ * Deliberately pure and total: every caller passes the same facts and gets the same answer on
  * both platforms, so "why is GPS on?" is answerable without reading the controller.
  *
  * @parity /modules/vescape-core/ios/location/GpsPowerMode.swift `GpsDemand`
@@ -73,15 +73,17 @@ internal object GpsDemand {
      *   pocket too (ADR-0039).
      * @param replayOwnsPosition a replay is feeding recorded fixes through the live path; a real fix
      *   slipping in would fight them (`docs/connectionState.md`).
+     * @param manualPublicRide the rider explicitly asked to share location without a board.
      */
     fun resolve(
         appVisible: Boolean,
         riding: Boolean,
         watchNavigating: Boolean,
         replayOwnsPosition: Boolean,
+        manualPublicRide: Boolean,
     ): GpsPowerMode {
         if (replayOwnsPosition) return GpsPowerMode.Off
-        if (riding || watchNavigating) return GpsPowerMode.Ride
+        if (riding || watchNavigating || manualPublicRide) return GpsPowerMode.Ride
         if (appVisible) return GpsPowerMode.Map
         return GpsPowerMode.Off
     }

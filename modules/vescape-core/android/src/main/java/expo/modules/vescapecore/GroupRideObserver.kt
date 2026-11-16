@@ -50,7 +50,7 @@ internal class GroupRideObserver(
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `deviceCredential`
      */
     private val deviceCredential: () -> DeviceCredential? = { null },
-    private val onLinkDemandChanged: () -> Unit = {},
+    private val onPublicRideDemandChanged: () -> Unit = {},
     /** Persists the public ride switch. */
     persistPublicRide: (PublicRideSwitch) -> Unit = {},
     /** The last position the phone knew, for looking around without a fresh fix. */
@@ -106,7 +106,7 @@ internal class GroupRideObserver(
             handler.removeCallbacks(missedRetryRunnable)
             delay?.let { handler.postDelayed(missedRetryRunnable, it) }
         },
-        onLinkDemandChanged = onLinkDemandChanged,
+        onPublicRideDemandChanged = onPublicRideDemandChanged,
         onPins = ::onPublicPins,
     )
 
@@ -128,6 +128,7 @@ internal class GroupRideObserver(
 
     /** The public ride or a look-around needs the socket, so the owner keeps it up. */
     val publicRideNeedsLink: Boolean get() = publicRide.needsLink
+    val publicRideNeedsGps: Boolean get() = publicRide.needsGps
 
     /**
      * What the Watch Mirror draws: the nearby public riders while the rider rides public, else null.
@@ -310,6 +311,11 @@ internal class GroupRideObserver(
         handler.post {
             if (!publicRide.set(next)) publicRide.resync()
         }
+    }
+
+    /** @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `setManualPublicRideSharing` */
+    fun setManualPublicRideSharing(enabled: Boolean) {
+        handler.post { publicRide.setManualSharing(enabled) }
     }
 
     fun setBoardConnected(connected: Boolean) {

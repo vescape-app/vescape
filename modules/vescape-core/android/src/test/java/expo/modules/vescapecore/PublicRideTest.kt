@@ -42,7 +42,7 @@ class PublicRideTest {
             emit = { name, payload -> events += name to payload },
             send = { frame -> linkOpen && sent.add(frame) },
             scheduleMissedRetry = { retry = it },
-            onLinkDemandChanged = { linkDemands += ride.needsLink },
+            onPublicRideDemandChanged = { linkDemands += ride.needsLink },
             onPins = { signals, hazards, _ -> pinUpdates += signals to hazards },
         )
     }
@@ -86,6 +86,63 @@ class PublicRideTest {
         assertEquals(listOf("public-on", "public-off"), types())
         // The switch stays on for the next board connect.
         assertTrue(ride.switch.on)
+    }
+
+    @Test
+    fun `manual sharing sends positions and returns to waiting without resetting the timer`() {
+        val until = now + 3_600_000L
+        val selected = PublicRideSwitch(true, until)
+        ride.load(selected, "acc")
+        ready()
+        ride.watchNearby(52.0 to 21.0)
+        sent.clear()
+        linkDemands.clear()
+
+        ride.setManualSharing(true)
+        assertTrue(ride.needsGps)
+        assertEquals(true, status()["manualSharing"])
+        assertEquals(until, sent.last().getLong("until"))
+        ride.handle("public-status", JSONObject().put("on", true))
+        ride.position(presence, at = now)
+
+        ride.setBoardConnected(true)
+        ride.setBoardConnected(false)
+        assertEquals(listOf("public-on", "public-position"), types())
+        ride.setManualSharing(false)
+        assertEquals(listOf("public-on", "public-position", "public-off"), types())
+        assertEquals(false, status()["manualSharing"])
+        assertFalse(ride.needsGps)
+        assertEquals(listOf(true, true), linkDemands)
+        assertEquals(selected, ride.switch)
+        assertEquals(3_600_000L, timer)
+        assertTrue(persisted.isEmpty())
+
+        ride.setBoardConnected(true)
+        assertEquals("public-on", types().last())
+    }
+
+    @Test
+    fun `manual sharing expires and does not restart with the switch`() {
+        ride.load(PublicRideSwitch.OFF, "acc")
+        ready()
+        ride.setManualSharing(true)
+        assertFalse(ride.needsGps)
+
+        val until = now + 1_000L
+        ride.set(PublicRideSwitch(true, until))
+        ride.setManualSharing(true)
+        now = until
+        ride.expire()
+        assertEquals(false, status()["manualSharing"])
+        assertEquals(listOf("public-on", "public-off"), types())
+        ride.set(PublicRideSwitch(true, null))
+        assertFalse(ride.wanted)
+
+        ride.setManualSharing(true)
+        ride.setAccount("another-account")
+        assertFalse(ride.needsGps)
+        ride.set(PublicRideSwitch(true, null))
+        assertFalse(ride.wanted)
     }
 
     @Test

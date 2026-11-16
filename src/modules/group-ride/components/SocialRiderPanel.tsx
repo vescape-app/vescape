@@ -18,6 +18,7 @@ import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelect
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 import { NEARBY_RIDER_LIMIT, type RosterRider } from '@/modules/group-ride/lib/roster'
+import { useOwnRiderReadings } from '@/modules/group-ride/hooks/useOwnRiderReadings'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
@@ -57,7 +58,7 @@ export function SocialRiderPanel({
   const live = useGroupRideStore((s) => s.publicRide.live)
   const profile = useRiderProfileStore((s) => s.profile)
   const ownProfile = signedIn ? profile : null
-  const nearbyCount = rows.length + Number(live || ownProfile !== null)
+  const nearbyCount = rows.length + Number(live)
   const friendCount = useFriendsStore(
     (s) => s.lists.friends.filter((friend) => friend.ridingNow).length,
   )
@@ -186,10 +187,11 @@ function NearbyRiders({
   onOpenRider: (accountId: string) => void
   onShowOnMap?: () => void
 }) {
+  const selfReadings = useOwnRiderReadings(live)
   const firstOnMap = rows.find((row) => row.presence)
   const self: RosterRider = {
     id: 'nearby:self',
-    name: ownProfile?.nick ?? 'You',
+    name: ownProfile?.nick ?? 'Rider',
     presence: null,
     trail: null,
     stale: false,
@@ -197,7 +199,7 @@ function NearbyRiders({
     lastSeen: 0,
     isSelf: true,
   }
-  const visibleRows = live || ownProfile ? [self, ...rows] : rows
+  const visibleRows = live ? [self, ...rows] : rows
 
   return (
     <View style={styles.nearby} testID="nearby-riders">
@@ -211,7 +213,7 @@ function NearbyRiders({
             if (accountId) onOpenRider(accountId)
           }}
           selfCanOpen={ownProfile !== null}
-          selfSharing={live}
+          selfReadings={selfReadings}
         />
       ) : (
         <Placeholder

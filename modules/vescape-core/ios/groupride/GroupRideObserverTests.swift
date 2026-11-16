@@ -94,7 +94,7 @@ final class GroupRideObserverTests: XCTestCase {
         guard let account = self.account, let token = self.token else { return nil }
         return DeviceCredential(serverUrl: "https://example.com", token: token, accountId: account)
       },
-      onLinkDemandChanged: { [unowned self] in self.demand.append(self.observer.publicRideNeedsLink) },
+      onPublicRideDemandChanged: { [unowned self] in self.demand.append(self.observer.publicRideNeedsLink) },
       now: { [unowned self] in self.clock.currentTimeMs },
       makeSocket: { [unowned self] request in
         let link = Link(request)

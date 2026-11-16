@@ -430,6 +430,10 @@ class CoreForegroundService : Service() {
             instance?.controller?.setPublicRide(on, until)
         }
 
+        fun setManualPublicRideSharing(enabled: Boolean) {
+            instance?.controller?.setManualPublicRideSharing(enabled)
+        }
+
         fun watchPublicRiders() {
             instance?.controller?.watchPublicRiders()
         }

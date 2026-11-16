@@ -123,7 +123,7 @@ class GroupRideObserverTest {
                     }
                 },
                 deviceCredential = { account?.let { id -> token?.let { DeviceCredential("https://example.com", it, id, null) } } },
-                onLinkDemandChanged = { demand += observerNeedsLink() },
+                onPublicRideDemandChanged = { demand += observerNeedsLink() },
                 now = { clock.currentTimeMs },
                 sockets = WebSocket.Factory { request, listener -> Link(request, listener).also { links += it }.socket },
             )

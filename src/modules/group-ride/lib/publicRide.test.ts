@@ -8,6 +8,7 @@ const status = (patch: Partial<PublicRideStatus>): PublicRideStatus => ({
   on: true,
   until: null,
   live: false,
+  manualSharing: false,
   supported: true,
   reason: null,
   ...patch,

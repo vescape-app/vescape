@@ -25,12 +25,14 @@ export function publicRideSector(index: number, span = 1) {
   const outerEnd = point(outerRadius, end - outerInset)
   const innerEnd = point(innerRadius, end - innerInset)
   const innerStart = point(innerRadius, start + innerInset)
+  const outerPath = `M ${outerStart.x} ${outerStart.y} A ${outerRadius} ${outerRadius} 0 0 1 ${outerEnd.x} ${outerEnd.y}`
   return {
     outerStart,
     outerEnd,
     innerEnd,
     innerStart,
-    path: `M ${outerStart.x} ${outerStart.y} A ${outerRadius} ${outerRadius} 0 0 1 ${outerEnd.x} ${outerEnd.y} L ${innerEnd.x} ${innerEnd.y} A ${innerRadius} ${innerRadius} 0 0 0 ${innerStart.x} ${innerStart.y} Z`,
+    outerPath,
+    path: `${outerPath} L ${innerEnd.x} ${innerEnd.y} A ${innerRadius} ${innerRadius} 0 0 0 ${innerStart.x} ${innerStart.y} Z`,
     label: point(100, (start + end) / 2),
   }
 }

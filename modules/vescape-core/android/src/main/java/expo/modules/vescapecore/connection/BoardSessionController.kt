@@ -486,7 +486,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
             ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
             signalContext = ::riderSignalContext,
             deviceCredential = { DeviceCredentialStore(service.applicationContext).read() },
-            onLinkDemandChanged = ::syncPublicRideLink,
+            onPublicRideDemandChanged = {
+                syncPublicRideLink()
+                mainHandler.post { if (!isStoppingService) refreshGpsDemand() }
+            },
             persistPublicRide = { PublicRideStore(service.applicationContext).write(it) },
             lastKnownLocation = {
                 val latitude = lastAppliedSettings.lastGpsLatitude
@@ -1171,6 +1174,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
     fun setPublicRide(on: Boolean, until: Long?) {
         groupRideObserver.setPublicRide(if (on) PublicRideSwitch(true, until) else PublicRideSwitch.OFF)
         syncPublicRideLink()
+    }
+
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setManualPublicRideSharing` */
+    fun setManualPublicRideSharing(enabled: Boolean) {
+        groupRideObserver.setManualPublicRideSharing(enabled)
     }
 
     fun watchPublicRiders() {
@@ -3260,6 +3268,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             riding = riding,
             watchNavigating = watchMirror.navigating,
             replayOwnsPosition = replayTransport != null || boardConfig?.replayRecordingName != null,
+            manualPublicRide = groupRideObserver.publicRideNeedsGps,
         )
         val wasActive = gpsMonitor.active
         gpsMonitor.apply(mode)
@@ -3502,6 +3511,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
     private fun latestRiderPresence(): RiderPresence? {
+        if (replayTransport != null || boardConfig?.replayRecordingName != null) return null
         val location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?: locationTracker.latestLocation)
             ?: return null
         val currentTelemetry = telemetry

@@ -13,7 +13,7 @@ export const HOUR_DESCRIPTIONS = [
       ? `Visible for ${hours / 24} days`
       : `Visible for ${hours} ${hours === 1 ? 'hour' : 'hours'}`,
   ),
-  'Visible whenever my board connects',
+  'No sharing time limit',
 ]
 const TIME_PREFIX = 'Visible for '
 export interface PublicRideReadoutState {

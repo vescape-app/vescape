@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { BroadcastIcon, ClockIcon, PowerIcon, InfinityIcon, type Icon } from 'phosphor-react-native'
 import * as Haptics from 'expo-haptics'
-import Svg, { Path } from 'react-native-svg'
+import Svg, { Defs, Path } from 'react-native-svg'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
-  useAnimatedReaction,
   useAnimatedProps,
   useDerivedValue,
   type SharedValue,
@@ -18,7 +17,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets'
 
 import { Text } from '@/components/base/Text'
-import { blend, theme } from '@/constants/theme'
+import { theme } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { PUBLIC_RIDE_DURATIONS, type PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import {
@@ -31,6 +30,10 @@ import {
   BroadcastGlyph,
   RING_START,
 } from '@/modules/group-ride/components/BroadcastGlyph'
+import {
+  PublicRideSector,
+  PublicRideSectorGradient,
+} from '@/modules/group-ride/components/PublicRideSector'
 import { createPublicRideInteraction } from '@/modules/group-ride/lib/publicRideInteraction'
 import {
   PublicRideReadout,
@@ -79,45 +82,39 @@ function sectorOf(stop: number) {
   return stop === 0 ? 0 : stop === ALWAYS_STOP ? 2 : 1
 }
 
-function Sector({
-  path,
-  index,
+/** The fill and outer stroke end at the same animated angle as the timer's tick. */
+function TimerProgress({
   readout,
-  surface,
-  border,
-  accent,
-  activeFill,
-  muted,
-  initialActive,
+  rotation,
+  color,
+  gradientId,
 }: {
-  initialActive: boolean
-  path: string
-  index: number
   readout: SharedValue<Readout>
-  surface: string
-  border: string
-  accent: string
-  activeFill: string
-  muted: string
+  rotation: SharedValue<number>
+  color: string
+  gradientId: string
 }) {
-  const opacity = useSharedValue(initialActive ? 1 : 0)
-  useAnimatedReaction(
-    () => readout.get().sector === index,
-    (active, previous) => {
-      if (active !== previous) opacity.set(withTiming(active ? 1 : 0, { duration: 80 }))
-    },
-  )
-  const props = useAnimatedProps(() => ({ opacity: opacity.get() }))
+  const { cx, cy, innerRadius, outerRadius } = PUBLIC_RIDE_ARC
+  const { outerStart, innerStart } = SECTORS[1]
+  const paths = useDerivedValue(() => {
+    if (!readout.get().timed) return null
+    const degrees = Math.max(
+      RULER_START,
+      Math.min(FIRST_TICK + DURATION_COUNT * RULER_STEP, rotation.get() - 90),
+    )
+    const angle = (degrees * Math.PI) / 180
+    const dx = Math.cos(angle)
+    const dy = Math.sin(angle)
+    const outer = `M ${outerStart.x} ${outerStart.y} A ${outerRadius} ${outerRadius} 0 0 1 ${cx + outerRadius * dx} ${cy + outerRadius * dy}`
+    const fill = `${outer} L ${cx + innerRadius * dx} ${cy + innerRadius * dy} A ${innerRadius} ${innerRadius} 0 0 0 ${innerStart.x} ${innerStart.y} Z`
+    return { outer, fill }
+  })
+  const fillProps = useAnimatedProps(() => ({ d: paths.get()?.fill ?? 'M 0 0' }))
+  const outerProps = useAnimatedProps(() => ({ d: paths.get()?.outer ?? 'M 0 0' }))
   return (
     <>
-      <Path d={path} fill={surface} stroke={border} strokeWidth={1} />
-      <AnimatedPath
-        d={path}
-        fill={index > 0 ? activeFill : surface}
-        stroke={index === 0 ? muted : accent}
-        animatedProps={props}
-        strokeWidth={1}
-      />
+      <AnimatedPath fill={`url(#${gradientId})`} animatedProps={fillProps} />
+      <AnimatedPath fill="none" stroke={color} strokeWidth={3} animatedProps={outerProps} />
     </>
   )
 }
@@ -192,8 +189,10 @@ export function PublicRideSelector({
   'use no memo'
   const disabled = controlDisabled || !!overlayAction
   const neutral = useResolvedNeutralColors()
-  const accent = useResolvedColor(theme.palette.groupRide.color)
-  const activeFill = blend(neutral.surfaceDeep, accent, 0.12)
+  const liveColor = useResolvedColor(theme.palette.groupRide.color)
+  const waitingColor = useResolvedColor(theme.status.warning.color)
+  const accent = live ? liveColor : waitingColor
+  const statusColor = value.mode === 'off' ? neutral.textSecondary : accent
   const [width, setWidth] = useState<number>(PUBLIC_RIDE_ARC.width)
   const scale = width / PUBLIC_RIDE_ARC.width
   const stop = stopOf(value)
@@ -224,7 +223,8 @@ export function PublicRideSelector({
     }
   })
   const wave = useSharedValue(1)
-  const previous = useRef(value.mode)
+  const gradientId = useId()
+  const offGradientId = `${gradientId}-off`
 
   useEffect(() => {
     initial.set(stop)
@@ -237,15 +237,11 @@ export function PublicRideSelector({
       // Sharing: the radar keeps pinging for as long as the rider is public.
       wave.set(0)
       wave.set(withRepeat(withTiming(1, { duration: BROADCAST_WAVE_MS }), -1, false))
-    } else if (previous.current === 'off' && value.mode !== 'off') {
-      wave.set(0)
-      wave.set(withRepeat(withTiming(1, { duration: 700 }), 2, false))
     } else {
       wave.set(1)
     }
-    previous.current = value.mode
     return () => cancelAnimation(wave)
-  }, [live, value.mode, wave])
+  }, [live, wave])
 
   const rulerProps = useAnimatedProps(() => ({
     stroke: readout.get().timed ? neutral.textSecondary : neutral.border,
@@ -254,7 +250,7 @@ export function PublicRideSelector({
   // One wave: the icon lights from the centre out (dot, inner arcs, outer arcs), then the ring
   // carries the same motion on to the inner arc.
   const waveStyle = useAnimatedStyle(() => {
-    const ring = Math.min(1, Math.max(0, (wave.get() - RING_START) / (1 - RING_START)))
+    const ring = live ? Math.min(1, Math.max(0, (wave.get() - RING_START) / (1 - RING_START))) : 0
     return {
       opacity: ring > 0 ? (1 - ring) * 0.65 : 0,
       transform: [{ scale: 0.2 + ring * 0.8 }],
@@ -340,7 +336,7 @@ export function PublicRideSelector({
   return (
     <View>
       <View style={styles.header}>
-        <BroadcastIcon size={22} color={accent} style={styles.headerIcon} />
+        <BroadcastIcon size={22} color={statusColor} style={styles.headerIcon} />
         <View style={styles.heading}>
           <View style={styles.titleRow}>
             <Text style={[styles.title, { color: neutral.textPrimary }]}>Public ride</Text>
@@ -379,20 +375,29 @@ export function PublicRideSelector({
               viewBox={`0 0 ${PUBLIC_RIDE_ARC.width} ${PUBLIC_RIDE_ARC.height}`}
               style={StyleSheet.absoluteFill}
             >
+              <Defs>
+                <PublicRideSectorGradient id={gradientId} color={accent} />
+                <PublicRideSectorGradient id={offGradientId} color={neutral.textSecondary} />
+              </Defs>
               {SECTORS.map((sector, index) => (
-                <Sector
+                <PublicRideSector
                   key={index}
                   initialActive={selected === index}
-                  path={sector.path}
+                  sector={sector}
                   index={index}
                   readout={readout}
                   surface={neutral.surfaceDeep}
                   border={neutral.border}
-                  accent={accent}
-                  activeFill={activeFill}
-                  muted={neutral.textSecondary}
+                  accent={index === 0 ? neutral.textSecondary : accent}
+                  gradientId={index === 0 ? offGradientId : gradientId}
                 />
               ))}
+              <TimerProgress
+                readout={readout}
+                rotation={indicatorRotation}
+                color={accent}
+                gradientId={gradientId}
+              />
               <AnimatedPath
                 d={TICK_PATH}
                 animatedProps={rulerProps}
@@ -425,7 +430,7 @@ export function PublicRideSelector({
             >
               <BroadcastGlyph
                 size={BROADCAST_SIZE * scale}
-                color={live ? accent : neutral.textSecondary}
+                color={statusColor}
                 wave={wave}
                 pulsing={live}
               />
@@ -520,7 +525,7 @@ export function PublicRideSelector({
 
 const styles = StyleSheet.create({
   indicatorPivot: { position: 'absolute', width: 0, height: 0 },
-  indicator: { position: 'absolute', width: 4, left: -2, borderRadius: 2 },
+  indicator: { position: 'absolute', width: 4, left: -2 },
   disabled: { opacity: 0.5 },
   overlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6, zIndex: 1 },

@@ -2185,7 +2185,7 @@ export interface GroupRideConnectionEvent {
 /**
  * Whether the Rider can send a Rider Signal or Ride Hazard right now. `supported` and
  * `hazardsSupported` need a joined ride on a relay that advertises them, or else being public
- * (switch on, board connected, signed in) on a relay with the public ride. `insidePrivacyZone` is also true while zones have not loaded.
+ * (switch on, signed in, board connected or manual sharing) on a relay with the public ride. `insidePrivacyZone` is also true while zones have not loaded.
  * `hasRecentFix` needs a GPS fix at most 30 s old. Emitted on change.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `refreshSignalAvailability`
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `refreshSignalAvailability`
@@ -2204,7 +2204,8 @@ export interface GroupRideErrorEvent {
 /**
  * The public ride switch and where the public ride stands. `on` with `until` null is "always";
  * with `until` (epoch ms) it ends itself then. `live` is true while the relay confirms the rider
- * public (switch on, board connected, signed in). `supported` is false against a relay without the
+ * public. `manualSharing` is the process-local override for board activation.
+ * `supported` is false against a relay without the
  * `public-ride` feature. `reason` says why the ride last ended on its own: `replaced` (newer phone
  * of the Account), `end-time`, `away-expired`, `signed-out`, or `refused` (no Account or nick).
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `emitStatus`
@@ -2214,6 +2215,7 @@ export interface PublicRideStatus {
   on: boolean
   until: number | null
   live: boolean
+  manualSharing: boolean
   supported: boolean
   reason: 'replaced' | 'end-time' | 'away-expired' | 'signed-out' | 'refused' | null
 }
@@ -3076,6 +3078,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   sendGroupRideHazard(kind: RideHazardKind): void
   clearGroupRideHazard(): void
   setPublicRide(on: boolean, until: number | null): void
+  setManualPublicRideSharing(enabled: boolean): void
   watchPublicRiders(): void
   stopWatchingPublicRiders(): void
   setTelemetryRecordingEnabled(enabled: boolean): void
@@ -3522,6 +3525,16 @@ export function clearGroupRideHazard(): void {
 export function setPublicRide(on: boolean, until: number | null): void {
   if (E2E_ENABLED) return
   native.setPublicRide(on, until)
+}
+
+/**
+ * Start or stop sharing independently of the board, using the active Public Ride time.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setManualPublicRideSharing`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setManualPublicRideSharing`
+ */
+export function setManualPublicRideSharing(enabled: boolean): void {
+  if (E2E_ENABLED) return
+  native.setManualPublicRideSharing(enabled)
 }
 
 /** Look around: watch public riders near this phone, switch on or off. Riders arrive as `onPublicRiders`. */

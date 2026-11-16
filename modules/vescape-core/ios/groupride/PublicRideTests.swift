@@ -35,7 +35,7 @@ final class PublicRideTests: XCTestCase {
         return true
       },
       scheduleMissedRetry: { [unowned self] in self.retry = $0 },
-      onLinkDemandChanged: { [unowned self] in self.linkDemands.append(self.ride.needsLink) },
+      onPublicRideDemandChanged: { [unowned self] in self.linkDemands.append(self.ride.needsLink) },
       onPins: { [unowned self] signals, hazards, _ in self.pinUpdates.append((signals, hazards)) }
     )
   }
@@ -74,6 +74,61 @@ final class PublicRideTests: XCTestCase {
     XCTAssertEqual(types, ["public-on", "public-off"])
     // The switch stays on for the next board connect.
     XCTAssertTrue(ride.switchState.on)
+  }
+
+  func testManualSharingStartsSendsPositionsAndReturnsToWaitingWithoutResettingTimer() {
+    let until = now + 3_600_000
+    let selected = PublicRideSwitch(on: true, until: until)
+    ride.load(selected, accountId: "acc")
+    ready()
+    ride.watchNearby((lat: 52, lng: 21))
+    sent.removeAll()
+    linkDemands.removeAll()
+
+    ride.setManualSharing(true)
+    XCTAssertTrue(ride.needsGps)
+    XCTAssertEqual(status["manualSharing"] as? Bool, true)
+    XCTAssertEqual(sent.last?["until"] as? Int64, until)
+    ride.handle(type: "public-status", json: ["on": true])
+    ride.position(presence, at: now)
+
+    ride.setBoardConnected(true)
+    ride.setBoardConnected(false)
+    XCTAssertEqual(types, ["public-on", "public-position"])
+    ride.setManualSharing(false)
+    XCTAssertEqual(types, ["public-on", "public-position", "public-off"])
+    XCTAssertEqual(status["manualSharing"] as? Bool, false)
+    XCTAssertFalse(ride.needsGps)
+    XCTAssertEqual(linkDemands, [true, true])
+    XCTAssertEqual(ride.switchState, selected)
+    XCTAssertEqual(timer, 3_600_000)
+    XCTAssertTrue(persisted.isEmpty)
+
+    ride.setBoardConnected(true)
+    XCTAssertEqual(types.last, "public-on")
+  }
+
+  func testManualSharingExpiresAndDoesNotRestartWithTheSwitch() {
+    ride.load(.off, accountId: "acc")
+    ready()
+    ride.setManualSharing(true)
+    XCTAssertFalse(ride.needsGps)
+
+    let until = now + 1_000
+    ride.set(PublicRideSwitch(on: true, until: until))
+    ride.setManualSharing(true)
+    now = until
+    ride.expire()
+    XCTAssertEqual(status["manualSharing"] as? Bool, false)
+    XCTAssertEqual(types, ["public-on", "public-off"])
+    ride.set(PublicRideSwitch(on: true, until: nil))
+    XCTAssertFalse(ride.wanted)
+
+    ride.setManualSharing(true)
+    ride.setAccount("another-account")
+    XCTAssertFalse(ride.needsGps)
+    ride.set(PublicRideSwitch(on: true, until: nil))
+    XCTAssertFalse(ride.wanted)
   }
 
   func testHoursEndTimeGoesToTheRelayAndTheTimerTurnsTheSwitchOff() {

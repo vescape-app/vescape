@@ -9,13 +9,15 @@ final class GpsPowerModeTests: XCTestCase {
     appVisible: Bool = false,
     riding: Bool = false,
     watchNavigating: Bool = false,
-    replayOwnsPosition: Bool = false
+    replayOwnsPosition: Bool = false,
+    manualPublicRide: Bool = false
   ) -> GpsPowerMode {
     GpsDemand.resolve(
       appVisible: appVisible,
       riding: riding,
       watchNavigating: watchNavigating,
-      replayOwnsPosition: replayOwnsPosition
+      replayOwnsPosition: replayOwnsPosition,
+      manualPublicRide: manualPublicRide
     )
   }
 
@@ -44,13 +46,17 @@ final class GpsPowerModeTests: XCTestCase {
     XCTAssertEqual(resolve(watchNavigating: true), .ride)
   }
 
+  func testManualPublicRidePaysForBackgroundFixes() {
+    XCTAssertEqual(resolve(manualPublicRide: true), .ride)
+  }
+
   /// A replay owns position for its lifetime; a live fix slipping through jumps the marker off the
   /// recorded track.
   func testReplayOutranksEveryLiveReason() {
     XCTAssertEqual(
       resolve(
         appVisible: true, riding: true, watchNavigating: true,
-        replayOwnsPosition: true
+        replayOwnsPosition: true, manualPublicRide: true
       ),
       .off
     )

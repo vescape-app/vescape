@@ -34,12 +34,13 @@ internal final class PublicRide {
   private let send: ([String: Any]) -> Bool
   /// Reconnect after this delay if a batch is still unacknowledged; nil cancels it.
   private let scheduleMissedRetry: (Int64?) -> Void
-  private let onLinkDemandChanged: () -> Void
+  private let onPublicRideDemandChanged: () -> Void
   /// Other riders' pins changed: their signals, their hazards by Account id, and the relay clock.
   private let onPins: ([SignalRider], [String: RideHazard], Int64?) -> Void
 
   private(set) var switchState = PublicRideSwitch.off
   private var boardConnected = false
+  private var manualSharing = false
   private var accountId: String?
   /// The link is up and has announced its features.
   private var linkReady = false
@@ -79,6 +80,7 @@ internal final class PublicRide {
   private var missedInFlight = 0
   private var authenticatedAccount: String?
   private var lastNeedsLink = false
+  private var lastNeedsGps = false
 
   init(
     now: @escaping () -> Int64,
@@ -87,7 +89,7 @@ internal final class PublicRide {
     emit: @escaping (String, [String: Any?]) -> Void,
     send: @escaping ([String: Any]) -> Bool,
     scheduleMissedRetry: @escaping (Int64?) -> Void = { _ in },
-    onLinkDemandChanged: @escaping () -> Void = {},
+    onPublicRideDemandChanged: @escaping () -> Void = {},
     onPins: @escaping ([SignalRider], [String: RideHazard], Int64?) -> Void = { _, _, _ in }
   ) {
     self.now = now
@@ -97,11 +99,14 @@ internal final class PublicRide {
     self.send = send
     self.onPins = onPins
     self.scheduleMissedRetry = scheduleMissedRetry
-    self.onLinkDemandChanged = onLinkDemandChanged
+    self.onPublicRideDemandChanged = onPublicRideDemandChanged
   }
 
   /// The rider should be public right now.
-  var wanted: Bool { switchState.active(at: now()) && boardConnected && accountId != nil }
+  var wanted: Bool { switchState.active(at: now()) && (boardConnected || manualSharing) && accountId != nil }
+
+  /// Manual sharing keeps phone GPS active in the background, even without a board.
+  var needsGps: Bool { manualSharing && wanted }
 
   /// Positions go out: the relay confirmed public riding on the open link.
   var riding: Bool { wanted && live && linkReady }
@@ -115,6 +120,7 @@ internal final class PublicRide {
   /// Start from the persisted switch and the signed-in Account.
   func load(_ stored: PublicRideSwitch, accountId account: String?) {
     accountId = account
+    manualSharing = false
     switchState = account == nil || !stored.active(at: now()) ? .off : stored
     if switchState != stored { persist(switchState) }
     armTimer()
@@ -128,6 +134,7 @@ internal final class PublicRide {
     if next.on && (accountId == nil || !next.active(at: now())) { return false }
     let changed = next != switchState
     switchState = next
+    if !next.on { manualSharing = false }
     if next.on { reason = nil }
     persist(next)
     armTimer()
@@ -136,6 +143,15 @@ internal final class PublicRide {
     reconcile()
     emitStatus()
     return true
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `setManualSharing`
+  func setManualSharing(_ enabled: Bool) {
+    guard accountId != nil, switchState.active(at: now()), manualSharing != enabled else { return }
+    manualSharing = enabled
+    if enabled { reason = nil }
+    reconcile()
+    emitStatus()
   }
 
   func setBoardConnected(_ connected: Bool) {
@@ -157,6 +173,7 @@ internal final class PublicRide {
     sentOn = false
     live = false
     accountId = account
+    manualSharing = false
     linkReady = false
     authenticatedAccount = nil
     dropOwnPins()
@@ -226,14 +243,14 @@ internal final class PublicRide {
   /// Watch public riders around `point` with the switch off.
   func watchNearby(_ point: (lat: Double, lng: Double)) {
     lookAround = point
-    emitLinkDemand()
+    emitDemand()
     if linkReady { sendNearby(point) }
   }
 
   func stopWatchingNearby() {
     guard lookAround != nil else { return }
     lookAround = nil
-    emitLinkDemand()
+    emitDemand()
     if linkReady { _ = send(["type": "nearby-stop"]) }
     // A public rider keeps receiving its own area.
     if !riding && !riders.isEmpty {
@@ -300,7 +317,7 @@ internal final class PublicRide {
       missedInFlight = 0
       scheduleMissedRetry(nil)
       sendMissed()
-      emitLinkDemand()
+      emitDemand()
     case "nearby-riders":
       riders = (json["riders"] as? [Any] ?? []).compactMap { entry in
         Self.publicRiderView(entry as? [String: Any]).map { (accountId: $0["accountId"] as! String, view: $0) }
@@ -399,6 +416,7 @@ internal final class PublicRide {
     sentOn = false
     live = false
     switchState = .off
+    manualSharing = false
     reason = why
     persist(switchState)
     armTimer()
@@ -439,7 +457,7 @@ internal final class PublicRide {
           at - missed[missedInFlight].at > Self.missedMaxAgeMs || missed.count > Int(Self.missedMaxAgeMs / Self.missedSpacingMs) + 1 {
       missed.remove(at: missedInFlight)
     }
-    emitLinkDemand()
+    emitDemand()
   }
 
   /// Send the oldest kept positions as one batch, unless one is already out.
@@ -458,14 +476,16 @@ internal final class PublicRide {
     missed = []
     missedInFlight = 0
     scheduleMissedRetry(nil)
-    emitLinkDemand()
+    emitDemand()
   }
 
-  private func emitLinkDemand() {
+  private func emitDemand() {
     let needed = needsLink
-    guard needed != lastNeedsLink else { return }
+    let gpsNeeded = needsGps
+    guard needed != lastNeedsLink || gpsNeeded != lastNeedsGps else { return }
     lastNeedsLink = needed
-    onLinkDemandChanged()
+    lastNeedsGps = gpsNeeded
+    onPublicRideDemandChanged()
   }
 
   /// Link and identity resets must forget peer pins, including far-away friends.
@@ -508,11 +528,12 @@ internal final class PublicRide {
       "on": switchState.on,
       "until": switchState.until,
       "live": riding,
+      "manualSharing": needsGps,
       "supported": supported,
       "reason": reason,
     ]
     let comparable = status.mapValues { $0 ?? NSNull() } as NSDictionary
-    emitLinkDemand()
+    emitDemand()
     if !force && comparable == lastStatus { return }
     lastStatus = comparable
     emit("onPublicRideStatus", status)

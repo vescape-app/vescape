@@ -41,13 +41,14 @@ internal class PublicRide(
     private val send: (JSONObject) -> Boolean,
     /** Reconnect after this delay if a batch is still unacknowledged; null cancels it. */
     private val scheduleMissedRetry: (Long?) -> Unit = {},
-    private val onLinkDemandChanged: () -> Unit = {},
+    private val onPublicRideDemandChanged: () -> Unit = {},
     /** Other riders' pins changed: their signals, their hazards by Account id, and the relay clock. */
     private val onPins: (List<SignalRider>, Map<String, RideHazard>, Long?) -> Unit = { _, _, _ -> },
 ) {
     var switch: PublicRideSwitch = PublicRideSwitch.OFF
         private set
     private var boardConnected = false
+    private var manualSharing = false
     private var accountId: String? = null
     /** The link is up and has announced its features. */
     private var linkReady = false
@@ -91,9 +92,13 @@ internal class PublicRide(
     private var missedInFlight = 0
     private var authenticatedAccount: String? = null
     private var lastNeedsLink = false
+    private var lastNeedsGps = false
 
     /** The rider should be public right now. */
-    val wanted: Boolean get() = switch.activeAt(now()) && boardConnected && accountId != null
+    val wanted: Boolean get() = switch.activeAt(now()) && (boardConnected || manualSharing) && accountId != null
+
+    /** Manual sharing keeps phone GPS active in the background, even without a board. */
+    val needsGps: Boolean get() = manualSharing && wanted
 
     /** Positions go out: the relay confirmed public riding on the open link. */
     val riding: Boolean get() = wanted && live && linkReady
@@ -107,6 +112,7 @@ internal class PublicRide(
     /** Start from the persisted switch and the signed-in Account. */
     fun load(stored: PublicRideSwitch, account: String?) {
         accountId = account
+        manualSharing = false
         switch = if (account == null || !stored.activeAt(now())) PublicRideSwitch.OFF else stored
         if (switch != stored) persist(switch)
         armTimer()
@@ -121,6 +127,7 @@ internal class PublicRide(
         if (next.on && (accountId == null || !next.activeAt(now()))) return false
         val changed = next != switch
         switch = next
+        if (!next.on) manualSharing = false
         if (next.on) reason = null
         persist(next)
         armTimer()
@@ -129,6 +136,15 @@ internal class PublicRide(
         reconcile()
         emitStatus()
         return true
+    }
+
+    /** @parity /modules/vescape-core/ios/groupride/PublicRide.swift `setManualSharing` */
+    fun setManualSharing(enabled: Boolean) {
+        if (accountId == null || !switch.activeAt(now()) || manualSharing == enabled) return
+        manualSharing = enabled
+        if (enabled) reason = null
+        reconcile()
+        emitStatus()
     }
 
     fun setBoardConnected(connected: Boolean) {
@@ -151,6 +167,7 @@ internal class PublicRide(
         sentOn = false
         live = false
         accountId = account
+        manualSharing = false
         linkReady = false
         authenticatedAccount = null
         dropOwnPins()
@@ -227,14 +244,14 @@ internal class PublicRide(
     /** Watch public riders around [point] with the switch off. */
     fun watchNearby(point: Pair<Double, Double>) {
         lookAround = point
-        emitLinkDemand()
+        emitDemand()
         if (linkReady) sendNearby(point)
     }
 
     fun stopWatchingNearby() {
         if (lookAround == null) return
         lookAround = null
-        emitLinkDemand()
+        emitDemand()
         if (linkReady) send(JSONObject().put("type", "nearby-stop"))
         // A public rider keeps receiving its own area.
         if (!riding && riders.isNotEmpty()) {
@@ -300,7 +317,7 @@ internal class PublicRide(
                 missedInFlight = 0
                 scheduleMissedRetry(null)
                 sendMissed()
-                emitLinkDemand()
+                emitDemand()
             }
             "nearby-riders" -> {
                 riders.clear()
@@ -387,6 +404,7 @@ internal class PublicRide(
         sentOn = false
         live = false
         switch = PublicRideSwitch.OFF
+        manualSharing = false
         reason = why
         persist(switch)
         armTimer()
@@ -427,7 +445,7 @@ internal class PublicRide(
         while (missed.size > missedInFlight &&
             (at - missed[missedInFlight].first > MISSED_MAX_AGE_MS || missed.size > MISSED_MAX_AGE_MS / MISSED_SPACING_MS + 1)
         ) missed.removeAt(missedInFlight)
-        emitLinkDemand()
+        emitDemand()
     }
 
     /** Send the oldest kept positions as one batch, unless one is already out. */
@@ -447,14 +465,16 @@ internal class PublicRide(
         missed.clear()
         missedInFlight = 0
         scheduleMissedRetry(null)
-        emitLinkDemand()
+        emitDemand()
     }
 
-    private fun emitLinkDemand() {
+    private fun emitDemand() {
         val needed = needsLink
-        if (needed == lastNeedsLink) return
+        val gpsNeeded = needsGps
+        if (needed == lastNeedsLink && gpsNeeded == lastNeedsGps) return
         lastNeedsLink = needed
-        onLinkDemandChanged()
+        lastNeedsGps = gpsNeeded
+        onPublicRideDemandChanged()
     }
 
     /** Link and identity resets must forget peer pins, including far-away friends. */
@@ -494,10 +514,11 @@ internal class PublicRide(
             "on" to switch.on,
             "until" to switch.until,
             "live" to riding,
+            "manualSharing" to needsGps,
             "supported" to supported,
             "reason" to reason,
         )
-        emitLinkDemand()
+        emitDemand()
         if (!force && status == lastStatus) return
         lastStatus = status
         emit("onPublicRideStatus", status)

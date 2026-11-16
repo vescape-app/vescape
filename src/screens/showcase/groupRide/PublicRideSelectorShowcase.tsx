@@ -5,6 +5,7 @@ import { IconButton } from '@/components/base/IconButton'
 
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ToggleRow } from '@/components/dev/ShowcaseControls'
+import { PublicRideManualAction } from '@/modules/group-ride/components/PublicRideManualAction'
 import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
 import type { PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { AccountSignInPill } from '@/modules/profile/components/AccountPill'
@@ -13,6 +14,7 @@ import { AccountSignInPill } from '@/modules/profile/components/AccountPill'
 export function PublicRideSelectorShowcase() {
   const [value, setValue] = useState<PublicRideChoice>({ mode: 'hours', hours: 2 })
   const [live, setLive] = useState(false)
+  const [manualSharing, setManualSharing] = useState(false)
   const [settings, setSettings] = useState(true)
   const [setup, setSetup] = useState(false)
   const [disabled, setDisabled] = useState(false)
@@ -23,7 +25,7 @@ export function PublicRideSelectorShowcase() {
       controls={
         <>
           <ToggleRow label="settings action" value={settings} onToggle={setSettings} />
-          <ToggleRow label="live" value={live} onToggle={setLive} />
+          <ToggleRow label="board sharing live" value={live} onToggle={setLive} />
           <ToggleRow label="sign-in required" value={setup} onToggle={setSetup} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
         </>
@@ -31,7 +33,7 @@ export function PublicRideSelectorShowcase() {
     >
       <PublicRideSelector
         value={value}
-        live={!setup && live && value.mode !== 'off'}
+        live={!setup && (live || manualSharing) && value.mode !== 'off'}
         disabled={disabled || setup}
         headerAction={
           settings && !setup ? (
@@ -46,8 +48,14 @@ export function PublicRideSelectorShowcase() {
         overlayAction={
           setup ? <AccountSignInPill size="lg" onPress={() => setSetup(false)} /> : null
         }
-        onValueChange={setValue}
+        onValueChange={(choice) => {
+          setValue(choice)
+          if (choice.mode === 'off') setManualSharing(false)
+        }}
       />
+      {!setup && !disabled && value.mode !== 'off' && (manualSharing || !live) ? (
+        <PublicRideManualAction sharing={manualSharing} onChange={setManualSharing} />
+      ) : null}
     </ShowcaseCard>
   )
 }

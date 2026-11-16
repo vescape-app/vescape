@@ -253,7 +253,6 @@ internal final class BoardSessionController: VescGattListener {
     emit: { [weak self] event, payload in self?.emit?(event, payload) },
     online: AppStatusCoordinator.shared,
     scheduler: scheduler,
-    // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
     onCue: { [weak self] cue in
       guard let self else { return }
       self.alertAudioPlayer.playAppCue(cue)
@@ -266,8 +265,11 @@ internal final class BoardSessionController: VescGattListener {
     },
     // intentional-suppression: an unreadable credential cannot authenticate buffered positions
     deviceCredential: { try? DeviceCredentialStore.shared.read() },
-    onLinkDemandChanged: { [weak self] in
-      self?.scheduler.post { [weak self] in self?.syncPublicRideLink() }
+    onPublicRideDemandChanged: { [weak self] in
+      self?.scheduler.post { [weak self] in
+        self?.syncPublicRideLink()
+        self?.refreshGpsDemand()
+      }
     },
     persistPublicRide: { PublicRideStore().write($0) },
     lastKnownLocation: { [weak self] in
@@ -1044,7 +1046,8 @@ internal final class BoardSessionController: VescGattListener {
       appVisible: appVisible,
       riding: riding,
       watchNavigating: watchMirror.navigating,
-      replayOwnsPosition: replayTransport != nil
+      replayOwnsPosition: replayTransport != nil,
+      manualPublicRide: groupRideObserver.publicRideNeedsGps
     )
     let wasActive = gpsMonitor.active
     gpsMonitor.apply(mode)
@@ -1127,6 +1130,11 @@ internal final class BoardSessionController: VescGattListener {
     syncPublicRideLink()
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setManualPublicRideSharing`
+  func setManualPublicRideSharing(_ enabled: Bool) {
+    groupRideObserver.setManualPublicRideSharing(enabled)
+  }
+
   func watchPublicRiders() {
     groupRideObserver.watchPublicRiders()
     syncPublicRideLink()
@@ -1191,7 +1199,8 @@ internal final class BoardSessionController: VescGattListener {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`
   private func latestRiderPresence() -> RiderPresence? {
-    guard let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)
+    guard replayTransport == nil,
+          let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)
     else { return nil }
     let telemetry = latestTelemetry
     let telemetryFresh = telemetry != nil && !isTelemetryStale()

@@ -16,11 +16,13 @@ class GpsPowerModeTest {
         riding: Boolean = false,
         watchNavigating: Boolean = false,
         replayOwnsPosition: Boolean = false,
+        manualPublicRide: Boolean = false,
     ) = GpsDemand.resolve(
         appVisible = appVisible,
         riding = riding,
         watchNavigating = watchNavigating,
         replayOwnsPosition = replayOwnsPosition,
+        manualPublicRide = manualPublicRide,
     )
 
     /** The drain this whole rule exists to stop: app away, ride over, nothing running. */
@@ -55,6 +57,11 @@ class GpsPowerModeTest {
     @Test
     fun `watch navigation pays for background fixes`() {
         assertEquals(GpsPowerMode.Ride, resolve(watchNavigating = true))
+    }
+
+    @Test
+    fun `manual public ride pays for background fixes`() {
+        assertEquals(GpsPowerMode.Ride, resolve(manualPublicRide = true))
     }
 
     /**

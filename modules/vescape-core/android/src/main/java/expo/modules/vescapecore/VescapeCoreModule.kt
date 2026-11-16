@@ -1756,6 +1756,11 @@ class VescapeCoreModule : Module() {
     Function("setPublicRide") { on: Boolean, until: Double? ->
       CoreForegroundService.setPublicRide(on, until?.toLong())
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setManualPublicRideSharing`
+    // @parity /modules/vescape-core/src/index.ts `setManualPublicRideSharing`
+    Function("setManualPublicRideSharing") { enabled: Boolean ->
+      CoreForegroundService.setManualPublicRideSharing(enabled)
+    }
     Function("watchPublicRiders") {
       CoreForegroundService.watchPublicRiders()
     }

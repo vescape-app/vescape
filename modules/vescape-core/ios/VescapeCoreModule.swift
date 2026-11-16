@@ -549,6 +549,12 @@ public class VescapeCoreModule: Module {
       self.coordinator.setPublicRide(on: on, until: until.map { Int64($0) })
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setManualPublicRideSharing`
+    // @parity /modules/vescape-core/src/index.ts `setManualPublicRideSharing`
+    Function("setManualPublicRideSharing") { (enabled: Bool) in
+      self.coordinator.setManualPublicRideSharing(enabled)
+    }
+
     Function("watchPublicRiders") {
       self.coordinator.watchPublicRiders()
     }

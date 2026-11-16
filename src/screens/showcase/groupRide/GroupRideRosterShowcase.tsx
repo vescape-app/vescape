@@ -44,7 +44,6 @@ export function GroupRideRosterShowcase() {
       >
         <RosterList
           compact={compact}
-          selfSharing
           onOpenRider={compact ? (rider) => Alert.alert(rider.name) : undefined}
           selfCanOpen
           rows={rows}

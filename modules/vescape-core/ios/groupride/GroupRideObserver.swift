@@ -57,7 +57,7 @@ internal final class GroupRideObserver: NSObject {
     ownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil },
     signalContext: @escaping () -> RiderSignalContext = { RiderSignalContext(fix: nil, insidePrivacyZone: true) },
     deviceCredential: @escaping () -> DeviceCredential? = { nil },
-    onLinkDemandChanged: @escaping () -> Void = {},
+    onPublicRideDemandChanged: @escaping () -> Void = {},
     persistPublicRide: @escaping (PublicRideSwitch) -> Void = { _ in },
     lastKnownLocation: @escaping () -> (lat: Double, lng: Double)? = { nil },
     now: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
@@ -104,7 +104,7 @@ internal final class GroupRideObserver: NSObject {
           }
         }
       },
-      onLinkDemandChanged: onLinkDemandChanged,
+      onPublicRideDemandChanged: onPublicRideDemandChanged,
       onPins: { [weak self] signals, hazards, relayNow in
         self?.onPublicPins(signals, hazards: hazards, relayNow: relayNow)
       }
@@ -114,6 +114,7 @@ internal final class GroupRideObserver: NSObject {
   var active: Bool { !stopped }
 
   var publicRideNeedsLink: Bool { publicRide.needsLink }
+  var publicRideNeedsGps: Bool { publicRide.needsGps }
 
   var watchRoster: GroupRideRoster? { stopped ? nil : publicRide.nearbyRoster }
 
@@ -260,6 +261,11 @@ internal final class GroupRideObserver: NSObject {
     onMain { [self] in
       if !publicRide.set(next) { publicRide.resync() }
     }
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `setManualPublicRideSharing`
+  func setManualPublicRideSharing(_ enabled: Bool) {
+    onMain { [self] in publicRide.setManualSharing(enabled) }
   }
 
   func setBoardConnected(_ connected: Bool) {

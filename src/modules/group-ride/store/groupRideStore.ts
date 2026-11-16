@@ -12,6 +12,7 @@ import {
   sendGroupRideHazard,
   sendGroupRideSignal,
   setPublicRide,
+  setManualPublicRideSharing,
   startGroupRideObserve,
   stopGroupRideObserve,
   stopWatchingPublicRiders,
@@ -70,6 +71,7 @@ interface GroupRideState {
   stopObserving: () => void
   /** Move the public ride switch; native persists it and goes public when the board connects. */
   setPublicRide: (choice: PublicRideChoice) => void
+  setManualPublicRideSharing: (enabled: boolean) => void
   /** Raise a Rider Signal; replaces the current one. The roster brings it back once the relay has it. */
   sendSignal: (kind: RiderSignalKind) => void
   clearSignal: () => void
@@ -100,6 +102,7 @@ const PUBLIC_RIDE_OFF: PublicRideStatus = {
   on: false,
   until: null,
   live: false,
+  manualSharing: false,
   supported: false,
   reason: null,
 }
@@ -211,6 +214,8 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   setPublicRide(choice) {
     setPublicRide(choice.mode !== 'off', publicRideUntil(choice, Date.now()))
   },
+
+  setManualPublicRideSharing,
 
   sendSignal(kind) {
     sendGroupRideSignal(kind)
