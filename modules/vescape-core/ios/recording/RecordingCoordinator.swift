@@ -9,7 +9,9 @@ internal final class RecordingCoordinator {
   private let appData: AppDataRepository
   private var recorder: SessionRecorder?
   private var activeConfig: BoardConnectConfig?
-  private var enabled = false
+  private var enabled = false {
+    didSet { BoardSessionActivity.process.setRecording(enabled) }
+  }
   private var startedAtMs: Int64?
   private var requestedTelemetryRecordingEnabled = false
   /// The rider stopped recording during this Board Session. Survives reconnects so a re-ready board

@@ -39,6 +39,10 @@ class DatabaseSpaceReclaimHostTest {
       it.execSQL("PRAGMA auto_vacuum = NONE")
       it.execSQL("VACUUM")
     }
+    bloat()
+  }
+
+  private suspend fun VescapeRoomDatabase.bloat() {
     val dao = vescapeDao()
     val blob = "\"" + "x".repeat(8_000) + "\""
     repeat(1_000) { dao.upsertAppSetting(AppSettingEntity("bloat.$it", blob, now)) }
@@ -52,7 +56,8 @@ class DatabaseSpaceReclaimHostTest {
     fence: DatabaseReplacementFence = DatabaseReplacementFence(),
     ticket: Long = fence.ticket(),
     disk: Long = Long.MAX_VALUE,
-  ) = reclaimDatabaseSpace({ this }, fence, ticket, gapMs, { disk }, { now }, threshold)
+    activity: BoardSessionActivity = BoardSessionActivity(),
+  ) = reclaimDatabaseSpace({ this }, fence, ticket, gapMs, { disk }, { now }, activity, threshold)
 
   private suspend fun VescapeRoomDatabase.reclaimed() = vescapeDao().storedMaintenanceFingerprint(DATABASE_SPACE_RECLAIMED_JOB_ID)
 
@@ -82,6 +87,28 @@ class DatabaseSpaceReclaimHostTest {
       )
     }
     assertEquals(DatabaseSpaceReclaimResult.Skipped("recording"), db.reclaim())
+    assertNull(db.reclaimed())
+  }
+
+  @Test fun activeBoardSessionRefusesWithoutTheMarker() = withDatabase { db, _ ->
+    db.freePages()
+    db.markDrained()
+    val activity = BoardSessionActivity()
+    activity.setLinked(true)
+    assertEquals(DatabaseSpaceReclaimResult.Skipped("session_active"), db.reclaim(activity = activity))
+    activity.setLinked(false)
+    activity.setRecording(true)
+    assertEquals(DatabaseSpaceReclaimResult.Skipped("session_active"), db.reclaim(activity = activity))
+    assertNull(db.reclaimed())
+    activity.setRecording(false)
+    assertTrue(db.reclaim(activity = activity) is DatabaseSpaceReclaimResult.Reclaimed)
+  }
+
+  /** A database the bundled driver created (`auto_vacuum = FULL`) returns pages on commit: nothing to reclaim. */
+  @Test fun autoVacuumFullDatabaseSkips() = withDatabase { db, _ ->
+    db.bloat()
+    db.markDrained()
+    assertEquals("below_threshold", (db.reclaim() as DatabaseSpaceReclaimResult.Skipped).reason)
     assertNull(db.reclaimed())
   }
 

@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.connection
 
+import expo.modules.vescapecore.telemetry.BoardSessionActivity
 import expo.modules.vescapecore.accessory.AccessorySessionManager
 import expo.modules.vescapecore.accessory.BoardGroundClearanceBinding
 import expo.modules.vescapecore.service.foregroundServiceType
@@ -2986,6 +2987,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         recordProperties: Map<String, Any?> = emptyMap(),
     ) {
         boardStatus = next
+        BoardSessionActivity.process.setLinked(next != BoardPhase.Idle && next != BoardPhase.Error)
         // A phase change can flip whether a light write would be accepted, with the lights
         // themselves unchanged. See [pushWatchBoard].
         pushWatchBoard()

@@ -31,9 +31,9 @@ func runDatabaseSpaceReclaimContract() throws {
     try pool.write { try publishMaintenanceFingerprint($0, id: TELEMETRY_DRAINED_JOB_ID, fingerprint: "drained", nowMs: now) }
   }
   func reclaim(_ pool: DatabasePool, fence: DatabaseReplacementFence = DatabaseReplacementFence(), ticket: Int64? = nil,
-               disk: Int64 = Int64.max) throws -> DatabaseSpaceReclaimResult {
+               disk: Int64 = Int64.max, activity: BoardSessionActivity = BoardSessionActivity()) throws -> DatabaseSpaceReclaimResult {
     try reclaimDatabaseSpace(writer: { pool }, fence: fence, ticket: ticket ?? fence.ticket(), gapMs: gapMs,
-                             availableDiskBytes: { disk }, nowMs: { now }, threshold: threshold)
+                             availableDiskBytes: { disk }, nowMs: { now }, activity: activity, threshold: threshold)
   }
   func reclaimed(_ pool: DatabasePool) throws -> String? {
     try pool.read { try storedMaintenanceFingerprint($0, id: DATABASE_SPACE_RECLAIMED_JOB_ID) }
@@ -80,4 +80,42 @@ func runDatabaseSpaceReclaimContract() throws {
   do { _ = try reclaim(fencedPool, fence: fence, ticket: ticket); throw Failure(description: "fenced reclaim ran") } catch is MaintenanceRunFenced {}
   try require(try reclaimed(fencedPool) == nil, "fenced reclaim wrote nothing")
   guard case .reclaimed = try reclaim(fencedPool, fence: fence) else { throw Failure(description: "reclaim after fence") }
+
+  // An active Board Session refuses; one that starts mid-VACUUM interrupts it. Both leave the marker unset.
+  let (sessionPool, _) = try fresh("session.sqlite")
+  try freePages(sessionPool)
+  try markDrained(sessionPool)
+  let activity = BoardSessionActivity()
+  activity.setLinked(true)
+  try require(try reclaim(sessionPool, activity: activity) == .skipped(reason: "session_active"), "yields to a linked Board")
+  activity.setLinked(false)
+  activity.setRecording(true)
+  try require(try reclaim(sessionPool, activity: activity) == .skipped(reason: "session_active"), "yields to armed recording")
+  activity.setRecording(false)
+  // Toggle a session on and off until one lands while the VACUUM runs.
+  let toggling = ManagedAtomicFlag()
+  let toggler = Thread {
+    while !toggling.stopped {
+      activity.setLinked(true)
+      activity.setLinked(false)
+    }
+  }
+  toggler.start()
+  var interrupted = false
+  for _ in 0..<200 where !interrupted {
+    if case .skipped("interrupted", _, _) = try reclaim(sessionPool, activity: activity) { interrupted = true }
+    try require(try reclaimed(sessionPool) == nil, "an interrupted or refused reclaim leaves the marker unset")
+  }
+  toggling.stop()
+  try require(interrupted, "a session starting mid-VACUUM interrupts it")
+  try require(try sessionPool.read { try String.fetchOne($0, sql: "PRAGMA integrity_check") } == "ok", "rolled back intact")
+  while toggler.isExecuting { usleep(1_000) }
+  guard case .reclaimed = try reclaim(sessionPool, activity: activity) else { throw Failure(description: "reclaim once idle") }
+}
+
+private final class ManagedAtomicFlag: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value = false
+  var stopped: Bool { lock.withLock { value } }
+  func stop() { lock.withLock { value = true } }
 }

@@ -42,6 +42,8 @@ private const val INPUT_DEBOUNCE_MS = 3_000L
 private const val PROGRESS_EMIT_INTERVAL_MS = 250L
 /** Open history pages re-read at most this often while chunks commit. */
 private const val HISTORY_REVISION_INTERVAL_MS = 3_000L
+/** Reclaim skips a ride or Board Session caused; they retry once it may have ended. */
+private val SESSION_SKIP_REASONS = setOf("recording", "session_active", "interrupted")
 
 /**
  * Runs stale Maintenance Jobs one at a time, in declaration order, on one low-priority thread.
@@ -143,8 +145,8 @@ internal object MaintenanceRunner {
 
   /**
    * Return freed pages to the OS once the drain has run (ADR 0045). One Diagnostic Event with the
-   * before/after size when it reclaims; a skip for a recording ride retries once the ride may have
-   * ended, any other skip waits for a later start.
+   * before/after size when it reclaims; a skip for a recording ride or an active Board Session retries
+   * once the ride may have ended, any other skip waits for a later start.
    * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `reclaimSpace`
    */
   private suspend fun reclaimSpace(gapMs: Long) {
@@ -167,7 +169,7 @@ internal object MaintenanceRunner {
       ))
       is DatabaseSpaceReclaimResult.Skipped -> {
         breadcrumb("reclaim_skip", mapOf("reason" to result.reason, "file_bytes" to result.fileBytes, "free_bytes" to result.freeBytes))
-        if (result.reason == "recording") scope.launch {
+        if (result.reason in SESSION_SKIP_REASONS) scope.launch {
           delay(gapMs)
           drainTelemetry()
         }

@@ -53,14 +53,19 @@ lives only in a chunk and an unsealed one only in the buffer. There is no decode
 - **Space reclaim.** SQLite only reuses deleted pages, so after the drain (and the Diagnostic Event
   prune) the file keeps its old size. Each drain that did not yield then tries one `VACUUM`, once
   per database generation: only with the drained marker set and no
-  `maintenanceJob.databaseSpaceReclaim` marker, no ride that may be recording, free pages above
-  50 MB and above half the file, and free disk at least the file size. It runs under a fence ticket
-  on the single writer outside any transaction (Room `useWriterConnection`, GRDB
+  `maintenanceJob.databaseSpaceReclaim` marker, no ride that may be recording, the Board Session
+  idle (no Board linked or connecting and recording not armed, from native session state), free
+  pages above 50 MB and above half the file, and free disk at least the file size. It runs under a
+  fence ticket on the single writer outside any transaction (Room `useWriterConnection`, GRDB
   `barrierWriteWithoutTransaction`, so no iOS reader overlaps it), with a `wal_checkpoint(TRUNCATE)`
-  before and after so the main file shrinks. Restore, Clear all and the backup export wait for it;
-  a ride is checked right before the `VACUUM` and wins: the reclaim skips and retries one ride split
-  gap later, and a ride that starts mid-`VACUUM` only queues its writes behind it. Success writes
-  the reclaimed marker and one `database_reclaim` Diagnostic Event with the before/after bytes;
+  before and after so the main file shrinks; a checkpoint a reader blocked (`busy = 1`) skips with
+  the marker unset. Restore, Clear all and the backup export wait for it. Recording wins: the
+  session is checked again right before the `VACUUM`, and on iOS a Board Session that starts
+  mid-run interrupts it (`DatabasePool.interrupt()`; SQLite rolls the `VACUUM` back) so main-thread
+  reads never wait behind the rewrite. Room's bundled driver exposes no `sqlite3_interrupt`, so on
+  Android a session that starts mid-`VACUUM` queues its writes behind it. A skip for a ride or an
+  active session retries one ride split gap later. Success writes the reclaimed marker and one
+  `database_reclaim` Diagnostic Event with the physical database + WAL bytes before and after;
   any other skip retries on a later start. Restore and Clear all forget this marker with the
   drained one. `auto_vacuum` is not changed: Android's bundled SQLite already creates
   `auto_vacuum = FULL` files, so there the reclaim mostly matters for databases created on iOS

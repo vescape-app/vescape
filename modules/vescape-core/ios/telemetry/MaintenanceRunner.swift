@@ -175,8 +175,8 @@ final class MaintenanceRunner {
   }
 
   /// Return freed pages to the OS once the drain has run (ADR 0045). One Diagnostic Event with the
-  /// before/after size when it reclaims; a skip for a recording ride retries once the ride may have
-  /// ended, any other skip waits for a later start. Runs on `workQueue`.
+  /// before/after size when it reclaims; a skip for a recording ride or an active Board Session
+  /// retries once the ride may have ended, any other skip waits for a later start. Runs on `workQueue`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `reclaimSpace`
   private func reclaimSpace(gapMs: Int64) throws {
     let fence = DatabaseReplacementFence.process
@@ -203,7 +203,7 @@ final class MaintenanceRunner {
       ])
     case let .skipped(reason, fileBytes, freeBytes):
       breadcrumb("reclaim_skip", ["reason": reason, "file_bytes": fileBytes, "free_bytes": freeBytes])
-      if reason == "recording" {
+      if ["recording", "session_active", "interrupted"].contains(reason) {
         workQueue.asyncAfter(deadline: .now() + .milliseconds(Int(gapMs))) { self.drainTelemetry() }
       }
     }
