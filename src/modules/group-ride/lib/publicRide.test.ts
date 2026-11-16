@@ -5,10 +5,9 @@ import { publicRideChoice, publicRideUntil } from '@/modules/group-ride/lib/publ
 
 const HOUR = 3_600_000
 const status = (patch: Partial<PublicRideStatus>): PublicRideStatus => ({
-  on: true,
+  activation: 'waiting',
   until: null,
   live: false,
-  manualSharing: false,
   supported: true,
   reason: null,
   ...patch,
@@ -29,6 +28,6 @@ test('a running timer shows the shortest duration covering the time left', () =>
 
 test('off and always carry no end time', () => {
   expect(publicRideUntil({ mode: 'always' }, 0)).toBeNull()
-  expect(publicRideChoice(status({ on: false, until: 99 }), 0)).toEqual({ mode: 'off' })
+  expect(publicRideChoice(status({ activation: 'off', until: 99 }), 0)).toEqual({ mode: 'off' })
   expect(publicRideChoice(status({}), 0)).toEqual({ mode: 'always' })
 })

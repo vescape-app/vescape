@@ -2202,9 +2202,9 @@ export interface GroupRideErrorEvent {
 }
 
 /**
- * The public ride switch and where the public ride stands. `on` with `until` null is "always";
- * with `until` (epoch ms) it ends itself then. `live` is true while the relay confirms the rider
- * public. `manualSharing` is the process-local override for board activation.
+ * The switch is on while `activation` is waiting for a board, sharing by phone, or sharing by
+ * Board Session. While on, `until` is the end time (epoch ms), or null for Always.
+ * `live` is true while the relay confirms the rider public.
  * `supported` is false against a relay without the
  * `public-ride` feature. `reason` says why the ride last ended on its own: `replaced` (newer phone
  * of the Account), `end-time`, `away-expired`, `signed-out`, or `refused` (no Account or nick).
@@ -2212,10 +2212,9 @@ export interface GroupRideErrorEvent {
  * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `emitStatus`
  */
 export interface PublicRideStatus {
-  on: boolean
+  activation: 'off' | 'waiting' | 'phone' | 'board'
   until: number | null
   live: boolean
-  manualSharing: boolean
   supported: boolean
   reason: 'replaced' | 'end-time' | 'away-expired' | 'signed-out' | 'refused' | null
 }
@@ -3528,7 +3527,7 @@ export function setPublicRide(on: boolean, until: number | null): void {
 }
 
 /**
- * Start or stop sharing independently of the board, using the active Public Ride time.
+ * Start or stop sharing by phone while the Public Ride switch is on and waiting for a board.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setManualPublicRideSharing`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setManualPublicRideSharing`
  */

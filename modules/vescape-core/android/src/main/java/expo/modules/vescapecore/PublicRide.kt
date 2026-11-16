@@ -23,9 +23,9 @@ internal data class PublicRideSwitch(val on: Boolean, val until: Long?) {
  * reports around the rider, and Rider Signals and Ride Hazards by distance). Pure: the [GroupRideObserver] that owns the socket feeds it link and
  * relay events and hands it a [send] that only works while the link is open.
  *
- * The rider rides public while the switch is active, a board is connected and an Account is signed
- * in. The relay turns an hours switch off at its end time by itself; the local timer only flips the
- * switch for the UI. Signing out or changing Account ends the public ride and turns the switch off.
+ * An active switch and a signed-in Account allow sharing from a Board Session or by phone.
+ * A connected board takes over phone sharing until the Board Session ends. The relay and the
+ * local switch each enforce the end time. Signing out or changing Account turns the switch off.
  *
  * Wire protocol: vescape-server `docs/group-ride/PROTOCOL.md`, "Public ride". Main thread only.
  *
@@ -47,6 +47,10 @@ internal class PublicRide(
 ) {
     var switch: PublicRideSwitch = PublicRideSwitch.OFF
         private set
+    private enum class Activation(val wireValue: String) {
+        OFF("off"), WAITING("waiting"), PHONE("phone"), BOARD("board"),
+    }
+
     private var boardConnected = false
     private var manualSharing = false
     private var accountId: String? = null
@@ -94,11 +98,22 @@ internal class PublicRide(
     private var lastNeedsLink = false
     private var lastNeedsGps = false
 
+    private val activation: Activation
+        get() {
+            if (accountId == null || !switch.activeAt(now())) return Activation.OFF
+            if (boardConnected) return Activation.BOARD
+            return if (manualSharing) Activation.PHONE else Activation.WAITING
+        }
+
     /** The rider should be public right now. */
-    val wanted: Boolean get() = switch.activeAt(now()) && (boardConnected || manualSharing) && accountId != null
+    val wanted: Boolean
+        get() {
+            val activation = this.activation
+            return activation == Activation.BOARD || activation == Activation.PHONE
+        }
 
     /** Manual sharing keeps phone GPS active in the background, even without a board. */
-    val needsGps: Boolean get() = manualSharing && wanted
+    val needsGps: Boolean get() = activation == Activation.PHONE
 
     /** Positions go out: the relay confirmed public riding on the open link. */
     val riding: Boolean get() = wanted && live && linkReady
@@ -140,16 +155,18 @@ internal class PublicRide(
 
     /** @parity /modules/vescape-core/ios/groupride/PublicRide.swift `setManualSharing` */
     fun setManualSharing(enabled: Boolean) {
-        if (accountId == null || !switch.activeAt(now()) || manualSharing == enabled) return
+        if (boardConnected || activation == Activation.OFF || manualSharing == enabled) return
         manualSharing = enabled
         if (enabled) reason = null
         reconcile()
         emitStatus()
     }
 
+    /** @parity /modules/vescape-core/ios/groupride/PublicRide.swift `setBoardConnected` */
     fun setBoardConnected(connected: Boolean) {
         if (connected == boardConnected) return
         boardConnected = connected
+        if (connected) manualSharing = false
         reconcile()
         emitStatus()
     }
@@ -511,10 +528,9 @@ internal class PublicRide(
     /** @parity /modules/vescape-core/src/index.ts `PublicRideStatus` */
     private fun emitStatus(force: Boolean = false) {
         val status = mapOf(
-            "on" to switch.on,
+            "activation" to activation.wireValue,
             "until" to switch.until,
             "live" to riding,
-            "manualSharing" to needsGps,
             "supported" to supported,
             "reason" to reason,
         )

@@ -99,10 +99,9 @@ const NO_SIGNAL_AVAILABILITY: GroupRideSignalAvailability = {
 
 /** Until native reports, the switch reads off and unsupported. */
 const PUBLIC_RIDE_OFF: PublicRideStatus = {
-  on: false,
+  activation: 'off',
   until: null,
   live: false,
-  manualSharing: false,
   supported: false,
   reason: null,
 }

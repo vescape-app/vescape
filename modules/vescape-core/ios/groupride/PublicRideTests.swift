@@ -76,7 +76,7 @@ final class PublicRideTests: XCTestCase {
     XCTAssertTrue(ride.switchState.on)
   }
 
-  func testManualSharingStartsSendsPositionsAndReturnsToWaitingWithoutResettingTimer() {
+  func testManualSharingHandsOffToBoardWithoutResettingTimer() {
     let until = now + 3_600_000
     let selected = PublicRideSwitch(on: true, until: until)
     ride.load(selected, accountId: "acc")
@@ -87,17 +87,22 @@ final class PublicRideTests: XCTestCase {
 
     ride.setManualSharing(true)
     XCTAssertTrue(ride.needsGps)
-    XCTAssertEqual(status["manualSharing"] as? Bool, true)
+    XCTAssertEqual(status["activation"] as? String, "phone")
     XCTAssertEqual(sent.last?["until"] as? Int64, until)
+    XCTAssertEqual(status["live"] as? Bool, false)
     ride.handle(type: "public-status", json: ["on": true])
     ride.position(presence, at: now)
 
     ride.setBoardConnected(true)
-    ride.setBoardConnected(false)
+    XCTAssertEqual(status["activation"] as? String, "board")
+    XCTAssertFalse(ride.needsGps)
+    XCTAssertTrue(ride.riding)
+    ride.setManualSharing(true) // A tap queued before the board connected.
+    XCTAssertFalse(ride.needsGps)
     XCTAssertEqual(types, ["public-on", "public-position"])
-    ride.setManualSharing(false)
+    ride.setBoardConnected(false)
     XCTAssertEqual(types, ["public-on", "public-position", "public-off"])
-    XCTAssertEqual(status["manualSharing"] as? Bool, false)
+    XCTAssertEqual(status["activation"] as? String, "waiting")
     XCTAssertFalse(ride.needsGps)
     XCTAssertEqual(linkDemands, [true, true])
     XCTAssertEqual(ride.switchState, selected)
@@ -119,7 +124,7 @@ final class PublicRideTests: XCTestCase {
     ride.setManualSharing(true)
     now = until
     ride.expire()
-    XCTAssertEqual(status["manualSharing"] as? Bool, false)
+    XCTAssertEqual(status["activation"] as? String, "off")
     XCTAssertEqual(types, ["public-on", "public-off"])
     ride.set(PublicRideSwitch(on: true, until: nil))
     XCTAssertFalse(ride.wanted)

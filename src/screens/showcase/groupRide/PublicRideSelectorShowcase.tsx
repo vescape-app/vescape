@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { UserCircleGearIcon } from 'phosphor-react-native'
+import type { PublicRideStatus } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
 
@@ -13,11 +14,22 @@ import { AccountSignInPill } from '@/modules/profile/components/AccountPill'
 /** The public ride switch: off, a number of hours, always; live and unavailable states. */
 export function PublicRideSelectorShowcase() {
   const [value, setValue] = useState<PublicRideChoice>({ mode: 'hours', hours: 2 })
-  const [live, setLive] = useState(false)
+  const [boardConnected, setBoardConnected] = useState(false)
+  const [relayConfirmed, setRelayConfirmed] = useState(true)
   const [manualSharing, setManualSharing] = useState(false)
   const [settings, setSettings] = useState(true)
   const [setup, setSetup] = useState(false)
   const [disabled, setDisabled] = useState(false)
+
+  const activation: PublicRideStatus['activation'] =
+    setup || value.mode === 'off'
+      ? 'off'
+      : boardConnected
+        ? 'board'
+        : manualSharing
+          ? 'phone'
+          : 'waiting'
+  const live = relayConfirmed && (activation === 'board' || activation === 'phone')
 
   return (
     <ShowcaseCard
@@ -25,7 +37,15 @@ export function PublicRideSelectorShowcase() {
       controls={
         <>
           <ToggleRow label="settings action" value={settings} onToggle={setSettings} />
-          <ToggleRow label="board sharing live" value={live} onToggle={setLive} />
+          <ToggleRow
+            label="board connected"
+            value={boardConnected}
+            onToggle={(connected) => {
+              setBoardConnected(connected)
+              if (connected) setManualSharing(false)
+            }}
+          />
+          <ToggleRow label="relay confirmed" value={relayConfirmed} onToggle={setRelayConfirmed} />
           <ToggleRow label="sign-in required" value={setup} onToggle={setSetup} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
         </>
@@ -33,7 +53,8 @@ export function PublicRideSelectorShowcase() {
     >
       <PublicRideSelector
         value={value}
-        live={!setup && (live || manualSharing) && value.mode !== 'off'}
+        activation={activation}
+        live={live}
         disabled={disabled || setup}
         headerAction={
           settings && !setup ? (
@@ -53,8 +74,8 @@ export function PublicRideSelectorShowcase() {
           if (choice.mode === 'off') setManualSharing(false)
         }}
       />
-      {!setup && !disabled && value.mode !== 'off' && (manualSharing || !live) ? (
-        <PublicRideManualAction sharing={manualSharing} onChange={setManualSharing} />
+      {!disabled && (activation === 'waiting' || activation === 'phone') ? (
+        <PublicRideManualAction activation={activation} onChange={setManualSharing} />
       ) : null}
     </ShowcaseCard>
   )

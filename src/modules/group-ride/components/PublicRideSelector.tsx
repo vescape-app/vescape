@@ -15,6 +15,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
+import type { PublicRideStatus } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
@@ -52,13 +53,16 @@ const DURATION_COUNT = PUBLIC_RIDE_DURATIONS.length
 const ALWAYS_STOP = DURATION_COUNT + 1
 const RULER_STEP = (PUBLIC_RIDE_ARC.sectorAngle * 2 - RULER_EDGE_INSET * 2) / (DURATION_COUNT + 1)
 const FIRST_TICK = RULER_START + RULER_STEP
+const MAJOR_TICK_INDEX = PUBLIC_RIDE_DURATIONS.indexOf(12)
+const INDICATOR_WIDTH = 4
+const PROGRESS_STROKE_WIDTH = 3
 
 const ICONS = [PowerIcon, ClockIcon, InfinityIcon]
 const SECTORS = [publicRideSector(0), publicRideSector(1, 2), publicRideSector(3)]
-const TICK_PATH = Array.from({ length: DURATION_COUNT }, (_, index) => {
+const TICK_PATH = PUBLIC_RIDE_DURATIONS.map((_, index) => {
   const angle = ((FIRST_TICK + index * RULER_STEP) * Math.PI) / 180
   const { cx, cy, outerRadius } = PUBLIC_RIDE_ARC
-  const innerRadius = outerRadius - (PUBLIC_RIDE_DURATIONS[index] === 12 ? 12 : 7)
+  const innerRadius = outerRadius - (index === MAJOR_TICK_INDEX ? 12 : 5)
   return `M ${cx + Math.cos(angle) * outerRadius} ${cy + Math.sin(angle) * outerRadius} L ${cx + Math.cos(angle) * innerRadius} ${cy + Math.sin(angle) * innerRadius}`
 }).join(' ')
 const AnimatedPath = Animated.createAnimatedComponent(Path)
@@ -82,15 +86,19 @@ function sectorOf(stop: number) {
   return stop === 0 ? 0 : stop === ALWAYS_STOP ? 2 : 1
 }
 
-/** The fill and outer stroke end at the same animated angle as the timer's tick. */
+/** The fill and stroke extend to the trailing edge of the moving indicator. */
 function TimerProgress({
   readout,
   rotation,
+  indicatorHalfAngle,
+  tickColor,
   color,
   gradientId,
 }: {
   readout: SharedValue<Readout>
   rotation: SharedValue<number>
+  indicatorHalfAngle: number
+  tickColor: string
   color: string
   gradientId: string
 }) {
@@ -100,7 +108,7 @@ function TimerProgress({
     if (!readout.get().timed) return null
     const degrees = Math.max(
       RULER_START,
-      Math.min(FIRST_TICK + DURATION_COUNT * RULER_STEP, rotation.get() - 90),
+      Math.min(FIRST_TICK + DURATION_COUNT * RULER_STEP, rotation.get() - 90 + indicatorHalfAngle),
     )
     const angle = (degrees * Math.PI) / 180
     const dx = Math.cos(angle)
@@ -114,7 +122,13 @@ function TimerProgress({
   return (
     <>
       <AnimatedPath fill={`url(#${gradientId})`} animatedProps={fillProps} />
-      <AnimatedPath fill="none" stroke={color} strokeWidth={3} animatedProps={outerProps} />
+      <Path d={TICK_PATH} stroke={tickColor} strokeWidth={1} strokeLinecap="round" />
+      <AnimatedPath
+        fill="none"
+        stroke={color}
+        strokeWidth={PROGRESS_STROKE_WIDTH}
+        animatedProps={outerProps}
+      />
     </>
   )
 }
@@ -173,6 +187,7 @@ function PreviewLabel({
  */
 export function PublicRideSelector({
   value,
+  activation,
   live,
   headerAction,
   overlayAction,
@@ -180,6 +195,7 @@ export function PublicRideSelector({
   onValueChange,
 }: {
   value: PublicRideChoice
+  activation: PublicRideStatus['activation']
   live: boolean
   headerAction?: ReactNode
   overlayAction?: ReactNode
@@ -189,12 +205,15 @@ export function PublicRideSelector({
   'use no memo'
   const disabled = controlDisabled || !!overlayAction
   const neutral = useResolvedNeutralColors()
-  const liveColor = useResolvedColor(theme.palette.groupRide.color)
+  const sharing = activation === 'phone' || activation === 'board'
+  const sharingColor = useResolvedColor(theme.palette.groupRide.color)
   const waitingColor = useResolvedColor(theme.status.warning.color)
-  const accent = live ? liveColor : waitingColor
+  const accent = sharing ? sharingColor : waitingColor
   const statusColor = value.mode === 'off' ? neutral.textSecondary : accent
   const [width, setWidth] = useState<number>(PUBLIC_RIDE_ARC.width)
   const scale = width / PUBLIC_RIDE_ARC.width
+  const indicatorHalfAngle =
+    (Math.atan2(INDICATOR_WIDTH / 2, PUBLIC_RIDE_ARC.outerRadius * scale) * 180) / Math.PI
   const stop = stopOf(value)
   const selected = sectorOf(stop)
   const options = [
@@ -242,10 +261,6 @@ export function PublicRideSelector({
     }
     return () => cancelAnimation(wave)
   }, [live, wave])
-
-  const rulerProps = useAnimatedProps(() => ({
-    stroke: readout.get().timed ? neutral.textSecondary : neutral.border,
-  }))
 
   // One wave: the icon lights from the centre out (dot, inner arcs, outer arcs), then the ring
   // carries the same motion on to the inner arc.
@@ -395,14 +410,10 @@ export function PublicRideSelector({
               <TimerProgress
                 readout={readout}
                 rotation={indicatorRotation}
+                indicatorHalfAngle={indicatorHalfAngle}
+                tickColor={neutral.border}
                 color={accent}
                 gradientId={gradientId}
-              />
-              <AnimatedPath
-                d={TICK_PATH}
-                animatedProps={rulerProps}
-                strokeWidth={1}
-                strokeLinecap="round"
               />
             </Svg>
             <Animated.View
@@ -448,8 +459,8 @@ export function PublicRideSelector({
                   styles.indicator,
                   {
                     backgroundColor: accent,
-                    top: -PUBLIC_RIDE_ARC.outerRadius * scale,
-                    height: 20 * scale,
+                    top: -(PUBLIC_RIDE_ARC.outerRadius + PROGRESS_STROKE_WIDTH / 2) * scale,
+                    height: (20 + PROGRESS_STROKE_WIDTH / 2) * scale,
                   },
                 ]}
               />
@@ -513,6 +524,11 @@ export function PublicRideSelector({
             muted={neutral.textPrimary}
           />
         </View>
+        {!disabled && sharing && !live ? (
+          <Text style={[styles.relayHint, { color: neutral.textSecondary }]}>
+            Waiting for the server to confirm sharing…
+          </Text>
+        ) : null}
       </View>
       {overlayAction ? (
         <View style={[styles.overlay, { backgroundColor: theme.alpha(neutral.surfaceDeep, 0.75) }]}>
@@ -525,7 +541,7 @@ export function PublicRideSelector({
 
 const styles = StyleSheet.create({
   indicatorPivot: { position: 'absolute', width: 0, height: 0 },
-  indicator: { position: 'absolute', width: 4, left: -2 },
+  indicator: { position: 'absolute', width: INDICATOR_WIDTH, left: -INDICATOR_WIDTH / 2 },
   disabled: { opacity: 0.5 },
   overlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6, zIndex: 1 },
@@ -551,5 +567,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   live: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   liveDot: { width: 6, height: 6, borderRadius: 3 },
+  relayHint: { textAlign: 'center' },
   status: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
 })

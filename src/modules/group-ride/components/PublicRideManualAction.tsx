@@ -1,6 +1,7 @@
 import { BroadcastIcon, type Icon } from 'phosphor-react-native'
 import { StyleSheet, View } from 'react-native'
 import Svg, { Line } from 'react-native-svg'
+import type { PublicRideStatus } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
@@ -23,12 +24,13 @@ const BroadcastOffIcon: Icon = ({ size, color, weight }) => (
 )
 
 export function PublicRideManualAction({
-  sharing,
+  activation,
   onChange,
 }: {
-  sharing: boolean
+  activation: Extract<PublicRideStatus['activation'], 'waiting' | 'phone'>
   onChange: (enabled: boolean) => void
 }) {
+  const sharing = activation === 'phone'
   return (
     <View style={styles.actions}>
       {!sharing ? (

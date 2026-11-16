@@ -22,7 +22,7 @@ export function publicRideUntil(choice: PublicRideChoice, now: number): number |
  * covers the time left, so the selector never claims less than the rider has.
  */
 export function publicRideChoice(status: PublicRideStatus, now: number): PublicRideChoice {
-  if (!status.on) return { mode: 'off' }
+  if (status.activation === 'off') return { mode: 'off' }
   if (status.until == null) return { mode: 'always' }
   const left = (status.until - now) / HOUR_MS
   const hours =

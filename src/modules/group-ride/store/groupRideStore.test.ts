@@ -1,4 +1,5 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
+import type { PublicRideStatus } from 'vescape-core'
 
 type Listener<T> = (event: T) => void
 
@@ -103,11 +104,10 @@ test('the public ride switch mirrors native and sends the end time for hours', a
   useGroupRideStore.getState().setPublicRide({ mode: 'always' })
   expect(setPublicRide.mock.calls[1]).toEqual([true, null])
 
-  const status = {
-    on: true,
+  const status: PublicRideStatus = {
+    activation: 'board',
     until: null,
     live: true,
-    manualSharing: false,
     supported: true,
     reason: null,
   }
@@ -119,11 +119,10 @@ test('manual sharing sends a separate native intent and waits for native status'
   const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
   useGroupRideStore.getState().startObserving()
 
-  const status = {
-    on: true,
+  const status: PublicRideStatus = {
+    activation: 'waiting',
     until: Date.now() + 3_600_000,
     live: false,
-    manualSharing: false,
     supported: true,
     reason: null,
   }
@@ -131,10 +130,15 @@ test('manual sharing sends a separate native intent and waits for native status'
   useGroupRideStore.getState().setManualPublicRideSharing(true)
   expect(useGroupRideStore.getState().publicRide).toEqual(status)
 
-  const started = { ...status, manualSharing: true }
+  const started: PublicRideStatus = { ...status, activation: 'phone' }
   publicRideStatusListeners.forEach((listener) => listener(started))
   expect(useGroupRideStore.getState().publicRide).toEqual(started)
   useGroupRideStore.getState().setManualPublicRideSharing(false)
+  expect(useGroupRideStore.getState().publicRide).toEqual(started)
+
+  const handedOff: PublicRideStatus = { ...started, activation: 'board' }
+  publicRideStatusListeners.forEach((listener) => listener(handedOff))
+  expect(useGroupRideStore.getState().publicRide).toEqual(handedOff)
 
   expect(setManualPublicRideSharing.mock.calls).toEqual([[true], [false]])
   expect(setPublicRide).not.toHaveBeenCalled()

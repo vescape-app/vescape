@@ -89,7 +89,7 @@ class PublicRideTest {
     }
 
     @Test
-    fun `manual sharing sends positions and returns to waiting without resetting the timer`() {
+    fun `manual sharing hands off to the board without resetting the timer`() {
         val until = now + 3_600_000L
         val selected = PublicRideSwitch(true, until)
         ride.load(selected, "acc")
@@ -100,17 +100,22 @@ class PublicRideTest {
 
         ride.setManualSharing(true)
         assertTrue(ride.needsGps)
-        assertEquals(true, status()["manualSharing"])
+        assertEquals("phone", status()["activation"])
         assertEquals(until, sent.last().getLong("until"))
+        assertEquals(false, status()["live"])
         ride.handle("public-status", JSONObject().put("on", true))
         ride.position(presence, at = now)
 
         ride.setBoardConnected(true)
-        ride.setBoardConnected(false)
+        assertEquals("board", status()["activation"])
+        assertFalse(ride.needsGps)
+        assertTrue(ride.riding)
+        ride.setManualSharing(true) // A tap queued before the board connected.
+        assertFalse(ride.needsGps)
         assertEquals(listOf("public-on", "public-position"), types())
-        ride.setManualSharing(false)
+        ride.setBoardConnected(false)
         assertEquals(listOf("public-on", "public-position", "public-off"), types())
-        assertEquals(false, status()["manualSharing"])
+        assertEquals("waiting", status()["activation"])
         assertFalse(ride.needsGps)
         assertEquals(listOf(true, true), linkDemands)
         assertEquals(selected, ride.switch)
@@ -133,7 +138,7 @@ class PublicRideTest {
         ride.setManualSharing(true)
         now = until
         ride.expire()
-        assertEquals(false, status()["manualSharing"])
+        assertEquals("off", status()["activation"])
         assertEquals(listOf("public-on", "public-off"), types())
         ride.set(PublicRideSwitch(true, null))
         assertFalse(ride.wanted)

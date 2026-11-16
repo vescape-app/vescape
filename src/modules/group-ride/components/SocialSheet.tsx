@@ -6,7 +6,6 @@ import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
-import { useBleStore } from '@/modules/board/store/bleStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
@@ -44,7 +43,6 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   useRenderRateWarning('PublicRideWidget')
   const router = useRouter()
   const connection = useGroupRideStore((s) => s.connection)
-  const boardConnected = useBleStore((s) => s.status === 'connected')
   const status = useGroupRideStore((s) => s.publicRide)
   const setPublicRide = useGroupRideStore((s) => s.setPublicRide)
   const setManualSharing = useGroupRideStore((s) => s.setManualPublicRideSharing)
@@ -105,7 +103,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         ? connection === 'connected'
           ? 'Public ride is not available on the server yet.'
           : 'Connecting to server…'
-        : !status.on && status.reason
+        : status.activation === 'off' && status.reason
           ? ENDED[status.reason]
           : null
 
@@ -113,14 +111,15 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
     <View style={styles.publicRide}>
       <PublicRideSelector
         value={publicRideChoice(status, nowMs)}
+        activation={status.activation}
         live={status.live}
         headerAction={settings}
         overlayAction={setupAction}
         disabled={!ready}
         onValueChange={setPublicRide}
       />
-      {status.on && (status.manualSharing || (ready && !status.live && !boardConnected)) ? (
-        <PublicRideManualAction sharing={status.manualSharing} onChange={setManualSharing} />
+      {ready && (status.activation === 'waiting' || status.activation === 'phone') ? (
+        <PublicRideManualAction activation={status.activation} onChange={setManualSharing} />
       ) : null}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       {profileError ? <Text style={styles.errorText}>{profileError}</Text> : null}
