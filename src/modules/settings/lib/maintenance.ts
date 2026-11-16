@@ -2,20 +2,28 @@ import type { MaintenanceJobState, MaintenanceState } from 'vescape-core'
 
 import { fmtRideDuration, fmtTimeAgo } from '@/helpers/format'
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MAINTENANCE_JOBS`
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `maintenanceJobs`
+ */
+export type MaintenanceJobId = 'telemetryStorage' | 'rideSummaries' | 'rideWeather'
+
 /** Rider-facing names for the declared Maintenance Jobs; an unknown id falls back to itself. */
-const JOB_TITLES: Record<string, string> = {
+const JOB_TITLES: Record<MaintenanceJobId, string> = {
+  telemetryStorage: 'Telemetry storage',
   rideSummaries: 'Ride summaries',
   rideWeather: 'Ride weather',
 }
 
 /** Unit each job counts its progress in. */
 const JOB_UNITS: Record<string, string> = {
+  telemetryStorage: 'minutes',
   rideSummaries: 'hours',
   rideWeather: 'ride days',
 }
 
 export function maintenanceJobTitle(id: string): string {
-  return JOB_TITLES[id] ?? id
+  return JOB_TITLES[id as MaintenanceJobId] ?? id
 }
 
 export function maintenanceJobUnit(id: string): string {

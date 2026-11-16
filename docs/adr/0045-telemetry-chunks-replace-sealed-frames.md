@@ -5,7 +5,7 @@ covers where those blobs live and how readers and writers treat them.
 
 ## Status
 
-Accepted (#687, #688). Schema 56 adds `telemetry_chunks`. New recordings are sealed on both
+Accepted and implemented (#687, #688, #692). Schema 56 adds `telemetry_chunks`. New recordings are sealed on both
 platforms, and the buffer drain seals rows recorded before schema 56 in the background.
 
 ## Decision
@@ -32,10 +32,11 @@ lives only in a chunk and an unsealed one only in the buffer. There is no decode
 
 - **Buffer drain.** One routine seals every closed minute left in `telemetry_frames`: the pre-56
   backlog and any later leftover (a late sample, a failed seal, a process killed before its seal).
-  The Maintenance Runner runs it after launch and after Restore or Clear all. It works oldest first,
+  The Telemetry storage Maintenance Job runs first, before Ride summaries, after launch and after
+  Restore or Clear all. It works oldest first,
   30 minutes per write transaction, each under a fence ticket; a fenced batch is dropped. Before
   each batch it checks, in the batch's own transaction, for a ride that may still be recording, and
-  stops if one is found; it retries one ride split gap later. A sample dated after now (a wrong
+  returns Deferred if one is found; the runner retries one ride split gap later. A sample dated after now (a wrong
   clock) does not count as a recording ride, here or in the Diagnostic Event prune. The buffer is the only progress record, so a killed or fenced drain
   resumes on the next run, including on a restored database. A minute that already has a chunk
   merges into it. A minute that fails to seal before any write (verification mismatch, or a codec
@@ -43,13 +44,13 @@ lives only in a chunk and an unsealed one only in the buffer. There is no decode
   its rows, is reported as a seal failure, and the rest of the batch commits; database errors abort
   the batch. An oversized minute is not split: no real recording comes near the limit, so it stays
   in the buffer, readable. Each run that found work records one `telemetry_drain` Diagnostic Event with the
-  minutes found, minutes sealed, failures, whether it yielded, and its duration. The native
-  `TELEMETRY_DRAIN_ENABLED` flag (on) turns the drain off; the buffer stays fully readable. A drain
-  with no failure writes the native-owned `maintenanceJob.telemetryBacklogDrain` `app_settings`
-  row (the pre-56 backlog was processed once) only if, in that same transaction, no closed minute
-  is left under the cutoff at that moment. Restore and Clear all delete that row inside their own
-  fenced replacement (the restored database is prepared before it is exposed), so an archive's
-  marker never survives. It never skips a later drain.
+  minutes found, minutes sealed, failures, whether it yielded, and its duration. The job uses `hasWork` / `begin` / `complete`. Its `maintenanceJob.telemetryStorage` completion
+  value identifies the process launch and database fence generation. A bounded indexed existence
+  check excludes the open minute. A completed run, including one with failed minutes, stays Done
+  for that launch and generation; failed minutes and later leftovers retry on the next launch or
+  database replacement. Restore and Clear all clear its state inside their fenced replacement.
+  The obsolete `maintenanceJob.telemetryBacklogDrain` row is deleted during the job check and
+  replacement preparation. There is no drain kill switch.
 - **Chunks are replaceable.** A sample that arrives after its minute was sealed waits in the buffer
   until the next seal merges it. A range delete, a protected clear or delete-before decodes each
   chunk it cuts, filters out the deleted samples and re-encodes the chunk.

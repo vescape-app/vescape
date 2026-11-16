@@ -90,61 +90,15 @@ internal object MaintenanceRunner {
     appContext = context.applicationContext
     watchNetwork()
     delay(LAUNCH_DELAY_MS)
-    pruneDiagnosticEventsOnLaunch()
-    drainTelemetry()
+    pruneDiagnosticEventsForDatabase()
     trigger("launch")
   }
 
   /**
-   * Seal every closed minute left in the telemetry buffer (ADR 0045), on launch and after Restore or
-   * Clear all, which forget the drained marker inside their own fenced replacement. One Diagnostic
-   * Event per run that found work.
-   * A drain that yielded to a recording ride retries once the ride may have ended.
-   * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `drainTelemetry`
+   * Diagnostic Event retention before launch and after Restore or Clear all.
+   * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `pruneDiagnosticEventsForDatabase`
    */
-  private suspend fun drainTelemetry() {
-    if (!TELEMETRY_DRAIN_ENABLED || RecordingStorageFailure.value() != null) return
-    val fence = DatabaseReplacementFence.process
-    val jobScope = MaintenanceJobScope(
-      dao = { VescapeDatabase.get(appContext).vescapeDao() },
-      fence = fence,
-      ticket = fence.ticket(),
-      committed = ::chunkCommitted,
-    )
-    val clock = SystemClock.elapsedRealtime()
-    try {
-      val gapMs = AppDataRepository.get(appContext).getTypedSettings().rideSplitGapMinutes * 60_000L
-      val repository = TelemetryRepository.get(appContext)
-      val result = drainTelemetryBuffer(jobScope, gapMs) { key, error -> repository.recordSealFailure(key, error) }
-      if (result.minutes > 0) {
-        repository.recordDiagnosticEvent("telemetry_drain", mapOf(
-          "operation" to "telemetry_drain",
-          "minutes" to result.minutes,
-          "sealed_minutes" to result.sealedMinutes,
-          "failures" to result.failures,
-          "yielded" to result.yielded,
-          "duration_ms" to SystemClock.elapsedRealtime() - clock,
-        ))
-      }
-      if (result.yielded) scope.launch {
-        delay(gapMs)
-        drainTelemetry()
-      }
-    } catch (fenced: MaintenanceRunFenced) {
-      // Restore or Clear all replaced the database; its own drain starts on the new one.
-    } catch (cancelled: CancellationException) {
-      throw cancelled
-    } catch (error: Throwable) {
-      Log.e(TAG, "Telemetry drain failed", error)
-      Sentry.captureException(error)
-    }
-  }
-
-  /**
-   * Diagnostic Event retention, once per process before the launch pass.
-   * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `pruneDiagnosticEventsOnLaunch`
-   */
-  private suspend fun pruneDiagnosticEventsOnLaunch() {
+  private suspend fun pruneDiagnosticEventsForDatabase() {
     if (RecordingStorageFailure.value() != null) return
     val fence = DatabaseReplacementFence.process
     val scope = MaintenanceJobScope(
@@ -156,8 +110,8 @@ internal object MaintenanceRunner {
       val gapMs = AppDataRepository.get(appContext).getTypedSettings().rideSplitGapMinutes * 60_000L
       val deleted = pruneDiagnosticEvents(scope, gapMs)
       if (deleted > 0) breadcrumb("diagnostic_prune", mapOf("deleted" to deleted))
+      // intentional-suppression: Restore/Clear all owns the retry through its replacement callback.
     } catch (fenced: MaintenanceRunFenced) {
-      // Restore or Clear all replaced the database; the next start prunes the new one.
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (error: Throwable) {
@@ -189,8 +143,11 @@ internal object MaintenanceRunner {
 
   /** Restore or Clear all finished, successfully or not: re-check against the resulting database. */
   fun onDatabaseReplaced() {
-    scope.launch { if (started) drainTelemetry() }
-    trigger("database_replaced")
+    scope.launch {
+      if (!started) return@launch
+      pruneDiagnosticEventsForDatabase()
+      trigger("database_replaced")
+    }
   }
 
   private suspend fun runPasses() {
@@ -213,6 +170,8 @@ internal object MaintenanceRunner {
       ticket = ticket,
       progress = { done, total -> progress(job.id, done, total) },
       committed = ::chunkCommitted,
+      sealFailure = { key, error -> TelemetryRepository.get(appContext).recordSealFailure(key, error) },
+      diagnostic = { name, properties -> TelemetryRepository.get(appContext).recordDiagnosticEvent(name, properties) },
       http = http,
     )
     val stale = try {

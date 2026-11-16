@@ -302,42 +302,18 @@ internal func drainTelemetryMinutes(_ db: Database, _ keys: [TelemetryMinuteKey]
   return batch
 }
 
-/// Write the drained marker in the caller's transaction, unless a closed minute is still in the
-/// buffer under the cutoff at `nowMs`: one that closed or arrived while the drain ran is left to the
-/// next run. Returns whether the database is marked drained.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `publishTelemetryDrainedImpl`
-@discardableResult
-internal func publishTelemetryDrained(_ db: Database, nowMs: Int64) throws -> Bool {
-  guard try closedTelemetryMinutes(db, beforeMs: telemetryDrainCutoffMs(nowMs)).isEmpty else { return false }
-  if try storedMaintenanceFingerprint(db, id: TELEMETRY_DRAINED_JOB_ID) == nil {
-    try publishMaintenanceFingerprint(db, id: TELEMETRY_DRAINED_JOB_ID, fingerprint: "drained", nowMs: nowMs)
-  }
-  return true
-}
-
-/// Clear all and Restore leave a database whose buffer was never drained (ADR 0045).
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `forgetTelemetryDrained`
-internal func forgetTelemetryDrained(_ db: Database) throws {
-  try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [maintenanceJobKey(TELEMETRY_DRAINED_JOB_ID)])
+/// Clear the registered job state and the obsolete pre-job marker on Restore and Clear all.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `forgetTelemetryStorage`
+internal func forgetTelemetryStorage(_ db: Database) throws {
+  try db.execute(sql: "DELETE FROM app_settings WHERE key IN ('maintenanceJob.telemetryStorage', 'maintenanceJob.telemetryBacklogDrain')")
 }
 
 /// Minutes starting before this are closed: their end is `TELEMETRY_SEAL_GRACE_MS` past.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `telemetryDrainCutoffMs`
 internal func telemetryDrainCutoffMs(_ nowMs: Int64) -> Int64 { telemetryMinuteStart(nowMs - TELEMETRY_SEAL_GRACE_MS) }
 
-/// Native flag for the buffer drain (ADR 0045). Off leaves every buffer row in place; readers merge
-/// the buffer either way, so the database stays fully readable.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `TELEMETRY_DRAIN_ENABLED`
-internal let TELEMETRY_DRAIN_ENABLED = true
-
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `TELEMETRY_DRAIN_BATCH_MINUTES`
 internal let TELEMETRY_DRAIN_BATCH_MINUTES = 30
-
-/// Native-owned `app_settings` row recording that this database's pre-chunk backlog was drained
-/// once. Restore and Clear all delete it inside their fenced replacement, so a restored archive or a
-/// cleared database is never marked drained. It never stops a later drain from sealing leftovers.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `TELEMETRY_DRAINED_JOB_ID`
-internal let TELEMETRY_DRAINED_JOB_ID = "telemetryBacklogDrain"
 
 /// Outcome of one drain. `yielded`: a ride may be recording, so the drain stopped early.
 internal struct TelemetryDrainResult: Equatable {
@@ -351,8 +327,7 @@ internal struct TelemetryDrainResult: Equatable {
 /// samples, failed seals and minutes a crashed process never sealed. A minute that already has a
 /// chunk merges into it. Batches of `batch` minutes, one fenced transaction each, oldest first;
 /// before each batch a possibly recording ride stops the drain. The buffer itself is the progress,
-/// so a run cut short resumes on the next one. With no failure, and no closed minute left at the
-/// time of the final transaction, the drained marker is written. A minute that fails to seal keeps
+/// so a run cut short resumes on the next one. A minute that fails to seal keeps
 /// its rows and is reported through `onFailure`. Throws `MaintenanceRunFenced` once Restore or Clear all replaced the database.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `drainTelemetryBuffer`
 @discardableResult
@@ -377,9 +352,6 @@ internal func drainTelemetryBuffer(
     for (key, error) in result.failures { onFailure(key, error) }
     scope.progress(start + slice.count, keys.count)
     scope.committed()
-  }
-  if failures == 0 {
-    try scope.chunk { try publishTelemetryDrained($0, nowMs: scope.nowMs()) }
   }
   return TelemetryDrainResult(minutes: keys.count, sealedMinutes: sealedMinutes, failures: failures, yielded: false)
 }

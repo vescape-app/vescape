@@ -754,10 +754,12 @@ internal final class TelemetryRepository {
   func recordSealFailure(_ key: TelemetryMinuteKey, _ error: Error) {
     let properties: [String: Any] = ["operation": "telemetry_seal", "board_id": key.boardId ?? NSNull(),
                                      "minute_start_ms": key.minuteStartMs, "message": String(describing: error)]
+    // intentional-suppression: diagnostic encoding falls back locally to avoid recursive reporting.
     let json = (try? JSONSerialization.data(withJSONObject: properties)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
     let event = PersistedDiagnosticEvent(id: nil, occurredAtMs: telemetryNowMs(), elapsedRealtimeMs: telemetryElapsedMs(),
       eventName: "telemetry_seal_failed", operation: "telemetry_seal", phase: nil, boardId: key.boardId,
       message: String(describing: error), propertiesJson: json)
+    // intentional-suppression: a failed diagnostic write must not recurse into the same failed store.
     do { try DiagnosticEventPersistence(writer: VescapeDatabase.requirePool()).insert(event) } catch {}
   }
 

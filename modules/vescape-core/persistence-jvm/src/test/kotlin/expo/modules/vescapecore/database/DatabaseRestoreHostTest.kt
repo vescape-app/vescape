@@ -13,7 +13,8 @@ import org.junit.Test
 import kotlinx.coroutines.runBlocking
 import expo.modules.vescapecore.telemetry.BucketRoutePreview
 import expo.modules.vescapecore.telemetry.RecordingPersistence
-import expo.modules.vescapecore.telemetry.TELEMETRY_DRAINED_JOB_ID
+import expo.modules.vescapecore.telemetry.MaintenanceJobScope
+import expo.modules.vescapecore.telemetry.pruneDiagnosticEvents
 import expo.modules.vescapecore.telemetry.publishMaintenanceFingerprint
 import expo.modules.vescapecore.telemetry.storedMaintenanceFingerprint
 import expo.modules.vescapecore.telemetry.bucketPreviewFixes
@@ -147,7 +148,10 @@ class DatabaseRestoreHostTest {
     val directory = Files.createTempDirectory("vescape-restore-drained").toFile()
     val source = directory.resolve("source.sqlite")
     open(source.path).apply {
-      vescapeDao().publishMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID, "drained", 1)
+      vescapeDao().publishMaintenanceFingerprint("telemetryStorage", "drained", 1)
+      vescapeDao().publishMaintenanceFingerprint("telemetryBacklogDrain", "drained", 1)
+      vescapeDao().insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = 1, elapsedRealtimeMs = 0,
+        eventName = "old", operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}"))
       vescapeDao().upsertAppSetting(AppSettingEntity("kept", "\"yes\"", 2))
       close()
     }
@@ -160,7 +164,13 @@ class DatabaseRestoreHostTest {
     BundledSQLiteDriver().open(restored.path).use(::prepareRestoredDatabase)
     val room = open(restored.path)
     try {
-      assertNull(room.vescapeDao().storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+      assertNull(room.vescapeDao().storedMaintenanceFingerprint("telemetryStorage"))
+      assertNull(room.vescapeDao().storedMaintenanceFingerprint("telemetryBacklogDrain"))
+      val fence = DatabaseReplacementFence()
+      fence.fence { }
+      val scope = MaintenanceJobScope({ room.vescapeDao() }, fence, fence.ticket(), { 40 * 24 * 60 * 60_000L })
+      assertEquals(1, pruneDiagnosticEvents(scope, gapMs = 60_000))
+      assertTrue(room.vescapeDao().getDiagnosticEvents(Long.MIN_VALUE, Long.MAX_VALUE, null, 10).isEmpty())
       assertEquals("\"yes\"", room.vescapeDao().getAllAppSettings().single { it.key == "kept" }.valueJson)
     } finally { room.close(); directory.deleteRecursively() }
   }

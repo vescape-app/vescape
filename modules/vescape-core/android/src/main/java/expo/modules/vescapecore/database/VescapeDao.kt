@@ -21,10 +21,7 @@ import expo.modules.vescapecore.telemetry.firstTelemetrySampleAtOrAfter
 import expo.modules.vescapecore.telemetry.readTelemetryFramesImpl
 import expo.modules.vescapecore.telemetry.TelemetrySealBatch
 import expo.modules.vescapecore.telemetry.sealTelemetryMinuteImpl
-import expo.modules.vescapecore.telemetry.TELEMETRY_DRAINED_JOB_ID
 import expo.modules.vescapecore.telemetry.drainTelemetryMinutesImpl
-import expo.modules.vescapecore.telemetry.maintenanceJobKey
-import expo.modules.vescapecore.telemetry.publishTelemetryDrainedImpl
 import expo.modules.vescapecore.telemetry.telemetryAnchorMs
 import expo.modules.vescapecore.telemetry.telemetrySampleExists
 import expo.modules.vescapecore.telemetry.trimTelemetryChunks
@@ -494,6 +491,9 @@ interface VescapeDao {
   """)
   suspend fun closedTelemetryMinutes(beforeMs: Long): List<TelemetryMinuteKey>
 
+  @Query("SELECT EXISTS(SELECT 1 FROM telemetry_frames WHERE captured_at_ms < :beforeMs LIMIT 1)")
+  suspend fun hasClosedTelemetryMinute(beforeMs: Long): Boolean
+
   /** Samples in `[fromMs, toMs]` from one snapshot; null [boardId] reads every Board. */
   @Transaction
   suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity> =
@@ -520,10 +520,6 @@ interface VescapeDao {
   @Transaction
   suspend fun drainTelemetryMinutes(keys: List<TelemetryMinuteKey>, nowMs: Long, gapMs: Long): TelemetrySealBatch? =
     drainTelemetryMinutesImpl(keys, nowMs, gapMs)
-
-  /** The closed-minute recheck and the marker write share one transaction. */
-  @Transaction
-  suspend fun publishTelemetryDrained(nowMs: Long): Boolean = publishTelemetryDrainedImpl(nowMs)
 
   @Query(
     """
@@ -713,7 +709,7 @@ interface VescapeDao {
     clearExclusions()
     clearRideTrackPoints()
     clearWeatherObservations()
-    forgetTelemetryDrained()
+    forgetTelemetryStorage()
   }
 
   @Transaction
@@ -731,14 +727,15 @@ interface VescapeDao {
       deleteWeatherObservations(range.startMs, range.endMs)
     }
     clearDiagnosticEvents()
-    forgetTelemetryDrained()
+    forgetTelemetryStorage()
   }
 
   /**
-   * Clear all and Restore leave a database whose buffer was never drained (ADR 0045).
-   * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `forgetTelemetryDrained`
+   * Clear registered telemetry job state and the obsolete pre-job marker on Restore and Clear all.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `forgetTelemetryStorage`
    */
-  suspend fun forgetTelemetryDrained() = deleteAppSetting(maintenanceJobKey(TELEMETRY_DRAINED_JOB_ID))
+  @Query("DELETE FROM app_settings WHERE key IN ('maintenanceJob.telemetryStorage', 'maintenanceJob.telemetryBacklogDrain')")
+  suspend fun forgetTelemetryStorage()
 
   // Weather Observations (`weather_observations`)
 

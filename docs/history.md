@@ -137,7 +137,7 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
   older backup makes its jobs stale again. There is no progress cursor and no pending-work state: a
   run that stops early restarts from zero, and the missing fingerprint is the only obligation. A job
   may own its done state instead (`hasWork`, `begin`, `complete`); Ride weather does, with a
-  watermark.
+  watermark. Telemetry storage records completion for the process launch and database generation.
 - **Runner.** `MaintenanceRunner` runs stale jobs one at a time, in declaration order, on one
   low-priority thread or queue. A failed or waiting job does not block the next. It checks after
   launch (10 s after startup), when the network comes back (network jobs only), 3 s after the last
@@ -161,7 +161,18 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
   puts a warning dot on the Storage cell; waiting for network does not. The Database screen lists
   every job.
 
-**Ride summaries** is the first job. Its inputs are the Metric Sanitizer settings. It rebuilds
+**Telemetry storage** (`telemetryStorage`) runs first. It seals closed buffer minutes with the
+shared live-seal routine, oldest first, 30 minutes per fenced transaction. Progress counts minutes
+in the run snapshot. Open minutes stay buffered; a possibly recording ride defers the job. Failed
+minutes stay readable and the run completes, so later triggers do not loop over them. A new launch
+or database replacement retries them and any later leftovers. The job clears the obsolete backlog
+marker, and Restore and Clear all clear its completion state.
+
+Diagnostic Event retention runs before the launch pass and after Restore or Clear all, under the
+resulting database's fence ticket. It retains 30 days, deletes in batches of 5,000, and rechecks for
+a possibly recording ride before each batch. It has no Background updates row.
+
+**Ride summaries** follows Telemetry storage. Its inputs are the Metric Sanitizer settings. It rebuilds
 minute buckets, exclusion ranges and route previews oldest first, one transaction per owned chunk:
 whole minutes, half-open `[from, to)`, at most one clock hour. Inside the transaction it reads the
 frames and Ride Track of the chunk, plus read-only context from the previous chunk: each Board's

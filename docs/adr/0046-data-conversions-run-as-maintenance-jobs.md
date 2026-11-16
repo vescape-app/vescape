@@ -5,8 +5,8 @@ bringing that data to the new shape runs.
 
 ## Status
 
-Accepted (#692). The telemetry buffer drain (ADR 0045) was first built as a separate routine in
-`MaintenanceRunner`; #692 moves it into `MAINTENANCE_JOBS`.
+Accepted and implemented (#692). The telemetry buffer drain (ADR 0045) is registered in
+`MAINTENANCE_JOBS` / `maintenanceJobs`, before Ride summaries.
 
 ## Decision
 

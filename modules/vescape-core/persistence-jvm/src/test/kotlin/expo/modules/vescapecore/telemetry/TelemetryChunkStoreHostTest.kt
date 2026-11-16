@@ -212,7 +212,6 @@ class TelemetryChunkStoreHostTest {
       assertEquals("late sample merged, no second chunk", 121, dao.getTelemetryChunkHeaders(t0, t0, board, false).single().sampleCount)
       assertSameReads(reference.vescapeDao(), dao)
       assertEquals(reference.vescapeDao().canonical(0, t0, board), dao.canonical(0, t0, board))
-      assertEquals("drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
       assertEquals(TelemetryDrainResult(0, 0, 0, false), drainTelemetryBuffer(drainScope(drained, DatabaseReplacementFence()), drainGapMs) { _, _ -> })
     } finally { reference.close(); drained.close() }
   }
@@ -225,7 +224,6 @@ class TelemetryChunkStoreHostTest {
       val result = drainTelemetryBuffer(drainScope(db, DatabaseReplacementFence()), gapMs = 10 * minute) { _, _ -> }
       assertEquals(TelemetryDrainResult(minutes = 6, sealedMinutes = 0, failures = 0, yielded = true), result)
       assertEquals(4 * 2 * 120, dao.getBufferFramesPage(Long.MIN_VALUE, Long.MAX_VALUE, null, true, Long.MIN_VALUE, Long.MIN_VALUE, 10_000).size)
-      assertNull("a yielded drain is not drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
     } finally { db.close() }
   }
 
@@ -244,12 +242,10 @@ class TelemetryChunkStoreHostTest {
       val dao = drained.vescapeDao()
       assertEquals("only the first batch committed", 2, dao.getTelemetryChunkHeaders(Long.MIN_VALUE, Long.MAX_VALUE, null, true).size)
       assertSameReads(reference.vescapeDao(), dao)
-      assertNull(dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
       val resumed = drainTelemetryBuffer(drainScope(drained, fence), drainGapMs, batch = 2) { _, _ -> }
       assertEquals(TelemetryDrainResult(minutes = 6, sealedMinutes = 6, failures = 0, yielded = false), resumed)
       assertSameReads(reference.vescapeDao(), dao)
       assertEquals(reference.vescapeDao().canonical(0, t0, board), dao.canonical(0, t0, board))
-      assertEquals("drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
     } finally { reference.close(); drained.close() }
   }
 
@@ -270,12 +266,11 @@ class TelemetryChunkStoreHostTest {
       assertEquals(listOf(TelemetryMinuteKey(null, t0 - 20 * minute)), failures)
       assertEquals(listOf(t0 - 20 * minute + 250 + 20 * 500),
         dao.getBufferFramesPage(Long.MIN_VALUE, Long.MAX_VALUE, null, true, Long.MIN_VALUE, Long.MIN_VALUE, 10_000).map { it.capturedAtMs })
-      assertNull(dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
     } finally { db.close() }
   }
 
-  /** A minute that closes while the drain runs keeps the marker unpublished until a run seals it. */
-  @Test fun drainRechecksClosedMinutesBeforeMarkingDrained(): Unit = runBlocking {
+  /** A minute that closes during the fixed run snapshot remains for the next drain. */
+  @Test fun drainLeavesMinutesThatCloseDuringTheRun(): Unit = runBlocking {
     val db = memory()
     try {
       val dao = db.vescapeDao()
@@ -284,9 +279,7 @@ class TelemetryChunkStoreHostTest {
       val fence = DatabaseReplacementFence()
       val scope = MaintenanceJobScope({ dao }, fence, fence.ticket(), { now }, { done, _ -> if (done == 2) now += minute })
       assertEquals(TelemetryDrainResult(6, 6, 0, false), drainTelemetryBuffer(scope, drainGapMs, batch = 2) { _, _ -> })
-      assertNull("minute 3 closed mid-run", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
       assertEquals(TelemetryDrainResult(2, 2, 0, false), drainTelemetryBuffer(scope, drainGapMs) { _, _ -> })
-      assertEquals("drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
     } finally { db.close() }
   }
 
@@ -299,7 +292,6 @@ class TelemetryChunkStoreHostTest {
       val result = drainTelemetryBuffer(drainScope(db, DatabaseReplacementFence()), gapMs = 10 * minute) { _, _ -> }
       assertEquals(TelemetryDrainResult(minutes = 2, sealedMinutes = 2, failures = 0, yielded = false), result)
       assertNull(dao.activeRideStartMs(drainNow, 10 * minute))
-      assertEquals("drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
     } finally { db.close() }
   }
 
@@ -309,9 +301,9 @@ class TelemetryChunkStoreHostTest {
     try {
       val dao = db.vescapeDao()
       for (protected in listOf(emptyList(), listOf(TelemetryTimeRange(t0, t0 + minute)))) {
-        dao.publishMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID, "drained", drainNow)
+        dao.publishMaintenanceFingerprint("telemetryStorage", "drained", drainNow)
         dao.clearExcept(protected)
-        assertNull(dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+        assertNull(dao.storedMaintenanceFingerprint("telemetryStorage"))
       }
     } finally { db.close() }
   }

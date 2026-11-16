@@ -44,6 +44,61 @@ class MaintenanceJobsHostTest {
     tempMosfetDeciC = 300, tempMotorDeciC = 300,
   )
 
+  @Test fun telemetryStoragePublishesProgressAndCompletesSuccessfulSeals(): Unit = runBlocking {
+    val db = db()
+    try {
+      val dao = db.vescapeDao()
+      dao.insertFrames(listOf(frame(minute)))
+      val fence = DatabaseReplacementFence()
+      val progress = mutableListOf<Pair<Int, Int>>()
+      var committed = 0
+      val scope = MaintenanceJobScope({ dao }, fence, fence.ticket(), { 100 * minute },
+        progress = { done, total -> progress += done to total }, committed = { committed++ })
+      val job = TelemetryStorageJob()
+      val settings = AppSettings()
+      assertTrue(job.hasWork(scope, settings))
+      job.begin(scope, settings)
+      assertEquals(MaintenanceJobOutcome.Completed, job.run(scope, settings))
+      job.complete(scope, settings)
+      assertEquals(listOf(1 to 1), progress)
+      assertEquals(1, committed)
+      assertFalse(job.hasWork(scope, settings))
+      assertEquals(1, dao.getTelemetryChunkHeaders(minute, minute, board, false).single().sampleCount)
+    } finally { db.close() }
+  }
+
+  @Test fun telemetryStorageFinishesFailuresAndRetriesAfterLaunchOrReplacement(): Unit = runBlocking {
+    val db = db()
+    try {
+      val dao = db.vescapeDao()
+      val fence = DatabaseReplacementFence()
+      val now = 100 * minute
+      fun scope() = MaintenanceJobScope({ dao }, fence, fence.ticket(), { now })
+      val settings = AppSettings()
+      val job = TelemetryStorageJob()
+      dao.insertFrames(listOf(frame(now - 500)))
+      assertFalse("open minute alone is not work", job.hasWork(scope(), settings))
+      dao.insertFrames(listOf(frame(minute)))
+      assertTrue(job.hasWork(scope(), settings))
+      job.begin(scope(), settings)
+      assertTrue("recording defers the job", job.run(scope(), settings) is MaintenanceJobOutcome.Deferred)
+      dao.deleteFramesByIds(dao.getBufferFramesPage(now - 500, now, null, true, Long.MIN_VALUE, Long.MIN_VALUE, 10).map { it.id })
+      dao.sealTelemetryMinute(board, minute)
+      val chunk = dao.getTelemetryChunkHeaders(minute, minute, board, false).single()
+      dao.updateTelemetryChunk(chunk.id, 1, chunk.sampleCount, chunk.firstAtMs, chunk.lastAtMs, byteArrayOf(0x7F))
+      dao.insertFrames(listOf(frame(minute + 500)))
+      assertEquals(MaintenanceJobOutcome.Completed, job.run(scope(), settings))
+      job.complete(scope(), settings)
+      assertFalse("failed minute does not rerun on every trigger", job.hasWork(scope(), settings))
+      assertTrue("next launch retries failed minute", TelemetryStorageJob().hasWork(scope(), settings))
+      fence.fence { }
+      assertTrue("replacement retries in the same process", job.hasWork(scope(), settings))
+      dao.publishMaintenanceFingerprint("telemetryBacklogDrain", "drained", now)
+      job.hasWork(scope(), settings)
+      assertNull("legacy marker cleaned up", dao.storedMaintenanceFingerprint("telemetryBacklogDrain"))
+    } finally { db.close() }
+  }
+
   private suspend fun VescapeDao.persisted() = Triple(
     getAllHistoryBucketsAsc(),
     getExclusions(Long.MIN_VALUE, Long.MAX_VALUE, null).map { it.copy(id = 0) }.sortedBy { it.startMs },

@@ -84,12 +84,15 @@ internal fun interface MaintenanceHttp {
 internal class MaintenanceJobScope(
   private val dao: () -> VescapeDao,
   private val fence: DatabaseReplacementFence,
-  private val ticket: Long,
+  val ticket: Long,
   val nowMs: () -> Long = System::currentTimeMillis,
   /** Items handled so far and the current total, in the job's own unit. */
   val progress: (done: Int, total: Int) -> Unit = { _, _ -> },
   /** A chunk that changed Ride History committed. */
   val committed: () -> Unit = {},
+  /** Reports a minute whose raw rows were retained after seal verification failed. */
+  val sealFailure: (TelemetryMinuteKey, Exception) -> Unit = { _, _ -> },
+  val diagnostic: (String, Map<String, Any?>) -> Unit = { _, _ -> },
   /** Network access for jobs with [MaintenanceJob.requiresNetwork]; off the main thread, cancellable. */
   val http: MaintenanceHttp = MaintenanceHttp { throw java.io.IOException("No network transport") },
 ) {
@@ -119,10 +122,11 @@ internal suspend fun VescapeDao.publishMaintenanceFingerprint(id: String, finger
   upsertAppSetting(AppSettingEntity(maintenanceJobKey(id), JSONObject.quote(fingerprint), nowMs))
 
 /**
+ * @parity /src/modules/settings/lib/maintenance.ts `MaintenanceJobId`
  * Every Maintenance Job, in run order. A new job is declared here and nowhere else.
  * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `maintenanceJobs`
  */
-internal val MAINTENANCE_JOBS: List<MaintenanceJob> = listOf(RideSummariesJob, RideWeatherJob)
+internal val MAINTENANCE_JOBS: List<MaintenanceJob> = listOf(TelemetryStorageJob(), RideSummariesJob, RideWeatherJob)
 
 /**
  * Ride summaries: minute buckets, exclusion ranges and route previews rebuilt from the raw frames
@@ -163,4 +167,46 @@ internal object RideSummariesJob : MaintenanceJob {
   }
 
   private fun hours(spanMs: Long): Int = ((spanMs + RIDE_SUMMARIES_CHUNK_MS - 1) / RIDE_SUMMARIES_CHUNK_MS).toInt()
+}
+
+/**
+ * Closed telemetry storage, once per launch and database generation, including failed minutes.
+ * The legacy backlog marker is cleanup-only. A fresh job instance retries failures next launch.
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `TelemetryStorageJob`
+ * @parity /src/modules/settings/lib/maintenance.ts `MaintenanceJobId`
+ */
+internal class TelemetryStorageJob : MaintenanceJob {
+  override val id = "telemetryStorage"
+  override val version = 1
+  override val requiresNetwork = false
+  override val inputKeys = emptySet<String>()
+  private val launch = java.util.UUID.randomUUID().toString()
+  override fun inputs(settings: AppSettings) = ""
+  private fun completion(scope: MaintenanceJobScope) = "$launch|${scope.ticket}"
+
+  override suspend fun hasWork(scope: MaintenanceJobScope, settings: AppSettings): Boolean = scope.chunk {
+    it.deleteAppSetting("maintenanceJob.telemetryBacklogDrain")
+    it.storedMaintenanceFingerprint(id) != completion(scope) &&
+      it.hasClosedTelemetryMinute(telemetryDrainCutoffMs(scope.nowMs()))
+  }
+
+  override suspend fun begin(scope: MaintenanceJobScope, settings: AppSettings) {
+    scope.chunk { it.deleteAppSetting(maintenanceJobKey(id)) }
+  }
+
+  override suspend fun complete(scope: MaintenanceJobScope, settings: AppSettings) {
+    scope.chunk { it.publishMaintenanceFingerprint(id, completion(scope), scope.nowMs()) }
+  }
+
+  override suspend fun run(scope: MaintenanceJobScope, settings: AppSettings): MaintenanceJobOutcome {
+    val started = System.nanoTime()
+    val gapMs = settings.rideSplitGapMinutes * 60_000L
+    val result = drainTelemetryBuffer(scope, gapMs, onFailure = scope.sealFailure)
+    if (result.minutes > 0) scope.diagnostic("telemetry_drain", mapOf(
+      "operation" to "telemetry_drain", "minutes" to result.minutes,
+      "sealed_minutes" to result.sealedMinutes, "failures" to result.failures,
+      "yielded" to result.yielded, "duration_ms" to (System.nanoTime() - started) / 1_000_000,
+    ))
+    return if (result.yielded) MaintenanceJobOutcome.Deferred(scope.nowMs() + gapMs) else MaintenanceJobOutcome.Completed
+  }
 }

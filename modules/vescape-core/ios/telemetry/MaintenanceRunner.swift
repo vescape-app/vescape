@@ -105,17 +105,16 @@ final class MaintenanceRunner {
       self.monitor.start(queue: self.queue)
       self.queue.asyncAfter(deadline: .now() + maintenanceLaunchDelay) {
         self.workQueue.async {
-          self.pruneDiagnosticEventsOnLaunch()
-          self.drainTelemetry()
+          self.pruneDiagnosticEventsForDatabase()
           self.trigger("launch")
         }
       }
     }
   }
 
-  /// Diagnostic Event retention, once per process before the launch pass.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `pruneDiagnosticEventsOnLaunch`
-  private func pruneDiagnosticEventsOnLaunch() {
+  /// Diagnostic Event retention before launch and after Restore or Clear all.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `pruneDiagnosticEventsForDatabase`
+  private func pruneDiagnosticEventsForDatabase() {
     guard RecordingStorageFailure.value() == nil else { return }
     let fence = DatabaseReplacementFence.process
     let scope = MaintenanceJobScope(writer: { try VescapeDatabase.requirePool() }, fence: fence, ticket: fence.ticket())
@@ -125,47 +124,9 @@ final class MaintenanceRunner {
       let deleted = try pruneDiagnosticEvents(scope, gapMs: gapMs)
       if deleted > 0 { breadcrumb("diagnostic_prune", ["deleted": deleted]) }
     } catch is MaintenanceRunFenced {
-      // Restore or Clear all replaced the database; the next start prunes the new one.
+      // Restore or Clear all replaced the database; the replacement callback prunes the new one.
     } catch {
       Self.log.error("Diagnostic Event prune failed: \(error.localizedDescription, privacy: .public)")
-#if canImport(Sentry)
-      SentrySDK.capture(error: error)
-#endif
-    }
-  }
-
-  /// Seal every closed minute left in the telemetry buffer (ADR 0045), on launch and after Restore
-  /// or Clear all, which forget the drained marker inside their own fenced replacement. One
-  /// Diagnostic Event per run that found work. A drain that yielded to a recording ride retries once
-  /// the ride may have ended. Runs on `workQueue`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `drainTelemetry`
-  private func drainTelemetry() {
-    guard TELEMETRY_DRAIN_ENABLED, RecordingStorageFailure.value() == nil else { return }
-    let fence = DatabaseReplacementFence.process
-    let scope = MaintenanceJobScope(writer: { try VescapeDatabase.requirePool() }, fence: fence, ticket: fence.ticket(),
-                                    committed: { [unowned self] in chunkCommitted() })
-    let startedAt = telemetryElapsedMs()
-    do {
-      let settings = try AppDataRepository.shared.getSettings()
-      let gapMs = Int64(telemetryInt(settings["rideSplitGapMinutes"] ?? nil) ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
-      let result = try drainTelemetryBuffer(scope, gapMs: gapMs) { key, error in TelemetryRepository.shared.recordSealFailure(key, error) }
-      if result.minutes > 0 {
-        TelemetryRepository.shared.recordDiagnosticEvent(eventName: "telemetry_drain", properties: [
-          "operation": "telemetry_drain",
-          "minutes": result.minutes,
-          "sealed_minutes": result.sealedMinutes,
-          "failures": result.failures,
-          "yielded": result.yielded,
-          "duration_ms": telemetryElapsedMs() - startedAt,
-        ])
-      }
-      if result.yielded {
-        workQueue.asyncAfter(deadline: .now() + .milliseconds(Int(gapMs))) { self.drainTelemetry() }
-      }
-    } catch is MaintenanceRunFenced {
-      // Restore or Clear all replaced the database; its own drain starts on the new one.
-    } catch {
-      Self.log.error("Telemetry drain failed: \(error.localizedDescription, privacy: .public)")
 #if canImport(Sentry)
       SentrySDK.capture(error: error)
 #endif
@@ -196,9 +157,11 @@ final class MaintenanceRunner {
   func onDatabaseReplaced() {
     queue.async {
       guard self.started else { return }
-      self.workQueue.async { self.drainTelemetry() }
+      self.workQueue.async {
+        self.pruneDiagnosticEventsForDatabase()
+        self.trigger("database_replaced")
+      }
     }
-    trigger("database_replaced")
   }
 
   private func triggerLocked(_ reason: String) {
@@ -242,6 +205,8 @@ final class MaintenanceRunner {
       isCancelled: { [unowned self] in onQueue { runGeneration != generation } },
       progress: { [unowned self] done, total in progress(job.id, done: done, total: total) },
       committed: { [unowned self] in chunkCommitted() },
+      sealFailure: { key, error in TelemetryRepository.shared.recordSealFailure(key, error) },
+      diagnostic: { name, properties in TelemetryRepository.shared.recordDiagnosticEvent(eventName: name, properties: properties) },
       http: http
     )
     let stale: Bool

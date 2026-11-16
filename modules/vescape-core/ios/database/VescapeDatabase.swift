@@ -279,13 +279,13 @@ enum VescapeDatabase {
     }
     try migrator.migrate(pool)
     // Foreign keys are checked at commit, so stray tables that reference each other drop in any order.
-    // The archive's drained marker goes too, so the restored buffer is drained again (ADR 0045).
+    // Clear the archive's telemetry job state and legacy marker so its buffer drains again (ADR 0045).
     try pool.write { db in
       try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
       for table in try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table'") where isUnknownTable(table) {
         try db.execute(sql: "DROP TABLE `\(table)`")
       }
-      try forgetTelemetryDrained(db)
+      try forgetTelemetryStorage(db)
     }
     return pool
   }

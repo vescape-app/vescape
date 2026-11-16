@@ -70,3 +70,11 @@ test('sub-minute job durations show seconds, not a rounded-up minute', () => {
     maintenanceJobDetail(job({ status: 'done', lastRunAtMs: now, lastDurationMs: 12_400 }), now),
   ).toBe('Done · last run now · took 12 s')
 })
+
+test('telemetry storage reports minute progress on Background updates', () => {
+  const progress = maintenanceProgress(
+    state([job({ id: 'telemetryStorage', status: 'running', done: 30, total: 60 })]),
+  )
+  expect(progress?.statusLine).toBe('Updating telemetry storage · 30 of 60 minutes')
+  expect(progress?.fraction).toBe(0.5)
+})

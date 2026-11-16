@@ -175,7 +175,7 @@ func runTelemetryChunkContract() throws {
     try pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms BETWEEN ? AND ?", arguments: [from, to])! }
   }
   func drainedMarker(_ pool: DatabasePool) throws -> String? {
-    try pool.read { try storedMaintenanceFingerprint($0, id: TELEMETRY_DRAINED_JOB_ID) }
+    try pool.read { try storedMaintenanceFingerprint($0, id: "telemetryStorage") }
   }
   let drainReference = try leftovers(sealFirst: false)
   let drained = try leftovers(sealFirst: true)
@@ -189,7 +189,6 @@ func runTelemetryChunkContract() throws {
   try require(lateChunk == [121], "late sample merged, no second chunk")
   try assertSameReads(drainReference, drained, "drain")
   try require(try canonical(drainReference, 0, t0, board) == canonical(drained, 0, t0, board), "drained backlog reads")
-  try require(try drainedMarker(drained) == "drained", "drained marker")
   try require(try drainTelemetryBuffer(drainScope(drained, DatabaseReplacementFence()), gapMs: drainGapMs) { _, _ in }
     == TelemetryDrainResult(minutes: 0, sealedMinutes: 0, failures: 0, yielded: false), "second drain is a no-op")
 
@@ -199,7 +198,6 @@ func runTelemetryChunkContract() throws {
   let yielded = try drainTelemetryBuffer(drainScope(recordingPool, DatabaseReplacementFence()), gapMs: 10 * minute) { _, _ in }
   try require(yielded == TelemetryDrainResult(minutes: 6, sealedMinutes: 0, failures: 0, yielded: true), "drain yields to recording")
   try require(try bufferCount(recordingPool, Int64.min, Int64.max) == 4 * 2 * 120, "yielded drain wrote nothing")
-  try require(try drainedMarker(recordingPool) == nil, "yielded drain is not drained")
 
   // Restore or Clear all fences a drain between batches: what committed stays, the next run finishes.
   let interruptedPool = try leftovers(sealFirst: false)
@@ -209,12 +207,10 @@ func runTelemetryChunkContract() throws {
   let chunksAfterFence = try interruptedPool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM telemetry_chunks") }
   try require(chunksAfterFence == 2, "only the first batch committed")
   try assertSameReads(drainReference, interruptedPool, "fenced drain")
-  try require(try drainedMarker(interruptedPool) == nil, "fenced drain is not drained")
   let resumed = try drainTelemetryBuffer(drainScope(interruptedPool, fence), gapMs: drainGapMs, batch: 2) { _, _ in }
   try require(resumed == TelemetryDrainResult(minutes: 6, sealedMinutes: 6, failures: 0, yielded: false), "resumed drain \(resumed)")
   try assertSameReads(drainReference, interruptedPool, "resumed drain")
   try require(try canonical(drainReference, 0, t0, board) == canonical(interruptedPool, 0, t0, board), "resumed backlog reads")
-  try require(try drainedMarker(interruptedPool) == "drained", "resumed drain marker")
 
   // A codec failure (here an unreadable existing chunk) skips its minute; the minutes around it seal.
   let codecPool = try fresh()
@@ -232,9 +228,44 @@ func runTelemetryChunkContract() throws {
   try require(codecFailures == [TelemetryMinuteKey(boardId: nil, minuteStartMs: t0 - 20 * minute)], "codec failure reported")
   let codecLeft = try codecPool.read { try Int64.fetchAll($0, sql: "SELECT captured_at_ms FROM telemetry_frames") }
   try require(codecLeft == [t0 - 20 * minute + 250 + 20 * 500], "only the failed minute stays buffered")
-  try require(try drainedMarker(codecPool) == nil, "failed drain is not drained")
 
-  // A minute that closes while the drain runs keeps the marker unpublished until a run seals it.
+  let successPool = try fresh()
+  try successPool.write { try insert($0, recording(board, from: t0 - 30 * minute, minutes: 1)) }
+  let successJob = TelemetryStorageJob()
+  var jobProgress: [(Int, Int)] = []
+  var jobCommits = 0
+  let successFence = DatabaseReplacementFence()
+  let successScope = MaintenanceJobScope(writer: { successPool }, fence: successFence, ticket: successFence.ticket(),
+    nowMs: { drainNow }, progress: { jobProgress.append(($0, $1)) }, committed: { jobCommits += 1 })
+  let successSettings: [String: Any?] = ["rideSplitGapMinutes": 1]
+  try require(try successJob.hasWork(successScope, settings: successSettings), "historic minute is work")
+  try successJob.begin(successScope, settings: successSettings)
+  try require(try successJob.run(successScope, settings: successSettings) == .completed, "successful seal completes job")
+  try successJob.complete(successScope, settings: successSettings)
+  try require(jobProgress.count == 1 && jobProgress[0].0 == 1 && jobProgress[0].1 == 1 && jobCommits == 1, "job progress and commit")
+  try require(try !successJob.hasWork(successScope, settings: successSettings), "successful job stays done")
+
+  // Registered job completes failed minutes, retries next launch and after replacement.
+  let storageJob = TelemetryStorageJob()
+  let storageFence = DatabaseReplacementFence()
+  let storageScope = drainScope(codecPool, storageFence)
+  let storageSettings: [String: Any?] = ["rideSplitGapMinutes": 1]
+  try require(try storageJob.hasWork(storageScope, settings: storageSettings), "failed minute is work")
+  try storageJob.begin(storageScope, settings: storageSettings)
+  try require(try storageJob.run(storageScope, settings: storageSettings) == .completed, "failed minute finishes job")
+  try storageJob.complete(storageScope, settings: storageSettings)
+  try require(try !storageJob.hasWork(storageScope, settings: storageSettings), "failed minute does not rerun on trigger")
+  try require(try TelemetryStorageJob().hasWork(storageScope, settings: storageSettings), "new launch retries failed minute")
+  storageFence.fence {}
+  try require(try storageJob.hasWork(drainScope(codecPool, storageFence), settings: storageSettings), "replacement retries failed minute")
+  try codecPool.write { try publishMaintenanceFingerprint($0, id: "telemetryBacklogDrain", fingerprint: "drained", nowMs: drainNow) }
+  _ = try storageJob.hasWork(drainScope(codecPool, storageFence), settings: storageSettings)
+  try require(try codecPool.read { try storedMaintenanceFingerprint($0, id: "telemetryBacklogDrain") } == nil, "legacy marker removed")
+  let openOnly = try fresh()
+  try openOnly.write { try insert($0, [recording(board, from: drainNow - 500, minutes: 1)[0]]) }
+  try require(try !TelemetryStorageJob().hasWork(drainScope(openOnly, DatabaseReplacementFence()), settings: storageSettings), "open minute alone is not work")
+
+  // A minute that closes during the fixed run snapshot remains for the next drain.
   let advancing = try fresh()
   try seed(advancing)
   var advancingNow = drainNow
@@ -243,10 +274,8 @@ func runTelemetryChunkContract() throws {
     nowMs: { advancingNow }, progress: { done, _ in if done == 2 { advancingNow += minute } })
   let advanced = try drainTelemetryBuffer(advancingScope, gapMs: drainGapMs, batch: 2) { _, _ in }
   try require(advanced == TelemetryDrainResult(minutes: 6, sealedMinutes: 6, failures: 0, yielded: false), "advancing drain \(advanced)")
-  try require(try drainedMarker(advancing) == nil, "minute 3 closed mid-run")
   let caughtUp = try drainTelemetryBuffer(advancingScope, gapMs: drainGapMs) { _, _ in }
   try require(caughtUp == TelemetryDrainResult(minutes: 2, sealedMinutes: 2, failures: 0, yielded: false), "catch-up drain \(caughtUp)")
-  try require(try drainedMarker(advancing) == "drained", "caught-up drain marker")
 
   // A future-dated sample (a wrong clock) is not a recording ride: the old backlog still drains.
   let futurePool = try fresh()
@@ -254,11 +283,10 @@ func runTelemetryChunkContract() throws {
   let future = try drainTelemetryBuffer(drainScope(futurePool, DatabaseReplacementFence()), gapMs: 10 * minute) { _, _ in }
   try require(future == TelemetryDrainResult(minutes: 2, sealedMinutes: 2, failures: 0, yielded: false), "future-dated drain \(future)")
   try require(try futurePool.read { try activeRideStartMs($0, nowMs: drainNow, gapMs: 10 * minute) } == nil, "future sample is not a ride")
-  try require(try drainedMarker(futurePool) == "drained", "future-dated drain marker")
 
   // Clear all forgets the drained marker in its own transaction, with or without protected Favorites.
   for protected in [[], [TelemetryTimeRange(startMs: t0, endMs: t0 + minute)]] {
-    try drained.write { try publishMaintenanceFingerprint($0, id: TELEMETRY_DRAINED_JOB_ID, fingerprint: "drained", nowMs: drainNow) }
+    try drained.write { try publishMaintenanceFingerprint($0, id: "telemetryStorage", fingerprint: "drained", nowMs: drainNow) }
     try TelemetryMaintenancePersistence(writer: drained).clear(protectedRanges: protected)
     try require(try drainedMarker(drained) == nil, "clear all forgets the marker")
   }
@@ -269,7 +297,11 @@ func runTelemetryChunkContract() throws {
   defer { try? FileManager.default.removeItem(at: archiveDir) }
   let sourceURL = archiveDir.appendingPathComponent("source.sqlite")
   let source = try fresh()
-  try source.write { try publishMaintenanceFingerprint($0, id: TELEMETRY_DRAINED_JOB_ID, fingerprint: "drained", nowMs: drainNow) }
+  try source.write { try publishMaintenanceFingerprint($0, id: "telemetryStorage", fingerprint: "drained", nowMs: drainNow) }
+  try source.write { db in
+    try publishMaintenanceFingerprint(db, id: "telemetryBacklogDrain", fingerprint: "drained", nowMs: drainNow)
+    try db.execute(sql: "INSERT INTO diagnostic_events (occurred_at_ms, elapsed_realtime_ms, event_name, properties_json) VALUES (1, 0, 'old', '{}')")
+  }
   let sourceCopy = try DatabaseQueue(path: sourceURL.path)
   try source.backup(to: sourceCopy)
   try sourceCopy.close()
@@ -279,6 +311,12 @@ func runTelemetryChunkContract() throws {
   let staged = try DatabaseBackupManager.stageBackupArchive(archive, in: archiveDir)
   let restored = try VescapeDatabase.openRestoredDatabase(at: staged.database, schemaVersion: staged.roomVersion)
   try require(try drainedMarker(restored) == nil, "restore forgets the marker")
+
+  try require(try restored.read { try storedMaintenanceFingerprint($0, id: "telemetryBacklogDrain") } == nil, "restore removes legacy marker")
+  let pruneFence = DatabaseReplacementFence()
+  pruneFence.fence {}
+  let restoredScope = MaintenanceJobScope(writer: { restored }, fence: pruneFence, ticket: pruneFence.ticket(), nowMs: { 40 * 24 * 60 * minute })
+  try require(try pruneDiagnosticEvents(restoredScope, gapMs: minute) == 1, "restored old event pruned in same process")
 
   // Readers racing the sealer see every sample exactly once.
   let race = try fresh()
