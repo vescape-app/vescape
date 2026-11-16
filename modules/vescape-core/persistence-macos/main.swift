@@ -501,6 +501,17 @@ try require(total["distanceM"] as? Double == historyExpected["profileDistanceM"]
 try require(total["topSpeedKmh"] as? Double == historyExpected["profileTopSpeedKmh"] as? Double, "profile top speed")
 try require(total["avgSpeedKmh"] as? Double == historyExpected["profileAvgSpeedKmh"] as? Double, "profile average speed")
 try require((populatedStats["months"] as! [[String: Int]]).count == int(historyExpected["profileMonthCount"]), "profile months")
+let withMonthStats = try profile.getProfileStatsSnapshot(["includeMonthStats": true])
+let monthStats = withMonthStats["monthStats"] as! [[String: Any]]
+let chartMonth = monthStats.first!
+let chartStats = chartMonth["stats"] as! [String: Any?]
+let originalMonth = populatedStats["selectedMonth"] as! [String: Int]
+let originalMonthlyStats = populatedStats["monthly"] as! [String: Any?]
+try require(monthStats.count == 1 && chartMonth["year"] as? Int == originalMonth["year"] &&
+  chartMonth["month"] as? Int == originalMonth["month"], "chart month follows the snapshot calendar")
+try require(chartStats["distanceM"] as? Double == originalMonthlyStats["distanceM"] as? Double, "chart uses monthly distance")
+try require(chartStats["longestRideId"] as? String == originalMonthlyStats["longestRideId"] as? String, "chart keeps record ride IDs")
+try require(populatedStats["monthStats"] == nil, "monthly series is opt-in")
 // A record's ride id opens that ride, including one that is not the newest.
 let currentRideId = currentSession["id"] as! String
 let olderRideId = (secondPage["sessions"] as! [[String: Any?]]).first!["id"] as! String

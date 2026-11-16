@@ -15,6 +15,7 @@ import {
   RidePreviewStripSkeleton,
 } from '@/modules/history/components/RidePreviewCardList'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
+import { ProfileStatsDetails } from '@/modules/profile/components/ProfileStatsDetails'
 import { HistoryRideRowShowcase } from '@/screens/showcase/history/HistoryRideRowShowcase'
 
 const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
@@ -138,6 +139,34 @@ function RidePreviewCardShowcase() {
   )
 }
 
+const STATS = {
+  distanceM: 180_000,
+  rideCount: 8,
+  rideTimeMs: 12_600_000,
+  topSpeedKmh: 31,
+  avgSpeedKmh: 19,
+  longestRideM: 29_000,
+  batteryUsedWh: 940,
+  batteryRegenWh: 61,
+}
+
+function ProfileStatsDetailsShowcase() {
+  const [empty, setEmpty] = useState(false)
+  const months = [
+    { year: 2025, month: 10, km: 44 },
+    ...[24, 16, 29, 33, 12, 22].map((km, index) => ({ year: 2026, month: index + 6, km })),
+  ].map(({ year, month, km }) => ({ year, month, stats: { ...STATS, distanceM: km * 1000 } }))
+
+  return (
+    <ShowcaseCard
+      name="ProfileStatsDetails"
+      controls={<ToggleRow label="empty" value={empty} onToggle={setEmpty} />}
+    >
+      <ProfileStatsDetails total={empty ? null : STATS} months={empty ? [] : months} />
+    </ShowcaseCard>
+  )
+}
+
 export default function HistoryComponentsPage() {
   return (
     <SafeAreaView style={styles.container} edges={[]}>
@@ -146,6 +175,7 @@ export default function HistoryComponentsPage() {
           icon={ClockCounterClockwiseIcon}
           description="RouteSparkline, RidePreviewCard, RidePreviewStrip, HistoryRideRow."
         />
+        <ProfileStatsDetailsShowcase />
         <RidePreviewCardShowcase />
         <RouteSparklineShowcase />
         <HistoryRideRowShowcase />

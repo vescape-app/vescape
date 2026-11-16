@@ -36,7 +36,7 @@ export function friendStartedRiding(previous: Friend[], next: Friend[]): boolean
 export function friendStatus(friend: Friend, nowMs: number): string {
   if (friend.ridingNow) return 'Riding now'
   const at = friend.lastOnlineAt ? Date.parse(friend.lastOnlineAt) : NaN
-  return Number.isFinite(at) ? `Online ${fmtTimeAgo(at, nowMs)}` : 'Not online yet'
+  return Number.isFinite(at) ? `Last seen ${fmtTimeAgo(at, nowMs)}` : 'Not online yet'
 }
 
 /** Riding friends first, then the most recently online; never-online last. */

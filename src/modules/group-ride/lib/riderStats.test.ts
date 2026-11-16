@@ -16,8 +16,8 @@ describe('Group Ride speed presentation', () => {
   test('preserves missing speed and a real zero in either unit system', () => {
     for (const units of ['km', 'mi'] as const) {
       expect(riderStats(null, units).speed.value).toBeUndefined()
-      expect(riderStats({ lat: 50, lng: 20 }, units).speed.value).toBeUndefined()
-      expect(riderStats({ lat: 50, lng: 20, speed: 0 }, units).speed.value).toBe('0')
+      expect(riderStats({}, units).speed.value).toBeUndefined()
+      expect(riderStats({ speed: 0 }, units).speed.value).toBe('0')
     }
   })
 })

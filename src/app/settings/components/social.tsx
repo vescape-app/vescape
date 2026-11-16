@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { StyleSheet } from 'react-native'
+import { router } from 'expo-router'
+import { Alert, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Button } from '@/components/base/Button'
@@ -8,11 +9,13 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'
 import { FriendRow } from '@/modules/profile/components/FriendRow'
+import { RosterList } from '@/modules/group-ride/components/GroupRideRoster'
+import { FIXTURE_OWN_LOCATION, FIXTURE_ROSTER_ROWS } from '@/screens/showcase/mapShowcaseFixtures'
 import { PublicRideRow } from '@/modules/group-ride/components/FriendRides'
 
 const STATUSES = {
   riding: 'Riding now',
-  online: 'Online 12m ago',
+  online: 'Last seen 12m ago',
   never: 'Not online yet',
   request: 'Wants to be friends',
   none: null,
@@ -22,12 +25,27 @@ export default function SocialShowcase() {
   const [status, setStatus] = useState<keyof typeof STATUSES>('riding')
   const [nationality, setNationality] = useState(true)
   const [action, setAction] = useState(true)
+  const [divided, setDivided] = useState(false)
   const [longNick, setLongNick] = useState(false)
   const [rideShown, setRideShown] = useState(false)
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <PageScrollView contentContainerStyle={styles.content}>
+        <ShowcaseCard name="Demo riders">
+          <RosterList
+            rows={FIXTURE_ROSTER_ROWS}
+            ownLocation={FIXTURE_OWN_LOCATION}
+            compact
+            selfCanOpen
+            onOpenRider={(rider) =>
+              router.push({
+                pathname: '/settings/components/social-rider/[riderId]',
+                params: { riderId: rider.id },
+              })
+            }
+          />
+        </ShowcaseCard>
         <ShowcaseCard
           name="FriendRow"
           controls={
@@ -40,6 +58,7 @@ export default function SocialShowcase() {
               />
               <ToggleRow label="nationality" value={nationality} onToggle={setNationality} />
               <ToggleRow label="action" value={action} onToggle={setAction} />
+              <ToggleRow label="divider" value={divided} onToggle={setDivided} />
               <ToggleRow label="long nick" value={longNick} onToggle={setLongNick} />
             </>
           }
@@ -48,14 +67,16 @@ export default function SocialShowcase() {
             nick={longNick ? 'the_longest_nick_ok' : 'kuba_rides'}
             nationality={nationality ? 'PL' : null}
             status={STATUSES[status]}
+            divided={divided}
             riding={status === 'riding'}
+            onPress={() => Alert.alert('Rider profile')}
             trailing={
               action ? (
                 <Button
                   label="Add friend"
                   size="sm"
                   variant="secondary"
-                  onPress={() => undefined}
+                  onPress={() => Alert.alert('Friend action')}
                 />
               ) : null
             }

@@ -1,5 +1,6 @@
 import { FillLayer, LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
 import { useEffect } from 'react'
+import { router } from 'expo-router'
 import { processColor } from 'react-native'
 
 import { useInMapLayer } from '@/components/map/inMapLayer'
@@ -10,7 +11,7 @@ import {
   LiveRiderSignalPins,
   RiderTrail,
 } from '@/modules/group-ride/components/RiderMapLayers'
-import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import { riderProfileHref } from '@/navigation/links'
 import { RiderTrackLine } from '@/modules/group-ride/components/RodeWith'
 import { useFriendRidesStore } from '@/modules/group-ride/store/friendRidesStore'
 import { DEFAULT_RAIL_COLOR_ID } from '@/modules/board/lib/railColor'
@@ -38,7 +39,6 @@ export function LiveMapLayers({
   highContrastRoutes: boolean
 }) {
   const riderColor = useSelectedBoardRailColor()
-  const openRiderProfile = useGroupRideStore((s) => s.openRiderProfile)
   const friendRide = useFriendRidesStore((s) => s.track)
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
@@ -144,12 +144,7 @@ export function LiveMapLayers({
             key={rider.id}
             rider={rider}
             // Outside a Group Ride the riders are public riders, keyed by account: open their profile.
-            onPress={
-              rider.isSelf
-                ? undefined
-                : () =>
-                    openRiderProfile({ accountId: rider.id, nick: rider.name, nationality: null })
-            }
+            onPress={rider.isSelf ? undefined : () => router.push(riderProfileHref(rider.id))}
           />
         ) : null,
       )}

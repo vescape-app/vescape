@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { GearSixIcon } from 'phosphor-react-native'
+import { UserCircleGearIcon } from 'phosphor-react-native'
 
 import { IconButton } from '@/components/base/IconButton'
 
@@ -37,7 +37,7 @@ export function PublicRideSelectorShowcase() {
           settings && !setup ? (
             <IconButton
               accessibilityLabel="Open Privacy Zones"
-              icon={GearSixIcon}
+              icon={UserCircleGearIcon}
               size="sm"
               onPress={() => {}}
             />

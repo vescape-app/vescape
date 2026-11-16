@@ -21,7 +21,7 @@ import { DevBadge } from '@/modules/diagnostics/components/DevBadge'
 import { DiagnosticErrorBoundary } from '@/modules/diagnostics/DiagnosticErrorBoundary'
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
 import { initSentry } from '@/config/sentry'
-import { stackScreens } from '@/navigation/routes'
+import { routes, stackScreens } from '@/navigation/routes'
 import { startAccessoryStateMirror } from '@/modules/accessories/store/accessoryStore'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startLiveStateSync } from '@/bootstrap/liveStateSync'
@@ -178,6 +178,13 @@ function RootLayout() {
                   <Stack.Screen
                     name={stackScreens.profileStats}
                     options={{ title: 'Profile stats' }}
+                  />
+                  <Stack.Screen
+                    name={stackScreens.riderProfile}
+                    options={{
+                      title: 'Rider profile',
+                      headerLeft: () => <HeaderBackButton fallback={routes.home} />,
+                    }}
                   />
                   <Stack.Screen name={stackScreens.rideDay} options={{ title: 'Day' }} />
                   {/* Clerk's own dismiss control is off (its native header carries system

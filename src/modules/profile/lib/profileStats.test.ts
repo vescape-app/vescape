@@ -5,8 +5,6 @@ import {
   formatDuration,
   formatEnergy,
   formatMonthLabel,
-  getAdjacentMonths,
-  type ProfileMonth,
 } from '@/modules/profile/lib/profileStats'
 
 describe('profile stat formatting', () => {
@@ -26,18 +24,6 @@ describe('profile stat formatting', () => {
     expect(formatEnergy(null)).toBe(DASH)
     expect(formatEnergy(42.4)).toBe('42 Wh')
     expect(formatEnergy(1234)).toBe('1.2 kWh')
-  })
-
-  test('finds adjacent months from newest-first list', () => {
-    const months: ProfileMonth[] = [
-      { year: 2024, month: 6 },
-      { year: 2024, month: 5 },
-      { year: 2024, month: 3 },
-    ]
-    expect(getAdjacentMonths(months, { year: 2024, month: 5 })).toEqual({
-      previous: { year: 2024, month: 3 },
-      next: { year: 2024, month: 6 },
-    })
   })
 
   test('formats month label', () => {

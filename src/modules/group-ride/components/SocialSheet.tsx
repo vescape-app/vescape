@@ -1,13 +1,7 @@
 import { StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import {
-  ArrowLeftIcon,
-  CaretRightIcon,
-  GearSixIcon,
-  MapPinIcon,
-  WarningIcon,
-} from 'phosphor-react-native'
-import type { PublicRideStatus, RiderProfile } from 'vescape-core'
+import { CaretRightIcon, UserCircleGearIcon, WarningIcon } from 'phosphor-react-native'
+import type { PublicRideStatus } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { Banner } from '@/components/base/Banner'
 import { Button } from '@/components/base/Button'
@@ -21,68 +15,17 @@ import { publicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { theme } from '@/constants/theme'
 import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
 import { AccountPill } from '@/modules/profile/components/AccountPill'
-import { RiderProfileCard } from '@/modules/profile/components/RiderProfileCard'
-import { useFriendsStore } from '@/modules/profile/store/friendsStore'
-import { FriendRides } from '@/modules/group-ride/components/FriendRides'
 import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
-import { SocialRiderPanel } from './SocialRiderPanel'
+import { SocialRiderPanel, type SocialRiderPanelProps } from './SocialRiderPanel'
 
 /** `onNavigate` fires before the sheet routes away (sign-in), so the host can close it. */
-export function SocialSheet({ onNavigate }: { onNavigate?: () => void }) {
-  const profileRider = useGroupRideStore((s) => s.profileRider)
-  if (profileRider) return <RiderProfilePage rider={profileRider} onNavigate={onNavigate} />
+export function SocialSheet(props: SocialRiderPanelProps) {
   return (
     <View testID="social-sheet" style={styles.list}>
-      <PublicRideWidget onNavigate={onNavigate} />
-      <SocialRiderPanel onNavigate={onNavigate} />
-    </View>
-  )
-}
-
-/** One rider inside the drawer, opened from a list or a map pin; back returns to Social. */
-function RiderProfilePage({ rider, onNavigate }: { rider: RiderProfile; onNavigate?: () => void }) {
-  const closeRiderProfile = useGroupRideStore((s) => s.closeRiderProfile)
-  const focusRider = useGroupRideStore((s) => s.focusRider)
-  const onMap = useGroupRideStore((s) =>
-    s.rosterRows.some((row) => row.id === rider.accountId && row.presence),
-  )
-  const isFriend = useFriendsStore((s) =>
-    s.lists.friends.some((row) => row.accountId === rider.accountId),
-  )
-  return (
-    <View testID="social-rider-profile" style={styles.list}>
-      <Button
-        label="Social"
-        icon={ArrowLeftIcon}
-        size="sm"
-        variant="secondary"
-        style={styles.back}
-        onPress={closeRiderProfile}
-        accessibilityLabel="Back to Social"
-      />
-      <View style={styles.card}>
-        <RiderProfileCard rider={rider}>
-          {onMap ? (
-            <Button
-              label="Show on map"
-              icon={MapPinIcon}
-              size="sm"
-              variant="groupRide"
-              style={styles.back}
-              onPress={() => {
-                focusRider(rider.accountId)
-                closeRiderProfile()
-                onNavigate?.()
-              }}
-            />
-          ) : null}
-          {isFriend ? (
-            <FriendRides accountId={rider.accountId} onOpen={() => onNavigate?.()} />
-          ) : null}
-        </RiderProfileCard>
-      </View>
+      <PublicRideWidget onNavigate={props.onNavigate} />
+      <SocialRiderPanel {...props} />
     </View>
   )
 }
@@ -110,7 +53,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   const profileError = useRiderProfileStore((s) => s.error)
   const settings = signedIn ? (
     <IconButton
-      icon={GearSixIcon}
+      icon={UserCircleGearIcon}
       size="sm"
       accessibilityLabel="Open Privacy Zones"
       onPress={() => {
@@ -204,9 +147,6 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: 12,
-  },
-  back: {
-    alignSelf: 'flex-start',
   },
   errorText: {
     color: theme.status.error.text,

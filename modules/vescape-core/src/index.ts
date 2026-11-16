@@ -1556,15 +1556,18 @@ export interface RideDay extends ProfileStatsMonth {
 }
 
 /**
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryAndroid.kt `getProfileStatsSnapshot`
- * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getProfileStatsSnapshot`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `readProfileStatsSnapshot`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `profileStatsSnapshot`
  */
 export interface ProfileStatsSnapshot {
   total: ProfileStats
   monthly: ProfileStats
   months: ProfileStatsMonth[]
   selectedMonth: ProfileStatsMonth
+  monthStats?: (ProfileStatsMonth & { stats: ProfileStats })[]
 }
+
+type ProfileStatsSnapshotOptions = Partial<ProfileStatsMonth> & { includeMonthStats?: boolean }
 
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideRoutePoint`
@@ -3239,7 +3242,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     fields: Record<string, TuneProfileFieldValue>,
   ): Promise<TuneProfile>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
-  getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
+  getProfileStatsSnapshot(options: ProfileStatsSnapshotOptions): Promise<ProfileStatsSnapshot>
   getDayStats(day: RideDay): Promise<ProfileStats>
   getRecentRideStats(sinceMs: number): Promise<ProfileStats>
   getMaintenanceState(): MaintenanceState
@@ -4561,7 +4564,7 @@ export async function pushProfileToBoard(profileId: string): Promise<RefloatConf
 }
 
 export async function getProfileStatsSnapshot(
-  options?: ProfileStatsMonth,
+  options?: ProfileStatsSnapshotOptions,
 ): Promise<ProfileStatsSnapshot> {
   return native.getProfileStatsSnapshot(options ?? {})
 }

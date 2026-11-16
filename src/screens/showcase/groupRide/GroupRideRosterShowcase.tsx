@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Alert } from 'react-native'
 import { BroadcastIcon } from 'phosphor-react-native'
 
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
@@ -43,6 +44,9 @@ export function GroupRideRosterShowcase() {
       >
         <RosterList
           compact={compact}
+          selfSharing
+          onOpenRider={compact ? (rider) => Alert.alert(rider.name) : undefined}
+          selfCanOpen
           rows={rows}
           ownLocation={located ? FIXTURE_OWN_LOCATION : null}
         />

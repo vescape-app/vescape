@@ -1,18 +1,16 @@
-import { useCallback, useMemo } from 'react'
 import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ChartLineUpIcon } from 'phosphor-react-native'
 
 import { Placeholder } from '@/components/base/Placeholder'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 import {
   useProfileStatItems,
   type OpenRecordRide,
 } from '@/modules/profile/hooks/useProfileStatItems'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
-import { formatMonthLabel, getAdjacentMonths } from '@/modules/profile/lib/profileStats'
-import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
-import { Select, type SelectOption } from '@/components/forms/Select'
+import { ProfileStatsDetails } from '@/modules/profile/components/ProfileStatsDetails'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors } from '@/hooks/useTheme'
 
@@ -22,43 +20,10 @@ interface RideStatsSectionProps {
 }
 
 export function RideStatsSection({ onOpenRecordRide }: RideStatsSectionProps) {
-  const {
-    total,
-    monthly,
-    today,
-    months,
-    selectedMonth,
-    loading,
-    monthLoading,
-    error,
-    empty,
-    selectMonth,
-  } = useProfileStats()
+  const { total, today, monthStats, loading, error, empty } = useProfileStats(true, true)
   const accent = useResolvedAccentColors()
+  const surface = useResolvedSecondaryWidgetSurface()
   const todayItems = useProfileStatItems(today, undefined, onOpenRecordRide)
-  const totalItems = useProfileStatItems(total, undefined, onOpenRecordRide)
-  const monthItems = useProfileStatItems(monthly, undefined, onOpenRecordRide)
-  const adjacent = useMemo(() => getAdjacentMonths(months, selectedMonth), [months, selectedMonth])
-
-  const monthOptions: SelectOption[] = useMemo(
-    () =>
-      (months.length ? months : [selectedMonth]).map((m) => ({
-        label: formatMonthLabel(m),
-        value: `${m.year}-${m.month}`,
-      })),
-    [months, selectedMonth],
-  )
-
-  const selectedMonthValue = `${selectedMonth.year}-${selectedMonth.month}`
-
-  const handleMonthSelect = useCallback(
-    (val: string) => {
-      const [year, month] = val.split('-').map(Number)
-      const found = months.find((m) => m.year === year && m.month === month)
-      if (found) void selectMonth(found)
-    },
-    [months, selectMonth],
-  )
 
   return (
     <View testID="profile-stats-section" style={styles.section}>
@@ -74,56 +39,25 @@ export function RideStatsSection({ onOpenRecordRide }: RideStatsSectionProps) {
           description="Record a ride and your totals appear here"
           style={styles.empty}
         />
-      ) : (
-        <>
-          {today.rideCount > 0 ? (
-            <View
-              testID="profile-today-stats"
-              style={[styles.todayCard, { borderColor: accent.sky.border }]}
-            >
-              <View style={styles.todayHeader}>
-                <View style={[styles.todayDot, { backgroundColor: accent.green.color }]} />
-                <Text style={[styles.sectionTitle, styles.todayTitle]}>Today</Text>
-              </View>
-              <ProfileStatsGrid items={todayItems} />
-            </View>
-          ) : null}
+      ) : null}
 
-          <Text style={styles.sectionTitle}>All time</Text>
-          <ProfileStatsGrid items={totalItems} />
+      <ProfileStatsDetails
+        total={loading || empty || error ? null : total}
+        months={monthStats}
+        loading={loading}
+        unavailable={Boolean(error)}
+        onOpenRecordRide={onOpenRecordRide}
+      />
 
-          <View style={styles.monthHeader}>
-            <Text style={styles.sectionTitle}>Monthly</Text>
-            {monthLoading ? (
-              <ActivityIndicator
-                testID="profile-month-loading"
-                size="small"
-                color={theme.palette.sky.color}
-              />
-            ) : null}
+      {today.rideCount > 0 ? (
+        <View testID="profile-today-stats" style={[surface, styles.todayCard]}>
+          <View style={styles.todayHeader}>
+            <View style={[styles.todayDot, { backgroundColor: accent.green.color }]} />
+            <Text style={[styles.sectionTitle, styles.todayTitle]}>Today</Text>
           </View>
-          <PrevNextSelector
-            label={formatMonthLabel(selectedMonth)}
-            previousDisabled={!adjacent.previous}
-            nextDisabled={!adjacent.next}
-            onPrevious={() => adjacent.previous && void selectMonth(adjacent.previous)}
-            onNext={() => adjacent.next && void selectMonth(adjacent.next)}
-            accessibilityLabel="Select profile month"
-            style={styles.monthNav}
-            selectControl={
-              <Select
-                options={monthOptions}
-                value={selectedMonthValue}
-                onChange={handleMonthSelect}
-                placeholder="Select month"
-                testID="profile-month-select"
-                style={styles.monthSelect}
-              />
-            }
-          />
-          <ProfileStatsGrid items={monthItems} />
-        </>
-      )}
+          <ProfileStatsGrid items={todayItems} />
+        </View>
+      ) : null}
 
       {loading ? (
         <View style={styles.loadingWrap}>
@@ -148,9 +82,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   todayCard: {
-    borderWidth: 1.5,
-    borderRadius: 16,
-    padding: 10,
+    padding: 12,
     gap: 4,
   },
   todayHeader: {
@@ -168,46 +100,9 @@ const styles = StyleSheet.create({
     marginLeft: 0,
     marginTop: 0,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  cell: {
-    width: '50%',
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-  },
-  cellValue: {
-    color: theme.neutral.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  cellLabel: {
-    color: theme.neutral.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-  },
   empty: {
     minHeight: 260,
     paddingVertical: 32,
-  },
-  monthHeader: {
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  monthNav: {
-    maxWidth: '100%',
-    width: '100%',
-  },
-  monthSelect: {
-    flex: 1,
-    height: 54,
-    borderWidth: 0,
-    borderRadius: 0,
-    backgroundColor: theme.alpha(theme.palette.mono.black, 0),
   },
   loadingWrap: {
     padding: 18,

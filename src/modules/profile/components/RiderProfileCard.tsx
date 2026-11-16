@@ -1,130 +1,158 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { UserCircleIcon, UserMinusIcon } from 'phosphor-react-native'
-import { getRider, type RiderProfile, type RiderDetail, type RiderStats } from 'vescape-core'
+import { BroadcastIcon, ChartBarIcon, UserCircleIcon, UserMinusIcon } from 'phosphor-react-native'
+import { getRider, type RiderDetail, type RiderProfile } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
-import { formatMonthLabel } from '@/modules/profile/lib/profileStats'
-import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { FriendAction } from '@/modules/profile/components/FriendAction'
+import { ProfileStatsDetails } from '@/modules/profile/components/ProfileStatsDetails'
 import { friendStatus } from '@/modules/profile/lib/friends'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 
-/**
- * Another rider's public profile: who they are, the friend action that fits, and `children` for
- * sections the host adds (show on map; their public rides later).
- */
 export function RiderProfileCard({
-  rider: seen,
+  accountId,
+  seen,
+  status,
   children,
+  afterStats,
 }: {
-  /** What the opener knew; a map pin carries no nationality, so the server's copy replaces it. */
-  rider: RiderProfile
+  accountId: string
+  seen: Pick<RiderProfile, 'nick' | 'nationality'> | null
+  status?: string
   children?: ReactNode
+  afterStats?: ReactNode
 }) {
-  const [fetched, setFetched] = useState<RiderDetail | null>(null)
+  const neutral = useResolvedNeutralColors()
+  const [result, setResult] = useState<{ detail: RiderDetail | null; failed: boolean } | null>(null)
   useEffect(() => {
     let live = true
-    // intentional-suppression: the card keeps what the opener knew when the fetch fails
-    getRider(seen.accountId).then(
-      (profile) => live && setFetched(profile),
-      () => undefined,
+    getRider(accountId).then(
+      (detail) => {
+        if (live) setResult({ detail, failed: false })
+      },
+      () => {
+        if (live) setResult({ detail: null, failed: true })
+      },
     )
     return () => {
       live = false
     }
-  }, [seen.accountId])
-  const rider = fetched?.accountId === seen.accountId ? fetched : seen
-  const stats = fetched?.accountId === seen.accountId ? fetched.stats : null
-  const now = new Date()
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const monthly = stats?.months.find((month) => month.month === monthKey)
-  const friend = useFriendsStore((s) =>
-    s.lists.friends.find((row) => row.accountId === rider.accountId),
-  )
+  }, [accountId])
+
+  const rider = result?.detail ?? seen
+  const stats = result?.detail?.stats
+  const friend = useFriendsStore((s) => s.lists.friends.find((row) => row.accountId === accountId))
   const error = useFriendsStore((s) => s.error)
   const nowMs = useMinuteNow(friend !== undefined)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const caption = [rider?.nationality, status ?? (friend ? friendStatus(friend, nowMs) : null)]
+    .filter(Boolean)
+    .join(' · ')
+  const surface = useResolvedSecondaryWidgetSurface()
 
   return (
     <View style={styles.card} testID="rider-profile">
-      <View style={styles.identity}>
-        <UserCircleIcon
-          size={46}
-          color={friend?.ridingNow ? theme.palette.green.color : theme.neutral.textSecondary}
-          weight="thin"
-        />
+      <View style={[surface, styles.identity]}>
+        <UserCircleIcon size={46} color={neutral.textSecondary} weight="thin" />
         <View style={styles.flex}>
           <Text numberOfLines={1} style={styles.nick}>
-            {rider.nick}
+            {rider?.nick ??
+              (result?.failed
+                ? 'Rider profile unavailable'
+                : result
+                  ? 'Rider not found'
+                  : 'Loading rider…')}
           </Text>
-          <Text style={styles.caption}>
-            {[rider.nationality, friend ? friendStatus(friend, nowMs) : null]
-              .filter(Boolean)
-              .join(' · ')}
-          </Text>
+          {caption ? (
+            <View style={styles.status}>
+              {status || friend?.ridingNow ? (
+                <BroadcastIcon size={14} color={theme.palette.green.color} />
+              ) : null}
+              <Text style={styles.caption}>{caption}</Text>
+            </View>
+          ) : null}
         </View>
-        <FriendAction accountId={rider.accountId} nick={rider.nick} />
+        {rider ? <FriendAction accountId={accountId} nick={rider.nick} /> : null}
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {monthly ? (
-        <RiderStatsReadout
-          label={formatMonthLabel({ year: now.getFullYear(), month: now.getMonth() + 1 })}
-          stats={monthly}
-        />
-      ) : null}
-      {stats?.total ? <RiderStatsReadout label="Total" stats={stats.total} /> : null}
       {children}
+      <PublicRiderStats stats={stats} loading={!result} failed={result?.failed} />
+      {afterStats}
       {friend ? (
-        <Button
-          label="Remove friend"
-          icon={UserMinusIcon}
-          size="sm"
-          variant="secondary"
-          style={styles.remove}
-          onPress={() => setConfirmRemove(true)}
-        />
+        <>
+          <Button
+            label="Remove friend"
+            icon={UserMinusIcon}
+            size="sm"
+            variant="secondary"
+            style={styles.remove}
+            onPress={() => setConfirmRemove(true)}
+          />
+          <ConfirmModal
+            visible={confirmRemove}
+            title={`Remove ${friend.nick}?`}
+            message="They will not be told. You can send a new request later."
+            confirmLabel="Remove"
+            destructive
+            onConfirm={async () => {
+              setConfirmRemove(false)
+              await useFriendsStore.getState().remove(accountId)
+            }}
+            onCancel={() => setConfirmRemove(false)}
+          />
+        </>
       ) : null}
-      <ConfirmModal
-        visible={confirmRemove}
-        title={`Remove ${rider.nick}?`}
-        message="They will not be told. You can send a new request later."
-        confirmLabel="Remove"
-        destructive
-        onConfirm={async () => {
-          setConfirmRemove(false)
-          await useFriendsStore.getState().remove(rider.accountId)
-        }}
-        onCancel={() => setConfirmRemove(false)}
+    </View>
+  )
+}
+
+function PublicRiderStats({
+  stats,
+  loading,
+  failed,
+}: {
+  stats?: RiderDetail['stats']
+  loading: boolean
+  failed?: boolean
+}) {
+  return (
+    <View style={styles.section}>
+      <SectionHeader title="Riding stats" icon={ChartBarIcon} color={theme.palette.purple.color} />
+      {failed ? (
+        <Text style={styles.error}>Couldn’t load ride stats.</Text>
+      ) : !loading && !stats?.total && !stats?.months.length ? (
+        <Text style={styles.caption}>No public ride stats available.</Text>
+      ) : null}
+      <ProfileStatsDetails
+        total={stats?.total ?? null}
+        months={
+          stats?.months.map((entry) => {
+            const [year, month] = entry.month.split('-').map(Number)
+            return { year, month, stats: entry }
+          }) ?? []
+        }
+        loading={loading}
+        unavailable={failed}
       />
     </View>
   )
 }
 
-function RiderStatsReadout({ label, stats }: { label: string; stats: RiderStats }) {
-  const rows = useProfileStatItems(stats)
-  return (
-    <View>
-      <Text>{label}</Text>
-      {rows.map(({ key, label: name, value }) => (
-        <Text key={key}>
-          {name}: {value}
-        </Text>
-      ))}
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
-  card: { gap: 12 },
-  identity: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  card: { gap: 14 },
+  section: { gap: 10 },
+  identity: { flexDirection: 'row', alignItems: 'center', padding: 15, gap: 12 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   flex: { flex: 1, minWidth: 0 },
-  nick: { color: theme.neutral.textPrimary, fontSize: 22, fontWeight: '700' },
-  caption: { color: theme.neutral.textSecondary, fontSize: 12 },
+  nick: { color: theme.neutral.textPrimary, fontSize: 24, fontWeight: '700' },
+  caption: { color: theme.neutral.textSecondary, fontSize: 11, lineHeight: 17, flexShrink: 1 },
   error: { color: theme.status.error.text, fontSize: 12 },
   remove: { alignSelf: 'flex-start' },
 })

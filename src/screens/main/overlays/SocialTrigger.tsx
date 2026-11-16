@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { router, useFocusEffect } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
 import { BroadcastIcon, MegaphoneIcon, UsersThreeIcon } from 'phosphor-react-native'
 
@@ -12,6 +13,11 @@ import {
   useOwnSignalTakeover,
 } from '@/modules/group-ride/components/RiderSignalPicker'
 import { PulsingBroadcastIcon } from '@/modules/group-ride/components/BroadcastGlyph'
+import {
+  INITIAL_SOCIAL_VIEW,
+  type SocialView,
+} from '@/modules/group-ride/components/SocialRiderPanel'
+import { riderProfileHref } from '@/navigation/links'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
@@ -26,11 +32,31 @@ export function SocialTrigger() {
   const [socialOpen, setSocialOpen] = useState(false)
   const [signalOpen, setSignalOpen] = useState(false)
   const friendRiding = useFriendsStore((s) => s.friendRiding)
-  // A rider tapped on the map opens the drawer on their profile.
-  const profileOpen = useGroupRideStore((s) => s.profileRider !== null)
-  useEffect(() => {
-    if (profileOpen) setSocialOpen(true)
-  }, [profileOpen])
+  const [view, setView] = useState<SocialView>(INITIAL_SOCIAL_VIEW)
+  const pendingProfile = useRef<string | null>(null)
+
+  useFocusEffect(
+    useCallback(() => {
+      if (useGroupRideStore.getState().restoreSocialAfterProfile) {
+        useGroupRideStore.setState({ restoreSocialAfterProfile: false })
+        setSocialOpen(true)
+      } else {
+        setView(INITIAL_SOCIAL_VIEW)
+      }
+    }, []),
+  )
+
+  const onSocialClose = useCallback(() => {
+    setSocialOpen(false)
+    const accountId = pendingProfile.current
+    pendingProfile.current = null
+    if (accountId) {
+      useGroupRideStore.setState({ restoreSocialAfterProfile: true })
+      router.push(riderProfileHref(accountId))
+    } else {
+      setView(INITIAL_SOCIAL_VIEW)
+    }
+  }, [])
   // Seeing Social is seeing who started riding.
   useEffect(() => {
     if (socialOpen) useFriendsStore.getState().acknowledgeRiding()
@@ -85,16 +111,16 @@ export function SocialTrigger() {
         icon={UsersThreeIcon}
         backdropTestID="social-drawer-backdrop"
         keyboardShouldPersistTaps="handled"
-        onClose={() => {
-          setSocialOpen(false)
-          useGroupRideStore.getState().closeRiderProfile()
-        }}
+        onClose={onSocialClose}
       >
         <SocialSheet
-          onNavigate={() => {
+          view={view}
+          onViewChange={setView}
+          onOpenProfile={(accountId) => {
+            pendingProfile.current = accountId
             setSocialOpen(false)
-            useGroupRideStore.getState().closeRiderProfile()
           }}
+          onNavigate={() => setSocialOpen(false)}
         />
       </EdgeDrawer>
       <EdgeDrawer

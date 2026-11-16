@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { MagnifyingGlassIcon, UsersIcon } from 'phosphor-react-native'
-import { searchRiders, type RiderProfile } from 'vescape-core'
+import { MagnifyingGlassIcon, UserPlusIcon, UsersIcon } from 'phosphor-react-native'
+import { searchRiders, type Friend, type RiderProfile } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
@@ -20,6 +20,8 @@ import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 
 const SEARCH_DEBOUNCE_MS = 300
 
+type OpenRider = (accountId: string) => void
+
 export function SocialFriendsSignIn({ search }: { search: boolean }) {
   return (
     <Placeholder
@@ -31,7 +33,13 @@ export function SocialFriendsSignIn({ search }: { search: boolean }) {
   )
 }
 
-export function SocialRiderSearchResults({ query }: { query: string }) {
+export function SocialRiderSearchResults({
+  query,
+  onOpenRider,
+}: {
+  query: string
+  onOpenRider: OpenRider
+}) {
   const prefix = riderSearchPrefix(query)
   const error = useFriendsStore((s) => s.error)
 
@@ -39,7 +47,7 @@ export function SocialRiderSearchResults({ query }: { query: string }) {
     <View style={styles.sections}>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {prefix ? (
-        <SearchResults key={prefix} prefix={prefix} />
+        <SearchResults key={prefix} prefix={prefix} onOpenRider={onOpenRider} />
       ) : query.trim() ? (
         <Text style={styles.notice}>Use up to 20 letters, digits or underscores.</Text>
       ) : (
@@ -54,7 +62,7 @@ export function SocialRiderSearchResults({ query }: { query: string }) {
   )
 }
 
-function SearchResults({ prefix }: { prefix: string }) {
+function SearchResults({ prefix, onOpenRider }: { prefix: string; onOpenRider: OpenRider }) {
   const [result, setResult] = useState<RiderProfile[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -96,6 +104,7 @@ function SearchResults({ prefix }: { prefix: string }) {
           key={rider.accountId}
           nick={rider.nick}
           nationality={rider.nationality}
+          onPress={() => onOpenRider(rider.accountId)}
           trailing={<FriendAction accountId={rider.accountId} nick={rider.nick} />}
         />
       ))}
@@ -103,7 +112,15 @@ function SearchResults({ prefix }: { prefix: string }) {
   )
 }
 
-export function SocialFriendLists({ onSearch }: { onSearch: () => void }) {
+export function SocialFriendLists({
+  onSearch,
+  onOpenRider,
+  renderRidingFriend,
+}: {
+  onSearch: () => void
+  renderRidingFriend?: (friend: Friend, divided: boolean) => ReactNode
+  onOpenRider: OpenRider
+}) {
   const lists = useFriendsStore((s) => s.lists)
   const loaded = useFriendsStore((s) => s.loaded)
   const error = useFriendsStore((s) => s.error)
@@ -121,6 +138,7 @@ export function SocialFriendLists({ onSearch }: { onSearch: () => void }) {
               key={rider.accountId}
               nick={rider.nick}
               nationality={rider.nationality}
+              onPress={() => onOpenRider(rider.accountId)}
               status="Wants to be friends"
               trailing={<FriendAction accountId={rider.accountId} nick={rider.nick} />}
             />
@@ -129,15 +147,28 @@ export function SocialFriendLists({ onSearch }: { onSearch: () => void }) {
       ) : null}
       {friends.length ? (
         <View testID="friends-list">
-          {friends.map((friend) => (
-            <FriendRow
-              key={friend.accountId}
-              nick={friend.nick}
-              nationality={friend.nationality}
-              status={friendStatus(friend, nowMs)}
-              riding={friend.ridingNow}
-            />
-          ))}
+          {friends.map(
+            (friend, index) =>
+              (friend.ridingNow && renderRidingFriend?.(friend, index > 0)) || (
+                <FriendRow
+                  key={friend.accountId}
+                  nick={friend.nick}
+                  status={friendStatus(friend, nowMs)}
+                  nationality={null}
+                  riding={friend.ridingNow}
+                  divided={index > 0}
+                  onPress={() => onOpenRider(friend.accountId)}
+                />
+              ),
+          )}
+          <Button
+            label="Add friend"
+            icon={UserPlusIcon}
+            size="sm"
+            accent={theme.palette.blue.color}
+            style={styles.addFriend}
+            onPress={onSearch}
+          />
         </View>
       ) : loaded ? (
         <Placeholder
@@ -166,6 +197,7 @@ export function SocialFriendLists({ onSearch }: { onSearch: () => void }) {
               key={rider.accountId}
               nick={rider.nick}
               nationality={rider.nationality}
+              onPress={() => onOpenRider(rider.accountId)}
               trailing={<FriendAction accountId={rider.accountId} nick={rider.nick} />}
             />
           ))}
@@ -183,6 +215,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   sections: { gap: 8 },
+  addFriend: { alignSelf: 'flex-end', marginTop: 4 },
   notice: { color: theme.neutral.textSecondary, fontSize: 12, lineHeight: 17 },
   error: { color: theme.status.error.text, fontSize: 12 },
 })

@@ -89,24 +89,37 @@ internal final class ProfileStatsRepository {
     }
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `readProfileStatsSnapshot`
+  /// @parity /modules/vescape-core/src/index.ts `ProfileStatsSnapshot`
   private func profileStatsSnapshot(
     sessions: [RideSessionAggregate],
     options: [String: Any]
   ) -> [String: Any?] {
-    let months = profileMonthsForSessions(sessions)
-    let now = profileMonth(telemetryNowMs(), calendar: .current)
+    let calendar = Calendar.current
+    let byMonth = Dictionary(grouping: sessions) { profileMonth($0.startAtMs, calendar: calendar) }
+    let months = byMonth.keys.sorted(by: newestProfileMonthFirst)
+    let now = profileMonth(telemetryNowMs(), calendar: calendar)
     let selected = ProfileStatsMonth(
       year: telemetryInt(options["year"]) ?? months.first?.year ?? now.year,
       month: telemetryInt(options["month"]) ?? months.first?.month ?? now.month
     )
-    return [
+    let monthly = computeProfileStatsForSessions(byMonth[selected] ?? [])
+    var snapshot: [String: Any?] = [
       "total": computeProfileStatsForSessions(sessions),
-      "monthly": computeProfileStatsForSessions(
-        sessions.filter { profileMonth($0.startAtMs, calendar: .current) == selected }
-      ),
+      "monthly": monthly,
       "months": months.map { ["year": $0.year, "month": $0.month] },
       "selectedMonth": ["year": selected.year, "month": selected.month],
     ]
+    if options["includeMonthStats"] as? Bool == true {
+      snapshot["monthStats"] = months.map { month -> [String: Any] in
+        [
+          "year": month.year,
+          "month": month.month,
+          "stats": month == selected ? monthly : computeProfileStatsForSessions(byMonth[month] ?? []),
+        ]
+      }
+    }
+    return snapshot
   }
 }
 
@@ -176,9 +189,11 @@ private func profileMonthsForSessions(
   calendar: Calendar = .current
 ) -> [ProfileStatsMonth] {
   Array(Set(sessions.map { profileMonth($0.startAtMs, calendar: calendar) }))
-    .sorted {
-      $0.year == $1.year ? $0.month > $1.month : $0.year > $1.year
-    }
+    .sorted(by: newestProfileMonthFirst)
+}
+
+private func newestProfileMonthFirst(_ lhs: ProfileStatsMonth, _ rhs: ProfileStatsMonth) -> Bool {
+  lhs.year == rhs.year ? lhs.month > rhs.month : lhs.year > rhs.year
 }
 
 internal func profileMonth(_ atMs: Int64, calendar: Calendar) -> ProfileStatsMonth {

@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { Keyboard, StyleSheet, View } from 'react-native'
+import type { RiderProfile } from 'vescape-core'
 import {
   MagnifyingGlassIcon,
   MapTrifoldIcon,
@@ -29,21 +29,48 @@ import {
 } from '@/modules/profile/components/SocialFriendsContent'
 import { RosterList } from './GroupRideRoster'
 
-type Tab = 'nearby' | 'friends'
+export const INITIAL_SOCIAL_VIEW = { tab: 'nearby', searchOpen: false, query: '' } as const
 
-export function SocialRiderPanel({ onNavigate }: { onNavigate?: () => void }) {
-  const [tab, setTab] = useState<Tab>('nearby')
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [query, setQuery] = useState('')
+export interface SocialView {
+  tab: 'nearby' | 'friends'
+  searchOpen: boolean
+  query: string
+}
+
+export interface SocialRiderPanelProps {
+  view: SocialView
+  onViewChange: (view: SocialView) => void
+  onOpenProfile: (accountId: string) => void
+  onNavigate?: () => void
+}
+
+export function SocialRiderPanel({
+  view,
+  onViewChange,
+  onOpenProfile,
+  onNavigate,
+}: SocialRiderPanelProps) {
+  const { tab, searchOpen, query } = view
   const signedIn = useDeviceAccountReady()
-  const nearbyCount = useGroupRideStore((s) => s.rosterRows.length + Number(s.publicRide.live))
-  const friendCount = useFriendsStore((s) => s.lists.friends.length)
+  const rows = useGroupRideStore((s) => s.rosterRows)
+  const ownLocation = useGroupRideStore((s) => s.ownLocation)
+  const live = useGroupRideStore((s) => s.publicRide.live)
+  const profile = useRiderProfileStore((s) => s.profile)
+  const ownProfile = signedIn ? profile : null
+  const nearbyCount = rows.length + Number(live || ownProfile !== null)
+  const friendCount = useFriendsStore(
+    (s) => s.lists.friends.filter((friend) => friend.ridingNow).length,
+  )
   const surface = useResolvedSecondaryWidgetSurface()
+
+  function openRider(accountId: string) {
+    Keyboard.dismiss()
+    onOpenProfile(accountId)
+  }
 
   function closeSearch() {
     Keyboard.dismiss()
-    setQuery('')
-    setSearchOpen(false)
+    onViewChange({ ...view, searchOpen: false, query: '' })
   }
 
   return (
@@ -68,19 +95,21 @@ export function SocialRiderPanel({ onNavigate }: { onNavigate?: () => void }) {
                 id="nearby"
                 label="Nearby"
                 icon={UsersThreeIcon}
-                activeWidth={98}
+                activeWidth={120}
+                inactiveWidth={60}
                 color={theme.palette.groupRide}
                 badge={<Text style={styles.count}>{nearbyCount}</Text>}
-                onPress={() => setTab('nearby')}
+                onPress={() => onViewChange({ ...view, tab: 'nearby' })}
               />
               <PillSelectorItem
                 id="friends"
                 label="Friends"
                 icon={UsersIcon}
-                activeWidth={98}
+                activeWidth={120}
+                inactiveWidth={60}
                 color={theme.palette.blue}
                 badge={<Text style={styles.count}>{signedIn ? friendCount : 0}</Text>}
-                onPress={() => setTab('friends')}
+                onPress={() => onViewChange({ ...view, tab: 'friends' })}
               />
             </PillSelector>
           </View>
@@ -90,7 +119,7 @@ export function SocialRiderPanel({ onNavigate }: { onNavigate?: () => void }) {
               editable={signedIn}
               style={StyleSheet.absoluteFill}
               value={signedIn ? query : ''}
-              onChangeText={setQuery}
+              onChangeText={(text) => onViewChange({ ...view, query: text })}
               placeholder="Find riders by nick"
               testID="rider-search"
             />
@@ -101,31 +130,66 @@ export function SocialRiderPanel({ onNavigate }: { onNavigate?: () => void }) {
           icon={searchOpen ? XIcon : MagnifyingGlassIcon}
           accessibilityLabel={searchOpen ? 'Close rider search' : 'Search riders'}
           testID={searchOpen ? 'social-search-close' : 'social-search-tab'}
-          onPress={searchOpen ? closeSearch : () => setSearchOpen(true)}
+          onPress={searchOpen ? closeSearch : () => onViewChange({ ...view, searchOpen: true })}
         />
       </View>
       {!searchOpen && tab === 'nearby' ? (
-        <NearbyRiders onShowOnMap={onNavigate} />
+        <NearbyRiders
+          rows={rows}
+          ownLocation={ownLocation}
+          live={live}
+          ownProfile={ownProfile}
+          onOpenRider={openRider}
+          onShowOnMap={onNavigate}
+        />
       ) : !signedIn ? (
         <SocialFriendsSignIn search={searchOpen} />
       ) : searchOpen ? (
-        <SocialRiderSearchResults query={query} />
+        <SocialRiderSearchResults query={query} onOpenRider={openRider} />
       ) : (
-        <SocialFriendLists onSearch={() => setSearchOpen(true)} />
+        <SocialFriendLists
+          onSearch={() => onViewChange({ ...view, searchOpen: true })}
+          onOpenRider={openRider}
+          renderRidingFriend={(friend, divided) => {
+            const row = rows.find(
+              (rider) => rider.id === friend.accountId && !rider.stale && rider.presence,
+            )
+            return row ? (
+              <RosterList
+                key={row.id}
+                rows={[row]}
+                ownLocation={ownLocation}
+                compact
+                divided={divided}
+                onOpenRider={() => openRider(row.id)}
+              />
+            ) : null
+          }}
+        />
       )}
     </View>
   )
 }
 
-function NearbyRiders({ onShowOnMap }: { onShowOnMap?: () => void }) {
-  const rows = useGroupRideStore((s) => s.rosterRows)
-  const ownLocation = useGroupRideStore((s) => s.ownLocation)
-  const live = useGroupRideStore((s) => s.publicRide.live)
-  const nick = useRiderProfileStore((s) => s.profile?.nick)
+function NearbyRiders({
+  rows,
+  ownLocation,
+  live,
+  ownProfile,
+  onOpenRider,
+  onShowOnMap,
+}: {
+  rows: RosterRider[]
+  ownLocation: { lat: number; lng: number } | null
+  live: boolean
+  ownProfile: RiderProfile | null
+  onOpenRider: (accountId: string) => void
+  onShowOnMap?: () => void
+}) {
   const firstOnMap = rows.find((row) => row.presence)
   const self: RosterRider = {
     id: 'nearby:self',
-    name: nick ?? 'You',
+    name: ownProfile?.nick ?? 'You',
     presence: null,
     trail: null,
     stale: false,
@@ -133,12 +197,22 @@ function NearbyRiders({ onShowOnMap }: { onShowOnMap?: () => void }) {
     lastSeen: 0,
     isSelf: true,
   }
-  const visibleRows = live ? [self, ...rows] : rows
+  const visibleRows = live || ownProfile ? [self, ...rows] : rows
 
   return (
     <View style={styles.nearby} testID="nearby-riders">
       {visibleRows.length ? (
-        <RosterList rows={visibleRows} ownLocation={ownLocation} compact />
+        <RosterList
+          rows={visibleRows}
+          ownLocation={ownLocation}
+          compact
+          onOpenRider={(rider) => {
+            const accountId = rider.isSelf ? ownProfile?.accountId : rider.id
+            if (accountId) onOpenRider(accountId)
+          }}
+          selfCanOpen={ownProfile !== null}
+          selfSharing={live}
+        />
       ) : (
         <Placeholder
           compact
@@ -168,7 +242,7 @@ function NearbyRiders({ onShowOnMap }: { onShowOnMap?: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  panel: { padding: 12, gap: 8 },
+  panel: { padding: 12, gap: 6 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tabArea: { flex: 1, minWidth: 0, minHeight: 40, justifyContent: 'center' },
   coveredTabs: { opacity: 0 },
@@ -176,5 +250,5 @@ const styles = StyleSheet.create({
   nearby: { gap: 8 },
   count: { color: theme.control.textMuted, fontSize: 10 },
   notice: { color: theme.neutral.textSecondary, fontSize: 12, lineHeight: 17 },
-  map: { alignSelf: 'flex-end' },
+  map: { alignSelf: 'flex-end', marginTop: 4 },
 })
