@@ -174,9 +174,9 @@ internal suspend fun VescapeDao.sealTelemetryMinuteImpl(boardId: String?, minute
     if (item.sample == null) sealed += frame.id
   }
   if (sealed.isEmpty()) return 0
-  val boardKey = boardId?.let { resolveBoardKey(it) }
   val payload = TelemetryChunkCodec.encode(samples)
   if (TelemetryChunkCodec.decode(payload) != samples) throw TelemetrySealMismatch(boardId, minuteStartMs)
+  val boardKey = boardId?.let { resolveBoardKey(it) }
   val existing = getTelemetryChunkId(boardKey, minuteStartMs)
   if (existing == null) {
     insertTelemetryChunk(TelemetryChunkEntity(boardKey = boardKey, minuteStartMs = minuteStartMs,
@@ -190,22 +190,82 @@ internal suspend fun VescapeDao.sealTelemetryMinuteImpl(boardId: String?, minute
   return sealed.size
 }
 
+/** What one batch of seals did; a failed minute kept its rows and wrote nothing. */
+class TelemetrySealBatch(val sealedMinutes: Int, val failures: List<Pair<TelemetryMinuteKey, Exception>>)
+
 /**
- * Seal what a previous process recorded but never sealed: closed minutes newer than the newest
- * chunk, one fenced transaction each. A minute that fails verification keeps its rows and is
- * reported through [onFailure]. Throws [MaintenanceRunFenced] once Restore or Clear all replaced
- * the database.
- * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `sealLeftoverTelemetry`
+ * Seal [keys] in the caller's transaction. A minute that fails verification throws before any write,
+ * so it is skipped and reported while the rest of the batch commits.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `sealTelemetryMinutes`
  */
-internal suspend fun sealLeftoverTelemetry(scope: MaintenanceJobScope, onFailure: (TelemetryMinuteKey, Exception) -> Unit): Int {
-  val keys = scope.chunk { it.leftoverTelemetryMinutes(telemetryMinuteStart(scope.nowMs() - TELEMETRY_SEAL_GRACE_MS)) }
-  var sealed = 0
+internal suspend fun VescapeDao.sealTelemetryMinutesImpl(keys: List<TelemetryMinuteKey>): TelemetrySealBatch {
+  var sealedMinutes = 0
+  val failures = mutableListOf<Pair<TelemetryMinuteKey, Exception>>()
   for (key in keys) {
     try {
-      sealed += scope.chunk { it.sealTelemetryMinute(key.boardId, key.minuteStartMs) }
+      if (sealTelemetryMinuteImpl(key.boardId, key.minuteStartMs) > 0) sealedMinutes++
     } catch (failure: TelemetrySealMismatch) {
-      onFailure(key, failure)
+      failures += key to failure
     }
   }
-  return sealed
+  return TelemetrySealBatch(sealedMinutes, failures)
+}
+
+/**
+ * Native flag for the buffer drain (ADR 0045). Off leaves every buffer row in place; readers merge
+ * the buffer either way, so the database stays fully readable.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `TELEMETRY_DRAIN_ENABLED`
+ */
+internal const val TELEMETRY_DRAIN_ENABLED = true
+
+/** @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `TELEMETRY_DRAIN_BATCH_MINUTES` */
+internal const val TELEMETRY_DRAIN_BATCH_MINUTES = 30
+
+/**
+ * Native-owned `app_settings` row recording that this database's pre-chunk backlog was drained
+ * once. Restore and Clear all delete it. It never stops a later drain from sealing leftovers.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `TELEMETRY_DRAINED_JOB_ID`
+ */
+internal const val TELEMETRY_DRAINED_JOB_ID = "telemetryBacklogDrain"
+
+/** Outcome of one drain. [yielded]: a ride may be recording, so the drain stopped early. */
+internal data class TelemetryDrainResult(val minutes: Int, val sealedMinutes: Int, val failures: Int, val yielded: Boolean)
+
+/**
+ * Seal every closed minute left in the `telemetry_frames` buffer: the pre-chunk backlog, late
+ * samples, failed seals and minutes a crashed process never sealed. A minute that already has a
+ * chunk merges into it. Batches of [batch] minutes, one fenced transaction each, oldest first; before
+ * each batch a possibly recording ride stops the drain. The buffer itself is the progress, so a run
+ * cut short resumes on the next one. With no closed minute left and no failure the drained marker is
+ * written. A minute that fails verification keeps its rows and is reported through [onFailure].
+ * Throws [MaintenanceRunFenced] once Restore or Clear all replaced the database.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `drainTelemetryBuffer`
+ */
+internal suspend fun drainTelemetryBuffer(
+  scope: MaintenanceJobScope,
+  gapMs: Long,
+  batch: Int = TELEMETRY_DRAIN_BATCH_MINUTES,
+  onFailure: (TelemetryMinuteKey, Exception) -> Unit,
+): TelemetryDrainResult {
+  val keys = scope.chunk { it.closedTelemetryMinutes(telemetryMinuteStart(scope.nowMs() - TELEMETRY_SEAL_GRACE_MS)) }
+  var sealedMinutes = 0
+  var failures = 0
+  var done = 0
+  for (slice in keys.chunked(batch)) {
+    val result = scope.chunk { dao ->
+      if (dao.activeRideStartMs(scope.nowMs(), gapMs) != null) null else dao.sealTelemetryMinutes(slice)
+    } ?: return TelemetryDrainResult(keys.size, sealedMinutes, failures, yielded = true)
+    sealedMinutes += result.sealedMinutes
+    failures += result.failures.size
+    result.failures.forEach { (key, error) -> onFailure(key, error) }
+    done += slice.size
+    scope.progress(done, keys.size)
+    scope.committed()
+  }
+  if (failures == 0) scope.chunk { dao ->
+    if (dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID) == null) {
+      dao.publishMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID, "drained", scope.nowMs())
+    }
+  }
+  return TelemetryDrainResult(keys.size, sealedMinutes, failures, yielded = false)
 }

@@ -19,7 +19,9 @@ import expo.modules.vescapecore.telemetry.TelemetryMinuteKey
 import expo.modules.vescapecore.telemetry.TelemetryTimeRange
 import expo.modules.vescapecore.telemetry.firstTelemetrySampleAtOrAfter
 import expo.modules.vescapecore.telemetry.readTelemetryFramesImpl
+import expo.modules.vescapecore.telemetry.TelemetrySealBatch
 import expo.modules.vescapecore.telemetry.sealTelemetryMinuteImpl
+import expo.modules.vescapecore.telemetry.sealTelemetryMinutesImpl
 import expo.modules.vescapecore.telemetry.telemetryAnchorMs
 import expo.modules.vescapecore.telemetry.telemetrySampleExists
 import expo.modules.vescapecore.telemetry.trimTelemetryChunks
@@ -479,15 +481,15 @@ interface VescapeDao {
   suspend fun deleteFramesByIds(ids: List<Long>)
 
   /**
-   * Closed minutes of buffer rows newer than the newest chunk: what a previous process recorded but
-   * never sealed. Older rows are the pre-chunk backlog, drained separately.
-   * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `leftoverTelemetryMinutes`
+   * Every closed minute still in the buffer, oldest first: the pre-chunk backlog and any later
+   * leftover (a late sample, a failed seal, a crash before the seal).
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `closedTelemetryMinutes`
    */
   @Query("""
     SELECT DISTINCT board_id AS boardId, (captured_at_ms / 60000) * 60000 AS minuteStartMs FROM telemetry_frames
-    WHERE captured_at_ms > (SELECT MAX(last_at_ms) FROM telemetry_chunks) AND captured_at_ms < :beforeMs
+    WHERE captured_at_ms < :beforeMs ORDER BY minuteStartMs
   """)
-  suspend fun leftoverTelemetryMinutes(beforeMs: Long): List<TelemetryMinuteKey>
+  suspend fun closedTelemetryMinutes(beforeMs: Long): List<TelemetryMinuteKey>
 
   /** Samples in `[fromMs, toMs]` from one snapshot; null [boardId] reads every Board. */
   @Transaction
@@ -510,6 +512,9 @@ interface VescapeDao {
   @Transaction
   suspend fun sealTelemetryMinute(boardId: String?, minuteStartMs: Long): Int =
     sealTelemetryMinuteImpl(boardId, minuteStartMs)
+
+  @Transaction
+  suspend fun sealTelemetryMinutes(keys: List<TelemetryMinuteKey>): TelemetrySealBatch = sealTelemetryMinutesImpl(keys)
 
   @Query(
     """

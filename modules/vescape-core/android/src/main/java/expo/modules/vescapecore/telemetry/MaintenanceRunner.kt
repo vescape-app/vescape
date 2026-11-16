@@ -91,32 +91,51 @@ internal object MaintenanceRunner {
     watchNetwork()
     delay(LAUNCH_DELAY_MS)
     pruneDiagnosticEventsOnLaunch()
-    sealLeftoverTelemetryOnLaunch()
+    drainTelemetry(reset = false)
     trigger("launch")
   }
 
   /**
-   * Seal the closed minutes a previous process recorded but never sealed (ADR 0045).
-   * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `sealLeftoverTelemetryOnLaunch`
+   * Seal every closed minute left in the telemetry buffer (ADR 0045), on launch and after Restore or
+   * Clear all, which also [reset] the drained marker. One Diagnostic Event per run that found work.
+   * A drain that yielded to a recording ride retries once the ride may have ended.
+   * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `drainTelemetry`
    */
-  private suspend fun sealLeftoverTelemetryOnLaunch() {
-    if (RecordingStorageFailure.value() != null) return
+  private suspend fun drainTelemetry(reset: Boolean) {
+    if (!TELEMETRY_DRAIN_ENABLED || RecordingStorageFailure.value() != null) return
     val fence = DatabaseReplacementFence.process
-    val scope = MaintenanceJobScope(
+    val jobScope = MaintenanceJobScope(
       dao = { VescapeDatabase.get(appContext).vescapeDao() },
       fence = fence,
       ticket = fence.ticket(),
+      committed = ::chunkCommitted,
     )
+    val clock = SystemClock.elapsedRealtime()
     try {
+      if (reset) jobScope.chunk { it.deleteAppSetting(maintenanceJobKey(TELEMETRY_DRAINED_JOB_ID)) }
+      val gapMs = AppDataRepository.get(appContext).getTypedSettings().rideSplitGapMinutes * 60_000L
       val repository = TelemetryRepository.get(appContext)
-      val sealed = sealLeftoverTelemetry(scope) { key, error -> repository.recordSealFailure(key, error) }
-      if (sealed > 0) breadcrumb("telemetry_seal", mapOf("sealed" to sealed))
+      val result = drainTelemetryBuffer(jobScope, gapMs) { key, error -> repository.recordSealFailure(key, error) }
+      if (result.minutes > 0) {
+        repository.recordDiagnosticEvent("telemetry_drain", mapOf(
+          "operation" to "telemetry_drain",
+          "minutes" to result.minutes,
+          "sealed_minutes" to result.sealedMinutes,
+          "failures" to result.failures,
+          "yielded" to result.yielded,
+          "duration_ms" to SystemClock.elapsedRealtime() - clock,
+        ))
+      }
+      if (result.yielded) scope.launch {
+        delay(gapMs)
+        drainTelemetry(reset = false)
+      }
     } catch (fenced: MaintenanceRunFenced) {
-      // Restore or Clear all replaced the database; the next start seals what is left.
+      // Restore or Clear all replaced the database; its own drain starts on the new one.
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (error: Throwable) {
-      Log.e(TAG, "Telemetry seal on launch failed", error)
+      Log.e(TAG, "Telemetry drain failed", error)
       Sentry.captureException(error)
     }
   }
@@ -169,7 +188,10 @@ internal object MaintenanceRunner {
   }
 
   /** Restore or Clear all finished, successfully or not: re-check against the resulting database. */
-  fun onDatabaseReplaced() = trigger("database_replaced")
+  fun onDatabaseReplaced() {
+    scope.launch { if (started) drainTelemetry(reset = true) }
+    trigger("database_replaced")
+  }
 
   private suspend fun runPasses() {
     do {

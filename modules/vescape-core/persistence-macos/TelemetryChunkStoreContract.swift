@@ -155,33 +155,66 @@ func runTelemetryChunkContract() throws {
   try maintenance.clear(protectedRanges: [])
   try require(try sealed.read { try telemetrySampleCount($0) } == 0, "clear all removes chunks")
 
-  // Restart: only closed minutes newer than the newest chunk are leftovers; the backlog stays.
-  let restartPath = FileManager.default.temporaryDirectory.appendingPathComponent("chunks-restart-\(UUID().uuidString).db").path
+  // Drain: every closed minute leaves the buffer (backlog, late sample, minutes a crash or a failed
+  // seal left behind), a sealed minute merges instead of duplicating, and the open minute stays.
   let backlog = recording(board, from: t0 - 30 * minute, minutes: 2)
-  let restartReference = try fresh()
-  try seed(restartReference); try restartReference.write { try insert($0, backlog) }
-  var restarted = try fresh(restartPath)
-  try seed(restarted); try restarted.write { try insert($0, backlog) }
-  try seal(restarted, 0...0)
-  try restarted.close()
-  restarted = try fresh(restartPath)
-  let fence = DatabaseReplacementFence()
-  let pool = restarted
-  let scope = MaintenanceJobScope(writer: { pool }, fence: fence, ticket: fence.ticket(), nowMs: { t0 + 3 * minute + 30_000 })
+  let drainNow = t0 + 4 * minute
+  let drainGapMs: Int64 = 500
+  func leftovers(sealFirst: Bool) throws -> DatabasePool {
+    let pool = try fresh()
+    try seed(pool)
+    try pool.write { try insert($0, backlog) }
+    if sealFirst { try seal(pool, 0...0) }
+    try pool.write { try insert($0, [late]) }
+    return pool
+  }
+  func drainScope(_ pool: DatabasePool, _ fence: DatabaseReplacementFence, progress: @escaping (Int, Int) -> Void = { _, _ in }) -> MaintenanceJobScope {
+    MaintenanceJobScope(writer: { pool }, fence: fence, ticket: fence.ticket(), nowMs: { drainNow }, progress: progress)
+  }
+  func bufferCount(_ pool: DatabasePool, _ from: Int64, _ to: Int64) throws -> Int {
+    try pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms BETWEEN ? AND ?", arguments: [from, to])! }
+  }
+  func drainedMarker(_ pool: DatabasePool) throws -> String? {
+    try pool.read { try storedMaintenanceFingerprint($0, id: TELEMETRY_DRAINED_JOB_ID) }
+  }
+  let drainReference = try leftovers(sealFirst: false)
+  let drained = try leftovers(sealFirst: true)
   var failures: [TelemetryMinuteKey] = []
-  try require(try sealLeftoverTelemetry(scope) { key, _ in failures.append(key) } == 2 * 2 * 120, "restart seals leftover minutes")
-  try require(failures.isEmpty, "leftover seal failures")
-  let backlogLeft = try restarted.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms < ?", arguments: [t0]) }
-  try require(backlogLeft == backlog.count, "backlog stays in the buffer")
-  try assertSameReads(restartReference, restarted, "restart")
+  let drainResult = try drainTelemetryBuffer(drainScope(drained, DatabaseReplacementFence()), gapMs: drainGapMs, batch: 3) { key, _ in failures.append(key) }
+  try require(drainResult == TelemetryDrainResult(minutes: 7, sealedMinutes: 7, failures: 0, yielded: false), "drain result \(drainResult)")
+  try require(failures.isEmpty, "drain failures")
+  try require(try bufferCount(drained, Int64.min, t0 + 3 * minute - 1) == 0, "no closed minute left in the buffer")
+  try require(try bufferCount(drained, t0 + 3 * minute, drainNow) == 2 * 120, "open minute untouched")
+  let lateChunk = try drained.read { try Int.fetchAll($0, sql: "SELECT sample_count FROM telemetry_chunks c JOIN boards b ON b.key = c.board_key WHERE b.id = ? AND minute_start_ms = ?", arguments: [board, t0]) }
+  try require(lateChunk == [121], "late sample merged, no second chunk")
+  try assertSameReads(drainReference, drained, "drain")
+  try require(try canonical(drainReference, 0, t0, board) == canonical(drained, 0, t0, board), "drained backlog reads")
+  try require(try drainedMarker(drained) == "drained", "drained marker")
+  try require(try drainTelemetryBuffer(drainScope(drained, DatabaseReplacementFence()), gapMs: drainGapMs) { _, _ in }
+    == TelemetryDrainResult(minutes: 0, sealedMinutes: 0, failures: 0, yielded: false), "second drain is a no-op")
 
-  // Restore or Clear all fenced after the run started: no seal reaches the database.
-  try restarted.write { try insert($0, recording(board, from: t0 + 4 * minute, minutes: 1)) }
-  let stale = MaintenanceJobScope(writer: { pool }, fence: fence, ticket: fence.ticket(), nowMs: { t0 + 6 * minute })
-  fence.fence {}
-  do { _ = try sealLeftoverTelemetry(stale) { _, _ in }; throw Failure(description: "fenced seal reported success") } catch is MaintenanceRunFenced {}
-  let unsealed = try restarted.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms >= ?", arguments: [t0 + 4 * minute]) }
-  try require(unsealed == 120, "fenced seal kept its rows")
+  // A ride that may still be recording stops the drain before any write.
+  let recordingPool = try fresh()
+  try seed(recordingPool)
+  let yielded = try drainTelemetryBuffer(drainScope(recordingPool, DatabaseReplacementFence()), gapMs: 10 * minute) { _, _ in }
+  try require(yielded == TelemetryDrainResult(minutes: 6, sealedMinutes: 0, failures: 0, yielded: true), "drain yields to recording")
+  try require(try bufferCount(recordingPool, Int64.min, Int64.max) == 4 * 2 * 120, "yielded drain wrote nothing")
+  try require(try drainedMarker(recordingPool) == nil, "yielded drain is not drained")
+
+  // Restore or Clear all fences a drain between batches: what committed stays, the next run finishes.
+  let interruptedPool = try leftovers(sealFirst: false)
+  let fence = DatabaseReplacementFence()
+  let interrupted = drainScope(interruptedPool, fence) { done, _ in if done == 2 { fence.fence {} } }
+  do { _ = try drainTelemetryBuffer(interrupted, gapMs: drainGapMs, batch: 2) { _, _ in }; throw Failure(description: "fenced drain reported success") } catch is MaintenanceRunFenced {}
+  let chunksAfterFence = try interruptedPool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM telemetry_chunks") }
+  try require(chunksAfterFence == 2, "only the first batch committed")
+  try assertSameReads(drainReference, interruptedPool, "fenced drain")
+  try require(try drainedMarker(interruptedPool) == nil, "fenced drain is not drained")
+  let resumed = try drainTelemetryBuffer(drainScope(interruptedPool, fence), gapMs: drainGapMs, batch: 2) { _, _ in }
+  try require(resumed == TelemetryDrainResult(minutes: 6, sealedMinutes: 6, failures: 0, yielded: false), "resumed drain \(resumed)")
+  try assertSameReads(drainReference, interruptedPool, "resumed drain")
+  try require(try canonical(drainReference, 0, t0, board) == canonical(interruptedPool, 0, t0, board), "resumed backlog reads")
+  try require(try drainedMarker(interruptedPool) == "drained", "resumed drain marker")
 
   // Readers racing the sealer see every sample exactly once.
   let race = try fresh()

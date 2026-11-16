@@ -177,43 +177,80 @@ class TelemetryChunkStoreHostTest {
     } finally { reference.close(); sealed.close() }
   }
 
-  @Test fun restartSealsOnlyLeftoverMinutesAndKeepsTheBacklog(): Unit = runBlocking {
-    val dir = Files.createTempDirectory("telemetry-chunks").toFile()
+  /** "Now" one minute past the recording: minute 3 is still open, and no ride is recording with a 500 ms gap. */
+  private val drainNow = t0 + 4 * minute
+  private val drainGapMs = 500L
+
+  private fun drainScope(db: VescapeRoomDatabase, fence: DatabaseReplacementFence, progress: (Int, Int) -> Unit = { _, _ -> }) =
+    MaintenanceJobScope({ db.vescapeDao() }, fence, fence.ticket(), { drainNow }, progress)
+
+  /** Pre-chunk backlog, a sealed minute with a late sample, and minutes a crashed or failed seal left behind. */
+  private suspend fun VescapeDao.seedLeftovers(backlog: List<TelemetryFrameEntity>, late: TelemetryFrameEntity, sealFirst: Boolean) {
+    seed()
+    insertFrames(backlog)
+    if (sealFirst) seal(0..0)
+    insertFrames(listOf(late))
+  }
+
+  @Test fun drainSealsEveryClosedMinuteAndLeavesTheOpenOne(): Unit = runBlocking {
     val reference = memory()
+    val drained = memory()
     try {
       val backlog = recording(board, t0 - 30 * minute, 2)
-      reference.vescapeDao().seed()
-      reference.vescapeDao().insertFrames(backlog)
-      val path = File(dir, "chunks.db").path
-      file(path).also { db ->
-        db.vescapeDao().seed()
-        db.vescapeDao().insertFrames(backlog)
-        db.vescapeDao().seal(0..0)
-        db.close()
-      }
-      val db = file(path)
-      try {
-        val fence = DatabaseReplacementFence()
-        val failures = mutableListOf<TelemetryMinuteKey>()
-        // Minute 3 is still open at "now": only minutes 1 and 2 of both owners are leftovers.
-        val scope = MaintenanceJobScope({ db.vescapeDao() }, fence, fence.ticket(), { t0 + 3 * minute + 30_000 })
-        assertEquals(2 * 2 * 120, sealLeftoverTelemetry(scope) { key, _ -> failures += key })
-        assertEquals(emptyList<TelemetryMinuteKey>(), failures)
-        val dao = db.vescapeDao()
-        assertEquals("backlog stays in the buffer", backlog.size,
-          dao.getBufferFramesPage(0, t0 - 1, board, false, Long.MIN_VALUE, Long.MIN_VALUE, 10_000).size)
-        assertEquals(6, dao.getTelemetryChunkHeaders(t0, t0 + 4 * minute, null, true).size)
-        assertSameReads(reference.vescapeDao(), dao)
-        assertEquals(reference.vescapeDao().canonical(0, t0, board), dao.canonical(0, t0, board))
+      val late = recording(board, t0 + 250, 1)[20]
+      reference.vescapeDao().seedLeftovers(backlog, late, sealFirst = false)
+      drained.vescapeDao().seedLeftovers(backlog, late, sealFirst = true)
+      val failures = mutableListOf<TelemetryMinuteKey>()
+      val result = drainTelemetryBuffer(drainScope(drained, DatabaseReplacementFence()), drainGapMs, batch = 3) { key, _ -> failures += key }
+      // Backlog: 2 minutes of one Board; minute 0 of the Board merges its late sample; minutes 1..2 of both owners.
+      assertEquals(TelemetryDrainResult(minutes = 7, sealedMinutes = 7, failures = 0, yielded = false), result)
+      assertEquals(emptyList<TelemetryMinuteKey>(), failures)
+      val dao = drained.vescapeDao()
+      assertEquals(0, dao.getBufferFramesPage(Long.MIN_VALUE, t0 + 3 * minute - 1, null, true, Long.MIN_VALUE, Long.MIN_VALUE, 10).size)
+      assertEquals("open minute untouched", 2 * 120,
+        dao.getBufferFramesPage(t0 + 3 * minute, drainNow, null, true, Long.MIN_VALUE, Long.MIN_VALUE, 10_000).size)
+      assertEquals("late sample merged, no second chunk", 121, dao.getTelemetryChunkHeaders(t0, t0, board, false).single().sampleCount)
+      assertSameReads(reference.vescapeDao(), dao)
+      assertEquals(reference.vescapeDao().canonical(0, t0, board), dao.canonical(0, t0, board))
+      assertEquals("drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+      assertEquals(TelemetryDrainResult(0, 0, 0, false), drainTelemetryBuffer(drainScope(drained, DatabaseReplacementFence()), drainGapMs) { _, _ -> })
+    } finally { reference.close(); drained.close() }
+  }
 
-        // Restore or Clear all fenced after the run started: no seal reaches the database.
-        db.vescapeDao().insertFrames(recording(board, t0 + 4 * minute, 1))
-        val stale = MaintenanceJobScope({ db.vescapeDao() }, fence, fence.ticket(), { t0 + 6 * minute })
-        fence.fence { }
-        assertThrows(MaintenanceRunFenced::class.java) { runBlocking { sealLeftoverTelemetry(stale) { _, _ -> } } }
-        assertEquals(120, dao.getBufferFramesPage(t0 + 4 * minute, t0 + 5 * minute, board, false, Long.MIN_VALUE, Long.MIN_VALUE, 10_000).size)
-      } finally { db.close() }
-    } finally { reference.close(); dir.deleteRecursively() }
+  @Test fun drainYieldsToARecordingRide(): Unit = runBlocking {
+    val db = memory()
+    try {
+      val dao = db.vescapeDao()
+      dao.seed()
+      val result = drainTelemetryBuffer(drainScope(db, DatabaseReplacementFence()), gapMs = 10 * minute) { _, _ -> }
+      assertEquals(TelemetryDrainResult(minutes = 6, sealedMinutes = 0, failures = 0, yielded = true), result)
+      assertEquals(4 * 2 * 120, dao.getBufferFramesPage(Long.MIN_VALUE, Long.MAX_VALUE, null, true, Long.MIN_VALUE, Long.MIN_VALUE, 10_000).size)
+      assertNull("a yielded drain is not drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+    } finally { db.close() }
+  }
+
+  /** Restore or Clear all fences a drain between batches: what committed stays, the next run finishes the rest. */
+  @Test fun fencedDrainEndsConsistentAndResumes(): Unit = runBlocking {
+    val reference = memory()
+    val drained = memory()
+    try {
+      val backlog = recording(board, t0 - 30 * minute, 2)
+      val late = recording(board, t0 + 250, 1)[20]
+      reference.vescapeDao().seedLeftovers(backlog, late, sealFirst = false)
+      drained.vescapeDao().seedLeftovers(backlog, late, sealFirst = false)
+      val fence = DatabaseReplacementFence()
+      val interrupted = drainScope(drained, fence) { done, _ -> if (done == 2) runBlocking { fence.fence { } } }
+      assertThrows(MaintenanceRunFenced::class.java) { runBlocking { drainTelemetryBuffer(interrupted, drainGapMs, batch = 2) { _, _ -> } } }
+      val dao = drained.vescapeDao()
+      assertEquals("only the first batch committed", 2, dao.getTelemetryChunkHeaders(Long.MIN_VALUE, Long.MAX_VALUE, null, true).size)
+      assertSameReads(reference.vescapeDao(), dao)
+      assertNull(dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+      val resumed = drainTelemetryBuffer(drainScope(drained, fence), drainGapMs, batch = 2) { _, _ -> }
+      assertEquals(TelemetryDrainResult(minutes = 6, sealedMinutes = 6, failures = 0, yielded = false), resumed)
+      assertSameReads(reference.vescapeDao(), dao)
+      assertEquals(reference.vescapeDao().canonical(0, t0, board), dao.canonical(0, t0, board))
+      assertEquals("drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+    } finally { reference.close(); drained.close() }
   }
 
   @Test fun readsRacingSealsSeeEverySampleExactlyOnce(): Unit = runBlocking {

@@ -5,8 +5,8 @@ covers where those blobs live and how readers and writers treat them.
 
 ## Status
 
-Accepted (#687). Schema 56 adds `telemetry_chunks`. New recordings are sealed on both platforms.
-Rows recorded before schema 56 stay in the buffer until the backlog drain (#688) seals them.
+Accepted (#687, #688). Schema 56 adds `telemetry_chunks`. New recordings are sealed on both
+platforms, and the buffer drain seals rows recorded before schema 56 in the background.
 
 ## Decision
 
@@ -16,8 +16,7 @@ NULL for unowned samples), `minute_start_ms`, `codec_version`, `sample_count`, `
 lives only in a chunk and an unsealed one only in the buffer. There is no decode cache.
 
 - **Sealing.** A minute is sealed once the wall clock is 10 s past its end and no pending frame
-  targets it, on Stop Recording (the open minute included), and at startup for closed minutes newer
-  than the newest chunk. Every flush checks, empty ones included, and a delayed check is armed for
+  targets it, on Stop Recording (the open minute included), and by the buffer drain. Every flush checks, empty ones included, and a delayed check is armed for
   the earliest unsealed minute, so a minute still closes when ingestion stops before its grace has
   passed. Disconnect and Idle Pause are not triggers. One write transaction, under a
   `DatabaseReplacementFence` ticket, does the seal:
@@ -31,6 +30,19 @@ lives only in a chunk and an unsealed one only in the buffer. There is no decode
   recorded. A Board id with no `boards` row is first minted as a Board Tombstone, the same rule the
   v55 migration and the Ride Track writer apply, so the chunk keeps its owner.
 
+- **Buffer drain.** One routine seals every closed minute left in `telemetry_frames`: the pre-56
+  backlog and any later leftover (a late sample, a failed seal, a process killed before its seal).
+  The Maintenance Runner runs it after launch and after Restore or Clear all. It works oldest first,
+  30 minutes per write transaction, each under a fence ticket; a fenced batch is dropped. Before
+  each batch it checks for a ride that may still be recording, and stops if one is found; it retries
+  one ride split gap later. The buffer is the only progress record, so a killed or fenced drain
+  resumes on the next run, including on a restored database. A minute that already has a chunk
+  merges into it. Each run that found work records one `telemetry_drain` Diagnostic Event with the
+  minutes found, minutes sealed, failures, whether it yielded, and its duration. The native
+  `TELEMETRY_DRAIN_ENABLED` flag (on) turns the drain off; the buffer stays fully readable. A drain
+  that ends with no closed minute left and no failure writes the native-owned
+  `maintenanceJob.telemetryBacklogDrain` `app_settings` row: the pre-56 backlog was processed once.
+  Restore and Clear all delete that row. It never skips a later drain.
 - **Chunks are replaceable.** A sample that arrives after its minute was sealed waits in the buffer
   until the next seal merges it. A range delete, a protected clear or delete-before decodes each
   chunk it cuts, filters out the deleted samples and re-encodes the chunk.
