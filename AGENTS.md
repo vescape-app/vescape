@@ -71,6 +71,7 @@ Keep the architecture sharp:
 - No duplicate code! We do not want to repeat ourselves.
 - Do not add tests for trivial predicates. Add tests for meaningful behavior, edge cases, contracts, or regressions.
 - New Board Warning detectors must add their kind to `docs/board-warnings.md` (the kinds catalog) alongside the `BoardWarningKind` slug.
+- Schema migrations stay SQL (set-based copies are fine). Converting existing data row by row (decode, recompute, verify, fetch) is a Maintenance Job in `MAINTENANCE_JOBS` (`docs/history.md` § Maintenance Jobs, ADR-0046), never migration code or a new `MaintenanceRunner` path.
 
 ## Parity
 
