@@ -54,8 +54,6 @@ interface GroupRideState {
   signalAvailability: GroupRideSignalAvailability
   error: string | null
   focusRequest: { riderId: string; nonce: number } | null
-  /** Reopen Social when the profile it launched returns to Home. */
-  restoreSocialAfterProfile: boolean
   observing: boolean
   /** The public ride switch and whether the rider is public now, as native reports it. */
   publicRide: PublicRideStatus
@@ -119,7 +117,6 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   signalAvailability: NO_SIGNAL_AVAILABILITY,
   error: null,
   focusRequest: null,
-  restoreSocialAfterProfile: false,
   observing: false,
   publicRide: PUBLIC_RIDE_OFF,
   publicRiders: [],

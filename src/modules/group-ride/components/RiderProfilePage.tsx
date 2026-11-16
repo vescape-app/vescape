@@ -20,7 +20,6 @@ export function RiderProfilePage() {
   const friend = useFriendsStore((s) => s.lists.friends.find((row) => row.accountId === accountId))
 
   function showMap() {
-    useGroupRideStore.setState({ restoreSocialAfterProfile: false })
     router.dismissTo(routes.home)
   }
 

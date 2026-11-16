@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { router, useFocusEffect } from 'expo-router'
+import { router } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
 import { BroadcastIcon, MegaphoneIcon, UsersThreeIcon } from 'phosphor-react-native'
 
@@ -35,27 +35,12 @@ export function SocialTrigger() {
   const [view, setView] = useState<SocialView>(INITIAL_SOCIAL_VIEW)
   const pendingProfile = useRef<string | null>(null)
 
-  useFocusEffect(
-    useCallback(() => {
-      if (useGroupRideStore.getState().restoreSocialAfterProfile) {
-        useGroupRideStore.setState({ restoreSocialAfterProfile: false })
-        setSocialOpen(true)
-      } else {
-        setView(INITIAL_SOCIAL_VIEW)
-      }
-    }, []),
-  )
-
   const onSocialClose = useCallback(() => {
     setSocialOpen(false)
     const accountId = pendingProfile.current
     pendingProfile.current = null
-    if (accountId) {
-      useGroupRideStore.setState({ restoreSocialAfterProfile: true })
-      router.push(riderProfileHref(accountId))
-    } else {
-      setView(INITIAL_SOCIAL_VIEW)
-    }
+    setView(INITIAL_SOCIAL_VIEW)
+    if (accountId) router.push(riderProfileHref(accountId))
   }, [])
   // Seeing Social is seeing who started riding.
   useEffect(() => {
