@@ -2,7 +2,7 @@ package expo.modules.vescapecore.database
 
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
-import expo.modules.vescapecore.telemetry.TELEMETRY_DRAINED_JOB_ID
+import expo.modules.vescapecore.telemetry.TELEMETRY_MAINTENANCE_MARKER_IDS
 import expo.modules.vescapecore.telemetry.maintenanceJobKey
 
 /** Schema generations with a complete production Room migration path to the current database. */
@@ -56,8 +56,8 @@ private val ENGINE_TABLES = setOf("room_master_table", "android_metadata", "grdb
 
 /**
  * Prepares a restored database before it is exposed, in one transaction: drops every table outside
- * [SHARED_DATABASE_TABLES] and forgets the archive's telemetry drained marker, so the restored
- * buffer is drained again (ADR 0045). Foreign keys are checked at commit, so stray tables that
+ * [SHARED_DATABASE_TABLES] and forgets the archive's telemetry drained and space reclaimed markers,
+ * so the restored buffer is drained and its space reclaimed again (ADR 0045). Foreign keys are checked at commit, so stray tables that
  * reference each other drop in any order.
  * @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `openRestoredDatabase`
  */
@@ -71,9 +71,11 @@ internal fun prepareRestoredDatabase(connection: SQLiteConnection) {
     tables
       .filterNot { it in SHARED_DATABASE_TABLES || it in ENGINE_TABLES || it.startsWith("sqlite_") }
       .forEach { connection.execSQL("DROP TABLE `$it`") }
-    connection.prepare("DELETE FROM app_settings WHERE key = ?").use {
-      it.bindText(1, maintenanceJobKey(TELEMETRY_DRAINED_JOB_ID))
-      it.step()
+    TELEMETRY_MAINTENANCE_MARKER_IDS.forEach { id ->
+      connection.prepare("DELETE FROM app_settings WHERE key = ?").use {
+        it.bindText(1, maintenanceJobKey(id))
+        it.step()
+      }
     }
     connection.execSQL("COMMIT")
   } catch (error: Exception) {

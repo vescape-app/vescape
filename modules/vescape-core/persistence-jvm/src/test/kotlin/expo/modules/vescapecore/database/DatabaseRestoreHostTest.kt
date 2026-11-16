@@ -13,7 +13,7 @@ import org.junit.Test
 import kotlinx.coroutines.runBlocking
 import expo.modules.vescapecore.telemetry.BucketRoutePreview
 import expo.modules.vescapecore.telemetry.RecordingPersistence
-import expo.modules.vescapecore.telemetry.TELEMETRY_DRAINED_JOB_ID
+import expo.modules.vescapecore.telemetry.TELEMETRY_MAINTENANCE_MARKER_IDS
 import expo.modules.vescapecore.telemetry.publishMaintenanceFingerprint
 import expo.modules.vescapecore.telemetry.storedMaintenanceFingerprint
 import expo.modules.vescapecore.telemetry.bucketPreviewFixes
@@ -141,13 +141,13 @@ class DatabaseRestoreHostTest {
     assertEquals(listOf(60_000L to 100L, 60_500L to 200L, 120_500L to 300L), speeds)
   }
 
-  /** An archive carries `app_settings`; the restored database must not inherit its drained marker (ADR 0045). */
+  /** An archive carries `app_settings`; the restored database must not inherit its drained or reclaimed marker (ADR 0045). */
   @Test
-  fun restoredArchiveForgetsTheTelemetryDrainedMarker(): Unit = runBlocking {
+  fun restoredArchiveForgetsTheTelemetryMaintenanceMarkers(): Unit = runBlocking {
     val directory = Files.createTempDirectory("vescape-restore-drained").toFile()
     val source = directory.resolve("source.sqlite")
     open(source.path).apply {
-      vescapeDao().publishMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID, "drained", 1)
+      TELEMETRY_MAINTENANCE_MARKER_IDS.forEach { vescapeDao().publishMaintenanceFingerprint(it, "done", 1) }
       vescapeDao().upsertAppSetting(AppSettingEntity("kept", "\"yes\"", 2))
       close()
     }
@@ -160,7 +160,7 @@ class DatabaseRestoreHostTest {
     BundledSQLiteDriver().open(restored.path).use(::prepareRestoredDatabase)
     val room = open(restored.path)
     try {
-      assertNull(room.vescapeDao().storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+      TELEMETRY_MAINTENANCE_MARKER_IDS.forEach { assertNull(it, room.vescapeDao().storedMaintenanceFingerprint(it)) }
       assertEquals("\"yes\"", room.vescapeDao().getAllAppSettings().single { it.key == "kept" }.valueJson)
     } finally { room.close(); directory.deleteRecursively() }
   }

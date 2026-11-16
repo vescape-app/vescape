@@ -50,6 +50,21 @@ lives only in a chunk and an unsealed one only in the buffer. There is no decode
   is left under the cutoff at that moment. Restore and Clear all delete that row inside their own
   fenced replacement (the restored database is prepared before it is exposed), so an archive's
   marker never survives. It never skips a later drain.
+- **Space reclaim.** SQLite only reuses deleted pages, so after the drain (and the Diagnostic Event
+  prune) the file keeps its old size. Each drain that did not yield then tries one `VACUUM`, once
+  per database generation: only with the drained marker set and no
+  `maintenanceJob.databaseSpaceReclaim` marker, no ride that may be recording, free pages above
+  50 MB and above half the file, and free disk at least the file size. It runs under a fence ticket
+  on the single writer outside any transaction (Room `useWriterConnection`, GRDB
+  `barrierWriteWithoutTransaction`, so no iOS reader overlaps it), with a `wal_checkpoint(TRUNCATE)`
+  before and after so the main file shrinks. Restore, Clear all and the backup export wait for it;
+  a ride is checked right before the `VACUUM` and wins: the reclaim skips and retries one ride split
+  gap later, and a ride that starts mid-`VACUUM` only queues its writes behind it. Success writes
+  the reclaimed marker and one `database_reclaim` Diagnostic Event with the before/after bytes;
+  any other skip retries on a later start. Restore and Clear all forget this marker with the
+  drained one. `auto_vacuum` is not changed: Android's bundled SQLite already creates
+  `auto_vacuum = FULL` files, so there the reclaim mostly matters for databases created on iOS
+  and restored.
 - **Chunks are replaceable.** A sample that arrives after its minute was sealed waits in the buffer
   until the next seal merges it. A range delete, a protected clear or delete-before decodes each
   chunk it cuts, filters out the deleted samples and re-encodes the chunk.

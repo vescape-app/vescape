@@ -135,8 +135,8 @@ final class MaintenanceRunner {
   }
 
   /// Seal every closed minute left in the telemetry buffer (ADR 0045), on launch and after Restore
-  /// or Clear all, which forget the drained marker inside their own fenced replacement. One
-  /// Diagnostic Event per run that found work. A drain that yielded to a recording ride retries once
+  /// or Clear all, which forget the drained marker inside their own fenced replacement, then reclaims
+  /// the freed space. One Diagnostic Event per run that found work. A drain that yielded to a recording ride retries once
   /// the ride may have ended. Runs on `workQueue`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `drainTelemetry`
   private func drainTelemetry() {
@@ -161,6 +161,8 @@ final class MaintenanceRunner {
       }
       if result.yielded {
         workQueue.asyncAfter(deadline: .now() + .milliseconds(Int(gapMs))) { self.drainTelemetry() }
+      } else {
+        try reclaimSpace(gapMs: gapMs)
       }
     } catch is MaintenanceRunFenced {
       // Restore or Clear all replaced the database; its own drain starts on the new one.
@@ -169,6 +171,41 @@ final class MaintenanceRunner {
 #if canImport(Sentry)
       SentrySDK.capture(error: error)
 #endif
+    }
+  }
+
+  /// Return freed pages to the OS once the drain has run (ADR 0045). One Diagnostic Event with the
+  /// before/after size when it reclaims; a skip for a recording ride retries once the ride may have
+  /// ended, any other skip waits for a later start. Runs on `workQueue`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `reclaimSpace`
+  private func reclaimSpace(gapMs: Int64) throws {
+    let fence = DatabaseReplacementFence.process
+    let startedAt = telemetryElapsedMs()
+    let directory = VescapeDatabase.databaseURL?.deletingLastPathComponent()
+    let result = try reclaimDatabaseSpace(
+      writer: { try VescapeDatabase.requirePool() },
+      fence: fence,
+      ticket: fence.ticket(),
+      gapMs: gapMs,
+      availableDiskBytes: {
+        // intentional-suppression: an unreadable volume reports no space, so the reclaim waits for a later start.
+        let values = try? directory?.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage ?? 0
+      }
+    )
+    switch result {
+    case let .reclaimed(beforeBytes, afterBytes):
+      TelemetryRepository.shared.recordDiagnosticEvent(eventName: "database_reclaim", properties: [
+        "operation": "database_reclaim",
+        "before_bytes": beforeBytes,
+        "after_bytes": afterBytes,
+        "duration_ms": telemetryElapsedMs() - startedAt,
+      ])
+    case let .skipped(reason, fileBytes, freeBytes):
+      breadcrumb("reclaim_skip", ["reason": reason, "file_bytes": fileBytes, "free_bytes": freeBytes])
+      if reason == "recording" {
+        workQueue.asyncAfter(deadline: .now() + .milliseconds(Int(gapMs))) { self.drainTelemetry() }
+      }
     }
   }
 

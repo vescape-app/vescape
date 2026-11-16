@@ -69,7 +69,7 @@ struct TelemetryMaintenancePersistence {
         try db.execute(sql: "DELETE FROM metric_exclusion_ranges")
         try db.execute(sql: "DELETE FROM diagnostic_events")
         try db.execute(sql: "DELETE FROM weather_observations")
-        try forgetTelemetryDrained(db)
+        try forgetTelemetryMaintenanceMarkers(db)
       }
     } else {
       let ranges = subtractProtectedTelemetryRanges(
@@ -77,7 +77,7 @@ struct TelemetryMaintenancePersistence {
       )
       try writer.write { db in
         try db.execute(sql: "DELETE FROM diagnostic_events")
-        try forgetTelemetryDrained(db)
+        try forgetTelemetryMaintenanceMarkers(db)
         for range in ranges {
           try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms <= ?", arguments: [range.startMs, range.endMs])
           try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ?", arguments: [range.startMs, range.endMs])
