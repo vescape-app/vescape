@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { MagnifyingGlassIcon, UserPlusIcon, UsersIcon } from 'phosphor-react-native'
+import { MagnifyingGlassIcon, UserPlusIcon, UsersIcon, WifiSlashIcon } from 'phosphor-react-native'
 import { searchRiders, type Friend, type RiderProfile } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
@@ -123,12 +123,34 @@ export function SocialFriendLists({
 }) {
   const lists = useFriendsStore((s) => s.lists)
   const loaded = useFriendsStore((s) => s.loaded)
+  const loading = useFriendsStore((s) => s.loading)
+  const loadError = useFriendsStore((s) => s.loadError)
+  const load = useFriendsStore((s) => s.load)
   const error = useFriendsStore((s) => s.error)
   const nowMs = useMinuteNow()
   const friends = sortFriends(lists.friends)
 
   return (
     <View style={styles.sections} testID="friends-card">
+      {loadError ? (
+        <Placeholder
+          compact
+          icon={loadError.unreachable ? WifiSlashIcon : UsersIcon}
+          title="Couldn’t refresh friends"
+          description={
+            loadError.unreachable ? 'Vescape couldn’t connect to the server.' : loadError.message
+          }
+          action={
+            <Button
+              label="Try again"
+              size="sm"
+              variant="secondary"
+              loading={loading}
+              onPress={() => void load()}
+            />
+          }
+        />
+      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {lists.incoming.length ? (
         <View>
@@ -170,7 +192,7 @@ export function SocialFriendLists({
             onPress={onSearch}
           />
         </View>
-      ) : loaded ? (
+      ) : loaded && !loadError ? (
         <Placeholder
           compact
           icon={UsersIcon}
@@ -186,7 +208,7 @@ export function SocialFriendLists({
             />
           }
         />
-      ) : !error ? (
+      ) : !loaded && !loadError ? (
         <Text style={styles.notice}>Loading friends…</Text>
       ) : null}
       {lists.outgoing.length ? (

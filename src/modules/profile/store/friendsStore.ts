@@ -16,6 +16,8 @@ interface FriendsState {
   /** Server truth as last fetched; empty while signed out or before the first answer. */
   lists: Friends
   loaded: boolean
+  loading: boolean
+  loadError: { message: string; unreachable: boolean } | null
   error: string | null
   /** A friend started riding since the rider last opened Social. Lights the Social button. */
   friendRiding: boolean
@@ -52,12 +54,15 @@ export const useFriendsStore = create<FriendsState>((set, get) => {
   return {
     lists: EMPTY,
     loaded: false,
+    loading: false,
+    loadError: null,
     error: null,
     friendRiding: false,
     busy: [],
 
     async load() {
       const current = ++generation
+      set({ loading: true })
       try {
         const lists = await getFriends()
         if (current !== generation) return
@@ -65,13 +70,22 @@ export const useFriendsStore = create<FriendsState>((set, get) => {
         set({
           lists,
           loaded: true,
+          loading: false,
+          loadError: null,
           error: null,
           // The first answer is a baseline, not a change.
           friendRiding:
             friendRiding || (loaded && friendStartedRiding(previous.friends, lists.friends)),
         })
       } catch (error) {
-        if (current === generation) set({ error: friendsErrorMessage(error) })
+        if (current !== generation) return
+        set({
+          loading: false,
+          loadError: {
+            message: friendsErrorMessage(error),
+            unreachable: (error as { code?: unknown } | null)?.code === 'RIDER_PROFILE_UNREACHABLE',
+          },
+        })
       }
     },
 
@@ -86,7 +100,15 @@ export const useFriendsStore = create<FriendsState>((set, get) => {
 
     clear() {
       generation++
-      set({ lists: EMPTY, loaded: false, error: null, friendRiding: false, busy: [] })
+      set({
+        lists: EMPTY,
+        loaded: false,
+        loading: false,
+        loadError: null,
+        error: null,
+        friendRiding: false,
+        busy: [],
+      })
     },
   }
 })
