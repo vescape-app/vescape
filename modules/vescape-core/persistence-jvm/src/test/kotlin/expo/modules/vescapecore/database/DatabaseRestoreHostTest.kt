@@ -7,11 +7,15 @@ import java.nio.file.Files
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.runBlocking
 import expo.modules.vescapecore.telemetry.BucketRoutePreview
 import expo.modules.vescapecore.telemetry.RecordingPersistence
+import expo.modules.vescapecore.telemetry.TELEMETRY_DRAINED_JOB_ID
+import expo.modules.vescapecore.telemetry.publishMaintenanceFingerprint
+import expo.modules.vescapecore.telemetry.storedMaintenanceFingerprint
 import expo.modules.vescapecore.telemetry.bucketPreviewFixes
 import expo.modules.vescapecore.telemetry.buildTelemetryBuckets
 import expo.modules.vescapecore.telemetry.toBucketLocationPoints
@@ -99,7 +103,7 @@ class DatabaseRestoreHostTest {
           DatabaseMigrations.MIGRATION_55_56.migrate(connection)
           connection.execSQL("PRAGMA user_version = 56")
           connection.execSQL("PRAGMA foreign_keys = ON")
-          dropUnknownTables(connection)
+          prepareRestoredDatabase(connection)
         }
         assertMatchesSharedSchema("restored-ios-v53", v53.toPath())
         val v53Room = open(v53.path)
@@ -135,6 +139,30 @@ class DatabaseRestoreHostTest {
       f.capturedAtMs to values[0]
     }
     assertEquals(listOf(60_000L to 100L, 60_500L to 200L, 120_500L to 300L), speeds)
+  }
+
+  /** An archive carries `app_settings`; the restored database must not inherit its drained marker (ADR 0045). */
+  @Test
+  fun restoredArchiveForgetsTheTelemetryDrainedMarker(): Unit = runBlocking {
+    val directory = Files.createTempDirectory("vescape-restore-drained").toFile()
+    val source = directory.resolve("source.sqlite")
+    open(source.path).apply {
+      vescapeDao().publishMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID, "drained", 1)
+      vescapeDao().upsertAppSetting(AppSettingEntity("kept", "\"yes\"", 2))
+      close()
+    }
+    val archive = directory.resolve("backup.zip")
+    archive.outputStream().use {
+      DatabaseBackupArchive.write(source, DatabaseBackupArchive.manifest("android", VESCAPE_DATABASE_VERSION, "host", source.length(), 1), it)
+    }
+    val restored = directory.resolve("restored.sqlite")
+    archive.inputStream().use { DatabaseBackupArchive.extract(it, restored) }
+    BundledSQLiteDriver().open(restored.path).use(::prepareRestoredDatabase)
+    val room = open(restored.path)
+    try {
+      assertNull(room.vescapeDao().storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+      assertEquals("\"yes\"", room.vescapeDao().getAllAppSettings().single { it.key == "kept" }.valueJson)
+    } finally { room.close(); directory.deleteRecursively() }
   }
 
   @Test

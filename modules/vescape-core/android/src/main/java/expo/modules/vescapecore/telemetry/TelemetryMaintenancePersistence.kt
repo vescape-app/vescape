@@ -122,12 +122,13 @@ internal suspend fun VescapeDao.rideSummariesStartMs(): Long? =
 
 /**
  * Start of the derived ride that may still be recording (ADR 0041), or null when the newest sample
- * is a full split gap old. Every Board and both streams count, and a Stop Recording is ignored, so
+ * at or before [nowMs] is a full split gap old. A future-dated sample (a wrong clock) is ignored, so
+ * it never holds the database in a ride forever. Every Board and both streams count, and a Stop Recording is ignored, so
  * the cutoff can only be earlier than the real ride start, never later.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `activeRideStartMs`
  */
 internal suspend fun VescapeDao.activeRideStartMs(nowMs: Long, gapMs: Long): Long? {
-  val last = listOfNotNull(lastFrameAt(), lastRideTrackAt()).maxOrNull() ?: return null
+  val last = lastSampleAtOrBefore(nowMs) ?: return null
   if (nowMs - last >= gapMs) return null
   var start = last
   while (true) {

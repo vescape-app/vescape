@@ -21,7 +21,10 @@ import expo.modules.vescapecore.telemetry.firstTelemetrySampleAtOrAfter
 import expo.modules.vescapecore.telemetry.readTelemetryFramesImpl
 import expo.modules.vescapecore.telemetry.TelemetrySealBatch
 import expo.modules.vescapecore.telemetry.sealTelemetryMinuteImpl
-import expo.modules.vescapecore.telemetry.sealTelemetryMinutesImpl
+import expo.modules.vescapecore.telemetry.TELEMETRY_DRAINED_JOB_ID
+import expo.modules.vescapecore.telemetry.drainTelemetryMinutesImpl
+import expo.modules.vescapecore.telemetry.maintenanceJobKey
+import expo.modules.vescapecore.telemetry.publishTelemetryDrainedImpl
 import expo.modules.vescapecore.telemetry.telemetryAnchorMs
 import expo.modules.vescapecore.telemetry.telemetrySampleExists
 import expo.modules.vescapecore.telemetry.trimTelemetryChunks
@@ -513,8 +516,14 @@ interface VescapeDao {
   suspend fun sealTelemetryMinute(boardId: String?, minuteStartMs: Long): Int =
     sealTelemetryMinuteImpl(boardId, minuteStartMs)
 
+  /** The recording check and the seals share one transaction. */
   @Transaction
-  suspend fun sealTelemetryMinutes(keys: List<TelemetryMinuteKey>): TelemetrySealBatch = sealTelemetryMinutesImpl(keys)
+  suspend fun drainTelemetryMinutes(keys: List<TelemetryMinuteKey>, nowMs: Long, gapMs: Long): TelemetrySealBatch? =
+    drainTelemetryMinutesImpl(keys, nowMs, gapMs)
+
+  /** The closed-minute recheck and the marker write share one transaction. */
+  @Transaction
+  suspend fun publishTelemetryDrained(nowMs: Long): Boolean = publishTelemetryDrainedImpl(nowMs)
 
   @Query(
     """
@@ -551,6 +560,22 @@ interface VescapeDao {
 
   @Query("SELECT MAX(at) FROM (SELECT MAX(captured_at_ms) AS at FROM telemetry_frames UNION ALL SELECT MAX(last_at_ms) FROM telemetry_chunks)")
   suspend fun lastFrameAt(): Long?
+
+  /**
+   * Newest telemetry sample or Ride Track fix at or before [nowMs]; a future-dated one is ignored.
+   * A chunk straddling [nowMs] counts as [nowMs].
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `lastSampleAtOrBefore`
+   */
+  @Query(
+    """
+    SELECT MAX(at) FROM (
+      SELECT MAX(captured_at_ms) AS at FROM telemetry_frames WHERE captured_at_ms <= :nowMs
+      UNION ALL SELECT MAX(MIN(last_at_ms, :nowMs)) FROM telemetry_chunks WHERE first_at_ms <= :nowMs
+      UNION ALL SELECT MAX(fix_at_ms) FROM ride_track_points WHERE fix_at_ms <= :nowMs
+    )
+    """
+  )
+  suspend fun lastSampleAtOrBefore(nowMs: Long): Long?
 
   @Query("DELETE FROM telemetry_frames WHERE captured_at_ms < :beforeMs")
   suspend fun deleteFramesBefore(beforeMs: Long): Int
@@ -688,6 +713,7 @@ interface VescapeDao {
     clearExclusions()
     clearRideTrackPoints()
     clearWeatherObservations()
+    forgetTelemetryDrained()
   }
 
   @Transaction
@@ -705,7 +731,14 @@ interface VescapeDao {
       deleteWeatherObservations(range.startMs, range.endMs)
     }
     clearDiagnosticEvents()
+    forgetTelemetryDrained()
   }
+
+  /**
+   * Clear all and Restore leave a database whose buffer was never drained (ADR 0045).
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `forgetTelemetryDrained`
+   */
+  suspend fun forgetTelemetryDrained() = deleteAppSetting(maintenanceJobKey(TELEMETRY_DRAINED_JOB_ID))
 
   // Weather Observations (`weather_observations`)
 

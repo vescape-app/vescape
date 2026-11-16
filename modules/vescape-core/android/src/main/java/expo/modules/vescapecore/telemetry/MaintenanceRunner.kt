@@ -91,17 +91,18 @@ internal object MaintenanceRunner {
     watchNetwork()
     delay(LAUNCH_DELAY_MS)
     pruneDiagnosticEventsOnLaunch()
-    drainTelemetry(reset = false)
+    drainTelemetry()
     trigger("launch")
   }
 
   /**
    * Seal every closed minute left in the telemetry buffer (ADR 0045), on launch and after Restore or
-   * Clear all, which also [reset] the drained marker. One Diagnostic Event per run that found work.
+   * Clear all, which forget the drained marker inside their own fenced replacement. One Diagnostic
+   * Event per run that found work.
    * A drain that yielded to a recording ride retries once the ride may have ended.
    * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `drainTelemetry`
    */
-  private suspend fun drainTelemetry(reset: Boolean) {
+  private suspend fun drainTelemetry() {
     if (!TELEMETRY_DRAIN_ENABLED || RecordingStorageFailure.value() != null) return
     val fence = DatabaseReplacementFence.process
     val jobScope = MaintenanceJobScope(
@@ -112,7 +113,6 @@ internal object MaintenanceRunner {
     )
     val clock = SystemClock.elapsedRealtime()
     try {
-      if (reset) jobScope.chunk { it.deleteAppSetting(maintenanceJobKey(TELEMETRY_DRAINED_JOB_ID)) }
       val gapMs = AppDataRepository.get(appContext).getTypedSettings().rideSplitGapMinutes * 60_000L
       val repository = TelemetryRepository.get(appContext)
       val result = drainTelemetryBuffer(jobScope, gapMs) { key, error -> repository.recordSealFailure(key, error) }
@@ -128,7 +128,7 @@ internal object MaintenanceRunner {
       }
       if (result.yielded) scope.launch {
         delay(gapMs)
-        drainTelemetry(reset = false)
+        drainTelemetry()
       }
     } catch (fenced: MaintenanceRunFenced) {
       // Restore or Clear all replaced the database; its own drain starts on the new one.
@@ -189,7 +189,7 @@ internal object MaintenanceRunner {
 
   /** Restore or Clear all finished, successfully or not: re-check against the resulting database. */
   fun onDatabaseReplaced() {
-    scope.launch { if (started) drainTelemetry(reset = true) }
+    scope.launch { if (started) drainTelemetry() }
     trigger("database_replaced")
   }
 

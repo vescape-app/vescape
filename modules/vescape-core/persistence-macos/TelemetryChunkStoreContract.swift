@@ -216,6 +216,70 @@ func runTelemetryChunkContract() throws {
   try require(try canonical(drainReference, 0, t0, board) == canonical(interruptedPool, 0, t0, board), "resumed backlog reads")
   try require(try drainedMarker(interruptedPool) == "drained", "resumed drain marker")
 
+  // A codec failure (here an unreadable existing chunk) skips its minute; the minutes around it seal.
+  let codecPool = try fresh()
+  try codecPool.write { db in
+    try db.execute(sql: "INSERT INTO boards (id,name,created_at) VALUES (?,'Board A',1)", arguments: [board])
+    try insert(db, recording(board, from: t0 - 30 * minute, minutes: 1) + recording(nil, from: t0 - 20 * minute, minutes: 1)
+      + recording(board, from: t0 - 10 * minute, minutes: 1))
+    try sealTelemetryMinute(db, TelemetryMinuteKey(boardId: nil, minuteStartMs: t0 - 20 * minute))
+    try db.execute(sql: "UPDATE telemetry_chunks SET payload = X'7F' WHERE board_key IS NULL")
+    try insert(db, [recording(nil, from: t0 - 20 * minute + 250, minutes: 1)[20]])
+  }
+  var codecFailures: [TelemetryMinuteKey] = []
+  let codecResult = try drainTelemetryBuffer(drainScope(codecPool, DatabaseReplacementFence()), gapMs: drainGapMs) { key, _ in codecFailures.append(key) }
+  try require(codecResult == TelemetryDrainResult(minutes: 3, sealedMinutes: 2, failures: 1, yielded: false), "codec failure drain \(codecResult)")
+  try require(codecFailures == [TelemetryMinuteKey(boardId: nil, minuteStartMs: t0 - 20 * minute)], "codec failure reported")
+  let codecLeft = try codecPool.read { try Int64.fetchAll($0, sql: "SELECT captured_at_ms FROM telemetry_frames") }
+  try require(codecLeft == [t0 - 20 * minute + 250 + 20 * 500], "only the failed minute stays buffered")
+  try require(try drainedMarker(codecPool) == nil, "failed drain is not drained")
+
+  // A minute that closes while the drain runs keeps the marker unpublished until a run seals it.
+  let advancing = try fresh()
+  try seed(advancing)
+  var advancingNow = drainNow
+  let advancingFence = DatabaseReplacementFence()
+  let advancingScope = MaintenanceJobScope(writer: { advancing }, fence: advancingFence, ticket: advancingFence.ticket(),
+    nowMs: { advancingNow }, progress: { done, _ in if done == 2 { advancingNow += minute } })
+  let advanced = try drainTelemetryBuffer(advancingScope, gapMs: drainGapMs, batch: 2) { _, _ in }
+  try require(advanced == TelemetryDrainResult(minutes: 6, sealedMinutes: 6, failures: 0, yielded: false), "advancing drain \(advanced)")
+  try require(try drainedMarker(advancing) == nil, "minute 3 closed mid-run")
+  let caughtUp = try drainTelemetryBuffer(advancingScope, gapMs: drainGapMs) { _, _ in }
+  try require(caughtUp == TelemetryDrainResult(minutes: 2, sealedMinutes: 2, failures: 0, yielded: false), "catch-up drain \(caughtUp)")
+  try require(try drainedMarker(advancing) == "drained", "caught-up drain marker")
+
+  // A future-dated sample (a wrong clock) is not a recording ride: the old backlog still drains.
+  let futurePool = try fresh()
+  try futurePool.write { try insert($0, recording(board, from: t0 - 30 * minute, minutes: 2) + [recording(board, from: drainNow + 60 * minute, minutes: 1)[7]]) }
+  let future = try drainTelemetryBuffer(drainScope(futurePool, DatabaseReplacementFence()), gapMs: 10 * minute) { _, _ in }
+  try require(future == TelemetryDrainResult(minutes: 2, sealedMinutes: 2, failures: 0, yielded: false), "future-dated drain \(future)")
+  try require(try futurePool.read { try activeRideStartMs($0, nowMs: drainNow, gapMs: 10 * minute) } == nil, "future sample is not a ride")
+  try require(try drainedMarker(futurePool) == "drained", "future-dated drain marker")
+
+  // Clear all forgets the drained marker in its own transaction, with or without protected Favorites.
+  for protected in [[], [TelemetryTimeRange(startMs: t0, endMs: t0 + minute)]] {
+    try drained.write { try publishMaintenanceFingerprint($0, id: TELEMETRY_DRAINED_JOB_ID, fingerprint: "drained", nowMs: drainNow) }
+    try TelemetryMaintenancePersistence(writer: drained).clear(protectedRanges: protected)
+    try require(try drainedMarker(drained) == nil, "clear all forgets the marker")
+  }
+
+  // An archive carries app_settings; the restored database must not inherit the drained marker.
+  let archiveDir = FileManager.default.temporaryDirectory.appendingPathComponent("drained-restore-\(UUID().uuidString)", isDirectory: true)
+  try FileManager.default.createDirectory(at: archiveDir, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: archiveDir) }
+  let sourceURL = archiveDir.appendingPathComponent("source.sqlite")
+  let source = try fresh()
+  try source.write { try publishMaintenanceFingerprint($0, id: TELEMETRY_DRAINED_JOB_ID, fingerprint: "drained", nowMs: drainNow) }
+  let sourceCopy = try DatabaseQueue(path: sourceURL.path)
+  try source.backup(to: sourceCopy)
+  try sourceCopy.close()
+  let sourceData = try Data(contentsOf: sourceURL)
+  let archive = DatabaseBackupArchive.archive(database: sourceData, manifest: try DatabaseBackupArchive.manifest(
+    platform: "ios", schemaVersion: VESCAPE_DATABASE_VERSION, appVersion: "host", dbSizeBytes: Int64(sourceData.count), createdAt: 1))
+  let staged = try DatabaseBackupManager.stageBackupArchive(archive, in: archiveDir)
+  let restored = try VescapeDatabase.openRestoredDatabase(at: staged.database, schemaVersion: staged.roomVersion)
+  try require(try drainedMarker(restored) == nil, "restore forgets the marker")
+
   // Readers racing the sealer see every sample exactly once.
   let race = try fresh()
   try race.write { db in

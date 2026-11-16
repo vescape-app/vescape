@@ -106,7 +106,7 @@ final class MaintenanceRunner {
       self.queue.asyncAfter(deadline: .now() + maintenanceLaunchDelay) {
         self.workQueue.async {
           self.pruneDiagnosticEventsOnLaunch()
-          self.drainTelemetry(reset: false)
+          self.drainTelemetry()
           self.trigger("launch")
         }
       }
@@ -135,20 +135,17 @@ final class MaintenanceRunner {
   }
 
   /// Seal every closed minute left in the telemetry buffer (ADR 0045), on launch and after Restore
-  /// or Clear all, which also `reset` the drained marker. One Diagnostic Event per run that found
-  /// work. A drain that yielded to a recording ride retries once the ride may have ended. Runs on
-  /// `workQueue`.
+  /// or Clear all, which forget the drained marker inside their own fenced replacement. One
+  /// Diagnostic Event per run that found work. A drain that yielded to a recording ride retries once
+  /// the ride may have ended. Runs on `workQueue`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `drainTelemetry`
-  private func drainTelemetry(reset: Bool) {
+  private func drainTelemetry() {
     guard TELEMETRY_DRAIN_ENABLED, RecordingStorageFailure.value() == nil else { return }
     let fence = DatabaseReplacementFence.process
     let scope = MaintenanceJobScope(writer: { try VescapeDatabase.requirePool() }, fence: fence, ticket: fence.ticket(),
                                     committed: { [unowned self] in chunkCommitted() })
     let startedAt = telemetryElapsedMs()
     do {
-      if reset {
-        try scope.chunk { try $0.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [maintenanceJobKey(TELEMETRY_DRAINED_JOB_ID)]) }
-      }
       let settings = try AppDataRepository.shared.getSettings()
       let gapMs = Int64(telemetryInt(settings["rideSplitGapMinutes"] ?? nil) ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
       let result = try drainTelemetryBuffer(scope, gapMs: gapMs) { key, error in TelemetryRepository.shared.recordSealFailure(key, error) }
@@ -163,7 +160,7 @@ final class MaintenanceRunner {
         ])
       }
       if result.yielded {
-        workQueue.asyncAfter(deadline: .now() + .milliseconds(Int(gapMs))) { self.drainTelemetry(reset: false) }
+        workQueue.asyncAfter(deadline: .now() + .milliseconds(Int(gapMs))) { self.drainTelemetry() }
       }
     } catch is MaintenanceRunFenced {
       // Restore or Clear all replaced the database; its own drain starts on the new one.
@@ -199,7 +196,7 @@ final class MaintenanceRunner {
   func onDatabaseReplaced() {
     queue.async {
       guard self.started else { return }
-      self.workQueue.async { self.drainTelemetry(reset: true) }
+      self.workQueue.async { self.drainTelemetry() }
     }
     trigger("database_replaced")
   }

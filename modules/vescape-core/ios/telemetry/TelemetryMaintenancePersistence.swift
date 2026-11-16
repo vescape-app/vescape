@@ -69,6 +69,7 @@ struct TelemetryMaintenancePersistence {
         try db.execute(sql: "DELETE FROM metric_exclusion_ranges")
         try db.execute(sql: "DELETE FROM diagnostic_events")
         try db.execute(sql: "DELETE FROM weather_observations")
+        try forgetTelemetryDrained(db)
       }
     } else {
       let ranges = subtractProtectedTelemetryRanges(
@@ -76,6 +77,7 @@ struct TelemetryMaintenancePersistence {
       )
       try writer.write { db in
         try db.execute(sql: "DELETE FROM diagnostic_events")
+        try forgetTelemetryDrained(db)
         for range in ranges {
           try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms <= ?", arguments: [range.startMs, range.endMs])
           try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ?", arguments: [range.startMs, range.endMs])
@@ -168,12 +170,26 @@ internal func rideSummariesStartMs(_ db: Database) throws -> Int64? {
    try Int64.fetchOne(db, sql: "SELECT MIN(fix_at_ms) FROM ride_track_points")].compactMap { $0 }.min().map(floorChunk)
 }
 
+/// Newest telemetry sample or Ride Track fix at or before `nowMs`; a future-dated one is ignored. A
+/// chunk straddling `nowMs` counts as `nowMs`.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `lastSampleAtOrBefore`
+internal func lastSampleAtOrBefore(_ db: Database, nowMs: Int64) throws -> Int64? {
+  try Int64.fetchOne(db, sql: """
+    SELECT MAX(at) FROM (
+      SELECT MAX(captured_at_ms) AS at FROM telemetry_frames WHERE captured_at_ms <= :nowMs
+      UNION ALL SELECT MAX(MIN(last_at_ms, :nowMs)) FROM telemetry_chunks WHERE first_at_ms <= :nowMs
+      UNION ALL SELECT MAX(fix_at_ms) FROM ride_track_points WHERE fix_at_ms <= :nowMs
+    )
+    """, arguments: ["nowMs": nowMs])
+}
+
 /// Start of the derived ride that may still be recording (ADR 0041), or nil when the newest sample
-/// is a full split gap old. Every Board and both streams count, and a Stop Recording is ignored, so
+/// at or before `nowMs` is a full split gap old. A future-dated sample (a wrong clock) is ignored, so
+/// it never holds the database in a ride forever. Every Board and both streams count, and a Stop Recording is ignored, so
 /// the cutoff can only be earlier than the real ride start, never later.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `activeRideStartMs`
 internal func activeRideStartMs(_ db: Database, nowMs: Int64, gapMs: Int64) throws -> Int64? {
-  guard let last = try lastSampleAt(db), nowMs - last < gapMs else { return nil }
+  guard let last = try lastSampleAtOrBefore(db, nowMs: nowMs), nowMs - last < gapMs else { return nil }
   var start = last
   while true {
     let earlier = [

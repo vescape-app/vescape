@@ -194,11 +194,14 @@ internal suspend fun VescapeDao.sealTelemetryMinuteImpl(boardId: String?, minute
 class TelemetrySealBatch(val sealedMinutes: Int, val failures: List<Pair<TelemetryMinuteKey, Exception>>)
 
 /**
- * Seal [keys] in the caller's transaction. A minute that fails verification throws before any write,
- * so it is skipped and reported while the rest of the batch commits.
- * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `sealTelemetryMinutes`
+ * One drain batch in the caller's transaction: null, writing nothing, when a ride may be recording
+ * at [nowMs]; otherwise seal [keys]. A minute whose seal fails before any write (verification, or a
+ * codec format error such as an unreadable existing chunk or more samples than the codec holds) is
+ * skipped and reported while the rest of the batch commits. Database errors propagate.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `drainTelemetryMinutes`
  */
-internal suspend fun VescapeDao.sealTelemetryMinutesImpl(keys: List<TelemetryMinuteKey>): TelemetrySealBatch {
+internal suspend fun VescapeDao.drainTelemetryMinutesImpl(keys: List<TelemetryMinuteKey>, nowMs: Long, gapMs: Long): TelemetrySealBatch? {
+  if (activeRideStartMs(nowMs, gapMs) != null) return null
   var sealedMinutes = 0
   val failures = mutableListOf<Pair<TelemetryMinuteKey, Exception>>()
   for (key in keys) {
@@ -206,10 +209,32 @@ internal suspend fun VescapeDao.sealTelemetryMinutesImpl(keys: List<TelemetryMin
       if (sealTelemetryMinuteImpl(key.boardId, key.minuteStartMs) > 0) sealedMinutes++
     } catch (failure: TelemetrySealMismatch) {
       failures += key to failure
+    } catch (failure: TelemetryChunkFormatException) {
+      failures += key to failure
     }
   }
   return TelemetrySealBatch(sealedMinutes, failures)
 }
+
+/**
+ * Write the drained marker in the caller's transaction, unless a closed minute is still in the
+ * buffer under the cutoff at [nowMs]: one that closed or arrived while the drain ran is left to the
+ * next run. Returns whether the database is marked drained.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `publishTelemetryDrained`
+ */
+internal suspend fun VescapeDao.publishTelemetryDrainedImpl(nowMs: Long): Boolean {
+  if (closedTelemetryMinutes(telemetryDrainCutoffMs(nowMs)).isNotEmpty()) return false
+  if (storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID) == null) {
+    publishMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID, "drained", nowMs)
+  }
+  return true
+}
+
+/**
+ * Minutes starting before this are closed: their end is [TELEMETRY_SEAL_GRACE_MS] past.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `telemetryDrainCutoffMs`
+ */
+internal fun telemetryDrainCutoffMs(nowMs: Long) = telemetryMinuteStart(nowMs - TELEMETRY_SEAL_GRACE_MS)
 
 /**
  * Native flag for the buffer drain (ADR 0045). Off leaves every buffer row in place; readers merge
@@ -223,7 +248,8 @@ internal const val TELEMETRY_DRAIN_BATCH_MINUTES = 30
 
 /**
  * Native-owned `app_settings` row recording that this database's pre-chunk backlog was drained
- * once. Restore and Clear all delete it. It never stops a later drain from sealing leftovers.
+ * once. Restore and Clear all delete it inside their fenced replacement, so a restored archive or a
+ * cleared database is never marked drained. It never stops a later drain from sealing leftovers.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `TELEMETRY_DRAINED_JOB_ID`
  */
 internal const val TELEMETRY_DRAINED_JOB_ID = "telemetryBacklogDrain"
@@ -236,8 +262,9 @@ internal data class TelemetryDrainResult(val minutes: Int, val sealedMinutes: In
  * samples, failed seals and minutes a crashed process never sealed. A minute that already has a
  * chunk merges into it. Batches of [batch] minutes, one fenced transaction each, oldest first; before
  * each batch a possibly recording ride stops the drain. The buffer itself is the progress, so a run
- * cut short resumes on the next one. With no closed minute left and no failure the drained marker is
- * written. A minute that fails verification keeps its rows and is reported through [onFailure].
+ * cut short resumes on the next one. With no failure, and no closed minute left at the time of the
+ * final transaction, the drained marker is written. A minute that fails to seal keeps its rows and
+ * is reported through [onFailure].
  * Throws [MaintenanceRunFenced] once Restore or Clear all replaced the database.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `drainTelemetryBuffer`
  */
@@ -247,14 +274,12 @@ internal suspend fun drainTelemetryBuffer(
   batch: Int = TELEMETRY_DRAIN_BATCH_MINUTES,
   onFailure: (TelemetryMinuteKey, Exception) -> Unit,
 ): TelemetryDrainResult {
-  val keys = scope.chunk { it.closedTelemetryMinutes(telemetryMinuteStart(scope.nowMs() - TELEMETRY_SEAL_GRACE_MS)) }
+  val keys = scope.chunk { it.closedTelemetryMinutes(telemetryDrainCutoffMs(scope.nowMs())) }
   var sealedMinutes = 0
   var failures = 0
   var done = 0
   for (slice in keys.chunked(batch)) {
-    val result = scope.chunk { dao ->
-      if (dao.activeRideStartMs(scope.nowMs(), gapMs) != null) null else dao.sealTelemetryMinutes(slice)
-    } ?: return TelemetryDrainResult(keys.size, sealedMinutes, failures, yielded = true)
+    val result = scope.chunk { it.drainTelemetryMinutes(slice, scope.nowMs(), gapMs) } ?: return TelemetryDrainResult(keys.size, sealedMinutes, failures, yielded = true)
     sealedMinutes += result.sealedMinutes
     failures += result.failures.size
     result.failures.forEach { (key, error) -> onFailure(key, error) }
@@ -262,10 +287,6 @@ internal suspend fun drainTelemetryBuffer(
     scope.progress(done, keys.size)
     scope.committed()
   }
-  if (failures == 0) scope.chunk { dao ->
-    if (dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID) == null) {
-      dao.publishMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID, "drained", scope.nowMs())
-    }
-  }
+  if (failures == 0) scope.chunk { it.publishTelemetryDrained(scope.nowMs()) }
   return TelemetryDrainResult(keys.size, sealedMinutes, failures, yielded = false)
 }

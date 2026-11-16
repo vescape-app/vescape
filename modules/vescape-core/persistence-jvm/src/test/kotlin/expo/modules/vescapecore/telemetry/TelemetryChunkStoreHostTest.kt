@@ -253,6 +253,69 @@ class TelemetryChunkStoreHostTest {
     } finally { reference.close(); drained.close() }
   }
 
+  /** A codec failure (here an unreadable existing chunk) skips its minute; the minutes around it seal. */
+  @Test fun drainSkipsAMinuteThatFailsToEncodeOrDecode(): Unit = runBlocking {
+    val db = memory()
+    try {
+      val dao = db.vescapeDao()
+      dao.upsertBoard(BoardEntity(board, "Board A", null, 1))
+      dao.insertFrames(recording(board, t0 - 30 * minute, 1) + recording(null, t0 - 20 * minute, 1) + recording(board, t0 - 10 * minute, 1))
+      dao.sealTelemetryMinute(null, t0 - 20 * minute)
+      val chunk = dao.getTelemetryChunkHeaders(t0 - 20 * minute, t0 - 20 * minute, null, false).single()
+      dao.updateTelemetryChunk(chunk.id, TelemetryChunkCodec.VERSION, chunk.sampleCount, chunk.firstAtMs, chunk.lastAtMs, byteArrayOf(0x7F))
+      dao.insertFrames(listOf(recording(null, t0 - 20 * minute + 250, 1)[20]))
+      val failures = mutableListOf<TelemetryMinuteKey>()
+      val result = drainTelemetryBuffer(drainScope(db, DatabaseReplacementFence()), drainGapMs) { key, _ -> failures += key }
+      assertEquals(TelemetryDrainResult(minutes = 3, sealedMinutes = 2, failures = 1, yielded = false), result)
+      assertEquals(listOf(TelemetryMinuteKey(null, t0 - 20 * minute)), failures)
+      assertEquals(listOf(t0 - 20 * minute + 250 + 20 * 500),
+        dao.getBufferFramesPage(Long.MIN_VALUE, Long.MAX_VALUE, null, true, Long.MIN_VALUE, Long.MIN_VALUE, 10_000).map { it.capturedAtMs })
+      assertNull(dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+    } finally { db.close() }
+  }
+
+  /** A minute that closes while the drain runs keeps the marker unpublished until a run seals it. */
+  @Test fun drainRechecksClosedMinutesBeforeMarkingDrained(): Unit = runBlocking {
+    val db = memory()
+    try {
+      val dao = db.vescapeDao()
+      dao.seed()
+      var now = drainNow
+      val fence = DatabaseReplacementFence()
+      val scope = MaintenanceJobScope({ dao }, fence, fence.ticket(), { now }, { done, _ -> if (done == 2) now += minute })
+      assertEquals(TelemetryDrainResult(6, 6, 0, false), drainTelemetryBuffer(scope, drainGapMs, batch = 2) { _, _ -> })
+      assertNull("minute 3 closed mid-run", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+      assertEquals(TelemetryDrainResult(2, 2, 0, false), drainTelemetryBuffer(scope, drainGapMs) { _, _ -> })
+      assertEquals("drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+    } finally { db.close() }
+  }
+
+  /** A future-dated sample (a wrong clock) is not a recording ride: the old backlog still drains. */
+  @Test fun futureDatedSampleDoesNotBlockTheDrain(): Unit = runBlocking {
+    val db = memory()
+    try {
+      val dao = db.vescapeDao()
+      dao.insertFrames(recording(board, t0 - 30 * minute, 2) + recording(board, drainNow + 60 * minute, 1)[7])
+      val result = drainTelemetryBuffer(drainScope(db, DatabaseReplacementFence()), gapMs = 10 * minute) { _, _ -> }
+      assertEquals(TelemetryDrainResult(minutes = 2, sealedMinutes = 2, failures = 0, yielded = false), result)
+      assertNull(dao.activeRideStartMs(drainNow, 10 * minute))
+      assertEquals("drained", dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+    } finally { db.close() }
+  }
+
+  /** Clear all forgets the drained marker in its own transaction, with or without protected Favorites. */
+  @Test fun clearAllForgetsTheDrainedMarker(): Unit = runBlocking {
+    val db = memory()
+    try {
+      val dao = db.vescapeDao()
+      for (protected in listOf(emptyList(), listOf(TelemetryTimeRange(t0, t0 + minute)))) {
+        dao.publishMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID, "drained", drainNow)
+        dao.clearExcept(protected)
+        assertNull(dao.storedMaintenanceFingerprint(TELEMETRY_DRAINED_JOB_ID))
+      }
+    } finally { db.close() }
+  }
+
   @Test fun readsRacingSealsSeeEverySampleExactlyOnce(): Unit = runBlocking {
     val dir = Files.createTempDirectory("telemetry-chunk-race").toFile()
     val db = file(File(dir, "race.db").path)
