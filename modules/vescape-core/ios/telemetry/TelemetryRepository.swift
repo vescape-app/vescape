@@ -38,6 +38,9 @@ internal final class TelemetryRepository {
   // Minutes this process committed frames into and has not sealed yet, each with the fence ticket
   // of that commit: a Restore or Clear all since then drops the seal (ADR 0045).
   private var unsealedMinutes: [TelemetryMinuteKey: Int64] = [:]
+  // A delayed seal check is armed for the earliest unsealed minute, so a minute closes even when
+  // ingestion stops before its grace has passed.
+  private var sealCheck: DispatchWorkItem?
   private var lastFrameAtMs: Int64?
   private var lastHistoryAtMs: Int64?
   private var lastKeyframeAtMs: Int64?
@@ -628,6 +631,13 @@ internal final class TelemetryRepository {
   }
 
   private func flushOnQueue() {
+    writePendingOnQueue()
+    // Empty flushes check too: a minute whose grace passed since the last write still seals.
+    if recordingCommitBoundary.isAccepting() { sealRecordedMinutes(all: false) }
+  }
+
+  /// Commit what is pending. Runs on `queue`.
+  private func writePendingOnQueue() {
     flushTimer.cancel()
     guard recordingCommitBoundary.isAccepting(),
       (!pendingStates.isEmpty || !pendingPersisted.isEmpty || !pendingMarkers.isEmpty
@@ -690,7 +700,6 @@ internal final class TelemetryRepository {
     for state in persisted {
       unsealedMinutes[TelemetryMinuteKey(boardId: state.boardId, minuteStartMs: telemetryMinuteStart(state.capturedAtMs))] = ticket
     }
-    sealRecordedMinutes(all: false)
   }
 
   /// Stop Recording: flush, then seal every recorded minute, the open one included (ADR 0045).
@@ -722,6 +731,22 @@ internal final class TelemetryRepository {
       }
       if unsealedMinutes[key] == ticket { unsealedMinutes[key] = nil }
     }
+    scheduleSealCheck(now: now)
+  }
+
+  /// Arm one delayed `sealRecordedMinutes` for when the earliest unsealed minute closes, at least
+  /// `TELEMETRY_SEAL_GRACE_MS` out so a minute held back by pending frames is not spun on.
+  /// Runs on `queue`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `scheduleSealCheck`
+  private func scheduleSealCheck(now: Int64) {
+    guard sealCheck == nil, let earliest = unsealedMinutes.keys.map(\.minuteStartMs).min() else { return }
+    let waitMs = max(earliest + TELEMETRY_BUCKET_SIZE_MS + TELEMETRY_SEAL_GRACE_MS - now, TELEMETRY_SEAL_GRACE_MS)
+    let check = DispatchWorkItem { [weak self] in
+      self?.sealCheck = nil
+      self?.sealRecordedMinutes(all: false)
+    }
+    sealCheck = check
+    queue.asyncAfter(deadline: .now() + .milliseconds(Int(waitMs)), execute: check)
   }
 
   /// A seal that kept its rows: one Diagnostic Event, so the failure is visible in diagnostics.

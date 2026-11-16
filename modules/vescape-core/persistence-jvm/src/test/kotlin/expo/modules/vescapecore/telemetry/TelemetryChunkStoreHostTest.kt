@@ -239,6 +239,34 @@ class TelemetryChunkStoreHostTest {
     } finally { db.close(); dir.deleteRecursively() }
   }
 
+  /** The limit counts samples in range: an anchor reaching back into a chunk never eats the page. */
+  @Test fun limitedAnchoredReadsKeepTheirPageAfterSealing(): Unit = runBlocking {
+    val db = memory()
+    try {
+      val dao = db.vescapeDao()
+      dao.seed()
+      dao.seal(0..0)
+      // Inside the sealed minute, and on buffered deltas anchored only at that chunk's start.
+      for (from in listOf(t0 + 50_250, t0 + minute + 250)) {
+        val read = dao.getAnchoredFrames(from, t0 + 4 * minute, board, 10).filter { it.capturedAtMs >= from }
+        assertEquals("from $from", (1..10).map { from - 250 + it * 500L }, read.map { it.capturedAtMs })
+      }
+    } finally { db.close() }
+  }
+
+  @Test fun unknownBoardIdSealsUnderAMintedTombstone(): Unit = runBlocking {
+    val db = memory()
+    try {
+      val dao = db.vescapeDao()
+      val ghost = "board-without-row"
+      dao.insertFrames(recording(ghost, minutes = 1))
+      assertEquals(120, dao.sealTelemetryMinute(ghost, t0))
+      assertNotNull(dao.getBoardKey(ghost))
+      assertEquals(120, dao.getTelemetryChunkHeaders(t0, t0 + minute, ghost, false).single().sampleCount)
+      assertEquals(0, dao.getBufferFramesPage(t0, t0 + minute, ghost, false, Long.MIN_VALUE, Long.MIN_VALUE, 10).size)
+    } finally { db.close() }
+  }
+
   @Test fun sealingNeverRewritesBuckets(): Unit = runBlocking {
     val db = memory()
     try {

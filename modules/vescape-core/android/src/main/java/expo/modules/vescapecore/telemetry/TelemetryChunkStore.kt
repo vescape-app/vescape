@@ -151,12 +151,12 @@ internal suspend fun VescapeDao.trimTelemetryChunks(fromMs: Long, toMs: Long, bo
  * Seal one Board's minute: replay its buffer rows from the preceding full state into canonical
  * samples, merge them with the minute's existing chunk, encode, verify the decode round-trips, write
  * the chunk and delete exactly the sealed rows. Returns the rows sealed; 0 when there is nothing to
- * seal or the Board has no key. Throws [TelemetrySealMismatch] before any write when verification
- * fails, so the caller's transaction keeps every row.
+ * seal. A Board id with no row is minted as a Board Tombstone first, so the chunk keeps its owner.
+ * Throws [TelemetrySealMismatch] before any write when verification fails, so the caller's
+ * transaction keeps every row.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `sealTelemetryMinute`
  */
 internal suspend fun VescapeDao.sealTelemetryMinuteImpl(boardId: String?, minuteStartMs: Long): Int {
-  val boardKey = if (boardId == null) null else getBoardKey(boardId) ?: return 0
   val minuteEnd = minuteStartMs + TELEMETRY_BUCKET_SIZE_MS - 1
   val start = telemetryAnchorMs(minuteStartMs, boardId, false) ?: minuteStartMs
   val values = arrayOfNulls<Long>(TELEMETRY_CHUNK_VALUE_COLUMNS)
@@ -174,6 +174,7 @@ internal suspend fun VescapeDao.sealTelemetryMinuteImpl(boardId: String?, minute
     if (item.sample == null) sealed += frame.id
   }
   if (sealed.isEmpty()) return 0
+  val boardKey = boardId?.let { resolveBoardKey(it) }
   val payload = TelemetryChunkCodec.encode(samples)
   if (TelemetryChunkCodec.decode(payload) != samples) throw TelemetrySealMismatch(boardId, minuteStartMs)
   val existing = getTelemetryChunkId(boardKey, minuteStartMs)

@@ -17,7 +17,9 @@ lives only in a chunk and an unsealed one only in the buffer. There is no decode
 
 - **Sealing.** A minute is sealed once the wall clock is 10 s past its end and no pending frame
   targets it, on Stop Recording (the open minute included), and at startup for closed minutes newer
-  than the newest chunk. Disconnect and Idle Pause are not triggers. One write transaction, under a
+  than the newest chunk. Every flush checks, empty ones included, and a delayed check is armed for
+  the earliest unsealed minute, so a minute still closes when ingestion stops before its grace has
+  passed. Disconnect and Idle Pause are not triggers. One write transaction, under a
   `DatabaseReplacementFence` ticket, does the seal:
   1. Replay the minute's buffer rows from the preceding full state into canonical samples.
   2. Merge them with the minute's existing chunk.
@@ -26,7 +28,8 @@ lives only in a chunk and an unsealed one only in the buffer. There is no decode
   5. Delete exactly the sealed row ids.
 
   If the comparison fails, every row is kept and a `telemetry_seal_failed` Diagnostic Event is
-  recorded.
+  recorded. A Board id with no `boards` row is first minted as a Board Tombstone, the same rule the
+  v55 migration and the Ride Track writer apply, so the chunk keeps its owner.
 
 - **Chunks are replaceable.** A sample that arrives after its minute was sealed waits in the buffer
   until the next seal merges it. A range delete, a protected clear or delete-before decodes each
@@ -39,8 +42,9 @@ lives only in a chunk and an unsealed one only in the buffer. There is no decode
   payloads do not change.
 - **Delta anchor.** Android's buffer deltas chain across minutes. After minute N is sealed, the
   first buffer row of minute N+1 is a delta against a deleted row. Readers replay from the latest
-  full state before the range: a buffer keyframe or any chunk sample, whichever is later. The writer
-  keeps its in-memory last state.
+  full state before the range: a buffer keyframe or any chunk sample, whichever is later. A read
+  limit counts only samples inside the requested range, never the anchor prefix. The writer keeps
+  its in-memory last state.
 - **Summaries and maintenance.** Sample count, first and last sample times, the active-ride search
   and sample existence checks all count chunk samples. Ride summaries rebuild from the merged
   stream. `RebuildState` now follows the masks too, so a rebuild matches the one from the unsealed

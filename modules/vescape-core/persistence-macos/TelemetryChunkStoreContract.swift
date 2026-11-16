@@ -106,6 +106,26 @@ func runTelemetryChunkContract() throws {
   }
   try require(rebuilt[0] == rebuilt[1] && !rebuilt[0].isEmpty, "ride summaries rebuild the same from chunks")
 
+  // A limited read counts only samples in range, inside a sealed minute and just after one.
+  for from in [t0 + 50_250, t0 + 2 * minute + 250] {
+    let page = try sealed.read { try telemetryFrameRows($0, fromMs: from, toMs: t0 + 4 * minute, boardId: board, allBoards: false, limit: 10) }
+    try require(page.map { $0["captured_at_ms"] as Int64 } == (1...10).map { from - 250 + Int64($0) * 500 }, "limited read from \(from)")
+  }
+
+  // A Board id with no boards row seals under a minted Board Tombstone instead of being dropped.
+  let ghost = "board-without-row"
+  let orphan = try fresh()
+  try orphan.write { try insert($0, recording(ghost, minutes: 1)) }
+  try orphan.write { db in
+    try require(try sealTelemetryMinute(db, TelemetryMinuteKey(boardId: ghost, minuteStartMs: t0)) == 120, "unknown Board id sealed")
+  }
+  let ghostState = try orphan.read { db in
+    try Row.fetchOne(db, sql: """
+      SELECT b.deleted_at IS NOT NULL AS tombstoned, c.sample_count FROM boards b JOIN telemetry_chunks c ON c.board_key = b.key WHERE b.id = ?
+      """, arguments: [ghost])
+  }
+  try require(ghostState?["tombstoned"] == true && ghostState?["sample_count"] == 120, "unknown Board id minted as a tombstone")
+
   // A late sample of a sealed minute stays readable and merges on the next seal.
   let late = recording(board, from: t0 + 250, minutes: 1)[20]
   for pool in [reference, sealed] { try pool.write { try insert($0, [late]) } }

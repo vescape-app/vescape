@@ -220,15 +220,22 @@ interface VescapeDao {
    */
   @Transaction
   suspend fun insertRideTrackPoints(points: List<RideTrackPoint>) {
-    val keys = points.mapNotNullTo(HashSet()) { it.boardId }.associateWith { boardId ->
-      mintTombstonedBoard(boardId, UNKNOWN_TELEMETRY_BOARD_NAME, System.currentTimeMillis())
-      checkNotNull(getBoardKey(boardId))
-    }
+    val keys = points.mapNotNullTo(HashSet()) { it.boardId }.associateWith { resolveBoardKey(it) }
     insertRideTrackPointRows(points.map { it.toEntity(it.boardId?.let(keys::getValue)) })
   }
 
   @Query("SELECT key FROM boards WHERE id = :id")
   suspend fun getBoardKey(id: String): Long?
+
+  /**
+   * The key of Board [id], minting a tombstoned Board first when no row exists (the v55 orphan
+   * rule), so stored data never loses its owner. Run inside the caller's transaction.
+   * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `resolveBoardKey`
+   */
+  suspend fun resolveBoardKey(id: String): Long {
+    mintTombstonedBoard(id, UNKNOWN_TELEMETRY_BOARD_NAME, System.currentTimeMillis())
+    return checkNotNull(getBoardKey(id))
+  }
 
   @Query("""INSERT OR IGNORE INTO boards (id, name, ble_id, created_at, deleted_at)
     VALUES (:id, :name, NULL, :nowMs, :nowMs)""")
@@ -487,11 +494,17 @@ interface VescapeDao {
   suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity> =
     readTelemetryFramesImpl(fromMs, toMs, boardId, boardId == null, Long.MIN_VALUE, Long.MIN_VALUE, limit)
 
-  /** [getFrames] starting at the latest full state at or before [fromMs], so deltas reconstruct. */
+  /**
+   * [getFrames] preceded by every row from the latest full state before [fromMs], so deltas
+   * reconstruct. [limit] counts only rows inside `[fromMs, toMs]`; the anchor prefix is unbounded.
+   */
   @Transaction
   suspend fun getAnchoredFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity> {
-    val start = telemetryAnchorMs(fromMs + 1, boardId, boardId == null) ?: fromMs
-    return readTelemetryFramesImpl(start, toMs, boardId, boardId == null, Long.MIN_VALUE, Long.MIN_VALUE, limit)
+    val allBoards = boardId == null
+    val anchor = telemetryAnchorMs(fromMs + 1, boardId, allBoards)
+    val prefix = if (anchor == null || anchor >= fromMs) emptyList() else
+      readTelemetryFramesImpl(anchor, fromMs - 1, boardId, allBoards, Long.MIN_VALUE, Long.MIN_VALUE, Int.MAX_VALUE)
+    return prefix + readTelemetryFramesImpl(fromMs, toMs, boardId, allBoards, Long.MIN_VALUE, Long.MIN_VALUE, limit)
   }
 
   @Transaction

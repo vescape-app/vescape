@@ -49,17 +49,23 @@ internal let RIDE_TRACK_SELECT = """
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `BOARD_KEY_OF_BOARD_ID`
 internal let BOARD_KEY_OF_BOARD_ID = "(CASE WHEN ? IS NULL THEN NULL ELSE IFNULL((SELECT key FROM boards WHERE id = ?), -1) END)"
 
+/// The key of Board `boardId`, minting a tombstoned Board first when no row exists (the v55 orphan
+/// rule), so stored data never loses its owner. Runs inside the caller's transaction.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `resolveBoardKey`
+internal func resolveBoardKey(_ db: Database, _ boardId: String) throws -> Int64 {
+  let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+  try db.execute(
+    sql: "INSERT OR IGNORE INTO boards (id, name, ble_id, created_at, deleted_at) VALUES (?, ?, NULL, ?, ?)",
+    arguments: [boardId, UNKNOWN_TELEMETRY_BOARD_NAME, nowMs, nowMs]
+  )
+  return try Int64.fetchOne(db, sql: "SELECT key FROM boards WHERE id = ?", arguments: [boardId])!
+}
+
 /// Stores a fix against its Board's key. A UUID with no Board row gets a minted tombstoned Board
 /// first, the same rule v55 applied to orphans, so the key always resolves and the fix keeps its owner.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `insertRideTrackPoints`
 internal func insertRideTrackPoint(_ db: Database, _ point: RideTrackPoint) throws {
-  if let boardId = point.boardId {
-    let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-    try db.execute(
-      sql: "INSERT OR IGNORE INTO boards (id, name, ble_id, created_at, deleted_at) VALUES (?, ?, NULL, ?, ?)",
-      arguments: [boardId, UNKNOWN_TELEMETRY_BOARD_NAME, nowMs, nowMs]
-    )
-  }
+  if let boardId = point.boardId { _ = try resolveBoardKey(db, boardId) }
   try db.execute(
     sql: """
       INSERT INTO ride_track_points (

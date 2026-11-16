@@ -218,16 +218,12 @@ internal func trimTelemetryChunks(_ db: Database, fromMs: Int64, toMs: Int64, bo
 /// Seal one Board's minute: replay its buffer rows from the preceding full state into canonical
 /// samples, merge them with the minute's existing chunk, encode, verify the decode round-trips, write
 /// the chunk and delete exactly the sealed rows. Returns the rows sealed; 0 when there is nothing to
-/// seal or the Board has no key. Throws `TelemetrySealMismatch` before any write when verification
-/// fails, so the caller's transaction keeps every row.
+/// seal. A Board id with no row is minted as a Board Tombstone first, so the chunk keeps its owner.
+/// Throws `TelemetrySealMismatch` before any write when verification fails, so the caller's
+/// transaction keeps every row.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `sealTelemetryMinuteImpl`
 @discardableResult
 internal func sealTelemetryMinute(_ db: Database, _ key: TelemetryMinuteKey) throws -> Int {
-  var boardKey: Int64?
-  if let boardId = key.boardId {
-    guard let found = try Int64.fetchOne(db, sql: "SELECT key FROM boards WHERE id = ?", arguments: [boardId]) else { return 0 }
-    boardKey = found
-  }
   let minuteEnd = key.minuteStartMs + TELEMETRY_BUCKET_SIZE_MS - 1
   let start = try telemetryAnchorMs(db, beforeMs: key.minuteStartMs, boardId: key.boardId, allBoards: false) ?? key.minuteStartMs
   var values = [Int64?](repeating: nil, count: TELEMETRY_CHUNK_VALUE_COLUMNS)
@@ -251,6 +247,7 @@ internal func sealTelemetryMinute(_ db: Database, _ key: TelemetryMinuteKey) thr
     if item.sample == nil { sealed.append(item.ordinal) }
   }
   guard !sealed.isEmpty else { return 0 }
+  let boardKey = try key.boardId.map { try resolveBoardKey(db, $0) }
   let payload = try TelemetryChunkCodec.encode(samples)
   guard try TelemetryChunkCodec.decode(payload) == samples else { throw TelemetrySealMismatch(key: key) }
   if let existing = try Int64.fetchOne(db, sql: "SELECT id FROM telemetry_chunks WHERE board_key IS ? AND minute_start_ms = ?", arguments: [boardKey, key.minuteStartMs]) {
