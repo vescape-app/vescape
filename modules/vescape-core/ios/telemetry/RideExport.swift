@@ -287,7 +287,7 @@ internal enum RideExport {
       """, arguments: [fromMs, boardId])
     let start: Int64 = keyframe?["captured_at_ms"] ?? fromMs
     var afterMs = start, afterId = Int64.min
-    // Storage mask bit order; NULL with a set bit explicitly clears an optional reading.
+    // Storage mask bit order, replayed by the canonical `reconstructTelemetryValues` (ADR 0044).
     let columns = ["speed_centi_kmh", "battery_voltage_mv", "motor_current_ma", "battery_current_ma",
       "duty_permille", "pitch_centi_deg", "roll_centi_deg", "balance_pitch_centi_deg", "balance_current_ma",
       "erpm", "state", "switch_state", "adc1_milli", "adc2_milli", "odometer_cm", "temp_mosfet_deci_c", "temp_motor_deci_c"]
@@ -302,8 +302,7 @@ internal enum RideExport {
       guard let last = rows.last else { break }
       for row in rows {
         let timestamp: Int64 = row["captured_at_ms"], flags: Int = row["flags"], mask: Int = row["changed_mask_1"]
-        if flags & 1 != 0 { values = [Int64?](repeating: nil, count: columns.count) }
-        for i in columns.indices where flags & 1 != 0 || mask & (1 << i) != 0 { values[i] = row[columns[i]] }
+        reconstructTelemetryValues(&values, flags: flags, changedMask1: mask, row: columns.map { row[$0] as Int64? })
         if timestamp >= fromMs { try body(timestamp, values) }
       }
       afterMs = last["captured_at_ms"]; afterId = last["id"]

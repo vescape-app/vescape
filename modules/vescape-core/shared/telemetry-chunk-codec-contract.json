@@ -1,0 +1,678 @@
+{
+  "scenario": "telemetry-chunk-codec-v1",
+  "note": "Golden blobs are each platform's encoder output for the named chain; every platform must decode every blob to that chain's samples.",
+  "chains": [
+    {
+      "name": "delta-chain",
+      "frames": [
+        {
+          "capturedAtMs": 1700000000000,
+          "elapsedRealtimeMs": 5000,
+          "canId": 10,
+          "flags": 1,
+          "changedMask1": 131071,
+          "values": [
+            100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116
+          ]
+        },
+        {
+          "capturedAtMs": 1700000000500,
+          "elapsedRealtimeMs": 5500,
+          "canId": 10,
+          "flags": 0,
+          "changedMask1": 545,
+          "values": [
+            200,
+            null,
+            null,
+            null,
+            null,
+            205,
+            null,
+            null,
+            null,
+            209,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000001000,
+          "elapsedRealtimeMs": 6000,
+          "canId": 10,
+          "flags": 0,
+          "changedMask1": 114688,
+          "values": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000001000,
+          "elapsedRealtimeMs": 6001,
+          "canId": 10,
+          "flags": 0,
+          "changedMask1": 2,
+          "values": [
+            null,
+            301,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000000400,
+          "elapsedRealtimeMs": 6500,
+          "canId": null,
+          "flags": 0,
+          "changedMask1": 12,
+          "values": [
+            null,
+            null,
+            402,
+            403,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000000900,
+          "elapsedRealtimeMs": 7000,
+          "canId": null,
+          "flags": 0,
+          "changedMask1": 16,
+          "values": [
+            null,
+            null,
+            null,
+            null,
+            -7,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000001500,
+          "elapsedRealtimeMs": 7500,
+          "canId": 11,
+          "flags": 1,
+          "changedMask1": 131071,
+          "values": [
+            500,
+            501,
+            502,
+            503,
+            504,
+            505,
+            506,
+            507,
+            508,
+            509,
+            510,
+            511,
+            512,
+            513,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000002000,
+          "elapsedRealtimeMs": 8000,
+          "canId": 11,
+          "flags": 0,
+          "changedMask1": 65536,
+          "values": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            616
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "capturedAtMs": 1700000000000,
+          "elapsedRealtimeMs": 5000,
+          "canId": 10,
+          "flags": 1,
+          "values": [
+            100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116
+          ]
+        },
+        {
+          "capturedAtMs": 1700000000500,
+          "elapsedRealtimeMs": 5500,
+          "canId": 10,
+          "flags": 0,
+          "values": [
+            200, 101, 102, 103, 104, 205, 106, 107, 108, 209, 110, 111, 112, 113, 114, 115, 116
+          ]
+        },
+        {
+          "capturedAtMs": 1700000001000,
+          "elapsedRealtimeMs": 6000,
+          "canId": 10,
+          "flags": 0,
+          "values": [
+            200,
+            101,
+            102,
+            103,
+            104,
+            205,
+            106,
+            107,
+            108,
+            209,
+            110,
+            111,
+            112,
+            113,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000001000,
+          "elapsedRealtimeMs": 6001,
+          "canId": 10,
+          "flags": 0,
+          "values": [
+            200,
+            301,
+            102,
+            103,
+            104,
+            205,
+            106,
+            107,
+            108,
+            209,
+            110,
+            111,
+            112,
+            113,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000000400,
+          "elapsedRealtimeMs": 6500,
+          "canId": null,
+          "flags": 0,
+          "values": [
+            200,
+            301,
+            402,
+            403,
+            104,
+            205,
+            106,
+            107,
+            108,
+            209,
+            110,
+            111,
+            112,
+            113,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000000900,
+          "elapsedRealtimeMs": 7000,
+          "canId": null,
+          "flags": 0,
+          "values": [
+            200,
+            301,
+            402,
+            403,
+            -7,
+            205,
+            106,
+            107,
+            108,
+            209,
+            110,
+            111,
+            112,
+            113,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000001500,
+          "elapsedRealtimeMs": 7500,
+          "canId": 11,
+          "flags": 1,
+          "values": [
+            500,
+            501,
+            502,
+            503,
+            504,
+            505,
+            506,
+            507,
+            508,
+            509,
+            510,
+            511,
+            512,
+            513,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000002000,
+          "elapsedRealtimeMs": 8000,
+          "canId": 11,
+          "flags": 0,
+          "values": [
+            500,
+            501,
+            502,
+            503,
+            504,
+            505,
+            506,
+            507,
+            508,
+            509,
+            510,
+            511,
+            512,
+            513,
+            null,
+            null,
+            616
+          ]
+        }
+      ]
+    },
+    {
+      "name": "null-everywhere",
+      "frames": [
+        {
+          "capturedAtMs": 1700000000000,
+          "elapsedRealtimeMs": 0,
+          "canId": null,
+          "flags": 0,
+          "changedMask1": 0,
+          "values": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000000500,
+          "elapsedRealtimeMs": 500,
+          "canId": null,
+          "flags": 0,
+          "changedMask1": 0,
+          "values": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000001000,
+          "elapsedRealtimeMs": 1000,
+          "canId": null,
+          "flags": 0,
+          "changedMask1": 0,
+          "values": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "capturedAtMs": 1700000000000,
+          "elapsedRealtimeMs": 0,
+          "canId": null,
+          "flags": 0,
+          "values": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000000500,
+          "elapsedRealtimeMs": 500,
+          "canId": null,
+          "flags": 0,
+          "values": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        {
+          "capturedAtMs": 1700000001000,
+          "elapsedRealtimeMs": 1000,
+          "canId": null,
+          "flags": 0,
+          "values": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        }
+      ]
+    },
+    {
+      "name": "width-extremes",
+      "frames": [
+        {
+          "capturedAtMs": -5,
+          "elapsedRealtimeMs": 4611686018427387904,
+          "canId": 2147483647,
+          "flags": 1,
+          "changedMask1": 131071,
+          "values": [
+            -2147483648, 2147483647, 0, -1, 1, -2147483648, 2147483647, 0, 0, 0, 0, 0, 0, 0,
+            9223372036854775807, -2147483648, 2147483647
+          ]
+        },
+        {
+          "capturedAtMs": 4611686018427387904,
+          "elapsedRealtimeMs": -4611686018427387904,
+          "canId": -2147483648,
+          "flags": 0,
+          "changedMask1": 16385,
+          "values": [
+            2147483647,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            -9223372036854775808,
+            null,
+            null
+          ]
+        }
+      ],
+      "samples": [
+        {
+          "capturedAtMs": -5,
+          "elapsedRealtimeMs": 4611686018427387904,
+          "canId": 2147483647,
+          "flags": 1,
+          "values": [
+            -2147483648, 2147483647, 0, -1, 1, -2147483648, 2147483647, 0, 0, 0, 0, 0, 0, 0,
+            9223372036854775807, -2147483648, 2147483647
+          ]
+        },
+        {
+          "capturedAtMs": 4611686018427387904,
+          "elapsedRealtimeMs": -4611686018427387904,
+          "canId": -2147483648,
+          "flags": 0,
+          "values": [
+            2147483647, 2147483647, 0, -1, 1, -2147483648, 2147483647, 0, 0, 0, 0, 0, 0, 0,
+            -9223372036854775808, -2147483648, 2147483647
+          ]
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "frames": [],
+      "samples": []
+    }
+  ],
+  "goldenBlobs": [
+    {
+      "chain": "delta-chain",
+      "base64": "AQiAoKv++WJNi+EJwkAMhV/upKH/O5dLuUBH6AY6RpHSFhEppYqIlExhvEYwl/DIl5cXCAvjWAqfkur9toaVxToQUgUaqm1AW2rNmXbQc6I6mrSjn5mu2mc8WvpOH4Zest+rEZoCenOcHOcsvLj9cHw6vv4Y34S4Eg5CEP4C",
+      "producer": "android"
+    },
+    {
+      "chain": "null-everywhere",
+      "base64": "AQOAoKv++WJjeMH+gp0BTGADAA==",
+      "producer": "android"
+    },
+    {
+      "chain": "width-extremes",
+      "base64": "AQIJY+hqgALGBjjrPwwwMjEy/wPS/H+BhDwzSIj/H5gJFmVgZmBgZmRgZmKASDEgCWOifwhTUZUDAA==",
+      "producer": "android"
+    },
+    {
+      "chain": "empty",
+      "base64": "AQAAAwA=",
+      "producer": "android"
+    },
+    {
+      "base64": "AQiAoKv++WJNi+EJwkAMhV/upKH/O5dLuUBH6AY6RpHSFhEppYqIlExhvEYwl/DIl5cXCAvjWAqfkur9toaVxToQUgUaqm1AW2rNmXbQc6I6mrSjn5mu2mc8WvpOH4Zest+rEZoCenOcHOcsvLj9cHw6vv4Y34S4Eg5CEP4C",
+      "chain": "delta-chain",
+      "producer": "ios"
+    },
+    {
+      "base64": "AQOAoKv++WJjeMH+gp0BTGADAA==",
+      "chain": "null-everywhere",
+      "producer": "ios"
+    },
+    {
+      "base64": "AQIJY+hqgALGBjjrPwwwMjEy/wPS/H+BhDwzSIj/H5gJFmVgZmBgZmRgZmKASDEgCWOifwhTUZUDAA==",
+      "chain": "width-extremes",
+      "producer": "ios"
+    },
+    {
+      "base64": "AQAAAwA=",
+      "chain": "empty",
+      "producer": "ios"
+    }
+  ],
+  "rejectedBlobs": [
+    {
+      "name": "empty-blob",
+      "base64": ""
+    },
+    {
+      "name": "unknown-version",
+      "base64": "AgAAAwA="
+    },
+    {
+      "name": "count-over-limit",
+      "base64": "AYGABAADAA=="
+    },
+    {
+      "name": "oversized-body",
+      "base64": "AQEA7cEBDQAAAMKg909tDwcUAAAA8G4="
+    },
+    {
+      "name": "trailing-body-bytes",
+      "base64": "AQAAYwAA"
+    },
+    {
+      "name": "corrupt-deflate",
+      "base64": "AQAA////"
+    },
+    {
+      "name": "truncated-body",
+      "base64": "AQIAY2AAAA=="
+    },
+    {
+      "name": "truncated-android-golden",
+      "base64": "AQiAoKv++WJNi+EJwkAMhV/upKH/O5dLuUBH6AY6RpHSFhEppYqIlExhvEYwl/DIl5cXCAvjWAqfkur9toaV"
+    }
+  ]
+}

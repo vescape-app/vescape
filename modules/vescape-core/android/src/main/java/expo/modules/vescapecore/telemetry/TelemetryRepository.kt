@@ -1275,22 +1275,26 @@ internal data class FullTelemetryState(
     )
 
     fun applyFrame(previous: FullTelemetryState?, frame: TelemetryFrameEntity): FullTelemetryState? {
-      val base = previous
-      fun <T> pick(value: T?, fallback: T?): T? = value ?: fallback
-      val speed = pick(frame.speedCentiKmh, base?.speedCentiKmh) ?: return null
-      val voltage = pick(frame.batteryVoltageMv, base?.batteryVoltageMv) ?: return null
-      val motorCurrent = pick(frame.motorCurrentMa, base?.motorCurrentMa) ?: return null
-      val batteryCurrent = pick(frame.batteryCurrentMa, base?.batteryCurrentMa) ?: return null
-      val duty = pick(frame.dutyPermille, base?.dutyPermille) ?: return null
-      val pitch = pick(frame.pitchCentiDeg, base?.pitchCentiDeg) ?: return null
-      val roll = pick(frame.rollCentiDeg, base?.rollCentiDeg) ?: return null
-      val balancePitch = pick(frame.balancePitchCentiDeg, base?.balancePitchCentiDeg) ?: return null
-      val balanceCurrent = pick(frame.balanceCurrentMa, base?.balanceCurrentMa) ?: return null
-      val erpm = pick(frame.erpm, base?.erpm) ?: return null
-      val state = pick(frame.state, base?.state) ?: return null
-      val switchState = pick(frame.switchState, base?.switchState) ?: return null
-      val adc1 = pick(frame.adc1Milli, base?.adc1Milli) ?: return null
-      val adc2 = pick(frame.adc2Milli, base?.adc2Milli) ?: return null
+      // Canonical reconstruction (ADR 0044, `reconstructTelemetryValues`): masks are authoritative, so
+      // a set bit with NULL clears an optional reading instead of keeping the previous one.
+      val keyframe = frame.flags and TELEMETRY_FLAG_KEYFRAME != 0
+      val base = if (keyframe) null else previous
+      fun <T> pick(value: T?, fallback: T?, mask: Int): T? =
+        if (keyframe || frame.changedMask1 and mask != 0) value else fallback
+      val speed = pick(frame.speedCentiKmh, base?.speedCentiKmh, TELEMETRY_MASK_SPEED) ?: return null
+      val voltage = pick(frame.batteryVoltageMv, base?.batteryVoltageMv, TELEMETRY_MASK_BATTERY_VOLTAGE) ?: return null
+      val motorCurrent = pick(frame.motorCurrentMa, base?.motorCurrentMa, TELEMETRY_MASK_MOTOR_CURRENT) ?: return null
+      val batteryCurrent = pick(frame.batteryCurrentMa, base?.batteryCurrentMa, TELEMETRY_MASK_BATTERY_CURRENT) ?: return null
+      val duty = pick(frame.dutyPermille, base?.dutyPermille, TELEMETRY_MASK_DUTY) ?: return null
+      val pitch = pick(frame.pitchCentiDeg, base?.pitchCentiDeg, TELEMETRY_MASK_PITCH) ?: return null
+      val roll = pick(frame.rollCentiDeg, base?.rollCentiDeg, TELEMETRY_MASK_ROLL) ?: return null
+      val balancePitch = pick(frame.balancePitchCentiDeg, base?.balancePitchCentiDeg, TELEMETRY_MASK_BALANCE_PITCH) ?: return null
+      val balanceCurrent = pick(frame.balanceCurrentMa, base?.balanceCurrentMa, TELEMETRY_MASK_BALANCE_CURRENT) ?: return null
+      val erpm = pick(frame.erpm, base?.erpm, TELEMETRY_MASK_ERPM) ?: return null
+      val state = pick(frame.state, base?.state, TELEMETRY_MASK_STATE) ?: return null
+      val switchState = pick(frame.switchState, base?.switchState, TELEMETRY_MASK_SWITCH_STATE) ?: return null
+      val adc1 = pick(frame.adc1Milli, base?.adc1Milli, TELEMETRY_MASK_ADC1) ?: return null
+      val adc2 = pick(frame.adc2Milli, base?.adc2Milli, TELEMETRY_MASK_ADC2) ?: return null
       return FullTelemetryState(
         capturedAtMs = frame.capturedAtMs,
         elapsedRealtimeMs = frame.elapsedRealtimeMs,
@@ -1310,9 +1314,9 @@ internal data class FullTelemetryState(
         switchState = switchState,
         adc1Milli = adc1,
         adc2Milli = adc2,
-        odometerCm = pick(frame.odometerCm, base?.odometerCm),
-        tempMosfetDeciC = pick(frame.tempMosfetDeciC, base?.tempMosfetDeciC),
-        tempMotorDeciC = pick(frame.tempMotorDeciC, base?.tempMotorDeciC),
+        odometerCm = pick(frame.odometerCm, base?.odometerCm, TELEMETRY_MASK_ODOMETER),
+        tempMosfetDeciC = pick(frame.tempMosfetDeciC, base?.tempMosfetDeciC, TELEMETRY_MASK_TEMP_MOSFET),
+        tempMotorDeciC = pick(frame.tempMotorDeciC, base?.tempMotorDeciC, TELEMETRY_MASK_TEMP_MOTOR),
         // Position is not on the frame any more, and no read path puts it back: the route is the
         // Ride Track, read on its own clock (ADR 0038).
         location = null,

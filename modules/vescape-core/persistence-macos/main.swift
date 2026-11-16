@@ -18,6 +18,7 @@ final class TelemetryRepository {
   func endDatabaseSwap() {}
 }
 
+let TELEMETRY_FLAG_KEYFRAME = 1
 func telemetryInt(_ raw: Any?) -> Int? { (raw as? NSNumber)?.intValue }
 func telemetryLong(_ raw: Any?) -> Int64? { (raw as? NSNumber)?.int64Value }
 
@@ -1522,6 +1523,7 @@ try runRecordingFlushTimerContract()
 try runWeatherObservationContract()
 try runMaintenanceJobsContract()
 try runRideWeatherBackfillContract()
+try runTelemetryChunkCodecContract()
 
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 
