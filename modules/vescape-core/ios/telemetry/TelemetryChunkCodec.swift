@@ -9,8 +9,8 @@ import Foundation
 internal struct TelemetrySample: Equatable {
   var capturedAtMs: Int64
   var elapsedRealtimeMs: Int64
-  var canId: Int?
-  var flags: Int
+  var canId: Int32?
+  var flags: Int32
   var values: [Int64?]
 }
 
@@ -173,9 +173,9 @@ internal enum TelemetryChunkCodec {
     return values
   }
 
-  private static func narrow(_ value: Int64) throws -> Int {
+  private static func narrow(_ value: Int64) throws -> Int32 {
     guard let narrowed = Int32(exactly: value) else { throw TelemetryChunkFormatError(description: "value overflows 32 bits") }
-    return Int(narrowed)
+    return narrowed
   }
 
   private static func zigzag(_ v: Int64) -> UInt64 { UInt64(bitPattern: (v << 1) ^ (v >> 63)) }

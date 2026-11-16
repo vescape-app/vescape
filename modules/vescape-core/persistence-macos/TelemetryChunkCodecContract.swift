@@ -7,7 +7,7 @@ func runTelemetryChunkCodecContract() throws {
   func sample(_ s: [String: Any], values: [Int64?]) -> TelemetrySample {
     TelemetrySample(capturedAtMs: (s["capturedAtMs"] as! NSNumber).int64Value,
       elapsedRealtimeMs: (s["elapsedRealtimeMs"] as! NSNumber).int64Value,
-      canId: (s["canId"] as? NSNumber)?.intValue, flags: (s["flags"] as! NSNumber).intValue, values: values)
+      canId: (s["canId"] as? NSNumber)?.int32Value, flags: (s["flags"] as! NSNumber).int32Value, values: values)
   }
   var chains = [String: [TelemetrySample]]()
   var produced = [[String: Any]]()
