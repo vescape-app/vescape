@@ -233,19 +233,20 @@ internal object RideExport {
     append('"')
   }
 
-  /** Every stored frame in range with its reconstructed values, replaying the mask chain from the
-   * preceding keyframe with the canonical [reconstructTelemetryValues] (ADR 0044).
+  /** Every stored sample in range, Telemetry Chunks and write buffer alike, with its reconstructed
+   * values, replaying the mask chain from the preceding full state with the canonical
+   * [reconstructTelemetryValues] (ADR 0044). Pages on `(captured_at_ms, ordinal)` (ADR 0045).
+   * @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
    */
   private suspend inline fun forEachFrame(dao: VescapeDao, fromMs: Long, toMs: Long, boardId: String?,
     body: (timestamp: Long, values: Array<Long?>) -> Unit) {
-    val keyframe = dao.getRideExportKeyframe(fromMs, boardId)
-    val start = keyframe?.capturedAtMs ?: fromMs
+    val start = dao.telemetryAnchorMs(fromMs, boardId, allBoards = false) ?: fromMs
     var afterMs = start
     // Include every row at the start timestamp, including keyframes sharing that timestamp.
     var afterId = Long.MIN_VALUE
     val values = arrayOfNulls<Long>(TELEMETRY_CHUNK_VALUE_COLUMNS)
     while (true) {
-      val rows = dao.getRideExportTelemetryPage(start, toMs, boardId, afterMs, afterId, BATCH_SIZE)
+      val rows = dao.readTelemetryFramesImpl(start, toMs, boardId, false, afterMs, afterId, BATCH_SIZE)
       if (rows.isEmpty()) break
       for (f in rows) {
         val delta = arrayOf<Long?>(f.speedCentiKmh?.toLong(), f.batteryVoltageMv?.toLong(), f.motorCurrentMa?.toLong(),

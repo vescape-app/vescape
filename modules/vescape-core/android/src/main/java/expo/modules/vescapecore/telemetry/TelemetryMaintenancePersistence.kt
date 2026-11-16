@@ -2,6 +2,14 @@ package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
+import expo.modules.vescapecore.database.TELEMETRY_MASK_BATTERY_CURRENT
+import expo.modules.vescapecore.database.TELEMETRY_MASK_BATTERY_VOLTAGE
+import expo.modules.vescapecore.database.TELEMETRY_MASK_DUTY
+import expo.modules.vescapecore.database.TELEMETRY_MASK_MOTOR_CURRENT
+import expo.modules.vescapecore.database.TELEMETRY_MASK_ODOMETER
+import expo.modules.vescapecore.database.TELEMETRY_MASK_SPEED
+import expo.modules.vescapecore.database.TELEMETRY_MASK_TEMP_MOSFET
+import expo.modules.vescapecore.database.TELEMETRY_MASK_TEMP_MOTOR
 import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.telemetry.sanitizers.FreeSpinCarry
@@ -30,16 +38,21 @@ internal data class RebuildState(
   fun point() = BucketTelemetryPoint(at, boardId,
     speed, voltage, motorCurrent, batteryCurrent, duty, odometer, tempMosfet, tempMotor)
   companion object {
+    /** Canonical replay (ADR 0044): a set mask bit replaces the column, NULL included. */
     fun apply(previous: RebuildState?, frame: TelemetryFrameEntity): RebuildState? {
-      val old = previous?.takeIf { frame.flags and TELEMETRY_FLAG_KEYFRAME == 0 && it.boardId == frame.boardId }
+      val keyframe = frame.flags and TELEMETRY_FLAG_KEYFRAME != 0
+      val old = previous?.takeIf { !keyframe && it.boardId == frame.boardId }
+      fun <T> pick(value: T?, fallback: T?, mask: Int): T? =
+        if (keyframe || frame.changedMask1 and mask != 0) value else fallback
       return RebuildState(frame.capturedAtMs, frame.boardId,
-        frame.speedCentiKmh ?: old?.speed ?: return null,
-        frame.batteryVoltageMv ?: old?.voltage ?: return null,
-        frame.motorCurrentMa ?: old?.motorCurrent ?: return null,
-        frame.batteryCurrentMa ?: old?.batteryCurrent ?: return null,
-        frame.dutyPermille ?: old?.duty ?: return null,
-        frame.odometerCm ?: old?.odometer, frame.tempMosfetDeciC ?: old?.tempMosfet,
-        frame.tempMotorDeciC ?: old?.tempMotor)
+        pick(frame.speedCentiKmh, old?.speed, TELEMETRY_MASK_SPEED) ?: return null,
+        pick(frame.batteryVoltageMv, old?.voltage, TELEMETRY_MASK_BATTERY_VOLTAGE) ?: return null,
+        pick(frame.motorCurrentMa, old?.motorCurrent, TELEMETRY_MASK_MOTOR_CURRENT) ?: return null,
+        pick(frame.batteryCurrentMa, old?.batteryCurrent, TELEMETRY_MASK_BATTERY_CURRENT) ?: return null,
+        pick(frame.dutyPermille, old?.duty, TELEMETRY_MASK_DUTY) ?: return null,
+        pick(frame.odometerCm, old?.odometer, TELEMETRY_MASK_ODOMETER),
+        pick(frame.tempMosfetDeciC, old?.tempMosfet, TELEMETRY_MASK_TEMP_MOSFET),
+        pick(frame.tempMotorDeciC, old?.tempMotor, TELEMETRY_MASK_TEMP_MOTOR))
     }
   }
 }

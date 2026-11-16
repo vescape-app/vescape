@@ -192,6 +192,9 @@ class TelemetryRepository private constructor(context: Context) {
   private var lastFlushedFreeSpin = FreeSpinCarry()
 
   private var flushScheduled = false
+  // Minutes this process committed frames into and has not sealed yet, each with the fence ticket
+  // of that commit: a Restore or Clear all since then drops the seal (ADR 0045).
+  private val unsealedMinutes = mutableMapOf<TelemetryMinuteKey, Long>()
   private var lastState: FullTelemetryState? = null
   private var lastFrameAtMs: Long? = null
   private var lastHistoryAtMs: Long? = null
@@ -415,6 +418,7 @@ class TelemetryRepository private constructor(context: Context) {
       pendingTrack.clear()
       lastFlushedTrackPoint = null
       lastFlushedFreeSpin = FreeSpinCarry()
+      unsealedMinutes.clear()
       flushScheduled = false
       lastState = null
       lastFrameAtMs = null
@@ -662,9 +666,7 @@ class TelemetryRepository private constructor(context: Context) {
     boardId: String?,
     limit: Int,
   ): List<HistoryTelemetryState> {
-    val keyframe = dao.getLatestKeyframeBefore(fromMs, boardId)
-    val start = keyframe?.capturedAtMs ?: fromMs
-    val frames = dao.getFrames(start, toMs, boardId, if (limit == Int.MAX_VALUE) limit else limit + 1)
+    val frames = dao.getAnchoredFrames(fromMs, toMs, boardId, if (limit == Int.MAX_VALUE) limit else limit + 1)
     var state: FullTelemetryState? = null
     val samples = mutableListOf<HistoryTelemetryState>()
     for (frame in frames) {
@@ -880,6 +882,7 @@ class TelemetryRepository private constructor(context: Context) {
     }
     DatabaseReplacementFence.process.fence { maintenancePersistence.clear(protected) }
     synchronized(lock) {
+      unsealedMinutes.clear()
       pending.clear()
       pendingMarkers.clear()
       pendingTrack.clear()
@@ -1014,6 +1017,7 @@ class TelemetryRepository private constructor(context: Context) {
           excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
         )
       }
+      val ticket = DatabaseReplacementFence.process.ticket()
       val committed = recordingCommitBoundary.commit(
         frames = filteredFrames.map { it.frame },
         // Minute buckets aggregate the Ride Track that was admitted, not the fix stamped onto a
@@ -1032,8 +1036,60 @@ class TelemetryRepository private constructor(context: Context) {
       if (committed) synchronized(lock) {
         lastFlushedTrackPoint = filteredTrack.lastOrNull { it.isPrecise() } ?: previousTrackPoint
         lastFlushedFreeSpin = sanitization.freeSpinCarry
+        for (pending in filteredFrames) {
+          unsealedMinutes[TelemetryMinuteKey(pending.frame.boardId, telemetryMinuteStart(pending.frame.capturedAtMs))] = ticket
+        }
+      }
+      if (committed) sealRecordedMinutes(all = false)
+    }
+  }
+
+  /** Stop Recording: flush, then seal every recorded minute, the open one included (ADR 0045). */
+  fun sealAfterStop() {
+    scope.launch {
+      flushNow()
+      flushMutex.withLock { sealRecordedMinutes(all = true) }
+    }
+  }
+
+  /**
+   * Seal the minutes this process recorded once closed: wall clock past their end plus
+   * [TELEMETRY_SEAL_GRACE_MS], and no pending frame still targeting them. [all] seals every one; a
+   * later sample of a sealed minute stays in the buffer until the next seal merges it. A seal that
+   * fails verification keeps its rows and records a Diagnostic Event.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `sealRecordedMinutes`
+   */
+  private suspend fun sealRecordedMinutes(all: Boolean) {
+    val now = System.currentTimeMillis()
+    val due = synchronized(lock) {
+      val oldestPending = pending.firstOrNull()?.frame?.capturedAtMs
+      unsealedMinutes.filterKeys { key ->
+        val end = key.minuteStartMs + TELEMETRY_BUCKET_SIZE_MS
+        all || (end + TELEMETRY_SEAL_GRACE_MS <= now && (oldestPending == null || end <= oldestPending))
       }
     }
+    for ((key, ticket) in due) {
+      try {
+        DatabaseReplacementFence.process.write(ticket) { dao.sealTelemetryMinute(key.boardId, key.minuteStartMs) }
+      } catch (error: Exception) {
+        Log.w(TAG, "Telemetry seal failed: ${error.message}")
+        recordSealFailure(key, error)
+      }
+      synchronized(lock) { if (unsealedMinutes[key] == ticket) unsealedMinutes.remove(key) }
+    }
+  }
+
+  /**
+   * A seal that kept its rows: one Diagnostic Event, so the failure is visible in diagnostics.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `recordSealFailure`
+   */
+  internal fun recordSealFailure(key: TelemetryMinuteKey, error: Exception) {
+    recordDiagnosticEvent("telemetry_seal_failed", mapOf(
+      "operation" to "telemetry_seal",
+      "board_id" to key.boardId,
+      "minute_start_ms" to key.minuteStartMs,
+      "message" to (error.message ?: error.javaClass.simpleName),
+    ))
   }
 
   companion object {

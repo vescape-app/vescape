@@ -96,6 +96,56 @@ data class TelemetryFrameEntity(
 )
 
 /**
+ * One **Telemetry Chunk**: every sealed Telemetry Sample of one Board for one wall-clock minute,
+ * encoded by `TelemetryChunkCodec` (ADR 0044, ADR 0045). A sealed sample lives only here; an unsealed
+ * one only in `telemetry_frames`. A chunk is a replaceable minute record: a late sample, a range
+ * delete or a trim re-encodes it. [boardKey] is `boards.key`, null for samples that match no saved
+ * Board; one chunk per Board key and minute, the unowned minute kept unique by the sealer.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift
+ */
+@Entity(
+  tableName = "telemetry_chunks",
+  indices = [
+    Index(value = ["board_key", "minute_start_ms"], unique = true),
+    Index(value = ["minute_start_ms"]),
+  ],
+  foreignKeys = [ForeignKey(entity = BoardEntity::class, parentColumns = ["key"], childColumns = ["board_key"])],
+)
+data class TelemetryChunkEntity(
+  @PrimaryKey(autoGenerate = true)
+  val id: Long = 0,
+  @ColumnInfo(name = "board_key")
+  val boardKey: Long?,
+  @ColumnInfo(name = "minute_start_ms")
+  val minuteStartMs: Long,
+  @ColumnInfo(name = "codec_version")
+  val codecVersion: Int,
+  @ColumnInfo(name = "sample_count")
+  val sampleCount: Int,
+  @ColumnInfo(name = "first_at_ms")
+  val firstAtMs: Long,
+  @ColumnInfo(name = "last_at_ms")
+  val lastAtMs: Long,
+  val payload: ByteArray,
+)
+
+/** A [TelemetryChunkEntity] without its payload, the Board key joined back to `boards.id`. */
+data class TelemetryChunkHeader(
+  val id: Long,
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
+  @ColumnInfo(name = "minute_start_ms")
+  val minuteStartMs: Long,
+  @ColumnInfo(name = "sample_count")
+  val sampleCount: Int,
+  @ColumnInfo(name = "first_at_ms")
+  val firstAtMs: Long,
+  @ColumnInfo(name = "last_at_ms")
+  val lastAtMs: Long,
+)
+
+/**
  * One point of a **Ride Track**: a single GPS Fix recorded while recording, on the GPS
  * clock (ADR 0038).
  *

@@ -34,6 +34,7 @@
 - [Navigation recalculates on path deviation](./adr/0042-navigation-recalculates-on-path-deviation.md) — native reroutes once the rider is farther from the path than the Reroute Distance; distance from the path is the only trigger
 - [Free spin from Board telemetry](./adr/0043-free-spin-is-detected-from-board-telemetry.md) — a fast speed climb on little motor current starts a free spin; no GPS, no per-Board state
 - [Telemetry Chunk codec](./adr/0044-telemetry-chunks-use-a-columnar-deflate-codec.md) — one Board-minute of reconstructed samples as columnar zigzag-varint deltas in raw deflate; masks are authoritative; decode equivalence across platforms
+- [Telemetry Chunks replace sealed frames](./adr/0045-telemetry-chunks-replace-sealed-frames.md) — `telemetry_chunks` holds sealed minutes and `telemetry_frames` is the write buffer; readers merge both from one snapshot; buckets stay untouched
 - [tune.md](./tune.md) — Refloat tune screen behavior, basic slider formulas, field groups
 - [tune-preview-pl.md](./tune-preview-pl.md) — Tune vs Tune Preview, explained (Polish)
 - [remote-tilt.md](./remote-tilt.md) — Remote Tilt gesture ownership, native command timing, and latency checks

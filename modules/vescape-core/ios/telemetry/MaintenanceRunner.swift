@@ -106,6 +106,7 @@ final class MaintenanceRunner {
       self.queue.asyncAfter(deadline: .now() + maintenanceLaunchDelay) {
         self.workQueue.async {
           self.pruneDiagnosticEventsOnLaunch()
+          self.sealLeftoverTelemetryOnLaunch()
           self.trigger("launch")
         }
       }
@@ -127,6 +128,25 @@ final class MaintenanceRunner {
       // Restore or Clear all replaced the database; the next start prunes the new one.
     } catch {
       Self.log.error("Diagnostic Event prune failed: \(error.localizedDescription, privacy: .public)")
+#if canImport(Sentry)
+      SentrySDK.capture(error: error)
+#endif
+    }
+  }
+
+  /// Seal the closed minutes a previous process recorded but never sealed (ADR 0045).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `sealLeftoverTelemetryOnLaunch`
+  private func sealLeftoverTelemetryOnLaunch() {
+    guard RecordingStorageFailure.value() == nil else { return }
+    let fence = DatabaseReplacementFence.process
+    let scope = MaintenanceJobScope(writer: { try VescapeDatabase.requirePool() }, fence: fence, ticket: fence.ticket())
+    do {
+      let sealed = try sealLeftoverTelemetry(scope) { key, error in TelemetryRepository.shared.recordSealFailure(key, error) }
+      if sealed > 0 { breadcrumb("telemetry_seal", ["sealed": sealed]) }
+    } catch is MaintenanceRunFenced {
+      // Restore or Clear all replaced the database; the next start seals what is left.
+    } catch {
+      Self.log.error("Telemetry seal on launch failed: \(error.localizedDescription, privacy: .public)")
 #if canImport(Sentry)
       SentrySDK.capture(error: error)
 #endif

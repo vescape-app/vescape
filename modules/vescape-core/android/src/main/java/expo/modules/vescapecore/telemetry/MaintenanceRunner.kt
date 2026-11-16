@@ -91,7 +91,34 @@ internal object MaintenanceRunner {
     watchNetwork()
     delay(LAUNCH_DELAY_MS)
     pruneDiagnosticEventsOnLaunch()
+    sealLeftoverTelemetryOnLaunch()
     trigger("launch")
+  }
+
+  /**
+   * Seal the closed minutes a previous process recorded but never sealed (ADR 0045).
+   * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `sealLeftoverTelemetryOnLaunch`
+   */
+  private suspend fun sealLeftoverTelemetryOnLaunch() {
+    if (RecordingStorageFailure.value() != null) return
+    val fence = DatabaseReplacementFence.process
+    val scope = MaintenanceJobScope(
+      dao = { VescapeDatabase.get(appContext).vescapeDao() },
+      fence = fence,
+      ticket = fence.ticket(),
+    )
+    try {
+      val repository = TelemetryRepository.get(appContext)
+      val sealed = sealLeftoverTelemetry(scope) { key, error -> repository.recordSealFailure(key, error) }
+      if (sealed > 0) breadcrumb("telemetry_seal", mapOf("sealed" to sealed))
+    } catch (fenced: MaintenanceRunFenced) {
+      // Restore or Clear all replaced the database; the next start seals what is left.
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (error: Throwable) {
+      Log.e(TAG, "Telemetry seal on launch failed", error)
+      Sentry.captureException(error)
+    }
   }
 
   /**

@@ -983,9 +983,22 @@ enum VescapeDatabase {
       guard try !db.columns(in: "boards").contains(where: { $0.name == "key" }) else { return }
       for sql in boardKeyV55Sql { try db.execute(sql: sql) }
     }
+    // Telemetry Chunks (#687, ADR 0045): one codec blob per Board key and minute. Only the table is
+    // created; existing frames stay in the write buffer, never converted inside a migration.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_55_56`
+    migrator.registerMigration("v56_telemetry_chunks") { db in
+      for sql in telemetryChunksV56Sql { try db.execute(sql: sql) }
+    }
 
     return migrator
   }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `TELEMETRY_CHUNKS_V56_SQL`
+  private static let telemetryChunksV56Sql = [
+    "CREATE TABLE IF NOT EXISTS telemetry_chunks (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, board_key INTEGER, minute_start_ms INTEGER NOT NULL, codec_version INTEGER NOT NULL, sample_count INTEGER NOT NULL, first_at_ms INTEGER NOT NULL, last_at_ms INTEGER NOT NULL, payload BLOB NOT NULL, FOREIGN KEY(board_key) REFERENCES boards(key) ON UPDATE NO ACTION ON DELETE NO ACTION)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS index_telemetry_chunks_board_key_minute_start_ms ON telemetry_chunks(board_key, minute_start_ms)",
+    "CREATE INDEX IF NOT EXISTS index_telemetry_chunks_minute_start_ms ON telemetry_chunks(minute_start_ms)",
+  ]
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `BOARD_KEY_V55_SQL`
   private static let boardKeyV55Sql = [

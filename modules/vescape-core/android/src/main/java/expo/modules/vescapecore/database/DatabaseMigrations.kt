@@ -1800,6 +1800,21 @@ internal object DatabaseMigrations {
       if (!hasColumn(db, "boards", "key")) BOARD_KEY_V55_SQL.forEach(db::execSQL)
     }
 
+    /**
+     * Telemetry Chunks (#687, ADR 0045): one codec blob per Board key and minute. Only the table is
+     * created; existing `telemetry_frames` stay in the write buffer and are drained in the
+     * background, never converted inside a migration.
+     * @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `v56_telemetry_chunks`
+     */
+    internal val MIGRATION_55_56 = migration(55, 56) { db -> TELEMETRY_CHUNKS_V56_SQL.forEach(db::execSQL) }
+
+    /** @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `telemetryChunksV56Sql` */
+    private val TELEMETRY_CHUNKS_V56_SQL = listOf(
+      "CREATE TABLE IF NOT EXISTS telemetry_chunks (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, board_key INTEGER, minute_start_ms INTEGER NOT NULL, codec_version INTEGER NOT NULL, sample_count INTEGER NOT NULL, first_at_ms INTEGER NOT NULL, last_at_ms INTEGER NOT NULL, payload BLOB NOT NULL, FOREIGN KEY(board_key) REFERENCES boards(key) ON UPDATE NO ACTION ON DELETE NO ACTION)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS index_telemetry_chunks_board_key_minute_start_ms ON telemetry_chunks(board_key, minute_start_ms)",
+      "CREATE INDEX IF NOT EXISTS index_telemetry_chunks_minute_start_ms ON telemetry_chunks(minute_start_ms)",
+    )
+
     /** @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `boardKeyV55Sql` */
     private val BOARD_KEY_V55_SQL = listOf(
       "DROP INDEX IF EXISTS index_boards_created_at",
@@ -2043,6 +2058,7 @@ internal object DatabaseMigrations {
       MIGRATION_52_53,
       MIGRATION_53_54,
       MIGRATION_54_55,
+      MIGRATION_55_56,
     )
 
 }

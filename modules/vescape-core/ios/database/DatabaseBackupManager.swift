@@ -7,7 +7,7 @@ import GRDB
 /// `VescapeDatabase.migrator`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeRoomDatabase.kt `VESCAPE_DATABASE_VERSION`
-internal let VESCAPE_DATABASE_VERSION = 55
+internal let VESCAPE_DATABASE_VERSION = 56
 
 /// Released schema generations that have a complete production path to the current schema.
 /// 37–39 never shipped as standalone migrations: Android deliberately jumps 36→40.
@@ -44,6 +44,7 @@ internal let sharedDatabaseTables: Set<String> = [
   "motor_config_values",
   "privacy_zones",
   "ride_track_points",
+  "telemetry_chunks",
   "telemetry_frames",
   "telemetry_markers",
   "telemetry_minute_buckets",

@@ -297,6 +297,20 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
+  /** v56 adds Telemetry Chunks (#687): every frame stays in the buffer, the chunk table starts empty. */
+  @Test fun v55FramesStayInTheBufferBesideAnEmptyChunkTable() {
+    val path = migrateFromExport(55, seed = {
+      exec("INSERT INTO boards (id,name,created_at) VALUES ('board-a','A',100)")
+      exec("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,1,'board-a',1,1,0,1234),(1500,2,NULL,0,1,0,99)")
+    }) {
+      assertEquals("1000:board-a:1234,1500:-:99", text("SELECT group_concat(captured_at_ms||':'||IFNULL(board_id,'-')||':'||speed_centi_kmh, ',') FROM (SELECT * FROM telemetry_frames ORDER BY captured_at_ms)"))
+      assertEquals(0L, long("SELECT COUNT(*) FROM telemetry_chunks"))
+      exec("INSERT INTO telemetry_chunks (board_key,minute_start_ms,codec_version,sample_count,first_at_ms,last_at_ms,payload) VALUES ((SELECT key FROM boards WHERE id='board-a'),0,1,1,1000,1000,x'01')")
+      assertEquals(0L, long("SELECT COUNT(*) FROM pragma_foreign_key_check('telemetry_chunks')"))
+    }
+    Files.deleteIfExists(path)
+  }
+
   /** The first Android backups (v14) and the Privacy Zone era (v18–v20) the iOS host restores. */
   @Test fun exportAuthenticFirstAndroidBackupGenerationForIOSHost() {
     if (System.getenv("VESCAPE_BACKUP_PHASE") != "export-android") return

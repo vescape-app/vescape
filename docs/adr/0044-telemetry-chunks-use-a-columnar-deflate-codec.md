@@ -21,9 +21,7 @@ temperature, `TELEMETRY_MASK_*` order) as written by this row. **Masks are autho
 `reconstructTelemetryValues` (Kotlin and Swift, `TelemetryChunkCodec`) is the one implementation;
 Ride Export replays chains through it. Android's `FullTelemetryState.applyFrame` used to coalesce
 NULL as "unchanged", so an odometer or temperature that went missing kept its old value; it now
-follows the masks. `RebuildState.apply` (bucket rebuild) still coalesces and only reads speed,
-voltage, currents, duty, odometer and temperatures; the difference is limited to explicit clears of
-the three optional readings.
+follows the masks. `RebuildState.apply` (bucket rebuild) follows them too since ADR 0045.
 
 The codec stores **reconstructed full samples**, never sparse rows.
 

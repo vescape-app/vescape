@@ -15,7 +15,14 @@ import expo.modules.vescapecore.telemetry.MetricSanitizerConfig
 import expo.modules.vescapecore.telemetry.RideSummariesChunkResult
 import expo.modules.vescapecore.telemetry.RideSummariesContext
 import expo.modules.vescapecore.telemetry.TELEMETRY_BUCKET_SIZE_MS
+import expo.modules.vescapecore.telemetry.TelemetryMinuteKey
 import expo.modules.vescapecore.telemetry.TelemetryTimeRange
+import expo.modules.vescapecore.telemetry.firstTelemetrySampleAtOrAfter
+import expo.modules.vescapecore.telemetry.readTelemetryFramesImpl
+import expo.modules.vescapecore.telemetry.sealTelemetryMinuteImpl
+import expo.modules.vescapecore.telemetry.telemetryAnchorMs
+import expo.modules.vescapecore.telemetry.telemetrySampleExists
+import expo.modules.vescapecore.telemetry.trimTelemetryChunks
 import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_ID
 import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_NAME
 import expo.modules.vescapecore.telemetry.WeatherBackfillCursor
@@ -400,51 +407,96 @@ interface VescapeDao {
     limit: Int,
   ): List<DiagnosticEventEntity>
 
-  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
-  @Query("""
-    SELECT * FROM telemetry_frames WHERE captured_at_ms < :fromMs AND board_id IS :boardId
-      AND (flags & 1) != 0
-    ORDER BY captured_at_ms DESC, id DESC LIMIT 1
-  """)
-  suspend fun getRideExportKeyframe(fromMs: Long, boardId: String?): TelemetryFrameEntity?
-
-  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
+  // Telemetry Chunks + write buffer (ADR 0045). Every sample read merges both through
+  // `TelemetryChunkStore.kt`; these are its primitives.
+  // @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `telemetryStream`
   @Query("""
     SELECT * FROM telemetry_frames WHERE captured_at_ms >= :fromMs AND captured_at_ms <= :toMs
-      AND board_id IS :boardId
+      AND (:allBoards OR board_id IS :boardId)
       AND (captured_at_ms > :afterMs OR (captured_at_ms = :afterMs AND id > :afterId))
     ORDER BY captured_at_ms, id LIMIT :limit
   """)
-  suspend fun getRideExportTelemetryPage(fromMs: Long, toMs: Long, boardId: String?,
+  suspend fun getBufferFramesPage(fromMs: Long, toMs: Long, boardId: String?, allBoards: Boolean,
     afterMs: Long, afterId: Long, limit: Int): List<TelemetryFrameEntity>
 
-  @Query(
-    """
-    SELECT * FROM telemetry_frames
-    WHERE captured_at_ms <= :fromMs
-      AND (:boardId IS NULL OR board_id = :boardId)
-      AND (flags & :keyframeFlag) != 0
-    ORDER BY captured_at_ms DESC
-    LIMIT 1
-    """,
-  )
-  suspend fun getLatestKeyframeBefore(
-    fromMs: Long,
-    boardId: String?,
-    keyframeFlag: Int = TELEMETRY_FLAG_KEYFRAME,
-  ): TelemetryFrameEntity?
+  @Query("""
+    SELECT MAX(captured_at_ms) FROM telemetry_frames WHERE captured_at_ms < :beforeMs
+      AND (:allBoards OR board_id IS :boardId) AND (flags & 1) != 0
+  """)
+  suspend fun latestBufferKeyframeBefore(beforeMs: Long, boardId: String?, allBoards: Boolean): Long?
 
-  @Query(
-    """
-    SELECT * FROM telemetry_frames
-    WHERE captured_at_ms >= :fromMs
-      AND captured_at_ms <= :toMs
-      AND (:boardId IS NULL OR board_id = :boardId)
-    ORDER BY captured_at_ms ASC
-    LIMIT :limit
-    """,
-  )
-  suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity>
+  @Query("""
+    SELECT first_at_ms FROM telemetry_chunks WHERE minute_start_ms < :beforeMs AND first_at_ms < :beforeMs
+      AND (:allBoards OR board_key IS $BOARD_KEY_OF_BOARD_ID)
+    ORDER BY minute_start_ms DESC LIMIT 1
+  """)
+  suspend fun latestChunkStartBefore(beforeMs: Long, boardId: String?, allBoards: Boolean): Long?
+
+  /** Chunks holding any sample in `[fromMs, toMs]`, minute-ordered, payload left in the table. */
+  @Query("""
+    SELECT c.id, b.id AS board_id, c.minute_start_ms, c.sample_count, c.first_at_ms, c.last_at_ms
+    FROM telemetry_chunks c LEFT JOIN boards b ON b.key = c.board_key
+    WHERE c.minute_start_ms > :fromMs - 60000 AND c.minute_start_ms <= :toMs
+      AND c.last_at_ms >= :fromMs AND c.first_at_ms <= :toMs
+      AND (:allBoards OR c.board_key IS $BOARD_KEY_OF_BOARD_ID)
+    ORDER BY c.minute_start_ms, c.board_key
+  """)
+  suspend fun getTelemetryChunkHeaders(fromMs: Long, toMs: Long, boardId: String?, allBoards: Boolean): List<TelemetryChunkHeader>
+
+  @Query("SELECT payload FROM telemetry_chunks WHERE id = :id")
+  suspend fun getTelemetryChunkPayload(id: Long): ByteArray
+
+  @Query("SELECT id FROM telemetry_chunks WHERE board_key IS :boardKey AND minute_start_ms = :minuteStartMs")
+  suspend fun getTelemetryChunkId(boardKey: Long?, minuteStartMs: Long): Long?
+
+  @Query("""
+    SELECT MIN(first_at_ms) FROM telemetry_chunks WHERE minute_start_ms =
+      (SELECT MIN(minute_start_ms) FROM telemetry_chunks WHERE minute_start_ms > :minuteStartMs)
+  """)
+  suspend fun firstChunkStartAfterMinute(minuteStartMs: Long): Long?
+
+  @Insert
+  suspend fun insertTelemetryChunk(chunk: TelemetryChunkEntity): Long
+
+  @Query("""UPDATE telemetry_chunks SET codec_version = :codecVersion, sample_count = :sampleCount,
+    first_at_ms = :firstAtMs, last_at_ms = :lastAtMs, payload = :payload WHERE id = :id""")
+  suspend fun updateTelemetryChunk(id: Long, codecVersion: Int, sampleCount: Int, firstAtMs: Long, lastAtMs: Long, payload: ByteArray)
+
+  @Query("DELETE FROM telemetry_chunks WHERE id = :id")
+  suspend fun deleteTelemetryChunk(id: Long)
+
+  @Query("DELETE FROM telemetry_chunks")
+  suspend fun clearTelemetryChunks()
+
+  @Query("DELETE FROM telemetry_frames WHERE id IN (:ids)")
+  suspend fun deleteFramesByIds(ids: List<Long>)
+
+  /**
+   * Closed minutes of buffer rows newer than the newest chunk: what a previous process recorded but
+   * never sealed. Older rows are the pre-chunk backlog, drained separately.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `leftoverTelemetryMinutes`
+   */
+  @Query("""
+    SELECT DISTINCT board_id AS boardId, (captured_at_ms / 60000) * 60000 AS minuteStartMs FROM telemetry_frames
+    WHERE captured_at_ms > (SELECT MAX(last_at_ms) FROM telemetry_chunks) AND captured_at_ms < :beforeMs
+  """)
+  suspend fun leftoverTelemetryMinutes(beforeMs: Long): List<TelemetryMinuteKey>
+
+  /** Samples in `[fromMs, toMs]` from one snapshot; null [boardId] reads every Board. */
+  @Transaction
+  suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity> =
+    readTelemetryFramesImpl(fromMs, toMs, boardId, boardId == null, Long.MIN_VALUE, Long.MIN_VALUE, limit)
+
+  /** [getFrames] starting at the latest full state at or before [fromMs], so deltas reconstruct. */
+  @Transaction
+  suspend fun getAnchoredFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity> {
+    val start = telemetryAnchorMs(fromMs + 1, boardId, boardId == null) ?: fromMs
+    return readTelemetryFramesImpl(start, toMs, boardId, boardId == null, Long.MIN_VALUE, Long.MIN_VALUE, limit)
+  }
+
+  @Transaction
+  suspend fun sealTelemetryMinute(boardId: String?, minuteStartMs: Long): Int =
+    sealTelemetryMinuteImpl(boardId, minuteStartMs)
 
   @Query(
     """
@@ -473,13 +525,13 @@ interface VescapeDao {
     boardId: String,
   ): TelemetryFrameEntity?
 
-  @Query("SELECT COUNT(*) FROM telemetry_frames")
+  @Query("SELECT (SELECT COUNT(*) FROM telemetry_frames) + (SELECT IFNULL(SUM(sample_count), 0) FROM telemetry_chunks)")
   suspend fun countFrames(): Long
 
-  @Query("SELECT MIN(captured_at_ms) FROM telemetry_frames")
+  @Query("SELECT MIN(at) FROM (SELECT MIN(captured_at_ms) AS at FROM telemetry_frames UNION ALL SELECT MIN(first_at_ms) FROM telemetry_chunks)")
   suspend fun firstFrameAt(): Long?
 
-  @Query("SELECT MAX(captured_at_ms) FROM telemetry_frames")
+  @Query("SELECT MAX(at) FROM (SELECT MAX(captured_at_ms) AS at FROM telemetry_frames UNION ALL SELECT MAX(last_at_ms) FROM telemetry_chunks)")
   suspend fun lastFrameAt(): Long?
 
   @Query("DELETE FROM telemetry_frames WHERE captured_at_ms < :beforeMs")
@@ -503,7 +555,7 @@ interface VescapeDao {
 
   @Transaction
   suspend fun deleteBefore(beforeMs: Long): Int {
-    val frames = deleteFramesBefore(beforeMs)
+    val frames = deleteFramesBefore(beforeMs) + trimTelemetryChunks(Long.MIN_VALUE, beforeMs - 1, null, true)
     deleteMarkersBefore(beforeMs)
     deleteBucketsBefore(beforeMs)
     deleteDiagnosticEventsBefore(beforeMs)
@@ -551,7 +603,7 @@ interface VescapeDao {
   /** Every telemetry table keys on [boardId] (ADR 0028). Null means "every Board". */
   @Transaction
   suspend fun deleteRange(fromMs: Long, toMs: Long, boardId: String?): Int {
-    val frames = deleteFramesRange(fromMs, toMs, boardId)
+    val frames = deleteFramesRange(fromMs, toMs, boardId) + trimTelemetryChunks(fromMs, toMs, boardId, false)
     deleteMarkersRange(fromMs, toMs, boardId)
     deleteBucketsRange(fromMs, toMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
     deleteExclusionsRangeForBoard(fromMs, toMs, boardId)
@@ -576,7 +628,7 @@ interface VescapeDao {
 
   @Transaction
   suspend fun deleteRangeAllDevices(fromMs: Long, toMs: Long): Int {
-    val frames = deleteFramesRangeAllDevices(fromMs, toMs)
+    val frames = deleteFramesRangeAllDevices(fromMs, toMs) + trimTelemetryChunks(fromMs, toMs, null, true)
     deleteMarkersRangeAllDevices(fromMs, toMs)
     deleteBucketsRangeAllDevices(fromMs, toMs)
     deleteExclusionsRange(fromMs, toMs)
@@ -611,6 +663,7 @@ interface VescapeDao {
   @Transaction
   suspend fun clearAll() {
     clearFrames()
+    clearTelemetryChunks()
     clearMarkers()
     clearBuckets()
     clearDiagnosticEvents()
@@ -723,13 +776,17 @@ interface VescapeDao {
   suspend fun deleteExclusionRange(id: Long)
 
   @Query("SELECT MIN(captured_at_ms) FROM telemetry_frames WHERE captured_at_ms >= :fromMs")
-  suspend fun firstFrameAtOrAfter(fromMs: Long): Long?
+  suspend fun firstBufferFrameAtOrAfter(fromMs: Long): Long?
+
+  suspend fun firstFrameAtOrAfter(fromMs: Long): Long? = firstTelemetrySampleAtOrAfter(fromMs)
 
   @Query("SELECT MIN(fix_at_ms) FROM ride_track_points WHERE fix_at_ms >= :fromMs")
   suspend fun firstRideTrackAtOrAfter(fromMs: Long): Long?
 
   @Query("SELECT EXISTS(SELECT 1 FROM telemetry_frames WHERE captured_at_ms = :atMs AND board_id IS :boardId)")
-  suspend fun frameExists(atMs: Long, boardId: String?): Boolean
+  suspend fun bufferFrameExists(atMs: Long, boardId: String?): Boolean
+
+  suspend fun frameExists(atMs: Long, boardId: String?): Boolean = telemetrySampleExists(atMs, boardId)
 
   @Query("SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE id = :id)")
   suspend fun rideTrackPointExists(id: Long): Boolean

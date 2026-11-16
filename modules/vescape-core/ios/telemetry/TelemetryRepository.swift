@@ -35,6 +35,9 @@ internal final class TelemetryRepository {
   private var pendingTrack: [RideTrackPoint] = []
   private var lastFlushedTrackPoint: RideTrackPoint?
   private var lastFlushedFreeSpin = FreeSpinCarry()
+  // Minutes this process committed frames into and has not sealed yet, each with the fence ticket
+  // of that commit: a Restore or Clear all since then drops the seal (ADR 0045).
+  private var unsealedMinutes: [TelemetryMinuteKey: Int64] = [:]
   private var lastFrameAtMs: Int64?
   private var lastHistoryAtMs: Int64?
   private var lastKeyframeAtMs: Int64?
@@ -218,6 +221,7 @@ internal final class TelemetryRepository {
 
   func endDatabaseSwap() {
     queue.sync {
+      unsealedMinutes.removeAll()
       pendingStates.removeAll()
       pendingPersisted.removeAll()
       pendingMarkers.removeAll()
@@ -243,10 +247,10 @@ internal final class TelemetryRepository {
     let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
       [
-        "sampleCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames") ?? 0,
+        "sampleCount": try telemetrySampleCount(db),
         "gpsPointCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM ride_track_points") ?? 0,
-        "firstAtMs": try Int64.fetchOne(db, sql: "SELECT MIN(captured_at_ms) FROM telemetry_frames"),
-        "lastAtMs": try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames"),
+        "firstAtMs": try firstTelemetrySampleAt(db),
+        "lastAtMs": try lastTelemetrySampleAt(db),
         "droppedPendingSamples": 0,
       ]
     }
@@ -296,16 +300,8 @@ internal final class TelemetryRepository {
       batteryEstimator.ensureLoaded()
       let configs = try historyBatteryConfigs(db)
       let boardNames = try historyBoardNames(db)
-      let rows = try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY captured_at_ms ASC
-          LIMIT ?
-          """,
-        arguments: [fromMs, toMs, boardId, boardId, limit]
-      )
+      let rows = try telemetryFrameRows(db, fromMs: fromMs, toMs: toMs, boardId: boardId,
+                                        allBoards: boardId == nil, limit: limit)
       let percents = self.batteryPercents(rows, configs: configs, windowMs: windowMs)
       return zip(rows, percents).map { sampleMap($0.0, batteryPercent: $0.1, boardNames: boardNames) }
     }
@@ -535,15 +531,7 @@ internal final class TelemetryRepository {
   ) throws -> (points: [BucketTelemetryPoint], track: [RideTrackPoint]) {
     let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
-      let rows = try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY captured_at_ms ASC
-          """,
-        arguments: [startMs, endMs, boardId, boardId]
-      )
+      let rows = try telemetryFrameRows(db, fromMs: startMs, toMs: endMs, boardId: boardId, allBoards: boardId == nil)
       let track = try fetchRideTrackForAggregation(db, fromMs: startMs, toMs: endMs, boardId: boardId)
         .map(rideTrackPoint)
       return (rows.compactMap(bucketPoint), track)
@@ -609,6 +597,7 @@ internal final class TelemetryRepository {
       try TelemetryMaintenancePersistence(writer: pool).clear(protectedRanges: protected)
     }
     queue.sync {
+      unsealedMinutes.removeAll()
       pendingStates.removeAll()
       pendingPersisted.removeAll()
       pendingMarkers.removeAll()
@@ -688,7 +677,8 @@ internal final class TelemetryRepository {
       )
     )
 
-    recordingCommitBoundary.commit {
+    let ticket = DatabaseReplacementFence.process.ticket()
+    let committed = recordingCommitBoundary.commit {
       try VescapeDatabase.requirePool().write { db in
         for state in persisted { try insertFrame(db, state) }
         try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: track, buckets: buckets)
@@ -696,6 +686,54 @@ internal final class TelemetryRepository {
         for range in sanitization.exclusions { try insertExclusion(db, range) }
       }
     }
+    guard committed else { return }
+    for state in persisted {
+      unsealedMinutes[TelemetryMinuteKey(boardId: state.boardId, minuteStartMs: telemetryMinuteStart(state.capturedAtMs))] = ticket
+    }
+    sealRecordedMinutes(all: false)
+  }
+
+  /// Stop Recording: flush, then seal every recorded minute, the open one included (ADR 0045).
+  func sealAfterStop() {
+    queue.async {
+      self.flushOnQueue()
+      self.sealRecordedMinutes(all: true)
+    }
+  }
+
+  /// Seal the minutes this process recorded once closed: wall clock past their end plus
+  /// `TELEMETRY_SEAL_GRACE_MS`, and no pending frame still targeting them. `all` seals every one; a
+  /// later sample of a sealed minute stays in the buffer until the next seal merges it. A seal that
+  /// fails verification keeps its rows and records a Diagnostic Event. Runs on `queue`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `sealRecordedMinutes`
+  private func sealRecordedMinutes(all: Bool) {
+    let now = telemetryNowMs()
+    let oldestPending = pendingPersisted.first?.capturedAtMs
+    let due = unsealedMinutes.filter { key, _ in
+      let end = key.minuteStartMs + TELEMETRY_BUCKET_SIZE_MS
+      return all || (end + TELEMETRY_SEAL_GRACE_MS <= now && (oldestPending.map { end <= $0 } ?? true))
+    }
+    for (key, ticket) in due {
+      do {
+        let pool = try VescapeDatabase.requirePool()
+        _ = try DatabaseReplacementFence.process.write(ticket: ticket) { try pool.write { try sealTelemetryMinute($0, key) } }
+      } catch {
+        recordSealFailure(key, error)
+      }
+      if unsealedMinutes[key] == ticket { unsealedMinutes[key] = nil }
+    }
+  }
+
+  /// A seal that kept its rows: one Diagnostic Event, so the failure is visible in diagnostics.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `recordSealFailure`
+  func recordSealFailure(_ key: TelemetryMinuteKey, _ error: Error) {
+    let properties: [String: Any] = ["operation": "telemetry_seal", "board_id": key.boardId ?? NSNull(),
+                                     "minute_start_ms": key.minuteStartMs, "message": String(describing: error)]
+    let json = (try? JSONSerialization.data(withJSONObject: properties)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+    let event = PersistedDiagnosticEvent(id: nil, occurredAtMs: telemetryNowMs(), elapsedRealtimeMs: telemetryElapsedMs(),
+      eventName: "telemetry_seal_failed", operation: "telemetry_seal", phase: nil, boardId: key.boardId,
+      message: String(describing: error), propertiesJson: json)
+    do { try DiagnosticEventPersistence(writer: VescapeDatabase.requirePool()).insert(event) } catch {}
   }
 
   private func marker(type: String, capture: TelemetryCapture, gapMs: Int64?) -> [String: Any?] {

@@ -951,6 +951,71 @@
         }
       }
     },
+    "telemetry_chunks": {
+      "columns": {
+        "board_key": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "codec_version": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "first_at_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "last_at_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "minute_start_ms": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "payload": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "BLOB"
+        },
+        "sample_count": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        }
+      },
+      "foreignKeys": ["board_key -> boards.key on delete NO ACTION on update NO ACTION"],
+      "indexes": {
+        "index_telemetry_chunks_board_key_minute_start_ms": {
+          "columns": ["board_key", "minute_start_ms"],
+          "unique": true,
+          "where": null
+        },
+        "index_telemetry_chunks_minute_start_ms": {
+          "columns": ["minute_start_ms"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
     "telemetry_frames": {
       "columns": {
         "adc1_milli": {

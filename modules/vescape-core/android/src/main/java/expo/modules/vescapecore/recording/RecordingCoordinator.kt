@@ -191,6 +191,7 @@ internal class RecordingCoordinator(
         explicitlyStopped = true
         recordMarker(RECORDING_STOP_MARKER, config, "Recording stopped")
         flushTelemetryBlocking()
+        telemetryStore?.sealAfterStop()
         telemetryStore = null
         connectionLostMarkerAt = null
     }

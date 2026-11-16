@@ -356,6 +356,31 @@ let points = samples.map { sample in
   )
 }
 
+/// Keyframe + delta in minute 60 000, sealed by the exporter; a delta at 120 500 left in the buffer.
+/// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseRestoreHostTest.kt `crossChunkFrames`
+func crossChunkFrames() -> [RecordingPersistenceSQL.Frame] {
+  [(Int64(60_000), 1), (60_500, 0), (120_500, 0)].enumerated().map { i, frame in
+    .init(capturedAtMs: frame.0, elapsedRealtimeMs: frame.0, boardId: "cross-board", canId: nil, flags: frame.1,
+          changedMask1: frame.1 == 1 ? (1 << 17) - 1 : 1, changedMask2: 0, speedCentiKmh: 100 * (i + 1),
+          batteryVoltageMv: 80_000, motorCurrentMa: 0, batteryCurrentMa: 0, dutyPermille: 0, pitchCentiDeg: 0,
+          rollCentiDeg: 0, balancePitchCentiDeg: 0, balanceCurrentMa: 0, erpm: 0, state: 0, switchState: 0,
+          adc1Milli: 0, adc2Milli: 0, odometerCm: nil, tempMosfetDeciC: nil, tempMotorDeciC: nil)
+  }
+}
+
+/// The other platform's sealed chunk and buffered delta read back as one stream.
+func requireCrossChunkSpeeds(_ db: Database, _ label: String) throws {
+  let chunks = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_chunks WHERE minute_start_ms = 60000")
+  try require(chunks == 1, "\(label) lost its Telemetry Chunk")
+  var values = [Int64?](repeating: nil, count: TELEMETRY_CHUNK_VALUE_COLUMNS)
+  let speeds = try telemetryFrameRows(db, fromMs: 60_000, toMs: 121_000, boardId: "cross-board", allBoards: false).map { row -> String in
+    reconstructTelemetryValues(&values, flags: row["flags"], changedMask1: row["changed_mask_1"],
+                               row: TELEMETRY_VALUE_COLUMN_NAMES.map { row[$0] as Int64? })
+    return "\(row["captured_at_ms"] as Int64):\(values[0].map(String.init) ?? "-")"
+  }
+  try require(speeds == ["60000:100", "60500:200", "120500:300"], "\(label) chunk + buffer stream: \(speeds)")
+}
+
 func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
   if try !condition() { throw Failure(description: message) }
 }
@@ -1113,6 +1138,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try require(favorite == "Cross Favorite", "Android archive lost Favorite on iOS")
     try require(config == "{\"motor_current_max\":55.5}", "Android archive lost config on iOS")
     try require(speed == 2468, "Android archive lost Ride Recording on iOS")
+    try requireCrossChunkSpeeds(db, "Android archive")
     let track = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "cross-board")
     try require(track.count == 1, "Android archive lost independent GPS fix")
     try require(track.first?["accuracy_cm"] as Int? == 3500, "Android archive discarded poor GPS accuracy")
@@ -1202,6 +1228,11 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try insertRideTrackPoint(db, RideTrackPoint(boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
     let previewFixes = try bucketPreviewFixes()
     try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: previewFixes, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(previewFixes)))
+    // A sealed minute and a buffered delta anchored in it (ADR 0045).
+    for frame in crossChunkFrames() {
+      try db.execute(sql: RecordingPersistenceSQL.insertFrame, arguments: RecordingPersistenceSQL.frameArguments(frame))
+    }
+    try require(try sealTelemetryMinute(db, TelemetryMinuteKey(boardId: "cross-board", minuteStartMs: 60_000)) == 2, "iOS seals the cross-platform minute")
     try db.execute(sql: "PRAGMA user_version = \(VESCAPE_DATABASE_VERSION)")
   }
   try iosDatabase.close()
@@ -1524,6 +1555,7 @@ try runWeatherObservationContract()
 try runMaintenanceJobsContract()
 try runRideWeatherBackfillContract()
 try runTelemetryChunkCodecContract()
+try runTelemetryChunkContract()
 
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 

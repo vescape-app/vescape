@@ -38,6 +38,7 @@ internal val SHARED_DATABASE_TABLES: Set<String> = setOf(
   "motor_config_values",
   "privacy_zones",
   "ride_track_points",
+  "telemetry_chunks",
   "telemetry_frames",
   "telemetry_markers",
   "telemetry_minute_buckets",
