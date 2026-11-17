@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/immutability */
 // PROTOTYPE: large-canvas rail point generator selected from the explored A/B/C variants.
 import { useEffect, useMemo, useState } from 'react'
-import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native'
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import Svg, { Circle, G, Line, Path } from 'react-native-svg'
 import {
@@ -15,6 +15,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { Input } from '@/components/forms/Input'
@@ -317,7 +318,7 @@ export function RailGeneratorPrototypeScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <RailCanvas
           points={points}
           smoothing={smoothing}
@@ -446,7 +447,7 @@ export function RailGeneratorPrototypeScreen() {
             />
           </View>
         </View>
-      </ScrollView>
+      </PageScrollView>
     </View>
   )
 }

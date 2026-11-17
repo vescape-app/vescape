@@ -1,7 +1,8 @@
 import { formatDateTime } from '@/helpers/time'
 import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { Text } from '@/components/base/Text'
 import { PackageIcon, RecordIcon, TrashIcon } from 'phosphor-react-native'
 import { router } from 'expo-router'
@@ -50,7 +51,7 @@ export function DebugRecordingsScreen() {
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.content}>
+      <PageScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={RecordIcon}
           description="Capture raw BLE packets, connection states, and location for diagnosis."
@@ -140,7 +141,7 @@ export function DebugRecordingsScreen() {
             </SettingsCard>
           </>
         )}
-      </ScrollView>
+      </PageScrollView>
       <ConfirmModal
         visible={pendingDelete != null}
         title="Delete recording?"

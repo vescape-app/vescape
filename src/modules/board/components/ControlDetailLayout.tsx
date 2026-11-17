@@ -1,8 +1,9 @@
 import { useNavigation } from 'expo-router'
 import { BellRingingIcon } from 'phosphor-react-native'
 import { type ReactNode, useEffect, useMemo } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 
@@ -51,7 +52,7 @@ export function ControlDetailLayout({
   }, [title, navigation])
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <PageScrollView style={styles.container} contentContainerStyle={styles.content}>
       {controlId ? (
         <ControlDetailAlerts controlId={controlId} unit={unit} liveValue={liveValue} gauge={gauge}>
           {children}
@@ -62,7 +63,7 @@ export function ControlDetailLayout({
           {children}
         </>
       )}
-    </ScrollView>
+    </PageScrollView>
   )
 }
 
