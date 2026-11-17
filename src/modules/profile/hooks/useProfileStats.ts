@@ -66,24 +66,9 @@ export function useProfileStats(active = true, includeMonthStats = false) {
         : (snapshot.monthStats?.find(
             (entry) => entry.year === month.year && entry.month === month.month,
           )?.stats ?? (await getProfileStatsSnapshot(month)).monthly)
-      let series = snapshot.monthStats
-      if (includeMonthStats && !series) {
-        // Older dev clients can still supply chart data via their selected-month query.
-        series = []
-        for (const entry of snapshot.months) {
-          if (request !== requestRef.current) return
-          const stats =
-            entry.year === month.year && entry.month === month.month
-              ? monthlyStats
-              : entry.year === selected.year && entry.month === selected.month
-                ? snapshot.monthly
-                : (await getProfileStatsSnapshot(entry)).monthly
-          series.push({ ...entry, stats })
-        }
-      }
       if (request !== requestRef.current) return
       setTotal(snapshot.total)
-      setMonthStats(series ?? [])
+      setMonthStats(snapshot.monthStats ?? [])
       setSelectedMonth(month)
       setMonthly(monthlyStats)
       setToday(todayStats)
