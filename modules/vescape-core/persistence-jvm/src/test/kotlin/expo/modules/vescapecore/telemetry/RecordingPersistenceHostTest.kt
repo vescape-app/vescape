@@ -540,7 +540,7 @@ class RecordingPersistenceHostTest {
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("DROP TRIGGER fail_board_setting")
-    connection.execSQL("CREATE TRIGGER fail_board_tombstone BEFORE INSERT ON boards WHEN NEW.deleted_at IS NOT NULL BEGIN SELECT RAISE(FAIL, 'late delete failure'); END")
+    connection.execSQL("CREATE TRIGGER fail_board_tombstone BEFORE UPDATE ON boards WHEN NEW.deleted_at IS NOT NULL BEGIN SELECT RAISE(FAIL, 'late delete failure'); END")
     connection.close()
     db = open()
     persistence = BoardSettingsPersistence(db.vescapeDao())

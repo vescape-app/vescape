@@ -16,7 +16,7 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
@@ -28,7 +28,7 @@ class RideExportHostTest {
     val reader = db
     try {
       val dao = db.vescapeDao()
-      fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = i.toLong(),
+      fun point(i: Int) = RideTrackPoint(boardId = "board", fixAtMs = i.toLong(),
         latitudeE7 = i, longitudeE7 = -i, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)
       val count = RideExport.BATCH_SIZE * 2 + 1
@@ -93,7 +93,7 @@ class RideExportHostTest {
       }
       for (start in 0 until count step 1000) dao.insertFrames((start until minOf(start + 1000, count)).map(::frame))
       dao.insertFrames(listOf(frame(0).copy(boardId = "other"), frame(0).copy(boardId = null)))
-      fun point(j: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = base + 100 + j / 2,
+      fun point(j: Int) = RideTrackPoint(boardId = "board", fixAtMs = base + 100 + j / 2,
         latitudeE7 = 521234567 + j, longitudeE7 = -211234567, accuracyCm = 2000,
         gpsSpeedCentiMps = 456, bearingCentiDeg = null, altitudeCm = -1234)
       dao.insertRideTrackPoints((0..1100).map { point(0).copy(fixAtMs = base + 10, accuracyCm = 2001) })
@@ -151,7 +151,7 @@ class RideExportHostTest {
       .setDriver(BundledSQLiteDriver()).build()
     try {
       val dao = db.vescapeDao()
-      fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = base + i / 3,
+      fun point(i: Int) = RideTrackPoint(boardId = "board", fixAtMs = base + i / 3,
         latitudeE7 = 521234567 + i, longitudeE7 = -211234567, accuracyCm = if (i < prefix) 2001 else 2000,
         gpsSpeedCentiMps = if (i % 2 == 0) 456 else null, bearingCentiDeg = null, altitudeCm = if (i % 2 == 0) -1234 else null)
       dao.insertRideTrackPoints((0 until count).map(::point))
@@ -237,7 +237,7 @@ class RideExportHostTest {
         frame(6000, 1 shl 3, mapOf(3 to -2000)), frame(6100, 1 shl 1, mapOf(1 to null)),
         frame(6150, 1 or (1 shl 14), mapOf(0 to -500, 14 to 1000)), frame(6180, 1 shl 14, mapOf(14 to 1500)), frame(6200, 0)))
       fun point(offset: Long, lat: Int, lon: Int, accuracy: Int, speed: Int? = null, altitude: Int? = null) =
-        RideTrackPointEntity(boardId = "board", fixAtMs = base + offset, latitudeE7 = lat, longitudeE7 = lon,
+        RideTrackPoint(boardId = "board", fixAtMs = base + offset, latitudeE7 = lat, longitudeE7 = lon,
           accuracyCm = accuracy, gpsSpeedCentiMps = speed, bearingCentiDeg = null, altitudeCm = altitude)
       dao.insertRideTrackPoints(listOf(point(50, 521234567, -211234567, 2000, 456, -1234), point(50, 1, 1, 2000),
         point(80, 2, 2, 2001), point(150, 521244567, -211224567, 500)))

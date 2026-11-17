@@ -90,7 +90,7 @@ object DatabaseBackupManager {
         try {
           verifyRoomDatabase(appContext)
           VescapeDatabase.closeAndReset()
-          BundledSQLiteDriver().open(installed.path).use(::dropUnknownTables)
+          BundledSQLiteDriver().open(installed.path).use(::prepareRestoredDatabase)
           MySounds.replaceFromBackup(appContext, soundStage)
         } catch (error: Exception) {
           resetRepositoriesAndCloseDatabase()

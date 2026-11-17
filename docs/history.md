@@ -37,7 +37,7 @@ Main files:
 
 `telemetry_frames` stores board telemetry samples, without position. Frames are delta encoded with periodic keyframes. Queries reconstruct full samples from nearest keyframe before requested range.
 
-`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. There is no recording identity table; ride boundaries are derived from the data (ADR-0041).
+`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. It references its Board by `board_key` (the local `boards.key`), not the UUID (ADR-0028). There is no recording identity table; ride boundaries are derived from the data (ADR-0041).
 
 `telemetry_minute_buckets` stores minute-level summaries used by history lists, keyed on `(bucket_start_ms, board_id)`. Buckets include sample counts, GPS counts, distance, speed, battery/current summaries and the combined Moving Window. A minute with Ride Track fixes and no frame still gets a bucket. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
 
@@ -137,7 +137,7 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
   older backup makes its jobs stale again. There is no progress cursor and no pending-work state: a
   run that stops early restarts from zero, and the missing fingerprint is the only obligation. A job
   may own its done state instead (`hasWork`, `begin`, `complete`); Ride weather does, with a
-  watermark.
+  watermark. Telemetry storage and Cleanup record completion for the process launch and database generation.
 - **Runner.** `MaintenanceRunner` runs stale jobs one at a time, in declaration order, on one
   low-priority thread or queue. A failed or waiting job does not block the next. It checks after
   launch (10 s after startup), when the network comes back (network jobs only), 3 s after the last
@@ -161,7 +161,22 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
   puts a warning dot on the Storage cell; waiting for network does not. The Database screen lists
   every job.
 
-**Ride summaries** is the first job. Its inputs are the Metric Sanitizer settings. It rebuilds
+**Telemetry storage** (`telemetryStorage`) runs first, once per launch and database generation,
+including after Restore or Clear all. It alone seals closed buffer minutes, oldest first, 30 minutes
+per fenced transaction. Recording only appends frames, so rides recorded since the last launch
+stay buffered until the next launch or database replacement. Progress counts minutes
+in the run snapshot. Open minutes stay buffered; a possibly recording ride defers the job. Failed
+minutes stay readable and the run completes, so later triggers do not loop over them. A new launch
+or database replacement retries them and any later leftovers. The job clears the obsolete backlog
+marker, and Restore and Clear all clear its completion state.
+
+**Cleanup** (`cleanup`) runs last, once per launch and database generation, including after
+Restore or Clear all. Its ordered cleanup steps currently retain 30 days of Diagnostic Events,
+deleting in fenced batches of 5,000 and rechecking for a possibly recording ride before each batch.
+Recording defers the job until ride closure. A failed step reports its error and allows later steps
+to run; the job stays failed without a completion fingerprint.
+
+**Ride summaries** follows Telemetry storage. Its inputs are the Metric Sanitizer settings. It rebuilds
 minute buckets, exclusion ranges and route previews oldest first, one transaction per owned chunk:
 whole minutes, half-open `[from, to)`, at most one clock hour. Inside the transaction it reads the
 frames and Ride Track of the chunk, plus read-only context from the previous chunk: each Board's

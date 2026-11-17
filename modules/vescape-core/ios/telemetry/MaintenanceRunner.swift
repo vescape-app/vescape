@@ -103,7 +103,9 @@ final class MaintenanceRunner {
       self.started = true
       self.monitor.pathUpdateHandler = { [weak self] path in self?.queue.async { self?.networkChanged(path.status == .satisfied) } }
       self.monitor.start(queue: self.queue)
-      self.queue.asyncAfter(deadline: .now() + maintenanceLaunchDelay) { self.triggerLocked("launch") }
+      self.queue.asyncAfter(deadline: .now() + maintenanceLaunchDelay) {
+        self.triggerLocked("launch")
+      }
     }
   }
 
@@ -128,7 +130,12 @@ final class MaintenanceRunner {
   }
 
   /// Restore or Clear all finished, successfully or not: re-check against the resulting database.
-  func onDatabaseReplaced() { trigger("database_replaced") }
+  func onDatabaseReplaced() {
+    queue.async {
+      guard self.started else { return }
+      self.triggerLocked("database_replaced")
+    }
+  }
 
   private func triggerLocked(_ reason: String) {
     guard started else { return }
@@ -171,6 +178,8 @@ final class MaintenanceRunner {
       isCancelled: { [unowned self] in onQueue { runGeneration != generation } },
       progress: { [unowned self] done, total in progress(job.id, done: done, total: total) },
       committed: { [unowned self] in chunkCommitted() },
+      sealFailure: { key, error in TelemetryRepository.shared.recordSealFailure(key, error) },
+      diagnostic: { name, properties in TelemetryRepository.shared.recordDiagnosticEvent(eventName: name, properties: properties) },
       http: http
     )
     let stale: Bool

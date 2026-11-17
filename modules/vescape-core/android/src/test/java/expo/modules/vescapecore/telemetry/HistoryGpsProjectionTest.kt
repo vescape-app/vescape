@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 
 class HistoryGpsProjectionTest {
   @Test
@@ -119,7 +119,7 @@ class HistoryGpsProjectionTest {
     accuracyCm: Int? = 300,
     gpsSpeedCentiMps: Int? = null,
     boardId: String? = "board-1",
-  ): RideTrackPointEntity = RideTrackPointEntity(
+  ): RideTrackPoint = RideTrackPoint(
     id = id,
     boardId = boardId,
     fixAtMs = fixAtMs,

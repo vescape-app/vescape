@@ -58,7 +58,7 @@ final class AlertPresetPersistence {
   static func expandedRules(_ db: Database, boardId: String, reportFailure: (Error) -> Void) throws -> [PersistedAlertRule] {
     let stored = try rows(db, boardId)
     let riderRules = stored.filter { !isPresetId($0.id) }
-    guard let board = try PersistedBoard.fetchOne(db, key: boardId), board.deletedAt == nil else { return riderRules }
+    guard let board = try PersistedBoard.fetch(db, id: boardId), board.deletedAt == nil else { return riderRules }
     let presets = presetRows(stored)
     let values = try settings(db, boardId)
     let rawUnits = try PersistedAppSetting.fetchOne(db, key: "distanceUnit")
@@ -89,7 +89,7 @@ final class AlertPresetPersistence {
     try writer.write { db in
       guard Self.metrics.contains(metric),
             [level != nil, geiger != nil, match != nil].filter({ $0 }).count == 1 else { throw InvalidPreset.invalidIntent }
-      guard let board = try PersistedBoard.fetchOne(db, key: boardId), board.deletedAt == nil else { throw InvalidPreset.missingBoard }
+      guard let board = try PersistedBoard.fetch(db, id: boardId), board.deletedAt == nil else { throw InvalidPreset.missingBoard }
       let current = AlertPresetSpec.parse(try Self.specs(db, boardId: boardId)[metric]!) ?? Self.defaultSpec
       var next = current
       if let level {

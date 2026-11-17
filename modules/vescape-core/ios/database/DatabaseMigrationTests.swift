@@ -731,7 +731,7 @@ final class DatabaseMigrationTests: XCTestCase {
 
   private func trackRows() throws -> [Row] {
     try queue.read { db in
-      try Row.fetchAll(db, sql: "SELECT * FROM ride_track_points ORDER BY fix_at_ms ASC")
+      try Row.fetchAll(db, sql: RIDE_TRACK_SELECT + "ORDER BY t.fix_at_ms ASC")
     }
   }
 

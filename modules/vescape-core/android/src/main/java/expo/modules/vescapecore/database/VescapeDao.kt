@@ -15,8 +15,18 @@ import expo.modules.vescapecore.telemetry.MetricSanitizerConfig
 import expo.modules.vescapecore.telemetry.RideSummariesChunkResult
 import expo.modules.vescapecore.telemetry.RideSummariesContext
 import expo.modules.vescapecore.telemetry.TELEMETRY_BUCKET_SIZE_MS
+import expo.modules.vescapecore.telemetry.TelemetryMinuteKey
 import expo.modules.vescapecore.telemetry.TelemetryTimeRange
+import expo.modules.vescapecore.telemetry.firstTelemetrySampleAtOrAfter
+import expo.modules.vescapecore.telemetry.readTelemetryFramesImpl
+import expo.modules.vescapecore.telemetry.TelemetrySealBatch
+import expo.modules.vescapecore.telemetry.sealTelemetryMinuteImpl
+import expo.modules.vescapecore.telemetry.drainTelemetryMinutesImpl
+import expo.modules.vescapecore.telemetry.telemetryAnchorMs
+import expo.modules.vescapecore.telemetry.telemetrySampleExists
+import expo.modules.vescapecore.telemetry.trimTelemetryChunks
 import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_ID
+import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_NAME
 import expo.modules.vescapecore.telemetry.WeatherBackfillCursor
 import expo.modules.vescapecore.telemetry.WeatherBackfillPage
 import expo.modules.vescapecore.telemetry.WeatherBackfillSegment
@@ -29,11 +39,29 @@ import expo.modules.vescapecore.telemetry.tuneCompatibilityVersion
 import expo.modules.vescapecore.telemetry.weatherBackfillPageImpl
 import expo.modules.vescapecore.telemetry.weatherProtectionStart
 
-private const val RIDE_TRACK_RANGE_QUERY = """
-  SELECT * FROM ride_track_points
-  WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs
-    AND (:boardId IS NULL OR board_id = :boardId)
-  ORDER BY fix_at_ms ASC
+/**
+ * Ride Track rows as [RideTrackPoint]: the stored Board key joined back to its UUID, so nothing
+ * outside this DAO sees `board_key` (ADR 0028).
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `RIDE_TRACK_SELECT`
+ */
+private const val RIDE_TRACK_SELECT = """
+  SELECT t.id, b.id AS board_id, t.fix_at_ms, t.latitude_e7, t.longitude_e7, t.accuracy_cm,
+    t.gps_speed_centi_mps, t.bearing_centi_deg, t.altitude_cm
+  FROM ride_track_points t LEFT JOIN boards b ON b.key = t.board_key
+"""
+
+/**
+ * The `board_key` a nullable `:boardId` filter means: NULL for the unowned track, the Board's key,
+ * or -1 (no row) for a UUID with no Board. Compare with `IS` to match the unowned track too.
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `BOARD_KEY_OF_BOARD_ID`
+ */
+private const val BOARD_KEY_OF_BOARD_ID =
+  "(CASE WHEN :boardId IS NULL THEN NULL ELSE IFNULL((SELECT key FROM boards WHERE id = :boardId), -1) END)"
+
+private const val RIDE_TRACK_RANGE_QUERY = RIDE_TRACK_SELECT + """
+  WHERE t.fix_at_ms >= :fromMs AND t.fix_at_ms <= :toMs
+    AND (:boardId IS NULL OR t.board_key = $BOARD_KEY_OF_BOARD_ID)
+  ORDER BY t.fix_at_ms ASC
 """
 
 // @parity /modules/vescape-core/ios/telemetry/TelemetryRows.swift
@@ -150,7 +178,7 @@ interface VescapeDao {
     buckets: Collection<TelemetryMinuteBucketEntity>,
     markers: List<TelemetryMarkerEntity>,
     exclusions: List<MetricExclusionRangeEntity> = emptyList(),
-    trackPoints: List<RideTrackPointEntity> = emptyList(),
+    trackPoints: List<RideTrackPoint> = emptyList(),
   ) {
     if (frames.isNotEmpty()) insertFrames(frames)
     if (buckets.isNotEmpty()) upsertBuckets(buckets)
@@ -175,16 +203,45 @@ interface VescapeDao {
     updateBucketRoutePreview(bucketStartMs, boardId, BucketRoutePreview.build(track))
   }
 
-  @Query("""SELECT * FROM ride_track_points WHERE fix_at_ms >= :fromMs AND fix_at_ms < :toMs
-    AND board_id IS :boardId ORDER BY fix_at_ms, id""")
-  suspend fun getBucketRouteTrack(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPointEntity>
+  @Query(RIDE_TRACK_SELECT + """WHERE t.fix_at_ms >= :fromMs AND t.fix_at_ms < :toMs
+    AND t.board_key IS $BOARD_KEY_OF_BOARD_ID ORDER BY t.fix_at_ms, t.id""")
+  suspend fun getBucketRouteTrack(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPoint>
 
   @Query("""UPDATE telemetry_minute_buckets SET route_preview = :preview
     WHERE bucket_start_ms = :bucketStartMs AND board_id = :boardId""")
   suspend fun updateBucketRoutePreview(bucketStartMs: Long, boardId: String, preview: String)
 
   @Insert
-  suspend fun insertRideTrackPoints(points: List<RideTrackPointEntity>)
+  suspend fun insertRideTrackPointRows(points: List<RideTrackPointEntity>)
+
+  /**
+   * Stores fixes against their Board's key. A UUID with no Board row gets a minted tombstoned
+   * Board first, the same rule the v55 migration applied to orphans, so the key always resolves
+   * and the fix keeps its owner.
+   * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `insertRideTrackPoint`
+   */
+  @Transaction
+  suspend fun insertRideTrackPoints(points: List<RideTrackPoint>) {
+    val keys = points.mapNotNullTo(HashSet()) { it.boardId }.associateWith { resolveBoardKey(it) }
+    insertRideTrackPointRows(points.map { it.toEntity(it.boardId?.let(keys::getValue)) })
+  }
+
+  @Query("SELECT key FROM boards WHERE id = :id")
+  suspend fun getBoardKey(id: String): Long?
+
+  /**
+   * The key of Board [id], minting a tombstoned Board first when no row exists (the v55 orphan
+   * rule), so stored data never loses its owner. Run inside the caller's transaction.
+   * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `resolveBoardKey`
+   */
+  suspend fun resolveBoardKey(id: String): Long {
+    mintTombstonedBoard(id, UNKNOWN_TELEMETRY_BOARD_NAME, System.currentTimeMillis())
+    return checkNotNull(getBoardKey(id))
+  }
+
+  @Query("""INSERT OR IGNORE INTO boards (id, name, ble_id, created_at, deleted_at)
+    VALUES (:id, :name, NULL, :nowMs, :nowMs)""")
+  suspend fun mintTombstonedBoard(id: String, name: String, nowMs: Long)
 
   /**
    * The Ride Track over a time range, on the GPS clock. Every stored fix is returned with the
@@ -198,19 +255,19 @@ interface VescapeDao {
     toMs: Long,
     boardId: String?,
     limit: Int,
-  ): List<RideTrackPointEntity>
+  ): List<RideTrackPoint>
 
   // Raw keyset pages: advance using the last RAW row, even when every row is imprecise.
   // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `rideExportTrackPage`
   @Query("""
-    SELECT * FROM ride_track_points
-    WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs
-      AND board_id IS :boardId
-      AND (fix_at_ms > :afterMs OR (fix_at_ms = :afterMs AND id > :afterId))
-    ORDER BY fix_at_ms, id LIMIT :limit
+    $RIDE_TRACK_SELECT
+    WHERE t.fix_at_ms >= :fromMs AND t.fix_at_ms <= :toMs
+      AND t.board_key IS $BOARD_KEY_OF_BOARD_ID
+      AND (t.fix_at_ms > :afterMs OR (t.fix_at_ms = :afterMs AND t.id > :afterId))
+    ORDER BY t.fix_at_ms, t.id LIMIT :limit
   """)
   suspend fun getRideExportTrackPage(fromMs: Long, toMs: Long, boardId: String?,
-    afterMs: Long, afterId: Long, limit: Int): List<RideTrackPointEntity>
+    afterMs: Long, afterId: Long, limit: Int): List<RideTrackPoint>
 
   /** Complete input for durable summaries and bucket rebuilds, without the bridge read cap. */
   // @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `fetchRideTrackForAggregation`
@@ -219,7 +276,7 @@ interface VescapeDao {
     fromMs: Long,
     toMs: Long,
     boardId: String?,
-  ): List<RideTrackPointEntity>
+  ): List<RideTrackPoint>
 
   @Query("SELECT COUNT(*) FROM ride_track_points")
   suspend fun countRideTrackPoints(): Long
@@ -242,10 +299,7 @@ interface VescapeDao {
     DELETE FROM ride_track_points
     WHERE fix_at_ms >= :fromMs
       AND fix_at_ms <= :toMs
-      AND (
-        (:boardId IS NOT NULL AND board_id = :boardId)
-        OR (:boardId IS NULL AND board_id IS NULL)
-      )
+      AND board_key IS $BOARD_KEY_OF_BOARD_ID
     """,
   )
   suspend fun deleteRideTrackPointsRange(fromMs: Long, toMs: Long, boardId: String?): Int
@@ -362,51 +416,110 @@ interface VescapeDao {
     limit: Int,
   ): List<DiagnosticEventEntity>
 
-  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
-  @Query("""
-    SELECT * FROM telemetry_frames WHERE captured_at_ms < :fromMs AND board_id IS :boardId
-      AND (flags & 1) != 0
-    ORDER BY captured_at_ms DESC, id DESC LIMIT 1
-  """)
-  suspend fun getRideExportKeyframe(fromMs: Long, boardId: String?): TelemetryFrameEntity?
-
-  // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
+  // Telemetry Chunks + write buffer (ADR 0045). Every sample read merges both through
+  // `TelemetryChunkStore.kt`; these are its primitives.
+  // @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `telemetryStream`
   @Query("""
     SELECT * FROM telemetry_frames WHERE captured_at_ms >= :fromMs AND captured_at_ms <= :toMs
-      AND board_id IS :boardId
+      AND (:allBoards OR board_id IS :boardId)
       AND (captured_at_ms > :afterMs OR (captured_at_ms = :afterMs AND id > :afterId))
     ORDER BY captured_at_ms, id LIMIT :limit
   """)
-  suspend fun getRideExportTelemetryPage(fromMs: Long, toMs: Long, boardId: String?,
+  suspend fun getBufferFramesPage(fromMs: Long, toMs: Long, boardId: String?, allBoards: Boolean,
     afterMs: Long, afterId: Long, limit: Int): List<TelemetryFrameEntity>
 
-  @Query(
-    """
-    SELECT * FROM telemetry_frames
-    WHERE captured_at_ms <= :fromMs
-      AND (:boardId IS NULL OR board_id = :boardId)
-      AND (flags & :keyframeFlag) != 0
-    ORDER BY captured_at_ms DESC
-    LIMIT 1
-    """,
-  )
-  suspend fun getLatestKeyframeBefore(
-    fromMs: Long,
-    boardId: String?,
-    keyframeFlag: Int = TELEMETRY_FLAG_KEYFRAME,
-  ): TelemetryFrameEntity?
+  @Query("""
+    SELECT MAX(captured_at_ms) FROM telemetry_frames WHERE captured_at_ms < :beforeMs
+      AND (:allBoards OR board_id IS :boardId) AND (flags & 1) != 0
+  """)
+  suspend fun latestBufferKeyframeBefore(beforeMs: Long, boardId: String?, allBoards: Boolean): Long?
 
-  @Query(
-    """
-    SELECT * FROM telemetry_frames
-    WHERE captured_at_ms >= :fromMs
-      AND captured_at_ms <= :toMs
-      AND (:boardId IS NULL OR board_id = :boardId)
-    ORDER BY captured_at_ms ASC
-    LIMIT :limit
-    """,
-  )
-  suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity>
+  @Query("""
+    SELECT first_at_ms FROM telemetry_chunks WHERE minute_start_ms < :beforeMs AND first_at_ms < :beforeMs
+      AND (:allBoards OR board_key IS $BOARD_KEY_OF_BOARD_ID)
+    ORDER BY minute_start_ms DESC LIMIT 1
+  """)
+  suspend fun latestChunkStartBefore(beforeMs: Long, boardId: String?, allBoards: Boolean): Long?
+
+  /** Chunks holding any sample in `[fromMs, toMs]`, minute-ordered, payload left in the table. */
+  @Query("""
+    SELECT c.id, b.id AS board_id, c.minute_start_ms, c.sample_count, c.first_at_ms, c.last_at_ms
+    FROM telemetry_chunks c LEFT JOIN boards b ON b.key = c.board_key
+    WHERE c.minute_start_ms > :fromMs - 60000 AND c.minute_start_ms <= :toMs
+      AND c.last_at_ms >= :fromMs AND c.first_at_ms <= :toMs
+      AND (:allBoards OR c.board_key IS $BOARD_KEY_OF_BOARD_ID)
+    ORDER BY c.minute_start_ms, c.board_key
+  """)
+  suspend fun getTelemetryChunkHeaders(fromMs: Long, toMs: Long, boardId: String?, allBoards: Boolean): List<TelemetryChunkHeader>
+
+  @Query("SELECT payload FROM telemetry_chunks WHERE id = :id")
+  suspend fun getTelemetryChunkPayload(id: Long): ByteArray
+
+  @Query("SELECT id FROM telemetry_chunks WHERE board_key IS :boardKey AND minute_start_ms = :minuteStartMs")
+  suspend fun getTelemetryChunkId(boardKey: Long?, minuteStartMs: Long): Long?
+
+  @Query("""
+    SELECT MIN(first_at_ms) FROM telemetry_chunks WHERE minute_start_ms =
+      (SELECT MIN(minute_start_ms) FROM telemetry_chunks WHERE minute_start_ms > :minuteStartMs)
+  """)
+  suspend fun firstChunkStartAfterMinute(minuteStartMs: Long): Long?
+
+  @Insert
+  suspend fun insertTelemetryChunk(chunk: TelemetryChunkEntity): Long
+
+  @Query("""UPDATE telemetry_chunks SET codec_version = :codecVersion, sample_count = :sampleCount,
+    first_at_ms = :firstAtMs, last_at_ms = :lastAtMs, payload = :payload WHERE id = :id""")
+  suspend fun updateTelemetryChunk(id: Long, codecVersion: Int, sampleCount: Int, firstAtMs: Long, lastAtMs: Long, payload: ByteArray)
+
+  @Query("DELETE FROM telemetry_chunks WHERE id = :id")
+  suspend fun deleteTelemetryChunk(id: Long)
+
+  @Query("DELETE FROM telemetry_chunks")
+  suspend fun clearTelemetryChunks()
+
+  @Query("DELETE FROM telemetry_frames WHERE id IN (:ids)")
+  suspend fun deleteFramesByIds(ids: List<Long>)
+
+  /**
+   * Every closed minute still in the buffer, oldest first: the pre-chunk backlog and any later
+   * leftover (a late sample, a failed seal, a crash before the seal).
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `closedTelemetryMinutes`
+   */
+  @Query("""
+    SELECT DISTINCT board_id AS boardId, (captured_at_ms / 60000) * 60000 AS minuteStartMs FROM telemetry_frames
+    WHERE captured_at_ms < :beforeMs ORDER BY minuteStartMs
+  """)
+  suspend fun closedTelemetryMinutes(beforeMs: Long): List<TelemetryMinuteKey>
+
+  @Query("SELECT EXISTS(SELECT 1 FROM telemetry_frames WHERE captured_at_ms < :beforeMs LIMIT 1)")
+  suspend fun hasClosedTelemetryMinute(beforeMs: Long): Boolean
+
+  /** Samples in `[fromMs, toMs]` from one snapshot; null [boardId] reads every Board. */
+  @Transaction
+  suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity> =
+    readTelemetryFramesImpl(fromMs, toMs, boardId, boardId == null, Long.MIN_VALUE, Long.MIN_VALUE, limit)
+
+  /**
+   * [getFrames] preceded by every row from the latest full state before [fromMs], so deltas
+   * reconstruct. [limit] counts only rows inside `[fromMs, toMs]`; the anchor prefix is unbounded.
+   */
+  @Transaction
+  suspend fun getAnchoredFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity> {
+    val allBoards = boardId == null
+    val anchor = telemetryAnchorMs(fromMs + 1, boardId, allBoards)
+    val prefix = if (anchor == null || anchor >= fromMs) emptyList() else
+      readTelemetryFramesImpl(anchor, fromMs - 1, boardId, allBoards, Long.MIN_VALUE, Long.MIN_VALUE, Int.MAX_VALUE)
+    return prefix + readTelemetryFramesImpl(fromMs, toMs, boardId, allBoards, Long.MIN_VALUE, Long.MIN_VALUE, limit)
+  }
+
+  @Transaction
+  suspend fun sealTelemetryMinute(boardId: String?, minuteStartMs: Long): Int =
+    sealTelemetryMinuteImpl(boardId, minuteStartMs)
+
+  /** The recording check and the seals share one transaction. */
+  @Transaction
+  suspend fun drainTelemetryMinutes(keys: List<TelemetryMinuteKey>, nowMs: Long, gapMs: Long): TelemetrySealBatch? =
+    drainTelemetryMinutesImpl(keys, nowMs, gapMs)
 
   @Query(
     """
@@ -435,14 +548,30 @@ interface VescapeDao {
     boardId: String,
   ): TelemetryFrameEntity?
 
-  @Query("SELECT COUNT(*) FROM telemetry_frames")
+  @Query("SELECT (SELECT COUNT(*) FROM telemetry_frames) + (SELECT IFNULL(SUM(sample_count), 0) FROM telemetry_chunks)")
   suspend fun countFrames(): Long
 
-  @Query("SELECT MIN(captured_at_ms) FROM telemetry_frames")
+  @Query("SELECT MIN(at) FROM (SELECT MIN(captured_at_ms) AS at FROM telemetry_frames UNION ALL SELECT MIN(first_at_ms) FROM telemetry_chunks)")
   suspend fun firstFrameAt(): Long?
 
-  @Query("SELECT MAX(captured_at_ms) FROM telemetry_frames")
+  @Query("SELECT MAX(at) FROM (SELECT MAX(captured_at_ms) AS at FROM telemetry_frames UNION ALL SELECT MAX(last_at_ms) FROM telemetry_chunks)")
   suspend fun lastFrameAt(): Long?
+
+  /**
+   * Newest telemetry sample or Ride Track fix at or before [nowMs]; a future-dated one is ignored.
+   * A chunk straddling [nowMs] counts as [nowMs].
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `lastSampleAtOrBefore`
+   */
+  @Query(
+    """
+    SELECT MAX(at) FROM (
+      SELECT MAX(captured_at_ms) AS at FROM telemetry_frames WHERE captured_at_ms <= :nowMs
+      UNION ALL SELECT MAX(MIN(last_at_ms, :nowMs)) FROM telemetry_chunks WHERE first_at_ms <= :nowMs
+      UNION ALL SELECT MAX(fix_at_ms) FROM ride_track_points WHERE fix_at_ms <= :nowMs
+    )
+    """
+  )
+  suspend fun lastSampleAtOrBefore(nowMs: Long): Long?
 
   @Query("DELETE FROM telemetry_frames WHERE captured_at_ms < :beforeMs")
   suspend fun deleteFramesBefore(beforeMs: Long): Int
@@ -456,9 +585,16 @@ interface VescapeDao {
   @Query("DELETE FROM diagnostic_events WHERE occurred_at_ms < :beforeMs")
   suspend fun deleteDiagnosticEventsBefore(beforeMs: Long): Int
 
+  /** At most [limit] events older than [beforeMs]; one short write for Diagnostic Event retention. */
+  @Query(
+    "DELETE FROM diagnostic_events WHERE id IN " +
+      "(SELECT id FROM diagnostic_events WHERE occurred_at_ms < :beforeMs LIMIT :limit)",
+  )
+  suspend fun deleteDiagnosticEventsBatchBefore(beforeMs: Long, limit: Int): Int
+
   @Transaction
   suspend fun deleteBefore(beforeMs: Long): Int {
-    val frames = deleteFramesBefore(beforeMs)
+    val frames = deleteFramesBefore(beforeMs) + trimTelemetryChunks(Long.MIN_VALUE, beforeMs - 1, null, true)
     deleteMarkersBefore(beforeMs)
     deleteBucketsBefore(beforeMs)
     deleteDiagnosticEventsBefore(beforeMs)
@@ -506,7 +642,7 @@ interface VescapeDao {
   /** Every telemetry table keys on [boardId] (ADR 0028). Null means "every Board". */
   @Transaction
   suspend fun deleteRange(fromMs: Long, toMs: Long, boardId: String?): Int {
-    val frames = deleteFramesRange(fromMs, toMs, boardId)
+    val frames = deleteFramesRange(fromMs, toMs, boardId) + trimTelemetryChunks(fromMs, toMs, boardId, false)
     deleteMarkersRange(fromMs, toMs, boardId)
     deleteBucketsRange(fromMs, toMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
     deleteExclusionsRangeForBoard(fromMs, toMs, boardId)
@@ -531,7 +667,7 @@ interface VescapeDao {
 
   @Transaction
   suspend fun deleteRangeAllDevices(fromMs: Long, toMs: Long): Int {
-    val frames = deleteFramesRangeAllDevices(fromMs, toMs)
+    val frames = deleteFramesRangeAllDevices(fromMs, toMs) + trimTelemetryChunks(fromMs, toMs, null, true)
     deleteMarkersRangeAllDevices(fromMs, toMs)
     deleteBucketsRangeAllDevices(fromMs, toMs)
     deleteExclusionsRange(fromMs, toMs)
@@ -566,12 +702,14 @@ interface VescapeDao {
   @Transaction
   suspend fun clearAll() {
     clearFrames()
+    clearTelemetryChunks()
     clearMarkers()
     clearBuckets()
     clearDiagnosticEvents()
     clearExclusions()
     clearRideTrackPoints()
     clearWeatherObservations()
+    forgetTelemetryStorage()
   }
 
   @Transaction
@@ -589,7 +727,15 @@ interface VescapeDao {
       deleteWeatherObservations(range.startMs, range.endMs)
     }
     clearDiagnosticEvents()
+    forgetTelemetryStorage()
   }
+
+  /**
+   * Clear registered telemetry job state and the obsolete pre-job marker on Restore and Clear all.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `forgetTelemetryStorage`
+   */
+  @Query("DELETE FROM app_settings WHERE key IN ('maintenanceJob.telemetryStorage', 'maintenanceJob.telemetryBacklogDrain')")
+  suspend fun forgetTelemetryStorage()
 
   // Weather Observations (`weather_observations`)
 
@@ -655,11 +801,11 @@ interface VescapeDao {
 
   // @parity /modules/vescape-core/ios/telemetry/RideWeatherBackfill.swift `firstPreciseRideTrackFix`
   @Query("""
-    SELECT * FROM ride_track_points
-    WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs AND accuracy_cm IS NOT NULL AND accuracy_cm <= :maxAccuracyCm
-    ORDER BY fix_at_ms, id LIMIT 1
+    $RIDE_TRACK_SELECT
+    WHERE t.fix_at_ms >= :fromMs AND t.fix_at_ms <= :toMs AND t.accuracy_cm IS NOT NULL AND t.accuracy_cm <= :maxAccuracyCm
+    ORDER BY t.fix_at_ms, t.id LIMIT 1
   """)
-  suspend fun getFirstPreciseRideTrackFix(fromMs: Long, toMs: Long, maxAccuracyCm: Int): RideTrackPointEntity?
+  suspend fun getFirstPreciseRideTrackFix(fromMs: Long, toMs: Long, maxAccuracyCm: Int): RideTrackPoint?
 
   /** One Ride summaries Maintenance Job chunk, read and replaced in a single transaction. */
   @Transaction
@@ -678,13 +824,17 @@ interface VescapeDao {
   suspend fun deleteExclusionRange(id: Long)
 
   @Query("SELECT MIN(captured_at_ms) FROM telemetry_frames WHERE captured_at_ms >= :fromMs")
-  suspend fun firstFrameAtOrAfter(fromMs: Long): Long?
+  suspend fun firstBufferFrameAtOrAfter(fromMs: Long): Long?
+
+  suspend fun firstFrameAtOrAfter(fromMs: Long): Long? = firstTelemetrySampleAtOrAfter(fromMs)
 
   @Query("SELECT MIN(fix_at_ms) FROM ride_track_points WHERE fix_at_ms >= :fromMs")
   suspend fun firstRideTrackAtOrAfter(fromMs: Long): Long?
 
   @Query("SELECT EXISTS(SELECT 1 FROM telemetry_frames WHERE captured_at_ms = :atMs AND board_id IS :boardId)")
-  suspend fun frameExists(atMs: Long, boardId: String?): Boolean
+  suspend fun bufferFrameExists(atMs: Long, boardId: String?): Boolean
+
+  suspend fun frameExists(atMs: Long, boardId: String?): Boolean = telemetrySampleExists(atMs, boardId)
 
   @Query("SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE id = :id)")
   suspend fun rideTrackPointExists(id: Long): Boolean
@@ -700,8 +850,25 @@ interface VescapeDao {
   @Query("SELECT * FROM boards WHERE id = :id LIMIT 1")
   suspend fun getBoard(id: String): BoardEntity?
 
-  @Insert(onConflict = OnConflictStrategy.REPLACE)
-  suspend fun insertBoardRow(board: BoardEntity)
+  @Insert
+  suspend fun insertNewBoardRow(board: BoardEntity)
+
+  @Query("""UPDATE boards SET name = :name, ble_id = :bleId, created_at = :createdAt, deleted_at = :deletedAt
+    WHERE id = :id""")
+  suspend fun updateBoardRow(id: String, name: String, bleId: String?, createdAt: Long, deletedAt: Long?): Int
+
+  /**
+   * Writes a Board by its UUID, updating the existing row in place so `boards.key` — which every
+   * telemetry-scale row references — never changes. A REPLACE would delete the row and mint a new
+   * key on the `id` conflict.
+   * @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `saveBoardRow`
+   */
+  @Transaction
+  suspend fun saveBoardRow(board: BoardEntity) {
+    if (updateBoardRow(board.id, board.name, board.bleId, board.createdAt, board.deletedAt) == 0) {
+      insertNewBoardRow(board.copy(key = 0))
+    }
+  }
 
   @Query("SELECT deleted_at FROM boards WHERE id = :id")
   suspend fun getBoardDeletedAt(id: String): Long?
@@ -712,7 +879,7 @@ interface VescapeDao {
    */
   @Transaction
   suspend fun upsertBoard(board: BoardEntity) {
-    insertBoardRow(board.copy(deletedAt = board.deletedAt ?: getBoardDeletedAt(board.id)))
+    saveBoardRow(board.copy(deletedAt = board.deletedAt ?: getBoardDeletedAt(board.id)))
   }
 
   /**
@@ -779,7 +946,7 @@ interface VescapeDao {
     deleteAlertRules(id)
     deleteBoardConfigValues(id)
     deleteBoardConfigChangeNotice(id)
-    insertBoardRow(board.copy(deletedAt = deletedAt))
+    saveBoardRow(board.copy(deletedAt = deletedAt))
   }
 
   @Query("SELECT * FROM alerts WHERE board_id = :boardId ORDER BY created_at ASC")

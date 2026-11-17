@@ -3,7 +3,7 @@ package expo.modules.vescapecore.telemetry
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import expo.modules.vescapecore.database.MetricExclusionRangeEntity
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.TelemetryMarkerEntity
 import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
@@ -16,7 +16,7 @@ internal class RecordingPersistence(private val dao: VescapeDao) {
     buckets: Collection<TelemetryMinuteBucketEntity>,
     markers: List<TelemetryMarkerEntity>,
     exclusions: List<MetricExclusionRangeEntity> = emptyList(),
-    trackPoints: List<RideTrackPointEntity> = emptyList(),
+    trackPoints: List<RideTrackPoint> = emptyList(),
   ) = dao.insertBatch(frames, buckets, markers, exclusions, trackPoints)
 
   suspend fun readCommittedRide(): List<TelemetryMinuteBucketEntity> = dao.getAllHistoryBucketsAsc()
@@ -56,7 +56,7 @@ internal class RecordingCommitBoundary(
     buckets: Collection<TelemetryMinuteBucketEntity>,
     markers: List<TelemetryMarkerEntity>,
     exclusions: List<MetricExclusionRangeEntity> = emptyList(),
-    trackPoints: List<RideTrackPointEntity> = emptyList(),
+    trackPoints: List<RideTrackPoint> = emptyList(),
   ): Boolean = mutex.withLock {
     if (!gate.isAccepting()) return@withLock false
     return@withLock try {

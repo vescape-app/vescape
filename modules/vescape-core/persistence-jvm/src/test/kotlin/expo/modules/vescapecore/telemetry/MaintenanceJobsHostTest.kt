@@ -7,6 +7,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.database.DatabaseReplacementFence
+import expo.modules.vescapecore.database.DiagnosticEventEntity
 import expo.modules.vescapecore.database.MetricExclusionRangeEntity
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.TelemetryFrameEntity
@@ -42,6 +43,61 @@ class MaintenanceJobsHostTest {
     switchState = 1, adc1Milli = 0, adc2Milli = 0, odometerCm = at,
     tempMosfetDeciC = 300, tempMotorDeciC = 300,
   )
+
+  @Test fun telemetryStoragePublishesProgressAndCompletesSuccessfulSeals(): Unit = runBlocking {
+    val db = db()
+    try {
+      val dao = db.vescapeDao()
+      dao.insertFrames(listOf(frame(minute)))
+      val fence = DatabaseReplacementFence()
+      val progress = mutableListOf<Pair<Int, Int>>()
+      var committed = 0
+      val scope = MaintenanceJobScope({ dao }, fence, fence.ticket(), { 100 * minute },
+        progress = { done, total -> progress += done to total }, committed = { committed++ })
+      val job = TelemetryStorageJob()
+      val settings = AppSettings()
+      assertTrue(job.hasWork(scope, settings))
+      job.begin(scope, settings)
+      assertEquals(MaintenanceJobOutcome.Completed, job.run(scope, settings))
+      job.complete(scope, settings)
+      assertEquals(listOf(1 to 1), progress)
+      assertEquals(1, committed)
+      assertFalse(job.hasWork(scope, settings))
+      assertEquals(1, dao.getTelemetryChunkHeaders(minute, minute, board, false).single().sampleCount)
+    } finally { db.close() }
+  }
+
+  @Test fun telemetryStorageFinishesFailuresAndRetriesAfterLaunchOrReplacement(): Unit = runBlocking {
+    val db = db()
+    try {
+      val dao = db.vescapeDao()
+      val fence = DatabaseReplacementFence()
+      val now = 100 * minute
+      fun scope() = MaintenanceJobScope({ dao }, fence, fence.ticket(), { now })
+      val settings = AppSettings()
+      val job = TelemetryStorageJob()
+      dao.insertFrames(listOf(frame(now - 500)))
+      assertFalse("open minute alone is not work", job.hasWork(scope(), settings))
+      dao.insertFrames(listOf(frame(minute)))
+      assertTrue(job.hasWork(scope(), settings))
+      job.begin(scope(), settings)
+      assertTrue("recording defers the job", job.run(scope(), settings) is MaintenanceJobOutcome.Deferred)
+      dao.deleteFramesByIds(dao.getBufferFramesPage(now - 500, now, null, true, Long.MIN_VALUE, Long.MIN_VALUE, 10).map { it.id })
+      dao.sealTelemetryMinute(board, minute)
+      val chunk = dao.getTelemetryChunkHeaders(minute, minute, board, false).single()
+      dao.updateTelemetryChunk(chunk.id, 1, chunk.sampleCount, chunk.firstAtMs, chunk.lastAtMs, byteArrayOf(0x7F))
+      dao.insertFrames(listOf(frame(minute + 500)))
+      assertEquals(MaintenanceJobOutcome.Completed, job.run(scope(), settings))
+      job.complete(scope(), settings)
+      assertFalse("failed minute does not rerun on every trigger", job.hasWork(scope(), settings))
+      assertTrue("next launch retries failed minute", TelemetryStorageJob().hasWork(scope(), settings))
+      fence.fence { }
+      assertTrue("replacement retries in the same process", job.hasWork(scope(), settings))
+      dao.publishMaintenanceFingerprint("telemetryBacklogDrain", "drained", now)
+      job.hasWork(scope(), settings)
+      assertNull("legacy marker cleaned up", dao.storedMaintenanceFingerprint("telemetryBacklogDrain"))
+    } finally { db.close() }
+  }
 
   private suspend fun VescapeDao.persisted() = Triple(
     getAllHistoryBucketsAsc(),
@@ -131,6 +187,91 @@ class MaintenanceJobsHostTest {
     dao.publishMaintenanceFingerprint(RideSummariesJob.id, fingerprint, 1)
     assertEquals(fingerprint, dao.storedMaintenanceFingerprint(RideSummariesJob.id))
     assertNotEquals(fingerprint, RideSummariesJob.fingerprint(settings.copy(movingSpeedThresholdKmh = 5.0)))
+    db.close()
+  }
+  @Test fun cleanupRetainsRecentEventsAndRunsAgainAfterDatabaseReplacement(): Unit = runBlocking {
+    val original = db()
+    val replacement = db()
+    try {
+      var dao = original.vescapeDao()
+      val fence = DatabaseReplacementFence()
+      val now = 100 * 24 * hour
+      val boundary = now - DIAGNOSTIC_EVENT_RETENTION_MS
+      val settings = AppSettings()
+      val job = MAINTENANCE_JOBS.last()
+      assertTrue(job is CleanupJob)
+      fun scope() = MaintenanceJobScope({ dao }, fence, fence.ticket(), { now })
+      suspend fun seed() {
+        for (at in listOf(boundary - 1, boundary, now - 1)) {
+          dao.insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = at, elapsedRealtimeMs = 0, eventName = "e",
+            operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}"))
+        }
+      }
+      suspend fun runJob() {
+        val scope = scope()
+        assertTrue(job.hasWork(scope, settings))
+        job.begin(scope, settings)
+        assertEquals(MaintenanceJobOutcome.Completed, job.run(scope, settings))
+        job.complete(scope, settings)
+        assertFalse(job.hasWork(scope, settings))
+        assertEquals(listOf(now - 1, boundary), dao.getDiagnosticEvents(Long.MIN_VALUE, Long.MAX_VALUE, null, 100).map { it.occurredAtMs })
+      }
+      seed()
+      dao.insertFrames(listOf(frame(now - minute)))
+      job.begin(scope(), settings)
+      assertTrue(job.run(scope(), settings) is MaintenanceJobOutcome.Deferred)
+      assertTrue(job.hasWork(scope(), settings))
+      assertEquals(3, dao.getDiagnosticEvents(Long.MIN_VALUE, Long.MAX_VALUE, null, 100).size)
+      dao.deleteFramesByIds(dao.getBufferFramesPage(now - minute, now, null, true, Long.MIN_VALUE, Long.MIN_VALUE, 10).map { it.id })
+      runJob()
+      assertTrue("next launch runs cleanup again", CleanupJob().hasWork(scope(), settings))
+      val fingerprint = dao.storedMaintenanceFingerprint(job.id)!!
+      fence.fence { dao = replacement.vescapeDao() }
+      // A restored archive can carry this launch's completed fingerprint.
+      dao.publishMaintenanceFingerprint(job.id, fingerprint, now)
+      seed()
+      runJob()
+    } finally { original.close(); replacement.close() }
+  }
+
+  /** Diagnostic Event retention (#683): age boundary, batching, fence, and the active-ride deferral. */
+  @Test fun diagnosticEventPruneKeepsTheBoundaryStopsAtAFenceAndWaitsForAnActiveRide(): Unit = runBlocking {
+    val db = db()
+    val dao = db.vescapeDao()
+    val now = 100 * 24 * hour
+    val boundary = now - DIAGNOSTIC_EVENT_RETENTION_MS
+    suspend fun insertEvents() = (List(5) { boundary - 1 - it } + listOf(boundary, now - 1)).forEach {
+      dao.insertDiagnosticEvent(DiagnosticEventEntity(occurredAtMs = it, elapsedRealtimeMs = 0, eventName = "e",
+        operation = null, phase = null, boardId = null, message = null, propertiesJson = "{}"))
+    }
+    suspend fun remaining() = dao.getDiagnosticEvents(Long.MIN_VALUE, Long.MAX_VALUE, null, 100).map { it.occurredAtMs }.sorted()
+    val fence = DatabaseReplacementFence()
+    fun scope(progress: (Int, Int) -> Unit = { _, _ -> }) =
+      MaintenanceJobScope({ dao }, fence, fence.ticket(), { now }, progress)
+
+    insertEvents()
+    // Restore/Clear all lands after the first batch: the next batch throws, the rest stays.
+    var fenced = false
+    try {
+      pruneDiagnosticEvents(scope { _, _ -> runBlocking { fence.fence { } } }, gapMs = 10 * minute, batch = 2)
+    } catch (_: MaintenanceRunFenced) {
+      fenced = true
+    }
+    assertTrue(fenced)
+    assertEquals(5, remaining().size)
+
+    // Recording starts after the first batch: later batches leave the backlog untouched.
+    assertEquals(2, pruneDiagnosticEvents(scope { _, _ -> runBlocking { dao.insertFrames(listOf(frame(now - minute))) } },
+      gapMs = 10 * minute, batch = 2).deleted)
+    assertEquals(3, remaining().size)
+
+    // A ride that may still be recording defers the prune until ride closure.
+    assertEquals(0, pruneDiagnosticEvents(scope(), gapMs = 10 * minute, batch = 2).deleted)
+    assertEquals(3, remaining().size)
+
+    // Once the ride is a split gap old, every batch runs; the boundary event and newer stay.
+    assertEquals(1, pruneDiagnosticEvents(scope(), gapMs = 30 * 1000, batch = 2).deleted)
+    assertEquals(listOf(boundary, now - 1), remaining())
     db.close()
   }
 }

@@ -38,6 +38,7 @@ internal val SHARED_DATABASE_TABLES: Set<String> = setOf(
   "motor_config_values",
   "privacy_zones",
   "ride_track_points",
+  "telemetry_chunks",
   "telemetry_frames",
   "telemetry_markers",
   "telemetry_minute_buckets",
@@ -52,11 +53,13 @@ internal val SHARED_DATABASE_TABLES: Set<String> = setOf(
 private val ENGINE_TABLES = setOf("room_master_table", "android_metadata", "grdb_migrations")
 
 /**
- * Drops every table outside [SHARED_DATABASE_TABLES] in one transaction. Foreign keys are checked
- * at commit, so stray tables that reference each other drop in any order.
+ * Prepares a restored database before it is exposed, in one transaction: drops every table outside
+ * [SHARED_DATABASE_TABLES] and clears the archive's telemetry job state and legacy marker, so the restored
+ * buffer is drained again (ADR 0045). Foreign keys are checked at commit, so stray tables that
+ * reference each other drop in any order.
  * @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `openRestoredDatabase`
  */
-internal fun dropUnknownTables(connection: SQLiteConnection) {
+internal fun prepareRestoredDatabase(connection: SQLiteConnection) {
   val tables = connection.prepare("SELECT name FROM sqlite_master WHERE type='table'").use { query ->
     buildList { while (query.step()) add(query.getText(0)) }
   }
@@ -66,6 +69,9 @@ internal fun dropUnknownTables(connection: SQLiteConnection) {
     tables
       .filterNot { it in SHARED_DATABASE_TABLES || it in ENGINE_TABLES || it.startsWith("sqlite_") }
       .forEach { connection.execSQL("DROP TABLE `$it`") }
+    connection.prepare("DELETE FROM app_settings WHERE key IN ('maintenanceJob.telemetryStorage', 'maintenanceJob.telemetryBacklogDrain')").use {
+      it.step()
+    }
     connection.execSQL("COMMIT")
   } catch (error: Exception) {
     connection.execSQL("ROLLBACK")

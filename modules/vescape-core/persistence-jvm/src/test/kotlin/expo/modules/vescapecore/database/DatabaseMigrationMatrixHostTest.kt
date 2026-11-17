@@ -268,6 +268,49 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
+  /**
+   * v55 keys the Ride Track on `boards.key` (#684). Every fix keeps its owner, an orphan
+   * `board_id` in the track or the frames becomes a tombstoned Board, and a re-run changes nothing.
+   */
+  @Test fun v54RideTrackMovesToBoardKeyAndMintsOrphans() {
+    val path = migrateFromExport(54, seed = {
+      exec("INSERT INTO boards (id,name,created_at) VALUES ('board-b','B',200),('board-a','A',100)")
+      exec("INSERT INTO boards (id,name,created_at,deleted_at) VALUES ('board-gone','Gone',300,400)")
+      exec("INSERT INTO ride_track_points (id,board_id,fix_at_ms,latitude_e7,longitude_e7,accuracy_cm) VALUES (7,'board-a',1000,1,2,300),(9,'board-gone',2000,3,4,NULL),(11,NULL,3000,5,6,500),(13,'replay:orphan',4000,7,8,NULL),(15,'replay:orphan',5000,9,9,NULL)")
+      exec("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2) VALUES (6000,1,'frame-orphan',0,0,0),(500,1,'board-b',0,0,0)")
+    }) {
+      assertEquals("keys follow creation order", "board-a:1,board-b:2,board-gone:3", text("SELECT group_concat(id||':'||key, ',') FROM (SELECT * FROM boards WHERE key <= 3 ORDER BY key)"))
+      assertEquals("400", text("SELECT deleted_at FROM boards WHERE id='board-gone'"))
+      assertEquals("replay:orphan|VESC Board|4000|5000|", text("SELECT id||'|'||name||'|'||created_at||'|'||deleted_at||'|'||IFNULL(ble_id,'') FROM boards WHERE id='replay:orphan'"))
+      assertEquals("frame-orphan|6000|6000", text("SELECT id||'|'||created_at||'|'||deleted_at FROM boards WHERE id='frame-orphan'"))
+      assertEquals(
+        "7:board-a:1000:300,9:board-gone:2000:-,11:-:3000:500,13:replay:orphan:4000:-,15:replay:orphan:5000:-",
+        text("SELECT group_concat(t.id||':'||IFNULL(b.id,'-')||':'||t.fix_at_ms||':'||IFNULL(t.accuracy_cm,'-'), ',') FROM (SELECT * FROM ride_track_points ORDER BY id) t LEFT JOIN boards b ON b.key=t.board_key"),
+      )
+      assertEquals(0L, long("SELECT COUNT(*) FROM pragma_foreign_key_check('ride_track_points')"))
+      val before = text("SELECT group_concat(id||':'||key||':'||IFNULL(deleted_at,''), ',') FROM boards")
+      val track = text("SELECT group_concat(id||':'||IFNULL(board_key,''), ',') FROM ride_track_points")
+      DatabaseMigrations.all.single { it.startVersion == 54 }.migrate(this)
+      assertEquals("re-run keeps every key", before, text("SELECT group_concat(id||':'||key||':'||IFNULL(deleted_at,''), ',') FROM boards"))
+      assertEquals(track, text("SELECT group_concat(id||':'||IFNULL(board_key,''), ',') FROM ride_track_points"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  /** v56 adds Telemetry Chunks (#687): every frame stays in the buffer, the chunk table starts empty. */
+  @Test fun v55FramesStayInTheBufferBesideAnEmptyChunkTable() {
+    val path = migrateFromExport(55, seed = {
+      exec("INSERT INTO boards (id,name,created_at) VALUES ('board-a','A',100)")
+      exec("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,1,'board-a',1,1,0,1234),(1500,2,NULL,0,1,0,99)")
+    }) {
+      assertEquals("1000:board-a:1234,1500:-:99", text("SELECT group_concat(captured_at_ms||':'||IFNULL(board_id,'-')||':'||speed_centi_kmh, ',') FROM (SELECT * FROM telemetry_frames ORDER BY captured_at_ms)"))
+      assertEquals(0L, long("SELECT COUNT(*) FROM telemetry_chunks"))
+      exec("INSERT INTO telemetry_chunks (board_key,minute_start_ms,codec_version,sample_count,first_at_ms,last_at_ms,payload) VALUES ((SELECT key FROM boards WHERE id='board-a'),0,1,1,1000,1000,x'01')")
+      assertEquals(0L, long("SELECT COUNT(*) FROM pragma_foreign_key_check('telemetry_chunks')"))
+    }
+    Files.deleteIfExists(path)
+  }
+
   /** The first Android backups (v14) and the Privacy Zone era (v18–v20) the iOS host restores. */
   @Test fun exportAuthenticFirstAndroidBackupGenerationForIOSHost() {
     if (System.getenv("VESCAPE_BACKUP_PHASE") != "export-android") return

@@ -1,19 +1,42 @@
 import Foundation
 import GRDB
 
-struct PersistedBoard: Codable, FetchableRecord, PersistableRecord {
+/// A Board row. `id` is the UUID sync identity; `key` is the local integer the Ride Track references
+/// (ADR 0028), assigned on first insert and never changed — so the row is looked up and written by
+/// `id` only, never through GRDB's primary-key `save`.
+struct PersistedBoard: Decodable, FetchableRecord, TableRecord {
   static let databaseTableName = "boards"
   let id: String
   let name: String
   let bleId: String?
   let createdAt: Int64
   let deletedAt: Int64?
+  /// Nil until the row exists.
+  var key: Int64? = nil
 
   enum CodingKeys: String, CodingKey {
-    case id, name
+    case id, name, key
     case bleId = "ble_id"
     case createdAt = "created_at"
     case deletedAt = "deleted_at"
+  }
+
+  static func fetch(_ db: Database, id: String) throws -> PersistedBoard? {
+    try PersistedBoard.filter(Column("id") == id).fetchOne(db)
+  }
+
+  /// Writes the Board by its UUID, updating the existing row in place so `key` never changes.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `saveBoardRow`
+  func saveBoardRow(_ db: Database) throws {
+    try db.execute(
+      sql: "UPDATE boards SET name = ?, ble_id = ?, created_at = ?, deleted_at = ? WHERE id = ?",
+      arguments: [name, bleId, createdAt, deletedAt, id]
+    )
+    guard db.changesCount == 0 else { return }
+    try db.execute(
+      sql: "INSERT INTO boards (id, name, ble_id, created_at, deleted_at) VALUES (?, ?, ?, ?, ?)",
+      arguments: [id, name, bleId, createdAt, deletedAt]
+    )
   }
 }
 
@@ -59,7 +82,7 @@ final class BoardSettingsPersistence {
   }
 
   func board(id: String) throws -> PersistedBoard? {
-    try writer.read { db in try PersistedBoard.fetchOne(db, key: id) }
+    try writer.read { db in try PersistedBoard.fetch(db, id: id) }
   }
 
   func boardSettings(ids: [String]) throws -> [PersistedBoardSetting] {
@@ -74,11 +97,11 @@ final class BoardSettingsPersistence {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `upsertBoardWithSettings`
   func upsertBoard(_ board: PersistedBoard, settings: [PersistedBoardSetting], deletedKeys: [String], alerts: [PersistedAlertRule] = []) throws {
     try writer.write { db in
-      let tombstone = try PersistedBoard.fetchOne(db, key: board.id)?.deletedAt
+      let tombstone = try PersistedBoard.fetch(db, id: board.id)?.deletedAt
       try PersistedBoard(
         id: board.id, name: board.name, bleId: board.bleId,
         createdAt: board.createdAt, deletedAt: tombstone ?? board.deletedAt
-      ).save(db)
+      ).saveBoardRow(db)
       for key in deletedKeys {
         _ = try PersistedBoardSetting
           .filter(Column("board_id") == board.id && Column("key") == key)
@@ -93,14 +116,14 @@ final class BoardSettingsPersistence {
 
   func tombstoneBoard(id: String, deletedAt: Int64) throws {
     try writer.write { db in
-      guard var board = try PersistedBoard.fetchOne(db, key: id), board.deletedAt == nil else { return }
+      guard var board = try PersistedBoard.fetch(db, id: id), board.deletedAt == nil else { return }
       _ = try PersistedBoardSetting.filter(Column("board_id") == id).deleteAll(db)
       try db.execute(sql: "DELETE FROM board_warnings WHERE board_id = ?", arguments: [id])
       try db.execute(sql: "DELETE FROM alerts WHERE board_id = ?", arguments: [id])
       try db.execute(sql: "DELETE FROM board_config_values WHERE board_id = ?", arguments: [id])
       try db.execute(sql: "DELETE FROM board_config_change_notices WHERE board_id = ?", arguments: [id])
       board = PersistedBoard(id: board.id, name: board.name, bleId: board.bleId, createdAt: board.createdAt, deletedAt: deletedAt)
-      try board.update(db)
+      try board.saveBoardRow(db)
     }
   }
 
