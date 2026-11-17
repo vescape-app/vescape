@@ -1226,7 +1226,7 @@ internal final class BoardSessionController: VescGattListener {
 
   /// Device battery as a 0–1 fraction, or nil when the platform can't report it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `readPhoneBattery`
-  private func readPhoneBattery() -> Double? {
+  func readPhoneBattery() -> Double? {
     UIDevice.current.isBatteryMonitoringEnabled = true
     let level = UIDevice.current.batteryLevel
     return level < 0 ? nil : Double(level)

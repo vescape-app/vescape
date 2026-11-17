@@ -3128,6 +3128,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   reportUiError(message: string, source?: string | null, stack?: string | null): void
   reportDiagnosticTest(): DiagnosticStatus
   getDiagnosticStatus(): DiagnosticStatus
+  getPhoneBatteryLevel(): Promise<number | null>
   getLiveState(): LiveStateEvent
   getAppStatus(): AppStatus | null
   getServiceConfig(): ServiceConfig
@@ -3860,6 +3861,15 @@ export function reportDiagnosticTest(): DiagnosticStatus {
 /** Read native diagnostic reporter state for development tooling. */
 export function getDiagnosticStatus(): DiagnosticStatus {
   return native.getDiagnosticStatus()
+}
+
+/**
+ * The local phone battery as a fraction from 0 to 1, or null when unavailable.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getPhoneBatteryLevel`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getPhoneBatteryLevel`
+ */
+export async function getPhoneBatteryLevel(): Promise<number | null> {
+  return native.getPhoneBatteryLevel()
 }
 
 /** Read native-owned live state. UI should mirror this, not invent connection state. */

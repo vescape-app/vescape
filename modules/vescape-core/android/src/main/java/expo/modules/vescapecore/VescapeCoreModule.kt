@@ -28,6 +28,7 @@ import expo.modules.vescapecore.maps.MapSearchApi
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
+import expo.modules.vescapecore.connection.readPhoneBattery
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.BoardTransportDetector
 import expo.modules.vescapecore.service.CompanionPresence
@@ -668,6 +669,11 @@ class VescapeCoreModule : Module() {
     }
     Function("stopAlertTest") {
       stopAlertTest()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getPhoneBatteryLevel`
+    // @parity /modules/vescape-core/src/index.ts `getPhoneBatteryLevel`
+    AsyncFunction("getPhoneBatteryLevel") {
+      readPhoneBattery(context)
     }
     Function("getLiveState") {
       liveStateWithScan(CoreForegroundService.currentLiveState(context.applicationContext))

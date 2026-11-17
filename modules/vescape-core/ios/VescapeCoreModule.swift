@@ -727,6 +727,12 @@ public class VescapeCoreModule: Module {
 
     // MARK: Board session
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getPhoneBatteryLevel`
+    // @parity /modules/vescape-core/src/index.ts `getPhoneBatteryLevel`
+    AsyncFunction("getPhoneBatteryLevel") { () -> Double? in
+      self.coordinator.readPhoneBattery()
+    }.runOnQueue(.main)
+
     Function("getLiveState") {
       self.liveState(includeRecent: true)
     }

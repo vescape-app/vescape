@@ -3524,7 +3524,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             soc = if (telemetryFresh) latestBatterySoc?.let { (it / 100.0).coerceIn(0.0, 1.0) } else null,
             motorTemp = if (telemetryFresh) currentTelemetry?.tempMotor else null,
             ctrlTemp = if (telemetryFresh) currentTelemetry?.tempMosfet else null,
-            phoneBattery = readPhoneBattery(),
+            phoneBattery = readPhoneBattery(service),
             boardName = if (boardConfig != null) (boardConfig?.deviceName ?: selectedBoardName) else null,
             target = groupRideTarget,
             at = location.timestamp,
@@ -3534,16 +3534,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderSignalContext` */
     private fun riderSignalContext(): RiderSignalContext =
         groupRidePrivacy.signalContext(locationTracker.latestLocation, System.currentTimeMillis())
-
-    /**
-     * Device battery as a 0–1 fraction, or null when the platform can't report it.
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `readPhoneBattery`
-     */
-    private fun readPhoneBattery(): Double? {
-        val manager = service.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
-        val level = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-        return if (level in 0..100) level / 100.0 else null
-    }
 
     /**
      * Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD).
@@ -3955,3 +3945,13 @@ private fun SessionConfig.linkIdentity(): LinkIdentity =
         refloatVersion = refloatVersion,
         refloatBaseVersion = refloatBaseVersion,
     )
+
+/**
+ * Device battery as a 0–1 fraction, or null when the platform can't report it.
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `readPhoneBattery`
+ */
+internal fun readPhoneBattery(context: Context): Double? {
+    val manager = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
+    val level = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    return if (level in 0..100) level / 100.0 else null
+}
