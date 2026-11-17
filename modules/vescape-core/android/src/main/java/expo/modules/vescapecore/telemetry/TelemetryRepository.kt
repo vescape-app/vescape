@@ -192,12 +192,6 @@ class TelemetryRepository private constructor(context: Context) {
   private var lastFlushedFreeSpin = FreeSpinCarry()
 
   private var flushScheduled = false
-  // Minutes this process committed frames into and has not sealed yet, each with the fence ticket
-  // of that commit: a Restore or Clear all since then drops the seal (ADR 0045).
-  private val unsealedMinutes = mutableMapOf<TelemetryMinuteKey, Long>()
-  // A delayed seal check is armed for the earliest unsealed minute, so a minute closes even when
-  // ingestion stops before its grace has passed.
-  private var sealCheckScheduled = false
   private var lastState: FullTelemetryState? = null
   private var lastFrameAtMs: Long? = null
   private var lastHistoryAtMs: Long? = null
@@ -421,7 +415,6 @@ class TelemetryRepository private constructor(context: Context) {
       pendingTrack.clear()
       lastFlushedTrackPoint = null
       lastFlushedFreeSpin = FreeSpinCarry()
-      unsealedMinutes.clear()
       flushScheduled = false
       lastState = null
       lastFrameAtMs = null
@@ -885,7 +878,6 @@ class TelemetryRepository private constructor(context: Context) {
     }
     DatabaseReplacementFence.process.fence { maintenancePersistence.clear(protected) }
     synchronized(lock) {
-      unsealedMinutes.clear()
       pending.clear()
       pendingMarkers.clear()
       pendingTrack.clear()
@@ -962,8 +954,6 @@ class TelemetryRepository private constructor(context: Context) {
         return@withLock
       }
       writePendingLocked()
-      // Empty flushes check too: a minute whose grace passed since the last write still seals.
-      sealRecordedMinutes(all = false)
     }
   }
 
@@ -1028,7 +1018,6 @@ class TelemetryRepository private constructor(context: Context) {
         excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
       )
     }
-    val ticket = DatabaseReplacementFence.process.ticket()
     val committed = recordingCommitBoundary.commit(
       frames = filteredFrames.map { it.frame },
       // Minute buckets aggregate the Ride Track that was admitted, not the fix stamped onto a
@@ -1047,63 +1036,6 @@ class TelemetryRepository private constructor(context: Context) {
     if (committed) synchronized(lock) {
       lastFlushedTrackPoint = filteredTrack.lastOrNull { it.isPrecise() } ?: previousTrackPoint
       lastFlushedFreeSpin = sanitization.freeSpinCarry
-      for (pending in filteredFrames) {
-        unsealedMinutes[TelemetryMinuteKey(pending.frame.boardId, telemetryMinuteStart(pending.frame.capturedAtMs))] = ticket
-      }
-    }
-  }
-
-  /** Stop Recording: flush, then seal every recorded minute, the open one included (ADR 0045). */
-  fun sealAfterStop() {
-    scope.launch {
-      flushNow()
-      flushMutex.withLock { sealRecordedMinutes(all = true) }
-    }
-  }
-
-  /**
-   * Seal the minutes this process recorded once closed: wall clock past their end plus
-   * [TELEMETRY_SEAL_GRACE_MS], and no pending frame still targeting them. [all] seals every one; a
-   * later sample of a sealed minute stays in the buffer until the next seal merges it. A seal that
-   * fails verification keeps its rows and records a Diagnostic Event.
-   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `sealRecordedMinutes`
-   */
-  private suspend fun sealRecordedMinutes(all: Boolean) {
-    val now = System.currentTimeMillis()
-    val due = synchronized(lock) {
-      val oldestPending = pending.firstOrNull()?.frame?.capturedAtMs
-      unsealedMinutes.filterKeys { key ->
-        val end = key.minuteStartMs + TELEMETRY_BUCKET_SIZE_MS
-        all || (end + TELEMETRY_SEAL_GRACE_MS <= now && (oldestPending == null || end <= oldestPending))
-      }
-    }
-    for ((key, ticket) in due) {
-      try {
-        DatabaseReplacementFence.process.write(ticket) { dao.sealTelemetryMinute(key.boardId, key.minuteStartMs) }
-      } catch (error: Exception) {
-        Log.w(TAG, "Telemetry seal failed: ${error.message}")
-        recordSealFailure(key, error)
-      }
-      synchronized(lock) { if (unsealedMinutes[key] == ticket) unsealedMinutes.remove(key) }
-    }
-    scheduleSealCheck(now)
-  }
-
-  /**
-   * Arm one delayed [sealRecordedMinutes] for when the earliest unsealed minute closes, at least
-   * [TELEMETRY_SEAL_GRACE_MS] out so a minute held back by pending frames is not spun on.
-   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `scheduleSealCheck`
-   */
-  private fun scheduleSealCheck(now: Long) {
-    val earliest = synchronized(lock) {
-      if (sealCheckScheduled) return
-      unsealedMinutes.keys.minOfOrNull { it.minuteStartMs }?.also { sealCheckScheduled = true } ?: return
-    }
-    val waitMs = maxOf(earliest + TELEMETRY_BUCKET_SIZE_MS + TELEMETRY_SEAL_GRACE_MS - now, TELEMETRY_SEAL_GRACE_MS)
-    scope.launch {
-      delay(waitMs)
-      synchronized(lock) { sealCheckScheduled = false }
-      flushMutex.withLock { sealRecordedMinutes(all = false) }
     }
   }
 

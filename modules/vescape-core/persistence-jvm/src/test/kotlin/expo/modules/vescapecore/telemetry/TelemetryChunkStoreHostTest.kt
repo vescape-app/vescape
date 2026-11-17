@@ -166,7 +166,7 @@ class TelemetryChunkStoreHostTest {
     try {
       for (db in listOf(reference, sealed)) db.vescapeDao().seed()
       sealed.vescapeDao().seal(0..0)
-      // Stop and restart inside the minute: a sample lands after its minute was sealed.
+      // A late sample lands after a maintenance run sealed its minute.
       val late = recording(board, t0 + 250, 1)[20]
       for (db in listOf(reference, sealed)) db.vescapeDao().insertFrames(listOf(late))
       assertSameReads(reference.vescapeDao(), sealed.vescapeDao())

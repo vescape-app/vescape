@@ -35,12 +35,6 @@ internal final class TelemetryRepository {
   private var pendingTrack: [RideTrackPoint] = []
   private var lastFlushedTrackPoint: RideTrackPoint?
   private var lastFlushedFreeSpin = FreeSpinCarry()
-  // Minutes this process committed frames into and has not sealed yet, each with the fence ticket
-  // of that commit: a Restore or Clear all since then drops the seal (ADR 0045).
-  private var unsealedMinutes: [TelemetryMinuteKey: Int64] = [:]
-  // A delayed seal check is armed for the earliest unsealed minute, so a minute closes even when
-  // ingestion stops before its grace has passed.
-  private var sealCheck: DispatchWorkItem?
   private var lastFrameAtMs: Int64?
   private var lastHistoryAtMs: Int64?
   private var lastKeyframeAtMs: Int64?
@@ -224,7 +218,6 @@ internal final class TelemetryRepository {
 
   func endDatabaseSwap() {
     queue.sync {
-      unsealedMinutes.removeAll()
       pendingStates.removeAll()
       pendingPersisted.removeAll()
       pendingMarkers.removeAll()
@@ -600,7 +593,6 @@ internal final class TelemetryRepository {
       try TelemetryMaintenancePersistence(writer: pool).clear(protectedRanges: protected)
     }
     queue.sync {
-      unsealedMinutes.removeAll()
       pendingStates.removeAll()
       pendingPersisted.removeAll()
       pendingMarkers.removeAll()
@@ -630,14 +622,8 @@ internal final class TelemetryRepository {
     }
   }
 
-  private func flushOnQueue() {
-    writePendingOnQueue()
-    // Empty flushes check too: a minute whose grace passed since the last write still seals.
-    if recordingCommitBoundary.isAccepting() { sealRecordedMinutes(all: false) }
-  }
-
   /// Commit what is pending. Runs on `queue`.
-  private func writePendingOnQueue() {
+  private func flushOnQueue() {
     flushTimer.cancel()
     guard recordingCommitBoundary.isAccepting(),
       (!pendingStates.isEmpty || !pendingPersisted.isEmpty || !pendingMarkers.isEmpty
@@ -687,8 +673,7 @@ internal final class TelemetryRepository {
       )
     )
 
-    let ticket = DatabaseReplacementFence.process.ticket()
-    let committed = recordingCommitBoundary.commit {
+    _ = recordingCommitBoundary.commit {
       try VescapeDatabase.requirePool().write { db in
         for state in persisted { try insertFrame(db, state) }
         try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: track, buckets: buckets)
@@ -696,57 +681,6 @@ internal final class TelemetryRepository {
         for range in sanitization.exclusions { try insertExclusion(db, range) }
       }
     }
-    guard committed else { return }
-    for state in persisted {
-      unsealedMinutes[TelemetryMinuteKey(boardId: state.boardId, minuteStartMs: telemetryMinuteStart(state.capturedAtMs))] = ticket
-    }
-  }
-
-  /// Stop Recording: flush, then seal every recorded minute, the open one included (ADR 0045).
-  func sealAfterStop() {
-    queue.async {
-      self.flushOnQueue()
-      self.sealRecordedMinutes(all: true)
-    }
-  }
-
-  /// Seal the minutes this process recorded once closed: wall clock past their end plus
-  /// `TELEMETRY_SEAL_GRACE_MS`, and no pending frame still targeting them. `all` seals every one; a
-  /// later sample of a sealed minute stays in the buffer until the next seal merges it. A seal that
-  /// fails verification keeps its rows and records a Diagnostic Event. Runs on `queue`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `sealRecordedMinutes`
-  private func sealRecordedMinutes(all: Bool) {
-    let now = telemetryNowMs()
-    let oldestPending = pendingPersisted.first?.capturedAtMs
-    let due = unsealedMinutes.filter { key, _ in
-      let end = key.minuteStartMs + TELEMETRY_BUCKET_SIZE_MS
-      return all || (end + TELEMETRY_SEAL_GRACE_MS <= now && (oldestPending.map { end <= $0 } ?? true))
-    }
-    for (key, ticket) in due {
-      do {
-        let pool = try VescapeDatabase.requirePool()
-        _ = try DatabaseReplacementFence.process.write(ticket: ticket) { try pool.write { try sealTelemetryMinute($0, key) } }
-      } catch {
-        recordSealFailure(key, error)
-      }
-      if unsealedMinutes[key] == ticket { unsealedMinutes[key] = nil }
-    }
-    scheduleSealCheck(now: now)
-  }
-
-  /// Arm one delayed `sealRecordedMinutes` for when the earliest unsealed minute closes, at least
-  /// `TELEMETRY_SEAL_GRACE_MS` out so a minute held back by pending frames is not spun on.
-  /// Runs on `queue`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `scheduleSealCheck`
-  private func scheduleSealCheck(now: Int64) {
-    guard sealCheck == nil, let earliest = unsealedMinutes.keys.map(\.minuteStartMs).min() else { return }
-    let waitMs = max(earliest + TELEMETRY_BUCKET_SIZE_MS + TELEMETRY_SEAL_GRACE_MS - now, TELEMETRY_SEAL_GRACE_MS)
-    let check = DispatchWorkItem { [weak self] in
-      self?.sealCheck = nil
-      self?.sealRecordedMinutes(all: false)
-    }
-    sealCheck = check
-    queue.asyncAfter(deadline: .now() + .milliseconds(Int(waitMs)), execute: check)
   }
 
   /// A seal that kept its rows: one Diagnostic Event, so the failure is visible in diagnostics.

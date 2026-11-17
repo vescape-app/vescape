@@ -164,7 +164,6 @@ internal final class RecordingCoordinator {
       recordMarker(recordingStopMarker, config: config, message: "Recording stopped")
     }
     store.flushBlocking()
-    store.sealAfterStop()
     enabled = false
     startedAtMs = nil
     return true

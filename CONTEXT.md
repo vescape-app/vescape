@@ -81,7 +81,7 @@ A single decoded board data point captured from the connected board.
 _Avoid_: Packet, frame, event
 
 **Telemetry Chunk**:
-One Board's sealed **Telemetry Samples** for one wall-clock minute, stored as a single encoded record. Once a minute is sealed, its samples exist only in the chunk. Recent samples wait unsealed in the write buffer. Readers see chunks and buffer as one stream, and a late sample, delete or trim rewrites the chunk (ADR-0045).
+One Board's sealed **Telemetry Samples** for one wall-clock minute, stored as a single encoded record. Once a minute is sealed, its samples exist only in the chunk. Samples recorded since the last launch wait in the write buffer until the Telemetry storage Maintenance Job seals them at the next launch or after Restore or Clear all. Readers see chunks and buffer as one stream, and a late sample, delete or trim rewrites the chunk (ADR-0045).
 _Avoid_: frame batch, minute bucket
 
 **Telemetry Stale**:

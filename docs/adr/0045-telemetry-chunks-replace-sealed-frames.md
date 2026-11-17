@@ -5,8 +5,8 @@ covers where those blobs live and how readers and writers treat them.
 
 ## Status
 
-Accepted and implemented (#687, #688, #692). Schema 56 adds `telemetry_chunks`. New recordings are sealed on both
-platforms, and the buffer drain seals rows recorded before schema 56 in the background.
+Accepted and implemented (#687, #688, #692). Schema 56 adds `telemetry_chunks`. Recording is append-only on both
+platforms. The Telemetry storage Maintenance Job seals the buffer in the background.
 
 ## Decision
 
@@ -15,10 +15,11 @@ NULL for unowned samples), `minute_start_ms`, `codec_version`, `sample_count`, `
 `last_at_ms` and the codec `payload`. `telemetry_frames` becomes a **write buffer**. A sealed sample
 lives only in a chunk and an unsealed one only in the buffer. There is no decode cache.
 
-- **Sealing.** A minute is sealed once the wall clock is 10 s past its end and no pending frame
-  targets it, on Stop Recording (the open minute included), and by the buffer drain. Every flush checks, empty ones included, and a delayed check is armed for
-  the earliest unsealed minute, so a minute still closes when ingestion stops before its grace has
-  passed. Disconnect and Idle Pause are not triggers. One write transaction, under a
+- **Sealing.** Only the `telemetryStorage` Maintenance Job seals buffer minutes, after launch and
+  after Restore or Clear all. A minute is closed once the wall clock is 10 s past its end.
+  Recording only appends frames; flushing, Stop Recording, Disconnect and Idle Pause never seal.
+  Rides recorded since the last launch stay in the frame buffer until the next launch or database
+  replacement. This avoids compression work during a ride. One write transaction, under a
   `DatabaseReplacementFence` ticket, does the seal:
   1. Replay the minute's buffer rows from the preceding full state into canonical samples.
   2. Merge them with the minute's existing chunk.
@@ -31,7 +32,7 @@ lives only in a chunk and an unsealed one only in the buffer. There is no decode
   v55 migration and the Ride Track writer apply, so the chunk keeps its owner.
 
 - **Buffer drain.** One routine seals every closed minute left in `telemetry_frames`: the pre-56
-  backlog and any later leftover (a late sample, a failed seal, a process killed before its seal).
+  backlog, rides recorded since the last run, late samples and minutes left by a failed or interrupted drain.
   The Telemetry storage Maintenance Job runs first, before Ride summaries, after launch and after
   Restore or Clear all. It works oldest first,
   30 minutes per write transaction, each under a fence ticket; a fenced batch is dropped. Before

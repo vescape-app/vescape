@@ -16,8 +16,8 @@ Event retention into the `cleanup` job.
   clean-up. `MaintenanceRunner` only schedules jobs; it calls no database work of its own.
 - **Clean-up is one job, `cleanup`**, that runs a plain list of steps. A new retention rule is a new
   step, not a new job or runner path. One failed step is reported and the rest still run.
-- **Recording and the rider's own actions stay outside.** Live sealing during a ride, Backup,
-  Restore, Clear all and other work the rider starts and watches are not Maintenance Jobs.
+- **Recording and the rider's own actions stay outside.** Backup, Restore, Clear all and other
+  work the rider starts and watches are not Maintenance Jobs.
 
 ## Why
 

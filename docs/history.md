@@ -161,8 +161,10 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
   puts a warning dot on the Storage cell; waiting for network does not. The Database screen lists
   every job.
 
-**Telemetry storage** (`telemetryStorage`) runs first. It seals closed buffer minutes with the
-shared live-seal routine, oldest first, 30 minutes per fenced transaction. Progress counts minutes
+**Telemetry storage** (`telemetryStorage`) runs first, once per launch and database generation,
+including after Restore or Clear all. It alone seals closed buffer minutes, oldest first, 30 minutes
+per fenced transaction. Recording only appends frames, so rides recorded since the last launch
+stay buffered until the next launch or database replacement. Progress counts minutes
 in the run snapshot. Open minutes stay buffered; a possibly recording ride defers the job. Failed
 minutes stay readable and the run completes, so later triggers do not loop over them. A new launch
 or database replacement retries them and any later leftovers. The job clears the obsolete backlog
