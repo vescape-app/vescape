@@ -371,6 +371,8 @@ export function PublicRideSelector({
         pointerEvents={overlayAction ? 'none' : 'auto'}
         accessibilityElementsHidden={!!overlayAction}
         importantForAccessibility={overlayAction ? 'no-hide-descendants' : 'auto'}
+        // Fade the dial itself: a backdrop would paint a square over the rounded card.
+        style={overlayAction ? styles.covered : undefined}
       >
         <GestureDetector gesture={gesture}>
           <View
@@ -532,7 +534,7 @@ export function PublicRideSelector({
         ) : null}
       </View>
       {overlayAction ? (
-        <View style={[styles.overlay, { backgroundColor: theme.alpha(neutral.surfaceDeep, 0.75) }]}>
+        <View style={styles.overlay}>
           <View style={{ transform: [{ translateY: 35 * scale }] }}>{overlayAction}</View>
         </View>
       ) : null}
@@ -544,6 +546,7 @@ const styles = StyleSheet.create({
   indicatorPivot: { position: 'absolute', width: 0, height: 0 },
   indicator: { position: 'absolute', width: INDICATOR_WIDTH, left: -INDICATOR_WIDTH / 2 },
   disabled: { opacity: 0.5 },
+  covered: { opacity: 0.25 },
   overlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6, zIndex: 1 },
   headerIcon: { marginTop: 3 },
