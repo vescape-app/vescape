@@ -31,7 +31,7 @@ test('running job reports its position among the declared jobs', () => {
       job({ id: 'weatherBackfill', status: 'pending' }),
     ]),
   )
-  expect(progress?.statusLine).toBe('Updating ride summaries · 312 of 780 hours · 1 of 2')
+  expect(progress?.statusLine).toBe('Updating ride summaries · 40% · 1 of 2')
   expect(progress?.fraction).toBeCloseTo(0.4)
 })
 
@@ -48,11 +48,11 @@ test('waiting for network is not a failure', () => {
   expect(maintenanceFailed(state([job({ status: 'failed', lastError: 'disk I/O' })]))).toBe(true)
 })
 
-test('job detail lists what is left, the last run and its error', () => {
+test('job detail shows progress while running, else the last run and its error', () => {
   const now = 10 * 60_000
   expect(
     maintenanceJobDetail(job({ status: 'running', done: 312, total: 780, lastRunAtMs: now }), now),
-  ).toBe('Running · 468 hours left · last run now')
+  ).toBe('Running · 40%')
   expect(
     maintenanceJobDetail(
       job({ status: 'failed', lastRunAtMs: 0, lastDurationMs: 90_000, lastError: 'disk I/O' }),
@@ -71,10 +71,10 @@ test('sub-minute job durations show seconds, not a rounded-up minute', () => {
   ).toBe('Done · last run now · took 12 s')
 })
 
-test('telemetry storage reports minute progress on Background updates', () => {
+test('telemetry storage reports progress on Background updates', () => {
   const progress = maintenanceProgress(
     state([job({ id: 'telemetryStorage', status: 'running', done: 30, total: 60 })]),
   )
-  expect(progress?.statusLine).toBe('Updating telemetry storage · 30 of 60 minutes')
+  expect(progress?.statusLine).toBe('Updating telemetry storage · 50%')
   expect(progress?.fraction).toBe(0.5)
 })
