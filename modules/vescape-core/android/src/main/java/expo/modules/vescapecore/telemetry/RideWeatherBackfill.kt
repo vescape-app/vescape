@@ -250,7 +250,7 @@ internal suspend fun VescapeDao.weatherBackfillPageImpl(
   gapMs: Long,
 ): WeatherBackfillPage {
   val active = activeRideStartMs(nowMs, gapMs)
-  val activeRetryAtMs = active?.let { listOfNotNull(lastFrameAt(), lastRideTrackAt()).maxOrNull()?.plus(gapMs) }
+  val activeRetryAtMs = active?.let { lastSampleAtOrBefore(nowMs)?.plus(gapMs) }
   val beforeMs = active?.let { Math.floorDiv(it, TELEMETRY_BUCKET_SIZE_MS) * TELEMETRY_BUCKET_SIZE_MS } ?: Long.MAX_VALUE
   val buckets = getWeatherBackfillBuckets(cursor.bucketFromMs, beforeMs, WEATHER_BACKFILL_BUCKET_PAGE)
   if (buckets.isEmpty()) return WeatherBackfillPage(emptyList(), emptyList(), null, activeRetryAtMs)

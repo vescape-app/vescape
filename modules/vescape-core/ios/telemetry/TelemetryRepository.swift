@@ -243,10 +243,10 @@ internal final class TelemetryRepository {
     let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
       [
-        "sampleCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames") ?? 0,
+        "sampleCount": try telemetrySampleCount(db),
         "gpsPointCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM ride_track_points") ?? 0,
-        "firstAtMs": try Int64.fetchOne(db, sql: "SELECT MIN(captured_at_ms) FROM telemetry_frames"),
-        "lastAtMs": try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames"),
+        "firstAtMs": try firstTelemetrySampleAt(db),
+        "lastAtMs": try lastTelemetrySampleAt(db),
         "droppedPendingSamples": 0,
       ]
     }
@@ -296,16 +296,8 @@ internal final class TelemetryRepository {
       batteryEstimator.ensureLoaded()
       let configs = try historyBatteryConfigs(db)
       let boardNames = try historyBoardNames(db)
-      let rows = try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY captured_at_ms ASC
-          LIMIT ?
-          """,
-        arguments: [fromMs, toMs, boardId, boardId, limit]
-      )
+      let rows = try telemetryFrameRows(db, fromMs: fromMs, toMs: toMs, boardId: boardId,
+                                        allBoards: boardId == nil, limit: limit)
       let percents = self.batteryPercents(rows, configs: configs, windowMs: windowMs)
       return zip(rows, percents).map { sampleMap($0.0, batteryPercent: $0.1, boardNames: boardNames) }
     }
@@ -535,15 +527,7 @@ internal final class TelemetryRepository {
   ) throws -> (points: [BucketTelemetryPoint], track: [RideTrackPoint]) {
     let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
-      let rows = try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY captured_at_ms ASC
-          """,
-        arguments: [startMs, endMs, boardId, boardId]
-      )
+      let rows = try telemetryFrameRows(db, fromMs: startMs, toMs: endMs, boardId: boardId, allBoards: boardId == nil)
       let track = try fetchRideTrackForAggregation(db, fromMs: startMs, toMs: endMs, boardId: boardId)
         .map(rideTrackPoint)
       return (rows.compactMap(bucketPoint), track)
@@ -638,6 +622,7 @@ internal final class TelemetryRepository {
     }
   }
 
+  /// Commit what is pending. Runs on `queue`.
   private func flushOnQueue() {
     flushTimer.cancel()
     guard recordingCommitBoundary.isAccepting(),
@@ -688,7 +673,7 @@ internal final class TelemetryRepository {
       )
     )
 
-    recordingCommitBoundary.commit {
+    _ = recordingCommitBoundary.commit {
       try VescapeDatabase.requirePool().write { db in
         for state in persisted { try insertFrame(db, state) }
         try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: track, buckets: buckets)
@@ -696,6 +681,20 @@ internal final class TelemetryRepository {
         for range in sanitization.exclusions { try insertExclusion(db, range) }
       }
     }
+  }
+
+  /// A seal that kept its rows: one Diagnostic Event, so the failure is visible in diagnostics.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `recordSealFailure`
+  func recordSealFailure(_ key: TelemetryMinuteKey, _ error: Error) {
+    let properties: [String: Any] = ["operation": "telemetry_seal", "board_id": key.boardId ?? NSNull(),
+                                     "minute_start_ms": key.minuteStartMs, "message": String(describing: error)]
+    // intentional-suppression: diagnostic encoding falls back locally to avoid recursive reporting.
+    let json = (try? JSONSerialization.data(withJSONObject: properties)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+    let event = PersistedDiagnosticEvent(id: nil, occurredAtMs: telemetryNowMs(), elapsedRealtimeMs: telemetryElapsedMs(),
+      eventName: "telemetry_seal_failed", operation: "telemetry_seal", phase: nil, boardId: key.boardId,
+      message: String(describing: error), propertiesJson: json)
+    // intentional-suppression: a failed diagnostic write must not recurse into the same failed store.
+    do { try DiagnosticEventPersistence(writer: VescapeDatabase.requirePool()).insert(event) } catch {}
   }
 
   private func marker(type: String, capture: TelemetryCapture, gapMs: Int64?) -> [String: Any?] {

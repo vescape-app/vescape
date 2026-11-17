@@ -124,4 +124,80 @@ func runMaintenanceJobsContract() throws {
     try require(try queue.read { try storedMaintenanceFingerprint($0, id: RideSummariesJob().id) } == fingerprint, "fingerprint round trip")
     try require(maintenanceFingerprint(RideSummariesJob(), settings: ["movingSpeedThresholdKmh": 5.0]) != fingerprint, "inputs change the fingerprint")
   }
+  // Cleanup retains recent events, yields to recording, and reruns after replacement even
+  // when the restored database carries this launch's completion fingerprint.
+  do {
+    var queue = try freshQueue()
+    let fence = DatabaseReplacementFence()
+    let now = 100 * 24 * hour
+    let boundary = now - DIAGNOSTIC_EVENT_RETENTION_MS
+    let job = maintenanceJobs.last!
+    try require(job is CleanupJob, "cleanup runs last")
+    func scope() -> MaintenanceJobScope {
+      MaintenanceJobScope(writer: { queue }, fence: fence, ticket: fence.ticket(), nowMs: { now })
+    }
+    func seed() throws {
+      let diagnostics = DiagnosticEventPersistence(writer: queue)
+      for at in [boundary - 1, boundary, now - 1] {
+        try diagnostics.insert(.init(id: nil, occurredAtMs: at, elapsedRealtimeMs: 0, eventName: "e", operation: nil,
+                                    phase: nil, boardId: nil, message: nil, propertiesJson: "{}"))
+      }
+    }
+    func runJob() throws {
+      let scope = scope()
+      try require(try job.hasWork(scope, settings: [:]), "cleanup is stale")
+      try job.begin(scope, settings: [:])
+      try require(try job.run(scope, settings: [:]) == .completed, "cleanup completes")
+      try job.complete(scope, settings: [:])
+      try require(try !job.hasWork(scope, settings: [:]), "cleanup completes for this launch and generation")
+      let events = try DiagnosticEventPersistence(writer: queue).events(fromMs: Int64.min, toMs: Int64.max, boardId: nil, limit: 100)
+      try require(events.map(\.occurredAtMs) == [now - 1, boundary], "cleanup keeps boundary and recent events")
+    }
+    try seed()
+    try insertFrames(queue, [frame(now - minute)])
+    try job.begin(scope(), settings: [:])
+    try require(try job.run(scope(), settings: [:]) == .deferred(retryAtMs: now + 30 * minute), "recording defers cleanup")
+    try require(try job.hasWork(scope(), settings: [:]), "deferred cleanup stays stale")
+    try require(try queue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM diagnostic_events") } == 3, "recording keeps all events")
+    try queue.write { try $0.execute(sql: "DELETE FROM telemetry_frames") }
+    try runJob()
+    try require(try CleanupJob().hasWork(scope(), settings: [:]), "next launch reruns cleanup")
+    let fingerprint = try queue.read { try storedMaintenanceFingerprint($0, id: job.id)! }
+    let replacement = try freshQueue()
+    fence.fence { queue = replacement }
+    try queue.write { try publishMaintenanceFingerprint($0, id: job.id, fingerprint: fingerprint, nowMs: now) }
+    try seed()
+    try runJob()
+  }
+
+  // Diagnostic Event retention (#683): age boundary, batching, fence, and the active-ride deferral.
+  do {
+    let queue = try freshQueue()
+    let now = 100 * 24 * hour
+    let boundary = now - DIAGNOSTIC_EVENT_RETENTION_MS
+    let diagnostics = DiagnosticEventPersistence(writer: queue)
+    for at in (0..<5).map({ boundary - 1 - Int64($0) }) + [boundary, now - 1] {
+      try diagnostics.insert(.init(id: nil, occurredAtMs: at, elapsedRealtimeMs: 0, eventName: "e", operation: nil,
+                                   phase: nil, boardId: nil, message: nil, propertiesJson: "{}"))
+    }
+    func remaining() throws -> [Int64] {
+      try diagnostics.events(fromMs: Int64.min, toMs: Int64.max, boardId: nil, limit: 100).map(\.occurredAtMs).sorted()
+    }
+    let fence = DatabaseReplacementFence()
+    func scope(_ progress: @escaping (Int, Int) -> Void = { _, _ in }) -> MaintenanceJobScope {
+      MaintenanceJobScope(writer: { queue }, fence: fence, ticket: fence.ticket(), nowMs: { now }, progress: progress)
+    }
+    var fenced = false
+    do { try pruneDiagnosticEvents(scope { _, _ in fence.fence {} }, gapMs: 10 * minute, batch: 2) } catch is MaintenanceRunFenced { fenced = true }
+    try require(fenced, "a fence stops the Diagnostic Event prune")
+    try require(try remaining().count == 5, "fenced prune keeps the rest")
+    // intentional-suppression: the contract asserts on the remaining events below.
+    let started = try pruneDiagnosticEvents(scope { _, _ in _ = try? insertFrames(queue, [frame(now - minute)]) }, gapMs: 10 * minute, batch: 2)
+    try require(started.deleted == 2 && started.yielded, "recording that starts mid-prune stops later batches")
+    try require(try remaining().count == 3, "later batches leave the backlog untouched")
+    try require(try pruneDiagnosticEvents(scope(), gapMs: 10 * minute, batch: 2).yielded, "an active ride defers the prune")
+    try require(try remaining().count == 3, "deferred prune deletes nothing")
+    try require(try pruneDiagnosticEvents(scope(), gapMs: 30_000, batch: 2).deleted == 1, "prune deletes the rest in batches")
+    try require(try remaining() == [boundary, now - 1], "the boundary event and newer stay")
+  }
 }

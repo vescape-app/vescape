@@ -265,7 +265,7 @@ func weatherBackfillRows(_ samples: [WeatherObservation], startMs: Int64, endMs:
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `weatherBackfillPageImpl`
 func weatherBackfillPage(_ db: Database, cursor: WeatherBackfillCursor, nowMs: Int64, gapMs: Int64) throws -> WeatherBackfillPage {
   let active = try activeRideStartMs(db, nowMs: nowMs, gapMs: gapMs)
-  let activeRetryAtMs = try active.flatMap { _ in try lastSampleAt(db).map { $0 + gapMs } }
+  let activeRetryAtMs = try active.flatMap { _ in try lastSampleAtOrBefore(db, nowMs: nowMs).map { $0 + gapMs } }
   let beforeMs = active.map { $0 - (($0 % TELEMETRY_BUCKET_SIZE_MS) + TELEMETRY_BUCKET_SIZE_MS) % TELEMETRY_BUCKET_SIZE_MS } ?? Int64.max
   let buckets = try Row.fetchAll(
     db,

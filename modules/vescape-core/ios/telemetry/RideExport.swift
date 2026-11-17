@@ -6,12 +6,11 @@ import GRDB
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportTrackPage`
 internal func rideExportTrackPage(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
   afterMs: Int64, afterId: Int64) throws -> [Row] {
-  try Row.fetchAll(db, sql: """
-    SELECT * FROM ride_track_points
-    WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND board_id IS ?
-      AND (fix_at_ms > ? OR (fix_at_ms = ? AND id > ?))
-    ORDER BY fix_at_ms, id LIMIT ?
-    """, arguments: [fromMs, toMs, boardId, afterMs, afterMs, afterId, RideExport.batchSize])
+  try Row.fetchAll(db, sql: RIDE_TRACK_SELECT + """
+    WHERE t.fix_at_ms >= ? AND t.fix_at_ms <= ? AND t.board_key IS \(BOARD_KEY_OF_BOARD_ID)
+      AND (t.fix_at_ms > ? OR (t.fix_at_ms = ? AND t.id > ?))
+    ORDER BY t.fix_at_ms, t.id LIMIT ?
+    """, arguments: [fromMs, toMs, boardId, boardId, afterMs, afterMs, afterId, RideExport.batchSize])
 }
 
 /// Caller holds one database snapshot across every page; only the file crosses the bridge.
@@ -275,36 +274,23 @@ internal enum RideExport {
     return out + "\""
   }
 
-  /// Every stored frame in range with its reconstructed values, replaying the mask chain from the
-  /// preceding keyframe even for Android archives imported on iOS. Values are in storage mask bit order.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportKeyframe`
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportTelemetryPage`
+  /// Every stored sample in range, Telemetry Chunks and write buffer alike, with its reconstructed
+  /// values, replaying the mask chain from the preceding full state even for Android archives
+  /// imported on iOS. Pages on `(captured_at_ms, ordinal)` (ADR 0045). Values are in storage mask bit order.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt `forEachFrame`
   private static func forEachFrame(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
     _ body: (_ timestamp: Int64, _ values: [Int64?]) throws -> Void) throws {
-    let keyframe = try Row.fetchOne(db, sql: """
-      SELECT * FROM telemetry_frames WHERE captured_at_ms < ? AND board_id IS ?
-        AND (flags & 1) != 0
-      ORDER BY captured_at_ms DESC, id DESC LIMIT 1
-      """, arguments: [fromMs, boardId])
-    let start: Int64 = keyframe?["captured_at_ms"] ?? fromMs
+    let start = try telemetryAnchorMs(db, beforeMs: fromMs, boardId: boardId, allBoards: false) ?? fromMs
     var afterMs = start, afterId = Int64.min
-    // Storage mask bit order; NULL with a set bit explicitly clears an optional reading.
-    let columns = ["speed_centi_kmh", "battery_voltage_mv", "motor_current_ma", "battery_current_ma",
-      "duty_permille", "pitch_centi_deg", "roll_centi_deg", "balance_pitch_centi_deg", "balance_current_ma",
-      "erpm", "state", "switch_state", "adc1_milli", "adc2_milli", "odometer_cm", "temp_mosfet_deci_c", "temp_motor_deci_c"]
-    var values = [Int64?](repeating: nil, count: columns.count)
+    // Replayed by the canonical `reconstructTelemetryValues` (ADR 0044).
+    var values = [Int64?](repeating: nil, count: TELEMETRY_CHUNK_VALUE_COLUMNS)
     while true {
-      let rows = try Row.fetchAll(db, sql: """
-        SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ?
-          AND board_id IS ?
-          AND (captured_at_ms > ? OR (captured_at_ms = ? AND id > ?))
-        ORDER BY captured_at_ms, id LIMIT ?
-        """, arguments: [start, toMs, boardId, afterMs, afterMs, afterId, batchSize])
+      let rows = try telemetryFrameRows(db, fromMs: start, toMs: toMs, boardId: boardId, allBoards: false,
+                                        afterMs: afterMs, afterId: afterId, limit: batchSize)
       guard let last = rows.last else { break }
       for row in rows {
         let timestamp: Int64 = row["captured_at_ms"], flags: Int = row["flags"], mask: Int = row["changed_mask_1"]
-        if flags & 1 != 0 { values = [Int64?](repeating: nil, count: columns.count) }
-        for i in columns.indices where flags & 1 != 0 || mask & (1 << i) != 0 { values[i] = row[columns[i]] }
+        reconstructTelemetryValues(&values, flags: flags, changedMask1: mask, row: TELEMETRY_VALUE_COLUMN_NAMES.map { row[$0] as Int64? })
         if timestamp >= fromMs { try body(timestamp, values) }
       }
       afterMs = last["captured_at_ms"]; afterId = last["id"]

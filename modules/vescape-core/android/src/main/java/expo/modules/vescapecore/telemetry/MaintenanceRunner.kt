@@ -115,7 +115,12 @@ internal object MaintenanceRunner {
   }
 
   /** Restore or Clear all finished, successfully or not: re-check against the resulting database. */
-  fun onDatabaseReplaced() = trigger("database_replaced")
+  fun onDatabaseReplaced() {
+    scope.launch {
+      if (!started) return@launch
+      trigger("database_replaced")
+    }
+  }
 
   private suspend fun runPasses() {
     do {
@@ -137,6 +142,8 @@ internal object MaintenanceRunner {
       ticket = ticket,
       progress = { done, total -> progress(job.id, done, total) },
       committed = ::chunkCommitted,
+      sealFailure = { key, error -> TelemetryRepository.get(appContext).recordSealFailure(key, error) },
+      diagnostic = { name, properties -> TelemetryRepository.get(appContext).recordDiagnosticEvent(name, properties) },
       http = http,
     )
     val stale = try {

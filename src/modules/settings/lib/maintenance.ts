@@ -2,31 +2,37 @@ import type { MaintenanceJobState, MaintenanceState } from 'vescape-core'
 
 import { fmtRideDuration, fmtTimeAgo } from '@/helpers/format'
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MAINTENANCE_JOBS`
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `maintenanceJobs`
+ */
+export type MaintenanceJobId = 'telemetryStorage' | 'rideSummaries' | 'rideWeather' | 'cleanup'
+
 /** Rider-facing names for the declared Maintenance Jobs; an unknown id falls back to itself. */
-const JOB_TITLES: Record<string, string> = {
+const JOB_TITLES: Record<MaintenanceJobId, string> = {
+  telemetryStorage: 'Telemetry storage',
   rideSummaries: 'Ride summaries',
   rideWeather: 'Ride weather',
-}
-
-/** Unit each job counts its progress in. */
-const JOB_UNITS: Record<string, string> = {
-  rideSummaries: 'hours',
-  rideWeather: 'ride days',
+  cleanup: 'Cleanup',
 }
 
 export function maintenanceJobTitle(id: string): string {
-  return JOB_TITLES[id] ?? id
+  return JOB_TITLES[id as MaintenanceJobId] ?? id
 }
 
-export function maintenanceJobUnit(id: string): string {
-  return JOB_UNITS[id] ?? 'items'
+/**
+ * Jobs count in internal units (telemetry hours, minutes, ride days) that riders read as time
+ * left, so progress shows as a percentage.
+ */
+function fmtJobPercent(job: MaintenanceJobState): string {
+  return `${Math.floor((Math.min(job.done, job.total) / job.total) * 100)}%`
 }
 
 export interface MaintenanceProgress {
   job: MaintenanceJobState
   /** 0–1 when the running job knows its total yet. */
   fraction: number | null
-  /** e.g. "Updating ride summaries · 312 of 780 hours · 1 of 2" */
+  /** e.g. "Updating ride summaries · 40% · 1 of 2" */
   statusLine: string
 }
 
@@ -38,7 +44,7 @@ export function maintenanceProgress(state: MaintenanceState | null): Maintenance
   if (!job) return null
   const fraction = job.total > 0 ? Math.min(1, job.done / job.total) : null
   const parts = [`Updating ${maintenanceJobTitle(job.id).toLowerCase()}`]
-  if (job.total > 0) parts.push(`${job.done} of ${job.total} ${maintenanceJobUnit(job.id)}`)
+  if (job.total > 0) parts.push(fmtJobPercent(job))
   if (state.jobs.length > 1) parts.push(`${index + 1} of ${state.jobs.length}`)
   return { job, fraction, statusLine: parts.join(' · ') }
 }
@@ -63,13 +69,13 @@ function fmtJobDuration(ms: number): string {
   return fmtRideDuration(ms / 1000)
 }
 
-/** One job's Database screen line: status, items left, last run, duration and last error. */
+/** One job's Database screen line: status, progress or last run and duration, and last error. */
 export function maintenanceJobDetail(job: MaintenanceJobState, nowMs = Date.now()): string {
   const parts = [STATUS_LABELS[job.status]]
-  if (job.status === 'running' && job.total > 0) {
-    parts.push(`${job.total - job.done} ${maintenanceJobUnit(job.id)} left`)
-  }
-  if (job.lastRunAtMs != null) parts.push(`last run ${fmtTimeAgo(job.lastRunAtMs, nowMs)}`)
+  const running = job.status === 'running'
+  if (running && job.total > 0) parts.push(fmtJobPercent(job))
+  if (job.lastRunAtMs != null && !running)
+    parts.push(`last run ${fmtTimeAgo(job.lastRunAtMs, nowMs)}`)
   if (job.lastDurationMs != null && job.status !== 'running') {
     parts.push(`took ${fmtJobDuration(job.lastDurationMs)}`)
   }

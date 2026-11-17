@@ -73,7 +73,7 @@ func runBucketRoutePreviewContract() throws {
     let route = try favoriteRoutePreview(db, startMs: 60000, endMs: 179999, boardId: "sequence")
     try require(route.compactMap { $0["longitude"] as? Double } == sequence.map { Double($0.longitudeE7) / 1e7 }, "favorite orders fixes by capture time")
     try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE board_id = 'sequence'")
-    try db.execute(sql: "DELETE FROM ride_track_points WHERE board_id = 'sequence'")
+    try db.execute(sql: "DELETE FROM ride_track_points WHERE board_key = (SELECT key FROM boards WHERE id = 'sequence')")
   }
   let previews = rows.map { $0["route_preview"] as String }
   let telemetry = BucketTelemetryPoint(capturedAtMs: 3000, boardId: board, speedCentiKmh: 1500,

@@ -18,6 +18,7 @@ final class TelemetryRepository {
   func endDatabaseSwap() {}
 }
 
+let TELEMETRY_FLAG_KEYFRAME = 1
 func telemetryInt(_ raw: Any?) -> Int? { (raw as? NSNumber)?.intValue }
 func telemetryLong(_ raw: Any?) -> Int64? { (raw as? NSNumber)?.int64Value }
 
@@ -66,10 +67,6 @@ try require(reopenedZones.first?.id == remainingZone["id"] as? String, "Privacy 
 diagnosticStore = DiagnosticEventPersistence(writer: remainingQueue!)
 let diagnosticName = try diagnosticStore.events(fromMs: 0, toMs: Int64.max, boardId: nil, limit: 10).first?.eventName
 try require(diagnosticName == remainingDiagnostic["eventName"] as? String, "Diagnostic Event reopen")
-try diagnosticStore.insert(.init(id: nil, occurredAtMs: 13_000, elapsedRealtimeMs: 2, eventName: "retained", operation: nil, phase: nil, boardId: nil, message: nil, propertiesJson: "{}"))
-try diagnosticStore.delete(beforeMs: 5_000)
-let diagnosticsAfterPrune = try diagnosticStore.events(fromMs: 0, toMs: Int64.max, boardId: nil, limit: 10)
-try require(diagnosticsAfterPrune.map(\.eventName) == ["retained"], "Diagnostic Event prune")
 var warningStore = BoardWarningStore(dbWriter: remainingQueue!)
 let warningBoardId = remainingWarning["boardId"] as! String
 let warningKind = remainingWarning["kind"] as! String
@@ -359,6 +356,31 @@ let points = samples.map { sample in
   )
 }
 
+/// Keyframe + delta in minute 60 000, sealed by the exporter; a delta at 120 500 left in the buffer.
+/// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseRestoreHostTest.kt `crossChunkFrames`
+func crossChunkFrames() -> [RecordingPersistenceSQL.Frame] {
+  [(Int64(60_000), 1), (60_500, 0), (120_500, 0)].enumerated().map { i, frame in
+    .init(capturedAtMs: frame.0, elapsedRealtimeMs: frame.0, boardId: "cross-board", canId: nil, flags: frame.1,
+          changedMask1: frame.1 == 1 ? (1 << 17) - 1 : 1, changedMask2: 0, speedCentiKmh: 100 * (i + 1),
+          batteryVoltageMv: 80_000, motorCurrentMa: 0, batteryCurrentMa: 0, dutyPermille: 0, pitchCentiDeg: 0,
+          rollCentiDeg: 0, balancePitchCentiDeg: 0, balanceCurrentMa: 0, erpm: 0, state: 0, switchState: 0,
+          adc1Milli: 0, adc2Milli: 0, odometerCm: nil, tempMosfetDeciC: nil, tempMotorDeciC: nil)
+  }
+}
+
+/// The other platform's sealed chunk and buffered delta read back as one stream.
+func requireCrossChunkSpeeds(_ db: Database, _ label: String) throws {
+  let chunks = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_chunks WHERE minute_start_ms = 60000")
+  try require(chunks == 1, "\(label) lost its Telemetry Chunk")
+  var values = [Int64?](repeating: nil, count: TELEMETRY_CHUNK_VALUE_COLUMNS)
+  let speeds = try telemetryFrameRows(db, fromMs: 60_000, toMs: 121_000, boardId: "cross-board", allBoards: false).map { row -> String in
+    reconstructTelemetryValues(&values, flags: row["flags"], changedMask1: row["changed_mask_1"],
+                               row: TELEMETRY_VALUE_COLUMN_NAMES.map { row[$0] as Int64? })
+    return "\(row["captured_at_ms"] as Int64):\(values[0].map(String.init) ?? "-")"
+  }
+  try require(speeds == ["60000:100", "60500:200", "120500:300"], "\(label) chunk + buffer stream: \(speeds)")
+}
+
 func require(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
   if try !condition() { throw Failure(description: message) }
 }
@@ -568,6 +590,67 @@ try historyPool.write { db in try db.drop(table: "telemetry_minute_buckets") }
 do { _ = try profile.getProfileStatsSnapshot([:]); throw Failure(description: "profile query failure became empty") } catch is DatabaseError {}
 try historyPool.close()
 try FileManager.default.removeItem(at: historyURL)
+
+// MARK: - Board key (#684)
+//
+// The Ride Track references `boards.key`: rename, re-link and tombstone update the Board in place,
+// so the key and every fix's owner survive them; v55 keeps each fix's owner and mints orphans.
+// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/RideTrackPersistenceHostTest.kt `boardWritesKeepTheKeyTheTrackReferences`
+// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseMigrationMatrixHostTest.kt `v54RideTrackMovesToBoardKeyAndMintsOrphans`
+do {
+  let queue = try DatabaseQueue()
+  try VescapeDatabase.migrator.migrate(queue)
+  let boards = BoardSettingsPersistence(writer: queue)
+  func boardA(_ name: String, _ bleId: String) -> PersistedBoard {
+    PersistedBoard(id: "board-a", name: name, bleId: bleId, createdAt: 100, deletedAt: nil)
+  }
+  func fix(_ boardId: String?, _ at: Int64) -> RideTrackPoint {
+    RideTrackPoint(boardId: boardId, fixAtMs: at, latitudeE7: 1, longitudeE7: 2, accuracyCm: 500,
+      gpsSpeedCentiMps: nil, bearingCentiDeg: nil, altitudeCm: nil)
+  }
+  try boards.upsertBoard(PersistedBoard(id: "board-other", name: "Other", bleId: nil, createdAt: 50, deletedAt: nil), settings: [], deletedKeys: [])
+  try boards.upsertBoard(boardA("A", "ble-1"), settings: [], deletedKeys: [])
+  let key = try boards.board(id: "board-a")?.key
+  try require(key != nil, "Board has no key")
+  try queue.write { db in for point in [fix("board-a", 2000), fix(nil, 2500), fix("orphan", 2600)] { try insertRideTrackPoint(db, point) } }
+  try boards.upsertBoard(boardA("Renamed", "ble-1"), settings: [], deletedKeys: [])
+  try boards.upsertBoard(boardA("Renamed", "ble-2"), settings: [], deletedKeys: [])
+  try require(try boards.board(id: "board-a").map { [$0.name, $0.bleId] } == ["Renamed", "ble-2"], "rename/re-link lost")
+  try require(try boards.board(id: "board-a")?.key == key, "rename/re-link changed the Board key")
+  try boards.tombstoneBoard(id: "board-a", deletedAt: 3000)
+  try boards.upsertBoard(boardA("Renamed", "ble-2"), settings: [], deletedKeys: [])
+  let tombstoned = try boards.board(id: "board-a")
+  try require(tombstoned?.key == key && tombstoned?.deletedAt == 3000, "tombstone changed the Board key or was resurrected")
+  try require(try boards.board(id: "orphan")?.deletedAt != nil, "orphan fix did not mint a tombstoned Board")
+  try queue.read { db in
+    func owners(_ rows: [Row]) -> [String?] { rows.map { $0["board_id"] as String? } }
+    try require(owners(try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: "board-a")) == ["board-a"], "track by Board")
+    try require(owners(try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: nil)) == ["board-a", nil, "orphan"], "track for all Boards")
+    try require(try rideExportTrackPage(db, fromMs: 0, toMs: 10000, boardId: "board-missing", afterMs: -1, afterId: 0).isEmpty,
+      "an unknown Board matched the unowned track")
+    try require(try rideExportTrackPage(db, fromMs: 0, toMs: 10000, boardId: nil, afterMs: -1, afterId: 0).map { $0["fix_at_ms"] as Int64 } == [2500],
+      "unowned export page")
+  }
+
+  let v54 = try DatabaseQueue()
+  try VescapeDatabase.migrator.migrate(v54, upTo: "v54_shared_schema")
+  try v54.write { db in
+    try db.execute(sql: "INSERT INTO boards (id,name,created_at) VALUES ('board-b','B',200),('board-a','A',100)")
+    try db.execute(sql: "INSERT INTO boards (id,name,created_at,deleted_at) VALUES ('board-gone','Gone',300,400)")
+    try db.execute(sql: "INSERT INTO ride_track_points (id,board_id,fix_at_ms,latitude_e7,longitude_e7,accuracy_cm) VALUES (7,'board-a',1000,1,2,300),(9,'board-gone',2000,3,4,NULL),(11,NULL,3000,5,6,500),(13,'replay:orphan',4000,7,8,NULL),(15,'replay:orphan',5000,9,9,NULL)")
+    try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2) VALUES (6000,1,'frame-orphan',0,0,0),(500,1,'board-b',0,0,0)")
+  }
+  try VescapeDatabase.migrator.migrate(v54)
+  try v54.read { db in
+    try requireSharedSchema("v55-board-key", db, root: root)
+    try require(try String.fetchOne(db, sql: "SELECT group_concat(id||':'||key, ',') FROM (SELECT * FROM boards WHERE key <= 3 ORDER BY key)") == "board-a:1,board-b:2,board-gone:3", "v55 keys follow creation order")
+    try require(try String.fetchOne(db, sql: "SELECT id||'|'||name||'|'||created_at||'|'||deleted_at||'|'||IFNULL(ble_id,'') FROM boards WHERE id='replay:orphan'") == "replay:orphan|VESC Board|4000|5000|", "v55 track orphan mint")
+    try require(try String.fetchOne(db, sql: "SELECT id||'|'||created_at||'|'||deleted_at FROM boards WHERE id='frame-orphan'") == "frame-orphan|6000|6000", "v55 frame orphan mint")
+    try require(try String.fetchOne(db, sql: "SELECT group_concat(t.id||':'||IFNULL(b.id,'-')||':'||t.fix_at_ms||':'||IFNULL(t.accuracy_cm,'-'), ',') FROM (SELECT * FROM ride_track_points ORDER BY id) t LEFT JOIN boards b ON b.key=t.board_key")
+      == "7:board-a:1000:300,9:board-gone:2000:-,11:-:3000:500,13:replay:orphan:4000:-,15:replay:orphan:5000:-", "v55 track owners")
+    try require(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM pragma_foreign_key_check('ride_track_points')") == 0, "v55 foreign key")
+  }
+}
 
 let boardFixtureURL = root.appendingPathComponent("shared/board-settings-persistence-contract.json")
 let boardFixture = try JSONSerialization.jsonObject(with: Data(contentsOf: boardFixtureURL)) as! [String: Any]
@@ -1066,6 +1149,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try require(favorite == "Cross Favorite", "Android archive lost Favorite on iOS")
     try require(config == "{\"motor_current_max\":55.5}", "Android archive lost config on iOS")
     try require(speed == 2468, "Android archive lost Ride Recording on iOS")
+    try requireCrossChunkSpeeds(db, "Android archive")
     let track = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "cross-board")
     try require(track.count == 1, "Android archive lost independent GPS fix")
     try require(track.first?["accuracy_cm"] as Int? == 3500, "Android archive discarded poor GPS accuracy")
@@ -1155,6 +1239,11 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try insertRideTrackPoint(db, RideTrackPoint(boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
     let previewFixes = try bucketPreviewFixes()
     try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: previewFixes, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(previewFixes)))
+    // A sealed minute and a buffered delta anchored in it (ADR 0045).
+    for frame in crossChunkFrames() {
+      try db.execute(sql: RecordingPersistenceSQL.insertFrame, arguments: RecordingPersistenceSQL.frameArguments(frame))
+    }
+    try require(try sealTelemetryMinute(db, TelemetryMinuteKey(boardId: "cross-board", minuteStartMs: 60_000)) == 2, "iOS seals the cross-platform minute")
     try db.execute(sql: "PRAGMA user_version = \(VESCAPE_DATABASE_VERSION)")
   }
   try iosDatabase.close()
@@ -1476,6 +1565,8 @@ try runRecordingFlushTimerContract()
 try runWeatherObservationContract()
 try runMaintenanceJobsContract()
 try runRideWeatherBackfillContract()
+try runTelemetryChunkCodecContract()
+try runTelemetryChunkContract()
 
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 

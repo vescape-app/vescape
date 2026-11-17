@@ -8,7 +8,8 @@ struct TelemetryMaintenancePersistence {
 
   func deleteBefore(_ beforeMs: Int64) throws -> Int {
     try writer.write { db in
-      let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms < ?", arguments: [beforeMs]) ?? 0
+      var count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms < ?", arguments: [beforeMs]) ?? 0
+      count += try trimTelemetryChunks(db, fromMs: Int64.min, toMs: beforeMs - 1, boardId: nil, allBoards: true)
       try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms < ?", arguments: [beforeMs])
       try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms < ?", arguments: [beforeMs])
       try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE bucket_start_ms < ?", arguments: [beforeMs])
@@ -37,12 +38,14 @@ struct TelemetryMaintenancePersistence {
         count += try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ?", arguments: [range.startMs, range.endMs]) ?? 0
         try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms <= ?", arguments: [range.startMs, range.endMs])
         try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ?", arguments: [range.startMs, range.endMs])
+        count += try trimTelemetryChunks(db, fromMs: range.startMs, toMs: range.endMs, boardId: nil, allBoards: true)
         try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE last_sample_at_ms >= ? AND first_sample_at_ms <= ?", arguments: [range.startMs, range.endMs])
         try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ?", arguments: [range.startMs, range.endMs])
       } else {
         count += try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId]) ?? 0
-        try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId])
+        try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND board_key IS \(BOARD_KEY_OF_BOARD_ID)", arguments: [range.startMs, range.endMs, boardId, boardId])
         try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId])
+        count += try trimTelemetryChunks(db, fromMs: range.startMs, toMs: range.endMs, boardId: boardId, allBoards: false)
         try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE last_sample_at_ms >= ? AND first_sample_at_ms <= ? AND board_id = ?", arguments: [range.startMs, range.endMs, boardId ?? UNKNOWN_TELEMETRY_BOARD_ID])
         try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId])
       }
@@ -60,11 +63,13 @@ struct TelemetryMaintenancePersistence {
       try writer.write { db in
         try db.execute(sql: "DELETE FROM ride_track_points")
         try db.execute(sql: "DELETE FROM telemetry_frames")
+        try db.execute(sql: "DELETE FROM telemetry_chunks")
         try db.execute(sql: "DELETE FROM telemetry_minute_buckets")
         try db.execute(sql: "DELETE FROM telemetry_markers")
         try db.execute(sql: "DELETE FROM metric_exclusion_ranges")
         try db.execute(sql: "DELETE FROM diagnostic_events")
         try db.execute(sql: "DELETE FROM weather_observations")
+        try forgetTelemetryStorage(db)
       }
     } else {
       let ranges = subtractProtectedTelemetryRanges(
@@ -72,9 +77,11 @@ struct TelemetryMaintenancePersistence {
       )
       try writer.write { db in
         try db.execute(sql: "DELETE FROM diagnostic_events")
+        try forgetTelemetryStorage(db)
         for range in ranges {
           try db.execute(sql: "DELETE FROM ride_track_points WHERE fix_at_ms >= ? AND fix_at_ms <= ?", arguments: [range.startMs, range.endMs])
           try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ?", arguments: [range.startMs, range.endMs])
+          try trimTelemetryChunks(db, fromMs: range.startMs, toMs: range.endMs, boardId: nil, allBoards: true)
           try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE last_sample_at_ms >= ? AND first_sample_at_ms <= ?", arguments: [range.startMs, range.endMs])
           try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ?", arguments: [range.startMs, range.endMs])
           try db.execute(sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ?", arguments: [range.startMs, range.endMs])
@@ -92,6 +99,42 @@ struct TelemetryMaintenancePersistence {
 }
 
 internal let RIDE_SUMMARIES_CHUNK_MS: Int64 = 3_600_000
+
+/// Diagnostic Events older than this are pruned by the Cleanup Maintenance Job.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DIAGNOSTIC_EVENT_RETENTION_MS`
+internal let DIAGNOSTIC_EVENT_RETENTION_MS: Int64 = 30 * 24 * 60 * 60 * 1000
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DIAGNOSTIC_EVENT_PRUNE_BATCH`
+internal let DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DiagnosticEventPruneResult`
+struct DiagnosticEventPruneResult {
+  let deleted: Int
+  let yielded: Bool
+}
+
+/// Delete Diagnostic Events older than `DIAGNOSTIC_EVENT_RETENTION_MS`, one fenced batch per chunk so
+/// a large backlog never holds a long write lock. Each batch first rechecks, at the current time, whether
+/// a ride may be recording and yields to the Cleanup job if so. `scope.progress` runs between batches. Throws `MaintenanceRunFenced` when Restore or Clear all replaced the database.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `pruneDiagnosticEvents`
+@discardableResult
+internal func pruneDiagnosticEvents(_ scope: MaintenanceJobScope, gapMs: Int64, batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH) throws -> DiagnosticEventPruneResult {
+  let beforeMs = scope.nowMs() - DIAGNOSTIC_EVENT_RETENTION_MS
+  var deleted = 0
+  while true {
+    let count: Int? = try scope.chunk { db in
+      if try activeRideStartMs(db, nowMs: scope.nowMs(), gapMs: gapMs) != nil { return nil }
+      try db.execute(
+        sql: "DELETE FROM diagnostic_events WHERE id IN (SELECT id FROM diagnostic_events WHERE occurred_at_ms < ? LIMIT ?)",
+        arguments: [beforeMs, batch]
+      )
+      return db.changesCount
+    }
+    guard let count else { return DiagnosticEventPruneResult(deleted: deleted, yielded: true) }
+    deleted += count
+    scope.progress(deleted, deleted)
+    if count < batch { return DiagnosticEventPruneResult(deleted: deleted, yielded: false) }
+  }
+}
 
 /// Read-only state one Ride summaries chunk hands the next: each Board's free-spin state and the
 /// last precise Ride Track fix. It shapes the next chunk's output but is never written as it, and
@@ -123,26 +166,40 @@ private func floorMinute(_ ms: Int64) -> Int64 { floorTo(ms, TELEMETRY_BUCKET_SI
 private func floorChunk(_ ms: Int64) -> Int64 { floorTo(ms, RIDE_SUMMARIES_CHUNK_MS) }
 
 internal func lastSampleAt(_ db: Database) throws -> Int64? {
-  [try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames"),
+  [try lastTelemetrySampleAt(db),
    try Int64.fetchOne(db, sql: "SELECT MAX(fix_at_ms) FROM ride_track_points")].compactMap { $0 }.max()
 }
 
 /// First owned chunk start, or nil for a database with no frames and no Ride Track.
 internal func rideSummariesStartMs(_ db: Database) throws -> Int64? {
-  [try Int64.fetchOne(db, sql: "SELECT MIN(captured_at_ms) FROM telemetry_frames"),
+  [try firstTelemetrySampleAt(db),
    try Int64.fetchOne(db, sql: "SELECT MIN(fix_at_ms) FROM ride_track_points")].compactMap { $0 }.min().map(floorChunk)
 }
 
+/// Newest telemetry sample or Ride Track fix at or before `nowMs`; a future-dated one is ignored. A
+/// chunk straddling `nowMs` counts as `nowMs`.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `lastSampleAtOrBefore`
+internal func lastSampleAtOrBefore(_ db: Database, nowMs: Int64) throws -> Int64? {
+  try Int64.fetchOne(db, sql: """
+    SELECT MAX(at) FROM (
+      SELECT MAX(captured_at_ms) AS at FROM telemetry_frames WHERE captured_at_ms <= :nowMs
+      UNION ALL SELECT MAX(MIN(last_at_ms, :nowMs)) FROM telemetry_chunks WHERE first_at_ms <= :nowMs
+      UNION ALL SELECT MAX(fix_at_ms) FROM ride_track_points WHERE fix_at_ms <= :nowMs
+    )
+    """, arguments: ["nowMs": nowMs])
+}
+
 /// Start of the derived ride that may still be recording (ADR 0041), or nil when the newest sample
-/// is a full split gap old. Every Board and both streams count, and a Stop Recording is ignored, so
+/// at or before `nowMs` is a full split gap old. A future-dated sample (a wrong clock) is ignored, so
+/// it never holds the database in a ride forever. Every Board and both streams count, and a Stop Recording is ignored, so
 /// the cutoff can only be earlier than the real ride start, never later.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `activeRideStartMs`
 internal func activeRideStartMs(_ db: Database, nowMs: Int64, gapMs: Int64) throws -> Int64? {
-  guard let last = try lastSampleAt(db), nowMs - last < gapMs else { return nil }
+  guard let last = try lastSampleAtOrBefore(db, nowMs: nowMs), nowMs - last < gapMs else { return nil }
   var start = last
   while true {
     let earlier = [
-      try Int64.fetchOne(db, sql: "SELECT MIN(captured_at_ms) FROM telemetry_frames WHERE captured_at_ms >= ?", arguments: [start - gapMs]),
+      try firstTelemetrySampleAtOrAfter(db, start - gapMs),
       try Int64.fetchOne(db, sql: "SELECT MIN(fix_at_ms) FROM ride_track_points WHERE fix_at_ms >= ?", arguments: [start - gapMs]),
     ].compactMap { $0 }.min()
     guard let earlier, earlier < start else { return start }
@@ -171,18 +228,18 @@ internal func rebuildRideSummariesChunk(
 
   // Context that a deletion removed since the last chunk no longer exists to carry.
   if let previous = context.previousTrack,
-     try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE fix_at_ms = ? AND board_id IS ?)", arguments: [previous.fixAtMs, previous.boardId]) != true {
+     try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE fix_at_ms = ? AND board_key IS \(BOARD_KEY_OF_BOARD_ID))", arguments: [previous.fixAtMs, previous.boardId, previous.boardId]) != true {
     context.previousTrack = nil
   }
   context.freeSpin.boards = try context.freeSpin.boards.filter { _, state in
     guard let previous = state.previous else { return true }
-    return try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM telemetry_frames WHERE captured_at_ms = ? AND board_id IS ?)", arguments: [previous.capturedAtMs, previous.boardId]) == true
+    return try telemetrySampleExists(db, atMs: previous.capturedAtMs, boardId: previous.boardId)
   }
 
   try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE bucket_start_ms >= ? AND bucket_start_ms < ?", arguments: [fromMs, toMs])
   try trimExclusions(db, fromMs: fromMs, toMs: toMs)
 
-  var points = try Row.fetchAll(db, sql: "SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms < ? ORDER BY captured_at_ms ASC", arguments: [fromMs, toMs]).compactMap(bucketPoint)
+  var points = try telemetryFrameRows(db, fromMs: fromMs, toMs: toMs - 1, boardId: nil, allBoards: true).compactMap(bucketPoint)
   let track = try fetchRideTrackForAggregation(db, fromMs: fromMs, toMs: toMs - 1, boardId: nil).map(rideTrackPoint)
   let locations = rideTrackBucketPoints(track, previous: context.previousTrack, movingThresholdCentiKmh: config.movingSpeedThresholdCentiKmh)
   context.previousTrack = track.last(where: rideTrackFixIsPrecise) ?? context.previousTrack

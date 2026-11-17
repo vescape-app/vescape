@@ -45,10 +45,4 @@ struct DiagnosticEventPersistence {
   func clear() throws {
     _ = try writer.write { db in try PersistedDiagnosticEvent.deleteAll(db) }
   }
-
-  func delete(beforeMs: Int64) throws {
-    _ = try writer.write { db in
-      try PersistedDiagnosticEvent.filter(Column("occurred_at_ms") < beforeMs).deleteAll(db)
-    }
-  }
 }

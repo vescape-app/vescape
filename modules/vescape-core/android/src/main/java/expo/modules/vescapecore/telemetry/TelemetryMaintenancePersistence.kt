@@ -1,7 +1,15 @@
 package expo.modules.vescapecore.telemetry
 
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
+import expo.modules.vescapecore.database.TELEMETRY_MASK_BATTERY_CURRENT
+import expo.modules.vescapecore.database.TELEMETRY_MASK_BATTERY_VOLTAGE
+import expo.modules.vescapecore.database.TELEMETRY_MASK_DUTY
+import expo.modules.vescapecore.database.TELEMETRY_MASK_MOTOR_CURRENT
+import expo.modules.vescapecore.database.TELEMETRY_MASK_ODOMETER
+import expo.modules.vescapecore.database.TELEMETRY_MASK_SPEED
+import expo.modules.vescapecore.database.TELEMETRY_MASK_TEMP_MOSFET
+import expo.modules.vescapecore.database.TELEMETRY_MASK_TEMP_MOTOR
 import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.telemetry.sanitizers.FreeSpinCarry
@@ -30,21 +38,62 @@ internal data class RebuildState(
   fun point() = BucketTelemetryPoint(at, boardId,
     speed, voltage, motorCurrent, batteryCurrent, duty, odometer, tempMosfet, tempMotor)
   companion object {
+    /** Canonical replay (ADR 0044): a set mask bit replaces the column, NULL included. */
     fun apply(previous: RebuildState?, frame: TelemetryFrameEntity): RebuildState? {
-      val old = previous?.takeIf { frame.flags and TELEMETRY_FLAG_KEYFRAME == 0 && it.boardId == frame.boardId }
+      val keyframe = frame.flags and TELEMETRY_FLAG_KEYFRAME != 0
+      val old = previous?.takeIf { !keyframe && it.boardId == frame.boardId }
+      fun <T> pick(value: T?, fallback: T?, mask: Int): T? =
+        if (keyframe || frame.changedMask1 and mask != 0) value else fallback
       return RebuildState(frame.capturedAtMs, frame.boardId,
-        frame.speedCentiKmh ?: old?.speed ?: return null,
-        frame.batteryVoltageMv ?: old?.voltage ?: return null,
-        frame.motorCurrentMa ?: old?.motorCurrent ?: return null,
-        frame.batteryCurrentMa ?: old?.batteryCurrent ?: return null,
-        frame.dutyPermille ?: old?.duty ?: return null,
-        frame.odometerCm ?: old?.odometer, frame.tempMosfetDeciC ?: old?.tempMosfet,
-        frame.tempMotorDeciC ?: old?.tempMotor)
+        pick(frame.speedCentiKmh, old?.speed, TELEMETRY_MASK_SPEED) ?: return null,
+        pick(frame.batteryVoltageMv, old?.voltage, TELEMETRY_MASK_BATTERY_VOLTAGE) ?: return null,
+        pick(frame.motorCurrentMa, old?.motorCurrent, TELEMETRY_MASK_MOTOR_CURRENT) ?: return null,
+        pick(frame.batteryCurrentMa, old?.batteryCurrent, TELEMETRY_MASK_BATTERY_CURRENT) ?: return null,
+        pick(frame.dutyPermille, old?.duty, TELEMETRY_MASK_DUTY) ?: return null,
+        pick(frame.odometerCm, old?.odometer, TELEMETRY_MASK_ODOMETER),
+        pick(frame.tempMosfetDeciC, old?.tempMosfet, TELEMETRY_MASK_TEMP_MOSFET),
+        pick(frame.tempMotorDeciC, old?.tempMotor, TELEMETRY_MASK_TEMP_MOTOR))
     }
   }
 }
 
 internal const val RIDE_SUMMARIES_CHUNK_MS = 3_600_000L
+
+/**
+ * Diagnostic Events older than this are pruned by the Cleanup Maintenance Job.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DIAGNOSTIC_EVENT_RETENTION_MS`
+ */
+internal const val DIAGNOSTIC_EVENT_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
+/** @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DIAGNOSTIC_EVENT_PRUNE_BATCH` */
+internal const val DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
+
+/** @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DiagnosticEventPruneResult` */
+internal data class DiagnosticEventPruneResult(val deleted: Int, val yielded: Boolean)
+
+/**
+ * Delete Diagnostic Events older than [DIAGNOSTIC_EVENT_RETENTION_MS], one fenced batch per chunk so
+ * a large backlog never holds a long write lock. Each batch first rechecks, at the current time, whether
+ * a ride may be recording and yields to the Cleanup job if so. [MaintenanceJobScope.progress] runs between batches. Throws [MaintenanceRunFenced] when Restore or Clear all replaced the database.
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `pruneDiagnosticEvents`
+ */
+internal suspend fun pruneDiagnosticEvents(
+  scope: MaintenanceJobScope,
+  gapMs: Long,
+  batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH,
+): DiagnosticEventPruneResult {
+  val beforeMs = scope.nowMs() - DIAGNOSTIC_EVENT_RETENTION_MS
+  var deleted = 0
+  while (true) {
+    val count = scope.chunk { dao ->
+      if (dao.activeRideStartMs(scope.nowMs(), gapMs) != null) null
+      else dao.deleteDiagnosticEventsBatchBefore(beforeMs, batch)
+    } ?: return DiagnosticEventPruneResult(deleted, true)
+    deleted += count
+    scope.progress(deleted, deleted)
+    if (count < batch) return DiagnosticEventPruneResult(deleted, false)
+  }
+}
+
 
 /**
  * Read-only state one Ride summaries chunk hands the next: each Board's delta chain, its free-spin
@@ -53,7 +102,7 @@ internal const val RIDE_SUMMARIES_CHUNK_MS = 3_600_000L
  */
 class RideSummariesContext {
   internal val latestStates = mutableMapOf<String?, RebuildState>()
-  internal var previousTrack: RideTrackPointEntity? = null
+  internal var previousTrack: RideTrackPoint? = null
   internal var freeSpin = FreeSpinCarry()
 }
 
@@ -76,12 +125,13 @@ internal suspend fun VescapeDao.rideSummariesStartMs(): Long? =
 
 /**
  * Start of the derived ride that may still be recording (ADR 0041), or null when the newest sample
- * is a full split gap old. Every Board and both streams count, and a Stop Recording is ignored, so
+ * at or before [nowMs] is a full split gap old. A future-dated sample (a wrong clock) is ignored, so
+ * it never holds the database in a ride forever. Every Board and both streams count, and a Stop Recording is ignored, so
  * the cutoff can only be earlier than the real ride start, never later.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `activeRideStartMs`
  */
 internal suspend fun VescapeDao.activeRideStartMs(nowMs: Long, gapMs: Long): Long? {
-  val last = listOfNotNull(lastFrameAt(), lastRideTrackAt()).maxOrNull() ?: return null
+  val last = lastSampleAtOrBefore(nowMs) ?: return null
   if (nowMs - last >= gapMs) return null
   var start = last
   while (true) {

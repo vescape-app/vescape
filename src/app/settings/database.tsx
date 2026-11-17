@@ -72,24 +72,12 @@ export default function DatabaseSettingsScreen() {
             }
           />
         </SettingsCard>
-        <SettingsSectionTitle>Background updates</SettingsSectionTitle>
+        <SettingsSectionTitle>Maintenance</SettingsSectionTitle>
         <Text style={styles.sectionHint}>
-          Runs automatically in the background. Nothing to do here.
+          Runs automatically in the background to keep your data up to date with new versions and
+          clear out junk. Nothing to do here, until it breaks.
         </Text>
         <SettingsCard>
-          {progress ? (
-            <View style={styles.progress}>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${Math.round((progress.fraction ?? 0) * 100)}%` },
-                  ]}
-                />
-              </View>
-              <Text style={styles.progressText}>{progress.statusLine}</Text>
-            </View>
-          ) : null}
           {(maintenance?.jobs ?? []).map((job) => (
             <SettingsRow
               key={job.id}
@@ -97,7 +85,18 @@ export default function DatabaseSettingsScreen() {
               iconColor={job.status === 'failed' ? theme.status.warning.color : undefined}
               label={maintenanceJobTitle(job.id)}
               hint={maintenanceJobDetail(job)}
-            />
+            >
+              {job.id === progress?.job.id && progress.fraction != null ? (
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.round(progress.fraction * 100)}%` },
+                    ]}
+                  />
+                </View>
+              ) : null}
+            </SettingsRow>
           ))}
         </SettingsCard>
       </PageScrollView>
@@ -134,13 +133,12 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     marginBottom: 4,
   },
-  progress: {
-    gap: 6,
-    marginHorizontal: 14,
-    marginTop: 12,
-    marginBottom: 4,
-  },
+  /** Under the running row's text: row padding 14 + icon 32 + gap 12. */
   progressTrack: {
+    marginLeft: 58,
+    marginRight: 14,
+    marginTop: -6,
+    marginBottom: 14,
     height: 3,
     backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 999,
@@ -149,10 +147,5 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     backgroundColor: theme.settingsIcon.database,
-  },
-  progressText: {
-    color: theme.neutral.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
   },
 })

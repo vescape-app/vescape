@@ -6,7 +6,7 @@ import kotlin.math.cos
 import kotlin.math.roundToLong
 import kotlin.math.sin
 import kotlin.math.sqrt
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 
 /**
  * Reported horizontal accuracy a Ride Track fix must beat to count as a route point or as GPS
@@ -23,7 +23,7 @@ internal val RIDE_TRACK_PRECISE_ACCURACY_CM = (MAX_RECORDING_ACCURACY_M * 100.0)
  * out of `telemetry_frames` passed the old write-time precision gate; migration 52 stamps them
  * with [RIDE_TRACK_PRECISE_ACCURACY_CM] so they keep reading as precise.
  */
-internal fun RideTrackPointEntity.isPrecise(): Boolean =
+internal fun RideTrackPoint.isPrecise(): Boolean =
   accuracyCm != null && accuracyCm <= RIDE_TRACK_PRECISE_ACCURACY_CM
 
 /**
@@ -34,7 +34,7 @@ internal fun RideTrackPointEntity.isPrecise(): Boolean =
  *
  * @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `rideTrackFixIsMovement`
  */
-internal fun RideTrackPointEntity.isMovementEvidence(movingThresholdCentiKmh: Int): Boolean =
+internal fun RideTrackPoint.isMovementEvidence(movingThresholdCentiKmh: Int): Boolean =
   isPrecise() && gpsSpeedCentiMps != null &&
     gpsSpeedCentiMpsToCentiKmh(gpsSpeedCentiMps) >= movingThresholdCentiKmh
 
@@ -43,7 +43,7 @@ internal fun gpsSpeedCentiMpsToCentiKmh(centiMps: Int): Int = (centiMps * 36) / 
 
 /** One Ride Track fix with the distance from the fix before it, which is a sequence property. */
 internal data class RideTrackProjectionPoint(
-  val point: RideTrackPointEntity,
+  val point: RideTrackPoint,
   val distanceFromPreviousCm: Long?,
   val movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
 ) {
@@ -87,12 +87,12 @@ internal data class RideTrackProjectionPoint(
  * Distance is only measured between two **qualifying** fixes of the same Board; the predecessor
  * is tracked per Board, exactly as the frame columns this replaced did.
  */
-internal fun List<RideTrackPointEntity>.toRideTrackProjection(
-  previous: RideTrackPointEntity? = null,
+internal fun List<RideTrackPoint>.toRideTrackProjection(
+  previous: RideTrackPoint? = null,
   movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
 ): List<RideTrackProjectionPoint> {
   val points = mutableListOf<RideTrackProjectionPoint>()
-  val lastByBoard = HashMap<String?, RideTrackPointEntity>()
+  val lastByBoard = HashMap<String?, RideTrackPoint>()
   previous?.takeIf { it.isPrecise() }?.let { lastByBoard[it.boardId] = it }
   for (point in this) {
     val precise = point.isPrecise()
@@ -113,7 +113,7 @@ internal fun List<RideTrackPointEntity>.toRideTrackProjection(
  * route, never anchors a marker and never contributes a step distance, so the rule is applied
  * exactly once, here, instead of in every JS consumer.
  */
-internal fun List<RideTrackPointEntity>.toGpsSampleMaps(
+internal fun List<RideTrackPoint>.toGpsSampleMaps(
   boardNames: Map<String, String>,
 ): List<Map<String, Any?>> = toRideTrackProjection()
   .filter { it.point.isPrecise() }
@@ -124,13 +124,13 @@ internal fun List<RideTrackPointEntity>.toGpsSampleMaps(
  * `gpsPointCount` stays an honest measure of what was captured, but only qualifying fixes derive
  * anything: the bucket's route anchor, its step distances and its GPS movement evidence.
  */
-internal fun List<RideTrackPointEntity>.toBucketLocationPoints(
-  previous: RideTrackPointEntity? = null,
+internal fun List<RideTrackPoint>.toBucketLocationPoints(
+  previous: RideTrackPoint? = null,
   movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
 ): List<BucketLocationPoint> =
   toRideTrackProjection(previous, movingThresholdCentiKmh).map { it.toBucketPoint() }
 
-private fun distanceCm(from: RideTrackPointEntity, to: RideTrackPointEntity): Long {
+private fun distanceCm(from: RideTrackPoint, to: RideTrackPoint): Long {
   val lat1 = Math.toRadians(from.latitudeE7 / 10_000_000.0)
   val lat2 = Math.toRadians(to.latitudeE7 / 10_000_000.0)
   val deltaLat = lat2 - lat1

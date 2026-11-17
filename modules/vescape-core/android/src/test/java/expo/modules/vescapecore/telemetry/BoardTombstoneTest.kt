@@ -101,7 +101,7 @@ class BoardTombstoneTest {
     assertFalse("a DELETE on boards survives", dao.contains("DELETE FROM boards"))
     assertTrue(
       "the delete path does not stamp a tombstone",
-      dao.contains("insertBoardRow(board.copy(deletedAt = deletedAt))"),
+      dao.contains("saveBoardRow(board.copy(deletedAt = deletedAt))"),
     )
   }
 

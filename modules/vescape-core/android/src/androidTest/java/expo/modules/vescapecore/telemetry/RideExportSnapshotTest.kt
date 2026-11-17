@@ -19,7 +19,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import expo.modules.vescapecore.database.DATABASE_NAME
 import expo.modules.vescapecore.database.DatabaseBackupManager
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.VescapeDatabase
 
 @RunWith(AndroidJUnit4::class)
@@ -40,7 +40,7 @@ class RideExportSnapshotTest {
     val db = VescapeDatabase.get(context)
     try {
       val dao = db.vescapeDao()
-      fun point(i: Int) = RideTrackPointEntity(boardId = "board", fixAtMs = i.toLong(),
+      fun point(i: Int) = RideTrackPoint(boardId = "board", fixAtMs = i.toLong(),
         latitudeE7 = i, longitudeE7 = -i, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)
       val count = RideExport.BATCH_SIZE * 2 + 1
@@ -84,7 +84,7 @@ class RideExportSnapshotTest {
       RecordingStorageFailure.initialize(context)
       assertNull(RecordingStorageFailure.value())
       val dao = VescapeDatabase.get(context).vescapeDao()
-      dao.insertRideTrackPoints(listOf(RideTrackPointEntity(boardId = null, fixAtMs = 123,
+      dao.insertRideTrackPoints(listOf(RideTrackPoint(boardId = null, fixAtMs = 123,
         latitudeE7 = 1, longitudeE7 = -1, accuracyCm = 100,
         gpsSpeedCentiMps = null, bearingCentiDeg = null, altitudeCm = null)))
       RideHistoryRepository.get(context).getPage(emptyMap())

@@ -80,6 +80,10 @@ _Avoid_: UI state, cached status
 A single decoded board data point captured from the connected board.
 _Avoid_: Packet, frame, event
 
+**Telemetry Chunk**:
+One Board's sealed **Telemetry Samples** for one wall-clock minute, stored as a single encoded record. Once a minute is sealed, its samples exist only in the chunk. Samples recorded since the last launch wait in the write buffer until the Telemetry storage Maintenance Job seals them at the next launch or after Restore or Clear all. Readers see chunks and buffer as one stream, and a late sample, delete or trim rewrites the chunk (ADR-0045).
+_Avoid_: frame batch, minute bucket
+
 **Telemetry Stale**:
 A live Board Session condition where expected telemetry samples stop arriving.
 _Avoid_: Stale Board Link, disconnected
@@ -144,7 +148,7 @@ The weather a ride or **Favorite** was ridden in, folded natively from stored We
 _Avoid_: ride forecast, weather log
 
 **Maintenance Job**:
-App-owned work that brings already-stored data up to date with the current app, such as rebuilding ride summaries or filling in missing ride weather. Each job has its own version; a job whose stored data predates its version is stale and runs again on its own, without the Rider asking. Jobs run one at a time and never change the ride being recorded.
+App-owned work that brings already-stored data up to date with the current app, such as rebuilding ride summaries or filling in missing ride weather. Each job has its own version; a job whose stored data predates its version is stale and runs again on its own, without the Rider asking. Jobs run one at a time and never change the ride being recorded. Per-row conversion of existing data after a schema change is a Maintenance Job, never part of the migration (ADR-0046). Retention clean-up, such as deleting old Diagnostic Events, is a step of the Cleanup job (ADR-0047).
 _Avoid_: Background job, data upgrade, migration, rebuild history, task
 
 **Ride History Marker**:
@@ -444,7 +448,7 @@ The server-issued set of third-party service tokens (Mapbox, Mapy) the app needs
 _Avoid_: API keys, env config, remote config
 
 **Diagnostic Event**:
-An app-observed abnormal condition that helps explain board connection, telemetry, tuning, recording, or UI failures.
+An app-observed abnormal condition that helps explain board connection, telemetry, tuning, recording, or UI failures. Local debug evidence, not Ride History: native keeps 30 days and prunes older events at app start.
 _Avoid_: Error log, debug session, crash report
 
 **Public Ride**:

@@ -25,16 +25,8 @@ extension TelemetryRepository {
       batteryEstimator.ensureLoaded()
       let configs = try historyBatteryConfigs(db)
       let boardNames = try historyBoardNames(db)
-      let sampleRows = try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY captured_at_ms ASC
-          LIMIT ?
-          """,
-        arguments: [fromMs, toMs, boardId, boardId, limit]
-      )
+      let sampleRows = try telemetryFrameRows(db, fromMs: fromMs, toMs: toMs, boardId: boardId,
+                                              allBoards: boardId == nil, limit: limit)
       let markers = try Row.fetchAll(
         db,
         sql: "SELECT * FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY occurred_at_ms ASC",

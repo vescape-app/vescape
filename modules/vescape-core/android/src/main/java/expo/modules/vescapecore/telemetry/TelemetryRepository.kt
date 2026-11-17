@@ -29,7 +29,7 @@ import expo.modules.vescapecore.database.DiagnosticEventEntity
 import expo.modules.vescapecore.database.FavoriteEntity
 import expo.modules.vescapecore.database.MetricExclusionRangeEntity
 import expo.modules.vescapecore.database.PrivacyZoneEntity
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.telemetry.sanitizers.FreeSpinCarry
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.TELEMETRY_MASK_ADC1
@@ -187,8 +187,8 @@ class TelemetryRepository private constructor(context: Context) {
   // Ride Track fixes admitted but not yet durable. Written on the GPS clock, never aligned to a
   // telemetry frame, and already carrying the Board and Ride Recording they were captured under —
   // a Board change flushes them under those identities rather than the new session's (ADR 0038).
-  private val pendingTrack = ArrayDeque<RideTrackPointEntity>()
-  private var lastFlushedTrackPoint: RideTrackPointEntity? = null
+  private val pendingTrack = ArrayDeque<RideTrackPoint>()
+  private var lastFlushedTrackPoint: RideTrackPoint? = null
   private var lastFlushedFreeSpin = FreeSpinCarry()
 
   private var flushScheduled = false
@@ -252,7 +252,7 @@ class TelemetryRepository private constructor(context: Context) {
     synchronized(lock) {
       if (databaseSwapInProgress || !recordingCommitBoundary.isAccepting()) return
       pendingTrack.addLast(
-        RideTrackPointEntity(
+        RideTrackPoint(
           boardId = boardId,
           fixAtMs = scaled.timestampMs,
           latitudeE7 = scaled.latitudeE7,
@@ -662,9 +662,7 @@ class TelemetryRepository private constructor(context: Context) {
     boardId: String?,
     limit: Int,
   ): List<HistoryTelemetryState> {
-    val keyframe = dao.getLatestKeyframeBefore(fromMs, boardId)
-    val start = keyframe?.capturedAtMs ?: fromMs
-    val frames = dao.getFrames(start, toMs, boardId, if (limit == Int.MAX_VALUE) limit else limit + 1)
+    val frames = dao.getAnchoredFrames(fromMs, toMs, boardId, if (limit == Int.MAX_VALUE) limit else limit + 1)
     var state: FullTelemetryState? = null
     val samples = mutableListOf<HistoryTelemetryState>()
     for (frame in frames) {
@@ -681,7 +679,7 @@ class TelemetryRepository private constructor(context: Context) {
    * The Ride Track over a range: every stored fix, on the GPS clock, independent of whether a
    * telemetry frame arrived near it.
    */
-  private suspend fun rideTrackPage(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPointEntity> =
+  private suspend fun rideTrackPage(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPoint> =
     dao.getRideTrackPoints(fromMs, toMs, boardId, MAX_SAMPLE_LIMIT)
 
   suspend fun getRange(options: Map<String, Any?>): Map<String, Any?> = withContext(Dispatchers.IO) {
@@ -850,7 +848,7 @@ class TelemetryRepository private constructor(context: Context) {
    */
   private fun favoriteSummary(
     states: List<HistoryTelemetryState>,
-    track: List<RideTrackPointEntity>,
+    track: List<RideTrackPoint>,
   ): FavoriteSummary {
     if (states.isEmpty() && track.isEmpty()) return FavoriteSummary()
     val telemetryPoints = states.map { it.state.toBucketPoint() }
@@ -955,85 +953,103 @@ class TelemetryRepository private constructor(context: Context) {
         }
         return@withLock
       }
-      val frames: List<PendingFrame>
-      val bucketStates: List<FullTelemetryState>
-      val markers: List<TelemetryMarkerEntity>
-      val trackPoints: List<RideTrackPointEntity>
-      val previousTrackPoint: RideTrackPointEntity?
-      val previousFreeSpin: FreeSpinCarry
-      synchronized(lock) {
-        if (pending.isEmpty() && pendingBucketStates.isEmpty() && pendingMarkers.isEmpty() && pendingTrack.isEmpty()) {
-          flushScheduled = false
-          return@withLock
-        }
-        frames = pending.toList()
-        bucketStates = pendingBucketStates.toList()
-        markers = pendingMarkers.toList()
-        trackPoints = pendingTrack.toList()
-        previousTrackPoint = lastFlushedTrackPoint
-        previousFreeSpin = lastFlushedFreeSpin
-        pendingTrack.clear()
-        pending.clear()
-        pendingBucketStates.clear()
-        pendingMarkers.clear()
-        flushScheduled = false
-      }
-
-      val zones = enabledPrivacyZones
-      // Persisted detail trace (2 Hz).
-      val filteredFrames = if (zones.isEmpty()) frames else frames.filter { pending ->
-        val loc = pending.state.location ?: return@filter true
-        !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
-      }
-      // Bucket source (full rate) — aggregates stay exact.
-      val filteredStates = if (zones.isEmpty()) bucketStates else bucketStates.filter { state ->
-        val loc = state.location ?: return@filter true
-        !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
-      }
-      // The Ride Track is re-filtered here too, against the zones enabled *now*: a zone switched on
-      // mid-ride must suppress what is still buffered, in both streams alike (ADR 0009).
-      val filteredTrack = if (zones.isEmpty()) trackPoints else trackPoints.filter { point ->
-        !isInsideAnyPrivacyZone(point.latitudeE7, point.longitudeE7, zones)
-      }
-      if (
-        filteredFrames.isEmpty() &&
-        filteredStates.isEmpty() &&
-        markers.isEmpty() &&
-        filteredTrack.isEmpty()
-      ) {
-        return@withLock
-      }
-
-      val telemetryPoints = filteredStates.map { it.toBucketPoint() }
-      // Free spin continues from the previous flush, so a spin crossing a flush stays excluded.
-      val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig, previousFreeSpin)
-      val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
-        point.copy(
-          excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
-          excludedFromMaxSpeed = sanitization.samples[index].excludedFromMaxSpeed,
-          excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
-        )
-      }
-      val committed = recordingCommitBoundary.commit(
-        frames = filteredFrames.map { it.frame },
-        // Minute buckets aggregate the Ride Track that was admitted, not the fix stamped onto a
-        // frame: the two streams keep their own clocks and are joined here only for the summary.
-        buckets = buildTelemetryBuckets(
-          telemetryPoints = sanitizedPoints,
-          locationPoints = filteredTrack.toBucketLocationPoints(
-            previous = previousTrackPoint,
-            movingThresholdCentiKmh = metricSanitizerConfig.movingSpeedThresholdCentiKmh,
-          ),
-        ),
-        markers = markers,
-        exclusions = sanitization.exclusions,
-        trackPoints = filteredTrack,
-      )
-      if (committed) synchronized(lock) {
-        lastFlushedTrackPoint = filteredTrack.lastOrNull { it.isPrecise() } ?: previousTrackPoint
-        lastFlushedFreeSpin = sanitization.freeSpinCarry
-      }
+      writePendingLocked()
     }
+  }
+
+  /** Commit what is pending; runs under [flushMutex]. */
+  private suspend fun writePendingLocked() {
+    val frames: List<PendingFrame>
+    val bucketStates: List<FullTelemetryState>
+    val markers: List<TelemetryMarkerEntity>
+    val trackPoints: List<RideTrackPoint>
+    val previousTrackPoint: RideTrackPoint?
+    val previousFreeSpin: FreeSpinCarry
+    synchronized(lock) {
+      if (pending.isEmpty() && pendingBucketStates.isEmpty() && pendingMarkers.isEmpty() && pendingTrack.isEmpty()) {
+        flushScheduled = false
+        return
+      }
+      frames = pending.toList()
+      bucketStates = pendingBucketStates.toList()
+      markers = pendingMarkers.toList()
+      trackPoints = pendingTrack.toList()
+      previousTrackPoint = lastFlushedTrackPoint
+      previousFreeSpin = lastFlushedFreeSpin
+      pendingTrack.clear()
+      pending.clear()
+      pendingBucketStates.clear()
+      pendingMarkers.clear()
+      flushScheduled = false
+    }
+
+    val zones = enabledPrivacyZones
+    // Persisted detail trace (2 Hz).
+    val filteredFrames = if (zones.isEmpty()) frames else frames.filter { pending ->
+      val loc = pending.state.location ?: return@filter true
+      !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
+    }
+    // Bucket source (full rate) — aggregates stay exact.
+    val filteredStates = if (zones.isEmpty()) bucketStates else bucketStates.filter { state ->
+      val loc = state.location ?: return@filter true
+      !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
+    }
+    // The Ride Track is re-filtered here too, against the zones enabled *now*: a zone switched on
+    // mid-ride must suppress what is still buffered, in both streams alike (ADR 0009).
+    val filteredTrack = if (zones.isEmpty()) trackPoints else trackPoints.filter { point ->
+      !isInsideAnyPrivacyZone(point.latitudeE7, point.longitudeE7, zones)
+    }
+    if (
+      filteredFrames.isEmpty() &&
+      filteredStates.isEmpty() &&
+      markers.isEmpty() &&
+      filteredTrack.isEmpty()
+    ) {
+      return
+    }
+
+    val telemetryPoints = filteredStates.map { it.toBucketPoint() }
+    // Free spin continues from the previous flush, so a spin crossing a flush stays excluded.
+    val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig, previousFreeSpin)
+    val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
+      point.copy(
+        excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
+        excludedFromMaxSpeed = sanitization.samples[index].excludedFromMaxSpeed,
+        excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
+      )
+    }
+    val committed = recordingCommitBoundary.commit(
+      frames = filteredFrames.map { it.frame },
+      // Minute buckets aggregate the Ride Track that was admitted, not the fix stamped onto a
+      // frame: the two streams keep their own clocks and are joined here only for the summary.
+      buckets = buildTelemetryBuckets(
+        telemetryPoints = sanitizedPoints,
+        locationPoints = filteredTrack.toBucketLocationPoints(
+          previous = previousTrackPoint,
+          movingThresholdCentiKmh = metricSanitizerConfig.movingSpeedThresholdCentiKmh,
+        ),
+      ),
+      markers = markers,
+      exclusions = sanitization.exclusions,
+      trackPoints = filteredTrack,
+    )
+    if (committed) synchronized(lock) {
+      lastFlushedTrackPoint = filteredTrack.lastOrNull { it.isPrecise() } ?: previousTrackPoint
+      lastFlushedFreeSpin = sanitization.freeSpinCarry
+    }
+  }
+
+  /**
+   * A seal that kept its rows: one Diagnostic Event, so the failure is visible in diagnostics.
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `recordSealFailure`
+   */
+  internal fun recordSealFailure(key: TelemetryMinuteKey, error: Exception) {
+    recordDiagnosticEvent("telemetry_seal_failed", mapOf(
+      "operation" to "telemetry_seal",
+      "board_id" to key.boardId,
+      "minute_start_ms" to key.minuteStartMs,
+      "message" to (error.message ?: error.javaClass.simpleName),
+    ))
   }
 
   companion object {
@@ -1275,22 +1291,26 @@ internal data class FullTelemetryState(
     )
 
     fun applyFrame(previous: FullTelemetryState?, frame: TelemetryFrameEntity): FullTelemetryState? {
-      val base = previous
-      fun <T> pick(value: T?, fallback: T?): T? = value ?: fallback
-      val speed = pick(frame.speedCentiKmh, base?.speedCentiKmh) ?: return null
-      val voltage = pick(frame.batteryVoltageMv, base?.batteryVoltageMv) ?: return null
-      val motorCurrent = pick(frame.motorCurrentMa, base?.motorCurrentMa) ?: return null
-      val batteryCurrent = pick(frame.batteryCurrentMa, base?.batteryCurrentMa) ?: return null
-      val duty = pick(frame.dutyPermille, base?.dutyPermille) ?: return null
-      val pitch = pick(frame.pitchCentiDeg, base?.pitchCentiDeg) ?: return null
-      val roll = pick(frame.rollCentiDeg, base?.rollCentiDeg) ?: return null
-      val balancePitch = pick(frame.balancePitchCentiDeg, base?.balancePitchCentiDeg) ?: return null
-      val balanceCurrent = pick(frame.balanceCurrentMa, base?.balanceCurrentMa) ?: return null
-      val erpm = pick(frame.erpm, base?.erpm) ?: return null
-      val state = pick(frame.state, base?.state) ?: return null
-      val switchState = pick(frame.switchState, base?.switchState) ?: return null
-      val adc1 = pick(frame.adc1Milli, base?.adc1Milli) ?: return null
-      val adc2 = pick(frame.adc2Milli, base?.adc2Milli) ?: return null
+      // Canonical reconstruction (ADR 0044, `reconstructTelemetryValues`): masks are authoritative, so
+      // a set bit with NULL clears an optional reading instead of keeping the previous one.
+      val keyframe = frame.flags and TELEMETRY_FLAG_KEYFRAME != 0
+      val base = if (keyframe) null else previous
+      fun <T> pick(value: T?, fallback: T?, mask: Int): T? =
+        if (keyframe || frame.changedMask1 and mask != 0) value else fallback
+      val speed = pick(frame.speedCentiKmh, base?.speedCentiKmh, TELEMETRY_MASK_SPEED) ?: return null
+      val voltage = pick(frame.batteryVoltageMv, base?.batteryVoltageMv, TELEMETRY_MASK_BATTERY_VOLTAGE) ?: return null
+      val motorCurrent = pick(frame.motorCurrentMa, base?.motorCurrentMa, TELEMETRY_MASK_MOTOR_CURRENT) ?: return null
+      val batteryCurrent = pick(frame.batteryCurrentMa, base?.batteryCurrentMa, TELEMETRY_MASK_BATTERY_CURRENT) ?: return null
+      val duty = pick(frame.dutyPermille, base?.dutyPermille, TELEMETRY_MASK_DUTY) ?: return null
+      val pitch = pick(frame.pitchCentiDeg, base?.pitchCentiDeg, TELEMETRY_MASK_PITCH) ?: return null
+      val roll = pick(frame.rollCentiDeg, base?.rollCentiDeg, TELEMETRY_MASK_ROLL) ?: return null
+      val balancePitch = pick(frame.balancePitchCentiDeg, base?.balancePitchCentiDeg, TELEMETRY_MASK_BALANCE_PITCH) ?: return null
+      val balanceCurrent = pick(frame.balanceCurrentMa, base?.balanceCurrentMa, TELEMETRY_MASK_BALANCE_CURRENT) ?: return null
+      val erpm = pick(frame.erpm, base?.erpm, TELEMETRY_MASK_ERPM) ?: return null
+      val state = pick(frame.state, base?.state, TELEMETRY_MASK_STATE) ?: return null
+      val switchState = pick(frame.switchState, base?.switchState, TELEMETRY_MASK_SWITCH_STATE) ?: return null
+      val adc1 = pick(frame.adc1Milli, base?.adc1Milli, TELEMETRY_MASK_ADC1) ?: return null
+      val adc2 = pick(frame.adc2Milli, base?.adc2Milli, TELEMETRY_MASK_ADC2) ?: return null
       return FullTelemetryState(
         capturedAtMs = frame.capturedAtMs,
         elapsedRealtimeMs = frame.elapsedRealtimeMs,
@@ -1310,9 +1330,9 @@ internal data class FullTelemetryState(
         switchState = switchState,
         adc1Milli = adc1,
         adc2Milli = adc2,
-        odometerCm = pick(frame.odometerCm, base?.odometerCm),
-        tempMosfetDeciC = pick(frame.tempMosfetDeciC, base?.tempMosfetDeciC),
-        tempMotorDeciC = pick(frame.tempMotorDeciC, base?.tempMotorDeciC),
+        odometerCm = pick(frame.odometerCm, base?.odometerCm, TELEMETRY_MASK_ODOMETER),
+        tempMosfetDeciC = pick(frame.tempMosfetDeciC, base?.tempMosfetDeciC, TELEMETRY_MASK_TEMP_MOSFET),
+        tempMotorDeciC = pick(frame.tempMotorDeciC, base?.tempMotorDeciC, TELEMETRY_MASK_TEMP_MOTOR),
         // Position is not on the frame any more, and no read path puts it back: the route is the
         // Ride Track, read on its own clock (ADR 0038).
         location = null,

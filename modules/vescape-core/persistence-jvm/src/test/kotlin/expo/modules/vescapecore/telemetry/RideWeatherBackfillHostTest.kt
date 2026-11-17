@@ -10,7 +10,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.database.DatabaseReplacementFence
-import expo.modules.vescapecore.database.RideTrackPointEntity
+import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.TELEMETRY_FLAG_KEYFRAME
 import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeDao
@@ -41,7 +41,7 @@ class RideWeatherBackfillHostTest {
     tempMosfetDeciC = 300, tempMotorDeciC = 300,
   )
 
-  private fun fix(at: Long, lat: Double, accuracyCm: Int = 500) = RideTrackPointEntity(
+  private fun fix(at: Long, lat: Double, accuracyCm: Int = 500) = RideTrackPoint(
     boardId = board, fixAtMs = at, latitudeE7 = (lat * 1e7).toInt(), longitudeE7 = 210_000_000,
     accuracyCm = accuracyCm, gpsSpeedCentiMps = 500, bearingCentiDeg = null, altitudeCm = null,
   )
