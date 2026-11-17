@@ -204,6 +204,7 @@ export function ZonePillsShowcase() {
             <PillSelectorItem
               id="message"
               label="Message"
+              indicatorColor={theme.palette.blue.color}
               icon={ChatTextIcon}
               color={theme.palette.cyan}
               activeWidth={96}

@@ -158,6 +158,14 @@ export const styles = StyleSheet.create({
     maxWidth: 160,
     overflow: 'hidden',
   },
+  indicator: {
+    position: 'absolute',
+    top: 4,
+    right: 9,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
   pillPressable: {
     height: 36,
     minWidth: 0,

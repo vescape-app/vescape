@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { Text } from '@/components/base/Text'
-import { interaction, theme } from '@/constants/theme'
+import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 interface IconButtonExtensionProps {
   /** Shown beside the button, inside the capsule. Null renders the button alone. */
@@ -89,17 +89,22 @@ export function IconButtonExtension({
 
 interface IconButtonExtensionStatProps {
   value: string
-  unit: string
+  unit?: string
+  color?: ThemeColor
 }
 
 /** A small value-over-unit readout sized for an extension. */
-export function IconButtonExtensionStat({ value, unit }: IconButtonExtensionStatProps) {
+export function IconButtonExtensionStat({ value, unit, color }: IconButtonExtensionStatProps) {
   return (
     <View style={styles.stat}>
-      <Text numberOfLines={1} adjustsFontSizeToFit style={styles.value}>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        style={[styles.value, color != null && { color }]}
+      >
         {value}
       </Text>
-      <Text style={styles.unit}>{unit}</Text>
+      {unit ? <Text style={styles.unit}>{unit}</Text> : null}
     </View>
   )
 }

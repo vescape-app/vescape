@@ -9,7 +9,7 @@ import Animated, {
 import type { Icon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import {
   useColoredAction,
   useColoredActionForeground,
@@ -43,6 +43,7 @@ export interface PillSelectorItemProps {
   icon?: Icon
   labelBehavior?: PillSelectorLabelBehavior
   badge?: ReactNode
+  indicatorColor?: ThemeColor
   hint?: ReactNode
   hintVisibility?: PillSelectorSlotVisibility
   hintGap?: number
@@ -138,12 +139,18 @@ function PillSelectorItemContent({
   )
 }
 
+function PillIndicator({ color }: { color?: ThemeColor }) {
+  if (color == null) return null
+  return <View pointerEvents="none" style={[styles.indicator, { backgroundColor: color }]} />
+}
+
 export function PillSelectorItem({
   id,
   label,
   icon: IconComp,
   labelBehavior,
   badge,
+  indicatorColor,
   hint,
   hintVisibility = 'inactive',
   hintGap = 2,
@@ -308,6 +315,7 @@ export function PillSelectorItem({
           labelStyle={labelStyle}
         />
       </Pressable>
+      <PillIndicator color={indicatorColor} />
     </Animated.View>
   )
 }
