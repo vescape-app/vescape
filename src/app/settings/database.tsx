@@ -74,7 +74,8 @@ export default function DatabaseSettingsScreen() {
         </SettingsCard>
         <SettingsSectionTitle>Maintenance</SettingsSectionTitle>
         <Text style={styles.sectionHint}>
-          Runs automatically in the background. Nothing to do here, until it breaks.
+          Runs automatically in the background to keep your data up to date with new versions and
+          clear out junk. Nothing to do here, until it breaks.
         </Text>
         <SettingsCard>
           {(maintenance?.jobs ?? []).map((job) => (
