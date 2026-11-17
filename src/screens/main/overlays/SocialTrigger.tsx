@@ -4,9 +4,13 @@ import { StyleSheet, View } from 'react-native'
 import { BroadcastIcon, MegaphoneIcon, UsersThreeIcon } from 'phosphor-react-native'
 
 import { IconButton } from '@/components/base/IconButton'
-import { IconButtonExtension } from '@/components/controls/IconButtonExtension'
+import {
+  IconButtonExtension,
+  IconButtonExtensionStat,
+} from '@/components/controls/IconButtonExtension'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
+import { useColoredActionForeground } from '@/hooks/useTheme'
 import {
   RiderSignalPicker,
   useOthersSignalTakeover,
@@ -32,6 +36,7 @@ export function SocialTrigger() {
   const [socialOpen, setSocialOpen] = useState(false)
   const [signalOpen, setSignalOpen] = useState(false)
   const friendRiding = useFriendsStore((s) => s.friendRiding)
+  const incomingRequests = useFriendsStore((s) => s.lists.incoming.length)
   const [view, setView] = useState<SocialView>(INITIAL_SOCIAL_VIEW)
   const pendingProfile = useRef<string | null>(null)
 
@@ -49,6 +54,18 @@ export function SocialTrigger() {
   // Switched on wears the broadcast icon; it lights up only once positions actually go out.
   const sharingOn = useGroupRideStore((s) => s.publicRide.activation !== 'off')
   const rideActive = useGroupRideStore((s) => s.publicRide.live)
+  const requestColor = useColoredActionForeground(theme.palette.blue.color)
+  const showRequests = incomingRequests > 0 && !rideActive
+  const requestLabel = `${incomingRequests} friend ${incomingRequests === 1 ? 'request' : 'requests'}`
+
+  function openExtension() {
+    if (showRequests) {
+      setView({ ...INITIAL_SOCIAL_VIEW, tab: 'friends' })
+      setSocialOpen(true)
+    } else {
+      setSignalOpen(true)
+    }
+  }
   // Native judges it: in a ride on a relay with signals, or public. Hidden otherwise.
   const signalsSupported = useGroupRideStore((s) => s.signalAvailability.supported)
   // Two places so the two never blur: Social wears a signal another Rider needs help with, the
@@ -62,13 +79,15 @@ export function SocialTrigger() {
       <View ref={triggerRef} collapsable={false} style={styles.trigger}>
         <IconButtonExtension
           direction="down"
-          onPress={() => setSignalOpen(true)}
+          onPress={openExtension}
           // The Rider's own live signal blinks until they clear it, so a forgotten one gets noticed.
-          blink={ownSignal !== null}
-          testID="rider-signal-trigger"
-          accessibilityLabel="Rider signal"
+          blink={!showRequests && ownSignal !== null}
+          testID={showRequests ? 'social-friend-requests' : 'rider-signal-trigger'}
+          accessibilityLabel={showRequests ? requestLabel : 'Rider signal'}
           extension={
-            signalsSupported ? (
+            showRequests ? (
+              <IconButtonExtensionStat value={String(incomingRequests)} color={requestColor} />
+            ) : signalsSupported ? (
               <OwnSignalIcon
                 size={20}
                 color={ownSignal?.accent ?? theme.control.icon}
@@ -80,9 +99,15 @@ export function SocialTrigger() {
           <IconButton
             icon={rideActive ? PulsingBroadcastIcon : sharingOn ? BroadcastIcon : UsersThreeIcon}
             onPress={() => setSocialOpen(true)}
-            accessibilityLabel="Social"
+            accessibilityLabel={incomingRequests > 0 ? `Social, ${requestLabel}` : 'Social'}
             testID="social-drawer-trigger"
-            dot={friendRiding ? theme.palette.green.color : undefined}
+            dot={
+              incomingRequests > 0
+                ? requestColor
+                : friendRiding
+                  ? theme.palette.green.color
+                  : undefined
+            }
             accent={rideActive ? theme.palette.groupRide.color : undefined}
             takeover={othersSignal}
           />

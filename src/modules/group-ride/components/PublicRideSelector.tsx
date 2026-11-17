@@ -150,7 +150,7 @@ function PreviewGlyph({
   size?: number
 }) {
   const style = useAnimatedStyle(() => ({
-    opacity: index > 0 && readout.get().sector === index ? 1 : 0,
+    opacity: readout.get().sector === index ? 1 : 0,
   }))
   return (
     <View style={{ width: size, height: size }} pointerEvents="none">
@@ -176,7 +176,7 @@ function PreviewLabel({
   muted: string
 }) {
   const style = useAnimatedStyle(() => ({
-    color: index > 0 && readout.get().sector === index ? accent : muted,
+    color: readout.get().sector === index ? accent : muted,
   }))
   return <AnimatedText style={[styles.label, style]}>{title}</AnimatedText>
 }
@@ -209,6 +209,7 @@ export function PublicRideSelector({
   const sharingColor = useResolvedColor(theme.palette.groupRide.color)
   const waitingColor = useResolvedColor(theme.status.warning.color)
   const accent = sharing ? sharingColor : waitingColor
+  const offAccent = neutral.textPrimary
   const statusColor = value.mode === 'off' ? neutral.textSecondary : accent
   const [width, setWidth] = useState<number>(PUBLIC_RIDE_ARC.width)
   const scale = width / PUBLIC_RIDE_ARC.width
@@ -351,7 +352,7 @@ export function PublicRideSelector({
   return (
     <View>
       <View style={styles.header}>
-        <BroadcastIcon size={22} color={statusColor} style={styles.headerIcon} />
+        <BroadcastIcon size={22} color={sharingColor} style={styles.headerIcon} />
         <View style={styles.heading}>
           <View style={styles.titleRow}>
             <Text style={[styles.title, { color: neutral.textPrimary }]}>Public ride</Text>
@@ -403,7 +404,7 @@ export function PublicRideSelector({
                   readout={readout}
                   surface={neutral.surfaceDeep}
                   border={neutral.border}
-                  accent={index === 0 ? neutral.textSecondary : accent}
+                  accent={index === 0 ? offAccent : accent}
                   gradientId={index === 0 ? offGradientId : gradientId}
                 />
               ))}
@@ -493,7 +494,7 @@ export function PublicRideSelector({
                     icon={ICONS[index]}
                     index={index}
                     readout={readout}
-                    accent={accent}
+                    accent={index === 0 ? offAccent : accent}
                     muted={neutral.textSecondary}
                   />
                   {index === 1 ? (
@@ -507,7 +508,7 @@ export function PublicRideSelector({
                       title={option.title}
                       index={index}
                       readout={readout}
-                      accent={accent}
+                      accent={index === 0 ? offAccent : accent}
                       muted={neutral.textSecondary}
                     />
                   )}

@@ -168,21 +168,23 @@ export function SocialFriendLists({
         </View>
       ) : null}
       {friends.length ? (
-        <View testID="friends-list">
-          {friends.map(
-            (friend, index) =>
-              (friend.ridingNow && renderRidingFriend?.(friend, index > 0)) || (
-                <FriendRow
-                  key={friend.accountId}
-                  nick={friend.nick}
-                  status={friendStatus(friend, nowMs)}
-                  nationality={null}
-                  riding={friend.ridingNow}
-                  divided={index > 0}
-                  onPress={() => onOpenRider(friend.accountId)}
-                />
-              ),
-          )}
+        <>
+          <View testID="friends-list">
+            {friends.map(
+              (friend, index) =>
+                (friend.ridingNow && renderRidingFriend?.(friend, index > 0)) || (
+                  <FriendRow
+                    key={friend.accountId}
+                    nick={friend.nick}
+                    status={friendStatus(friend, nowMs)}
+                    nationality={null}
+                    riding={friend.ridingNow}
+                    divided={index > 0}
+                    onPress={() => onOpenRider(friend.accountId)}
+                  />
+                ),
+            )}
+          </View>
           <Button
             label="Add friend"
             icon={UserPlusIcon}
@@ -191,7 +193,7 @@ export function SocialFriendLists({
             style={styles.addFriend}
             onPress={onSearch}
           />
-        </View>
+        </>
       ) : loaded && !loadError ? (
         <Placeholder
           compact
@@ -237,7 +239,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   sections: { gap: 8 },
-  addFriend: { alignSelf: 'flex-end', marginTop: 4 },
+  addFriend: { alignSelf: 'flex-end' },
   notice: { color: theme.neutral.textSecondary, fontSize: 12, lineHeight: 17 },
   error: { color: theme.status.error.text, fontSize: 12 },
 })

@@ -17,6 +17,7 @@ import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
+import { useColoredActionForeground } from '@/hooks/useTheme'
 import { NEARBY_RIDER_LIMIT, type RosterRider } from '@/modules/group-ride/lib/roster'
 import { useOwnRiderReadings } from '@/modules/group-ride/hooks/useOwnRiderReadings'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
@@ -58,10 +59,16 @@ export function SocialRiderPanel({
   const live = useGroupRideStore((s) => s.publicRide.live)
   const profile = useRiderProfileStore((s) => s.profile)
   const ownProfile = signedIn ? profile : null
-  const nearbyCount = rows.length + Number(live)
-  const friendCount = useFriendsStore(
+  const nearbyCount =
+    rows.filter((rider) => rider.presence && !rider.stale && !rider.away).length + Number(live)
+  const ridingFriendCount = useFriendsStore(
     (s) => s.lists.friends.filter((friend) => friend.ridingNow).length,
   )
+  const incomingRequestCount = useFriendsStore((s) => s.lists.incoming.length)
+  const friendBadgeCount = incomingRequestCount || ridingFriendCount
+  const friendBadgeColor = incomingRequestCount > 0 ? theme.palette.blue : theme.palette.green
+  const selectedFriendsColor = useColoredActionForeground(theme.palette.blue.color)
+  const requestDotColor = tab === 'friends' ? selectedFriendsColor : theme.palette.blue.color
   const surface = useResolvedSecondaryWidgetSurface()
 
   function openRider(accountId: string) {
@@ -99,7 +106,13 @@ export function SocialRiderPanel({
                 activeWidth={120}
                 inactiveWidth={60}
                 color={theme.palette.groupRide}
-                badge={<Text style={styles.count}>{nearbyCount}</Text>}
+                badge={
+                  nearbyCount > 0 ? (
+                    <Text style={[styles.count, { color: theme.palette.green.text }]}>
+                      {nearbyCount}
+                    </Text>
+                  ) : null
+                }
                 onPress={() => onViewChange({ ...view, tab: 'nearby' })}
               />
               <PillSelectorItem
@@ -109,7 +122,14 @@ export function SocialRiderPanel({
                 activeWidth={120}
                 inactiveWidth={60}
                 color={theme.palette.blue}
-                badge={<Text style={styles.count}>{signedIn ? friendCount : 0}</Text>}
+                badge={
+                  signedIn && friendBadgeCount > 0 ? (
+                    <Text style={[styles.count, { color: friendBadgeColor.text }]}>
+                      {friendBadgeCount}
+                    </Text>
+                  ) : null
+                }
+                indicatorColor={signedIn && incomingRequestCount > 0 ? requestDotColor : undefined}
                 onPress={() => onViewChange({ ...view, tab: 'friends' })}
               />
             </PillSelector>
@@ -250,7 +270,7 @@ const styles = StyleSheet.create({
   coveredTabs: { opacity: 0 },
   tabs: { maxWidth: '100%' },
   nearby: { gap: 8 },
-  count: { color: theme.control.textMuted, fontSize: 10 },
+  count: { fontSize: 10 },
   notice: { color: theme.neutral.textSecondary, fontSize: 12, lineHeight: 17 },
-  map: { alignSelf: 'flex-end', marginTop: 4 },
+  map: { alignSelf: 'flex-end' },
 })

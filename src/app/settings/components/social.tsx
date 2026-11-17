@@ -9,8 +9,13 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'
 import { FriendRow } from '@/modules/profile/components/FriendRow'
+import { RiderLiveRide } from '@/modules/group-ride/components/RiderLiveRide'
 import { RosterList } from '@/modules/group-ride/components/GroupRideRoster'
-import { FIXTURE_OWN_LOCATION, FIXTURE_ROSTER_ROWS } from '@/screens/showcase/mapShowcaseFixtures'
+import {
+  FIXTURE_OWN_LOCATION,
+  FIXTURE_RIDERS,
+  FIXTURE_ROSTER_ROWS,
+} from '@/screens/showcase/mapShowcaseFixtures'
 import { PublicRideRow } from '@/modules/group-ride/components/FriendRides'
 
 const STATUSES = {
@@ -27,11 +32,26 @@ export default function SocialShowcase() {
   const [action, setAction] = useState(true)
   const [divided, setDivided] = useState(false)
   const [longNick, setLongNick] = useState(false)
+  const [boardConnected, setBoardConnected] = useState(false)
   const [rideShown, setRideShown] = useState(false)
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <PageScrollView contentContainerStyle={styles.content}>
+        <ShowcaseCard
+          name="RiderLiveRide"
+          controls={
+            <ToggleRow
+              label="board connected"
+              value={boardConnected}
+              onToggle={setBoardConnected}
+            />
+          }
+        >
+          <RiderLiveRide
+            readings={boardConnected ? (FIXTURE_RIDERS[0]?.presence ?? {}) : { phoneBattery: 0.31 }}
+          />
+        </ShowcaseCard>
         <ShowcaseCard name="Demo riders">
           <RosterList
             rows={FIXTURE_ROSTER_ROWS}

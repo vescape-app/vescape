@@ -16,6 +16,7 @@ import {
 } from '@/modules/history/components/RidePreviewCardList'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
 import { ProfileStatsDetails } from '@/modules/profile/components/ProfileStatsDetails'
+import { currentProfileMonth } from '@/modules/profile/lib/profileStats'
 import { HistoryRideRowShowcase } from '@/screens/showcase/history/HistoryRideRowShowcase'
 
 const PREVIEW_ROUTES: Record<string, RoutePoint[]> = {
@@ -152,17 +153,22 @@ const STATS = {
 
 function ProfileStatsDetailsShowcase() {
   const [empty, setEmpty] = useState(false)
-  const months = [
-    { year: 2025, month: 10, km: 44 },
-    ...[24, 16, 29, 33, 12, 22].map((km, index) => ({ year: 2026, month: index + 6, km })),
-  ].map(({ year, month, km }) => ({ year, month, stats: { ...STATS, distanceM: km * 1000 } }))
+  const { year, month } = currentProfileMonth()
+  const months = [44, 24, 16, 29, 33, 12, 22].map((km, index, samples) => ({
+    ...currentProfileMonth(new Date(year, month - samples.length + index, 1)),
+    stats: { ...STATS, distanceM: km * 1000 },
+  }))
 
   return (
     <ShowcaseCard
       name="ProfileStatsDetails"
       controls={<ToggleRow label="empty" value={empty} onToggle={setEmpty} />}
     >
-      <ProfileStatsDetails total={empty ? null : STATS} months={empty ? [] : months} />
+      <ProfileStatsDetails
+        today={empty ? undefined : { ...STATS, rideCount: 1, distanceM: 12_000 }}
+        total={empty ? null : STATS}
+        months={empty ? [] : months}
+      />
     </ShowcaseCard>
   )
 }

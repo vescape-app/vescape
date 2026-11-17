@@ -1,5 +1,5 @@
 # Profile stats from the restored fixture database.
-# Select and deselect the recorded month while lifetime stats stay visible.
+# Verify the default month, then select and deselect the recorded month.
 appId: ${APP_ID}
 ---
 - runFlow: ../fixture/_history.yaml
@@ -16,7 +16,10 @@ appId: ${APP_ID}
       id: profile-stats-section
     timeout: 30000
 - assertVisible: '(?i)all time'
-- assertVisible: '(?i)monthly distance · km'
+- assertVisible: '(?i)monthly stats'
+- assertVisible: '(?i)distance · km'
+- assertVisible:
+    id: profile-selected-month-stats
 - assertVisible: '.*Distance.*'
 - assertVisible: '.*Rides.*'
 - assertVisible: '.*Ride time.*'

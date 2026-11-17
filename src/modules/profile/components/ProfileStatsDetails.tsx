@@ -1,5 +1,12 @@
 import { useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native'
 import type { ProfileStatsMonth, RiderStats } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
@@ -13,13 +20,14 @@ import {
   type OpenRecordRide,
 } from '@/modules/profile/hooks/useProfileStatItems'
 import { EMPTY_PROFILE_STATS } from '@/modules/profile/hooks/useProfileStats'
-import { formatMonthLabel } from '@/modules/profile/lib/profileStats'
+import { currentProfileMonth, formatMonthLabel } from '@/modules/profile/lib/profileStats'
 
 interface MonthStats extends ProfileStatsMonth {
   stats: RiderStats
 }
 
 interface ProfileStatsDetailsProps {
+  today?: RiderStats
   total: RiderStats | null
   months: readonly MonthStats[]
   loading?: boolean
@@ -27,33 +35,46 @@ interface ProfileStatsDetailsProps {
   onOpenRecordRide?: OpenRecordRide
 }
 
-const chartDistance = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 })
+const chartDistance = new Intl.NumberFormat(undefined, {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
 
 export function ProfileStatsDetails({
+  today,
   total,
   months,
   loading = false,
   unavailable = false,
   onOpenRecordRide,
 }: ProfileStatsDetailsProps) {
-  const [selection, setSelection] = useState<string | null>(null)
+  const [selection, setSelection] = useState<string | null>(() => monthKey(currentProfileMonth()))
   const calendar = loading || unavailable ? months : fillCalendarMonths(months)
   const selected = calendar.find((month) => monthKey(month) === selection)
   const surface = useResolvedSecondaryWidgetSurface()
 
   return (
     <View style={styles.details}>
-      {total ? (
-        <View style={[surface, styles.box]}>
-          <StatsReadout
-            title="All time"
-            stats={total}
-            testID="profile-all-time-stats"
-            onOpenRecordRide={onOpenRecordRide}
-          />
-        </View>
+      {today ? (
+        <StatsReadout
+          title="Today"
+          showTodayDot
+          stats={today}
+          testID="profile-today-stats"
+          style={[surface, styles.box]}
+          onOpenRecordRide={onOpenRecordRide}
+        />
       ) : null}
-      <View style={[surface, styles.box]}>
+      {total ? (
+        <StatsReadout
+          title="All time"
+          stats={total}
+          testID="profile-all-time-stats"
+          style={[surface, styles.box]}
+          onOpenRecordRide={onOpenRecordRide}
+        />
+      ) : null}
+      <View style={[surface, styles.box, styles.monthlyBox]}>
         <MonthlyDistanceChart
           months={calendar}
           selected={selected ? monthKey(selected) : null}
@@ -75,21 +96,28 @@ export function ProfileStatsDetails({
 
 function StatsReadout({
   title,
+  showTodayDot = false,
   stats,
   testID,
+  style,
   onOpenRecordRide,
 }: {
   title: string
+  showTodayDot?: boolean
   stats: RiderStats
   testID: string
+  style?: StyleProp<ViewStyle>
   onOpenRecordRide?: OpenRecordRide
 }) {
   const items = useProfileStatItems(stats, undefined, onOpenRecordRide)
   return (
-    <View testID={testID}>
-      <Text accessibilityRole="header" style={styles.title}>
-        {title}
-      </Text>
+    <View testID={testID} style={style}>
+      <View style={styles.titleRow}>
+        {showTodayDot ? <View style={styles.todayDot} /> : null}
+        <Text accessibilityRole="header" style={styles.title}>
+          {title}
+        </Text>
+      </View>
       <ProfileStatsGrid items={items} columns={3} />
     </View>
   )
@@ -147,9 +175,12 @@ function MonthlyDistanceChart({
 
   return (
     <View testID="profile-monthly-chart" style={styles.chart}>
-      <Text accessibilityRole="header" style={styles.title}>
-        Monthly distance · km
-      </Text>
+      <View style={styles.chartHeader}>
+        <Text accessibilityRole="header" style={styles.title}>
+          Monthly stats
+        </Text>
+        {months.length ? <Text style={styles.month}>Distance · km</Text> : null}
+      </View>
       {months.length ? (
         <ScrollView
           horizontal
@@ -220,7 +251,7 @@ function MonthlyDistanceChart({
         </ScrollView>
       ) : (
         <Text style={styles.month}>
-          {loading ? 'Loading monthly distance…' : 'No monthly distances available.'}
+          {loading ? 'Loading monthly stats…' : 'No monthly stats available.'}
         </Text>
       )}
     </View>
@@ -228,8 +259,11 @@ function MonthlyDistanceChart({
 }
 
 const styles = StyleSheet.create({
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  todayDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.palette.green.color },
   details: { gap: 12 },
-  box: { padding: 12, gap: 12 },
+  box: { padding: 12 },
+  monthlyBox: { gap: 12 },
   title: {
     fontSize: 11,
     fontWeight: '700',
@@ -238,6 +272,12 @@ const styles = StyleSheet.create({
     color: theme.neutral.textSecondary,
   },
   chart: { gap: 8 },
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
   years: { flexGrow: 1, gap: 10, paddingBottom: 5 },
   year: { flexGrow: 1, paddingHorizontal: 4 },
   january: { minWidth: 62, paddingLeft: 16 },

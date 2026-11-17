@@ -7,7 +7,6 @@ import { Button } from '@/components/base/Button'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
-import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
@@ -55,11 +54,10 @@ export function RiderProfileCard({
   const caption = [rider?.nationality, status ?? (friend ? friendStatus(friend, nowMs) : null)]
     .filter(Boolean)
     .join(' · ')
-  const surface = useResolvedSecondaryWidgetSurface()
 
   return (
     <View style={styles.card} testID="rider-profile">
-      <View style={[surface, styles.identity]}>
+      <View style={styles.identity}>
         <UserCircleIcon size={46} color={neutral.textSecondary} weight="thin" />
         <View style={styles.flex}>
           <Text numberOfLines={1} style={styles.nick}>
@@ -79,35 +77,35 @@ export function RiderProfileCard({
             </View>
           ) : null}
         </View>
-        {rider ? <FriendAction accountId={accountId} nick={rider.nick} /> : null}
+        {friend ? (
+          <Button
+            label="Remove friend"
+            icon={UserMinusIcon}
+            size="sm"
+            variant="secondary"
+            onPress={() => setConfirmRemove(true)}
+          />
+        ) : rider ? (
+          <FriendAction accountId={accountId} nick={rider.nick} />
+        ) : null}
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {children}
       <PublicRiderStats stats={stats} loading={!result} failed={result?.failed} />
       {afterStats}
       {friend ? (
-        <>
-          <Button
-            label="Remove friend"
-            icon={UserMinusIcon}
-            size="sm"
-            variant="secondary"
-            style={styles.remove}
-            onPress={() => setConfirmRemove(true)}
-          />
-          <ConfirmModal
-            visible={confirmRemove}
-            title={`Remove ${friend.nick}?`}
-            message="They will not be told. You can send a new request later."
-            confirmLabel="Remove"
-            destructive
-            onConfirm={async () => {
-              setConfirmRemove(false)
-              await useFriendsStore.getState().remove(accountId)
-            }}
-            onCancel={() => setConfirmRemove(false)}
-          />
-        </>
+        <ConfirmModal
+          visible={confirmRemove}
+          title={`Remove ${friend.nick}?`}
+          message="They will not be told. You can send a new request later."
+          confirmLabel="Remove"
+          destructive
+          onConfirm={async () => {
+            setConfirmRemove(false)
+            await useFriendsStore.getState().remove(accountId)
+          }}
+          onCancel={() => setConfirmRemove(false)}
+        />
       ) : null}
     </View>
   )
@@ -148,11 +146,10 @@ function PublicRiderStats({
 const styles = StyleSheet.create({
   card: { gap: 14 },
   section: { gap: 10 },
-  identity: { flexDirection: 'row', alignItems: 'center', padding: 15, gap: 12 },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   flex: { flex: 1, minWidth: 0 },
-  nick: { color: theme.neutral.textPrimary, fontSize: 24, fontWeight: '700' },
+  nick: { color: theme.neutral.textPrimary, fontSize: 20, fontWeight: '700' },
   caption: { color: theme.neutral.textSecondary, fontSize: 11, lineHeight: 17, flexShrink: 1 },
   error: { color: theme.status.error.text, fontSize: 12 },
-  remove: { alignSelf: 'flex-start' },
 })

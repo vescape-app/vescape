@@ -1,5 +1,6 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { StyleSheet } from 'react-native'
 
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { theme } from '@/constants/theme'
 import { RideStatsSection } from '@/modules/profile/screens/RideStatsSection'
 import { openRecordRide } from '@/screens/profileStats/openRecordRide'
@@ -7,13 +8,9 @@ import { openRecordRide } from '@/screens/profileStats/openRecordRide'
 /** Profile stats, whose records open the ride that set them back on the main screen. */
 export function ProfileStatsScreen() {
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      contentInsetAdjustmentBehavior="automatic"
-    >
+    <PageScrollView style={styles.container} contentContainerStyle={styles.content}>
       <RideStatsSection onOpenRecordRide={openRecordRide} />
-    </ScrollView>
+    </PageScrollView>
   )
 }
 

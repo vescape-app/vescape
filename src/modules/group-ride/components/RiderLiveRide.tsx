@@ -2,9 +2,7 @@ import { StyleSheet, View } from 'react-native'
 import {
   BatteryMediumIcon,
   BroadcastIcon,
-  ClockIcon,
   CpuIcon,
-  DeviceMobileIcon,
   GaugeIcon,
   MapTrifoldIcon,
   ThermometerIcon,
@@ -15,30 +13,23 @@ import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
-import { fmtTimeAgo } from '@/helpers/format'
 import { useFormat } from '@/hooks/useFormat'
-import { useMinuteNow } from '@/hooks/useMinuteNow'
+import { RiderDeviceStatus } from '@/modules/group-ride/components/RiderDeviceStatus'
 import { useRiderStats } from '@/modules/group-ride/hooks/useRiderStats'
 import type { RiderReadings } from '@/modules/group-ride/lib/riderStats'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 
 export function RiderLiveRide({
   readings,
-  stale = false,
-  lastSeen = 0,
   onShowOnMap,
 }: {
   readings: RiderReadings
-  stale?: boolean
-  lastSeen?: number
   onShowOnMap?: () => void
 }) {
   const surface = useResolvedSecondaryWidgetSurface()
   const { speedUnit } = useFormat()
   const { speed, soc, motor, ctrl, phone } = useRiderStats(readings)
-  const now = useMinuteNow(stale)
-  const tone = stale ? theme.palette.amber : theme.palette.green
-  const boardName = readings.boardName ?? (speed.value == null ? 'Board disconnected' : null)
+  const boardName = readings.boardName
   const metrics = [
     {
       key: 'speed',
@@ -68,33 +59,22 @@ export function RiderLiveRide({
       icon: ThermometerIcon,
       accent: theme.telemetry.motorTemp,
     },
-    {
-      key: 'phone',
-      label: 'Phone',
-      value: phone.value,
-      icon: DeviceMobileIcon,
-      accent: theme.palette.cyan.color,
-    },
   ] as const
+  const items = metrics.flatMap((metric) =>
+    metric.value ? [{ ...metric, value: metric.value }] : [],
+  )
+  const boardConnected = Boolean(boardName || items.length)
+  if (!boardConnected && !phone.value) return null
 
   return (
     <View style={styles.section}>
-      <SectionHeader
-        title={stale ? 'Last known ride' : 'Live ride'}
-        icon={stale ? ClockIcon : BroadcastIcon}
-        color={tone.color}
-      />
+      {boardConnected ? (
+        <SectionHeader title="Live ride" icon={BroadcastIcon} color={theme.palette.green.color} />
+      ) : null}
       <View style={[surface, styles.box]}>
         {boardName ? <Text style={styles.board}>{boardName}</Text> : null}
-        {stale && lastSeen > 0 ? (
-          <Text style={styles.caption}>Updated {fmtTimeAgo(lastSeen, now)}</Text>
-        ) : null}
-        <ProfileStatsGrid
-          columns={4}
-          items={metrics.flatMap((metric) =>
-            metric.value ? [{ ...metric, value: metric.value }] : [],
-          )}
-        />
+        {items.length > 0 ? <ProfileStatsGrid columns={4} items={items} /> : null}
+        <RiderDeviceStatus boardConnected={boardConnected} phoneBattery={phone.value} />
         {onShowOnMap ? (
           <Button
             label="Show on map"
@@ -114,6 +94,5 @@ const styles = StyleSheet.create({
   section: { gap: 10 },
   box: { padding: 15, gap: 6 },
   board: { fontSize: 16, fontWeight: '700' },
-  caption: { color: theme.neutral.textSecondary, fontSize: 11 },
   map: { alignSelf: 'flex-end' },
 })

@@ -14,7 +14,7 @@ import { useFriendRidesStore } from '@/modules/group-ride/store/friendRidesStore
  * the server refuses anyone else, so the host renders this only when the rider is one.
  */
 export function FriendRides({ accountId, onOpen }: { accountId: string; onOpen: () => void }) {
-  const rides = useFriendRidesStore((s) => (s.accountId === accountId ? s.rides : []))
+  const rides = useFriendRidesStore((s) => (s.accountId === accountId ? s.rides : null))
   const loading = useFriendRidesStore((s) => s.loading)
   const failed = useFriendRidesStore((s) => s.failed)
   const shownKey = useFriendRidesStore((s) => s.track?.key ?? null)
@@ -26,7 +26,7 @@ export function FriendRides({ accountId, onOpen }: { accountId: string; onOpen: 
   return (
     <View style={styles.section} testID="friend-rides">
       <Text style={styles.title}>Public rides</Text>
-      {loading ? (
+      {loading || rides === null ? (
         <ActivityIndicator color={theme.neutral.textSecondary} />
       ) : failed ? (
         <Text style={styles.notice}>Could not load rides.</Text>

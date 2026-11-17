@@ -3,16 +3,10 @@ import { Text } from '@/components/base/Text'
 import { ChartLineUpIcon } from 'phosphor-react-native'
 
 import { Placeholder } from '@/components/base/Placeholder'
-import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
-import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
-import {
-  useProfileStatItems,
-  type OpenRecordRide,
-} from '@/modules/profile/hooks/useProfileStatItems'
+import type { OpenRecordRide } from '@/modules/profile/hooks/useProfileStatItems'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
 import { ProfileStatsDetails } from '@/modules/profile/components/ProfileStatsDetails'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors } from '@/hooks/useTheme'
 
 interface RideStatsSectionProps {
   /** Tapping Top speed or Longest ride opens the ride that set it. */
@@ -21,9 +15,6 @@ interface RideStatsSectionProps {
 
 export function RideStatsSection({ onOpenRecordRide }: RideStatsSectionProps) {
   const { total, today, monthStats, loading, error, empty } = useProfileStats(true, true)
-  const accent = useResolvedAccentColors()
-  const surface = useResolvedSecondaryWidgetSurface()
-  const todayItems = useProfileStatItems(today, undefined, onOpenRecordRide)
 
   return (
     <View testID="profile-stats-section" style={styles.section}>
@@ -42,22 +33,13 @@ export function RideStatsSection({ onOpenRecordRide }: RideStatsSectionProps) {
       ) : null}
 
       <ProfileStatsDetails
+        today={today.rideCount > 0 ? today : undefined}
         total={loading || empty || error ? null : total}
         months={monthStats}
         loading={loading}
         unavailable={Boolean(error)}
         onOpenRecordRide={onOpenRecordRide}
       />
-
-      {today.rideCount > 0 ? (
-        <View testID="profile-today-stats" style={[surface, styles.todayCard]}>
-          <View style={styles.todayHeader}>
-            <View style={[styles.todayDot, { backgroundColor: accent.green.color }]} />
-            <Text style={[styles.sectionTitle, styles.todayTitle]}>Today</Text>
-          </View>
-          <ProfileStatsGrid items={todayItems} />
-        </View>
-      ) : null}
 
       {loading ? (
         <View style={styles.loadingWrap}>
@@ -71,34 +53,6 @@ export function RideStatsSection({ onOpenRecordRide }: RideStatsSectionProps) {
 const styles = StyleSheet.create({
   section: {
     gap: 12,
-  },
-  sectionTitle: {
-    color: theme.neutral.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginLeft: 4,
-    marginTop: 4,
-  },
-  todayCard: {
-    padding: 12,
-    gap: 4,
-  },
-  todayHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginLeft: 4,
-  },
-  todayDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  todayTitle: {
-    marginLeft: 0,
-    marginTop: 0,
   },
   empty: {
     minHeight: 260,

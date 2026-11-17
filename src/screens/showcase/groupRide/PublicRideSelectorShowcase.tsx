@@ -13,7 +13,7 @@ import { AccountSignInPill } from '@/modules/profile/components/AccountPill'
 
 /** The public ride switch: off, a number of hours, always; live and unavailable states. */
 export function PublicRideSelectorShowcase() {
-  const [value, setValue] = useState<PublicRideChoice>({ mode: 'hours', hours: 2 })
+  const [value, setValue] = useState<PublicRideChoice>({ mode: 'off' })
   const [boardConnected, setBoardConnected] = useState(false)
   const [relayConfirmed, setRelayConfirmed] = useState(true)
   const [manualSharing, setManualSharing] = useState(false)
