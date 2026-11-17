@@ -13,6 +13,8 @@ import { Text } from '@/components/base/Text'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
+import { rideDistanceFromMeters, rideDistanceUnit } from '@/helpers/units'
+import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 import {
@@ -163,6 +165,8 @@ function MonthlyDistanceChart({
 }) {
   const { sky } = useResolvedAccentColors()
   const { border } = useResolvedNeutralColors()
+  const distanceUnit = useDistanceUnit()
+  const unit = rideDistanceUnit(distanceUnit)
   const scroll = useRef<ScrollView>(null)
   const positioned = useRef(false)
   const maxDistance = Math.max(1, ...months.map(({ stats }) => stats.distanceM ?? 0))
@@ -179,7 +183,7 @@ function MonthlyDistanceChart({
         <Text accessibilityRole="header" style={styles.title}>
           Monthly stats
         </Text>
-        {months.length ? <Text style={styles.month}>Distance · km</Text> : null}
+        {months.length ? <Text style={styles.month}>Distance · {unit}</Text> : null}
       </View>
       {months.length ? (
         <ScrollView
@@ -206,7 +210,10 @@ function MonthlyDistanceChart({
                   const key = monthKey(entry)
                   const active = selected === key
                   const distance = entry.stats.distanceM
-                  const value = distance == null ? DASH : chartDistance.format(distance / 1000)
+                  const value =
+                    distance == null
+                      ? DASH
+                      : chartDistance.format(rideDistanceFromMeters(distance, distanceUnit))
                   const month = new Date(entry.year, entry.month - 1, 1).toLocaleDateString(
                     undefined,
                     {
@@ -219,7 +226,7 @@ function MonthlyDistanceChart({
                       testID={`profile-month-${key}`}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
-                      accessibilityLabel={`${formatMonthLabel(entry)}, ${distance == null ? 'distance unavailable' : `${value} km`}`}
+                      accessibilityLabel={`${formatMonthLabel(entry)}, ${distance == null ? 'distance unavailable' : `${value} ${unit}`}`}
                       onPress={() => onSelect(key)}
                       style={[styles.column, entry.month === 1 && styles.january]}
                     >

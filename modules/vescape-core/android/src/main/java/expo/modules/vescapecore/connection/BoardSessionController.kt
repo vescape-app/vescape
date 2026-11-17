@@ -3112,7 +3112,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
         if (!autoCloseEnabled || isBoardLinked() || isStoppingService) return
         // Auto close targets forgotten background sessions; never yank the app out from under an
         // active user. Visible (or otherwise foreground-important) app pushes the countdown.
-        if (isAppVisible()) {
+        // Sharing a Public Ride by phone is deliberate background work that runs to its own expiry.
+        if (isAppVisible() || groupRideObserver.publicRideNeedsGps) {
             rescheduleAutoClose()
             return
         }

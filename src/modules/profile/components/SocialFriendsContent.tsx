@@ -137,9 +137,7 @@ export function SocialFriendLists({
           compact
           icon={loadError.unreachable ? WifiSlashIcon : UsersIcon}
           title="Couldn’t refresh friends"
-          description={
-            loadError.unreachable ? 'Vescape couldn’t connect to the server.' : loadError.message
-          }
+          description={loadError.message}
           action={
             <Button
               label="Try again"

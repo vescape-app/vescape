@@ -55,7 +55,6 @@ export function SocialTrigger() {
   const sharingOn = useGroupRideStore((s) => s.publicRide.activation !== 'off')
   const rideActive = useGroupRideStore((s) => s.publicRide.live)
   const requestColor = useColoredActionForeground(theme.palette.blue.color)
-  const showRequests = incomingRequests > 0 && !rideActive
   const requestLabel = `${incomingRequests} friend ${incomingRequests === 1 ? 'request' : 'requests'}`
 
   function openExtension() {
@@ -73,6 +72,9 @@ export function SocialTrigger() {
   const othersSignal = useOthersSignalTakeover()
   const ownSignal = useOwnSignalTakeover()
   const OwnSignalIcon = ownSignal?.icon ?? MegaphoneIcon
+  // Requests borrow the extension only while it has no signal to show, so a live own signal stays
+  // reachable through a relay reconnect.
+  const showRequests = incomingRequests > 0 && !rideActive && ownSignal === null
 
   return (
     <>
