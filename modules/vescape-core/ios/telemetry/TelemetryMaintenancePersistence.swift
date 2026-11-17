@@ -100,18 +100,24 @@ struct TelemetryMaintenancePersistence {
 
 internal let RIDE_SUMMARIES_CHUNK_MS: Int64 = 3_600_000
 
-/// Diagnostic Events older than this are pruned once per process start.
+/// Diagnostic Events older than this are pruned by the Cleanup Maintenance Job.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DIAGNOSTIC_EVENT_RETENTION_MS`
 internal let DIAGNOSTIC_EVENT_RETENTION_MS: Int64 = 30 * 24 * 60 * 60 * 1000
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DIAGNOSTIC_EVENT_PRUNE_BATCH`
 internal let DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
 
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DiagnosticEventPruneResult`
+struct DiagnosticEventPruneResult {
+  let deleted: Int
+  let yielded: Bool
+}
+
 /// Delete Diagnostic Events older than `DIAGNOSTIC_EVENT_RETENTION_MS`, one fenced batch per chunk so
 /// a large backlog never holds a long write lock. Each batch first rechecks, at the current time, whether
-/// a ride may be recording and stops there if so (the next start prunes the rest). `scope.progress` runs between batches. Throws `MaintenanceRunFenced` when Restore or Clear all replaced the database.
+/// a ride may be recording and yields to the Cleanup job if so. `scope.progress` runs between batches. Throws `MaintenanceRunFenced` when Restore or Clear all replaced the database.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `pruneDiagnosticEvents`
 @discardableResult
-internal func pruneDiagnosticEvents(_ scope: MaintenanceJobScope, gapMs: Int64, batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH) throws -> Int {
+internal func pruneDiagnosticEvents(_ scope: MaintenanceJobScope, gapMs: Int64, batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH) throws -> DiagnosticEventPruneResult {
   let beforeMs = scope.nowMs() - DIAGNOSTIC_EVENT_RETENTION_MS
   var deleted = 0
   while true {
@@ -123,10 +129,10 @@ internal func pruneDiagnosticEvents(_ scope: MaintenanceJobScope, gapMs: Int64, 
       )
       return db.changesCount
     }
-    guard let count else { return deleted }
+    guard let count else { return DiagnosticEventPruneResult(deleted: deleted, yielded: true) }
     deleted += count
     scope.progress(deleted, deleted)
-    if count < batch { return deleted }
+    if count < batch { return DiagnosticEventPruneResult(deleted: deleted, yielded: false) }
   }
 }
 

@@ -14,7 +14,8 @@ import kotlinx.coroutines.runBlocking
 import expo.modules.vescapecore.telemetry.BucketRoutePreview
 import expo.modules.vescapecore.telemetry.RecordingPersistence
 import expo.modules.vescapecore.telemetry.MaintenanceJobScope
-import expo.modules.vescapecore.telemetry.pruneDiagnosticEvents
+import expo.modules.vescapecore.telemetry.CleanupJob
+import expo.modules.vescapecore.telemetry.MaintenanceJobOutcome
 import expo.modules.vescapecore.telemetry.publishMaintenanceFingerprint
 import expo.modules.vescapecore.telemetry.storedMaintenanceFingerprint
 import expo.modules.vescapecore.telemetry.bucketPreviewFixes
@@ -169,7 +170,10 @@ class DatabaseRestoreHostTest {
       val fence = DatabaseReplacementFence()
       fence.fence { }
       val scope = MaintenanceJobScope({ room.vescapeDao() }, fence, fence.ticket(), { 40 * 24 * 60 * 60_000L })
-      assertEquals(1, pruneDiagnosticEvents(scope, gapMs = 60_000))
+      val cleanup = CleanupJob()
+      cleanup.begin(scope, AppSettings())
+      assertEquals(MaintenanceJobOutcome.Completed, cleanup.run(scope, AppSettings()))
+      cleanup.complete(scope, AppSettings())
       assertTrue(room.vescapeDao().getDiagnosticEvents(Long.MIN_VALUE, Long.MAX_VALUE, null, 10).isEmpty())
       assertEquals("\"yes\"", room.vescapeDao().getAllAppSettings().single { it.key == "kept" }.valueJson)
     } finally { room.close(); directory.deleteRecursively() }

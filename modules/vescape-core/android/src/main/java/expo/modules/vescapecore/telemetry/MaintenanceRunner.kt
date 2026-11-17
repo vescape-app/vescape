@@ -90,34 +90,7 @@ internal object MaintenanceRunner {
     appContext = context.applicationContext
     watchNetwork()
     delay(LAUNCH_DELAY_MS)
-    pruneDiagnosticEventsForDatabase()
     trigger("launch")
-  }
-
-  /**
-   * Diagnostic Event retention before launch and after Restore or Clear all.
-   * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `pruneDiagnosticEventsForDatabase`
-   */
-  private suspend fun pruneDiagnosticEventsForDatabase() {
-    if (RecordingStorageFailure.value() != null) return
-    val fence = DatabaseReplacementFence.process
-    val scope = MaintenanceJobScope(
-      dao = { VescapeDatabase.get(appContext).vescapeDao() },
-      fence = fence,
-      ticket = fence.ticket(),
-    )
-    try {
-      val gapMs = AppDataRepository.get(appContext).getTypedSettings().rideSplitGapMinutes * 60_000L
-      val deleted = pruneDiagnosticEvents(scope, gapMs)
-      if (deleted > 0) breadcrumb("diagnostic_prune", mapOf("deleted" to deleted))
-      // intentional-suppression: Restore/Clear all owns the retry through its replacement callback.
-    } catch (fenced: MaintenanceRunFenced) {
-    } catch (cancelled: CancellationException) {
-      throw cancelled
-    } catch (error: Throwable) {
-      Log.e(TAG, "Diagnostic Event prune failed", error)
-      Sentry.captureException(error)
-    }
   }
 
   fun trigger(reason: String) = scope.launch {
@@ -145,7 +118,6 @@ internal object MaintenanceRunner {
   fun onDatabaseReplaced() {
     scope.launch {
       if (!started) return@launch
-      pruneDiagnosticEventsForDatabase()
       trigger("database_replaced")
     }
   }

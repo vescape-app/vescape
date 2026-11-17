@@ -6,13 +6,14 @@ import { fmtRideDuration, fmtTimeAgo } from '@/helpers/format'
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MAINTENANCE_JOBS`
  * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `maintenanceJobs`
  */
-export type MaintenanceJobId = 'telemetryStorage' | 'rideSummaries' | 'rideWeather'
+export type MaintenanceJobId = 'telemetryStorage' | 'rideSummaries' | 'rideWeather' | 'cleanup'
 
 /** Rider-facing names for the declared Maintenance Jobs; an unknown id falls back to itself. */
 const JOB_TITLES: Record<MaintenanceJobId, string> = {
   telemetryStorage: 'Telemetry storage',
   rideSummaries: 'Ride summaries',
   rideWeather: 'Ride weather',
+  cleanup: 'Cleanup',
 }
 
 export function maintenanceJobTitle(id: string): string {

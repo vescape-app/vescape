@@ -137,7 +137,7 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
   older backup makes its jobs stale again. There is no progress cursor and no pending-work state: a
   run that stops early restarts from zero, and the missing fingerprint is the only obligation. A job
   may own its done state instead (`hasWork`, `begin`, `complete`); Ride weather does, with a
-  watermark. Telemetry storage records completion for the process launch and database generation.
+  watermark. Telemetry storage and Cleanup record completion for the process launch and database generation.
 - **Runner.** `MaintenanceRunner` runs stale jobs one at a time, in declaration order, on one
   low-priority thread or queue. A failed or waiting job does not block the next. It checks after
   launch (10 s after startup), when the network comes back (network jobs only), 3 s after the last
@@ -168,9 +168,11 @@ minutes stay readable and the run completes, so later triggers do not loop over 
 or database replacement retries them and any later leftovers. The job clears the obsolete backlog
 marker, and Restore and Clear all clear its completion state.
 
-Diagnostic Event retention runs before the launch pass and after Restore or Clear all, under the
-resulting database's fence ticket. It retains 30 days, deletes in batches of 5,000, and rechecks for
-a possibly recording ride before each batch. It has no row on the Settings → Database Maintenance list.
+**Cleanup** (`cleanup`) runs last, once per launch and database generation, including after
+Restore or Clear all. Its ordered cleanup steps currently retain 30 days of Diagnostic Events,
+deleting in fenced batches of 5,000 and rechecking for a possibly recording ride before each batch.
+Recording defers the job until ride closure. A failed step reports its error and allows later steps
+to run; the job stays failed without a completion fingerprint.
 
 **Ride summaries** follows Telemetry storage. Its inputs are the Metric Sanitizer settings. It rebuilds
 minute buckets, exclusion ranges and route previews oldest first, one transaction per owned chunk:

@@ -126,7 +126,7 @@ internal suspend fun VescapeDao.publishMaintenanceFingerprint(id: String, finger
  * Every Maintenance Job, in run order. A new job is declared here and nowhere else.
  * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `maintenanceJobs`
  */
-internal val MAINTENANCE_JOBS: List<MaintenanceJob> = listOf(TelemetryStorageJob(), RideSummariesJob, RideWeatherJob)
+internal val MAINTENANCE_JOBS: List<MaintenanceJob> = listOf(TelemetryStorageJob(), RideSummariesJob, RideWeatherJob, CleanupJob())
 
 /**
  * Ride summaries: minute buckets, exclusion ranges and route previews rebuilt from the raw frames
@@ -180,9 +180,8 @@ internal class TelemetryStorageJob : MaintenanceJob {
   override val version = 1
   override val requiresNetwork = false
   override val inputKeys = emptySet<String>()
-  private val launch = java.util.UUID.randomUUID().toString()
+  private val completion = LaunchMaintenanceCompletion()
   override fun inputs(settings: AppSettings) = ""
-  private fun completion(scope: MaintenanceJobScope) = "$launch|${scope.ticket}"
 
   override suspend fun hasWork(scope: MaintenanceJobScope, settings: AppSettings): Boolean = scope.chunk {
     it.deleteAppSetting("maintenanceJob.telemetryBacklogDrain")
@@ -208,5 +207,58 @@ internal class TelemetryStorageJob : MaintenanceJob {
       "yielded" to result.yielded, "duration_ms" to (System.nanoTime() - started) / 1_000_000,
     ))
     return if (result.yielded) MaintenanceJobOutcome.Deferred(scope.nowMs() + gapMs) else MaintenanceJobOutcome.Completed
+  }
+}
+
+/** @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `LaunchMaintenanceCompletion` */
+private class LaunchMaintenanceCompletion {
+  private val launch = java.util.UUID.randomUUID().toString()
+  operator fun invoke(scope: MaintenanceJobScope) = "$launch|${scope.ticket}"
+}
+
+/** @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `CLEANUP_STEPS` */
+private val CLEANUP_STEPS: List<suspend (MaintenanceJobScope, Long) -> MaintenanceJobOutcome> = listOf(
+  { scope, gapMs ->
+    val result = pruneDiagnosticEvents(scope, gapMs)
+    if (result.deleted > 0) scope.diagnostic("diagnostic_prune", mapOf("deleted" to result.deleted))
+    if (result.yielded) MaintenanceJobOutcome.Deferred(scope.nowMs() + gapMs) else MaintenanceJobOutcome.Completed
+  },
+)
+
+/**
+ * @parity /modules/vescape-core/ios/telemetry/MaintenanceJobs.swift `CleanupJob`
+ * @parity /src/modules/settings/lib/maintenance.ts `MaintenanceJobId`
+ */
+internal class CleanupJob : MaintenanceJob {
+  override val id = "cleanup"
+  override val version = 1
+  override val requiresNetwork = false
+  override val inputKeys = emptySet<String>()
+  private val completion = LaunchMaintenanceCompletion()
+  override fun inputs(settings: AppSettings) = ""
+
+  override suspend fun hasWork(scope: MaintenanceJobScope, settings: AppSettings): Boolean =
+    scope.chunk { it.storedMaintenanceFingerprint(id) } != completion(scope)
+
+  override suspend fun complete(scope: MaintenanceJobScope, settings: AppSettings) {
+    scope.chunk { it.publishMaintenanceFingerprint(id, completion(scope), scope.nowMs()) }
+  }
+
+  override suspend fun run(scope: MaintenanceJobScope, settings: AppSettings): MaintenanceJobOutcome {
+    val gapMs = settings.rideSplitGapMinutes * 60_000L
+    var failure: Exception? = null
+    for ((index, step) in CLEANUP_STEPS.withIndex()) {
+      try {
+        val outcome = step(scope, gapMs)
+        if (outcome is MaintenanceJobOutcome.Deferred) return outcome
+      } catch (error: Exception) {
+        if (error is MaintenanceRunFenced || error is kotlinx.coroutines.CancellationException ||
+          error is androidx.sqlite.SQLiteException) throw error
+        scope.diagnostic("cleanup_step_failed", mapOf("step" to index, "message" to error.message))
+        if (failure == null) failure = error
+      }
+    }
+    failure?.let { throw it }
+    return MaintenanceJobOutcome.Completed
   }
 }

@@ -174,7 +174,7 @@ func publishMaintenanceFingerprint(_ db: Database, id: String, fingerprint: Stri
 /// @parity /src/modules/settings/lib/maintenance.ts `MaintenanceJobId`
 /// Every Maintenance Job, in run order. A new job is declared here and nowhere else.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `MAINTENANCE_JOBS`
-let maintenanceJobs: [MaintenanceJob] = [TelemetryStorageJob(), RideSummariesJob(), RideWeatherJob.shared]
+let maintenanceJobs: [MaintenanceJob] = [TelemetryStorageJob(), RideSummariesJob(), RideWeatherJob.shared, CleanupJob()]
 
 /// Ride summaries: minute buckets, exclusion ranges and route previews rebuilt from the raw frames
 /// and Ride Track, one owned hour per transaction, oldest first. History stays complete throughout:
@@ -227,9 +227,8 @@ struct TelemetryStorageJob: MaintenanceJob {
   let version = 1
   let requiresNetwork = false
   let inputKeys: Set<String> = []
-  private let launch = UUID().uuidString
+  private let completion = LaunchMaintenanceCompletion()
   func inputs(_ settings: [String: Any?]) -> String { "" }
-  private func completion(_ scope: MaintenanceJobScope) -> String { "\(launch)|\(scope.ticket)" }
 
   func hasWork(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws -> Bool {
     try scope.chunk { db in
@@ -260,5 +259,56 @@ struct TelemetryStorageJob: MaintenanceJob {
       ])
     }
     return result.yielded ? .deferred(retryAtMs: scope.nowMs() + gapMs) : .completed
+  }
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `LaunchMaintenanceCompletion`
+private struct LaunchMaintenanceCompletion {
+  private let launch = UUID().uuidString
+  func callAsFunction(_ scope: MaintenanceJobScope) -> String { "\(launch)|\(scope.ticket)" }
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `CLEANUP_STEPS`
+private let CLEANUP_STEPS: [(MaintenanceJobScope, Int64) throws -> MaintenanceJobOutcome] = [
+  { scope, gapMs in
+    let result = try pruneDiagnosticEvents(scope, gapMs: gapMs)
+    if result.deleted > 0 { scope.diagnostic("diagnostic_prune", ["deleted": result.deleted]) }
+    return result.yielded ? .deferred(retryAtMs: scope.nowMs() + gapMs) : .completed
+  },
+]
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `CleanupJob`
+/// @parity /src/modules/settings/lib/maintenance.ts `MaintenanceJobId`
+struct CleanupJob: MaintenanceJob {
+  let id = "cleanup"
+  let version = 1
+  let requiresNetwork = false
+  let inputKeys: Set<String> = []
+  private let completion = LaunchMaintenanceCompletion()
+  func inputs(_ settings: [String: Any?]) -> String { "" }
+
+  func hasWork(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws -> Bool {
+    try scope.chunk { try storedMaintenanceFingerprint($0, id: id) } != completion(scope)
+  }
+
+  func complete(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws {
+    try scope.chunk { try publishMaintenanceFingerprint($0, id: id, fingerprint: completion(scope), nowMs: scope.nowMs()) }
+  }
+
+  func run(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws -> MaintenanceJobOutcome {
+    let gapMs = Int64(telemetryInt(settings["rideSplitGapMinutes"] ?? nil) ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
+    var failure: Error?
+    for (index, step) in CLEANUP_STEPS.enumerated() {
+      do {
+        let outcome = try step(scope, gapMs)
+        if case .deferred = outcome { return outcome }
+      } catch {
+        if error is MaintenanceRunFenced || error is MaintenanceRunCancelled || error is DatabaseError { throw error }
+        scope.diagnostic("cleanup_step_failed", ["step": index, "message": error.localizedDescription])
+        if failure == nil { failure = error }
+      }
+    }
+    if let failure { throw failure }
+    return .completed
   }
 }

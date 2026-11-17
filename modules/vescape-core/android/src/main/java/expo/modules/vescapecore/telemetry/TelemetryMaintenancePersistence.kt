@@ -60,34 +60,37 @@ internal data class RebuildState(
 internal const val RIDE_SUMMARIES_CHUNK_MS = 3_600_000L
 
 /**
- * Diagnostic Events older than this are pruned once per process start.
+ * Diagnostic Events older than this are pruned by the Cleanup Maintenance Job.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DIAGNOSTIC_EVENT_RETENTION_MS`
  */
 internal const val DIAGNOSTIC_EVENT_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
 /** @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DIAGNOSTIC_EVENT_PRUNE_BATCH` */
 internal const val DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
 
+/** @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DiagnosticEventPruneResult` */
+internal data class DiagnosticEventPruneResult(val deleted: Int, val yielded: Boolean)
+
 /**
  * Delete Diagnostic Events older than [DIAGNOSTIC_EVENT_RETENTION_MS], one fenced batch per chunk so
  * a large backlog never holds a long write lock. Each batch first rechecks, at the current time, whether
- * a ride may be recording and stops there if so (the next start prunes the rest). [MaintenanceJobScope.progress] runs between batches. Throws [MaintenanceRunFenced] when Restore or Clear all replaced the database.
+ * a ride may be recording and yields to the Cleanup job if so. [MaintenanceJobScope.progress] runs between batches. Throws [MaintenanceRunFenced] when Restore or Clear all replaced the database.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `pruneDiagnosticEvents`
  */
 internal suspend fun pruneDiagnosticEvents(
   scope: MaintenanceJobScope,
   gapMs: Long,
   batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH,
-): Int {
+): DiagnosticEventPruneResult {
   val beforeMs = scope.nowMs() - DIAGNOSTIC_EVENT_RETENTION_MS
   var deleted = 0
   while (true) {
     val count = scope.chunk { dao ->
       if (dao.activeRideStartMs(scope.nowMs(), gapMs) != null) null
       else dao.deleteDiagnosticEventsBatchBefore(beforeMs, batch)
-    } ?: return deleted
+    } ?: return DiagnosticEventPruneResult(deleted, true)
     deleted += count
     scope.progress(deleted, deleted)
-    if (count < batch) return deleted
+    if (count < batch) return DiagnosticEventPruneResult(deleted, false)
   }
 }
 

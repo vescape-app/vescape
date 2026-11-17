@@ -316,7 +316,11 @@ func runTelemetryChunkContract() throws {
   let pruneFence = DatabaseReplacementFence()
   pruneFence.fence {}
   let restoredScope = MaintenanceJobScope(writer: { restored }, fence: pruneFence, ticket: pruneFence.ticket(), nowMs: { 40 * 24 * 60 * minute })
-  try require(try pruneDiagnosticEvents(restoredScope, gapMs: minute) == 1, "restored old event pruned in same process")
+  let cleanup = CleanupJob()
+  try cleanup.begin(restoredScope, settings: [:])
+  try require(try cleanup.run(restoredScope, settings: [:]) == .completed, "restored cleanup completes in same process")
+  try cleanup.complete(restoredScope, settings: [:])
+  try require(try restored.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM diagnostic_events") } == 0, "restored old event pruned")
 
   // Readers racing the sealer see every sample exactly once.
   let race = try fresh()
