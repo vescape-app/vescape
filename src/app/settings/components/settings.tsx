@@ -72,7 +72,7 @@ function StorageCellShowcase() {
       ? {
           job: STORAGE_JOB,
           fraction: mode === 'running' ? 0.4 : null,
-          statusLine: 'Updating ride summaries · 312 of 780 hours',
+          statusLine: 'Updating ride summaries · 40%',
         }
       : null
   return (
