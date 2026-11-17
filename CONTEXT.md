@@ -148,7 +148,7 @@ The weather a ride or **Favorite** was ridden in, folded natively from stored We
 _Avoid_: ride forecast, weather log
 
 **Maintenance Job**:
-App-owned work that brings already-stored data up to date with the current app, such as rebuilding ride summaries or filling in missing ride weather. Each job has its own version; a job whose stored data predates its version is stale and runs again on its own, without the Rider asking. Jobs run one at a time and never change the ride being recorded. Per-row conversion of existing data after a schema change is a Maintenance Job, never part of the migration (ADR-0046).
+App-owned work that brings already-stored data up to date with the current app, such as rebuilding ride summaries or filling in missing ride weather. Each job has its own version; a job whose stored data predates its version is stale and runs again on its own, without the Rider asking. Jobs run one at a time and never change the ride being recorded. Per-row conversion of existing data after a schema change is a Maintenance Job, never part of the migration (ADR-0046). Retention clean-up, such as deleting old Diagnostic Events, is a step of the Cleanup job (ADR-0047).
 _Avoid_: Background job, data upgrade, migration, rebuild history, task
 
 **Ride History Marker**:

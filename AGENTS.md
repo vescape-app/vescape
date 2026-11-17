@@ -72,6 +72,7 @@ Keep the architecture sharp:
 - Do not add tests for trivial predicates. Add tests for meaningful behavior, edge cases, contracts, or regressions.
 - New Board Warning detectors must add their kind to `docs/board-warnings.md` (the kinds catalog) alongside the `BoardWarningKind` slug.
 - Schema migrations stay SQL (set-based copies are fine). Converting existing data row by row (decode, recompute, verify, fetch) is a Maintenance Job in `MAINTENANCE_JOBS` (`docs/history.md` § Maintenance Jobs, ADR-0046), never migration code or a new `MaintenanceRunner` path.
+- All other background database work (rebuilds, backfills, retention clean-up) is a Maintenance Job too, so it shows on the Maintenance list; clean-up is a step in the `cleanup` job (ADR-0047).
 
 ## Parity
 
