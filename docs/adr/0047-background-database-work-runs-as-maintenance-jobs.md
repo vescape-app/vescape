@@ -7,7 +7,7 @@ all of it runs.
 ## Status
 
 Accepted. The telemetry buffer drain moved into the `telemetryStorage` job (#692), and Diagnostic
-Event retention moves into the `cleanup` job.
+Event retention into the `cleanup` job.
 
 ## Decision
 
