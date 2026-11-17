@@ -71,7 +71,7 @@ test('sub-minute job durations show seconds, not a rounded-up minute', () => {
   ).toBe('Done · last run now · took 12 s')
 })
 
-test('telemetry storage reports progress on Background updates', () => {
+test('telemetry storage reports progress on the Maintenance list', () => {
   const progress = maintenanceProgress(
     state([job({ id: 'telemetryStorage', status: 'running', done: 30, total: 60 })]),
   )

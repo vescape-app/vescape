@@ -170,7 +170,7 @@ marker, and Restore and Clear all clear its completion state.
 
 Diagnostic Event retention runs before the launch pass and after Restore or Clear all, under the
 resulting database's fence ticket. It retains 30 days, deletes in batches of 5,000, and rechecks for
-a possibly recording ride before each batch. It has no Background updates row.
+a possibly recording ride before each batch. It has no row on the Settings → Database Maintenance list.
 
 **Ride summaries** follows Telemetry storage. Its inputs are the Metric Sanitizer settings. It rebuilds
 minute buckets, exclusion ranges and route previews oldest first, one transaction per owned chunk:

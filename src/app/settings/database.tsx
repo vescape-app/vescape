@@ -72,7 +72,7 @@ export default function DatabaseSettingsScreen() {
             }
           />
         </SettingsCard>
-        <SettingsSectionTitle>Background updates</SettingsSectionTitle>
+        <SettingsSectionTitle>Maintenance</SettingsSectionTitle>
         <Text style={styles.sectionHint}>
           Runs automatically in the background. Nothing to do here.
         </Text>
