@@ -535,7 +535,7 @@ export function PublicRideSelector({
       </View>
       {overlayAction ? (
         <View style={styles.overlay}>
-          <View style={{ transform: [{ translateY: 35 * scale }] }}>{overlayAction}</View>
+          <View style={{ transform: [{ translateY: 12 * scale }] }}>{overlayAction}</View>
         </View>
       ) : null}
     </View>
