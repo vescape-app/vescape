@@ -1008,7 +1008,6 @@ internal final class BoardSessionController: VescGattListener {
       guard let self else { return }
       self.dropoutGraceTimer = nil
       // Past the grace the board is treated as powered off: that is how a ride ends.
-      if self.connectionSoundsEnabled { self.alertAudioPlayer.playRideEnd() }
       self.weatherAlerts.rideEnded()
       self.refreshGpsDemand()
     }

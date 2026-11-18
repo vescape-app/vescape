@@ -36,9 +36,9 @@ required slot when the pack leaves theirs out:
 
 The other app cues have no slot and always play a fixed severity sound: Error ⇒ critical, Rider
 joined ⇒ info, Rider left ⇒ warning, Group Ride lost ⇒ warning, Group Ride restored ⇒ positive.
-Their voice lines are unchanged and still speak at Voice level Full. Ride end plays when the ride
-dropout grace expires after a lost link, the point at which a Board Session ride is treated as
-ended.
+Their voice lines are unchanged and still speak at Voice level Full. The app never plays Ride end:
+the ride dropout grace expiring is not a reliable ride end (a failed connect or a parked board
+losing its link expires it too), so its sound and voice lines stay in the packs unused.
 
 ### My sounds and overrides
 

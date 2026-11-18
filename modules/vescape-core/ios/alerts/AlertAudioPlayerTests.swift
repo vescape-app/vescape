@@ -26,7 +26,6 @@ final class AlertAudioPlayerTests: XCTestCase {
     player.updateGeiger(ruleId: "ticking", spec: "preset:tick", rangeDepth: 0.9)
     player.playSingle(spec: "alert(3):warning")
     player.preview(spec: "alert:critical")
-    player.playRideEnd()
     player.boardConnected(playCue: true)
 
     // Let buffers actually start so completion handlers are pending when release lands.

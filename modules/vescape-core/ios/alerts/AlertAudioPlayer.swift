@@ -522,11 +522,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Queue the Board Session ride-end cue.
-  func playRideEnd() {
-    playAppCue("ride.end")
-  }
-
   /// Queue app cue `cue` on the Announcement Queue at its `appCuePriority`; `onDone` reports how it
   /// ended, `.cancelled` when it expired or the queue was cleared first.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playAppCue`
