@@ -917,9 +917,6 @@ internal class AlertFeedback(
         handler.post { utterances.remove(id)?.finish(outcome) }
     }
 
-    /** Queue the Board Session ride-end cue. */
-    fun playRideEnd() = playAppCue("ride.end")
-
     /**
      * Play one announcement: an `alert(count):severity` rule's severity sound from the active effects
      * pack, [count][SlotAlertSound.count] times, [ALERT_BEEP_SPACING_MS] apart.
