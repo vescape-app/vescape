@@ -983,6 +983,11 @@ internal final class BoardSessionController: VescGattListener {
   /// Fires once when the dropout grace expires. Demand is otherwise only recomputed on an event, and
   /// "enough time has passed" is the one input that produces none.
   private var dropoutGraceTimer: Cancellable?
+  /// The Board has been engaged since this session began or since the last ride end. A dropout grace
+  /// that expires without it ends no ride: the board was never ridden (connect failed, board off from
+  /// the start) or sat untouched on its charger, so the ride-end cue stays silent.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `rideInProgress`
+  private var rideInProgress = false
 
   /// Mark the link down (or back up) and re-resolve demand. The grace timer is what turns the
   /// passage of time into a demand change, so it is armed and cancelled alongside the timestamp.
@@ -1007,8 +1012,10 @@ internal final class BoardSessionController: VescGattListener {
     dropoutGraceTimer = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) { [weak self] in
       guard let self else { return }
       self.dropoutGraceTimer = nil
-      // Past the grace the board is treated as powered off: that is how a ride ends.
-      if self.connectionSoundsEnabled { self.alertAudioPlayer.playRideEnd() }
+      // Past the grace the board is treated as powered off: that is how a ride ends, but only a
+      // ride the Board was actually engaged for gets the cue.
+      if self.connectionSoundsEnabled, self.rideInProgress { self.alertAudioPlayer.playRideEnd() }
+      self.rideInProgress = false
       self.weatherAlerts.rideEnded()
       self.refreshGpsDemand()
     }
@@ -1632,6 +1639,7 @@ internal final class BoardSessionController: VescGattListener {
     BoardWarningFailureReporter.shared.beginSession()
     // A fresh session's link is up by definition; a stale timestamp from the previous one would
     // otherwise have this session start already outside its dropout grace.
+    rideInProgress = false
     linkLostAtMs = nil
     dropoutGraceTimer?.cancel()
     dropoutGraceTimer = nil
@@ -2727,8 +2735,10 @@ internal final class BoardSessionController: VescGattListener {
       // Measurement demand follows the Board's own engagement, not the recorder's: a rider with
       // recording turned off is still riding. #479 reads the arbitrated input back out of the same
       // runtime to drive Remote Tilt.
-      AccessorySessionController.shared.setRiding(isRefloatEngaged(state: capture.telemetry.state))
-      AccessorySessionController.shared.setLightTelemetry(speedKmh: telemetry.speed, riding: isRefloatEngaged(state: capture.telemetry.state))
+      let engaged = isRefloatEngaged(state: capture.telemetry.state)
+      if engaged { rideInProgress = true }
+      AccessorySessionController.shared.setRiding(engaged)
+      AccessorySessionController.shared.setLightTelemetry(speedKmh: telemetry.speed, riding: engaged)
       // Skip persistence while idle-paused; the live tick, series, and Live Activity above keep
       // running off the ~1 Hz keepalive. When recording is off, recordTelemetry is already a no-op.
       if !idlePauseDetector.isPaused {
@@ -3245,6 +3255,7 @@ internal final class BoardSessionController: VescGattListener {
     if wasReplay { locationTracker.clearReplayLocations() }
     // The grace belongs to the session that lost its link; with the session gone there is nothing
     // left for it to keep alive.
+    rideInProgress = false
     linkLostAtMs = nil
     dropoutGraceTimer?.cancel()
     dropoutGraceTimer = nil

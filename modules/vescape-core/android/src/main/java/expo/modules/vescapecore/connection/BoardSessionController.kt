@@ -536,6 +536,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private var dropoutGraceHandle: Cancellable? = null
 
     /**
+     * The Board has been engaged since this session began or since the last ride end. A dropout
+     * grace that expires without it ends no ride: the board was never ridden (connect failed, board
+     * off from the start) or sat untouched on its charger, so the ride-end cue stays silent.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `rideInProgress`
+     */
+    private var rideInProgress = false
+
+    /**
      * True only while [beginSession] is replacing one session with another. The teardown it runs
      * first releases the outgoing session's GPS demand, and a host released there would take the
      * incoming session down with it.
@@ -1656,8 +1665,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 // Measurement demand follows the Board's own engagement, not the recorder's: a
                 // rider with recording turned off is still riding. #479 reads the arbitrated input
                 // back out of the same runtime to drive Remote Tilt.
-                AccessorySessionManager.setRiding(isRefloatEngaged(processed.capture.state))
-                AccessorySessionManager.setLightTelemetry(parsed.speed, isRefloatEngaged(processed.capture.state))
+                val engaged = isRefloatEngaged(processed.capture.state)
+                if (engaged) rideInProgress = true
+                AccessorySessionManager.setRiding(engaged)
+                AccessorySessionManager.setLightTelemetry(parsed.speed, engaged)
                 // Skip persistence while paused; live display, watch, and presence keep running off the
                 // paths above. When recording is off, recordTelemetry is already a no-op.
                 if (!idlePauseDetector.isPaused) {
@@ -3244,8 +3255,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         dropoutGraceHandle?.cancel()
         dropoutGraceHandle = scheduler.postDelayed(RIDE_DROPOUT_GRACE_MS) {
             dropoutGraceHandle = null
-            // Past the grace the board is treated as powered off: that is how a ride ends.
-            if (connectionSoundsEnabled) alertFeedback.playRideEnd()
+            // Past the grace the board is treated as powered off: that is how a ride ends, but
+            // only a ride the Board was actually engaged for gets the cue.
+            if (connectionSoundsEnabled && rideInProgress) alertFeedback.playRideEnd()
+            rideInProgress = false
             weatherAlerts.rideEnded()
             // Nothing can alert until the board is back; let audio output sleep.
             alertFeedback.goIdle()
@@ -3256,6 +3269,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     /** Clear the dropout grace a session leaves behind, so the next one starts inside its own. */
     private fun clearDropoutGrace() {
+        rideInProgress = false
         linkLostAtMs = null
         dropoutGraceHandle?.cancel()
         dropoutGraceHandle = null
