@@ -28,6 +28,8 @@ Service: `6e400001-b5a3-f393-e0a9-e50e24dcca9e` (Nordic UART)
 
 **Key quirk**: ADV2 firmware (`comm_ble.c`) sets `notify_conn_id` inside the write handler for `6e400002`. So both writes and notifications travel on `6e400002` — non-standard NUS but that's what the firmware does.
 
+**Write size**: no single write to the board may exceed ATT MTU − 3 bytes. Some boards' BLE modules (seen on a Floatwheel Atom whose MTU stays at 23) drop the link when the phone sends a bigger write as a GATT long write (Prepare + Execute Write) (#620). VESC Tool always writes 20-byte pieces, which is why it works on those boards. `VescWriteQueue` (Kotlin and Swift) splits each VESC frame into chunks of at most MTU − 3 bytes (20 until the MTU is known) and sends a frame's chunks back to back, with no other write between them. On iOS, take the limit from `maximumWriteValueLength(for: .withoutResponse)`: the `.withResponse` value is always 512, because CoreBluetooth would do the long write itself.
+
 ## Code layout
 
 ```

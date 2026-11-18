@@ -86,7 +86,7 @@ if (char.uuid == NUS_RX_UUID || char.uuid == NUS_TX_UUID) { emit() }
 
 **Competing apps**: nRF Connect and the official board app auto-reconnect in background and can steal the GATT connection. Force-close them before testing.
 
-**Write type**: first 3 writes use `WRITE_TYPE_DEFAULT` (write-with-response) to confirm connectivity. Subsequent writes use `WRITE_TYPE_NO_RESPONSE` for throughput.
+**Write type and size**: every write uses `WRITE_TYPE_DEFAULT` (write-with-response), one at a time through `VescWriteQueue`. Each write is at most MTU − 3 bytes (the MTU from `onMtuChanged`, 23 if negotiation fails). Larger VESC frames go out as consecutive chunks with no other write between them. Never hand Android a write bigger than MTU − 3: it falls back to a GATT long write (Prepare + Execute Write), and some board BLE modules stop responding to that until the link times out with status 8 (#620).
 
 **CCCD timeout fallback**: if `onDescriptorWrite` never fires (edge case on some bonded states), a 1-second timeout resolves the connect promise anyway. Always cancel this timeout when all descriptor writes succeed. A stale CCCD timeout can call the ready path twice and create confusing reconnect/ready logs even though subscription already completed. A refused CCCD write logs a warning with the characteristic and remaining write count so descriptor/polling contention can be diagnosed on a device.
 

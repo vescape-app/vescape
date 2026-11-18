@@ -137,6 +137,10 @@ internal class VescGattClient(
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             if (gatt !== this@VescGattClient.gatt) return
             Log.d(VESC_SESSION_TAG, "onMtuChanged mtu=$mtu status=$status")
+            // ATT header takes 3 bytes. A refused MTU request leaves the link at the default.
+            writeQueue.setChunkLimit(
+                if (status == BluetoothGatt.GATT_SUCCESS) mtu - 3 else VescWriteQueue.DEFAULT_CHUNK_LIMIT,
+            )
             val discoveryStarted = gatt.discoverServices()
             Log.d(VESC_SESSION_TAG, "gatt discoverServices started=$discoveryStarted")
             if (!discoveryStarted) {
@@ -238,7 +242,7 @@ internal class VescGattClient(
             status: Int,
         ) {
             if (gatt !== this@VescGattClient.gatt || characteristic.uuid != NUS_TX_UUID) return
-            val completed = writeQueue.completeInFlight()
+            val completed = writeQueue.completeInFlight(failed = status != BluetoothGatt.GATT_SUCCESS)
             val bytes = completed?.bytes
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 Log.w(VESC_SESSION_TAG, "gatt write callback failed status=$status bytes=${bytes?.size}")
@@ -248,7 +252,9 @@ internal class VescGattClient(
     }
 
     /** Android permits one characteristic write at a time. Serializing all writes
-     * prevents telemetry polling and held remote controls from dropping each other. */
+     * prevents telemetry polling and held remote controls from dropping each other.
+     * Each write is one chunk sized to the negotiated MTU, so Android never falls back to a
+     * GATT long write (#620). */
     private fun drainWriteQueue(): Boolean {
         val g = gatt ?: return false
         val tx = txChar ?: return false
