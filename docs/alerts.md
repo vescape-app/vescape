@@ -38,7 +38,9 @@ The other app cues have no slot and always play a fixed severity sound: Error �
 joined ⇒ info, Rider left ⇒ warning, Group Ride lost ⇒ warning, Group Ride restored ⇒ positive.
 Their voice lines are unchanged and still speak at Voice level Full. Ride end plays when the ride
 dropout grace expires after a lost link, the point at which a Board Session ride is treated as
-ended.
+ended. It plays only when the Board was engaged at some point since the session began or since the
+last ride end. A failed connect, or a board that sat disengaged the whole time, ends no ride and stays
+silent.
 
 ### My sounds and overrides
 
