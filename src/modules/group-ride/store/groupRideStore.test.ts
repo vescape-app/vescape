@@ -161,10 +161,9 @@ test('looks around with the switch off and shows public riders outside a ride', 
   publicRidersListeners.forEach((listener) => listener({ riders: [near], now: null }))
   expect(useGroupRideStore.getState().rosterRows.map((row) => row.id)).toEqual(['a1'])
 
-  // The first fix re-centres look-around; later fixes do not.
+  // Native moves look-around with the rider's fixes; JS asks only once.
   locationListeners.forEach((listener) => listener({ latitude: 1, longitude: 2 }))
-  locationListeners.forEach((listener) => listener({ latitude: 1, longitude: 2 }))
-  expect(watchPublicRiders).toHaveBeenCalledTimes(2)
+  expect(watchPublicRiders).toHaveBeenCalledTimes(1)
 
   useGroupRideStore.getState().stopObserving()
   expect(stopWatchingPublicRiders).toHaveBeenCalledTimes(1)

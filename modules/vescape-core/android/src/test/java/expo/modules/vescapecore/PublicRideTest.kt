@@ -249,6 +249,22 @@ class PublicRideTest {
         assertEquals("Ola", ((first["riders"] as List<*>)[0] as Map<*, *>)["nick"])
     }
 
+    @Test
+    fun `looking around re-centres after the rider moves a kilometre, but not while public`() {
+        ride.load(PublicRideSwitch.OFF, null)
+        ready()
+        ride.followNearby(52.0 to 21.0)
+        ride.followNearby(52.005 to 21.0)
+        ride.followNearby(52.011 to 21.0)
+        val nearby = sent.filter { it.getString("type") == "nearby" }.map { it.getDouble("lat") }
+        assertEquals(listOf(52.0, 52.011), nearby)
+
+        goLive()
+        sent.clear()
+        ride.followNearby(52.03 to 21.0)
+        assertTrue(sent.none { it.getString("type") == "nearby" })
+    }
+
     private fun ownPins() = events.last { it.first == "onPublicPins" }.second["own"] as Map<*, *>
 
     private fun goLive() {

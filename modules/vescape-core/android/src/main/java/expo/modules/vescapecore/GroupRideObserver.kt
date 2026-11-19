@@ -71,6 +71,8 @@ internal class GroupRideObserver(
     private val signalNotices = RiderSignalNotices()
     /** Other Riders' hazards, announced on approach. */
     private val hazardCues = RideHazardCues()
+    /** JS asked to look around; fixes start and re-centre it. */
+    private var lookingAround = false
     /** Last availability handed to JS, so only changes are emitted. */
     private var lastSignalAvailability: Map<String, Any?>? = null
     /** Last state handed to JS, replayed by [resync] so a fresh JS runtime is not stuck on `idle`. */
@@ -274,7 +276,8 @@ internal class GroupRideObserver(
     }
 
     /**
-     * A new device GPS fix: plays the approach cue of another Rider's hazard it just closed in on.
+     * A new device GPS fix: plays the approach cue of another Rider's hazard it just closed in on,
+     * and moves look-around with the rider.
      *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onFix`
      */
@@ -282,6 +285,7 @@ internal class GroupRideObserver(
         handler.post {
             if (stopped) return@post
             hazardCues.fix(lat, lng, publicRide.relayNow())?.let(onCue)
+            if (lookingAround) publicRide.followNearby(lat to lng)
         }
     }
 
@@ -346,9 +350,10 @@ internal class GroupRideObserver(
      */
     fun watchPublicRiders() {
         handler.post {
+            lookingAround = true
             val point = ownLocation() ?: lastKnownLocation()
             if (point == null) {
-                Log.w(TAG, "look-around ignored: no known position")
+                Log.w(TAG, "look-around waits for a fix: no known position")
                 return@post
             }
             publicRide.watchNearby(point)
@@ -356,7 +361,10 @@ internal class GroupRideObserver(
     }
 
     fun stopWatchingPublicRiders() {
-        handler.post { publicRide.stopWatchingNearby() }
+        handler.post {
+            lookingAround = false
+            publicRide.stopWatchingNearby()
+        }
     }
 
     private fun connect() {

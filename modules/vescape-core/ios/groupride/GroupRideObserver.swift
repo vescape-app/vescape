@@ -29,6 +29,8 @@ internal final class GroupRideObserver: NSObject {
   private var stopped = true
   private var signalNotices = RiderSignalNotices()
   private var hazardCues = RideHazardCues()
+  /// JS asked to look around; fixes start and re-centre it.
+  private var lookingAround = false
   private var relayFeatures: Set<String> = []
   private var lastSignalAvailability: [String: Bool]?
   private var lastConnection = "idle"
@@ -236,8 +238,9 @@ internal final class GroupRideObserver: NSObject {
 
   func onFix(lat: Double, lng: Double) {
     onMain { [self] in
-      guard !stopped, let cue = hazardCues.fix(lat: lat, lng: lng, relayNow: publicRide.relayNow()) else { return }
-      onCue(cue)
+      guard !stopped else { return }
+      if let cue = hazardCues.fix(lat: lat, lng: lng, relayNow: publicRide.relayNow()) { onCue(cue) }
+      if lookingAround { publicRide.followNearby((lat: lat, lng: lng)) }
     }
   }
 
@@ -287,8 +290,9 @@ internal final class GroupRideObserver: NSObject {
 
   func watchPublicRiders() {
     onMain { [self] in
+      lookingAround = true
       guard let point = ownLocation() ?? lastKnownLocation() else {
-        NSLog("[GroupRide] look-around ignored: no known position")
+        NSLog("[GroupRide] look-around waits for a fix: no known position")
         return
       }
       publicRide.watchNearby(point)
@@ -296,7 +300,10 @@ internal final class GroupRideObserver: NSObject {
   }
 
   func stopWatchingPublicRiders() {
-    onMain { [self] in publicRide.stopWatchingNearby() }
+    onMain { [self] in
+      lookingAround = false
+      publicRide.stopWatchingNearby()
+    }
   }
 
   private func connect() {

@@ -227,6 +227,21 @@ final class PublicRideTests: XCTestCase {
     XCTAssertEqual(((first["riders"] as? [[String: Any?]])?.first?["nick"] as? String), "Ola")
   }
 
+  func testLookingAroundRecentresAfterAKilometreButNotWhilePublic() {
+    ride.load(.off, accountId: nil)
+    ready()
+    ride.followNearby((lat: 52, lng: 21))
+    ride.followNearby((lat: 52.005, lng: 21))
+    ride.followNearby((lat: 52.011, lng: 21))
+    let nearby = sent.filter { $0["type"] as? String == "nearby" }.compactMap { $0["lat"] as? Double }
+    XCTAssertEqual(nearby, [52, 52.011])
+
+    goLive()
+    sent.removeAll()
+    ride.followNearby((lat: 52.03, lng: 21))
+    XCTAssertFalse(sent.contains { $0["type"] as? String == "nearby" })
+  }
+
   private var ownPins: [String: Any?] { events.last { $0.0 == "onPublicPins" }!.1["own"] as! [String: Any?] }
 
   private func goLive() {

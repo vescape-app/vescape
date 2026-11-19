@@ -262,6 +262,17 @@ internal final class PublicRide {
     if linkReady { sendNearby(point) }
   }
 
+  /// A fix while looking around: starts watching when no point was known, and re-centres once the
+  /// rider is `lookAroundRecentreM` from the watched point. A public rider's own positions move the
+  /// relay's centre, so then only the point follows.
+  func followNearby(_ point: (lat: Double, lng: Double)) {
+    guard let current = lookAround else { return watchNearby(point) }
+    let moved = GeoMath.distanceMeters(current.lat, current.lng, point.lat, point.lng)
+    guard moved >= Self.lookAroundRecentreM else { return }
+    lookAround = point
+    if linkReady && !riding { sendNearby(point) }
+  }
+
   func stopWatchingNearby() {
     guard lookAround != nil else { return }
     lookAround = nil
@@ -570,6 +581,8 @@ internal final class PublicRide {
 
   static let feature = "public-ride"
   static let missedPositionsFeature = "missed-positions"
+  /// Looking around re-centres once the rider is this far from the watched point.
+  static let lookAroundRecentreM = 1_000.0
   /// Retry even after the rider finishes and GPS stops.
   static let missedRetryMs: Int64 = 10_000
   /// Kept positions are thinned to one per this.

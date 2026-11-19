@@ -1,5 +1,6 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.geo.GeoMath
 import expo.modules.vescapecore.watch.GroupRideRoster
 import org.json.JSONArray
 import org.json.JSONObject
@@ -263,6 +264,19 @@ internal class PublicRide(
         lookAround = point
         emitDemand()
         if (linkReady) sendNearby(point)
+    }
+
+    /**
+     * A fix while looking around: starts watching when no point was known, and re-centres once the
+     * rider is [LOOK_AROUND_RECENTRE_M] from the watched point. A public rider's own positions move
+     * the relay's centre, so then only the point follows.
+     */
+    fun followNearby(point: Pair<Double, Double>) {
+        val current = lookAround ?: return watchNearby(point)
+        val moved = GeoMath.distanceMeters(current.first, current.second, point.first, point.second)
+        if (moved < LOOK_AROUND_RECENTRE_M) return
+        lookAround = point
+        if (linkReady && !riding) sendNearby(point)
     }
 
     fun stopWatchingNearby() {
@@ -569,6 +583,8 @@ internal class PublicRide(
         const val MISSED_MAX_AGE_MS = 3 * 60 * 60_000L
         /** The relay takes at most this many positions per batch. */
         const val MISSED_BATCH_MAX = 500
+        /** Looking around re-centres once the rider is this far from the watched point. */
+        const val LOOK_AROUND_RECENTRE_M = 1_000.0
         const val MISSED_NOT_STORED = "missed positions not stored"
         const val REASON_REPLACED = "replaced"
         const val REASON_END_TIME = "end-time"

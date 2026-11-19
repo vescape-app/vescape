@@ -158,8 +158,6 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
       // A ride roster neither sorts nor stores distance, so a fix leaves it untouched; the public
       // riders sort in distance bands, so rows only move when someone changes band.
       addLocationListener(({ latitude, longitude }) => {
-        // The first fix re-centres look-around, which native started from the last known position.
-        if (!get().ownLocation) watchPublicRiders()
         set((state) => {
           const next = {
             ...state,
@@ -174,8 +172,8 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
     }, 1_000)
     set({ observing: true })
     startGroupRideObserve(SERVER_WS_URL)
-    // Look around even with the public ride switch off; native uses the last known position
-    // until there is a fix.
+    // Look around even with the public ride switch off; native starts from the last known
+    // position and follows the rider's fixes.
     watchPublicRiders()
   },
 
