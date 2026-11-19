@@ -68,7 +68,9 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
       }}
     />
   ) : null
-  const nowMs = useMinuteNow()
+  const statusAt = useGroupRideStore((s) => s.publicRideAt)
+  // The minute clock can lag the status it reads; a fresh pick must count from when native set it.
+  const nowMs = Math.max(useMinuteNow(true, status.until), statusAt)
   const timeFormat = useTimeFormat()
   const presetEnds = useMemo(() => publicRidePresetEnds(nowMs, timeFormat), [nowMs, timeFormat])
 
@@ -116,17 +118,22 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
           ? ENDED[status.reason]
           : null
 
+  const choice = publicRideChoice(status, nowMs)
   const timeLeft =
     ready && status.activation !== 'off' ? publicRideTimeLeft(status.until, nowMs) : null
   const running =
-    timeLeft && status.until != null
-      ? { left: timeLeft, end: publicRideEndLabel(status.until, nowMs, timeFormat) }
+    timeLeft && status.until != null && choice.mode === 'hours'
+      ? {
+          hours: choice.hours,
+          left: timeLeft,
+          end: publicRideEndLabel(status.until, nowMs, timeFormat),
+        }
       : null
 
   return (
     <View style={styles.publicRide}>
       <PublicRideSelector
-        value={publicRideChoice(status, nowMs)}
+        value={choice}
         running={running}
         presetEnds={presetEnds}
         activation={status.activation}

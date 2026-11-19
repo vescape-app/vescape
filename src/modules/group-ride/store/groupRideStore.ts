@@ -57,6 +57,8 @@ interface GroupRideState {
   observing: boolean
   /** The public ride switch and whether the rider is public now, as native reports it. */
   publicRide: PublicRideStatus
+  /** When `publicRide` last arrived: a clock never older than the status it reads. */
+  publicRideAt: number
   /** Public riders native knows around this phone, nearest first. */
   publicRiders: PublicRider[]
   /** Other public riders' pins this phone may see, a far-away friend's signal included. */
@@ -119,6 +121,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   focusRequest: null,
   observing: false,
   publicRide: PUBLIC_RIDE_OFF,
+  publicRideAt: 0,
   publicRiders: [],
   publicPins: [],
   publicOwnPins: NO_OWN_PINS,
@@ -142,7 +145,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
       }),
       addGroupRideSignalAvailabilityListener((signalAvailability) => set({ signalAvailability })),
       addGroupRideErrorListener(({ message }) => set({ error: message })),
-      addPublicRideStatusListener((publicRide) => set({ publicRide })),
+      addPublicRideStatusListener((publicRide) => set({ publicRide, publicRideAt: Date.now() })),
       addPublicRidersListener(({ riders }) =>
         set((state) => deriveRoster({}, { ...state, publicRiders: riders })),
       ),
@@ -199,6 +202,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
       error: null,
       focusRequest: null,
       publicRide: PUBLIC_RIDE_OFF,
+      publicRideAt: 0,
       publicRiders: [],
       publicPins: [],
       publicOwnPins: NO_OWN_PINS,

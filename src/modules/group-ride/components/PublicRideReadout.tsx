@@ -27,8 +27,10 @@ export interface PublicRideReadoutState {
   stop: number
 }
 
-/** A running timer, shown in place of its duration while the dial is at rest. */
+/** A running timer, shown in place of its duration while the dial is at rest on it. */
 export interface PublicRideRunningTimer {
+  /** The duration it runs for: the dial shows it only while resting on this stop. */
+  hours: number
   /** Time left, for the title: `11 h 42 m`. */
   left: string
   /** When it ends, for the description: `15:42`. */
@@ -67,6 +69,7 @@ export function PublicRideReadout({
   const canvasSize = useSharedValue({ width: 0, height })
   const left = running?.left ?? null
   const end = running?.end ?? null
+  const runningStop = running ? PUBLIC_RIDE_DURATIONS.indexOf(running.hours) + 1 : -1
   const layout = useMemo(() => {
     if (!font) return null
     const strings = description
@@ -92,7 +95,9 @@ export function PublicRideReadout({
   }, [font, description, height, left, end, presetEnds])
   const parts = useDerivedValue<ReadoutParts>(() => {
     const state = readout.get()
-    const atRest = state.timed && !dragging?.get()
+    // Released on a new stop, the dial moves before native reports the new timer: keep the
+    // preset until the timer matches, or the old timer's time flashes in between.
+    const atRest = state.timed && !dragging?.get() && state.stop === runningStop
     if (!description) {
       return { base: atRest && left ? left : state.title, value: '', unit: '' }
     }

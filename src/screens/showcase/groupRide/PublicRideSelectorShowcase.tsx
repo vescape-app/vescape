@@ -65,6 +65,7 @@ export function PublicRideSelectorShowcase() {
         running={
           running && value.mode === 'hours'
             ? {
+                hours: value.hours,
                 left: publicRideTimeLeft(value.hours * 3_600_000 - 1_080_000, 0) ?? '',
                 end: '15:42',
               }
