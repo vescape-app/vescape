@@ -44,11 +44,20 @@ export function useMainMapFocusActions({
     const rider = riderFocusRows.find((row) => row.id === riderFocusRequest.riderId)
     if (!rider?.presence) return
     handledRiderFocusNonceRef.current = riderFocusRequest.nonce
+    onEnterMapMode()
     setFollowGps(false)
     panPreservingCamera(engine, currentCameraRef, [rider.presence.lng, rider.presence.lat], {
       minZoomLevel: RIDER_FOCUS_MIN_ZOOM,
     })
-  }, [currentCameraRef, engine, historyActive, riderFocusRequest, riderFocusRows, setFollowGps])
+  }, [
+    currentCameraRef,
+    engine,
+    historyActive,
+    onEnterMapMode,
+    riderFocusRequest,
+    riderFocusRows,
+    setFollowGps,
+  ])
 
   // A Friend's public ride just opened: move to its middle once per open.
   const friendRide = useFriendRidesStore((state) => state.track)
@@ -59,12 +68,13 @@ export function useMainMapFocusActions({
     handledFriendRideNonceRef.current = friendRide.nonce
     const lngs = friendRide.coordinates.map(([lng]) => lng)
     const lats = friendRide.coordinates.map(([, lat]) => lat)
+    onEnterMapMode()
     setFollowGps(false)
     panPreservingCamera(engine, currentCameraRef, [
       (Math.min(...lngs) + Math.max(...lngs)) / 2,
       (Math.min(...lats) + Math.max(...lats)) / 2,
     ])
-  }, [currentCameraRef, engine, friendRide, historyActive, setFollowGps])
+  }, [currentCameraRef, engine, friendRide, historyActive, onEnterMapMode, setFollowGps])
 
   const handleOffscreenIndicatorPress = useCallback(
     (indicator: OffscreenMapIndicatorState) => {
