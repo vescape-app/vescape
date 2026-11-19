@@ -2,7 +2,7 @@ import { useSession } from '@clerk/expo'
 import { AuthView } from '@clerk/expo/native'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Platform, StyleSheet, View } from 'react-native'
 
 import { theme } from '@/constants/theme'
 import { routes } from '@/navigation/routes'
@@ -26,9 +26,9 @@ export function ClerkAuthScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Dismiss lives in the JS header (src/app/_layout.tsx); Clerk's native
-          dismiss is disabled so no system-styled header chrome is rendered. */}
-      <AuthView mode="signInOrUp" isDismissible={false} onDismiss={leaveAuth} />
+      {/* iOS: Clerk's native bar dismisses, next to its own step back. Android: the JS header
+          (src/app/_layout.tsx) does, and Clerk's dismiss stays off. */}
+      <AuthView mode="signInOrUp" isDismissible={Platform.OS === 'ios'} onDismiss={leaveAuth} />
     </View>
   )
 }

@@ -12,7 +12,7 @@ import { Stack } from 'expo-router/js-stack'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
-import { View } from 'react-native'
+import { Platform, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { configureReanimatedLogger } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -196,9 +196,12 @@ function RootContent() {
                     }}
                   />
                   <Stack.Screen name={stackScreens.rideDay} options={{ title: 'Day' }} />
-                  {/* Clerk's own dismiss control is off (its native header carries system
-              Liquid Glass); the JS header owns back/dismiss instead. */}
-                  <Stack.Screen name={stackScreens.signIn} options={{ title: 'Sign in' }} />
+                  {/* iOS: Clerk's native bar shows its own back for each step, so it owns dismiss
+              too and the JS header would only add a second back. Android: the JS header. */}
+                  <Stack.Screen
+                    name={stackScreens.signIn}
+                    options={{ title: 'Sign in', headerShown: Platform.OS !== 'ios' }}
+                  />
                   <Stack.Screen name={stackScreens.account} options={{ headerShown: false }} />
                   <Stack.Screen name={stackScreens.settings} options={{ title: 'Settings' }} />
                   <Stack.Screen name={stackScreens.settingsDev} options={{ title: 'Dev' }} />
