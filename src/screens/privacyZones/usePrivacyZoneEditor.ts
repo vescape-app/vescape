@@ -10,11 +10,19 @@ import {
 import {
   CIRCLE_DIAMETER_RATIO,
   DEFAULT_ZONE_ZOOM,
-  currentLocation,
   radiusFromZoom,
   zoomFromRadius,
 } from '@/screens/privacyZones/privacyZoneGeometry'
+import { useLocationStore } from '@/modules/location/store/locationStore'
+import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import { buildZonePills, type PendingCustomZone } from '@/screens/privacyZones/zonePills'
+
+function currentLocation(): [number, number] {
+  const snap = useLocationStore.getState()
+  const loc = snap.latestApproximateLocation
+  if (loc) return [loc.longitude, loc.latitude]
+  return MAP_DEFAULTS.fallbackCoordinate
+}
 
 /**
  * Everything the Privacy Zones screen edits: which zone is selected, the camera that stands in for
