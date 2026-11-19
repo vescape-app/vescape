@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { CaretRightIcon, UserCircleGearIcon, WarningIcon } from 'phosphor-react-native'
@@ -13,6 +14,7 @@ import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import {
   publicRideChoice,
   publicRideEndLabel,
+  publicRidePresetEnds,
   publicRideTimeLeft,
 } from '@/modules/group-ride/lib/publicRide'
 import { theme } from '@/constants/theme'
@@ -68,6 +70,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   ) : null
   const nowMs = useMinuteNow()
   const timeFormat = useTimeFormat()
+  const presetEnds = useMemo(() => publicRidePresetEnds(nowMs, timeFormat), [nowMs, timeFormat])
 
   // Native gates the relay socket when the installed version is Online/App Blocked and reports it
   // as `blocked`; the public ride is unusable until the app updates.
@@ -125,6 +128,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
       <PublicRideSelector
         value={publicRideChoice(status, nowMs)}
         running={running}
+        presetEnds={presetEnds}
         activation={status.activation}
         live={status.live}
         headerAction={settings}

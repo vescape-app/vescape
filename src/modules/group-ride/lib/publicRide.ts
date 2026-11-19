@@ -69,3 +69,10 @@ export function publicRideEndLabel(until: number, now: number, format: TimeForma
   if (days < 7) return `${WEEKDAYS[end.getDay()]} ${clock}`
   return `${end.getDate()} ${MONTHS[end.getMonth()]} ${clock}`
 }
+
+/** When each of `PUBLIC_RIDE_DURATIONS` would end if picked at `now`. */
+export function publicRidePresetEnds(now: number, format: TimeFormat): string[] {
+  return PUBLIC_RIDE_DURATIONS.map((hours) =>
+    publicRideEndLabel(now + hours * HOUR_MS, now, format),
+  )
+}

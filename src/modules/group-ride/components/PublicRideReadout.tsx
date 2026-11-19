@@ -23,6 +23,8 @@ export interface PublicRideReadoutState {
   description: string
   rotation: number
   timed: boolean
+  /** Detent: 0 off, 1… a duration from `PUBLIC_RIDE_DURATIONS`, then always. */
+  stop: number
 }
 
 /** A running timer, shown in place of its duration while the dial is at rest. */
@@ -45,6 +47,7 @@ export function PublicRideReadout({
   readout,
   description = false,
   running = null,
+  presetEnds = null,
   dragging,
   accent,
   muted,
@@ -52,6 +55,8 @@ export function PublicRideReadout({
   readout: SharedValue<PublicRideReadoutState>
   description?: boolean
   running?: PublicRideRunningTimer | null
+  /** When each duration preset would end if picked now, for the description while dragging. */
+  presetEnds?: readonly string[] | null
   dragging?: SharedValue<boolean>
   accent: string
   muted: string
@@ -74,6 +79,7 @@ export function PublicRideReadout({
           ' days',
           ...PUBLIC_RIDE_DURATIONS.map((hours) => String(hours >= 48 ? hours / 24 : hours)),
           ...(end ? [end] : []),
+          ...(presetEnds ?? []),
         ]
       : [...HOUR_TITLES, 'Timer', ...(left ? [left] : [])]
     const measure = (text: string) =>
@@ -83,15 +89,17 @@ export function PublicRideReadout({
       widths: Object.fromEntries(strings.map((text) => [text, measure(text)])),
       baseline: height / 2 - (ascent + descent) / 2,
     }
-  }, [font, description, height, left, end])
+  }, [font, description, height, left, end, presetEnds])
   const parts = useDerivedValue<ReadoutParts>(() => {
     const state = readout.get()
     const atRest = state.timed && !dragging?.get()
     if (!description) {
       return { base: atRest && left ? left : state.title, value: '', unit: '' }
     }
-    if (atRest && end) return { base: END_PREFIX, value: end, unit: '' }
     if (!state.timed) return { base: state.description, value: '', unit: '' }
+    if (atRest && end) return { base: END_PREFIX, value: end, unit: '' }
+    const presetEnd = presetEnds?.[state.stop - 1]
+    if (presetEnd) return { base: END_PREFIX, value: presetEnd, unit: '' }
     const [value, unit] = state.description.slice(TIME_PREFIX.length).split(' ')
     return { base: TIME_PREFIX, value, unit: ` ${unit}` }
   })

@@ -8,7 +8,11 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ToggleRow } from '@/components/dev/ShowcaseControls'
 import { PublicRideManualAction } from '@/modules/group-ride/components/PublicRideManualAction'
 import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
-import { publicRideTimeLeft, type PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
+import {
+  publicRidePresetEnds,
+  publicRideTimeLeft,
+  type PublicRideChoice,
+} from '@/modules/group-ride/lib/publicRide'
 import { AccountSignInPill } from '@/modules/profile/components/AccountPill'
 
 /** The public ride switch: off, a number of hours, always; live and unavailable states. */
@@ -21,6 +25,7 @@ export function PublicRideSelectorShowcase() {
   const [setup, setSetup] = useState(false)
   const [disabled, setDisabled] = useState(false)
   const [running, setRunning] = useState(true)
+  const [presetEnds] = useState(() => publicRidePresetEnds(Date.now(), '24h'))
 
   const activation: PublicRideStatus['activation'] =
     setup || value.mode === 'off'
@@ -65,6 +70,7 @@ export function PublicRideSelectorShowcase() {
               }
             : null
         }
+        presetEnds={presetEnds}
         disabled={disabled || setup}
         headerAction={
           settings && !setup ? (

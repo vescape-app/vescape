@@ -189,6 +189,7 @@ function PreviewLabel({
 export function PublicRideSelector({
   value,
   running = null,
+  presetEnds = null,
   activation,
   live,
   headerAction,
@@ -199,6 +200,8 @@ export function PublicRideSelector({
   value: PublicRideChoice
   /** A running timer, shown in place of its duration while the dial is at rest. */
   running?: PublicRideRunningTimer | null
+  /** When each duration preset would end if picked now: the dial reads `Visible until …`. */
+  presetEnds?: readonly string[] | null
   activation: PublicRideStatus['activation']
   live: boolean
   headerAction?: ReactNode
@@ -244,6 +247,7 @@ export function PublicRideSelector({
       description: HOUR_DESCRIPTIONS[next],
       rotation: FIRST_TICK + (next - 1) * RULER_STEP + 90,
       timed,
+      stop: next,
     }
   })
   const wave = useSharedValue(1)
@@ -530,6 +534,7 @@ export function PublicRideSelector({
             readout={readout}
             description
             running={running}
+            presetEnds={presetEnds}
             dragging={dragging}
             accent={accent}
             muted={neutral.textPrimary}
