@@ -49,6 +49,7 @@ internal class RiderSignalNotices {
     companion object {
         private const val KEY_PREFIX = "riderSignal:"
 
+        /** @parity /src/modules/group-ride/lib/riderSignalNotice.ts `KEY_PREFIX` */
         fun key(riderId: String) = KEY_PREFIX + riderId
 
         private fun content(name: String, signal: RiderSignal, pinned: Pinned) = RideNoticeContent(

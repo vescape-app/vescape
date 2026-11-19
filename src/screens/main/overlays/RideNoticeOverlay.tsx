@@ -1,7 +1,18 @@
 import { StyleSheet } from 'react-native'
 import { dismissRideNotice } from 'vescape-core'
 
-import { RideNoticeCard } from '@/modules/ride-notices/components/RideNoticeCard'
+import { theme } from '@/constants/theme'
+import { PinKindBadge } from '@/modules/group-ride/components/PinKindBadge'
+import {
+  type PinKindInfo,
+  riderSignalKindInfo,
+} from '@/modules/group-ride/constants/riderSignalKinds'
+import { riderSignalNoticeRider } from '@/modules/group-ride/lib/riderSignalNotice'
+import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import {
+  RideNoticeCard,
+  type RideNoticeLook,
+} from '@/modules/ride-notices/components/RideNoticeCard'
 import { useRideNoticesStore } from '@/modules/ride-notices/store/rideNoticesStore'
 
 interface RideNoticeOverlayProps {
@@ -13,6 +24,7 @@ interface RideNoticeOverlayProps {
 /** The most urgent Ride Notice, floating under the top bar. */
 export function RideNoticeOverlay({ top, ownLocation, onShowOnMap }: RideNoticeOverlayProps) {
   const notices = useRideNoticesStore((s) => s.notices)
+  const pins = useGroupRideStore((s) => s.publicPins)
   const notice = notices[0]
   if (!notice) return null
 
@@ -23,9 +35,31 @@ export function RideNoticeOverlay({ top, ownLocation, onShowOnMap }: RideNoticeO
       ownLocation={ownLocation}
       onDismiss={dismissRideNotice}
       onShowOnMap={onShowOnMap}
+      look={signalLook(notice.key, pins)}
       style={[styles.position, { top }]}
     />
   )
+}
+
+/** The notice of a public rider's signal, when the top notice is one. */
+function signalLook(
+  key: string,
+  pins: Parameters<typeof riderSignalNoticeRider>[1],
+): RideNoticeLook | null {
+  const rider = riderSignalNoticeRider(key, pins)
+  const info = rider?.signal ? riderSignalKindInfo(rider.signal.kind) : null
+  return rider && info ? riderSignalNoticeLook(info, rider.nick) : null
+}
+
+/** A rider's signal shows as what happened, in its kind's icon and hue, as on the map pin. */
+export function riderSignalNoticeLook(info: PinKindInfo, nick: string): RideNoticeLook {
+  const hue = theme.palette[info.hue]
+  return {
+    icon: <PinKindBadge info={info} color={hue.color} size={30} strokeWidth={2} />,
+    tone: { color: hue.color, text: hue.text },
+    title: info.label,
+    subject: nick || 'Rider',
+  }
 }
 
 const styles = StyleSheet.create({

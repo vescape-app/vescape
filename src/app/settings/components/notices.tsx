@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import type { RideNotice } from 'vescape-core'
+import type { RideNotice, RiderSignalKind } from 'vescape-core'
 
 import { PageScrollView } from '@/components/base/PageScrollView'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'
 import { DistanceUnitContext } from '@/hooks/useDistanceUnit'
+import { RIDER_SIGNAL_KIND_INFO } from '@/modules/group-ride/constants/riderSignalKinds'
 import { RideNoticeCard } from '@/modules/ride-notices/components/RideNoticeCard'
+import { riderSignalNoticeLook } from '@/screens/main/overlays/RideNoticeOverlay'
 
 const OWN_LOCATION = { latitude: 52.2297, longitude: 21.0122 }
 
@@ -24,6 +26,7 @@ export default function NoticesShowcase() {
   const [more, setMore] = useState(true)
   const [distanceUnit, setDistanceUnit] = useState<'km' | 'mi'>('km')
   const [dismissed, setDismissed] = useState(false)
+  const [signal, setSignal] = useState<RiderSignalKind | 'none'>('tire')
 
   const notice: RideNotice = {
     id: 1,
@@ -31,6 +34,8 @@ export default function NoticesShowcase() {
     key: 'showcase',
     severity,
     ...TITLES[severity],
+    // Native posts a signal's notice with no details: the card names the rider instead.
+    ...(signal === 'none' ? {} : { details: '' }),
     postedAt: Date.now() - 4 * 60_000,
     location: located ? { lat: 52.2405, lng: 21.0122 } : null,
     expiresAt: null,
@@ -49,6 +54,12 @@ export default function NoticesShowcase() {
                   options={['critical', 'warning', 'info']}
                   selected={severity}
                   onSelect={(value) => setSeverity(value as RideNotice['severity'])}
+                />
+                <ChipRow
+                  label="rider signal"
+                  options={['none', 'tire', 'minor', 'serious', 'battery', 'wait']}
+                  selected={signal}
+                  onSelect={(value) => setSignal(value as RiderSignalKind | 'none')}
                 />
                 <ToggleRow label="location" value={located} onToggle={setLocated} />
                 <ToggleRow label="+N more" value={more} onToggle={setMore} />
@@ -69,6 +80,11 @@ export default function NoticesShowcase() {
                 ownLocation={OWN_LOCATION}
                 onDismiss={() => setDismissed(true)}
                 onShowOnMap={() => undefined}
+                look={
+                  signal === 'none'
+                    ? null
+                    : riderSignalNoticeLook(RIDER_SIGNAL_KIND_INFO[signal], 'Kuba')
+                }
               />
             )}
           </ShowcaseCard>
