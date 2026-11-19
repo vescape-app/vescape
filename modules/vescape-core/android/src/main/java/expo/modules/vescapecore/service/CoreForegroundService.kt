@@ -114,6 +114,11 @@ class CoreForegroundService : Service() {
         internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
         internal var pendingGroupRideUrl: String? = null
+        /**
+         * JS asked to look around. JS asks right after starting the observe, before the service has a
+         * controller, so the request is kept here and applied when the observe starts.
+         */
+        @Volatile internal var lookAroundRequested = false
 
         /**
          * Last known activity visibility, kept at process scope because the service outlives any one
@@ -435,10 +440,12 @@ class CoreForegroundService : Service() {
         }
 
         fun watchPublicRiders() {
+            lookAroundRequested = true
             instance?.controller?.watchPublicRiders()
         }
 
         fun stopWatchingPublicRiders() {
+            lookAroundRequested = false
             instance?.controller?.stopWatchingPublicRiders()
         }
 

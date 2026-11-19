@@ -1113,6 +1113,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         }
         jsObserving = true
         groupRideObserver.start(url)
+        if (CoreForegroundService.lookAroundRequested) watchPublicRiders()
         reassertForeground()
     }
 
