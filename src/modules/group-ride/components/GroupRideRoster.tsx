@@ -301,12 +301,14 @@ function CompactRiderRow({
         <UserCircleIcon size={32} color={theme.neutral.textSecondary} weight="thin" />
       </View>
       <View style={styles.compactIdentity}>
-        <Text style={styles.compactName} numberOfLines={1}>
-          {rider.name}
-        </Text>
-        {signal ? <SignalBadge kind={signal.kind} /> : null}
+        <View style={styles.compactHead}>
+          <Text style={styles.compactName} numberOfLines={1}>
+            {rider.name}
+          </Text>
+          {signal ? <SignalBadge kind={signal.kind} /> : null}
+        </View>
+        <CompactRiderStats disconnected={disconnected} age={age} battery={s.soc} metric={reading} />
       </View>
-      <CompactRiderStats disconnected={disconnected} age={age} battery={s.soc} metric={reading} />
       {rider.isSelf ? (
         <View style={styles.compactBadgeSlot}>
           <Text style={[styles.selfTag, styles.compactSelfTag]}>You</Text>
@@ -401,9 +403,10 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingVertical: 8,
   },
-  compactIdentity: { width: 56, gap: 2, alignItems: 'flex-start' },
+  compactIdentity: { flex: 1, minWidth: 0 },
+  compactHead: { flexDirection: 'row', alignItems: 'center', gap: HEAD_GAP },
   compactName: { flexShrink: 1, color: theme.neutral.textPrimary, fontSize: 13, fontWeight: '700' },
-  compactStats: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  compactStats: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   disconnected: { flexShrink: 1 },
   compactBadgeSlot: { width: 56, alignItems: 'center' },
   compactSelfTag: {
