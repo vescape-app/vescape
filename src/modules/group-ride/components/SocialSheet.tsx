@@ -8,8 +8,13 @@ import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
+import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
-import { publicRideChoice, publicRideTimeLeft } from '@/modules/group-ride/lib/publicRide'
+import {
+  publicRideChoice,
+  publicRideEndLabel,
+  publicRideTimeLeft,
+} from '@/modules/group-ride/lib/publicRide'
 import { theme } from '@/constants/theme'
 import { PublicRideManualAction } from '@/modules/group-ride/components/PublicRideManualAction'
 import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
@@ -62,6 +67,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
     />
   ) : null
   const nowMs = useMinuteNow()
+  const timeFormat = useTimeFormat()
 
   // Native gates the relay socket when the installed version is Online/App Blocked and reports it
   // as `blocked`; the public ride is unusable until the app updates.
@@ -109,12 +115,16 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
 
   const timeLeft =
     ready && status.activation !== 'off' ? publicRideTimeLeft(status.until, nowMs) : null
+  const running =
+    timeLeft && status.until != null
+      ? { left: timeLeft, end: publicRideEndLabel(status.until, nowMs, timeFormat) }
+      : null
 
   return (
     <View style={styles.publicRide}>
       <PublicRideSelector
         value={publicRideChoice(status, nowMs)}
-        timeLeft={timeLeft}
+        running={running}
         activation={status.activation}
         live={status.live}
         headerAction={settings}

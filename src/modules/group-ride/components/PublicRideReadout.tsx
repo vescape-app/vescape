@@ -16,6 +16,7 @@ export const HOUR_DESCRIPTIONS = [
   'No sharing time limit',
 ]
 const TIME_PREFIX = 'Visible for '
+const END_PREFIX = 'Visible until '
 export interface PublicRideReadoutState {
   sector: number
   title: string
@@ -24,19 +25,33 @@ export interface PublicRideReadoutState {
   timed: boolean
 }
 
+/** A running timer, shown in place of its duration while the dial is at rest. */
+export interface PublicRideRunningTimer {
+  /** Time left, for the title: `11 h 42 m`. */
+  left: string
+  /** When it ends, for the description: `15:42`. */
+  end: string
+}
+
+/** One readout line: plain text, then an accented value, then plain text again. */
+interface ReadoutParts {
+  base: string
+  value: string
+  unit: string
+}
+
 /** Premeasure text on JS once; Skia paints detent changes without text-input or React commits. */
 export function PublicRideReadout({
   readout,
   description = false,
-  timeLeft = null,
+  running = null,
   dragging,
   accent,
   muted,
 }: {
   readout: SharedValue<PublicRideReadoutState>
   description?: boolean
-  /** Replaces the title with a running timer's time left while the dial is at rest. */
-  timeLeft?: string | null
+  running?: PublicRideRunningTimer | null
   dragging?: SharedValue<boolean>
   accent: string
   muted: string
@@ -45,48 +60,54 @@ export function PublicRideReadout({
   const height = description ? 22 : 16
   const font = useSkiaFont(description ? '600' : '700', description ? 16 : 12)
   const canvasSize = useSharedValue({ width: 0, height })
+  const left = running?.left ?? null
+  const end = running?.end ?? null
   const layout = useMemo(() => {
     if (!font) return null
     const strings = description
-      ? HOUR_DESCRIPTIONS
-      : [...HOUR_TITLES, 'Timer', ...(timeLeft ? [timeLeft] : [])]
+      ? [
+          ...HOUR_DESCRIPTIONS,
+          TIME_PREFIX,
+          END_PREFIX,
+          ' hour',
+          ' hours',
+          ' days',
+          ...PUBLIC_RIDE_DURATIONS.map((hours) => String(hours >= 48 ? hours / 24 : hours)),
+          ...(end ? [end] : []),
+        ]
+      : [...HOUR_TITLES, 'Timer', ...(left ? [left] : [])]
     const measure = (text: string) =>
       font.getGlyphWidths(font.getGlyphIDs(text)).reduce((sum, width) => sum + width, 0)
-    const widths = Object.fromEntries(strings.map((text) => [text, measure(text)]))
-    const numberWidths = Object.fromEntries(
-      PUBLIC_RIDE_DURATIONS.map((hours) => {
-        const value = String(hours >= 48 ? hours / 24 : hours)
-        return [value, measure(value)]
-      }),
-    )
     const { ascent, descent } = font.getMetrics()
     return {
-      widths,
-      prefixWidth: measure(TIME_PREFIX),
-      numberWidths,
+      widths: Object.fromEntries(strings.map((text) => [text, measure(text)])),
       baseline: height / 2 - (ascent + descent) / 2,
     }
-  }, [font, description, height, timeLeft])
-  const fullText = useDerivedValue(() => {
-    if (description) return readout.get().description
-    return timeLeft && readout.get().timed && !dragging?.get() ? timeLeft : readout.get().title
+  }, [font, description, height, left, end])
+  const parts = useDerivedValue<ReadoutParts>(() => {
+    const state = readout.get()
+    const atRest = state.timed && !dragging?.get()
+    if (!description) {
+      return { base: atRest && left ? left : state.title, value: '', unit: '' }
+    }
+    if (atRest && end) return { base: END_PREFIX, value: end, unit: '' }
+    if (!state.timed) return { base: state.description, value: '', unit: '' }
+    const [value, unit] = state.description.slice(TIME_PREFIX.length).split(' ')
+    return { base: TIME_PREFIX, value, unit: ` ${unit}` }
   })
-  const baseText = useDerivedValue(() =>
-    description && readout.get().timed ? TIME_PREFIX : fullText.get(),
-  )
-  const timeText = useDerivedValue(() =>
-    description && readout.get().timed
-      ? fullText.get().slice(TIME_PREFIX.length).split(' ')[0]
-      : '',
-  )
-  const unitText = useDerivedValue(() =>
-    description && readout.get().timed ? ` ${fullText.get().split(' ').at(-1)}` : '',
-  )
-  const x = useDerivedValue(
-    () => (canvasSize.get().width - (layout?.widths[fullText.get()] ?? 0)) / 2,
-  )
-  const timeX = useDerivedValue(() => x.get() + (layout?.prefixWidth ?? 0))
-  const unitX = useDerivedValue(() => timeX.get() + (layout?.numberWidths[timeText.get()] ?? 0))
+  const width = (text: string) => {
+    'worklet'
+    return text ? (layout?.widths[text] ?? 0) : 0
+  }
+  const baseText = useDerivedValue(() => parts.get().base)
+  const valueText = useDerivedValue(() => parts.get().value)
+  const unitText = useDerivedValue(() => parts.get().unit)
+  const x = useDerivedValue(() => {
+    const { base, value, unit } = parts.get()
+    return (canvasSize.get().width - width(base) - width(value) - width(unit)) / 2
+  })
+  const valueX = useDerivedValue(() => x.get() + width(parts.get().base))
+  const unitX = useDerivedValue(() => valueX.get() + width(parts.get().value))
   const color = useDerivedValue(() => (!description && readout.get().timed ? accent : muted))
   return (
     <View
@@ -103,8 +124,8 @@ export function PublicRideReadout({
             {description ? (
               <>
                 <SkiaText
-                  text={timeText}
-                  x={timeX}
+                  text={valueText}
+                  x={valueX}
                   y={layout.baseline}
                   font={font}
                   color={accent}

@@ -3,6 +3,7 @@ import type { PublicRideStatus } from 'vescape-core'
 
 import {
   publicRideChoice,
+  publicRideEndLabel,
   publicRideTimeLeft,
   publicRideUntil,
 } from '@/modules/group-ride/lib/publicRide'
@@ -49,4 +50,15 @@ test('time left counts down to the minute, rounded up so it never reads zero whi
 test('no time left without a running timer', () => {
   expect(publicRideTimeLeft(null, 0)).toBeNull()
   expect(publicRideTimeLeft(10, 10)).toBeNull()
+})
+
+test('the end time names the day only once it is not today', () => {
+  const now = new Date(2026, 10, 18, 9, 0).getTime() // Wed 18 Nov
+  const at = (day: number, hour: number) => new Date(2026, 10, day, hour, 42).getTime()
+  expect(publicRideEndLabel(at(18, 15), now, '24h')).toBe('15:42')
+  expect(publicRideEndLabel(at(18, 15), now, '12h')).toBe('3:42 PM')
+  expect(publicRideEndLabel(at(19, 8), now, '24h')).toBe('tomorrow 08:42')
+  expect(publicRideEndLabel(at(20, 15), now, '24h')).toBe('Fri 15:42')
+  // A week out would read as today's weekday, so it names the date.
+  expect(publicRideEndLabel(at(25, 9), now, '24h')).toBe('25 Nov 09:42')
 })

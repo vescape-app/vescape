@@ -1,5 +1,7 @@
 import type { PublicRideStatus } from 'vescape-core'
 
+import { formatClock, type TimeFormat } from '@/helpers/time'
+
 /** Hours the switch can run for before it turns itself off. */
 export const PUBLIC_RIDE_DURATIONS = [1, 2, 3, 4, 6, 8, 10, 12, 24, 48, 72, 96, 120, 144, 168]
 
@@ -46,4 +48,24 @@ export function publicRideTimeLeft(until: number | null, now: number): string | 
   if (days > 0) return hours > 0 ? `${days} d ${hours} h` : `${days} d`
   if (hours > 0) return mins > 0 ? `${hours} h ${mins} m` : `${hours} h`
   return `${mins} m`
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const DAY_MS = 86_400_000
+
+/**
+ * When a running timer ends, on the phone's clock: `15:42` today, `tomorrow 15:42`, `Fri 15:42`
+ * within the week, and `26 Nov 15:42` once the weekday alone would repeat today's.
+ */
+export function publicRideEndLabel(until: number, now: number, format: TimeFormat): string {
+  const clock = formatClock(until, false, format)
+  const end = new Date(until)
+  const days = Math.round(
+    (new Date(end).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / DAY_MS,
+  )
+  if (days <= 0) return clock
+  if (days === 1) return `tomorrow ${clock}`
+  if (days < 7) return `${WEEKDAYS[end.getDay()]} ${clock}`
+  return `${end.getDate()} ${MONTHS[end.getMonth()]} ${clock}`
 }

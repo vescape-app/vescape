@@ -41,6 +41,7 @@ import {
   HOUR_TITLES,
   HOUR_DESCRIPTIONS,
   type PublicRideReadoutState as Readout,
+  type PublicRideRunningTimer,
 } from '@/modules/group-ride/components/PublicRideReadout'
 
 const BROADCAST_Y = PUBLIC_RIDE_ARC.cy - 22
@@ -187,7 +188,7 @@ function PreviewLabel({
  */
 export function PublicRideSelector({
   value,
-  timeLeft = null,
+  running = null,
   activation,
   live,
   headerAction,
@@ -196,8 +197,8 @@ export function PublicRideSelector({
   onValueChange,
 }: {
   value: PublicRideChoice
-  /** A running timer's time left, shown in place of its duration while the dial is at rest. */
-  timeLeft?: string | null
+  /** A running timer, shown in place of its duration while the dial is at rest. */
+  running?: PublicRideRunningTimer | null
   activation: PublicRideStatus['activation']
   live: boolean
   headerAction?: ReactNode
@@ -505,7 +506,7 @@ export function PublicRideSelector({
                   {index === 1 ? (
                     <PublicRideReadout
                       readout={readout}
-                      timeLeft={timeLeft}
+                      running={running}
                       dragging={dragging}
                       accent={accent}
                       muted={neutral.textSecondary}
@@ -528,6 +529,8 @@ export function PublicRideSelector({
           <PublicRideReadout
             readout={readout}
             description
+            running={running}
+            dragging={dragging}
             accent={accent}
             muted={neutral.textPrimary}
           />

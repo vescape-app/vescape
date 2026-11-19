@@ -8,7 +8,7 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ToggleRow } from '@/components/dev/ShowcaseControls'
 import { PublicRideManualAction } from '@/modules/group-ride/components/PublicRideManualAction'
 import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
-import type { PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
+import { publicRideTimeLeft, type PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import { AccountSignInPill } from '@/modules/profile/components/AccountPill'
 
 /** The public ride switch: off, a number of hours, always; live and unavailable states. */
@@ -20,6 +20,7 @@ export function PublicRideSelectorShowcase() {
   const [settings, setSettings] = useState(true)
   const [setup, setSetup] = useState(false)
   const [disabled, setDisabled] = useState(false)
+  const [running, setRunning] = useState(true)
 
   const activation: PublicRideStatus['activation'] =
     setup || value.mode === 'off'
@@ -48,6 +49,7 @@ export function PublicRideSelectorShowcase() {
           <ToggleRow label="relay confirmed" value={relayConfirmed} onToggle={setRelayConfirmed} />
           <ToggleRow label="sign-in required" value={setup} onToggle={setSetup} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
+          <ToggleRow label="timer running" value={running} onToggle={setRunning} />
         </>
       }
     >
@@ -55,6 +57,14 @@ export function PublicRideSelectorShowcase() {
         value={value}
         activation={activation}
         live={live}
+        running={
+          running && value.mode === 'hours'
+            ? {
+                left: publicRideTimeLeft(value.hours * 3_600_000 - 1_080_000, 0) ?? '',
+                end: '15:42',
+              }
+            : null
+        }
         disabled={disabled || setup}
         headerAction={
           settings && !setup ? (
