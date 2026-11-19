@@ -261,7 +261,8 @@ export function BoardAttitudeIndicator({
   )
   const rotation = useDerivedValue(() => {
     const value = connected ? pitch.value : 0
-    return [{ rotate: value != null && Number.isFinite(value) ? (value * Math.PI) / 180 : 0 }]
+    // Refloat positive pitch is nose-up; the nose is +X and canvas Y points down.
+    return [{ rotate: value != null && Number.isFinite(value) ? (-value * Math.PI) / 180 : 0 }]
   })
   const farRail = useDerivedValue(() => pose.value.farRail)
   const nearRail = useDerivedValue(() => pose.value.nearRail)
