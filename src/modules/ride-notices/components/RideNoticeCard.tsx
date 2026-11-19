@@ -1,13 +1,6 @@
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { InfoIcon, MapPinIcon, WarningIcon, WarningOctagonIcon, XIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from 'react-native-reanimated'
 import type { RideNotice } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
@@ -33,7 +26,7 @@ export interface RideNoticeTone {
 
 /** How a notice about something the screen knows (a rider's signal) shows instead of by severity. */
 export interface RideNoticeLook {
-  /** Drawn in the pulsing badge, about 30 pt. */
+  /** Drawn bare at the card's start, up to 36 pt. */
   icon: ReactNode
   tone: RideNoticeTone
   title: string
@@ -102,9 +95,9 @@ export function RideNoticeCard({
     >
       {/* A faint wash of the tone: the kind reads at a glance without painting the card. */}
       <View style={[styles.wash, { backgroundColor: theme.alpha(tone.color, 0.1) }]} />
-      <NoticeBadge color={tone.color}>
-        {look?.icon ?? <severity.Icon size={22} color={tone.color} weight="fill" />}
-      </NoticeBadge>
+      <View style={styles.icon}>
+        {look?.icon ?? <severity.Icon size={28} color={tone.color} weight="fill" />}
+      </View>
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={2}>
           {look?.title ?? notice.title}
@@ -139,25 +132,7 @@ export function RideNoticeCard({
   )
 }
 
-const BADGE = 40
-
-/** The notice's icon on a ring that keeps pulsing outward while the notice is up: it is live. */
-function NoticeBadge({ color, children }: { color: ThemeColor; children: ReactNode }) {
-  const pulse = useSharedValue(0)
-  useEffect(() => {
-    pulse.set(withRepeat(withTiming(1, { duration: 1600, easing: Easing.out(Easing.quad) }), -1))
-  }, [pulse])
-  const ring = useAnimatedStyle(() => ({
-    opacity: 0.5 * (1 - pulse.get()),
-    transform: [{ scale: 1 + 0.45 * pulse.get() }],
-  }))
-  return (
-    <View style={styles.badge}>
-      <Animated.View style={[styles.ring, { borderColor: color }, ring]} />
-      <View style={[styles.disc, { backgroundColor: theme.alpha(color, 0.12) }]}>{children}</View>
-    </View>
-  )
-}
+const ICON = 36
 
 const styles = StyleSheet.create({
   card: {
@@ -171,21 +146,9 @@ const styles = StyleSheet.create({
     paddingRight: 6,
     gap: 12,
   },
-  badge: {
-    width: BADGE,
-    height: BADGE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ring: {
-    ...StyleSheet.absoluteFill,
-    borderRadius: BADGE / 2,
-    borderWidth: 2,
-  },
-  disc: {
-    width: BADGE,
-    height: BADGE,
-    borderRadius: BADGE / 2,
+  icon: {
+    width: ICON,
+    height: ICON,
     alignItems: 'center',
     justifyContent: 'center',
   },

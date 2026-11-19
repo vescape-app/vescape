@@ -55,7 +55,7 @@ function signalLook(
 export function riderSignalNoticeLook(info: PinKindInfo, nick: string): RideNoticeLook {
   const hue = theme.palette[info.hue]
   return {
-    icon: <PinKindBadge info={info} color={hue.color} size={30} strokeWidth={2} />,
+    icon: <PinKindBadge info={info} color={hue.color} size={36} strokeWidth={2} />,
     tone: { color: hue.color, text: hue.text },
     title: info.label,
     subject: nick || 'Rider',
