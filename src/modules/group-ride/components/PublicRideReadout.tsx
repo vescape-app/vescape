@@ -28,11 +28,16 @@ export interface PublicRideReadoutState {
 export function PublicRideReadout({
   readout,
   description = false,
+  timeLeft = null,
+  dragging,
   accent,
   muted,
 }: {
   readout: SharedValue<PublicRideReadoutState>
   description?: boolean
+  /** Replaces the title with a running timer's time left while the dial is at rest. */
+  timeLeft?: string | null
+  dragging?: SharedValue<boolean>
   accent: string
   muted: string
 }) {
@@ -42,7 +47,9 @@ export function PublicRideReadout({
   const canvasSize = useSharedValue({ width: 0, height })
   const layout = useMemo(() => {
     if (!font) return null
-    const strings = description ? HOUR_DESCRIPTIONS : [...HOUR_TITLES, 'Timer']
+    const strings = description
+      ? HOUR_DESCRIPTIONS
+      : [...HOUR_TITLES, 'Timer', ...(timeLeft ? [timeLeft] : [])]
     const measure = (text: string) =>
       font.getGlyphWidths(font.getGlyphIDs(text)).reduce((sum, width) => sum + width, 0)
     const widths = Object.fromEntries(strings.map((text) => [text, measure(text)]))
@@ -59,10 +66,11 @@ export function PublicRideReadout({
       numberWidths,
       baseline: height / 2 - (ascent + descent) / 2,
     }
-  }, [font, description, height])
-  const fullText = useDerivedValue(() =>
-    description ? readout.get().description : readout.get().title,
-  )
+  }, [font, description, height, timeLeft])
+  const fullText = useDerivedValue(() => {
+    if (description) return readout.get().description
+    return timeLeft && readout.get().timed && !dragging?.get() ? timeLeft : readout.get().title
+  })
   const baseText = useDerivedValue(() =>
     description && readout.get().timed ? TIME_PREFIX : fullText.get(),
   )

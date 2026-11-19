@@ -187,6 +187,7 @@ function PreviewLabel({
  */
 export function PublicRideSelector({
   value,
+  timeLeft = null,
   activation,
   live,
   headerAction,
@@ -195,6 +196,8 @@ export function PublicRideSelector({
   onValueChange,
 }: {
   value: PublicRideChoice
+  /** A running timer's time left, shown in place of its duration while the dial is at rest. */
+  timeLeft?: string | null
   activation: PublicRideStatus['activation']
   live: boolean
   headerAction?: ReactNode
@@ -502,6 +505,8 @@ export function PublicRideSelector({
                   {index === 1 ? (
                     <PublicRideReadout
                       readout={readout}
+                      timeLeft={timeLeft}
+                      dragging={dragging}
                       accent={accent}
                       muted={neutral.textSecondary}
                     />

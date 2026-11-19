@@ -114,6 +114,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
     <View style={styles.publicRide}>
       <PublicRideSelector
         value={publicRideChoice(status, nowMs)}
+        timeLeft={timeLeft}
         activation={status.activation}
         live={status.live}
         headerAction={settings}
@@ -121,7 +122,6 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         disabled={!ready}
         onValueChange={setPublicRide}
       />
-      {timeLeft ? <Text style={styles.timeLeft}>{timeLeft} left</Text> : null}
       {ready && (status.activation === 'waiting' || status.activation === 'phone') ? (
         <PublicRideManualAction activation={status.activation} onChange={setManualSharing} />
       ) : null}
@@ -144,13 +144,6 @@ const styles = StyleSheet.create({
     color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '600',
-  },
-  timeLeft: {
-    color: theme.neutral.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-    textAlign: 'center',
   },
   list: {
     gap: 12,
