@@ -9,7 +9,7 @@ import { Placeholder } from '@/components/base/Placeholder'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
-import { publicRideChoice } from '@/modules/group-ride/lib/publicRide'
+import { publicRideChoice, publicRideTimeLeft } from '@/modules/group-ride/lib/publicRide'
 import { theme } from '@/constants/theme'
 import { PublicRideManualAction } from '@/modules/group-ride/components/PublicRideManualAction'
 import { PublicRideSelector } from '@/modules/group-ride/components/PublicRideSelector'
@@ -107,6 +107,9 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
           ? ENDED[status.reason]
           : null
 
+  const timeLeft =
+    ready && status.activation !== 'off' ? publicRideTimeLeft(status.until, nowMs) : null
+
   return (
     <View style={styles.publicRide}>
       <PublicRideSelector
@@ -118,6 +121,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         disabled={!ready}
         onValueChange={setPublicRide}
       />
+      {timeLeft ? <Text style={styles.timeLeft}>{timeLeft} left</Text> : null}
       {ready && (status.activation === 'waiting' || status.activation === 'phone') ? (
         <PublicRideManualAction activation={status.activation} onChange={setManualSharing} />
       ) : null}
@@ -140,6 +144,13 @@ const styles = StyleSheet.create({
     color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '600',
+  },
+  timeLeft: {
+    color: theme.neutral.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
   },
   list: {
     gap: 12,

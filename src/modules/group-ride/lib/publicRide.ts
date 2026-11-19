@@ -30,3 +30,20 @@ export function publicRideChoice(status: PublicRideStatus, now: number): PublicR
     PUBLIC_RIDE_DURATIONS[PUBLIC_RIDE_DURATIONS.length - 1]
   return { mode: 'hours', hours }
 }
+
+const MINUTE_MS = 60_000
+
+/**
+ * Time left on a running timer, to the minute: `42 m`, `11 h 42 m`, `5 d 3 h`. Rounded up, so it
+ * never reads `0 m` while the rider is still visible. Null for always and for a passed end time.
+ */
+export function publicRideTimeLeft(until: number | null, now: number): string | null {
+  if (until == null || until <= now) return null
+  const minutes = Math.ceil((until - now) / MINUTE_MS)
+  const days = Math.floor(minutes / (24 * 60))
+  const hours = Math.floor(minutes / 60) % 24
+  const mins = minutes % 60
+  if (days > 0) return hours > 0 ? `${days} d ${hours} h` : `${days} d`
+  if (hours > 0) return mins > 0 ? `${hours} h ${mins} m` : `${hours} h`
+  return `${mins} m`
+}
