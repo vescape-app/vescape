@@ -416,10 +416,16 @@ internal final class PublicRide {
       // from this link cannot acknowledge a different batch.
       return false
     }
-    guard Self.refusals.contains(message) else { return false }
+    let why: String
+    switch message {
+    // The Account connected on another phone since, which owns its public ride now.
+    case Self.connectionReplaced: why = Self.reasonReplaced
+    case _ where Self.refusals.contains(message): why = Self.reasonRefused
+    default: return false
+    }
     sentOn = false
     live = false
-    switchOff(Self.reasonRefused)
+    switchOff(why)
     return true
   }
 
@@ -615,6 +621,7 @@ internal final class PublicRide {
   /// The relay takes at most this many positions per batch.
   static let missedBatchMax = 500
   static let missedNotStored = "missed positions not stored"
+  static let connectionReplaced = "connection replaced"
   /// Turns a room pin frame into the public ride's: `public-signal`, `public-hazard-clear`.
   static let publicPrefix = "public-"
   /// The relay keeps a pin this long; own pins are timed the same.

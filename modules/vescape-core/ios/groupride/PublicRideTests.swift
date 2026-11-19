@@ -213,6 +213,15 @@ final class PublicRideTests: XCTestCase {
     XCTAssertFalse(ride.handleError("no such ride: x"))
   }
 
+  func testAPublicOnRefusedForANewerConnectionTurnsTheSwitchOffAsReplaced() {
+    ride.load(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+    ride.setBoardConnected(true)
+    ready()
+    XCTAssertTrue(ride.handleError("connection replaced"))
+    XCTAssertEqual(ride.switchState, .off)
+    XCTAssertEqual(status["reason"] as? String, "replaced")
+  }
+
   func testNearbyRidersFollowTheRelay() {
     ride.load(.off, accountId: nil)
     ready()

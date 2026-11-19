@@ -410,10 +410,15 @@ internal class PublicRide(
             // from this link cannot acknowledge a different batch.
             return false
         }
-        if (message !in REFUSALS) return false
+        val why = when (message) {
+            // The Account connected on another phone since, which owns its public ride now.
+            CONNECTION_REPLACED -> REASON_REPLACED
+            in REFUSALS -> REASON_REFUSED
+            else -> return false
+        }
         sentOn = false
         live = false
-        switchOff(REASON_REFUSED)
+        switchOff(why)
         return true
     }
 
@@ -609,6 +614,7 @@ internal class PublicRide(
         /** Looking around re-centres once the rider is this far from the watched point. */
         const val LOOK_AROUND_RECENTRE_M = 1_000.0
         const val MISSED_NOT_STORED = "missed positions not stored"
+        const val CONNECTION_REPLACED = "connection replaced"
         const val REASON_REPLACED = "replaced"
         const val REASON_END_TIME = "end-time"
         const val REASON_SIGNED_OUT = "signed-out"

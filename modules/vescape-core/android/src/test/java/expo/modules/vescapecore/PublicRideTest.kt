@@ -236,6 +236,16 @@ class PublicRideTest {
     }
 
     @Test
+    fun `a public-on refused for a newer connection turns the switch off as replaced`() {
+        ride.load(PublicRideSwitch(true, null), "acc")
+        ride.setBoardConnected(true)
+        ready()
+        assertTrue(ride.handleError("connection replaced"))
+        assertEquals(PublicRideSwitch.OFF, ride.switch)
+        assertEquals("replaced", status()["reason"])
+    }
+
+    @Test
     fun `nearby riders follow the relay`() {
         ride.load(PublicRideSwitch.OFF, null)
         ready()
