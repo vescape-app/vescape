@@ -38,6 +38,8 @@ internal final class PublicRide {
   private let send: ([String: Any]) -> Bool
   /// Reconnect after this delay if a batch is still unacknowledged; nil cancels it.
   private let scheduleMissedRetry: (Int64?) -> Void
+  /// Call `flushRiders()` after this delay; nil cancels it.
+  private let scheduleRidersFlush: (Int64?) -> Void
   private let onPublicRideDemandChanged: () -> Void
   /// Other riders' pins changed: their signals, their hazards by Account id, and the relay clock.
   private let onPins: ([SignalRider], [String: RideHazard], Int64?) -> Void
@@ -59,6 +61,11 @@ internal final class PublicRide {
   private var lookAround: (lat: Double, lng: Double)?
   private var riders: [(accountId: String, view: [String: Any?])] = []
   private var ridersNow: Int64?
+  /// A `public-rider` update waits for `flushRiders()`. The relay sends one per rider per tick, so
+  /// emitting each would hand JS — and the map — one full list per rider per second.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `ridersPending`
+  private var ridersPending = false
   private var lastStatus: NSDictionary?
   /// The latest pin intent per slot made before the relay confirmed the public ride, sent once it
   /// does. A later intent in the same slot overwrites it; the public ride ending drops them.
@@ -93,6 +100,7 @@ internal final class PublicRide {
     emit: @escaping (String, [String: Any?]) -> Void,
     send: @escaping ([String: Any]) -> Bool,
     scheduleMissedRetry: @escaping (Int64?) -> Void = { _ in },
+    scheduleRidersFlush: @escaping (Int64?) -> Void = { _ in },
     onPublicRideDemandChanged: @escaping () -> Void = {},
     onPins: @escaping ([SignalRider], [String: RideHazard], Int64?) -> Void = { _, _, _ in }
   ) {
@@ -103,6 +111,7 @@ internal final class PublicRide {
     self.send = send
     self.onPins = onPins
     self.scheduleMissedRetry = scheduleMissedRetry
+    self.scheduleRidersFlush = scheduleRidersFlush
     self.onPublicRideDemandChanged = onPublicRideDemandChanged
   }
 
@@ -360,7 +369,10 @@ internal final class PublicRide {
         riders.append((accountId: id, view: view))
       }
       ridersNow = (json["now"] as? NSNumber)?.int64Value
-      emitRiders()
+      if !ridersPending {
+        ridersPending = true
+        scheduleRidersFlush(Self.ridersBatchMs)
+      }
     case "public-rider-gone":
       let id = json["accountId"] as? String
       if let index = riders.firstIndex(where: { $0.accountId == id }) {
@@ -564,7 +576,16 @@ internal final class PublicRide {
     emit("onPublicRideStatus", status)
   }
 
+  /// Emit the riders held back since the first `public-rider` of the batch.
+  func flushRiders() {
+    if ridersPending { emitRiders() }
+  }
+
   private func emitRiders() {
+    if ridersPending {
+      ridersPending = false
+      scheduleRidersFlush(nil)
+    }
     emit("onPublicRiders", ["riders": riders.map { $0.view }, "now": ridersNow])
   }
 
@@ -585,6 +606,8 @@ internal final class PublicRide {
   static let lookAroundRecentreM = 1_000.0
   /// Retry even after the rider finishes and GPS stops.
   static let missedRetryMs: Int64 = 10_000
+  /// One relay tick's `public-rider` updates arrive within this; they reach JS as one list.
+  static let ridersBatchMs: Int64 = 250
   /// Kept positions are thinned to one per this.
   static let missedSpacingMs: Int64 = 5_000
   /// Kept positions older than this, measured from the newest, are dropped.

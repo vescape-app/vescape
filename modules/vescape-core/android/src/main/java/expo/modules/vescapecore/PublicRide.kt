@@ -42,6 +42,8 @@ internal class PublicRide(
     private val send: (JSONObject) -> Boolean,
     /** Reconnect after this delay if a batch is still unacknowledged; null cancels it. */
     private val scheduleMissedRetry: (Long?) -> Unit = {},
+    /** Call [flushRiders] after this delay; null cancels it. */
+    private val scheduleRidersFlush: (Long?) -> Unit = {},
     private val onPublicRideDemandChanged: () -> Unit = {},
     /** Other riders' pins changed: their signals, their hazards by Account id, and the relay clock. */
     private val onPins: (List<SignalRider>, Map<String, RideHazard>, Long?) -> Unit = { _, _, _ -> },
@@ -68,6 +70,13 @@ internal class PublicRide(
     private var lookAround: Pair<Double, Double>? = null
     private val riders = LinkedHashMap<String, Map<String, Any?>>()
     private var ridersNow: Long? = null
+    /**
+     * A `public-rider` update waits for [flushRiders]. The relay sends one per rider per tick, so
+     * emitting each would hand JS — and the map — one full list per rider per second.
+     *
+     * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `ridersPending`
+     */
+    private var ridersPending = false
     private var lastStatus: Map<String, Any?>? = null
     /**
      * The latest pin intent per slot made before the relay confirmed the public ride, sent once it
@@ -362,7 +371,10 @@ internal class PublicRide(
                 val view = publicRiderView(json.optJSONObject("rider")) ?: return true
                 riders[view["accountId"] as String] = view
                 ridersNow = json.optLongOrNull("now")
-                emitRiders()
+                if (!ridersPending) {
+                    ridersPending = true
+                    scheduleRidersFlush(RIDERS_BATCH_MS)
+                }
             }
             "public-rider-gone" -> {
                 if (riders.remove(json.optString("accountId")) != null) emitRiders()
@@ -554,7 +566,16 @@ internal class PublicRide(
         emit("onPublicRideStatus", status)
     }
 
+    /** Emit the riders held back since the first `public-rider` of the batch. */
+    fun flushRiders() {
+        if (ridersPending) emitRiders()
+    }
+
     private fun emitRiders() {
+        if (ridersPending) {
+            ridersPending = false
+            scheduleRidersFlush(null)
+        }
         emit("onPublicRiders", mapOf("riders" to riders.values.toList(), "now" to ridersNow))
     }
 
@@ -577,6 +598,8 @@ internal class PublicRide(
         const val MISSED_POSITIONS_FEATURE = "missed-positions"
         /** Retry even after the rider finishes and GPS stops. */
         const val MISSED_RETRY_MS = 10_000L
+        /** One relay tick's `public-rider` updates arrive within this; they reach JS as one list. */
+        const val RIDERS_BATCH_MS = 250L
         /** Kept positions are thinned to one per this. */
         const val MISSED_SPACING_MS = 5_000L
         /** Kept positions older than this, measured from the newest, are dropped. */

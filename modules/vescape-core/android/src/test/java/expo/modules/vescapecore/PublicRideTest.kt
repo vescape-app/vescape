@@ -1,5 +1,6 @@
 package expo.modules.vescapecore
 
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -18,6 +19,7 @@ class PublicRideTest {
     private val sent = mutableListOf<JSONObject>()
     private var linkOpen = true
     private var retry: Long? = null
+    private var ridersFlush: Long? = null
     private val linkDemands = mutableListOf<Boolean>()
     private lateinit var ride: PublicRide
     private var pinUpdates = mutableListOf<Pair<List<SignalRider>, Map<String, RideHazard>>>()
@@ -30,6 +32,7 @@ class PublicRideTest {
         persisted.clear()
         timer = null
         retry = null
+        ridersFlush = null
         events.clear()
         sent.clear()
         linkDemands.clear()
@@ -42,6 +45,7 @@ class PublicRideTest {
             emit = { name, payload -> events += name to payload },
             send = { frame -> linkOpen && sent.add(frame) },
             scheduleMissedRetry = { retry = it },
+            scheduleRidersFlush = { ridersFlush = it },
             onPublicRideDemandChanged = { linkDemands += ride.needsLink },
             onPins = { signals, hazards, _ -> pinUpdates += signals to hazards },
         )
@@ -247,6 +251,29 @@ class PublicRideTest {
         val first = events.first { it.first == "onPublicRiders" }.second
         assertEquals(9L, first["now"])
         assertEquals("Ola", ((first["riders"] as List<*>)[0] as Map<*, *>)["nick"])
+    }
+
+    @Test
+    fun `one tick of rider updates reaches JS as one list`() {
+        ride.load(PublicRideSwitch.OFF, null)
+        ready()
+        ride.watchNearby(52.0 to 21.0)
+        ride.handle("nearby-riders", JSONObject().put("now", 1).put("riders", JSONArray()))
+        events.clear()
+        for (id in listOf("a", "b", "c")) {
+            val presence = JSONObject().put("lat", 52).put("lng", 21)
+            val rider = JSONObject().put("accountId", id).put("nick", "R$id").put("presence", presence)
+                .put("stale", false).put("lastSeen", 2).put("away", false)
+            ride.handle("public-rider", JSONObject().put("now", 2).put("rider", rider))
+        }
+        assertTrue(events.none { it.first == "onPublicRiders" })
+        assertEquals(PublicRide.RIDERS_BATCH_MS, ridersFlush)
+
+        ride.flushRiders()
+        val emitted = events.filter { it.first == "onPublicRiders" }
+        assertEquals(1, emitted.size)
+        assertEquals(3, (emitted[0].second["riders"] as List<*>).size)
+        assertNull(ridersFlush)
     }
 
     @Test

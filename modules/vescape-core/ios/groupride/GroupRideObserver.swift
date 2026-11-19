@@ -45,6 +45,7 @@ internal final class GroupRideObserver: NSObject {
   private let makeSocket: ((URLRequest) -> GroupRideSocket)?
   private var socketCredential: DeviceCredential?
   private var missedRetryWork: Cancellable?
+  private var ridersFlushWork: Cancellable?
   private let deviceCredential: () -> DeviceCredential?
   private let lastKnownLocation: () -> (lat: Double, lng: Double)?
   private var expiryWork: Cancellable?
@@ -104,6 +105,13 @@ internal final class GroupRideObserver: NSObject {
             self.webSocket?.close()
             self.scheduleReconnect()
           }
+        }
+      },
+      scheduleRidersFlush: { [weak self] delay in
+        guard let self else { return }
+        self.ridersFlushWork?.cancel()
+        self.ridersFlushWork = delay.map { delay in
+          scheduler.postDelayed(delay) { [weak self] in self?.publicRide.flushRiders() }
         }
       },
       onPublicRideDemandChanged: onPublicRideDemandChanged,

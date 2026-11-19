@@ -9,6 +9,7 @@ final class PublicRideTests: XCTestCase {
   private var events: [(String, [String: Any?])] = []
   private var sent: [[String: Any]] = []
   private var retry: Int64?
+  private var ridersFlush: Int64?
   private var linkDemands: [Bool] = []
   private var ride: PublicRide!
   private var pinUpdates: [([SignalRider], [String: RideHazard])] = []
@@ -24,6 +25,7 @@ final class PublicRideTests: XCTestCase {
     sent = []
     pinUpdates = []
     retry = nil
+    ridersFlush = nil
     linkDemands = []
     ride = PublicRide(
       now: { [unowned self] in self.now },
@@ -35,6 +37,7 @@ final class PublicRideTests: XCTestCase {
         return true
       },
       scheduleMissedRetry: { [unowned self] in self.retry = $0 },
+      scheduleRidersFlush: { [unowned self] in self.ridersFlush = $0 },
       onPublicRideDemandChanged: { [unowned self] in self.linkDemands.append(self.ride.needsLink) },
       onPins: { [unowned self] signals, hazards, _ in self.pinUpdates.append((signals, hazards)) }
     )
@@ -225,6 +228,28 @@ final class PublicRideTests: XCTestCase {
     let first = events.first { $0.0 == "onPublicRiders" }!.1
     XCTAssertEqual(first["now"] as? Int64, 9)
     XCTAssertEqual(((first["riders"] as? [[String: Any?]])?.first?["nick"] as? String), "Ola")
+  }
+
+  func testOneTickOfRiderUpdatesReachesJSAsOneList() {
+    ride.load(.off, accountId: nil)
+    ready()
+    ride.watchNearby((lat: 52, lng: 21))
+    ride.handle(type: "nearby-riders", json: ["now": 1, "riders": [Any]()])
+    events = []
+    for id in ["a", "b", "c"] {
+      ride.handle(type: "public-rider", json: [
+        "now": 2,
+        "rider": ["accountId": id, "nick": "R\(id)", "presence": ["lat": 52, "lng": 21], "stale": false, "lastSeen": 2, "away": false],
+      ])
+    }
+    XCTAssertFalse(events.contains { $0.0 == "onPublicRiders" })
+    XCTAssertEqual(ridersFlush, PublicRide.ridersBatchMs)
+
+    ride.flushRiders()
+    let emitted = events.filter { $0.0 == "onPublicRiders" }
+    XCTAssertEqual(emitted.count, 1)
+    XCTAssertEqual((emitted.first?.1["riders"] as? [Any])?.count, 3)
+    XCTAssertNil(ridersFlush)
   }
 
   func testLookingAroundRecentresAfterAKilometreButNotWhilePublic() {

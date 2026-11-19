@@ -85,6 +85,7 @@ internal class GroupRideObserver(
         scheduleReconnect()
     }
     private val expiryRunnable: Runnable = Runnable { publicRide.expire() }
+    private val ridersFlushRunnable: Runnable = Runnable { publicRide.flushRiders() }
 
     /**
      * The public ride on this socket. Main thread, like the rest of the observer.
@@ -107,6 +108,10 @@ internal class GroupRideObserver(
         scheduleMissedRetry = { delay ->
             handler.removeCallbacks(missedRetryRunnable)
             delay?.let { handler.postDelayed(missedRetryRunnable, it) }
+        },
+        scheduleRidersFlush = { delay ->
+            handler.removeCallbacks(ridersFlushRunnable)
+            delay?.let { handler.postDelayed(ridersFlushRunnable, it) }
         },
         onPublicRideDemandChanged = onPublicRideDemandChanged,
         onPins = ::onPublicPins,
