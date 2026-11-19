@@ -111,7 +111,7 @@ export function TunePreview({
   const centerX = canvasWidth / 2
 
   const state = useSharedValue(createTunePreviewState(TUNE_PREVIEW_RESET_SPEED_KMH))
-  const modelPitch = useDerivedValue<number | null>(() => -state.value.angleDegrees)
+  const modelPitch = useDerivedValue<number | null>(() => state.value.angleDegrees)
   const modelRoll = useSharedValue<number | null>(0)
   const scenario = useSharedValue<TunePreviewScenario>({
     parameters,

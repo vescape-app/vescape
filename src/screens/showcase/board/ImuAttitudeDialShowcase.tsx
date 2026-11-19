@@ -9,6 +9,8 @@ import { RAILS } from '@/modules/board/lib/railPresets'
 /** Pitch, roll and balance setpoint per pose; `null` is no telemetry yet. */
 const POSES: Record<string, [number, number, number] | null> = {
   level: [0, 0, 0],
+  'tail down': [20, 0, 0],
+  'nose down': [-20, 0, 0],
   'nose up': [6, -2, 1.5],
   'carving left': [2, -18, 1],
   'off balance': [12, 3, 1],

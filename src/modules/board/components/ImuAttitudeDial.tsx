@@ -121,10 +121,11 @@ export function ImuAttitudeDial({
     const b = balancePitch.value
     return p == null || b == null ? null : p - b
   })
-  const nose = useDerivedValue(() => markerRotation(pitch.value, NOSE, 1))
-  const tail = useDerivedValue(() => markerRotation(pitch.value, TAIL, 1))
-  const setpointNose = useDerivedValue(() => markerRotation(balancePitch.value, NOSE, 1))
-  const setpointTail = useDerivedValue(() => markerRotation(balancePitch.value, TAIL, 1))
+  // Match the board: positive pitch lifts the right-side nose counter-clockwise.
+  const nose = useDerivedValue(() => markerRotation(pitch.value, NOSE, -1))
+  const tail = useDerivedValue(() => markerRotation(pitch.value, TAIL, -1))
+  const setpointNose = useDerivedValue(() => markerRotation(balancePitch.value, NOSE, -1))
+  const setpointTail = useDerivedValue(() => markerRotation(balancePitch.value, TAIL, -1))
   // Counter-clockwise on the bottom arc, so positive roll moves the mark right and negative left,
   // reading like a level gauge rather than swinging against it.
   const rollMark = useDerivedValue(() => markerRotation(roll.value, BOTTOM, -1))

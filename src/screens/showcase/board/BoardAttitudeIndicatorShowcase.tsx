@@ -17,6 +17,8 @@ import { RAILS } from '@/modules/board/lib/railPresets'
 
 const POSES: Record<string, [number, number]> = {
   level: [0, 0],
+  'tail down': [20, 0],
+  'nose down': [-20, 0],
   riding: [8, 25],
   underside: [3, -28],
   vertical: [90, 0],
