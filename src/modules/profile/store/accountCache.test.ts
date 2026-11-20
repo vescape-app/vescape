@@ -1,5 +1,3 @@
-import type { FriendRide } from 'vescape-core'
-
 import { expect, mock, test } from 'bun:test'
 
 let finish: (value: unknown) => void
@@ -21,10 +19,6 @@ mock.module('vescape-core', () => ({
       finish = resolve
     }),
   getFriendRides,
-  getFriendRideTrack: () =>
-    new Promise((resolve) => {
-      finish = resolve
-    }),
   getRodeWith: () =>
     new Promise((resolve) => {
       finish = resolve
@@ -67,15 +61,14 @@ test('old profile save cannot overwrite or cancel the new account load', async (
   expect(profile.getState().profile?.nick).toBe('new')
 })
 
-test('clearing invalidates a pending friend track', async () => {
-  const pending = friends.getState().toggleTrack('friend', {
-    startedAt: '2026-01-01T00:00:00Z',
-    endedAt: '2026-01-01T00:01:00Z',
-  } as FriendRide)
+test('clearing invalidates a pending friend rides load', async () => {
+  const pending = friends.getState().load('friend')
   friends.getState().clear()
-  finish!([{ lng: 1, lat: 2 }])
+  finish!({
+    rides: [{ startedAt: '2026-01-01T00:00:00Z', endedAt: '2026-01-01T00:01:00Z' }],
+  })
   await pending
-  expect(friends.getState().track).toBeNull()
+  expect(friends.getState().rides).toEqual([])
 })
 
 test('same ride after account transition rejects the old response', async () => {

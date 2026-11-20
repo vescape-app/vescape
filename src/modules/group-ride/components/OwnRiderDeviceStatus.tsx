@@ -2,12 +2,11 @@ import { useCallback, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
 import { getPhoneBatteryLevel } from 'vescape-core'
 
-import { fmtPercent } from '@/helpers/format'
-import { useBleStore } from '@/modules/board/store/bleStore'
-import { RiderDeviceStatus } from '@/modules/group-ride/components/RiderDeviceStatus'
+import { RiderLiveRide } from '@/modules/group-ride/components/RiderLiveRide'
+import { useOwnRiderReadings } from '@/modules/group-ride/hooks/useOwnRiderReadings'
 
 export function OwnRiderDeviceStatus() {
-  const boardConnected = useBleStore((state) => state.status === 'connected')
+  const readings = useOwnRiderReadings()
   const [phoneBattery, setPhoneBattery] = useState<number | null>(null)
 
   useFocusEffect(
@@ -27,10 +26,5 @@ export function OwnRiderDeviceStatus() {
     }, []),
   )
 
-  return (
-    <RiderDeviceStatus
-      boardConnected={boardConnected}
-      phoneBattery={phoneBattery == null ? undefined : fmtPercent(phoneBattery)}
-    />
-  )
+  return <RiderLiveRide readings={{ ...readings, phoneBattery }} />
 }

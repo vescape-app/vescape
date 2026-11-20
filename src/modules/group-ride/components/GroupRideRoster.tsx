@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import {
   ArrowsHorizontalIcon,
-  BatteryMediumIcon,
   CaretRightIcon,
   ClockIcon,
   DeviceMobileIcon,
@@ -26,6 +25,7 @@ import {
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
 import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
+import { batteryVisual } from '@/modules/group-ride/lib/batteryVisual'
 import { riderHue } from '@/modules/group-ride/lib/riderColor'
 import type { RiderReadings } from '@/modules/group-ride/lib/riderStats'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
@@ -186,7 +186,12 @@ function DetailedRiderRow({
       value: distance,
     },
     { icon: GaugeIcon, color: theme.telemetry.speed, weight: 1, ...s.speed },
-    { icon: BatteryMediumIcon, color: theme.telemetry.battVoltage, weight: 1.2, ...s.soc },
+    {
+      icon: batteryVisual(rider.presence?.soc).icon,
+      color: theme.telemetry.battVoltage,
+      weight: 1.2,
+      ...s.soc,
+    },
     { icon: ThermometerSimpleIcon, color: theme.telemetry.motorTemp, weight: 1, ...s.motor },
     { icon: ThermometerSimpleIcon, color: theme.telemetry.controllerTemp, weight: 1, ...s.ctrl },
     { icon: DeviceMobileIcon, color: theme.neutral.textSecondary, weight: 1.2, ...s.phone },
@@ -246,7 +251,7 @@ function compactMetric(
     : lowPhone
       ? 'Phone battery'
       : 'Speed'
-  const metricColor = hot || lowPhone ? theme.status.error.text : theme.neutral.textSecondary
+  const metricColor = hot || lowPhone ? TELEMETRY_LEVEL_COLOR.critical : theme.neutral.textSecondary
   return { MetricIcon, metric, metricLabel, metricColor }
 }
 
@@ -349,7 +354,13 @@ function CompactRiderRow({
           </Text>
           {signal ? <SignalBadge kind={signal.kind} /> : null}
         </View>
-        <CompactRiderStats status={status} age={age} battery={s.soc} metric={reading} />
+        <CompactRiderStats
+          status={status}
+          age={age}
+          soc={presence?.soc}
+          battery={s.soc}
+          metric={reading}
+        />
       </View>
       {rider.isSelf ? (
         <View style={styles.compactBadgeSlot}>
@@ -366,19 +377,22 @@ function CompactRiderRow({
 function CompactRiderStats({
   status,
   age,
+  soc,
   battery,
   metric: { MetricIcon, metric, metricColor },
 }: {
   status: CompactRiderStatus
   age: string | null
+  soc?: number | null
   battery: ReturnType<typeof useRiderStats>['soc']
   metric: ReturnType<typeof compactMetric>
 }) {
   if (status === 'live' && !battery.value && !metric) return null
-  const batteryColor =
-    battery.level === 'normal'
-      ? theme.palette.groupRide.color
-      : TELEMETRY_LEVEL_COLOR[battery.level]
+  const {
+    icon: BatteryIcon,
+    iconColor: batteryColor,
+    textColor: batteryTextColor,
+  } = batteryVisual(soc)
   return (
     <View style={styles.compactStats}>
       {status === 'offline' ? (
@@ -400,8 +414,10 @@ function CompactRiderStats({
         <>
           {battery.value ? (
             <View style={styles.metric}>
-              <BatteryMediumIcon size={16} color={batteryColor} />
-              <Text style={styles.caption}>{battery.value}</Text>
+              <BatteryIcon size={16} color={batteryColor} />
+              <Text style={[styles.caption, batteryTextColor && { color: batteryTextColor }]}>
+                {battery.value}
+              </Text>
             </View>
           ) : null}
           {metric ? (

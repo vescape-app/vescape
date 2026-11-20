@@ -22,7 +22,7 @@ export function ProfileStatsGrid({
   testID,
 }: ProfileStatsGridProps) {
   return (
-    <View style={styles.grid} testID={testID}>
+    <View style={[styles.grid, columns === 4 && styles.gridFourth]} testID={testID}>
       {items.map((item) => {
         const ItemIcon = item.icon
         return (
@@ -51,6 +51,7 @@ export function ProfileStatsGrid({
                 emphasis && styles.valueEmphasis,
                 columns === 3 && styles.valueThird,
                 columns === 4 && styles.valueFourth,
+                item.valueColor && { color: item.valueColor },
               ]}
               numberOfLines={columns > 2 ? 1 : undefined}
               adjustsFontSizeToFit={columns > 2}
@@ -84,6 +85,10 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginHorizontal: -6,
+  },
+  gridFourth: {
+    marginHorizontal: -3,
   },
   cell: {
     width: '50%',

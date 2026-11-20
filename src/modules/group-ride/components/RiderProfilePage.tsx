@@ -41,8 +41,7 @@ export function RiderProfilePage() {
           friend ??
           (rosterRider ? { nick: rosterRider.name, nationality: null } : null)
         }
-        status={!ownProfile && livePresence ? 'Live' : undefined}
-        afterStats={friend ? <FriendRides accountId={accountId} onOpen={showMap} /> : null}
+        afterStats={friend || ownProfile ? <FriendRides accountId={accountId} /> : null}
       >
         {ownProfile ? (
           <OwnRiderDeviceStatus />

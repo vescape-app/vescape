@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   todayDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.palette.green.color },
   details: { gap: 12 },
-  box: { padding: 12 },
+  box: { padding: 16 },
   monthlyBox: { gap: 12 },
   title: {
     fontSize: 11,

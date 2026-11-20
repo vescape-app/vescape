@@ -33,7 +33,6 @@ export default function SocialShowcase() {
   const [divided, setDivided] = useState(false)
   const [longNick, setLongNick] = useState(false)
   const [boardConnected, setBoardConnected] = useState(false)
-  const [rideShown, setRideShown] = useState(false)
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
@@ -102,14 +101,9 @@ export default function SocialShowcase() {
             }
           />
         </ShowcaseCard>
-        <ShowcaseCard
-          name="PublicRideRow"
-          controls={<ToggleRow label="shown" value={rideShown} onToggle={setRideShown} />}
-        >
+        <ShowcaseCard name="PublicRideRow">
           <PublicRideRow
             ride={{ startedAt: '2026-11-14T16:05:00.000Z', endedAt: '2026-11-14T17:12:00.000Z' }}
-            shown={rideShown}
-            onPress={() => setRideShown((shown) => !shown)}
           />
         </ShowcaseCard>
       </PageScrollView>

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { BroadcastIcon, ChartBarIcon, UserCircleIcon, UserMinusIcon } from 'phosphor-react-native'
+import { ChartBarIcon, UserCircleIcon, UserMinusIcon } from 'phosphor-react-native'
 import { getRider, type RiderDetail, type RiderProfile } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
@@ -18,13 +18,11 @@ import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 export function RiderProfileCard({
   accountId,
   seen,
-  status,
   children,
   afterStats,
 }: {
   accountId: string
   seen: Pick<RiderProfile, 'nick' | 'nationality'> | null
-  status?: string
   children?: ReactNode
   afterStats?: ReactNode
 }) {
@@ -49,9 +47,12 @@ export function RiderProfileCard({
   const stats = result?.detail?.stats
   const friend = useFriendsStore((s) => s.lists.friends.find((row) => row.accountId === accountId))
   const error = useFriendsStore((s) => s.error)
-  const nowMs = useMinuteNow(friend !== undefined)
+  const nowMs = useMinuteNow(friend !== undefined && !friend.ridingNow)
   const [confirmRemove, setConfirmRemove] = useState(false)
-  const caption = [rider?.nationality, status ?? (friend ? friendStatus(friend, nowMs) : null)]
+  const caption = [
+    rider?.nationality,
+    friend && !friend.ridingNow ? friendStatus(friend, nowMs) : null,
+  ]
     .filter(Boolean)
     .join(' · ')
 
@@ -68,14 +69,7 @@ export function RiderProfileCard({
                   ? 'Rider not found'
                   : 'Loading rider…')}
           </Text>
-          {caption ? (
-            <View style={styles.status}>
-              {status || friend?.ridingNow ? (
-                <BroadcastIcon size={14} color={theme.palette.green.color} />
-              ) : null}
-              <Text style={styles.caption}>{caption}</Text>
-            </View>
-          ) : null}
+          {caption ? <Text style={styles.caption}>{caption}</Text> : null}
         </View>
         {friend ? (
           <Button
@@ -147,7 +141,6 @@ const styles = StyleSheet.create({
   card: { gap: 14 },
   section: { gap: 10 },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   flex: { flex: 1, minWidth: 0 },
   nick: { color: theme.neutral.textPrimary, fontSize: 20, fontWeight: '700' },
   caption: { color: theme.neutral.textSecondary, fontSize: 11, lineHeight: 17, flexShrink: 1 },

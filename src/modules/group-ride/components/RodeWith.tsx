@@ -26,7 +26,7 @@ export function RodeWithTracks({ belowLayerID }: { belowLayerID: string }) {
 }
 
 /** Another rider's stored track, in their live color. */
-export function RiderTrackLine({
+function RiderTrackLine({
   id,
   accountId,
   coordinates,

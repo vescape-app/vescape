@@ -31,6 +31,8 @@ export interface ProfileStatItem {
   value: string
   icon: Icon
   accent: ThemeColor
+  /** Optional tint for the value text (e.g. warning/critical telemetry level). */
+  valueColor?: ThemeColor
   /** Set when the figure links somewhere, e.g. the ride that set a record. */
   onPress?: () => void
 }

@@ -1,6 +1,5 @@
 import { StyleSheet, View } from 'react-native'
 import {
-  BatteryMediumIcon,
   BroadcastIcon,
   CpuIcon,
   GaugeIcon,
@@ -15,7 +14,9 @@ import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSu
 import { theme } from '@/constants/theme'
 import { useFormat } from '@/hooks/useFormat'
 import { RiderDeviceStatus } from '@/modules/group-ride/components/RiderDeviceStatus'
+import { TELEMETRY_LEVEL_COLOR } from '@/modules/board/constants/telemetryThresholds'
 import { useRiderStats } from '@/modules/group-ride/hooks/useRiderStats'
+import { batteryVisual } from '@/modules/group-ride/lib/batteryVisual'
 import type { RiderReadings } from '@/modules/group-ride/lib/riderStats'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 
@@ -29,6 +30,7 @@ export function RiderLiveRide({
   const surface = useResolvedSecondaryWidgetSurface()
   const { speedUnit } = useFormat()
   const { speed, soc, motor, ctrl, phone } = useRiderStats(readings)
+  const battery = batteryVisual(readings.soc)
   const boardName = readings.boardName
   const metrics = [
     {
@@ -42,22 +44,29 @@ export function RiderLiveRide({
       key: 'battery',
       label: 'Battery',
       value: soc.value,
-      icon: BatteryMediumIcon,
-      accent: theme.palette.green.color,
+      icon: battery.icon,
+      accent: battery.iconColor,
+      valueColor: battery.textColor,
     },
     {
       key: 'controller',
       label: 'Controller',
       value: ctrl.value,
       icon: CpuIcon,
-      accent: theme.telemetry.controllerTemp,
+      accent:
+        ctrl.level !== 'normal'
+          ? TELEMETRY_LEVEL_COLOR[ctrl.level]
+          : theme.telemetry.controllerTemp,
+      valueColor: ctrl.level !== 'normal' ? TELEMETRY_LEVEL_COLOR[ctrl.level] : undefined,
     },
     {
       key: 'motor',
       label: 'Motor',
       value: motor.value,
       icon: ThermometerIcon,
-      accent: theme.telemetry.motorTemp,
+      accent:
+        motor.level !== 'normal' ? TELEMETRY_LEVEL_COLOR[motor.level] : theme.telemetry.motorTemp,
+      valueColor: motor.level !== 'normal' ? TELEMETRY_LEVEL_COLOR[motor.level] : undefined,
     },
   ] as const
   const items = metrics.flatMap((metric) =>
@@ -68,22 +77,25 @@ export function RiderLiveRide({
 
   return (
     <View style={styles.section}>
-      {boardConnected ? (
-        <SectionHeader title="Live ride" icon={BroadcastIcon} color={theme.palette.green.color} />
-      ) : null}
+      <SectionHeader title="Live ride" icon={BroadcastIcon} color={theme.palette.green.color} />
       <View style={[surface, styles.box]}>
         {boardName ? <Text style={styles.board}>{boardName}</Text> : null}
         {items.length > 0 ? <ProfileStatsGrid columns={4} items={items} /> : null}
-        <RiderDeviceStatus boardConnected={boardConnected} phoneBattery={phone.value} />
-        {onShowOnMap ? (
-          <Button
-            label="Show on map"
-            icon={MapTrifoldIcon}
-            size="sm"
-            variant="groupRide"
-            style={styles.map}
-            onPress={onShowOnMap}
-          />
+        {!boardConnected || phone.value || onShowOnMap ? (
+          <View style={styles.footer}>
+            <View style={styles.status}>
+              <RiderDeviceStatus boardConnected={boardConnected} phoneBattery={phone.value} />
+            </View>
+            {onShowOnMap ? (
+              <Button
+                label="Show on map"
+                icon={MapTrifoldIcon}
+                size="sm"
+                variant="groupRide"
+                onPress={onShowOnMap}
+              />
+            ) : null}
+          </View>
         ) : null}
       </View>
     </View>
@@ -92,7 +104,13 @@ export function RiderLiveRide({
 
 const styles = StyleSheet.create({
   section: { gap: 10 },
-  box: { padding: 15, gap: 6 },
+  box: { padding: 16, gap: 6 },
   board: { fontSize: 16, fontWeight: '700' },
-  map: { alignSelf: 'flex-end' },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  status: { flex: 1, minWidth: 0 },
 })
