@@ -16,7 +16,7 @@ import { useBleStore } from '@/modules/board/store/bleStore'
  * UI-facing phase of a linking run. "linking" covers the live connect/probe
  * sequence; "picking" exposes the confirmed transports; "failed" means no
  * transport returned telemetry. The underlying domain operation is a Board Probe
- * (see CONTEXT.md) — the UI just calls it "linking".
+ * (see GLOSSARY.md) — the UI just calls it "linking".
  */
 export type BoardLinkPhase = 'linking' | 'picking' | 'failed'
 

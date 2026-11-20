@@ -10,7 +10,7 @@ import kotlin.math.min
  * far is left along the path from there, and which way the path goes next.
  *
  * Derived, never stored. It is recomputed from the current path on every GPS Fix and it dies with the
- * Navigation it belongs to — see the glossary entry in `CONTEXT.md`.
+ * Navigation it belongs to — see the glossary entry in `GLOSSARY.md`.
  *
  * Attachment is unconditional: the nearest point on the path is always taken, so a rider who loops
  * away and comes back re-attaches by itself. Only [deviationMeters] feeds automatic recalculation;

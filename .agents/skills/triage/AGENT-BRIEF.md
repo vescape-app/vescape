@@ -10,8 +10,7 @@ The issue may sit in `ready-for-agent` for days or weeks. The codebase will chan
 
 - **Do** describe interfaces, types, and behavioral contracts
 - **Do** name specific types, function signatures, or config shapes that the agent should look for or modify
-- **Don't** reference file paths — they go stale
-- **Don't** reference line numbers
+- **Don't** put file paths or line numbers inside behavioral or interface descriptions (they go stale); keep navigation hints strictly in `## Likely files`
 - **Don't** assume the current implementation structure will remain the same
 
 ### Behavioral, not procedural

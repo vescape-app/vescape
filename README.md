@@ -186,16 +186,28 @@ Bug reports, board compatibility feedback, code, and documentation are welcome.
 what happened, and the board, firmware, phone, and app version involved.
 
 Before changing code, read [AGENTS.md](AGENTS.md) for repository conventions and
-[CONTEXT.md](CONTEXT.md) for the domain language. Open pull requests against `dev`;
+[GLOSSARY.md](GLOSSARY.md) for the domain language. Open pull requests against `dev`;
 `main` is reserved for production releases. Keep changes focused and include the
 verification relevant to your change.
 
 Project-local coding-agent workflows live in [.agents/skills/](.agents/skills/).
 
+### Typical agent workflow
+
+Most features follow a short plan → slice → test → review loop:
+
+1. **Grill** — `/grill-with-docs` (or `/grill-me` without doc updates) walks the design tree round by round and updates [GLOSSARY.md](GLOSSARY.md) and `docs/adr/` inline.
+2. **Spec** — `/to-spec` turns the settled context and test seams into a `[PRD]` issue on GitHub.
+3. **Tickets** — `/to-tickets` breaks the spec into vertical slices with native blocking edges and complexity labels, then optionally runs `/judge-plan` against the real code.
+4. **Implement & test** — `/prep-pr` opens a draft feature PR, then `/burndown` (or `/burn` / `/to-code` per ticket) builds each slice with focused tests (`bun test`, `test:android`, `test:ios`, `test:persistence`, or `/e2e`). `lefthook` pre-commit hooks and CI handle formatting, typecheck, lint, and knip.
+5. **Review** — `/code-review` for a read-only diff pass, or `/judge-pr` for a stricter pre-merge audit.
+
+For hard bugs, `/diagnosing-bugs` builds a fast red repro loop, minimises it, and locks down a regression test before fixing.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
-- [Domain language](CONTEXT.md)
+- [Domain language](GLOSSARY.md)
 - [Architecture Decision Records](docs/adr/)
 - [VESC protocol](docs/vescProtocol.md)
 - [Refloat GET_ALLDATA layout](docs/refloatAlldata.md)

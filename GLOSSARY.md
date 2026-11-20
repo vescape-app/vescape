@@ -1,4 +1,4 @@
-# Vescape App Context
+# Vescape App Glossary
 
 This context defines the shared language for the Vescape app. The app centers on live board state, ride recording, ride history, and safety-sensitive Refloat tuning.
 

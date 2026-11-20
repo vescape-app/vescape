@@ -1,6 +1,6 @@
 ---
 name: judge-plan
-description: Stress-test a published plan (a PRD with task issues, or just an ordered set of issues, optionally with a prepared PR) with a fresh read-only reviewer subagent that checks it against the real code, then verify its findings and fold the worthwhile ones back into the plan. Use when the user invokes `/judge-plan`, accepts the offer `/to-issues` makes after publishing a slice set (always ask first, never run it unprompted), asks to "judge", "review", or "sanity-check" a PRD or issue set, or wants a second model's opinion on a plan before implementation.
+description: Stress-test a published plan (a PRD with task issues, or just an ordered set of issues, optionally with a prepared PR) with a fresh read-only reviewer subagent that checks it against the real code, then verify its findings and fold the worthwhile ones back into the plan. Use when the user invokes `/judge-plan`, accepts the offer `/to-tickets` makes after publishing a slice set (always ask first, never run it unprompted), asks to "judge", "review", or "sanity-check" a PRD or issue set, or wants a second model's opinion on a plan before implementation.
 ---
 
 # Judge Plan
@@ -29,7 +29,7 @@ One subagent, read-only, using the strongest model your harness offers unless th
 
 The prompt must include:
 
-- The plan references (issue/PR numbers + how to read them) and the repo docs to read: `AGENTS.md`, `CONTEXT.md`, relevant `docs/` pages, `docs/adr/`.
+- The plan references (issue/PR numbers + how to read them) and the repo docs to read: `AGENTS.md`, `GLOSSARY.md`, relevant `docs/` pages, `docs/adr/`.
 - The starting code paths from step 1, on both native platforms when the plan crosses them.
 - **Read-only**: no edits to files, issues, or PRs.
 - What to hunt:
@@ -56,7 +56,7 @@ Report to the user: kept findings grouped by impact, rejected ones with the one-
 
 - Put rules where the implementer reads them: a `## Specification details` section in the affected task issue, plus matching acceptance criteria.
 - If there is a PRD, add a short clarifications bullet to its Implementation Decisions; don't rewrite it. Without a PRD, the issues are the whole plan: put shared rules in the first issue that needs them and reference it from the rest.
-- New slices go through `/to-issues` conventions (title, labels, complexity, Likely files). Renumber sibling titles to keep dependency order. Update `Blocked by` and every sibling's `## Related`.
+- New slices go through `/to-tickets` conventions (title, labels, complexity, Likely files). Renumber sibling titles to keep dependency order. Update native blocking edges (or `Blocked by`) and every sibling's `## Related`.
 - Refresh the PR task list and body if what it claims changed (see `prep-pr`).
 - Don't close issues, and don't touch code.
 

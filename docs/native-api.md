@@ -6,16 +6,16 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 
 ## Term map
 
-| Domain (CONTEXT.md) | Native/API name                                                                        |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| Board               | `board_id` in DB, `boardId` in API                                                     |
-| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                                        |
-| Ride Recording      | frames + buckets + markers in DB                                                       |
-| Ride History        | `getRideHistoryPage` (complete rides), `countRideHistory`, `getHistoryRange` (full)    |
-| Tune Profile        | `tune_profiles` table, `TuneProfile` type                                              |
-| Tune Snapshot       | `RefloatConfigSnapshot`                                                                |
-| Alert Rule          | `alerts` table, `AlertRule` type                                                       |
-| User Profile Stats  | `ProfileStatsSnapshot`, `getProfileStatsSnapshot`, `getDayStats`, `getRecentRideStats` |
+| Domain (GLOSSARY.md) | Native/API name                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| Board                | `board_id` in DB, `boardId` in API                                                     |
+| Telemetry Sample     | `telemetry_frames` (DB), `TelemetrySample` (JS)                                        |
+| Ride Recording       | frames + buckets + markers in DB                                                       |
+| Ride History         | `getRideHistoryPage` (complete rides), `countRideHistory`, `getHistoryRange` (full)    |
+| Tune Profile         | `tune_profiles` table, `TuneProfile` type                                              |
+| Tune Snapshot        | `RefloatConfigSnapshot`                                                                |
+| Alert Rule           | `alerts` table, `AlertRule` type                                                       |
+| User Profile Stats   | `ProfileStatsSnapshot`, `getProfileStatsSnapshot`, `getDayStats`, `getRecentRideStats` |
 
 ---
 

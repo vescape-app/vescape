@@ -3,7 +3,7 @@
 → [index](./index.md) | [safety](./safety.md)
 
 The single catalog of every **Board Warning** kind. A Board Warning is an app-detected abnormal
-Board condition worth the rider's attention (see the domain term in [CONTEXT.md](../CONTEXT.md)).
+Board condition worth the rider's attention (see the domain term in [GLOSSARY.md](../GLOSSARY.md)).
 Warnings are detected **natively** on both platforms; JS only renders them. Each kind is keyed
 one-per-problem-kind per Board (automotive fault-code model), carries a fixed severity, and ships a
 kind-specific JSON `payloadJson` blob the UI decodes.

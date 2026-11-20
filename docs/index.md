@@ -77,7 +77,7 @@ deeper references it points at.
 - [agents/clerk-auth.md](./agents/clerk-auth.md) — Clerk production auth setup, Android email-link debugging
 - [agents/issue-tracker.md](./agents/issue-tracker.md) — issues and PRDs on GitHub
 - [agents/triage-labels.md](./agents/triage-labels.md) — the five-label triage vocabulary
-- [agents/domain.md](./agents/domain.md) — `CONTEXT.md` and `docs/adr/` conventions
+- [agents/domain.md](./agents/domain.md) — `GLOSSARY.md` and `docs/adr/` conventions
 
 ## Status
 

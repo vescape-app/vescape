@@ -29,7 +29,7 @@ Extract id. Missing -> ask.
    - `docs/agents/domain.md`
    - `docs/agents/react.md` if RN UI
 2. Domain:
-   - `CONTEXT.md` if present
+   - `GLOSSARY.md` if present
    - `docs/tune.md` if tune r/w
    - `docs/adr/*.md` if relevant
 3. Fetch issue: `gh issue view <id> --json number,title,body,state,labels,assignees,comments,url --jq '.'`. No unauth HTTP for private.
@@ -37,7 +37,7 @@ Extract id. Missing -> ask.
 
 ## Workflow
 
-1. **Understand** — Goal, AC, unknowns. Vague/blocked -> stop, ask 1 question. Conflicts `CONTEXT.md`/ADR -> surface first.
+1. **Understand** — Goal, AC, unknowns. Vague/blocked -> stop, ask 1 question. Conflicts `GLOSSARY.md`/ADR -> surface first.
 2. **Plan** — Smallest coherent impl. Name files. Start from issue `## Likely files`, verify. Match existing conventions.
 3. **Implement** — Focused edits. Native = truth, JS = view. `bun` for JS. Native test cmds only if native touched. Routes/layouts in `src/app/`; hooks/helpers/components elsewhere. No scope creep.
 4. **Verify** — Focused tests first. Broader if blast radius wide. Can't run -> say why.

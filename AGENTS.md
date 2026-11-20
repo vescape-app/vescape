@@ -141,11 +141,11 @@ Rules:
 agent guides. Read it before assuming something is undocumented; the rules that always apply are in
 this file, the depth is there.
 
-Root `CONTEXT.md` holds the domain language and `docs/adr/` the decisions behind it.
+Root `GLOSSARY.md` holds the domain language and `docs/adr/` the decisions behind it.
 
 Docs contain lasting reference material: agreed product behavior, current architecture, contracts,
 operating procedures, and accepted decisions with their rationale. Clearly distinguish agreed but
-unimplemented behavior from what the app does today. `CONTEXT.md` is a glossary, not a feature spec.
+unimplemented behavior from what the app does today. `GLOSSARY.md` is a glossary, not a feature spec.
 
 Keep investigation notes, code-review findings, proposed implementation plans, open questions,
 task checklists, and progress reports in the conversation or the relevant issue/PR. Do not add them
@@ -178,4 +178,4 @@ Use the default five-label triage vocabulary: `needs-triage`, `needs-info`, `rea
 
 ### Domain docs
 
-This is a single-context repo with root `CONTEXT.md` and root `docs/adr/`. See `docs/agents/domain.md`.
+This is a single-context repo with root `GLOSSARY.md` and root `docs/adr/`. See `docs/agents/domain.md`.
