@@ -32,6 +32,8 @@ interface FriendRidesState {
   clear: () => void
 }
 
+const PUBLIC_RIDE_LIMIT = 5
+
 let nonce = 0
 
 function viewer() {
@@ -56,8 +58,10 @@ export const useFriendRidesStore = create<FriendRidesState>((set, get) => ({
     const account = viewer()
     set({ accountId, rides: [], loading: true, failed: false })
     try {
-      const rides = await getFriendRides(accountId)
-      if (current === generation && account === viewer()) set({ rides, loading: false })
+      const { rides } = await getFriendRides(accountId, PUBLIC_RIDE_LIMIT)
+      if (current === generation && account === viewer()) {
+        set({ rides: rides.slice(0, PUBLIC_RIDE_LIMIT), loading: false })
+      }
     } catch {
       if (current === generation && account === viewer()) set({ loading: false, failed: true })
     }

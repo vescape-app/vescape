@@ -1699,8 +1699,9 @@ class VescapeCoreModule : Module() {
     }
     // A Friend's public rides and one ride's track; fetched per view, never stored.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFriendRides`
-    AsyncFunction("getFriendRides") Coroutine { accountId: String ->
-      RiderProfileApi.get(context.applicationContext).friendRides(accountId)
+    // @parity /modules/vescape-core/src/index.ts `getFriendRides`
+    AsyncFunction("getFriendRides") Coroutine { accountId: String, limit: Int?, before: String? ->
+      RiderProfileApi.get(context.applicationContext).friendRides(accountId, limit, before)
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFriendRideTrack`
     AsyncFunction("getFriendRideTrack") Coroutine { accountId: String, from: String, to: String ->

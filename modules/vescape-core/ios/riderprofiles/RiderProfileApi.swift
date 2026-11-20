@@ -159,22 +159,28 @@ final class RiderProfileApi {
     return row
   }
 
-  /// A Friend's public rides (solo included), newest first, at most 50. Refused (`not-friends`)
+  /// A Friend's public rides (solo included), newest first, one page at a time. Refused (`not-friends`)
   /// for anyone else. Private Ride Recordings never leave the phone, so they are not here.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friendRides`
-  /// @parity /modules/vescape-core/src/index.ts `FriendRide`
-  func friendRides(_ accountId: String) async throws -> [[String: Any?]] {
-    try unwrap(
-      await api.request(.get, path: "\(Self.friendsPath)/\(accountId)/rides", auth: .required) { body in
-        guard let rides = try Self.object(body)["rides"] as? [[String: Any]] else {
+  /// @parity /modules/vescape-core/src/index.ts `FriendRidesPage`
+  func friendRides(_ accountId: String, limit: Int? = nil, before: String? = nil) async throws -> [String: Any] {
+    var query: [String: String] = [:]
+    if let limit { query["limit"] = String(limit) }
+    query["before"] = before
+    return try unwrap(
+      await api.request(.get, path: "\(Self.friendsPath)/\(accountId)/rides", query: query, auth: .required) { body in
+        let json = try Self.object(body)
+        guard let rides = json["rides"] as? [[String: Any]] else {
           throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable rides")
         }
-        return try rides.map { ride -> [String: Any?] in
+        let rows = try rides.map { ride -> [String: Any?] in
           guard let startedAt = ride["startedAt"] as? String, let endedAt = ride["endedAt"] as? String
           else { throw RiderProfileApiError(code: RiderProfileApiError.refused, message: "Unreadable ride") }
           return ["startedAt": startedAt, "endedAt": endedAt]
         }
+        let nextBefore: Any = (json["nextBefore"] as? String).map { $0 as Any } ?? NSNull()
+        return ["rides": rows, "nextBefore": nextBefore]
       }
     )
   }

@@ -128,19 +128,29 @@ class RiderProfileApi(private val api: VescapeApi) {
   }
 
   /**
-   * A Friend's public rides (solo included), newest first, at most 50. Refused (`not-friends`)
+   * A Friend's public rides (solo included), newest first, one page at a time. Refused (`not-friends`)
    * for anyone else. Private Ride Recordings never leave the phone, so they are not here.
    *
    * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `friendRides`
-   * @parity /modules/vescape-core/src/index.ts `FriendRide`
+   * @parity /modules/vescape-core/src/index.ts `FriendRidesPage`
    */
-  suspend fun friendRides(accountId: String): List<Map<String, Any?>> = unwrap(
-    api.request(HttpMethod.GET, "$FRIENDS_PATH/$accountId/rides", auth = AuthMode.Required) { body ->
-      val rides = JSONObject(body).getJSONArray("rides")
-      List(rides.length()) { index ->
+  suspend fun friendRides(accountId: String, limit: Int? = null, before: String? = null): Map<String, Any?> = unwrap(
+    api.request(
+      HttpMethod.GET,
+      "$FRIENDS_PATH/$accountId/rides",
+      query = buildMap {
+        limit?.let { put("limit", it.toString()) }
+        before?.let { put("before", it) }
+      },
+      auth = AuthMode.Required,
+    ) { body ->
+      val json = JSONObject(body)
+      val rides = json.getJSONArray("rides")
+      val rows = List(rides.length()) { index ->
         val ride = rides.getJSONObject(index)
         mapOf("startedAt" to ride.getString("startedAt"), "endedAt" to ride.getString("endedAt"))
       }
+      mapOf("rides" to rows, "nextBefore" to (json.opt("nextBefore") as? String))
     },
   )
 

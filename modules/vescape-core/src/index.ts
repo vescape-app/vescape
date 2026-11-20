@@ -936,14 +936,21 @@ export interface RodeWithCrewRide {
 /**
  * One of a Friend's public rides, solo included. Mirrors vescape-server `src/rides/protocol.ts`;
  * no id on the wire, the time range addresses it.
- * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `friendRides`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friendRides`
  */
 export interface FriendRide {
   /** ISO time. */
   startedAt: string
   /** ISO time. */
   endedAt: string
+}
+
+/**
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `friendRides`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friendRides`
+ */
+export interface FriendRidesPage {
+  rides: FriendRide[]
+  nextBefore: string | null
 }
 
 export interface TelemetryEvent {
@@ -3299,7 +3306,11 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteFriendRequest(accountId: string): Promise<void>
   removeFriend(accountId: string): Promise<void>
   getRodeWith(from: string, to: string): Promise<RodeWithCrewRide[]>
-  getFriendRides(accountId: string): Promise<FriendRide[]>
+  getFriendRides(
+    accountId: string,
+    limit: number | null,
+    before: string | null,
+  ): Promise<FriendRidesPage>
   getFriendRideTrack(accountId: string, from: string, to: string): Promise<PublicTrackPoint[]>
   setDirectionPoint(latitude: number | null, longitude: number | null): Promise<void>
   recomputeNavigation(): Promise<void>
@@ -4863,9 +4874,18 @@ export async function getRodeWith(from: string, to: string): Promise<RodeWithCre
   return native.getRodeWith(from, to)
 }
 
-/** A Friend's public rides, newest first. Rejects with `RiderProfileErrorCode` (refused for non-friends). */
-export async function getFriendRides(accountId: string): Promise<FriendRide[]> {
-  return native.getFriendRides(accountId)
+/**
+ * A page of a Friend's public rides, newest first. Pass `nextBefore` as `before` to continue.
+ * Rejects with `RiderProfileErrorCode` (refused for non-friends).
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFriendRides`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFriendRides`
+ */
+export async function getFriendRides(
+  accountId: string,
+  limit?: number,
+  before?: string,
+): Promise<FriendRidesPage> {
+  return native.getFriendRides(accountId, limit ?? null, before ?? null)
 }
 
 /** A Friend's public track between `from` and `to` (ISO, at most 24 h apart). */

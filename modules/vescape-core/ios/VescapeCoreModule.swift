@@ -1745,9 +1745,10 @@ public class VescapeCoreModule: Module {
 
     // A Friend's public rides and one ride's track; fetched per view, never stored.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFriendRides`
-    AsyncFunction("getFriendRides") { (accountId: String, promise: Promise) in
+    // @parity /modules/vescape-core/src/index.ts `getFriendRides`
+    AsyncFunction("getFriendRides") { (accountId: String, limit: Int?, before: String?, promise: Promise) in
       Task {
-        do { promise.resolve(try await RiderProfileApi.shared.friendRides(accountId)) }
+        do { promise.resolve(try await RiderProfileApi.shared.friendRides(accountId, limit: limit, before: before)) }
         catch { Self.rejectRiderProfile(promise, error) }
       }
     }

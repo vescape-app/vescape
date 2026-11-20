@@ -9,15 +9,19 @@ final class RiderProfileApiTests: XCTestCase {
   private struct Transport: ApiTransport {
     let body: String
     let status: Int
-    func execute(_ request: ApiRequest) async throws -> ApiResponse { ApiResponse(status: status, body: body) }
+    let inspect: (ApiRequest) -> Void
+    func execute(_ request: ApiRequest) async throws -> ApiResponse {
+      inspect(request)
+      return ApiResponse(status: status, body: body)
+    }
   }
 
-  private func api(_ body: String, status: Int = 200) -> RiderProfileApi {
+  private func api(_ body: String, status: Int = 200, inspect: @escaping (ApiRequest) -> Void = { _ in }) -> RiderProfileApi {
     RiderProfileApi(api: VescapeApi(
       baseUrl: "https://api.vescape.app",
       appVersion: "1",
       credentialProvider: { DeviceCredential(serverUrl: "https://api.vescape.app", token: "token", accountId: "viewer", expiresAt: nil) },
-      transport: Transport(body: body, status: status)
+      transport: Transport(body: body, status: status, inspect: inspect)
     ))
   }
 
@@ -43,5 +47,20 @@ final class RiderProfileApiTests: XCTestCase {
     let detailStats = detail["stats"] as! [String: Any]
     XCTAssertTrue(detailStats["total"] is NSNull)
     XCTAssertEqual((detailStats["months"] as! [[String: Any?]]).count, 0)
+  }
+
+  func testFriendRidesPagesSendLimitAndCursor() async throws {
+    let cursor = "2026-01-01T00:00:00Z"
+    let first = try await api(#"{"rides":[{"startedAt":"\#(cursor)","endedAt":"2026-01-01T00:01:00Z"}],"nextBefore":"\#(cursor)"}"#) {
+      XCTAssertEqual($0.url, "https://api.vescape.app/api/friends/rider/rides?limit=5")
+    }.friendRides("rider", limit: 5)
+    XCTAssertEqual((first["rides"] as? [[String: Any?]])?.first?["startedAt"] as? String, cursor)
+    XCTAssertEqual(first["nextBefore"] as? String, cursor)
+
+    let last = try await api(#"{"rides":[],"nextBefore":null}"#) {
+      let url = URLComponents(string: $0.url)
+      XCTAssertEqual(url?.queryItems?.first(where: { $0.name == "before" })?.value, cursor)
+    }.friendRides("rider", limit: 5, before: first["nextBefore"] as? String)
+    XCTAssertTrue(last["nextBefore"] is NSNull)
   }
 }

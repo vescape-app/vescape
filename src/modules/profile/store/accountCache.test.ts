@@ -4,6 +4,12 @@ import { expect, mock, test } from 'bun:test'
 
 let finish: (value: unknown) => void
 let credential: { state: string; accountId?: string } = { state: 'ready', accountId: 'viewer' }
+const getFriendRides = mock(
+  (_accountId: string, _limit: number) =>
+    new Promise((resolve) => {
+      finish = resolve
+    }),
+)
 mock.module('vescape-core', () => ({
   getDeviceCredentialState: () => credential,
   getRiderProfile: () =>
@@ -14,10 +20,7 @@ mock.module('vescape-core', () => ({
     new Promise((resolve) => {
       finish = resolve
     }),
-  getFriendRides: () =>
-    new Promise((resolve) => {
-      finish = resolve
-    }),
+  getFriendRides,
   getFriendRideTrack: () =>
     new Promise((resolve) => {
       finish = resolve
@@ -85,4 +88,16 @@ test('same ride after account transition rejects the old response', async () => 
   expect(rode.getState().riders).toEqual([])
   finish!([])
   await second
+})
+
+test('friend rides store requests and retains at most five public rides', async () => {
+  const rides = Array.from({ length: 6 }, (_, index) => ({
+    startedAt: new Date(Date.UTC(2026, 0, 6 - index)).toISOString(),
+    endedAt: new Date(Date.UTC(2026, 0, 6 - index, 0, 1)).toISOString(),
+  }))
+  const pending = friends.getState().load('friend')
+  expect(getFriendRides).toHaveBeenLastCalledWith('friend', 5)
+  finish!({ rides, nextBefore: rides.at(-1)?.startedAt })
+  await pending
+  expect(friends.getState()).toMatchObject({ rides: rides.slice(0, 5), loading: false })
 })
