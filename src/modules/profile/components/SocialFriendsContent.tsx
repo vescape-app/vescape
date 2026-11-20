@@ -4,10 +4,12 @@ import { MagnifyingGlassIcon, UserPlusIcon, UsersIcon, WifiSlashIcon } from 'pho
 import { searchRiders, type Friend, type RiderProfile } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
+import { SkeletonLine, SkeletonPulse } from '@/components/base/Skeleton'
 import { Placeholder } from '@/components/base/Placeholder'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { FriendAction } from '@/modules/profile/components/FriendAction'
 import { FriendRow } from '@/modules/profile/components/FriendRow'
 import {
@@ -18,7 +20,7 @@ import {
 } from '@/modules/profile/lib/friends'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 
-const SEARCH_DEBOUNCE_MS = 300
+const SEARCH_DEBOUNCE_MS = 400
 
 type OpenRider = (accountId: string) => void
 
@@ -47,7 +49,7 @@ export function SocialRiderSearchResults({
     <View style={styles.sections}>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {prefix ? (
-        <SearchResults key={prefix} prefix={prefix} onOpenRider={onOpenRider} />
+        <SearchResults prefix={prefix} onOpenRider={onOpenRider} />
       ) : query.trim() ? (
         <Text style={styles.notice}>Use up to 20 letters, digits or underscores.</Text>
       ) : (
@@ -62,17 +64,26 @@ export function SocialRiderSearchResults({
   )
 }
 
+/**
+ * Results for the typed prefix. Answers are cached per prefix, so backspacing is instant, and while
+ * a longer prefix waits for the server the last answer narrowed to it stays on screen (dimmed), so
+ * the list never blanks between keystrokes. Skeleton rows show only when nothing fits yet.
+ */
 function SearchResults({ prefix, onOpenRider }: { prefix: string; onOpenRider: OpenRider }) {
-  const [result, setResult] = useState<RiderProfile[] | null>(null)
+  const [answers, setAnswers] = useState<ReadonlyMap<string, RiderProfile[]>>(() => new Map())
+  const [last, setLast] = useState<{ prefix: string; riders: RiderProfile[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const cached = answers.get(prefix)
 
   useEffect(() => {
+    if (cached) return
     let live = true
     const timer = setTimeout(() => {
       searchRiders(prefix).then(
-        (items) => {
+        (riders) => {
           if (!live) return
-          setResult(items)
+          setAnswers((current) => new Map(current).set(prefix, riders))
+          setLast({ prefix, riders })
           setError(null)
         },
         (cause: unknown) => {
@@ -84,22 +95,29 @@ function SearchResults({ prefix, onOpenRider }: { prefix: string; onOpenRider: O
       live = false
       clearTimeout(timer)
     }
-  }, [prefix])
+  }, [prefix, cached])
 
-  if (error) return <Text style={styles.error}>{error}</Text>
-  if (!result) return <Text style={styles.notice}>Searching…</Text>
-  if (!result.length)
+  const narrowed =
+    last && prefix.toLowerCase().startsWith(last.prefix.toLowerCase())
+      ? last.riders.filter((rider) => rider.nick.toLowerCase().startsWith(prefix.toLowerCase()))
+      : null
+  const riders = cached ?? (narrowed?.length ? narrowed : null)
+
+  if (error && !cached) return <Text style={styles.error}>{error}</Text>
+  if (!riders && !cached) return <SearchSkeleton />
+  if (!riders?.length)
     return (
       <Placeholder
         compact
         icon={MagnifyingGlassIcon}
         title="No riders found"
         description="Try a different nick."
+        style={styles.searchEmpty}
       />
     )
   return (
-    <View>
-      {result.map((rider) => (
+    <View style={!cached && styles.pending}>
+      {riders.map((rider) => (
         <FriendRow
           key={rider.accountId}
           nick={rider.nick}
@@ -107,6 +125,26 @@ function SearchResults({ prefix, onOpenRider }: { prefix: string; onOpenRider: O
           onPress={() => onOpenRider(rider.accountId)}
           trailing={<FriendAction accountId={rider.accountId} nick={rider.nick} />}
         />
+      ))}
+    </View>
+  )
+}
+
+/** Skeleton rows match FriendRow's min height; the empty state takes the same space. */
+const SKELETON_ROW_HEIGHT = 48
+const SKELETON_WIDTHS = ['55%', '40%', '48%'] as const
+
+function SearchSkeleton() {
+  const neutral = useResolvedNeutralColors()
+  return (
+    <View accessibilityLabel="Searching riders" testID="rider-search-skeleton">
+      {SKELETON_WIDTHS.map((width, index) => (
+        <SkeletonPulse key={width} index={index} style={styles.skeletonRow}>
+          <View style={[styles.skeletonAvatar, { backgroundColor: neutral.border }]} />
+          <View style={styles.skeletonText}>
+            <SkeletonLine lineHeight={17} width={width} />
+          </View>
+        </SkeletonPulse>
       ))}
     </View>
   )
@@ -240,4 +278,14 @@ const styles = StyleSheet.create({
   addFriend: { alignSelf: 'flex-end' },
   notice: { color: theme.neutral.textSecondary, fontSize: 12, lineHeight: 17 },
   error: { color: theme.status.error.text, fontSize: 12 },
+  pending: { opacity: 0.6 },
+  searchEmpty: { minHeight: SKELETON_WIDTHS.length * SKELETON_ROW_HEIGHT },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: SKELETON_ROW_HEIGHT,
+  },
+  skeletonAvatar: { width: 32, height: 32, borderRadius: 16 },
+  skeletonText: { flex: 1 },
 })
