@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { BroadcastIcon, ClockIcon, PowerIcon, InfinityIcon, type Icon } from 'phosphor-react-native'
 import * as Haptics from 'expo-haptics'
 import Svg, { Defs, Path } from 'react-native-svg'
@@ -541,9 +541,10 @@ export function PublicRideSelector({
           />
         </View>
         {!disabled && sharing && !live ? (
-          <Text style={[styles.relayHint, { color: neutral.textSecondary }]}>
-            Waiting for the server to confirm sharing…
-          </Text>
+          <View style={styles.relayHint}>
+            <ActivityIndicator size="small" color={accent} />
+            <Text style={{ color: neutral.textSecondary }}>Waiting for the server to confirm…</Text>
+          </View>
         ) : null}
       </View>
       {overlayAction ? (
@@ -584,6 +585,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   live: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   liveDot: { width: 6, height: 6, borderRadius: 3 },
-  relayHint: { textAlign: 'center' },
+  relayHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   status: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
 })
