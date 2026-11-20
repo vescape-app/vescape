@@ -7,11 +7,18 @@ import { Button } from '@/components/base/Button'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { AccountPill } from '@/modules/profile/components/AccountPill'
 import { FriendAction } from '@/modules/profile/components/FriendAction'
 import { ProfileStatsDetails } from '@/modules/profile/components/ProfileStatsDetails'
+import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
+import { useDeviceAccountReady } from '@/modules/profile/hooks/useDeviceAccountReady'
+import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems'
+import { EMPTY_PROFILE_STATS } from '@/modules/profile/hooks/useProfileStats'
 import { friendStatus } from '@/modules/profile/lib/friends'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 
@@ -27,21 +34,29 @@ export function RiderProfileCard({
   afterStats?: ReactNode
 }) {
   const neutral = useResolvedNeutralColors()
-  const [result, setResult] = useState<{ detail: RiderDetail | null; failed: boolean } | null>(null)
+  const signedIn = useDeviceAccountReady()
+  const [loaded, setLoaded] = useState<{
+    accountId: string
+    detail: RiderDetail | null
+    failed: boolean
+  } | null>(null)
   useEffect(() => {
+    if (!signedIn) return
     let live = true
     getRider(accountId).then(
       (detail) => {
-        if (live) setResult({ detail, failed: false })
+        if (live) setLoaded({ accountId, detail, failed: false })
       },
       () => {
-        if (live) setResult({ detail: null, failed: true })
+        if (live) setLoaded({ accountId, detail: null, failed: true })
       },
     )
     return () => {
       live = false
     }
-  }, [accountId])
+  }, [accountId, signedIn])
+
+  const result = signedIn && loaded?.accountId === accountId ? loaded : null
 
   const rider = result?.detail ?? seen
   const stats = result?.detail?.stats
@@ -63,11 +78,13 @@ export function RiderProfileCard({
         <View style={styles.flex}>
           <Text numberOfLines={1} style={styles.nick}>
             {rider?.nick ??
-              (result?.failed
-                ? 'Rider profile unavailable'
-                : result
-                  ? 'Rider not found'
-                  : 'Loading rider…')}
+              (!signedIn
+                ? 'Rider'
+                : result?.failed
+                  ? 'Rider profile unavailable'
+                  : result
+                    ? 'Rider not found'
+                    : 'Loading rider…')}
           </Text>
           {caption ? <Text style={styles.caption}>{caption}</Text> : null}
         </View>
@@ -85,7 +102,12 @@ export function RiderProfileCard({
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {children}
-      <PublicRiderStats stats={stats} loading={!result} failed={result?.failed} />
+      <PublicRiderStats
+        signedIn={signedIn}
+        stats={stats}
+        loading={signedIn && !result}
+        failed={result?.failed}
+      />
       {afterStats}
       {friend ? (
         <ConfirmModal
@@ -106,10 +128,12 @@ export function RiderProfileCard({
 }
 
 function PublicRiderStats({
+  signedIn,
   stats,
   loading,
   failed,
 }: {
+  signedIn: boolean
   stats?: RiderDetail['stats']
   loading: boolean
   failed?: boolean
@@ -117,22 +141,49 @@ function PublicRiderStats({
   return (
     <View style={styles.section}>
       <SectionHeader title="Riding stats" icon={ChartBarIcon} color={theme.palette.purple.color} />
-      {failed ? (
-        <Text style={styles.error}>Couldn’t load ride stats.</Text>
-      ) : !loading && !stats?.total && !stats?.months.length ? (
-        <Text style={styles.caption}>No public ride stats available.</Text>
-      ) : null}
-      <ProfileStatsDetails
-        total={stats?.total ?? null}
-        months={
-          stats?.months.map((entry) => {
-            const [year, month] = entry.month.split('-').map(Number)
-            return { year, month, stats: entry }
-          }) ?? []
-        }
-        loading={loading}
-        unavailable={failed}
-      />
+      {signedIn ? (
+        <>
+          {failed ? (
+            <Text style={styles.error}>Couldn’t load ride stats.</Text>
+          ) : !loading && !stats?.total && !stats?.months.length ? (
+            <Text style={styles.caption}>No public ride stats available.</Text>
+          ) : null}
+          <ProfileStatsDetails
+            total={stats?.total ?? null}
+            months={
+              stats?.months.map((entry) => {
+                const [year, month] = entry.month.split('-').map(Number)
+                return { year, month, stats: entry }
+              }) ?? []
+            }
+            loading={loading}
+            unavailable={failed}
+          />
+        </>
+      ) : (
+        <SignedOutRiderStats />
+      )}
+    </View>
+  )
+}
+
+function SignedOutRiderStats() {
+  const surface = useResolvedSecondaryWidgetSurface()
+  const items = useProfileStatItems(EMPTY_PROFILE_STATS).map((item) => ({ ...item, value: DASH }))
+
+  return (
+    <View>
+      <View
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[surface, styles.signedOutBox, styles.covered]}
+      >
+        <ProfileStatsGrid items={items} columns={3} />
+      </View>
+      <View style={styles.overlay}>
+        <AccountPill signInSize="lg" />
+      </View>
     </View>
   )
 }
@@ -145,4 +196,7 @@ const styles = StyleSheet.create({
   nick: { color: theme.neutral.textPrimary, fontSize: 20, fontWeight: '700' },
   caption: { color: theme.neutral.textSecondary, fontSize: 11, lineHeight: 17, flexShrink: 1 },
   error: { color: theme.status.error.text, fontSize: 12 },
+  signedOutBox: { padding: 16 },
+  covered: { opacity: 0.25 },
+  overlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
 })
