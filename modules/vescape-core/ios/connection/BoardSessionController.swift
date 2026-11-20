@@ -3276,8 +3276,11 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `prefillReplayWarmup`
   private func prefillReplayWarmup(_ board: SimulatedBoard, warmupMs: Int64) {
     let startedAt = Self.wallMs()
+    // Anything older falls out of the live window anyway.
+    let oldest = startedAt - Int64(config?.liveHistoryLimitMinutes ?? 5) * 60_000
     for event in board.warmup {
       let stamp = startedAt - (warmupMs - event.t)
+      if stamp < oldest { continue }
       switch event {
       case let .frame(_, payload): prefillFrame(payload, stamp: stamp)
       case let .fix(fix): locationTracker.prefill(replayedLocation(fix, atMs: stamp))

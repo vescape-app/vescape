@@ -3381,14 +3381,18 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val warmup = board.warmup
         if (warmup.isEmpty()) return
         val startedAt = System.currentTimeMillis()
+        // Anything older falls out of the live window anyway.
+        val oldest = startedAt - telemetryPipeline.recentWindowMs()
         for (event in warmup) {
             val stamp = startedAt - (warmupMs - event.t)
+            if (stamp < oldest) continue
             when (event) {
                 is ReplayEvent.Frame -> prefillFrame(event.payload, stamp, session)
                 is ReplayEvent.Fix -> locationTracker.prefill(replayedLocation(event.fix, stamp))
                 is ReplayEvent.ConfigWrite -> Unit
             }
         }
+        telemetryPipeline.finishPrefill()
         // Prefill stamps no response; the link has not answered yet.
         telemetryPipeline.cancelStaleWatchdog()
     }

@@ -315,7 +315,17 @@ internal class TelemetryPipeline(
      */
     fun prefill(parsed: RefloatTelemetry, sessionToken: BoardSession): ProcessedTelemetry? {
         val cfg = currentConfig(sessionToken) ?: return null
-        return retain(parsed, cfg)
+        return retain(parsed, cfg, sanitize = false)
+    }
+
+    /** Labels the prefilled window once: per sample, the warmup would sanitize it n² times. */
+    fun finishPrefill() {
+        val updates = synchronized(liveLock) { sanitizeLivePoints() }
+        if (updates.isEmpty()) return
+        synchronized(recentLock) {
+            speedPeak.invalidate()
+            dutyPeak.invalidate()
+        }
     }
 
     private fun currentConfig(sessionToken: BoardSession): SessionConfig? {
@@ -325,7 +335,7 @@ internal class TelemetryPipeline(
         return cfg
     }
 
-    private fun retain(parsed: RefloatTelemetry, cfg: SessionConfig): ProcessedTelemetry {
+    private fun retain(parsed: RefloatTelemetry, cfg: SessionConfig, sanitize: Boolean = true): ProcessedTelemetry {
         val capture = captureBuilder(parsed, cfg, canId)
         val baseEventMap = parsed.toMap().toMutableMap()
         val state = FullTelemetryState.from(capture)
@@ -333,7 +343,7 @@ internal class TelemetryPipeline(
         val updates = synchronized(liveLock) {
             liveTelemetryPoints.addLast(LivePoint(bucketPoint, baseEventMap))
             pruneLiveTelemetryPoints(parsed.lastPacketAt)
-            sanitizeLivePoints()
+            if (sanitize) sanitizeLivePoints() else emptyList()
         }
         val peaks = synchronized(recentLock) {
             // Re-labelled samples can move the peak either way.
