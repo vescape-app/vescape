@@ -63,7 +63,7 @@ export default function MapSettingsScreen() {
             icon={MapPinIcon}
             iconColor={theme.palette.sky.color}
             label="Hide telemetry map details"
-            hint="Hide POI names and icons on the home map; Explore still shows full detail"
+            hint="Hides POIs, transit stops, and district/town labels on the home map while keeping cities and roads visible. Explore always shows full detail."
             right={
               <Switch
                 value={hideTelemetryMapDetails}

@@ -20,13 +20,15 @@ const ONE_DARK_MAP_STYLE_OBJECT = JSON.parse(ONE_DARK_MAP_STYLE) as {
   layers?: OneDarkStyleLayer[]
 }
 
-const DISTRICT_LABEL_LAYER_IDS = new Set([
+export const CUSTOM_DISTRICT_LABEL_LAYER_IDS = [
   'place-label-region',
   'place-label-subdivision',
   'place-label-town',
   'place-label-village',
   'place-label-hamlet',
-])
+] as const
+
+const DISTRICT_LABEL_LAYER_IDS = new Set<string>(CUSTOM_DISTRICT_LABEL_LAYER_IDS)
 
 const POI_LAYER_IDS = new Set(['poi-label', 'transit-label'])
 

@@ -2,7 +2,9 @@ import Mapbox, { SymbolLayer } from '@rnmapbox/maps'
 import { memo } from 'react'
 
 import type { MapStyleKey } from '@/modules/map/constants/mapStyles'
+import { CUSTOM_DISTRICT_LABEL_LAYER_IDS } from '@/modules/map/constants/oneDarkMapStyle'
 import { ONE_DARK_POI_ICON_COLOR } from '@/modules/map/constants/oneDarkOverlayLayers'
+import { MAPBOX_V11_DISTRICT_LABEL_LAYER_IDS } from '@/screens/main/map/baseStyleLayerIds'
 
 const SATELLITE_ROAD_LINE_LAYER_IDS = [
   'road-path',
@@ -66,6 +68,12 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
         {existingLayerIds.has('transit-label') && (
           <SymbolLayer id="transit-label" existing style={{ visibility }} />
         )}
+        {CUSTOM_DISTRICT_LABEL_LAYER_IDS.map(
+          (id) =>
+            existingLayerIds.has(id) && (
+              <SymbolLayer key={id} id={id} existing style={{ visibility }} />
+            ),
+        )}
       </>
     )
   }
@@ -97,6 +105,12 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
             }}
           />
         )}
+        {CUSTOM_DISTRICT_LABEL_LAYER_IDS.map(
+          (id) =>
+            existingLayerIds.has(id) && (
+              <SymbolLayer key={id} id={id} existing style={{ visibility }} />
+            ),
+        )}
       </>
     )
   }
@@ -109,6 +123,12 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
         )}
         {existingLayerIds.has('transit-label') && (
           <SymbolLayer id="transit-label" existing style={{ visibility }} />
+        )}
+        {MAPBOX_V11_DISTRICT_LABEL_LAYER_IDS.map(
+          (id) =>
+            existingLayerIds.has(id) && (
+              <SymbolLayer key={id} id={id} existing style={{ visibility }} />
+            ),
         )}
       </>
     )

@@ -21,7 +21,7 @@ export function getSatelliteOverlayMapStyle(resolvedTheme: ResolvedTheme) {
   return getSatelliteDarkMapStyle(
     true,
     true,
-    false,
+    true,
     true,
     0.8,
     resolvedTheme === 'light' ? '#e8eef5' : '#172033',
