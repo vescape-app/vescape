@@ -7,6 +7,7 @@ import {
   ClockIcon,
   DeviceMobileIcon,
   GaugeIcon,
+  PlugIcon,
   ThermometerSimpleIcon,
   UserCircleIcon,
   type Icon,
@@ -249,6 +250,53 @@ function compactMetric(
   return { MetricIcon, metric, metricLabel, metricColor }
 }
 
+type CompactRiderStatus = 'offline' | 'no-board' | 'live'
+
+function compactRiderStatus(
+  rider: RosterRider,
+  presence: RiderReadings | null,
+): CompactRiderStatus {
+  if (rider.away || rider.stale) return 'offline'
+  const hasBoard = Boolean(presence?.boardName || presence?.speed != null || presence?.soc != null)
+  if ((rider.isSelf || Boolean(rider.presence)) && !hasBoard) return 'no-board'
+  return 'live'
+}
+
+function compactAccessibilityLabel({
+  rider,
+  status,
+  signalKind,
+  age,
+  soc,
+  metric,
+  metricLabel,
+  distance,
+}: {
+  rider: RosterRider
+  status: CompactRiderStatus
+  signalKind?: string
+  age: string | null
+  soc?: string
+  metric?: string
+  metricLabel: string
+  distance?: string
+}): string {
+  const readings =
+    status === 'offline'
+      ? ['Disconnected', age]
+      : status === 'no-board'
+        ? ['No board connected', distance]
+        : [soc && `Board battery ${soc}`, metric && `${metricLabel} ${metric}`, distance]
+  return [
+    rider.name,
+    rider.isSelf && 'You',
+    signalKind && riderSignalKindInfo(signalKind)?.label,
+    ...readings,
+  ]
+    .filter(Boolean)
+    .join(', ')
+}
+
 function CompactRiderRow({
   rider,
   distance,
@@ -266,28 +314,22 @@ function CompactRiderRow({
   const signal = useActiveRiderSignal(rider.signal)
   const s = useRiderStats(presence)
   const { speedUnit } = useFormat()
-  const disconnected =
-    rider.away || rider.stale || (!presence?.boardName && presence?.speed == null)
-  const now = useMinuteNow(rider.away || (disconnected && rider.lastSeen > 0))
+  const status = compactRiderStatus(rider, presence)
+  const offline = status === 'offline'
+  const now = useMinuteNow(offline && rider.lastSeen > 0)
   const divided = divider ? [styles.rowDivided, { borderTopColor: divider }] : null
   const reading = compactMetric(presence, s, speedUnit)
-  const { metric, metricLabel } = reading
-  const age = rider.lastSeen > 0 ? fmtTimeAgo(rider.lastSeen, now) : null
-  const readings = disconnected
-    ? ['Disconnected', age]
-    : [
-        s.soc.value && `Board battery ${s.soc.value}`,
-        metric && `${metricLabel} ${metric}`,
-        distance,
-      ]
-  const label = [
-    rider.name,
-    rider.isSelf && 'You',
-    signal && riderSignalKindInfo(signal.kind)?.label,
-    ...readings,
-  ]
-    .filter(Boolean)
-    .join(', ')
+  const age = offline && rider.lastSeen > 0 ? fmtTimeAgo(rider.lastSeen, now) : null
+  const label = compactAccessibilityLabel({
+    rider,
+    status,
+    signalKind: signal?.kind,
+    age,
+    soc: s.soc.value,
+    metric: reading.metric,
+    metricLabel: reading.metricLabel,
+    distance,
+  })
   return (
     <Pressable
       style={[styles.compactRow, divided]}
@@ -307,13 +349,13 @@ function CompactRiderRow({
           </Text>
           {signal ? <SignalBadge kind={signal.kind} /> : null}
         </View>
-        <CompactRiderStats disconnected={disconnected} age={age} battery={s.soc} metric={reading} />
+        <CompactRiderStats status={status} age={age} battery={s.soc} metric={reading} />
       </View>
       {rider.isSelf ? (
         <View style={styles.compactBadgeSlot}>
           <Text style={[styles.selfTag, styles.compactSelfTag]}>You</Text>
         </View>
-      ) : !disconnected && distance ? (
+      ) : !offline && distance ? (
         <Text style={styles.distance}>{distance}</Text>
       ) : null}
       {onPress ? <CaretRightIcon size={14} color={theme.neutral.textSecondary} /> : null}
@@ -322,29 +364,37 @@ function CompactRiderRow({
 }
 
 function CompactRiderStats({
-  disconnected,
+  status,
   age,
   battery,
   metric: { MetricIcon, metric, metricColor },
 }: {
-  disconnected: boolean
+  status: CompactRiderStatus
   age: string | null
   battery: ReturnType<typeof useRiderStats>['soc']
   metric: ReturnType<typeof compactMetric>
 }) {
+  if (status === 'live' && !battery.value && !metric) return null
   const batteryColor =
     battery.level === 'normal'
       ? theme.palette.groupRide.color
       : TELEMETRY_LEVEL_COLOR[battery.level]
   return (
     <View style={styles.compactStats}>
-      {disconnected ? (
+      {status === 'offline' ? (
         <>
           <ClockIcon size={14} color={theme.palette.amber.color} />
           <View style={styles.disconnected}>
             <Text style={[styles.caption, { color: theme.palette.amber.text }]}>Disconnected</Text>
             {age ? <Text style={styles.caption}>{age}</Text> : null}
           </View>
+        </>
+      ) : status === 'no-board' ? (
+        <>
+          <PlugIcon size={14} color={theme.neutral.textSecondary} />
+          <Text style={styles.caption} numberOfLines={1}>
+            No board connected
+          </Text>
         </>
       ) : (
         <>

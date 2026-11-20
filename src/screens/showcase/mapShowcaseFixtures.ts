@@ -201,7 +201,7 @@ function fixtureTrail(
 /** Where the showcase roster measures rider distances from: the camera centre. */
 export const FIXTURE_OWN_LOCATION = { lat: BASE_LAT, lng: BASE_LON }
 
-/** Other Riders: live, live with hot telemetry, stale, and away for minutes. */
+/** Other Riders: live, live with hot telemetry, stale, away for minutes, and phone-only without a board. */
 export const FIXTURE_RIDERS: RosterRider[] = [
   {
     id: 'fixture-rider-ana',
@@ -279,6 +279,24 @@ export const FIXTURE_RIDERS: RosterRider[] = [
     stale: true,
     away: true,
     lastSeen: NOW - 7 * 60_000,
+    isSelf: false,
+  },
+  {
+    id: 'fixture-rider-leo',
+    name: 'Leo',
+    presence: {
+      lat: BASE_LAT - 0.0018,
+      lng: BASE_LON - 0.0024,
+      heading: null,
+      speed: null,
+      soc: null,
+      phoneBattery: 0.64,
+      boardName: null,
+    },
+    trail: null,
+    stale: false,
+    away: false,
+    lastSeen: NOW,
     isSelf: false,
   },
 ]
