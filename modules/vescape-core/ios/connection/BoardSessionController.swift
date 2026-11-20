@@ -1198,9 +1198,11 @@ internal final class BoardSessionController: VescGattListener {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`
   private func latestRiderPresence() -> RiderPresence? {
-    guard replayTransport == nil,
-          let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)
+    guard let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)
     else { return nil }
+    // A replay's fixes carry the Session Clock, which can sit far from now; the relay
+    // only takes positions near wall time, so a replayed fix is stamped as it is sent.
+    let replaying = replayTransport != nil
     let telemetry = latestTelemetry
     let telemetryFresh = telemetry != nil && !isTelemetryStale()
     return RiderPresence(
@@ -1214,7 +1216,7 @@ internal final class BoardSessionController: VescGattListener {
       phoneBattery: readPhoneBattery(),
       boardName: config.map { $0.name.isEmpty ? boardName : $0.name } ?? nil,
       target: groupRideTarget,
-      at: location.timestamp
+      at: replaying ? Int64(Date().timeIntervalSince1970 * 1000) : location.timestamp
     )
   }
 

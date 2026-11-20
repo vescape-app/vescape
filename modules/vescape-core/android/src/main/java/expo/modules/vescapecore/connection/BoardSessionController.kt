@@ -3512,7 +3512,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
     private fun latestRiderPresence(): RiderPresence? {
-        if (replayTransport != null || boardConfig?.replayRecordingName != null) return null
+        // A replay's fixes carry the Session Clock, which can sit far from now; the relay
+        // only takes positions near wall time, so a replayed fix is stamped as it is sent.
+        val replaying = replayTransport != null || boardConfig?.replayRecordingName != null
         val location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?: locationTracker.latestLocation)
             ?: return null
         val currentTelemetry = telemetry
@@ -3528,7 +3530,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             phoneBattery = readPhoneBattery(service),
             boardName = if (boardConfig != null) (boardConfig?.deviceName ?: selectedBoardName) else null,
             target = groupRideTarget,
-            at = location.timestamp,
+            at = if (replaying) System.currentTimeMillis() else location.timestamp,
         )
     }
 
