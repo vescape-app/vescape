@@ -553,7 +553,6 @@ internal final class BoardSessionController: VescGattListener {
     liveSeries.generation = { [weak self] in self?.connectionSeq ?? 0 }
     liveSeries.setWindowMinutes(config.liveHistoryLimitMinutes)
     beginSession(config: config, onSuccess: onSuccess, onError: onError)
-    if let simulatedBoard, let spec = config.replay { prefillReplayWarmup(simulatedBoard, warmupMs: spec.warmupMs) }
     armConnectTimeout()
     transport.connect(peripheralId: config.bleId)
   }
@@ -1752,6 +1751,9 @@ internal final class BoardSessionController: VescGattListener {
     lastDispatchedFaultCode = faultCodeUnknown
     lastFaultDispatchAtMs = 0
     lastLiveTelemetryRefreshAt = 0
+    // Before the phase change: JS takes its new-session snapshot on it, which must already hold the
+    // warmup.
+    if let simulatedBoard, let spec = config.replay { prefillReplayWarmup(simulatedBoard, warmupMs: spec.warmupMs) }
     setPhase(.connecting)
     if let session {
       updateLinkIntegrity(session.markOutdatedIfIncomplete(expected: config.linkIdentity()))

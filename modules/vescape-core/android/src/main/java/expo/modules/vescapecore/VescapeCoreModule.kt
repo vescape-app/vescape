@@ -39,6 +39,7 @@ import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.recording.StorageOutageEventBridge
 import expo.modules.vescapecore.replay.ReplayRecording
 import expo.modules.vescapecore.replay.ReplayRecordings
+import expo.modules.vescapecore.replay.SimulatedBoard
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.service.ReplaySpec
@@ -102,6 +103,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "VescapeCore"
@@ -803,19 +805,10 @@ class VescapeCoreModule : Module() {
     AsyncFunction("stopDebugReplay") { promise: Promise ->
       CoreForegroundService.stopBoardSession(context.applicationContext) { promise.resolve(null) }
     }
-    Function("getDebugReplayState") { debugReplayStateMap() }
-    Function("setDebugReplayPaused") { paused: Boolean ->
-      CoreForegroundService.replayPlayback()?.setPaused(paused)
-      debugReplayStateMap()
-    }
-    Function("setDebugReplayLoop") { loop: Boolean ->
-      CoreForegroundService.replayPlayback()?.setLoop(loop)
-      debugReplayStateMap()
-    }
-    Function("dropDebugReplayLink") {
-      CoreForegroundService.replayPlayback()?.dropLink()
-      debugReplayStateMap()
-    }
+    Function("getDebugReplayState") { debugReplayStateMap {} }
+    Function("setDebugReplayPaused") { paused: Boolean -> debugReplayStateMap { it.setPaused(paused) } }
+    Function("setDebugReplayLoop") { loop: Boolean -> debugReplayStateMap { it.setLoop(loop) } }
+    Function("dropDebugReplayLink") { debugReplayStateMap { it.dropLink() } }
     Function("reportUiError") { message: String, source: String?, stack: String? ->
       DiagnosticReporter.get(context.applicationContext).capture(
         "ui_error",
@@ -2069,6 +2062,7 @@ class VescapeCoreModule : Module() {
    * recording at its end. Stop = normal disconnect.
    *
    * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startDebugReplay`
+   * @parity /modules/vescape-core/src/index.ts `DebugReplayOptions`
    */
   private suspend fun startDebugReplay(name: String, options: Map<String, Any?>?, promise: Promise) {
     val appCtx = context.applicationContext
@@ -2094,18 +2088,30 @@ class VescapeCoreModule : Module() {
     )
   }
 
-  /** @parity /modules/vescape-core/ios/VescapeCoreModule.swift `debugReplayStateMap` */
-  private fun debugReplayStateMap(): Map<String, Any?>? =
-    CoreForegroundService.replayPlayback()?.state()?.let { state ->
-      mapOf(
-        "recording" to state.recording,
-        "positionMs" to state.positionMs,
-        "durationMs" to state.durationMs,
-        "paused" to state.paused,
-        "loop" to state.loop,
-        "linked" to state.linked,
-      )
+  /**
+   * Applies [control] to the playing replay on main (its home) and returns the state after it, or
+   * `null` when no replay session is up.
+   *
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `debugReplayStateMap`
+   */
+  private fun debugReplayStateMap(control: (SimulatedBoard) -> Unit): Map<String, Any?>? {
+    val read = FutureTask {
+      CoreForegroundService.replayPlayback()?.let { board ->
+        control(board)
+        val state = board.state()
+        mapOf(
+          "recording" to state.recording,
+          "positionMs" to state.positionMs,
+          "durationMs" to state.durationMs,
+          "paused" to state.paused,
+          "loop" to state.loop,
+          "linked" to state.linked,
+        )
+      }
     }
+    if (Looper.myLooper() == Looper.getMainLooper()) read.run() else Handler(Looper.getMainLooper()).post(read)
+    return read.get()
+  }
 
   private suspend fun probeBoardLink(bleId: String, probeId: String): Map<String, Any?> {
     if (bleId.isBlank()) {

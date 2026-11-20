@@ -187,7 +187,12 @@ class CoreForegroundService : Service() {
                 onError(result.errorCode(), result.errorMessage("Board session service start skipped"))
                 return
             }
-            instance?.controller?.consumePendingStart()
+            // The session belongs on main, the controller's thread; JS and coroutine callers are not.
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                instance?.controller?.consumePendingStart()
+            } else {
+                Handler(Looper.getMainLooper()).post { instance?.controller?.consumePendingStart() }
+            }
         }
 
         fun stopBoardSession(context: Context, onSuccess: () -> Unit = {}) {

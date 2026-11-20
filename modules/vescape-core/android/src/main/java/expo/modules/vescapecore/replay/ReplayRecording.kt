@@ -23,7 +23,11 @@ import org.json.JSONObject
 /** One payload at its recorded offset. */
 internal class TimedPayload(val t: Long, val payload: ByteArray)
 
-/** What plays on a [SimulatedBoard]'s timeline, by recorded offset. */
+/**
+ * What plays on a [SimulatedBoard]'s timeline, by recorded offset.
+ *
+ * @parity /modules/vescape-core/ios/replay/ReplayRecording.swift `ReplayEvent`
+ */
 internal sealed class ReplayEvent(val t: Long) {
     /** A board frame nothing asked for, or one the app polls for: telemetry, BMS, anything unknown. */
     class Frame(t: Long, val payload: ByteArray) : ReplayEvent(t)
@@ -178,7 +182,11 @@ internal class ReplayRecording(
         }
 
         fun refloatCommand(payload: ByteArray): Int? =
-            if (payload.size >= 3 && (payload[1].toInt() and 0xff) == REFLOAT_MAGIC) payload[2].toInt() and 0xff
+            if (
+                payload.size >= 3 &&
+                (payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA &&
+                (payload[1].toInt() and 0xff) == REFLOAT_MAGIC
+            ) payload[2].toInt() and 0xff
             else null
 
         private class XmlAssembly(total: Int) {

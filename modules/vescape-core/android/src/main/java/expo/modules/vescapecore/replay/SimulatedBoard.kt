@@ -19,6 +19,7 @@ import expo.modules.vescapecore.reconnect.ReconnectScanMatch
 import expo.modules.vescapecore.service.VESC_SESSION_TAG
 
 import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import java.nio.ByteBuffer
 
@@ -32,6 +33,9 @@ private const val DROPPED_LINK_STATUS = 8
  * Where a [SimulatedBoard] is in its recording.
  *
  * @parity /modules/vescape-core/ios/replay/SimulatedBoard.swift `ReplayPlaybackState`
+ */
+/**
+ * @parity /modules/vescape-core/src/index.ts `DebugReplayState`
  */
 internal data class ReplayPlaybackState(
     val recording: String,
@@ -50,7 +54,8 @@ internal data class ReplayPlaybackState(
  * It is also the session's [ReconnectBlePort]: there is no radio to scan, so a reconnect finds the
  * board at once and the link resumes where playback stopped.
  *
- * Confined to [handler]'s thread; public entry points hop onto it.
+ * Confined to [handler]'s thread; public entry points run inline there and hop onto it from
+ * anywhere else.
  *
  * @parity /modules/vescape-core/ios/replay/SimulatedBoard.swift
  */
@@ -79,6 +84,10 @@ internal class SimulatedBoard(
 
     @Volatile
     private var linked = false
+
+    /** Bumped on every unlink; work queued for an earlier link drops itself. */
+    @Volatile
+    private var link = 0
 
     @Volatile
     private var paused = false
@@ -117,24 +126,21 @@ internal class SimulatedBoard(
 
     // region SessionTransport
 
+    /**
+     * Like a GATT client, a connect drops whatever link is up first: recovery restarts the
+     * transport on a link that is still up when telemetry stalls.
+     */
     override fun connect(deviceId: String) {
-        handler.post {
-            if (linked) return@post
-            linked = true
-            Log.d(VESC_SESSION_TAG, "replay connect recording=${recording.name} positionMs=$positionMs")
-            dispatchListener { listener.onGattConnected() }
-            dispatchListener { listener.onGattSubscribing() }
-            dispatchListener { listener.onGattReady() }
-            resumeTimeline()
-            // Wall time of recorded t=0; `bun run preview` starts the wrist's replay from it.
-            Log.d(VESC_SESSION_TAG, "replay playback started recording=${recording.name} wallMs=$originMs")
+        onHandler {
+            unlink()
+            onLink { establish() }
         }
     }
 
     override fun sendPayload(payload: ByteArray): Boolean {
         if (!linked) return false
         val request = ReplayRecording.unwrapCan(payload) ?: return true
-        handler.post { if (linked) answer(request)?.let(::reply) }
+        onLink { answer(request)?.let(::reply) }
         return true
     }
 
@@ -142,7 +148,7 @@ internal class SimulatedBoard(
     override fun sendRemoteInput(payload: ByteArray, urgent: Boolean): Boolean = linked
 
     override fun clear(markIntentional: Boolean) {
-        handler.post { unlink() }
+        onHandler { unlink() }
     }
 
     // endregion
@@ -167,8 +173,8 @@ internal class SimulatedBoard(
     // region Controls
 
     fun setPaused(value: Boolean) {
-        handler.post {
-            if (paused == value) return@post
+        onHandler {
+            if (paused == value) return@onHandler
             if (value) {
                 freezeTimeline()
                 paused = true
@@ -186,20 +192,47 @@ internal class SimulatedBoard(
 
     /** Lose the link the way a board out of range does; the session's reconnect brings it back. */
     fun dropLink() {
-        handler.post {
-            if (!linked) return@post
+        onHandler {
+            if (!linked) return@onHandler
             unlink()
             Log.d(VESC_SESSION_TAG, "replay link dropped recording=${recording.name} positionMs=$positionMs")
-            dispatchListener { listener.onGattDisconnected(DROPPED_LINK_STATUS, intentional = false) }
+            dispatch { onGattDisconnected(DROPPED_LINK_STATUS, intentional = false) }
         }
     }
 
     // endregion
 
+    private fun establish() {
+        linked = true
+        Log.d(VESC_SESSION_TAG, "replay connect recording=${recording.name} positionMs=$positionMs")
+        dispatch { onGattConnected() }
+        dispatch { onGattSubscribing() }
+        dispatch { onGattReady() }
+        resumeTimeline()
+        // Wall time of recorded t=0; `bun run preview` starts the wrist's replay from it.
+        Log.d(VESC_SESSION_TAG, "replay playback started recording=${recording.name} wallMs=$originMs")
+    }
+
     private fun unlink() {
+        link += 1
         if (!linked) return
         if (!paused) freezeTimeline()
         linked = false
+    }
+
+    private fun onHandler(block: () -> Unit) {
+        if (Looper.myLooper() == handler.looper) block() else handler.post(block)
+    }
+
+    /** Runs [block] on [handler] unless the link it was queued on has gone since. */
+    private fun onLink(block: () -> Unit) {
+        val queuedOn = link
+        handler.post { if (link == queuedOn) block() }
+    }
+
+    private fun dispatch(call: VescGattListener.() -> Unit) {
+        val queuedOn = link
+        dispatchListener { if (link == queuedOn) listener.call() }
     }
 
     private fun freezeTimeline() {
@@ -264,7 +297,7 @@ internal class SimulatedBoard(
 
     private fun reply(payload: ByteArray) {
         val frame = VescPacketCodec.encode(payload)
-        dispatchListener { listener.onGattFrameChunk(frame) }
+        dispatch { onGattFrameChunk(frame) }
     }
 
     /** The board's reply to [request], or `null` where a real board would say nothing it knows. */
@@ -299,7 +332,7 @@ internal class SimulatedBoard(
         val length = wanted.int
         val offset = wanted.int
         if (offset < 0 || offset >= xml.size || length <= 0) return null
-        val slice = xml.copyOfRange(offset, minOf(xml.size, offset + length))
+        val slice = xml.copyOfRange(offset, offset + minOf(xml.size - offset, length))
         return ByteBuffer.allocate(10 + slice.size)
             .put(COMM_GET_CUSTOM_CONFIG_XML.toByte())
             .put(confInd.toByte())

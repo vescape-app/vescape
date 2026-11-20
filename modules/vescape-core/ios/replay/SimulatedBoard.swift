@@ -6,6 +6,7 @@ private let endTailMs: Int64 = 250
 /// Where a `SimulatedBoard` is in its recording.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/SimulatedBoard.kt `ReplayPlaybackState`
+/// @parity /modules/vescape-core/src/index.ts `DebugReplayState`
 internal struct ReplayPlaybackState {
   let recording: String
   let positionMs: Int64
@@ -42,6 +43,8 @@ internal final class SimulatedBoard: SessionTransport {
   private var originMs: Int64 = 0
   private var pending: Cancellable?
   private var linked = false
+  /// Bumped on every unlink; work queued for an earlier link drops itself.
+  private var link = 0
   private var paused = false
   /// Read when the end comes, so it also decides an end already scheduled.
   private var looping: Bool
@@ -98,9 +101,17 @@ internal final class SimulatedBoard: SessionTransport {
 
   // MARK: - SessionTransport
 
-  func connect(peripheralId: String) { relink() }
+  /// Like a GATT client, a connect drops whatever link is up first: recovery restarts the transport
+  /// on a link that is still up when telemetry stalls.
+  func connect(peripheralId: String) {
+    unlink()
+    relink()
+  }
 
-  func reconnect() { relink() }
+  func reconnect() {
+    unlink()
+    relink()
+  }
 
   func disconnect() { unlink() }
 
@@ -112,10 +123,7 @@ internal final class SimulatedBoard: SessionTransport {
   func sendPayload(_ payload: [UInt8]) -> Bool {
     guard linked else { return false }
     guard let request = ReplayRecording.unwrapCan(payload) else { return true }
-    scheduler.post { [weak self] in
-      guard let self, self.linked, let reply = self.answer(request) else { return }
-      self.reply(reply)
-    }
+    onLink { $0.answer(request).map($0.reply) }
     return true
   }
 
@@ -149,23 +157,34 @@ internal final class SimulatedBoard: SessionTransport {
   // MARK: - Timeline
 
   private func relink() {
-    scheduler.post { [weak self] in
-      guard let self, !self.linked else { return }
-      self.linked = true
-      Self.log("replay connect recording=\(self.recording.name) positionMs=\(self.positionMs)")
-      self.dispatch { $0.onGattConnected() }
-      self.dispatch { $0.onGattSubscribing() }
-      self.dispatch { $0.onGattReady() }
-      self.resumeTimeline()
-      // Wall time of recorded t=0; `bun run preview` starts the wrist's replay from it.
-      Self.log("replay playback started recording=\(self.recording.name) wallMs=\(self.originMs)")
-    }
+    onLink { $0.establish() }
+  }
+
+  private func establish() {
+    linked = true
+    Self.log("replay connect recording=\(recording.name) positionMs=\(positionMs)")
+    dispatch { $0.onGattConnected() }
+    dispatch { $0.onGattSubscribing() }
+    dispatch { $0.onGattReady() }
+    resumeTimeline()
+    // Wall time of recorded t=0; `bun run preview` starts the wrist's replay from it.
+    Self.log("replay playback started recording=\(recording.name) wallMs=\(originMs)")
   }
 
   private func unlink() {
+    link += 1
     guard linked else { return }
     if !paused { freezeTimeline() }
     linked = false
+  }
+
+  /// Runs `block` on the scheduler unless the link it was queued on has gone since.
+  private func onLink(_ block: @escaping (SimulatedBoard) -> Void) {
+    let queuedOn = link
+    scheduler.post { [weak self] in
+      guard let self, self.link == queuedOn else { return }
+      block(self)
+    }
   }
 
   private func freezeTimeline() {
@@ -237,10 +256,7 @@ internal final class SimulatedBoard: SessionTransport {
   }
 
   private func dispatch(_ call: @escaping (VescGattListener) -> Void) {
-    scheduler.post { [weak self] in
-      guard let listener = self?.listener else { return }
-      call(listener)
-    }
+    onLink { board in board.listener.map(call) }
   }
 
   // MARK: - Answers

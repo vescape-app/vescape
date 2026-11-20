@@ -3412,9 +3412,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
                     pullRateHz = null,
                 ) ?: return
                 if (parsed.hasFault) return
-                telemetryPipeline.prefill(parsed, session)
-                BatterySocEstimator.estimateBatteryPercent(parsed.batteryVoltage, batteryConfigCache, parsed.batteryCurrent)
-                    ?.let { socWindow.median(it, stamp) }
+                val processed = telemetryPipeline.prefill(parsed, session) ?: return
+                processed.eventMap["batteryPercent"] =
+                    BatterySocEstimator.estimateBatteryPercent(parsed.batteryVoltage, batteryConfigCache, parsed.batteryCurrent)
+                        ?.let { socWindow.median(it, stamp) }
             }
         }
     }

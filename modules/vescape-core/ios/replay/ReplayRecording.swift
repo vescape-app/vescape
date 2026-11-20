@@ -157,7 +157,9 @@ internal struct ReplayRecording {
   }
 
   static func refloatCommand(_ payload: [UInt8]) -> Int? {
-    payload.count >= 3 && Int(payload[1]) == REFLOAT_MAGIC ? Int(payload[2]) : nil
+    payload.count >= 3 && Int(payload[0]) == COMM_CUSTOM_APP_DATA && Int(payload[1]) == REFLOAT_MAGIC
+      ? Int(payload[2])
+      : nil
   }
 
   private static func metaOrNil(_ line: Substring) -> [String: Any]? {

@@ -313,9 +313,9 @@ internal class TelemetryPipeline(
      * never reads it.
      * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `prefill`
      */
-    fun prefill(parsed: RefloatTelemetry, sessionToken: BoardSession) {
-        val cfg = currentConfig(sessionToken) ?: return
-        retain(parsed, cfg)
+    fun prefill(parsed: RefloatTelemetry, sessionToken: BoardSession): ProcessedTelemetry? {
+        val cfg = currentConfig(sessionToken) ?: return null
+        return retain(parsed, cfg)
     }
 
     private fun currentConfig(sessionToken: BoardSession): SessionConfig? {

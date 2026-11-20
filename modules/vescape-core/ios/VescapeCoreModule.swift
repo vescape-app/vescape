@@ -811,6 +811,7 @@ public class VescapeCoreModule: Module {
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startDebugReplay`
+    // @parity /modules/vescape-core/src/index.ts `DebugReplayOptions`
     AsyncFunction("startDebugReplay") { (name: String, options: [String: Any]?, promise: Promise) in
       self.coordinator.startReplay(
         recordingName: name,
