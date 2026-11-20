@@ -5,10 +5,10 @@
  * @parity /scripts/lib/iosCapture.ts
  */
 import { existsSync, readFileSync, statSync } from 'fs'
-import { homedir } from 'os'
 import { basename, dirname, join } from 'path'
 
 import { applicationId } from '../../src/config/appVariant.ts'
+import { avdHome, emulatorBinary, listAvds } from './avds.ts'
 import {
   capture,
   CAPTURE_LOCATION,
@@ -18,7 +18,7 @@ import {
   type CaptureDriver,
   type FixtureRunMode,
 } from './captureDriver.ts'
-import { listAdbDevices, pickDevice } from './devices.ts'
+import { listAdbDevices, pickDevice, type AdbDevice } from './devices.ts'
 import { buildAndroidFixture } from './fixtureBuild.ts'
 
 const OUT_DIR = 'screenshots/android'
@@ -29,58 +29,9 @@ const DEVICE_FIXTURE_DIR = `/storage/emulated/0/Android/data/${applicationId}/fi
 /** Play's phone screenshots are cut to this; anything else has to be rescaled by hand. */
 const TARGET_RESOLUTION = '1080x2400'
 
-/**
- * `emulator` is not on a plain `PATH` unless the developer put it there, so resolve it from the SDK
- * the way Gradle does. Only the SDK root is consulted — nothing here is machine-specific, and a
- * missing SDK stays the environment's problem to fix, not the script's to paper over.
- */
-function emulatorBin(): string {
-  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT
-  const fromSdk = sdk ? join(sdk, 'emulator', 'emulator') : null
-  return fromSdk && existsSync(fromSdk) ? fromSdk : 'emulator'
-}
-
-/**
- * A device the runner can drive.
- *
- * `serial` addresses it over adb; `name` is what `expo run:android --device` matches on, and the two
- * are not interchangeable — Expo names an emulator by its AVD (`Medium_Phone`, not `emulator-5554`)
- * and a physical device by its `model:` field.
- */
-interface Device {
-  serial: string
-  name: string
-  /** What `expo run:android --device` matches; see AdbDevice.expoName. */
-  expoName: string
-}
-
-async function attachedSerials(): Promise<string[]> {
-  const out = await capture(['adb', 'devices'])
-  return out
-    .split('\n')
-    .slice(1)
-    .filter((line) => line.includes('\tdevice'))
-    .map((line) => line.split('\t')[0].trim())
-}
-
-/** Phones only: the store set and the smoke flows are phone UI, and a watch cannot run either. */
-function attachedPhones(): Device[] {
-  return listAdbDevices()
-    .filter((device) => !device.isWatch)
-    .map(({ serial, name, expoName }) => ({ serial, name, expoName }))
-}
-
-async function listAvds(): Promise<string[]> {
-  const out = await capture([emulatorBin(), '-list-avds'])
-  return out
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-}
-
 /** An AVD's screen size, read from its own config — the store set must be one consistent size. */
 function avdResolution(name: string): string | null {
-  const config = join(homedir(), '.android', 'avd', `${name}.avd`, 'config.ini')
+  const config = join(avdHome(), `${name}.avd`, 'config.ini')
   if (!existsSync(config)) return null
   const text = readFileSync(config, 'utf8')
   const width = /^hw\.lcd\.width=(\d+)$/m.exec(text)?.[1]
@@ -89,22 +40,25 @@ function avdResolution(name: string): string | null {
 }
 
 /** Boots an existing AVD and returns it once adb reports it ready. */
-async function bootAvd(name: string): Promise<Device> {
-  const before = await attachedSerials()
+async function bootAvd(name: string): Promise<AdbDevice> {
   console.log(`› Booting ${name}…`)
-  Bun.spawn([emulatorBin(), '-avd', name, '-no-boot-anim', '-no-snapshot'], {
+  Bun.spawn([emulatorBinary(), '-avd', name, '-no-boot-anim', '-no-snapshot'], {
     stdout: 'ignore',
     stderr: 'ignore',
   })
 
   const deadline = Date.now() + 180_000
   while (Date.now() < deadline) {
-    const serial = (await attachedSerials()).find((id) => !before.includes(id))
-    if (serial) {
+    const device = listAdbDevices().find((it) => it.isEmulator && it.name === name)
+    if (device) {
       const booted = (
-        await capture(['adb', '-s', serial, 'shell', 'getprop', 'sys.boot_completed'])
+        await capture(['adb', '-s', device.serial, 'shell', 'getprop', 'sys.boot_completed'])
       ).trim()
-      if (booted === '1') return { serial, name, expoName: name }
+      if (booted === '1') {
+        if (device.isWatch)
+          throw new Error(`${name} is a Wear emulator. Select a phone for capture.`)
+        return device
+      }
     }
     await Bun.sleep(2000)
   }
@@ -117,19 +71,24 @@ function shortSerial(serial: string): string {
   return serial.replace(/^adb-/, '').replace(/-\w+\._adb-tls-connect\._tcp$/, '')
 }
 
-type DeviceChoice = { kind: 'attached'; device: Device } | { kind: 'avd'; name: string }
+type DeviceChoice = { kind: 'attached'; device: AdbDevice } | { kind: 'avd'; name: string }
 
 /** Cache key for the last capture device picked; see lib/lastDevice. */
 const LAST_DEVICE_KEY = 'capture-android'
 
-async function chooseDevice(attached: Device[], requested: string | null): Promise<DeviceChoice> {
-  const options: DeviceChoice[] = attached.map((device) => ({ kind: 'attached', device }))
+async function chooseDevice(requested: string | null): Promise<DeviceChoice> {
+  const attached = listAdbDevices()
+  const options: DeviceChoice[] = attached
+    .filter((device) => !device.isWatch)
+    .map((device) => ({ kind: 'attached', device }))
 
   // An AVD that is already up is listed once, as the running device — offering to "boot" it again
   // would be the same device under a second name.
-  const running = new Set(attached.map((device) => device.name))
-  for (const name of await listAvds()) {
-    if (running.has(name)) continue
+  const running = new Set(
+    attached.filter((device) => device.isEmulator).map((device) => device.name),
+  )
+  for (const { name, isWatch } of listAvds()) {
+    if (isWatch || running.has(name)) continue
     options.push({ kind: 'avd', name })
   }
 
@@ -146,12 +105,12 @@ async function chooseDevice(attached: Device[], requested: string | null): Promi
         : shortSerial(choice.device.serial),
     requested,
     cacheKey: LAST_DEVICE_KEY,
-    emptyMessage: 'No phone attached and no AVD available.',
+    emptyMessage: 'No phone attached and no phone AVD available.',
   })
 }
 
-async function resolveDevice(requested: string | null, mode: FixtureRunMode): Promise<Device> {
-  const choice = await chooseDevice(attachedPhones(), requested)
+async function resolveDevice(requested: string | null, mode: FixtureRunMode): Promise<AdbDevice> {
+  const choice = await chooseDevice(requested)
   const device = choice.kind === 'avd' ? await bootAvd(choice.name) : choice.device
   // Only the store set has to come off one screen size; a smoke run asserts on text, not pixels.
   if (mode === 'screenshots') await warnOnResolution(device.serial)
