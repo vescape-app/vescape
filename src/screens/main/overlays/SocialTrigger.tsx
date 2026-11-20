@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { router } from 'expo-router'
-import { StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { BroadcastIcon, MegaphoneIcon, UsersThreeIcon } from 'phosphor-react-native'
 
 import { IconButton } from '@/components/base/IconButton'
@@ -9,7 +9,7 @@ import {
   IconButtonExtensionStat,
 } from '@/components/controls/IconButtonExtension'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
-import { theme } from '@/constants/theme'
+import { interaction, theme } from '@/constants/theme'
 import { useColoredActionForeground } from '@/hooks/useTheme'
 import {
   RiderSignalPicker,
@@ -57,13 +57,13 @@ export function SocialTrigger() {
   const requestColor = useColoredActionForeground(theme.palette.blue.color)
   const requestLabel = `${incomingRequests} friend ${incomingRequests === 1 ? 'request' : 'requests'}`
 
-  function openExtension() {
-    if (showRequests) {
-      setView({ ...INITIAL_SOCIAL_VIEW, tab: 'friends' })
-      setSocialOpen(true)
-    } else {
-      setSignalOpen(true)
-    }
+  // The dot names the reason to look: a request or a friend who started riding opens Friends.
+  function openSocial() {
+    setView({
+      ...INITIAL_SOCIAL_VIEW,
+      tab: incomingRequests > 0 || friendRiding ? 'friends' : 'nearby',
+    })
+    setSocialOpen(true)
   }
   // Native judges it: in a ride on a relay with signals, or public. Hidden otherwise.
   const signalsSupported = useGroupRideStore((s) => s.signalAvailability.supported)
@@ -72,35 +72,56 @@ export function SocialTrigger() {
   const othersSignal = useOthersSignalTakeover()
   const ownSignal = useOwnSignalTakeover()
   const OwnSignalIcon = ownSignal?.icon ?? MegaphoneIcon
-  // Requests borrow the extension only while it has no signal to show, so a live own signal stays
-  // reachable through a relay reconnect.
-  const showRequests = incomingRequests > 0 && !rideActive && ownSignal === null
+  // Requests and the signal each get their own slot and tap, so neither ever takes the other's place.
+  const showRequests = incomingRequests > 0
 
   return (
     <>
       <View ref={triggerRef} collapsable={false} style={styles.trigger}>
         <IconButtonExtension
           direction="down"
-          onPress={openExtension}
           // The Rider's own live signal blinks until they clear it, so a forgotten one gets noticed.
+          // The pulse covers the whole capsule, so it waits while the request count shares it.
           blink={!showRequests && ownSignal !== null}
-          testID={showRequests ? 'social-friend-requests' : 'rider-signal-trigger'}
-          accessibilityLabel={showRequests ? requestLabel : 'Rider signal'}
           extension={
-            showRequests ? (
-              <IconButtonExtensionStat value={String(incomingRequests)} color={requestColor} />
-            ) : signalsSupported ? (
-              <OwnSignalIcon
-                size={20}
-                color={ownSignal?.accent ?? theme.control.icon}
-                weight="bold"
-              />
+            showRequests || signalsSupported ? (
+              <>
+                {signalsSupported ? (
+                  <Pressable
+                    testID="rider-signal-trigger"
+                    accessibilityLabel="Rider signal"
+                    onPress={() => setSignalOpen(true)}
+                    hitSlop={8}
+                    style={({ pressed }) => pressed && styles.pressed}
+                  >
+                    <OwnSignalIcon
+                      size={20}
+                      color={ownSignal?.accent ?? theme.control.icon}
+                      weight="bold"
+                    />
+                  </Pressable>
+                ) : null}
+                {showRequests ? (
+                  <Pressable
+                    testID="social-friend-requests"
+                    accessibilityLabel={requestLabel}
+                    onPress={openSocial}
+                    hitSlop={8}
+                    style={({ pressed }) => pressed && styles.pressed}
+                  >
+                    <IconButtonExtensionStat
+                      value={String(incomingRequests)}
+                      color={requestColor}
+                    />
+                  </Pressable>
+                ) : null}
+              </>
             ) : null
           }
         >
           <IconButton
             icon={rideActive ? PulsingBroadcastIcon : sharingOn ? BroadcastIcon : UsersThreeIcon}
-            onPress={() => setSocialOpen(true)}
+            onPress={openSocial}
             accessibilityLabel={incomingRequests > 0 ? `Social, ${requestLabel}` : 'Social'}
             testID="social-drawer-trigger"
             dot={
@@ -150,6 +171,7 @@ export function SocialTrigger() {
 }
 
 const styles = StyleSheet.create({
+  pressed: { opacity: interaction.pressedOpacity },
   trigger: {
     position: 'absolute',
     top: 0,
