@@ -1,6 +1,6 @@
 import Foundation
 
-/// One recorded incoming BLE chunk: milliseconds since recording start plus the raw bytes.
+/// One recorded BLE chunk: milliseconds since recording start plus the raw bytes.
 internal struct ReplayChunk {
   let t: Int64
   let bytes: [UInt8]
@@ -20,24 +20,28 @@ internal struct ReplayLocation {
   let altitudeM: Double?
 }
 
-/// Pure decode core for Debug Recording replay (ADR 0024): turns a `.jsonl` Debug Recording into the
-/// byte stream and decoded frames the session stack originally saw. Shared by the unit replay
-/// harness (test source) and the dev-mode ReplayTransport. `ble-chunk` lines with
-/// `direction == "rx"` carry the board stream and `location` lines carry the ride's GPS track;
-/// every other kind (meta, session-state, tx traffic) and any malformed line — real recordings can
-/// end mid-write — is skipped, never fatal.
+/// Pure decode core for Debug Recording replay (ADR 0048): turns a `.jsonl` Debug Recording into the
+/// byte streams and GPS track the session originally saw. Shared by the unit replay harnesses (test
+/// source) and `ReplayRecording`. `ble-chunk` lines carry the board stream (`rx`) and the app's
+/// writes (`tx`), `location` lines the ride's GPS track; every other kind and any malformed line —
+/// real recordings can end mid-write — is skipped, never fatal.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayChunkDecoder.kt
 internal enum ReplayChunkDecoder {
   /// Recorded `rx` chunks in file order with their recorded time offsets.
-  static func rxChunks(_ jsonl: String) -> [ReplayChunk] {
+  static func rxChunks(_ jsonl: String) -> [ReplayChunk] { chunks(jsonl, direction: "rx") }
+
+  /// Recorded `tx` chunks (what the app wrote) in file order; thinned fixtures carry none.
+  static func txChunks(_ jsonl: String) -> [ReplayChunk] { chunks(jsonl, direction: "tx") }
+
+  private static func chunks(_ jsonl: String, direction: String) -> [ReplayChunk] {
     jsonl.split(separator: "\n").compactMap { line in
       guard
         let data = line.data(using: .utf8),
         // intentional-suppression: malformed replay lines are skipped individually
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
         json["kind"] as? String == "ble-chunk",
-        json["direction"] as? String == "rx",
+        json["direction"] as? String == direction,
         let t = (json["t"] as? NSNumber)?.int64Value,
         let base64 = json["base64"] as? String,
         let bytes = Data(base64Encoded: base64)

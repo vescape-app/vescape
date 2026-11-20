@@ -221,7 +221,6 @@ final class BoardSessionRecoveryTests: XCTestCase {
 }
 
 private final class RecoveryTestTransport: SessionTransport {
-  var supportsReconnect: Bool { true }
   var connections: [String] = []
   func connect(peripheralId: String) { connections.append(peripheralId) }
   func disconnect() {}

@@ -22,7 +22,8 @@ final class SessionRecorderTests: XCTestCase {
       store: store,
       deviceName: "Funwheel S/2",
       deviceId: "AA:BB",
-      pollIntervalMs: 100
+      pollIntervalMs: 100,
+      transport: .direct
     )
     recorder.start()
     body(recorder)
@@ -133,7 +134,8 @@ final class SessionRecorderTests: XCTestCase {
       store: store,
       deviceName: "Thor301",
       deviceId: "AA:BB",
-      pollIntervalMs: 100
+      pollIntervalMs: 100,
+      transport: .direct
     )
     recorder.start()
 

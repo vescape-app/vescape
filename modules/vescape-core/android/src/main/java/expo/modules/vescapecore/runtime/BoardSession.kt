@@ -66,7 +66,7 @@ class BoardSession(val id: Long) {
         return linkIntegrity
     }
 
-    private var observations = LinkIdentity(linkVersion = 4)
+    private var observations = LinkIdentity(linkVersion = LinkIdentity.CURRENT_LINK_VERSION)
 
     private fun updateLinkIntegrity(
         expected: LinkIdentity,

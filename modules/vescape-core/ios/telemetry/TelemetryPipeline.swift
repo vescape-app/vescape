@@ -66,7 +66,7 @@ internal struct TelemetryLocationCapture {
 /// happened. Beyond this age the frame records no location and the route gap stays honest.
 ///
 /// Both sides of the comparison are wall-clock epoch ms — `capturedAtMs` comes from the session
-/// clock (`SessionClock.nowMs()`), the fix timestamp from `CLLocation.timestamp`.
+/// clock, the fix timestamp from `CLLocation.timestamp`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryMapper.kt `TELEMETRY_LOCATION_MAX_AGE_MS`
 internal let telemetryLocationMaxAgeMs: Int64 = 10_000

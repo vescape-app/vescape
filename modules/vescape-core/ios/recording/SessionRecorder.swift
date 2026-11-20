@@ -18,6 +18,7 @@ internal final class SessionRecorder {
   private let deviceName: String
   private let deviceId: String
   private let pollIntervalMs: Int
+  private let transport: BoardTransport
   private let startedAt: Int64
   private var handle: FileHandle?
   private let writeLock = NSLock()
@@ -29,12 +30,14 @@ internal final class SessionRecorder {
     store: DebugRecordingStore = DebugRecordingStore(),
     deviceName: String,
     deviceId: String,
-    pollIntervalMs: Int
+    pollIntervalMs: Int,
+    transport: BoardTransport
   ) throws {
     self.store = store
     self.deviceName = deviceName
     self.deviceId = deviceId
     self.pollIntervalMs = pollIntervalMs
+    self.transport = transport
     self.startedAt = Int64(Date().timeIntervalSince1970 * 1000)
     let url = try store.createFile(deviceName: deviceName)
     let handle = try FileHandle(forWritingTo: url)
@@ -51,6 +54,8 @@ internal final class SessionRecorder {
       ("deviceId", deviceId),
       ("sessionKind", "board"),
       ("pollIntervalMs", pollIntervalMs),
+      // Replies come back unwrapped from a CAN board, so a replay reads the hop from here.
+      ("transport", BoardTransport.encode(transport)),
       ("startedAt", startedAt),
     ])
     recordState("recording-started")

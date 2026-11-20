@@ -1,6 +1,6 @@
 import Foundation
 
-/// App-level fix state. Live sessions leave it intact; replay entry and teardown clear it.
+/// App-level fix state. Live sessions leave it intact; replay entry and teardown reset its trail.
 /// All calls use the GPS callback's serial execution context.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt
 internal final class LocationTracker {
@@ -35,29 +35,50 @@ internal final class LocationTracker {
   /// TODO(android parity): align recording consumer ordering in the Ride Track slice #448.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `onLocationUpdated`
   func onLocationUpdated(_ incoming: TelemetryLocationCapture) -> TelemetryLocationCapture {
-    var location = incoming
-    // Approximate fixes must not feed the course deriver.
-    if location.precise {
-      let course = courseDeriver.derive(
-        latitude: location.latitude,
-        longitude: location.longitude,
-        speedMps: location.speedMps,
-        bearingDeg: location.bearingDeg,
-        timestamp: location.timestamp
-      )
-      location.courseDeg = course?.bearingDeg
-      location.courseSourceTimestamp = course?.sourceTimestamp
-    }
+    let location = withCourse(incoming)
     recordLocation(location)
     latestLocation = location
     navigationFix(location)
     if location.precise {
       latestPreciseLocation = location
       persistLocation(location)
-      recentLocations.append(location.map)
-      pruneRecentLocations(now: location.timestamp)
+      appendRecent(location)
     }
     return location
+  }
+
+  /// Replay Warmup (ADR 0048): a recorded fix enters the trail and the course and nothing else —
+  /// no Navigation, no last-known position, no recording. JS reads the result from the next
+  /// snapshot.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `prefill`
+  func prefill(_ incoming: TelemetryLocationCapture) {
+    let location = withCourse(incoming)
+    latestLocation = location
+    if location.precise {
+      latestPreciseLocation = location
+      appendRecent(location)
+    }
+  }
+
+  /// Approximate fixes must not feed the course deriver.
+  private func withCourse(_ incoming: TelemetryLocationCapture) -> TelemetryLocationCapture {
+    guard incoming.precise else { return incoming }
+    var location = incoming
+    let course = courseDeriver.derive(
+      latitude: location.latitude,
+      longitude: location.longitude,
+      speedMps: location.speedMps,
+      bearingDeg: location.bearingDeg,
+      timestamp: location.timestamp
+    )
+    location.courseDeg = course?.bearingDeg
+    location.courseSourceTimestamp = course?.sourceTimestamp
+    return location
+  }
+
+  private func appendRecent(_ location: TelemetryLocationCapture) {
+    recentLocations.append(location.map)
+    pruneRecentLocations(now: location.timestamp)
   }
 
   func pruneRecentLocations(now: Int64) {
@@ -69,8 +90,8 @@ internal final class LocationTracker {
   }
 
   /// Clear fixes and course when entering or leaving replay, retaining the persistence throttle.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `clearReplayLocations`
-  func clearReplayLocations() {
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `resetTrail`
+  func resetTrail() {
     latestLocation = nil
     latestPreciseLocation = nil
     courseDeriver.reset()

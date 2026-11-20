@@ -24,14 +24,12 @@ internal protocol VescGattListener: AnyObject {
   func onGattRestored(peripheralIds: [String])
 }
 
-/// Transport seam under `BoardSessionController` (ADR 0024): everything the controller calls on
+/// Transport seam under `BoardSessionController` (ADR 0048): everything the controller calls on
 /// the board link beyond the `VescGattListener` callbacks. The real `VescGattClient` speaks
-/// CoreBluetooth; the dev-mode `ReplayTransport` plays a Debug Recording through the same surface.
-/// `supportsReconnect` gates the reconnect loop: a replay ending is terminal, not recoverable.
+/// CoreBluetooth; the dev-mode `SimulatedBoard` plays a Debug Recording through the same surface.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `SessionTransport`
 internal protocol SessionTransport: AnyObject {
-  var supportsReconnect: Bool { get }
   func connect(peripheralId: String)
   func disconnect()
   func reconnect()
@@ -53,7 +51,6 @@ internal protocol SessionTransport: AnyObject {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt
 internal final class VescGattClient: NSObject, SessionTransport {
-  var supportsReconnect: Bool { true }
   /// Active raw debug Session Recorder resolver, set by the session controller. Records `tx`
   /// chunks at the write site (the peer of Android taping `tx` in its `VescGattClient`).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `recorder`

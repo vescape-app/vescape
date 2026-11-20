@@ -82,7 +82,7 @@ final class LocationTrackerTests: XCTestCase {
       navigationFix: { _ in }, persistLocation: { _ in }
     )
     _ = tracker.onLocationUpdated(fix(100_000))
-    tracker.clearReplayLocations()
+    tracker.resetTrail()
     XCTAssertNil(tracker.latestLocation)
     XCTAssertNil(tracker.latestPreciseLocation)
     XCTAssertNil(tracker.riderPosition)

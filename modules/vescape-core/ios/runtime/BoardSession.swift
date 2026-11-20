@@ -11,7 +11,7 @@ final class BoardSession {
   private(set) var isActive = true
   private(set) var linkIntegrity: LinkIntegrity = .unknown
   private(set) var linkIntegrityProbeStarted = false
-  private var observations = LinkIdentity(linkVersion: 4)
+  private var observations = LinkIdentity(linkVersion: LinkIdentity.currentLinkVersion)
 
   init(id: Int64) {
     self.id = id
@@ -116,6 +116,9 @@ func legalModeEnableError(
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/runtime/BoardSession.kt
 struct LinkIdentity {
+  /// The Board Link schema a complete identity is written under.
+  static let currentLinkVersion = 4
+
   var linkVersion: Int?
   var hasBms: Bool?
   var firmware: String?
@@ -125,7 +128,7 @@ struct LinkIdentity {
   // refloatBaseVersion is derived from refloatVersion and may be absent for malformed or unknown
   // version strings, so it is not required here; matches/mismatches still compare it when present.
   var isComplete: Bool {
-    linkVersion == 4 &&
+    linkVersion == Self.currentLinkVersion &&
       hasBms != nil &&
       !(firmware?.isEmpty ?? true) &&
       !(refloatVersion?.isEmpty ?? true)

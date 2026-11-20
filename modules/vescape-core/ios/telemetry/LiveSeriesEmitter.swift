@@ -19,8 +19,6 @@ internal struct LivePeaks {
 internal final class LiveSeriesEmitter {
   private static let intervalMs = 1_000
   private static let buckets = 64
-  /// One display frame — the fastest an emit can usefully arrive. See `scaledIntervalMs`.
-  private static let minIntervalMs = 16
   /// Focused detail-chart resolution: fixed-width time buckets, uncapped, and narrower than
   /// the board packet interval (~30-50ms) so at most one sample lands per bucket — the focused
   /// series is effectively full-resolution. Only mounted `/control` detail charts pay for it.
@@ -31,8 +29,6 @@ internal final class LiveSeriesEmitter {
   var emit: ((String, [String: Any?]) -> Void)?
   /// Current connection generation, stamped onto each emit so JS can drop stale series.
   var generation: () -> Int64 = { 0 }
-  /// How fast session time is running; see `scaledIntervalMs`. Wired by the coordinator.
-  var speed: () -> Double = { 1.0 }
 
   private var windowMs: Int64 = 5 * 60_000
   /// Guards `samples`: appended/pruned on the main (BLE callback) queue, but read via
@@ -97,10 +93,7 @@ internal final class LiveSeriesEmitter {
   @discardableResult
   func add(_ sample: [String: Any?]) -> LivePeaks {
     samplesLock.lock()
-    samples.append(sample)
-    speedPeak.add(sample)
-    dutyPeak.add(sample)
-    prune()
+    append(sample)
     let peaks = LivePeaks(speed: speedPeak.value(samples), duty: dutyPeak.value(samples))
     samplesLock.unlock()
     if active && !primed {
@@ -108,6 +101,23 @@ internal final class LiveSeriesEmitter {
       emitSeries()
     }
     return peaks
+  }
+
+  /// Replay Warmup (ADR 0048): a back-stamped sample fills the window without emitting, so the
+  /// session's first emit already draws full charts.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `prefill`
+  func prefill(_ sample: [String: Any?]) {
+    samplesLock.lock()
+    append(sample)
+    samplesLock.unlock()
+  }
+
+  /// Caller must hold `samplesLock`.
+  private func append(_ sample: [String: Any?]) {
+    samples.append(sample)
+    speedPeak.add(sample)
+    dutyPeak.add(sample)
+    prune()
   }
 
   /// Caller must hold `samplesLock`.
@@ -123,25 +133,11 @@ internal final class LiveSeriesEmitter {
     }
   }
 
-  /// The interval is a wall-clock throttle on bridge traffic, not a description of the ride, so it
-  /// stays on wall time. What it does have to track is the *rate* of the data feeding it: a replay
-  /// warming up delivers a minute of ride every couple of seconds, and a fixed 1s timer would hand
-  /// JS that minute in a couple of frames — the sparklines jump rather than fast-forward. Dividing
-  /// by the session speed keeps each emit as current as it would be live.
-  ///
-  /// Floored at one display frame: emitting faster than the screen refreshes is pure waste, and it
-  /// bounds the cost of an extreme speed.
-  private func scaledIntervalMs() -> Int {
-    let currentSpeed = speed()
-    guard currentSpeed > 1.0 else { return Self.intervalMs }
-    return max(Self.minIntervalMs, Int(Double(Self.intervalMs) / currentSpeed))
-  }
-
   private func scheduleTick() {
     guard active else { return }
     tickSeq &+= 1
     let expected = tickSeq
-    scheduler.postDelayed(Int64(scaledIntervalMs())) { [weak self] in
+    scheduler.postDelayed(Int64(Self.intervalMs)) { [weak self] in
       guard let self, self.active, self.tickSeq == expected else { return }
       self.emitSeries()
       self.emitFocusedSeries()

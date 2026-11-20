@@ -69,7 +69,8 @@ internal final class RecordingCoordinator {
         let recorder = try SessionRecorder(
           deviceName: config.name,
           deviceId: config.bleId,
-          pollIntervalMs: config.pollIntervalMs
+          pollIntervalMs: config.pollIntervalMs,
+          transport: config.transport
         )
         recorder.start()
         self.recorder = recorder

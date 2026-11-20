@@ -50,7 +50,7 @@ public class VescapeCoreModule: Module {
   private var completedProbes: [String: TransportDetection.Result] = [:]
 
   /// Frontend liveness gate. False while the app is backgrounded so the high-frequency telemetry
-  /// firehose (`onLiveTick` at the board's poll rate, `onTelemetryHistory`, `onLiveSeries`) never
+  /// firehose (`onLiveTick` at the board's poll rate, `onLiveSeries`) never
   /// crosses to a JS thread iOS keeps alive under the BLE/`location` background modes — that flood
   /// pegged the JS thread and tripped the OS CPU watchdog (fatal `cpu_resource` kill). Native keeps
   /// polling, recording and firing alerts throughout; only the JS-facing emit sleeps.
@@ -94,7 +94,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideError", "onGroupRideSignalAvailability", "onPublicRideStatus", "onPublicRiders", "onPublicPins", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading", "onRideNotices")
+    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onBms", "onBmsSeries", "onLocation", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideError", "onGroupRideSignalAvailability", "onPublicRideStatus", "onPublicRiders", "onPublicPins", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading", "onRideNotices")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -111,8 +111,6 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onLiveSeries") { self.observedEvents.remove("onLiveSeries") }
     OnStartObserving("onFocusedSeries") { self.observedEvents.insert("onFocusedSeries") }
     OnStopObserving("onFocusedSeries") { self.observedEvents.remove("onFocusedSeries") }
-    OnStartObserving("onTelemetryHistory") { self.observedEvents.insert("onTelemetryHistory") }
-    OnStopObserving("onTelemetryHistory") { self.observedEvents.remove("onTelemetryHistory") }
     OnStartObserving("onBms") { self.observedEvents.insert("onBms") }
     OnStopObserving("onBms") { self.observedEvents.remove("onBms") }
     OnStartObserving("onBmsSeries") { self.observedEvents.insert("onBmsSeries") }
@@ -812,15 +810,16 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startDebugReplay`
     AsyncFunction("startDebugReplay") { (name: String, options: [String: Any]?, promise: Promise) in
       self.coordinator.startReplay(
         recordingName: name,
         warmupMs: (options?["warmupMs"] as? NSNumber)?.int64Value ?? 0,
-        warmupSpeed: (options?["warmupSpeed"] as? NSNumber)?.doubleValue ?? 1.0,
+        loop: (options?["loop"] as? Bool) ?? false,
         onSuccess: { promise.resolve(nil) },
         onError: { code, message in promise.reject(code, message) }
       )
-    }
+    }.runOnQueue(.main)
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
     Function("setWatchRouteSpanM") { (spanM: Double?) in
@@ -831,6 +830,10 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopBoard()
       promise.resolve(nil)
     }
+    Function("getDebugReplayState") { self.debugReplayStateMap { _ in } }
+    Function("setDebugReplayPaused") { (paused: Bool) in self.debugReplayStateMap { $0.setPaused(paused) } }
+    Function("setDebugReplayLoop") { (loop: Bool) in self.debugReplayStateMap { $0.setLoop(loop) } }
+    Function("dropDebugReplayLink") { self.debugReplayStateMap { $0.dropLink() } }
 
     AsyncFunction("selectBoard") { (boardId: String, promise: Promise) in
       do {
@@ -1948,6 +1951,26 @@ public class VescapeCoreModule: Module {
         self.coordinator.reloadWatchSettings()
       }
     }
+  }
+
+  /// Applies `control` to the playing replay on the main queue (its home) and returns the state
+  /// after it, or `nil` when no replay session is up.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `debugReplayStateMap`
+  private func debugReplayStateMap(_ control: @escaping (SimulatedBoard) -> Void) -> [String: Any]? {
+    let read = { () -> [String: Any]? in
+      guard let board = self.coordinator.replayPlayback else { return nil }
+      control(board)
+      let state = board.state()
+      return [
+        "recording": state.recording,
+        "positionMs": state.positionMs,
+        "durationMs": state.durationMs,
+        "paused": state.paused,
+        "loop": state.loop,
+        "linked": state.linked,
+      ]
+    }
+    return Thread.isMainThread ? read() : DispatchQueue.main.sync(execute: read)
   }
 
   private func startAlertTest(_ ruleMaps: [[String: Any]]) {

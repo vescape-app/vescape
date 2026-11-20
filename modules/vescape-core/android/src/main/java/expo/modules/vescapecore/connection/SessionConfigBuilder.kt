@@ -22,6 +22,8 @@ internal const val DEFAULT_BOARD_NAME = "VESC Board"
  *
  * A replay passes the [hardware] its recording was made on: the link it presents comes from the
  * recording, not the Board row, so the Board needs no Board Link of its own (ADR 0048).
+ *
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `resolve`
  */
 internal suspend fun buildSessionConfig(
     context: Context,

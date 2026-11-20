@@ -29,6 +29,8 @@ internal struct BoardConnectConfig {
   /// Raw debug Session Recorder gate (dev setting, `setDebugRecordingEnabled`). Replay sessions
   /// always run with `false` so a replay never re-records itself.
   var recordingEnabled = false
+  /// The Simulated Board this session talks to instead of the GATT client (ADR 0048).
+  var replay: ReplaySpec?
 
   /// Resolve a stored board's Board Link into a runtime connect config. Returns `nil` when the
   /// board is unlinked (JS routes those to Board Probe instead). Dumb connect (ADR 0015): the
@@ -36,10 +38,15 @@ internal struct BoardConnectConfig {
   ///
   /// Shared by the JS connect bridge and the headless resume path (#378), which rebuilds the exact
   /// same config from the same stored link after a state-restoration relaunch.
+  ///
+  /// `hardware` presents a recording's board as this Board's link instead (ADR 0048), so a replay
+  /// runs on any Board, linked or not.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/SessionConfigBuilder.kt `buildSessionConfig`
   static func resolve(
     boardId: String,
     appData: AppDataRepository,
-    recordingEnabled: Bool = false
+    recordingEnabled: Bool = false,
+    hardware: RecordedHardware? = nil
   ) -> BoardConnectConfig? {
     let board: [String: Any?]
     do { guard let stored = try appData.getBoard(boardId) else { return nil }; board = stored }
@@ -49,9 +56,8 @@ internal struct BoardConnectConfig {
     }
     // Reads resolve tombstones so history can name them (ADR 0027); connecting to one is refused.
     guard board["deletedAt"] as? Int64 == nil else { return nil }
-    guard let link = board["link"] as? [String: Any?] else { return nil }
-    guard let bleId = link["bleId"] as? String, !bleId.isEmpty else { return nil }
-    let transport = BoardTransport.fromBridge(link["transport"] ?? nil) ?? .direct
+    let link = board["link"] as? [String: Any?]
+    let linkedBleId = (link?["bleId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     let name = board["name"] as? String ?? "VESC Board"
     let settings: [String: Any?]
     do { settings = try appData.getSettings() }
@@ -60,6 +66,27 @@ internal struct BoardConnectConfig {
       return nil
     }
     let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
+    let batteryConfig = AppDataRepository.normalizeBatteryConfig(board["batteryConfig"] ?? nil)
+    let liveHistoryLimitMinutes = AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil) ?? 5
+    if let hardware {
+      return BoardConnectConfig(
+        appBoardId: boardId,
+        bleId: linkedBleId ?? hardware.deviceId ?? boardId,
+        name: name,
+        transport: hardware.transport,
+        linkVersion: LinkIdentity.currentLinkVersion,
+        hasBms: hardware.hasBms,
+        vescFirmwareVersion: hardware.firmware,
+        refloatVersion: hardware.refloatVersion,
+        refloatBaseVersion: hardware.refloatVersion.flatMap(LinkIdentity.normalizeRefloatBaseVersion),
+        pollIntervalMs: hardware.pollIntervalMs ?? (hz > 0 ? 1000 / hz : 0),
+        batteryConfig: batteryConfig,
+        liveHistoryLimitMinutes: liveHistoryLimitMinutes,
+        recordingEnabled: recordingEnabled
+      )
+    }
+    guard let link, let bleId = linkedBleId else { return nil }
+    let transport = BoardTransport.fromBridge(link["transport"] ?? nil) ?? .direct
     return BoardConnectConfig(
       appBoardId: boardId,
       bleId: bleId,
@@ -71,11 +98,21 @@ internal struct BoardConnectConfig {
       refloatVersion: link["refloatVersion"] as? String,
       refloatBaseVersion: link["refloatBaseVersion"] as? String,
       pollIntervalMs: hz > 0 ? 1000 / hz : 0,
-      batteryConfig: AppDataRepository.normalizeBatteryConfig(board["batteryConfig"] ?? nil),
-      liveHistoryLimitMinutes: AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil) ?? 5,
+      batteryConfig: batteryConfig,
+      liveHistoryLimitMinutes: liveHistoryLimitMinutes,
       recordingEnabled: recordingEnabled
     )
   }
+}
+
+/// A Debug Recording replayed as this Board's hardware. Playback starts `warmupMs` into the
+/// recording; everything before it prefills live display state (Replay Warmup).
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/service/CoreForegroundService.kt `ReplaySpec`
+internal struct ReplaySpec {
+  let recording: ReplayRecording
+  let warmupMs: Int64
+  let loop: Bool
 }
 
 /// Owns the live Board Session: drives connect phases off GATT callbacks, seeds the stored
@@ -120,14 +157,16 @@ internal final class BoardSessionController: VescGattListener {
   /// central's state into `onGattRestored`.
   private let makeGatt: (VescGattListener, Scheduler) -> VescGattClient
   private lazy var gatt = makeGatt(self, scheduler)
-  /// Transport seam (ADR 0024): a replay session swaps in a `ReplayTransport` for its lifetime;
+  /// Transport seam (ADR 0048): a replay session talks to a `SimulatedBoard` for its lifetime;
   /// everything else drives the real GATT client. Set on connect, cleared on session end. All
   /// session-facing link traffic goes through `transport`; scan stays on `gatt` (not session-bound).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `transport`
-  private var replayTransport: ReplayTransport?
+  private var simulatedBoard: SimulatedBoard?
   /// Injectable radio boundary for session recovery tests; production uses the CoreBluetooth client.
   private let suppliedTransport: SessionTransport?
-  private var transport: SessionTransport { replayTransport ?? suppliedTransport ?? gatt }
+  private var transport: SessionTransport { simulatedBoard ?? suppliedTransport ?? gatt }
+  /// The playing replay's controls, or `nil` when no replay session is up.
+  var replayPlayback: SimulatedBoard? { simulatedBoard }
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `remoteTiltController`
   private lazy var remoteTiltController = RemoteTiltController(
     transport: { [weak self] in
@@ -167,11 +206,6 @@ internal final class BoardSessionController: VescGattListener {
     remoteInput: remoteInput,
     boundInput: { AccessorySessionController.shared.groundClearanceBound() },
     tiltInput: { AccessorySessionController.shared.groundClearanceTilt() })
-  /// The clock this session stamps and compares its data against. Wall time for every real session;
-  /// a replay swaps in its own for the session's lifetime so a warmed-up playback writes a timeline
-  /// that agrees with itself. Never read directly — go through `nowMs()`.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `sessionClock`
-  private var sessionClock: SessionClock = SystemSessionClock.shared
   private let connectTimeoutSeconds = 20.0
   private let gattHandshakeDeadline = GattHandshakeDeadline()
   private var connectTimeout: Cancellable?
@@ -410,11 +444,6 @@ internal final class BoardSessionController: VescGattListener {
   )
   private var staleWorkItem: Cancellable?
 
-  // Batched history flush cadence (cold path); the hot `onLiveTick` fires every frame.
-  private var historyBuffer: [[String: Any?]] = []
-  private var lastHistoryFlushAt: Int64 = 0
-  private let historyFlushIntervalMs: Int64 = 300
-
   // Latest Battery SoC Estimate + voltage, retained so the session-end persist writes fresh values.
   private var latestBatterySoc: Double?
   private var latestBatteryVoltage: Double?
@@ -484,120 +513,91 @@ internal final class BoardSessionController: VescGattListener {
 
   func connect(
     config: BoardConnectConfig,
-    replay: ReplayTransport? = nil,
     onSuccess: @escaping () -> Void,
     onError: @escaping (String, String) -> Void
   ) {
-    // A replay that is *replaced* never reaches the session teardown: `ReplayTransport.disconnect()`
-    // only cancels its schedule and fires no listener callback, so `endSession`/`fail` never run.
-    // Hand position back here, or the outgoing replay's fixes leak into the session replacing it and
-    // the parked live monitor is never re-armed.
-    let replacedReplay = replayTransport != nil
-    replayTransport?.disconnect()
-    replayTransport = nil
+    // A replay that is *replaced* never reaches the session teardown: `SimulatedBoard.disconnect()`
+    // unlinks without a listener callback, so `endSession`/`fail` never run. Hand position back
+    // here, or the outgoing replay's fixes leak into the session replacing it and the parked live
+    // monitor is never re-armed.
+    let replacedReplay = simulatedBoard != nil
+    simulatedBoard?.disconnect()
+    simulatedBoard = nil
     releaseGpsFromSession(wasReplay: replacedReplay)
     // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
     weatherAlerts.rideEnded()
     // Starting a replay while a live board is connected: tear the live GATT link down first, or
     // its callbacks keep feeding real frames into the replay session. A live→live connect needs
     // no such step — `gatt.connect` clears its own previous peripheral.
-    if replay != nil { gatt.disconnect() }
+    if config.replay != nil { gatt.disconnect() }
     // A replay starts a separate location timeline; live fixes must not seed its trail/course.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginSession`
-    if replay != nil { locationTracker.clearReplayLocations() }
-    replayTransport = replay
-    // A replay owns the session's notion of time for its lifetime. Installed here, with the
-    // transport, so it cannot be undone by the teardown of the session being replaced.
-    sessionClock = replay?.clock ?? SystemSessionClock.shared
+    if config.replay != nil { locationTracker.resetTrail() }
+    simulatedBoard = config.replay.map { spec in
+      SimulatedBoard(
+        recording: spec.recording,
+        warmupMs: spec.warmupMs,
+        loop: spec.loop,
+        listener: self,
+        scheduler: scheduler,
+        onLocation: { [weak self] fix in
+          guard let self else { return }
+          self.onLocationUpdated(self.replayedLocation(fix, atMs: Self.wallMs()))
+        },
+        onEnded: { [weak self] in self?.endSession(phase: .idle, error: nil) }
+      )
+    }
     (transport as? VescGattClient)?.recorder = { [weak self] in self?.recordingCoordinator.currentRecorder() }
     batteryEstimator.ensureLoaded()
     liveSeries.emit = { [weak self] name, body in self?.emit?(name, body) }
     liveSeries.generation = { [weak self] in self?.connectionSeq ?? 0 }
-    liveSeries.speed = { [weak self] in self?.sessionClock.speed ?? 1.0 }
     liveSeries.setWindowMinutes(config.liveHistoryLimitMinutes)
     beginSession(config: config, onSuccess: onSuccess, onError: onError)
+    if let simulatedBoard, let spec = config.replay { prefillReplayWarmup(simulatedBoard, warmupMs: spec.warmupMs) }
     armConnectTimeout()
     transport.connect(peripheralId: config.bleId)
   }
 
-  /// Start a dev-mode replay session (ADR 0024): a Debug Recording played through the real session
-  /// stack via `ReplayTransport`, keyed under a synthetic `replay:` board id so durable writes stay
-  /// isolated from real boards. Stop = normal disconnect; the recording running out ends the
-  /// session like a disconnect.
+  /// Replay a Debug Recording on the selected Board (ADR 0048): an ordinary Board Session for that
+  /// Board, talking to a Simulated Board that presents the recorded hardware. `warmupMs` prefills the
+  /// live display from that much of the recording before playback starts; `loop` restarts the
+  /// recording at its end. Stop = normal disconnect.
   ///
-  /// `warmupMs` / `warmupSpeed` are opt-in and default to a plain 1× replay, so the Replay UI plays
-  /// a ride exactly as it happened. A caller that needs the live charts populated up front — the
-  /// screenshot run, an E2E flow — asks for a warmup window and how much faster than real time to
-  /// deliver it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startDebugReplay`
   func startReplay(
     recordingName: String,
-    warmupMs: Int64 = 0,
-    warmupSpeed: Double = 1.0,
+    warmupMs: Int64,
+    loop: Bool,
     onSuccess: @escaping () -> Void,
     onError: @escaping (String, String) -> Void
   ) {
+    let boardId: String
+    do {
+      guard let selected = try appData.getSettings()["selectedBoardId"] as? String else {
+        onError("ERR_NO_BOARD", "Replay runs as the selected Board: select one first")
+        return
+      }
+      boardId = selected
+    } catch {
+      RecordingStorageFailure.reportRead(operation: "replay_settings_read", error: error)
+      onError("APP_STORAGE_READ_FAILED", "Could not read replay settings")
+      return
+    }
     guard
       let url = ReplayRecordings.url(name: recordingName),
-      // intentional-suppression: replay failure is emitted and debug metadata is optional
+      // intentional-suppression: an unreadable recording is reported as not found
       let jsonl = try? String(contentsOf: url, encoding: .utf8)
     else {
       onError("REPLAY_NOT_FOUND", "Debug recording not found: \(recordingName)")
       return
     }
-    let meta = jsonl.split(separator: "\n").first
-      .flatMap { $0.data(using: .utf8) }
-      // intentional-suppression: replay failure is emitted and debug metadata is optional
-      .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
-    let baseName = recordingName.hasSuffix(".jsonl") ? String(recordingName.dropLast(6)) : recordingName
-    let replayBoardId = "replay:" + baseName
-    let settings: [String: Any?]
-    do { settings = try appData.getSettings() }
-    catch {
-      RecordingStorageFailure.reportRead(operation: "replay_settings_read", error: error)
-      onError("APP_STORAGE_READ_FAILED", "Could not read replay settings")
+    let recording = ReplayRecording.parse(name: recordingName, jsonl: jsonl)
+    guard var config = BoardConnectConfig.resolve(boardId: boardId, appData: appData, hardware: recording.hardware) else {
+      onError("ERR_NO_BOARD", "Board not found: \(boardId)")
       return
     }
-    // The synthetic `replay:` board id has no board row and therefore no pack config, so the SoC
-    // estimate would stay nil for the whole playback and the battery bar would read nothing. The
-    // recording is a ride of a real board: borrow the selected board's pack to size it.
-    var replayBatteryConfig: [String: Any]?
-    if let selectedBoardId = settings["selectedBoardId"] as? String {
-      do {
-        replayBatteryConfig = try appData.getBoard(selectedBoardId)
-          .flatMap { AppDataRepository.normalizeBatteryConfig($0["batteryConfig"] ?? nil) }
-      } catch {
-        RecordingStorageFailure.reportRead(operation: "replay_board_read", error: error)
-        onError("APP_STORAGE_READ_FAILED", "Could not read replay Board")
-        return
-      }
-    }
-    let config = BoardConnectConfig(
-      appBoardId: replayBoardId,
-      bleId: replayBoardId,
-      name: (meta?["deviceName"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? recordingName,
-      transport: .direct,
-      linkVersion: nil,
-      hasBms: nil,
-      vescFirmwareVersion: nil,
-      refloatVersion: nil,
-      refloatBaseVersion: nil,
-      pollIntervalMs: (meta?["pollIntervalMs"] as? NSNumber)?.intValue ?? 0,
-      batteryConfig: replayBatteryConfig,
-      liveHistoryLimitMinutes: AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil) ?? 5
-    )
-    connect(
-      config: config,
-      replay: ReplayTransport(
-        recordingName: recordingName,
-        listener: self,
-        onLocation: { [weak self] fix in self?.onReplayLocation(fix) },
-        clock: ReplayClock(warmupMs: warmupMs, warmupSpeed: warmupSpeed),
-        scheduler: scheduler
-      ),
-      onSuccess: onSuccess,
-      onError: onError
-    )
+    config.replay = ReplaySpec(recording: recording, warmupMs: min(max(0, warmupMs), recording.durationMs), loop: loop)
+    connect(config: config, onSuccess: onSuccess, onError: onError)
   }
 
   @discardableResult
@@ -1045,7 +1045,7 @@ internal final class BoardSessionController: VescGattListener {
       appVisible: appVisible,
       riding: riding,
       watchNavigating: watchMirror.navigating,
-      replayOwnsPosition: replayTransport != nil,
+      replayOwnsPosition: simulatedBoard != nil,
       manualPublicRide: groupRideObserver.publicRideNeedsGps
     )
     let wasActive = gpsMonitor.active
@@ -1200,9 +1200,6 @@ internal final class BoardSessionController: VescGattListener {
   private func latestRiderPresence() -> RiderPresence? {
     guard let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)
     else { return nil }
-    // A replay's fixes carry the Session Clock, which can sit far from now; the relay
-    // only takes positions near wall time, so a replayed fix is stamped as it is sent.
-    let replaying = replayTransport != nil
     let telemetry = latestTelemetry
     let telemetryFresh = telemetry != nil && !isTelemetryStale()
     return RiderPresence(
@@ -1216,7 +1213,7 @@ internal final class BoardSessionController: VescGattListener {
       phoneBattery: readPhoneBattery(),
       boardName: config.map { $0.name.isEmpty ? boardName : $0.name } ?? nil,
       target: groupRideTarget,
-      at: replaying ? Int64(Date().timeIntervalSince1970 * 1000) : location.timestamp
+      at: location.timestamp
     )
   }
 
@@ -1258,7 +1255,7 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `isTelemetryStale`
-  private func isTelemetryStale(now: Int64 = SystemSessionClock.shared.nowMs()) -> Bool {
+  private func isTelemetryStale(now: Int64 = BoardSessionController.wallMs()) -> Bool {
     now - (lastTelemetryAt ?? 0) >= Int64(telemetryStaleSeconds * 1000)
   }
 
@@ -1567,7 +1564,6 @@ internal final class BoardSessionController: VescGattListener {
     batteryEstimator.ensureLoaded()
     liveSeries.emit = { [weak self] name, body in self?.emit?(name, body) }
     liveSeries.generation = { [weak self] in self?.connectionSeq ?? 0 }
-    liveSeries.speed = { [weak self] in self?.sessionClock.speed ?? 1.0 }
     liveSeries.setWindowMinutes(config.liveHistoryLimitMinutes)
     // Re-arm the recording request *before* the session begins so `beginBoardSession` enables the
     // telemetry store on its normal path. Whether the result is one ride or two is decided by the
@@ -1609,7 +1605,7 @@ internal final class BoardSessionController: VescGattListener {
   /// Refresh the durable resume marker's recording flag; recording is toggled mid-session by
   /// auto-recording at board-ready and by the JS switch.
   private func syncResumeMarkerRecording() {
-    guard session != nil, replayTransport == nil else { return }
+    guard session != nil, simulatedBoard == nil else { return }
     SessionResumeStore.shared.setRecording(
       active: recordingCoordinator.telemetryRecordingEnabled
     )
@@ -1673,7 +1669,7 @@ internal final class BoardSessionController: VescGattListener {
     // rider is riding again. Without this the tombstone outlives every later launch and auto-connect
     // stays dead until the Board is re-selected. Replay sessions are synthetic and leave it alone.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `connectSelectedBoard`
-    if replayTransport == nil {
+    if simulatedBoard == nil {
       ManualBoardStop.clearAutoStartSuppression()
     }
     if let session {
@@ -1763,7 +1759,7 @@ internal final class BoardSessionController: VescGattListener {
     // The trapdoor for a jetsam kill (ADR 0034): with this marker on disk the next launch
     // re-creates the restore-identified central in `didFinishLaunching` and rebuilds this session.
     // A replay has no board to relaunch for, so it writes nothing.
-    if replayTransport == nil {
+    if simulatedBoard == nil {
       SessionResumeStore.shared.save(
         appBoardId: config.appBoardId,
         bleId: config.bleId,
@@ -1785,7 +1781,7 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func endSession(phase: BoardPhase, error: String?) {
-    let wasReplay = replayTransport != nil
+    let wasReplay = simulatedBoard != nil
     // Nothing left to resurrect: drop the trapdoor so the next cold start stays BLE-free (ADR 0034).
     SessionResumeStore.shared.clear()
     clearPendingResume()
@@ -1839,10 +1835,7 @@ internal final class BoardSessionController: VescGattListener {
     // milliseconds, and mid-ride alert latency is untouched.
     alertAudioPlayer.goIdle()
     transport.disconnect()
-    replayTransport = nil
-    // The shifted clock belongs to the replay that installed it; anything running between here and
-    // the next session must not still be reading time from the past.
-    sessionClock = SystemSessionClock.shared
+    simulatedBoard = nil
     reassembler.reset()
     connectedBoardId = nil
     bleId = nil
@@ -1988,7 +1981,7 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func fail(code: String, message: String) {
-    let wasReplay = replayTransport != nil
+    let wasReplay = simulatedBoard != nil
     // Same reasoning as `endSession`: no live session means nothing to resurrect.
     SessionResumeStore.shared.clear()
     clearPendingResume()
@@ -2015,10 +2008,7 @@ internal final class BoardSessionController: VescGattListener {
     // milliseconds, and mid-ride alert latency is untouched.
     alertAudioPlayer.goIdle()
     transport.disconnect()
-    replayTransport = nil
-    // The shifted clock belongs to the replay that installed it; anything running between here and
-    // the next session must not still be reading time from the past.
-    sessionClock = SystemSessionClock.shared
+    simulatedBoard = nil
     releaseGpsFromSession(wasReplay: wasReplay)
     // A session ended on purpose ends the ride; only a dropout keeps the evaluator's memory.
     weatherAlerts.rideEnded()
@@ -2037,10 +2027,6 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `scheduleAutoReconnect`
   private func beginReconnect(restartTransport: Bool = false, retryDelayMs: Int = 0) {
     guard let config else { return }
-    // Replay links are not recoverable: watchdogs (board-ready, stale) stay no-ops and playback
-    // simply resumes when recorded frames arrive. The recording's end is handled as a terminal
-    // disconnect in `onGattDisconnected`, mirroring Android's `autoReconnect = false` replay config.
-    guard transport.supportsReconnect else { return }
     failureRetry?.cancel()
     failureRetry = nil
     // Settle a still-pending initial connect before dropping into the retry loop, mirroring Android
@@ -2230,8 +2216,8 @@ internal final class BoardSessionController: VescGattListener {
     guard session != nil else { return }
     // A saved Board Link already passed probing. Runtime GATT errors follow the same retry path
     // as Android's failPendingConnect -> failStart; they must not end the rider's session.
-    // Invalid input and replay failures cannot be repaired by reconnecting.
-    guard transport.supportsReconnect, code != "INVALID_DEVICE" else {
+    // Invalid input cannot be repaired by reconnecting.
+    guard code != "INVALID_DEVICE" else {
       fail(code: code, message: message)
       return
     }
@@ -2252,14 +2238,6 @@ internal final class BoardSessionController: VescGattListener {
   func onGattDisconnected(intentional: Bool, message: String) {
     if intentional { return }
     guard session != nil else { return }
-    // A replay link cannot come back: the recording ran out. Reaching the end of a recording is
-    // not a failure — tear the session down cleanly to idle (same as a user Stop) so no
-    // "Connection failed" pill shows and the REPLAY badge/name clear, instead of stranding the UI
-    // in the error phase with a stale session (Android parity: replay-end idle teardown).
-    guard transport.supportsReconnect else {
-      endSession(phase: .idle, error: nil)
-      return
-    }
     // Any unexpected drop — during the initial handshake or mid-ride — recovers via the persistent
     // reconnect loop. Mirrors Android's always-on session `autoReconnect`: a drop while connecting
     // schedules a reconnect (`wasConnecting.autoReconnect → scheduleAutoReconnect`) instead of
@@ -2814,18 +2792,6 @@ internal final class BoardSessionController: VescGattListener {
         recordingCoordinator.recordTelemetry(capture)
       }
     }
-
-    // Cold path: full samples batched a few times a second for history + charts. Fired alerts ride
-    // the buffered sample so `onTelemetryHistory` carries them too.
-    historyBuffer.append(tick)
-    // Gated on session time, not wall time, so this needs no speed divisor of its own: a warming
-    // replay advances `lastPacketAt` fast, which fires the flush proportionally more often in real
-    // terms and keeps each batch the size it would be live.
-    // @platform-diff Android drives the same flush from a scheduler timer, so it scales explicitly.
-    let now = telemetry.lastPacketAt
-    if lastHistoryFlushAt == 0 || now - lastHistoryFlushAt >= historyFlushIntervalMs {
-      flushHistory()
-    }
   }
 
   /// Persist the last Battery SoC Estimate per board so it survives full app kill (#152). Throttled
@@ -3263,13 +3229,6 @@ internal final class BoardSessionController: VescGattListener {
     }
   }
 
-  private func flushHistory() {
-    guard !historyBuffer.isEmpty else { return }
-    emit?("onTelemetryHistory", ["samples": historyBuffer])
-    historyBuffer.removeAll(keepingCapacity: true)
-    lastHistoryFlushAt = nowMs()
-  }
-
   private func telemetryCapture(_ telemetry: RefloatTelemetry) -> TelemetryCapture? {
     guard let config else { return nil }
     let canId: Int?
@@ -3292,23 +3251,64 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
-  /// Feed a recorded fix into the same path a live one takes, so everything downstream — map,
-  /// trail, ride stats, Group Ride presence — sees the ride exactly as it happened.
+  /// A recorded fix stamped `atMs`, fed through the same path a live one takes so everything
+  /// downstream (map, trail, ride stats, Group Ride presence) sees the ride as it happened.
   ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onReplayLocation`
-  private func onReplayLocation(_ fix: ReplayLocation) {
-    onLocationUpdated(
-      TelemetryLocationCapture(
-        latitude: fix.latitude,
-        longitude: fix.longitude,
-        speedMps: fix.speedMps,
-        bearingDeg: fix.bearingDeg,
-        accuracyM: fix.accuracyM,
-        altitudeM: fix.altitudeM,
-        timestamp: nowMs(),
-        precise: isPreciseGpsFix(accuracyM: fix.accuracyM)
-      )
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `replayedLocation`
+  private func replayedLocation(_ fix: ReplayLocation, atMs: Int64) -> TelemetryLocationCapture {
+    TelemetryLocationCapture(
+      latitude: fix.latitude,
+      longitude: fix.longitude,
+      speedMps: fix.speedMps,
+      bearingDeg: fix.bearingDeg,
+      accuracyM: fix.accuracyM,
+      altitudeM: fix.altitudeM,
+      timestamp: atMs,
+      precise: isPreciseGpsFix(accuracyM: fix.accuracyM)
     )
+  }
+
+  /// Replay Warmup (ADR 0048): the recording's warmup span, stamped backwards from now, fills live
+  /// display state only, so the charts start full. No alerts, no recording, no persistence.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `prefillReplayWarmup`
+  private func prefillReplayWarmup(_ board: SimulatedBoard, warmupMs: Int64) {
+    let startedAt = Self.wallMs()
+    for event in board.warmup {
+      let stamp = startedAt - (warmupMs - event.t)
+      switch event {
+      case let .frame(_, payload): prefillFrame(payload, stamp: stamp)
+      case let .fix(fix): locationTracker.prefill(replayedLocation(fix, atMs: stamp))
+      case .configWrite: break
+      }
+    }
+  }
+
+  private func prefillFrame(_ payload: [UInt8], stamp: Int64) {
+    switch Int(payload[0]) {
+    case COMM_BMS_GET_VALUES:
+      guard let bms = parseBmsValues(payload, packetAt: stamp) else { return }
+      bmsSeriesRing.append(
+        capturedAtMs: bms.capturedAt,
+        cellVoltages: bms.cellVoltages,
+        balancing: bms.balancing,
+        windowMs: bmsSeriesWindowMs()
+      )
+    case COMM_CUSTOM_APP_DATA:
+      guard
+        let telemetry = parseRefloatGetAllData(payload: payload, avgLatency: nil, packetAt: stamp, pullRateHz: nil),
+        !telemetry.hasFault
+      else { return }
+      var sample = telemetry.toMap()
+      sample["batteryPercent"] = batteryEstimator.estimateBatteryPercent(
+        voltageV: telemetry.batteryVoltage,
+        config: config?.batteryConfig,
+        batteryCurrentA: telemetry.batteryCurrent
+      ).map { socWindow.median(percent: $0, nowMs: stamp) }
+      liveSeries.prefill(sample)
+    default:
+      break
+    }
   }
 
   /// Board Session teardown's only business with GPS *fixes*. Whether the monitor keeps running is
@@ -3316,12 +3316,12 @@ internal final class BoardSessionController: VescGattListener {
   /// session state it reads has settled.
   ///
   /// A replay fed recorded fixes through the live path for its lifetime, so they are dropped here
-  /// rather than leaking onto the live map. Must run after `replayTransport` is cleared: demand
+  /// rather than leaking onto the live map. Must run after `simulatedBoard` is cleared: demand
   /// resolves to `off` while a replay is installed.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopCurrentBoardSession`
   private func releaseGpsFromSession(wasReplay: Bool) {
-    if wasReplay { locationTracker.clearReplayLocations() }
+    if wasReplay { locationTracker.resetTrail() }
     // The grace belongs to the session that lost its link; with the session gone there is nothing
     // left for it to keep alive.
     linkLostAtMs = nil
@@ -3412,8 +3412,6 @@ internal final class BoardSessionController: VescGattListener {
   private func startPolling(session: BoardSession) {
     pollingLoop.stop()
     idlePauseDetector.reset()
-    lastHistoryFlushAt = 0
-    historyBuffer.removeAll(keepingCapacity: true)
     polling = true
     // Arm the board-ready watchdog only once polling begins in `waitingForTelemetry`; a stale
     // stored transport still reaches here and times out into reconnect (Android parity).
@@ -3460,7 +3458,6 @@ internal final class BoardSessionController: VescGattListener {
     cancelStaleWatchdog()
     idlePauseDetector.reset()
     liveSeries.stop()
-    flushHistory()
   }
 
   /// Poll spacing honoring an active Idle Pause: never faster than the configured rate.
@@ -3593,8 +3590,8 @@ internal final class BoardSessionController: VescGattListener {
     pollingLoop.latency(at: now)
   }
 
-  /// - SeeAlso: `SessionClock`
-  private func nowMs() -> Int64 { sessionClock.nowMs() }
+  private func nowMs() -> Int64 { Self.wallMs() }
+  private static func wallMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
   private func elapsedMs() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000.0) }
 }
 

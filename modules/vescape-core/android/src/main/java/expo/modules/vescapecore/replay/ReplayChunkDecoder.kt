@@ -7,7 +7,7 @@ import expo.modules.vescapecore.protocol.parseBmsValues
 import org.json.JSONObject
 import java.util.Base64
 
-/** One recorded incoming BLE chunk: milliseconds since recording start plus the raw bytes. */
+/** One recorded BLE chunk: milliseconds since recording start plus the raw bytes. */
 internal data class ReplayChunk(val t: Long, val bytes: ByteArray)
 
 /**
