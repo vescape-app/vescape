@@ -37,3 +37,20 @@ test('can still hide One Dark POI labels or icons independently', () => {
   expect(withoutIcons?.layout?.['text-field']).toBeTruthy()
   expect(withoutIcons?.layout?.['icon-image']).toBe('')
 })
+
+test('includes city, town, and district labels when district labels are enabled', () => {
+  const withDistricts = JSON.parse(getOneDarkMapStyle(true, true, true)).layers as { id: string }[]
+  const ids = new Set(withDistricts.map((layer) => layer.id))
+
+  expect(ids.has('place-label-city')).toBe(true)
+  expect(ids.has('place-label-town')).toBe(true)
+  expect(ids.has('place-label-subdivision')).toBe(true)
+  expect(ids.has('place-label-village')).toBe(true)
+  expect(ids.has('place-label-hamlet')).toBe(true)
+  expect(ids.has('place-label-region')).toBe(true)
+
+  const withoutDistricts = new Set(layers(true, true).map((layer) => layer.id))
+  expect(withoutDistricts.has('place-label-city')).toBe(true)
+  expect(withoutDistricts.has('place-label-subdivision')).toBe(false)
+  expect(withoutDistricts.has('place-label-town')).toBe(false)
+})

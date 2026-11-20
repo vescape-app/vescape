@@ -211,15 +211,17 @@ export const ONE_DARK_OVERLAY_LAYERS = [
     ],
     layout: {
       'text-field': ['get', 'name'],
-      'text-font': ['DIN Pro Regular', 'Arial Unicode MS Regular'],
-      'text-size': ['interpolate', ['linear'], ['zoom'], 8, 8, 12, 11, 15, 13],
-      'text-padding': 18,
+      'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 8, 8.5, 12, 11, 15, 13],
+      'text-transform': 'uppercase',
+      'text-letter-spacing': 0.05,
+      'text-padding': 14,
     },
     paint: {
-      'text-color': '#6f8197',
+      'text-color': '#8fa1b5',
       'text-halo-color': '#172033',
-      'text-halo-width': 1.2,
-      'text-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.4, 12, 0.68, 15, 0.78],
+      'text-halo-width': 1.5,
+      'text-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.5, 12, 0.8, 15, 0.9],
     },
   },
   {
@@ -239,7 +241,7 @@ export const ONE_DARK_OVERLAY_LAYERS = [
       'text-color': '#8fa1b5',
       'text-halo-color': '#172033',
       'text-halo-width': 1.5,
-      'text-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.55, 10, 0.78, 14, 0.9],
+      'text-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.65, 10, 0.85, 14, 0.95],
     },
   },
   {

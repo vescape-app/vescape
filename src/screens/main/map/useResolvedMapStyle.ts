@@ -83,7 +83,7 @@ export function useResolvedMapStyle({
       ),
     [satelliteTone.imageryContrast, satelliteTone.imageryOpacity, satelliteTone.imagerySaturation],
   )
-  const oneDarkStyleJSON = useMemo(() => getOneDarkMapStyle(true, true, false), [])
+  const oneDarkStyleJSON = useMemo(() => getOneDarkMapStyle(true, true, true), [])
   const satelliteStyleJSON = useMemo(
     () => getSatelliteOverlayMapStyle(resolvedTheme),
     [resolvedTheme],
