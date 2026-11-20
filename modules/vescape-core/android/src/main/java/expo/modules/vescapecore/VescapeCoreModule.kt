@@ -37,9 +37,11 @@ import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.recording.DebugRecordingStore
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.recording.StorageOutageEventBridge
+import expo.modules.vescapecore.replay.ReplayRecording
 import expo.modules.vescapecore.replay.ReplayRecordings
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
+import expo.modules.vescapecore.service.ReplaySpec
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.connection.TransportDetection
 import expo.modules.vescapecore.connection.PendingLinkConnect
@@ -191,7 +193,6 @@ class VescapeCoreModule : Module() {
       "onLiveTick",
       "onLiveSeries",
       "onFocusedSeries",
-      "onTelemetryHistory",
       "onBms",
       "onBmsSeries",
       "onLocation",
@@ -326,8 +327,6 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onLiveSeries") { stopObserving("onLiveSeries") }
     OnStartObserving("onFocusedSeries") { startObserving("onFocusedSeries") }
     OnStopObserving("onFocusedSeries") { stopObserving("onFocusedSeries") }
-    OnStartObserving("onTelemetryHistory") { startObserving("onTelemetryHistory") }
-    OnStopObserving("onTelemetryHistory") { stopObserving("onTelemetryHistory") }
     OnStartObserving("onBms") { startObserving("onBms") }
     OnStopObserving("onBms") { stopObserving("onBms") }
     OnStartObserving("onBmsSeries") { startObserving("onBmsSeries") }
@@ -803,6 +802,19 @@ class VescapeCoreModule : Module() {
     }
     AsyncFunction("stopDebugReplay") { promise: Promise ->
       CoreForegroundService.stopBoardSession(context.applicationContext) { promise.resolve(null) }
+    }
+    Function("getDebugReplayState") { debugReplayStateMap() }
+    Function("setDebugReplayPaused") { paused: Boolean ->
+      CoreForegroundService.replayPlayback()?.setPaused(paused)
+      debugReplayStateMap()
+    }
+    Function("setDebugReplayLoop") { loop: Boolean ->
+      CoreForegroundService.replayPlayback()?.setLoop(loop)
+      debugReplayStateMap()
+    }
+    Function("dropDebugReplayLink") {
+      CoreForegroundService.replayPlayback()?.dropLink()
+      debugReplayStateMap()
     }
     Function("reportUiError") { message: String, source: String?, stack: String? ->
       DiagnosticReporter.get(context.applicationContext).capture(
@@ -2051,32 +2063,29 @@ class VescapeCoreModule : Module() {
   }
 
   /**
-   * Start a dev-mode replay session (ADR 0024): a Debug Recording played through the real session
-   * stack via ReplayTransport, keyed under a synthetic `replay:` board id so durable writes stay
-   * isolated from real boards. Stop = normal disconnect (`stopDebugReplay` / `stopBoard`).
+   * Replay a Debug Recording on the selected Board (ADR 0048): an ordinary Board Session for that
+   * Board, talking to a Simulated Board that presents the recorded hardware. `warmupMs` prefills the
+   * live display from that much of the recording before playback starts; `loop` restarts the
+   * recording at its end. Stop = normal disconnect.
    *
-   * `warmupMs` / `warmupSpeed` are opt-in and default to a plain 1× replay, so the Replay UI plays a
-   * ride exactly as it happened. A caller that needs the live charts populated up front — the
-   * screenshot run, an E2E flow — asks for a warmup window and how much faster than real time to
-   * deliver it.
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startDebugReplay`
    */
-  private fun startDebugReplay(name: String, options: Map<String, Any?>?, promise: Promise) {
+  private suspend fun startDebugReplay(name: String, options: Map<String, Any?>?, promise: Promise) {
     val appCtx = context.applicationContext
-    val meta = ReplayRecordings.readMeta(appCtx, name)
-    val replayBoardId = "replay:" + name.removeSuffix(".jsonl")
-    val config = SessionConfig(
-      appBoardId = replayBoardId,
-      deviceId = replayBoardId,
-      deviceName = meta?.optString("deviceName")?.takeIf { it.isNotBlank() } ?: name,
-      transport = BoardTransport.Direct,
-      pollIntervalMs = meta?.optLong("pollIntervalMs") ?: 0L,
-      recordingEnabled = false,
-      telemetryRecordingEnabled = false,
-      autoReconnect = false,
-      replayRecordingName = name,
-      replayWarmupMs = (options?.get("warmupMs") as? Number)?.toLong() ?: 0L,
-      replayWarmupSpeed = (options?.get("warmupSpeed") as? Number)?.toDouble() ?: 1.0,
-    )
+    val boardId = AppDataRepository.get(appCtx).getTypedSettings().selectedBoardId
+    if (boardId == null) {
+      promise.reject("ERR_NO_BOARD", "Replay runs as the selected Board: select one first", null)
+      return
+    }
+    val recording = ReplayRecording.parse(name, ReplayRecordings.read(appCtx, name))
+    val config = buildSessionConfig(appCtx, boardId, recordingEnabled = false, hardware = recording.hardware)
+      .copy(
+        replay = ReplaySpec(
+          recording = recording,
+          warmupMs = ((options?.get("warmupMs") as? Number)?.toLong() ?: 0L).coerceIn(0L, recording.durationMs),
+          loop = options?.get("loop") as? Boolean ?: false,
+        ),
+      )
     CoreForegroundService.startBoardSession(
       appCtx,
       config,
@@ -2084,6 +2093,19 @@ class VescapeCoreModule : Module() {
       onError = { code, message -> promise.reject(code, message, null) },
     )
   }
+
+  /** @parity /modules/vescape-core/ios/VescapeCoreModule.swift `debugReplayStateMap` */
+  private fun debugReplayStateMap(): Map<String, Any?>? =
+    CoreForegroundService.replayPlayback()?.state()?.let { state ->
+      mapOf(
+        "recording" to state.recording,
+        "positionMs" to state.positionMs,
+        "durationMs" to state.durationMs,
+        "paused" to state.paused,
+        "loop" to state.loop,
+        "linked" to state.linked,
+      )
+    }
 
   private suspend fun probeBoardLink(bleId: String, probeId: String): Map<String, Any?> {
     if (bleId.isBlank()) {

@@ -1,7 +1,6 @@
 /**
  * Replay warmup for a fixture session: how much recorded ride the session opens with already on the
- * charts, and how much faster than real time native delivers it. 6 minutes at 30× costs about
- * twelve seconds of real waiting.
+ * charts. Native prefills it at session start, back-stamped, so it costs no real waiting.
  *
  * The window is deliberately wider than `AppSettings.liveHistoryLimit` (5 minutes), so the detail
  * charts open full and a smoke run reaches asserted telemetry — speed, temps, duty cycle — without
@@ -14,7 +13,6 @@
  */
 
 export const REPLAY_WARMUP_MS = 6 * 60_000
-export const REPLAY_WARMUP_SPEED = 30
 
 /** Promo footage opens on the later western stretch, with five minutes of live trail. */
 export const PREVIEW_WARMUP_MS = 7 * 60_000

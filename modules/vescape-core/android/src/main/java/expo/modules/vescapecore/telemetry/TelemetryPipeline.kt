@@ -88,7 +88,6 @@ internal data class FocusedSeries(
 internal data class ProcessedTelemetry(
     val eventMap: MutableMap<String, Any?>,
     val capture: TelemetryCapture,
-    val metricExclusionUpdates: List<Map<String, Any?>>,
     /** Highest speed (km/h) and duty (%) across the live window, as the live charts plot them. */
     val speedPeak: Double?,
     val dutyPeak: Double?,
@@ -302,13 +301,31 @@ internal class TelemetryPipeline(
     }
 
     fun process(parsed: RefloatTelemetry, sessionToken: BoardSession): ProcessedTelemetry? {
+        val cfg = currentConfig(sessionToken) ?: return null
+        lastTelemetryAt = parsed.lastPacketAt
+        armStaleWatchdog()
+        return retain(parsed, cfg)
+    }
+
+    /**
+     * Replay Warmup (ADR 0048): a recorded sample enters the live window — points, recent
+     * telemetry, peaks — and nothing else. It is not the session's latest frame, so staleness
+     * never reads it.
+     * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `prefill`
+     */
+    fun prefill(parsed: RefloatTelemetry, sessionToken: BoardSession) {
+        val cfg = currentConfig(sessionToken) ?: return
+        retain(parsed, cfg)
+    }
+
+    private fun currentConfig(sessionToken: BoardSession): SessionConfig? {
         val cfg = sessionConfig ?: return null
         val currentSession = session ?: return null
         if (sessionToken !== currentSession || !sessionToken.isActive) return null
+        return cfg
+    }
 
-        lastTelemetryAt = parsed.lastPacketAt
-        armStaleWatchdog()
-
+    private fun retain(parsed: RefloatTelemetry, cfg: SessionConfig): ProcessedTelemetry {
         val capture = captureBuilder(parsed, cfg, canId)
         val baseEventMap = parsed.toMap().toMutableMap()
         val state = FullTelemetryState.from(capture)
@@ -331,7 +348,7 @@ internal class TelemetryPipeline(
             speedPeak.value(recentTelemetry) to dutyPeak.value(recentTelemetry)
         }
 
-        return ProcessedTelemetry(baseEventMap, capture, updates, peaks.first, peaks.second)
+        return ProcessedTelemetry(baseEventMap, capture, peaks.first, peaks.second)
     }
 
     private fun clearRecentTelemetry() = synchronized(recentLock) {

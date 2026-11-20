@@ -6,16 +6,26 @@ import {
   ArrowsClockwiseIcon,
   CameraRotateIcon,
   EyeSlashIcon,
+  LinkBreakIcon,
   ListBulletsIcon,
   PathIcon,
+  PauseIcon,
   PlayIcon,
   RecordIcon,
+  RepeatIcon,
   SpeakerHighIcon,
   SwatchesIcon,
   ToolboxIcon,
   type Icon,
 } from 'phosphor-react-native'
-import { startDebugReplay } from 'vescape-core'
+import {
+  dropDebugReplayLink,
+  getDebugReplayState,
+  setDebugReplayLoop,
+  setDebugReplayPaused,
+  startDebugReplay,
+  type DebugReplayState,
+} from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { isDevelopmentApp } from '@/config/appVariant'
@@ -80,6 +90,8 @@ async function reloadRuntime() {
 export function DevBadge() {
   const [hidden, setHidden] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  // Read when the menu opens; the controls write back what native reports after each change.
+  const [replay, setReplay] = useState<DebugReplayState | null>(null)
   const recordDebugSession = useBleStore((state) => state.recordDebugSession)
   const setRecordDebugSession = useBleStore((state) => state.setRecordDebugSession)
   if (!isDevelopmentApp || !showDevControls) return null
@@ -109,7 +121,10 @@ export function DevBadge() {
       ) : null}
       <Pressable
         style={styles.hitArea}
-        onPress={() => setExpanded((current) => !current)}
+        onPress={() => {
+          if (!expanded) setReplay(getDebugReplayState())
+          setExpanded(!expanded)
+        }}
         onLongPress={hide}
         accessibilityRole="button"
         accessibilityLabel="Development tools"
@@ -145,17 +160,41 @@ export function DevBadge() {
               router.push(routes.settingsDiagnosticEvents)
             }}
           />
-          <MenuAction
-            icon={PlayIcon}
-            label="Replay Thor301"
-            onPress={() => {
-              setExpanded(false)
-              if (router.canDismiss()) router.dismissAll()
-              startDebugReplay(QUICK_REPLAY).catch((error: unknown) =>
-                console.warn('[dev] replay failed', error),
-              )
-            }}
-          />
+          {replay ? (
+            <>
+              <MenuAction
+                icon={replay.paused ? PlayIcon : PauseIcon}
+                label={replay.paused ? 'Resume replay' : 'Pause replay'}
+                onPress={() => setReplay(setDebugReplayPaused(!replay.paused))}
+              />
+              <MenuAction
+                icon={RepeatIcon}
+                label="Loop replay"
+                active={replay.loop}
+                onPress={() => setReplay(setDebugReplayLoop(!replay.loop))}
+              />
+              <MenuAction
+                icon={LinkBreakIcon}
+                label="Drop replay link"
+                onPress={() => {
+                  setExpanded(false)
+                  dropDebugReplayLink()
+                }}
+              />
+            </>
+          ) : (
+            <MenuAction
+              icon={PlayIcon}
+              label="Replay Thor301"
+              onPress={() => {
+                setExpanded(false)
+                if (router.canDismiss()) router.dismissAll()
+                startDebugReplay(QUICK_REPLAY).catch((error: unknown) =>
+                  console.warn('[dev] replay failed', error),
+                )
+              }}
+            />
+          )}
           <MenuAction
             icon={RecordIcon}
             label="Debug recording"

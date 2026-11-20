@@ -35,7 +35,7 @@ internal interface VescGattListener {
 /**
  * Transport seam under [BoardSessionController] (ADR 0024): everything the controller calls on the
  * board link beyond the [VescGattListener] callbacks. The real [VescGattClient] speaks GATT; the
- * dev-mode ReplayTransport plays a Debug Recording through the same surface.
+ * dev-mode SimulatedBoard plays a Debug Recording through the same surface (ADR 0048).
  * @parity /modules/vescape-core/ios/protocol/VescGattClient.swift `SessionTransport`
  */
 internal interface SessionTransport {

@@ -3,7 +3,6 @@ package expo.modules.vescapecore.replay
 import expo.modules.vescapecore.recording.DebugRecordingStore
 
 import android.content.Context
-import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
 
@@ -19,18 +18,6 @@ internal object ReplayRecordings {
 
     fun read(context: Context, name: String): String =
         open(context, name).bufferedReader().use { it.readText() }
-
-    /** The recording's `meta` first line, or null when missing/malformed (truncated capture). */
-    fun readMeta(context: Context, name: String): JSONObject? =
-        open(context, name).bufferedReader().useLines { lines ->
-            lines.firstOrNull()?.let { line ->
-                try {
-                    JSONObject(line).takeIf { it.optString("kind") == "meta" }
-                } catch (e: Exception) {
-                    null
-                }
-            }
-        }
 
     private fun open(context: Context, name: String): InputStream {
         val store = DebugRecordingStore(context)

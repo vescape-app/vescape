@@ -1,5 +1,4 @@
 import { applicationId } from '../../src/config/appVariant.ts'
-import { PREVIEW_WARMUP_MS, REPLAY_WARMUP_SPEED } from '../../src/config/replayWarmup.ts'
 import { ROOT, type CaptureDriver } from './captureDriver.ts'
 import type { PreviewTake } from './previewRecording.ts'
 
@@ -68,7 +67,7 @@ export async function filmFeaturePreview(
       '--foreground',
     )
     await wait('battery-bar')
-    await dwell(Math.ceil(PREVIEW_WARMUP_MS / REPLAY_WARMUP_SPEED) + 2000)
+    await dwell(2000)
     // The Android emulator needs additional time to drain native replay and map rendering work.
     if (driver.platform === 'android') {
       for (let i = 0; i < 3; i++) await dwell(30_000)

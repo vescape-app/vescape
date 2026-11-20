@@ -18,7 +18,7 @@ fun interface LocalDiagnosticSink {
 }
 
 // @parity /modules/vescape-core/ios/diagnostics/DiagnosticsRecorder.swift
-class DiagnosticsRecorder(
+internal class DiagnosticsRecorder(
     private val local: LocalDiagnosticSink,
     private val context: () -> DiagnosticContext,
 ) {

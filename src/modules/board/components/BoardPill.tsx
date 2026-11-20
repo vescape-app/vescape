@@ -10,7 +10,6 @@ import {
 import type { BoardWarningSeverity } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
-import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { severityStatus } from '@/modules/board/constants/boardWarnings'
 import { theme, type ThemeColor } from '@/constants/theme'
 
@@ -35,7 +34,6 @@ interface BoardPillProps {
   maxWidth: number
   name: string | null
   bleStatus: string
-  replay?: boolean
   onOpenSelector: () => void
   onDisconnect: () => void
   /** Starts a connection while the board is idle; absent when there is no board to reach. */
@@ -53,7 +51,6 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
     maxWidth,
     name,
     bleStatus,
-    replay,
     onOpenSelector,
     onDisconnect,
     onConnect,
@@ -99,7 +96,6 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
         accessibilityLabel={`${name ?? 'No board'}, board selector`}
       >
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        {replay && <ReplayBadge />}
         <Text style={styles.boardText} numberOfLines={1}>
           {name ?? 'No board'}
         </Text>

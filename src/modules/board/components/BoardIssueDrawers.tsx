@@ -11,7 +11,6 @@ import { theme } from '@/constants/theme'
 interface BoardIssueDrawersProps {
   issues: BoardIssues
   activeBoardId: string | null
-  sessionBoardId: string | null
   warningsOpen: boolean
   faultsOpen: boolean
   warningTriggerRef: React.RefObject<View | null>
@@ -27,7 +26,6 @@ interface BoardIssueDrawersProps {
 export function BoardIssueDrawers({
   issues,
   activeBoardId,
-  sessionBoardId,
   warningsOpen,
   faultsOpen,
   warningTriggerRef,
@@ -49,7 +47,7 @@ export function BoardIssueDrawers({
           <BoardWarningsSheet boardId={activeBoardId} warnings={issues.warnings} />
         </EdgeDrawer>
       )}
-      {issues.faultsEnabled && sessionBoardId && (
+      {issues.faultsEnabled && activeBoardId && (
         <EdgeDrawer
           visible={faultsOpen}
           triggerRef={faultTriggerRef}
@@ -59,8 +57,8 @@ export function BoardIssueDrawers({
           onClose={onCloseFaults}
         >
           <VescFaultsSheet
-            key={sessionBoardId}
-            boardId={sessionBoardId}
+            key={activeBoardId}
+            boardId={activeBoardId}
             faults={issues.faults}
             visible={faultsOpen}
           />

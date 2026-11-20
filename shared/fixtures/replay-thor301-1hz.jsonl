@@ -1,4 +1,4 @@
-{"t":0,"kind":"meta","version":1,"deviceName":"Thor301","deviceId":"A1:B2:C3:D4:E5:F6","sessionKind":"board","pollIntervalMs":50,"startedAt":1785767349604}
+{"t":0,"kind":"meta","version":1,"deviceName":"Thor301","deviceId":"A1:B2:C3:D4:E5:F6","sessionKind":"board","transport":"98","pollIntervalMs":50,"startedAt":1785767349604}
 {"t":1,"kind":"session-state","status":"recording-started"}
 {"t":6,"kind":"session-state","status":"connecting"}
 {"t":272,"kind":"session-state","status":0}

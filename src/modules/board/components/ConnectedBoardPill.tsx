@@ -11,7 +11,6 @@ interface ConnectedBoardPillProps {
   maxWidth: number
   activeBoard: Board | undefined
   bleStatus: string
-  isReplay: boolean
   /** Pending trouble on the board, read once by the top bar and shared with the selector. */
   issues: BoardIssues
   warningTriggerRef: React.RefObject<View | null>
@@ -30,7 +29,6 @@ export const ConnectedBoardPill = forwardRef<View, ConnectedBoardPillProps>(
   function ConnectedBoardPill(
     {
       activeBoard,
-      isReplay,
       issues,
       warningTriggerRef,
       faultTriggerRef,
@@ -48,7 +46,6 @@ export const ConnectedBoardPill = forwardRef<View, ConnectedBoardPillProps>(
         {...props}
         ref={ref}
         name={activeBoard?.name ?? null}
-        replay={isReplay && showDevControls}
         onStopRecording={showDevControls && recording ? () => setRecording(false) : undefined}
         warning={
           issues.warningsEnabled && issues.severity

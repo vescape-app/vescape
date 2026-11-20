@@ -23,13 +23,9 @@ export interface BoardIssues {
 
 /**
  * The board's pending trouble, read once for every surface that offers a way into it (the pill
- * badges and the board selector). Faults belong to whichever board the live session writes under —
- * a replay's synthetic board while it plays — so they take their own id.
+ * badges and the board selector).
  */
-export function useBoardIssues(
-  activeBoardId: string | null,
-  sessionBoardId: string | null,
-): BoardIssues {
+export function useBoardIssues(activeBoardId: string | null): BoardIssues {
   const warnings = useBoardWarningsStore((s) =>
     activeBoardId ? (s.warningsByBoard[activeBoardId] ?? EMPTY_WARNINGS) : EMPTY_WARNINGS,
   )
@@ -37,7 +33,7 @@ export function useBoardIssues(
     (s) => s.boards.find((b) => b.id === activeBoardId)?.dismissedWarnings,
   )
   const faults = useVescFaultsStore((s) =>
-    sessionBoardId ? (s.faultsByBoard[sessionBoardId] ?? EMPTY_FAULTS) : EMPTY_FAULTS,
+    activeBoardId ? (s.faultsByBoard[activeBoardId] ?? EMPTY_FAULTS) : EMPTY_FAULTS,
   )
   const warningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
   const faultsEnabled = useSettingsStore((s) => s.vescFaultCollectionEnabled)

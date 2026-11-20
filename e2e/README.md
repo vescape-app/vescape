@@ -363,7 +363,7 @@ Data comes from two existing mechanisms, no new native code:
 - durable (history, boards, tunes, alerts): a backup zip at `shared/fixtures/screenshot-db.zip`,
   staged into the app's fixture dir (`src/config/fixtureSession.ts`) and restored by
   `restoreDatabase` on startup — Room on Android, GRDB on iOS, already `@parity` peers.
-- live (home hero panel): `startDebugReplay` at 1x through the real telemetry pipeline.
+- live (home hero panel): `startDebugReplay` plays a recording as the selected Board through the real session (ADR 0048).
 
 `screenshots/` is gitignored; the fixture zip is committed. It is generated from a real backup by
 
@@ -407,7 +407,7 @@ recording must be at least as long as the whole run, warmup included.
 
 `bun run preview` records a Release fixture build with the platform recorder, then exports H.264
 MP4 footage for a landing page or promo. It reuses screenshot device preparation and the sanitized
-history database. `EXPO_PUBLIC_PREVIEW=1` selects dark appearance and fast-forwards the first seven
+history database. `EXPO_PUBLIC_PREVIEW=1` selects dark appearance and prefills the first seven
 minutes through the same Replay Warmup prefill used by screenshots. The map opens on the
 later western stretch with an established trail and filled charts, then plays recorded BLE/GPS at 1×.
 Normal rider controls, including REC, remain visible.

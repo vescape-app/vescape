@@ -1,12 +1,7 @@
-# Reuse screenshot fixture boot; fast-forward finishes before the recorder starts.
+# Reuse screenshot fixture boot; native prefills the warmup, so playback is live once it is up.
 appId: ${APP_ID}
 ---
 - runFlow: ../fixture/_boot.yaml
-- runScript:
-    file: _recorder.js
-    env:
-      ACTION: dwell
-      MS: ${WARMUP_WAIT_MS}
 # Android's emulator takes longer to drain the replay event backlog and load map tiles.
 - runFlow:
     when:

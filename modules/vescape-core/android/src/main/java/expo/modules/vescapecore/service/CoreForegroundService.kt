@@ -5,6 +5,8 @@ import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.connection.BoardSessionController
 import expo.modules.vescapecore.weather.WeatherAlertLine
 import expo.modules.vescapecore.connection.BoardTransport
+import expo.modules.vescapecore.replay.ReplayRecording
+import expo.modules.vescapecore.replay.SimulatedBoard
 import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.config.PendingConfigWrite
@@ -63,7 +65,7 @@ internal const val ACTION_COMPANION_DEVICE_APPEARED = "expo.modules.vescapecore.
 internal const val EXTRA_COMPANION_ADDRESS = "expo.modules.vescapecore.EXTRA_COMPANION_ADDRESS"
 internal const val TELEMETRY_STALE_MS = 4_000L
 
-data class SessionConfig(
+internal data class SessionConfig(
     val appBoardId: String?,
     val deviceId: String?,
     val deviceName: String,
@@ -78,20 +80,20 @@ data class SessionConfig(
     val recordingEnabled: Boolean,
     val telemetryRecordingEnabled: Boolean,
     val autoReconnect: Boolean = false,
-    /**
-     * Debug Recording name driving this session through a ReplayTransport instead of the real GATT
-     * client (ADR 0024). Replay sessions run under a synthetic `replay:` board id with
-     * `recordingEnabled = false` and `autoReconnect = false`.
-     */
-    val replayRecordingName: String? = null,
-    /**
-     * How much of the recording plays faster than real time before playback settles to 1×, and how
-     * much faster. `0` — the default and what the dev Replay UI uses — is a plain 1× replay.
-     *
-     * @see expo.modules.vescapecore.replay.ReplayClock
-     */
-    val replayWarmupMs: Long = 0L,
-    val replayWarmupSpeed: Double = 1.0,
+    /** The Simulated Board this session talks to instead of the GATT client (ADR 0048). */
+    val replay: ReplaySpec? = null,
+)
+
+/**
+ * A Debug Recording replayed as this Board's hardware. Playback starts [warmupMs] into the
+ * recording; everything before it prefills live display state (Replay Warmup).
+ *
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `ReplaySpec`
+ */
+internal data class ReplaySpec(
+    val recording: ReplayRecording,
+    val warmupMs: Long,
+    val loop: Boolean,
 )
 
 internal data class PendingStart(
@@ -171,7 +173,7 @@ class CoreForegroundService : Service() {
             pendingGroupRideUrl.also { pendingGroupRideUrl = null }
         }
 
-        fun startBoardSession(
+        internal fun startBoardSession(
             context: Context,
             boardConfig: SessionConfig,
             onSuccess: () -> Unit,
@@ -302,6 +304,9 @@ class CoreForegroundService : Service() {
             }
             service.controller.readVescFaultLog(boardId, onSuccess, onError)
         }
+
+        /** The replay session's Simulated Board, or `null` when no replay is up (ADR 0048). */
+        internal fun replayPlayback(): SimulatedBoard? = instance?.controller?.replayPlayback
 
         fun setRemoteTilt(value: Int): Boolean = instance?.controller?.setRemoteTilt(value) ?: false
 

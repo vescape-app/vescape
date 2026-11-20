@@ -30,7 +30,6 @@ export function BoardPillShowcase() {
   const [critical, setCritical] = useState(false)
   const [faults, setFaults] = useState(false)
   const [recording, setRecording] = useState(false)
-  const [replay, setReplay] = useState(false)
   const [longName, setLongName] = useState(false)
   const [narrow, setNarrow] = useState(false)
   const [accessory, setAccessory] = useState(false)
@@ -70,7 +69,6 @@ export function BoardPillShowcase() {
           <ToggleRow label="VESC fault" value={faults} onToggle={setFaults} />
           <ToggleRow label="accessory connected" value={accessory} onToggle={setAccessory} />
           <ToggleRow label="debug recording" value={recording} onToggle={setRecording} />
-          <ToggleRow label="replay" value={replay} onToggle={setReplay} />
           <ToggleRow label="long board name" value={longName} onToggle={setLongName} />
           <ToggleRow label="narrow layout" value={narrow} onToggle={setNarrow} />
         </>
@@ -87,7 +85,6 @@ export function BoardPillShowcase() {
               : null
           }
           bleStatus={status}
-          replay={replay}
           onOpenSelector={() => setLastAction('Open board selector')}
           onConnect={selected ? () => setLastAction('Connect board') : undefined}
           onDisconnect={() => {

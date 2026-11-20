@@ -3,7 +3,6 @@ import {
   addLiveStateListener,
   addLocationListener,
   getLiveState,
-  isReplayBoardId,
   refreshLocationDemand,
   type LiveStateEvent,
 } from 'vescape-core'
@@ -19,17 +18,28 @@ import { useLocationStore } from '@/modules/location/store/locationStore'
 import { getLiveWindowMs, useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 let stopSync: (() => void) | null = null
-let replayBoardId: string | null = null
+let seenConnectionSeq: number | null = null
+let seenConnected = false
+
+/**
+ * Status events omit history, so a new Board Session, or a link that has just come up, pulls a full
+ * snapshot instead: native may have started that session with history already in place (Replay
+ * Warmup) or a trail of its own (a replay's recorded fixes), and both replace what JS holds.
+ */
+function onLiveStateEvent(state: LiveStateEvent): void {
+  const connected = state.board.phase === 'connected'
+  const newSession = state.board.connectionSeq !== seenConnectionSeq
+  if (newSession || (connected && !seenConnected)) {
+    if (newSession) resetBoardLivePresentation()
+    syncLiveState()
+    return
+  }
+  applyLiveState(state, 'event')
+}
 
 function applyLiveState(state: LiveStateEvent, source: 'snapshot' | 'event'): void {
-  const nextReplayId = isReplayBoardId(state.board.connectedBoardId)
-    ? state.board.connectedBoardId
-    : null
-  if (nextReplayId !== replayBoardId) {
-    resetBoardLivePresentation()
-    useLocationStore.getState().reset()
-  }
-  replayBoardId = nextReplayId
+  seenConnectionSeq = state.board.connectionSeq
+  seenConnected = state.board.phase === 'connected'
   applyBoardLiveState(state, source)
   const location = useLocationStore.getState()
   if (source === 'snapshot') location.applySnapshot(state.gps, getLiveWindowMs())
@@ -51,7 +61,7 @@ export function refreshGpsDemand(): void {
 export function startLiveStateSync(): () => void {
   stopSync?.()
   const stopBoard = startBoardLiveStreams()
-  const stateSub = addLiveStateListener((state) => applyLiveState(state, 'event'))
+  const stateSub = addLiveStateListener(onLiveStateEvent)
   const locationSub = addLocationListener((location) => {
     useLocationStore.getState().ingestLocation(location, getLiveWindowMs())
   })

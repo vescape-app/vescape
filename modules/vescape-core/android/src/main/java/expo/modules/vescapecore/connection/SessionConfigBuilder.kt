@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.connection
 
+import expo.modules.vescapecore.replay.RecordedHardware
+import expo.modules.vescapecore.runtime.LinkIdentity
 import expo.modules.vescapecore.service.SessionConfig
 
 import android.content.Context
@@ -17,11 +19,15 @@ internal const val DEFAULT_BOARD_NAME = "VESC Board"
  * response-paced: send the next poll as soon as the reply lands). Polling stays response-paced
  * either way, so the floor caps the rate without outrunning the controller. Changing the cap
  * mid-session is applied live via reloadTelemetrySettings (see updateSetting).
+ *
+ * A replay passes the [hardware] its recording was made on: the link it presents comes from the
+ * recording, not the Board row, so the Board needs no Board Link of its own (ADR 0048).
  */
 internal suspend fun buildSessionConfig(
     context: Context,
     boardId: String,
     recordingEnabled: Boolean,
+    hardware: RecordedHardware? = null,
 ): SessionConfig {
     val repo = AppDataRepository.get(context.applicationContext)
     val board = try {
@@ -39,11 +45,36 @@ internal suspend fun buildSessionConfig(
     }
     @Suppress("UNCHECKED_CAST")
     val link = board["link"] as? Map<String, Any?>
-    val bleId = link?.get("bleId") as? String
-    if (bleId.isNullOrBlank()) {
+    val bleId = (link?.get("bleId") as? String)?.takeIf { it.isNotBlank() }
+    val boardName = board["name"] as? String ?: DEFAULT_BOARD_NAME
+    val pollIntervalMs = hardware?.pollIntervalMs ?: pollIntervalMsForHz(try {
+        repo.getTypedSettings().telemetryPollRateHz
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("board_connect_settings_read", error)
+        throw error
+    })
+    if (hardware != null) {
+        return SessionConfig(
+            appBoardId = boardId,
+            deviceId = bleId ?: hardware.deviceId ?: boardId,
+            deviceName = boardName,
+            transport = hardware.transport,
+            linkVersion = LinkIdentity.CURRENT_LINK_VERSION,
+            hasBms = hardware.hasBms,
+            vescFirmwareVersion = hardware.firmware,
+            refloatVersion = hardware.refloatVersion,
+            refloatBaseVersion = hardware.refloatVersion?.let(LinkIdentity::normalizeRefloatBaseVersion),
+            pollIntervalMs = pollIntervalMs,
+            recordingEnabled = recordingEnabled,
+            telemetryRecordingEnabled = false,
+            autoReconnect = true,
+        )
+    }
+    if (link == null || bleId == null) {
         throw IllegalArgumentException("Board has no Board Link: $boardId")
     }
-    val boardName = board["name"] as? String ?: DEFAULT_BOARD_NAME
     return SessionConfig(
         appBoardId = boardId,
         deviceId = bleId,
@@ -54,14 +85,7 @@ internal suspend fun buildSessionConfig(
         vescFirmwareVersion = link["vescFirmwareVersion"] as? String,
         refloatVersion = link["refloatVersion"] as? String,
         refloatBaseVersion = link["refloatBaseVersion"] as? String,
-        pollIntervalMs = pollIntervalMsForHz(try {
-            repo.getTypedSettings().telemetryPollRateHz
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            RecordingStorageFailure.reportRead("board_connect_settings_read", error)
-            throw error
-        }),
+        pollIntervalMs = pollIntervalMs,
         recordingEnabled = recordingEnabled,
         telemetryRecordingEnabled = false,
         autoReconnect = true,

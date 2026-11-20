@@ -27,24 +27,28 @@ internal data class ReplayLocation(
 )
 
 /**
- * Pure decode core for Debug Recording replay (ADR 0024): turns a `.jsonl` Debug Recording into the
- * byte stream and decoded frames the session stack originally saw. Shared by the unit replay
- * harness (test source) and the dev-mode ReplayTransport. `ble-chunk` lines with
- * `direction == "rx"` carry the board stream and `location` lines carry the ride's GPS track;
- * every other kind (meta, session-state, tx traffic) and any malformed line — real recordings can
- * end mid-write — is skipped, never fatal.
+ * Pure decode core for Debug Recording replay (ADR 0048): turns a `.jsonl` Debug Recording into the
+ * byte streams and GPS track the session originally saw. Shared by the unit replay harnesses (test
+ * source) and [ReplayRecording]. `ble-chunk` lines carry the board stream (`rx`) and the app's
+ * writes (`tx`), `location` lines the ride's GPS track; every other kind and any malformed line —
+ * real recordings can end mid-write — is skipped, never fatal.
  *
  * @parity /modules/vescape-core/ios/replay/ReplayChunkDecoder.swift
  */
 internal object ReplayChunkDecoder {
     /** Recorded `rx` chunks in file order with their recorded time offsets. */
-    fun rxChunks(jsonl: String): List<ReplayChunk> =
+    fun rxChunks(jsonl: String): List<ReplayChunk> = chunks(jsonl, "rx")
+
+    /** Recorded `tx` chunks (what the app wrote) in file order; thinned fixtures carry none. */
+    fun txChunks(jsonl: String): List<ReplayChunk> = chunks(jsonl, "tx")
+
+    private fun chunks(jsonl: String, direction: String): List<ReplayChunk> =
         jsonl.lineSequence().mapNotNull { line ->
             if (line.isBlank()) return@mapNotNull null
             try {
                 val json = JSONObject(line)
                 if (json.optString("kind") != "ble-chunk") return@mapNotNull null
-                if (json.optString("direction") != "rx") return@mapNotNull null
+                if (json.optString("direction") != direction) return@mapNotNull null
                 ReplayChunk(
                     t = json.getLong("t"),
                     bytes = Base64.getDecoder().decode(json.getString("base64")),

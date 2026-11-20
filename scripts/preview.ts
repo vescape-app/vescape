@@ -2,8 +2,6 @@
 import { mkdirSync } from 'fs'
 import { join } from 'path'
 
-import { PREVIEW_WARMUP_MS, REPLAY_WARMUP_SPEED } from '../src/config/replayWarmup.ts'
-
 import { applicationId } from '../src/config/appVariant.ts'
 import { maestroCommand } from './lib/maestro.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
@@ -90,8 +88,8 @@ async function startWatchReplay(watch: string, phone: string): Promise<void> {
   const log = await capture(['adb', '-s', phone, 'logcat', '-d', '-s', 'VescSession:D'])
   const startedAt = [...log.matchAll(/replay playback started .*wallMs=(\d+)/g)].at(-1)?.[1]
   if (!startedAt) throw new Error(`No replay playback start in ${phone} logcat`)
-  // After its warmup the phone replays at 1x, trailing wall time by the warmup's real duration.
-  const epoch = Number(startedAt) + PREVIEW_WARMUP_MS / REPLAY_WARMUP_SPEED - PREVIEW_WARMUP_MS
+  // `wallMs` is the wall time of the recording's start: the phone prefills its warmup, then plays in real time.
+  const epoch = Number(startedAt)
   await runOrDie([
     'adb',
     '-s',
@@ -203,8 +201,6 @@ async function film(driver: CaptureDriver): Promise<void> {
           `RECORDER_URL=http://127.0.0.1:${server.port}`,
           '-e',
           `RECORDER_TOKEN=${token}`,
-          '-e',
-          `WARMUP_WAIT_MS=${Math.ceil(PREVIEW_WARMUP_MS / REPLAY_WARMUP_SPEED) + 2000}`,
           join(ROOT, 'e2e', 'flows', 'preview', `${scene}.yaml`),
         ),
         undefined,

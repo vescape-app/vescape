@@ -16,12 +16,17 @@ import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { theme } from '@/constants/theme'
 import { formatBytes } from '@/helpers/format'
+import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useDebugRecordings } from '@/modules/history/hooks/useDebugRecordings'
 
 export function DebugRecordingsScreen() {
   const timeFormat = useTimeFormat()
   const debug = useDebugRecordings()
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  // A replay plays as the selected Board; pick another Board first to replay on it.
+  const replayBoardName = useBoardStore(
+    (state) => state.boards.find((board) => board.id === state.activeBoardId)?.name ?? null,
+  )
 
   const busy =
     debug.replayingName != null || debug.exportingName != null || debug.deletingName != null
@@ -44,7 +49,7 @@ export function DebugRecordingsScreen() {
       size="sm"
       variant="secondary"
       loading={debug.replayingName === name}
-      disabled={busy}
+      disabled={busy || replayBoardName == null}
       onPress={() => void startReplay(name)}
     />
   )
@@ -68,6 +73,12 @@ export function DebugRecordingsScreen() {
             right={<Switch value={debug.enabled} onValueChange={debug.setEnabled} />}
           />
         </SettingsCard>
+
+        <Text style={styles.replayBoardText}>
+          {replayBoardName
+            ? `Replays play as ${replayBoardName}, through a full Board Session.`
+            : 'Select a Board to replay a recording on it.'}
+        </Text>
 
         <View style={styles.recordingsHeading}>
           <SettingsSectionTitle>Recordings</SettingsSectionTitle>
@@ -187,6 +198,11 @@ const styles = StyleSheet.create({
   errorText: {
     color: theme.status.error.color,
     fontSize: 12,
+  },
+  replayBoardText: {
+    color: theme.neutral.textMuted,
+    fontSize: 13,
+    paddingHorizontal: 4,
   },
   emptyText: {
     color: theme.neutral.textMuted,

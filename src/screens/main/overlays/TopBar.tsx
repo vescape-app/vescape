@@ -24,8 +24,6 @@ import {
   useConnectedAccessories,
 } from '@/modules/accessories/store/accessoryStore'
 import { useBoardIssues } from '@/modules/board/hooks/useBoardIssues'
-import { useBleStore } from '@/modules/board/store/bleStore'
-import { isReplayBoardId } from 'vescape-core'
 import { routes } from '@/navigation/routes'
 import type { Board } from '@/modules/board/store/boardStore'
 import { theme } from '@/constants/theme'
@@ -104,13 +102,8 @@ export function TopBar({
   const riderColor = useSelectedBoardRailColor() ?? theme.palette.green.color
   const routeProgress = useMapStore((s) => s.routeProgress)
 
-  const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
-  const connectedId = useBleStore((s) => s.connectedId)
-  // Faults belong to whichever board the live session writes under — a replay's synthetic board
-  // while it plays, the selected board otherwise.
-  const sessionBoardId = isReplay ? connectedId : activeBoardId
   // Read once here: the pill wears the badges, the selector offers the same two ways in.
-  const issues = useBoardIssues(activeBoardId, sessionBoardId)
+  const issues = useBoardIssues(activeBoardId)
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
   // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
@@ -187,7 +180,6 @@ export function TopBar({
                   accessory={accessoryBadge}
                   activeBoard={activeBoard}
                   bleStatus={bleStatus}
-                  isReplay={isReplay}
                   issues={issues}
                   warningTriggerRef={warningRef}
                   faultTriggerRef={faultRef}
@@ -217,7 +209,6 @@ export function TopBar({
             accessory={accessoryBadge}
             activeBoard={activeBoard}
             bleStatus={bleStatus}
-            isReplay={isReplay}
             issues={issues}
             warningTriggerRef={warningRef}
             faultTriggerRef={faultRef}
@@ -280,7 +271,7 @@ export function TopBar({
             : undefined
         }
         faults={
-          issues.faultsEnabled && sessionBoardId
+          issues.faultsEnabled && activeBoardId
             ? {
                 count: issues.faultCount,
                 onPress: () => {
@@ -327,7 +318,6 @@ export function TopBar({
       <BoardIssueDrawers
         issues={issues}
         activeBoardId={activeBoardId}
-        sessionBoardId={sessionBoardId}
         warningsOpen={warningsOpen}
         faultsOpen={faultsOpen}
         warningTriggerRef={warningRef}

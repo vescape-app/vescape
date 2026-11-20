@@ -19,8 +19,8 @@ import expo.modules.vescapecore.telemetry.TelemetryLocationCapture
  * still recorded there. What the gate governs is the position a sample reports — live and, using
  * the same rule, when the two streams are joined on read.
  *
- * Both sides of the comparison are wall-clock epoch ms — `lastPacketAt` comes from the session
- * clock (`SessionClock.nowMs()`), the fix timestamp from `Location.getTime()`.
+ * Both sides of the comparison are wall-clock epoch ms: `lastPacketAt` from frame arrival, the fix
+ * timestamp from `Location.getTime()`.
  *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `telemetryLocationMaxAgeMs`
  */

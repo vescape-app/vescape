@@ -959,7 +959,6 @@ export interface TelemetryEvent {
   remoteTilt?: RemoteTiltState | null
   location?: LocationEvent | null
   metricExclusions?: Record<string, boolean>
-  metricExclusionUpdates?: LiveMetricExclusionUpdate[]
   pitch: number
   roll: number
   balancePitch: number
@@ -1034,11 +1033,6 @@ export interface BmsSeriesUpdate {
   generation: number
   windowMs: number
   frames: BmsSeriesFrame[]
-}
-
-export interface LiveMetricExclusionUpdate {
-  lastPacketAt: number
-  metricExclusions: Record<string, boolean>
 }
 
 export type BoardPhase = SessionStatus
@@ -2007,42 +2001,37 @@ export interface DebugFixture {
 }
 
 /**
- * Board-id prefix marking a native replay session (ADR 0024). The synthetic replay board id is
- * `replay:<recording-name>`; JS derives all replay presentation (REPLAY badge) from this prefix
- * instead of a parallel state flag.
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startDebugReplay`
- * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `startReplay`
- */
-export const REPLAY_BOARD_ID_PREFIX = 'replay:'
-
-/**
- * Opt-in fast-forward for the opening stretch of a replay, so a session can come up with its live
- * charts already filled instead of spending real minutes earning them. Omitted entirely, a replay
- * runs the whole recording at 1×.
+ * How a Debug Recording replays on the selected Board (ADR 0048). Default: no warmup, no loop.
  *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayClock.kt
- * @parity /modules/vescape-core/ios/replay/ReplayClock.swift
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startDebugReplay`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startDebugReplay`
  */
 export interface DebugReplayOptions {
-  /** How much of the recording plays faster than real time. `0` (default) is a plain 1× replay. */
+  /** How much of the recording prefills the live display before playback starts at 1×. */
   warmupMs?: number
-  /** How much faster than real time that window is delivered. Default `1`. */
-  warmupSpeed?: number
+  /** Restart the recording when it ends instead of ending the session. */
+  loop?: boolean
 }
 
-/** Whether a connected board id belongs to a dev-mode replay session. */
-export function isReplayBoardId(boardId: string | null | undefined): boolean {
-  return boardId?.startsWith(REPLAY_BOARD_ID_PREFIX) ?? false
+/**
+ * Where a running replay is. `null` from the getters when no replay session is up.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/SimulatedBoard.kt `ReplayPlaybackState`
+ * @parity /modules/vescape-core/ios/replay/SimulatedBoard.swift `ReplayPlaybackState`
+ */
+export interface DebugReplayState {
+  recording: string
+  positionMs: number
+  durationMs: number
+  paused: boolean
+  loop: boolean
+  /** False between a dropped link and the session's reconnect. */
+  linked: boolean
 }
 
 // ---------------------------------------------------------------------------
 // Typed emitter
 // ---------------------------------------------------------------------------
-
-/** Batched history payload: full samples flushed by native a few times per second. */
-export interface TelemetryHistoryEvent {
-  samples: TelemetryEvent[]
-}
 
 /**
  * Decimated live sparkline series, computed natively from the in-memory window.
@@ -2972,8 +2961,6 @@ type VescapeCoreEvents = {
   onLiveSeries: (event: LiveSeriesEvent) => void
   /** Full-resolution series for each focused `/control` detail-chart metric (~1Hz). */
   onFocusedSeries: (event: FocusedSeriesEvent) => void
-  /** Batched full samples (~3Hz) for history buffer and detail charts. */
-  onTelemetryHistory: (event: TelemetryHistoryEvent) => void
   onBms: (event: BmsEvent) => void
   onBmsSeries: (event: NativeBmsSeriesEvent) => void
   onLocation: (event: LocationEvent) => void
@@ -3132,6 +3119,10 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   startDebugReplay(name: string, options: DebugReplayOptions | null): Promise<void>
   setWatchRouteSpanM(spanM: number | null): void
   stopDebugReplay(): Promise<void>
+  getDebugReplayState(): DebugReplayState | null
+  setDebugReplayPaused(paused: boolean): DebugReplayState | null
+  setDebugReplayLoop(loop: boolean): DebugReplayState | null
+  dropDebugReplayLink(): DebugReplayState | null
   reportUiError(message: string, source?: string | null, stack?: string | null): void
   reportDiagnosticTest(): DiagnosticStatus
   getDiagnosticStatus(): DiagnosticStatus
@@ -3838,13 +3829,9 @@ export async function deleteDebugRecording(name: string): Promise<void> {
 }
 
 /**
- * Dev mode: replay a Debug Recording through the real native session stack under a synthetic
- * `replay:<name>` board id (ADR 0024). Ends like a disconnect when the recording runs out.
- *
- * Defaults to 1× — the recording plays back exactly as the ride happened, which is what the Replay
- * UI wants. Pass a warmup to trade that off for a session that starts with its live charts already
- * filled: `warmupMs` of the recording is delivered `warmupSpeed` times faster than real time before
- * playback settles to 1×.
+ * Dev mode: replay a Debug Recording as a Board Session of the selected Board, driven by a Simulated
+ * Board that presents the recorded hardware (ADR 0048). Without loop the session ends like a stop
+ * when the recording runs out.
  */
 export async function startDebugReplay(name: string, options?: DebugReplayOptions): Promise<void> {
   return native.startDebugReplay(name, options ?? null)
@@ -3853,6 +3840,24 @@ export async function startDebugReplay(name: string, options?: DebugReplayOption
 /** Dev mode: stop an active Debug Recording replay session (normal disconnect). */
 export async function stopDebugReplay(): Promise<void> {
   return native.stopDebugReplay()
+}
+
+export function getDebugReplayState(): DebugReplayState | null {
+  return native.getDebugReplayState()
+}
+
+/** Freeze the timeline; the board keeps answering polls with what it last said. */
+export function setDebugReplayPaused(paused: boolean): DebugReplayState | null {
+  return native.setDebugReplayPaused(paused)
+}
+
+export function setDebugReplayLoop(loop: boolean): DebugReplayState | null {
+  return native.setDebugReplayLoop(loop)
+}
+
+/** Lose the link as a board out of range does; the session reconnects and playback resumes. */
+export function dropDebugReplayLink(): DebugReplayState | null {
+  return native.dropDebugReplayLink()
 }
 
 /** Report a JS view-layer failure. Native failures are reported at their own operation boundary. */
@@ -5171,16 +5176,6 @@ export function addFocusedSeriesListener(
   cb: (event: FocusedSeriesEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onFocusedSeries', cb)
-}
-
-export function addTelemetryHistoryListener(
-  cb: (event: TelemetryHistoryEvent) => void,
-): EventSubscription {
-  if (E2E_ENABLED) {
-    return e2eFake.addTelemetryHistoryListener(cb)
-  }
-
-  return emitter.addListener('onTelemetryHistory', cb)
 }
 
 export function addBmsListener(cb: (event: BmsEvent) => void): EventSubscription {

@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.recording
 
+import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.service.SessionConfig
 
 import expo.modules.vescapecore.protocol.LocationSnapshot
@@ -53,6 +54,8 @@ internal class SessionRecorder(
                 .put("deviceId", boardConfig.deviceId)
                 .put("sessionKind", "board")
                 .put("pollIntervalMs", boardConfig.pollIntervalMs)
+                // Replies come back unwrapped from a CAN board, so a replay reads the hop from here.
+                .put("transport", BoardTransport.encode(boardConfig.transport))
                 .put("startedAt", startedAt)
         )
         recordState("recording-started")

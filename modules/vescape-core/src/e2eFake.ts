@@ -21,7 +21,6 @@ import type {
   RideHistoryPageOptions,
   RideHistorySession,
   TelemetryEvent,
-  TelemetryHistoryEvent,
   TelemetryHistoryOptions,
   TelemetryMinuteBucket,
   TelemetrySample,
@@ -49,7 +48,6 @@ const deviceListeners = new Set<(event: DeviceFoundEvent) => void>()
 const liveStateListeners = new Set<(event: LiveStateEvent) => void>()
 const liveTickListeners = new Set<(event: TelemetryEvent) => void>()
 const liveSeriesListeners = new Set<(event: LiveSeriesEvent) => void>()
-const telemetryHistoryListeners = new Set<(event: TelemetryHistoryEvent) => void>()
 const boardProbeProgressListeners = new Set<(event: BoardProbeProgressEvent) => void>()
 
 const e2eBoards: Board[] = []
@@ -216,10 +214,6 @@ function emitTelemetry(): void {
   lastTelemetry = makeTelemetry()
   for (const listener of liveTickListeners) {
     listener(lastTelemetry)
-  }
-  const batch: TelemetryHistoryEvent = { samples: [lastTelemetry] }
-  for (const listener of telemetryHistoryListeners) {
-    listener(batch)
   }
   emitLiveSeries(lastTelemetry)
   emitLiveState()
@@ -765,11 +759,6 @@ export const e2eFake = {
   addLiveSeriesListener(cb: (event: LiveSeriesEvent) => void): EventSubscription {
     liveSeriesListeners.add(cb)
     return { remove: () => liveSeriesListeners.delete(cb) }
-  },
-
-  addTelemetryHistoryListener(cb: (event: TelemetryHistoryEvent) => void): EventSubscription {
-    telemetryHistoryListeners.add(cb)
-    return { remove: () => telemetryHistoryListeners.delete(cb) }
   },
 
   getBoards(): Board[] {

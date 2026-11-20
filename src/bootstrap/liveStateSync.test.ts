@@ -240,16 +240,20 @@ test('clears an old trail when a full native snapshot has no GPS state', () => {
   expect(useLocationStore.getState().latestApproximateLocation).toBeNull()
 })
 
-test('drops replay trail on teardown even when the status event has no history', () => {
-  state.board.phase = 'connected'
-  state.board.connectedBoardId = 'replay:test'
+test('a new Board Session replaces the trail with the native snapshot', () => {
   restoreTrail()
-  state.board = { ...state.board, phase: 'idle', connectedBoardId: null }
-  state.gps = { ...state.gps, latestFix: null, latestApproximateFix: null, recentLocations: [] }
+  const fix = trailFix(40_000)
+  // A replay starts its own trail: native resets it and the session's status event omits history.
+  state.board = { ...state.board, phase: 'connecting', connectionSeq: 1 }
+  state.gps = { ...state.gps, recentLocations: [fix], latestFix: fix, latestApproximateFix: fix }
+  onLiveState({ ...state, gps: { ...state.gps, recentLocations: [] } })
+  expect(useLocationStore.getState().liveLocationHistory).toEqual([fix])
+  // Ending it hands the trail back the same way.
+  state.board = { ...state.board, phase: 'idle', connectionSeq: 2 }
+  state.gps = { ...state.gps, recentLocations: [], latestFix: null, latestApproximateFix: null }
   onLiveState(state)
   expect(useLocationStore.getState().liveLocationHistory).toEqual([])
 })
-
 test('board connect, switch, and disconnect do not clear phone location or stop its stream', async () => {
   const fixes = restoreTrail()
   await useBleStore.getState().connect('board-1')
@@ -291,22 +295,23 @@ test('retention changes and permission refresh restore native location independe
   expect(useLocationStore.getState().liveLocationHistory).toEqual(fixes)
 })
 
-test('entering another replay replaces its predecessor trail even without a full snapshot', () => {
-  restoreTrail()
-  const fix = trailFix(40_000)
-  state.board.connectedBoardId = 'replay:first'
-  state.gps = { ...state.gps, recentLocations: [], latestFix: fix, latestApproximateFix: fix }
+test('a link coming up pulls the history native already holds', () => {
+  const sample = { lastPacketAt: 39_000 } as LiveStateEvent['board']['recentTelemetry'][number]
+  state.board = { ...state.board, phase: 'connecting', connectionSeq: 1 }
   onLiveState(state)
-  expect(useLocationStore.getState().liveLocationHistory).toEqual([fix])
-  const other = trailFix(50_000)
-  onLiveState({
-    ...state,
-    board: { ...state.board, connectedBoardId: 'replay:second' },
-    gps: { ...state.gps, latestFix: other, latestApproximateFix: other },
-  })
-  expect(useLocationStore.getState().liveLocationHistory).toEqual([other])
+  // Replay Warmup prefilled the window before the link reported connected.
+  state.board = {
+    ...state.board,
+    phase: 'connected',
+    lastTelemetryAt: 40_000,
+    recentTelemetry: [sample],
+  }
+  onLiveState({ ...state, board: { ...state.board, recentTelemetry: [] } })
+  expect(useBleStore.getState().lastTelemetryAt).toBe(40_000)
+  // Later status events within the session stay events.
+  onLiveState({ ...state, board: { ...state.board, lastTelemetryAt: 41_000, recentTelemetry: [] } })
+  expect(useBleStore.getState().lastTelemetryAt).toBe(41_000)
 })
-
 test('cleanup removes native/lifecycle observers and discards a pending location publication', () => {
   const fixes = restoreTrail()
   onLocation(trailFix(40_000))
@@ -320,12 +325,14 @@ test('cleanup removes native/lifecycle observers and discards a pending location
 
 test('native connected status exposes telemetry arrival without a full history snapshot', () => {
   expect(useBleStore.getState().lastTelemetryAt).toBeNull()
-  onLiveState({ ...state, board: { ...state.board, phase: 'connected', lastTelemetryAt: 40_000 } })
+  state.board = { ...state.board, phase: 'connected' }
+  onLiveState(state)
+  onLiveState({ ...state, board: { ...state.board, lastTelemetryAt: 40_000 } })
   expect(useBleStore.getState().lastTelemetryAt).toBe(40_000)
+  state.board = { ...state.board, phase: 'idle' }
   onLiveState(state)
   expect(useBleStore.getState().lastTelemetryAt).toBeNull()
 })
-
 test('an old cleanup cannot tear down a replacement synchronization owner', () => {
   const oldCleanup = stopSync!
   stopSync = startLiveStateSync()

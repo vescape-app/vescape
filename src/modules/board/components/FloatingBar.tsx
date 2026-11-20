@@ -11,7 +11,7 @@ import {
   type Icon,
 } from 'phosphor-react-native'
 import { useCallback } from 'react'
-import { isReplayBoardId, type LinkIntegrity } from 'vescape-core'
+import type { LinkIntegrity } from 'vescape-core'
 import { useShallow } from 'zustand/react/shallow'
 
 import {
@@ -79,7 +79,6 @@ function getStatusPill(
   status: string,
   scanStatus: string,
   linkIntegrity: LinkIntegrity,
-  isReplay: boolean,
   board: Board | undefined,
   onStopScan: () => void,
   onRetryConnect: () => void,
@@ -156,11 +155,7 @@ function getStatusPill(
       color: theme.palette.sky.color,
       onPress: onStopScan,
     }
-  // A replay session streams a real board's recorded frames, so link-integrity checks compare the
-  // recording against the saved link and can read as outdated/mismatched. Suppress the pill: the
-  // "Re-link" CTA is inapplicable in dev playback (it would overwrite the real board's trusted link
-  // with replay-derived data and route to editBoardLink with a synthetic replay board id).
-  const linkWarning = isReplay ? null : getConnectedLinkIntegrityWarning(status, linkIntegrity)
+  const linkWarning = getConnectedLinkIntegrityWarning(status, linkIntegrity)
   if (linkWarning)
     return {
       kind: 'action',
@@ -203,7 +198,7 @@ export function FloatingBar({
   onRetryConnect,
   bottomOffset = 16,
 }: FloatingBarProps) {
-  const { recording, paused, recordingFailure, scanStatus, linkIntegrity, isReplay, start, stop } =
+  const { recording, paused, recordingFailure, scanStatus, linkIntegrity, start, stop } =
     useBleStore(
       useShallow((s) => ({
         recording: s.telemetryRecordingEnabled,
@@ -211,7 +206,6 @@ export function FloatingBar({
         recordingFailure: s.recordingFailure,
         scanStatus: s.scanStatus,
         linkIntegrity: s.linkIntegrity,
-        isReplay: isReplayBoardId(s.connectedId),
         start: s.startTelemetryRecording,
         stop: s.stopTelemetryRecording,
       })),
@@ -230,7 +224,6 @@ export function FloatingBar({
     bleStatus,
     scanStatus,
     linkIntegrity,
-    isReplay,
     activeBoard,
     onStopScan,
     onRetryConnect,

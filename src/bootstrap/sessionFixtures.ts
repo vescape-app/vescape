@@ -3,15 +3,15 @@ import { restoreDatabase, startDebugReplay, updateSetting } from 'vescape-core'
 
 import { fixtureSession, previewMode } from '@/config/env'
 import { fixtureDatabaseFile, fixtureReplayName, fixtureUri } from '@/config/fixtureSession'
-import { PREVIEW_WARMUP_MS, REPLAY_WARMUP_MS, REPLAY_WARMUP_SPEED } from '@/config/replayWarmup'
+import { PREVIEW_WARMUP_MS, REPLAY_WARMUP_MS } from '@/config/replayWarmup'
 
 async function applyFixtures(): Promise<void> {
   if (fixtureDatabaseFile) {
     await restoreDatabase(fixtureUri(fixtureDatabaseFile))
   }
   // Warm the live charts so the screens have a filled window instead of the empty sparklines a
-  // session that just connected would show. Native fast-forwards the recording's opening stretch
-  // (see `@/config/replayWarmup`), then plays on at 1x.
+  // session that just connected would show. Native prefills the recording's opening stretch
+  // (see `@/config/replayWarmup`), then plays on in real time.
   if (fixtureReplayName) {
     // A replay session is a real session to `RecordingCoordinator`, so auto-recording would write a
     // synthetic ride into the history this run is about to read. The guard belongs to the replay,
@@ -25,7 +25,6 @@ async function applyFixtures(): Promise<void> {
     }
     await startDebugReplay(fixtureReplayName, {
       warmupMs: previewMode ? PREVIEW_WARMUP_MS : REPLAY_WARMUP_MS,
-      warmupSpeed: REPLAY_WARMUP_SPEED,
     })
   }
 }

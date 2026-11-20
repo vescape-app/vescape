@@ -74,7 +74,7 @@ export function useDebugRecordings() {
     }
   }, [])
 
-  /** Start a native replay session; the normal live UI takes over (REPLAY badge, disconnect to stop). */
+  /** Start a replay on the selected Board; the normal live UI takes over (disconnect to stop). */
   const replayRecording = useCallback(async (name: string): Promise<boolean> => {
     setReplayingName(name)
     setError(null)

@@ -105,7 +105,7 @@ data class LinkIdentity(
     // refloatBaseVersion is derived from refloatVersion and may be absent for malformed or unknown
     // version strings, so it is not required here; matches/mismatches still compare it when present.
     val isComplete: Boolean
-        get() = linkVersion == 4 &&
+        get() = linkVersion == CURRENT_LINK_VERSION &&
             hasBms != null &&
             !firmware.isNullOrBlank() &&
             !refloatVersion.isNullOrBlank()
@@ -141,6 +141,9 @@ data class LinkIdentity(
                 observed.refloatBaseVersion == normalizeRefloatBaseVersion(observed.refloatVersion))
 
     companion object {
+        /** The Board Link schema a complete identity is written under. */
+        const val CURRENT_LINK_VERSION = 4
+
         private val legacyPackageVersion = Regex("""^(?:Refloat|Float/Refloat) (\d+\.\d+)$""")
         private val compatiblePackageVersion = Regex("""^(?:Float|Refloat|Float/Refloat) (\d+\.\d+)(?:\.\d+(?:-.+)?)?$""")
 
