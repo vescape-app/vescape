@@ -89,3 +89,5 @@ deeper references it points at.
 | Refloat GET_ALLDATA telemetry      | ✅                                                                               |
 | Smart-BMS cell-group voltages      | 🧪 Experimental — see [vescProtocol.md](./vescProtocol.md#bms-cell-group-values) |
 | iOS                                | stub only                                                                        |
+
+- [Public Rides replace rooms](./adr/0044-public-rides-replace-rooms.md) — Account identity, native public sharing and Crew Rides; supersedes ADR-0020.

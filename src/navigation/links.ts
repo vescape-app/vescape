@@ -42,6 +42,11 @@ export function parseRideLink(params: SearchParams): RideLink | null {
 /** Params that clear a consumed {@link RideLink}, so going back to home does not reopen it. */
 export const CLEARED_RIDE_LINK_PARAMS = { ride: undefined, focus: undefined }
 
+/** Public profile keyed by the Rider's account. */
+export function riderProfileHref(accountId: string): Href {
+  return { pathname: routes.riderProfile, params: { accountId } }
+}
+
 /** One day's stats and rides. */
 export function rideDayHref(day: RideDay): Href {
   return { pathname: routes.rideDay, params: { date: calendarDayKey(day) } }

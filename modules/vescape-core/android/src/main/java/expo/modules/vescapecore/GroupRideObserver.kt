@@ -1,10 +1,9 @@
 package expo.modules.vescapecore
 
 import android.os.Handler
-import android.os.SystemClock
 import android.util.Log
 import expo.modules.vescapecore.appstatus.OnlineCapability
-import expo.modules.vescapecore.geo.GeoMath
+import expo.modules.vescapecore.auth.DeviceCredential
 import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.GroupRideRoster
@@ -18,11 +17,9 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Group Ride **observe** client: a native WebSocket to the relay server that lives in the
- * foreground service and surfaces ride-lifecycle events to JS. Observing sends NOTHING — it
- * only receives the active-ride [snapshot] on connect, then `ride-created` / `ride-updated` /
- * `ride-ended` deltas (global fan-out). Location leaves the device only when creating/joining
- * (later slices), never while observing.
+ * The relay link of the public ride: a native WebSocket to the relay server that lives in the
+ * foreground service and carries the [PublicRide] — going public, positions, nearby riders, pins.
+ * The socket itself sends no location; [PublicRide] decides what leaves the device.
  *
  * Wire protocol: vescape-server `docs/group-ride/PROTOCOL.md`. All state is touched on the
  * main thread ([handler]); OkHttp callbacks hop back onto it before mutating anything.
@@ -34,22 +31,12 @@ internal class GroupRideObserver(
     private val emit: (String, Map<String, Any?>) -> Unit,
     private val online: OnlineCapability,
     /**
-     * Fired whenever [participating] flips, including the transitions the rider never asked for — a
-     * host ending the ride, an App Status block tearing the socket down, a relay saying the ride is
-     * gone. GPS demand is resolved from participation, so a departure nobody reports is a monitor
-     * left running for a ride that no longer exists.
-     *
-     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onParticipationChanged`
-     */
-    private val onParticipationChanged: () -> Unit = {},
-    /**
-     * Plays a Group Ride app cue: `groupRide.created` for a new ride the rider created or one
-     * nearby, and `joined`, `riderJoined`, `riderLeft`, `lost`, `restored` as the joined ride changes.
+     * Plays a Ride Hazard approach cue.
      *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onCue`
      */
     private val onCue: (String) -> Unit = {},
-    /** The device's latest position (lat, lng), for the nearby test of `groupRide.created`. */
+    /** The device's latest position (lat, lng), for looking around. */
     private val ownLocation: () -> Pair<Double, Double>? = { null },
     /**
      * The fix and Privacy Zone state a Rider Signal send is checked against.
@@ -57,6 +44,18 @@ internal class GroupRideObserver(
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `signalContext`
      */
     private val signalContext: () -> RiderSignalContext = { RiderSignalContext(fix = null, insidePrivacyZone = true) },
+    /**
+     * Read Account and token together, so a credential change cannot label a new token with the old Account.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `deviceCredential`
+     */
+    private val deviceCredential: () -> DeviceCredential? = { null },
+    private val onPublicRideDemandChanged: () -> Unit = {},
+    /** Persists the public ride switch. */
+    persistPublicRide: (PublicRideSwitch) -> Unit = {},
+    /** The last position the phone knew, for looking around without a fresh fix. */
+    private val lastKnownLocation: () -> Pair<Double, Double>? = { null },
+    now: () -> Long = System::currentTimeMillis,
     /** Opens the relay socket; tests stand in a fake to see the frames. */
     private val sockets: WebSocket.Factory = OkHttpClient.Builder()
         .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
@@ -64,81 +63,64 @@ internal class GroupRideObserver(
 ) {
 
     private var webSocket: WebSocket? = null
+    private var socketCredential: DeviceCredential? = null
     private var serverUrl: String? = null
     private var reconnectAttempt = 0
     private var stopped = true
-        set(value) {
-            field = value
-            notifyParticipationIfChanged()
-        }
-    private var riderId: String? = null
-    private var riderName: String? = null
-    private var joinedRideId: String? = null
-        set(value) {
-            field = value
-            notifyParticipationIfChanged()
-        }
-    private var desiredRideId: String? = null
-        set(value) {
-            if (value != field) {
-                forgetRideCues()
-                // A pin intent belongs to the ride it was made in.
-                pendingPins.clear()
-            }
-            field = value
-            notifyParticipationIfChanged()
-        }
-    /** Cue decisions for the joined ride; any change of the wanted ride forgets them. */
-    private val cues = GroupRideCues()
-    /** Other Riders' signals as Ride Notices; forgotten with [cues]. */
+    /** Other Riders' signals as Ride Notices. */
     private val signalNotices = RiderSignalNotices()
-    /** Other Riders' hazards, announced on approach; forgotten with [cues]. */
+    /** Other Riders' hazards, announced on approach. */
     private val hazardCues = RideHazardCues()
-    /**
-     * The latest pin intent per slot made while the relay was out of reach, replayed once the ride
-     * is rejoined. A later intent in the same slot overwrites it; leaving the ride drops them.
-     *
-     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `pendingPins`
-     */
-    private val pendingPins = mutableMapOf<PinSlot, RiderPinIntent>()
-    /** Optional capabilities the connected relay advertised in its `snapshot`. */
-    private var relayFeatures: Set<String> = emptySet()
-    private fun supports(slot: PinSlot): Boolean = slot.relayFeature in relayFeatures
+    /** JS asked to look around; fixes start and re-centre it. */
+    private var lookingAround = false
     /** Last availability handed to JS, so only changes are emitted. */
     private var lastSignalAvailability: Map<String, Any?>? = null
-    /** Relay clock (epoch ms) of [lastRoster]; null from relays that predate it. */
-    private var lastRosterNow: Long? = null
-    /** Monotonic time [lastRosterNow] was taken at, to advance it when the roster is replayed. */
-    private var lastRosterReceivedAt = 0L
-    /**
-     * The rider left while the socket was down, so the relay still holds them in the ride as away.
-     * Sent once right after the next `hello`; a create/join before then supersedes it, since the
-     * relay leaves the previous ride itself.
-     *
-     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `pendingLeave`
-     */
-    private var pendingLeave = false
-
-    /** Last `participating` value handed to the owner, so only real transitions are reported. */
-    private var lastParticipating = false
-    private var lastPresence: RiderPresence? = null
     /** Last state handed to JS, replayed by [resync] so a fresh JS runtime is not stuck on `idle`. */
     private var lastConnection = "idle"
-    /** Active rides as last known from the relay, keyed by id; the relay only sends a full
-     *  snapshot on connect, so the cache is what a re-subscribing JS runtime gets. */
-    private val knownRides = LinkedHashMap<String, Map<String, Any?>>()
-    private var lastRosterRideId: String? = null
-    private var lastRoster: List<Map<String, Any?>> = emptyList()
-    /** [lastRoster] typed for native readers; kept in step by [emitRoster]. */
-    private var lastRosterRiders: List<GroupRideRosterRider> = emptyList()
     /** Remover for the App Status listener; non-null only while observing. */
     private var onlineUnsub: (() -> Unit)? = null
     private val reconnectRunnable = Runnable { connect() }
-    private val lostRunnable = Runnable { cues.graceElapsed()?.let(onCue) }
+    private val missedRetryRunnable = Runnable {
+        webSocket?.close(NORMAL_CLOSURE, "missed positions retry")
+        scheduleReconnect()
+    }
+    private val expiryRunnable: Runnable = Runnable { publicRide.expire() }
+    private val ridersFlushRunnable: Runnable = Runnable { publicRide.flushRiders() }
+
+    /**
+     * The public ride on this socket. Main thread, like the rest of the observer.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `publicRide`
+     */
+    private val publicRide: PublicRide = PublicRide(
+        now = now,
+        persist = persistPublicRide,
+        scheduleExpiry = { delay ->
+            handler.removeCallbacks(expiryRunnable)
+            delay?.let { handler.postDelayed(expiryRunnable, it) }
+        },
+        emit = { name, payload ->
+            emit(name, payload)
+            // Going public or off it changes whether a pin can be sent.
+            if (name == "onPublicRideStatus") refreshSignalAvailability()
+        },
+        send = { frame -> webSocket?.takeIf { linkOpen }?.let { send(it, frame) } ?: false },
+        scheduleMissedRetry = { delay ->
+            handler.removeCallbacks(missedRetryRunnable)
+            delay?.let { handler.postDelayed(missedRetryRunnable, it) }
+        },
+        scheduleRidersFlush = { delay ->
+            handler.removeCallbacks(ridersFlushRunnable)
+            delay?.let { handler.postDelayed(ridersFlushRunnable, it) }
+        },
+        onPublicRideDemandChanged = onPublicRideDemandChanged,
+        onPins = ::onPublicPins,
+    )
+
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
             val ws = webSocket
-            if (!stopped && ws != null && joinedRideId != null) {
+            if (!stopped && ws != null && publicRide.riding) {
                 // The beat also ages the GPS fix a send needs.
                 refreshSignalAvailability()
                 if (send(ws, JSONObject().put("type", "heartbeat"))) {
@@ -151,41 +133,16 @@ internal class GroupRideObserver(
     /** True while the observe connection should be kept alive (drives service idle checks). */
     val active: Boolean get() = !stopped
 
-    /**
-     * True while the rider is in (or rejoining) a specific ride. Distinct from [active]: the app
-     * observes the lobby whenever it is open, but only real ride participation should block
-     * board-less shutdown paths like Auto close.
-     */
-    val participating: Boolean get() = !stopped && (joinedRideId != null || desiredRideId != null)
+    /** The public ride or a look-around needs the socket, so the owner keeps it up. */
+    val publicRideNeedsLink: Boolean get() = publicRide.needsLink
+    val publicRideNeedsGps: Boolean get() = publicRide.needsGps
 
     /**
-     * The joined Group Ride for the Watch Mirror, or null while the Rider is not in one. A roster
-     * that has not arrived yet (or belongs to another ride) reads as empty: joined, nobody placed.
-     * Main thread, like every other read and write of this observer's state.
+     * What the Watch Mirror draws: the nearby public riders while the rider rides public, else null.
      *
-     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `joinedRoster`
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `watchRoster`
      */
-    val joinedRoster: GroupRideRoster?
-        get() {
-            val rideId = joinedRideId
-            if (stopped || rideId == null) return null
-            return GroupRideRoster(riderId, if (lastRosterRideId == rideId) lastRosterRiders else emptyList())
-        }
-
-    /**
-     * Watches the three fields [participating] is derived from, so no mutation site has to remember
-     * to report — and so the report lands *after* the state changed, which a caller refreshing right
-     * after an enqueued `handler.post` cannot do. Edge-triggered: the fields are cleared together in
-     * several places and the owner must not see a departure per field.
-     *
-     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `notifyParticipationIfChanged`
-     */
-    private fun notifyParticipationIfChanged() {
-        val current = participating
-        if (current == lastParticipating) return
-        lastParticipating = current
-        onParticipationChanged()
-    }
+    val watchRoster: GroupRideRoster? get() = publicRide.nearbyRoster.takeIf { !stopped }
 
     fun start(url: String) {
         // The observer outlives the JS runtime (it runs in the foreground service), so a relaunch
@@ -195,6 +152,7 @@ internal class GroupRideObserver(
             resync()
             return
         }
+        if (serverUrl != null && serverUrl != url) publicRide.discardMissed()
         stopped = false
         serverUrl = url
         reconnectAttempt = 0
@@ -203,6 +161,8 @@ internal class GroupRideObserver(
         // directly rather than through JS — tearing down on a block, resuming when it clears.
         onlineUnsub = online.addListener(::onOnlineChanged)
         connect()
+        // A fresh JS runtime learns the switch even before the relay answers.
+        publicRide.resync()
     }
 
     fun stop() {
@@ -212,53 +172,19 @@ internal class GroupRideObserver(
         onlineUnsub = null
         webSocket?.close(NORMAL_CLOSURE, "client stop")
         webSocket = null
-        joinedRideId = null
-        desiredRideId = null
-        lastPresence = null
-        knownRides.clear()
-        relayFeatures = emptySet()
         // A restarted observer must re-emit availability to the fresh JS store.
         lastSignalAvailability = null
-        lastRosterRideId = null
-        lastRoster = emptyList()
-        lastRosterRiders = emptyList()
-        lastRosterNow = null
         stopHeartbeat()
+        publicRide.linkLost()
         emitConnection("idle")
-    }
-
-    /**
-     * [stop] for a deliberate Exit: a participating rider with an open socket first sends `leave`,
-     * so the relay drops them now instead of holding them as away until its expiry. OkHttp writes
-     * queued frames before the close frame, so the `leave` is flushed ahead of the close. With the
-     * socket down nothing is sent; the relay's away expiry removes the rider. Every other stop path
-     * (App Status block, Auto close, JS runtime restarts) uses plain [stop] and keeps them away.
-     *
-     * @platform-diff iOS has no deliberate Exit: its Live Activity offers only Stop ride and the
-     * `exitApp` caller is the Android back button, so an iOS rider is removed by the away expiry.
-     */
-    fun leaveAndStop() {
-        handler.post {
-            val ws = webSocket
-            if (participating && ws != null && linkOpen) send(ws, JSONObject().put("type", "leave"))
-            stop()
-        }
     }
 
     /** Replay the current observe state to a JS runtime that just re-subscribed. */
     private fun resync() {
         emitConnection(lastConnection)
-        // Snapshot first: JS drops an active ride that is missing from the ride list.
-        emit("onGroupRideSnapshot", mapOf("rides" to knownRides.values.toList()))
-        emit("onGroupRideJoined", mapOf("rideId" to joinedRideId))
-        // JS times pins from the replayed `now` as if it had just arrived, so advance it first.
-        emitRoster(
-            lastRosterRideId,
-            lastRoster,
-            lastRosterNow?.let { it + SystemClock.elapsedRealtime() - lastRosterReceivedAt },
-        )
         lastSignalAvailability = null
         refreshSignalAvailability()
+        publicRide.resync()
     }
 
     /**
@@ -275,25 +201,20 @@ internal class GroupRideObserver(
 
     /**
      * Drop an active/reconnecting observe socket because online work is now blocked: cancel
-     * reconnect, close the socket, clear ride/roster state, and surface the distinct `blocked`
-     * connection state instead of a disconnect loop. Board Session, Recording, and History are
-     * untouched — this only gates Group Ride.
+     * reconnect, close the socket, and surface the distinct `blocked` connection state instead of a
+     * disconnect loop. Board Session, Recording, and History are untouched.
      */
     private fun tearDownForBlock() {
         handler.removeCallbacks(reconnectRunnable)
         webSocket?.close(NORMAL_CLOSURE, "online blocked")
         webSocket = null
         reconnectAttempt = 0
-        joinedRideId = null
-        desiredRideId = null
-        knownRides.clear()
         stopHeartbeat()
-        emit("onGroupRideJoined", mapOf("rideId" to null))
-        emitRoster(null, emptyList())
+        publicRide.linkLost()
         emitConnection("blocked")
     }
 
-    /** The socket is open: frames sent now reach the relay after this connection's `hello`. */
+    /** The socket is open: frames sent now reach the relay. */
     private val linkOpen: Boolean get() = webSocket != null && lastConnection == "connected"
 
     /** Callback may arrive after its socket was closed or superseded. */
@@ -301,103 +222,8 @@ internal class GroupRideObserver(
         !stopped && !online.onlineBlocked && webSocket === ws
 
     /**
-     * Create a Group Ride over the live observe socket: bind this connection's Rider with
-     * `hello`, then send `create` carrying the creator's location and optional name. This is
-     * the only location egress while observing. The server fans the result back as
-     * `ride-created`, so there is no local optimistic insert here. No-op when not connected.
-     * With [auto] the relay joins the nearest ride in range instead, creating only when none is.
-     */
-    fun create(riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Boolean) {
-        handler.post {
-            val ws = webSocket
-            if (stopped || ws == null) {
-                Log.w(TAG, "create ignored: observe socket not connected")
-                return@post
-            }
-            if (joinedRideId != null || desiredRideId != null) {
-                send(ws, JSONObject().put("type", "leave"))
-                joinedRideId = null
-                desiredRideId = null
-                stopHeartbeat()
-            }
-            pendingLeave = false
-            sendHello(ws, riderId, riderName)
-            lastPresence = RiderPresence(lat = lat, lng = lng, heading = null, speed = null, soc = null, motorTemp = null, ctrlTemp = null, phoneBattery = null, boardName = null)
-            val create = JSONObject()
-                .put("type", "create")
-                .put("location", JSONObject().put("lat", lat).put("lng", lng))
-            if (!name.isNullOrBlank()) create.put("name", name)
-            if (auto) create.put("auto", true)
-            send(ws, create)
-        }
-    }
-
-    fun join(riderId: String, riderName: String, rideId: String, presence: RiderPresence?) {
-        handler.post {
-            val ws = webSocket
-            if (stopped || ws == null) {
-                Log.w(TAG, "join ignored: observe socket not connected")
-                return@post
-            }
-            val previousRideId = joinedRideId ?: desiredRideId
-            if (previousRideId != null && previousRideId != rideId) {
-                send(ws, JSONObject().put("type", "leave"))
-                joinedRideId = null
-                stopHeartbeat()
-            }
-            pendingLeave = false
-            sendHello(ws, riderId, riderName)
-            desiredRideId = rideId
-            presence?.let { lastPresence = it }
-            val join = JSONObject()
-                .put("type", "join")
-                .put("rideId", rideId)
-            presence?.let { join.put("presence", it.toJson()) }
-            send(ws, join)
-        }
-    }
-
-    /**
-     * Leave the ride now, connected or not: no rejoin on reconnect, no cues for it, and JS sees the
-     * same departure as a live leave. While the socket is down the relay keeps the rider as away,
-     * so the leave waits in [pendingLeave] for the next connection.
-     */
-    fun leave() {
-        handler.post {
-            val ws = webSocket
-            if (ws != null && linkOpen) {
-                send(ws, JSONObject().put("type", "leave"))
-            } else if (joinedRideId != null || desiredRideId != null) {
-                pendingLeave = true
-            }
-            joinedRideId = null
-            desiredRideId = null
-            stopHeartbeat()
-            emit("onGroupRideJoined", mapOf("rideId" to null))
-            emitRoster(null, emptyList())
-        }
-    }
-
-    /**
-     * Re-bind this connection's Rider identity after a name change. Updates the remembered
-     * identity (so a reconnect re-announces the fresh values) and, while the socket is live,
-     * re-sends `hello` — the server re-emits the roster so peers update without a rejoin.
-     * No-op when the observe socket is not connected.
-     */
-    fun updateIdentity(riderId: String, riderName: String) {
-        handler.post {
-            this.riderId = riderId
-            this.riderName = riderName
-            val ws = webSocket
-            if (stopped || ws == null) return@post
-            sendHello(ws, riderId, riderName)
-        }
-    }
-
-    /**
-     * Raise a Rider Signal of [kind] at the latest GPS fix. Rejected (logged, nothing sent) outside a
-     * ride, for an unknown kind, without a recent fix, or against a relay that
-     * does not advertise signals. While the relay is out of reach the intent waits for the rejoin.
+     * Raise a Rider Signal of [kind] at the latest GPS fix on the public ride. Rejected (logged,
+     * nothing sent) off the public ride, for an unknown kind, or without a recent fix.
      *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `sendSignal`
      */
@@ -421,12 +247,12 @@ internal class GroupRideObserver(
         }
     }
 
-    /** Clear the Rider's active signal; held like a send while the relay is out of reach. */
+    /** Clear the Rider's active signal. */
     fun clearSignal() {
         handler.post { submitPin(RiderPinIntent.Clear(PinSlot.SIGNAL)) }
     }
 
-    /** Clear the Rider's active hazard; held like a send while the relay is out of reach. */
+    /** Clear the Rider's active hazard. */
     fun clearHazard() {
         handler.post { submitPin(RiderPinIntent.Clear(PinSlot.HAZARD)) }
     }
@@ -441,9 +267,10 @@ internal class GroupRideObserver(
         handler.post {
             if (stopped) return@post
             val context = signalContext()
+            val public = publicRide.canPin
             val availability = mapOf(
-                "supported" to supports(PinSlot.SIGNAL),
-                "hazardsSupported" to supports(PinSlot.HAZARD),
+                "supported" to public,
+                "hazardsSupported" to public,
                 "insidePrivacyZone" to context.insidePrivacyZone,
                 "hasRecentFix" to (context.fix != null),
             )
@@ -454,47 +281,94 @@ internal class GroupRideObserver(
     }
 
     /**
-     * A new device GPS fix: plays the approach cue of another Rider's hazard it just closed in on.
+     * A new device GPS fix: plays the approach cue of another Rider's hazard it just closed in on,
+     * and moves look-around with the rider.
      *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onFix`
      */
     fun onFix(lat: Double, lng: Double) {
         handler.post {
-            if (stopped || joinedRideId == null) return@post
-            hazardCues.fix(lat, lng)?.let(onCue)
+            if (stopped) return@post
+            hazardCues.fix(lat, lng, publicRide.relayNow())?.let(onCue)
+            if (lookingAround) publicRide.followNearby(lat to lng)
         }
     }
 
     private fun submitPin(intent: RiderPinIntent) {
-        if (stopped || !participating) {
-            Log.w(TAG, "pin ignored: not in a ride")
-            return
-        }
-        val ws = webSocket?.takeIf { linkOpen && joinedRideId != null }
-        if (ws == null) {
-            pendingPins[intent.slot] = intent
-            return
-        }
-        pendingPins.remove(intent.slot)
-        if (supports(intent.slot)) {
-            // A socket already closing refuses the frame: hold it for the rejoin like an offline
-            // intent, unless a newer one took the slot meanwhile.
-            if (!send(ws, intent.frame())) pendingPins.putIfAbsent(intent.slot, intent)
-        } else {
-            Log.w(TAG, "pin ignored: relay does not support ${intent.slot.relayFeature}")
-        }
+        if (stopped) return
+        if (!publicRide.submitPin(intent)) Log.w(TAG, "pin ignored: not riding public")
     }
 
     fun pushPresence(presence: RiderPresence) {
         handler.post {
-            val ws = webSocket
-            if (stopped || ws == null || joinedRideId == null) return@post
-            lastPresence = presence
-            send(ws,
-                JSONObject()
-                    .put("type", "presence")
-                    .put("presence", presence.toJson()),
-            )
+            if (stopped) return@post
+            presence.at?.let { publicRide.position(presence, it) }
+        }
+    }
+
+    /**
+     * Start the public ride from the persisted switch and the signed-in Account.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `loadPublicRide`
+     */
+    fun loadPublicRide(stored: PublicRideSwitch, accountId: String?) {
+        handler.post { publicRide.load(stored, accountId) }
+    }
+
+    /** The rider moved the switch; a refused change (signed out, end time past) re-emits the status. */
+    fun setPublicRide(next: PublicRideSwitch) {
+        handler.post {
+            if (!publicRide.set(next)) publicRide.resync()
+        }
+    }
+
+    /** @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `setManualPublicRideSharing` */
+    fun setManualPublicRideSharing(enabled: Boolean) {
+        handler.post { publicRide.setManualSharing(enabled) }
+    }
+
+    fun setBoardConnected(connected: Boolean) {
+        handler.post { publicRide.setBoardConnected(connected) }
+    }
+
+    /**
+     * The signed-in Account changed. The public ride ends, and a live socket reconnects so the relay
+     * sees the new credential.
+     */
+    fun setAccount(accountId: String?) {
+        handler.post {
+            val changed = publicRide.setAccount(accountId)
+            val credential = deviceCredential()
+            if (stopped || (!changed && credential?.token == socketCredential?.token && credential?.serverUrl == socketCredential?.serverUrl)) return@post
+            val ws = webSocket ?: return@post
+            webSocket = null
+            ws.close(NORMAL_CLOSURE, "account changed")
+            reconnectAttempt = 0
+            scheduleReconnect()
+        }
+    }
+
+    /**
+     * Look around: watch public riders near the latest fix, or the last known position without one.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `watchPublicRiders`
+     */
+    fun watchPublicRiders() {
+        handler.post {
+            lookingAround = true
+            val point = ownLocation() ?: lastKnownLocation()
+            if (point == null) {
+                Log.w(TAG, "look-around waits for a fix: no known position")
+                return@post
+            }
+            publicRide.watchNearby(point)
+        }
+    }
+
+    fun stopWatchingPublicRiders() {
+        handler.post {
+            lookingAround = false
+            publicRide.stopWatchingNearby()
         }
     }
 
@@ -508,7 +382,13 @@ internal class GroupRideObserver(
             return
         }
         emitConnection("connecting")
-        webSocket = sockets.newWebSocket(GroupRideOnlineGate.buildObserveRequest(url, online.appVersion), listener)
+        socketCredential = deviceCredential()?.takeIf {
+            it.token.isNotEmpty() && GroupRideOnlineGate.webSocketUrl(it.serverUrl) == url
+        }
+        webSocket = sockets.newWebSocket(
+            GroupRideOnlineGate.buildObserveRequest(url, online.appVersion, socketCredential?.token),
+            listener,
+        )
     }
 
     private val listener = object : WebSocketListener() {
@@ -517,15 +397,6 @@ internal class GroupRideObserver(
                 if (!isCurrentSocket(ws)) return@post
                 reconnectAttempt = 0
                 emitConnection("connected")
-                val id = riderId
-                val name = riderName
-                if (id == null || name == null) return@post
-                sendHello(ws, id, name)
-                if (pendingLeave) {
-                    pendingLeave = false
-                    send(ws, JSONObject().put("type", "leave"))
-                }
-                desiredRideId?.let { sendJoin(ws, it, lastPresence) }
             }
         }
 
@@ -546,7 +417,7 @@ internal class GroupRideObserver(
         }
 
         override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-            Log.w(TAG, "Group Ride observe WS failure: ${t.message}")
+            Log.w(TAG, "Relay WS failure: ${t.message}")
             val code = response?.code
             handler.post {
                 if (!isCurrentSocket(ws)) return@post
@@ -565,9 +436,8 @@ internal class GroupRideObserver(
     private fun scheduleReconnect() {
         webSocket = null
         if (stopped) return
-        if (cues.linkDropped()) handler.postDelayed(lostRunnable, GroupRideCues.LOST_GRACE_MS)
-        joinedRideId = null
         stopHeartbeat()
+        publicRide.linkLost()
         emitConnection("disconnected")
         val delay = RECONNECT_DELAYS_MS[reconnectAttempt.coerceAtMost(RECONNECT_DELAYS_MS.lastIndex)]
         reconnectAttempt++
@@ -578,141 +448,21 @@ internal class GroupRideObserver(
         val json = try {
             JSONObject(text)
         } catch (e: Exception) {
-            Log.w(TAG, "Discarding malformed Group Ride frame: ${e.message}")
+            Log.w(TAG, "Discarding malformed relay frame: ${e.message}")
             return
         }
-        when (json.optString("type")) {
+        when (val type = json.optString("type")) {
+            // The relay's greeting lists the optional features it speaks.
             "snapshot" -> {
-                val ridesJson = json.optJSONArray("rides")
-                val rides = mutableListOf<Map<String, Any?>>()
-                if (ridesJson != null) {
-                    for (i in 0 until ridesJson.length()) {
-                        rideSummary(ridesJson.optJSONObject(i))?.let(rides::add)
-                    }
-                }
-                knownRides.clear()
-                rides.forEach { ride -> (ride["id"] as? String)?.let { knownRides[it] = ride } }
-                relayFeatures = stringSet(json.optJSONArray("features"))
-                emit("onGroupRideSnapshot", mapOf("rides" to rides))
+                publicRide.linkReady(stringSet(json.optJSONArray("features")), socketCredential?.accountId)
                 refreshSignalAvailability()
-            }
-            "ride-created" -> rideSummary(json.optJSONObject("ride"))?.let {
-                val isNew = it["id"] !in knownRides
-                rememberRide(it)
-                val location = it["location"] as? Map<*, *>
-                val lat = location?.get("lat") as? Double
-                val lng = location?.get("lng") as? Double
-                val creatorId = (it["creator"] as? Map<*, *>)?.get("id") as? String
-                if (isNew && lat != null && lng != null && rideCreatedAudible(creatorId, riderId, lat, lng, ownLocation())) {
-                    onCue("groupRide.created")
-                }
-                emit("onGroupRideCreated", mapOf("ride" to it))
-            }
-            "ride-updated" -> rideSummary(json.optJSONObject("ride"))?.let {
-                rememberRide(it)
-                emit("onGroupRideUpdated", mapOf("ride" to it))
-            }
-            "ride-ended" -> {
-                val rideId = json.optString("rideId")
-                if (rideId.isNotEmpty()) {
-                    knownRides.remove(rideId)
-                    emit("onGroupRideEnded", mapOf("rideId" to rideId))
-                }
-                if (rideId.isNotEmpty() && rideId == joinedRideId) {
-                    joinedRideId = null
-                    desiredRideId = null
-                    stopHeartbeat()
-                    emit("onGroupRideJoined", mapOf("rideId" to null))
-                    emitRoster(null, emptyList())
-                }
-            }
-            "joined" -> {
-                val rideId = json.optString("rideId")
-                if (rideId.isNotEmpty()) {
-                    // The wanted ride first: switching rides forgets the old ride's cues.
-                    desiredRideId = rideId
-                    handler.removeCallbacks(lostRunnable)
-                    cues.joined(rideId)?.let(onCue)
-                    joinedRideId = rideId
-                    startHeartbeat()
-                    emit("onGroupRideJoined", mapOf("rideId" to rideId))
-                    // Replay pin intents made while the relay was out of reach.
-                    pendingPins.values.toList().forEach(::submitPin)
-                }
-            }
-            "roster" -> {
-                val ridersJson = json.optJSONArray("riders")
-                val riders = mutableListOf<Map<String, Any?>>()
-                val signals = mutableMapOf<String, RiderSignal>()
-                val hazards = mutableMapOf<String, RideHazard>()
-                if (ridersJson != null) {
-                    for (i in 0 until ridersJson.length()) {
-                        val obj = ridersJson.optJSONObject(i)
-                        val signal = RiderPin.parse(obj?.optJSONObject("signal"), RiderSignalKind::fromWire)
-                        val hazard = RiderPin.parse(obj?.optJSONObject("hazard"), RideHazardKind::fromWire)
-                        val view = riderView(obj, signal, hazard) ?: continue
-                        riders += view
-                        signal?.let { signals[view["id"] as String] = it }
-                        hazard?.let { hazards[view["id"] as String] = it }
-                    }
-                }
-                val rideId = if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() }
-                val now = if (json.has("now")) json.optLong("now") else null
-                if (rideId != null && rideId == joinedRideId) {
-                    val awayIds = riders.filter { it["away"] == true }.mapNotNull { it["id"] as? String }.toSet()
-                    val ownHazard = riderId?.let { hazards[it] }
-                    hazardCues.roster(hazards.filterKeys { it != riderId })
-                    cues.roster(rideId, riders.mapNotNull { it["id"] as? String }, awayIds, riderId, signals, now, ownHazard)?.let(onCue)
-                    val signalRiders = riders.map {
-                        val id = it["id"] as String
-                        SignalRider(id, it["name"] as? String ?: "", signals[id])
-                    }
-                    val update = signalNotices.roster(signalRiders, riderId, now, System.currentTimeMillis())
-                    update.clears.forEach(RideNotices::clear)
-                    update.posts.forEach { RideNotices.post(it.key, it.content, it.revision) }
-                }
-                emitRoster(rideId, riders, now)
             }
             "error" -> {
                 val message = json.optString("message")
-                if (message.isNotEmpty()) {
-                    handleError(message)
-                }
+                if (message.isNotEmpty() && !publicRide.handleError(message)) Log.w(TAG, "relay error: $message")
             }
+            else -> if (publicRide.handle(type, json) && publicRide.riding) startHeartbeat()
         }
-    }
-
-    private fun handleError(message: String) {
-        val missingRideId = message.removePrefix(NO_SUCH_RIDE_PREFIX).takeIf { it != message }?.trim()
-        if (missingRideId != null) {
-            val isCurrentRide = missingRideId == desiredRideId || missingRideId == joinedRideId
-            if (!isCurrentRide) return
-            joinedRideId = null
-            desiredRideId = null
-            stopHeartbeat()
-            emit("onGroupRideJoined", mapOf("rideId" to null))
-            emitRoster(null, emptyList())
-        }
-        emit("onGroupRideError", mapOf("message" to message))
-    }
-
-    private fun sendHello(ws: WebSocket, riderId: String, riderName: String) {
-        this.riderId = riderId
-        this.riderName = riderName
-        send(ws,
-            JSONObject()
-                .put("type", "hello")
-                .put("riderId", riderId)
-                .put("name", riderName),
-        )
-    }
-
-    private fun sendJoin(ws: WebSocket, rideId: String, presence: RiderPresence?) {
-        val join = JSONObject()
-            .put("type", "join")
-            .put("rideId", rideId)
-        presence?.let { join.put("presence", it.toJson()) }
-        send(ws, join)
     }
 
     private fun send(ws: WebSocket, frame: JSONObject): Boolean {
@@ -725,80 +475,15 @@ internal class GroupRideObserver(
             false
         }
         if (!sent && isCurrentSocket(ws)) {
-            Log.w(TAG, "Group Ride send failed; reconnecting")
+            Log.w(TAG, "Relay send failed; reconnecting")
             scheduleReconnect()
         }
         return sent
     }
 
-    /** Decode the `RideSummary` shape shared by `snapshot` and `ride-created`. */
-    private fun rideSummary(obj: JSONObject?): Map<String, Any?>? {
-        obj ?: return null
-        val id = obj.optString("id")
-        if (id.isEmpty()) return null
-        val location = obj.optJSONObject("location") ?: return null
-        val creator = obj.optJSONObject("creator") ?: return null
-        return mapOf(
-            "id" to id,
-            "name" to obj.optString("name"),
-            "createdAt" to obj.optLong("createdAt"),
-            "riderCount" to obj.optInt("riderCount"),
-            "location" to mapOf(
-                "lat" to location.optDouble("lat"),
-                "lng" to location.optDouble("lng"),
-            ),
-            "creator" to mapOf(
-                "id" to creator.optString("id"),
-                "name" to creator.optString("name"),
-            ),
-        )
-    }
-
-    /** @parity /modules/vescape-core/src/index.ts `GroupRideRider` */
-    private fun riderView(obj: JSONObject?, signal: RiderSignal?, hazard: RideHazard?): Map<String, Any?>? {
-        obj ?: return null
-        val id = obj.optString("id")
-        if (id.isEmpty()) return null
-        return mapOf(
-            "id" to id,
-            "name" to obj.optString("name"),
-            "presence" to presenceMap(obj.optJSONObject("presence")),
-            "trail" to trailList(obj.optJSONArray("trail")),
-            "stale" to obj.optBoolean("stale"),
-            // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
-            "away" to obj.optBoolean("away"),
-            "lastSeen" to obj.optLong("lastSeen"),
-            "signal" to signal?.toMap(),
-            "hazard" to hazard?.toMap(),
-        )
-    }
-
     private fun stringSet(arr: JSONArray?): Set<String> {
         arr ?: return emptySet()
         return (0 until arr.length()).mapNotNull { arr.optString(it).takeIf(String::isNotEmpty) }.toSet()
-    }
-
-    private fun trailList(arr: JSONArray?): List<Map<String, Any?>>? {
-        arr ?: return null
-        val points = mutableListOf<Map<String, Any?>>()
-        for (i in 0 until arr.length()) {
-            val p = arr.optJSONObject(i) ?: continue
-            points.add(mapOf("lat" to p.optDouble("lat"), "lng" to p.optDouble("lng")))
-        }
-        return points
-    }
-
-    private fun rememberRide(ride: Map<String, Any?>) {
-        (ride["id"] as? String)?.let { knownRides[it] = ride }
-    }
-
-    private fun emitRoster(rideId: String?, riders: List<Map<String, Any?>>, now: Long? = null) {
-        lastRosterRideId = rideId
-        lastRoster = riders
-        lastRosterRiders = riders.mapNotNull(::rosterRider)
-        lastRosterNow = now
-        lastRosterReceivedAt = SystemClock.elapsedRealtime()
-        emit("onGroupRideRoster", mapOf("rideId" to rideId, "riders" to riders, "now" to now))
     }
 
     // @parity /modules/vescape-core/src/index.ts `GroupRideConnectionState`
@@ -807,12 +492,16 @@ internal class GroupRideObserver(
         emit("onGroupRideConnection", mapOf("state" to state))
     }
 
-    /** The rider is out of the ride: drop its cue state, a pending `lost` included, and signal notices. */
-    private fun forgetRideCues() {
-        cues.reset()
-        hazardCues.reset()
-        signalNotices.reset().forEach { RideNotices.clear(it) }
-        handler.removeCallbacks(lostRunnable)
+    /**
+     * Public riders' pins changed: they drive the signal notices and the hazard approach cues.
+     *
+     * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onPublicPins`
+     */
+    private fun onPublicPins(signals: List<SignalRider>, hazards: Map<String, RideHazard>, relayNow: Long?) {
+        hazardCues.roster(hazards)
+        val update = signalNotices.roster(signals, null, relayNow, System.currentTimeMillis())
+        update.clears.forEach { RideNotices.clear(it) }
+        update.posts.forEach { RideNotices.post(it.key, it.content, it.revision) }
     }
 
     private fun startHeartbeat() {
@@ -832,7 +521,6 @@ internal class GroupRideObserver(
         // when a Rider isn't actively streaming presence (stationary, no GPS/board), so a
         // slower beat would leave them perpetually greyed as "Stale".
         private const val HEARTBEAT_INTERVAL_MS = 3_000L
-        private const val NO_SUCH_RIDE_PREFIX = "no such ride:"
         private val RECONNECT_DELAYS_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 30_000)
 
         /**
@@ -862,32 +550,7 @@ internal class GroupRideObserver(
         }
 
         /**
-         * Discovery radius for nearby Group Rides.
-         *
-         * @parity /src/modules/group-ride/lib/nearby.ts `NEARBY_RADIUS_M`
-         */
-        internal const val NEARBY_RADIUS_M = 40_000.0
-
-        /**
-         * Whether a ride just created plays `groupRide.created`: the rider created it, or it lies
-         * within [NEARBY_RADIUS_M] of [own]. Without a position only the rider's own ride counts.
-         *
-         * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rideCreatedAudible`
-         */
-        internal fun rideCreatedAudible(
-            creatorId: String?,
-            ownRiderId: String?,
-            rideLat: Double,
-            rideLng: Double,
-            own: Pair<Double, Double>?,
-        ): Boolean {
-            if (ownRiderId != null && creatorId == ownRiderId) return true
-            own ?: return false
-            return GeoMath.distanceMeters(own.first, own.second, rideLat, rideLng) <= NEARBY_RADIUS_M
-        }
-
-        /**
-         * A [riderView] map as the typed entry native keeps; null when it carries no id. No presence
+         * A rider view map as the typed entry native keeps; null when it carries no id. No presence
          * leaves the Rider unplaced.
          *
          * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterRider`
@@ -933,6 +596,8 @@ internal data class RiderPresence(
     val phoneBattery: Double?,
     val boardName: String?,
     val target: TargetPoint? = null,
+    /** GPS time of the fix (epoch ms); sent beside the presence on a public ride, never inside it. */
+    val at: Long? = null,
 ) {
     fun toJson(): JSONObject {
         val json = JSONObject()

@@ -123,12 +123,19 @@ internal final class RecordingCoordinator {
     activeConfig = config
   }
 
+  private func flushRecordingForStats() {
+    store.flushBlocking()
+    guard enabled, let boardId = activeConfig?.appBoardId, let sinceMs = startedAtMs else { return }
+    let throughMs = nowMs()
+    Task { await RiderStatsSender.shared.recordingEnded(boardId: boardId, sinceMs: sinceMs, throughMs: throughMs) }
+  }
+
   func finishBoardSession(status: String, markerType: String) {
     finishDebugRecording(status: status)
     if let config = activeConfig, enabled {
       recordMarker(markerType, config: config)
     }
-    store.flushBlocking()
+    flushRecordingForStats()
     activeConfig = nil
     enabled = false
     privacyZonesReady = false
@@ -138,7 +145,7 @@ internal final class RecordingCoordinator {
 
   func failSession() {
     finishDebugRecording(status: "error")
-    store.flushBlocking()
+    flushRecordingForStats()
     activeConfig = nil
     enabled = false
     privacyZonesReady = false
@@ -163,7 +170,7 @@ internal final class RecordingCoordinator {
     if enabled {
       recordMarker(recordingStopMarker, config: config, message: "Recording stopped")
     }
-    store.flushBlocking()
+    flushRecordingForStats()
     enabled = false
     startedAtMs = nil
     return true

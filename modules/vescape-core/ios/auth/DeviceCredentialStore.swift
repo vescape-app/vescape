@@ -51,6 +51,7 @@ final class DeviceCredentialStore {
     let status = storage.write(data)
     guard status == errSecSuccess else { throw keychainError(status) }
     storage.state = DeviceCredentialState.ready.rawValue
+    notifyChanged()
   }
 
   func updateExpiry(_ expiresAt: String) throws {
@@ -66,6 +67,7 @@ final class DeviceCredentialStore {
     defer { lock.unlock() }
     try deleteCredential()
     storage.state = DeviceCredentialState.rejected.rawValue
+    notifyChanged()
   }
 
   func clear() throws {
@@ -73,6 +75,29 @@ final class DeviceCredentialStore {
     defer { lock.unlock() }
     try deleteCredential()
     storage.state = DeviceCredentialState.unavailable.rawValue
+    notifyChanged()
+  }
+
+  private var listeners: [UUID: () -> Void] = [:]
+
+  /// Called after every stored change (sign-in, sign-out, rejection), on the writer's thread. The
+  /// public ride ends on an Account change, whoever made it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/DeviceCredentialStore.kt `addChangeListener`
+  func addChangeListener(_ listener: @escaping () -> Void) -> () -> Void {
+    lock.lock()
+    defer { lock.unlock() }
+    let id = UUID()
+    listeners[id] = listener
+    return { [weak self] in
+      guard let self else { return }
+      self.lock.lock()
+      defer { self.lock.unlock() }
+      self.listeners[id] = nil
+    }
+  }
+
+  private func notifyChanged() {
+    listeners.values.forEach { $0() }
   }
 
   func state(credential: DeviceCredential?) -> DeviceCredentialState {

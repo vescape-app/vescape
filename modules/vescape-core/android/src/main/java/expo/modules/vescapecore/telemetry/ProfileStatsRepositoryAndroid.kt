@@ -22,7 +22,11 @@ class ProfileStatsRepository private constructor(private val context: Context) {
   suspend fun getRecentRideStats(sinceMs: Long): Map<String, Any?> =
     read { dao, gapMs -> readProfileRecentStats(dao, sinceMs, gapMs) }
 
-  private suspend fun read(block: suspend (VescapeDao, Long) -> Map<String, Any?>): Map<String, Any?> {
+  /** @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getRecordingMonths` */
+  suspend fun getRecordingMonths(boardId: String, sinceMs: Long, throughMs: Long): List<ProfileStatsMonth> =
+    read { dao, gapMs -> readProfileRecordingMonths(dao, boardId, sinceMs, throughMs, gapMs) }
+
+  private suspend fun <T> read(block: suspend (VescapeDao, Long) -> T): T {
     val minutes = AppDataRepository.get(context).getSettings()["rideSplitGapMinutes"] as? Number
     val gapMs = (minutes?.toLong() ?: DEFAULT_RIDE_SPLIT_GAP_MINUTES.toLong()) * 60_000L
     return database.useReaderConnection { reader ->

@@ -660,6 +660,9 @@ class RecordingPersistenceHostTest {
     assertEquals(expected.getDouble("profileTopSpeedKmh"), total["topSpeedKmh"])
     assertEquals(expected.getDouble("profileAvgSpeedKmh"), total["avgSpeedKmh"])
     assertEquals(expected.getInt("profileMonthCount"), (stats["months"] as List<*>).size)
+    val withMonthStats = readProfileStatsSnapshot(db.vescapeDao(), mapOf("includeMonthStats" to true), gapMs)
+    assertEquals(listOf((stats["selectedMonth"] as Map<*, *>) + ("stats" to stats["monthly"])), withMonthStats["monthStats"])
+    assertNull(stats["monthStats"])
     // A record's ride id opens that ride, including one that is not the newest.
     val currentId = firstSession["id"] as String
     val olderId = (second["sessions"] as List<Map<String, Any?>>).single()["id"] as String

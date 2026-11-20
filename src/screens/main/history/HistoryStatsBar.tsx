@@ -1,5 +1,5 @@
 import { useFormat } from '@/hooks/useFormat'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
@@ -41,6 +41,8 @@ import type { RideWeather } from 'vescape-core'
 
 interface HistoryStatsBarProps {
   session: HistorySession
+  /** Ride extras shown under the stats, such as who the rider rode with. */
+  children?: ReactNode
 }
 
 interface StatItem {
@@ -52,7 +54,7 @@ interface StatItem {
   accent: ThemeColor
 }
 
-export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
+export function HistoryStatsBar({ session, children }: HistoryStatsBarProps) {
   const insets = useSafeAreaInsets()
   const [expanded, setExpanded] = useState(false)
   const stats = useSessionStats(session)
@@ -107,6 +109,7 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
           </View>
         )}
       </Pressable>
+      {children}
     </View>
   )
 }

@@ -3,15 +3,18 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import {
   ArrowsHorizontalIcon,
   BatteryMediumIcon,
+  CaretRightIcon,
+  ClockIcon,
   DeviceMobileIcon,
   GaugeIcon,
   ThermometerSimpleIcon,
+  UserCircleIcon,
   type Icon,
 } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
-import { DASH } from '@/helpers/format'
+import { DASH, fmtTimeAgo } from '@/helpers/format'
 import { distanceMeters } from '@/helpers/mapGeometry'
 import { useFormat } from '@/hooks/useFormat'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
@@ -21,9 +24,9 @@ import {
   TELEMETRY_LEVEL_COLOR,
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
-import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
 import { riderSignalKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
 import { riderHue } from '@/modules/group-ride/lib/riderColor'
+import type { RiderReadings } from '@/modules/group-ride/lib/riderStats'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
 
@@ -33,37 +36,43 @@ type OwnLocation = { lat: number; lng: number } | null
  *  so each Rider's stats wrap into two lines of three. */
 const ONE_LINE_STATS_MIN_WIDTH = 290
 
-interface SignalPoint {
-  latitude: number
-  longitude: number
-}
-
-/** The joined ride's Riders as full-width rows whose stat columns line up like a table. A row with
- *  an active signal is tappable and hands the signal's location to `onFocusSignal`. */
+/** The drawer uses the compact view to keep nearby telemetry scannable. */
 export function RosterList({
   rows,
   ownLocation,
-  onFocusSignal,
+  compact = false,
+  onOpenRider,
+  selfCanOpen = false,
+  divided = false,
+  selfReadings,
 }: {
   rows: RosterRider[]
   ownLocation: OwnLocation
-  onFocusSignal?: (point: SignalPoint) => void
+  compact?: boolean
+  onOpenRider?: (rider: RosterRider) => void
+  selfCanOpen?: boolean
+  divided?: boolean
+  selfReadings?: RiderReadings
 }) {
   const neutral = useResolvedNeutralColors()
-  const divider = theme.alpha(neutral.border, 0.6)
+  const divider = neutral.border
   const [width, setWidth] = useState(0)
   // Until measured, assume the common wide layout; narrow phones re-render once after layout.
   const wrapStats = width > 0 && width < ONE_LINE_STATS_MIN_WIDTH
   return (
-    <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    <View onLayout={compact ? undefined : (e) => setWidth(e.nativeEvent.layout.width)}>
       {rows.map((rider, index) => (
         <RiderRow
           key={rider.id}
           rider={rider}
           ownLocation={ownLocation}
-          divider={index > 0 ? divider : undefined}
+          divider={divided || index > 0 ? divider : undefined}
           wrapStats={wrapStats}
-          onFocusSignal={onFocusSignal}
+          compact={compact}
+          onPress={
+            onOpenRider && (!rider.isSelf || selfCanOpen) ? () => onOpenRider(rider) : undefined
+          }
+          selfReadings={rider.isSelf ? selfReadings : undefined}
         />
       ))}
     </View>
@@ -113,22 +122,19 @@ function RiderRow({
   ownLocation,
   divider,
   wrapStats,
-  onFocusSignal,
+  compact,
+  onPress,
+  selfReadings,
 }: {
   rider: RosterRider
   ownLocation: OwnLocation
   divider?: string
   wrapStats: boolean
-  onFocusSignal?: (point: SignalPoint) => void
+  compact: boolean
+  onPress?: () => void
+  selfReadings?: RiderReadings
 }) {
-  const signal = useActiveRiderSignal(rider.signal)
   const { formatDistance } = useFormat()
-  const s = useRiderStats(rider.presence)
-  // An away Rider's stats stay frozen at their last presence; the minute clock ages the label.
-  const now = useMinuteNow(rider.away)
-  // Stale (and away) mutes the dot; the Rider still owns the same palette slot.
-  const dotColor = rider.stale ? theme.neutral.textMuted : theme.palette[riderHue(rider.id)].color
-  const boardName = rider.presence?.boardName?.trim() || 'No board'
   const distance =
     ownLocation && rider.presence && !rider.isSelf
       ? formatDistance(
@@ -138,6 +144,39 @@ function RiderRow({
           ),
         )
       : undefined
+  if (compact) {
+    return (
+      <CompactRiderRow
+        rider={rider}
+        distance={distance}
+        divider={divider}
+        onPress={onPress}
+        selfReadings={selfReadings}
+      />
+    )
+  }
+  return (
+    <DetailedRiderRow rider={rider} distance={distance} divider={divider} wrapStats={wrapStats} />
+  )
+}
+
+function DetailedRiderRow({
+  rider,
+  distance,
+  divider,
+  wrapStats,
+}: {
+  rider: RosterRider
+  distance?: string
+  divider?: string
+  wrapStats: boolean
+}) {
+  const signal = useActiveRiderSignal(rider.signal)
+  const s = useRiderStats(rider.presence)
+  const now = useMinuteNow(rider.away)
+  const dotColor = rider.stale ? theme.neutral.textMuted : theme.palette[riderHue(rider.id)].color
+  const boardName = rider.presence?.boardName?.trim() || 'No board'
+  const divided = divider ? [styles.rowDivided, { borderTopColor: divider }] : null
   const stats: Stat[] = [
     {
       icon: ArrowsHorizontalIcon,
@@ -153,19 +192,13 @@ function RiderRow({
   ]
 
   return (
-    <Pressable
-      disabled={!signal || !onFocusSignal}
-      onPress={() => signal && onFocusSignal?.({ latitude: signal.lat, longitude: signal.lng })}
-      accessibilityRole={signal && onFocusSignal ? 'button' : undefined}
-      accessibilityHint={signal && onFocusSignal ? 'Shows the signal on the map' : undefined}
-      style={[styles.row, divider ? [styles.rowDivided, { borderTopColor: divider }] : null]}
-    >
+    <View style={[styles.row, divided]}>
       <View style={styles.head}>
         <View style={[styles.dot, { backgroundColor: dotColor }]} />
         <Text style={styles.name} numberOfLines={1}>
           {rider.name}
         </Text>
-        {rider.isSelf ? <Text style={styles.selfTag}>You</Text> : null}
+        <SelfTag rider={rider} />
         <Text style={styles.board} numberOfLines={1}>
           {boardName}
         </Text>
@@ -182,8 +215,161 @@ function RiderRow({
           </View>
         ))}
       </View>
+    </View>
+  )
+}
+
+function compactMetric(
+  presence: RiderReadings | null,
+  s: ReturnType<typeof useRiderStats>,
+  speedUnit: ReturnType<typeof useFormat>['speedUnit'],
+) {
+  const motorTemp = presence?.motorTemp ?? -Infinity
+  const ctrlTemp = presence?.ctrlTemp ?? -Infinity
+  const hot = Math.max(motorTemp, ctrlTemp) > 80
+  const lowPhone = presence?.phoneBattery != null && presence.phoneBattery < 0.3
+  const MetricIcon = hot ? ThermometerSimpleIcon : lowPhone ? DeviceMobileIcon : GaugeIcon
+  const metric = hot
+    ? motorTemp >= ctrlTemp
+      ? s.motor.value
+      : s.ctrl.value
+    : lowPhone
+      ? s.phone.value
+      : presence?.speed === 0
+        ? 'Stopped'
+        : s.speed.value && `${s.speed.value} ${speedUnit}`
+  const metricLabel = hot
+    ? motorTemp >= ctrlTemp
+      ? 'Motor temperature'
+      : 'Controller temperature'
+    : lowPhone
+      ? 'Phone battery'
+      : 'Speed'
+  const metricColor = hot || lowPhone ? theme.status.error.text : theme.neutral.textSecondary
+  return { MetricIcon, metric, metricLabel, metricColor }
+}
+
+function CompactRiderRow({
+  rider,
+  distance,
+  divider,
+  onPress,
+  selfReadings,
+}: {
+  rider: RosterRider
+  distance?: string
+  divider?: string
+  onPress?: () => void
+  selfReadings?: RiderReadings
+}) {
+  const presence = selfReadings ?? rider.presence
+  const signal = useActiveRiderSignal(rider.signal)
+  const s = useRiderStats(presence)
+  const { speedUnit } = useFormat()
+  const disconnected =
+    rider.away || rider.stale || (!presence?.boardName && presence?.speed == null)
+  const now = useMinuteNow(rider.away || (disconnected && rider.lastSeen > 0))
+  const divided = divider ? [styles.rowDivided, { borderTopColor: divider }] : null
+  const reading = compactMetric(presence, s, speedUnit)
+  const { metric, metricLabel } = reading
+  const age = rider.lastSeen > 0 ? fmtTimeAgo(rider.lastSeen, now) : null
+  const readings = disconnected
+    ? ['Disconnected', age]
+    : [
+        s.soc.value && `Board battery ${s.soc.value}`,
+        metric && `${metricLabel} ${metric}`,
+        distance,
+      ]
+  const label = [
+    rider.name,
+    rider.isSelf && 'You',
+    signal && riderSignalKindInfo(signal.kind)?.label,
+    ...readings,
+  ]
+    .filter(Boolean)
+    .join(', ')
+  return (
+    <Pressable
+      style={[styles.compactRow, divided]}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? label : undefined}
+      disabled={!onPress}
+      onPress={onPress}
+      testID={rider.isSelf ? 'social-self-profile' : `nearby-rider-${rider.id}`}
+    >
+      <View accessible={false}>
+        <UserCircleIcon size={32} color={theme.neutral.textSecondary} weight="thin" />
+      </View>
+      <View style={styles.compactIdentity}>
+        <View style={styles.compactHead}>
+          <Text style={styles.compactName} numberOfLines={1}>
+            {rider.name}
+          </Text>
+          {signal ? <SignalBadge kind={signal.kind} /> : null}
+        </View>
+        <CompactRiderStats disconnected={disconnected} age={age} battery={s.soc} metric={reading} />
+      </View>
+      {rider.isSelf ? (
+        <View style={styles.compactBadgeSlot}>
+          <Text style={[styles.selfTag, styles.compactSelfTag]}>You</Text>
+        </View>
+      ) : !disconnected && distance ? (
+        <Text style={styles.distance}>{distance}</Text>
+      ) : null}
+      {onPress ? <CaretRightIcon size={14} color={theme.neutral.textSecondary} /> : null}
     </Pressable>
   )
+}
+
+function CompactRiderStats({
+  disconnected,
+  age,
+  battery,
+  metric: { MetricIcon, metric, metricColor },
+}: {
+  disconnected: boolean
+  age: string | null
+  battery: ReturnType<typeof useRiderStats>['soc']
+  metric: ReturnType<typeof compactMetric>
+}) {
+  const batteryColor =
+    battery.level === 'normal'
+      ? theme.palette.groupRide.color
+      : TELEMETRY_LEVEL_COLOR[battery.level]
+  return (
+    <View style={styles.compactStats}>
+      {disconnected ? (
+        <>
+          <ClockIcon size={14} color={theme.palette.amber.color} />
+          <View style={styles.disconnected}>
+            <Text style={[styles.caption, { color: theme.palette.amber.text }]}>Disconnected</Text>
+            {age ? <Text style={styles.caption}>{age}</Text> : null}
+          </View>
+        </>
+      ) : (
+        <>
+          {battery.value ? (
+            <View style={styles.metric}>
+              <BatteryMediumIcon size={16} color={batteryColor} />
+              <Text style={styles.caption}>{battery.value}</Text>
+            </View>
+          ) : null}
+          {metric ? (
+            <View style={styles.metric}>
+              <MetricIcon size={14} color={metricColor} />
+              <Text style={[styles.caption, { color: metricColor }]} numberOfLines={1}>
+                {metric}
+              </Text>
+            </View>
+          ) : null}
+        </>
+      )}
+    </View>
+  )
+}
+
+function SelfTag({ rider }: { rider: RosterRider }) {
+  return rider.isSelf && rider.name !== 'You' ? <Text style={styles.selfTag}>You</Text> : null
 }
 
 /** The Rider's active signal, as its kind's icon and label. */
@@ -206,35 +392,36 @@ function SignalBadge({ kind }: { kind: string }) {
   )
 }
 
-export function NearbyRideBody({ nearby }: { nearby: NearbyRide[] }) {
-  const { formatDistance } = useFormat()
-  const nearest = nearby[0]
-  const ride = nearest.ride
-  const name = ride.name?.trim() || `${ride.creator.name || 'Rider'}'s ride`
-  const extra = nearby.length - 1
-
-  return (
-    <>
-      <Text style={styles.rideName} numberOfLines={1}>
-        {name}
-      </Text>
-      <Text style={styles.rideMeta} numberOfLines={1}>
-        {ride.riderCount} {ride.riderCount === 1 ? 'rider' : 'riders'} ·{' '}
-        {formatDistance(nearest.distanceM)} away
-      </Text>
-      {extra > 0 ? (
-        <Text style={styles.rideMetaDim}>
-          +{extra} more {extra === 1 ? 'ride' : 'rides'} nearby
-        </Text>
-      ) : null}
-    </>
-  )
-}
-
 const DOT_SIZE = 8
 const HEAD_GAP = 6
 
 const styles = StyleSheet.create({
+  compactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 48,
+    paddingVertical: 8,
+  },
+  compactIdentity: { flex: 1, minWidth: 0 },
+  compactHead: { flexDirection: 'row', alignItems: 'center', gap: HEAD_GAP },
+  compactName: { flexShrink: 1, color: theme.neutral.textPrimary, fontSize: 13, fontWeight: '700' },
+  compactStats: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  disconnected: { flexShrink: 1 },
+  compactBadgeSlot: { width: 56, alignItems: 'center' },
+  compactSelfTag: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.palette.groupRide.border,
+  },
+  distance: { color: theme.neutral.textSecondary, fontSize: 12, width: 56, textAlign: 'center' },
+  metric: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1 },
+  caption: {
+    color: theme.neutral.textSecondary,
+    fontSize: 11,
+    flexShrink: 1,
+    lineHeight: 17,
+    fontVariant: ['tabular-nums'],
+  },
   signalTag: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -281,20 +468,6 @@ const styles = StyleSheet.create({
     maxWidth: '45%',
     color: theme.neutral.textPrimary,
     fontSize: 15,
-    fontWeight: '700',
-  },
-  rideMeta: {
-    color: theme.neutral.textSecondary,
-    fontSize: 13,
-  },
-  rideMetaDim: {
-    color: theme.neutral.textSecondary,
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  rideName: {
-    color: theme.neutral.textPrimary,
-    fontSize: 17,
     fontWeight: '700',
   },
   row: {

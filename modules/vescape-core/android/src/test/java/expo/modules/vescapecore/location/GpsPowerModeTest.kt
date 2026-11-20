@@ -14,15 +14,15 @@ class GpsPowerModeTest {
     private fun resolve(
         appVisible: Boolean = false,
         riding: Boolean = false,
-        groupRideParticipating: Boolean = false,
         watchNavigating: Boolean = false,
         replayOwnsPosition: Boolean = false,
+        manualPublicRide: Boolean = false,
     ) = GpsDemand.resolve(
         appVisible = appVisible,
         riding = riding,
-        groupRideParticipating = groupRideParticipating,
         watchNavigating = watchNavigating,
         replayOwnsPosition = replayOwnsPosition,
+        manualPublicRide = manualPublicRide,
     )
 
     /** The drain this whole rule exists to stop: app away, ride over, nothing running. */
@@ -51,21 +51,17 @@ class GpsPowerModeTest {
     }
 
     /**
-     * Group Ride is deliberate board-less use — the rider's position is being broadcast to others,
-     * so it must keep flowing from a pocket.
-     */
-    @Test
-    fun `group ride participation pays for background fixes`() {
-        assertEquals(GpsPowerMode.Ride, resolve(groupRideParticipating = true))
-    }
-
-    /**
      * Issue #550: Navigation on the wrist with no Board and no Group Ride. A pocketed phone stopped
      * GPS, so the wrist route froze or never appeared until a Group Ride started paying for fixes.
      */
     @Test
     fun `watch navigation pays for background fixes`() {
         assertEquals(GpsPowerMode.Ride, resolve(watchNavigating = true))
+    }
+
+    @Test
+    fun `manual public ride pays for background fixes`() {
+        assertEquals(GpsPowerMode.Ride, resolve(manualPublicRide = true))
     }
 
     /**
@@ -79,7 +75,6 @@ class GpsPowerModeTest {
             resolve(
                 appVisible = true,
                 riding = true,
-                groupRideParticipating = true,
                 watchNavigating = true,
                 replayOwnsPosition = true,
             ),

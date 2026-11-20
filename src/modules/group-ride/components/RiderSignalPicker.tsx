@@ -13,6 +13,7 @@ import { Button } from '@/components/base/Button'
 import type { IconButtonTakeover } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { interaction, theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import {
   RIDE_HAZARD_KIND_INFO,
   RIDER_SIGNAL_KIND_INFO,
@@ -23,18 +24,16 @@ import {
 import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderSignal'
 import { topRiderSignal } from '@/modules/group-ride/lib/riderSignal'
 import { PinKindBadge } from '@/modules/group-ride/components/PinKindBadge'
-import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import { ownPin, useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
 /** The device's own Rider Signal while it is active on the relay clock, else null. */
 export function useOwnRiderSignal(): GroupRidePin | null {
-  const signal = useGroupRideStore((s) => s.rosterRows.find((row) => row.isSelf)?.signal ?? null)
-  return useActiveRiderSignal(signal)
+  return useActiveRiderSignal(useGroupRideStore((s) => ownPin(s, 'signal')))
 }
 
 /** The device's own Ride Hazard while it is active on the relay clock, else null. */
 function useOwnRideHazard(): GroupRidePin | null {
-  const hazard = useGroupRideStore((s) => s.rosterRows.find((row) => row.isSelf)?.hazard ?? null)
-  return useActiveRiderSignal(hazard)
+  return useActiveRiderSignal(useGroupRideStore((s) => ownPin(s, 'hazard')))
 }
 
 /** The most urgent signal another Rider has active, see `topRiderSignal`, else null. */
@@ -68,9 +67,7 @@ export function useOthersSignalTakeover(): IconButtonTakeover | null {
   return signalTakeover(useOthersTopSignal())
 }
 
-/** The injury ladder first, the common crash under the thumb on the right and the serious injury
- *  furthest from it (picking a higher step replaces the lower), then what broke on the board, then
- *  the calm ones: a wait, a break. */
+/** Injuries first, then Board problems and requests to wait or take a break. */
 const SIGNAL_ROWS: readonly (readonly RiderSignalKind[])[] = [
   ['serious', 'minor', 'down'],
   ['battery', 'tire', 'overheat', 'board'],
@@ -78,11 +75,9 @@ const SIGNAL_ROWS: readonly (readonly RiderSignalKind[])[] = [
 ]
 
 /**
- * The Rider Signal picker, in the drawer behind Social's signal shortcut: a tile per signal kind,
- * the own active signal with "I'm OK" right under them, then the Ride Hazard
- * tiles and the own active hazard. Picking a kind replaces the active one in its slot. Sending
- * stays off without a recent GPS fix; inside a Privacy Zone it still sends, and a warning says the
- * pin reveals the position the zone otherwise hides.
+ * Shows the active Rider Signal over the choices. Clear it with "I'm OK" to send another.
+ * Ride Hazards have their own slot and can still be sent while a Rider Signal is active.
+ * A new pin needs a recent GPS fix and can reveal the Rider's position inside a Privacy Zone.
  */
 export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
   const availability = useGroupRideStore((s) => s.signalAvailability)
@@ -92,7 +87,17 @@ export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
   const clearHazard = useGroupRideStore((s) => s.clearHazard)
   const ownSignal = useOwnRiderSignal()
   const ownHazard = useOwnRideHazard()
-  const disabled = !availability.hasRecentFix
+  const needsLocation = !availability.hasRecentFix
+  const signalDisabled = needsLocation || ownSignal !== null
+  const privacyWarning = availability.insidePrivacyZone ? (
+    <View style={styles.privacyWarning}>
+      <Banner
+        variant="warning"
+        title="Inside a Privacy Zone"
+        message="Your position is hidden here, but a signal shows the group where you are."
+      />
+    </View>
+  ) : null
   const then = (action: () => void) => () => {
     action()
     onDone()
@@ -104,40 +109,46 @@ export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
       <Text style={styles.hint}>
         Tell your crew what's up. They hear it and see where you are until you tap I'm OK.
       </Text>
-      {disabled ? (
+      {needsLocation ? (
         <Banner variant="info" title="Waiting for GPS…" message="Signals need your location." />
-      ) : availability.insidePrivacyZone ? (
-        <Banner
-          variant="warning"
-          title="Inside a Privacy Zone"
-          message="Your position is hidden here, but a signal shows the group where you are."
-        />
-      ) : null}
-      {SIGNAL_ROWS.map((row) => (
-        <View key={row.join()} style={styles.row}>
-          {row.map((kind) => (
-            <PinTile
-              key={kind}
-              info={RIDER_SIGNAL_KIND_INFO[kind]}
-              emphasis={RIDER_SIGNAL_KIND_INFO[kind].emphasis}
-              disabled={disabled}
-              onPress={then(() => sendSignal(kind))}
-            />
+      ) : ownSignal ? null : (
+        privacyWarning
+      )}
+      <View>
+        <View
+          style={styles.picker}
+          accessibilityElementsHidden={ownSignal !== null}
+          importantForAccessibility={ownSignal ? 'no-hide-descendants' : 'auto'}
+        >
+          {SIGNAL_ROWS.map((row) => (
+            <View key={row.join()} style={styles.row}>
+              {row.map((kind) => (
+                <PinTile
+                  key={kind}
+                  info={RIDER_SIGNAL_KIND_INFO[kind]}
+                  emphasis={RIDER_SIGNAL_KIND_INFO[kind].emphasis}
+                  disabled={signalDisabled}
+                  onPress={then(() => sendSignal(kind))}
+                />
+              ))}
+            </View>
           ))}
         </View>
-      ))}
-      {ownSignal ? (
-        <OwnPin info={riderSignalKindInfo(ownSignal.kind)}>
-          <Button
-            label="I'm OK"
-            icon={CheckIcon}
-            variant="success"
-            size="sm"
-            onPress={then(clearSignal)}
-            accessibilityLabel="Dismiss my signal"
-          />
-        </OwnPin>
-      ) : null}
+        {ownSignal ? (
+          <View style={styles.signalOverlay} pointerEvents="box-none">
+            <OwnPin info={riderSignalKindInfo(ownSignal.kind)} notice={privacyWarning}>
+              <Button
+                label="I'm OK"
+                icon={CheckIcon}
+                variant="success"
+                size="sm"
+                onPress={clearSignal}
+                accessibilityLabel="Dismiss my signal"
+              />
+            </OwnPin>
+          </View>
+        ) : null}
+      </View>
       {availability.hazardsSupported ? (
         <>
           <Text style={styles.section}>Hazard ahead</Text>
@@ -147,7 +158,7 @@ export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
               <PinTile
                 key={kind}
                 info={RIDE_HAZARD_KIND_INFO[kind]}
-                disabled={disabled}
+                disabled={needsLocation}
                 onPress={then(() => sendHazard(kind))}
               />
             ))}
@@ -188,6 +199,7 @@ function PinTile({
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
       accessibilityLabel={label}
       style={({ pressed }) => [
         styles.tile,
@@ -223,21 +235,33 @@ function PinTile({
 }
 
 /** The Rider's own active pin: its kind and the action that ends it. */
-function OwnPin({ info, children }: { info: PinKindInfo | null; children: ReactNode }) {
+function OwnPin({
+  info,
+  children,
+  notice,
+}: {
+  info: PinKindInfo | null
+  children: ReactNode
+  notice?: ReactNode
+}) {
+  const neutral = useResolvedNeutralColors()
   if (!info) return null
   return (
-    <View
-      style={[
-        styles.own,
-        { borderColor: theme.control.border, backgroundColor: theme.control.background },
-      ]}
-    >
-      <PinKindBadge info={info} color={theme.palette[info.hue].color} size={48} strokeWidth={1.5} />
-      <View style={styles.ownText}>
-        <Text style={styles.ownLabel}>{info.label}</Text>
-        <Text style={styles.ownMeta}>Active</Text>
+    <View style={[styles.own, { borderColor: neutral.border, backgroundColor: neutral.surface }]}>
+      <View style={styles.ownRow}>
+        <PinKindBadge
+          info={info}
+          color={theme.palette[info.hue].color}
+          size={48}
+          strokeWidth={1.5}
+        />
+        <View style={styles.ownText}>
+          <Text style={styles.ownLabel}>{info.label}</Text>
+          <Text style={styles.ownMeta}>Active</Text>
+        </View>
+        {children}
       </View>
-      {children}
+      {notice}
     </View>
   )
 }
@@ -246,6 +270,7 @@ const styles = StyleSheet.create({
   picker: {
     gap: 12,
   },
+  privacyWarning: { paddingTop: 8 },
   hint: {
     color: theme.neutral.textMuted,
     fontSize: 13,
@@ -284,14 +309,18 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.4,
   },
+  signalOverlay: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
   own: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    gap: 18,
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
   },
+  ownRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   ownText: {
     flex: 1,
     gap: 2,

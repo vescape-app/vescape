@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type RefObject } from 'react'
 
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import { useFriendRidesStore } from '@/modules/group-ride/store/friendRidesStore'
 import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMapIndicators'
@@ -43,11 +44,37 @@ export function useMainMapFocusActions({
     const rider = riderFocusRows.find((row) => row.id === riderFocusRequest.riderId)
     if (!rider?.presence) return
     handledRiderFocusNonceRef.current = riderFocusRequest.nonce
+    onEnterMapMode()
     setFollowGps(false)
     panPreservingCamera(engine, currentCameraRef, [rider.presence.lng, rider.presence.lat], {
       minZoomLevel: RIDER_FOCUS_MIN_ZOOM,
     })
-  }, [currentCameraRef, engine, historyActive, riderFocusRequest, riderFocusRows, setFollowGps])
+  }, [
+    currentCameraRef,
+    engine,
+    historyActive,
+    onEnterMapMode,
+    riderFocusRequest,
+    riderFocusRows,
+    setFollowGps,
+  ])
+
+  // A Friend's public ride just opened: move to its middle once per open.
+  const friendRide = useFriendRidesStore((state) => state.track)
+  const handledFriendRideNonceRef = useRef(0)
+  useEffect(() => {
+    if (!friendRide || historyActive) return
+    if (friendRide.nonce === handledFriendRideNonceRef.current) return
+    handledFriendRideNonceRef.current = friendRide.nonce
+    const lngs = friendRide.coordinates.map(([lng]) => lng)
+    const lats = friendRide.coordinates.map(([, lat]) => lat)
+    onEnterMapMode()
+    setFollowGps(false)
+    panPreservingCamera(engine, currentCameraRef, [
+      (Math.min(...lngs) + Math.max(...lngs)) / 2,
+      (Math.min(...lats) + Math.max(...lats)) / 2,
+    ])
+  }, [currentCameraRef, engine, friendRide, historyActive, onEnterMapMode, setFollowGps])
 
   const handleOffscreenIndicatorPress = useCallback(
     (indicator: OffscreenMapIndicatorState) => {

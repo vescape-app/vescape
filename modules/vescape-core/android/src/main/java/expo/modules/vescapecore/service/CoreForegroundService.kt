@@ -114,6 +114,11 @@ class CoreForegroundService : Service() {
         internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
         internal var pendingGroupRideUrl: String? = null
+        /**
+         * JS asked to look around. JS asks right after starting the observe, before the service has a
+         * controller, so the request is kept here and applied when the observe starts.
+         */
+        @Volatile internal var lookAroundRequested = false
 
         /**
          * Last known activity visibility, kept at process scope because the service outlives any one
@@ -410,32 +415,6 @@ class CoreForegroundService : Service() {
             service.controller.stopGroupRideObserve()
         }
 
-        /** Create a Group Ride over the live observe socket. No-op when the service is not running. */
-        fun createGroupRide(
-            @Suppress("UNUSED_PARAMETER") context: Context,
-            riderId: String,
-            riderName: String,
-            name: String?,
-            lat: Double,
-            lng: Double,
-            auto: Boolean,
-        ) {
-            instance?.controller?.createGroupRide(riderId, riderName, name, lat, lng, auto)
-        }
-
-        fun joinGroupRide(
-            @Suppress("UNUSED_PARAMETER") context: Context,
-            riderId: String,
-            riderName: String,
-            rideId: String,
-        ) {
-            instance?.controller?.joinGroupRide(riderId, riderName, rideId)
-        }
-
-        fun leaveGroupRide(@Suppress("UNUSED_PARAMETER") context: Context) {
-            instance?.controller?.leaveGroupRide()
-        }
-
         fun sendGroupRideSignal(kind: String) {
             instance?.controller?.sendGroupRideSignal(kind)
         }
@@ -452,12 +431,22 @@ class CoreForegroundService : Service() {
             instance?.controller?.clearGroupRideHazard()
         }
 
-        fun updateGroupRideIdentity(
-            @Suppress("UNUSED_PARAMETER") context: Context,
-            riderId: String,
-            riderName: String,
-        ) {
-            instance?.controller?.updateGroupRideIdentity(riderId, riderName)
+        fun setPublicRide(on: Boolean, until: Long?) {
+            instance?.controller?.setPublicRide(on, until)
+        }
+
+        fun setManualPublicRideSharing(enabled: Boolean) {
+            instance?.controller?.setManualPublicRideSharing(enabled)
+        }
+
+        fun watchPublicRiders() {
+            lookAroundRequested = true
+            instance?.controller?.watchPublicRiders()
+        }
+
+        fun stopWatchingPublicRiders() {
+            lookAroundRequested = false
+            instance?.controller?.stopWatchingPublicRiders()
         }
 
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {

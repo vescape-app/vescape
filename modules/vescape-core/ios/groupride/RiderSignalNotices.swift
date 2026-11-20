@@ -62,6 +62,7 @@ internal struct RiderSignalNotices {
     return posted.keys.sorted().map(Self.key)
   }
 
+  /// @parity /src/modules/group-ride/lib/riderSignalNotice.ts `KEY_PREFIX`
   static func key(_ riderId: String) -> String { "riderSignal:" + riderId }
 
   private static func content(_ name: String, _ signal: RiderSignal, _ pinned: Pinned) -> RideNoticeContent {

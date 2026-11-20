@@ -28,6 +28,7 @@ import {
   MEDIA_CLUSTER_DISTANCE_M,
 } from '@/modules/history/lib/mediaHistory'
 import type { HistoryGpsSample } from '@/modules/history/store/historyStore'
+import { RodeWithTracks } from '@/modules/group-ride/components/RodeWith'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { RouteZoomFocus } from '@/screens/main/map/RouteZoomFocus'
 import { SeekPositionPin } from '@/screens/main/map/SeekPositionPin'
@@ -222,6 +223,7 @@ export function HistoryMapLayers({
         {rideRoute.at(-1) &&
           renderHistoryEndpointFlag(rideRoute.at(-1)!, neutral.textPrimary, 'end')}
       </PointAnnotationManager>
+      <RodeWithTracks belowLayerID={HISTORY_ENDPOINT_LAYER_ID} />
       <FavoriteRouteBorder
         rideGpsSamples={rideGpsSamples}
         favoriteRanges={favoriteRanges}

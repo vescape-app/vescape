@@ -318,7 +318,9 @@ export function ButtonShowcase() {
 const EXTENSION_SIZES = ['sm', 'md', 'lg'] as const
 
 export function IconButtonExtensionShowcase() {
-  const [content, setContent] = useState<'none' | 'one stat' | 'two stats' | 'custom'>('two stats')
+  const [content, setContent] = useState<'none' | 'count' | 'one stat' | 'two stats' | 'custom'>(
+    'two stats',
+  )
   const [size, setSize] = useState<(typeof EXTENSION_SIZES)[number]>('lg')
   const [direction, setDirection] = useState<'up' | 'down'>('up')
   const [dot, setDot] = useState(false)
@@ -327,6 +329,7 @@ export function IconButtonExtensionShowcase() {
 
   const extension = {
     none: null,
+    count: <IconButtonExtensionStat value="3" color={theme.palette.blue.color} />,
     'one stat': <IconButtonExtensionStat value="9.9" unit="km" />,
     'two stats': (
       <>
@@ -344,7 +347,7 @@ export function IconButtonExtensionShowcase() {
         <>
           <ChipRow
             label="extension"
-            options={['none', 'one stat', 'two stats', 'custom']}
+            options={['none', 'count', 'one stat', 'two stats', 'custom']}
             selected={content}
             onSelect={(v) => setContent(v as typeof content)}
           />

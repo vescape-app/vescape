@@ -9,7 +9,7 @@ import Animated, {
 import type { Icon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
-import { theme } from '@/constants/theme'
+import { theme, type ThemeColor } from '@/constants/theme'
 import {
   useColoredAction,
   useColoredActionForeground,
@@ -43,6 +43,7 @@ export interface PillSelectorItemProps {
   icon?: Icon
   labelBehavior?: PillSelectorLabelBehavior
   badge?: ReactNode
+  indicatorColor?: ThemeColor
   hint?: ReactNode
   hintVisibility?: PillSelectorSlotVisibility
   hintGap?: number
@@ -75,7 +76,7 @@ function resolveItemState({
   return {
     active,
     collapseLabel,
-    showLabel: !collapseLabel || active,
+    showLabel: resolvedLabelBehavior !== 'icon-only' && (!collapseLabel || active),
     showHint: slotVisible(hintVisibility, active),
   }
 }
@@ -138,12 +139,18 @@ function PillSelectorItemContent({
   )
 }
 
+function PillIndicator({ color }: { color?: ThemeColor }) {
+  if (color == null) return null
+  return <View pointerEvents="none" style={[styles.indicator, { backgroundColor: color }]} />
+}
+
 export function PillSelectorItem({
   id,
   label,
   icon: IconComp,
   labelBehavior,
   badge,
+  indicatorColor,
   hint,
   hintVisibility = 'inactive',
   hintGap = 2,
@@ -166,7 +173,7 @@ export function PillSelectorItem({
   const resolved = resolveItemState({
     active,
     icon: IconComp,
-    labelBehavior: showFullLabel ? 'always' : labelBehavior,
+    labelBehavior: showFullLabel && labelBehavior !== 'icon-only' ? 'always' : labelBehavior,
     hintVisibility,
   })
   const accentBorder = useResolvedColor(color?.border ?? theme.palette.green.border)
@@ -188,11 +195,12 @@ export function PillSelectorItem({
 
   const frameStyle = useAnimatedStyle(
     () => ({
-      width: showFullLabel
-        ? activeWidth
-        : resolved.collapseLabel
-          ? inactiveWidth + (activeWidth - inactiveWidth) * activeProgress.value
-          : undefined,
+      width:
+        showFullLabel || labelBehavior === 'icon-only'
+          ? activeWidth
+          : resolved.collapseLabel
+            ? inactiveWidth + (activeWidth - inactiveWidth) * activeProgress.value
+            : undefined,
       backgroundColor: interpolateColor(
         activeProgress.value,
         [0, 1],
@@ -237,6 +245,7 @@ export function PillSelectorItem({
       coloredBackground,
       control.border,
       showFullLabel,
+      labelBehavior,
       useLightTabs,
     ],
   )
@@ -306,6 +315,7 @@ export function PillSelectorItem({
           labelStyle={labelStyle}
         />
       </Pressable>
+      <PillIndicator color={indicatorColor} />
     </Animated.View>
   )
 }

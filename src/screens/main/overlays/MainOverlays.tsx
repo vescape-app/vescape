@@ -153,7 +153,6 @@ export function MainOverlays({
         onOffscreenIndicatorPress={map.onOffscreenIndicatorPress}
         activeNavigationTarget={map.activeNavigationTarget}
         onCancelNavigation={map.onCancelNavigation}
-        onFocusCoordinate={map.onFocusCoordinate}
       />
 
       {weather && (mode === 'telemetry' || mode === 'map') ? (

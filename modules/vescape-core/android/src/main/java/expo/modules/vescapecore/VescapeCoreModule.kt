@@ -1,5 +1,6 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.riderprofiles.RiderStatsSender
 import expo.modules.vescapecore.notices.RideNotice
 import expo.modules.vescapecore.notices.RideNoticeContent
 import expo.modules.vescapecore.notices.RideNoticeLocation
@@ -27,6 +28,7 @@ import expo.modules.vescapecore.maps.MapSearchApi
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
+import expo.modules.vescapecore.connection.readPhoneBattery
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.BoardTransportDetector
 import expo.modules.vescapecore.service.CompanionPresence
@@ -73,6 +75,7 @@ import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.vescapecore.mappoints.MapPointApi
+import expo.modules.vescapecore.riderprofiles.RiderProfileApi
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.database.DatabaseBackupManager
 import expo.modules.vescapecore.telemetry.MaintenanceRunner
@@ -202,14 +205,10 @@ class VescapeCoreModule : Module() {
       "onMaintenanceState",
       "onBoardProbeProgress",
       "onGroupRideConnection",
-      "onGroupRideSnapshot",
-      "onGroupRideCreated",
-      "onGroupRideUpdated",
-      "onGroupRideEnded",
-      "onGroupRideJoined",
-      "onGroupRideRoster",
-      "onGroupRideError",
       "onGroupRideSignalAvailability",
+      "onPublicRideStatus",
+      "onPublicRiders",
+      "onPublicPins",
       "onAppDataChanged",
       "onBoardWarnings",
       "onVescFaults",
@@ -351,22 +350,14 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onBoardProbeProgress") { stopObserving("onBoardProbeProgress") }
     OnStartObserving("onGroupRideConnection") { startObserving("onGroupRideConnection") }
     OnStopObserving("onGroupRideConnection") { stopObserving("onGroupRideConnection") }
-    OnStartObserving("onGroupRideSnapshot") { startObserving("onGroupRideSnapshot") }
-    OnStopObserving("onGroupRideSnapshot") { stopObserving("onGroupRideSnapshot") }
-    OnStartObserving("onGroupRideCreated") { startObserving("onGroupRideCreated") }
-    OnStopObserving("onGroupRideCreated") { stopObserving("onGroupRideCreated") }
-    OnStartObserving("onGroupRideUpdated") { startObserving("onGroupRideUpdated") }
-    OnStopObserving("onGroupRideUpdated") { stopObserving("onGroupRideUpdated") }
-    OnStartObserving("onGroupRideEnded") { startObserving("onGroupRideEnded") }
-    OnStopObserving("onGroupRideEnded") { stopObserving("onGroupRideEnded") }
-    OnStartObserving("onGroupRideJoined") { startObserving("onGroupRideJoined") }
-    OnStopObserving("onGroupRideJoined") { stopObserving("onGroupRideJoined") }
-    OnStartObserving("onGroupRideRoster") { startObserving("onGroupRideRoster") }
-    OnStopObserving("onGroupRideRoster") { stopObserving("onGroupRideRoster") }
-    OnStartObserving("onGroupRideError") { startObserving("onGroupRideError") }
-    OnStopObserving("onGroupRideError") { stopObserving("onGroupRideError") }
     OnStartObserving("onGroupRideSignalAvailability") { startObserving("onGroupRideSignalAvailability") }
     OnStopObserving("onGroupRideSignalAvailability") { stopObserving("onGroupRideSignalAvailability") }
+    OnStartObserving("onPublicRideStatus") { startObserving("onPublicRideStatus") }
+    OnStopObserving("onPublicRideStatus") { stopObserving("onPublicRideStatus") }
+    OnStartObserving("onPublicRiders") { startObserving("onPublicRiders") }
+    OnStopObserving("onPublicRiders") { stopObserving("onPublicRiders") }
+    OnStartObserving("onPublicPins") { startObserving("onPublicPins") }
+    OnStopObserving("onPublicPins") { stopObserving("onPublicPins") }
     OnStartObserving("onBoardWarnings") {
       startObserving("onBoardWarnings")
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
@@ -463,6 +454,7 @@ class VescapeCoreModule : Module() {
       // coalesced into this request.
       AppStatusCoordinator.get(context).refresh()
       ServiceConfigCoordinator.get(context).refresh()
+      RiderStatsSender.get(context).foreground()
       MaintenanceRunner.onChange = ::emitMaintenanceState
       MaintenanceRunner.start(context.applicationContext)
       rideNoticesUnsub = RideNotices.addListener(::emitRideNotices)
@@ -476,6 +468,7 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.setAppVisible(context.applicationContext, true)
       AppStatusCoordinator.get(context).refresh()
       ServiceConfigCoordinator.get(context).refresh()
+      RiderStatsSender.get(context).foreground()
       // Emits were gated while hidden; the screen must not keep a stale running state.
       emitMaintenanceState(MaintenanceRunner.snapshot())
       emitRideNotices(RideNotices.current)
@@ -676,6 +669,11 @@ class VescapeCoreModule : Module() {
     }
     Function("stopAlertTest") {
       stopAlertTest()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getPhoneBatteryLevel`
+    // @parity /modules/vescape-core/src/index.ts `getPhoneBatteryLevel`
+    AsyncFunction("getPhoneBatteryLevel") {
+      readPhoneBattery(context)
     }
     Function("getLiveState") {
       liveStateWithScan(CoreForegroundService.currentLiveState(context.applicationContext))
@@ -1640,7 +1638,7 @@ class VescapeCoreModule : Module() {
     }
   }
 
-  /** Server-backed map calls: Map Points and the Mapbox search proxy. Split out to keep `definition()` under the JVM method size limit. */
+  /** Server-backed calls: Map Points, the Mapbox search proxy and the Rider Profile. Split out to keep `definition()` under the JVM method size limit. */
   private fun ModuleDefinitionBuilder.registerMapServices() {
     // Map Points are server-owned; native holds no copy. @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getNearbyMapPoints`
     AsyncFunction("getNearbyMapPoints") Coroutine { latitude: Double, longitude: Double, radiusMeters: Int ->
@@ -1666,6 +1664,51 @@ class VescapeCoreModule : Module() {
     AsyncFunction("setMapPointReaction") Coroutine { id: String, reaction: String? ->
       MapPointApi.get(context.applicationContext).setReaction(id, reaction)
     }
+    // The Account's Rider Profile is server-owned; native only attaches the Device Token.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRiderProfile`
+    AsyncFunction("getRiderProfile") Coroutine { ->
+      RiderProfileApi.get(context.applicationContext).mine()
+    }
+    AsyncFunction("saveRiderProfile") Coroutine { nick: String, nationality: String? ->
+      RiderProfileApi.get(context.applicationContext).save(nick, nationality)
+    }
+    // Other riders' profiles and the Account's Friends, server-owned like the Rider Profile.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFriends`
+    AsyncFunction("searchRiders") Coroutine { nick: String ->
+      RiderProfileApi.get(context.applicationContext).search(nick)
+    }
+    AsyncFunction("getRider") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).rider(accountId)
+    }
+    AsyncFunction("getFriends") Coroutine { ->
+      RiderProfileApi.get(context.applicationContext).friends()
+    }
+    AsyncFunction("sendFriendRequest") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).requestFriend(accountId)
+    }
+    AsyncFunction("acceptFriendRequest") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).acceptFriend(accountId)
+    }
+    AsyncFunction("deleteFriendRequest") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).deleteFriendRequest(accountId)
+    }
+    AsyncFunction("removeFriend") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).removeFriend(accountId)
+    }
+    // Who the rider rode with during a past ride; fetched per view, never stored.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRodeWith`
+    AsyncFunction("getRodeWith") Coroutine { from: String, to: String ->
+      RiderProfileApi.get(context.applicationContext).rodeWith(from, to)
+    }
+    // A Friend's public rides and one ride's track; fetched per view, never stored.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFriendRides`
+    AsyncFunction("getFriendRides") Coroutine { accountId: String ->
+      RiderProfileApi.get(context.applicationContext).friendRides(accountId)
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFriendRideTrack`
+    AsyncFunction("getFriendRideTrack") Coroutine { accountId: String, from: String, to: String ->
+      RiderProfileApi.get(context.applicationContext).friendRideTrack(accountId, from, to)
+    }
   }
 
   private fun ModuleDefinitionBuilder.registerGroupRide() {
@@ -1675,12 +1718,6 @@ class VescapeCoreModule : Module() {
     }
     Function("stopGroupRideObserve") {
       CoreForegroundService.stopGroupRideObserve(context.applicationContext)
-    }
-    Function("createGroupRide") { riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Boolean ->
-      CoreForegroundService.createGroupRide(context.applicationContext, riderId, riderName, name, lat, lng, auto)
-    }
-    Function("joinGroupRide") { riderId: String, riderName: String, rideId: String ->
-      CoreForegroundService.joinGroupRide(context.applicationContext, riderId, riderName, rideId)
     }
     // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair posts test notices.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `dismissRideNotice`
@@ -1707,9 +1744,6 @@ class VescapeCoreModule : Module() {
       )
     }
     Function("devClearRideNotice") { key: String -> RideNotices.clear(key) }
-    Function("leaveGroupRide") {
-      CoreForegroundService.leaveGroupRide(context.applicationContext)
-    }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendGroupRideSignal`
     Function("sendGroupRideSignal") { kind: String ->
       CoreForegroundService.sendGroupRideSignal(kind)
@@ -1724,8 +1758,20 @@ class VescapeCoreModule : Module() {
     Function("clearGroupRideHazard") {
       CoreForegroundService.clearGroupRideHazard()
     }
-    Function("updateGroupRideIdentity") { riderId: String, riderName: String ->
-      CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setPublicRide`
+    Function("setPublicRide") { on: Boolean, until: Double? ->
+      CoreForegroundService.setPublicRide(on, until?.toLong())
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setManualPublicRideSharing`
+    // @parity /modules/vescape-core/src/index.ts `setManualPublicRideSharing`
+    Function("setManualPublicRideSharing") { enabled: Boolean ->
+      CoreForegroundService.setManualPublicRideSharing(enabled)
+    }
+    Function("watchPublicRiders") {
+      CoreForegroundService.watchPublicRiders()
+    }
+    Function("stopWatchingPublicRiders") {
+      CoreForegroundService.stopWatchingPublicRiders()
     }
   }
 

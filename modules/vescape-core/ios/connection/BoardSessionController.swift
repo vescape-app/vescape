@@ -253,10 +253,8 @@ internal final class BoardSessionController: VescGattListener {
     emit: { [weak self] event, payload in self?.emit?(event, payload) },
     online: AppStatusCoordinator.shared,
     scheduler: scheduler,
-    // Participation is a GPS demand input, and most of the ways it ends are not rider-initiated.
-    onParticipationChanged: { [weak self] in self?.refreshGpsDemand() },
     onCue: { [weak self] cue in
-      guard let self, GroupRideCues.audible(cue, connectionSoundsEnabled: self.connectionSoundsEnabled) else { return }
+      guard let self else { return }
       self.alertAudioPlayer.playAppCue(cue)
     },
     ownLocation: { [weak self] in
@@ -264,8 +262,29 @@ internal final class BoardSessionController: VescGattListener {
     },
     signalContext: { [weak self] in
       self?.riderSignalContext() ?? RiderSignalContext(fix: nil, insidePrivacyZone: true)
+    },
+    // intentional-suppression: an unreadable credential cannot authenticate buffered positions
+    deviceCredential: { try? DeviceCredentialStore.shared.read() },
+    onPublicRideDemandChanged: { [weak self] in
+      self?.scheduler.post { [weak self] in
+        self?.syncPublicRideLink()
+        self?.refreshGpsDemand()
+      }
+    },
+    persistPublicRide: { PublicRideStore().write($0) },
+    lastKnownLocation: { [weak self] in
+      // intentional-suppression: unreadable settings leave look-around without a last position
+      guard let settings = try? self?.appData.getSettings(),
+            let lat = settings["lastGpsLatitude"] as? Double,
+            let lng = settings["lastGpsLongitude"] as? Double
+      else { return nil }
+      return (lat: lat, lng: lng)
     }
   )
+
+  /// JS asked for the observe socket; without it the public ride owns the socket's lifetime.
+  private var jsObserving = false
+  private var removeCredentialListener: (() -> Void)?
 
   /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
   /// when observing starts and on zone CRUD; reuses the same geometry as Ride Recording
@@ -422,6 +441,7 @@ internal final class BoardSessionController: VescGattListener {
     removeLiveActivityNoticesListener = RideNotices.shared.addListener { [weak self] in
       self?.onRideNoticesChanged($0)
     }
+    loadPublicRide()
   }
 
   /// Ride weather (#604): every successful refresh offers its current conditions to the store, off
@@ -442,6 +462,7 @@ internal final class BoardSessionController: VescGattListener {
     removeWeatherListener?()
     removeRideNoticesListener?()
     removeLiveActivityNoticesListener?()
+    removeCredentialListener?()
   }
 
   // MARK: - Scan API
@@ -1023,9 +1044,9 @@ internal final class BoardSessionController: VescGattListener {
     let mode = GpsDemand.resolve(
       appVisible: appVisible,
       riding: riding,
-      groupRideParticipating: groupRideObserver.participating,
       watchNavigating: watchMirror.navigating,
-      replayOwnsPosition: replayTransport != nil
+      replayOwnsPosition: replayTransport != nil,
+      manualPublicRide: groupRideObserver.publicRideNeedsGps
     )
     let wasActive = gpsMonitor.active
     gpsMonitor.apply(mode)
@@ -1074,32 +1095,90 @@ internal final class BoardSessionController: VescGattListener {
     catch { RecordingStorageFailure.reportRead(operation: "group_ride_sound_settings", error: error) }
     loadPrivacyZones()
     loadGroupRideTarget()
+    jsObserving = true
     groupRideObserver.start(url)
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopGroupRideObserve`
   func stopGroupRideObserve() {
+    jsObserving = false
+    // A public ride keeps riding without the screen that started observing.
+    if groupRideObserver.publicRideNeedsLink { return }
     groupRideObserver.stop()
   }
 
-  func createGroupRide(riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Bool) {
-    groupRideObserver.create(riderId: riderId, riderName: riderName, name: name, lat: lat, lng: lng, auto: auto)
+  /// Public ride from the persisted switch and the stored Account; follows every later credential
+  /// change, so signing out or switching Account ends it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadPublicRide`
+  private func loadPublicRide() {
+    // intentional-suppression: an unreadable credential reads as signed out, which keeps the switch off
+    let accountId = (try? DeviceCredentialStore.shared.read())?.accountId
+    groupRideObserver.loadPublicRide(PublicRideStore().read(), accountId: accountId)
+    removeCredentialListener?()
+    removeCredentialListener = DeviceCredentialStore.shared.addChangeListener { [weak self] in
+      // intentional-suppression: an unreadable credential reads as signed out, which ends the public ride
+      let account = (try? DeviceCredentialStore.shared.read())?.accountId
+      self?.scheduler.post { self?.groupRideObserver.setAccount(account) }
+    }
   }
 
-  func joinGroupRide(riderId: String, riderName: String, rideId: String) {
-    // No refresh here: the observer reports its own participation edge, which is the only way the
-    // server-driven departures get seen too.
-    groupRideObserver.join(
-      riderId: riderId,
-      riderName: riderName,
-      rideId: rideId,
-      presence: latestRiderPresence()
-    )
+  /// The rider moved the public ride switch: off, on until `until` (epoch ms), or on with no end.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setPublicRide`
+  func setPublicRide(on: Bool, until: Int64?) {
+    groupRideObserver.setPublicRide(on ? PublicRideSwitch(on: true, until: until) : .off)
+    syncPublicRideLink()
   }
 
-  func leaveGroupRide() {
-    groupRideObserver.leave()
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setManualPublicRideSharing`
+  func setManualPublicRideSharing(_ enabled: Bool) {
+    groupRideObserver.setManualPublicRideSharing(enabled)
   }
+
+  func watchPublicRiders() {
+    groupRideObserver.watchPublicRiders()
+    syncPublicRideLink()
+  }
+
+  func stopWatchingPublicRiders() {
+    groupRideObserver.stopWatchingPublicRiders()
+    syncPublicRideLink()
+  }
+
+  /// A board session counts for the public ride from the first connected until it ends; reconnect
+  /// phases in between keep it, so a short link drop does not take the rider off the map.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `publicRideBoardPhase`
+  private func publicRideBoardPhase(_ phase: BoardPhase) {
+    let connected: Bool
+    switch phase {
+    case .connected: connected = true
+    case .idle, .error: connected = false
+    default: return
+    }
+    groupRideObserver.setBoardConnected(connected)
+    syncPublicRideLink()
+  }
+
+  /// Open the relay socket when the public ride needs it and nothing else did (a board connecting
+  /// with the app in the background), and close it when only the public ride held it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `syncPublicRideLink`
+  /// @platform-diff The observer applies changes inline on the main thread here, so nothing is
+  /// posted; Android posts behind its handler queue.
+  private func syncPublicRideLink() {
+    let needed = groupRideObserver.publicRideNeedsLink
+    if needed && !groupRideObserver.active {
+      loadPrivacyZones()
+      loadGroupRideTarget()
+      groupRideObserver.start(GroupRideOnlineGate.webSocketUrl(serverBaseUrl: AppStatusCoordinator.serverBaseUrl))
+    } else if !needed && !jsObserving && groupRideObserver.active {
+      groupRideObserver.stop()
+    }
+  }
+
+
+
+
+
+
 
   func sendGroupRideSignal(_ kind: String) {
     groupRideObserver.sendSignal(kind)
@@ -1117,13 +1196,10 @@ internal final class BoardSessionController: VescGattListener {
     groupRideObserver.clearHazard()
   }
 
-  func updateGroupRideIdentity(riderId: String, riderName: String) {
-    groupRideObserver.updateIdentity(riderId: riderId, riderName: riderName)
-  }
-
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`
   private func latestRiderPresence() -> RiderPresence? {
-    guard let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)
+    guard replayTransport == nil,
+          let location = groupRidePrivacy.presenceFix(locationTracker.latestPreciseLocation ?? locationTracker.latestLocation)
     else { return nil }
     let telemetry = latestTelemetry
     let telemetryFresh = telemetry != nil && !isTelemetryStale()
@@ -1137,7 +1213,8 @@ internal final class BoardSessionController: VescGattListener {
       ctrlTemp: telemetryFresh ? telemetry?.tempMosfet : nil,
       phoneBattery: readPhoneBattery(),
       boardName: config.map { $0.name.isEmpty ? boardName : $0.name } ?? nil,
-      target: groupRideTarget
+      target: groupRideTarget,
+      at: location.timestamp
     )
   }
 
@@ -1148,7 +1225,7 @@ internal final class BoardSessionController: VescGattListener {
 
   /// Device battery as a 0–1 fraction, or nil when the platform can't report it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `readPhoneBattery`
-  private func readPhoneBattery() -> Double? {
+  func readPhoneBattery() -> Double? {
     UIDevice.current.isBatteryMonitoringEnabled = true
     let level = UIDevice.current.batteryLevel
     return level < 0 ? nil : Double(level)
@@ -1899,6 +1976,7 @@ internal final class BoardSessionController: VescGattListener {
   private func setPhase(_ phase: BoardPhase) {
     guard self.phase != phase else { return }
     self.phase = phase
+    publicRideBoardPhase(phase)
     // A phase change can flip whether a light write would be accepted, with the lights themselves
     // unchanged. See `pushWatchBoard`.
     pushWatchBoard()
@@ -2883,12 +2961,12 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
-  /// The joined Group Ride as the wrist draws it, or nil while the Rider is not in one. Measured from
+  /// The joined Group Ride, or the nearby public riders, as the wrist draws them; nil with neither. Measured from
   /// the Rider's latest GPS Fix, never from Board telemetry, so it needs no Board Session.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groupRideFrame`
   private func groupRideFrame() -> GroupRideFrame? {
-    guard let roster = groupRideObserver.joinedRoster else { return nil }
+    guard let roster = groupRideObserver.watchRoster else { return nil }
     let rider = locationTracker.riderPosition
     return GroupRideFrameBuilder.build(
       roster: roster,

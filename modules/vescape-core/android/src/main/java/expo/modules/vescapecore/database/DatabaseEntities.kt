@@ -562,9 +562,6 @@ data class AppSettings(
   val companionPresenceCooldownMinutes: Int = 60,
   val autoCloseEnabled: Boolean = false,
   val autoCloseDelayMinutes: Int = 15,
-  val riderId: String? = null,
-  val riderName: String? = null,
-  val groupRidePublicEnabled: Boolean = false,
   val legalPolicy: Map<String, String>? = null,
   val dismissedCommunityMessageIds: List<String> = emptyList(),
 )

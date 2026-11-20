@@ -11,7 +11,7 @@ class RideHazardCuesTest {
         RideHazard(kind, 50.0, 19.0, startedAt, startedAt + 600_000L)
 
     /** A fix [metres] south of the hazards. */
-    private fun at(metres: Double) = cues.fix(50.0 - metres / 111_195.0, 19.0)
+    private fun at(metres: Double) = cues.fix(50.0 - metres / 111_195.0, 19.0, 10_000L)
 
     @Test
     fun `cues once when closing in within 30 m, never on arrival`() {
@@ -57,6 +57,13 @@ class RideHazardCuesTest {
 
         assertEquals("groupRide.hazard.police", at(27.0))
         assertEquals("groupRide.hazard.terrain", at(24.0))
+    }
+
+    @Test
+    fun `expiry before the closing fix prevents a cue without another relay frame`() {
+        cues.roster(mapOf("ola" to hazard(RideHazardKind.WATER)))
+        at(40.0)
+        assertNull(cues.fix(50.0 - 25.0 / 111_195.0, 19.0, 601_000L))
     }
 
     @Test

@@ -8,16 +8,16 @@ final class GpsPowerModeTests: XCTestCase {
   private func resolve(
     appVisible: Bool = false,
     riding: Bool = false,
-    groupRideParticipating: Bool = false,
     watchNavigating: Bool = false,
-    replayOwnsPosition: Bool = false
+    replayOwnsPosition: Bool = false,
+    manualPublicRide: Bool = false
   ) -> GpsPowerMode {
     GpsDemand.resolve(
       appVisible: appVisible,
       riding: riding,
-      groupRideParticipating: groupRideParticipating,
       watchNavigating: watchNavigating,
-      replayOwnsPosition: replayOwnsPosition
+      replayOwnsPosition: replayOwnsPosition,
+      manualPublicRide: manualPublicRide
     )
   }
 
@@ -40,16 +40,14 @@ final class GpsPowerModeTests: XCTestCase {
     XCTAssertEqual(resolve(appVisible: true, riding: true), .ride)
   }
 
-  /// Group Ride is deliberate board-less use — the rider's position is being broadcast to others,
-  /// so it must keep flowing from a pocket.
-  func testGroupRideParticipationPaysForBackgroundFixes() {
-    XCTAssertEqual(resolve(groupRideParticipating: true), .ride)
-  }
-
   /// Issue #550: Navigation on the wrist with no Board and no Group Ride. A pocketed phone stopped
   /// GPS, so the wrist route froze or never appeared until a Group Ride started paying for fixes.
   func testWatchNavigationPaysForBackgroundFixes() {
     XCTAssertEqual(resolve(watchNavigating: true), .ride)
+  }
+
+  func testManualPublicRidePaysForBackgroundFixes() {
+    XCTAssertEqual(resolve(manualPublicRide: true), .ride)
   }
 
   /// A replay owns position for its lifetime; a live fix slipping through jumps the marker off the
@@ -57,8 +55,8 @@ final class GpsPowerModeTests: XCTestCase {
   func testReplayOutranksEveryLiveReason() {
     XCTAssertEqual(
       resolve(
-        appVisible: true, riding: true, groupRideParticipating: true, watchNavigating: true,
-        replayOwnsPosition: true
+        appVisible: true, riding: true, watchNavigating: true,
+        replayOwnsPosition: true, manualPublicRide: true
       ),
       .off
     )

@@ -822,6 +822,130 @@ export type MapPointErrorCode =
   | 'MAP_POINT_REFUSED'
   | 'MAP_POINT_UNREACHABLE'
 
+/**
+ * The signed-in Account's public Rider Profile. Mirrors vescape-server `src/riderProfiles/protocol.ts`.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt
+ */
+export interface RiderProfile {
+  accountId: string
+  nick: string
+  /** ISO 3166-1 alpha-2, upper-case. */
+  nationality: string | null
+}
+
+/** Public riding aggregates, without local record ride IDs.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderStatsSender.swift `fields`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderStatsSender.kt `FIELDS`
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `stats`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `stats`
+ */
+export interface RiderStats {
+  distanceM: number | null
+  rideCount: number
+  rideTimeMs: number
+  topSpeedKmh: number
+  avgSpeedKmh: number
+  longestRideM: number | null
+  batteryUsedWh: number | null
+  batteryRegenWh: number | null
+}
+
+/** @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `detail`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `detail`
+ */
+export interface RiderMonthStats extends RiderStats {
+  /** Phone-local calendar month, YYYY-MM. */
+  month: string
+}
+
+/** @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `detail`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `detail`
+ */
+export interface RiderDetail extends RiderProfile {
+  stats: { total: RiderStats | null; months: RiderMonthStats[] }
+}
+
+/**
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `RiderProfileApiError`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `RiderProfileApiException`
+ */
+export type RiderProfileErrorCode =
+  | 'RIDER_PROFILE_SIGN_IN_REQUIRED'
+  | 'RIDER_PROFILE_NICK_TAKEN'
+  | 'RIDER_PROFILE_REFUSED'
+  | 'RIDER_PROFILE_UNREACHABLE'
+
+/**
+ * One of the Account's Friends. Mirrors vescape-server `src/friends/protocol.ts`.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `friends`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friends`
+ */
+export interface Friend extends RiderProfile {
+  /** Holds a live public rider record right now. */
+  ridingNow: boolean
+  /** ISO time of the friend's last relay connection; null if never. */
+  lastOnlineAt: string | null
+}
+
+export interface FriendRequest extends RiderProfile {
+  /** ISO time. */
+  requestedAt: string
+}
+
+export interface Friends {
+  friends: Friend[]
+  incoming: FriendRequest[]
+  outgoing: FriendRequest[]
+}
+
+/** `friends` when the other side had already asked, so the request made it mutual. */
+export type FriendRequestStatus = 'requested' | 'friends'
+
+/** One position of another rider's stored public track, thinned to one per 5 s. */
+export interface PublicTrackPoint {
+  /** Epoch ms. */
+  at: number
+  lat: number
+  lng: number
+}
+
+/** Another rider in a Crew Ride, their stretch cut to the asked range. */
+export interface RodeWithRider extends RiderProfile {
+  /** ISO time. */
+  startedAt: string
+  /** ISO time. */
+  endedAt: string
+  track: PublicTrackPoint[]
+}
+
+/**
+ * A Crew Ride the Account rode in. Mirrors vescape-server `src/rides/protocol.ts`; no id on the
+ * wire. `riders` excludes the caller.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `rodeWith`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `rodeWith`
+ */
+export interface RodeWithCrewRide {
+  /** ISO time. */
+  startedAt: string
+  /** ISO time. */
+  endedAt: string
+  riders: RodeWithRider[]
+}
+
+/**
+ * One of a Friend's public rides, solo included. Mirrors vescape-server `src/rides/protocol.ts`;
+ * no id on the wire, the time range addresses it.
+ * @parity /modules/vescape-core/ios/riderprofiles/RiderProfileApi.swift `friendRides`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friendRides`
+ */
+export interface FriendRide {
+  /** ISO time. */
+  startedAt: string
+  /** ISO time. */
+  endedAt: string
+}
+
 export interface TelemetryEvent {
   generation?: number
   /** Native remote-tilt snapshot paired with this telemetry tick. */
@@ -1432,15 +1556,18 @@ export interface RideDay extends ProfileStatsMonth {
 }
 
 /**
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryAndroid.kt `getProfileStatsSnapshot`
- * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getProfileStatsSnapshot`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `readProfileStatsSnapshot`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `profileStatsSnapshot`
  */
 export interface ProfileStatsSnapshot {
   total: ProfileStats
   monthly: ProfileStats
   months: ProfileStatsMonth[]
   selectedMonth: ProfileStatsMonth
+  monthStats?: (ProfileStatsMonth & { stats: ProfileStats })[]
 }
+
+type ProfileStatsSnapshotOptions = Partial<ProfileStatsMonth> & { includeMonthStats?: boolean }
 
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideRoutePoint`
@@ -1783,17 +1910,6 @@ export interface AppSettings {
    * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
    */
   wearTiltRatePercent: number
-  /**
-   * Persistent device-scoped anonymous Group Ride Rider id. Generated once on
-   * first use and stored locally; sent to the relay server as the Rider's
-   * identity. See ADR-0020.
-   */
-  riderId: string | null
-  /** Rider-chosen display name shown to other Riders in a Group Ride. */
-  riderName: string | null
-  /** Group Ride header switch: ride publicly, auto-joining the nearest Group Ride or creating one. */
-  groupRidePublicEnabled: boolean
-  /** Native-resolved| null
   /** Native-resolved app-wide jurisdiction reference. Policy values live in shared catalog data. */
   legalPolicy: LegalPolicyReference | null
   /**
@@ -1958,16 +2074,6 @@ export interface FocusedSeriesEvent {
 // ---------------------------------------------------------------------------
 
 /** Globally-broadcast ride view; identical in `snapshot` and `ride-created`. */
-export interface GroupRideSummary {
-  id: string
-  name: string
-  /** Epoch ms when the ride was created. */
-  createdAt: number
-  riderCount: number
-  /** Reference point = creator's latest location, for client-side distance filtering. */
-  location: { lat: number; lng: number }
-  creator: { id: string; name: string }
-}
 
 export interface RiderPresence {
   lat: number
@@ -2076,36 +2182,10 @@ export interface GroupRideConnectionEvent {
   state: GroupRideConnectionState
 }
 
-export interface GroupRideSnapshotEvent {
-  rides: GroupRideSummary[]
-}
-
-export interface GroupRideCreatedEvent {
-  ride: GroupRideSummary
-}
-
-export interface GroupRideUpdatedEvent {
-  ride: GroupRideSummary
-}
-
-export interface GroupRideEndedEvent {
-  rideId: string
-}
-
-export interface GroupRideJoinedEvent {
-  rideId: string | null
-}
-
-export interface GroupRideRosterEvent {
-  rideId: string | null
-  riders: GroupRideRider[]
-  /** Relay clock (epoch ms) when the roster was sent; null from relays that predate it. */
-  now: number | null
-}
-
 /**
- * Whether the joined Rider can send a Rider Signal or Ride Hazard right now. `supported` and
- * `hazardsSupported` are false against a relay that does not advertise them. `insidePrivacyZone` is also true while zones have not loaded.
+ * Whether the Rider can send a Rider Signal or Ride Hazard right now. `supported` and
+ * `hazardsSupported` need a joined ride on a relay that advertises them, or else being public
+ * (switch on, signed in, board connected or manual sharing) on a relay with the public ride. `insidePrivacyZone` is also true while zones have not loaded.
  * `hasRecentFix` needs a GPS fix at most 30 s old. Emitted on change.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `refreshSignalAvailability`
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `refreshSignalAvailability`
@@ -2119,6 +2199,67 @@ export interface GroupRideSignalAvailability {
 
 export interface GroupRideErrorEvent {
   message: string
+}
+
+/**
+ * The switch is on while `activation` is waiting for a board, sharing by phone, or sharing by
+ * Board Session. While on, `until` is the end time (epoch ms), or null for Always.
+ * `live` is true while the relay confirms the rider public.
+ * `supported` is false against a relay without the
+ * `public-ride` feature. `reason` says why the ride last ended on its own: `replaced` (newer phone
+ * of the Account), `end-time`, `away-expired`, `signed-out`, or `refused` (no Account or nick).
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `emitStatus`
+ * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `emitStatus`
+ */
+export interface PublicRideStatus {
+  activation: 'off' | 'waiting' | 'phone' | 'board'
+  until: number | null
+  live: boolean
+  supported: boolean
+  reason: 'replaced' | 'end-time' | 'away-expired' | 'signed-out' | 'refused' | null
+}
+
+/**
+ * A public rider around this phone, the relay's `PublicRiderView` as native decodes it.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `publicRiderView`
+ * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `publicRiderView`
+ */
+export interface PublicRider {
+  accountId: string
+  nick: string
+  presence: RiderPresence | null
+  trail?: TrailPoint[] | null
+  stale: boolean
+  /** Lost connection: frozen at the last position, no trail. */
+  away: boolean
+  lastSeen: number
+}
+
+/** Every public rider native knows around this phone, nearest first; `now` is the relay clock. */
+export interface PublicRidersEvent {
+  riders: PublicRider[]
+  now: number | null
+}
+
+/** Another public rider's Rider Signal and Ride Hazard as this phone may see them. */
+export interface PublicRiderPins {
+  accountId: string
+  nick: string
+  signal: GroupRidePin | null
+  hazard: GroupRidePin | null
+}
+
+/**
+ * Pins on the public ride: other riders' as the relay reports them by distance (a friend's signal
+ * at any distance), and the rider's own as sent, which the relay never echoes. `now` is the relay
+ * clock the pin times are read against.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `emitPins`
+ * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `emitPins`
+ */
+export interface PublicPinsEvent {
+  pins: PublicRiderPins[]
+  own: { signal: GroupRidePin | null; hazard: GroupRidePin | null }
+  now: number
 }
 
 /**
@@ -2835,14 +2976,11 @@ type VescapeCoreEvents = {
   /** Observe WebSocket connection state to the Group Ride relay. */
   onGroupRideConnection: (event: GroupRideConnectionEvent) => void
   /** Full active-ride list, sent once on connect. */
-  onGroupRideSnapshot: (event: GroupRideSnapshotEvent) => void
-  onGroupRideCreated: (event: GroupRideCreatedEvent) => void
-  onGroupRideUpdated: (event: GroupRideUpdatedEvent) => void
-  onGroupRideEnded: (event: GroupRideEndedEvent) => void
-  onGroupRideJoined: (event: GroupRideJoinedEvent) => void
-  onGroupRideRoster: (event: GroupRideRosterEvent) => void
   onGroupRideError: (event: GroupRideErrorEvent) => void
   onGroupRideSignalAvailability: (event: GroupRideSignalAvailability) => void
+  onPublicRideStatus: (event: PublicRideStatus) => void
+  onPublicRiders: (event: PublicRidersEvent) => void
+  onPublicPins: (event: PublicPinsEvent) => void
   /** Persisted board/app data changed natively — reload the matching store. */
   onAppDataChanged: (event: AppDataChangedEvent) => void
   /** Full current Board Warning list for a board, on every registry change and on subscribe. */
@@ -2934,21 +3072,14 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   refreshLocationDemand(): void
   startGroupRideObserve(serverUrl: string): void
   stopGroupRideObserve(): void
-  createGroupRide(
-    riderId: string,
-    riderName: string,
-    name: string | null,
-    lat: number,
-    lng: number,
-    auto: boolean,
-  ): void
-  joinGroupRide(riderId: string, riderName: string, rideId: string): void
-  leaveGroupRide(): void
   sendGroupRideSignal(kind: RiderSignalKind): void
   clearGroupRideSignal(): void
   sendGroupRideHazard(kind: RideHazardKind): void
   clearGroupRideHazard(): void
-  updateGroupRideIdentity(riderId: string, riderName: string): void
+  setPublicRide(on: boolean, until: number | null): void
+  setManualPublicRideSharing(enabled: boolean): void
+  watchPublicRiders(): void
+  stopWatchingPublicRiders(): void
   setTelemetryRecordingEnabled(enabled: boolean): void
   setBmsSeriesFocused(focused: boolean): void
   setFocusedSeriesMetrics(metrics: string[]): void
@@ -2997,6 +3128,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   reportUiError(message: string, source?: string | null, stack?: string | null): void
   reportDiagnosticTest(): DiagnosticStatus
   getDiagnosticStatus(): DiagnosticStatus
+  getPhoneBatteryLevel(): Promise<number | null>
   getLiveState(): LiveStateEvent
   getAppStatus(): AppStatus | null
   getServiceConfig(): ServiceConfig
@@ -3113,7 +3245,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     fields: Record<string, TuneProfileFieldValue>,
   ): Promise<TuneProfile>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
-  getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
+  getProfileStatsSnapshot(options: ProfileStatsSnapshotOptions): Promise<ProfileStatsSnapshot>
   getDayStats(day: RideDay): Promise<ProfileStats>
   getRecentRideStats(sinceMs: number): Promise<ProfileStats>
   getMaintenanceState(): MaintenanceState
@@ -3157,6 +3289,18 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   updateMapPoint(id: string, patch: MapPointPatch): Promise<MapPoint>
   deleteMapPoint(id: string): Promise<void>
   setMapPointReaction(id: string, reaction: MapPointReaction | null): Promise<void>
+  getRiderProfile(): Promise<RiderProfile | null>
+  saveRiderProfile(nick: string, nationality: string | null): Promise<RiderProfile>
+  searchRiders(nick: string): Promise<RiderProfile[]>
+  getRider(accountId: string): Promise<RiderDetail | null>
+  getFriends(): Promise<Friends>
+  sendFriendRequest(accountId: string): Promise<FriendRequestStatus>
+  acceptFriendRequest(accountId: string): Promise<void>
+  deleteFriendRequest(accountId: string): Promise<void>
+  removeFriend(accountId: string): Promise<void>
+  getRodeWith(from: string, to: string): Promise<RodeWithCrewRide[]>
+  getFriendRides(accountId: string): Promise<FriendRide[]>
+  getFriendRideTrack(accountId: string, from: string, to: string): Promise<PublicTrackPoint[]>
   setDirectionPoint(latitude: number | null, longitude: number | null): Promise<void>
   recomputeNavigation(): Promise<void>
   setNavigationProfile(profile: NavigationProfile): Promise<void>
@@ -3343,57 +3487,6 @@ export function stopGroupRideObserve(): void {
   native.stopGroupRideObserve()
 }
 
-export interface CreateGroupRideParams {
-  /** Persistent device-scoped Rider id. */
-  riderId: string
-  /** Rider display name bound to the connection (used for the auto-name fallback). */
-  riderName: string
-  /** Optional custom ride name; server auto-names `"<name>'s ride"` when blank/null. */
-  name: string | null
-  lat: number
-  lng: number
-  /** Public riding: the relay joins the nearest ride in range and only creates when none is. */
-  auto: boolean
-}
-
-/**
- * Create a Group Ride over the live observe socket. Sends the creator's location once — the
- * only location egress while observing. The new ride arrives back via the `ride-created`
- * fan-out, so callers update state from that event rather than optimistically.
- */
-export function createGroupRide({
-  riderId,
-  riderName,
-  name,
-  lat,
-  lng,
-  auto,
-}: CreateGroupRideParams): void {
-  if (E2E_ENABLED) return
-  native.createGroupRide(riderId, riderName, name, lat, lng, auto)
-}
-
-export interface JoinGroupRideParams {
-  riderId: string
-  riderName: string
-  rideId: string
-}
-
-/** Join a Group Ride by id. Native sends Rider Presence from the foreground GPS stream. */
-export function joinGroupRide({ riderId, riderName, rideId }: JoinGroupRideParams): void {
-  if (E2E_ENABLED) return
-  native.joinGroupRide(riderId, riderName, rideId)
-}
-
-/**
- * Leave the current Group Ride. Native drops the ride at once; while the observe socket is down
- * it tells the relay on the next connection, unless a new create/join gets there first.
- */
-export function leaveGroupRide(): void {
-  if (E2E_ENABLED) return
-  native.leaveGroupRide()
-}
-
 /**
  * Raise a Rider Signal at the latest GPS fix. Native rejects it without a fix from the last 30 s,
  * sends it from inside a Privacy Zone too (an explicit opt-in), and holds it for the rejoin while
@@ -3422,22 +3515,37 @@ export function clearGroupRideHazard(): void {
   native.clearGroupRideHazard()
 }
 
-export interface UpdateGroupRideIdentityParams {
-  riderId: string
-  riderName: string
+/**
+ * Move the public ride switch: off, on until `until` (epoch ms), or on with `until` null (always).
+ * Native owns the switch, its timer, and going public when the board connects; the result comes
+ * back as `onPublicRideStatus`.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setPublicRide`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setPublicRide`
+ */
+export function setPublicRide(on: boolean, until: number | null): void {
+  if (E2E_ENABLED) return
+  native.setPublicRide(on, until)
 }
 
 /**
- * Push a Rider name change to the live observe socket. While joined, the relay re-emits the
- * roster so peers update without a rejoin; otherwise the new identity is applied on the next
- * create/join. No-op when the observe socket is not connected.
+ * Start or stop sharing by phone while the Public Ride switch is on and waiting for a board.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setManualPublicRideSharing`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setManualPublicRideSharing`
  */
-export function updateGroupRideIdentity({
-  riderId,
-  riderName,
-}: UpdateGroupRideIdentityParams): void {
+export function setManualPublicRideSharing(enabled: boolean): void {
   if (E2E_ENABLED) return
-  native.updateGroupRideIdentity(riderId, riderName)
+  native.setManualPublicRideSharing(enabled)
+}
+
+/** Look around: watch public riders near this phone, switch on or off. Riders arrive as `onPublicRiders`. */
+export function watchPublicRiders(): void {
+  if (E2E_ENABLED) return
+  native.watchPublicRiders()
+}
+
+export function stopWatchingPublicRiders(): void {
+  if (E2E_ENABLED) return
+  native.stopWatchingPublicRiders()
 }
 
 /** Enable or disable native SQLite telemetry history writes. */
@@ -3753,6 +3861,15 @@ export function reportDiagnosticTest(): DiagnosticStatus {
 /** Read native diagnostic reporter state for development tooling. */
 export function getDiagnosticStatus(): DiagnosticStatus {
   return native.getDiagnosticStatus()
+}
+
+/**
+ * The local phone battery as a fraction from 0 to 1, or null when unavailable.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getPhoneBatteryLevel`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getPhoneBatteryLevel`
+ */
+export async function getPhoneBatteryLevel(): Promise<number | null> {
+  return native.getPhoneBatteryLevel()
 }
 
 /** Read native-owned live state. UI should mirror this, not invent connection state. */
@@ -4469,7 +4586,7 @@ export async function pushProfileToBoard(profileId: string): Promise<RefloatConf
 }
 
 export async function getProfileStatsSnapshot(
-  options?: ProfileStatsMonth,
+  options?: ProfileStatsSnapshotOptions,
 ): Promise<ProfileStatsSnapshot> {
   return native.getProfileStatsSnapshot(options ?? {})
 }
@@ -4693,6 +4810,73 @@ export async function reverseGeocodeMap(latitude: number, longitude: number): Pr
  * Map Points nearest to a coordinate, newest server truth. Reads need no account; a stored Device
  * Token additionally resolves `ownedByMe` and `myReaction`.
  */
+/** The signed-in Account's Rider Profile; null until a nick is picked. Rejects with `RiderProfileErrorCode`. */
+export async function getRiderProfile(): Promise<RiderProfile | null> {
+  return native.getRiderProfile()
+}
+
+export async function saveRiderProfile(
+  nick: string,
+  nationality: string | null,
+): Promise<RiderProfile> {
+  return native.saveRiderProfile(nick, nationality)
+}
+
+/** Riders whose nick starts with `prefix` (letters, digits, underscores), at most 20. */
+export async function searchRiders(prefix: string): Promise<RiderProfile[]> {
+  return native.searchRiders(prefix)
+}
+
+/** Another rider's public profile; null when they have none. */
+export async function getRider(accountId: string): Promise<RiderDetail | null> {
+  return native.getRider(accountId)
+}
+
+/** The Account's Friends and pending requests both ways. Rejects with `RiderProfileErrorCode`. */
+export async function getFriends(): Promise<Friends> {
+  return native.getFriends()
+}
+
+export async function sendFriendRequest(accountId: string): Promise<FriendRequestStatus> {
+  return native.sendFriendRequest(accountId)
+}
+
+export async function acceptFriendRequest(accountId: string): Promise<void> {
+  return native.acceptFriendRequest(accountId)
+}
+
+/** Declines an incoming request or withdraws an outgoing one. */
+export async function deleteFriendRequest(accountId: string): Promise<void> {
+  return native.deleteFriendRequest(accountId)
+}
+
+/** Silent: the other side is not told. */
+export async function removeFriend(accountId: string): Promise<void> {
+  return native.removeFriend(accountId)
+}
+
+/**
+ * The Crew Rides the Account rode in between `from` and `to` (ISO, at most 24 h apart). Read from
+ * the server per view, never stored. Rejects with `RiderProfileErrorCode`.
+ */
+export async function getRodeWith(from: string, to: string): Promise<RodeWithCrewRide[]> {
+  return native.getRodeWith(from, to)
+}
+
+/** A Friend's public rides, newest first. Rejects with `RiderProfileErrorCode` (refused for non-friends). */
+export async function getFriendRides(accountId: string): Promise<FriendRide[]> {
+  return native.getFriendRides(accountId)
+}
+
+/** A Friend's public track between `from` and `to` (ISO, at most 24 h apart). */
+export async function getFriendRideTrack(
+  accountId: string,
+  from: string,
+  to: string,
+): Promise<PublicTrackPoint[]> {
+  return native.getFriendRideTrack(accountId, from, to)
+}
+
 export async function getNearbyMapPoints(
   latitude: number,
   longitude: number,
@@ -5031,42 +5215,6 @@ export function addGroupRideConnectionListener(
   return emitter.addListener('onGroupRideConnection', cb)
 }
 
-export function addGroupRideSnapshotListener(
-  cb: (event: GroupRideSnapshotEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideSnapshot', cb)
-}
-
-export function addGroupRideCreatedListener(
-  cb: (event: GroupRideCreatedEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideCreated', cb)
-}
-
-export function addGroupRideUpdatedListener(
-  cb: (event: GroupRideUpdatedEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideUpdated', cb)
-}
-
-export function addGroupRideEndedListener(
-  cb: (event: GroupRideEndedEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideEnded', cb)
-}
-
-export function addGroupRideJoinedListener(
-  cb: (event: GroupRideJoinedEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideJoined', cb)
-}
-
-export function addGroupRideRosterListener(
-  cb: (event: GroupRideRosterEvent) => void,
-): EventSubscription {
-  return emitter.addListener('onGroupRideRoster', cb)
-}
-
 export function addGroupRideErrorListener(
   cb: (event: GroupRideErrorEvent) => void,
 ): EventSubscription {
@@ -5077,6 +5225,20 @@ export function addGroupRideSignalAvailabilityListener(
   cb: (event: GroupRideSignalAvailability) => void,
 ): EventSubscription {
   return emitter.addListener('onGroupRideSignalAvailability', cb)
+}
+
+export function addPublicRideStatusListener(
+  cb: (event: PublicRideStatus) => void,
+): EventSubscription {
+  return emitter.addListener('onPublicRideStatus', cb)
+}
+
+export function addPublicRidersListener(cb: (event: PublicRidersEvent) => void): EventSubscription {
+  return emitter.addListener('onPublicRiders', cb)
+}
+
+export function addPublicPinsListener(cb: (event: PublicPinsEvent) => void): EventSubscription {
+  return emitter.addListener('onPublicPins', cb)
 }
 
 /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `saveBrakeLightSettings`

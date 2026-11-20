@@ -10,7 +10,7 @@ final class RideHazardCuesTests: XCTestCase {
   }
 
   /// A fix `metres` south of the hazards.
-  private func at(_ metres: Double) -> String? { cues.fix(lat: 50 - metres / 111_195, lng: 19) }
+  private func at(_ metres: Double) -> String? { cues.fix(lat: 50 - metres / 111_195, lng: 19, relayNow: 10_000) }
 
   func testCuesOnceWhenClosingInWithin30mNeverOnArrival() {
     cues.roster(["ola": hazard(.terrain)])
@@ -47,6 +47,12 @@ final class RideHazardCuesTests: XCTestCase {
 
     XCTAssertEqual(at(27), "groupRide.hazard.police")
     XCTAssertEqual(at(24), "groupRide.hazard.terrain")
+  }
+
+  func testExpiryBeforeClosingFixPreventsCueWithoutAnotherRelayFrame() {
+    cues.roster(["ola": hazard(.water)])
+    _ = at(40)
+    XCTAssertNil(cues.fix(lat: 50 - 25 / 111_195, lng: 19, relayNow: 601_000))
   }
 
   func testResetForgetsEveryHazard() {

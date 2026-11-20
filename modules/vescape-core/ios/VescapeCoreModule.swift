@@ -94,7 +94,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onGroupRideSignalAvailability", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading", "onRideNotices")
+    Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideError", "onGroupRideSignalAvailability", "onPublicRideStatus", "onPublicRiders", "onPublicPins", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading", "onRideNotices")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -127,22 +127,16 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onGroupRideConnection`
     OnStartObserving("onGroupRideConnection") { self.observedEvents.insert("onGroupRideConnection") }
     OnStopObserving("onGroupRideConnection") { self.observedEvents.remove("onGroupRideConnection") }
-    OnStartObserving("onGroupRideSnapshot") { self.observedEvents.insert("onGroupRideSnapshot") }
-    OnStopObserving("onGroupRideSnapshot") { self.observedEvents.remove("onGroupRideSnapshot") }
-    OnStartObserving("onGroupRideCreated") { self.observedEvents.insert("onGroupRideCreated") }
-    OnStopObserving("onGroupRideCreated") { self.observedEvents.remove("onGroupRideCreated") }
-    OnStartObserving("onGroupRideUpdated") { self.observedEvents.insert("onGroupRideUpdated") }
-    OnStopObserving("onGroupRideUpdated") { self.observedEvents.remove("onGroupRideUpdated") }
-    OnStartObserving("onGroupRideEnded") { self.observedEvents.insert("onGroupRideEnded") }
-    OnStopObserving("onGroupRideEnded") { self.observedEvents.remove("onGroupRideEnded") }
-    OnStartObserving("onGroupRideJoined") { self.observedEvents.insert("onGroupRideJoined") }
-    OnStopObserving("onGroupRideJoined") { self.observedEvents.remove("onGroupRideJoined") }
-    OnStartObserving("onGroupRideRoster") { self.observedEvents.insert("onGroupRideRoster") }
-    OnStopObserving("onGroupRideRoster") { self.observedEvents.remove("onGroupRideRoster") }
     OnStartObserving("onGroupRideError") { self.observedEvents.insert("onGroupRideError") }
     OnStopObserving("onGroupRideError") { self.observedEvents.remove("onGroupRideError") }
     OnStartObserving("onGroupRideSignalAvailability") { self.observedEvents.insert("onGroupRideSignalAvailability") }
     OnStopObserving("onGroupRideSignalAvailability") { self.observedEvents.remove("onGroupRideSignalAvailability") }
+    OnStartObserving("onPublicRideStatus") { self.observedEvents.insert("onPublicRideStatus") }
+    OnStopObserving("onPublicRideStatus") { self.observedEvents.remove("onPublicRideStatus") }
+    OnStartObserving("onPublicRiders") { self.observedEvents.insert("onPublicRiders") }
+    OnStopObserving("onPublicRiders") { self.observedEvents.remove("onPublicRiders") }
+    OnStartObserving("onPublicPins") { self.observedEvents.insert("onPublicPins") }
+    OnStopObserving("onPublicPins") { self.observedEvents.remove("onPublicPins") }
     OnStartObserving("onBoardWarnings") {
       self.observedEvents.insert("onBoardWarnings")
       // Late subscriber: replay the current warnings for every board so JS is immediately consistent.
@@ -279,6 +273,7 @@ public class VescapeCoreModule: Module {
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
       ServiceConfigCoordinator.shared.refresh()
+      Task { await RiderStatsSender.shared.foreground() }
       self.attachToCoordinator()
       self.rideNoticesUnsubscribe = RideNotices.shared.addListener { [weak self] in self?.emitRideNotices($0) }
       // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
@@ -305,6 +300,7 @@ public class VescapeCoreModule: Module {
       self.coordinator.appVisible = true
       AppStatusCoordinator.shared.refresh()
       ServiceConfigCoordinator.shared.refresh()
+      Task { await RiderStatsSender.shared.foreground() }
       // Emits were gated while hidden; the screen must not keep a stale running state.
       self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
       self.emitRideNotices(RideNotices.shared.current)
@@ -484,20 +480,9 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopGroupRideObserve()
     }
 
-    Function("createGroupRide") { (riderId: String, riderName: String, name: String?, lat: Double, lng: Double, auto: Bool) in
-      self.coordinator.createGroupRide(
-        riderId: riderId,
-        riderName: riderName,
-        name: name,
-        lat: lat,
-        lng: lng,
-        auto: auto
-      )
-    }
 
-    Function("joinGroupRide") { (riderId: String, riderName: String, rideId: String) in
-      self.coordinator.joinGroupRide(riderId: riderId, riderName: riderName, rideId: rideId)
-    }
+
+
 
     // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair posts test notices.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `dismissRideNotice`
@@ -539,9 +524,7 @@ public class VescapeCoreModule: Module {
       RideNotices.shared.clear(key: key)
     }
 
-    Function("leaveGroupRide") {
-      self.coordinator.leaveGroupRide()
-    }
+
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `sendGroupRideSignal`
     Function("sendGroupRideSignal") { (kind: String) in
@@ -561,8 +544,23 @@ public class VescapeCoreModule: Module {
       self.coordinator.clearGroupRideHazard()
     }
 
-    Function("updateGroupRideIdentity") { (riderId: String, riderName: String) in
-      self.coordinator.updateGroupRideIdentity(riderId: riderId, riderName: riderName)
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setPublicRide`
+    Function("setPublicRide") { (on: Bool, until: Double?) in
+      self.coordinator.setPublicRide(on: on, until: until.map { Int64($0) })
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setManualPublicRideSharing`
+    // @parity /modules/vescape-core/src/index.ts `setManualPublicRideSharing`
+    Function("setManualPublicRideSharing") { (enabled: Bool) in
+      self.coordinator.setManualPublicRideSharing(enabled)
+    }
+
+    Function("watchPublicRiders") {
+      self.coordinator.watchPublicRiders()
+    }
+
+    Function("stopWatchingPublicRiders") {
+      self.coordinator.stopWatchingPublicRiders()
     }
 
     // MARK: Telemetry recording toggle
@@ -728,6 +726,12 @@ public class VescapeCoreModule: Module {
     }
 
     // MARK: Board session
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getPhoneBatteryLevel`
+    // @parity /modules/vescape-core/src/index.ts `getPhoneBatteryLevel`
+    AsyncFunction("getPhoneBatteryLevel") { () -> Double? in
+      self.coordinator.readPhoneBattery()
+    }.runOnQueue(.main)
 
     Function("getLiveState") {
       self.liveState(includeRecent: true)
@@ -1663,6 +1667,99 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // The Account's Rider Profile is server-owned; native only attaches the Device Token.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRiderProfile`
+    AsyncFunction("getRiderProfile") { (promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.mine()) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("saveRiderProfile") { (nick: String, nationality: String?, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.save(nick: nick, nationality: nationality)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    // Other riders' profiles and the Account's Friends, server-owned like the Rider Profile.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFriends`
+    AsyncFunction("searchRiders") { (nick: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.search(nick: nick)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("getRider") { (accountId: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.rider(accountId)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("getFriends") { (promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.friends()) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("sendFriendRequest") { (accountId: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.requestFriend(accountId)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("acceptFriendRequest") { (accountId: String, promise: Promise) in
+      Task {
+        do { try await RiderProfileApi.shared.acceptFriend(accountId); promise.resolve(nil) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("deleteFriendRequest") { (accountId: String, promise: Promise) in
+      Task {
+        do { try await RiderProfileApi.shared.deleteFriendRequest(accountId); promise.resolve(nil) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    AsyncFunction("removeFriend") { (accountId: String, promise: Promise) in
+      Task {
+        do { try await RiderProfileApi.shared.removeFriend(accountId); promise.resolve(nil) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    // Who the rider rode with during a past ride; fetched per view, never stored.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRodeWith`
+    AsyncFunction("getRodeWith") { (from: String, to: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.rodeWith(from: from, to: to)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    // A Friend's public rides and one ride's track; fetched per view, never stored.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFriendRides`
+    AsyncFunction("getFriendRides") { (accountId: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.friendRides(accountId)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFriendRideTrack`
+    AsyncFunction("getFriendRideTrack") { (accountId: String, from: String, to: String, promise: Promise) in
+      Task {
+        do { promise.resolve(try await RiderProfileApi.shared.friendRideTrack(accountId, from: from, to: to)) }
+        catch { Self.rejectRiderProfile(promise, error) }
+      }
+    }
+
     // The direction target is personal client state, never a Map Point. Native keeps it so Group
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") { (latitude: Double?, longitude: Double?, promise: Promise) in
@@ -2441,6 +2538,14 @@ public class VescapeCoreModule: Module {
   private static func rejectMapPoint(_ promise: Promise, _ error: Error) {
     guard let apiError = error as? MapPointApiError else {
       promise.reject(MapPointApiError.refused, error.localizedDescription)
+      return
+    }
+    promise.reject(apiError.code, apiError.message)
+  }
+
+  private static func rejectRiderProfile(_ promise: Promise, _ error: Error) {
+    guard let apiError = error as? RiderProfileApiError else {
+      promise.reject(RiderProfileApiError.refused, error.localizedDescription)
       return
     }
     promise.reject(apiError.code, apiError.message)

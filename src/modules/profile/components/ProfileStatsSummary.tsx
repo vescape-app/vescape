@@ -6,7 +6,6 @@ import { Placeholder } from '@/components/base/Placeholder'
 import { SegmentedToggle, type SegmentedOption } from '@/components/controls/SegmentedToggle'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors } from '@/hooks/useTheme'
 import {
   useProfileStatItems,
   type OpenRecordRide,
@@ -50,7 +49,6 @@ export function ProfileStatsSummary({
 }: ProfileStatsSummaryProps) {
   const { total, monthly, today, selectedMonth, loading, error, empty } = useProfileStats(active)
   const surface = useResolvedSecondaryWidgetSurface()
-  const accent = useResolvedAccentColors()
   const [picked, setPicked] = useState<Scope | null>(null)
   const options: SegmentedOption<Scope>[] =
     today.rideCount > 0
@@ -64,8 +62,6 @@ export function ProfileStatsSummary({
         ]
   const scope = options.find((option) => option.value === picked)?.value ?? options[0].value
   const stats = { today, total, month: monthly }[scope]
-  // Today is a different view from the rider's lifetime profile; the card says so at a glance.
-  const todayStyle = scope === 'today' && { borderColor: accent.sky.border }
   const items = useProfileStatItems(
     stats,
     scope === 'today' ? TODAY_KEYS : SUMMARY_KEYS,
@@ -74,7 +70,7 @@ export function ProfileStatsSummary({
 
   return (
     <View
-      style={[surface, styles.card, todayStyle && [styles.todayCard, todayStyle]]}
+      style={[surface, styles.card]}
       testID="profile-stats-summary"
       accessibilityState={{ busy: loading }}
     >
@@ -112,9 +108,6 @@ const styles = StyleSheet.create({
   card: {
     padding: 14,
     gap: 12,
-  },
-  todayCard: {
-    borderWidth: 1.5,
   },
   head: {
     flexDirection: 'row',

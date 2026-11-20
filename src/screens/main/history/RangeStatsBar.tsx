@@ -1,3 +1,4 @@
+import { RodeWithRow } from '@/modules/group-ride/components/RodeWith'
 import { useMemo } from 'react'
 import type { HistoryGpsSample, TelemetrySample } from 'vescape-core'
 
@@ -52,5 +53,9 @@ export function RangeStatsBar({ session, samples, gpsSamples, trimming }: RangeS
     }
   }, [range, session, sortedGps, sortedSamples])
 
-  return <HistoryStatsBar session={rangeSession} />
+  return (
+    <HistoryStatsBar session={rangeSession}>
+      <RodeWithRow />
+    </HistoryStatsBar>
+  )
 }

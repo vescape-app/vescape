@@ -1,6 +1,6 @@
 import { LineLayer, ShapeSource } from '@rnmapbox/maps'
 import { useMemo } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import type { GroupRidePin } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
@@ -75,7 +75,8 @@ export function RiderTrail({
   )
 }
 
-export function RiderPresencePin({ rider }: { rider: RosterRider }) {
+/** `onPress` makes the pin a touch target (public riders open their profile). */
+export function RiderPresencePin({ rider, onPress }: { rider: RosterRider; onPress?: () => void }) {
   const accents = useResolvedAccentColors()
   const color = riderMapColor(rider, accents)
   const heading = rider.presence?.heading ?? null
@@ -83,7 +84,13 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
 
   return (
     <InMapMarker coordinate={[rider.presence.lng, rider.presence.lat]}>
-      <View style={styles.riderMarker}>
+      <Pressable
+        style={styles.riderMarker}
+        onPress={onPress}
+        disabled={!onPress}
+        accessibilityRole={onPress ? 'button' : undefined}
+        accessibilityLabel={onPress ? `Open ${rider.name || 'rider'}` : undefined}
+      >
         <View style={[styles.riderDot, { backgroundColor: color }]}>
           {heading != null && (
             // Rotating a ring centered on the dot keeps the arrow orbiting the dot;
@@ -96,16 +103,42 @@ export function RiderPresencePin({ rider }: { rider: RosterRider }) {
         <Text style={[styles.riderLabel, rider.stale && styles.riderLabelStale]} numberOfLines={1}>
           {rider.name || 'Rider'}
         </Text>
-      </View>
+      </Pressable>
     </InMapMarker>
   )
 }
 
 /** Every Rider's active signal, your own included (the presence layers leave you out). */
 export function LiveRiderSignalPins() {
-  const rows = useGroupRideStore((s) => s.rosterRows)
+  const rosterRows = useGroupRideStore((s) => s.rosterRows)
   const clock = useGroupRideStore((s) => s.relayClock)
+  // On the public ride the rider has no row: its own pins come as sent.
+  const publicOwn = useGroupRideStore((s) => s.publicOwnPins)
+  const rows = useMemo(
+    () =>
+      publicOwn && (publicOwn.signal || publicOwn.hazard)
+        ? [...rosterRows, ownPinsRow(publicOwn)]
+        : rosterRows,
+    [rosterRows, publicOwn],
+  )
   return <RiderSignalPins rows={rows} clock={clock} />
+}
+
+function ownPinsRow(pins: {
+  signal: GroupRidePin | null
+  hazard: GroupRidePin | null
+}): RosterRider {
+  return {
+    id: 'self',
+    name: 'You',
+    presence: null,
+    stale: false,
+    away: false,
+    lastSeen: 0,
+    signal: pins.signal,
+    hazard: pins.hazard,
+    isSelf: true,
+  }
 }
 
 /** The signals and hazards in `rows` still active on `clock`. */

@@ -5,7 +5,12 @@ import {
   tempLevel,
   type TelemetryLevel,
 } from '@/modules/board/constants/telemetryThresholds'
-import type { RosterRider } from '@/modules/group-ride/lib/roster'
+import type { RiderPresence } from 'vescape-core'
+
+export type RiderReadings = Pick<
+  RiderPresence,
+  'speed' | 'soc' | 'motorTemp' | 'ctrlTemp' | 'phoneBattery' | 'boardName'
+>
 
 interface RiderStat {
   value?: string
@@ -25,7 +30,7 @@ const NORMAL_STAT: RiderStat = { level: 'normal' }
 /** Per-Rider telemetry values for the roster stat grid, each carrying its alert level.
  *  Values are bare numbers: the column's icon names the metric and the rider's units are known,
  *  so six columns still fit one line on a narrow phone. */
-export function riderStats(p: RosterRider['presence'], distanceUnit: DistanceUnit): RiderStats {
+export function riderStats(p: RiderReadings | null, distanceUnit: DistanceUnit): RiderStats {
   if (!p)
     return {
       speed: NORMAL_STAT,

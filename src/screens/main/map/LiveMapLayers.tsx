@@ -1,5 +1,6 @@
 import { FillLayer, LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
 import { useEffect } from 'react'
+import { router } from 'expo-router'
 import { processColor } from 'react-native'
 
 import { useInMapLayer } from '@/components/map/inMapLayer'
@@ -10,6 +11,9 @@ import {
   LiveRiderSignalPins,
   RiderTrail,
 } from '@/modules/group-ride/components/RiderMapLayers'
+import { riderProfileHref } from '@/navigation/links'
+import { RiderTrackLine } from '@/modules/group-ride/components/RodeWith'
+import { useFriendRidesStore } from '@/modules/group-ride/store/friendRidesStore'
 import { DEFAULT_RAIL_COLOR_ID } from '@/modules/board/lib/railColor'
 import { useSelectedBoardRailColor } from '@/modules/group-ride/lib/selectedBoardRailColor'
 import { coinShadowAlpha, GpsPuck } from '@/modules/map/components/GpsPuck'
@@ -35,6 +39,7 @@ export function LiveMapLayers({
   highContrastRoutes: boolean
 }) {
   const riderColor = useSelectedBoardRailColor()
+  const friendRide = useFriendRidesStore((s) => s.track)
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const accuracyFillColor = theme.alpha(accents.violet.color, 0.12)
@@ -70,6 +75,14 @@ export function LiveMapLayers({
   }, [puckLayer])
   return (
     <>
+      {friendRide && friendRide.coordinates.length >= 2 ? (
+        <RiderTrackLine
+          key={friendRide.key}
+          id="friend-ride"
+          accountId={friendRide.accountId}
+          coordinates={friendRide.coordinates}
+        />
+      ) : null}
       {liveTrailShape && (
         <ShapeSource id="center-live-trail-source" shape={liveTrailShape} lineMetrics>
           <LineLayer
@@ -126,7 +139,14 @@ export function LiveMapLayers({
         ) : null,
       )}
       {riders.map((rider) =>
-        rider.presence ? <RiderPresencePin key={rider.id} rider={rider} /> : null,
+        rider.presence ? (
+          <RiderPresencePin
+            key={rider.id}
+            rider={rider}
+            // Outside a Group Ride the riders are public riders, keyed by account: open their profile.
+            onPress={rider.isSelf ? undefined : () => router.push(riderProfileHref(rider.id))}
+          />
+        ) : null,
       )}
       <LiveRiderSignalPins />
     </>

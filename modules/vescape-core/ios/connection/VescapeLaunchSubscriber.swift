@@ -27,6 +27,7 @@ public final class VescapeLaunchSubscriber: ExpoAppDelegateSubscriber {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     NSLog("[VescAutoConnect] didFinishLaunchingWithOptions")
+    Task { await RiderStatsSender.shared.foreground() }
     BoardSessionController.shared.prepareForLaunch()
     BoardSessionController.shared.autoConnectSelectedBoard()
     // Enrolled Accessories come up on the same launch hook and for the same reason: their central

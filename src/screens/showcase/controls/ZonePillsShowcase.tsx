@@ -85,7 +85,7 @@ export function ZonePillsShowcase() {
       <View style={styles.selectorVariants}>
         <View style={styles.selectorVariant}>
           <Text style={styles.selectorCaption}>
-            icons, status dots, add button, long-press menu
+            icons, icon-only tab, status dots, add button, long-press menu
           </Text>
           <PillSelector activeId={selectedId}>
             <PillSelectorItem
@@ -123,7 +123,8 @@ export function ZonePillsShowcase() {
             <PillSelectorItem
               id="custom"
               label="Custom"
-              labelBehavior="always"
+              labelBehavior="icon-only"
+              activeWidth={44}
               badge={<PillSelectorDot status="draft" />}
               color={theme.palette.green}
               onPress={() => setSelectedId('custom')}
@@ -203,6 +204,7 @@ export function ZonePillsShowcase() {
             <PillSelectorItem
               id="message"
               label="Message"
+              indicatorColor={theme.palette.blue.color}
               icon={ChatTextIcon}
               color={theme.palette.cyan}
               activeWidth={96}

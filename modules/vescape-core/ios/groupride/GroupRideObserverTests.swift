@@ -3,135 +3,17 @@ import XCTest
 
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/GroupRideObserverTest.kt
 final class GroupRideObserverTests: XCTestCase {
-  private final class FakeSocket: GroupRideSocket {
-    var sent: [[String: Any]] = []
-    var deliver: ((Result<String?, Error>) -> Void)?
-    func open() {}
-    func sendText(_ text: String, completion: @escaping (Error?) -> Void) {
-      sent.append((try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] ?? [:])
-    }
-    func receiveText(_ completion: @escaping (Result<String?, Error>) -> Void) { deliver = completion }
-    func ping() {}
-    func close() {}
-  }
-
-  private final class Online: OnlineCapability {
-    let onlineBlocked = false
-    let appVersion = ""
-    func refresh() {}
-    func addListener(_ listener: @escaping () -> Void) -> () -> Void { {} }
-  }
-
-  private let online = Online()
-  private var scheduler = TestScheduler()
-  private var sockets: [FakeSocket] = []
-  private var context = RiderSignalContext(fix: (lat: 52, lng: 21), insidePrivacyZone: false)
-  private var observer: GroupRideObserver!
-
-  override func setUp() {
-    super.setUp()
-    scheduler = TestScheduler()
-    sockets = []
-    context = RiderSignalContext(fix: (lat: 52, lng: 21), insidePrivacyZone: false)
-    observer = GroupRideObserver(
-      emit: { _, _ in },
-      online: online,
-      scheduler: scheduler,
-      signalContext: { [unowned self] in self.context },
-      makeSocket: { [unowned self] _ in
-        let socket = FakeSocket()
-        self.sockets.append(socket)
-        return socket
-      }
-    )
-  }
-
-  override func tearDown() {
-    observer.stop()
-    observer = nil
-    super.tearDown()
-  }
-
-  private func receive(_ frame: [String: Any]) throws {
-    let data = try JSONSerialization.data(withJSONObject: frame)
-    try XCTUnwrap(sockets.last?.deliver)(.success(String(decoding: data, as: UTF8.self)))
-  }
-
-  private func connect(features: [String]) throws {
-    observer.onOpen(try XCTUnwrap(sockets.last))
-    try receive(["type": "snapshot", "rides": [], "features": features])
-  }
-
-  private func joined() throws {
-    try receive(["type": "joined", "rideId": "ride"])
-  }
-
-  private func joinRide(features: [String] = [PinSlot.signal.relayFeature, PinSlot.hazard.relayFeature]) throws {
-    observer.start("ws://relay.test")
-    try connect(features: features)
-    observer.join(riderId: "me", riderName: "Me", rideId: "ride", presence: nil)
-    try joined()
-  }
-
-  private func frames(_ type: String) -> [[String: Any]] {
-    sockets.flatMap(\.sent).filter { $0["type"] as? String == type }
-  }
-
-  func testASendEmitsASignalFrameAtTheFix() throws {
-    try joinRide()
-    observer.sendSignal("down")
-
-    let frame = try XCTUnwrap(frames("signal").first)
-    XCTAssertEqual(frames("signal").count, 1)
-    XCTAssertEqual(frame["kind"] as? String, "down")
-    XCTAssertEqual(frame["lat"] as? Double, 52)
-    XCTAssertEqual(frame["lng"] as? Double, 21)
-  }
-
-  func testAClearEmitsSignalClear() throws {
-    try joinRide()
-    observer.clearSignal()
-
-    XCTAssertEqual(frames("signal-clear").count, 1)
-  }
-
-  func testARelayWithoutRiderSignalsIsSentNothing() throws {
-    try joinRide(features: [])
-    observer.sendSignal("down")
-    observer.clearSignal()
-
-    XCTAssertTrue(frames("signal").isEmpty)
-    XCTAssertTrue(frames("signal-clear").isEmpty)
-  }
-
-  func testAnIntentMadeWhileTheLinkIsDownIsReplayedOnceAfterRejoin() throws {
-    try joinRide()
-    observer.onClosed(try XCTUnwrap(sockets.last), responseCode: nil)
-    observer.sendSignal("wait")
-    XCTAssertTrue(frames("signal").isEmpty)
-
-    scheduler.advance(1_000)
-    XCTAssertEqual(sockets.count, 2)
-    try connect(features: [PinSlot.signal.relayFeature, PinSlot.hazard.relayFeature])
-    XCTAssertTrue(frames("signal").isEmpty, "held until the ride is rejoined")
-    try joined()
-    try joined()
-
-    XCTAssertEqual(frames("signal").map { $0["kind"] as? String }, ["wait"])
-  }
-
   func testASignalGoesOutWithAFixInsideAPrivacyZoneWhilePresenceStaysSuppressed() throws {
     let fix = TelemetryLocationCapture(
       latitude: 52, longitude: 21, speedMps: nil, bearingDeg: nil, accuracyM: 5, altitudeM: nil,
       timestamp: 1_000, precise: true
     )
     var zones = PrivacyZoneReadState()
-    try joinRide()
 
     // Zones still loading: presence is gated, a signal is not.
     XCTAssertNil(zones.presenceFix(fix))
-    context = zones.signalContext(fix, nowMs: 2_000)
-    observer.sendSignal("down")
+    var context = zones.signalContext(fix, nowMs: 2_000)
+    XCTAssertNotNil(RiderSignals.sendIntent(RiderSignalKind(rawValue: "down")!, context))
 
     // Loaded, and the fix is inside one.
     try zones.reload {
@@ -140,11 +22,8 @@ final class GroupRideObserverTests: XCTestCase {
     XCTAssertNil(zones.presenceFix(fix))
     context = zones.signalContext(fix, nowMs: 2_000)
     XCTAssertTrue(context.insidePrivacyZone)
-    observer.sendSignal("down")
+    XCTAssertNotNil(RiderSignals.sendIntent(RiderSignalKind(rawValue: "down")!, context))
 
-    XCTAssertEqual(frames("signal").map { $0["kind"] as? String }, ["down", "down"])
-    XCTAssertTrue(frames("signal").allSatisfy { $0["lat"] as? Double == 52 && $0["lng"] as? Double == 21 })
-    XCTAssertTrue(frames("presence").isEmpty)
     // The gate opens again outside every zone.
     let outside = TelemetryLocationCapture(
       latitude: 53, longitude: 21, speedMps: nil, bearingDeg: nil, accuracyM: 5, altitudeM: nil,
@@ -175,12 +54,128 @@ final class GroupRideObserverTests: XCTestCase {
     XCTAssertNil(rider(presence: nil)?.position)
   }
 
-  func testACreatedRideCuesForTheRidersOwnRideOrOneNearby() {
-    let audible = GroupRideObserver.rideCreatedAudible
-    XCTAssertTrue(audible("me", "me", 50.0, 20.0, nil))
-    XCTAssertFalse(audible("ola", "me", 50.0, 20.0, nil))
-    XCTAssertTrue(audible("ola", "me", 50.1, 20.0, (lat: 50.0, lng: 20.0)))
-    XCTAssertFalse(audible("ola", "me", 51.0, 20.0, (lat: 50.0, lng: 20.0)))
-    XCTAssertFalse(audible("", nil, 51.0, 20.0, nil))
+  private final class RelayHarness {
+    let clock = TestScheduler()
+    final class Gate: OnlineCapability {
+      var onlineBlocked = false
+      let appVersion = "1.0.0"
+      var changed: (() -> Void)?
+      func refresh() {}
+      func addListener(_ listener: @escaping () -> Void) -> () -> Void {
+        changed = listener
+        return { self.changed = nil }
+      }
+    }
+    final class Link: GroupRideSocket {
+      let request: URLRequest
+      var frames: [[String: Any]] = []
+      var closed = false
+      var receiver: ((Result<String?, Error>) -> Void)?
+      init(_ request: URLRequest) { self.request = request }
+      func open() {}
+      func close() { closed = true }
+      func ping() {}
+      func sendText(_ text: String, completion: @escaping (Error?) -> Void) {
+        frames.append(try! JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any])
+        completion(nil)
+      }
+      func receiveText(_ completion: @escaping (Result<String?, Error>) -> Void) { receiver = completion }
+      func message(_ text: String) { receiver?(.success(text)) }
+      var types: [String] { frames.compactMap { $0["type"] as? String } }
+    }
+    let gate = Gate()
+    var account: String? = "acc"
+    var token: String? = "token"
+    var links: [Link] = []
+    var demand: [Bool] = []
+    lazy var observer: GroupRideObserver = GroupRideObserver(
+      emit: { _, _ in }, online: gate, scheduler: clock,
+      deviceCredential: { [unowned self] in
+        guard let account = self.account, let token = self.token else { return nil }
+        return DeviceCredential(serverUrl: "https://example.com", token: token, accountId: account)
+      },
+      onPublicRideDemandChanged: { [unowned self] in self.demand.append(self.observer.publicRideNeedsLink) },
+      now: { [unowned self] in self.clock.currentTimeMs },
+      makeSocket: { [unowned self] request in
+        let link = Link(request)
+        self.links.append(link)
+        return link
+      }
+    )
+    func ready(_ link: Link? = nil) {
+      let link = link ?? links.last!
+      observer.onOpen(link)
+      link.message(#"{"type":"snapshot","features":["public-ride","missed-positions"]}"#)
+    }
+    func offlineBuffer() {
+      observer.loadPublicRide(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+      observer.setBoardConnected(true)
+      observer.start("wss://example.com/ws/group-rides")
+      ready()
+      observer.onClosed(links.last!, responseCode: nil)
+      var presence = RiderPresence(lat: 52, lng: 21)
+      presence.at = 10_000
+      observer.pushPresence(presence)
+      observer.setBoardConnected(false)
+      XCTAssertTrue(observer.publicRideNeedsLink)
+    }
   }
+
+  func testCompletedBufferOwnsReconnectRetriesWithoutGPSAndReleasesDemandOnlyAfterAck() {
+    let h = RelayHarness()
+    h.offlineBuffer()
+    let old = h.links.last!
+    h.clock.advance(1_000)
+    h.ready()
+    XCTAssertEqual(h.links.last!.types, ["missed-positions"])
+    XCTAssertEqual(h.links.last!.request.value(forHTTPHeaderField: "Authorization"), "Bearer token")
+    let firstUpload = h.links.last!
+    h.clock.advance(PublicRide.missedRetryMs)
+    XCTAssertTrue(firstUpload.closed)
+    XCTAssertTrue(h.observer.publicRideNeedsLink)
+    h.clock.advance(1_000)
+    h.ready()
+    let retry = h.links.last!
+    XCTAssertEqual(retry.types, ["missed-positions"])
+    old.message(#"{"type":"missed-stored"}"#)
+    firstUpload.message(#"{"type":"missed-stored"}"#)
+    XCTAssertTrue(h.observer.publicRideNeedsLink)
+    retry.message(#"{"type":"missed-stored"}"#)
+    XCTAssertFalse(h.observer.publicRideNeedsLink)
+    XCTAssertEqual(h.demand.last, false)
+    let count = h.links.count
+    h.clock.advance(PublicRide.missedRetryMs * 2)
+    XCTAssertEqual(h.links.count, count)
+    h.observer.stop()
+  }
+
+  func testPendingUploadRespectsOnlineBlocksAnonymousUpgradesAndAccountSwitches() {
+    let h = RelayHarness()
+    h.offlineBuffer()
+    h.gate.onlineBlocked = true
+    h.gate.changed?()
+    h.clock.advance(30_000)
+    XCTAssertEqual(h.links.count, 1)
+    XCTAssertTrue(h.observer.publicRideNeedsLink)
+    h.token = nil
+    h.gate.onlineBlocked = false
+    h.gate.changed?()
+    h.ready()
+    XCTAssertTrue(h.links.last!.frames.isEmpty)
+    XCTAssertTrue(h.observer.publicRideNeedsLink)
+    h.token = "restored-token"
+    h.observer.setAccount("acc") // Same Account, restored credential must replace anonymous socket.
+    h.clock.advance(1_000)
+    h.ready()
+    XCTAssertEqual(h.links.last!.types, ["missed-positions"])
+    h.account = "other"
+    h.token = "other-token"
+    h.observer.setAccount("other")
+    h.clock.advance(1_000)
+    h.ready()
+    XCTAssertTrue(h.links.last!.frames.isEmpty)
+    XCTAssertFalse(h.observer.publicRideNeedsLink)
+    h.observer.stop()
+  }
+
 }

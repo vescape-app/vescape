@@ -150,7 +150,7 @@ class VescapeApi(
     }
     response.status == 403 -> ApiResult.Forbidden
     response.status == 404 -> ApiResult.NotFound
-    response.status >= 400 -> ApiResult.Invalid(errorSlug(response.body))
+    response.status !in 200..299 -> ApiResult.Invalid(errorSlug(response.body))
     else -> try {
       ApiResult.Ok(parse(response.body))
     } catch (e: Exception) {

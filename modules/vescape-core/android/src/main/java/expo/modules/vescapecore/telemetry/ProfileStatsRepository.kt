@@ -13,24 +13,38 @@ import expo.modules.vescapecore.database.VescapeDao
  */
 data class ProfileStatsMonth(val year: Int, val month: Int)
 
-// @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift
+// @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `profileStatsSnapshot`
+// @parity /modules/vescape-core/src/index.ts `ProfileStatsSnapshot`
 internal suspend fun readProfileStatsSnapshot(
   dao: VescapeDao,
   options: Map<String, Any?>,
   gapMs: Long,
 ): Map<String, Any?> {
-      val sessions = readProfileSessions(dao, gapMs)
-      val months = profileMonthsForSessions(sessions)
-      val requested = ProfileStatsMonth(
-        year = (options["year"] as? Number)?.toInt() ?: months.firstOrNull()?.year ?: java.time.LocalDate.now().year,
-        month = (options["month"] as? Number)?.toInt() ?: months.firstOrNull()?.month ?: java.time.LocalDate.now().monthValue,
-      )
-      return mapOf(
-        "total" to computeProfileStatsForSessions(sessions),
-        "monthly" to computeProfileStatsForSessions(sessions.filter { profileMonth(it.startAtMs) == requested }),
-        "months" to months.map { mapOf("year" to it.year, "month" to it.month) },
-        "selectedMonth" to mapOf("year" to requested.year, "month" to requested.month),
-      )
+  val sessions = readProfileSessions(dao, gapMs)
+  val zoneId = ZoneId.systemDefault()
+  val byMonth = sessions.groupBy { profileMonth(it.startAtMs, zoneId) }
+  val months = byMonth.keys.sortedWith(profileMonthOrder)
+  val now = java.time.LocalDate.now(zoneId)
+  val requested = ProfileStatsMonth(
+    year = (options["year"] as? Number)?.toInt() ?: months.firstOrNull()?.year ?: now.year,
+    month = (options["month"] as? Number)?.toInt() ?: months.firstOrNull()?.month ?: now.monthValue,
+  )
+  val monthly = computeProfileStatsForSessions(byMonth[requested].orEmpty())
+  return buildMap {
+    put("total", computeProfileStatsForSessions(sessions))
+    put("monthly", monthly)
+    put("months", months.map { mapOf("year" to it.year, "month" to it.month) })
+    put("selectedMonth", mapOf("year" to requested.year, "month" to requested.month))
+    if (options["includeMonthStats"] == true) {
+      put("monthStats", months.map {
+        mapOf(
+          "year" to it.year,
+          "month" to it.month,
+          "stats" to if (it == requested) monthly else computeProfileStatsForSessions(byMonth.getValue(it)),
+        )
+      })
+    }
+  }
 }
 
 /**
@@ -62,6 +76,21 @@ internal suspend fun readProfileDayStats(
  */
 internal suspend fun readProfileRecentStats(dao: VescapeDao, sinceMs: Long, gapMs: Long): Map<String, Any?> =
   computeProfileStatsForSessions(readProfileSessions(dao, gapMs).filter { it.endAtMs >= sinceMs })
+
+/** @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getRecordingMonths` */
+internal suspend fun readProfileRecordingMonths(
+  dao: VescapeDao, boardId: String, sinceMs: Long, throughMs: Long, gapMs: Long,
+): List<ProfileStatsMonth> = recordingMonthsForSessions(readProfileSessions(dao, gapMs), boardId, sinceMs, throughMs)
+
+/** @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `recordingMonthsForSessions` */
+internal fun recordingMonthsForSessions(
+  sessions: List<RideSessionAggregate>, boardId: String, sinceMs: Long, throughMs: Long,
+  zoneId: ZoneId = ZoneId.systemDefault(),
+): List<ProfileStatsMonth> = sessions
+  .filter { it.boardId == boardId && it.endAtMs >= sinceMs && it.startAtMs <= throughMs }
+  .maxByOrNull { it.endAtMs }
+  ?.let { listOf(profileMonth(it.startAtMs, zoneId), profileMonth(minOf(it.endAtMs, throughMs), zoneId)).distinct() }
+  ?: emptyList()
 
 private suspend fun readProfileSessions(dao: VescapeDao, gapMs: Long): List<RideSessionAggregate> {
   val buckets = dao.getAllHistoryBucketsAsc()
@@ -155,8 +184,11 @@ private fun profileMonthsForSessions(
 ): List<ProfileStatsMonth> {
   return sessions.map { profileMonth(it.startAtMs, zoneId) }
     .distinct()
-    .sortedWith(compareByDescending<ProfileStatsMonth> { it.year }.thenByDescending { it.month })
+    .sortedWith(profileMonthOrder)
 }
+
+private val profileMonthOrder =
+  compareByDescending<ProfileStatsMonth> { it.year }.thenByDescending { it.month }
 
 private fun profileMonth(atMs: Long, zoneId: ZoneId = ZoneId.systemDefault()): ProfileStatsMonth {
   val dt = Instant.ofEpochMilli(atMs).atZone(zoneId)

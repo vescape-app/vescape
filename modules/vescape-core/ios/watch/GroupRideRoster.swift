@@ -57,10 +57,12 @@ struct GroupRideRosterRider: Equatable {
   var ctrlTempC: Double? = nil
 }
 
-/// The joined Group Ride as native holds it: who the Rider is and everyone in the ride.
+/// The riders the wrist draws, as native holds them: a joined Group Ride (who the Rider is and
+/// everyone in the ride), or the nearby public riders while the Rider rides public (`nearby`).
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideRoster.kt `GroupRideRoster`
 struct GroupRideRoster: Equatable {
   var ownRiderId: String?
   var riders: [GroupRideRosterRider]
+  /// Nearby public riders in relay order, not a room: ordered and capped like the phone's list.
 }

@@ -4,7 +4,7 @@ import {
   getRecentRideStats,
   getProfileStatsSnapshot,
   type ProfileStats,
-  type ProfileStatsMonth,
+  type ProfileStatsSnapshot,
 } from 'vescape-core'
 
 import { selectInitialMonth } from '@/modules/profile/lib/profileStats'
@@ -36,97 +36,75 @@ export const EMPTY_PROFILE_STATS: ProfileStats = {
  * Reloaded on focus, not just on mount: a ride recorded while the screen sat mounted behind another
  * one would otherwise leave lifetime stats frozen below what Ride History already shows.
  */
-export function useProfileStats(active = true) {
+export function useProfileStats(active = true, includeMonthStats = false) {
   const [total, setTotal] = useState<ProfileStats>(EMPTY_PROFILE_STATS)
   const [monthly, setMonthly] = useState<ProfileStats>(EMPTY_PROFILE_STATS)
   const [today, setToday] = useState<ProfileStats>(EMPTY_PROFILE_STATS)
-  const [months, setMonths] = useState<ProfileStatsMonth[]>([])
-  const [selectedMonth, setSelectedMonth] = useState<ProfileStatsMonth>(selectInitialMonth([]))
+  const [monthStats, setMonthStats] = useState<NonNullable<ProfileStatsSnapshot['monthStats']>>([])
+  const [selectedMonth, setSelectedMonth] = useState(selectInitialMonth([]))
   const [loading, setLoading] = useState(true)
-  const [monthLoading, setMonthLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const selectedMonthRef = useRef(selectedMonth)
-  selectedMonthRef.current = selectedMonth
   const loadedRef = useRef(false)
+  const requestRef = useRef(0)
 
   const refresh = useCallback(async () => {
+    const request = ++requestRef.current
     if (!loadedRef.current) setLoading(true)
     setError(null)
     try {
       const [snapshot, todayStats] = await Promise.all([
-        getProfileStatsSnapshot(loadedRef.current ? selectedMonthRef.current : undefined),
+        getProfileStatsSnapshot({ includeMonthStats }),
         getTodayStats(),
       ])
-      const availableMonths = snapshot.months
-      // Keep the month the rider is looking at; fall back when it is gone (or on first load).
-      const current = selectedMonthRef.current
-      const keep =
-        loadedRef.current &&
-        availableMonths.some(
-          (month) => month.year === current.year && month.month === current.month,
-        )
-      const month = keep ? current : selectInitialMonth(availableMonths)
-      const resolvedSnapshot =
-        month.year === snapshot.selectedMonth.year && month.month === snapshot.selectedMonth.month
-          ? snapshot
-          : await getProfileStatsSnapshot(month)
-      setTotal(resolvedSnapshot.total)
-      setMonths(availableMonths)
+      if (request !== requestRef.current) return
+      const month = selectInitialMonth(snapshot.months)
+      const selected = snapshot.selectedMonth
+      const matches = month.year === selected.year && month.month === selected.month
+      const monthlyStats = matches
+        ? snapshot.monthly
+        : (snapshot.monthStats?.find(
+            (entry) => entry.year === month.year && entry.month === month.month,
+          )?.stats ?? (await getProfileStatsSnapshot(month)).monthly)
+      if (request !== requestRef.current) return
+      setTotal(snapshot.total)
+      setMonthStats(snapshot.monthStats ?? [])
       setSelectedMonth(month)
-      setMonthly(resolvedSnapshot.monthly)
+      setMonthly(monthlyStats)
       setToday(todayStats)
       loadedRef.current = true
     } catch (err) {
+      if (request !== requestRef.current) return
       setTotal(EMPTY_PROFILE_STATS)
       setMonthly(EMPTY_PROFILE_STATS)
       setToday(EMPTY_PROFILE_STATS)
-      setMonths([])
+      setMonthStats([])
       loadedRef.current = false
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setLoading(false)
+      if (request === requestRef.current) setLoading(false)
     }
-  }, [])
+  }, [includeMonthStats])
 
   useFocusEffect(
     useCallback(() => {
-      if (active) void refresh()
+      if (!active) return
+      void refresh()
+      return () => {
+        requestRef.current++
+      }
     }, [active, refresh]),
   )
-
-  const selectMonth = useCallback(async (month: ProfileStatsMonth) => {
-    setSelectedMonth(month)
-    setMonthLoading(true)
-    setError(null)
-    try {
-      const snapshot = await getProfileStatsSnapshot(month)
-      setTotal(snapshot.total)
-      setMonths(snapshot.months)
-      setMonthly(snapshot.monthly)
-    } catch (err) {
-      setTotal(EMPTY_PROFILE_STATS)
-      setMonthly(EMPTY_PROFILE_STATS)
-      setMonths([])
-      loadedRef.current = false
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setMonthLoading(false)
-    }
-  }, [])
 
   return {
     total,
     monthly,
     /** Totals of the current local day, refreshed with the rest. */
     today,
-    months,
+    monthStats,
     selectedMonth,
     loading,
-    monthLoading,
     error,
-    refresh,
-    selectMonth,
     /** Successful zero-ride result; callers render `error` first when the read failed. */
     empty: total.rideCount === 0,
   }

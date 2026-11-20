@@ -36,6 +36,11 @@ const ALLOWED_EDGES = new Set([
   'settings -> map',
   // rider trails/pins are map layers and share map rendering defaults
   'group-ride -> map',
+  // a signed-in rider rides under the Account's Rider Profile nick
+  'group-ride -> profile',
+  // the nick form pre-selects the country the phone is in
+  'profile -> location',
+  'profile -> map',
   // Map Points are read around the map camera and share its navigation target type
   'map-points -> map',
   // TODO(decouple): board components read alertsStore + history color scale

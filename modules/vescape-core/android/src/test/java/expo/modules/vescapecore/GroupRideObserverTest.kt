@@ -1,174 +1,52 @@
 package expo.modules.vescapecore
 
 import android.os.Handler
-import android.util.Log
 import expo.modules.vescapecore.appstatus.OnlineCapability
+import expo.modules.vescapecore.runtime.Cancellable
+import expo.modules.vescapecore.runtime.TestScheduler
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.Protocol
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
+import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.anyLong
+import expo.modules.vescapecore.auth.DeviceCredential
+import org.mockito.Mockito.doAnswer
+import org.mockito.Mockito.mock
+import org.junit.Assert.assertFalse
 import expo.modules.vescapecore.connection.PrivacyZoneReadState
 import expo.modules.vescapecore.database.PrivacyZoneEntity
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import kotlinx.coroutines.runBlocking
-import okhttp3.Protocol
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString
-import org.json.JSONArray
 import org.json.JSONObject
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.anyLong
-import org.mockito.MockedStatic
-import org.mockito.Mockito.doAnswer
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.mockStatic
 
 /** @parity /modules/vescape-core/ios/groupride/GroupRideObserverTests.swift */
 class GroupRideObserverTest {
-    private class FakeSocket(private val request: Request) : WebSocket {
-        val sent = mutableListOf<JSONObject>()
-        override fun request() = request
-        override fun queueSize() = 0L
-        override fun send(text: String): Boolean = sent.add(JSONObject(text))
-        override fun send(bytes: ByteString) = false
-        override fun close(code: Int, reason: String?) = true
-        override fun cancel() = Unit
-    }
-
-    private object Online : OnlineCapability {
-        override val onlineBlocked = false
-        override val appVersion = ""
-        override fun refresh() = Unit
-        override fun addListener(listener: () -> Unit): () -> Unit = {}
-    }
-
-    private lateinit var log: MockedStatic<Log>
-    private val delayed = mutableListOf<Runnable>()
-    private val sockets = mutableListOf<FakeSocket>()
-    private val listeners = mutableListOf<WebSocketListener>()
-    private var context = RiderSignalContext(fix = 52.0 to 21.0, insidePrivacyZone = false)
-    private lateinit var observer: GroupRideObserver
-
-    @Before
-    fun setUp() {
-        log = mockStatic(Log::class.java)
-        // Main-looper stand-in: posts run inline, delayed work waits for [runDelayed].
-        val handler = mock(Handler::class.java)
-        doAnswer { (it.arguments[0] as Runnable).run(); true }.`when`(handler).post(any())
-        doAnswer { delayed += it.arguments[0] as Runnable; true }.`when`(handler).postDelayed(any(), anyLong())
-        val factory = object : WebSocket.Factory {
-            override fun newWebSocket(request: Request, listener: WebSocketListener): WebSocket =
-                FakeSocket(request).also { sockets += it; listeners += listener }
-        }
-        observer = GroupRideObserver(handler, { _, _ -> }, Online, signalContext = { context }, sockets = factory)
-    }
-
-    @After
-    fun tearDown() = log.close()
-
-    private fun open() {
-        val socket = sockets.last()
-        val response = Response.Builder().request(socket.request()).protocol(Protocol.HTTP_1_1).code(101).message("").build()
-        listeners.last().onOpen(socket, response)
-    }
-
-    private fun receive(frame: JSONObject) = listeners.last().onMessage(sockets.last(), frame.toString())
-
-    private fun connect(features: List<String>) {
-        open()
-        receive(JSONObject().put("type", "snapshot").put("rides", JSONArray()).put("features", JSONArray(features)))
-    }
-
-    private fun joined() = receive(JSONObject().put("type", "joined").put("rideId", "ride"))
-
-    private fun joinRide(features: List<String> = listOf(PinSlot.SIGNAL.relayFeature, PinSlot.HAZARD.relayFeature)) {
-        observer.start("ws://relay.test")
-        connect(features)
-        observer.join("me", "Me", "ride", null)
-        joined()
-    }
-
-    private fun runDelayed() {
-        val due = delayed.toList()
-        delayed.clear()
-        due.forEach(Runnable::run)
-    }
-
-    private fun frames(type: String) = sockets.flatMap { it.sent }.filter { it.getString("type") == type }
-
-    @Test
-    fun `a send emits a signal frame at the fix`() {
-        joinRide()
-        observer.sendSignal("down")
-
-        val frame = frames("signal").single()
-        assertEquals("down", frame.getString("kind"))
-        assertEquals(52.0, frame.getDouble("lat"), 0.0)
-        assertEquals(21.0, frame.getDouble("lng"), 0.0)
-    }
-
-    @Test
-    fun `a clear emits signal-clear`() {
-        joinRide()
-        observer.clearSignal()
-
-        assertEquals(1, frames("signal-clear").size)
-    }
-
-    @Test
-    fun `a relay without rider-signals is sent nothing`() {
-        joinRide(features = emptyList())
-        observer.sendSignal("down")
-        observer.clearSignal()
-
-        assertTrue(frames("signal").isEmpty())
-        assertTrue(frames("signal-clear").isEmpty())
-    }
-
-    @Test
-    fun `an intent made while the link is down is replayed once after rejoin`() {
-        joinRide()
-        listeners.last().onClosed(sockets.last(), 1006, "")
-        observer.sendSignal("wait")
-        assertTrue(frames("signal").isEmpty())
-
-        runDelayed()
-        connect(listOf(PinSlot.SIGNAL.relayFeature, PinSlot.HAZARD.relayFeature))
-        assertTrue("held until the ride is rejoined", frames("signal").isEmpty())
-        joined()
-        joined()
-
-        assertEquals("wait", frames("signal").single().getString("kind"))
-        assertEquals(2, sockets.size)
-    }
-
     @Test
     fun `a signal goes out with a fix inside a Privacy Zone while presence stays suppressed`() {
         val fix = LocationSnapshot(52.0, 21.0, null, null, 5.0, null, timestamp = 1_000, precise = true)
         val zones = PrivacyZoneReadState()
-        joinRide()
 
         // Zones still loading: presence is gated, a signal is not.
         assertNull(zones.presenceFix(fix))
-        context = zones.signalContext(fix, nowMs = 2_000)
-        observer.sendSignal("down")
+        assertNotNull(RiderSignals.sendIntent(RiderSignalKind.DOWN, zones.signalContext(fix, nowMs = 2_000)))
 
         // Loaded, and the fix is inside one.
         runBlocking { zones.reload { listOf(PrivacyZoneEntity("home", "custom", "Home", true, 520_000_000, 210_000_000, 200, 1, 1)) } }
         assertNull(zones.presenceFix(fix))
-        context = zones.signalContext(fix, nowMs = 2_000)
+        val context = zones.signalContext(fix, nowMs = 2_000)
         assertTrue(context.insidePrivacyZone)
-        observer.sendSignal("down")
-
-        assertEquals(listOf("down", "down"), frames("signal").map { it.getString("kind") })
-        assertTrue(frames("signal").all { it.getDouble("lat") == 52.0 && it.getDouble("lng") == 21.0 })
-        assertTrue(frames("presence").isEmpty())
+        val frame = (RiderSignals.sendIntent(RiderSignalKind.DOWN, context) as RiderPinIntent.Send).frame()
+        assertEquals("down", frame.getString("kind"))
+        assertEquals(52.0, frame.getDouble("lat"), 0.0)
+        assertEquals(21.0, frame.getDouble("lng"), 0.0)
         // The gate opens again outside every zone.
         assertNotNull(zones.presenceFix(fix.copy(latitude = 53.0)))
     }
@@ -196,14 +74,143 @@ class GroupRideObserverTest {
     fun `no presence leaves the rider unplaced`() {
         assertNull(rider(null)?.position)
     }
+    private class RelayHarness {
+        val clock = TestScheduler()
+        val handler = mock(Handler::class.java)
+        private val tasks = mutableMapOf<Runnable, MutableList<Cancellable>>()
+        var blocked = false
+        var onlineChanged: (() -> Unit)? = null
+        var account: String? = "acc"
+        var token: String? = "token"
+        val links = mutableListOf<Link>()
+        val demand = mutableListOf<Boolean>()
+        val observer: GroupRideObserver
+
+        class Link(val request: Request, val listener: WebSocketListener) {
+            val frames = mutableListOf<JSONObject>()
+            var closed = false
+            val socket = object : WebSocket {
+                override fun request() = request
+                override fun queueSize() = 0L
+                override fun send(text: String): Boolean { frames += JSONObject(text); return true }
+                override fun send(bytes: ByteString) = false
+                override fun close(code: Int, reason: String?): Boolean { closed = true; return true }
+                override fun cancel() { closed = true }
+            }
+            fun open() = listener.onOpen(socket, Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(101).message("open").build())
+            fun message(text: String) = listener.onMessage(socket, text)
+            fun types() = frames.map { it.getString("type") }
+        }
+
+        init {
+            doAnswer { call -> clock.post { call.getArgument<Runnable>(0).run() }; true }.`when`(handler).post(any(Runnable::class.java))
+            doAnswer { call ->
+                val runnable = call.getArgument<Runnable>(0)
+                tasks.getOrPut(runnable) { mutableListOf() } += clock.postDelayed(call.getArgument(1)) { runnable.run() }
+                true
+            }.`when`(handler).postDelayed(any(Runnable::class.java), anyLong())
+            doAnswer { call -> tasks.remove(call.getArgument<Runnable>(0))?.forEach { it.cancel() }; null }.`when`(handler).removeCallbacks(any(Runnable::class.java))
+            observer = GroupRideObserver(
+                handler = handler,
+                emit = { _, _ -> },
+                online = object : OnlineCapability {
+                    override val onlineBlocked get() = blocked
+                    override val appVersion = "1.0.0"
+                    override fun refresh() {}
+                    override fun addListener(listener: () -> Unit): () -> Unit {
+                        onlineChanged = listener
+                        return { onlineChanged = null }
+                    }
+                },
+                deviceCredential = { account?.let { id -> token?.let { DeviceCredential("https://example.com", it, id, null) } } },
+                onPublicRideDemandChanged = { demand += observerNeedsLink() },
+                now = { clock.currentTimeMs },
+                sockets = WebSocket.Factory { request, listener -> Link(request, listener).also { links += it }.socket },
+            )
+        }
+        private fun observerNeedsLink() = observer.publicRideNeedsLink
+        fun flush() = clock.advance(0)
+        fun ready(link: Link = links.last(), features: String = "\"public-ride\",\"missed-positions\"") {
+            link.open()
+            link.message("""{"type":"snapshot","features":[$features]}""")
+            flush()
+        }
+        fun offlineBuffer() {
+            observer.loadPublicRide(PublicRideSwitch(true, null), "acc")
+            observer.setBoardConnected(true)
+            flush()
+            observer.start("wss://example.com/ws/group-rides")
+            ready()
+            links.last().listener.onClosed(links.last().socket, 1000, "offline")
+            flush()
+            observer.pushPresence(RiderPresence(52.0, 21.0, null, null, null, null, null, null, null, at = 10_000))
+            observer.setBoardConnected(false)
+            flush()
+            assertTrue(observer.publicRideNeedsLink)
+        }
+    }
 
     @Test
-    fun `a created ride cues for the rider's own ride or one nearby`() {
-        val audible = GroupRideObserver::rideCreatedAudible
-        assertEquals(true, audible("me", "me", 50.0, 20.0, null))
-        assertEquals(false, audible("ola", "me", 50.0, 20.0, null))
-        assertEquals(true, audible("ola", "me", 50.1, 20.0, 50.0 to 20.0))
-        assertEquals(false, audible("ola", "me", 51.0, 20.0, 50.0 to 20.0))
-        assertEquals(false, audible("", null, 51.0, 20.0, null))
+    fun `completed buffer owns reconnect retries without GPS and releases demand only after ack`() {
+        val h = RelayHarness()
+        h.offlineBuffer()
+        val old = h.links.last()
+        h.clock.advance(1_000)
+        h.ready()
+        assertEquals(listOf("missed-positions"), h.links.last().types())
+        assertEquals("Bearer token", h.links.last().request.header("Authorization"))
+        val firstUpload = h.links.last()
+        h.clock.advance(PublicRide.MISSED_RETRY_MS)
+        assertTrue(firstUpload.closed)
+        assertTrue(h.observer.publicRideNeedsLink)
+        h.clock.advance(1_000)
+        h.ready()
+        val retry = h.links.last()
+        assertEquals(listOf("missed-positions"), retry.types())
+        old.message("""{"type":"missed-stored"}""")
+        firstUpload.message("""{"type":"missed-stored"}""")
+        h.flush()
+        assertTrue(h.observer.publicRideNeedsLink)
+        retry.message("""{"type":"missed-stored"}""")
+        h.flush()
+        assertFalse(h.observer.publicRideNeedsLink)
+        assertEquals(false, h.demand.last())
+        val count = h.links.size
+        h.clock.advance(PublicRide.MISSED_RETRY_MS * 2)
+        assertEquals(count, h.links.size)
+        h.observer.stop()
     }
+
+    @Test
+    fun `pending upload respects online blocks anonymous upgrades and account switches`() {
+        val h = RelayHarness()
+        h.offlineBuffer()
+        h.blocked = true
+        h.onlineChanged?.invoke()
+        h.clock.advance(30_000)
+        assertEquals(1, h.links.size)
+        assertTrue(h.observer.publicRideNeedsLink)
+        h.token = null
+        h.blocked = false
+        h.onlineChanged?.invoke()
+        h.ready()
+        assertTrue(h.links.last().frames.isEmpty())
+        assertTrue(h.observer.publicRideNeedsLink)
+        h.token = "restored-token"
+        h.observer.setAccount("acc") // Same Account, restored credential must replace anonymous socket.
+        h.flush()
+        h.clock.advance(1_000)
+        h.ready()
+        assertEquals(listOf("missed-positions"), h.links.last().types())
+        h.account = "other"
+        h.token = "other-token"
+        h.observer.setAccount("other")
+        h.flush()
+        h.clock.advance(1_000)
+        h.ready()
+        assertTrue(h.links.last().frames.isEmpty())
+        assertFalse(h.observer.publicRideNeedsLink)
+        h.observer.stop()
+    }
+
 }

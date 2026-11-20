@@ -21,6 +21,15 @@ final class VescapeApiTests: XCTestCase {
     }
   }
 
+  func testEmpty204SucceedsButRedirectNeverCountsAsUpload() async {
+    let success = await api(FakeTransport(status(204)), stored: credential)
+      .request(.put, path: "/api/rider-stats/2026-01") { _ in () }
+    guard case .ok = success else { return XCTFail("204 must succeed") }
+    let redirect = await api(FakeTransport(status(302)), stored: credential)
+      .request(.put, path: "/api/rider-stats/2026-01") { _ in () }
+    guard case .invalid = redirect else { return XCTFail("Redirect must not mark stats sent") }
+  }
+
   private func ok(_ body: String = "{}") -> () throws -> ApiResponse {
     { ApiResponse(status: 200, body: body) }
   }

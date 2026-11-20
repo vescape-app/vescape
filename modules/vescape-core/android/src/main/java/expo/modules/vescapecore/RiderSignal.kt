@@ -136,20 +136,21 @@ internal data class RiderSignalContext(
 internal sealed interface RiderPinIntent {
     val slot: PinSlot
 
-    fun frame(): JSONObject
+    /** The relay frame; [prefix] `public-` makes it the public ride's (`public-signal`, ...). */
+    fun frame(prefix: String = ""): JSONObject
 
     data class Send(val kind: PinKind, val lat: Double, val lng: Double) : RiderPinIntent {
         override val slot get() = kind.slot
 
-        override fun frame(): JSONObject = JSONObject()
-            .put("type", slot.wire)
+        override fun frame(prefix: String): JSONObject = JSONObject()
+            .put("type", prefix + slot.wire)
             .put("kind", kind.wire)
             .put("lat", lat)
             .put("lng", lng)
     }
 
     data class Clear(override val slot: PinSlot) : RiderPinIntent {
-        override fun frame(): JSONObject = JSONObject().put("type", "${slot.wire}-clear")
+        override fun frame(prefix: String): JSONObject = JSONObject().put("type", "$prefix${slot.wire}-clear")
     }
 }
 

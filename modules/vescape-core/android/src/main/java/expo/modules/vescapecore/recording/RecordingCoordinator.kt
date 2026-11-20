@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.recording
 
+import expo.modules.vescapecore.riderprofiles.RiderStatsSender
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import android.content.Context
 import expo.modules.vescapecore.service.SessionConfig
@@ -22,6 +23,7 @@ internal class RecordingCoordinator(
 
     /** Board the armed store records; GPS Fixes carry it because a fix has no Board of its own. */
     private var recordingBoardId: String? = null
+    private var recordingStartedAtMs: Long? = null
 
     /**
      * The rider stopped recording during this Board Session. Survives reconnects so a re-ready board
@@ -206,6 +208,11 @@ internal class RecordingCoordinator(
 
     private fun flushTelemetryBlocking() {
         telemetryStore?.flushBlocking()
+        if (telemetryStore != null) {
+            val boardId = recordingBoardId
+            val sinceMs = recordingStartedAtMs
+            if (boardId != null && sinceMs != null) RiderStatsSender.get(context).recordingEnded(boardId, sinceMs)
+        }
     }
 
     private fun configuredTelemetryStore(config: SessionConfig?): TelemetryRepository? {
@@ -237,6 +244,7 @@ internal class RecordingCoordinator(
         }
         store.reloadPrivacyZones(zones)
         recordingBoardId = config?.appBoardId
+        recordingStartedAtMs = System.currentTimeMillis()
         return store
     }
 

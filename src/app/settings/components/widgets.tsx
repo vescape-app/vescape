@@ -18,6 +18,7 @@ import {
   StepperWidgetShowcase,
 } from '@/screens/showcase/widgets/InputWidgetShowcases'
 import { GroupRideRosterShowcase } from '@/screens/showcase/groupRide/GroupRideRosterShowcase'
+import { PublicRideSelectorShowcase } from '@/screens/showcase/groupRide/PublicRideSelectorShowcase'
 
 export default function WidgetsPage() {
   return (
@@ -36,6 +37,7 @@ export default function WidgetsPage() {
         <DialWidgetShowcase />
         <CanvasWidgetShowcase />
         <GroupRideRosterShowcase />
+        <PublicRideSelectorShowcase />
       </PageScrollView>
     </SafeAreaView>
   )

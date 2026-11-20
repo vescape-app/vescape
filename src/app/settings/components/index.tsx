@@ -22,6 +22,7 @@ import {
   SquaresFourIcon,
   StackIcon,
   TextAaIcon,
+  UsersThreeIcon,
 } from 'phosphor-react-native'
 
 import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
@@ -171,6 +172,13 @@ const groups = [
         route: '/settings/components/notices',
         icon: MegaphoneIcon,
         color: theme.status.warning.color,
+      },
+      {
+        label: 'Social',
+        hint: 'Friend and rider rows from the Social drawer',
+        route: '/settings/components/social',
+        icon: UsersThreeIcon,
+        color: theme.palette.groupRide.color,
       },
       {
         label: 'Map',

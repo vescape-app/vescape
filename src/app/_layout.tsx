@@ -1,3 +1,4 @@
+import '@/bootstrap/accountCacheSync'
 import * as Sentry from '@sentry/react-native'
 import { TimeFormatContext } from '@/hooks/useTimeFormat'
 import { DistanceUnitContext } from '@/hooks/useDistanceUnit'
@@ -11,7 +12,7 @@ import { Stack } from 'expo-router/js-stack'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
-import { View } from 'react-native'
+import { Platform, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { configureReanimatedLogger } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -20,7 +21,7 @@ import { DevBadge } from '@/modules/diagnostics/components/DevBadge'
 import { DiagnosticErrorBoundary } from '@/modules/diagnostics/DiagnosticErrorBoundary'
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
 import { initSentry } from '@/config/sentry'
-import { stackScreens } from '@/navigation/routes'
+import { routes, stackScreens } from '@/navigation/routes'
 import { startAccessoryStateMirror } from '@/modules/accessories/store/accessoryStore'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startLiveStateSync } from '@/bootstrap/liveStateSync'
@@ -36,7 +37,6 @@ import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore
 import { startRideNoticesSync } from '@/modules/ride-notices/store/rideNoticesStore'
 import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
-import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
 import { startNavigationSync } from '@/modules/map/store/mapStore'
 import { startAppStatusSync } from '@/modules/release/store/appStatusStore'
@@ -47,6 +47,8 @@ import { ThemeController } from '@/modules/settings/components/ThemeController'
 import { useThemeStore } from '@/hooks/useTheme'
 import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
+import { RiderProfileSync } from '@/modules/profile/components/RiderProfileSync'
+import { FriendsSync } from '@/modules/profile/components/FriendsSync'
 import { AppStorageFailureBanner } from '@/screens/AppStorageFailureBanner'
 import { DrawerBlurProvider } from '@/components/overlays/DrawerBlurProvider'
 
@@ -108,7 +110,6 @@ function RootContent() {
   useEffect(() => {
     if (!fixturesReady) return
     void useSettingsStore.getState().load()
-    void useRiderStore.getState().load()
     useGroupRideStore.getState().startObserving()
     const stopLiveStateSync = startLiveStateSync()
     const stopAppDataSync = startAppDataSync()
@@ -163,6 +164,8 @@ function RootContent() {
       <TimeFormatContext value={timeFormat}>
         <DistanceUnitContext value={distanceUnit}>
           <DeviceAuthSync />
+          <RiderProfileSync />
+          <FriendsSync />
           <BoardConfigChangeNoticeModal />
           <DiagnosticErrorBoundary>
             <GestureHandlerRootView style={{ flex: 1 }}>
@@ -185,10 +188,20 @@ function RootContent() {
                     name={stackScreens.profileStats}
                     options={{ title: 'Profile stats' }}
                   />
+                  <Stack.Screen
+                    name={stackScreens.riderProfile}
+                    options={{
+                      title: 'Rider profile',
+                      headerLeft: () => <HeaderBackButton fallback={routes.home} />,
+                    }}
+                  />
                   <Stack.Screen name={stackScreens.rideDay} options={{ title: 'Day' }} />
-                  {/* Clerk's own dismiss control is off (its native header carries system
-              Liquid Glass); the JS header owns back/dismiss instead. */}
-                  <Stack.Screen name={stackScreens.signIn} options={{ title: 'Sign in' }} />
+                  {/* iOS: Clerk's native bar shows its own back for each step, so it owns dismiss
+              too and the JS header would only add a second back. Android: the JS header. */}
+                  <Stack.Screen
+                    name={stackScreens.signIn}
+                    options={{ title: 'Sign in', headerShown: Platform.OS !== 'ios' }}
+                  />
                   <Stack.Screen name={stackScreens.account} options={{ headerShown: false }} />
                   <Stack.Screen name={stackScreens.settings} options={{ title: 'Settings' }} />
                   <Stack.Screen name={stackScreens.settingsDev} options={{ title: 'Dev' }} />

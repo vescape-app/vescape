@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.service
 
+import expo.modules.vescapecore.riderprofiles.RiderStatsSender
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
@@ -14,6 +15,7 @@ import android.net.Uri
 class AutoConnectProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         context?.applicationContext?.let { app ->
+            RiderStatsSender.get(app).foreground()
             // Publish cold wrist settings even when auto-connect leaves the service stopped.
             CoreForegroundService.reloadTelemetrySettings(app)
             CoreForegroundService.autoConnectSelectedBoard(app)

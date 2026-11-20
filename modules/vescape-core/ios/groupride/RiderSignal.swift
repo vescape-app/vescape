@@ -158,10 +158,11 @@ internal enum RiderPinIntent: Equatable {
     }
   }
 
-  func frame() -> [String: Any] {
+  /// The relay frame; `prefix` `public-` makes it the public ride's (`public-signal`, ...).
+  func frame(prefix: String = "") -> [String: Any] {
     switch self {
-    case let .send(slot, kind, lat, lng): ["type": slot.rawValue, "kind": kind, "lat": lat, "lng": lng]
-    case let .clear(slot): ["type": "\(slot.rawValue)-clear"]
+    case let .send(slot, kind, lat, lng): ["type": prefix + slot.rawValue, "kind": kind, "lat": lat, "lng": lng]
+    case let .clear(slot): ["type": "\(prefix)\(slot.rawValue)-clear"]
     }
   }
 }

@@ -1,6 +1,6 @@
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { Text } from '@/components/base/Text'
-import { SafeAreaView } from 'react-native-safe-area-context'
 import { useMemo, useState } from 'react'
 
 import { ListIcon } from 'phosphor-react-native'
@@ -61,6 +61,12 @@ function SearchInputShowcase() {
   return (
     <ShowcaseCard name="SearchInput">
       <SearchInput value={query} onChangeText={setQuery} />
+      <SearchInput
+        editable={false}
+        value=""
+        onChangeText={() => {}}
+        placeholder="Find riders by nick"
+      />
       <SearchInput value="Footpad" onChangeText={() => {}} accessibilityLabel="Filled search" />
     </ShowcaseCard>
   )
@@ -161,19 +167,17 @@ function ColorPickerShowcase() {
 
 export default function FormsPage() {
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <IconHero icon={ListIcon} description="Select, Dropdown, ColorPicker, SoundPicker." />
-        <InputShowcase />
-        <SearchInputShowcase />
-        <DateFieldShowcase />
-        <TextareaShowcase />
-        <SelectShowcase />
-        <DropdownShowcase />
-        <ColorPickerShowcase />
-        <SoundPickerShowcase />
-      </ScrollView>
-    </SafeAreaView>
+    <PageScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <IconHero icon={ListIcon} description="Select, Dropdown, ColorPicker, SoundPicker." />
+      <InputShowcase />
+      <SearchInputShowcase />
+      <DateFieldShowcase />
+      <TextareaShowcase />
+      <SelectShowcase />
+      <DropdownShowcase />
+      <ColorPickerShowcase />
+      <SoundPickerShowcase />
+    </PageScrollView>
   )
 }
 

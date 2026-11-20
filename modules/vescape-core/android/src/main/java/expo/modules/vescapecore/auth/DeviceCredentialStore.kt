@@ -97,7 +97,10 @@ class DeviceCredentialStore internal constructor(
   private fun replace(encoded: String?, state: DeviceCredentialState, operation: String) {
     val oldCredential = persistence.credential()
     val oldState = persistence.state() ?: DeviceCredentialState.UNAVAILABLE.slug
-    if (persistence.replace(encoded, state.slug)) return
+    if (persistence.replace(encoded, state.slug)) {
+      notifyChanged()
+      return
+    }
     // SharedPreferences updates its process cache before commit() reports disk failure. Restore the
     // prior pair so readers in this process and a recreated store observe the same old state.
     val primary = IOException("Could not $operation device credential")
@@ -108,6 +111,21 @@ class DeviceCredentialStore internal constructor(
   }
 
   companion object {
+    private val listeners = java.util.concurrent.CopyOnWriteArraySet<() -> Unit>()
+
+    /**
+     * Called after every stored change (sign-in, sign-out, rejection), on the writer's thread. The
+     * public ride ends on an Account change, whoever made it.
+     *
+     * @parity /modules/vescape-core/ios/auth/DeviceCredentialStore.swift `addChangeListener`
+     */
+    fun addChangeListener(listener: () -> Unit): () -> Unit {
+      listeners += listener
+      return { listeners -= listener }
+    }
+
+    private fun notifyChanged() = listeners.forEach { it() }
+
     internal const val PREFERENCES = "vescape_device_auth"
     internal const val CREDENTIAL = "credential"
     internal const val STATE = "state"

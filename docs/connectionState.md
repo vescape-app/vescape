@@ -102,15 +102,15 @@ resolved from demand — see below.
 `GpsDemand.resolve` is the one place that decides the **GPS Power Mode**, on both platforms, from
 five facts:
 
-| input                    | source                                                                                                        |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| app visible              | activity/app lifecycle, pushed into the controller                                                            |
-| riding                   | a Board Session exists, Idle Pause is not holding it, and the link is up or inside the **Ride Dropout Grace** |
-| Group Ride participating | the rider's position is being broadcast                                                                       |
-| watch navigating         | a Watch Mirror is taking frames while Navigation has a drawable route (`WatchMirrorCoordinator.navigating`)   |
-| replay owns position     | a replay is feeding recorded fixes through the live path                                                      |
+| input                | source                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------- |
+| app visible          | activity/app lifecycle, pushed into the controller                                                            |
+| riding               | a Board Session exists, Idle Pause is not holding it, and the link is up or inside the **Ride Dropout Grace** |
+| manual Public Ride   | the rider explicitly started sharing location without a Board Session                                         |
+| watch navigating     | a Watch Mirror is taking frames while Navigation has a drawable route (`WatchMirrorCoordinator.navigating`)   |
+| replay owns position | a replay is feeding recorded fixes through the live path                                                      |
 
-Resolution, in order: a replay forces `off`; riding, Group Ride participation or watch navigating
+Resolution, in order: a replay forces `off`; riding, a manual Public Ride or watch navigating
 gives `ride`; a visible app gives `map`; otherwise `off`.
 
 The modes differ only in what they cost:

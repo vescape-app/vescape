@@ -8,7 +8,7 @@ function sameMonth(a: ProfileMonth, b: ProfileMonth): boolean {
   return a.year === b.year && a.month === b.month
 }
 
-function currentProfileMonth(date = new Date()): ProfileMonth {
+export function currentProfileMonth(date = new Date()): ProfileMonth {
   return { year: date.getFullYear(), month: date.getMonth() + 1 }
 }
 
@@ -17,20 +17,6 @@ export function formatMonthLabel(month: ProfileMonth, locale?: string): string {
     month: 'long',
     year: 'numeric',
   })
-}
-
-export function getAdjacentMonths(
-  months: ProfileMonth[],
-  selected: ProfileMonth,
-): {
-  previous: ProfileMonth | null
-  next: ProfileMonth | null
-} {
-  const index = months.findIndex((month) => sameMonth(month, selected))
-  return {
-    previous: index >= 0 ? (months[index + 1] ?? null) : null,
-    next: index > 0 ? months[index - 1] : null,
-  }
 }
 
 export function selectInitialMonth(months: ProfileMonth[], now = new Date()): ProfileMonth {

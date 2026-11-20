@@ -30,7 +30,7 @@ export const TUNE_DEFAULT_ACTIVE_WIDTH = 112
 export const TUNE_ANIMATION = { duration: 180 } as const
 export const TRANSPARENT = theme.alpha(theme.palette.mono.black, 0)
 
-export type PillSelectorLabelBehavior = 'active-only' | 'always'
+export type PillSelectorLabelBehavior = 'active-only' | 'always' | 'icon-only'
 export type PillSelectorSlotVisibility = 'active' | 'inactive' | 'always'
 
 export function usePillSelectorCtx() {
@@ -157,6 +157,14 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     maxWidth: 160,
     overflow: 'hidden',
+  },
+  indicator: {
+    position: 'absolute',
+    top: 4,
+    right: 9,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   pillPressable: {
     height: 36,

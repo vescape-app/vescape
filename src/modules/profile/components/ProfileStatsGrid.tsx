@@ -7,7 +7,7 @@ import { theme } from '@/constants/theme'
 import type { ProfileStatItem } from '@/modules/profile/hooks/useProfileStatItems'
 
 interface ProfileStatsGridProps {
-  items: ProfileStatItem[]
+  items: (Omit<ProfileStatItem, 'key'> & { key: string })[]
   /** Larger figures for the summary in the History drawer. */
   emphasis?: boolean
   columns?: 2 | 3 | 4

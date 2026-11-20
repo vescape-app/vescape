@@ -1,9 +1,9 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router'
 import { ClockCounterClockwiseIcon, WarningCircleIcon } from 'phosphor-react-native'
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import type { RideDay } from 'vescape-core'
 
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { Placeholder } from '@/components/base/Placeholder'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { theme } from '@/constants/theme'
@@ -39,14 +39,12 @@ function RideDayContent({ day }: { day: RideDay }) {
   const stats = useDayStats(day)
   const rides = useRideDaySessions(day)
   const { formatRideDetails, formatRideTime } = useRideFormat()
-  const insets = useSafeAreaInsets()
   const items = useProfileStatItems(stats.value, undefined, openRecordRide)
 
   return (
-    <ScrollView
+    <PageScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingBottom: 16 + insets.bottom }]}
-      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={styles.content}
       testID="ride-day-screen"
     >
       <Stack.Screen options={{ title: formatRideDay(day) }} />
@@ -110,7 +108,7 @@ function RideDayContent({ day }: { day: RideDay }) {
           })}
         </View>
       )}
-    </ScrollView>
+    </PageScrollView>
   )
 }
 

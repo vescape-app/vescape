@@ -509,7 +509,6 @@ class AppDataRepository private constructor(private val context: Context) {
       wearTelemetryRouteEnabled = req("wearTelemetryRouteEnabled", true) { it as? Boolean },
       wearStreetMapEnabled = req("wearStreetMapEnabled", true) { it as? Boolean },
       wearMapGaugesPercent = req("wearMapGaugesPercent", WatchMapGauges.DEFAULT_PERCENT, WatchMapGauges::percent),
-      groupRidePublicEnabled = req("groupRidePublicEnabled", false) { it as? Boolean },
       wearTiltRatePercent = req("wearTiltRatePercent", 20, ::validWearTiltRatePercent),
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },
@@ -522,8 +521,6 @@ class AppDataRepository private constructor(private val context: Context) {
         DEFAULT_RIDE_SPLIT_GAP_MINUTES,
         ::validRideSplitGapMinutes,
       ),
-      riderId = opt("riderId") { it as? String },
-      riderName = opt("riderName") { it as? String },
       legalPolicy = opt("legalPolicy", ::normalizeLegalPolicy),
       dismissedCommunityMessageIds =
         req("dismissedCommunityMessageIds", emptyList(), ::validDismissedCommunityMessageIds),
@@ -608,7 +605,6 @@ class AppDataRepository private constructor(private val context: Context) {
       "wearTelemetryRouteEnabled" -> value as? Boolean ?: return@withContext
       "wearStreetMapEnabled" -> value as? Boolean ?: return@withContext
       "wearMapGaugesPercent" -> WatchMapGauges.percent(value) ?: return@withContext
-      "groupRidePublicEnabled" -> value as? Boolean ?: return@withContext
       "wearTiltRatePercent" ->
         validWearTiltRatePercent(value) ?: return@withContext
       "companionPresenceEnabled" -> value as? Boolean ?: return@withContext
@@ -621,7 +617,6 @@ class AppDataRepository private constructor(private val context: Context) {
         validAutoCloseDelayMinutes(value) ?: return@withContext
       "rideSplitGapMinutes" ->
         validRideSplitGapMinutes(value) ?: return@withContext
-      "riderId", "riderName" -> value as? String
       // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
       "legalPolicy" -> return@withContext
       "dismissedCommunityMessageIds" ->
@@ -678,7 +673,6 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearTelemetryRouteEnabled" -> d.wearTelemetryRouteEnabled
         "wearStreetMapEnabled" -> d.wearStreetMapEnabled
         "wearMapGaugesPercent" -> d.wearMapGaugesPercent
-        "groupRidePublicEnabled" -> d.groupRidePublicEnabled
         "wearTiltRatePercent" -> d.wearTiltRatePercent
         "companionPresenceEnabled" -> d.companionPresenceEnabled
         "boardWarningsEnabled" -> d.boardWarningsEnabled
@@ -687,8 +681,6 @@ class AppDataRepository private constructor(private val context: Context) {
         "autoCloseEnabled" -> d.autoCloseEnabled
         "autoCloseDelayMinutes" -> d.autoCloseDelayMinutes
         "rideSplitGapMinutes" -> d.rideSplitGapMinutes
-        "riderId" -> d.riderId
-        "riderName" -> d.riderName
         "legalPolicy" -> d.legalPolicy
         "dismissedCommunityMessageIds" -> d.dismissedCommunityMessageIds
         else -> null
@@ -1063,7 +1055,6 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearTelemetryRouteEnabled" to wearTelemetryRouteEnabled,
   "wearStreetMapEnabled" to wearStreetMapEnabled,
   "wearMapGaugesPercent" to wearMapGaugesPercent,
-  "groupRidePublicEnabled" to groupRidePublicEnabled,
   "wearTiltRatePercent" to wearTiltRatePercent,
   "companionPresenceEnabled" to companionPresenceEnabled,
   "boardWarningsEnabled" to boardWarningsEnabled,
@@ -1072,8 +1063,6 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "autoCloseEnabled" to autoCloseEnabled,
   "autoCloseDelayMinutes" to autoCloseDelayMinutes,
   "rideSplitGapMinutes" to rideSplitGapMinutes,
-  "riderId" to riderId,
-  "riderName" to riderName,
   "legalPolicy" to legalPolicy,
   "dismissedCommunityMessageIds" to dismissedCommunityMessageIds,
 )

@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 import { ThemePicker } from '@/modules/settings/components/ThemePicker'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { GearSixIcon, TrashIcon } from 'phosphor-react-native'
 
+import { PageScrollView } from '@/components/base/PageScrollView'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
@@ -40,11 +41,7 @@ export default function ThemeShowcase() {
   const telemetry = useResolvedTelemetryColors()
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
-    >
+    <PageScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.intro}>
         Active appearance: {appearance}. White is the content canvas; navy identifies interaction.
       </Text>
@@ -112,7 +109,7 @@ export default function ThemeShowcase() {
           </View>
         </View>
       </ThemeSection>
-    </ScrollView>
+    </PageScrollView>
   )
 }
 

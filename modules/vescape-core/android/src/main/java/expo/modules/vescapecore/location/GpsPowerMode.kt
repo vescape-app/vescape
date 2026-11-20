@@ -22,7 +22,7 @@ internal enum class GpsPowerMode(val slug: String) {
      */
     Map("map"),
 
-    /** The rider is riding (or sharing position in a Group Ride). Background delivery at full rate. */
+    /** The rider is riding. Background delivery at full rate. */
     Ride("ride"),
 }
 
@@ -57,7 +57,7 @@ internal const val GPS_NETWORK_FIX_MIN_INTERVAL_MS = 2_000L
 /**
  * The one place the app decides whether the phone's GPS should be running, and how hard.
  *
- * Deliberately pure and total: every caller passes the same five facts and gets the same answer on
+ * Deliberately pure and total: every caller passes the same facts and gets the same answer on
  * both platforms, so "why is GPS on?" is answerable without reading the controller.
  *
  * @parity /modules/vescape-core/ios/location/GpsPowerMode.swift `GpsDemand`
@@ -68,23 +68,22 @@ internal object GpsDemand {
      * @param riding a Board Session is delivering telemetry and Idle Pause is not holding it. A
      *   paused ride is deliberately *not* riding: Idle Pause already stops recording fixes
      *   (ADR 0021), so keeping the chip warm through a 30s+ stop buys nothing but drain.
-     * @param groupRideParticipating the rider's position is being broadcast to a Group Ride, which
-     *   must keep working with the phone in a pocket and no Board connected.
      * @param watchNavigating a Watch Mirror is taking frames while Navigation has a drawable route.
      *   The wrist draws that route around the rider's live position, so it must keep moving from a
      *   pocket too (ADR-0039).
      * @param replayOwnsPosition a replay is feeding recorded fixes through the live path; a real fix
      *   slipping in would fight them (`docs/connectionState.md`).
+     * @param manualPublicRide the rider explicitly asked to share location without a board.
      */
     fun resolve(
         appVisible: Boolean,
         riding: Boolean,
-        groupRideParticipating: Boolean,
         watchNavigating: Boolean,
         replayOwnsPosition: Boolean,
+        manualPublicRide: Boolean,
     ): GpsPowerMode {
         if (replayOwnsPosition) return GpsPowerMode.Off
-        if (riding || groupRideParticipating || watchNavigating) return GpsPowerMode.Ride
+        if (riding || watchNavigating || manualPublicRide) return GpsPowerMode.Ride
         if (appVisible) return GpsPowerMode.Map
         return GpsPowerMode.Off
     }

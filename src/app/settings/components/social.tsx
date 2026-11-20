@@ -1,0 +1,123 @@
+import { useState } from 'react'
+import { router } from 'expo-router'
+import { Alert, StyleSheet } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+
+import { Button } from '@/components/base/Button'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
+import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
+import { theme } from '@/constants/theme'
+import { FriendRow } from '@/modules/profile/components/FriendRow'
+import { RiderLiveRide } from '@/modules/group-ride/components/RiderLiveRide'
+import { RosterList } from '@/modules/group-ride/components/GroupRideRoster'
+import {
+  FIXTURE_OWN_LOCATION,
+  FIXTURE_RIDERS,
+  FIXTURE_ROSTER_ROWS,
+} from '@/screens/showcase/mapShowcaseFixtures'
+import { PublicRideRow } from '@/modules/group-ride/components/FriendRides'
+
+const STATUSES = {
+  riding: 'Riding now',
+  online: 'Last seen 12m ago',
+  never: 'Not online yet',
+  request: 'Wants to be friends',
+  none: null,
+} as const
+
+export default function SocialShowcase() {
+  const [status, setStatus] = useState<keyof typeof STATUSES>('riding')
+  const [nationality, setNationality] = useState(true)
+  const [action, setAction] = useState(true)
+  const [divided, setDivided] = useState(false)
+  const [longNick, setLongNick] = useState(false)
+  const [boardConnected, setBoardConnected] = useState(false)
+  const [rideShown, setRideShown] = useState(false)
+
+  return (
+    <SafeAreaView style={styles.container} edges={[]}>
+      <PageScrollView contentContainerStyle={styles.content}>
+        <ShowcaseCard
+          name="RiderLiveRide"
+          controls={
+            <ToggleRow
+              label="board connected"
+              value={boardConnected}
+              onToggle={setBoardConnected}
+            />
+          }
+        >
+          <RiderLiveRide
+            readings={boardConnected ? (FIXTURE_RIDERS[0]?.presence ?? {}) : { phoneBattery: 0.31 }}
+          />
+        </ShowcaseCard>
+        <ShowcaseCard name="Demo riders">
+          <RosterList
+            rows={FIXTURE_ROSTER_ROWS}
+            ownLocation={FIXTURE_OWN_LOCATION}
+            compact
+            selfCanOpen
+            onOpenRider={(rider) =>
+              router.push({
+                pathname: '/settings/components/social-rider/[riderId]',
+                params: { riderId: rider.id },
+              })
+            }
+          />
+        </ShowcaseCard>
+        <ShowcaseCard
+          name="FriendRow"
+          controls={
+            <>
+              <ChipRow
+                label="status"
+                options={Object.keys(STATUSES)}
+                selected={status}
+                onSelect={(value) => setStatus(value as keyof typeof STATUSES)}
+              />
+              <ToggleRow label="nationality" value={nationality} onToggle={setNationality} />
+              <ToggleRow label="action" value={action} onToggle={setAction} />
+              <ToggleRow label="divider" value={divided} onToggle={setDivided} />
+              <ToggleRow label="long nick" value={longNick} onToggle={setLongNick} />
+            </>
+          }
+        >
+          <FriendRow
+            nick={longNick ? 'the_longest_nick_ok' : 'kuba_rides'}
+            nationality={nationality ? 'PL' : null}
+            status={STATUSES[status]}
+            divided={divided}
+            riding={status === 'riding'}
+            onPress={() => Alert.alert('Rider profile')}
+            trailing={
+              action ? (
+                <Button
+                  label="Add friend"
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => Alert.alert('Friend action')}
+                />
+              ) : null
+            }
+          />
+        </ShowcaseCard>
+        <ShowcaseCard
+          name="PublicRideRow"
+          controls={<ToggleRow label="shown" value={rideShown} onToggle={setRideShown} />}
+        >
+          <PublicRideRow
+            ride={{ startedAt: '2026-11-14T16:05:00.000Z', endedAt: '2026-11-14T17:12:00.000Z' }}
+            shown={rideShown}
+            onPress={() => setRideShown((shown) => !shown)}
+          />
+        </ShowcaseCard>
+      </PageScrollView>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
+  content: { padding: 12, gap: 12, paddingBottom: 40 },
+})

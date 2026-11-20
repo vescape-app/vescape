@@ -2,12 +2,15 @@ import { useAuth, useUser } from '@clerk/expo'
 import { useNetworkState } from 'expo-network'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
-import { UserCircleIcon, WifiSlashIcon } from 'phosphor-react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
+import { ArrowLeftIcon, UserCircleIcon, WifiSlashIcon } from 'phosphor-react-native'
+import { ConfirmModal } from '@/components/modals/ConfirmModal'
 
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { RiderNickForm } from '@/modules/profile/components/RiderNickForm'
+import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
 import { revokeDeviceCredential } from 'vescape-core'
 
@@ -18,6 +21,10 @@ export function ClerkAccountScreen() {
   const networkState = useNetworkState()
   const [signingOut, setSigningOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const profileLoaded = useRiderProfileStore((s) => s.loaded)
+  const hasNick = useRiderProfileStore((s) => s.profile != null)
+  const profileError = useRiderProfileStore((s) => s.error)
 
   const leaveAccount = useCallback(() => {
     if (router.canGoBack()) router.back()
@@ -54,6 +61,11 @@ export function ClerkAccountScreen() {
       )}
       <Text style={styles.title}>{user?.fullName ?? 'Vescape account'}</Text>
       <Text style={styles.detail}>{user?.primaryEmailAddress?.emailAddress ?? 'Signed in'}</Text>
+      {profileLoaded ? (
+        <RiderNickForm title={hasNick ? 'Your nick' : 'Pick a nick to ride under'} />
+      ) : profileError ? (
+        <Text style={styles.error}>{profileError}</Text>
+      ) : null}
       {networkState.isInternetReachable === false && (
         <Text style={styles.message}>
           Signing out needs internet so this phone’s native credential can be revoked first.
@@ -61,15 +73,32 @@ export function ClerkAccountScreen() {
       )}
       {error && <Text style={styles.error}>{error}</Text>}
       <View style={styles.actions}>
-        <Button label="Go back" variant="secondary" onPress={leaveAccount} />
-        <Button
-          label="Sign out"
-          variant="destructive"
-          loading={signingOut}
-          disabled={networkState.isInternetReachable === false}
-          onPress={() => void handleSignOut()}
-        />
+        <Button label="Go back" variant="primary" icon={ArrowLeftIcon} onPress={leaveAccount} />
+        <Pressable
+          disabled={signingOut || networkState.isInternetReachable === false}
+          onPress={() => setConfirmSignOut(true)}
+          hitSlop={8}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            networkState.isInternetReachable === false && styles.disabled,
+            pressed && { opacity: theme.interaction.pressedOpacity },
+          ]}
+        >
+          <Text style={styles.signOut}>{signingOut ? 'Signing out…' : 'Sign out'}</Text>
+        </Pressable>
       </View>
+      <ConfirmModal
+        visible={confirmSignOut}
+        title="Sign out?"
+        message="Public rides and friends stop until you sign in again."
+        confirmLabel="Sign out"
+        destructive
+        onConfirm={() => {
+          setConfirmSignOut(false)
+          void handleSignOut()
+        }}
+        onCancel={() => setConfirmSignOut(false)}
+      />
     </View>
   )
 }
@@ -104,8 +133,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actions: {
-    flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    gap: 28,
     marginTop: 12,
+  },
+  signOut: {
+    color: theme.status.error.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  disabled: {
+    opacity: 0.4,
   },
 })
