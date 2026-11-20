@@ -388,16 +388,16 @@ A default-on App Setting that acts as a fault-specific kill switch. Turning it o
 _Avoid_: Board Warnings switch, fault dismissal, clear fault register
 
 **Debug Recording**:
-A developer-facing `.jsonl` capture of one Board Session — raw BLE traffic, session-state transitions, GPS fixes, and phone sensor readings the board never sees (compass heading) — plus a `meta` header describing the board it was recorded from. Recorded on-device and exportable for offline analysis or detector replay. Replaying one drives a real session through the transport seam, and the recording owns that session's position, heading and time for its whole duration. Not a **Ride Recording** (no telemetry-sample persistence, not rider-facing) and not part of **Ride History**.
+A developer-facing `.jsonl` capture of one Board Session — raw BLE traffic, session-state transitions and GPS fixes — plus a `meta` header describing the board it was recorded from. Recorded on-device and exportable for offline analysis or detector replay. Replaying one runs an ordinary **Board Session** of a **Board** the rider picks, with a **Simulated Board** standing in for the hardware; the recording owns that session's position for its whole duration. Not a **Ride Recording** (no telemetry-sample persistence, not rider-facing) and not part of **Ride History**, though a replayed session records rides like any other.
 _Avoid_: session log, BLE dump, trace
 
-**Session Clock**:
-The source of "now" for one **Board Session**. Every timestamp the session stamps onto data it produces, and every comparison against those timestamps, reads it instead of the system clock. A real session's Session Clock is wall time; a replay's can run ahead of real time (see **Replay Speed**). The rule is all-or-nothing — mixing wall time and session time inside one session produces data that disagrees with the code reading it — with one carve-out: throttles that guard a resource rather than describe the ride stay on wall time.
-_Avoid_: virtual clock, fake time, clock offset
+**Simulated Board**:
+The stand-in for board hardware during a **Debug Recording** replay. It plays the recording's telemetry and GPS at their recorded offsets, answers the app's requests from the replies the recording holds (firmware, Refloat info, config XML and values), and keeps the state a board would keep: config writes, lights. Transport, **Link Identity** and poll interval come from the recording, not the **Board** row. A request the recording never answered gets no reply.
+_Avoid_: fake board, mock board, replay transport
 
-**Replay Speed**:
-How fast a replay's **Session Clock** runs against real time. `1×` — the default, and what the Replay UI uses — reproduces a ride exactly as it happened. A caller may instead ask for a warmup: an opening stretch of the recording delivered faster, so the session comes up with its live charts already filled instead of spending real minutes earning them. Playback drops to 1× once the warmup window has elapsed.
-_Avoid_: fast-forward, playback rate, time scale
+**Replay Warmup**:
+An opening stretch of a **Debug Recording** fed into live display state before playback starts, stamped backwards from the start so the live charts, Battery SoC window and trail come up already filled. It raises no alerts and records nothing. Playback then runs at 1× from the end of the warmup.
+_Avoid_: fast-forward, playback rate, replay speed
 
 **App Setting**:
 A user-controlled app preference that affects app behavior across boards unless explicitly scoped elsewhere.

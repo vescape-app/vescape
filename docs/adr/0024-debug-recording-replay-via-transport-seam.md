@@ -1,5 +1,10 @@
 # Debug Recording replay drives the real session stack through the transport seam
 
+> **Superseded by [ADR 0048](./0048-replay-drives-a-real-board-through-a-simulated-board.md).** The
+> transport seam stays. The synthetic `replay:` board, swallowed writes and the Session Clock are
+> gone: a replay is a session of a real Board, a Simulated Board answers the app, and warmup
+> prefills live state instead of running time fast.
+
 > **Updated 2026-08-23 on the compass question.** The `phone-heading` line kind and its whole
 > record/replay path are removed. The compass only ever drove map presentation, which is not what a
 > Debug Recording exists to reproduce, and it was the one signal that had to be pushed _down_ from

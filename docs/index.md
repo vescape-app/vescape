@@ -37,6 +37,7 @@
 - [Telemetry Chunks replace sealed frames](./adr/0045-telemetry-chunks-replace-sealed-frames.md) — `telemetry_chunks` holds sealed minutes and `telemetry_frames` is the write buffer; readers merge both from one snapshot; buckets stay untouched
 - [Data conversions run as Maintenance Jobs](./adr/0046-data-conversions-run-as-maintenance-jobs.md) — migrations stay SQL; per-row conversion of stored data is a Maintenance Job with no runner path of its own; readers accept both shapes until it finishes
 - [Background database work runs as Maintenance Jobs](./adr/0047-background-database-work-runs-as-maintenance-jobs.md) — every conversion, rebuild, backfill and clean-up is a job on the Maintenance list; clean-up is one `cleanup` job with a list of steps; `MaintenanceRunner` only schedules jobs
+- [Replay drives a real Board through a Simulated Board](./adr/0048-replay-drives-a-real-board-through-a-simulated-board.md) — a Debug Recording replay is an ordinary Board Session of a chosen Board; a Simulated Board answers requests from the recording and holds config writes; Replay Warmup prefills live state; no Session Clock
 - [tune.md](./tune.md) — Refloat tune screen behavior, basic slider formulas, field groups
 - [tune-preview-pl.md](./tune-preview-pl.md) — Tune vs Tune Preview, explained (Polish)
 - [remote-tilt.md](./remote-tilt.md) — Remote Tilt gesture ownership, native command timing, and latency checks

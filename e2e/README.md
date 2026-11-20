@@ -292,10 +292,8 @@ is still up or has already ended on its own.
 
 In a local full pass, flow order is load-bearing. `05-add-board` runs last because saving a board hands it to the
 connection manager, which goes at the real BLE stack, finds nothing, and takes the replay session
-down with it. That flow therefore asserts the wizard and the durable write, not a connection: a
-replay runs under a synthetic `replay:` board id (ADR 0024) and cannot stand in for a chosen board's
-session. Binding a replay to a given board id is native work; until then the board-connect path
-stays covered by the E2E suite's `connect-board`.
+down with it. That flow therefore asserts the wizard and the durable write, not a connection; the
+board-connect path stays covered by the E2E suite's `connect-board`.
 CI's isolated flow jobs each restore their own fixtures, so add-board cannot interrupt another
 flow's replay.
 
@@ -357,7 +355,7 @@ A screenshot build is a **Release** build with `EXPO_PUBLIC_SCREENSHOTS=1` and `
 **unset**. That distinction is load-bearing: `EXPO_PUBLIC_E2E=1` reroutes `getBoards`,
 `getLiveState`, `getTelemetryHistory` and friends to `e2eFake`, while `startDebugReplay` always goes
 to native — an E2E build would run a replay session the UI never sees. Screenshot mode uses the real
-native module end to end, and only suppresses developer chrome (replay badge, `REC`, no-board pill,
+native module end to end, and only suppresses developer chrome (`REC`, no-board pill,
 render-rate warning).
 
 Data comes from two existing mechanisms, no new native code:
@@ -401,17 +399,16 @@ the device.
 
 Other flags: `--replay <name>` (default `replay-thor301`), `--platform android|ios|both` (default `both`).
 
-Replay warmup covers the first six minutes up front: it plays at 30× against a clock shifted that
-far into the past, which fills the live window instead of compressing the samples into a fraction of
-it (ADR 0024). The replay recording must be at least as long as the whole run, warmup included,
-since it spends recording too.
+Replay Warmup prefills the first six minutes: they are fed into live display state up front,
+stamped back from the start, and playback continues at 1× from there (ADR 0048). The replay
+recording must be at least as long as the whole run, warmup included.
 
 ## App preview videos
 
 `bun run preview` records a Release fixture build with the platform recorder, then exports H.264
 MP4 footage for a landing page or promo. It reuses screenshot device preparation and the sanitized
 history database. `EXPO_PUBLIC_PREVIEW=1` selects dark appearance and fast-forwards the first seven
-minutes off-camera through the same native replay warmup used by screenshots. The map opens on the
+minutes through the same Replay Warmup prefill used by screenshots. The map opens on the
 later western stretch with an established trail and filled charts, then plays recorded BLE/GPS at 1×.
 Normal rider controls, including REC, remain visible.
 

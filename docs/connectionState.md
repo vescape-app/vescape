@@ -174,8 +174,8 @@ changes restore both mirrors from one `getLiveState()` snapshot.
   position marker without entering the precise trail.
 - Full snapshots replace each domain's retained history, including an empty native window.
   Status events merge latest GPS fixes and never interpret omitted history as a clear command.
-- Entering, leaving, or switching debug replay resets both mirrors before applying native state,
-  so replay coordinates cannot join the real trail.
+- Starting or ending a debug replay sends a full snapshot with the trail cleared, so replay
+  coordinates cannot join the real trail.
 - Board connect/disconnect and GPS permission refresh do not own the location subscription.
   Background collection and GPS power decisions stay native on both platforms.
 

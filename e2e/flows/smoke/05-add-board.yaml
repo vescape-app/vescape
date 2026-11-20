@@ -5,10 +5,8 @@
 # answers and the attempt tears the replay session down with it. Every flow that needs live
 # telemetry has already run by then.
 #
-# Connecting the created board is deliberately not asserted here: a replay session runs under a
-# synthetic `replay:` board id (ADR 0024), so it cannot stand in for this board's session. Binding a
-# replay to a chosen board id is native work — see the follow-up issue — and until it exists, the
-# board-connect path stays covered by the E2E suite's `connect-board` flow against `e2eFake`.
+# Connecting the created board is deliberately not asserted here; the board-connect path stays
+# covered by the E2E suite's `connect-board` flow against `e2eFake`.
 #
 # The wizard is therefore driven down its offline branch, which is a real product path rather than a
 # workaround: it is what a rider gets when the board is out of range.
