@@ -118,18 +118,14 @@ Speech comes from a second app-wide choice next to Sound effects:
   a pending `lost`. The decisions live in `GroupRideCues` (`.kt`, `.swift`). All are gated by the
   app sounds switch (`connectionSoundsEnabled`) except safety cues.
 - **Rider Signal cues** `groupRide.signal.<kind>` (`serious` ⇒ critical; `battery`,
-  `tire`, `overheat`, `board`, `minor` ⇒ warning; `down`, `wait`, `break` ⇒ info, the kind's Ride Notice severity) play once when another Rider sends a signal or replaces it (new `startedAt`);
-  `groupRide.signal.ok` (positive) plays when a Rider still in the roster drops their signal while
-  the roster's relay `now` is before its `expiresAt`. The rider's own signal confirms what the relay
-  accepted: `groupRide.signal.sent` (info) when the roster carries a new own `startedAt`, and
-  `groupRide.signal.cleared` (positive) when it is gone before its `expiresAt`. Expiry (relay `now`
-  at or past `expiresAt`, or no `now`), a Rider leaving, and signals already active in the catch-up
-  roster after joining or our reconnect play nothing. A signal cue wins over a social cue from the
-  same roster, and the higher-ranked kind over the others (`serious`, then `minor` and the problems, then
-  `down`, `wait` and `break`); another Rider's new signal wins over `sent`, then the rider's own new
-  hazard `groupRide.hazard.sent` (info), and `ok` over `cleared`. They are safety calls, so the
-  app sounds switch does not mute them, and they speak at every Voice level but Off; muted alerts
-  apply as for any app cue.
+  `tire`, `overheat`, `board`, `minor` ⇒ warning; `down`, `wait`, `break` ⇒ info) play when
+  the relay first delivers another Rider's active signal. Repeated deliveries of the same
+  `startedAt` stay silent through reconnects. On explicit clear, the relay identifies the cleared
+  signal by its `startedAt` so riders who saw it hear `groupRide.signal.ok` (positive). A sender
+  hears `groupRide.signal.sent` (info) when the relay echoes their new signal, and
+  `groupRide.signal.cleared` (positive) when the echo removes it before expiry. These safety cues
+  play independently of the connection sounds switch. They play the effect at Voice Off and
+  add speech at Minimal, Standard and Full.
 - **Ride Hazard cues** `groupRide.hazard.<kind>` (`water`, `terrain`, `obstacle`, `police` ⇒ warning)
   never play when another Rider marks the hazard. Each phone plays one once, from its own GPS fixes
   (`RideHazardCues`, `.kt`, `.swift`), the first time it comes within 30 m of the pin while closing

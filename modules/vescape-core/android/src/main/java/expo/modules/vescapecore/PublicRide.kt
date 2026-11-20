@@ -47,6 +47,7 @@ internal class PublicRide(
     private val onPublicRideDemandChanged: () -> Unit = {},
     /** Other riders' pins changed: their signals, their hazards by Account id, and the relay clock. */
     private val onPins: (List<SignalRider>, Map<String, RideHazard>, Long?) -> Unit = { _, _, _ -> },
+    private val onCue: (String) -> Unit = {},
 ) {
     var switch: PublicRideSwitch = PublicRideSwitch.OFF
         private set
@@ -85,8 +86,11 @@ internal class PublicRide(
      * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `pendingPins`
      */
     private val pendingPins = mutableMapOf<PinSlot, RiderPinIntent>()
-    /** The rider's own pins as sent; the relay never echoes them back. Times are relay clock estimates. */
+    /** The rider's own pins as shown immediately. Times are relay clock estimates. */
     private val ownPins = mutableMapOf<PinSlot, Map<String, Any?>>()
+    private var confirmedOwnSignal: RiderSignal? = null
+    /** Keep announcements through reconnects until the signal expires. */
+    private val announcedSignals = mutableMapOf<String, RiderSignal>()
     /** Other riders' pins as the relay last reported them, by Account id. */
     private val pins = LinkedHashMap<String, PublicPins>()
     private var pinsNow: Long? = null
@@ -198,6 +202,7 @@ internal class PublicRide(
         linkReady = false
         authenticatedAccount = null
         dropOwnPins()
+        announcedSignals.clear()
         resetReceived()
         // Kept positions are the old Account's: never sent under another.
         discardMissed()
@@ -381,15 +386,20 @@ internal class PublicRide(
             }
             "public-pins" -> {
                 val id = json.optString("accountId").takeIf { it.isNotEmpty() } ?: return true
-                // The relay echoes the rider's own pins; those live in `ownPins`, not among others'.
-                if (id == accountId) return true
                 val signal = RiderPin.parse(json.optJSONObject("signal"), RiderSignalKind::fromWire)
+                val relayTime = json.optLongOrNull("now")
+                if (id == accountId) {
+                    if (riding && relayTime != null) confirmOwnSignal(signal, relayTime)
+                    return true
+                }
                 val hazard = RiderPin.parse(json.optJSONObject("hazard"), RideHazardKind::fromWire)
                 // A missing slot is none: cleared, expired, out of reach, or the rider went.
+                val previous = pins[id]?.signal
                 if (signal == null && hazard == null) pins.remove(id) else pins[id] = PublicPins(json.optString("nick"), signal, hazard)
-                json.optLongOrNull("now")?.let {
-                    pinsNow = it
+                if (relayTime != null) {
+                    pinsNow = relayTime
                     pinsReceivedAt = now()
+                    announcePeerSignal(signal, id, previous, json.optLongOrNull("clearedSignalStartedAt"), relayTime)
                 }
                 emitPins()
                 onPins(
@@ -401,6 +411,38 @@ internal class PublicRide(
             else -> return false
         }
         return true
+    }
+
+    private fun confirmOwnSignal(signal: RiderSignal?, relayTime: Long) {
+        val previous = confirmedOwnSignal
+        confirmedOwnSignal = signal
+        if (signal != null && ownPins.containsKey(PinSlot.SIGNAL) &&
+            signal.expiresAt > relayTime && signal.startedAt != previous?.startedAt
+        ) {
+            onCue("groupRide.signal.sent")
+        } else if (signal == null && !ownPins.containsKey(PinSlot.SIGNAL) &&
+            previous != null && previous.expiresAt > relayTime
+        ) {
+            onCue("groupRide.signal.cleared")
+        }
+    }
+
+    private fun announcePeerSignal(
+        signal: RiderSignal?,
+        riderId: String,
+        previous: RiderSignal?,
+        clearedStartedAt: Long?,
+        relayTime: Long,
+    ) {
+        announcedSignals.values.removeAll { it.expiresAt <= relayTime }
+        if (signal != null && signal.expiresAt > relayTime &&
+            (announcedSignals[riderId]?.let { it.startedAt < signal.startedAt } ?: true)
+        ) {
+            announcedSignals[riderId] = signal
+            onCue("groupRide.signal.${signal.kind.wire}")
+        } else if (signal == null && previous != null && previous.startedAt == clearedStartedAt) {
+            onCue("groupRide.signal.ok")
+        }
     }
 
     /** A relay `error`; true when it refused going public, which turns the switch off. */
@@ -539,6 +581,7 @@ internal class PublicRide(
 
     private fun dropOwnPins() {
         pendingPins.clear()
+        confirmedOwnSignal = null
         if (ownPins.isEmpty()) return
         ownPins.clear()
         emitPins()

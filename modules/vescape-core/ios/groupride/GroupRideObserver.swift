@@ -117,7 +117,8 @@ internal final class GroupRideObserver: NSObject {
       onPublicRideDemandChanged: onPublicRideDemandChanged,
       onPins: { [weak self] signals, hazards, relayNow in
         self?.onPublicPins(signals, hazards: hazards, relayNow: relayNow)
-      }
+      },
+      onCue: onCue
     )
   }
 

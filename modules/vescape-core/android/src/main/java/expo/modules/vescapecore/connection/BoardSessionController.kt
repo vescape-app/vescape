@@ -466,7 +466,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             handler = mainHandler,
             emit = ::emitEvent,
             online = AppStatusCoordinator.get(service.applicationContext),
-            // Only Ride Hazard approach cues come from here: safety calls, never muted.
+            // Rider Signal and Ride Hazard cues are safety calls.
             onCue = alertFeedback::playAppCue,
             ownLocation = { locationTracker.latestLocation?.let { it.latitude to it.longitude } },
             signalContext = ::riderSignalContext,

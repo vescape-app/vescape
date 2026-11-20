@@ -23,6 +23,7 @@ class PublicRideTest {
     private val linkDemands = mutableListOf<Boolean>()
     private lateinit var ride: PublicRide
     private var pinUpdates = mutableListOf<Pair<List<SignalRider>, Map<String, RideHazard>>>()
+    private val cues = mutableListOf<String>()
 
     private val presence = RiderPresence(52.0, 21.0, null, null, null, null, null, null, null)
 
@@ -37,6 +38,7 @@ class PublicRideTest {
         sent.clear()
         linkDemands.clear()
         pinUpdates.clear()
+        cues.clear()
         linkOpen = true
         ride = PublicRide(
             now = { now },
@@ -48,6 +50,7 @@ class PublicRideTest {
             scheduleRidersFlush = { ridersFlush = it },
             onPublicRideDemandChanged = { linkDemands += ride.needsLink },
             onPins = { signals, hazards, _ -> pinUpdates += signals to hazards },
+            onCue = { cues += it },
         )
     }
 
@@ -309,6 +312,57 @@ class PublicRideTest {
         ride.setBoardConnected(true)
         ready()
         ride.handle("public-status", JSONObject().put("on", true))
+    }
+
+    @Test
+    fun `peer signal cues once per raise and only explicit clear says OK`() {
+        goLive()
+        fun receive(startedAt: Long?, relayTime: Long, cleared: Long? = null) {
+            val frame = JSONObject().put("accountId", "friend").put("now", relayTime)
+            if (startedAt != null) {
+                val signal = JSONObject().put("kind", "serious").put("lat", 52).put("lng", 21)
+                    .put("startedAt", startedAt).put("expiresAt", startedAt + 10)
+                frame.put("signal", signal)
+            }
+            frame.put("clearedSignalStartedAt", cleared)
+            ride.handle("public-pins", frame)
+        }
+        receive(5, 6)
+        receive(5, 7)
+        ride.linkLost()
+        ready()
+        receive(5, 8)
+        receive(9, 9)
+        receive(null, 10) // The relay withdrew the pin without a clear.
+        receive(11, 11)
+        receive(null, 12, cleared = 11)
+        receive(null, 13, cleared = 11)
+        receive(11, 21) // Expired signal.
+        assertEquals(List(3) { "groupRide.signal.serious" } + "groupRide.signal.ok", cues)
+    }
+
+    @Test
+    fun `own signal sounds only after the relay echoes it`() {
+        goLive()
+        ride.submitPin(RiderPinIntent.Send(RiderSignalKind.WAIT, 52.0, 21.0))
+        assertTrue(cues.isEmpty())
+        val pin = JSONObject().put("kind", "wait").put("lat", 52).put("lng", 21)
+            .put("startedAt", 5).put("expiresAt", 20)
+        fun receive(relayTime: Long, signal: JSONObject? = null) {
+            ride.handle("public-pins", JSONObject().put("accountId", "acc").put("signal", signal).put("now", relayTime))
+        }
+        receive(5, pin)
+        receive(6, pin)
+        ride.submitPin(RiderPinIntent.Clear(PinSlot.SIGNAL))
+        assertEquals(listOf("groupRide.signal.sent"), cues)
+        receive(7)
+        receive(8)
+        assertEquals(listOf("groupRide.signal.sent", "groupRide.signal.cleared"), cues)
+        ride.submitPin(RiderPinIntent.Send(RiderSignalKind.WAIT, 52.0, 21.0))
+        receive(9, pin.put("startedAt", 9))
+        receive(20)
+        assertEquals(listOf("groupRide.signal.sent", "groupRide.signal.cleared", "groupRide.signal.sent"), cues)
+        assertTrue(pinUpdates.isEmpty())
     }
 
     @Test

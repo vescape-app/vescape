@@ -31,7 +31,7 @@ internal class GroupRideObserver(
     private val emit: (String, Map<String, Any?>) -> Unit,
     private val online: OnlineCapability,
     /**
-     * Plays a Ride Hazard approach cue.
+     * Plays a Rider Signal or Ride Hazard approach cue.
      *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onCue`
      */
@@ -115,6 +115,7 @@ internal class GroupRideObserver(
         },
         onPublicRideDemandChanged = onPublicRideDemandChanged,
         onPins = ::onPublicPins,
+        onCue = onCue,
     )
 
     private val heartbeatRunnable = object : Runnable {

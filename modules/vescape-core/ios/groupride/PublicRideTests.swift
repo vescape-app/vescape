@@ -13,6 +13,7 @@ final class PublicRideTests: XCTestCase {
   private var linkDemands: [Bool] = []
   private var ride: PublicRide!
   private var pinUpdates: [([SignalRider], [String: RideHazard])] = []
+  private var cues: [String] = []
 
   private let presence = RiderPresence(lat: 52, lng: 21)
 
@@ -24,6 +25,7 @@ final class PublicRideTests: XCTestCase {
     events = []
     sent = []
     pinUpdates = []
+    cues = []
     retry = nil
     ridersFlush = nil
     linkDemands = []
@@ -39,7 +41,8 @@ final class PublicRideTests: XCTestCase {
       scheduleMissedRetry: { [unowned self] in self.retry = $0 },
       scheduleRidersFlush: { [unowned self] in self.ridersFlush = $0 },
       onPublicRideDemandChanged: { [unowned self] in self.linkDemands.append(self.ride.needsLink) },
-      onPins: { [unowned self] signals, hazards, _ in self.pinUpdates.append((signals, hazards)) }
+      onPins: { [unowned self] signals, hazards, _ in self.pinUpdates.append((signals, hazards)) },
+      onCue: { [unowned self] in self.cues.append($0) }
     )
   }
 
@@ -283,6 +286,51 @@ final class PublicRideTests: XCTestCase {
     ride.setBoardConnected(true)
     ready()
     ride.handle(type: "public-status", json: ["on": true])
+  }
+
+  func testPeerSignalCuesOncePerRaiseAndOnlyExplicitClearSaysOK() {
+    goLive()
+    func receive(_ startedAt: Int64?, at relayTime: Int64, cleared: Int64? = nil) {
+      var frame: [String: Any] = ["accountId": "friend", "now": relayTime]
+      if let startedAt {
+        let signal: [String: Any] = ["kind": "serious", "lat": 52, "lng": 21, "startedAt": startedAt, "expiresAt": startedAt + 10]
+        frame["signal"] = signal
+      }
+      frame["clearedSignalStartedAt"] = cleared
+      ride.handle(type: "public-pins", json: frame)
+    }
+    receive(5, at: 6)
+    receive(5, at: 7)
+    ride.linkLost()
+    ready()
+    receive(5, at: 8)
+    receive(9, at: 9)
+    receive(nil, at: 10) // The relay withdrew the pin without a clear.
+    receive(11, at: 11)
+    receive(nil, at: 12, cleared: 11)
+    receive(nil, at: 13, cleared: 11)
+    receive(11, at: 21) // Expired signal.
+    XCTAssertEqual(cues, Array(repeating: "groupRide.signal.serious", count: 3) + ["groupRide.signal.ok"])
+  }
+
+  func testOwnSignalSoundsOnlyAfterTheRelayEchoesIt() {
+    goLive()
+    ride.submitPin(.send(slot: .signal, kind: "wait", lat: 52, lng: 21))
+    XCTAssertTrue(cues.isEmpty)
+    let pin: [String: Any] = ["kind": "wait", "lat": 52, "lng": 21, "startedAt": 5, "expiresAt": 20]
+    ride.handle(type: "public-pins", json: ["accountId": "acc", "signal": pin, "now": 5])
+    ride.handle(type: "public-pins", json: ["accountId": "acc", "signal": pin, "now": 6])
+    ride.submitPin(.clear(.signal))
+    XCTAssertEqual(cues, ["groupRide.signal.sent"])
+    ride.handle(type: "public-pins", json: ["accountId": "acc", "now": 7])
+    ride.handle(type: "public-pins", json: ["accountId": "acc", "now": 8])
+    XCTAssertEqual(cues, ["groupRide.signal.sent", "groupRide.signal.cleared"])
+    ride.submitPin(.send(slot: .signal, kind: "wait", lat: 52, lng: 21))
+    let next = pin.merging(["startedAt": 9]) { _, new in new }
+    ride.handle(type: "public-pins", json: ["accountId": "acc", "signal": next, "now": 9])
+    ride.handle(type: "public-pins", json: ["accountId": "acc", "now": 20])
+    XCTAssertEqual(cues, ["groupRide.signal.sent", "groupRide.signal.cleared", "groupRide.signal.sent"])
+    XCTAssertTrue(pinUpdates.isEmpty)
   }
 
   func testAPublicRiderSendsAndClearsASignalAndAHazard() {
