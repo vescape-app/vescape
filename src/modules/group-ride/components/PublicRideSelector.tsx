@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react'
-import { ActivityIndicator, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { BroadcastIcon, ClockIcon, PowerIcon, InfinityIcon, type Icon } from 'phosphor-react-native'
 import * as Haptics from 'expo-haptics'
 import Svg, { Defs, Path } from 'react-native-svg'
@@ -19,6 +19,7 @@ import type { PublicRideStatus } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { PUBLIC_RIDE_DURATIONS, type PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
 import {
@@ -182,6 +183,9 @@ function PreviewLabel({
   return <AnimatedText style={[styles.label, style]}>{title}</AnimatedText>
 }
 
+/** A quick server confirmation shows nothing; only a slow one swaps in the connecting state. */
+const CONNECTING_DELAY_MS = 1000
+
 /**
  * The public ride switch: off, a number of hours, or always. Presentation only: the owner decides
  * what a choice does. `live` lights the header while the rider is public.
@@ -192,6 +196,7 @@ export function PublicRideSelector({
   presetEnds = null,
   activation,
   live,
+  boardConnected,
   headerAction,
   overlayAction,
   disabled: controlDisabled = false,
@@ -204,6 +209,8 @@ export function PublicRideSelector({
   presetEnds?: readonly string[] | null
   activation: PublicRideStatus['activation']
   live: boolean
+  /** Whether a pick starts sharing at once (board) or waits for one, before native reports it. */
+  boardConnected: boolean
   headerAction?: ReactNode
   overlayAction?: ReactNode
   disabled?: boolean
@@ -215,7 +222,10 @@ export function PublicRideSelector({
   const sharing = activation === 'phone' || activation === 'board'
   const sharingColor = useResolvedColor(theme.palette.groupRide.color)
   const waitingColor = useResolvedColor(theme.status.warning.color)
-  const accent = sharing ? sharingColor : waitingColor
+  // Orange only while waiting for a board; a pick from off already shows where it will land.
+  const waiting = activation === 'waiting' || (activation === 'off' && !boardConnected)
+  const accent = waiting ? waitingColor : sharingColor
+  const connecting = useDelayedFlag(!controlDisabled && sharing && !live, CONNECTING_DELAY_MS)
   const offAccent = neutral.textPrimary
   const statusColor = value.mode === 'off' ? neutral.textSecondary : accent
   const [width, setWidth] = useState<number>(PUBLIC_RIDE_ARC.width)
@@ -455,6 +465,7 @@ export function PublicRideSelector({
                 color={statusColor}
                 wave={wave}
                 pulsing={live}
+                connecting={connecting}
               />
             </View>
             <Animated.View
@@ -535,17 +546,12 @@ export function PublicRideSelector({
             description
             running={running}
             presetEnds={presetEnds}
+            notice={connecting ? 'Connecting to server…' : null}
             dragging={dragging}
             accent={accent}
             muted={neutral.textPrimary}
           />
         </View>
-        {!disabled && sharing && !live ? (
-          <View style={styles.relayHint}>
-            <ActivityIndicator size="small" color={accent} />
-            <Text style={{ color: neutral.textSecondary }}>Waiting for the server to confirm…</Text>
-          </View>
-        ) : null}
       </View>
       {overlayAction ? (
         <View style={styles.overlay}>
@@ -585,6 +591,5 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   live: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   liveDot: { width: 6, height: 6, borderRadius: 3 },
-  relayHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   status: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
 })

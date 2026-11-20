@@ -7,6 +7,7 @@ import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
+import { useBleStore } from '@/modules/board/store/bleStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 import { useTimeFormat } from '@/hooks/useTimeFormat'
@@ -51,6 +52,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
   const connection = useGroupRideStore((s) => s.connection)
   const status = useGroupRideStore((s) => s.publicRide)
+  const boardConnected = useBleStore((s) => s.status === 'connected')
   const setPublicRide = useGroupRideStore((s) => s.setPublicRide)
   const setManualSharing = useGroupRideStore((s) => s.setManualPublicRideSharing)
   const signedIn = useDeviceAccountReady()
@@ -138,6 +140,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         presetEnds={presetEnds}
         activation={status.activation}
         live={status.live}
+        boardConnected={boardConnected}
         headerAction={settings}
         overlayAction={setupAction}
         disabled={!ready}

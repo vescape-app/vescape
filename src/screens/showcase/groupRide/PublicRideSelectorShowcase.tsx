@@ -62,6 +62,7 @@ export function PublicRideSelectorShowcase() {
         value={value}
         activation={activation}
         live={live}
+        boardConnected={boardConnected}
         running={
           running && value.mode === 'hours'
             ? {

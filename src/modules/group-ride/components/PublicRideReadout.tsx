@@ -50,6 +50,7 @@ export function PublicRideReadout({
   description = false,
   running = null,
   presetEnds = null,
+  notice = null,
   dragging,
   accent,
   muted,
@@ -59,6 +60,8 @@ export function PublicRideReadout({
   running?: PublicRideRunningTimer | null
   /** When each duration preset would end if picked now, for the description while dragging. */
   presetEnds?: readonly string[] | null
+  /** Replaces the description while the dial is at rest, e.g. `Connecting to server…`. */
+  notice?: string | null
   dragging?: SharedValue<boolean>
   accent: string
   muted: string
@@ -83,6 +86,7 @@ export function PublicRideReadout({
           ...PUBLIC_RIDE_DURATIONS.map((hours) => String(hours >= 48 ? hours / 24 : hours)),
           ...(end ? [end] : []),
           ...(presetEnds ?? []),
+          ...(notice ? [notice] : []),
         ]
       : [...HOUR_TITLES, 'Timer', ...(left ? [left] : [])]
     const measure = (text: string) =>
@@ -92,7 +96,7 @@ export function PublicRideReadout({
       widths: Object.fromEntries(strings.map((text) => [text, measure(text)])),
       baseline: height / 2 - (ascent + descent) / 2,
     }
-  }, [font, description, height, left, end, presetEnds])
+  }, [font, description, height, left, end, presetEnds, notice])
   const parts = useDerivedValue<ReadoutParts>(() => {
     const state = readout.get()
     // Released on a new stop, the dial moves before native reports the new timer: keep the
@@ -101,6 +105,7 @@ export function PublicRideReadout({
     if (!description) {
       return { base: atRest && left ? left : state.title, value: '', unit: '' }
     }
+    if (notice && !dragging?.get()) return { base: notice, value: '', unit: '' }
     if (!state.timed) return { base: state.description, value: '', unit: '' }
     if (atRest && end) return { base: END_PREFIX, value: end, unit: '' }
     const presetEnd = presetEnds?.[state.stop - 1]

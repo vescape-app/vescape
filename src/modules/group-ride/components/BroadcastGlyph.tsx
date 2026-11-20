@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { StyleSheet, View, type ColorValue } from 'react-native'
+import { ActivityIndicator, StyleSheet, View, type ColorValue } from 'react-native'
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -25,34 +25,42 @@ const BROADCAST_PARTS = [
 ] as const
 const STROKE = { regular: 16, bold: 24 } as const
 
-/** The broadcast glyph lighting from the centre out (dot, inner arcs, outer arcs) on `wave`. */
+/**
+ * The broadcast glyph lighting from the centre out (dot, inner arcs, outer arcs) on `wave`.
+ * `connecting` swaps it for a spinner of the same size while sharing waits on the server.
+ */
 export function BroadcastGlyph({
   size,
   color,
   wave,
   pulsing,
+  connecting = false,
   weight = 'regular',
 }: {
   size: number
   color: ColorValue
   wave: SharedValue<number>
   pulsing: boolean
+  connecting?: boolean
   weight?: keyof typeof STROKE
 }) {
   return (
     <View style={{ width: size, height: size }}>
-      {BROADCAST_PARTS.map((d, index) => (
-        <BroadcastPart
-          key={d}
-          d={d}
-          index={index}
-          size={size}
-          color={color}
-          wave={wave}
-          pulsing={pulsing}
-          strokeWidth={STROKE[weight]}
-        />
-      ))}
+      {connecting ? <ActivityIndicator style={StyleSheet.absoluteFill} color={color} /> : null}
+      {connecting
+        ? null
+        : BROADCAST_PARTS.map((d, index) => (
+            <BroadcastPart
+              key={d}
+              d={d}
+              index={index}
+              size={size}
+              color={color}
+              wave={wave}
+              pulsing={pulsing}
+              strokeWidth={STROKE[weight]}
+            />
+          ))}
     </View>
   )
 }
