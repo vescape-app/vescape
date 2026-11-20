@@ -100,6 +100,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "VescapeCore"
 private const val SCAN_RETRY_LIMIT = 3
@@ -144,7 +145,8 @@ class VescapeCoreModule : Module() {
   private var requestedDebugRecordingEnabled = false
   @Volatile
   private var frontendActive = true
-  private val observedEvents = mutableSetOf<String>()
+  // Mutated on the JS thread, read from main and background emitters.
+  private val observedEvents: MutableSet<String> = ConcurrentHashMap.newKeySet()
   private val mainHandler = Handler(Looper.getMainLooper())
   private val rideExportCancelled = java.util.concurrent.atomic.AtomicBoolean(false)
   private var activeProbe: ActiveBoardProbe? = null
@@ -172,21 +174,12 @@ class VescapeCoreModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("VescapeCore")
 
-    CoreForegroundService.emitEvent = { name, body ->
-      // Durable-data invalidation must bypass the live-telemetry subscription gate.
-      // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendAppDataChanged`
-      if (name == "onAppDataChanged") {
-        mainHandler.post { sendEvent(name, body) }
-      } else if (name == "onLiveState" && shouldEmitToFrontend("onLiveState")) {
-        mainHandler.post {
-          if (shouldEmitToFrontend("onLiveState")) sendEvent("onLiveState", liveStateWithScan(body))
-        }
-      } else if (shouldEmitToFrontend(name)) {
-        mainHandler.post {
-          if (shouldEmitToFrontend(name)) sendEvent(name, body)
-        }
-      }
-    }
+    CoreForegroundService.emitEvent = eventListener
+
+    // Built at send time, like iOS `attachToCoordinator`: a payload built at emit time and queued
+    // behind the main looper could replay a phase that a `getLiveState` read already superseded.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `attachToCoordinator`
+    CoreForegroundService.liveStateChanged = liveStateListener
 
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
@@ -445,9 +438,7 @@ class VescapeCoreModule : Module() {
     OnCreate {
       val storageOutageEvents = StorageOutageEventBridge(
         shouldEmit = { shouldEmitToFrontend("onLiveState") },
-        emit = {
-          CoreForegroundService.emitEvent?.invoke("onLiveState", CoreForegroundService.storageUnavailableLiveState())
-        },
+        emit = { postLiveState(CoreForegroundService::storageUnavailableLiveState) },
       )
       RecordingStorageFailure.observeOutage(storageOutageEvents::onOutage)
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
@@ -516,8 +507,12 @@ class VescapeCoreModule : Module() {
       // that reloaded or crashed with the sensor screen open would leave the accessory measuring
       // with nobody watching, and native's own renewals would keep the lease alive forever.
       AccessorySessionManager.releasePreviews()
-      if (CoreForegroundService.emitEvent != null) {
+      // A reloaded module may already own the hooks; only clear our own.
+      if (CoreForegroundService.emitEvent === eventListener) {
         CoreForegroundService.emitEvent = null
+      }
+      if (CoreForegroundService.liveStateChanged === liveStateListener) {
+        CoreForegroundService.liveStateChanged = null
       }
     }
 
@@ -1566,7 +1561,9 @@ class VescapeCoreModule : Module() {
         key == "voiceLevel" ||
         key == "weatherRainAlertLevel" ||
         key == "weatherWindAlertLevel" ||
-        key == "temperatureUnit"
+        key == "temperatureUnit" ||
+        key == "autoCloseEnabled" ||
+        key == "autoCloseDelayMinutes"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
@@ -1840,6 +1837,44 @@ class VescapeCoreModule : Module() {
 
   private fun stopObserving(name: String) {
     observedEvents.remove(name)
+  }
+
+  private val eventListener: (String, Map<String, Any?>) -> Unit = { name, body ->
+    // Durable-data invalidation must bypass the live-telemetry subscription gate.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendAppDataChanged`
+    if (name == "onAppDataChanged") {
+      mainHandler.post { sendEvent(name, body) }
+    } else if (shouldEmitToFrontend(name)) {
+      mainHandler.post {
+        if (shouldEmitToFrontend(name)) sendEvent(name, body)
+      }
+    }
+  }
+
+  private val liveStatePostPending = AtomicBoolean(false)
+
+  /**
+   * Coalesces a burst of state changes into one post; the payload is built when it runs, so the
+   * single event carries the newest state. A change after the build re-arms another post.
+   */
+  private val liveStateListener: () -> Unit = {
+    if (shouldEmitToFrontend("onLiveState") && liveStatePostPending.compareAndSet(false, true)) {
+      mainHandler.post {
+        liveStatePostPending.set(false)
+        val ctx = appContext.reactContext?.applicationContext ?: return@post
+        if (shouldEmitToFrontend("onLiveState")) {
+          val state = CoreForegroundService.currentLiveState(ctx, includeRecent = false)
+          sendEvent("onLiveState", liveStateWithScan(state))
+        }
+      }
+    }
+  }
+
+  private fun postLiveState(build: () -> Map<String, Any?>) {
+    if (!shouldEmitToFrontend("onLiveState")) return
+    mainHandler.post {
+      if (shouldEmitToFrontend("onLiveState")) sendEvent("onLiveState", liveStateWithScan(build()))
+    }
   }
 
   private fun liveStateWithScan(state: Map<String, Any?>): Map<String, Any?> {

@@ -2258,7 +2258,9 @@ public class VescapeCoreModule: Module {
 
   /// Wire this module's JS-facing sinks into the shared coordinator. Runs on module create — including
   /// the fresh module built after a JS reload — so events flow and `onLiveState` recomposes against
-  /// the still-running session. Mirrors Android setting `CoreForegroundService.emitEvent`.
+  /// the still-running session. Mirrors Android setting `CoreForegroundService.emitEvent`. The
+  /// `onLiveState` payload is built at send time on both platforms, never queued pre-built.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `liveStateChanged`
   private func attachToCoordinator() {
     coordinator.emit = { [weak self] name, body in
       guard let self, self.shouldEmitToFrontend(name) else { return }

@@ -15,13 +15,17 @@ import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import expo.modules.vescapecore.recording.RecordingCoordinator
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.recording.RecordingStorageFailureKind
 import expo.modules.vescapecore.recording.recordingFailureState
 import expo.modules.vescapecore.liveStateWithStorageFailure
 import expo.modules.vescapecore.protocol.LocationSnapshot
+import expo.modules.vescapecore.location.GpsPowerMode
+import expo.modules.vescapecore.runtime.LinkIntegrity
 import expo.modules.vescapecore.telemetry.AccessoryPersistence
 import expo.modules.vescapecore.watch.WatchSettingsPusher
 import expo.modules.vescapecore.watch.toWatchSettings
@@ -105,7 +109,13 @@ internal data class PendingStop(val onSuccess: () -> Unit)
 @SuppressLint("MissingPermission")
 class CoreForegroundService : Service() {
     companion object {
-        var emitEvent: ((String, Map<String, Any?>) -> Unit)? = null
+        @Volatile var emitEvent: ((String, Map<String, Any?>) -> Unit)? = null
+
+        /**
+         * Live state changed. The bridge builds the `onLiveState` payload when it sends, so a queued
+         * event can never carry a phase older than a `getLiveState` read that overtook it.
+         */
+        @Volatile var liveStateChanged: (() -> Unit)? = null
 
         private var instance: CoreForegroundService? = null
         internal var pendingStart: PendingStart? = null
@@ -191,7 +201,12 @@ class CoreForegroundService : Service() {
                 action = ACTION_STOP_SESSION
             }
             context.startService(intent)
-            service.controller.consumePendingStop()
+            // Teardown belongs on main, the controller's thread; JS and coroutine callers are not.
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                service.controller.consumePendingStop()
+            } else {
+                Handler(Looper.getMainLooper()).post { instance?.controller?.consumePendingStop() }
+            }
         }
 
         fun exitApp(context: Context) {
@@ -539,9 +554,10 @@ class CoreForegroundService : Service() {
 
         fun alertSoundPresets(): List<Map<String, Any>> = alertSoundMaps()
 
-        fun currentLiveState(context: Context): Map<String, Any?> {
+        /** Snapshots include the retained history windows; `onLiveState` events do not. */
+        fun currentLiveState(context: Context, includeRecent: Boolean = true): Map<String, Any?> {
             RecordingStorageFailure.initialize(context.applicationContext)
-            return instance?.controller?.liveStateMap(includeRecent = true)
+            return instance?.controller?.liveStateMap(includeRecent)
                 ?: idleState(AppDataRepository.get(context.applicationContext))
         }
 
@@ -579,6 +595,7 @@ class CoreForegroundService : Service() {
                     "recentTelemetry" to emptyList<Map<String, Any?>>(),
                     "error" to null,
                     "autoConnect" to (settings?.autoConnect ?: false),
+                    "linkIntegrity" to LinkIntegrity.Unknown.wireValue,
                     "remoteTilt" to null,
                 ),
                 "gps" to mapOf(
@@ -587,6 +604,7 @@ class CoreForegroundService : Service() {
                     // @platform-diff Android defers GPS arming to the foreground service; iOS has
                     // no serviceless window, its monitor reports `starting` itself.
                     "phase" to if (pendingGpsStart) "starting" else "idle",
+                    "mode" to GpsPowerMode.Off.slug,
                     "latestFix" to null,
                     "latestApproximateFix" to null,
                     "latestPreciseFix" to null,

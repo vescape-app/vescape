@@ -3234,7 +3234,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     }
 
     private fun emitState() {
-        emitEvent("onLiveState", liveStateMap())
+        CoreForegroundService.liveStateChanged?.invoke()
     }
 
     private fun emitEvent(name: String, body: Map<String, Any?>) {
@@ -3803,10 +3803,18 @@ internal class BoardSessionController(private val service: CoreForegroundService
             )
         }
         boardMoveStrengthPercent = settings.boardMoveStrengthPercent
+        val autoCloseDelayChanged = autoCloseDelayMinutes != settings.autoCloseDelayMinutes
         autoCloseEnabled = settings.autoCloseEnabled
         autoCloseDelayMinutes = settings.autoCloseDelayMinutes
         // May run off-main (appDataScope); the countdown state lives on the main-handler scheduler.
-        scheduler.post { rescheduleAutoClose() }
+        scheduler.post {
+            // An armed countdown keeps its old delay otherwise; a delay edit restarts it.
+            if (autoCloseDelayChanged) {
+                autoCloseHandle?.cancel()
+                autoCloseHandle = null
+            }
+            rescheduleAutoClose()
+        }
     }
 
     /** Poll spacing honoring an active Idle Pause: never faster than the configured rate. */
