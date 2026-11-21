@@ -8,10 +8,6 @@ import java.nio.ByteOrder
 import kotlin.math.cos
 
 /**
- * Data Layer path the phone pushes the route polyline on. Must match the phone-side
- * `WatchRoutePusher`. Unlike the Watch Frame this arrives once per route change and then persists,
- * so a long polyline is never re-sent per tick.
- *
  * @parity /modules/vescape-core/ios/watch/WatchRoute.swift `watchRouteChannel`
  */
 const val ROUTE_PATH = "/route"
@@ -23,10 +19,6 @@ private const val MICRO_DEGREES = 1_000_000.0
 private const val METERS_PER_DEGREE_LAT = 110_574.0
 private const val METERS_PER_DEGREE_LON_EQUATOR = 111_320.0
 
-/**
- * A route in the wrist's drawing frame: points as metres east/north of the route origin, which is
- * the same frame the Watch Frame's rider lanes use, so placing the rider is a straight subtraction.
- */
 /** @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WatchRoute` */
 data class WatchRoute(val points: List<RoutePoint>, val routeId: Long? = null)
 
@@ -34,8 +26,6 @@ data class WatchRoute(val points: List<RoutePoint>, val routeId: Long? = null)
 data class RoutePoint(val eastM: Float, val northM: Float)
 
 /**
- * Latest route held on the wrist. Null means the phone has no active route.
- *
  * @parity /watch/watchos/PhoneLink.swift `route`
  */
 object RouteState {
@@ -48,10 +38,6 @@ object RouteState {
 }
 
 /**
- * Pure bytes -> [WatchRoute] decoder: version byte, uint16 count, float64 origin, then int32
- * micro-degree deltas from the previous point. Returns null on an unknown version or a short buffer,
- * so a newer phone format degrades to "no route" instead of a garbled line.
- *
  * @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WatchRouteCodec`
  */
 object WatchRouteDecoder {
@@ -63,7 +49,7 @@ object WatchRouteDecoder {
         if (count == 0) return null
         if (bytes.size < WATCH_ROUTE_HEADER_BYTES + (count - 1) * 8) return null
         val originLat = buf.double
-        buf.double // origin longitude: points are relative, only the origin's latitude scales them
+        buf.double
         val lonScale = METERS_PER_DEGREE_LON_EQUATOR * cos(Math.toRadians(originLat))
 
         val points = ArrayList<RoutePoint>(count)

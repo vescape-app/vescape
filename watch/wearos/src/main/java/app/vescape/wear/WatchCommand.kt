@@ -11,9 +11,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Wrist -> phone command channel (ADR-0033). The only thing the Mirror sends back: rider intent,
- * never state. Mirrors the phone-side peer by convention, same as the frame and settings paths.
- *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchCommand.kt
  * @parity /modules/vescape-core/ios/watch/WatchCommand.swift
  */
@@ -26,98 +23,41 @@ private const val COMMAND_KIND_TILT_LOCK: Byte = 4
 private const val COMMAND_KIND_TILT_CANCEL: Byte = 5
 private const val COMMAND_KIND_DISMISS_NOTICE: Byte = 6
 
-/**
- * How often the Mirror re-states its wake level while it is on screen. The phone stops pushing
- * after `WATCH_MIRROR_AWAKE_TIMEOUT_MS` (45 s) without a tick, so this is a third of its dead-man:
- * the phone stops streaming into a wrist that died, dropped out of range, or lost its stop message.
- */
 const val WAKE_LEVEL_HEARTBEAT_MS = 15_000L
 
-/**
- * How awake the Mirror is, and therefore how fast frames are worth receiving. Without this the
- * phone pushes at full cadence into a stopped activity for as long as its service lives, purely
- * because the Mirror is *installed* — the capability it gates on says nothing about running.
- *
- * Wire values — append, never renumber.
- */
 enum class WakeLevel(val wire: Byte) {
     ASLEEP(0),
     ACTIVE(1),
     AMBIENT(2),
 }
 
-/**
- * Tick spacing while a Move button is held. The phone stops the board after
- * `WATCH_MOVE_DEADMAN_MS` (900 ms) without a tick, so this is a third of its dead-man: a release
- * lost to a Bluetooth drop costs the rider under a second of roll, not an unbounded one.
- */
 const val MOVE_REPEAT_MS = 300L
 
-/** `[kind, direction]`, direction `-1` back / `0` stop / `1` forward. */
 fun encodeMoveCommand(direction: Int): ByteArray =
     byteArrayOf(COMMAND_KIND_MOVE, direction.coerceIn(-1, 1).toByte())
 
-/** `[kind, level]`, level per [WakeLevel.wire]. */
 fun encodeWakeLevelCommand(level: WakeLevel): ByteArray =
     byteArrayOf(COMMAND_KIND_MIRROR_AWAKE, level.wire)
 
-/**
- * Which of the board's two light switches an edit names.
- *
- * Deliberately *not* the wire mask Refloat's lights command uses (bit0 = LEDs, bit1 = headlights):
- * there both bits are values, here bit1 is a selector and bit0 is the value. Reusing the same bit
- * order would make `0b10` mean "headlights on" in one place and "headlights off" in the other.
- *
- * Wire values — append, never renumber.
- */
 enum class LightSwitch(val selector: Int) {
     LEDS(0),
     HEADLIGHT(1),
 }
 
-/**
- * `[kind, value]` where value is `bit1 << 1 | bit0`: **bit0 = the target on/off state, bit1 = which
- * switch** ([LightSwitch.selector]).
- *
- * The wrist sends the *edit*, never both switches. Asserting both would let a wrist holding a
- * slightly stale `/board` push revert a switch the phone flipped a moment earlier, and it would
- * duplicate the compose step the phone already owns.
- */
 fun encodeLightsCommand(switch: LightSwitch, on: Boolean): ByteArray =
     byteArrayOf(COMMAND_KIND_LIGHTS, ((switch.selector shl 1) or if (on) 1 else 0).toByte())
 
-/**
- * `[kind, value]`: lock Remote Tilt at [value] (0..255, 128 neutral) until the next lock or a cancel.
- * Absolute, never a delta — a dropped tick then costs one step of resolution, not a drifted angle.
- */
 fun encodeTiltLockCommand(value: Int): ByteArray =
     byteArrayOf(COMMAND_KIND_TILT_LOCK, value.coerceIn(0, 255).toByte())
 
-/** `[kind, 0]`: ease whatever tilt is commanded back to neutral — the phone pad's cancel. */
 fun encodeTiltCancelCommand(): ByteArray = byteArrayOf(COMMAND_KIND_TILT_CANCEL, 0)
 
-/**
- * `[kind, id, rev]`: dismiss the Ride Notice holding [id] on the phone, but only at [rev] — the
- * revision the rider saw. A notice the phone re-posted since is not hidden unseen.
- */
 fun encodeDismissNoticeCommand(id: Int, rev: Int): ByteArray =
     byteArrayOf(COMMAND_KIND_DISMISS_NOTICE, id.coerceIn(0, 255).toByte(), rev.coerceIn(0, 255).toByte())
 
 /**
- * Fire-and-forget send of the rider's *current* intent to every connected node, off the UI thread.
- *
- * Latest-wins, not a queue. Each send blocks on the Data Layer, so on a degraded link ticks would
- * pile up behind one another — and a backlog is dangerous here, not merely wasteful: the release
- * would sit behind the holds that preceded it, and a link that recovers would replay stale holds,
- * re-arming the phone's dead-man and rolling a board the rider let go of. Only the newest direction
- * is ever in flight; a release therefore overtakes every hold that has not left the wrist yet.
- *
- * A single thread keeps the sends ordered against each other. Failures are logged, not surfaced —
- * the next tick is already coming, and Moves that stop arriving stop the board by design.
- *
  * @parity /watch/watchos/PhoneLink.swift `sendMove`
  * @platform-diff `WCSession.sendMessageData` is already non-blocking and latest-wins, so the
- *   watchOS wrist needs no coalescing slot to keep a release from queueing behind stale holds.
  */
 class CommandSender(context: Context) {
     private val appContext = context.applicationContext
@@ -125,16 +65,13 @@ class CommandSender(context: Context) {
     private val messageClient by lazy { Wearable.getMessageClient(appContext) }
     private val nodeClient by lazy { Wearable.getNodeClient(appContext) }
 
-    /** The direction still to be sent, and whether a worker is already on its way to read it. */
     private val pending = AtomicInteger(0)
     private val scheduled = AtomicBoolean(false)
 
-    /** The newest tilt command still to be sent: a lock or a cancel, whichever came last. */
     private val pendingTilt = AtomicReference<ByteArray?>(null)
 
     fun sendMove(direction: Int) {
         pending.set(direction.coerceIn(-1, 1))
-        // A worker that has not yet read `pending` will pick this value up, so it needs no task.
         if (!scheduled.compareAndSet(false, true)) return
         try {
             sends.execute {
@@ -142,7 +79,6 @@ class CommandSender(context: Context) {
                 send(pending.get())
             }
         } catch (rejected: RejectedExecutionException) {
-            // The wrist app is going away; the phone's dead-man is what stops the board now.
             scheduled.set(false)
             Log.w("VescapeWear", "Move command dropped after shutdown", rejected)
         }
@@ -160,40 +96,23 @@ class CommandSender(context: Context) {
         }
     }
 
-    /**
-     * Tell the phone how awake the Mirror is. Not routed through the latest-wins [pending] slot:
-     * a wake level is not a Move, and coalescing the two would let a stale hold ride out under a
-     * wake tick. Ordered behind whatever is already queued, which is all this needs.
-     */
     fun sendWakeLevel(level: WakeLevel) {
         try {
             sends.execute { sendPayload(encodeWakeLevelCommand(level)) }
         } catch (rejected: RejectedExecutionException) {
-            // The wrist app is going away; the phone's wake-level dead-man stops the push anyway.
             Log.w("VescapeWear", "Wake level dropped after shutdown", rejected)
         }
     }
 
-    /**
-     * Flip one board light switch. Like [sendWakeLevel] and unlike [sendMove], this is queued in
-     * order rather than routed through the latest-wins [pending] slot: that slot exists so a Move
-     * release can overtake stale holds, and coalescing a light edit into it would drop one of two
-     * taps the rider made on purpose.
-     */
     fun sendLights(switch: LightSwitch, on: Boolean) {
         try {
             sends.execute { sendPayload(encodeLightsCommand(switch, on)) }
         } catch (rejected: RejectedExecutionException) {
-            // The wrist app is going away; the board keeps whatever the last accepted write set.
             Log.w("VescapeWear", "Lights command dropped after shutdown", rejected)
         }
     }
 
     /**
-     * Dismiss Ride Notice [id] at [rev] on the phone. Queued in order like [sendLights]. No retry: a lost
-     * command degrades to "hidden only on the wrist" — the wrist's local hide still holds, and the
-     * phone keeps showing the notice until the rider dismisses it there.
-     *
      * @parity /watch/watchos/PhoneLink.swift `hideRideNotice`
      */
     fun sendDismissNotice(id: Int, rev: Int) {
@@ -204,37 +123,23 @@ class CommandSender(context: Context) {
         }
     }
 
-    /**
-     * Lock Remote Tilt at [value]. Latest-wins like [sendMove], in a slot of its own: a stick drag
-     * produces a lock every tick, and on a degraded link only the newest angle is worth sending.
-     */
     fun sendTiltLock(value: Int) {
         replayTiltEcho?.let { echo -> return echo(value.coerceIn(0, 255)) }
         sendTilt(encodeTiltLockCommand(value))
     }
 
-    /**
-     * Ease tilt back to neutral. Shares the lock slot on purpose, so a reset overtakes every stale
-     * lock still waiting on the wrist — the same reason a Move release overtakes stale holds.
-     */
     fun sendTiltCancel() {
         replayTiltEcho?.let { echo -> return echo(null) }
         sendTilt(encodeTiltCancelCommand())
     }
 
-    /**
-     * Emulator fixture replay only ([DevGate]): there is no phone to hold a lock, so tilt commands
-     * go to the replayer, which echoes them back in its frames. Null everywhere else.
-     */
     var replayTiltEcho: ((Int?) -> Unit)? = null
 
     private fun sendTilt(payload: ByteArray) {
-        // A queued task already on its way reads the slot when it runs, so it needs no second task.
         if (pendingTilt.getAndSet(payload) != null) return
         try {
             sends.execute { pendingTilt.getAndSet(null)?.let(::sendPayload) }
         } catch (rejected: RejectedExecutionException) {
-            // The wrist app is going away; the phone keeps whatever tilt the last accepted lock set.
             pendingTilt.set(null)
             Log.w("VescapeWear", "Tilt command dropped after shutdown", rejected)
         }

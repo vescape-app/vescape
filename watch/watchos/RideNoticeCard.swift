@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Full-screen Ride Notice: severity ring, title and details. A tap anywhere hides it on the wrist
-/// and returns to the gauges. No actions: the phone owns every response to a notice.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/RideNoticeCard.kt `RideNoticeCard`
 struct RideNoticeCard: View {
   let notice: RideNoticeFrameItem

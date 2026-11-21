@@ -1,14 +1,12 @@
 import WatchKit
 import WatchConnectivity
 
-/// Register the receiver before a scene appears. Connectivity launches can be entirely background.
 final class WatchAppDelegate: NSObject, WKApplicationDelegate {
   private var tasks: [WKWatchConnectivityRefreshBackgroundTask] = []
   private var pendingObservation: NSKeyValueObservation?
 
   func applicationDidFinishLaunching() {
 #if DEBUG && targetEnvironment(simulator)
-    // Fixtures own their inputs; live phone context must not overwrite them.
     if BatteryComplicationGallery.seedRequestedFixture() || BatteryComplicationGallery.requested != nil
       || FrameReplayer.requestedFixture != nil { return }
 #endif

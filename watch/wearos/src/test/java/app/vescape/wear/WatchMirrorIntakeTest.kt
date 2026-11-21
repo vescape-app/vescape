@@ -64,10 +64,6 @@ class WatchMirrorIntakeTest {
         assertEquals(MirrorStatus.LIVE, intake.mirror.status)
     }
 
-    /**
-     * Regression: transports deliver frames in bursts. A window sized by the last gap (~0 inside a
-     * burst) dropped to the floor and blinked the mirror offline in every pause between bursts.
-     */
     @Test
     fun `an outage does not widen the window after the reconnect`() {
         val intake = WatchMirrorIntake()
@@ -79,7 +75,6 @@ class WatchMirrorIntakeTest {
         at += 60_000
         intake.frame(at = at)
         intake.frame(at = at + 250)
-        // The next drop is caught at the cadence's window, not the 30 s cap.
         intake.refresh(at + 250 + 751)
         assertEquals(MirrorStatus.DISCONNECTED, intake.mirror.status)
     }

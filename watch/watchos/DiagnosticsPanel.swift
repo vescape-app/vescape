@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Frame counters, counterpart state and a bounded event log for troubleshooting from the wrist.
-/// Event times use wall clock so a rider can match them to phone logs.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/DiagnosticsScreen.kt `DiagnosticsScreen`
 struct DiagnosticsPanel: View {
   @ObservedObject var link: PhoneLink
@@ -20,17 +17,12 @@ struct DiagnosticsPanel: View {
           row("battery age", link.lastBattery?.ageLabel(now: context.date) ?? "<1h / unknown")
           row("frames", "\(link.diagnostics.framesDecoded)")
           if link.diagnostics.decodeFailures > 0 {
-            // Repeated failures can indicate incompatible phone/watch frame layouts.
             row("decode fails", "\(link.diagnostics.decodeFailures)", value: Palette.warning)
           }
-          // The mirrored inputs, named here because the pages that consume them draw a *result*.
-          // "Nav arrow off" and "no route pushed" look identical on the nav page; they do not here.
           row("nav arrow", link.settings.navArrowEnabled ? "on" : "off")
           row("move", link.settings.boardMoveStrengthPercent.map { "\($0)%" } ?? WatchGauge.dash)
           row("route", link.route.map { "\($0.points.count) pts" } ?? WatchGauge.dash)
           row("weather", link.weather == nil ? WatchGauge.dash : (link.freshWeather() == nil ? "stale" : "fresh"))
-          // The Lights page draws its gates as dimming, which cannot be told apart from "off".
-          // These three lines are the difference, and they are how /board is verified end to end.
           row("lights", lightLabel(link.board.lightsEnabled))
           row("headlight", lightLabel(link.board.headlightsEnabled))
           row("lights ctrl", link.board.lightsControllable ? "yes" : "no")
@@ -50,13 +42,10 @@ struct DiagnosticsPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Rim.innerInset)
       }
-      // A scroll landing mid-transition belongs to the page gesture, not to this list.
       .disabled(!interactionEnabled)
     }
   }
 
-  /// A dash means the board has not reported a value.
-  ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/DiagnosticsScreen.kt `boardLightLabel`
   private func lightLabel(_ value: Bool?) -> String {
     switch value {

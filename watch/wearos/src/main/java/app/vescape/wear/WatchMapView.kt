@@ -17,14 +17,8 @@ import expo.modules.vescapecore.watch.WatchMapPosition
 import expo.modules.vescapecore.watch.WatchTrailPoint
 
 /**
- * The heading-up map's position, zoom and course as the wrist currently draws them, eased towards the latest
- * target. Route and trail share position motion; Group Ride shares zoom and course, so a Rider on the route
- * stays on it mid-zoom and mid-turn. Read [spanM] and [courseDeg] in a draw scope: an easing then
- * repaints the map layers without recomposing anything.
- *
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `WatchMapView`
  * @platform-diff Compose `Animatable`s here. watchOS interpolates on a `TimelineView` instead,
- *   because a `Canvas` cannot read a shape's `animatableData`.
  */
 @Stable
 internal class WatchMapView(spanM: Float, courseDeg: Float) {
@@ -33,7 +27,6 @@ internal class WatchMapView(spanM: Float, courseDeg: Float) {
     var motionTimeMs by mutableStateOf(0L)
     val positionOffset: WatchTrailPoint get() = motion.offsetAt(motionTimeMs)
 
-    // Retarget in the same composition as the new geometry, before either layer can draw it.
     fun moveTo(position: WatchMapPosition?, nowMs: Long, animate: Boolean) {
         if (position != motion.position || !animate) {
             motion = motion.retarget(position, nowMs, animate)
@@ -44,10 +37,8 @@ internal class WatchMapView(spanM: Float, courseDeg: Float) {
     private val span = Animatable(spanM)
     private val course = Animatable(courseDeg)
 
-    /** Metres across the face, already clamped. */
     val spanM: Float get() = span.value
 
-    /** Unwrapped, so a heading crossing north turns the short way; [relativeBearingDeg] wraps it. */
     val courseDeg: Float get() = course.value
 
     suspend fun zoomTo(spanM: Float, animate: Boolean) {
@@ -61,10 +52,6 @@ internal class WatchMapView(spanM: Float, courseDeg: Float) {
 }
 
 /**
- * The frame layout's one [WatchMapView], eased towards [targetSpanM] (already clamped) and
- * [targetCourseDeg]. A null course holds the last one (a stop, an approximate fix). Without
- * [animate] it snaps, so a map nobody draws never runs the frame clock.
- *
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `retarget`
  */
 @Composable
@@ -82,8 +69,6 @@ internal fun rememberWatchMapView(targetSpanM: Float, targetCourseDeg: Float?, a
 }
 
 /**
- * Shortest turn between two compass headings, in degrees, signed.
- *
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `shortestAngleDelta`
  */
 internal fun shortestAngleDelta(fromDeg: Float, toDeg: Float): Float =
@@ -95,8 +80,7 @@ private const val MAP_ZOOM_EASE_MS = 350
 /** @parity /modules/vescape-core/ios/watch/WatchMapView.swift `turnEase` */
 private const val MAP_TURN_EASE_MS = 300
 
-/** Remaining camera translation relative to the latest GPS fix. One clock for both paths.
- * The anchor is absolute: rerouting, history trimming and skipped frames cannot change its origin.
+/**
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `WatchMapMotion`
  */
 internal data class WatchMapMotion(
@@ -123,9 +107,7 @@ internal data class WatchMapMotion(
     }
 }
 
-/** Grow the newest segment from the pinned rider while history moves with the camera.
- * Trim at most the pending camera distance from the newest suffix, then pin the tip to the ring.
- * Direction alone cannot identify new points: older history may be ahead after a U-turn.
+/**
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `movingTrail`
  */
 internal fun movingTrail(points: List<WatchTrailPoint>, offset: WatchTrailPoint): List<WatchTrailPoint> {
@@ -134,7 +116,6 @@ internal fun movingTrail(points: List<WatchTrailPoint>, offset: WatchTrailPoint)
     if (kotlin.math.hypot(tip.eastM, tip.northM) > 0.01) return shifted
     var end = points.lastIndex
     var remaining = kotlin.math.hypot(offset.eastM, offset.northM)
-    // Always retain the oldest point. A short/sampled history must not vanish during motion.
     while (end > 1) {
         val segment = kotlin.math.hypot(
             points[end].eastM - points[end - 1].eastM,

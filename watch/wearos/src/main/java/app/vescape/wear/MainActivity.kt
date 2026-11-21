@@ -27,14 +27,8 @@ import expo.modules.vescapecore.watch.WATCH_RIDE_NOTICES_PATH
 import expo.modules.vescapecore.watch.WATCH_ROUTE_STATUS_PATH
 import java.util.concurrent.TimeUnit
 
-/** A street-map tile Asset read that takes longer has stalled. */
 private const val MAP_TILE_READ_TIMEOUT_S = 10L
 
-/**
- * Wear OS Mirror entry point. Renders the live [WatchFrame] pushed from the phone over
- * [MessageClient] on [TELEMETRY_PATH] while the screen is on. Reception only runs while the
- * activity is resumed — the background-survivable transport lives on the phone side.
- */
 class MainActivity : ComponentActivity() {
     private val messageClient by lazy { Wearable.getMessageClient(this) }
     private val dataClient by lazy { Wearable.getDataClient(this) }
@@ -55,13 +49,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Telemetry and Group Ride Frames share this listener; watchOS takes the Group Ride branch in its
-     * own message handler.
-     *
      * @parity /watch/watchos/PhoneLink.swift `session(_:didReceiveMessage:)`
      */
     private val listener = MessageClient.OnMessageReceivedListener { event ->
-        // Capture arrival before dispatch: a busy UI must not make old frames appear fresh.
         val receivedAtMs = SystemClock.elapsedRealtime()
         val bytes = event.data
         runOnUiThread {
@@ -74,7 +64,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Incremental cold updates retain other channels; deletion resets just this channel. */
     private val dataListener = DataClient.OnDataChangedListener { events ->
         try {
             for (event in events) {
@@ -111,11 +100,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Reads a street-map tile's JPEG from its Asset, on the caller's (background) thread. The asset
-     * is frozen because the event buffer it came from is released. A read that never resolves times
-     * out, so it fails and is retried like an unreadable one instead of holding an IO thread.
-     */
     private fun mapTileLoader(item: DataItem): (() -> ByteArray?)? {
         val asset: DataItemAsset = item.assets[WATCH_MAP_TILE_ASSET]?.freeze() ?: return null
         return { Tasks.await(dataClient.getFdForAsset(asset), MAP_TILE_READ_TIMEOUT_S, TimeUnit.SECONDS).inputStream.use { it.readBytes() } }
@@ -145,8 +129,6 @@ class MainActivity : ComponentActivity() {
     /** @parity /watch/watchos/VescapeWatchApp.swift `VescapeWatchApp` */
     override fun onStart() {
         super.onStart()
-        // Fixture replay is opt-in via `bun run wear:replay`; an ordinary emulator mirrors its
-        // paired phone exactly like physical Wear OS hardware.
         if (replayEnabled) {
             MirrorIntakeState.apply {
                 acceptSettings(mapOf(SETTING_TELEMETRY_TRAIL to (intent?.getBooleanExtra("telemetryTrail", true) != false)))
@@ -164,7 +146,6 @@ class MainActivity : ComponentActivity() {
         publishWakeLevel()
         messageClient.addListener(listener)
         dataClient.addListener(dataListener)
-        // A listener only sees changes, so pick up whatever synced while we were stopped.
         dataClient.dataItems.addOnSuccessListener { items ->
             try {
                 val route = items.firstOrNull { it.uri.path == ROUTE_PATH }?.data
@@ -195,8 +176,6 @@ class MainActivity : ComponentActivity() {
             return
         }
         WatchDiagnostics.recordReceiver(active = false)
-        // Stop the stream before the listeners go: an unheard 4 Hz push is the wrist's, and the
-        // phone's, single biggest avoidable drain. The phone's dead-man covers a lost stop.
         wakeHeartbeat.removeCallbacksAndMessages(null)
         commandSender.sendWakeLevel(WakeLevel.ASLEEP)
         phoneLinkMonitor.stop()
@@ -206,45 +185,24 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Which fixture the emulator replays. Defaults to the recorded ride; the lane sweep is reachable
-     * without a rebuild:
-     * `adb shell am start -S -n <pkg>/app.vescape.wear.MainActivity --es replay sweep`
-     * (`-S` because a running instance keeps its original intent).
      * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.requestedFixture`
      */
     private fun replayFixture(): String = when (intent?.getStringExtra("replay")) {
         "sweep" -> REPLAY_FIXTURE_SWEEP
-        // TODO(iOS parity): watchOS has no preview fixture or `replayFrom`; only Android takes film a watch.
         "preview" -> REPLAY_FIXTURE_PREVIEW
         else -> REPLAY_FIXTURE_RIDE
     }
 
-    /**
-     * `--el replayEpoch <wall ms>` beside `--es replay preview`: the wall time the phone's replay was
-     * at fixture t=0, so the wrist joins a preview take where the phone is. Both emulators run on the
-     * host clock. The phone's warmup is long over by then, so after it the two advance together.
-     */
     private fun replayFromMs(): Long {
         val epoch = intent?.getLongExtra("replayEpoch", 0L) ?: 0L
         return if (epoch > 0L) (System.currentTimeMillis() - epoch).coerceAtLeast(0L) else 0L
     }
 
     /**
-     * `--ez group true` beside `--es replay`: also replay a joined Group Ride.
      * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.requestedGroup`
      */
     private fun replayGroup(): Boolean = intent?.getBooleanExtra("group", false) == true
 
-    /**
-     * Emulator-only: render as if the watch were in ambient, without asking the emulator to actually
-     * go always-on. The real path stays the only one on hardware — this exists because iterating on
-     * the always-on layout otherwise means power-cycling the screen between every screenshot.
-     *
-     * `adb shell am start -S -n <pkg>/app.vescape.wear.MainActivity --ez ambient true`
-     * (`-S` because a running instance keeps its original intent). Combines with `--es replay`, so
-     * the ambient layout can be watched against a recorded ride or the full lane sweep. The panel
-     * flags are the pessimistic pair: whatever survives here survives a real low-bit, burn-in screen.
-     */
     private fun forceAmbientWhenRequested() {
         if (!DevGate.isEnabled(this, intent?.getBooleanExtra("ambient", false) == true)) return
         ambient.value = AmbientMode(
@@ -260,7 +218,6 @@ class MainActivity : ComponentActivity() {
         phoneLinkMonitor.shutdown()
         ongoingActivityController.stop()
         super.onDestroy()
-        // After super: composition disposal runs there, and MoveScreen's dispose sends its stop.
         commandSender.shutdown()
     }
 
@@ -275,10 +232,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Re-states the current [WakeLevel] to the phone on a heartbeat, so the phone pushes frames only
-     * while the Mirror is actually on a wrist, at a cadence matching what the wrist can show.
-     */
     private fun publishWakeLevel() {
         wakeHeartbeat.removeCallbacksAndMessages(null)
         if (replayEnabled) return
@@ -288,8 +241,6 @@ class MainActivity : ComponentActivity() {
 
     private inner class AmbientCallback : AmbientLifecycleObserver.AmbientLifecycleCallback {
         override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
-            // The panel's own limits, not assumptions: a screen that cannot hold a colour palette
-            // and one that needs its pixels moved are both rendered for, and neither is guessed at.
             ambient.value = AmbientMode(
                 active = true,
                 lowBit = ambientDetails.deviceHasLowBitAmbient,

@@ -1,61 +1,25 @@
 import SwiftUI
 
-/// Wrist layout for a live Watch Frame, adapted to the rectangle.
-///
-/// Wear OS hangs three arcs off one screen-centred circle with the temperatures written as curved
-/// text along the rim. Here the gauges follow the display edge (``Rim``) and the readouts take the
-/// bands the rectangle gives that a circle does not: speed and duty across the top, motor and
-/// controller in the bottom corners beside their own arcs, battery between them. The centre stays
-/// free for whatever page the rider is on. Same metrics, same units, same colours — the shape is the
-/// accepted platform difference (docs/watchos.md), the numbers are not.
-///
-/// `muted` dims every value so a frozen (stale) reading is never shown as live. `showReadouts`
-/// strips every value out of the shell and leaves the gauges, the clock and nothing else: a stalled
-/// stream has nothing to put in them but dashes, and a row of dashes is noise around the one thing
-/// worth reading, which is why it stalled.
-///
-/// There is no wall clock here. Wear OS draws its own because a full-screen activity hides the
-/// system time; watchOS keeps the system time on top of every app, so a second one is a duplicate
-/// sitting next to the real thing.
-///
 /// @platform-diff watchOS renders the system clock over the app; Android's `WatchClock` has no peer.
-///
-/// This layout is pinned at the root of the mirror, behind the pages: the rim gauges are permanent
-/// furniture and never move, whatever page the rider swipes or turns the crown to. `focus` says how
-/// far a page has taken over. Readouts retreat toward their gauges as the page moves into view.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `FrameLayout`
 struct FrameLayout: View {
   let frame: WatchFrame
   var muted: Bool = false
   var ambient: AmbientMode = .off
   var showReadouts: Bool = true
-  /// How far the *navigation* page has taken over. The telemetry readouts leave for it, but the nav
-  /// stack — route, chevron, distance — is what the page is, so it stays and grows.
   var navFocus: Double = 0
-  /// How far a page that is not navigation has taken over (the control axis, weather, radar). Those
-  /// want the whole centre, so the nav stack leaves with the readouts.
   var awayFocus: Double = 0
-  /// The route the phone pushed, drawn under everything else. Nil is no Navigation, or a route the
-  /// rider cleared — the frame then renders exactly as it did before there was one.
   var route: WatchRoute?
   var routeStatus: WatchRouteStatus?
-  /// The joined Group Ride; nil draws no group. Hidden in ambient.
   var groupRide: WatchGroupRide?
-  /// Whether the rider turned the direction arrow on (phone: Settings > Watch).
   var navArrowEnabled: Bool = false
   var telemetryTrailEnabled: Bool = true
-  /// Whether the rider has Group Ride on the telemetry screen (phone: Settings > Watch).
   var telemetryGroupEnabled: Bool = true
-  /// Whether the rider has the route line on the telemetry screen (phone: Settings > Watch).
   var telemetryRouteEnabled: Bool = true
-  /// Whether the rider has the street map on (phone: Settings > Watch).
   var streetMapEnabled: Bool = true
-  /// Street map opacity behind the gauges (phone: Settings > Watch > Map behind gauges).
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
   var distanceUnit: String = "km"
 
-  /// Readouts retreat for any page.
   private var focus: Double { max(navFocus, awayFocus) }
 
   var body: some View {
@@ -80,8 +44,6 @@ struct FrameLayout: View {
         }
         .opacity(fadeOut(focus))
 
-        // Scale the temperature layer around the screen centre, matching Android's outward
-        // movement. The battery has its own layer because it retreats straight down.
         temperatureReadouts(blind: blind)
         .scaleEffect(1 + TEMP_FOCUS_SPREAD * focus)
         .opacity(fadeOut(focus))
@@ -98,8 +60,6 @@ struct FrameLayout: View {
     }
     .ignoresSafeArea()
   }
-
-  // MARK: - Rim
 
   private func gauges(blind: Bool) -> some View {
     Canvas { context, size in
@@ -147,10 +107,6 @@ struct FrameLayout: View {
     .ignoresSafeArea()
   }
 
-  // MARK: - Readouts
-
-  /// The pair the ride is actually read off, given the width the rectangle has and the circle did
-  /// not: full-size digits side by side instead of two numbers squeezed between two arcs.
   private func heroes(blind: Bool) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 0) {
       hero(WatchGauge.hero(frame.speed.map { UnitPresentation.speedFromKmh($0, distanceUnit) }, blind: blind), unit: UnitPresentation.speedUnit(distanceUnit), label: muted ? "Stale Speed" : "Speed", color: speedColor)
@@ -161,8 +117,6 @@ struct FrameLayout: View {
   }
 
   private func hero(_ value: String, unit: String, label: String, color: Color) -> some View {
-    // The placeholder is not just a small number: an em dash set at display size reads as a
-    // progress bar, which is exactly the wrong thing for "no reading" to look like.
     let empty = value == WatchGauge.dash
 
     return VStack(spacing: -2) {
@@ -182,17 +136,11 @@ struct FrameLayout: View {
     .accessibilityValue("\(value) \(unit)")
   }
 
-  /// Values sit in the lower corners, level with the battery % between them; labels follow the
-  /// straight side above each value. The entire layer still spreads from the screen centre during
-  /// a swipe.
   private func temperatureReadouts(blind: Bool) -> some View {
     GeometryReader { geometry in
       let metrics = Rim.Metrics(size: geometry.size, inset: Rim.inset)
       let valueInset = metrics.radius * 0.85
-      // Align the row-stepped temperature values with the battery baseline.
       let valueY = metrics.rect.maxY - BOTTOM_READOUT_INSET - SECONDARY_FONT_SIZE * 0.6 + TEMP_VALUE_NUDGE
-      // The label anchors at the temperature arc's upper end: it starts where the arc reaches the
-      // straight side edge and runs down beside the value below it.
       let rim = Rim.path(in: geometry.size, inset: Rim.inset)
       let lineTop = rim.trimmedPath(from: 0, to: metrics.ctrlTemp.head).currentPoint?.y
         ?? metrics.rect.maxY - metrics.radius
@@ -244,8 +192,6 @@ struct FrameLayout: View {
       .fixedSize()
   }
 
-  // MARK: - Lane colours
-
   private var speedColor: Color {
     ambient.skeleton((muted || frame.speed == nil) ? Palette.dimText : Palette.speed)
   }
@@ -254,8 +200,6 @@ struct FrameLayout: View {
     ambient.skeleton((muted || frame.duty == nil) ? Palette.dimText : Palette.duty)
   }
 
-  /// Low battery keeps its warning colour into ambient: it is the one reading a glance must not
-  /// mistake for ordinary state.
   private var batteryColor: Color {
     guard !muted, let battery = frame.battery else { return ambient.skeleton(Palette.dimText) }
     if ambient.active && battery < WatchGauge.batteryWarningPercent { return Palette.warning }
@@ -263,17 +207,12 @@ struct FrameLayout: View {
   }
 }
 
-/// Stable gauge shell shown before the first phone frame; every board lane renders as disabled.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `EMPTY_FRAME`
 let EMPTY_FRAME = WatchFrame()
 
-/// Down at the shoulders: the km/h / % label bottom sits at the height where the speed and duty
-/// arcs reach the rim, just under the clock and weather stack.
 private let HERO_TOP_INSET: CGFloat = 39.5
 private let HERO_FONT_SIZE: CGFloat = 38
 
-/// A dash is set well below hero size so it reads as "nothing here" rather than as a filled bar.
 private let HERO_EMPTY_FONT_SIZE: CGFloat = 20
 private let SECONDARY_FONT_SIZE: CGFloat = 14
 private let TEMP_LABEL_LENGTH: CGFloat = 28

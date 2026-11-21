@@ -23,8 +23,6 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 
 /**
- * "Close only watch app" confirmation shown on back press or edge swipe.
- *
  * @platform-diff watchOS leaves through system navigation and has no equivalent back prompt.
  */
 @Composable
