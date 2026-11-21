@@ -8,15 +8,11 @@ import {
 } from '@/modules/profile/lib/riderProfile'
 
 interface RiderProfileState {
-  /** The signed-in Account's server profile; null while signed out, loading, or before a nick. */
   profile: RiderProfile | null
-  /** True once the server answered for the current account (so `profile: null` means "no nick"). */
   loaded: boolean
   error: string | null
   load: () => Promise<void>
-  /** Rejects with the rider-facing reason; the caller shows it next to the field. */
   save: (draft: RiderProfileDraft) => Promise<RiderProfile>
-  /** Forget the profile on sign-out. */
   clear: () => void
 }
 
@@ -31,10 +27,6 @@ function viewer() {
 
 let generation = 0
 
-/**
- * JS view of the server-owned Rider Profile. Once loaded with a nick, that nick is the rider's
- * name everywhere.
- */
 export const useRiderProfileStore = create<RiderProfileState>((set) => ({
   profile: null,
   loaded: false,

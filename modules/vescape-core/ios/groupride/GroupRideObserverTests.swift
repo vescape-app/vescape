@@ -10,12 +10,10 @@ final class GroupRideObserverTests: XCTestCase {
     )
     var zones = PrivacyZoneReadState()
 
-    // Zones still loading: presence is gated, a signal is not.
     XCTAssertNil(zones.presenceFix(fix))
     var context = zones.signalContext(fix, nowMs: 2_000)
     XCTAssertNotNil(RiderSignals.sendIntent(RiderSignalKind(rawValue: "down")!, context))
 
-    // Loaded, and the fix is inside one.
     try zones.reload {
       [PrivacyZoneEntity(id: "home", enabled: true, centerLatitudeE7: 520_000_000, centerLongitudeE7: 210_000_000, radiusMeters: 200)]
     }
@@ -24,7 +22,6 @@ final class GroupRideObserverTests: XCTestCase {
     XCTAssertTrue(context.insidePrivacyZone)
     XCTAssertNotNil(RiderSignals.sendIntent(RiderSignalKind(rawValue: "down")!, context))
 
-    // The gate opens again outside every zone.
     let outside = TelemetryLocationCapture(
       latitude: 53, longitude: 21, speedMps: nil, bearingDeg: nil, accuracyM: 5, altitudeM: nil,
       timestamp: 1_000, precise: true
@@ -164,7 +161,7 @@ final class GroupRideObserverTests: XCTestCase {
     XCTAssertTrue(h.links.last!.frames.isEmpty)
     XCTAssertTrue(h.observer.publicRideNeedsLink)
     h.token = "restored-token"
-    h.observer.setAccount("acc") // Same Account, restored credential must replace anonymous socket.
+    h.observer.setAccount("acc")
     h.clock.advance(1_000)
     h.ready()
     XCTAssertEqual(h.links.last!.types, ["missed-positions"])

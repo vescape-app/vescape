@@ -9,10 +9,6 @@ import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import org.json.JSONObject
 
 /**
- * Device Token lifecycle: verify a freshly exchanged credential, store it, revoke it. The HTTP
- * boundary itself belongs to [VescapeApi] so every native caller shares one credential and one 401
- * policy.
- *
  * @parity /modules/vescape-core/ios/auth/NativeAuthCoordinator.swift
  */
 class NativeAuthCoordinator(private val context: Context) {
@@ -27,10 +23,6 @@ class NativeAuthCoordinator(private val context: Context) {
     )
   }
 
-  /**
-   * Verifies the exchanged token against the Account it claims before storing it. The token is not
-   * in the store yet, so the call carries it explicitly.
-   */
   suspend fun provision(
     serverUrl: String,
     token: String,
@@ -46,7 +38,6 @@ class NativeAuthCoordinator(private val context: Context) {
     when (result) {
       is ApiResult.Ok ->
         check(result.value == accountId) { "Account verification mismatch" }
-      // `VescapeApi` already rejected the stored credential and refreshed App Status.
       ApiResult.Unauthorized -> throw IllegalStateException("Device credential rejected")
       else -> throw IllegalStateException("Account verification failed ($result)")
     }
@@ -56,10 +47,6 @@ class NativeAuthCoordinator(private val context: Context) {
     return stateMap()
   }
 
-  /**
-   * Revokes server-side before the local copy goes away. A `401` means the server already considers
-   * it gone, which is the same end state.
-   */
   suspend fun revoke() {
     val credential = store.read() ?: return
     val result = VescapeApi.forOrigin(context, credential.serverUrl).request(

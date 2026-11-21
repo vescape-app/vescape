@@ -2,9 +2,6 @@ import XCTest
 import GRDB
 @testable import VescapeCore
 
-/// Data-integrity tests for the Tune Profile store, focused on the transactional history paths
-/// (rollback + copy + save + safe delete) that mirror the Android DAO. Runs against an in-memory
-/// GRDB database seeded with the same schema the app-data migrator installs.
 final class TuneProfileStoreTests: XCTestCase {
   private var queue: DatabaseQueue!
   private var store: TuneProfileStore!
@@ -38,8 +35,6 @@ final class TuneProfileStoreTests: XCTestCase {
     )
   }
 
-  // MARK: - Create
-
   func testCreateSeedsProfileAndFirstHistoryEntry() throws {
     let profile = try createProfile(boardId: "board-1", name: "Race", fields: ["speed": 42])
     let id = profile["id"] as! String
@@ -54,8 +49,6 @@ final class TuneProfileStoreTests: XCTestCase {
     XCTAssertEqual((history[0]["fields"] as? [String: Any])?["speed"] as? Int, 42)
   }
 
-  // MARK: - Save
-
   func testSaveAppendsHistoryOfPreviousFieldsThenUpdates() throws {
     let created = try createProfile(boardId: "board-1", name: "Race", fields: ["speed": 10])
     let id = created["id"] as! String
@@ -63,7 +56,6 @@ final class TuneProfileStoreTests: XCTestCase {
     let saved = try store.saveProfile(profileId: id, fields: ["speed": 20])
     XCTAssertEqual(fieldsOf(saved)["speed"] as? Int, 20)
 
-    // History now has the seed (10) plus the pre-save snapshot (10), newest first.
     let history = try store.getProfileHistory(id)
     XCTAssertEqual(history.count, 2)
     XCTAssertEqual((history[0]["fields"] as? [String: Any])?["speed"] as? Int, 10)
@@ -75,21 +67,17 @@ final class TuneProfileStoreTests: XCTestCase {
     }
   }
 
-  // MARK: - Rollback
-
   func testRollbackRestoresHistoryFieldsAndSnapshotsCurrent() throws {
     let created = try createProfile(boardId: "board-1", name: "Race", fields: ["speed": 10])
     let id = created["id"] as! String
     _ = try store.saveProfile(profileId: id, fields: ["speed": 99])
 
-    // Oldest history entry holds the original speed=10 (seed).
     let historyBefore = try store.getProfileHistory(id)
     let seedEntryId = historyBefore.last!["id"] as! Int64
 
     let restored = try store.rollbackProfile(profileId: id, historyEntryId: seedEntryId)
     XCTAssertEqual(fieldsOf(restored)["speed"] as? Int, 10)
 
-    // Rollback appended a snapshot of the pre-rollback fields (99), so it stays reversible.
     let historyAfter = try store.getProfileHistory(id)
     XCTAssertEqual(historyAfter.count, historyBefore.count + 1)
     XCTAssertEqual((historyAfter[0]["fields"] as? [String: Any])?["speed"] as? Int, 99)
@@ -118,8 +106,6 @@ final class TuneProfileStoreTests: XCTestCase {
     }
   }
 
-  // MARK: - Copy
-
   func testCopyToBoardClonesFieldsAndSeedsTargetHistory() throws {
     let source = try createProfile(boardId: "board-1", name: "Race", fields: ["speed": 55, "duty": 80])
     let sourceId = source["id"] as! String
@@ -133,10 +119,8 @@ final class TuneProfileStoreTests: XCTestCase {
     XCTAssertEqual(fieldsOf(copy)["speed"] as? Int, 55)
     XCTAssertEqual(fieldsOf(copy)["duty"] as? Int, 80)
 
-    // The copy lands on the target board and carries its own seeded history.
     XCTAssertEqual(try store.getTuneProfiles("board-2", refloatBaseVersion: "1.3.0").map { $0["id"] as! String }, [copyId])
     XCTAssertEqual(try store.getProfileHistory(copyId).count, 1)
-    // Source is untouched.
     XCTAssertEqual(try store.getProfileHistory(sourceId).count, 1)
   }
 
@@ -204,8 +188,6 @@ final class TuneProfileStoreTests: XCTestCase {
     }
   }
 
-  // MARK: - Delete
-
   func testDeleteRefusesLastProfileForBoard() throws {
     let only = try createProfile(boardId: "board-1", name: "Only", fields: [:])
     XCTAssertThrowsError(try store.deleteProfile(profileId: only["id"] as! String)) { error in
@@ -227,8 +209,6 @@ final class TuneProfileStoreTests: XCTestCase {
     XCTAssertTrue(try store.getProfileHistory(victimId).isEmpty)
     XCTAssertEqual(try store.getTuneProfiles("board-1", refloatBaseVersion: "1.3.0").count, 1)
   }
-
-  // MARK: - Rename
 
   func testRenameUpdatesNameAndThrowsWhenMissing() throws {
     let created = try createProfile(boardId: "board-1", name: "Old", fields: [:])

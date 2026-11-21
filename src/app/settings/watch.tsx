@@ -24,19 +24,12 @@ import { IconHero } from '@/components/settings/IconHero'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 /**
- * watchOS has no public API for an iPhone app to launch its watch companion — the one that exists
- * (`HKHealthStore.startWatchApp`) starts a HealthKit workout session, which is fitness tracking
- * Vescape does not do. So the switch is shown and disabled rather than hidden: a rider who set it
- * on Android and switched phones should be told why it stopped working, not left guessing.
- *
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMirrorLauncher.kt
  */
 const AUTO_LAUNCH_SUPPORTED = Platform.OS === 'android'
 
 /**
- * Map behind gauges steps, integer percent: Off (0), then 30 to 90 in 15s. Native snaps anything
- * else to the 60 % default.
  * @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `WatchMapGauges`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WatchMapGauges`
  */
@@ -50,7 +43,6 @@ function mapGaugesStep(value: number, direction: 1 | -1): number {
   return value === edge ? MAP_GAUGES_MIN : MAP_GAUGES_STEP
 }
 
-/** Stick speed doubles per step: fine enough at the low end, fast enough at the top. */
 const TILT_RATE_MIN = 5
 const TILT_RATE_MAX = 40
 

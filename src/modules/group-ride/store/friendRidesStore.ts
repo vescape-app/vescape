@@ -2,16 +2,10 @@ import { create } from 'zustand'
 import { getDeviceCredentialState, getFriendRides, type FriendRide } from 'vescape-core'
 
 interface FriendRidesState {
-  /** Whose rides `rides` are. */
   accountId: string | null
   rides: FriendRide[]
   loading: boolean
-  /** The server refused or could not be reached. */
   failed: boolean
-  /**
-   * Public rides for a Friend or the signed-in rider, fetched from the server and held in memory
-   * only. The server refuses non-friends, so a stranger's profile never calls this.
-   */
   load: (accountId: string) => Promise<void>
   clear: () => void
 }

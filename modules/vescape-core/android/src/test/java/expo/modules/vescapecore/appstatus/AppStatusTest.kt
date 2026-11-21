@@ -5,8 +5,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * App Status wire contract: required shapes decode, unknown additive fields are ignored, and any
- * invalid required field degrades to `null` so the caller treats it as a fetch failure.
  * @parity /modules/vescape-core/ios/appstatus/AppStatusTests.swift
  */
 class AppStatusTest {
@@ -98,7 +96,6 @@ class AppStatusTest {
 
   @Test
   fun `an unusable messages field means no messages, never a failed status`() {
-    // Community Messages are independent of Release Policy: they can never hide the version status.
     val withoutMessages = listOf(
       """{"version":$currentVersion}""",
       body(currentVersion, "null"),
@@ -129,7 +126,6 @@ class AppStatusTest {
       ),
     )
 
-    // The version status still resolves and the one valid message survives.
     assertEquals(AppVersionStatus.CURRENT, status?.version?.status)
     assertEquals(listOf("ok"), status?.messages?.map { it.id })
   }

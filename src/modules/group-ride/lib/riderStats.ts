@@ -27,9 +27,6 @@ interface RiderStats {
 
 const NORMAL_STAT: RiderStat = { level: 'normal' }
 
-/** Per-Rider telemetry values for the roster stat grid, each carrying its alert level.
- *  Values are bare numbers: the column's icon names the metric and the rider's units are known,
- *  so six columns still fit one line on a narrow phone. */
 export function riderStats(p: RiderReadings | null, distanceUnit: DistanceUnit): RiderStats {
   if (!p)
     return {

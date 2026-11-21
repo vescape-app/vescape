@@ -7,7 +7,6 @@ export interface TuneProfileSummary {
   atr: number | null
 }
 
-/** Five-segment summaries of the existing Basic sliders, not a simulated ride rating. */
 export function tuneProfileSummary(
   fields: Record<string, TuneProfileFieldValue>,
 ): TuneProfileSummary {

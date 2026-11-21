@@ -6,10 +6,6 @@ import { Text } from '@/components/base/Text'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { theme } from '@/constants/theme'
 
-/**
- * One rider in a Social list: nick, nationality and a status line, with an optional trailing
- * action. `riding` paints the status in the live colour.
- */
 export function FriendRow({
   nick,
   nationality,

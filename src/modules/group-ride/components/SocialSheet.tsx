@@ -27,7 +27,6 @@ import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
 import { SocialRiderPanel, type SocialRiderPanelProps } from './SocialRiderPanel'
 
-/** `onNavigate` fires before the sheet routes away (sign-in), so the host can close it. */
 export function SocialSheet(props: SocialRiderPanelProps) {
   return (
     <View testID="social-sheet" style={styles.list}>
@@ -37,7 +36,6 @@ export function SocialSheet(props: SocialRiderPanelProps) {
   )
 }
 
-/** Why the switch turned itself off, for the rider. */
 const ENDED: Record<NonNullable<PublicRideStatus['reason']>, string> = {
   replaced: 'Turned off: you went public on another phone.',
   'end-time': 'Your public ride time is up.',
@@ -46,7 +44,6 @@ const ENDED: Record<NonNullable<PublicRideStatus['reason']>, string> = {
   refused: 'The server turned it off. Check your nick and sign-in.',
 }
 
-/** The public ride switch. Native owns it; this only shows it and sends the rider's choice. */
 function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   useRenderRateWarning('PublicRideWidget')
   const router = useRouter()
@@ -71,13 +68,10 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
     />
   ) : null
   const statusAt = useGroupRideStore((s) => s.publicRideAt)
-  // The minute clock can lag the status it reads; a fresh pick must count from when native set it.
   const nowMs = Math.max(useMinuteNow(true, status.until), statusAt)
   const timeFormat = useTimeFormat()
   const presetEnds = useMemo(() => publicRidePresetEnds(nowMs, timeFormat), [nowMs, timeFormat])
 
-  // Native gates the relay socket when the installed version is Online/App Blocked and reports it
-  // as `blocked`; the public ride is unusable until the app updates.
   if (connection === 'blocked') {
     return (
       <View style={styles.card}>

@@ -1,17 +1,7 @@
 import Foundation
 
-/// Group Ride **observe** client: a native WebSocket to the relay server that surfaces
-/// ride-lifecycle events to JS. Observing sends NOTHING — it only receives the active-ride
-/// `snapshot` on connect, then `ride-created` / `ride-updated` / `ride-ended` deltas (global
-/// fan-out). Location leaves the device only when creating/joining, never while observing.
-///
-/// Wire protocol: vescape-server `docs/group-ride/PROTOCOL.md`. All state is touched on the main
-/// thread; URLSession callbacks hop back onto it before mutating anything.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt
 /// @platform-diff Android hosts the socket in its foreground service; iOS has no such process, so
-/// the observer lives on `BoardSessionController` and rides the app's BLE/`location` background
-/// modes — a backgrounded iPhone with neither active drops the connection until it returns.
 internal final class GroupRideObserver: NSObject {
   private let emit: (String, [String: Any?]) -> Void
   private let online: OnlineCapability
@@ -29,7 +19,6 @@ internal final class GroupRideObserver: NSObject {
   private var stopped = true
   private var signalNotices = RiderSignalNotices()
   private var hazardCues = RideHazardCues()
-  /// JS asked to look around; fixes start and re-centre it.
   private var lookingAround = false
   private var relayFeatures: Set<String> = []
   private var lastSignalAvailability: [String: Bool]?
@@ -88,7 +77,6 @@ internal final class GroupRideObserver: NSObject {
       },
       emit: { [weak self] name, payload in
         emit(name, payload)
-        // Going public or off it changes whether a pin can be sent.
         if name == "onPublicRideStatus" { self?.refreshSignalAvailability() }
       },
       send: { [weak self] frame in
@@ -130,9 +118,6 @@ internal final class GroupRideObserver: NSObject {
   var watchRoster: GroupRideRoster? { stopped ? nil : publicRide.nearbyRoster }
 
   func start(_ url: String) {
-    // The observer outlives the JS runtime, so a relaunch re-subscribes to a socket that will emit
-    // nothing on its own. Replay instead of returning silently, or JS renders `idle`/OFFLINE over a
-    // live connection.
     if !stopped && url == serverUrl {
       resync()
       return
@@ -142,11 +127,8 @@ internal final class GroupRideObserver: NSObject {
     serverUrl = url
     reconnectAttempt = 0
     onlineUnsub?()
-    // The gate can outlive the JS runtime, so the observe socket reacts to App Status changes
-    // directly rather than through JS — tearing down on a block, resuming when it clears.
     onlineUnsub = online.addListener { [weak self] in self?.onOnlineChanged() }
     connect()
-    // A fresh JS runtime learns the switch even before the relay answers.
     publicRide.resync()
   }
 
@@ -158,7 +140,6 @@ internal final class GroupRideObserver: NSObject {
     webSocket?.close()
     webSocket = nil
     relayFeatures = []
-    // A restarted observer must re-emit availability to the fresh JS store.
     lastSignalAvailability = nil
     stopHeartbeat()
     stopPing()
@@ -178,8 +159,6 @@ internal final class GroupRideObserver: NSObject {
     if online.onlineBlocked {
       tearDownForBlock()
     } else if webSocket == nil {
-      // Block cleared while observing with no socket (torn down by an earlier block, or refused at
-      // start): resume. A change arriving while connected leaves the live socket alone.
       connect()
     }
   }
@@ -231,7 +210,6 @@ internal final class GroupRideObserver: NSObject {
     onMain { [self] in
       guard !stopped else { return }
       let context = signalContext()
-      // In a ride its relay features decide; outside one, the public ride.
       let isPublic = publicRide.canPin
       let availability = [
         "supported": isPublic,
@@ -317,13 +295,10 @@ internal final class GroupRideObserver: NSObject {
 
   private func connect() {
     guard let url = serverUrl, !stopped else { return }
-    // Native owns the gate: refuse the upgrade (fresh start or scheduled reconnect) while online
-    // work is blocked, surfacing `blocked` instead of hammering the relay.
     if online.onlineBlocked {
       emitConnection("blocked")
       return
     }
-    // Read Account and token together. Never authenticate a different server with this credential.
     let credential = deviceCredential()
     socketCredential = credential.flatMap {
       !$0.token.isEmpty && GroupRideOnlineGate.webSocketUrl(serverBaseUrl: $0.serverUrl) == url ? $0 : nil
@@ -370,8 +345,6 @@ internal final class GroupRideObserver: NSObject {
     onMain { [self] in
       guard isCurrentSocket(task) else { return }
       if responseCode == GroupRideOnlineGate.versionRejectionCode {
-        // Server refused the upgrade for this app version — refresh App Status so the gate learns
-        // the block, and surface `blocked` rather than reconnect-looping.
         online.refresh()
         tearDownForBlock()
         return
@@ -453,7 +426,6 @@ internal final class GroupRideObserver: NSObject {
       "presence": Self.presenceMap(obj["presence"] as? [String: Any]),
       "trail": Self.trailList(obj["trail"] as? [Any]),
       "stale": obj["stale"] as? Bool ?? false,
-      // The relay keeps a Rider whose socket closed as `away`; older relays omit it.
       "away": obj["away"] as? Bool ?? false,
       "lastSeen": (obj["lastSeen"] as? NSNumber)?.int64Value ?? 0,
       "signal": signal?.toMap(),
@@ -532,7 +504,6 @@ internal final class GroupRideObserver: NSObject {
       guard let self, !self.stopped, let ws = self.webSocket,
             self.publicRide.riding
       else { return }
-      // The beat also ages the GPS fix a send needs.
       self.refreshSignalAvailability()
       self.send(ws, ["type": "heartbeat"])
       self.scheduleHeartbeat()
@@ -562,9 +533,6 @@ internal final class GroupRideObserver: NSObject {
   }
 
   private static let pingIntervalSeconds: TimeInterval = 20
-  // Must stay well under the server's 5s stale threshold: it's the sole keepalive when a Rider
-  // isn't actively streaming presence (stationary, no GPS/board), so a slower beat would leave them
-  // perpetually greyed as "Stale".
   private static let heartbeatIntervalSeconds: TimeInterval = 3
   private static let reconnectDelaysSeconds: [TimeInterval] = [1, 2, 5, 10, 30]
 }
@@ -594,8 +562,6 @@ extension GroupRideObserver: URLSessionWebSocketDelegate {
   }
 }
 
-/// The relay socket as the observer drives it: a `URLSessionWebSocketTask` in production, a fake in
-/// tests. Text frames only; the relay sends nothing else.
 protocol GroupRideSocket: AnyObject {
   func open()
   func sendText(_ text: String, completion: @escaping (Error?) -> Void)
@@ -625,7 +591,6 @@ extension URLSessionWebSocketTask: GroupRideSocket {
   func close() { cancel(with: .normalClosure, reason: nil) }
 }
 
-/// The Rider's shared map target (their direction Map Point).
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `TargetPoint`
 internal struct TargetPoint {
   let lat: Double

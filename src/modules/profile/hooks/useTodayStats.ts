@@ -6,10 +6,6 @@ import { EMPTY_PROFILE_STATS, getTodayStats } from '@/modules/profile/hooks/useP
 
 const REFRESH_MS = 30_000
 
-/**
- * Today's totals alone, for always-visible surfaces. Re-read on focus and every 30 s so a ride
- * recording in the background shows up without leaving the screen.
- */
 export function useTodayStats(): ProfileStats {
   const [today, setToday] = useState<ProfileStats>(EMPTY_PROFILE_STATS)
 

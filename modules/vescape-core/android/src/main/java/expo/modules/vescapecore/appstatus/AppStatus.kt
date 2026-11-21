@@ -4,9 +4,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Release Policy outcome for the installed marketing version, resolved **by the server**. Native
- * never evaluates SemVer ranges — it only carries the resolved slug across the bridge.
- *
  * @parity /modules/vescape-core/ios/appstatus/AppStatus.swift `AppVersionStatus`
  * @parity /modules/vescape-core/src/index.ts `AppVersionStatus`
  */
@@ -18,10 +15,6 @@ enum class AppVersionStatus(val slug: String) {
   ;
 
   /**
-   * Whether this outcome denies online work (Group Ride and future backup/sync). Online Block and
-   * App Block both deny it; `current` and `update-warning` permit it. No TS peer: only the native
-   * Group Ride gate consumes it, and JS learns of a block via the `blocked` observe state.
-   *
    * @parity /modules/vescape-core/ios/appstatus/AppStatus.swift `blocksOnline`
    */
   val blocksOnline: Boolean
@@ -112,9 +105,6 @@ data class AppStatusVersion(
 }
 
 /**
- * One resolved App Status snapshot as served by `GET /api/app-status`. Held in memory for the
- * running process only — never persisted, so a fresh process starts unknown (fail-open).
- *
  * @parity /modules/vescape-core/ios/appstatus/AppStatus.swift `AppStatus`
  * @parity /modules/vescape-core/src/index.ts `AppStatus`
  */
@@ -129,9 +119,6 @@ data class AppStatus(
 }
 
 /**
- * Decode an App Status response body. Unknown additive fields are ignored; any invalid or missing
- * **required** field yields `null`, which callers treat exactly like a transport failure.
- *
  * @parity /modules/vescape-core/ios/appstatus/AppStatus.swift `decodeAppStatus`
  */
 fun parseAppStatus(body: String): AppStatus? {
@@ -148,7 +135,6 @@ private fun parseVersion(json: JSONObject): AppStatusVersion? {
   val installed = json.nonEmptyString("installed") ?: return null
   val latest = json.nonEmptyString("latest") ?: return null
   val status = AppVersionStatus.fromSlug(json.nonEmptyString("status") ?: return null) ?: return null
-  // Absent message is legitimate (a rule may carry none); a present-but-malformed one is not.
   val message = if (json.has("message") && !json.isNull("message")) {
     json.nonEmptyString("message") ?: return null
   } else {
@@ -157,12 +143,6 @@ private fun parseVersion(json: JSONObject): AppStatusVersion? {
   return AppStatusVersion(installed = installed, latest = latest, status = status, message = message)
 }
 
-/**
- * Decode the message array. Community Messages are independent of Release Policy, so nothing here
- * can invalidate the resolved version status: an absent, null or non-array `messages` field means
- * "no messages", and an individual invalid entry is skipped so one bad message never hides the
- * valid ones.
- */
 private fun parseMessages(value: Any?): List<CommunityMessage> {
   val array = value as? JSONArray ?: return emptyList()
   val messages = mutableListOf<CommunityMessage>()
@@ -176,7 +156,6 @@ private fun parseMessages(value: Any?): List<CommunityMessage> {
 private fun parseMessage(json: JSONObject): CommunityMessage? {
   val id = json.nonEmptyString("id") ?: return null
   val type = CommunityMessageType.fromSlug(json.nonEmptyString("type") ?: return null) ?: return null
-  // Absent title is legitimate (the app falls back to its per-type label); a malformed one is not.
   val title = if (json.has("title") && !json.isNull("title")) {
     json.nonEmptyString("title") ?: return null
   } else {
@@ -199,7 +178,6 @@ private fun parseAction(json: JSONObject): CommunityMessageAction? {
   return CommunityMessageAction(type = type, label = label, url = url)
 }
 
-/** A required string field: present, textual, and non-empty — otherwise `null`. */
 private fun JSONObject.nonEmptyString(key: String): String? {
   if (isNull(key)) return null
   val value = opt(key) as? String ?: return null

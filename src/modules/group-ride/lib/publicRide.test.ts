@@ -22,7 +22,6 @@ test('a chosen duration round-trips through the end time native keeps', () => {
   const now = 1_000_000
   const until = publicRideUntil({ mode: 'hours', hours: 6 }, now)
   expect(until).toBe(now + 6 * HOUR)
-  // Read back a moment later, it still shows the duration the rider picked.
   expect(publicRideChoice(status({ until }), now + 5_000)).toEqual({ mode: 'hours', hours: 6 })
 })
 
@@ -53,12 +52,11 @@ test('no time left without a running timer', () => {
 })
 
 test('the end time names the day only once it is not today', () => {
-  const now = new Date(2026, 10, 18, 9, 0).getTime() // Wed 18 Nov
+  const now = new Date(2026, 10, 18, 9, 0).getTime()
   const at = (day: number, hour: number) => new Date(2026, 10, day, hour, 42).getTime()
   expect(publicRideEndLabel(at(18, 15), now, '24h')).toBe('15:42')
   expect(publicRideEndLabel(at(18, 15), now, '12h')).toBe('3:42 PM')
   expect(publicRideEndLabel(at(19, 8), now, '24h')).toBe('tomorrow 08:42')
   expect(publicRideEndLabel(at(20, 15), now, '24h')).toBe('Fri 15:42')
-  // A week out would read as today's weekday, so it names the date.
   expect(publicRideEndLabel(at(25, 9), now, '24h')).toBe('25 Nov 09:42')
 })

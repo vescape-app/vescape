@@ -18,7 +18,6 @@ import {
 } from '@/modules/settings/lib/themeMode'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
-/** Next light and dark switches of the `sun` mode in time order, empty without a location or switch. */
 function upcomingSunSwitches(
   now: Date,
   coordinate: ThemeCoordinate,
@@ -30,7 +29,6 @@ function upcomingSunSwitches(
   return second ? [first, second] : [first]
 }
 
-/** Inline appearance choices in the quick-settings drawer. */
 export function ThemePicker() {
   const timeFormat = useTimeFormat()
   const mode = useSettingsStore((s) => s.themeMode)

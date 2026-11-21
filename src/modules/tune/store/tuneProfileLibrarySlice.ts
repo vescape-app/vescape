@@ -27,10 +27,8 @@ import {
   type TuneProfileStore,
 } from '@/modules/tune/store/tuneProfileStoreTypes'
 
-/** Ignores results of a load that a newer load has already superseded. */
 let profileLoadRequestId = 0
 
-/** Reading, creating, renaming, deleting and copying whole profiles. */
 type TuneProfileLibrarySlice = TuneProfileState &
   Pick<
     TuneProfileActions,

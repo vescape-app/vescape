@@ -64,11 +64,6 @@ export function SocialRiderSearchResults({
   )
 }
 
-/**
- * Results for the typed prefix. Answers are cached per prefix, so backspacing is instant, and while
- * a longer prefix waits for the server the last answer narrowed to it stays on screen (dimmed), so
- * the list never blanks between keystrokes. Skeleton rows show only when nothing fits yet.
- */
 function SearchResults({ prefix, onOpenRider }: { prefix: string; onOpenRider: OpenRider }) {
   const [answers, setAnswers] = useState<ReadonlyMap<string, RiderProfile[]>>(() => new Map())
   const [last, setLast] = useState<{ prefix: string; riders: RiderProfile[] } | null>(null)
@@ -130,7 +125,6 @@ function SearchResults({ prefix, onOpenRider }: { prefix: string; onOpenRider: O
   )
 }
 
-/** Skeleton rows match FriendRow's min height; the empty state takes the same space. */
 const SKELETON_ROW_HEIGHT = 48
 const SKELETON_WIDTHS = ['55%', '40%', '48%'] as const
 

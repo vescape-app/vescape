@@ -70,7 +70,6 @@ const TICK_PATH = PUBLIC_RIDE_DURATIONS.map((_, index) => {
 const AnimatedPath = Animated.createAnimatedComponent(Path)
 const AnimatedText = Animated.createAnimatedComponent(Text)
 
-/** Detent of a choice: 0 off, 1…DURATION_COUNT a duration, ALWAYS_STOP always. */
 function stopOf(choice: PublicRideChoice) {
   if (choice.mode === 'off') return 0
   if (choice.mode === 'always') return ALWAYS_STOP
@@ -88,7 +87,6 @@ function sectorOf(stop: number) {
   return stop === 0 ? 0 : stop === ALWAYS_STOP ? 2 : 1
 }
 
-/** The fill and stroke extend to the trailing edge of the moving indicator. */
 function TimerProgress({
   readout,
   rotation,
@@ -135,7 +133,6 @@ function TimerProgress({
   )
 }
 
-/** Icons and labels share the same preview as the sector, including before release. */
 function PreviewGlyph({
   icon: IconComponent,
   index,
@@ -183,13 +180,8 @@ function PreviewLabel({
   return <AnimatedText style={[styles.label, style]}>{title}</AnimatedText>
 }
 
-/** A quick server confirmation shows nothing; only a slow one swaps in the connecting state. */
 const CONNECTING_DELAY_MS = 1000
 
-/**
- * The public ride switch: off, a number of hours, or always. Presentation only: the owner decides
- * what a choice does. `live` lights the header while the rider is public.
- */
 export function PublicRideSelector({
   value,
   running = null,
@@ -203,13 +195,10 @@ export function PublicRideSelector({
   onValueChange,
 }: {
   value: PublicRideChoice
-  /** A running timer, shown in place of its duration while the dial is at rest. */
   running?: PublicRideRunningTimer | null
-  /** When each duration preset would end if picked now: the dial reads `Visible until …`. */
   presetEnds?: readonly string[] | null
   activation: PublicRideStatus['activation']
   live: boolean
-  /** Whether a pick starts sharing at once (board) or waits for one, before native reports it. */
   boardConnected: boolean
   headerAction?: ReactNode
   overlayAction?: ReactNode
@@ -222,7 +211,6 @@ export function PublicRideSelector({
   const sharing = activation === 'phone' || activation === 'board'
   const sharingColor = useResolvedColor(theme.palette.groupRide.color)
   const waitingColor = useResolvedColor(theme.status.warning.color)
-  // Orange only while waiting for a board; a pick from off already shows where it will land.
   const waiting = activation === 'waiting' || (activation === 'off' && !boardConnected)
   const accent = waiting ? waitingColor : sharingColor
   const connecting = useDelayedFlag(!controlDisabled && sharing && !live, CONNECTING_DELAY_MS)
@@ -272,7 +260,6 @@ export function PublicRideSelector({
   useEffect(() => {
     cancelAnimation(wave)
     if (live) {
-      // Sharing: the radar keeps pinging for as long as the rider is public.
       wave.set(0)
       wave.set(withRepeat(withTiming(1, { duration: BROADCAST_WAVE_MS }), -1, false))
     } else {
@@ -281,8 +268,6 @@ export function PublicRideSelector({
     return () => cancelAnimation(wave)
   }, [live, wave])
 
-  // One wave: the icon lights from the centre out (dot, inner arcs, outer arcs), then the ring
-  // carries the same motion on to the inner arc.
   const waveStyle = useAnimatedStyle(() => {
     const ring = live ? Math.min(1, Math.max(0, (wave.get() - RING_START) / (1 - RING_START))) : 0
     return {
@@ -389,7 +374,6 @@ export function PublicRideSelector({
         pointerEvents={overlayAction ? 'none' : 'auto'}
         accessibilityElementsHidden={!!overlayAction}
         importantForAccessibility={overlayAction ? 'no-hide-descendants' : 'auto'}
-        // Fade the dial itself: a backdrop would paint a square over the rounded card.
         style={overlayAction ? styles.covered : undefined}
       >
         <GestureDetector gesture={gesture}>
@@ -442,7 +426,6 @@ export function PublicRideSelector({
               style={[
                 styles.wave,
                 {
-                  // Rings out from the icon and fades where it meets the inner arc.
                   left: (PUBLIC_RIDE_ARC.cx - WAVE_RADIUS) * scale,
                   top: (BROADCAST_Y - WAVE_RADIUS) * scale,
                   width: WAVE_RADIUS * 2 * scale,

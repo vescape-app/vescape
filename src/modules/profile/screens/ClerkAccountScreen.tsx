@@ -40,7 +40,6 @@ export function ClerkAccountScreen() {
     setSigningOut(true)
     setError(null)
     try {
-      // Security invariant: clearing Clerk first would strand a live Device Token.
       await revokeDeviceCredential()
       await signOut()
     } catch {

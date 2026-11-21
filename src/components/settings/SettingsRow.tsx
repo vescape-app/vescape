@@ -41,7 +41,6 @@ export function SettingsRow({
         <Text style={styles.label}>{label}</Text>
         {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       </View>
-      {/* A tinted row states its colour once, in the icon; the control on the edge inherits it. */}
       {right && iconColor ? (
         <SwitchAccentProvider accent={iconColor}>{right}</SwitchAccentProvider>
       ) : (

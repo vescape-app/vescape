@@ -40,42 +40,25 @@ type TimerHandle = ReturnType<typeof setInterval>
 
 interface GroupRideState {
   connection: GroupRideConnectionState
-  /** Raw active-ride list from the relay (unfiltered). */
-  /** Device's own location, mirrored from native GPS for local distance filtering. */
   ownLocation: { lat: number; lng: number } | null
-  /** Active rides within range of {@link ownLocation}, nearest first. */
-  /** Social-button badge state: true when at least one nearby ride exists. */
 
-  /** Nearby public riders, nearest first and limited. */
   rosterRows: RosterRider[]
-  /** Relay clock of the last roster that carried one; signal times are read against it. */
   relayClock: RelayClock | null
-  /** Whether the joined Rider can send a Rider Signal now, as native judges it. */
   signalAvailability: GroupRideSignalAvailability
   error: string | null
   focusRequest: { riderId: string; nonce: number } | null
   observing: boolean
-  /** The public ride switch and whether the rider is public now, as native reports it. */
   publicRide: PublicRideStatus
-  /** When `publicRide` last arrived: a clock never older than the status it reads. */
   publicRideAt: number
-  /** Public riders native knows around this phone, nearest first. */
   publicRiders: PublicRider[]
-  /** Other public riders' pins this phone may see, a far-away friend's signal included. */
   publicPins: PublicRiderPins[]
-  /** The rider's own pins on the public ride, as sent. */
   publicOwnPins: OwnPins
-  /** Open the native observe WebSocket and mirror its lifecycle events into the store. */
   startObserving: () => void
-  /** Close the observe WebSocket and clear observed state. */
   stopObserving: () => void
-  /** Move the public ride switch; native persists it and goes public when the board connects. */
   setPublicRide: (choice: PublicRideChoice) => void
   setManualPublicRideSharing: (enabled: boolean) => void
-  /** Raise a Rider Signal; replaces the current one. The roster brings it back once the relay has it. */
   sendSignal: (kind: RiderSignalKind) => void
   clearSignal: () => void
-  /** Mark a Ride Hazard; replaces the current hazard, never the signal. */
   sendHazard: (kind: RideHazardKind) => void
   clearHazard: () => void
   focusRider: (riderId: string) => void
@@ -89,7 +72,6 @@ interface OwnPins {
 
 const NO_OWN_PINS: OwnPins = { signal: null, hazard: null }
 
-/** Until native reports, assume nothing can be sent: an old relay must never see a `signal`. */
 const NO_SIGNAL_AVAILABILITY: GroupRideSignalAvailability = {
   supported: false,
   hazardsSupported: false,
@@ -97,7 +79,6 @@ const NO_SIGNAL_AVAILABILITY: GroupRideSignalAvailability = {
   hasRecentFix: false,
 }
 
-/** Until native reports, the switch reads off and unsupported. */
 const PUBLIC_RIDE_OFF: PublicRideStatus = {
   activation: 'off',
   until: null,
@@ -130,8 +111,6 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
     if (get().observing) return
     subscriptions = [
       addGroupRideConnectionListener(({ state }) => {
-        // Native gates the relay socket: on `blocked` (Online/App Block) it tore the connection
-        // down, so clear the now-stale online ride/roster the Social surface would otherwise show.
         set(
           state === 'blocked'
             ? {
@@ -154,12 +133,9 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           ...deriveRoster({}, { ...state, publicPins: pins }),
           publicPins: pins,
           publicOwnPins: own,
-          // Outside a ride the public pins are what the relay clock is read for.
           relayClock: { relayNow: now, receivedAt: monotonicNow() },
         })),
       ),
-      // A ride roster neither sorts nor stores distance, so a fix leaves it untouched; the public
-      // riders sort in distance bands, so rows only move when someone changes band.
       addLocationListener(({ latitude, longitude }) => {
         set((state) => {
           const next = {
@@ -175,8 +151,6 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
     }, 1_000)
     set({ observing: true })
     startGroupRideObserve(SERVER_WS_URL)
-    // Look around even with the public ride switch off; native starts from the last known
-    // position and follows the rider's fixes.
     watchPublicRiders()
   },
 
@@ -240,7 +214,6 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
   },
 }))
 
-/** The rider's own public signal or hazard. */
 export function ownPin(state: GroupRideState, slot: keyof OwnPins): GroupRidePin | null {
   return state.publicOwnPins[slot]
 }
@@ -252,8 +225,6 @@ function deriveRoster(
   const rows = publicRiderRoster(current.publicRiders, current.ownLocation, current.publicPins)
   return {
     publicRiders: current.publicRiders,
-    // Keep the previous reference when nothing visible changed, so the 1s
-    // freshness tick doesn't fan out to selectors as a new array.
     rosterRows: rosterRowsEqual(rows, current.rosterRows) ? current.rosterRows : rows,
   }
 }

@@ -36,7 +36,6 @@ describe('riderRoster', () => {
     const ids = riderRoster(riders, 'me', 0).map((r) => r.id)
     expect(ids).toEqual(['me', 'ana-1', 'ana-2', 'bea', 'zed'])
 
-    // Everyone swapping places, going stale or coming back keeps the same order.
     const shuffled = [riders[3], { ...riders[2], stale: false }, riders[0], riders[4], riders[1]]
     expect(riderRoster(shuffled, 'me', RIDER_STALE_AFTER_MS * 10).map((r) => r.id)).toEqual(ids)
   })

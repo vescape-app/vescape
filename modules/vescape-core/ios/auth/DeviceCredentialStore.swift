@@ -21,7 +21,6 @@ protocol DeviceCredentialStorage: AnyObject {
   var state: String? { get set }
 }
 
-/// Keychain-backed Device Token storage, readable after first unlock even while screen is locked.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/DeviceCredentialStore.kt
 final class DeviceCredentialStore {
   static let shared = DeviceCredentialStore()
@@ -80,8 +79,6 @@ final class DeviceCredentialStore {
 
   private var listeners: [UUID: () -> Void] = [:]
 
-  /// Called after every stored change (sign-in, sign-out, rejection), on the writer's thread. The
-  /// public ride ends on an Account change, whoever made it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/DeviceCredentialStore.kt `addChangeListener`
   func addChangeListener(_ listener: @escaping () -> Void) -> () -> Void {
     lock.lock()

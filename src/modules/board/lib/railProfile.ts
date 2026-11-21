@@ -1,6 +1,5 @@
 export type RailPoint = readonly [x: number, y: number]
 
-/** Builds a rail path with optional quadratic rounding at each point. */
 export function buildRailPath(points: readonly RailPoint[], smoothing: readonly number[]): string {
   const first = points[0]
   if (!first) return ''
@@ -27,7 +26,6 @@ export function buildRailPath(points: readonly RailPoint[], smoothing: readonly 
   return `${path} L${last[0]} ${last[1]}`
 }
 
-/** Polyline approximation of the same quadratic corners used by the editable SVG path. */
 export function sampleRailProfile(
   points: readonly RailPoint[],
   smoothing: readonly number[],
@@ -66,7 +64,6 @@ export function sampleRailProfile(
   return result
 }
 
-/** Interpolates per-point values onto the sampled rail used by the 3D preview. */
 export function sampleRailValues(
   points: readonly RailPoint[],
   values: readonly number[],

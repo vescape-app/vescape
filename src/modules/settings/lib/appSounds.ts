@@ -1,10 +1,6 @@
 import type { PackSoundSlot, SoundOverrideSlot } from 'vescape-core'
 
 /**
- * Built-in effects packs: each fills the positive/info/warning/critical and geiger slots (optional
- * cue slots fall back to one of those natively), and names the voice
- * `Matching` plays (its `pack.json` `voice`). The `soundPack` setting names one of them.
- *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift
  */
@@ -15,8 +11,6 @@ export const EFFECTS_PACKS = [
 ] as const
 
 /**
- * Built-in voice packs: lines and value clips spoken after the severity sound.
- *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift
  */
@@ -29,9 +23,6 @@ export const VOICE_PACKS = [
 type VoicePackId = (typeof VOICE_PACKS)[number]['id']
 
 /**
- * Voice pack the `voice` setting plays: `matching` (the default) follows effects pack `soundPack`
- * (its `pack.json` `voice`).
- *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voicePackId`
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voicePackId`
  */
@@ -42,8 +33,6 @@ export function resolvedVoiceId(voice: string, soundPack: string): VoicePackId {
 }
 
 /**
- * Voice level options.
- *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_LEVELS`
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceLevels`
  */
@@ -54,7 +43,6 @@ export const VOICE_LEVELS = [
   { value: 'full', label: 'Full' },
 ] as const
 
-/** What each voice level does, and the spec previewed when it is picked. */
 export const VOICE_LEVEL_INFO: Record<
   (typeof VOICE_LEVELS)[number]['value'],
   { description: string; preview: string }
@@ -93,8 +81,6 @@ const SLOT_LABELS: Record<PackSoundSlot, string> = {
 const labeled = <T extends PackSoundSlot>(slot: T) => ({ slot, label: SLOT_LABELS[slot] })
 
 /**
- * Effects slots a My sound can override, in settings order.
- *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/MySounds.kt `SOUND_OVERRIDE_SLOTS`
  * @parity /modules/vescape-core/ios/alerts/MySounds.swift `soundOverrideSlots`
  */
@@ -111,7 +97,6 @@ export const SOUND_OVERRIDE_SLOTS: { slot: SoundOverrideSlot; label: string }[] 
   ] as const
 ).map(labeled)
 
-/** Rows of an effects pack's preview strip in Settings › Sounds: its cues, then its severity sounds. */
 export const PACK_PREVIEW_ROWS: { slot: PackSoundSlot; label: string }[][] = [
   (['cue.on', 'cue.off', 'cue.ride.end'] as const).map(labeled),
   (['cue.groupRide.created', 'cue.groupRide.joined'] as const).map(labeled),

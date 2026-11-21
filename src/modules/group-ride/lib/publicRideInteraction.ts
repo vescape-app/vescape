@@ -3,7 +3,6 @@ interface Cell<T> {
   set(value: T): void
 }
 
-/** Drag previews stay on the UI thread; only a completed change reaches the owner. */
 export function createPublicRideInteraction({
   preview,
   initial,
@@ -41,7 +40,6 @@ export function createPublicRideInteraction({
       }
       const next = preview.get()
       if (next !== initial.get()) {
-        // Subsequent taps/cancellation must restore the accepted UI choice, even before JS renders.
         initial.set(next)
         onCommit(next)
       }

@@ -10,11 +10,6 @@ import { useSunThemeClock } from '@/modules/settings/hooks/useSunThemeClock'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useThemeStore } from '@/hooks/useTheme'
 
-/**
- * Applies the rider's theme, and only then mounts the app. Static styles resolve adaptive colours
- * when their views are created, so a screen mounted before the scheme is set (a cold deep link)
- * keeps the system appearance, not the rider's.
- */
 export function ThemeController({ children }: { children: ReactNode }) {
   const systemTheme = useColorScheme()
   const settingsRead = useSettingsStore((state) => state.loaded || state.loadError != null)
@@ -41,7 +36,6 @@ export function ThemeController({ children }: { children: ReactNode }) {
     if (!settingsRead) return
     setResolution(resolvedTheme, outdoorLight)
     Appearance.setColorScheme(followsSystem ? 'unspecified' : resolvedTheme)
-    // The app mounts only once the native scheme is set, which happens here and not in render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setApplied(true)
   }, [followsSystem, outdoorLight, resolvedTheme, setResolution, settingsRead])

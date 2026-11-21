@@ -15,7 +15,6 @@ import {
 } from '@/modules/group-ride/lib/publicRide'
 import { AccountSignInPill } from '@/modules/profile/components/AccountPill'
 
-/** The public ride switch: off, a number of hours, always; live and unavailable states. */
 export function PublicRideSelectorShowcase() {
   const [value, setValue] = useState<PublicRideChoice>({ mode: 'off' })
   const [boardConnected, setBoardConnected] = useState(false)

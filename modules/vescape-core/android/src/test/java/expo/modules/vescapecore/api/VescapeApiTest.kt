@@ -15,13 +15,9 @@ import java.io.IOException
 import java.util.concurrent.CountDownLatch
 
 /**
- * Credential attachment, the 401 policy and the retry rule — the parts every feature client
- * inherits without restating.
- *
  * @parity /modules/vescape-core/ios/api/VescapeApiTests.swift
  */
 class VescapeApiTest {
-  /** Answers each call with the next scripted step, repeating the last one once they run out. */
   private class FakeTransport(vararg steps: () -> ApiResponse) : ApiTransport {
     private val steps = steps.toMutableList()
     val requests = mutableListOf<ApiRequest>()
@@ -111,7 +107,6 @@ class VescapeApiTest {
     assertEquals("https://api.vescape.app/map-points", transport.requests.single().url)
   }
 
-  /** A credential minted against another origin belongs to another environment. */
   @Test
   fun `ignores a credential stored for a different origin`() {
     val transport = FakeTransport(ok())
@@ -131,7 +126,6 @@ class VescapeApiTest {
     assertEquals(1, transport.requests.size)
   }
 
-  /** An anonymous read cannot say anything about a credential it never sent. */
   @Test
   fun `keeps the stored credential when an anonymous call answers 401`() {
     val transport = FakeTransport(status(401))

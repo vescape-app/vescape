@@ -1,6 +1,5 @@
 import type { RiderProfileErrorCode } from 'vescape-core'
 
-/** Mirrors vescape-server `src/riderProfiles/protocol.ts` so the reason shows before a round trip. */
 const NICK_PATTERN = /^[A-Za-z0-9_]{3,20}$/
 const NATIONALITY_PATTERN = /^[A-Z]{2}$/
 
@@ -11,7 +10,6 @@ export interface RiderProfileDraft {
   nationality: string | null
 }
 
-/** Trims both fields, upper-cases nationality and blanks it to null; error says which rule failed. */
 export function parseRiderProfileDraft(
   nick: string,
   nationality: string,
@@ -28,9 +26,6 @@ export function parseRiderProfileDraft(
 }
 
 /**
- * Native rejects Rider Profile calls with a code (`RiderProfileApi`); this is the only place those
- * become rider-facing words.
- *
  * @parity /modules/vescape-core/src/index.ts `RiderProfileErrorCode`
  */
 const MESSAGES: Record<RiderProfileErrorCode, string> = {

@@ -2,7 +2,6 @@ import type { PublicRideStatus } from 'vescape-core'
 
 import { formatClock, type TimeFormat } from '@/helpers/time'
 
-/** Hours the switch can run for before it turns itself off. */
 export const PUBLIC_RIDE_DURATIONS = [1, 2, 3, 4, 6, 8, 10, 12, 24, 48, 72, 96, 120, 144, 168]
 
 const HOUR_MS = 3_600_000
@@ -14,15 +13,10 @@ export function publicRideDurationLabel(hours: number) {
   return hours >= 48 ? `${hours / 24} d` : `${hours} h`
 }
 
-/** The end time native gets for a choice: null for off and always. */
 export function publicRideUntil(choice: PublicRideChoice, now: number): number | null {
   return choice.mode === 'hours' ? now + choice.hours * HOUR_MS : null
 }
 
-/**
- * The switch position for a native status. A running timer shows the shortest duration that still
- * covers the time left, so the selector never claims less than the rider has.
- */
 export function publicRideChoice(status: PublicRideStatus, now: number): PublicRideChoice {
   if (status.activation === 'off') return { mode: 'off' }
   if (status.until == null) return { mode: 'always' }
@@ -35,10 +29,6 @@ export function publicRideChoice(status: PublicRideStatus, now: number): PublicR
 
 const MINUTE_MS = 60_000
 
-/**
- * Time left on a running timer, to the minute: `42 m`, `11 h 42 m`, `5 d 3 h`. Rounded up, so it
- * never reads `0 m` while the rider is still visible. Null for always and for a passed end time.
- */
 export function publicRideTimeLeft(until: number | null, now: number): string | null {
   if (until == null || until <= now) return null
   const minutes = Math.ceil((until - now) / MINUTE_MS)
@@ -54,10 +44,6 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const DAY_MS = 86_400_000
 
-/**
- * When a running timer ends, on the phone's clock: `15:42` today, `tomorrow 15:42`, `Fri 15:42`
- * within the week, and `26 Nov 15:42` once the weekday alone would repeat today's.
- */
 export function publicRideEndLabel(until: number, now: number, format: TimeFormat): string {
   const clock = formatClock(until, false, format)
   const end = new Date(until)
@@ -70,7 +56,6 @@ export function publicRideEndLabel(until: number, now: number, format: TimeForma
   return `${end.getDate()} ${MONTHS[end.getMonth()]} ${clock}`
 }
 
-/** When each of `PUBLIC_RIDE_DURATIONS` would end if picked at `now`. */
 export function publicRidePresetEnds(now: number, format: TimeFormat): string[] {
   return PUBLIC_RIDE_DURATIONS.map((hours) =>
     publicRideEndLabel(now + hours * HOUR_MS, now, format),

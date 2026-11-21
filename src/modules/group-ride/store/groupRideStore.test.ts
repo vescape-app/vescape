@@ -27,8 +27,6 @@ function subscribe<T>(listeners: Listener<T>[], listener: Listener<T>) {
   }
 }
 
-// Load the real board store against the real native surface before narrowing `vescape-core`;
-// public riding only reads its `status`, which stays idle here.
 await import('@/modules/board/store/bleStore')
 
 mock.module('vescape-core', () => ({
@@ -161,7 +159,6 @@ test('looks around with the switch off and shows public riders outside a ride', 
   publicRidersListeners.forEach((listener) => listener({ riders: [near], now: null }))
   expect(useGroupRideStore.getState().rosterRows.map((row) => row.id)).toEqual(['a1'])
 
-  // Native moves look-around with the rider's fixes; JS asks only once.
   locationListeners.forEach((listener) => listener({ latitude: 1, longitude: 2 }))
   expect(watchPublicRiders).toHaveBeenCalledTimes(1)
 

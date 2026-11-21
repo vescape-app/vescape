@@ -1,6 +1,5 @@
 import Foundation
 
-/// Failure codes crossing the bridge.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `RiderProfileApiException`
 /// @parity /modules/vescape-core/src/index.ts `RiderProfileErrorCode`
 struct RiderProfileApiError: Error {
@@ -13,9 +12,6 @@ struct RiderProfileApiError: Error {
   static let unreachable = "RIDER_PROFILE_UNREACHABLE"
 }
 
-/// The signed-in Account's public Rider Profile (nick + nationality), other riders' profiles and the
-/// Account's Friends. Server-owned; native holds no copy and only attaches the Device Token.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt
 /// @parity /modules/vescape-core/src/index.ts `RiderProfile`
 final class RiderProfileApi {
@@ -33,7 +29,6 @@ final class RiderProfileApi {
     self.api = api
   }
 
-  /// `nil` until the Account has picked a nick.
   func mine() async throws -> [String: Any?]? {
     try unwrap(
       await api.request(.get, path: Self.path, auth: .required) { body in
@@ -55,7 +50,6 @@ final class RiderProfileApi {
     )
   }
 
-  /// Profiles whose nick starts with `prefix`, at most 20.
   func search(nick prefix: String) async throws -> [[String: Any?]] {
     try unwrap(
       await api.request(.get, path: Self.ridersPath, query: ["nick": prefix], auth: .required) { body in
@@ -67,7 +61,6 @@ final class RiderProfileApi {
     )
   }
 
-  /// `nil` when the Account has no Rider Profile.
   func rider(_ accountId: String) async throws -> [String: Any?]? {
     let result = await api.request(.get, path: "\(Self.ridersPath)/\(accountId)", auth: .required) {
       try Self.detail(try Self.object($0))
@@ -99,7 +92,6 @@ final class RiderProfileApi {
     )
   }
 
-  /// `requested`, or `friends` when the other side had already asked.
   func requestFriend(_ accountId: String) async throws -> String {
     try unwrap(
       await api.request(.post, path: "\(Self.friendsPath)/requests", body: ["accountId": accountId], auth: .required) {
@@ -115,19 +107,14 @@ final class RiderProfileApi {
     try unwrap(await api.request(.post, path: "\(Self.friendsPath)/requests/\(accountId)/accept", auth: .required) { _ in () })
   }
 
-  /// Declines an incoming request or withdraws an outgoing one.
   func deleteFriendRequest(_ accountId: String) async throws {
     try unwrap(await api.request(.delete, path: "\(Self.friendsPath)/requests/\(accountId)", auth: .required) { _ in () })
   }
 
-  /// Silent: the other side is not told.
   func removeFriend(_ accountId: String) async throws {
     try unwrap(await api.request(.delete, path: "\(Self.friendsPath)/\(accountId)", auth: .required) { _ in () })
   }
 
-  /// The Crew Rides the Account rode in between `from` and `to` (ISO, at most 24 h apart), with the
-  /// other riders' tracks cut to that range. Read on demand; nothing is stored.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `rodeWith`
   /// @parity /modules/vescape-core/src/index.ts `RodeWithCrewRide`
   func rodeWith(from: String, to: String) async throws -> [[String: Any?]] {
@@ -159,9 +146,6 @@ final class RiderProfileApi {
     return row
   }
 
-  /// A Friend's public rides (solo included), newest first, one page at a time. Refused (`not-friends`)
-  /// for anyone else. Private Ride Recordings never leave the phone, so they are not here.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friendRides`
   /// @parity /modules/vescape-core/src/index.ts `FriendRidesPage`
   func friendRides(_ accountId: String, limit: Int? = nil, before: String? = nil) async throws -> [String: Any] {
@@ -185,9 +169,6 @@ final class RiderProfileApi {
     )
   }
 
-  /// A Friend's public track between `from` and `to` (ISO, at most 24 h apart). A ride has no id;
-  /// its time range addresses it.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderProfileApi.kt `friendRideTrack`
   func friendRideTrack(_ accountId: String, from: String, to: String) async throws -> [[String: Any?]] {
     try unwrap(

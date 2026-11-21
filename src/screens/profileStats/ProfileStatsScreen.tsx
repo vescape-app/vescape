@@ -7,7 +7,6 @@ import { RideStatsSection } from '@/modules/profile/screens/RideStatsSection'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { openRecordRide } from '@/screens/profileStats/openRecordRide'
 
-/** Profile stats, whose records open the ride that set them back on the main screen. */
 export function ProfileStatsScreen() {
   const ownAccountId = useRiderProfileStore((s) => s.profile?.accountId ?? null)
 

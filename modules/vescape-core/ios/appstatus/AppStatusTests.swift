@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// App Status wire contract: required shapes decode, unknown additive fields are ignored, and any
-/// invalid required field degrades to `nil` so the caller treats it as a fetch failure.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/appstatus/AppStatusTest.kt
 final class AppStatusTests: XCTestCase {
   private let currentVersion = #"{"installed":"0.80.2","latest":"0.80.2","status":"current"}"#
@@ -93,7 +91,6 @@ final class AppStatusTests: XCTestCase {
   }
 
   func testAnUnusableMessagesFieldMeansNoMessagesNeverAFailedStatus() {
-    // Community Messages are independent of Release Policy: they can never hide the version status.
     let withoutMessages: [Data] = [
       Data(#"{"version":\#(currentVersion)}"#.utf8),
       body(currentVersion, messages: "null"),
@@ -125,7 +122,6 @@ final class AppStatusTests: XCTestCase {
       )
     )
 
-    // The version status still resolves and the one valid message survives.
     XCTAssertEqual(status?.version.status, .current)
     XCTAssertEqual(status?.messages.map { $0.id }, ["ok"])
   }

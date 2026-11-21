@@ -4,7 +4,6 @@ import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 export interface SettingsCardProps {
   children: ReactNode
-  /** Separators align with row labels by default; 0 spans them edge to edge. */
   separatorInset?: number
 }
 
