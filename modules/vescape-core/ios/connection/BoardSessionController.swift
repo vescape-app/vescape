@@ -940,9 +940,12 @@ internal final class BoardSessionController: VescGattListener {
   private func firmwareCommandsTrusted() -> Bool {
     phase == .connected && linkIntegrity == .trusted
   }
-  /// Live State GPS phase (`idle | starting | active | error`), owned by the monitor.
+  /// Live State GPS phase (`idle | starting | active | error`): the phase of whatever supplies the
+  /// rider's position. A replay switches the phone's GPS off because the recording supplies the
+  /// fixes (ADR 0048), so the phone's monitor would report `idle` while recorded fixes arrive.
+  /// Freshness and precision are still judged from those fixes.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsPhase`
-  func gpsPhase() -> String { gpsMonitor.phase.rawValue }
+  func gpsPhase() -> String { (simulatedBoard != nil ? GpsPhase.active : gpsMonitor.phase).rawValue }
   /// What the GPS hardware is being driven at. `phase` says whether fixes flow; this says what they
   /// cost and, by implication, why they are flowing at all.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsMode`

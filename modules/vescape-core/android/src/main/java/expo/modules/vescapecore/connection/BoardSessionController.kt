@@ -39,6 +39,7 @@ import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.location.GpsDemand
 import expo.modules.vescapecore.location.GpsMonitor
+import expo.modules.vescapecore.location.GpsPhase
 import expo.modules.vescapecore.location.GpsPowerMode
 import expo.modules.vescapecore.location.RIDE_DROPOUT_GRACE_MS
 import expo.modules.vescapecore.location.isPreciseGpsFix
@@ -3154,6 +3155,16 @@ internal class BoardSessionController(private val service: CoreForegroundService
         transitionBoardPhase(BoardPhase.Error)
     }
 
+    /**
+     * Live State GPS phase: the phase of whatever supplies the rider's position. A replay switches
+     * the phone's GPS off because the recording supplies the fixes (ADR 0048), so the phone's
+     * monitor would report `idle` while recorded fixes arrive. Freshness and precision are still
+     * judged from those fixes.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `gpsPhase`
+     */
+    private fun gpsPhase(): GpsPhase = if (simulatedBoard != null) GpsPhase.Active else gpsMonitor.phase
+
     private fun reportedBoardPhase(atMs: Long = System.currentTimeMillis()): BoardPhase =
         deriveReportedBoardPhase(
             ReportedBoardPhaseInput(
@@ -3637,7 +3648,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 connectionSeq = currentSessionId,
                 lastTelemetryAt = telemetry?.lastPacketAt,
                 recentTelemetry = recentTelemetryValue,
-                gpsPhase = gpsMonitor.phase,
+                gpsPhase = gpsPhase(),
                 gpsMode = gpsMonitor.mode,
                 latestLocation = locationTracker.latestLocation,
                 latestPreciseLocation = locationTracker.latestPreciseLocation,
