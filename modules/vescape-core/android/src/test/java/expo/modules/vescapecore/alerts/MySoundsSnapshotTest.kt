@@ -85,9 +85,11 @@ class MySoundsSnapshotTest {
     assertEquals(emptyMap<String, String>(), MySounds.state(context)["overrides"])
 
     MySounds.adoptLegacyPack(context, "a")
+    // Error has no override slot any more: it stays a plain library sound.
     assertEquals(mapOf("cue.on" to onId), MySounds.state(context)["overrides"])
     assertEquals(live.resolve("$onId.wav"), MySounds.overrideFile(context, "cue.on"))
 
+    // Adoption is one-shot: the other pack's cues stay plain library sounds.
     MySounds.adoptLegacyPack(context, "b")
     assertNull(MySounds.overrideFile(context, "cue.groupRide.joined"))
   }
@@ -108,6 +110,7 @@ class MySoundsSnapshotTest {
     assertEquals("m4a", MySounds.audioExtension(header(0, 0, 0, 32, "ftypM4A ")))
     assertEquals("mp3", MySounds.audioExtension(header("ID3", 4, 0)))
     assertEquals("mp3", MySounds.audioExtension(header(0xFF, 0xFB, 0x90, 0)))
+    // AAC ADTS shares the frame sync but has layer 0; OGG is not decodable on iOS.
     assertNull(MySounds.audioExtension(header(0xFF, 0xF1, 0x50, 0)))
     assertNull(MySounds.audioExtension(header("OggS", 0, 2)))
     assertNull(MySounds.audioExtension(header("RI")))

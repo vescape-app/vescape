@@ -12,9 +12,11 @@ interface AlertTestOptions {
   rules: AlertTestRule[]
   min: number
   max: number
+  /** Battery alerts below their threshold, so its sweep starts full and runs down. */
   alertAbove: boolean
 }
 
+/** Own the synthetic gauge sweep and its isolated native alert-engine lifecycle. */
 export function useAlertTest({ rules, min, max, alertAbove }: AlertTestOptions) {
   const value = useSharedValue<number | null>(null)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -46,6 +48,7 @@ export function useAlertTest({ rules, min, max, alertAbove }: AlertTestOptions) 
     updateAlertTest(startValue)
     setRunning(true)
 
+    // Native hears the same curve the needle draws, so sounds land as the needle crosses.
     timer.current = setInterval(() => {
       const elapsed = Date.now() - startedAt
       if (elapsed >= durationMs + END_HOLD_MS) {
@@ -57,7 +60,9 @@ export function useAlertTest({ rules, min, max, alertAbove }: AlertTestOptions) 
     }, SAMPLE_INTERVAL_MS)
   }, [alertAbove, max, min, rules, stop, value])
 
+  // A route can blur without unmounting. Blur cleanup guarantees no test survives leaving a page.
   useFocusEffect(useCallback(() => stop, [stop]))
+  // A level/rule/range change invalidates the snapshot currently being tested.
   useEffect(() => stop, [max, min, rules, stop])
 
   return {

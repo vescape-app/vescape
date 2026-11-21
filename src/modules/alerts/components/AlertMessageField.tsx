@@ -18,6 +18,10 @@ import {
   formatVoiceAlertSound,
 } from '@/modules/alerts/lib/alertSoundString'
 
+/**
+ * Severity select, then either the voice pack line for the metric (with the threshold as its value)
+ * or, with TTS on, a spoken-message template and its placeholder chips; plus a preview of either.
+ */
 export function AlertMessageField({
   severity,
   onChangeSeverity,
@@ -32,9 +36,12 @@ export function AlertMessageField({
   messageTemplate,
   onChangeTemplate,
 }: {
+  /** Played once ahead of the previewed speech, the same way a ride plays it. */
   severity: AlertSeverity
   onChangeSeverity: (next: AlertSeverity) => void
+  /** Voice key of the metric; null when it has no voice lines, which forces TTS and hides the switch. */
   voiceKey: string | null
+  /** TTS switch; ignored (always on) without a `voiceKey`. */
   tts: boolean
   onChangeTts: (next: boolean) => void
   controlId: string

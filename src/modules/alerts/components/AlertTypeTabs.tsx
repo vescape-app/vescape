@@ -11,6 +11,7 @@ const ALERT_TYPE_OPTIONS = [
   { id: 'message', label: 'Message', icon: ChatTextIcon, color: theme.palette.cyan },
 ] as const
 
+/** The alert-type tab bar, using the shared compact selector behavior. */
 export function AlertTypeTabs({
   tab,
   onSelect,

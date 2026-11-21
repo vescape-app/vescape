@@ -3,15 +3,23 @@ package expo.modules.vescapecore.alerts
 import expo.modules.vescapecore.RideHazardCues
 
 /**
+ * Rank of a queued announcement; the queue plays the lowest ordinal first, oldest first within one.
+ * [ttlMs] is how long an item may wait before it is dropped as stale.
+ *
  * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `AnnouncementPriority`
  */
 enum class AnnouncementPriority(val ttlMs: Long) {
+    /** Board connect, disconnect, connection error. */
     CONNECTION(10_000L),
+    /** Ride state, Rider Signals, Ride Hazards and, later, weather and battery lines. */
     ADVISORY(30_000L),
+    /** Social Group Ride events. */
     SOCIAL(20_000L),
 }
 
 /**
+ * Announcement Queue rank of app cue [cue]; null for an unknown cue.
+ *
  * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `appCuePriority`
  */
 internal fun appCuePriority(cue: String): AnnouncementPriority? = when {
@@ -22,34 +30,55 @@ internal fun appCuePriority(cue: String): AnnouncementPriority? = when {
 }
 
 /**
+ * A Rider Signal or Ride Hazard cue: a safety call, announced at advisory priority.
+ *
  * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `isSafetyCue`
  */
 internal fun isSafetyCue(cue: String): Boolean =
     cue.startsWith("groupRide.signal.") || cue.startsWith(RideHazardCues.CUE_PREFIX)
 
 /**
+ * Whether app cue [cue] speaks its voice line after the effect at [voiceLevel]. Rider Signal and
+ * Ride Hazard cues are safety calls and speak at every level but `off`; the rest only at `full`.
+ *
  * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `appCueSpeaks`
  */
 internal fun appCueSpeaks(cue: String, voiceLevel: String): Boolean =
     if (isSafetyCue(cue)) voiceLevel != "off" else voiceLevel == "full"
 
 /**
+ * Quiet time after a connect before anything but a [AnnouncementPriority.CONNECTION] item plays.
+ *
  * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `announcementSettleMs`
  */
 internal const val ANNOUNCEMENT_SETTLE_MS = 4_000L
 
 /**
+ * Gap after the last critical alert sound or line ends before the queue resumes.
+ *
  * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `announcementQuietGapMs`
  */
 internal const val ANNOUNCEMENT_QUIET_GAP_MS = 2_000L
 
+/** What the queue's host should do next. */
 internal sealed interface AnnouncementStep<out T> {
     data class Play<T>(val item: T) : AnnouncementStep<T>
+    /** Nothing may play before [at]; ask again then. */
     data class WaitUntil(val at: Long) : AnnouncementStep<Nothing>
     data object Idle : AnnouncementStep<Nothing>
 }
 
 /**
+ * The Announcement Queue's pure core: orders non-critical announcements and decides when the next
+ * may play. Clock-injected (every call takes `now`) and single-threaded; the host confines it to its
+ * audio thread and does the playing.
+ *
+ * - One item at a time: the next plays only after the host reports [finished].
+ * - Critical alert audio ([criticalStarted] / [criticalEnded]) holds the queue, then a
+ *   [quietGapMs] gap. The item it pre-empted is played again once, unless it expired meanwhile.
+ * - [connected] opens a [settleMs] window only connection items play in.
+ * - An item past its expiry is dropped, never played late.
+ *
  * @parity /modules/vescape-core/ios/alerts/AnnouncementQueue.swift `AnnouncementQueue`
  */
 internal class AnnouncementQueue<T>(
@@ -72,6 +101,7 @@ internal class AnnouncementQueue<T>(
     private var settleUntil = Long.MIN_VALUE
     private var quietUntil = Long.MIN_VALUE
 
+    /** The item playing now, if any. */
     val playing: T? get() = current?.item
 
     fun enqueue(item: T, priority: AnnouncementPriority, now: Long, ttlMs: Long = priority.ttlMs) {
@@ -82,6 +112,10 @@ internal class AnnouncementQueue<T>(
         settleUntil = now + settleMs
     }
 
+    /**
+     * Critical alert audio started. Returns the queued item playing now, which the host must stop
+     * and report [finished] as [PlaybackOutcome.CANCELLED].
+     */
     fun criticalStarted(): T? {
         critical++
         return current?.let { it.preempted = true; it.item }
@@ -93,6 +127,10 @@ internal class AnnouncementQueue<T>(
         if (critical == 0) quietUntil = now + quietGapMs
     }
 
+    /**
+     * The playing item ended with [outcome]. Returns it when that outcome is final, or null when it
+     * was pre-empted and goes back in line.
+     */
     fun finished(outcome: PlaybackOutcome, now: Long): T? {
         val entry = current ?: return null
         current = null
@@ -105,6 +143,7 @@ internal class AnnouncementQueue<T>(
         return entry.item
     }
 
+    /** Next step at [now]; expired items go to [onDrop] on the way. */
     fun next(now: Long, onDrop: (T) -> Unit): AnnouncementStep<T> {
         val expired = pending.filter { it.expiresAt <= now }
         pending.removeAll(expired)
@@ -120,6 +159,7 @@ internal class AnnouncementQueue<T>(
         return AnnouncementStep.Play(head.item)
     }
 
+    /** Drop everything, the playing item included; returns them so the host can stop and report each. */
     fun clear(): List<T> {
         val all = listOfNotNull(current?.item) + pending.map { it.item }
         pending.clear()

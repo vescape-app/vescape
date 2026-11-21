@@ -322,7 +322,7 @@ internal final class BoardSessionController: VescGattListener {
 
   /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
   /// when observing starts and on zone CRUD; reuses the same geometry as Ride Recording
-  /// suppression (ADR-0009).
+  /// suppression (ADR-0009 / ADR-0020).
   private var groupRidePrivacy = PrivacyZoneReadState()
 
   /// The Rider's shared map target (their direction Map Point), cached for presence egress.

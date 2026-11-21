@@ -8,6 +8,21 @@ import android.app.Notification
 import expo.modules.vescapecore.notices.RideNoticeContent
 import expo.modules.vescapecore.notices.RideNoticeSeverity
 
+/**
+ * Foreground notification contract:
+ *
+ * - The notification mirrors the Board phase. Every phase renders its own [displayText]; no phase
+ *   borrows another's copy (a reconnecting session says "Reconnecting…", never "Board not connected").
+ * - The notification outlives the Board Session: after a disconnect it stays up as idle + Connect.
+ *   It is only cancelled on Exit / auto close.
+ * - Actions derive from *session ownership*, not link health. A session that exists but has no live
+ *   link (Stale, Reconnecting, Rescanning, Error) still offers Disconnect — losing the link must
+ *   never strand the rider with a notification they cannot act on.
+ * - Telemetry values (text, battery progress, chip) are shown only in Connected, so a dead link can
+ *   never display stale numbers.
+ *
+ * Repaint scheduling is the caller's job — see `BoardSessionController.refreshNotification`.
+ */
 internal class NotificationPresenter(
     private val controller: NotificationController,
     private val deviceName: () -> String?,
@@ -83,6 +98,11 @@ internal data class NotificationPresentation(
     }
 }
 
+/**
+ * Disconnect stays offered for every phase that still owns a Board Session, including the
+ * reconnect phases — a rider watching "Searching…" must be able to end the session from the
+ * notification. Only the terminal/transient phases without anything to cancel drop the action.
+ */
 private fun BoardPhase.canDisconnect(): Boolean = when (this) {
     BoardPhase.Connected,
     BoardPhase.Connecting,
@@ -98,6 +118,7 @@ private fun BoardPhase.canDisconnect(): Boolean = when (this) {
 }
 
 /**
+ * The top Ride Notice leads the status line, severity as a glyph: `⚠ Low battery · Connected`.
  * @parity /targets/ride-activity/RideActivityWidget.swift `noticeSymbol`
  */
 private fun withRideNotice(text: String, notice: RideNoticeContent?): String {

@@ -2,6 +2,7 @@ package expo.modules.vescapecore.alerts
 
 import java.io.File
 
+/** Install a staged pack tree, retaining the old tree until every file is copied. */
 internal fun replaceSoundPackFiles(
   destination: File,
   staged: File,

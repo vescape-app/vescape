@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from 'bun:test'
 import * as actualReact from 'react'
 import type { BatteryConfig } from 'vescape-core'
 
+// Run the hook as a plain function: no renderer, memo callbacks evaluate immediately.
 mock.module('react', () => ({
   ...actualReact,
   use: () => 'km',
@@ -25,6 +26,7 @@ function useDraftController(batteryConfig: ReturnType<typeof validBatteryConfig>
   })
 }
 
+// #517: wizard battery alerts must follow the draft battery, never the active saved Board's.
 describe('draft battery alerts', () => {
   test('first board: valid draft battery edits thresholds in %', () => {
     useBoardStore.setState({ boards: [], activeBoardId: null })

@@ -15,6 +15,7 @@ class RiderSignalNoticesTest {
     private fun signal(kind: RiderSignalKind, startedAt: Long = 1_000, expiresAt: Long = 601_000) =
         RiderSignal(kind, 50.0, 19.0, startedAt, expiresAt)
 
+    /** A roster at relay `now` 10_000 seen at phone time 5_010_000: offset +5_000_000. */
     private fun roster(vararg riders: SignalRider, relayNow: Long? = 10_000, localNow: Long = 5_010_000): RiderSignalNotices.Update {
         val update = notices.roster(riders.toList(), "me", relayNow, localNow)
         update.clears.forEach(engine::clear)

@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.alerts
 
+/** Queues playback by sample, so a failed load cannot hold unrelated sounds. */
 internal class SoundSampleQueue {
   enum class State { PENDING, READY, FAILED }
 
@@ -26,6 +27,7 @@ internal class SoundSampleQueue {
   fun complete(sampleId: Int, success: Boolean) {
     states[sampleId] = if (success) State.READY else State.FAILED
     val waiting = pending.remove(sampleId).orEmpty()
+    // Run on failure too: each play re-checks the state, so a caller waiting on its start hears back.
     waiting.forEach { it() }
   }
 }

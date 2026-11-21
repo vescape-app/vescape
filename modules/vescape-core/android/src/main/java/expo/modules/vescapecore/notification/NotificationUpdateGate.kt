@@ -3,6 +3,7 @@ package expo.modules.vescapecore.notification
 import expo.modules.vescapecore.connection.BoardPhase
 
 // @platform-diff No iOS peer: iOS ConnectionCoordinator calls RideLiveActivityController.update
+// directly on every snapshot (ActivityKit coalesces) instead of throttling by phase/interval.
 internal class NotificationUpdateGate(
     private val minIntervalMs: Long,
 ) {

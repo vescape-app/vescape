@@ -10,6 +10,7 @@ import org.junit.Test
 
 /** @parity /modules/vescape-core/ios/alerts/EffectsPacksTests.swift */
 class EffectsPacksTest {
+    /** A pack filling only the required slots, without `cue.on` or `cue.off`. */
     private val packSlots = setOf("severity.positive", "severity.info", "severity.warning", "severity.critical")
 
     private fun lookup(slot: String, overrides: Set<String> = emptySet()) =

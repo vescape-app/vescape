@@ -1,20 +1,30 @@
 import Foundation
 
+/// Built-in voice packs (`shared/alerts/packs/voice-<id>`): whole-sentence lines per message key
+/// plus value clips, joined natively into one buffer after the effects pack's severity sound.
+///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt
 /// @parity /src/modules/settings/lib/appSounds.ts `VOICE_PACKS`
 internal let voicePackIds = ["nova", "radio", "nicole"]
 
+/// Former voice id → its new id; a saved one reads as the renamed voice.
 internal let renamedVoicePackIds = ["clean": "nova", "hev": "radio"]
 
+/// Voice an effects pack without its own voice matches, and the stand-in for an unknown id.
 internal let voicePackFallback = "nova"
 
+/// `voice` setting that follows the voice the selected effects pack names.
 internal let voiceMatching = "matching"
 
+/// Voice level: `off` plays effects only for presets and app sounds; `minimal` and `standard` speak
+/// preset alerts; `full` also speaks app cues and group ride events (#581). Each level also picks
+/// the wording (`VoiceWording`). Custom rules speak whatever the level, `off` with standard wording.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_LEVELS`
 /// @parity /src/modules/settings/lib/appSounds.ts `VOICE_LEVELS`
 internal let voiceLevels = ["off", "minimal", "standard", "full"]
 internal let voiceLevelDefault = "standard"
 
+/// Voice pack the `voice` setting plays: a named pack, or the one `effectsVoice` names.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voicePackId`
 /// @parity /src/modules/settings/lib/appSounds.ts `resolvedVoiceId`
 internal func voicePackId(_ voice: String, effectsVoice: String?) -> String {
@@ -23,6 +33,9 @@ internal func voicePackId(_ voice: String, effectsVoice: String?) -> String {
   return voicePackFallback
 }
 
+/// Voice keys of built-in alerts and the value type a single-value alert on each speaks (nil: no
+/// value). Mirrors `scripts/alert-packs/catalog.json` `voiceKeys`. Multi-value lines carry their
+/// types on each `VoiceValue` instead.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VOICE_KEY_VALUE_TYPES`
 internal let voiceKeyValueTypes: [String: String?] = [
   "battery": "percent",
@@ -65,6 +78,7 @@ internal let voiceKeyValueTypes: [String: String?] = [
   "weather.rain.now": nil,
 ]
 
+/// Voice key an alert on `controlId` speaks; nil for metrics without voice lines.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voiceKey`
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `VOICE_KEY_BY_CONTROL`
 internal func voiceKey(_ controlId: String) -> String? {
@@ -80,6 +94,9 @@ internal func voiceKey(_ controlId: String) -> String? {
 
 private let kmPerMile = 1.609344
 
+/// Which phrases a line speaks: `minimal` the generic line's `minimal` (else `start`), never a
+/// severity line; `standard` the severity line's `start`; `full` its `full` pool (else `start`) with
+/// an ending drawn at `endChance`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VoiceWording`
 internal enum VoiceWording: String {
   case minimal, standard, full
@@ -89,12 +106,17 @@ internal enum VoiceWording: String {
   }
 }
 
+/// One value a line speaks: the clip `value` of value type `type` (`percent`, `degrees`, `number`,
+/// `duration` in minutes). The voice layer plays that exact clip or skips it; mapping a raw reading
+/// onto the pack's clip set is the caller's job.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VoiceValue`
 internal struct VoiceValue: Equatable {
   let type: String
   let value: Int
 }
 
+/// One voice announcement: the severity sound, then the line for `key` with `values` spoken in order
+/// after its start ("Rain" + "in two and a half hours" + "thirty percent").
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VoiceAnnouncement`
 internal struct VoiceAnnouncement: Equatable {
   let severity: AlertSeverity
@@ -103,6 +125,10 @@ internal struct VoiceAnnouncement: Equatable {
   var wording: VoiceWording = .standard
 }
 
+/// What a `voice` sound says for an alert on `controlId`. The key comes from the sound string or the
+/// metric; the value from the sound string or `reading` (percent for battery only while
+/// `percentAvailable`: without a battery config a battery reading is volts), °C read in °F under
+/// the Fahrenheit temperature unit, km/h read in mph under the mi distance unit, rounded to the nearest clip. A nil key plays the severity sound only.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voiceAnnouncement`
 internal func voiceAnnouncement(
   _ sound: VoiceAlertSound,
@@ -130,6 +156,8 @@ internal func voiceAnnouncement(
   )
 }
 
+/// A line in `pack.json`: `start` phrases, an optional `minimal` phrase set, and an optional `full`
+/// pool whose ending plays at `endChance`. Each list holds clip variants.
 internal struct VoiceLine: Equatable {
   let start: [String]
   var minimal: [String] = []
@@ -140,16 +168,20 @@ internal struct VoiceLine: Equatable {
   var files: [String] { start + minimal + fullStart + fullEnd }
 }
 
+/// What one announcement can say: `start` (+ values) (+ an `end` at `endChance`).
 internal struct VoicePhrases: Equatable {
   let start: [String]
   let end: [String]
   let endChance: Double
 }
 
+/// A voice pack's `pack.json`: lines per key, value clip per value type and number.
 internal struct VoicePackManifest {
   let lines: [String: VoiceLine]
   let values: [String: [Int: String]]
 
+  /// Phrases for `key` in `wording`: Minimal reads the generic `<key>` line only; Standard and Full
+  /// the most specific `<key>.<severity>`, else `<key>`. Nil when the pack has no such line.
   func phrases(key: String, severity: AlertSeverity, wording: VoiceWording) -> VoicePhrases? {
     guard let line = wording == .minimal ? lines[key] : lines["\(key).\(severity.rawValue)"] ?? lines[key]
     else { return nil }
@@ -163,6 +195,7 @@ internal struct VoicePackManifest {
     return phrases.start.isEmpty ? nil : phrases
   }
 
+  /// Clip for `value`; nil when the pack has no such clip.
   func valueClip(_ value: VoiceValue) -> String? {
     values[value.type]?[value.value]
   }
@@ -192,12 +225,16 @@ internal struct VoicePackManifest {
   }
 }
 
+/// Picks one clip per line part at random, never the same `start` twice in a row for a key, and
+/// an `end` only at its `endChance`. The pick after each announcement is made right away, so `next`
+/// lets the caller join it ahead.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `VoiceVariantPicker`
 internal final class VoiceVariantPicker {
   private struct Choice {
     let start: Int
     let end: Int?
 
+    /// False for a pick made against another pack's line (the picker serves every pack).
     func fits(_ line: VoicePhrases) -> Bool {
       start < line.start.count && (end.map { $0 < line.end.count } ?? true)
     }
@@ -211,6 +248,8 @@ internal final class VoiceVariantPicker {
     self.random = random
   }
 
+  /// Clip files of `announcement` in play order (start, values, end); nil when the pack has no line.
+  /// A value without a clip is skipped; the rest of the line still plays.
   func clips(_ manifest: VoicePackManifest, _ announcement: VoiceAnnouncement) -> [String]? {
     guard let (key, line) = resolve(manifest, announcement) else { return nil }
     lock.lock()
@@ -221,6 +260,7 @@ internal final class VoiceVariantPicker {
     return files(manifest, line, choice, announcement.values)
   }
 
+  /// Clip files the next `clips` call for `announcement` returns, without consuming the pick.
   func next(_ manifest: VoicePackManifest, _ announcement: VoiceAnnouncement) -> [String]? {
     guard let (key, line) = resolve(manifest, announcement) else { return nil }
     lock.lock()
@@ -251,10 +291,14 @@ internal final class VoiceVariantPicker {
   }
 }
 
+/// Amplitude below which a clip's first samples count as padding (64 of 32 767).
 internal let voiceSilenceThreshold: Float = 64.0 / 32767.0
 
+/// Longest padding trimmed: two AAC frames, about 93 ms at 22 050 Hz.
 internal let voicePrimingMaxSeconds = 2048.0 / 22050.0
 
+/// Leading AAC encoder priming and silence, at most `maxFrames`: joins must not open a gap before
+/// each clip. Clips start on speech, so anything under `threshold` there is padding.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `leadingSilenceFrames`
 internal func leadingSilenceFrames(_ samples: UnsafeBufferPointer<Float>, threshold: Float = voiceSilenceThreshold, maxFrames: Int) -> Int {
   let limit = min(samples.count, maxFrames)
@@ -262,6 +306,7 @@ internal func leadingSilenceFrames(_ samples: UnsafeBufferPointer<Float>, thresh
   return limit
 }
 
+/// Manifest of voice pack `pack` under `root` (the folder holding `voice-<id>/`).
 internal func voicePackManifest(root: URL, pack: String) -> VoicePackManifest? {
   let id = voicePackIds.contains(pack) ? pack : voicePackFallback
   // intentional-suppression: a missing or corrupt bundled manifest plays the severity sound only

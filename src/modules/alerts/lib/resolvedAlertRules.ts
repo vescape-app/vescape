@@ -4,7 +4,7 @@ import {
   type BoardConfigBases,
 } from '@/modules/alerts/lib/configRelativeFields'
 
-/**
+/** Resolve saved relationships for presentation, without generating or writing any rules.
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `effectiveThresholds`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `effectiveThresholds`
  */

@@ -1,6 +1,7 @@
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 
+/** A control's enabled rules as the threshold marks a live gauge draws. */
 export function gaugeAlertsFor(
   rules: readonly DraftAlertRule[],
   controlId: string,

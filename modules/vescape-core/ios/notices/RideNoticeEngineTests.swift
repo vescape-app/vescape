@@ -92,6 +92,7 @@ final class RideNoticeEngineTests: XCTestCase {
     _ = engine.dismiss(id: 2, rev: 1)
     XCTAssertFalse(engine.clear(key: "b"))
     XCTAssertFalse(engine.clear(key: "missing"))
+    // Cleared: a fresh post of the key shows again even with the old revision.
     XCTAssertEqual(engine.post(key: "b", content: content(), revision: "r1", nowMs: 0), .changed)
   }
 
@@ -119,6 +120,7 @@ final class RideNoticeEngineTests: XCTestCase {
     _ = engine.post(key: "warning", content: content(.warning, postedAt: 500), revision: "r1", nowMs: 0)
     _ = engine.post(key: "new-info", content: content(postedAt: 2_000), revision: "r1", nowMs: 0)
     _ = engine.post(key: "critical", content: content(.critical, postedAt: 100), revision: "r1", nowMs: 0)
+    // Re-posting the old notice later does not move it up.
     _ = engine.post(key: "old-info", content: content(postedAt: 1_000), revision: "r2", nowMs: 50_000)
     XCTAssertEqual(keys, ["critical", "warning", "new-info", "old-info"])
   }
@@ -127,6 +129,7 @@ final class RideNoticeEngineTests: XCTestCase {
     _ = engine.post(key: "a", content: content(), revision: "r", nowMs: 0)
     _ = engine.post(key: "b", content: content(), revision: "r", nowMs: 0)
     _ = engine.clear(key: "a")
+    // Freed id 1 is not reused straight away.
     _ = engine.post(key: "c", content: content(), revision: "r", nowMs: 0)
     XCTAssertEqual(engine.active.first { $0.key == "c" }?.id, 3)
   }

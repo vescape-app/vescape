@@ -4,6 +4,7 @@ import { mySounds, type MySoundsState } from 'vescape-core'
 
 const EMPTY: MySoundsState = { sounds: [], overrides: {} }
 
+/** The native My sounds library, reloaded whenever the screen regains focus. */
 export function useMySounds() {
   const [state, setState] = useState<MySoundsState>(EMPTY)
   const [loadError, setLoadError] = useState(false)

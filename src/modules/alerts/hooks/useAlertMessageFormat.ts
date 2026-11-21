@@ -6,6 +6,7 @@ import {
   type getAlertDialConfig,
 } from '@/modules/alerts/lib/alertFormDefaults'
 
+/** Format alert speech previews with the rider's current display units. */
 export function useAlertMessageFormat() {
   const distanceUnit = useDistanceUnit()
   return useCallback(

@@ -1,12 +1,22 @@
 import Foundation
 
+/// Inclusive bounds on the count of an `alert(count):severity` sound.
 /// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `ALERT_BEEP_COUNT_RANGE`
 internal let alertBeepCountRange = 1...5
 
+/// Id prefix of Alert Preset rows (`preset:<metric>`) and the rules they expand to
+/// (`preset:<metric>:<index>`), the rules Voice level applies to.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `PRESET_RULE_PREFIX`
 internal let presetRulePrefix = "preset:"
 
+/// A rule's `spec` read through the sound string grammar `kind(variant):sound`. Only the first
+/// `:` after the kind and optional variant splits, so the sound part (TTS text) may contain `:`.
+/// Strings outside the grammar (no `kind:` prefix) parse to nil.
+///
+/// `tts` and `alert` have typed readings; `geiger` and `voice` plug in as new readings of the same
+/// parsed parts.
+///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt
 internal struct AlertSoundString: Equatable {
@@ -34,6 +44,9 @@ internal struct AlertSoundString: Equatable {
   }
 }
 
+/// Severity of an announcement: picks the active effects pack's `severity.<id>` slot, played before
+/// speech or as an alert rule's sound.
+///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `ALERT_SEVERITIES`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `AlertSeverity`
 internal enum AlertSeverity: String, CaseIterable {
@@ -41,11 +54,13 @@ internal enum AlertSeverity: String, CaseIterable {
 
   var slot: String { "severity.\(rawValue)" }
 
+  /// Absent or unknown severities read as `.warning`.
   static func from(_ raw: String?) -> AlertSeverity {
     raw.flatMap(AlertSeverity.init(rawValue:)) ?? .warning
   }
 }
 
+/// `tts(severity):text` — the severity sound once, then system TTS speaking `text`.
 internal struct TtsAlertSound: Equatable {
   let severity: AlertSeverity
   let text: String
@@ -57,6 +72,10 @@ internal func parseTtsAlertSound(_ spec: String) -> TtsAlertSound? {
   return TtsAlertSound(severity: AlertSeverity.from(parsed.variant), text: parsed.sound)
 }
 
+/// `voice(severity):key:value` — the severity sound once, then the voice pack's line for `key` with
+/// `value` spoken last. A custom rule stores `voice(severity):`: key from its metric, value from its
+/// threshold. A `value` is in the key's metric unit (%, °C).
+///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `parseVoiceAlertSound`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseVoiceAlertSound`
 internal struct VoiceAlertSound: Equatable {
@@ -73,15 +92,22 @@ internal func parseVoiceAlertSound(_ spec: String) -> VoiceAlertSound? {
   return VoiceAlertSound(severity: AlertSeverity.from(parsed.variant), key: key, value: value)
 }
 
+/// True for a `spec` spoken after its severity sound: system TTS or a voice line.
 internal func isSpokenSpec(_ spec: String) -> Bool {
   parseTtsAlertSound(spec) != nil || parseVoiceAlertSound(spec) != nil
 }
 
+/// `alert(count):severity` — the active effects pack's severity sound, `count` times.
 internal struct SlotAlertSound: Equatable {
   let count: Int
   let severity: AlertSeverity
 }
 
+/// Read any non-TTS single-alert `spec` as a slot sound. `alert:` means one play. Strings from
+/// before the grammar map onto the matching severity (`preset:notify|beep|urgent` → info, warning,
+/// critical, played once); anything unknown plays the warning sound once, so a rule is never silent.
+/// A `my:<id>` sound reads as warning too: the fallback when that My sound is gone (see `mySoundId`).
+///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `parseSlotAlertSound`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseSlotAlertSound`
 internal func parseSlotAlertSound(_ spec: String) -> SlotAlertSound {
@@ -98,6 +124,8 @@ internal func parseSlotAlertSound(_ spec: String) -> SlotAlertSound {
   }
 }
 
+/// Tick level of a geiger (range) rule: picks the active effects pack's `geiger.<id>` slot.
+///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `GEIGER_LEVELS`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `GeigerLevel`
 internal enum GeigerLevel: String, CaseIterable {
@@ -113,6 +141,10 @@ private let legacyGeiger: [String: GeigerLevel] = [
   "preset:sustained": .hard,
 ]
 
+/// `geiger:level` — a range rule's tick level, or nil when `spec` is not a geiger sound.
+/// Strings from before the grammar map `preset:tick|tick_hard|gamma|sustained` → soft, mid, hard,
+/// hard. An unknown level ticks soft, as does `geiger:my:<id>` when that My sound is gone.
+///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `parseGeigerAlertSound`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `parseGeigerAlertSound`
 internal func parseGeigerAlertSound(_ spec: String) -> GeigerLevel? {
@@ -121,15 +153,21 @@ internal func parseGeigerAlertSound(_ spec: String) -> GeigerLevel? {
   return GeigerLevel(rawValue: parsed.sound) ?? .soft
 }
 
+/// Geiger slot for a range rule's `spec` (see `parseGeigerAlertSound`); a non-geiger string
+/// ticks soft.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `geigerSlot`
 internal func geigerSlot(_ spec: String) -> String {
   (parseGeigerAlertSound(spec) ?? .soft).slot
 }
 
+/// True for a `spec` that names a geiger tick rather than a single alert sound.
 internal func isGeigerSpec(_ spec: String) -> Bool {
   parseGeigerAlertSound(spec) != nil
 }
 
+/// My sound id of an `alert(count):my:<id>` or `geiger:my:<id>` sound, else nil. The player uses it
+/// when the sound still exists and falls back to the parsed pack slot otherwise, never silence.
+///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `mySoundId`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `mySoundId`
 internal func mySoundId(_ spec: String) -> String? {
@@ -139,6 +177,10 @@ internal func mySoundId(_ spec: String) -> String? {
   return id.isEmpty ? nil : id
 }
 
+/// `preset(level):key=value,…` — an Alert Preset row's spec: the rider's level plus options, nothing
+/// else (the shipped definition owns every point). Unknown keys are kept in order, so rewriting one
+/// option never drops what a newer app stored. An entry without `=` is not an option and is dropped.
+///
 /// @parity /src/modules/alerts/lib/alertSoundString.ts `parseAlertPresetSpec`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `AlertPresetSpec`
 internal struct AlertPresetSpec: Equatable {
@@ -152,6 +194,7 @@ internal struct AlertPresetSpec: Equatable {
 
   func option(_ key: String) -> String? { options.first { $0.key == key }?.value }
 
+  /// This spec with `key` set to `value` in place, appended when new, or removed when nil.
   func withOption(_ key: String, _ value: String?) -> AlertPresetSpec {
     var next = options.filter { $0.key != key }
     if let value {

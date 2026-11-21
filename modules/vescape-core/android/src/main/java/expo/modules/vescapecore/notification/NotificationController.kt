@@ -53,6 +53,7 @@ internal class NotificationController(
             )
     }
 
+    /** Whether this controller's notification is currently posted. */
     fun isShowing(): Boolean =
         service.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == notificationId }
 

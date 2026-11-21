@@ -492,7 +492,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /**
      * Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
      * when observing starts and on zone CRUD; reuses the same geometry as Ride Recording
-     * suppression (ADR-0009). Touched off the main thread, so kept @Volatile.
+     * suppression (ADR-0009 / ADR-0020). Touched off the main thread, so kept @Volatile.
      */
     private val groupRidePrivacy = PrivacyZoneReadState()
 

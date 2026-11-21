@@ -7,6 +7,7 @@ import {
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
 
+/** Bind preset summaries and descriptions to the rider's current display units. */
 export function useAlertPresetFormat() {
   const distanceUnit = useDistanceUnit()
   const formatSummary = useCallback(

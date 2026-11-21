@@ -45,6 +45,7 @@ class PlaybackCompletionTest {
         tracker.claimSpeech(first)
         val second = tracker.start { outcomes += "second" to it }
         tracker.claimSpeech(second)
+        // The pre-empted line's own end still lands later; it must not report again.
         first.finish(PlaybackOutcome.COMPLETED)
         second.finish(PlaybackOutcome.COMPLETED)
         assertEquals(listOf("first" to PlaybackOutcome.CANCELLED, "second" to PlaybackOutcome.COMPLETED), outcomes)

@@ -28,24 +28,39 @@ import java.util.concurrent.Executors
 import kotlin.math.abs
 
 /**
+ * Floor on an Alert Rule's repeat cadence, in seconds.
+ *
  * @parity /modules/vescape-core/src/index.ts `ALERT_REPEAT_MIN_SECONDS`
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertRepeatMinSeconds`
  */
 const val ALERT_REPEAT_MIN_SECONDS = 3L
 
+/**
+ * Gap between beeps of one announcement — tight enough that a burst reads as a single signal. A
+ * sound longer than this (a pack's multi-beep severity) repeats once it ends, this far apart.
+ */
 internal const val ALERT_BEEP_SPACING_MS = 350L
 
+/**
+ * Clamp a repeat cadence coming from JS. Anything non-positive means one-shot; everything else is
+ * floored, so no rule written by any path can announce fast enough to become noise.
+ */
 fun normalizedAlertRepeatSeconds(raw: Double?): Long? {
     if (raw == null || !raw.isFinite() || raw <= 0.0) return null
     return maxOf(ALERT_REPEAT_MIN_SECONDS, Math.round(raw))
 }
 
 /**
+ * Speech starts once the sound before it ends, but no earlier than [ALERT_SPEECH_DELAY_MS] and no
+ * later than [ALERT_SPEECH_MAX_DELAY_MS] after it starts: a long recorded effect keeps its tail
+ * (reverb, a fade) playing under the voice instead of holding the voice back.
+ *
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertSpeechDelayMs`
  */
 internal const val ALERT_SPEECH_DELAY_MS = 350L
 internal const val ALERT_SPEECH_MAX_DELAY_MS = 1500L
 
+/** When speech may start after [severity]'s sound (its override, else [pack]'s) starts playing. */
 internal fun speechDelayMs(context: Context, pack: String, slot: String): Long =
     (slotClip(context, pack, slot)?.durationMs(context) ?: 0L).coerceIn(ALERT_SPEECH_DELAY_MS, ALERT_SPEECH_MAX_DELAY_MS)
 
@@ -144,6 +159,7 @@ internal data class FiredAlert(
 }
 
 /**
+ * Adds Legal Mode's per-Board speed warning to in-memory rules. No Alert Rule row is materialized.
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `withLegalModeOverlay`
  */
 internal fun withLegalModeOverlay(
@@ -168,6 +184,9 @@ internal fun withLegalModeOverlay(
     )
 }
 
+/**
+ * @param now Wall clock in ms. Injected so repeat cadence is testable without sleeping.
+ */
 internal class AlertEngine(private val now: () -> Long = { System.currentTimeMillis() }) {
     // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `AlertEngine`
     private val lastFiredAt = HashMap<String, Long>()
@@ -177,8 +196,10 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
 
     fun updateBoardConfigValues(values: Map<String, Any>) { configValues = values }
 
+    /** VESC motor config (MCCONF), the other half of what a config-relative rule may anchor to. */
     fun updateMotorConfigValues(values: Map<String, Any>) { motorConfigValues = values }
 
+    /** Forget every latch and repeat clock. Called when a new Board Session starts. */
     fun resetAlertState() {
         lastFiredAt.clear()
         armedState.clear()
@@ -191,6 +212,10 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
     ): List<FiredAlert> = evaluateRules(rules, batteryPercent) { extractAlertValue(it, t) }
 
     /**
+     * Evaluate already-normalized metric values. Production telemetry and the UI alert test both
+     * enter the same stateful arm/re-arm path; callers isolate state by owning separate
+     * [AlertEngine] instances.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `evaluateValues`
      */
     fun evaluateValues(
@@ -226,6 +251,8 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
                 continue
             }
 
+            // Single-threshold rule: announce on crossing, then stay latched until the metric
+            // travels back past the threshold by this metric's re-arm margin.
             val armed = armedState[rule.id] ?: true
             if (!triggered) {
                 if (!armed && hasRearmed(compareValue, rule, effective.first, aboveDir)) {
@@ -253,6 +280,15 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         )
     }
 
+    /**
+     * Keep one single-threshold announcement per metric — the most severe, which the caller has
+     * already sorted first. A fast climb crosses several rungs in one evaluation; the rider wants
+     * the worst news, not a stutter of speech cut off mid-word. The dropped rules stay latched, so
+     * they are spent rather than pending.
+     *
+     * Range rules pass through untouched: their feedback is a continuous loop keyed by rule id,
+     * not an announcement.
+     */
     private fun coalesceByControl(sorted: List<FiredAlert>): List<FiredAlert> {
         val announced = HashSet<String>()
         return sorted.filter { alert ->
@@ -279,6 +315,7 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
     }
 
     /**
+     * True once a fired rule's metric has travelled back past its effective threshold by the re-arm margin.
      * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `hasRearmed`
      */
     private fun hasRearmed(compareValue: Double, rule: AlertRuleEntity, effectiveThreshold: Double, aboveDir: Boolean): Boolean {
@@ -287,6 +324,8 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
     }
 
     private fun alertRearmMargin(controlId: String, threshold: Double): Double =
+        // Controls with no metric definition (footpad) get a relative margin rather than none:
+        // zero would let a value dithering on the threshold announce on every telemetry tick.
         telemetryMetricByControlId[controlId]?.alertRearmMargin ?: (abs(threshold) * 0.02)
 
     private fun isRangeRule(rule: AlertRuleEntity, aboveDir: Boolean): Boolean {
@@ -326,14 +365,18 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
 
 internal class AlertFeedback(
     private val context: Context,
+    /** Audio looper every method hops to. A Board Session passes a dedicated thread, off main. */
     private val handler: Handler,
+    /** Records a Diagnostic Event: a sound that started [ALERT_AUDIO_LATENCY_REPORT_MS] or more late. */
     private val onDiagnostic: (String, Map<String, Any?>) -> Unit = { _, _ -> },
 ) {
     // @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift
     // @platform-diff Android selects alarm/media streams; iOS retains its playback session.
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    /** Speech waiting for the TTS engine to initialize, with the item it finishes. */
     private var ttsPending: Pair<String, PlaybackCompletion>? = null
+    /** Item per TTS utterance id still speaking; the progress listener finishes it. */
     private val utterances = HashMap<String, PlaybackCompletion>()
     private var utteranceSeq = 0
     @Volatile private var released = false
@@ -342,11 +385,17 @@ internal class AlertFeedback(
     private fun newSoundPool() = SoundPool.Builder().setMaxStreams(8)
         .setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SONIFICATION)).build()
     private var soundPool = newSoundPool()
+    /** SoundPool sample per `"<pack>/<slot>"` of every built-in effects pack. */
     private val soundIds = HashMap<String, Int>()
+    /** SoundPool sample per My sound file path, loaded by [prepare] or on first play. */
     private val fileSamples = HashMap<String, Int>()
+    /** Prepared MediaPlayer per My sound file path, so a one-shot My sound starts without a load. */
     private val readyMine = HashMap<String, ReadyClip>()
+    /** Silent track holding audio output open between sounds while [wake]; null when idle. */
     private var warmTrack: AudioTrack? = null
+    /** Sounds already reported late since [wake], one Diagnostic Event each. */
     private val lateReported = HashSet<String>()
+    /** Last [prepare] input, replayed when the pool is rebuilt for a new audio source. */
     private var prepared: List<String> = emptyList()
     private val geigerLoops = HashMap<String, GeigerLoop>()
     private val samples = SoundSampleQueue()
@@ -355,18 +404,26 @@ internal class AlertFeedback(
     private var voice: String = VOICE_MATCHING
     @Volatile private var voiceLevel: String = VOICE_LEVEL_DEFAULT
 
+    /** False at Voice level `off`: preset voice rules then play their severity sound only. */
     val presetVoiceEnabled: Boolean get() = voiceLevel != "off"
+    /** Voice line playing now; a newer announcement or [release] stops it. */
     private var voiceTrack: AudioTrack? = null
+    /** Bumped per voice announcement, so a line still decoding for an older one never plays. */
     private var voiceGeneration = 0
+    /** Unfinished playback items; their [PlaybackDone]s run on [handler]. */
     private val playback = PlaybackTracker { handler.post(it) }
 
     /**
+     * A tracked item reporting to [onDone] exactly once, [PlaybackOutcome.FAILED] past
+     * [PLAYBACK_DONE_TIMEOUT_MS]. The seam an announcement queue waits on.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `track`
      */
     private fun track(onDone: PlaybackDone): PlaybackCompletion = playback.start(onDone).also { done ->
         handler.postDelayed({ done.finish(PlaybackOutcome.FAILED) }, PLAYBACK_DONE_TIMEOUT_MS)
     }
 
+    /** Voice pack a line speaks with: the `voice` setting, where Matching follows the effects pack. */
     private fun voicePack(): String = voicePackId(voice, EffectsPackAssets.voice(context, soundPack))
 
     fun setSoundSettings(settings: AppSettings) {
@@ -383,9 +440,14 @@ internal class AlertFeedback(
         voiceExecutor.execute { VoicePackAssets.prewarm(context, pack) }
     }
 
+    // Off the constructing thread: decoding every pack's slots must not hold up the caller.
     init { handler.post { loadAssets() } }
 
     /**
+     * Ready everything [Specs] can play before the first alert: My sound samples and players
+     * for every rule and slot override, and the voice pack's lines. Built-in pack slots are always
+     * loaded.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `prepare`
      */
     fun prepare(Specs: List<String>) {
@@ -436,6 +498,10 @@ internal class AlertFeedback(
     }
 
     /**
+     * Hold audio output open for a Board Session: a looping silent track keeps the output (and a
+     * Bluetooth link) from sleeping between sounds, so the first sound after a quiet stretch is not
+     * clipped. [goIdle] lets it go.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `wake`
      */
     fun wake() {
@@ -449,6 +515,8 @@ internal class AlertFeedback(
     }
 
     /**
+     * Let audio output sleep between Board Sessions. Loaded sounds stay ready.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `goIdle`
      */
     fun goIdle() {
@@ -482,6 +550,7 @@ internal class AlertFeedback(
         null
     }
 
+    /** Report [sound] once per session when it started [ALERT_AUDIO_LATENCY_REPORT_MS] or more after [requestedAt]. */
     private fun reportLatency(sound: String, requestedAt: Long, path: String) {
         val latency = SystemClock.uptimeMillis() - requestedAt
         if (latency < ALERT_AUDIO_LATENCY_REPORT_MS || !lateReported.add(sound)) return
@@ -513,6 +582,12 @@ internal class AlertFeedback(
         }
     }
 
+    /**
+     * Sample [slot] plays (see [slotClip]): My sound [my] or the slot's override, loaded on first
+     * use, else the pack's; only the pack's when [mine] is false. A My sound that failed to load
+     * falls back to the pack; 0 when nothing loaded. Geiger ticks play from here; one-shot My
+     * sounds go through [playOnce], since SoundPool truncates long clips.
+     */
     private fun slotSample(slot: String, pack: String = soundPack, my: String? = null, mine: Boolean = true): Int {
         val packSample = soundIds["${effectsPackId(pack)}/${EffectsPackAssets.packSlot(context, pack, slot)}"] ?: 0
         if (!mine) return packSample
@@ -549,6 +624,8 @@ internal class AlertFeedback(
     }
 
     /**
+     * The Board link came up: opens the Announcement Queue's settle window, cue or not.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `boardConnected`
      */
     fun boardConnected(playCue: Boolean) {
@@ -561,6 +638,8 @@ internal class AlertFeedback(
     }
 
     /**
+     * The live Board link was lost: whatever the Board Session still had queued is dropped, cue or not.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `boardDisconnected`
      */
     fun boardDisconnected(playCue: Boolean) {
@@ -573,6 +652,9 @@ internal class AlertFeedback(
     }
 
     /**
+     * Queue app cue [cue] on the Announcement Queue at its [appCuePriority]; [onDone] reports how it
+     * ended, [PlaybackOutcome.CANCELLED] when it expired or the queue was cleared first.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `playAppCue`
      */
     fun playAppCue(cue: String, onDone: PlaybackDone = {}) {
@@ -584,6 +666,10 @@ internal class AlertFeedback(
         announce(priority, onDone) { done -> playAppCueNow(cue, done) }
     }
 
+    /**
+     * Play app cue [cue] from the active effects pack; when it speaks at the current Voice level
+     * ([appCueSpeaks]), its voice line follows once the effect has finished.
+     */
     private fun playAppCueNow(cue: String, done: PlaybackCompletion) {
         val slot = appCueSlot(cue) ?: run { done.finish(PlaybackOutcome.FAILED); return }
         val key = if (appCueSpeaks(cue, voiceLevel)) appCueVoiceKey(cue) else null
@@ -591,7 +677,9 @@ internal class AlertFeedback(
         else playOnce(slot, onDone = { done.finish(it) })
     }
 
+    /** One Announcement Queue item: how to play it, and who hears its final outcome. */
     private class QueuedAnnouncement(val play: (PlaybackCompletion) -> Unit, val onDone: PlaybackDone) {
+        /** The current attempt; a pre-empted item gets a fresh one when it plays again. */
         var attempt: PlaybackCompletion? = null
     }
 
@@ -599,6 +687,9 @@ internal class AlertFeedback(
     private val pumpRunnable = Runnable { pumpAnnouncements() }
 
     /**
+     * The Announcement Queue seam every non-critical producer goes through: [play] runs once the
+     * queue gives the item its turn and must finish the completion it is handed. Audio looper only.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `announce`
      */
     private fun announce(
@@ -620,6 +711,7 @@ internal class AlertFeedback(
             is AnnouncementStep.Play -> {
                 val item = step.item
                 val attempt = track { outcome ->
+                    // A cleared item was already reported; only the playing one advances the queue.
                     if (announcements.playing !== item) return@track
                     announcements.finished(outcome, SystemClock.uptimeMillis())?.onDone?.invoke(outcome)
                     pumpAnnouncements()
@@ -632,8 +724,10 @@ internal class AlertFeedback(
         }
     }
 
+    /** Stop [item]'s attempt playing now: cut speech reports cancelled and plays again. */
     private fun stopAnnouncement(item: QueuedAnnouncement) {
         val attempt = item.attempt ?: return
+        // An effect cannot be cut: it tails out and counts as played, so it never plays twice.
         if (!playback.isSpeech(attempt)) {
             attempt.finish(PlaybackOutcome.COMPLETED)
             return
@@ -650,6 +744,10 @@ internal class AlertFeedback(
         }
     }
 
+    /**
+     * Wrap a critical alert's [onDone]: while it plays the Announcement Queue holds, and the item it
+     * pre-empts stops. Geiger ticks never come through here. Audio looper only.
+     */
     private fun critical(onDone: PlaybackDone): PlaybackDone {
         announcements.criticalStarted()?.let(::stopAnnouncement)
         return { outcome ->
@@ -659,6 +757,7 @@ internal class AlertFeedback(
         }
     }
 
+    /** Silence the speech item playing or waiting on its lead sound. */
     private fun stopSpeech() {
         pendingSpeech?.let { handler.removeCallbacks(it) }
         pendingSpeech = null
@@ -669,6 +768,14 @@ internal class AlertFeedback(
         tts?.stop()
     }
 
+    /**
+     * Play [slot] once (see [slotClip]): a My sound through [MySounds.play], whole, falling back to
+     * the pack's clip if it cannot play; otherwise the pack's sample.
+     */
+    /**
+     * [onStart] runs once the sound starts, or gives up, so whatever follows it never starts early.
+     * [onDone] runs once it has ended: a SoundPool or prepared clip after its length.
+     */
     private fun playOnce(
         slot: String,
         my: String? = null,
@@ -708,6 +815,7 @@ internal class AlertFeedback(
         }
     }
 
+    /** SoundPool reports no end, so [onDone] follows the clip's length (or [track]'s timeout). */
     private fun playPackSlot(
         slot: String,
         pack: String,
@@ -730,6 +838,7 @@ internal class AlertFeedback(
         }
     }
 
+    /** False when the sample could not play. */
     private fun playRaw(soundId: Int): Boolean {
         if (released) return false
         if (soundId == 0) {
@@ -753,6 +862,7 @@ internal class AlertFeedback(
         val existing = tts
         if (existing == null) {
             ttsPending = text to done
+            // The engine reports on the main looper; its state belongs to the audio one.
             tts = TextToSpeech(context) { status -> handler.post { onTtsInit(status) } }
             return
         }
@@ -777,6 +887,7 @@ internal class AlertFeedback(
                 @Deprecated("Superseded by onError(String, Int)")
                 override fun onError(utteranceId: String) = utteranceEnded(utteranceId, PlaybackOutcome.FAILED)
                 override fun onError(utteranceId: String, errorCode: Int) = utteranceEnded(utteranceId, PlaybackOutcome.FAILED)
+                // QUEUE_FLUSH and stop() interrupt an utterance through here.
                 override fun onStop(utteranceId: String, interrupted: Boolean) = utteranceEnded(utteranceId, PlaybackOutcome.CANCELLED)
             })
             ttsReady = true
@@ -801,10 +912,15 @@ internal class AlertFeedback(
         }
     }
 
+    /** Progress listener callbacks arrive on a TTS binder thread; the item belongs to [handler]. */
     private fun utteranceEnded(id: String, outcome: PlaybackOutcome) {
         handler.post { utterances.remove(id)?.finish(outcome) }
     }
 
+    /**
+     * Play one announcement: an `alert(count):severity` rule's severity sound from the active effects
+     * pack, [count][SlotAlertSound.count] times, [ALERT_BEEP_SPACING_MS] apart.
+     */
     fun playSingle(spec: String, requestedAt: Long = SystemClock.uptimeMillis(), onDone: PlaybackDone = {}) {
         if (android.os.Looper.myLooper() != handler.looper) {
             handler.post { playSingle(spec, requestedAt, onDone) }
@@ -814,6 +930,7 @@ internal class AlertFeedback(
         playSeverity(parseSlotAlertSound(spec), mySoundId(spec), requestedAt, onDone = { done.finish(it) })
     }
 
+    /** [sound]'s severity slot from the effects pack, or My sound [my] in its place, [SlotAlertSound.count] times. */
     private fun playSeverity(
         sound: SlotAlertSound,
         my: String? = null,
@@ -825,6 +942,7 @@ internal class AlertFeedback(
             val slot = sound.severity.slot
             val duration = slotClip(context, soundPack, slot, my)?.durationMs(context) ?: 0L
             val interval = if (duration > ALERT_BEEP_SPACING_MS) duration + ALERT_BEEP_SPACING_MS else ALERT_BEEP_SPACING_MS
+            // The last repetition ends the item.
             fun doneAt(index: Int): PlaybackDone = if (index == sound.count - 1) onDone else ({})
             playOnce(slot, my, requestedAt, doneAt(0), onStart)
             for (index in 1 until sound.count) {
@@ -838,6 +956,9 @@ internal class AlertFeedback(
     }
 
     /**
+     * Speak a TTS rule's [text] after its [severity] sound, played once; speech starts once the sound
+     * has finished, so the two never overlap.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakAfterSeverity`
      */
     fun speakAfterSeverity(
@@ -852,11 +973,13 @@ internal class AlertFeedback(
         }
         val done = track(critical(onDone))
         if (released) { done.finish(PlaybackOutcome.CANCELLED); return }
+        // A newer announcement supersedes speech still waiting out an older one's sound.
         pendingSpeech?.let { handler.removeCallbacks(it) }
         pendingSpeech = null
         playback.claimSpeech(done)
         val generation = ++voiceGeneration
         val delay = speechDelayMs(context, soundPack, severity.slot)
+        // Timed from the sound's actual start, so a sound still loading never overlaps the speech.
         playSeverity(SlotAlertSound(1, severity), requestedAt = requestedAt) {
             if (released || generation != voiceGeneration) return@playSeverity
             val speech = Runnable { pendingSpeech = null; if (generation == voiceGeneration) speakTracked(text, done) }
@@ -868,6 +991,11 @@ internal class AlertFeedback(
     private var pendingSpeech: Runnable? = null
 
     /**
+     * Speak [announcement]: [slot] (its severity sound by default) once, then the voice pack line
+     * joined with its value into one buffer, starting once the sound has finished. A key the pack
+     * has no line for plays the sound only. Whether to speak is the caller's ([presetVoiceEnabled]); the
+     * voice level picks the wording.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakVoice`
      */
     fun speakVoice(
@@ -884,6 +1012,9 @@ internal class AlertFeedback(
     }
 
     /**
+     * Queue [announcement] on the Announcement Queue at advisory priority (Weather Alerts). At Voice
+     * level `off` nothing plays: a bare severity sound would carry none of the line's information.
+     *
      * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `speakAdvisory`
      */
     fun speakAdvisory(announcement: VoiceAnnouncement, onDone: PlaybackDone = {}) {
@@ -897,6 +1028,7 @@ internal class AlertFeedback(
         }
     }
 
+    /** [done] ends with the line, or with the sound when the pack has no line for the key. */
     private fun speakVoiceTracked(announcement: VoiceAnnouncement, slot: String, requestedAt: Long, done: PlaybackCompletion) {
         if (released) { done.finish(PlaybackOutcome.CANCELLED); return }
         pendingSpeech?.let { handler.removeCallbacks(it) }
@@ -904,6 +1036,8 @@ internal class AlertFeedback(
         playback.claimSpeech(done)
         val generation = ++voiceGeneration
         val delay = speechDelayMs(context, soundPack, slot)
+        // The line is due [delay] after the sound actually starts, so a sound still loading never
+        // overlaps it; both callbacks land on the audio looper.
         var due: Long? = null
         var line: VoicePcm? = null
         var noLine = false
@@ -922,6 +1056,7 @@ internal class AlertFeedback(
             speakWhenDue()
         }
         val pack = voicePack()
+        // Decoding runs off the audio looper while the severity sound covers it.
         voiceExecutor.execute {
             val pcm = VoicePackAssets.join(context, pack, announcement.copy(wording = VoiceWording.of(voiceLevel)))
             handler.post {
@@ -985,6 +1120,7 @@ internal class AlertFeedback(
             val existing = geigerLoops[ruleId]
             if (depth >= 1.0) {
                 existing?.runnable?.let { handler.removeCallbacks(it) }
+                // A pack switch changes the sample, so the loop restarts on the new one.
                 if (existing?.sustained == true && existing.sample == sample) return
                 existing?.streamId?.let { soundPool.stop(it) }
                 val streamId = playSlot(tickSlot, loop = -1, my = my)
@@ -1004,6 +1140,7 @@ internal class AlertFeedback(
             val runnable = object : Runnable {
                 override fun run() {
                     if (released || geigerLoops[ruleId] !== loop) return
+                    // Resolved per tick, so an app-wide pack switch mid-loop takes effect.
                     playSlot(tickSlot, my = my)
                     handler.postDelayed(this, geigerIntervalMs(loop.rangeDepth))
                 }
@@ -1102,12 +1239,18 @@ internal class AlertFeedback(
         val sustained: Boolean,
         val streamId: Int? = null,
         var runnable: Runnable? = null,
+        /** Sample a sustained loop plays. */
         val sample: Int = 0,
     )
 
     companion object {
+        /** Decodes and joins voice lines off the audio looper. */
         private val voiceExecutor = Executors.newSingleThreadExecutor { Thread(it, "vescape-voice").apply { isDaemon = true } }
 
+        /**
+         * Play [pcm] once on its own static [AudioTrack] on [source]'s stream, released once it has
+         * finished; [onDone] runs then on [handler]. Null when the track could not start.
+         */
         private fun playPcm(pcm: VoicePcm, source: String, handler: Handler, onDone: (AudioTrack) -> Unit = {}): AudioTrack? {
             if (pcm.samples.isEmpty()) return null
             return try {
@@ -1139,10 +1282,14 @@ internal class AlertFeedback(
             track.release()
         }
 
+        /** Preview [pack]'s [slot] (or its override) without requiring a running board session. */
         fun previewPackSound(context: Context, pack: String, slot: String, source: String) {
             previewClip(context, Handler(contextMainLooper()), pack, slot, source = source)
         }
 
+        /**
+         * Speak [voice] after its severity sound without requiring a running board session.
+         */
         fun previewVoice(context: Context, voice: VoiceAnnouncement, source: String) {
             val handler = Handler(contextMainLooper())
             val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
@@ -1175,6 +1322,8 @@ internal class AlertFeedback(
             if (tts != null) {
                 val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, distanceUnit = settings.distanceUnit)
                 if (text.isEmpty()) return
+                // Speech waits for both the engine and the severity sound, whichever is later. Both
+                // callbacks land on the main looper, so the flags need no locking.
                 var ready: TextToSpeech? = null
                 var soundDone = false
                 fun speakWhenReady() {
@@ -1201,6 +1350,11 @@ internal class AlertFeedback(
             previewClip(context, handler, settings.soundPack, previewSlot(spec), mySoundId(spec), source)
         }
 
+        /**
+         * Play [slot] once as [slotClip] resolves it. A My sound plays whole through
+         * [MySounds.play] and falls back to [pack]'s clip if it cannot. [onDone] runs once the
+         * sound has finished.
+         */
         private fun previewClip(context: Context, handler: Handler, pack: String, slot: String, my: String? = null, source: String, doneAfterMs: Long = 0L, onDone: (() -> Unit)? = null) {
             val packPath = { EffectsPackAssets.path(context, pack, slot) }
             when (val clip = slotClip(context, pack, slot, my)) {
@@ -1214,6 +1368,10 @@ internal class AlertFeedback(
             }
         }
 
+        /**
+         * Play the pack clip at asset [path] once on a throwaway pool. [onDone] runs once it has
+         * finished, or right away if the sample fails to load.
+         */
         private fun previewAsset(context: Context, handler: Handler, path: String?, source: String, doneAfterMs: Long, onDone: (() -> Unit)?) {
             if (path == null) {
                 UnexpectedNativeError.report("alert_audio_preview_load", "bundled_asset", IllegalStateException())
@@ -1237,6 +1395,7 @@ internal class AlertFeedback(
                     }
                 }
                 context.assets.openFd(path).use { pool.load(it, 1) }
+                // Outlive the whole clip (HEV critical runs past a second) plus load time.
                 handler.postDelayed({ pool.release() }, EffectsPackAssets.durationMs(context, path) + 1_000)
             } catch (e: Exception) {
                 pool.release()
@@ -1251,6 +1410,9 @@ internal class AlertFeedback(
 }
 
 /**
+ * Sounds the alert form offers: the active effects pack's severities for single alerts, geiger ticks
+ * for range alerts.
+ *
  * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertSoundChoices`
  * @parity /modules/vescape-core/src/index.ts `FALLBACK_SOUNDS`
  */
@@ -1272,6 +1434,8 @@ private const val ALERT_CATEGORY_SINGLE = "single"
 private const val ALERT_CATEGORY_GEIGER = "geiger"
 
 /**
+ * A sound starting this late after its request records an `alert_audio_latency` Diagnostic Event.
+ *
  * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `alertAudioLatencyReportMs`
  */
 internal const val ALERT_AUDIO_LATENCY_REPORT_MS = 150L

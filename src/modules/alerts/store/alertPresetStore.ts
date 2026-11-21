@@ -8,17 +8,20 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
 
 interface AlertPresetState {
   syncing: boolean
+  /** Last preset write failure; rider-rule errors stay on the Alerts store. */
   error: string | null
 }
 
 interface AlertPresetActions {
   setLevel(metric: AlertPresetMetric, level: AlertPresetLevel): Promise<void>
   setMatchBoardConfig(metric: AlertPresetMetric, enabled: boolean): Promise<void>
+  /** Pick the tick level from a `geiger:<level>` sound string. */
   setGeigerSound(metric: AlertPresetMetric, spec: string): Promise<void>
 }
 
 let pending = 0
 
+/** JS sends intents for the active Board; native rewrites the metric's one preset row. */
 export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>((set) => {
   const run = async (write: (boardId: string) => Promise<void>) => {
     const boardId = useBoardStore.getState().activeBoardId

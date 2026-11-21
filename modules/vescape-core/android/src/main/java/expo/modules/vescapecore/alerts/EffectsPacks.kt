@@ -5,20 +5,30 @@ import android.media.MediaMetadataRetriever
 import org.json.JSONObject
 
 /**
+ * Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills the required slots
+ * of `scripts/alert-packs/EFFECTS.md` (positive/info/warning/critical sounds, geiger ticks) and
+ * may fill the optional cue slots ([OPTIONAL_SLOT_FALLBACK]). The `soundPack`
+ * setting names one of them; My sounds overrides ([SOUND_OVERRIDE_SLOTS]) win over its slots.
+ *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift
  * @parity /src/modules/settings/lib/appSounds.ts `EFFECTS_PACKS`
  */
 internal val EFFECTS_PACK_IDS = listOf("arc", "pulse", "hev")
 
+/** Default pack, and the one standing in for an unknown or retired id (`retro`, `simple`). */
 internal const val EFFECTS_PACK_FALLBACK = "arc"
 
+/** Built-in ids no longer shipped; a saved one reads as [EFFECTS_PACK_FALLBACK]. */
 internal val RETIRED_EFFECTS_PACK_IDS = setOf("retro", "simple")
 
+/** Former effects pack id → its new id; a saved one reads as the renamed pack. */
 internal val RENAMED_EFFECTS_PACK_IDS = mapOf("clean" to "pulse")
 
 internal fun effectsPackId(pack: String): String = if (pack in EFFECTS_PACK_IDS) pack else EFFECTS_PACK_FALLBACK
 
 /**
+ * Optional effects slot → the required slot a pack that leaves it out plays instead.
+ *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `optionalSlotFallback`
  */
 internal val OPTIONAL_SLOT_FALLBACK = mapOf(
@@ -30,6 +40,8 @@ internal val OPTIONAL_SLOT_FALLBACK = mapOf(
 )
 
 /**
+ * Group Ride events with an app cue and a line under the same key in every voice pack.
+ *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `groupRideCues`
  */
 internal val GROUP_RIDE_CUES = listOf(
@@ -59,6 +71,10 @@ internal val GROUP_RIDE_CUES = listOf(
 )
 
 /**
+ * App cue id (the `playAppCue` cue names) → effects slot. Error and the rider and link Group Ride
+ * events have no slot of their own and play a fixed severity sound. A signal kind sounds its notice
+ * severity ([expo.modules.vescapecore.RiderSignalKind.severity]); a hazard approach always warns.
+ *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueSlot`
  */
 internal fun appCueSlot(cue: String): String? = when (cue) {
@@ -80,6 +96,8 @@ internal fun appCueSlot(cue: String): String? = when (cue) {
 }
 
 /**
+ * Voice key app cue [cue] speaks after its effect at Voice level `full`.
+ *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `appCueVoiceKey`
  */
 internal fun appCueVoiceKey(cue: String): String? = when (cue) {
@@ -92,12 +110,18 @@ internal fun appCueVoiceKey(cue: String): String? = when (cue) {
 }
 
 /**
+ * Slot a one-shot preview of [spec] plays: a geiger tick, or the severity sound once.
+ *
  * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `previewSlot`
  */
 internal fun previewSlot(spec: String): String =
     if (isGeigerSpec(spec)) geigerSlot(spec) else parseSlotAlertSound(spec).severity.slot
 
 /**
+ * Slot whose clip [slot] plays: [slot] itself when it has a My sound override or the pack fills it,
+ * else the same lookup for its [OPTIONAL_SLOT_FALLBACK] slot. An override on the fallback slot so
+ * also covers optional cues the pack leaves out.
+ *
  * @parity /modules/vescape-core/ios/alerts/EffectsPacks.swift `lookupSlot`
  */
 internal fun lookupSlot(slot: String, hasOverride: (String) -> Boolean, packHas: (String) -> Boolean): String {
@@ -105,12 +129,16 @@ internal fun lookupSlot(slot: String, hasOverride: (String) -> Boolean, packHas:
     return OPTIONAL_SLOT_FALLBACK[slot]?.let { lookupSlot(it, hasOverride, packHas) } ?: slot
 }
 
+/** Where a slot plays from: a My sound file, or a built-in pack clip at an asset path. */
 internal sealed interface SlotClip {
     data class Mine(val file: java.io.File) : SlotClip
     data class Asset(val path: String) : SlotClip
 }
 
 /**
+ * Clip [slot] plays: My sound [my] when it still exists, else the override or [pack] clip of the
+ * slot [lookupSlot] picks. A missing My sound falls back to the pack, never silence.
+ *
  * @parity /modules/vescape-core/ios/alerts/AlertAudioPlayer.swift `clipKey`
  */
 internal fun slotClip(context: Context, pack: String, slot: String, my: String? = null): SlotClip? {
@@ -120,11 +148,15 @@ internal fun slotClip(context: Context, pack: String, slot: String, my: String? 
         ?: EffectsPackAssets.path(context, pack, target)?.let(SlotClip::Asset)
 }
 
+/** Length of the clip, 0 when unreadable. */
 internal fun SlotClip.durationMs(context: Context): Long = when (this) {
     is SlotClip.Mine -> MySounds.durationMs(file)
     is SlotClip.Asset -> EffectsPackAssets.durationMs(context, path)
 }
 
+/**
+ * Asset paths of every built-in pack's own slots, `"<pack>/<slot>"` → asset path. Read once.
+ */
 internal object EffectsPackAssets {
     private const val ROOT = "alert-packs"
 
@@ -141,13 +173,16 @@ internal object EffectsPackAssets {
 
     fun has(context: Context, pack: String, slot: String): Boolean = "${effectsPackId(pack)}/$slot" in slots(context)
 
+    /** [pack]'s own slot standing in for [slot], overrides aside (see [lookupSlot]). */
     fun packSlot(context: Context, pack: String, slot: String): String = lookupSlot(slot, { false }) { has(context, pack, it) }
 
+    /** Asset path of [pack]'s clip for [slot], through its optional-slot fallback. */
     fun path(context: Context, pack: String, slot: String): String? =
         slots(context)["${effectsPackId(pack)}/${packSlot(context, pack, slot)}"]
 
     @Volatile private var voices: Map<String, String?>? = null
 
+    /** Voice pack [pack]'s manifest names for the `matching` voice, null when it names none. */
     fun voice(context: Context, pack: String): String? = (voices ?: synchronized(this) {
         voices ?: EFFECTS_PACK_IDS.associateWith { id ->
             context.assets.open("$ROOT/effects-$id/pack.json").bufferedReader()
@@ -157,9 +192,11 @@ internal object EffectsPackAssets {
 
     private val durations = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+    /** Length of [slot] in [pack], 0 when unreadable. */
     fun durationMs(context: Context, pack: String, slot: String): Long =
         path(context, pack, slot)?.let { durationMs(context, it) } ?: 0L
 
+    /** Length of the clip at asset [path], 0 when unreadable. Read once per clip. */
     fun durationMs(context: Context, path: String): Long {
         return durations.getOrPut(path) {
             // intentional-suppression: an unreadable length only falls back to the minimum speech delay

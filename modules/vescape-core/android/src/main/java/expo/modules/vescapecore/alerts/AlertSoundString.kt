@@ -1,17 +1,29 @@
 package expo.modules.vescapecore.alerts
 
 /**
+ * Inclusive bounds on the count of an `alert(count):severity` sound.
+ *
  * @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `alertBeepCountRange`
  */
 val ALERT_BEEP_COUNT_RANGE = 1..5
 
 /**
+ * Id prefix of Alert Preset rows (`preset:<metric>`) and the rules they expand to
+ * (`preset:<metric>:<index>`), the rules Voice level applies to.
+ *
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `presetRulePrefix`
  */
 internal const val PRESET_RULE_PREFIX = "preset:"
 
 /**
+ * A rule's `spec` read through the sound string grammar `kind(variant):sound`. Only the first
+ * `:` after the kind and optional variant splits, so the sound part (TTS text) may contain `:`.
+ * Strings outside the grammar (no `kind:` prefix) parse to null.
+ *
+ * `tts` and `alert` have typed readings; `geiger` and `voice` plug in as new readings of the same
+ * parsed parts.
+ *
  * @parity /src/modules/alerts/lib/alertSoundString.ts
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift
  */
@@ -28,6 +40,9 @@ internal data class AlertSoundString(val kind: String, val variant: String?, val
 }
 
 /**
+ * Severity of an announcement: picks the active effects pack's `severity.<id>` slot, played before
+ * speech or as an alert rule's sound.
+ *
  * @parity /src/modules/alerts/lib/alertSoundString.ts `ALERT_SEVERITIES`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `AlertSeverity`
  */
@@ -39,10 +54,12 @@ internal enum class AlertSeverity(val id: String) {
     val slot: String get() = "severity.$id"
 
     companion object {
+        /** Absent or unknown severities read as [WARNING]. */
         fun from(raw: String?): AlertSeverity = entries.firstOrNull { it.id == raw } ?: WARNING
     }
 }
 
+/** `tts(severity):text` — the severity sound once, then system TTS speaking [text]. */
 internal data class TtsAlertSound(val severity: AlertSeverity, val text: String)
 
 internal fun parseTtsAlertSound(spec: String): TtsAlertSound? {
@@ -52,6 +69,10 @@ internal fun parseTtsAlertSound(spec: String): TtsAlertSound? {
 }
 
 /**
+ * `voice(severity):key:value` — the severity sound once, then the voice pack's line for [key] with
+ * [value] spoken last. A custom rule stores `voice(severity):`: key from its metric, value from its
+ * threshold. A [value] is in the key's metric unit (%, °C).
+ *
  * @parity /src/modules/alerts/lib/alertSoundString.ts `parseVoiceAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseVoiceAlertSound`
  */
@@ -65,12 +86,19 @@ internal fun parseVoiceAlertSound(spec: String): VoiceAlertSound? {
     return VoiceAlertSound(AlertSeverity.from(parsed.variant), key, value)
 }
 
+/** True for a `spec` spoken after its severity sound: system TTS or a voice line. */
 internal fun isSpokenSpec(spec: String): Boolean =
     parseTtsAlertSound(spec) != null || parseVoiceAlertSound(spec) != null
 
+/** `alert(count):severity` — the active effects pack's severity sound, [count] times. */
 internal data class SlotAlertSound(val count: Int, val severity: AlertSeverity)
 
 /**
+ * Read any non-TTS single-alert `spec` as a slot sound. `alert:` means one play. Strings from
+ * before the grammar map onto the matching severity (`preset:notify|beep|urgent` → info, warning,
+ * critical, played once); anything unknown plays the warning sound once, so a rule is never silent.
+ * A `my:<id>` sound reads as warning too: the fallback when that My sound is gone (see [mySoundId]).
+ *
  * @parity /src/modules/alerts/lib/alertSoundString.ts `parseSlotAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseSlotAlertSound`
  */
@@ -89,6 +117,8 @@ internal fun parseSlotAlertSound(spec: String): SlotAlertSound {
 }
 
 /**
+ * Tick level of a geiger (range) rule: picks the active effects pack's `geiger.<id>` slot.
+ *
  * @parity /src/modules/alerts/lib/alertSoundString.ts `GEIGER_LEVELS`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `GeigerLevel`
  */
@@ -108,6 +138,10 @@ private val LEGACY_GEIGER = mapOf(
 )
 
 /**
+ * `geiger:level` — a range rule's tick level, or null when [spec] is not a geiger sound.
+ * Strings from before the grammar map `preset:tick|tick_hard|gamma|sustained` → soft, mid, hard,
+ * hard. An unknown level ticks soft, as does `geiger:my:<id>` when that My sound is gone.
+ *
  * @parity /src/modules/alerts/lib/alertSoundString.ts `parseGeigerAlertSound`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `parseGeigerAlertSound`
  */
@@ -119,13 +153,20 @@ internal fun parseGeigerAlertSound(spec: String): GeigerLevel? {
 }
 
 /**
+ * Geiger slot for a range rule's `spec` (see [parseGeigerAlertSound]); a non-geiger string
+ * ticks soft.
+ *
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `geigerSlot`
  */
 internal fun geigerSlot(spec: String): String = (parseGeigerAlertSound(spec) ?: GeigerLevel.SOFT).slot
 
+/** True for a `spec` that names a geiger tick rather than a single alert sound. */
 internal fun isGeigerSpec(spec: String): Boolean = parseGeigerAlertSound(spec) != null
 
 /**
+ * My sound id of an `alert(count):my:<id>` or `geiger:my:<id>` sound, else null. The player uses it
+ * when the sound still exists and falls back to the parsed pack slot otherwise, never silence.
+ *
  * @parity /src/modules/alerts/lib/alertSoundString.ts `mySoundId`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `mySoundId`
  */
@@ -136,12 +177,17 @@ internal fun mySoundId(spec: String): String? {
 }
 
 /**
+ * `preset(level):key=value,…` — an Alert Preset row's spec: the rider's level plus options, nothing
+ * else (the shipped definition owns every point). Unknown keys are kept in order, so rewriting one
+ * option never drops what a newer app stored. An entry without `=` is not an option and is dropped.
+ *
  * @parity /src/modules/alerts/lib/alertSoundString.ts `parseAlertPresetSpec`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `AlertPresetSpec`
  */
 internal data class AlertPresetSpec(val level: String, val options: List<Pair<String, String>> = emptyList()) {
     fun option(key: String): String? = options.firstOrNull { it.first == key }?.second
 
+    /** This spec with [key] set to [value] in place, appended when new, or removed when null. */
     fun withOption(key: String, value: String?): AlertPresetSpec {
         val next = options.filterNot { it.first == key }.toMutableList()
         if (value != null) {

@@ -60,6 +60,7 @@ class AnnouncementQueueTest {
         queue.criticalEnded(1_000)
         assertEquals(3_000L, next(1_000))
         assertEquals("ride end", next(3_000))
+        // Pre-empted a second time: no more retries, the cancel is final.
         queue.criticalStarted()
         assertEquals(first, queue.finished(PlaybackOutcome.CANCELLED, 3_100))
         queue.criticalEnded(3_200)
@@ -92,6 +93,7 @@ class AnnouncementQueueTest {
         enqueue("left", AnnouncementPriority.SOCIAL, ttlMs = 9_000)
         queue.criticalStarted()
         queue.criticalEnded(0)
+        // Waits for the gap, or wakes early to drop the first expiry.
         assertEquals(1_000L, next(0))
         assertEquals(2_000L, next(1_000))
         assertEquals(listOf("joined"), dropped)

@@ -14,6 +14,7 @@ final class RiderSignalNoticesTests: XCTestCase {
     SignalRider(id: id, name: name, signal: signal)
   }
 
+  /// A roster at relay `now` 10_000 seen at phone time 5_010_000: offset +5_000_000.
   @discardableResult
   private func roster(_ riders: SignalRider..., relayNow: Int64? = 10_000, localNow: Int64 = 5_010_000) -> RiderSignalNotices.Update {
     let update = notices.roster(riders, ownRiderId: "me", relayNow: relayNow, localNow: localNow)

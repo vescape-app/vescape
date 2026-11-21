@@ -13,6 +13,9 @@ import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 /**
+ * Effects slots a My sound can override. A set override wins over the active effects pack; voice
+ * lines and geiger ticks are not overridable.
+ *
  * @parity /modules/vescape-core/ios/alerts/MySounds.swift `soundOverrideSlots`
  * @parity /src/modules/settings/lib/appSounds.ts `SOUND_OVERRIDE_SLOTS`
  */
@@ -22,6 +25,15 @@ internal val SOUND_OVERRIDE_SLOTS = listOf(
 )
 
 /**
+ * My sounds: the rider's audio library (WAV, M4A or MP3, ≤2 MB, ≤15 s) in `custom-app-sounds/`,
+ * plus the override slots that point at it. `my-sounds.json` holds
+ * `{ sounds: [{id, name}], overrides: {slot: id} }`; each sound's audio is `<id>.<wav|m4a|mp3>`,
+ * the extension taken from the imported file's header.
+ *
+ * The custom app sound packs this replaces (`packs.json`) migrate on first read: every pack cue
+ * becomes a My sound, and the pack that was selected becomes overrides once [adoptLegacyPack] sees
+ * the `soundPack` setting.
+ *
  * @parity /modules/vescape-core/ios/alerts/MySounds.swift
  */
 internal object MySounds {
@@ -31,6 +43,7 @@ internal object MySounds {
   private const val LEGACY_MANIFEST = "packs.json"
   private val AUDIO_EXTENSIONS = listOf("wav", "m4a", "mp3")
 
+  /** Extension for an audio file starting with [header], null when it is not WAV, M4A or MP3. */
   internal fun audioExtension(header: ByteArray): String? {
     fun ascii(from: Int, to: Int) = if (header.size >= to) String(header, from, to - from, Charsets.US_ASCII) else ""
     val b0 = header.getOrNull(0)?.toInt()?.and(0xFF)
@@ -39,13 +52,19 @@ internal object MySounds {
       ascii(0, 4) == "RIFF" && ascii(8, 12) == "WAVE" -> "wav"
       ascii(4, 8) == "ftyp" -> "m4a"
       ascii(0, 3) == "ID3" -> "mp3"
+      // MPEG audio frame sync with a nonzero layer (layer 0 is AAC ADTS).
       b0 == 0xFF && b1 != null && b1 and 0xE0 == 0xE0 && (b1 shr 1) and 3 != 0 -> "mp3"
       else -> null
     }
   }
 
+  /** Name of My sound [id]'s audio in [dir], null when it has none. */
   private fun audioName(dir: File, id: String): String? =
     AUDIO_EXTENSIONS.map { "$id.$it" }.firstOrNull { mySoundFileName.matches(it) && File(dir, it).isFile }
+  /**
+   * Legacy pack cue → (override slot, label); its `join` was another rider joining. Error and
+   * rider joined have no override slot, so they migrate as plain library sounds.
+   */
   private val legacyCues = listOf<Pair<String, Pair<String?, String>>>(
     "on" to ("cue.on" to "Connect"), "off" to ("cue.off" to "Disconnect"), "error" to (null to "Error"),
     "created" to ("cue.groupRide.created" to "New Group Ride"), "join" to (null to "Rider joined"),
@@ -55,6 +74,7 @@ internal object MySounds {
   private data class Store(
     val sounds: List<Sound> = emptyList(),
     val overrides: Map<String, String> = emptyMap(),
+    /** Migrated pack id → its cues as overrides, waiting for [adoptLegacyPack]. */
     val legacyPacks: Map<String, Map<String, String>> = emptyMap(),
   )
 
@@ -66,6 +86,7 @@ internal object MySounds {
     val json = JSONObject(text)
     val sounds = json.optJSONArray("sounds") ?: JSONArray()
     fun stringMap(obj: JSONObject?) = obj?.keys()?.asSequence()?.associateWith { obj.getString(it) }.orEmpty()
+    // Overrides for slots that no longer exist are dropped.
     fun slotMap(obj: JSONObject?) = stringMap(obj).filterKeys { it in SOUND_OVERRIDE_SLOTS }
     val legacy = json.optJSONObject("legacyPacks")
     return Store(
@@ -81,6 +102,7 @@ internal object MySounds {
     .apply { if (store.legacyPacks.isNotEmpty()) put("legacyPacks", JSONObject(store.legacyPacks.mapValues { JSONObject(it.value) })) }
     .toString()
 
+  /** Custom app sound packs → My sounds; each pack's cues are kept for [adoptLegacyPack]. */
   private fun migrate(dir: File, packsJson: String): Store {
     val packs = JSONArray(packsJson)
     val sounds = mutableListOf<Sound>()
@@ -123,6 +145,7 @@ internal object MySounds {
     val dir = directory(context)
     val temp = File(dir, "$MANIFEST.tmp")
     temp.writeText(encode(store))
+    // `File.renameTo` won't replace an existing manifest on a Windows JVM (#625).
     Files.move(
       temp.toPath(),
       File(dir, MANIFEST).toPath(),
@@ -201,6 +224,7 @@ internal object MySounds {
     return state(context)
   }
 
+  /** Delete a sound and every override using it; rules still naming it fall back to the pack. */
   @Synchronized fun delete(context: Context, id: String): Map<String, Any> {
     val store = read(context)
     require(store.sounds.any { it.id == id }) { "Sound missing" }
@@ -213,6 +237,7 @@ internal object MySounds {
     return state(context)
   }
 
+  /** Point [slot] at My sound [id], or clear it back to the pack with null. */
   @Synchronized fun setOverride(context: Context, slot: String, id: String?): Map<String, Any> {
     require(slot in SOUND_OVERRIDE_SLOTS) { "Unknown sound slot" }
     val store = read(context)
@@ -221,18 +246,24 @@ internal object MySounds {
     return state(context)
   }
 
+  /**
+   * Finish the pack migration: the migrated pack the `soundPack` setting still names becomes
+   * overrides (where none is set), then the pending packs are dropped.
+   */
   @Synchronized fun adoptLegacyPack(context: Context, pack: String) {
     val store = read(context)
     if (store.legacyPacks.isEmpty()) return
     save(context, store.copy(overrides = store.legacyPacks[pack].orEmpty() + store.overrides, legacyPacks = emptyMap()))
   }
 
+  /** Audio of My sound [id], null when it is gone or unreadable. */
   @Synchronized fun file(context: Context, id: String): File? {
     if (read(context).sounds.none { it.id == id }) return null
     val dir = directory(context)
     return audioName(dir, id)?.let { File(dir, it) }?.takeIf { it.length() in 1..MAX_BYTES }
   }
 
+  /** Audio overriding effects [slot], null when the slot follows the pack. */
   @Synchronized fun overrideFile(context: Context, slot: String): File? =
     read(context).overrides[slot]?.let { file(context, it) }
 
@@ -247,6 +278,12 @@ internal object MySounds {
     if (owned) onDone(failed)
   }
 
+  /**
+   * Play My sound [file] once through MediaPlayer, which takes a whole accepted clip (SoundPool
+   * caps a decoded sample near 1 MB, about 6 s of 44.1 kHz stereo). [onDone] runs on completion
+   * with `failed` true when it could not play, so the caller falls back to the pack slot. [onStart]
+   * runs once playback has started.
+   */
   fun play(file: File, source: String, owner: Any? = null, onStart: () -> Unit = {}, onDone: (failed: Boolean) -> Unit) {
     val player = MediaPlayer()
     synchronized(activePlayers) { activePlayers[player] = owner }
@@ -263,6 +300,7 @@ internal object MySounds {
     } catch (_: Exception) { finish(player, true, onDone) }
   }
 
+  /** Stop and release every player [owner] started, without running their callbacks. */
   fun releasePlayers(owner: Any) {
     val players = synchronized(activePlayers) {
       activePlayers.filterValues { it === owner }.keys.toList().also { it.forEach(activePlayers::remove) }
@@ -277,6 +315,7 @@ internal object MySounds {
 
   private val durations = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+  /** Length of My sound audio [file], 0 when unreadable. Read once per file. */
   fun durationMs(file: File): Long = durations.getOrPut(file.path) {
     // intentional-suppression: an unreadable length only falls back to the minimum spacing
     runCatching {
@@ -289,6 +328,7 @@ internal object MySounds {
     }.getOrDefault(0L)
   }
 
+  /** Copy metadata and its referenced files under the same store lock. */
   @Synchronized fun snapshotForBackup(context: Context, target: File, afterFileCopy: (String) -> Unit = {}) {
     val store = read(context)
     if (store.sounds.isEmpty()) return
@@ -304,6 +344,11 @@ internal object MySounds {
     File(target, MANIFEST).writeText(encode(store))
   }
 
+  /**
+   * Validate and prune a candidate before its database is installed: sounds without audio and
+   * overrides naming them are dropped. A backup from before My sounds carries `packs.json`, which
+   * migrates on first read after restore.
+   */
   @Synchronized fun validateBackup(staged: File) {
     val legacy = File(staged, LEGACY_MANIFEST)
     if (legacy.exists()) {
@@ -325,6 +370,7 @@ internal object MySounds {
     )))
   }
 
+  /** Install a validated candidate. A backup without sounds clears the library. */
   @Synchronized fun replaceFromBackup(context: Context, staged: File) {
     try {
       replaceSoundPackFiles(File(context.filesDir, "custom-app-sounds"), staged)

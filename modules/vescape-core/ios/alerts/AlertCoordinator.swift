@@ -1,5 +1,10 @@
 import Foundation
 
+/// Bridges the pure alert evaluator with the side-effectful audio player. Each telemetry frame is
+/// evaluated against the loaded rules; geiger loops update/stop to track live rule activity, and
+/// one-shot alerts play a triple-beep pattern (plus optional TTS message). Returns the fired
+/// alert maps so the connection layer can attach them to the telemetry event payload.
+///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertCoordinator.kt
 internal final class AlertCoordinator {
   var distanceUnit = "km"
@@ -43,6 +48,7 @@ internal final class AlertCoordinator {
     )
   }
 
+  /// Isolated alert tests call the same evaluator + feedback path with synthetic metric values.
   func evaluateValues(
     _ values: [String: Double],
     batteryPercent: Double?,
@@ -90,13 +96,17 @@ internal final class AlertCoordinator {
 
     let single = fired.filter { $0.rangeDepth == nil }
     if !single.isEmpty {
+      // Preset voice rules at Voice level Off play their severity sound only and leave the spoken
+      // slot to the rest.
       let mutedPresets = player.presetVoiceEnabled ? [] : single.filter {
         $0.ruleId.hasPrefix(presetRulePrefix) && parseVoiceAlertSound($0.spec) != nil
       }.map(\.ruleId)
+      // One spoken announcement per evaluation: the most severe, which sorts first.
       if let alert = single.first(where: {
         $0.thresholdMax == nil && isSpokenSpec($0.spec) && !mutedPresets.contains($0.ruleId)
       }) {
         if let voice = parseVoiceAlertSound(alert.spec) {
+          // A repeat speaks where the metric is now, not the threshold it crossed.
           let spoken = alert.controlId == "battery" ? batteryPercent ?? alert.threshold : alert.value
           player.speakVoice(
             voiceAnnouncement(

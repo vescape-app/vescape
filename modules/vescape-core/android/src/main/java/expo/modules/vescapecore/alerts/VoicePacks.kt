@@ -12,18 +12,28 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
+ * Built-in voice packs (`shared/alerts/packs/voice-<id>`): whole-sentence lines per message key plus
+ * value clips, joined natively into one buffer after the effects pack's severity sound.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift
  * @parity /src/modules/settings/lib/appSounds.ts `VOICE_PACKS`
  */
 internal val VOICE_PACK_IDS = listOf("nova", "radio", "nicole")
 
+/** Former voice id → its new id; a saved one reads as the renamed voice. */
 internal val RENAMED_VOICE_PACK_IDS = mapOf("clean" to "nova", "hev" to "radio")
 
+/** Voice an effects pack without its own voice matches, and the stand-in for an unknown id. */
 internal const val VOICE_PACK_FALLBACK = "nova"
 
+/** `voice` setting that follows the voice the selected effects pack names. */
 internal const val VOICE_MATCHING = "matching"
 
 /**
+ * Voice level: `off` plays effects only for presets and app sounds; `minimal` and `standard` speak
+ * preset alerts; `full` also speaks app cues and group ride events (#581). Each level also picks the
+ * wording ([VoiceWording]). Custom rules speak whatever the level, `off` with standard wording.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceLevels`
  * @parity /src/modules/settings/lib/appSounds.ts `VOICE_LEVELS`
  */
@@ -31,6 +41,8 @@ internal val VOICE_LEVELS = listOf("off", "minimal", "standard", "full")
 internal const val VOICE_LEVEL_DEFAULT = "standard"
 
 /**
+ * Voice pack the [voice] setting plays: a named pack, or the one effects pack [effectsVoice] names.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voicePackId`
  * @parity /src/modules/settings/lib/appSounds.ts `resolvedVoiceId`
  */
@@ -41,6 +53,10 @@ internal fun voicePackId(voice: String, effectsVoice: String?): String = when {
 }
 
 /**
+ * Voice keys of built-in alerts and the value type a single-value alert on each speaks (null: no
+ * value). Mirrors `scripts/alert-packs/catalog.json` `voiceKeys`. Multi-value lines (`weather.*`)
+ * carry their types on each [VoiceValue] instead.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceKeyValueTypes`
  * @parity /src/modules/alerts/lib/alertSoundString.ts `VOICE_KEY_BY_CONTROL`
  */
@@ -86,6 +102,8 @@ internal val VOICE_KEY_VALUE_TYPES: Map<String, String?> = mapOf(
 )
 
 /**
+ * Voice key an alert on [controlId] speaks; null for metrics without voice lines.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceKey`
  * @parity /src/modules/alerts/lib/alertSoundString.ts `VOICE_KEY_BY_CONTROL`
  */
@@ -101,6 +119,10 @@ internal fun voiceKey(controlId: String): String? = when (controlId) {
 private const val KM_PER_MILE = 1.609344
 
 /**
+ * Which phrases a line speaks: [MINIMAL] the generic line's `minimal` (else `start`), never a
+ * severity line; [STANDARD] the severity line's `start`; [FULL] its `full` pool (else `start`) with
+ * an ending drawn at `endChance`.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceWording`
  */
 internal enum class VoiceWording {
@@ -116,11 +138,18 @@ internal enum class VoiceWording {
 }
 
 /**
+ * One value a line speaks: the clip [value] of value type [type] (`percent`, `degrees`, `number`,
+ * `duration` in minutes). The voice layer plays that exact clip or skips it; mapping a raw reading
+ * onto the pack's clip set is the caller's job.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceValue`
  */
 internal data class VoiceValue(val type: String, val value: Int)
 
 /**
+ * One voice announcement: the severity sound, then the line for [key] with [values] spoken in order
+ * after its start ("Rain" + "in two and a half hours" + "thirty percent").
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceAnnouncement`
  */
 internal data class VoiceAnnouncement(
@@ -131,6 +160,11 @@ internal data class VoiceAnnouncement(
 )
 
 /**
+ * What a `voice` sound says for an alert on [controlId]. The key comes from the sound string or the
+ * metric; the value from the sound string or [reading] (percent for battery only while
+ * [percentAvailable]: without a battery config a battery reading is volts), °C read in °F under
+ * the Fahrenheit temperature unit, km/h read in mph under the mi distance unit, rounded to the nearest clip. A null key plays the severity sound only.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `voiceAnnouncement`
  */
 internal fun voiceAnnouncement(
@@ -154,6 +188,10 @@ internal fun voiceAnnouncement(
     return VoiceAnnouncement(sound.severity, key, listOfNotNull(type?.let { t -> clip?.let { VoiceValue(t, it) } }))
 }
 
+/**
+ * A line in `pack.json`: `start` phrases, an optional `minimal` phrase set, and an optional `full`
+ * pool whose ending plays at [endChance]. Each list holds clip variants.
+ */
 internal data class VoiceLine(
     val start: List<String>,
     val minimal: List<String> = emptyList(),
@@ -164,9 +202,15 @@ internal data class VoiceLine(
     val files: List<String> get() = start + minimal + fullStart + fullEnd
 }
 
+/** What one announcement can say: `start` (+ values) (+ an `end` at [endChance]). */
 internal data class VoicePhrases(val start: List<String>, val end: List<String>, val endChance: Double)
 
+/** A voice pack's `pack.json`: lines per key, value clip per value type and number. */
 internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: Map<String, Map<Int, String>>) {
+    /**
+     * Phrases for [key] in [wording]: Minimal reads the generic `<key>` line only; Standard and Full
+     * the most specific `<key>.<severity>`, else `<key>`. Null when the pack has no such line.
+     */
     fun phrases(key: String, severity: AlertSeverity, wording: VoiceWording): VoicePhrases? {
         val line = (if (wording == VoiceWording.MINIMAL) lines[key] else lines["$key.${severity.id}"] ?: lines[key])
             ?: return null
@@ -177,6 +221,7 @@ internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: 
         }.takeIf { it.start.isNotEmpty() }
     }
 
+    /** Clip for [value]; null when the pack has no such clip. */
     fun valueClip(value: VoiceValue): String? = values[value.type]?.get(value.value)
 
     companion object {
@@ -207,15 +252,24 @@ internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: 
 }
 
 /**
+ * Picks one clip per line part at random, never the same `start` twice in a row for a key, and
+ * an `end` only at its `endChance`. The pick after each announcement is made right away, so [next]
+ * lets the caller join it ahead.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceVariantPicker`
  */
 internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.random.Random.nextInt(it) }) {
     private data class Choice(val start: Int, val end: Int?) {
+        /** False for a pick made against another pack's line (the picker serves every pack). */
         fun fits(line: VoicePhrases) = start < line.start.size && (end?.let { it < line.end.size } ?: true)
     }
 
     private val upcoming = HashMap<String, Choice>()
 
+    /**
+     * Clip files of [announcement] in play order (start, values, end); null when [manifest] has no
+     * line. A value without a clip is skipped; the rest of the line still plays.
+     */
     @Synchronized
     fun clips(manifest: VoicePackManifest, announcement: VoiceAnnouncement): List<String>? {
         val (key, line) = resolve(manifest, announcement) ?: return null
@@ -226,6 +280,7 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
         return files(manifest, line, choice, announcement.values)
     }
 
+    /** Clip files the next [clips] call for [announcement] returns, without consuming the pick. */
     @Synchronized
     fun next(manifest: VoicePackManifest, announcement: VoiceAnnouncement): List<String>? {
         val (key, line) = resolve(manifest, announcement) ?: return null
@@ -250,6 +305,9 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
 }
 
 /**
+ * Leading AAC encoder priming and silence, at most [maxFrames]: joins must not open a gap before each
+ * clip. Clips start on speech, so anything under [threshold] there is padding.
+ *
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `leadingSilenceFrames`
  */
 internal fun leadingSilenceFrames(samples: ShortArray, threshold: Int = VOICE_SILENCE_THRESHOLD, maxFrames: Int = VOICE_PRIMING_MAX_FRAMES): Int {
@@ -258,19 +316,24 @@ internal fun leadingSilenceFrames(samples: ShortArray, threshold: Int = VOICE_SI
     return limit
 }
 
+/** Amplitude (of 32 767) below which a clip's first samples count as padding. */
 internal const val VOICE_SILENCE_THRESHOLD = 64
 
+/** Longest padding trimmed: two AAC frames, about 93 ms at 22 050 Hz. */
 internal const val VOICE_PRIMING_MAX_FRAMES = 2048
 
+/** Mono 16-bit PCM. */
 internal class VoicePcm(val samples: ShortArray, val sampleRate: Int) {
     val durationMs: Long get() = samples.size * 1000L / sampleRate
 }
 
+/** Voice pack manifests and decoded clips, read from the APK's `alert-packs/` assets once each. */
 internal object VoicePackAssets {
     private const val ROOT = "alert-packs"
     private val manifests = ConcurrentHashMap<String, VoicePackManifest>()
     private val decoded = ConcurrentHashMap<String, VoicePcm>()
     val picker = VoiceVariantPicker()
+    /** Next announcement's buffer per line, joined ahead: file list → PCM. */
     private val prepared = ConcurrentHashMap<String, Pair<List<String>, VoicePcm>>()
     private val preparer = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "voice-prepare").apply { isDaemon = true } }
 
@@ -286,18 +349,24 @@ internal object VoicePackAssets {
         }
     }
 
+    /** Decode every line clip of [pack] ahead of the first announcement. Value clips decode on use. */
     fun prewarm(context: Context, pack: String) {
         val manifest = manifest(context, pack) ?: return
         val id = if (pack in VOICE_PACK_IDS) pack else VOICE_PACK_FALLBACK
         manifest.lines.values.flatMap { it.files }.forEach { decode(context, id, it) }
     }
 
+    /**
+     * [announcement] joined into one buffer from [pack], or null when the pack has no line for its
+     * key: the caller plays the severity sound only. A clip that cannot decode is left out.
+     */
     fun join(context: Context, pack: String, announcement: VoiceAnnouncement): VoicePcm? {
         val id = if (pack in VOICE_PACK_IDS) pack else VOICE_PACK_FALLBACK
         val manifest = manifest(context, id) ?: return null
         val files = picker.clips(manifest, announcement) ?: return null
         val slot = "$id/${announcement.key}.${announcement.severity.id}.${announcement.wording}"
         val pcm = prepared.remove(slot)?.takeIf { it.first == files }?.second ?: concat(context, id, files)
+        // The next pick joins now, so its variant costs the next announcement nothing.
         preparer.execute {
             val next = picker.next(manifest, announcement) ?: return@execute
             concat(context, id, next)?.let { prepared[slot] = next to it }
@@ -330,6 +399,7 @@ internal object VoicePackAssets {
         }
     }
 
+    /** AAC asset → mono 16-bit PCM, first channel only, leading padding trimmed. */
     private fun decodeAsset(context: Context, path: String): VoicePcm {
         val extractor = MediaExtractor()
         try {
