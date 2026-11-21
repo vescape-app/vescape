@@ -76,7 +76,6 @@ export interface MainMapHandle {
   getViewfinderCoordinate: () => Promise<{ latitude: number; longitude: number }>
 }
 
-/** Everything only the history layers care about; MainMap passes it straight through. */
 export interface MainMapHistoryProps {
   active: boolean
   selectionKey: string | null
@@ -105,7 +104,6 @@ export interface MainMapPointsProps {
   selectedId: string | null
   hiddenCategories: MapPointCategory[]
   onToggleSelection: (id: string) => void
-  /** Camera came to rest: where the map should read its Map Points around. */
   onCameraSettled: (latitude: number, longitude: number, zoom: number) => void
 }
 
@@ -192,9 +190,6 @@ export const MainMap = memo(
         if (spanM != null && previous != null && Math.abs(spanM - previous) / previous < 0.02) {
           return
         }
-        // Sent on every camera frame on purpose: this only writes a native field, and the value
-        // travels on the next Watch Frame. Throttling here would just hand the wrist a coarser
-        // step to ease over, which reads as jerk rather than as a saving.
         lastWatchRouteSpanRef.current = spanM
         setWatchRouteSpanM(spanM)
       },
@@ -228,8 +223,6 @@ export const MainMap = memo(
     })
 
     const chartZoomRoute = useChartZoomRoute(history.gpsSamples)
-    // The panel covers the bottom of the map and grows as the rider opens metrics; the route is
-    // framed into what is left, so opening one reframes rather than hiding half the ride.
     const historyPanelHeight = useMainScreenStore((s) => s.historyPanelHeight)
     const cameraViewport = useMemo(
       () => ({ ...mapLayout, bottomInset: historyActive ? historyPanelHeight : undefined }),
@@ -260,8 +253,6 @@ export const MainMap = memo(
     )
     const headingFollowMode = gpsHeadingMode || phoneHeadingMode
     useRenderRateWarning('MainMap')
-    // The rendered heading comes from `mapPose`, not React state: holding it in state re-rendered
-    // the whole map on every camera idle — about once per fix while following.
     const getFollowHeadingDeg = useCallback(
       () =>
         gpsHeadingMode
@@ -334,12 +325,6 @@ export const MainMap = memo(
       enabled: !historyActive,
     })
 
-    /**
-     * The compass never moves the edge indicators itself. It only retargets the camera spring, so
-     * its heading runs ahead of the heading the map is actually drawn with; repositioning from both
-     * left the indicators alternating between the predicted and the real angle every frame. The
-     * camera-changed echo is the single writer, and the indicators lag exactly as much as the map.
-     */
     const { puckBearing, syncPuckBearing } = usePuckBearing({
       orientationMode: mapOrientationMode,
       approximateFix: approximateGpsPuckActive,
@@ -468,8 +453,6 @@ export const MainMap = memo(
       }
     }, [mode, offscreenMapIndicators, onOffscreenMapIndicatorsChange])
 
-    // Mapbox gives Maestro no idle signal, so a screenshot flow would otherwise have to guess with a
-    // sleep and can catch a half-drawn map. Publish the map's own idle event as a waitable marker.
     const { mapSettled, handleIdle } = useMapSettledSignal({
       enabled: captureMode,
       mode,

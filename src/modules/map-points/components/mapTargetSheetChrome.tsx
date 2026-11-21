@@ -260,12 +260,6 @@ export function MapTargetActionRow({ children }: { children: ReactNode }) {
   return <View style={styles.actionRow}>{children}</View>
 }
 
-/**
- * A sheet action button. `compact` is the same button at side-action weight, giving the row's width
- * to the action the rider is most likely to want; `iconOnly` drops to the icon alone, for actions
- * whose icon is unambiguous and whose label would otherwise crowd the one that matters. The label
- * still exists — it stays the accessibility name.
- */
 export function MapTargetPrimaryAction({
   action,
   compact = false,
@@ -325,7 +319,6 @@ const styles = StyleSheet.create({
     height: 42,
     gap: 6,
   },
-  /** A square button: it holds an icon, so it must not stretch with the row it sits in. */
   actionButtonIconOnly: {
     flex: 0,
     width: 42,

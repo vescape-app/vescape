@@ -6,10 +6,6 @@ import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
 
-/**
- * Move the camera to a coordinate while keeping the current zoom, heading and pitch.
- * Shared by every "focus this point" flow so they stay visually identical.
- */
 export function panPreservingCamera(
   engine: CameraEngine,
   currentCameraRef: RefObject<CameraSnapshot | null>,

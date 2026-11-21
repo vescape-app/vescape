@@ -21,7 +21,6 @@ export interface CameraControlRefs {
   controllerStateRef: RefObject<MapCameraControllerState>
   followZoomLevelRef: RefObject<number | null>
   lastFollowKeyRef: RefObject<string | null>
-  /** True while the reveal gesture drives the camera itself; map echoes are ignored then. */
   previewPanActiveRef: RefObject<boolean>
   engine: CameraEngine
 }
@@ -44,7 +43,6 @@ export interface UseCameraControlsParams {
     preview: ({ key: string } & HistoryPreviewTarget) | null
     previewRoute: [number, number][]
     rideRoute: [number, number][]
-    /** The stretch of the ride the telemetry chart is zoomed into; empty when it shows it all. */
     focusRoute: [number, number][]
   }
   follow: {

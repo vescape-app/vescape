@@ -9,14 +9,9 @@ import expo.modules.vescapecore.api.VescapeApi
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 
 /**
- * Place search and reverse geocoding through the server's Mapbox proxy. The server keeps the Mapbox
- * secret and answers with Mapbox's body verbatim, so this hands the raw JSON to JS, which owns the
- * parsing. Native only owns the call because native owns the Device Token.
- *
  * @parity /modules/vescape-core/ios/maps/MapSearchApi.swift
  */
 class MapSearchApi(private val api: VescapeApi) {
-  /** Mapbox Search Box forward body. `proximity` is `longitude,latitude`. */
   suspend fun search(query: String, limit: Int, proximity: String?): String = unwrap(
     api.request(
       method = HttpMethod.GET,
@@ -30,7 +25,6 @@ class MapSearchApi(private val api: VescapeApi) {
     ) { it },
   )
 
-  /** Mapbox Geocoding v5 reverse body (the server asks for one feature). */
   suspend fun reverse(latitude: Double, longitude: Double): String = unwrap(
     api.request(
       method = HttpMethod.GET,
@@ -52,7 +46,6 @@ class MapSearchApi(private val api: VescapeApi) {
     private const val PATH = "/api/maps"
 
     /**
-     * Failure codes crossing the bridge.
      * @parity /modules/vescape-core/ios/maps/MapSearchApi.swift `MapSearchApiError`
      */
     const val SIGN_IN_REQUIRED = "MAP_SEARCH_SIGN_IN_REQUIRED"
@@ -71,5 +64,4 @@ class MapSearchApi(private val api: VescapeApi) {
   }
 }
 
-/** Carries the code JS branches on; Expo turns it into a rejected promise with that code. */
 class MapSearchApiException(code: String, message: String) : CodedException(code, message, null)

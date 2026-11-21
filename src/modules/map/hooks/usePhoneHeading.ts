@@ -8,10 +8,6 @@ import {
   type PhoneHeadingStatus,
 } from '@/modules/map/lib/phoneHeading'
 
-/**
- * Runs the phone compass while `active` and reports each dead-banded heading. While
- * `followCamera`, every heading also goes to `onFollowHeading` to turn the camera.
- */
 export function usePhoneHeading({
   active,
   followCamera,
@@ -25,16 +21,10 @@ export function usePhoneHeading({
   onHeadingChange: (headingDeg: number | null) => void
   onStatusChange: (status: PhoneHeadingStatus | 'idle') => void
 }) {
-  // The compass exists to be looked at: nothing records it, and no native work depends on it. A
-  // backgrounded app kept the sensor running at 60 Hz and kept retargeting the camera spring
-  // against a map nobody could see, and the retargets came due all at once on unlock.
   const appActive = useAppActive()
   const subscribed = active && appActive
   const headingDegRef = useRef<number | null>(null)
 
-  // Effect events, not dependencies: the callbacks change identity as the rider moves — the
-  // tracked-point list they close over is rebuilt every metre — and must not restart DeviceMotion
-  // several times a second mid-ride.
   const reportHeading = useEffectEvent((headingDeg: number) => {
     onHeadingChange(headingDeg)
     if (followCamera) onFollowHeading(headingDeg)

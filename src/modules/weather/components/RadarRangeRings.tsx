@@ -6,25 +6,13 @@ import { makeCircleFeature, offsetCoordinate } from '@/helpers/mapGeometry'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 /**
- * Distance rings around the rider while the radar is up, so a band of rain reads as "how far" and
- * not just "somewhere north". Mirrors the wrist radar page, down to the dashed stroke and the two
- * distances; the phone can pan away from the rider, so the rings are anchored to the fix rather
- * than to the screen centre.
- *
  * @parity /watch/wearos/src/main/java/app/vescape/wear/RadarScreen.kt `RANGE_RING_KM`
  */
 const RANGE_RING_KM = [50, 100]
 
-/**
- * Heavier than the privacy-zone rings: those sit on a plain basemap, these sit over radar imagery
- * and map detail at once, and a hairline disappears into both.
- *
- * Dash pattern is in multiples of the line width, so a fixed width keeps the dashes even.
- */
 const RING_LINE_WIDTH = 1.5
 const RING_DASH: [number, number] = [3, 3]
 
-/** Due east, the radius the labels ride out on. */
 const LABEL_HEADING_DEG = 90
 
 interface RadarRangeRingsProps {
@@ -45,9 +33,6 @@ export function RadarRangeRings({ visible, fix }: RadarRangeRingsProps) {
     [fix],
   )
 
-  // Labels sit due east of the rider, on the ring itself: the one radius the timeline, the pill and
-  // the hourly strip all leave empty. They are drawn *inside* the ring — the outer ring is framed
-  // against the screen edge, so an outward label is half off the screen.
   const labels = useMemo<GeoJSON.FeatureCollection>(
     () => ({
       type: 'FeatureCollection',

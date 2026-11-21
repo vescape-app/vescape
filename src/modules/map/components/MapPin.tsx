@@ -43,9 +43,7 @@ const MAP_PIN_ICON_METRICS = {
   },
 } as const
 
-/** The active navigation target: a bare icon standing on its coordinate. */
 const NAVIGATION_ICON_SIZE = 36
-/** Phosphor glyphs stop short of their box; a map pin's tip sits this far above the bottom edge. */
 const NAVIGATION_ICON_TIP_INSET = NAVIGATION_ICON_SIZE / 16
 
 export function MapPin({
@@ -94,12 +92,9 @@ export function MapPin({
       )
     }
 
-    // iOS PointAnnotation snapshots can omit the SVG even after refresh. Keep the single
-    // active navigation target live so its icon renders and updates with the view.
     if (navigationActive) {
       return (
         <InMapMarker coordinate={coordinate}>
-          {/* A marker is centred on its coordinate, so the icon fills the top half only. */}
           <View style={styles.navigationPinFrame} pointerEvents="box-none">
             <Pressable onPress={onSelected}>
               <IconComponent
@@ -135,10 +130,6 @@ export function MapPin({
     )
     return (
       <PointAnnotation key={annotationKey} id={id} coordinate={coordinate} onSelected={onSelected}>
-        {/* collapsable={false}: on iOS New Arch (Fabric) a layout-only wrapper is
-            flattened, hoisting its children as direct PointAnnotation subviews and
-            triggering "supports max 1 subview" + a broken snapshot (rnmapbox #3682,
-            fixed in 10.3.2). Remove once we bump past 10.3.1. */}
         <View collapsable={false} style={styles.iconPinFrame}>
           {pin}
         </View>
@@ -153,7 +144,6 @@ export function MapPin({
       coordinate={coordinate}
       onSelected={onSelected}
     >
-      {/* collapsable={false}: see icon branch above (rnmapbox #3682). */}
       <View
         collapsable={false}
         style={[styles.pin, { backgroundColor: neutral.surface, borderColor: resolvedColor }]}

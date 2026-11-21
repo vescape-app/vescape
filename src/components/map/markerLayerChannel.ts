@@ -3,17 +3,12 @@ interface MarkerEntry {
   lngLat: [number, number]
   version: number
   burstMs: number
-  /** Native hides the marker view on screen, leaving it laid out and touchable. */
   hidden: boolean
 }
 
 type Sink = (values: number[]) => void
 
 /**
- * Hands the in-map markers to the camera, which owns the native call. Every change of any marker
- * is batched into one call per JS tick carrying the whole list, in mount order, which is the draw
- * order.
- *
  * @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXMarkerSprites.kt
  * @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXMarkerSprites.swift
  */
@@ -48,7 +43,6 @@ function createMarkerLayerChannel() {
       sink = next
       flush()
     },
-    /** Places a marker. Only a new view is snapshotted; moving one only moves its sprite. */
     set(key: object, tag: number, lngLat: [number, number], burstMs: number, hidden: boolean) {
       const entry = entries.get(key)
       if (entry && entry.tag === tag) {
@@ -60,7 +54,6 @@ function createMarkerLayerChannel() {
       }
       schedule()
     },
-    /** A new version makes native snapshot the view again, then every frame for `burstMs`. */
     refresh(key: object) {
       const entry = entries.get(key)
       if (!entry) return

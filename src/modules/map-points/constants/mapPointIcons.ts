@@ -39,8 +39,6 @@ import {
 } from '@/modules/map-points/components/MapPointSvgIcons'
 
 const MAP_POINT_KIND_ICONS: Record<MapPinKind, Icon> = {
-  // The pin, the same one the target sheet's header shows: the rider looks between the map and the
-  // sheet while deciding on a path, and two icons for one Direction Point read as two things.
   direction: MapPinIcon,
   drop: DropMapPointIcon,
   bonk: BonkMapPointIcon,
@@ -79,7 +77,6 @@ const PLACE_CATEGORY_ICONS: Record<PlaceCategoryIconKey, Icon> = {
   place: MapPinIcon,
 }
 
-/** Maps Mapbox's free-form place category onto the same Phosphor family as Vescape Map Points. */
 export function getPlaceCategoryIcon(category: string | null) {
   return PLACE_CATEGORY_ICONS[getPlaceCategoryIconKey(category)]
 }

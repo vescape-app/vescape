@@ -9,11 +9,8 @@ export interface MapModeOverlayProps {
   visible: boolean
   mapRef: RefObject<MainMapHandle | null>
   mapInteractionHandlerRef: RefObject<(selection?: MapSelection) => boolean | undefined>
-  /** Top of the map's control row, shared with the mode tabs. */
   top: number
-  /** Where the add and filter menus sit above the telemetry strip. */
   bottom: number
-  /** Where the target sheet sits above the safe area. */
   sheetBottom: number
   searchProximity: { latitude: number; longitude: number } | null
   directionPoint: DirectionPoint | null

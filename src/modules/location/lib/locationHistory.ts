@@ -11,7 +11,6 @@ export function createLocationHistory(): LocationHistory {
   return { locations: [], latestApproximateLocation: null }
 }
 
-/** Precise fixes form the trail; the newest fix of either precision places the puck. */
 export function appendLocation(
   history: LocationHistory,
   location: LocationEvent,

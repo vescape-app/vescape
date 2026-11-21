@@ -1,4 +1,3 @@
-/** Vector source every One Dark layer reads; the in-app style and the hosted thumbnail style share it. */
 export const ONE_DARK_SOURCES = {
   composite: {
     url: 'mapbox://mapbox.mapbox-streets-v8',
@@ -6,7 +5,6 @@ export const ONE_DARK_SOURCES = {
   },
 }
 
-/** One Dark ground layers: terrain, water, roads, rail and buildings — everything under labels. */
 export const ONE_DARK_BASE_LAYERS = [
   {
     id: 'background',
@@ -14,7 +12,6 @@ export const ONE_DARK_BASE_LAYERS = [
     paint: { 'background-color': '#172033' },
   },
 
-  // --- landcover ---
   {
     id: 'landcover-grass',
     type: 'fill',
@@ -49,7 +46,6 @@ export const ONE_DARK_BASE_LAYERS = [
     },
   },
 
-  // --- landuse (parks, forests, cemeteries) ---
   {
     id: 'landuse-park',
     type: 'fill',
@@ -138,7 +134,6 @@ export const ONE_DARK_BASE_LAYERS = [
     },
   },
 
-  // --- water ---
   {
     id: 'water',
     type: 'fill',
@@ -159,7 +154,6 @@ export const ONE_DARK_BASE_LAYERS = [
     },
   },
 
-  // --- roads ---
   {
     id: 'road-path',
     type: 'line',
@@ -253,7 +247,6 @@ export const ONE_DARK_BASE_LAYERS = [
     },
   },
 
-  // --- rail ---
   {
     id: 'road-rail',
     type: 'line',
@@ -268,7 +261,6 @@ export const ONE_DARK_BASE_LAYERS = [
     },
   },
 
-  // --- buildings ---
   {
     id: 'building',
     type: 'fill',

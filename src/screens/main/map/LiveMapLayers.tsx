@@ -53,7 +53,6 @@ export function LiveMapLayers({
   const puckLat = accuracyFix?.latitude
   const puckLight = useThemeStore((state) => state.resolvedTheme === 'light')
   const { layer: puckLayer, view: puckView } = useInMapLayer()
-  // Places the layer puck, on the map that has the layer.
   useEffect(() => {
     if (!puckLayer) return
     if (puckLng == null || puckLat == null) {
@@ -132,7 +131,6 @@ export function LiveMapLayers({
           <RiderPresencePin
             key={rider.id}
             rider={rider}
-            // Outside a Group Ride the riders are public riders, keyed by account: open their profile.
             onPress={rider.isSelf ? undefined : () => router.push(riderProfileHref(rider.id))}
           />
         ) : null,

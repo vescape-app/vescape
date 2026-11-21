@@ -5,10 +5,6 @@ import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
 import { getGpsPuckBearing } from '@/modules/map/lib/gpsPuckHeading'
 import { puckLayerChannel } from '@/modules/map/lib/nativePuck'
 
-/**
- * The puck arrow's map bearing. The compass writes it from its own callback, so a 60 Hz sensor
- * turns the arrow on the UI thread without re-rendering the map.
- */
 export function usePuckBearing({
   orientationMode,
   approximateFix,

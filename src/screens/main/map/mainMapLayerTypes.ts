@@ -36,7 +36,6 @@ export interface MainMapLayersProps {
   } | null
   accuracyFix: { longitude: number; latitude: number } | null
   accuracyShape: ReturnType<typeof makeCircleFeature> | null
-  /** The puck arrow's map bearing — GPS course or phone compass; null hides the arrow. */
   puckBearing: SharedValue<number | null>
   mapPose: SharedValue<MapPose>
   riders: RosterRider[]

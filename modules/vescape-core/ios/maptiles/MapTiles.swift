@@ -1,18 +1,8 @@
 import Foundation
 import os
 
-/// Raster map tiles of the hosted thumbnail style, rendered by the Mapbox Static Tiles API and kept on
-/// disk with no expiry: a map behind a ride thumbnail does not need to track every change on the
-/// ground, and every cache hit is one API request saved. The OS may still clear the Caches directory
-/// under storage pressure; tiles then download again on demand.
-///
-/// Concurrent requests for one tile share a single download. A failed download stores nothing, so the
-/// next request retries.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/maptiles/MapTiles.kt
 actor MapTiles {
-  /// `owner/styleId` of the hosted style (`bun run map:publish-thumbnail-style`). Part of the cache
-  /// path, so a different style never reads another style's tiles.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/maptiles/MapTiles.kt `STYLE`
   static let style = "kacperkozak/cmux9d4th002j01s4fm7tc4mt"
 
@@ -40,7 +30,6 @@ actor MapTiles {
 
   private let directory: URL
   private let fetch: @Sendable (URL) async -> Data?
-  /// Current Mapbox token from Service Config, read per download so a refreshed token applies at once.
   private let accessToken: @Sendable () async -> String?
   private var inFlight: [String: Task<URL?, Never>] = [:]
 
@@ -54,7 +43,6 @@ actor MapTiles {
     self.accessToken = accessToken
   }
 
-  /// The tile's cached JPEG, downloading it first if needed. Nil for an invalid tile or a failed download.
   func tile(z: Int, x: Int, y: Int) async -> URL? {
     guard (0...Self.maxZoom).contains(z), (0..<(1 << z)).contains(x), (0..<(1 << z)).contains(y) else {
       return nil
@@ -77,7 +65,6 @@ actor MapTiles {
     components.queryItems = [URLQueryItem(name: "access_token", value: accessToken)]
     guard let url = components.url, let data = await fetch(url) else { return nil }
 
-    // Write beside the target, then move: a reader never sees half a tile.
     let partial = file.deletingLastPathComponent()
       .appendingPathComponent("\(file.lastPathComponent).\(UUID().uuidString).partial")
     // intentional-suppression: after a successful move the partial file is already gone.

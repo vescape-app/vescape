@@ -1,27 +1,16 @@
-/**
- * Synthetic GPS / compass drivers for the camera engine playground.
- *
- * Pure math: the screen owns the timers and feeds `dtSeconds`. Truth position
- * advances noise-free; noise is applied only to the *reported* fix, mirroring a
- * real receiver whose track is smooth but whose samples wobble.
- */
 import { offsetCoordinate } from '@/helpers/mapGeometry'
 
 export type FakeGpsMode = 'straight' | 'curvy' | 'jitter'
 
 export interface FakeGpsState {
-  /** Noise-free truth position, [lng, lat]. */
   position: [number, number]
-  /** Base course in degrees; curvy modes swing around it. */
   courseDeg: number
   elapsedS: number
 }
 
 export interface FakeGpsSample {
   state: FakeGpsState
-  /** What the receiver "reports" — truth plus mode noise. */
   reported: [number, number]
-  /** Instantaneous heading actually travelled this step. */
   headingDeg: number
 }
 
@@ -68,10 +57,6 @@ export function advanceFakeGps({
   return { state: { position, courseDeg: state.courseDeg, elapsedS }, reported, headingDeg }
 }
 
-/**
- * Phone-compass stand-in: a slow continuous rotation with optional hand-shake
- * noise, so heading retargets arrive far faster than GPS fixes.
- */
 export function fakeCompassHeading({
   elapsedS,
   degPerSecond,

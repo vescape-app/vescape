@@ -121,11 +121,8 @@ export function MainMapScene({
       onTouchStart={onTouchStart}
     >
       <Mapbox.MapView
-        // Style swaps stay inside the existing native map so its camera, renderer, and tile cache
-        // survive. An explicit retry still recreates a map whose loader entered a failed state.
         key={styleRetryNonce}
         ref={mapViewRef}
-        // SurfaceView is excluded from native backdrop capture; TextureView allows drawer blur.
         surfaceView={false}
         style={styles.map}
         styleURL={appliedStyle.styleURL}
@@ -152,8 +149,6 @@ export function MainMapScene({
           animationMode="easeTo"
         />
         {styleReady && (
-          // Native styles own their sources and layers. Mount a fresh React layer tree only after
-          // the replacement document is ready; never update nodes the previous style removed.
           <Fragment key={mapStyle.styleSignature}>
             {mapStyle.isSatelliteOverlay && (
               <SatelliteImageryLayer paint={mapStyle.satelliteImageryPaint} />

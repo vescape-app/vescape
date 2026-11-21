@@ -17,7 +17,6 @@ class Polyline6Test {
 
     @Test
     fun `decodes the canonical two-point fixture at 1e6 precision`() {
-        // Same coordinate pair as the classic polyline5 example, encoded at polyline6 precision.
         assertPointsEqual(
             listOf(38.5 to -120.2, 40.7 to -120.95),
             Polyline6.decode("_izlhA~rlgdF_{geC~ywl@"),
@@ -38,7 +37,6 @@ class Polyline6Test {
 
     @Test
     fun `decoding at 1e6 does not produce the ten-times-larger 1e5 reading`() {
-        // The precision trap: a 1e5 decoder would read the first point as 385.0 / -1202.0.
         val first = Polyline6.decode("_izlhA~rlgdF_{geC~ywl@").first()
         assertTrue(first.first in -90.0..90.0)
         assertTrue(first.second in -180.0..180.0)
@@ -52,7 +50,6 @@ class Polyline6Test {
     @Test
     fun `a body truncated mid-value keeps the well-formed prefix`() {
         val full = "qnhsbBwzxag@mh@wtAgp@xsD"
-        // Drops the final longitude delta, leaving a dangling latitude for the third point.
         val truncated = full.dropLast(4)
 
         assertPointsEqual(Polyline6.decode(full).take(2), Polyline6.decode(truncated))
@@ -60,8 +57,6 @@ class Polyline6Test {
 
     @Test
     fun `encoding reproduces the body a path was decoded from`() {
-        // Byte-identical, not merely equivalent: storage size depends on the encoder emitting the
-        // same minimal varints Mapbox does.
         val body = "qnhsbBwzxag@mh@wtAgp@xsD"
 
         assertEquals(body, Polyline6.encode(Polyline6.decode(body)))

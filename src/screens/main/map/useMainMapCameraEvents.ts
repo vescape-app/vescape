@@ -64,7 +64,6 @@ export function useMainMapCameraEvents({
   setFollowGps: (follow: boolean) => void
   setFollowZoomLevel: (zoom: number) => void
   onCameraSettled: (latitude: number, longitude: number, zoom: number) => void
-  /** Wrist route scale, per camera frame and once more when the map comes to rest. */
   onWatchRouteSpanChange: (latitude: number, zoom: number) => void
   onHeadingChange: (heading: number) => void
   repositionOffscreenIndicatorsForCamera: (camera: CameraSnapshot) => void
@@ -76,10 +75,7 @@ export function useMainMapCameraEvents({
 }) {
   const handleMapLoaded = useCallback(
     (preserveCamera: boolean) => {
-      // A style replacement keeps the native camera and engine. Only initialize a new map view.
       if (preserveCamera) return
-      // Whatever the controller last decided still stands; a style load is not a reason to hand the
-      // camera back to live follow when the rider is looking at the weather, a route, or a ride.
       const camera =
         historyActive && historyPreview
           ? getHistoryPreviewCamera(historyPreview)
@@ -100,7 +96,6 @@ export function useMainMapCameraEvents({
         pitch: initialPitch,
         animationDuration: 0,
       })
-      // Park the springs on the load camera so the first target animates from it.
       engine.reset({
         centerCoordinate: camera.centerCoordinate,
         zoomLevel: camera.zoomLevel,
@@ -139,15 +134,8 @@ export function useMainMapCameraEvents({
         pitch: state.properties.pitch,
       } satisfies CameraSnapshot
       onWatchRouteSpanChange(latitude, state.properties.zoom)
-      // The reveal gesture writes the camera and drives the engine itself; its
-      // echoes arrive a frame late and would only add phantom velocity.
       const previewPanActive = previewPanActiveRef.current
       if (!previewPanActive) currentCameraRef.current = camera
-      // While a native gesture (or any non-engine mover) owns the camera, the
-      // engine shadow-tracks it so its next target blends from here. Telling it
-      // whether a finger is down is the whole filter: the engine discards the
-      // echoes of its own writes itself, which it can do accurately and this
-      // callback cannot.
       if (!previewPanActive) {
         engine.driveExternal(camera, { gesture: state.gestures.isGestureActive })
       }
@@ -159,11 +147,6 @@ export function useMainMapCameraEvents({
       ) {
         setCameraReady(true)
       }
-      // Keep pitch on the zoom profile when something outside the engine moved
-      // the camera — a native pinch, mostly. Never while the engine animates:
-      // it writes pitch from its own spring every frame, and a direct write here
-      // would be overwritten on the next one, the two of them vibrating against
-      // each other until the spring settles.
       if (
         !previewPanActive &&
         !engine.isAnimating() &&
@@ -209,9 +192,6 @@ export function useMainMapCameraEvents({
         onHeadingChange(state.properties.heading)
         updateOffscreenMapIndicators()
       } else {
-        // Heading follow skips the per-frame check, and MapLibre reports no idle after a direct
-        // camera write, so without this nothing re-reads visibility once the camera arrives: an
-        // indicator raised while the camera was still travelling stays over a visible point.
         scheduleOffscreenMapIndicatorRefresh()
       }
       if (historyActive && mediaAssetCount > 0) {
@@ -251,7 +231,6 @@ export function useMainMapCameraEvents({
   const handleMapIdle = useCallback(() => {
     const camera = currentCameraRef.current
     scheduleOffscreenMapIndicatorRefresh()
-    // Map Points live on the server, so the visible set is read per camera rest.
     if (camera) {
       const [longitude, latitude] = camera.centerCoordinate
       onCameraSettled(latitude, longitude, camera.zoomLevel)

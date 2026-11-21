@@ -18,7 +18,6 @@ final class Polyline6Tests: XCTestCase {
   }
 
   func testDecodesCanonicalTwoPointFixtureAt1e6Precision() {
-    // Same coordinate pair as the classic polyline5 example, encoded at polyline6 precision.
     assertPoints(
       [(38.5, -120.2), (40.7, -120.95)],
       Polyline6.decode("_izlhA~rlgdF_{geC~ywl@")
@@ -33,7 +32,6 @@ final class Polyline6Tests: XCTestCase {
   }
 
   func testDecodingAt1e6DoesNotProduceTheTenTimesLarger1e5Reading() {
-    // The precision trap: a 1e5 decoder would read the first point as 385.0 / -1202.0.
     let first = Polyline6.decode("_izlhA~rlgdF_{geC~ywl@")[0]
     XCTAssertTrue((-90.0...90.0).contains(first.latitude))
     XCTAssertTrue((-180.0...180.0).contains(first.longitude))
@@ -45,7 +43,6 @@ final class Polyline6Tests: XCTestCase {
 
   func testBodyTruncatedMidValueKeepsWellFormedPrefix() {
     let full = "qnhsbBwzxag@mh@wtAgp@xsD"
-    // Drops the final longitude delta, leaving a dangling latitude for the third point.
     let truncated = String(full.dropLast(4))
 
     let expected = Polyline6.decode(full).prefix(2).map { ($0.latitude, $0.longitude) }
@@ -53,8 +50,6 @@ final class Polyline6Tests: XCTestCase {
   }
 
   func testEncodingReproducesTheBodyAPathWasDecodedFrom() {
-    // Byte-identical, not merely equivalent: storage size depends on the encoder emitting the same
-    // minimal varints Mapbox does.
     let body = "qnhsbBwzxag@mh@wtAgp@xsD"
 
     XCTAssertEqual(body, Polyline6.encode(Polyline6.decode(body)))

@@ -1,9 +1,5 @@
 import Foundation
 
-/// The condition pictogram a forecast resolves to. Native owns the classification so the phone, the
-/// wrist and Android cannot drift apart on what a WMO code looks like; every renderer only maps a
-/// slug to its own artwork and palette.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `WeatherIcon`
 /// @parity /modules/vescape-core/src/index.ts `WeatherIconSlug`
 enum WeatherIcon: String {
@@ -18,9 +14,6 @@ enum WeatherIcon: String {
   case cloudLightning = "cloud-lightning"
 }
 
-/// WMO weather code into a pictogram. Only the clear and lightly-clouded codes have a night form;
-/// rain looks the same at every hour.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `weatherIcon`
 func weatherIcon(code: Int, night: Bool) -> WeatherIcon {
   switch code {
@@ -35,9 +28,6 @@ func weatherIcon(code: Int, night: Bool) -> WeatherIcon {
   }
 }
 
-/// Human label for a WMO code. One line, wrist-width, and deliberately coarser than the WMO table:
-/// a rider needs "Rain", not "moderate intensity rain showers".
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `weatherLabel`
 func weatherLabel(code: Int) -> String {
   switch code {
@@ -53,9 +43,6 @@ func weatherLabel(code: Int) -> String {
   }
 }
 
-/// One forecast hour. Times are local to the forecast location (Open-Meteo is asked for the device
-/// timezone), carried as minutes since local midnight so no renderer has to parse an ISO string.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `WeatherHour`
 /// @parity /modules/vescape-core/src/index.ts `WeatherHour`
 struct WeatherHour {
@@ -76,11 +63,6 @@ struct WeatherHour {
   }
 }
 
-/// One forecast period in absolute time, the shape the Weather Alert Evaluator reads. Open-Meteo
-/// values describe the period *before* their timestamp, so `startMs` is that timestamp minus the
-/// period. Precipitation is normalised to mm/h whatever the period; probability exists hourly only.
-/// Native-only: the JS payload keeps `WeatherHour`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `WeatherSlot`
 struct WeatherSlot: Equatable {
   let startMs: Int64
@@ -91,9 +73,6 @@ struct WeatherSlot: Equatable {
   let windGustsKmh: Double?
 }
 
-/// The weather where the rider is. Native truth: fetched, cached and aged natively so every consumer
-/// keeps seeing it while the JS runtime is gone.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `Weather`
 /// @parity /modules/vescape-core/src/index.ts `Weather`
 struct Weather {
@@ -102,29 +81,20 @@ struct Weather {
   let icon: WeatherIcon
   let precipitationProbability: Int
   let hourly: [WeatherHour]
-  /// Minutes since local midnight, or nil when the forecast omitted the day's sun times.
   let sunriseMinuteOfDay: Int?
   let sunsetMinuteOfDay: Int?
   let latitude: Double
   let longitude: Double
   let fetchedAtMs: Int64
-  /// Hourly series as absolute slots, for Weather Alerts. Not mirrored to JS.
   var hourlySlots: [WeatherSlot] = []
-  /// `minutely_15` series as absolute slots, for Weather Alerts. Not mirrored to JS.
   var quarterHourSlots: [WeatherSlot] = []
-  /// Unrounded current temperature, normalized only when stored.
   var currentTemperatureC: Double?
-  /// Open-Meteo `current.time` as epoch ms, or nil when the response carried none.
   var observedAtMs: Int64?
-  /// Current `wind_gusts_10m` in km/h, or nil when the response omitted it.
   var windGustsKmh: Double?
-  /// Current `is_day`; falls back to the sunrise/sunset night window when omitted.
   var isDay = true
 
   var label: String { weatherLabel(code: weatherCode) }
 
-  /// Normalized current conditions for `weather_observations`, or nil without an observation time:
-  /// a row must say when the weather was, not when it was fetched.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `Weather.observation`
   var observation: WeatherObservation? {
     guard let observedAtMs else { return nil }
@@ -154,7 +124,6 @@ struct Weather {
   }
 }
 
-/// Minutes since local midnight in an Open-Meteo `YYYY-MM-DDTHH:MM` stamp, or nil if unparseable.
 func minuteOfDay(_ isoLocalTime: String) -> Int? {
   guard let timePart = isoLocalTime.split(separator: "T").last else { return nil }
   let fields = timePart.split(separator: ":")
@@ -164,9 +133,6 @@ func minuteOfDay(_ isoLocalTime: String) -> Int? {
   return hour * 60 + minute
 }
 
-/// Epoch ms of an Open-Meteo local `YYYY-MM-DDTHH:MM` stamp at the response's `utc_offset_seconds`.
-/// One offset covers the whole window, so a slot past a DST change inside it is off by that hour.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `epochMs`
 func epochMs(_ isoLocalTime: String, utcOffsetSeconds: Int) -> Int64? {
   let formatter = DateFormatter()
@@ -177,9 +143,6 @@ func epochMs(_ isoLocalTime: String, utcOffsetSeconds: Int) -> Int64? {
   return Int64((date.timeIntervalSince1970 * 1000).rounded())
 }
 
-/// One Open-Meteo series into `WeatherSlot`s of `periodMinutes`; `precipitationScale` turns the
-/// series' per-period precipitation into mm/h. A slot without a precipitation value is dropped.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `weatherSlots`
 private func weatherSlots(
   _ series: [String: Any]?,
@@ -209,9 +172,6 @@ private func weatherSlots(
   }
 }
 
-/// Whether a local time falls outside daylight. Sunrise/sunset come from the same forecast, so a
-/// polar summer resolves correctly; a forecast that omits them falls back to a fixed night window.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `isNight`
 func isNight(minuteOfDay: Int, sunriseMinute: Int?, sunsetMinute: Int?) -> Bool {
   guard let sunriseMinute, let sunsetMinute else {
@@ -221,9 +181,6 @@ func isNight(minuteOfDay: Int, sunriseMinute: Int?, sunsetMinute: Int?) -> Bool 
   return minuteOfDay < sunriseMinute || minuteOfDay >= sunsetMinute
 }
 
-/// Open-Meteo forecast response into a `Weather`. Returns nil when the payload carries no usable
-/// current conditions — a partial forecast is not worth showing a rider a wrong number for.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `parseOpenMeteoWeather`
 func parseOpenMeteoWeather(
   _ body: Data,
@@ -244,16 +201,11 @@ func parseOpenMeteoWeather(
 
   let hourlyJson = root["hourly"] as? [String: Any]
   let times = (hourlyJson?["time"] as? [String]) ?? []
-  // Optional element types throughout: a single null anywhere would fail a `[Double]` cast and drop
-  // the whole day, where the parallel-array contract only loses the hour that is actually missing.
   let temps = (hourlyJson?["temperature_2m"] as? [Double?]) ?? []
   let codes = (hourlyJson?["weather_code"] as? [Int?]) ?? []
   let precips = (hourlyJson?["precipitation_probability"] as? [Int?]) ?? []
   var hourly: [WeatherHour] = []
   for (index, time) in times.enumerated() {
-    // Every required field must be present at this index. The arrays are parallel but independent,
-    // and a short one would otherwise read as 0 — a fabricated clear sky at 0 °C, which looks like
-    // real weather rather than like missing data.
     guard let minute = minuteOfDay(time),
           index < codes.count, let code = codes[index],
           index < temps.count, let temperature = temps[index]
@@ -292,7 +244,6 @@ func parseOpenMeteoWeather(
     longitude: longitude,
     fetchedAtMs: fetchedAtMs,
     hourlySlots: weatherSlots(hourlyJson, utcOffsetSeconds: utcOffsetSeconds, periodMinutes: 60, precipitationScale: 1),
-    // `minutely_15` precipitation is mm per 15 min.
     quarterHourSlots: weatherSlots(
       root["minutely_15"] as? [String: Any],
       utcOffsetSeconds: utcOffsetSeconds,

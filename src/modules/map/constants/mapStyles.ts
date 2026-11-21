@@ -48,7 +48,6 @@ export const MAP_STYLES = [
   { key: 'mapy', label: 'Mapy.cz', styleURL: null, Icon: MountainsIcon },
 ] as const
 
-/** Outdoors remains a valid saved key for existing installations. */
 export type MapStyleKey = (typeof MAP_STYLES)[number]['key'] | 'outdoors'
 export const MAP_ORIENTATION_MODES = [
   { key: 'northUp', label: 'North up' },

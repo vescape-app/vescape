@@ -27,7 +27,6 @@ function toPickedAssets(assets: ImagePicker.ImagePickerAsset[]): PickedMapPointM
 }
 
 export function useMapPointMedia(point: MapPoint | null): MapPointMediaController {
-  // Parked with `MAP_POINT_MEDIA_ENABLED`: server Map Points carry no media yet.
   const [assets, setAssets] = useState<MapPointMediaAsset[]>([])
   const [saving, setSaving] = useState(false)
 

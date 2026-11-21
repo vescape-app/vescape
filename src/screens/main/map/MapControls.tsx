@@ -21,7 +21,6 @@ interface MapControlsProps {
   setMapSelector: (selector: MapSelector) => void
 }
 
-/** The two map selectors pinned to the left edge: camera behaviour and basemap style. */
 export function MapControls({
   mode,
   mapRef,
@@ -38,8 +37,6 @@ export function MapControls({
   const styleExpanded = mapSelector === 'style'
   const selectorOpen = navigationExpanded || styleExpanded
 
-  // Collapsing after a pick is the menu's own idle timer: it restarts on every tap, so the rider
-  // can try basemaps one by one and the list only folds away once they stop.
   return (
     <View pointerEvents="box-none" style={styles.mapControlsLayer}>
       {selectorOpen ? (

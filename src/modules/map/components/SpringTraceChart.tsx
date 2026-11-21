@@ -25,10 +25,6 @@ const DEFAULT_HEIGHT = 72
 const INSET = 3
 const MIN_SPAN = 1e-6
 
-/**
- * Two-series scope: spring position against its target over a rolling window.
- * `Sparkline` only draws a single series, so tuning needs its own chart.
- */
 export function SpringTraceChart({
   label,
   samples,

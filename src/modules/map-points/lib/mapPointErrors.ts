@@ -1,9 +1,6 @@
 import type { MapPointErrorCode } from 'vescape-core'
 
 /**
- * Native rejects Map Point calls with a code (`MapPointApi`); this is the only place those become
- * rider-facing words.
- *
  * @parity /modules/vescape-core/src/index.ts `MapPointErrorCode`
  */
 const MESSAGES: Record<MapPointErrorCode, string> = {

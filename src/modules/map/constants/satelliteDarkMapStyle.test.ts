@@ -55,8 +55,6 @@ describe('satellite dark map style', () => {
       }[]
     }
 
-    // #423: the imagery is mounted as an owned RasterSource/RasterLayer instead, because an
-    // `existing` layer adopted from this JSON never receives paint updates on iOS Release builds.
     expect(style.layers.some((layer) => layer.id === 'satellite')).toBe(false)
     expect(style.sources.satellite).toBeUndefined()
     expect(style.layers.find((layer) => layer.id === 'road-path')?.paint).toMatchObject({
@@ -106,7 +104,7 @@ describe('satellite dark map style', () => {
     }
     const ids = satellite.layers.map((layer) => layer.id)
 
-    expect(ids).toContain('road-path') // raster insertion anchor
+    expect(ids).toContain('road-path')
     expect(ids).toContain('road-label')
     expect(ids).toContain('poi-label')
     expect(ids).toContain('transit-label')

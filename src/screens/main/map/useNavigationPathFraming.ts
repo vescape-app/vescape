@@ -7,15 +7,6 @@ import {
 import { navigationCameraPath } from '@/modules/map/lib/navigationPath'
 import { useMapStore } from '@/modules/map/store/mapStore'
 
-/**
- * Frames the remaining Navigation from the native projection to the destination. Passed sections
- * stay dimmed on the map but must not pull the camera back to where the rider has already been.
- *
- * Frames once per map visit and Navigation `revision`: opening the route preview,
- * a recompute or a Profile switch reframes, while a rider panning afterwards is left alone. A path
- * arriving in telemetry mode must not move the camera under a rider who is looking at their speed.
- * Native's automatic replacements never move the camera of an already open map.
- */
 export function useNavigationPathFraming({
   active,
   fitRoute,
@@ -41,7 +32,6 @@ export function useNavigationPathFraming({
     const decision = navigationFrameDecision(framedPathRef.current, navigation, hasProjection)
     framedPathRef.current = decision.state
     if (!decision.frame) return
-    // Read the latest position at entry, without reframing or subscribing to every moving fix.
     const progress = useMapStore.getState().routeProgress
     const route = navigationCameraPath(navigation, progress)
     if (route.length === 0) return

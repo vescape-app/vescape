@@ -38,8 +38,6 @@ import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 const HISTORY_ROUTE_HIGHLIGHT_INTERVAL_MS = 50
 const HISTORY_ROUTE_HIGHLIGHT_DELAY_MS = 500
 
-// Live sub-range highlight while trimming a Favorite. Subscribes to the trim range directly so a
-// drag only re-renders this layer, not the whole map. rideGpsSamples is a stable prop.
 function TrimRouteHighlight({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
   const accents = useResolvedAccentColors()
   const trimRange = useMainScreenStore((s) => s.trimRange)
@@ -154,7 +152,6 @@ export function HistoryMapLayers({
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
   const telemetryColors = useResolvedTelemetryColors()
-  // Flips only on trim enter/exit, so the whole-route layers dim without per-drag re-renders.
   const trimming = useMainScreenStore((s) => s.trimRange != null)
   const [highlightProgress, setHighlightProgress] = useState(0)
   const highlightDurationMs = useMemo(
@@ -217,7 +214,6 @@ export function HistoryMapLayers({
 
   return (
     <>
-      {/* Create the native symbol layer before strokes that reference it for ordering. */}
       <PointAnnotationManager id={HISTORY_ENDPOINT_LAYER_ID} iconAllowOverlap iconIgnorePlacement>
         {rideRoute[0] && renderHistoryEndpointFlag(rideRoute[0], telemetryColors.duty, 'start')}
         {rideRoute.at(-1) &&
@@ -257,8 +253,6 @@ export function HistoryMapLayers({
           />
         </ShapeSource>
       )}
-      {/* Over the route, under the pins: the pins are landmarks of the whole ride and stay
-          readable however far the chart is zoomed in. */}
       <RouteZoomFocus
         rideGpsSamples={rideGpsSamples}
         routeShape={rideRouteShape}
@@ -268,8 +262,6 @@ export function HistoryMapLayers({
         gradientsEnabled={gradientsEnabled}
         highContrastRoutes={highContrastRoutes}
       />
-      {/* Its own source, above the zoom focus: the scrub glow marks where the finger is on the
-          chart, which stays true whether or not that stretch is the one zoomed into. */}
       {rideRouteShape && (
         <ShapeSource id="center-ride-route-highlight-source" shape={rideRouteShape} lineMetrics>
           <LineLayer
@@ -317,18 +309,11 @@ export function HistoryMapLayers({
   )
 }
 
-/**
- * Endpoint flag geometry, in SVG units with the pole's foot at the origin: a pole with a cloth at
- * its top, stroked like the app's outline icons, the cloth tinted rather than filled.
- */
 const FLAG = {
-  /** Screen pixels per unit. */
   scale: 1.2,
   stroke: 2.2,
   poleHeight: 28,
-  /** Start pennant: how far its tip reaches and how tall it is at the pole. */
   pennant: { length: 15, height: 15 },
-  /** Finish cloth, with its checks as columns × rows. */
   cloth: { width: 16, height: 12, radius: 3, columns: 4, rows: 3 },
   tintOpacity: 0.25,
   checkOpacity: 0.45,
@@ -338,7 +323,6 @@ const FLAG_WIDTH = FLAG.cloth.width + FLAG.stroke
 const FLAG_HEIGHT = FLAG.poleHeight + FLAG.stroke
 const FLAG_TOP = -FLAG.poleHeight
 
-// PointAnnotation snapshots the flag into the map renderer, like saved Map Points.
 function renderHistoryEndpointFlag(
   coordinate: [number, number],
   color: string,

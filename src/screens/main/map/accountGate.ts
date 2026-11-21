@@ -1,7 +1,3 @@
-/**
- * What a signed-out rider tried to do. Each needs the Device Token: Map Point writes are
- * account-owned, and search and Directions go through the server's map proxy.
- */
 export type AccountGateReason = 'contribute' | 'search' | 'navigate' | 'details'
 
 export const accountGateCopy: Record<AccountGateReason, { title: string; message: string }> = {

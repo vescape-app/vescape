@@ -15,20 +15,16 @@ import { useRainViewerRadarStore } from '@/modules/weather/store/rainViewerRadar
 
 interface WeatherMapOverlayProps {
   visible: boolean
-  /** Top of the map's control row, so the back and settings buttons line up with the mode tabs. */
   top: number
-  /** Just below the mode tabs, where the expanded forecast pill sits. */
   pillTop: number
   onExit: () => void
 }
 
-/** Everything the map shows in weather mode: forecast pill, radar timeline and the hourly strip. */
 export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapOverlayProps) {
   const insets = useSafeAreaInsets()
   const radarError = useRainViewerRadarStore((s) => s.error)
   const refreshRadar = useRainViewerRadarStore((s) => s.fetch)
 
-  // Every visit shows fresh weather: refetch the forecast and radar whenever the view opens.
   useEffect(() => {
     if (!visible) return
     refreshWeather()

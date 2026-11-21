@@ -25,7 +25,6 @@ export function initialMapStyleLifecycle(document: MapStyleDocument): StyleLifec
   return { applied: document, requested: document, phase: 'loading', generation: 0, loadCount: 0 }
 }
 
-/** Mapbox completion events have no document ID. Never overlap native style requests. */
 export function mapStyleLifecycle(state: StyleLifecycle, action: Action): StyleLifecycle {
   switch (action.type) {
     case 'request': {
@@ -53,8 +52,6 @@ export function mapStyleLifecycle(state: StyleLifecycle, action: Action): StyleL
       }
     case 'failed':
       if (action.generation !== state.generation || state.phase !== 'loading') return state
-      // A failed request may still emit a late completion. Replace the native view before
-      // trying another document, so that completion cannot be delivered to its successor.
       return state.requested.styleSignature !== state.applied.styleSignature
         ? mapStyleLifecycle(state, { type: 'retry' })
         : { ...state, phase: 'failed' }

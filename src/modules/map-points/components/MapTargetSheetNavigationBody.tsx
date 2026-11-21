@@ -34,20 +34,13 @@ export function MapTargetNavigationBody({
 }: {
   target: MapSelection
   bottom: number
-  /** Confirming the path and leaving the map for the ride view. The rider's likely next move. */
   action: MapTargetSheetAction
-  /** Flanking the confirm at lesser weight: asking for the path again, and dropping it. */
   sideActions?: readonly MapTargetSheetAction[]
-  /** Why there is no line, in rider-facing words. */
   notice?: string | null
-  /** How far the drawn path runs and how long it is estimated to take. `null` while there is none. */
   path?: { distanceMeters: number; durationSeconds: number } | null
-  /** Native is computing a path right now: the row says so instead of showing yesterday's numbers. */
   computing?: boolean
-  /** Which kind of ways the path may follow. Sits on the path view, never in app settings. */
   profileSelector?: ReactNode
   media: readonly MapPointMediaAsset[]
-  /** The Direction Point's own colour, for the header badge — the actions carry their own. */
   targetColor: ThemeColor
   targetTextColor: ThemeColor
   onDismiss?: () => void
@@ -80,13 +73,6 @@ export function MapTargetNavigationBody({
   )
 }
 
-/**
- * The one line about the path itself, in the order the rider needs it: whether one is being worked
- * out at all, then why there is none, then how far and how long the one on screen is.
- *
- * Computing wins over the notice because a failed path stays on screen while the rider asks again —
- * leaving "no path leads here" up during the retry would answer a question they just re-asked.
- */
 function PathFacts({
   computing,
   notice,
@@ -115,8 +101,6 @@ function PathFacts({
     )
   }
 
-  // A restored path from before these were stored has neither; the line simply steps aside rather
-  // than claiming a 0 km ride.
   if (!path || path.distanceMeters <= 0) return null
 
   return (
@@ -138,18 +122,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
   },
-  /**
-   * Centred under the target, over the centred Profile switcher: the length, the ways it follows
-   * and the confirm read as one column about the path, rather than as a left-aligned detail list.
-   * The notice keeps the left edge — it is a sentence, and sentences are read from a margin.
-   */
   pathFacts: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    // Fixed, because the spinner is taller than the numbers it stands in for: without it the sheet
-    // grows for the second a recompute takes and drops back, and the buttons move under the thumb.
     height: 22,
   },
   pathFactText: {

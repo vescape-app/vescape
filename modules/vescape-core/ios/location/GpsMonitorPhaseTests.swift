@@ -3,18 +3,12 @@ import XCTest
 
 @testable import VescapeCore
 
-/// Drives the monitor through the authorization transitions the reported phase is built on.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/location/GpsPhaseTest.kt
 final class GpsMonitorPhaseTests: XCTestCase {
-  /// Overrides the bits of `CLLocationManager` the monitor touches, so a test can hold a
-  /// `.notDetermined` status open and then answer it. `allowsBackgroundLocationUpdates` is
-  /// overridden because setting it on a real manager without the background mode traps.
   private final class FakeLocationManager: CLLocationManager {
     var status: CLAuthorizationStatus = .notDetermined
     private(set) var requestedAuthorization = false
     private(set) var updatesRunning = false
-    /// Distinguishes a reconfigure from a restart — the difference between keeping a warm fix and
-    /// paying for a new one.
     private(set) var startCount = 0
     private var backgroundUpdates = false
     private var autoPause = true
@@ -87,7 +81,6 @@ final class GpsMonitorPhaseTests: XCTestCase {
 
     XCTAssertFalse(manager.updatesRunning)
     XCTAssertEqual(monitor.phase, .error)
-    // The phase and the error surfaced next to it come from the same value.
     XCTAssertEqual(monitor.error, "Location permission not granted")
   }
 
@@ -130,8 +123,6 @@ final class GpsMonitorPhaseTests: XCTestCase {
     XCTAssertEqual(manager.distanceFilter, kCLDistanceFilterNone)
   }
 
-  /// The mode change must reconfigure in place: bouncing updates off and on would cost a fresh
-  /// time-to-first-fix every time a rider stopped looking at their phone mid-ride.
   func testChangingModeReconfiguresWithoutRestartingUpdates() {
     let manager = FakeLocationManager()
     manager.status = .authorizedWhenInUse

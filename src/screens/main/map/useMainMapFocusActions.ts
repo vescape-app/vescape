@@ -37,8 +37,6 @@ export function useMainMapFocusActions({
 
   useEffect(() => {
     if (!riderFocusRequest || historyActive) return
-    // One camera move per request: rosterRows refresh on every presence tick, so
-    // without consuming the nonce this effect would keep re-centering on the rider.
     if (riderFocusRequest.nonce === handledRiderFocusNonceRef.current) return
     const rider = riderFocusRows.find((row) => row.id === riderFocusRequest.riderId)
     if (!rider?.presence) return
@@ -66,7 +64,6 @@ export function useMainMapFocusActions({
         return
       }
       if (indicator.type === 'rider') {
-        // Same focus flow as tapping a rider in the roster (centers with min zoom).
         focusRider(indicator.id.slice('rider-'.length))
         return
       }

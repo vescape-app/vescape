@@ -16,13 +16,6 @@ import { reportUnexpectedError } from '@/config/sentry'
 
 const OFFSCREEN_INDICATOR_VISIBILITY_CHECK_MS = 200
 
-/**
- * Owns the edge indicators for tracked points that fall outside the viewport.
- *
- * State is mirrored in a ref and published only when the indicator set actually changes
- * identity: repositioning writes into shared values in place, so the common camera-frame
- * path costs no React render.
- */
 export function useOffscreenMapIndicators({
   mapViewRef,
   currentCameraRef,
@@ -85,9 +78,6 @@ export function useOffscreenMapIndicators({
     )
       .then((projectedPoints) => {
         if (projectionRequestRef.current !== requestId) return
-        // Read the camera after the native projection resolves: a snapshot taken before the await
-        // is a frame or more old, and re-projecting against it drags the indicators back to a
-        // heading the map has already left.
         const camera = currentCameraRef.current
         const next = projectedPoints.flatMap((trackedPoint) => {
           const [x, y] = trackedPoint.point
@@ -125,7 +115,6 @@ export function useOffscreenMapIndicators({
     }, OFFSCREEN_INDICATOR_VISIBILITY_CHECK_MS)
   }, [update])
 
-  /** Reposition against a camera without re-projecting through the native map view. */
   const repositionForCamera = useCallback(
     (camera: CameraSnapshot) => {
       const repositioned = repositionOffscreenMapIndicators(

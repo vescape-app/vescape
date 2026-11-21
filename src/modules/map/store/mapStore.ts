@@ -11,10 +11,6 @@ import {
   type RouteProgress,
 } from 'vescape-core'
 
-/**
- * Personal navigation target. Not a Map Point: it is never shared, has no author and no reactions.
- * Native persists it so Group Ride presence can read it while JS is gone.
- */
 export interface DirectionPoint {
   latitude: number
   longitude: number
@@ -22,30 +18,10 @@ export interface DirectionPoint {
 
 interface MapState {
   directionPoint: DirectionPoint | null
-  /**
-   * Path to the direction point, mirrored from native. Native computes and owns it; this store only
-   * carries it to the map layer. `null` while no Direction Point is set; a Navigation whose `status`
-   * is not `ready` is a computed answer of "no path", not an absence.
-   */
   navigation: Navigation | null
-  /**
-   * Revision of the path the rider accepted with Ride it. Kept outside component state across UI
-   * remounts, and carried over to native's automatic replacements of that path.
-   */
   acceptedNavigationRevision: number | null
-  /**
-   * Whether native is computing a path right now, mirrored like the path itself. Nothing on this
-   * side sets it from a tap: a rider's request is only "in flight" once native says so, which is
-   * also the only thing that can say when it stopped.
-   */
   navigationComputing: boolean
-  /**
-   * Where the rider is along the path, mirrored from native on every GPS Fix. `null` whenever there
-   * is no Navigation to be along. Nothing on this side derives it — native projects onto the path
-   * and measures along it, and a straight-line stand-in would be a second, wrong opinion.
-   */
   routeProgress: RouteProgress | null
-  /** Last direction point write failure, in rider-facing words. Cleared by the next success. */
   error: string | null
 }
 
@@ -63,7 +39,6 @@ interface MapActions {
 
 const DIRECTION_POINT_WRITE_FAILED = 'Could not save the direction point.'
 
-/** An accepted path stays accepted when native replaces it automatically; a rider intent resets it. */
 function acceptedRevisionAfter(state: MapState, navigation: Navigation | null): number | null {
   const accepted = state.acceptedNavigationRevision
   if (accepted == null || navigation == null) return null
@@ -76,10 +51,6 @@ function acceptedRevisionAfter(state: MapState, navigation: Navigation | null): 
 }
 
 export const useMapStore = create<MapState & MapActions>((set, get) => {
-  /**
-   * The target moves on screen immediately, but native owns it — Group Ride presence reads native,
-   * not this store. A failed write puts the previous target back so the two cannot disagree.
-   */
   async function moveDirectionPoint(next: DirectionPoint | null) {
     const previous = get().directionPoint
     set({ directionPoint: next, acceptedNavigationRevision: null, error: null })
@@ -122,7 +93,6 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
       set((state) => ({
         navigation,
         navigationComputing: computing,
-        // Progress indexes into one path; native sends the reprojection right after a new one.
         routeProgress:
           state.routeProgress?.navigationRevision === navigation?.revision
             ? state.routeProgress
@@ -135,20 +105,10 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
       set({ routeProgress: progress })
     },
 
-    /**
-     * The rider asking for the path again. Nothing is set here: native recomputes and pushes the
-     * result back through `onNavigation` like any other change, so this side never holds a second
-     * opinion about the path. Only ever called from a rider tap.
-     */
     async recomputeNavigation() {
       await recomputeNavigation()
     },
 
-    /**
-     * The rider switching which kind of ways the path may follow. Native owns both halves — storing
-     * the choice and computing the new path — so this side neither remembers the profile nor waits
-     * for the result; the new Navigation arrives through `onNavigation` like any other.
-     */
     async setNavigationProfile(profile) {
       await persistNavigationProfile(profile)
     },
@@ -163,17 +123,10 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
   }
 })
 
-/**
- * Wire the native → JS Navigation mirror. Call once at app root; returns an unsubscribe.
- *
- * Push only, unlike `startAppStatusSync`: native replays the current Navigation on subscribe and on
- * every change, so there is nothing a separate pull could catch up on.
- */
 export function startNavigationSync(): () => void {
   const sub = addNavigationListener((event) =>
     useMapStore.getState().replaceNavigation(event.navigation, event.computing),
   )
-  // Route Progress arrives on its own event: it moves with every fix while the path stays put.
   const progressSub = addRouteProgressListener((event) =>
     useMapStore.getState().replaceRouteProgress(event.progress),
   )

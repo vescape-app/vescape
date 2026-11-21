@@ -7,19 +7,12 @@ import { mapLayerEnabled } from '@/components/map/inMapLayer'
 export interface PuckLayerState {
   lngLat: [number, number]
   bearing: number | null
-  /** ARGB as a 32-bit int, as `processColor` returns it. */
   color: number
-  /** Black alpha of the coin's ground shadow; it depends on the basemap theme. */
   shadowAlpha: number
 }
 
 type Sink = (puck: PuckLayerState | null) => void
 
-/**
- * Hands the puck to the camera, which owns the native call. Position and colour come from the
- * layer tree, bearing from the compass callback; each change goes out at once, the native layer
- * draws whatever it holds when the map renders.
- */
 function createPuckLayerChannel() {
   let sink: Sink | null = null
   let lngLat: [number, number] | null = null

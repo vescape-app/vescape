@@ -19,10 +19,6 @@ const SATELLITE_ROAD_LINE_LAYER_IDS = [
 
 const LAYER_TRANSITION = { duration: 260, delay: 0 } as const
 
-/**
- * Overrides for layers the loaded base style already owns. Only mounted once the
- * matching style signature has finished loading, otherwise the ids do not exist yet.
- */
 export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   enabled,
   existingLayerIds,

@@ -49,7 +49,6 @@ export interface OffscreenMapIndicatorDraft {
   angleDeg: number
 }
 
-/** A map coordinate worth tracking: rendered as a pin, and as an edge indicator when offscreen. */
 export type TrackedMapPoint = Pick<
   OffscreenMapIndicatorDraft,
   'id' | 'type' | 'coordinate' | 'color' | 'textColor' | 'icon'

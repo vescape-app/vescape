@@ -17,10 +17,6 @@ interface PlaygroundSliderProps {
 
 const THUMB = 14
 
-/**
- * Minimal drag/tap slider for the camera playground. The app has no generic
- * slider primitive (Tune uses its own dial), and this one stays dev-only.
- */
 export function PlaygroundSlider({
   label,
   value,
@@ -39,8 +35,6 @@ export function PlaygroundSlider({
     latest.current = { min, max, step, onChange }
   }, [min, max, step, onChange])
 
-  // Built in an effect, not render: the handlers close over refs, and the track
-  // has no width to map a touch onto until after the first layout anyway.
   const [handlers, setHandlers] = useState<GestureResponderHandlers | null>(null)
   useEffect(() => {
     const emit = (x: number) => {
@@ -56,9 +50,6 @@ export function PlaygroundSlider({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
-        // Anchor on the track's page position at grant: locationX on later
-        // moves is relative to whatever view sits under the finger, so a drag
-        // over the fill/thumb children would otherwise collapse toward zero.
         onPanResponderGrant: (event) => {
           trackLeftRef.current = event.nativeEvent.pageX - event.nativeEvent.locationX
           emit(event.nativeEvent.locationX)

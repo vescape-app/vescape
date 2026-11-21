@@ -52,12 +52,10 @@ export function useCameraPreviewGestures({
     lastFollowKeyRef,
     previewPanActiveRef,
   } = cameraRefs
-  /** The drag owns the camera only while the controller still says so. */
   const ownsCamera = useCallback(
     () => controllerStateRef.current.mode.kind === 'previewPan',
     [controllerStateRef],
   )
-  /** Live follow only counts while a fix backs it: otherwise the follow camera is a fallback guess. */
   const followingLive = useCallback(
     () =>
       controllerStateRef.current.mode.kind === 'liveFollow' &&
@@ -66,8 +64,6 @@ export function useCameraPreviewGestures({
   )
   const previewPanBaseRef = useRef<CameraSnapshot | null>(null)
   const previewZoomBaseRef = useRef<CameraSnapshot | null>(null)
-  /** Whether the pinch actually drove the camera. Its handler also begins on a plain one-finger
-   * drag, and tearing a zoom down there would stomp the pan's own spring back to position. */
   const previewZoomedRef = useRef(false)
   const imperativeHandleLatest = {
     applyLiveFollowCamera,
@@ -87,8 +83,6 @@ export function useCameraPreviewGestures({
   const beginPreviewPan = useCallback(() => {
     const latest = imperativeHandleLatestRef.current
     previewPanActiveRef.current = true
-    // Anchor on what is actually on screen, not on the camera live follow would
-    // like to be at: grabbing the map mid-ride must not teleport it first.
     previewPanBaseRef.current = currentCameraRef.current ?? {
       ...latest.gpsCamera,
       heading: latest.getFollowHeadingDeg(),
@@ -101,17 +95,12 @@ export function useCameraPreviewGestures({
     (deltaX: number, deltaY: number, revealProgress: number) => {
       const latest = imperativeHandleLatestRef.current
       const baseCamera = previewPanBaseRef.current
-      // Something claimed the camera mid-drag (the weather view, a route fit). It owns the
-      // viewport now; the finger stops driving rather than fighting the new target.
       if (!baseCamera || !ownsCamera()) return
       const zoomLevel = clamp(
         baseCamera.zoomLevel - MAP_REVEAL_ZOOM_OUT_DELTA * revealProgress,
         MIN_ZOOM,
         MAP_DEFAULTS.maxZoom,
       )
-      // Project the drag at the zoom the map is actually rendering, not the one
-      // it started at: the reveal zooms out, and projecting at the base zoom
-      // moves the ground too little, so the map crawls behind the finger.
       const previewCamera = {
         ...getCameraAfterScreenDrag({ ...baseCamera, zoomLevel }, deltaX, deltaY),
         zoomLevel,
@@ -123,8 +112,6 @@ export function useCameraPreviewGestures({
         }),
       }
       currentCameraRef.current = previewCamera
-      // Engine shadow-tracks the drag so a later release blends out of the
-      // gesture's velocity instead of jumping.
       engine.driveExternal(
         {
           centerCoordinate: previewCamera.centerCoordinate,
@@ -149,16 +136,8 @@ export function useCameraPreviewGestures({
     previewPanBaseRef.current = null
     const owned = ownsCamera()
     dispatchCameraIntent({ type: 'EndPreviewPan' })
-    // Whoever took the camera mid-drag is animating towards its own target; releasing the drag's
-    // velocity into it would drag that target off course.
     if (!owned) return
-    // The drag committed to map mode and nothing retargets right away. Coast
-    // the gesture's velocity out instead of stopping dead on the last sample,
-    // and leave the springs at rest so a later target starts fresh.
     engine.release()
-    // Centre and zoom carry the fling; pitch does not. It is derived from zoom,
-    // and the reveal already ended on that value — coasting it on the drag's
-    // pitch rate only overshoots the profile, the faster the drag the further.
     const current = currentCameraRef.current
     if (current) {
       engine.setTarget({
@@ -190,9 +169,6 @@ export function useCameraPreviewGestures({
       )
       previewZoomedRef.current = true
       latest.setFollowZoomLevel(zoomLevel)
-      // Drive the camera the way the reveal pan does instead of retargeting the springs. A spring
-      // target trails the fingers by its own time constant, which reads as a sluggish pinch — and
-      // the follow zoom it would ride on is a render behind anyway.
       const live = followingLive()
       const followCamera = live ? latest.getLiveFollowCamera() : baseCamera
       const previewCamera = {
@@ -232,9 +208,6 @@ export function useCameraPreviewGestures({
     if (!previewZoomedRef.current) return
     previewZoomedRef.current = false
     const latest = imperativeHandleLatestRef.current
-    // Leave gesture drive, then pin the zoom to where the fingers left it. Releasing alone coasts
-    // every axis on the gesture's velocity, and a pinch that ends while still spreading would keep
-    // zooming after the fingers are gone.
     engine.release()
     const live = followingLive()
     const current = currentCameraRef.current
@@ -253,10 +226,6 @@ export function useCameraPreviewGestures({
     previewPanActiveRef.current = false
     const anchorCamera = previewPanBaseRef.current
     previewPanBaseRef.current = null
-    // A cancelled drag returns to whatever the drag interrupted, so ride back to where the rider
-    // is now — the camera captured at drag start is already stale by a fix or two. The controller
-    // decides whether that return still applies: an intent issued mid-drag owns the camera and
-    // this cancel becomes a no-op.
     const effect = dispatchCameraIntent({
       type: 'CancelPreviewPan',
       liveCamera: cameraFix ? getLiveFollowCamera() : null,
@@ -270,8 +239,6 @@ export function useCameraPreviewGestures({
         heading: restoreCamera.heading,
       })
     }
-    // The engine shadow-tracked the pan, so the return ride starts from the
-    // gesture's position and velocity — no snap on release.
     engine.setTarget({
       center: restoreCamera.centerCoordinate,
       zoom: restoreCamera.zoomLevel,

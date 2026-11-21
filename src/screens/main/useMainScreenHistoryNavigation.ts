@@ -20,7 +20,6 @@ interface HistoryNavigationDeps {
   setOpenMediaAssetId: (id: string | null) => void
 }
 
-/** Entering and leaving History, and stepping between rides — paging older ones in as needed. */
 export function useMainScreenHistoryNavigation({
   mapRef,
   enterHistory,

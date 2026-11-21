@@ -28,27 +28,16 @@ internal class LocationTracker(
     private var lastGpsPersistedAt = 0L
 
     /**
-     * Where the rider is, for callers that need a position rather than a *good* position —
-     * Navigation being the one that matters. Freshness beats accuracy here: a weak indoor fix from
-     * a second ago is the right place to start a path from, while the last precise fix can be
-     * yesterday's and kilometres away. Precise only stands in when nothing newer exists at all.
-     *
      * @parity /modules/vescape-core/ios/location/LocationTracker.swift `riderPosition`
      */
     val riderPosition: LocationSnapshot?
         get() = latestLocation ?: latestPreciseLocation
 
     /**
-     * Ingest one platform fix and return the [LocationSnapshot] it produced, so a caller acts on the
-     * fix it handed in rather than re-reading mutable tracker state.
-     *
      * @parity /modules/vescape-core/ios/location/LocationTracker.swift `onLocationUpdated`
      */
     fun onLocationUpdated(location: Location): LocationSnapshot {
         val snapshot = track(location)
-        // Every fix moves Route Progress, approximate ones included: the same rule as
-        // [riderPosition], where freshness beats accuracy. The bearing comes off the path rather
-        // than off the fix, so a noisy position cannot spin it.
         // @parity /modules/vescape-core/ios/location/LocationTracker.swift `onLocationUpdated`
         NavigationController.get(applicationContext)
             .onFix(snapshot.latitude, snapshot.longitude, snapshot.speedMps)
@@ -59,10 +48,6 @@ internal class LocationTracker(
     }
 
     /**
-     * Replay Warmup (ADR 0048): a recorded fix enters the trail and the course and nothing else —
-     * no Navigation, no last-known position, no recording, no event. JS reads the result from the
-     * next snapshot.
-     *
      * @parity /modules/vescape-core/ios/location/LocationTracker.swift `prefill`
      */
     fun prefill(location: Location) {
@@ -74,8 +59,6 @@ internal class LocationTracker(
         val speedMps = if (location.hasSpeed()) location.speed.toDouble() else null
         val bearingDeg = if (location.hasBearing()) location.bearing.toDouble() else null
         val precise = isPreciseGpsFix(location.provider, accuracyM)
-        // Approximate fixes never feed the course: they are metres of noise apart and would spin a
-        // derived bearing, and they are not what the map's GPS heading mode follows either.
         val course = if (precise) {
             courseDeriver.derive(
                 latitude = location.latitude,
@@ -120,8 +103,6 @@ internal class LocationTracker(
     }
 
     /**
-     * Clear fixes and course when a replay takes or hands back position, so recorded coordinates
-     * never join the live trail. Keeps the persistence throttle.
      * @parity /modules/vescape-core/ios/location/LocationTracker.swift `resetTrail`
      */
     fun resetTrail() {

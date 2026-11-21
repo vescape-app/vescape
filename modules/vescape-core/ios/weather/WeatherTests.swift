@@ -19,8 +19,6 @@ private let forecastJson = """
 }
 """
 
-/// Forecast parsing: the classification a rider actually sees (day vs night glyph), the timezone-free
-/// hour handling, and the refusal to publish a forecast that has no usable current conditions.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/weather/WeatherTest.kt
 final class WeatherTests: XCTestCase {
   private func parse(_ json: String) -> Weather? {
@@ -30,7 +28,6 @@ final class WeatherTests: XCTestCase {
   func testResolvesTheNightGlyphFromTheForecastsOwnSunTimes() {
     let weather = parse(forecastJson)
 
-    // 22:00 is after a 21:15 sunset, so a clear sky is a moon and not a sun.
     XCTAssertEqual(weather?.icon, .moon)
     XCTAssertEqual(weather?.temperatureC, 18)
     XCTAssertEqual(weather?.precipitationProbability, 40)
@@ -42,9 +39,7 @@ final class WeatherTests: XCTestCase {
 
     XCTAssertEqual(hours.map(\.minuteOfDay), [22 * 60, 23 * 60, 5 * 60])
     XCTAssertEqual(hours.map(\.temperatureC), [18, 16, 12])
-    // Rain looks the same at every hour; the pre-sunrise overcast hour is still a plain cloud.
     XCTAssertEqual(hours.map(\.icon), [.moon, .cloudRain, .cloud])
-    // A null probability is "no chance stated", which renders as 0 rather than as a gap.
     XCTAssertEqual(hours.last?.precipitationProbability, 0)
   }
 
@@ -67,8 +62,6 @@ final class WeatherTests: XCTestCase {
       }
       """)?.hourly ?? []
 
-    // Only the first hour has every required field. A missing code would otherwise read as a clear
-    // sky and a missing temperature as 0 °C, both indistinguishable from real weather.
     XCTAssertEqual(hours.map(\.minuteOfDay), [12 * 60])
     XCTAssertEqual(hours.first?.temperatureC, 20)
   }
@@ -89,7 +82,6 @@ final class WeatherTests: XCTestCase {
   }
 
   func testBuildsAbsolutePeriodStartSlotsAcrossLocalMidnight() {
-    // 23:00 local at UTC+2; the window runs into the next day.
     let weather = parse("""
       {
         "utc_offset_seconds": 7200,
@@ -110,7 +102,7 @@ final class WeatherTests: XCTestCase {
         }
       }
       """)
-    let midnightUtcMs: Int64 = 1_781_128_800_000 // 2026-06-10T22:00Z = 2026-06-11T00:00+02:00
+    let midnightUtcMs: Int64 = 1_781_128_800_000
     let hourly = weather?.hourlySlots ?? []
 
     XCTAssertEqual(hourly.map(\.startMs), [midnightUtcMs - 3_600_000, midnightUtcMs])
@@ -118,7 +110,6 @@ final class WeatherTests: XCTestCase {
     XCTAssertEqual(hourly.first?.precipitationProbability, 60)
     XCTAssertNil(hourly.last?.precipitationProbability)
     XCTAssertEqual(hourly.last?.precipitationMmPerHour, 3.0)
-    // A quarter-hour value is mm per 15 min; the null one is dropped, not read as dry.
     let quarters = weather?.quarterHourSlots ?? []
     XCTAssertEqual(quarters.map(\.precipitationMmPerHour), [2.0, 0.4])
     XCTAssertEqual(quarters.first?.startMs, midnightUtcMs - 60 * 60_000)

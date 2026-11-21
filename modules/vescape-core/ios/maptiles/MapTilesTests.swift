@@ -1,7 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Counts fetches and holds them until released, so a test can line up concurrent requests.
 private actor FetchGate {
   private(set) var fetches = 0
   private var waiting: [CheckedContinuation<Void, Never>] = []

@@ -14,7 +14,6 @@ const pulseEntering = () => {
   }
 }
 
-/** Shared map-centre target: a bright lens over the map with a coloured reticle. */
 export function MapTargetReticle({
   color,
   pulseKey = 0,

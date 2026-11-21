@@ -42,7 +42,6 @@ export function formatMapboxCategory(value: string | null) {
   return words.charAt(0).toUpperCase() + words.slice(1).toLowerCase()
 }
 
-/** The "nothing was hit" selection: a bare dropped pin at the pressed coordinate. */
 export function coordinateSelection(
   longitude: number,
   latitude: number,
@@ -59,10 +58,6 @@ export function coordinateSelection(
   }
 }
 
-/**
- * Promotes a rendered base-map feature under the press into a named place selection.
- * Returns null when nothing usable (a named feature) was hit.
- */
 export function placeSelectionFromFeatures(
   features: GeoJSON.Feature[] | undefined,
   fallback: { longitude: number; latitude: number },

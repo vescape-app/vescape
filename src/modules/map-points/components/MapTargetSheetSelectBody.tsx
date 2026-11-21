@@ -95,7 +95,6 @@ function MapPointVoteButtons({
   onVote: (id: string, reaction: 'up' | 'down' | null) => boolean
 }) {
   const reaction = point.myReaction
-  // Active vote buttons wear the two-layer colored surface of their colour.
   const upSurface = useColoredAction(theme.palette.cyan.color)
   const downSurface = useColoredAction(theme.palette.red.color)
   return (

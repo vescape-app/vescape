@@ -1,8 +1,3 @@
-/**
- * Framing a line of coordinates so the whole of it is on screen: a recorded ride in History, a
- * Navigation path on the map. Both want the same thing — bounds in, centre and zoom out — so the
- * geometry lives here once rather than per feature.
- */
 import { getBounds } from '@/helpers/mapGeometry'
 
 const MERCATOR_TILE_SIZE = 512
@@ -13,17 +8,12 @@ export const ROUTE_CAMERA = {
   routePaddingPx: 120,
   sidePaddingPx: 72,
   fallbackZoom: 11.8,
-  /** Bottom interface height assumed when a caller does not measure one. */
   defaultBottomInsetPx: 180,
 } as const
 
 export interface RouteCameraViewport {
   width: number
   height: number
-  /**
-   * Height of whatever covers the bottom of the map — the History panel, which grows as the rider
-   * opens more metrics. The route is fitted into what is left, so opening a chart reframes it.
-   */
   bottomInset?: number
 }
 

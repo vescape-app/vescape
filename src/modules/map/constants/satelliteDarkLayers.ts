@@ -4,7 +4,6 @@ const SATELLITE_TEXT = theme.palette.mono.white
 const SATELLITE_MUTED_TEXT = theme.palette.mono.white
 const SATELLITE_HALO = 'hsl(0, 5%, 0%)'
 const SATELLITE_SOFT_HALO = 'hsla(0, 5%, 0%, 0.75)'
-/** Thin road lines over imagery, colored for the active theme. */
 export function satelliteStreetLineLayers(
   showStreetLines: boolean,
   streetLineOpacity: number,
@@ -125,7 +124,6 @@ export function satelliteStreetLineLayers(
   ]
 }
 
-/** Points of interest and transit. Labels and icons are toggled independently. */
 export function satellitePoiLayers(showPoiLabels: boolean, showPoiIcons: boolean) {
   return [
     ...(showPoiLabels || showPoiIcons
@@ -253,7 +251,6 @@ export function satellitePoiLayers(showPoiLabels: boolean, showPoiIcons: boolean
   ]
 }
 
-/** Regions, towns and villages — the labels between country and city scale. */
 export function satelliteDistrictLabelLayers(showDistrictLabels: boolean) {
   return [
     ...(showDistrictLabels
