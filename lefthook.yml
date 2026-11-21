@@ -30,7 +30,7 @@ pre-commit:
       glob: '*.{ts,tsx,json}'
       run: bun run lint
     comments-check:
-      glob: '*.{ts,tsx,js,jsx,mjs,cjs,kt,kts,swift,gradle,xml,plist,svg}'
+      glob: '{*.{ts,tsx,js,jsx,mjs,cjs,kt,kts,swift,gradle,xml,plist,svg,yml,yaml,py,rb,podspec},**/Fastfile,**/Matchfile,Gemfile}'
       run: bun run comments:check --staged
     knip:
       glob: '*.{ts,tsx,json}'

@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
-import { extname, resolve } from 'node:path'
+import { basename, extname, resolve } from 'node:path'
 import ts from 'typescript'
+import { Parser as YamlParser } from 'yaml'
 
 export interface CommentToken {
-  kind: 'line' | 'block' | 'xml'
+  kind: 'line' | 'block' | 'xml' | 'hash'
   start: number
   end: number
   line: number
@@ -22,6 +23,10 @@ const JS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'])
 const JS_ONLY_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs'])
 const NATIVE_EXTENSIONS = new Set(['.swift', '.kt', '.kts', '.gradle'])
 const XML_EXTENSIONS = new Set(['.xml', '.plist', '.svg'])
+const YAML_EXTENSIONS = new Set(['.yml', '.yaml'])
+const PYTHON_EXTENSIONS = new Set(['.py'])
+const RUBY_EXTENSIONS = new Set(['.rb', '.podspec'])
+const RUBY_BASENAMES = new Set(['Gemfile', 'Fastfile', 'Matchfile'])
 
 const EXCLUDED_EXACT_PATHS = new Set([
   'src/modules/release/generated/releaseNotes.ts',
@@ -39,10 +44,34 @@ const PARAGRAPH_TAG_START =
 const CODE_DIRECTIVE_LINE =
   /^(?:@parity\s+\/\S|@platform-diff\s+\S|intentional-suppression:\s*\S|@legacy-float\s+\S|TODO\((?:iOS|ios|Android|android|watchOS|Wear OS) parity\):\s*\S|(?:eslint-(?:disable|enable)(?:-(?:next-)?line)?|oxlint-disable(?:-(?:next-)?line)?)(?:\s|$)|@ts-(?:expect-error|ignore|nocheck|check)(?:\s|$)|swiftlint:(?:disable|enable)(?::(?:next|this|previous))?(?:\s|$)|ktlint-(?:disable|enable)(?:\s|$)|(?:biome-ignore|prettier-ignore|fmt-ignore|knip-ignore|@knipignore|noinspection)(?:\s|:|$)|(?:istanbul|c8|v8)\s+ignore\b|swift-tools-version:\s*\d|<reference\s+(?:path|types|lib)=|@jsx(?:ImportSource)?\s|@refresh\s|[@#]\s*sourceMappingURL=|language=\w|@(?:vitest|jest)-environment\s)/
 
+const HASH_DIRECTIVE_LINE =
+  /^(?:@parity\s+\/\S|@platform-diff\s+\S|intentional-suppression:\s*\S|@legacy-float\s+\S|frozen_string_literal:\s*(?:true|false)|(?:-\*-\s*)?coding[:=]\s*[-\w.]+|rubocop:(?:disable|enable)|type:\s*ignore|noqa\b|SPDX-License-Identifier:\s*\S|Copyright\s+(?:\(c\)|©)\s+\S)/i
+
 const XML_DIRECTIVE_LINE =
   /^(?:@parity\s+\/\S|@platform-diff\s+\S|intentional-suppression:\s*\S|@legacy-float\s+\S|noinspection(?:\s|:|$))/
 
 const JS_TYPE_ANNOTATION_LINE = /^@type(?:def)?\s*\{/
+
+const PYTHON_TOKENIZER_SCRIPT = [
+  'import io, json, sys, tokenize',
+  'src = sys.stdin.read()',
+  'out = []',
+  'for tok in tokenize.generate_tokens(io.StringIO(src).readline):',
+  '    if tok.type == tokenize.COMMENT:',
+  '        out.append([tok.start[0], tok.start[1], tok.string])',
+  'print(json.dumps(out))',
+].join('\n')
+
+const RUBY_RIPPER_SCRIPT = [
+  'require "ripper"',
+  'require "json"',
+  'src = STDIN.read',
+  'out = []',
+  'Ripper.lex(src).each do |pos, type, tok, _|',
+  '  out << [pos[0], pos[1], tok.chomp] if type == :on_comment',
+  'end',
+  'puts JSON.generate(out)',
+].join('\n')
 
 export function isExcludedPath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, '/').replace(/^\.\//, '')
@@ -50,9 +79,22 @@ export function isExcludedPath(filePath: string): boolean {
   return EXCLUDED_PATH_PATTERNS.some((pattern) => pattern.test(normalized))
 }
 
+function isRubyPath(filePath: string): boolean {
+  return (
+    RUBY_EXTENSIONS.has(extname(filePath).toLowerCase()) || RUBY_BASENAMES.has(basename(filePath))
+  )
+}
+
 export function isSupportedPath(filePath: string): boolean {
   const ext = extname(filePath).toLowerCase()
-  return JS_EXTENSIONS.has(ext) || NATIVE_EXTENSIONS.has(ext) || XML_EXTENSIONS.has(ext)
+  return (
+    JS_EXTENSIONS.has(ext) ||
+    NATIVE_EXTENSIONS.has(ext) ||
+    XML_EXTENSIONS.has(ext) ||
+    YAML_EXTENSIONS.has(ext) ||
+    PYTHON_EXTENSIONS.has(ext) ||
+    isRubyPath(filePath)
+  )
 }
 
 function buildLineStarts(text: string): number[] {
@@ -350,6 +392,86 @@ export function scanNativeComments(filePath: string, text: string): CommentToken
   return tokens
 }
 
+function tokensFromExternalLexer(
+  text: string,
+  entries: Array<[number, number, string]>,
+): CommentToken[] {
+  const lineStarts = buildLineStarts(text)
+  const tokens: CommentToken[] = []
+  for (const [line, col, raw] of entries) {
+    if (line === 1 && col === 0 && raw.startsWith('#!')) continue
+    const start = (lineStarts[line - 1] ?? 0) + col
+    tokens.push({
+      kind: 'hash',
+      start,
+      end: start + raw.length,
+      line,
+      text: raw,
+      wholeLine: isWholeLineComment(text, lineStarts, line, start),
+    })
+  }
+  return tokens
+}
+
+export function scanPythonComments(text: string): CommentToken[] {
+  const stdout = execFileSync('python3', ['-c', PYTHON_TOKENIZER_SCRIPT], {
+    input: text,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  })
+  const entries = JSON.parse(stdout) as Array<[number, number, string]>
+  return tokensFromExternalLexer(text, entries)
+}
+
+export function scanRubyComments(text: string): CommentToken[] {
+  const stdout = execFileSync('ruby', ['-e', RUBY_RIPPER_SCRIPT], {
+    input: text,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  })
+  const entries = JSON.parse(stdout) as Array<[number, number, string]>
+  return tokensFromExternalLexer(text, entries)
+}
+
+export function scanYamlComments(text: string): CommentToken[] {
+  const lineStarts = buildLineStarts(text)
+  const tokens: CommentToken[] = []
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item)
+      return
+    }
+    const record = node as Record<string, unknown>
+    if (
+      record.type === 'comment' &&
+      typeof record.offset === 'number' &&
+      typeof record.source === 'string'
+    ) {
+      const start = record.offset
+      const raw = record.source
+      const line = lineNumberAt(lineStarts, start)
+      tokens.push({
+        kind: 'hash',
+        start,
+        end: start + raw.length,
+        line,
+        text: raw,
+        wholeLine: isWholeLineComment(text, lineStarts, line, start),
+      })
+      return
+    }
+    for (const value of Object.values(record)) {
+      if (value && typeof value === 'object') walk(value)
+    }
+  }
+  for (const doc of new YamlParser().parse(text)) {
+    walk(doc)
+  }
+  tokens.sort((a, b) => a.start - b.start)
+  return tokens
+}
+
 export function scanXmlComments(text: string): CommentToken[] {
   const lineStarts = buildLineStarts(text)
   const tokens: CommentToken[] = []
@@ -402,6 +524,8 @@ function stripCommentSyntax(line: string, kind: CommentToken['kind']): string {
   let s = line.trim()
   if (kind === 'line') {
     s = s.replace(/^\/\/\/?/, '').trim()
+  } else if (kind === 'hash') {
+    s = s.replace(/^#/, '').trim()
   } else if (kind === 'block') {
     s = s
       .replace(/^\/\*\*?/, '')
@@ -424,15 +548,24 @@ function isAllowedCommentLine(
   if (cleaned === '') {
     return { allowed: allowEmpty, nextInContinuation: false, matchedDirective: false }
   }
-  const directivePattern = kind === 'xml' ? XML_DIRECTIVE_LINE : CODE_DIRECTIVE_LINE
+  const directivePattern =
+    kind === 'xml'
+      ? XML_DIRECTIVE_LINE
+      : kind === 'hash'
+        ? HASH_DIRECTIVE_LINE
+        : CODE_DIRECTIVE_LINE
   if (directivePattern.test(cleaned)) {
-    return {
-      allowed: true,
-      nextInContinuation: PARAGRAPH_TAG_START.test(cleaned),
-      matchedDirective: true,
-    }
+    const startsParagraph =
+      PARAGRAPH_TAG_START.test(cleaned) ||
+      (kind === 'hash' && /^Copyright\s+(?:\(c\)|©)\s+\S/i.test(cleaned))
+    return { allowed: true, nextInContinuation: startsParagraph, matchedDirective: true }
   }
-  if (allowJsTypeAnnotation && kind !== 'xml' && JS_TYPE_ANNOTATION_LINE.test(cleaned)) {
+  if (
+    allowJsTypeAnnotation &&
+    kind !== 'xml' &&
+    kind !== 'hash' &&
+    JS_TYPE_ANNOTATION_LINE.test(cleaned)
+  ) {
     return { allowed: true, nextInContinuation: false, matchedDirective: true }
   }
   if (inContinuation && !cleaned.startsWith('@')) {
@@ -450,26 +583,44 @@ export function checkCommentsInSource(filePath: string, text: string): CommentVi
     ? scanJsComments(filePath, text)
     : NATIVE_EXTENSIONS.has(ext)
       ? scanNativeComments(filePath, text)
-      : scanXmlComments(text)
+      : XML_EXTENSIONS.has(ext)
+        ? scanXmlComments(text)
+        : YAML_EXTENSIONS.has(ext)
+          ? scanYamlComments(text)
+          : PYTHON_EXTENSIONS.has(ext)
+            ? scanPythonComments(text)
+            : scanRubyComments(text)
 
   const violations: CommentViolation[] = []
 
   let prevLineEndLine = -2
   let prevWholeLine = false
   let inLineContinuation = false
+  let inLicenseHeader = false
 
   for (const token of tokens) {
-    if (token.kind === 'line') {
+    if (token.kind === 'line' || token.kind === 'hash') {
       const contiguous = token.line === prevLineEndLine + 1 && prevWholeLine && token.wholeLine
-      if (!contiguous) inLineContinuation = false
+      if (!contiguous) {
+        inLineContinuation = false
+        inLicenseHeader = false
+      }
       const cleaned = stripCommentSyntax(token.text, token.kind)
+      if (token.kind === 'hash' && inLicenseHeader && cleaned === '') {
+        prevLineEndLine = token.line
+        prevWholeLine = token.wholeLine
+        continue
+      }
       const { allowed, nextInContinuation } = isAllowedCommentLine(
         cleaned,
         token.kind,
         allowJsTypeAnnotation,
-        inLineContinuation,
+        inLineContinuation || inLicenseHeader,
         false,
       )
+      if (token.kind === 'hash' && /^Copyright\s+(?:\(c\)|©)\s+\S/i.test(cleaned)) {
+        inLicenseHeader = token.wholeLine
+      }
       inLineContinuation = token.wholeLine ? nextInContinuation : false
       prevLineEndLine = token.line
       prevWholeLine = token.wholeLine
@@ -484,6 +635,7 @@ export function checkCommentsInSource(filePath: string, text: string): CommentVi
     }
 
     inLineContinuation = false
+    inLicenseHeader = false
     prevLineEndLine = -2
     prevWholeLine = false
 
@@ -556,7 +708,7 @@ export function parseStagedEntries(rawZOutput: string): Array<{ mode: string; pa
 }
 
 export function runStagedCommentLint(cwd = process.cwd()): CommentViolation[] {
-  const output = execFileSync('git', ['diff', '--cached', '--raw', '-z', '--diff-filter=ACMR'], {
+  const output = execFileSync('git', ['diff', '--cached', '--raw', '-z', '--diff-filter=ACMRT'], {
     cwd,
     encoding: 'utf8',
   })

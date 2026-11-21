@@ -86,7 +86,8 @@ everything else belongs in the commit message. Only machine-meaningful lines sta
 `@platform-diff` and `@legacy-float` paragraphs, `TODO(<platform> parity):`,
 `intentional-suppression: <reason>`, compiler/linter directives, and JSDoc `@type` in `.js` config.
 `bun run comments:check` enforces this (pre-commit on staged content, and CI); generated files are
-excluded by explicit path in `scripts/check-comments.ts`.
+excluded by explicit path in `scripts/check-comments.ts`. Shell scripts have no reliable comment
+lexer there and are not scanned; keep them free of comments by hand.
 
 ## Parity
 

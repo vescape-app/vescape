@@ -166,7 +166,7 @@ describe('check-comments: Kotlin, Swift & Gradle', () => {
   })
 })
 
-describe('check-comments: XML & exclusions', () => {
+describe('check-comments: XML, hash scripts & exclusions', () => {
   test('flags authored XML comments including empty and directive-mentioning prose, while ignoring CDATA and attrs', () => {
     const xml = [
       '<resources>',
@@ -194,6 +194,48 @@ describe('check-comments: XML & exclusions', () => {
         (v) => v.line,
       ),
     ).toEqual([1])
+  })
+
+  test('scans Python via stdlib tokenize and Ruby/podspec via Ripper without regex or string FPs', () => {
+    const rb = [
+      '# Copyright (c) Meta Platforms, Inc. and affiliates.',
+      '#',
+      '# This source code is licensed under the MIT license.',
+      'name = "Pod#{i}"',
+      'rx = /literal#hash/',
+      '# ordinary ruby comment',
+    ].join('\n')
+    expect(checkCommentsInSource('scripts/test-ios-spm-uuids.rb', rb).map((v) => v.line)).toEqual([
+      6,
+    ])
+
+    const py = [
+      '#!/usr/bin/env python3',
+      's = """# inside triple string"""',
+      't = f"{mapping[\'#\']}"',
+      '# ordinary python comment',
+    ].join('\n')
+    expect(checkCommentsInSource('scripts/alert-packs/kokoro.py', py).map((v) => v.line)).toEqual([
+      4,
+    ])
+  })
+
+  test('scans YAML via real CST parser while preserving block scalars and quoted strings', () => {
+    const yml = [
+      '# top comment',
+      'name: CI',
+      'run: |',
+      '  # comment inside literal block scalar',
+      '  echo "ok"',
+      'folded: >',
+      '  # text inside folded scalar',
+      'quoted: "# not a comment"',
+      'plain: foo#bar',
+      'key: value # inline comment',
+    ].join('\n')
+    expect(checkCommentsInSource('.github/workflows/ci.yml', yml).map((v) => v.line)).toEqual([
+      1, 10,
+    ])
   })
 
   test('excludes generated and third-party files by explicit provenance only', () => {
@@ -226,6 +268,29 @@ describe('check-comments: --staged uses git index mode and bytes', () => {
 
       const violations = runStagedCommentLint(dir)
       expect(violations.map((v) => `${v.file}:${v.line}`)).toEqual(['test.ts:1'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('flags a typechange (T) replacing a committed symlink with a staged regular file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'comment-lint-typechange-'))
+    try {
+      const git = (args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' })
+      git(['init'])
+      git(['config', 'user.email', 'test@example.com'])
+      git(['config', 'user.name', 'Test'])
+      writeFileSync(join(dir, 'target.ts'), 'export const ok = 1\n')
+      symlinkSync('target.ts', join(dir, 'replaced.ts'))
+      git(['add', 'target.ts', 'replaced.ts'])
+      git(['commit', '-m', 'init'])
+
+      unlinkSync(join(dir, 'replaced.ts'))
+      writeFileSync(join(dir, 'replaced.ts'), '// typechange comment\nexport const x = 1\n')
+      git(['add', 'replaced.ts'])
+
+      const violations = runStagedCommentLint(dir)
+      expect(violations.map((v) => `${v.file}:${v.line}`)).toEqual(['replaced.ts:1'])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
