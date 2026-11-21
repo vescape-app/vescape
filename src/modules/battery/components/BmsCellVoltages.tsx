@@ -58,13 +58,6 @@ function nearestTimeIndex(times: number[], timeMs: number): number {
   return Math.abs(times[prev] - timeMs) <= Math.abs(times[lo] - timeMs) ? prev : lo
 }
 
-/**
- * Fully UI-thread-driven cell card: BMS frames stream straight into shared values
- * (one write per store event), the displayed summary is derived in worklets from the
- * shared scrub cursor, and every bar/number is drawn on Skia. React renders the
- * skeleton once per cell-count change — scrubbing and live updates cause zero
- * re-renders.
- */
 export function BmsCellVoltages({
   scrubTimeMs,
   windowMs,
@@ -72,21 +65,13 @@ export function BmsCellVoltages({
   scrubTimeMs?: SharedValue<number | null>
   windowMs?: number
 }) {
-  // Canary: this component must not re-render during scrubbing or live streaming.
   useRenderRateWarning('BmsCellVoltages')
   const bmsSeriesWindowMs = useBleStore((s) => s.bmsSeriesWindowMs)
-  // Skeleton only depends on the group count (primitive selector → renders only on change).
   const groupCount = useBleStore((s) => s.latestBms?.cellVoltages.length ?? 0)
-  // BMS is polled only when the probe proved one (`hasBms === true`); anything else
-  // is never polled, so the empty state is definitive, not an indefinite "waiting".
   const bmsLinked = useBoardStore(
     (s) => s.boards.find((b) => b.id === s.activeBoardId)?.link?.hasBms === true,
   )
 
-  // Store → shared values, no React pass. Summaries are reduced on JS where the data
-  // is plain (native event objects don't survive shareable conversion intact), and only
-  // small results cross to the UI thread. Scrub history crosses as flat number arrays —
-  // cheap to convert, impossible to mangle — flattened once per series change (~1Hz).
   const liveSummarySV = useSharedValue<BmsSummary | null>(null)
   const windowStatsSV = useSharedValue<BmsWindowStats | null>(null)
   const frameTimesSV = useSharedValue<number[]>([])
@@ -126,8 +111,6 @@ export function BmsCellVoltages({
     return useBleStore.subscribe(apply)
   }, [liveSummarySV, windowStatsSV, frameTimesSV, frameCellsSV, frameBalancingSV, frameCellCountSV])
 
-  // Displayed summary: scrub cursor → nearest retained frame (rebuilt from flat lanes
-  // in the worklet), otherwise the live JS-reduced summary.
   const summarySV = useDerivedValue<BmsSummary | null>(() => {
     const cursor = scrubTimeMs?.value ?? null
     if (cursor == null) return liveSummarySV.value
@@ -178,7 +161,6 @@ export function BmsCellVoltages({
   )
 }
 
-/** Presentational cell-group card, driven by a precomputed summary (showcase-friendly). */
 export function BmsCellVoltagesView({
   summary,
   windowStats,
@@ -209,11 +191,6 @@ function statColor(tone: 'min' | 'max' | 'neutral'): ThemeColor {
       : theme.neutral.textPrimary
 }
 
-/**
- * Spread readouts carry their own severity: a spread is only good news while it is small, so the
- * colour has to track the number rather than label the row. Tiers are the native detector's, so the
- * readout turns amber and red at exactly the spreads that raise the `cell-spread` Board Warning.
- */
 function useSpreadColor(spread: DerivedValue<number | null>): DerivedValue<string> {
   const appearance = useThemeStore((state) => state.resolvedTheme)
   const ramp = useMemo(
@@ -237,13 +214,7 @@ interface BmsCellCardProps {
   windowLabel: string
 }
 
-/**
- * The card body, shared by the live and the precomputed entry points so the
- * layout exists once. Everything that moves is drawn on two canvases; the
- * labels stay real text (they never tick, and Skia has no letter spacing).
- */
 function BmsCellCard({ groupCount, summary, windowStats, windowLabel }: BmsCellCardProps) {
-  // The card has no inner horizontal padding, so one measurement sizes every canvas.
   const { size, onLayout } = useCanvasSize()
 
   const scale = useDerivedValue(() => {
@@ -336,7 +307,6 @@ function StatBlock({
   )
 }
 
-/** The section is the pack's, so it wears the pack's colour. */
 const CELL_SECTION_COLOR = telemetry.battVoltage.color
 
 const styles = StyleSheet.create({

@@ -11,7 +11,6 @@ interface TextPromptModalContentProps {
   placeholder?: string
   initialValue: string
   confirmLabel: string
-  /** Allow confirming with an empty value, for fields that can be cleared (e.g. optional names). */
   allowEmpty?: boolean
   onConfirm: (value: string) => void
   onDismiss: () => void

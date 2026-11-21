@@ -6,37 +6,14 @@ import expo.modules.vescapecore.watch.WatchTrailCodec
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/**
- * Float32 lane count + order of a Watch Frame:
- *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance,
- *   7 riderEast, 8 riderNorth, 9 course, 10 routeSpan, 11 remoteTilt, 12 tiltControl.
- *
- * Lanes 11-12 are Remote Tilt: the phone's commanded value (0..255, 128 neutral) and who may drive
- * it ([WatchTiltControl]). An older phone sends neither; the Tilt page then asks for a phone update.
- *
- * Lanes 7-9 place the rider on the route pushed over [ROUTE_PATH]: metres east/north of that route's
- * origin plus the course, degrees clockwise from north.
- *
- * Mirrors the phone-side builder (`expo.modules.vescapecore.WatchFrameBuilder`, `WATCH_FRAME_FIELD_COUNT`)
- * by convention (ADR-0018). Adding or reordering a lane means editing both sides in the same order,
- * or the decode silently misreads. Keep the two lists adjacent in review.
- *
- * The decode reads whatever lanes the phone sent and leaves the rest null, so a phone and a watch on
- * different app versions still talk: an older phone's shorter frame keeps rendering, it just carries
- * no nav. Only the first [WATCH_FRAME_MIN_FIELD_COUNT] lanes are required.
- */
 private const val WATCH_FRAME_FIELD_COUNT = 13
 private const val WATCH_FRAME_MIN_FIELD_COUNT = 5
 private const val WATCH_FRAME_HEADER_BYTES = 2
 
-/** Flags-byte bits, mirroring the phone-side `WATCH_FRAME_FLAG_*` constants (ADR-0018). */
 private const val FLAG_STALE = 1
 private const val FLAG_WAITING = 2
 
 /**
- * Who may drive Remote Tilt, per the phone's arbiter and link trust. Only [FREE] and [MANUAL] take a
- * stick drag; the rest name why the Tilt page is read-only.
- *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchFrame.kt `WatchTiltControl`
  * @parity /modules/vescape-core/ios/watch/WatchFrame.swift `WatchTiltControl`
  */
@@ -51,16 +28,11 @@ enum class WatchTiltControl(val wire: Int) {
     val drivable: Boolean get() = this == FREE || this == MANUAL
 
     companion object {
-        /** An unknown code is a phone newer than this wrist: read-only is the safe reading. */
         fun fromWire(wire: Double?): WatchTiltControl =
             if (wire == null) FREE else entries.firstOrNull { it.wire.toDouble() == wire } ?: BLOCKED
     }
 }
 
-/**
- * The decoded Watch Frame. Nullable lanes arrive as `NaN` over the wire (ADR-0018). [waiting] marks
- * a "session live, no board telemetry yet" frame — the lanes carry no data and must not be rendered.
- */
 data class WatchFrame(
     val speed: Double?,
     val duty: Double?,
@@ -69,26 +41,18 @@ data class WatchFrame(
     val ctrlTemp: Double?,
     val stale: Boolean,
     val waiting: Boolean = false,
-    /** Bearing to the navigation target relative to travel direction, degrees clockwise from ahead. */
     val navBearing: Double? = null,
-    /** Straight-line distance to the navigation target, metres. */
     val navDistanceM: Double? = null,
-    /** Rider position, metres east of the pushed route's origin. Null when there is no route. */
     val riderEastM: Double? = null,
-    /** Rider position, metres north of the pushed route's origin. Null when there is no route. */
     val riderNorthM: Double? = null,
-    /** Travel course, degrees clockwise from north. */
     val courseDeg: Double? = null,
-    /** Horizontal route metres visible on the phone map. */
     val routeSpanM: Double? = null,
-    /** Phone-commanded Remote Tilt, 0..255 with 128 neutral. Null without a board or on older phones. */
     val remoteTilt: Int? = null,
     val tiltControl: WatchTiltControl = WatchTiltControl.FREE,
     val trail: List<WatchTrailPoint> = emptyList(),
     val mapPosition: WatchMapPosition? = null,
 )
 
-/** Pure bytes -> [WatchFrame] decoder. Returns null on a short buffer or too few lanes. */
 object WatchFrameDecoder {
     fun decode(bytes: ByteArray): WatchFrame? {
         if (bytes.size < WATCH_FRAME_HEADER_BYTES) return null

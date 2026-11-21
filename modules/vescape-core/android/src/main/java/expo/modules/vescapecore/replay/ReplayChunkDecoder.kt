@@ -7,13 +7,9 @@ import expo.modules.vescapecore.protocol.parseBmsValues
 import org.json.JSONObject
 import java.util.Base64
 
-/** One recorded BLE chunk: milliseconds since recording start plus the raw bytes. */
 internal data class ReplayChunk(val t: Long, val bytes: ByteArray)
 
 /**
- * One recorded GPS fix, replayed in place of the phone's own. A replay reproduces the ride that was
- * recorded, and position is the centre of that ride — so the recording owns it outright.
- *
  * @parity /modules/vescape-core/ios/replay/ReplayChunkDecoder.swift `ReplayLocation`
  */
 internal data class ReplayLocation(
@@ -27,19 +23,11 @@ internal data class ReplayLocation(
 )
 
 /**
- * Pure decode core for Debug Recording replay (ADR 0048): turns a `.jsonl` Debug Recording into the
- * byte streams and GPS track the session originally saw. Shared by the unit replay harnesses (test
- * source) and [ReplayRecording]. `ble-chunk` lines carry the board stream (`rx`) and the app's
- * writes (`tx`), `location` lines the ride's GPS track; every other kind and any malformed line —
- * real recordings can end mid-write — is skipped, never fatal.
- *
  * @parity /modules/vescape-core/ios/replay/ReplayChunkDecoder.swift
  */
 internal object ReplayChunkDecoder {
-    /** Recorded `rx` chunks in file order with their recorded time offsets. */
     fun rxChunks(jsonl: String): List<ReplayChunk> = chunks(jsonl, "rx")
 
-    /** Recorded `tx` chunks (what the app wrote) in file order; thinned fixtures carry none. */
     fun txChunks(jsonl: String): List<ReplayChunk> = chunks(jsonl, "tx")
 
     private fun chunks(jsonl: String, direction: String): List<ReplayChunk> =
@@ -58,7 +46,6 @@ internal object ReplayChunkDecoder {
             }
         }.toList()
 
-    /** Recorded GPS fixes in file order with their recorded time offsets. */
     fun locations(jsonl: String): List<ReplayLocation> =
         jsonl.lineSequence().mapNotNull { line ->
             if (line.isBlank()) return@mapNotNull null
@@ -82,10 +69,6 @@ internal object ReplayChunkDecoder {
     private fun JSONObject.optDoubleOrNull(key: String): Double? =
         if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
 
-    /**
-     * Decoded smart-BMS frames with the recorded chunk time as `capturedAt`, produced by running the
-     * recorded `rx` bytes through the real packet reassembler and BMS parser.
-     */
     fun bmsFrames(jsonl: String): List<BmsTelemetry> {
         val reassembler = VescPacketReassembler()
         return rxChunks(jsonl).flatMap { chunk ->

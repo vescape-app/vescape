@@ -16,7 +16,6 @@ const SATELLITE_HALO = 'hsl(0, 5%, 0%)'
 const SATELLITE_SOFT_HALO = 'hsla(0, 5%, 0%, 0.75)'
 const FULL_IMAGERY_OPACITY = 1
 
-/** Dashboard and Explore share this layer document; backdrop and roads follow app theme. */
 export function getSatelliteOverlayMapStyle(resolvedTheme: ResolvedTheme) {
   return getSatelliteDarkMapStyle(
     true,
@@ -44,12 +43,6 @@ export function getSatelliteImageryPaint(
   }
 }
 
-/**
- * The imagery raster is deliberately absent: it is mounted as an owned `RasterSource`/`RasterLayer`
- * child instead (see `SatelliteImageryLayer`). Adopting a style-JSON layer through `existing` does
- * not receive paint updates on iOS in Release builds (#423), so the style owns only the backdrop,
- * street lines, and labels, and the imagery stays a first-class layer we control.
- */
 export function getSatelliteDarkMapStyle(
   showPoiLabels = true,
   showPoiIcons = true,

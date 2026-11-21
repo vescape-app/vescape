@@ -23,8 +23,6 @@ class TransportDetectionTest {
     refloatBaseVersion = refloatBaseVersion,
   )
 
-  // --- candidatesToProbe: always probe Direct + every responder ---
-
   @Test
   fun `probes direct even with no CAN responders`() {
     assertEquals(
@@ -49,8 +47,6 @@ class TransportDetectionTest {
     )
   }
 
-  // --- resolve: direct-only ---
-
   @Test
   fun `direct only confirmed resolves to direct`() {
     val result = TransportDetection.resolve(
@@ -62,8 +58,6 @@ class TransportDetectionTest {
     assertEquals(TransportDetection.Outcome.Resolved(BoardTransport.Direct), result.outcome)
     assertEquals(BoardTransport.Direct, result.resolvedTransport)
   }
-
-  // --- resolve: CAN-only ---
 
   @Test
   fun `can only confirmed resolves to that can id`() {
@@ -77,8 +71,6 @@ class TransportDetectionTest {
     assertEquals(TransportDetection.Outcome.Resolved(BoardTransport.Can(43)), result.outcome)
     assertEquals(BoardTransport.Can(43), result.resolvedTransport)
   }
-
-  // --- resolve: multi-node (multiple valid CAN ids) ---
 
   @Test
   fun `multiple valid can ids need pick in probe order`() {
@@ -102,8 +94,6 @@ class TransportDetectionTest {
     assertNull(result.resolvedTransport)
   }
 
-  // --- resolve: both direct and CAN valid ---
-
   @Test
   fun `both direct and can valid need pick with direct pre-selected first`() {
     val result = TransportDetection.resolve(
@@ -124,8 +114,6 @@ class TransportDetectionTest {
     )
   }
 
-  // --- resolve: no working transport ---
-
   @Test
   fun `no confirmed transport yields none outcome`() {
     val result = TransportDetection.resolve(
@@ -145,8 +133,6 @@ class TransportDetectionTest {
     assertTrue(result.candidates.isEmpty())
     assertEquals(TransportDetection.Outcome.None, result.outcome)
   }
-
-  // --- resolve: smart-BMS capability carried onto the candidate ---
 
   @Test
   fun `bms presence is carried onto the confirmed candidate`() {

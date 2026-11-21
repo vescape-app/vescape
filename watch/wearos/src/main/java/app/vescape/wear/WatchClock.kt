@@ -13,12 +13,6 @@ import androidx.wear.compose.material.Text
 import java.util.Calendar
 import kotlinx.coroutines.delay
 
-/**
- * Wall clock for the Watch Frame: the mirror runs fullscreen, so the system time is hidden while
- * riding. Uses the phone time-format preference. Minute resolution only — the tick
- * sleeps to the next minute boundary instead of polling, so an idle wrist costs one recomposition
- * per minute.
- */
 @Composable
 internal fun WatchClock(modifier: Modifier = Modifier, color: Color = SecondaryText) {
     val timeFormat = SettingsState.settings.value.timeFormat

@@ -11,7 +11,6 @@ export interface MapThemeTone {
   roadLineOpacity: number
 }
 
-/** Reconciles manual satellite controls with a gradual daylight/theme adjustment. */
 export function resolveMapThemeTone({
   theme,
   outdoorLight,

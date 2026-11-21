@@ -8,7 +8,6 @@ import {
 } from '@/modules/history/lib/rideFilter'
 
 interface HistoryFilterStore {
-  /** In-memory only: the filter lasts while the app runs and resets on restart. */
   selection: RideFilterSelection
   setSelection: (selection: RideFilterSelection) => void
 }

@@ -49,7 +49,6 @@ final class RecordingStorageFailureTests: XCTestCase {
     XCTAssertEqual(reports, 1)
   }
 
-
   func testGenericFailureCannotHideABroadOutage() {
     XCTAssertEqual(resolveRecordingFailureKind(current: .fullDisk, incoming: .writeFailed), .fullDisk)
   }

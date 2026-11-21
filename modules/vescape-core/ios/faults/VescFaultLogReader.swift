@@ -1,6 +1,5 @@
 import Foundation
 
-/// Collects one manual VESC `faults` terminal response. Nothing is persisted or parsed.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultLogReader.kt
 final class VescFaultLogReader {
   static let tickSeconds = 0.1

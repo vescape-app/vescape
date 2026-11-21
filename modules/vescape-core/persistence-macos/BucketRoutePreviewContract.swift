@@ -81,7 +81,6 @@ func runBucketRoutePreviewContract() throws {
   try queue.write { db in try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: [], buckets: buildTelemetryBuckets([telemetry])) }
   func readPreviews() throws -> [String] { try queue.read { try String.fetchAll($0, sql: "SELECT route_preview FROM telemetry_minute_buckets ORDER BY bucket_start_ms") } }
   try require(try readPreviews() == previews, "telemetry-only flush preserves preview")
-  // The GPS-only second minute is the ride's tail: one ride, one route.
   let sessions = try queue.read { db in
     try groupRideSessions(buckets: try Row.fetchAll(db, sql: "SELECT * FROM telemetry_minute_buckets ORDER BY bucket_start_ms"), markers: [], gapMs: 1_800_000)
   }

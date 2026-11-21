@@ -19,12 +19,8 @@ import type {
   HistorySession,
 } from '@/modules/history/store/historyStore'
 
-// Stable identities for the empty case. A ride with no Favorite Media still recomputes this memo
-// every time its GPS log grows, and a fresh [] each time re-renders the whole history panel.
 const NO_ASSETS: MediaHistoryAsset[] = []
 const NO_UNMATCHED: MediaAssetInput[] = []
-// Google Play's Photo and Video Permissions policy forbids READ_MEDIA_IMAGES/READ_MEDIA_VIDEO
-// for this feature, so Favorite Media comes from the permissionless system photo picker.
 async function pickFavoriteMedia(favoriteId: string): Promise<ImportFavoriteMediaOptions[]> {
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images', 'videos'],

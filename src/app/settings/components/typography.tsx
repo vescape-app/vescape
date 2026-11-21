@@ -8,7 +8,6 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 
-/** Design-system typography roles (mirrors `docs/design.md` Typography table). */
 const ROLES = [
   {
     role: 'Screen title',
@@ -54,7 +53,6 @@ const ROLES = [
   },
 ] as const
 
-/** Weight sweep to verify numeric fontWeight resolves to the static Raleway instances. */
 const WEIGHTS = [
   { label: '400', sample: 'The quick brown fox', weight: '400' },
   { label: '500', sample: 'The quick brown fox', weight: '500' },
@@ -63,7 +61,6 @@ const WEIGHTS = [
   { label: '800', sample: 'The quick brown fox', weight: '800' },
 ] as const
 
-/** Numeric readout parity check — Raleway `tabular-nums` keeps numeric columns aligned. */
 const TABULAR_ROWS = ['12.345', '6.789', '123.0']
 
 export default function TypographyComponentsPage() {

@@ -14,7 +14,6 @@ interface RideWeatherLabelProps {
   fontSize?: number
 }
 
-/** Dominant condition icon and temperature of a ride, inline with its other ride text. */
 export function RideWeatherLabel({ weather, color, fontSize = 11 }: RideWeatherLabelProps) {
   const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
   const temperature = formatRideTemperature(weather, temperatureUnit)

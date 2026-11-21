@@ -1,14 +1,10 @@
 import Foundation
 
-/// Cancellation handle for scheduled work.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/runtime/Scheduler.kt `Cancellable`
 protocol Cancellable {
   func cancel()
 }
 
-/// Schedules work independently from the clock used to timestamp Board Session data.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/runtime/Scheduler.kt `Scheduler`
 protocol Scheduler: AnyObject {
   @discardableResult
@@ -30,7 +26,6 @@ private final class DispatchCancellation: Cancellable {
   }
 }
 
-/// Production scheduler backed by a dispatch queue.
 final class DispatchQueueScheduler: Scheduler {
   private let queue: DispatchQueue
 
@@ -51,8 +46,6 @@ final class DispatchQueueScheduler: Scheduler {
   }
 }
 
-/// Production scheduler for work that must run on the main queue.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/runtime/HandlerScheduler.kt `HandlerScheduler`
 final class MainQueueScheduler: Scheduler {
   private let scheduler = DispatchQueueScheduler(queue: .main)
@@ -66,8 +59,6 @@ final class MainQueueScheduler: Scheduler {
   }
 }
 
-/// Virtual-time scheduler for deterministic tests.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/runtime/TestScheduler.kt `TestScheduler`
 final class TestScheduler: Scheduler {
   private final class Task: Cancellable {
@@ -135,8 +126,6 @@ final class TestScheduler: Scheduler {
 }
 
 extension Scheduler {
-  /// Runs delayed work only while its originating Board Session remains active and current.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/runtime/SessionGuardedScheduler.kt `postDelayedForSession`
   @discardableResult
   func postDelayedForSession(

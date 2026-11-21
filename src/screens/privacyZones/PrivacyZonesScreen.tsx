@@ -23,7 +23,6 @@ import { ZoneNameModal } from '@/screens/privacyZones/ZoneNameModal'
 
 const HEADER_HEIGHT = Platform.OS === 'android' ? 56 : 44
 
-/** Areas where recording pauses. The map's camera is the editor: pan to move, zoom to resize. */
 export function PrivacyZonesScreen() {
   const insets = useSafeAreaInsets()
   const navigation = useNavigation()

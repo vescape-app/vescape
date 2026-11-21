@@ -28,10 +28,6 @@ private const val DETECT_FW_DELAY_MS = 300L
 private const val DETECT_PING_DELAY_MS = 600L
 private const val DETECT_GATT_RELEASE_DELAY_MS = 600L
 
-// Re-probing a connected board tears down the live GATT and reconnects immediately; Android
-// releases the old connection asynchronously, so connecting too soon yields status 133. Settle
-// before the first connect, then retry a bounded number of times with backoff on connect-phase
-// drops (133 and friends are transient).
 private const val DETECT_PROBE_BMS_DELAY_MS = 300L
 private const val DETECT_PROBE_FW_DELAY_MS = 600L
 private const val DETECT_PROBE_INFO_DELAY_MS = 900L
@@ -40,17 +36,6 @@ private const val DETECT_CONNECT_RETRY_BACKOFF_MS = 400L
 private const val DETECT_CONNECT_MAX_ATTEMPTS = 3
 
 /**
- * BLE orchestration that runs a single Board Probe and resolves it through the
- * pure [TransportDetection] brain. It owns its own GATT connection, kept
- * separate from the live Board Session so probing stays out of the runtime hot
- * path, and surfaces live milestones through [onProgress].
- *
- * Flow: connect → ping CAN (collect every responder, not just the first) →
- * probe Direct and each responder by polling telemetry and confirming a
- * transport only once it yields a valid decoded Refloat Telemetry Sample →
- * resolve. Every callback is marshalled onto [handler] so the state machine is
- * single-threaded.
- *
  * @parity /modules/vescape-core/ios/connection/BoardTransportDetector.swift
  */
 @SuppressLint("MissingPermission")
@@ -89,14 +74,6 @@ internal class BoardTransportDetector(
   private fun elapsed(): Long = nowMs() - startMs
 
   /**
-   * Surface live probe milestones to JS, named for what the probe is doing right
-   * now: `connecting` → `handshake` (service discovery) → `pinging` (CAN scan) →
-   * per candidate `probing` (waiting for telemetry proof) → `bms` (transport
-   * confirmed, waiting for a BMS answer) → `identity` (BMS answered, waiting for
-   * the Refloat info reply). `transport` names the candidate being probed and
-   * `canIds` the CAN scan responders. The UI still reads final facts from the
-   * returned candidates; full detail stays in Diagnostic Events.
-   *
    * @parity /modules/vescape-core/ios/connection/BoardTransportDetector.swift `emitProgress`
    * @parity /modules/vescape-core/src/index.ts `BoardProbeStep`
    */
@@ -140,11 +117,6 @@ internal class BoardTransportDetector(
     attemptConnect(initial = true)
   }
 
-  /**
-   * Open the probe's GATT connection after a settle delay. The first attempt waits for any
-   * just-released live connection to clear; retries back off after a transient connect-phase
-   * drop. Each attempt re-closes the previous handle so the stack starts clean.
-   */
   private fun attemptConnect(initial: Boolean) {
     if (finished) return
     connectAttempts++
@@ -159,8 +131,6 @@ internal class BoardTransportDetector(
       }
     }, delay)
   }
-
-  // --- VescGattListener (marshalled onto the handler thread) ---
 
   override fun onGattConnected() {
     handler.post {
@@ -199,8 +169,6 @@ internal class BoardTransportDetector(
     handler.post {
       if (finished || intentional) return@post
       if (phase == Phase.Connecting) {
-        // Connect-phase drops (typically Android 133 from a not-yet-released prior connection)
-        // are transient — retry a bounded number of times before giving up.
         if (connectAttempts < DETECT_CONNECT_MAX_ATTEMPTS) {
           cancelStep()
           recordDiagnostic(
@@ -218,8 +186,6 @@ internal class BoardTransportDetector(
         }
         fail("PROBE_DISCONNECTED", "Board disconnected during probe (status=$status)")
       } else {
-        // Connection dropped mid-detection: resolve with whatever was confirmed
-        // so far rather than hanging.
         Log.w(DETECT_TAG, "disconnected mid-detection status=$status phase=$phase")
         recordProbeDiagnostic(
           "board_probe_disconnected_mid_detection",
@@ -253,7 +219,6 @@ internal class BoardTransportDetector(
     if (payload.isEmpty()) return
     when (payload[0].toInt() and 0xff) {
       COMM_PING_CAN -> if (phase == Phase.Pinging) {
-        // Collect EVERY responding CAN id, not just payload[1].
         var changed = false
         for (i in 1 until payload.size) {
           changed = responders.add(payload[i].toInt() and 0xff) || changed
@@ -272,18 +237,12 @@ internal class BoardTransportDetector(
       COMM_CUSTOM_APP_DATA -> if (phase == Phase.Probing && current != null) {
         val sample = parseRefloatGetAllData(payload, avgLatency = null, packetAt = nowMs(), location = null)
         if (sample != null) markConfirmed()
-        // Custom-app-data replies come back bare even over CAN (like telemetry
-        // above), and only one transport is probed at a time, so this reply
-        // belongs to the current candidate.
         markRefloatInfo(payload)
       }
-      // FW replies also come back bare over CAN, like custom app data above.
       COMM_FW_VERSION -> if (phase == Phase.Probing && current != null) markFwVersion(payload)
-      // Direct smart-BMS reply.
       COMM_BMS_GET_VALUES -> if (phase == Phase.Probing && current != null) {
         if (parseBmsValues(payload, nowMs()) != null) markBms()
       }
-      // CAN-forwarded smart-BMS reply (telemetry stays bare, but BMS comes wrapped).
       COMM_FORWARD_CAN -> if (phase == Phase.Probing && current != null && payload.size >= 3) {
         if (!forwardedForCurrent(payload)) return
         if ((payload[2].toInt() and 0xff) == COMM_FW_VERSION) {
@@ -298,8 +257,6 @@ internal class BoardTransportDetector(
       }
     }
   }
-
-  // --- Probe sequencing ---
 
   private fun beginProbing() {
     if (finished) return
@@ -328,19 +285,11 @@ internal class BoardTransportDetector(
         "elapsed_ms" to elapsed(),
       ),
     )
-    // Ask for telemetry (confirms the transport) and BMS values (capability) in one
-    // window. The BMS reply is best-effort: absence within the window means no BMS.
     sendProbeBurst(transport)
-    // Re-send once mid-window in case the first request dropped.
     handler.postDelayed({ sendProbeBurst(transport) }, DETECT_PROBE_TIMEOUT_MS / 2)
     armStep(DETECT_PROBE_TIMEOUT_MS) { finalizeProbe() }
   }
 
-  /**
-   * Send the telemetry then BMS request, staggered: Android allows only one
-   * write-with-response in flight, so firing both back-to-back drops the second and
-   * the BMS reply never comes (false "no BMS"). Spacing them lets each land.
-   */
   private fun sendProbeBurst(transport: BoardTransport) {
     if (finished || current !== transport) return
     gatt.sendPayload(probePayload(transport))
@@ -355,10 +304,6 @@ internal class BoardTransportDetector(
     }, DETECT_PROBE_INFO_DELAY_MS)
   }
 
-  /**
-   * Telemetry sample proves the transport works; the window now waits on BMS —
-   * unless the BMS reply already raced in first, then it waits on identity.
-   */
   private fun markConfirmed() {
     if (currentConfirmed) return
     currentConfirmed = true
@@ -373,11 +318,6 @@ internal class BoardTransportDetector(
     emitProgress(if (currentHasBms) "identity" else "bms", current, withCanIds = true)
   }
 
-  /**
-   * A smart-BMS answered on the current transport; the window now waits on
-   * identity. Burst replies race, so only advance once telemetry confirmed —
-   * an early BMS reply is recorded and reported when the confirm lands.
-   */
   private fun markBms() {
     if (currentHasBms) return
     currentHasBms = true
@@ -523,8 +463,6 @@ internal class BoardTransportDetector(
     cancelStep()
     gatt.clear()
   }
-
-  // --- Step timeout helper ---
 
   private fun armStep(delayMs: Long, action: () -> Unit) {
     cancelStep()

@@ -1,4 +1,3 @@
-# A minute of the warmed ride for the landing page and promo edit.
 appId: ${APP_ID}
 ---
 - runFlow: _boot.yaml

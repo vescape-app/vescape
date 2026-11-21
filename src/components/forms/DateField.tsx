@@ -20,10 +20,6 @@ interface DateFieldProps {
 const formatDate = (date: Date) =>
   date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 
-/**
- * One labelled day picked with the system picker: iOS shows its compact calendar pill inline,
- * Android opens the Material date dialog from a tappable field.
- */
 export function DateField({
   label,
   value,

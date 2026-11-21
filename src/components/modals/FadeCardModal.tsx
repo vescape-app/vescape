@@ -17,47 +17,27 @@ import { theme, type ThemeColor } from '@/constants/theme'
 
 const FADE_DURATION = 120
 
-/** Default cap for the scrollable body so a long message never pushes the footer off-card. */
 const DEFAULT_BODY_MAX_HEIGHT = 320
 
 interface FadeCardModalProps {
   visible: boolean
-  /**
-   * Backdrop tap, close button and Android hardware back. Omit to make the card non-dismissible —
-   * back is then swallowed and no close affordance renders.
-   */
   onDismiss?: () => void
-  /** Ignore every dismiss affordance without unmounting them (e.g. a confirm request in flight). */
   dismissDisabled?: boolean
   title?: string
   titleIcon?: Icon
   titleIconColor?: ThemeColor
   titleIconWeight?: 'bold' | 'fill'
-  /** Overrides the default primary-text title colour (a type accent, say). */
   titleColor?: ThemeColor
-  /** Close button in the header. Ignored when the card is non-dismissible. */
   showClose?: boolean
-  /** Action row under the body. */
   footer?: ReactNode
-  /** Wrap the body in a `ScrollView`. Disable for short static content. */
   scrollable?: boolean
   bodyMaxHeight?: number
   cardStyle?: StyleProp<ViewStyle>
   children: ReactNode
-  /** The card finished fading out and is gone. Not called for a fade-out cut short by a reopen. */
   onExited?: () => void
-  /** Native presentation is gone; safe to open an OS share sheet or another modal. */
   onDismissed?: () => void
 }
 
-/**
- * The shared centered-card modal: fade + scale in, fade out, dim backdrop, optional icon/title
- * header with a close button, scrollable body, footer action row.
- *
- * Owns the mount lifecycle so the exit animation can finish before the card unmounts. Consumers
- * that swap content while closing (one queue item to the next) must keep rendering the outgoing
- * content themselves — this component never freezes `children`.
- */
 export function FadeCardModal({
   visible,
   onDismiss,
@@ -80,7 +60,6 @@ export function FadeCardModal({
   const [scale] = useState(() => new Animated.Value(0.92))
   const [mounted, setMounted] = useState(false)
   const [prevVisible, setPrevVisible] = useState(false)
-  // Held in a ref so an inline callback can't retrigger the animation effect mid-fade.
   const onExitedRef = useRef(onExited)
   useEffect(() => {
     onExitedRef.current = onExited
@@ -101,8 +80,6 @@ export function FadeCardModal({
       Animated.parallel([
         Animated.timing(opacity, { toValue: 0, duration: FADE_DURATION, useNativeDriver: true }),
         Animated.timing(scale, { toValue: 0.92, duration: FADE_DURATION, useNativeDriver: true }),
-        // Ignore a cancelled fade-out: a reopen mid-exit stops this animation with
-        // `finished: false`, and unmounting then would hide the reopened card.
       ]).start(({ finished }) => {
         if (!finished) return
         setMounted(false)
@@ -116,8 +93,6 @@ export function FadeCardModal({
     if (wasMounted.current && !mounted && Platform.OS !== 'ios') onDismissed?.()
     wasMounted.current = mounted
   }, [mounted, onDismissed])
-
-  // Keep the React Modal mounted while hidden so iOS can deliver its native onDismiss event.
 
   const dismiss = onDismiss && !dismissDisabled ? onDismiss : undefined
   const header =
@@ -149,7 +124,6 @@ export function FadeCardModal({
       onDismiss={onDismissed}
       transparent
       animationType="none"
-      // No `onDismiss` means the card is non-dismissible: swallow Android back instead of exiting.
       onRequestClose={() => dismiss?.()}
     >
       <Animated.View style={[styles.overlay, { opacity }]}>

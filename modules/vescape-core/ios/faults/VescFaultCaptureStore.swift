@@ -1,13 +1,6 @@
 import Foundation
 import GRDB
 
-/// DB-backed storage for VESC Fault Captures: one metadata row per occurrence plus its retained
-/// decoded samples. Deliberately outside Ride History — no GPS, no telemetry frames, no minute
-/// buckets, and no retention pruning ever touches these rows.
-///
-/// Overlapping captures duplicate samples on purpose, so a sample row belongs to exactly one
-/// occurrence and each occurrence stays independently inspectable.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct VescFaultCaptureStore: VescFaultCaptureStoring {
   private struct WriterUnavailable: Error {}
@@ -44,8 +37,6 @@ struct VescFaultCaptureStore: VescFaultCaptureStoring {
     }
     var sample: VescFaultCaptureSample { .init(capturedAtMs: capturedAt, speed: speed, dutyCycle: dutyCycle, erpm: erpm, batteryVoltage: batteryVoltage, batteryCurrent: batteryCurrent, motorCurrent: motorCurrent, tempMosfet: tempMosfet, tempMotor: tempMotor, pitch: pitch, roll: roll, balancePitch: balancePitch, adc1: adc1, adc2: adc2, state: state) }
   }
-  /// Resolves the shared GRDB writer at call time so it always sees the current pool (swapped on
-  /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
   static let shared = VescFaultCaptureStore { VescapeDatabase.pool }
@@ -54,21 +45,14 @@ struct VescFaultCaptureStore: VescFaultCaptureStoring {
     self.resolveWriter = resolveWriter
   }
 
-  /// Test seam: bind to an explicit writer (e.g. an in-memory `DatabaseQueue`).
   init(dbWriter: DatabaseWriter) {
     self.resolveWriter = { dbWriter }
   }
 
-  // MARK: - Schema
-
-  /// Create the VESC Fault Capture tables. Called from the app-data `DatabaseMigrator` and reused by
-  /// tests so the schema stays single-source.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `VescFaultCaptureEntity`
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createVescFaultCaptures(db)
   }
-
-  // MARK: - Writes
 
   func saveCapture(_ capture: VescFaultCapture, samples: [VescFaultCaptureSample]) throws {
     try writer().write { db in
@@ -82,8 +66,6 @@ struct VescFaultCaptureStore: VescFaultCaptureStoring {
       for sample in samples { try SampleRecord(capture.occurrenceId, sample).insert(db) }
     }
   }
-
-  // MARK: - Reads
 
   func getCapture(_ occurrenceId: String) throws -> VescFaultCapture? {
     try writer().read { db in try CaptureRecord.fetchOne(db, key: occurrenceId)?.capture }

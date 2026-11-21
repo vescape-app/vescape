@@ -12,8 +12,6 @@ import expo.modules.vescapecore.database.FavoriteMediaEntity
 import expo.modules.vescapecore.database.VescapeDao
 
 /**
- * Native Favorite Media import and reconciliation (ADR 0030).
- *
  * @parity /modules/vescape-core/ios/telemetry/FavoriteMediaStore.swift
  */
 internal class FavoriteMediaStore(
@@ -105,7 +103,6 @@ internal class FavoriteMediaStore(
     }
   }
 
-  /** Repair manifest/filesystem disagreement on the normal Favorites read path. */
   suspend fun reconcileAll() {
     dao.deleteOrphanFavoriteMedia()
     val favoriteIds = dao.getFavorites().mapTo(mutableSetOf()) { it.id }

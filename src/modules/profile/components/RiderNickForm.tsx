@@ -11,11 +11,6 @@ import { countryByCode } from '@/modules/profile/lib/countries'
 import { NICK_MAX_LENGTH, parseRiderProfileDraft } from '@/modules/profile/lib/riderProfile'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 
-/**
- * Pick or change the Rider Profile nick and optional nationality. The nick saves when the field
- * loses focus and the country as soon as it is picked; the rule or the server's reason (e.g. nick
- * taken) shows only when the nick is refused. A first pick pre-selects the country the phone is in.
- */
 export function RiderNickForm({ title }: { title?: string }) {
   const profile = useRiderProfileStore((s) => s.profile)
   const save = useRiderProfileStore((s) => s.save)
@@ -27,7 +22,6 @@ export function RiderNickForm({ title }: { title?: string }) {
   const countryPicked = useRef(false)
   const hasFix = useLocationStore((s) => s.latestApproximateLocation != null)
 
-  // Only a rider without a profile gets a suggestion; a saved "no country" is a choice.
   const suggestCountry = profile == null && hasFix
   useEffect(() => {
     const fix = useLocationStore.getState().latestApproximateLocation
@@ -45,14 +39,12 @@ export function RiderNickForm({ title }: { title?: string }) {
     }
   }, [suggestCountry])
 
-  // Adopt the server value when it arrives or changes elsewhere.
   if (profile?.nick !== savedNick) {
     setSavedNick(profile?.nick)
     setNick(profile?.nick ?? '')
     setNationality(profile?.nationality ?? '')
   }
 
-  /** Saves what is in the fields when it differs from the profile; an empty first nick waits. */
   const commit = async (nextNick: string, nextNationality: string) => {
     if (profile == null && nextNick.trim() === '') return
     const parsed = parseRiderProfileDraft(nextNick, nextNationality)

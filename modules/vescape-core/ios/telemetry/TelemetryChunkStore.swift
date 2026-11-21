@@ -1,22 +1,16 @@
 import Foundation
 import GRDB
 
-// Telemetry Chunks (ADR 0045): sealed samples live in `telemetry_chunks`, unsealed ones in the
-// `telemetry_frames` write buffer. Everything here runs inside the caller's transaction, so a read
-// sees chunks and buffer from one snapshot and a write replaces both together.
 // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt
 
-/// Wall-clock grace past a minute's end before it is sealed; above the 5 s recording flush delay.
 internal let TELEMETRY_SEAL_GRACE_MS: Int64 = 10_000
 
-/// Value columns in `changed_mask_1` bit order: the order of `TelemetrySample.values`.
 internal let TELEMETRY_VALUE_COLUMN_NAMES = [
   "speed_centi_kmh", "battery_voltage_mv", "motor_current_ma", "battery_current_ma", "duty_permille",
   "pitch_centi_deg", "roll_centi_deg", "balance_pitch_centi_deg", "balance_current_ma", "erpm", "state",
   "switch_state", "adc1_milli", "adc2_milli", "odometer_cm", "temp_mosfet_deci_c", "temp_motor_deci_c",
 ]
 
-/// One Board and wall-clock minute of telemetry; the unit a seal works on.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `TelemetryMinuteKey`
 internal struct TelemetryMinuteKey: Hashable {
   let boardId: String?
@@ -33,9 +27,6 @@ internal func telemetryMinuteStart(_ atMs: Int64) -> Int64 {
   return (atMs % TELEMETRY_BUCKET_SIZE_MS != 0 && atMs < 0 ? q - 1 : q) * TELEMETRY_BUCKET_SIZE_MS
 }
 
-/// Read order position of the `index`th sample of chunk `chunkId`: negative, so it sorts before any
-/// buffer row (positive id) at the same timestamp, and increasing with `index`. Unique across chunks,
-/// it doubles as the sample id the bridge reports, exact in a JS number.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `chunkSampleOrdinal`
 internal func chunkSampleOrdinal(chunkId: Int64, index: Int) -> Int64 {
   let max = Int64(TelemetryChunkCodec.maxSamples)
@@ -49,7 +40,6 @@ private struct ChunkHeader {
   let id: Int64, boardId: String?, minuteStartMs: Int64, sampleCount: Int, firstAtMs: Int64, lastAtMs: Int64
 }
 
-/// Chunks holding any sample in `[fromMs, toMs]`, minute-ordered, payload left in the table.
 private func chunkHeaders(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?, allBoards: Bool) throws -> [ChunkHeader] {
   try Row.fetchAll(db, sql: """
     SELECT c.id, b.id AS board_id, c.minute_start_ms, c.sample_count, c.first_at_ms, c.last_at_ms
@@ -69,8 +59,6 @@ private func chunkSamples(_ db: Database, _ id: Int64) throws -> [TelemetrySampl
   return try TelemetryChunkCodec.decode(payload)
 }
 
-/// A decoded chunk sample as a `telemetry_frames` row: a full keyframe, so every reader treats it as
-/// its own anchor.
 private func frameRow(_ sample: TelemetrySample, id: Int64, boardId: String?) -> Row {
   var columns: [String: (any DatabaseValueConvertible)?] = [
     "id": id, "captured_at_ms": sample.capturedAtMs, "elapsed_realtime_ms": sample.elapsedRealtimeMs,
@@ -81,7 +69,6 @@ private func frameRow(_ sample: TelemetrySample, id: Int64, boardId: String?) ->
   return Row(columns)
 }
 
-/// One sample of the merged stream: a buffer row, or a decoded chunk sample with its original flags.
 private struct StreamItem {
   let row: Row
   let capturedAtMs: Int64
@@ -89,9 +76,6 @@ private struct StreamItem {
   let sample: TelemetrySample?
 }
 
-/// Chunks and buffer in `[fromMs, toMs]` merged in `(captured_at_ms, ordinal)` order, after the
-/// cursor and at most `limit`. `allBoards` ignores `boardId`; otherwise nil `boardId` means the
-/// unowned samples. Chunks are decoded only as far as the page needs.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `telemetryStream`
 private func telemetryStream(
   _ db: Database, fromMs: Int64, toMs: Int64, boardId: String?, allBoards: Bool,
@@ -108,7 +92,6 @@ private func telemetryStream(
   var fromChunks = 0
   var lastMinute: Int64?
   for header in try chunkHeaders(db, fromMs: max(fromMs, afterMs), toMs: toMs, boardId: boardId, allBoards: allBoards) {
-    // Later minutes cannot reach a page already filled by earlier ones.
     if fromChunks >= limit && header.minuteStartMs != lastMinute { break }
     lastMinute = header.minuteStartMs
     for (index, sample) in try chunkSamples(db, header.id).enumerated() {
@@ -123,7 +106,6 @@ private func telemetryStream(
   return items.count > limit ? Array(items.prefix(limit)) : items
 }
 
-/// Samples as `telemetry_frames` rows, chunks and buffer merged; see `telemetryStream`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `readTelemetryFramesImpl`
 internal func telemetryFrameRows(
   _ db: Database, fromMs: Int64, toMs: Int64, boardId: String?, allBoards: Bool,
@@ -133,8 +115,6 @@ internal func telemetryFrameRows(
                       afterMs: afterMs, afterId: afterId, limit: limit).map(\.row)
 }
 
-/// Start of the latest full state strictly before `beforeMs`: a buffer keyframe or any chunk sample.
-/// Replaying from here reconstructs every later buffer delta, across a seal boundary included.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `telemetryAnchorMs`
 internal func telemetryAnchorMs(_ db: Database, beforeMs: Int64, boardId: String?, allBoards: Bool) throws -> Int64? {
   let buffer = try Int64.fetchOne(db, sql: """
@@ -148,7 +128,6 @@ internal func telemetryAnchorMs(_ db: Database, beforeMs: Int64, boardId: String
   return [buffer, chunk].compactMap { $0 }.max()
 }
 
-/// Samples stored, chunks and buffer together.
 internal func telemetrySampleCount(_ db: Database) throws -> Int {
   try Int.fetchOne(db, sql: "SELECT (SELECT COUNT(*) FROM telemetry_frames) + (SELECT IFNULL(SUM(sample_count), 0) FROM telemetry_chunks)") ?? 0
 }
@@ -164,7 +143,6 @@ internal func lastTelemetrySampleAt(_ db: Database) throws -> Int64? {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `firstTelemetrySampleAtOrAfter`
 internal func firstTelemetrySampleAtOrAfter(_ db: Database, _ fromMs: Int64) throws -> Int64? {
   let minute = telemetryMinuteStart(fromMs)
-  // Only chunks of fromMs's own minute can straddle it; every later chunk starts after it.
   let straddling = try chunkHeaders(db, fromMs: fromMs, toMs: minute + TELEMETRY_BUCKET_SIZE_MS - 1, boardId: nil, allBoards: true)
     .compactMap { try chunkSamples(db, $0.id).first { $0.capturedAtMs >= fromMs }?.capturedAtMs }
   let buffer = try Int64.fetchOne(db, sql: "SELECT MIN(captured_at_ms) FROM telemetry_frames WHERE captured_at_ms >= ?", arguments: [fromMs])
@@ -191,8 +169,6 @@ private func writeChunk(_ db: Database, id: Int64, samples: [TelemetrySample], p
     """, arguments: [Int64(TelemetryChunkCodec.version), samples.count, samples.first!.capturedAtMs, samples.last!.capturedAtMs, payload, id])
 }
 
-/// Remove the samples in `[fromMs, toMs]` from every matching chunk, re-encoding a chunk that keeps
-/// any. Returns the samples removed. The buffer side is the caller's plain range delete.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `trimTelemetryChunks`
 @discardableResult
 internal func trimTelemetryChunks(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?, allBoards: Bool) throws -> Int {
@@ -215,12 +191,6 @@ internal func trimTelemetryChunks(_ db: Database, fromMs: Int64, toMs: Int64, bo
   return removed
 }
 
-/// Seal one Board's minute: replay its buffer rows from the preceding full state into canonical
-/// samples, merge them with the minute's existing chunk, encode, verify the decode round-trips, write
-/// the chunk and delete exactly the sealed rows. Returns the rows sealed; 0 when there is nothing to
-/// seal. A Board id with no row is minted as a Board Tombstone first, so the chunk keeps its owner.
-/// Throws `TelemetrySealMismatch` before any write when verification fails, so the caller's
-/// transaction keeps every row.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `sealTelemetryMinuteImpl`
 @discardableResult
 internal func sealTelemetryMinute(_ db: Database, _ key: TelemetryMinuteKey) throws -> Int {
@@ -266,8 +236,6 @@ internal func sealTelemetryMinute(_ db: Database, _ key: TelemetryMinuteKey) thr
   return sealed.count
 }
 
-/// Every closed minute still in the buffer, oldest first: the pre-chunk backlog and any later
-/// leftover (a late sample, a failed seal, a crash before the seal).
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `closedTelemetryMinutes`
 internal func closedTelemetryMinutes(_ db: Database, beforeMs: Int64) throws -> [TelemetryMinuteKey] {
   try Row.fetchAll(db, sql: """
@@ -276,16 +244,11 @@ internal func closedTelemetryMinutes(_ db: Database, beforeMs: Int64) throws -> 
     """, arguments: [beforeMs]).map { TelemetryMinuteKey(boardId: $0["board_id"], minuteStartMs: $0["minute_start_ms"]) }
 }
 
-/// What one batch of seals did; a failed minute kept its rows and wrote nothing.
 internal struct TelemetrySealBatch {
   var sealedMinutes = 0
   var failures: [(TelemetryMinuteKey, Error)] = []
 }
 
-/// One drain batch in the caller's transaction: nil, writing nothing, when a ride may be recording
-/// at `nowMs`; otherwise seal `keys`. A minute whose seal fails before any write (verification, or a
-/// codec format error such as an unreadable existing chunk or more samples than the codec holds) is
-/// skipped and reported while the rest of the batch commits. Database errors propagate.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `drainTelemetryMinutesImpl`
 internal func drainTelemetryMinutes(_ db: Database, _ keys: [TelemetryMinuteKey], nowMs: Int64, gapMs: Int64) throws -> TelemetrySealBatch? {
   if try activeRideStartMs(db, nowMs: nowMs, gapMs: gapMs) != nil { return nil }
@@ -302,20 +265,17 @@ internal func drainTelemetryMinutes(_ db: Database, _ keys: [TelemetryMinuteKey]
   return batch
 }
 
-/// Clear the registered job state and the obsolete pre-job marker on Restore and Clear all.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `forgetTelemetryStorage`
 internal func forgetTelemetryStorage(_ db: Database) throws {
   try db.execute(sql: "DELETE FROM app_settings WHERE key IN ('maintenanceJob.telemetryStorage', 'maintenanceJob.telemetryBacklogDrain')")
 }
 
-/// Minutes starting before this are closed: their end is `TELEMETRY_SEAL_GRACE_MS` past.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `telemetryDrainCutoffMs`
 internal func telemetryDrainCutoffMs(_ nowMs: Int64) -> Int64 { telemetryMinuteStart(nowMs - TELEMETRY_SEAL_GRACE_MS) }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `TELEMETRY_DRAIN_BATCH_MINUTES`
 internal let TELEMETRY_DRAIN_BATCH_MINUTES = 30
 
-/// Outcome of one drain. `yielded`: a ride may be recording, so the drain stopped early.
 internal struct TelemetryDrainResult: Equatable {
   let minutes: Int
   let sealedMinutes: Int
@@ -323,12 +283,6 @@ internal struct TelemetryDrainResult: Equatable {
   let yielded: Bool
 }
 
-/// Seal every closed minute left in the `telemetry_frames` buffer: the pre-chunk backlog, late
-/// samples, failed seals and minutes a crashed process never sealed. A minute that already has a
-/// chunk merges into it. Batches of `batch` minutes, one fenced transaction each, oldest first;
-/// before each batch a possibly recording ride stops the drain. The buffer itself is the progress,
-/// so a run cut short resumes on the next one. A minute that fails to seal keeps
-/// its rows and is reported through `onFailure`. Throws `MaintenanceRunFenced` once Restore or Clear all replaced the database.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkStore.kt `drainTelemetryBuffer`
 @discardableResult
 internal func drainTelemetryBuffer(

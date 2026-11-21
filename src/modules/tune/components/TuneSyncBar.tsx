@@ -328,9 +328,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     gap: 5,
   },
-  actionBtnPrimary: {
-    // backgroundColor set inline with accentColor
-  },
+  actionBtnPrimary: {},
   actionBtnSecondary: {
     borderWidth: 1,
     borderColor: theme.neutral.border,

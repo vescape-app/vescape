@@ -1,27 +1,5 @@
-# Add-board wizard, end to end, against the fake BLE scan.
-#
-# Runs LAST on purpose. Saving a board hands it to the connection manager, which goes at the real
-# native BLE stack — the scan result is a fake standing in for absent radio hardware, so nothing
-# answers and the attempt tears the replay session down with it. Every flow that needs live
-# telemetry has already run by then.
-#
-# Connecting the created board is deliberately not asserted here; the board-connect path stays
-# covered by the E2E suite's `connect-board` flow against `e2eFake`.
-#
-# The wizard is therefore driven down its offline branch, which is a real product path rather than a
-# workaround: it is what a rider gets when the board is out of range.
 appId: ${APP_ID}
 ---
-# End the replay session first. `bleStore.startScan()` returns immediately while a session is
-# connected — the app does not scan mid-ride — so the wizard's pair step would sit on "No boards
-# found" forever with the replay running. A rider adding a second board does exactly this.
-#
-# Conditional, because by the time the run reaches this flow the replay may have ended on its own:
-# the fixture recording is 13 minutes and a full pass can outlast it (Maestro spends most of its
-# time waiting for a live hierarchy to settle). Either way the next step needs a session that is
-# over, so both routes are correct — this one must not care which happened.
-# Live telemetry keeps changing even when a hosted simulator misses the tap. Retry this idempotent
-# transition against the disconnected state, rather than Maestro's generic UI-change detection.
 - retry:
     maxRetries: 3
     commands:
@@ -51,15 +29,6 @@ appId: ${APP_ID}
     timeout: 15000
 - tapOn: E2E VESC Board
 
-# Selecting a device runs a Board Probe, which opens a real BLE connection to the advertised MAC —
-# and the advertisement is a fake standing in for hardware that is not there, so the link fails.
-# That is the correct outcome, not a defect, and the wizard offers the path a rider takes when the
-# board is out of range or powered down. Taking it here covers the link-failure UI *and* the rest of
-# the wizard, without faking a probe result: the fake is for absent hardware, never for absent data.
-#
-# The link timeline is taller than the screen, so the failure actions sit below the fold and have to
-# be scrolled to — `assertVisible` means visible in the viewport, not merely present. That goes for
-# the retry button too: waiting on it in the viewport can never pass, however long the timeout.
 - scrollUntilVisible:
     element:
       id: add-board-link-retry
@@ -74,15 +43,11 @@ appId: ${APP_ID}
 
 - assertVisible: Personalize your board
 - tapOn:
-    # iOS exposes the pressable name row as "<value>, Name your board" without the input's id.
     text: '.*Name your board'
-    # Match the phone setup flow: backspace starts at the end of the suggested name.
     point: '95%,50%'
 - eraseText
 - inputText: Smoke Board
 - assertVisible: 'Smoke Board(, Name your board)?'
-# The single-line input's Done key blurs on both platforms. Android Back may pop the wizard,
-# and tapping the heading can hit the keyboard while iOS adjusts the scroll position.
 - pressKey: Enter
 - scrollUntilVisible:
     element:
@@ -97,8 +62,6 @@ appId: ${APP_ID}
 - tapOn:
     id: add-board-battery-next
 
-# Alerts is its own wizard step (PAIR · NAME · BATTERY · ALERTS · CONFIRM). Skipping it is a real
-# choice a rider makes, and it keeps this flow about the wizard rather than about alert defaults.
 - extendedWaitUntil:
     visible:
       id: add-board-skip-alerts
@@ -108,16 +71,9 @@ appId: ${APP_ID}
 
 - assertVisible: Review & save
 - assertVisible: Smoke Board
-# No linked device on the review step, on purpose: this board was created offline, so there is
-# nothing paired to name. The E2E suite's linked-board flow is what covers the paired variant.
 - tapOn:
     id: add-board-save
 
-# The wizard's whole point is that the board is durable afterwards. Asserting the name on the main
-# screen covers the write and the read back, which is all this flow can claim without a connection.
-# Trailing `.*` because the selector pill's `accessibilityLabel` is `<name>, board selector`: iOS
-# replaces a labelled view's children in the accessibility tree, so the name is only readable
-# through the label itself.
 - extendedWaitUntil:
     visible: 'Smoke Board.*'
     timeout: 30000

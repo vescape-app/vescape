@@ -118,8 +118,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ...s,
         autoConnect: s.companionPresenceEnabled ? true : s.autoConnect,
       }
-      // Reloads can fire often (e.g. the 30s GPS write emits `settings`). Set only the keys that
-      // actually changed so untouched selectors don't re-render, and bail entirely when nothing did.
       const prev = get()
       const patch: Partial<SettingsState> = {}
       for (const key of Object.keys(next) as (keyof AppSettings)[]) {
@@ -152,9 +150,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         throw error
       }
     })()
-    // Settings controls are fire-and-forget; attach an observer while preserving rejection for awaiters.
     // intentional-suppression: settings write error is rendered by AppStorageFailureBanner
-    void operation.catch(() => undefined) // Visible owner: writeError in AppStorageFailureBanner.
+    void operation.catch(() => undefined)
     return operation
   },
 

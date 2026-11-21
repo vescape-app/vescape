@@ -36,7 +36,6 @@ interface MapboxGeocodingFeature {
     maki?: unknown
     short_code?: string
   }
-  /** Geocoding v5: the enclosing place, region and country, each with its own id. */
   context?: { id?: string; short_code?: string }[]
 }
 
@@ -48,7 +47,6 @@ function normalizeSearchQuery(query: string) {
   return query.trim()
 }
 
-// React Native's AbortSignal has no `throwIfAborted`.
 function throwIfAborted(signal: AbortSignal | undefined) {
   if (signal?.aborted) throw new Error('Map search aborted')
 }
@@ -121,11 +119,6 @@ export function prioritizeNearbySearchResults(
   return [...nearby, ...distant].slice(0, SEARCH_RESULT_LIMIT)
 }
 
-/**
- * Place search through the server's Mapbox proxy (native call, Device Token attached). The body is
- * Mapbox's verbatim, so parsing stays here. An aborted search still finishes natively; its result is
- * dropped.
- */
 export async function searchMapResults(query: string, options: SearchMapResultsOptions = {}) {
   const normalized = normalizeSearchQuery(query)
   if (normalized.length < 2) return []
@@ -141,7 +134,6 @@ export async function searchMapResults(query: string, options: SearchMapResultsO
   return prioritizeNearbySearchResults(results, options.proximity)
 }
 
-/** The ISO 3166-1 alpha-2 country in a Geocoding v5 reverse body, upper-cased, or null. */
 export function countryFromReverseGeocode(body: string): string | null {
   const feature = (JSON.parse(body) as MapboxGeocodingResponse).features?.[0]
   if (!feature) return null

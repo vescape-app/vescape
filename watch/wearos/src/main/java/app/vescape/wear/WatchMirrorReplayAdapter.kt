@@ -8,7 +8,7 @@ import expo.modules.vescapecore.watch.WatchTiltControl as PhoneTiltControl
 import expo.modules.vescapecore.watch.WatchFrame as PhoneFrame
 import kotlin.math.cos
 
-/** Fixtures stand in for phone wire delivery, never write view stores directly.
+/**
  * @parity /modules/vescape-core/ios/watch/WatchMirrorReplayAdapter.swift
  */
 internal object WatchMirrorReplayAdapter {
@@ -22,18 +22,15 @@ internal object WatchMirrorReplayAdapter {
             remoteTilt = frame.remoteTilt, tiltControl = PhoneTiltControl.entries.first { it.wire == frame.tiltControl.wire },
             trail = frame.trail, mapPosition = frame.mapPosition,
         ))
-        // Only old phones send waiting; retain the fixture's ability to exercise that decoder flag.
         if (frame.waiting) bytes[1] = (bytes[1].toInt() or 2).toByte()
         return bytes
     }
 
-    /** Fixture metres east/north of the route [origin] as a position: the inverse of `offsetFrom`. */
     fun position(origin: WatchMapPosition, eastM: Double, northM: Double): WatchMapPosition = WatchMapPosition(
         latitude = origin.latitude + northM / 110_574.0,
         longitude = origin.longitude + eastM / (111_320.0 * cos(Math.toRadians(origin.latitude))),
     )
 
-    /** Fixtures start at (0, 0) on [origin]; reject other starts rather than silently shifting the rider. */
     fun route(route: WatchRoute?, origin: WatchMapPosition): ByteArray? {
         val first = route?.points?.firstOrNull() ?: return null
         if (first.eastM != 0f || first.northM != 0f) return null

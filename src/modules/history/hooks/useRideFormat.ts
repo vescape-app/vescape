@@ -14,7 +14,6 @@ interface HistoryDistance {
   unit?: string
 }
 
-/** Bind ride-list presentation to the rider's current units. */
 export function useRideFormat() {
   const distanceUnit = useDistanceUnit()
   const timeFormat = useTimeFormat()

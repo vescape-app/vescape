@@ -1,29 +1,13 @@
-# Boot a fixture run (helper — shared by scripts/screenshots.ts and scripts/smoke.ts).
-#
-# Assumes a Release build with EXPO_PUBLIC_SCREENSHOTS=1 or EXPO_PUBLIC_SMOKE=1, app data cleared
-# and fixtures pushed by the runner. The app's own bootstrap restores the backup zip and starts the
-# replay session before it mounts, so this wait covers a database restore plus a replay handshake.
-#
-# Wait for the restored dashboard instead of animations settling. The telemetry flow also checks
-# the session control because the battery bar can remain visible after replay ends.
 appId: ${APP_ID}
 ---
-# Android smoke launches through bounded adb after fixture preparation. Other callers still launch
-# here. Avoid Maestro's unbounded Android permission/launch ADB calls (Maestro issue #3658).
 - runFlow:
     when:
       true: ${typeof APP_ALREADY_LAUNCHED === 'undefined' || APP_ALREADY_LAUNCHED !== 'true'}
     commands:
       - launchApp
-# A fresh hosted Android image can stall Pixel Launcher during app installation. Its system
-# dialog owns the accessibility tree even when Vescape is running underneath. Check between
-# bounded waits because the dialog can appear after launch. Never dismiss Vescape's own ANR.
 - retry:
     maxRetries: 2
     commands:
-      # iOS can show this prompt despite simctl privacy grant. Only tap when it exists; an optional
-      # tap can spend minutes searching for an absent alert on a hosted simulator. Recheck between
-      # battery waits so a late first-launch prompt is still handled.
       - runFlow:
           when:
             platform: iOS

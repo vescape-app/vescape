@@ -1,11 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The fixture is a complete `COMM_GET_MCCONF` response captured from a Thor301 on
-/// 2026-08-24, and the expected values are what VESC Tool showed for that board at the same moment.
-/// It is the only check that the generated offsets describe an actual blob rather than our reading of
-/// firmware source.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/McconfDecoderTest.kt
 final class McconfDecoderTests: XCTestCase {
   private let boardBlob = hexToBytes(
@@ -38,7 +33,6 @@ final class McconfDecoderTests: XCTestCase {
     XCTAssertEqual(values["l_temp_motor_start"]!, 80.0, accuracy: 0.001)
     XCTAssertEqual(values["l_temp_motor_end"]!, 90.0, accuracy: 0.001)
 
-    // float32_auto and scaled-int16 paths, which the temperature bytes alone would not exercise.
     XCTAssertEqual(values["l_current_max"]!, 160.0, accuracy: 0.001)
     XCTAssertEqual(values["l_current_min"]!, -160.0, accuracy: 0.001)
     XCTAssertEqual(values["l_in_current_max"]!, 70.0, accuracy: 0.001)
@@ -46,7 +40,6 @@ final class McconfDecoderTests: XCTestCase {
     XCTAssertEqual(values["l_battery_cut_start"]!, 54.0, accuracy: 0.001)
     XCTAssertEqual(values["l_battery_cut_end"]!, 50.0, accuracy: 0.001)
 
-    // Tail fields, which a misaligned layout would corrupt long before reaching them.
     XCTAssertEqual(values["m_encoder_counts"]!, 8192.0, accuracy: 0.001)
     XCTAssertEqual(values["m_fault_stop_time_ms"]!, 50.0, accuracy: 0.001)
     XCTAssertEqual(values["m_ntc_motor_beta"]!, 3380.0, accuracy: 0.001)
@@ -85,7 +78,7 @@ final class McconfDecoderTests: XCTestCase {
   func testEveryLayoutHasAscendingOffsetsThatFitItsDeclaredLength() {
     for (signature, layout) in McconfLayouts.bySignature {
       XCTAssertEqual(signature, layout.signature)
-      var expected = 4  // the signature itself is not a field
+      var expected = 4
       for field in layout.fields {
         XCTAssertEqual(field.offset, expected, "\(layout.firmware) \(field.id)")
         expected += field.type.byteSize

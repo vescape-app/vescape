@@ -10,12 +10,6 @@ interface DeviceAuthState {
   retry: () => void
 }
 
-/**
- * UI projection of native credential provisioning.
- *
- * Native remains durable truth for the credential itself. This store only lets the account widget
- * show progress/failure and ask DeviceAuthSync to retry the Clerk → Device Token exchange.
- */
 export const useDeviceAuthStore = create<DeviceAuthState>((set) => ({
   status: 'idle',
   error: null,

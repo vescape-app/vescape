@@ -5,11 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Verifies the dedicated watch tick fires at its configured cadence and re-arms live when the
- * `wearPushRateHz` App Setting changes (ADR-0013/0019) — lowering the interval must take
- * effect immediately rather than waiting out the current, longer delay.
- */
 class WatchTickTest {
 
     private val snapshot = WatchSnapshot(
@@ -56,7 +51,6 @@ class WatchTickTest {
         scheduler.advance(1000)
         assertEquals(0, pushes)
 
-        // Pending 2s tick is cancelled and rescheduled at the new 100ms cadence.
         watchTick.setIntervalMs(100)
         scheduler.advance(100)
         assertEquals(1, pushes)

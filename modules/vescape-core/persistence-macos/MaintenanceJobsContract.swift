@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 
-/// Rebuild every ride summary the way the runner does, without fingerprint bookkeeping.
 @discardableResult
 func rebuildRideSummaries(
   _ writer: any DatabaseWriter,
@@ -15,7 +14,6 @@ func rebuildRideSummaries(
   )
 }
 
-/// Ride summaries Maintenance Job (#605) through the production GRDB statements and fence.
 /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/MaintenanceJobsHostTest.kt
 func runMaintenanceJobsContract() throws {
   let minute: Int64 = 60_000
@@ -48,9 +46,6 @@ func runMaintenanceJobsContract() throws {
     try queue.read { try Row.fetchAll($0, sql: "SELECT board_id, reason, start_ms, end_ms, sample_count FROM metric_exclusion_ranges ORDER BY start_ms, reason") }
   }
 
-  // Rebuilding twice is identical across minute and hour edges, with a free spin crossing the hour:
-  // the wheel spins up just before the edge and keeps spinning after it, so the next chunk needs
-  // the spin carried from this one.
   do {
     let queue = try freshQueue()
     let edge = 10 * hour
@@ -71,7 +66,6 @@ func runMaintenanceJobsContract() throws {
     try require(try buckets(queue) == first.0 && (try exclusions(queue)) == first.1, "rebuilding twice is identical")
   }
 
-  // The potentially active ride is never touched and keeps the job stale.
   do {
     let queue = try freshQueue()
     let now = 100 * hour
@@ -94,7 +88,6 @@ func runMaintenanceJobsContract() throws {
     try require(try buckets(queue).allSatisfy { ($0["max_abs_speed_centi_kmh"] as Int) != 9_999 }, "closed ride rebuilt after closure")
   }
 
-  // Deletion and fencing between chunks leave no ghosts and no fingerprint.
   do {
     let queue = try freshQueue()
     try insertFrames(queue, stride(from: Int64(0), to: 3 * hour, by: Int(minute)).map { frame($0) })
@@ -114,7 +107,6 @@ func runMaintenanceJobsContract() throws {
     try require(try queue.read { try storedMaintenanceFingerprint($0, id: RideSummariesJob().id) } == nil, "no fingerprint after a fenced run")
   }
 
-  // The fingerprint carries the version and normalized inputs, and round-trips through app_settings.
   do {
     let queue = try freshQueue()
     try require(try rebuildRideSummaries(queue) == .completed, "empty database completes")
@@ -124,8 +116,6 @@ func runMaintenanceJobsContract() throws {
     try require(try queue.read { try storedMaintenanceFingerprint($0, id: RideSummariesJob().id) } == fingerprint, "fingerprint round trip")
     try require(maintenanceFingerprint(RideSummariesJob(), settings: ["movingSpeedThresholdKmh": 5.0]) != fingerprint, "inputs change the fingerprint")
   }
-  // Cleanup retains recent events, yields to recording, and reruns after replacement even
-  // when the restored database carries this launch's completion fingerprint.
   do {
     var queue = try freshQueue()
     let fence = DatabaseReplacementFence()
@@ -170,7 +160,6 @@ func runMaintenanceJobsContract() throws {
     try runJob()
   }
 
-  // Diagnostic Event retention (#683): age boundary, batching, fence, and the active-ride deferral.
   do {
     let queue = try freshQueue()
     let now = 100 * 24 * hour

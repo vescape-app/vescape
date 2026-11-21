@@ -5,7 +5,6 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 const SUN_CLOCK_INTERVAL_MS = 60_000
 
-/** Last known coordinate and a clock that ticks each minute while the `sun` theme mode is on. */
 export function useSunThemeClock(): { coordinate: ThemeCoordinate; now: Date } {
   const mode = useSettingsStore((state) => state.themeMode)
   const latitude = useSettingsStore((state) => state.lastGpsLatitude)

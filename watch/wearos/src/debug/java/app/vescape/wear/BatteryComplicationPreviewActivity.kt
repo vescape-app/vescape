@@ -12,7 +12,6 @@ import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.rendering.ComplicationDrawable
 import java.time.Instant
 
-/** DEBUG APK only. Renders production provider data through AndroidX's complication renderer. */
 class BatteryComplicationPreviewActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

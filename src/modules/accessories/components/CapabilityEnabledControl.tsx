@@ -9,7 +9,6 @@ import { Switch } from '@/components/controls/Switch'
 import { capabilityPresentation } from '../constants/accessoryCapabilities'
 import { theme, type ThemeColor } from '@/constants/theme'
 
-/** The one switch that decides whether a capability runs at all — always the top of its screen. */
 export function CapabilityEnabledControl({
   accessoryId,
   capability,
@@ -17,7 +16,6 @@ export function CapabilityEnabledControl({
 }: {
   accessoryId: string
   capability: AccessoryCapability
-  /** Tint of the row, so a light's screen reads in its own colour. */
   accent?: ThemeColor
 }) {
   const [saving, setSaving] = useState(false)
@@ -65,7 +63,6 @@ export function CapabilityEnabledSetting({
   label: string
   enabled: boolean
   disabled?: boolean
-  /** The write is in flight — the switch spins instead of pretending it already landed. */
   pending?: boolean
   failed?: boolean
   onChange: (enabled: boolean) => void

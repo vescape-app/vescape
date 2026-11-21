@@ -11,7 +11,6 @@ const defaultIO: SessionIO = { devices: listAdbDevices, adb }
 
 const ROOT = join(import.meta.dir, '../..')
 
-/** Each suite owns its processes and temporary device listeners, including on cancellation. */
 export async function withE2eSession<T>(
   action: (session: E2eSession) => Promise<T>,
   env: NodeJS.ProcessEnv = process.env,
@@ -44,17 +43,14 @@ export class E2eSession {
     private io: SessionIO = defaultIO,
   ) {
     this.env = { ...env }
-    // A shell's fixture flags must never change the boundary a suite claims to test.
     for (const flag of ['E2E', 'SMOKE', 'PREVIEW', 'SCREENSHOTS'])
       this.env[`EXPO_PUBLIC_${flag}`] = '0'
     this.env.REACT_NATIVE_PACKAGER_HOSTNAME = '127.0.0.1'
     this.env.EXPO_NO_DOTENV = '1'
-    // Local test artifacts are not releases and must not require upload credentials.
     this.env.SENTRY_DISABLE_AUTO_UPLOAD = 'true'
   }
 
   async port(): Promise<number> {
-    // A free host port may still be occupied by a device listener from an unrelated session.
     const mappings = await Promise.all(
       this.io
         .devices()
@@ -131,9 +127,7 @@ export class E2eSession {
   }
 
   async close(): Promise<void> {
-    // Ask nested runners to finish their own finally blocks before removing our listeners.
     for (const child of this.children.slice().reverse()) {
-      // A launcher may have exited while its Metro/build descendants are still running.
       const signalGroup = (signal: NodeJS.Signals | 0) => {
         try {
           process.kill(-child.pid, signal)

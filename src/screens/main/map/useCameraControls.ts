@@ -68,15 +68,9 @@ export function useCameraControls({
     ((options?: { resetPadding?: boolean; animationDuration?: number }) => void) | null
   >(null)
   const controllerStateRef = useRef(initialMapCameraControllerState)
-  // Every camera write funnels through the spring engine; retargets stay
-  // velocity-continuous no matter which feature asks for the camera next.
-  // applyFrame only ever runs from the engine's frame loop, never during render.
   // eslint-disable-next-line react-hooks/refs
   const [engine] = useState(() =>
     createCameraEngine({
-      // setCameraDirect deliberately does not interrupt native camera
-      // animations (see docs/agents/mapbox-patches.md), so a fling outlives
-      // every frame the engine writes unless it is cancelled outright.
       cancelNativeMotion: () => cameraRef.current?.cancelCameraAnimations(),
       applyFrame: (camera: EngineCamera) => {
         currentCameraRef.current = camera
@@ -91,13 +85,9 @@ export function useCameraControls({
     }),
   )
   useEffect(() => {
-    // Fast Refresh and React's development effect checks preserve hook state while cleaning up
-    // effects. Reactivate that retained engine before camera commands can reach it again.
     engine.resume()
     return () => engine.destroy()
   }, [engine])
-  // The layer puck and markers go through the camera module, the same native path as the camera
-  // writes.
   useEffect(() => {
     puckLayerChannel.attach((puck) => cameraRef.current?.setPuckDirect(puck))
     markerLayerChannel.attach((values) => cameraRef.current?.setMarkersDirect(values))
@@ -128,8 +118,6 @@ export function useCameraControls({
     [mapViewport, viewportHeight, windowWidth],
   )
 
-  // Reducer intents return fresh mode objects even when logically unchanged.
-  // Keep previous state reference so per-frame BrowseManually can bail out.
   const setCameraModeState = useCallback((mode: MapCameraMode) => {
     setCameraModeRaw((previous) => (mapCameraModesEqual(previous, mode) ? previous : mode))
   }, [])
@@ -238,11 +226,6 @@ export function useCameraControls({
     viewportHeight,
   ])
 
-  /**
-   * Pitch and tilt offset the live follow camera would sit at for a zoom. A pinch drives the camera
-   * itself, and deriving them from the plain zoom profile tilts it differently than the follow
-   * profiles do — the tilt would drop under the fingers and spring back on release.
-   */
   const getFollowFrameForZoom = useCallback(
     (zoom: number): { pitch: number; padding: CameraPadding } => {
       const profile = getMapCameraProfileForOrientationMode(
@@ -253,8 +236,6 @@ export function useCameraControls({
           profile,
           zoom,
           perspectiveEnabled,
-          // A pinch pins the follow zoom, and live follow drops the profile minimums once it is
-          // pinned. Matching that keeps the two in step.
           enforceMinimums: false,
         }),
         padding: getPaddingForProfile({ profile, viewportHeight, zoom }),
@@ -382,17 +363,12 @@ export function useCameraControls({
     previewGestures.previewPanActiveRef,
   ])
 
-  // Every orientation change has to reach the camera, not only the ones that enter or leave GPS
-  // heading. Compass drives the heading straight into the engine, so switching away from it leaves
-  // the last compass bearing on the map until something else writes a heading.
   useEffect(() => {
     const previousMode = previousOrientationModeRef.current
     previousOrientationModeRef.current = mapOrientationMode
     if (historyActive || previousMode === mapOrientationMode) return
 
     if (controllerStateRef.current.mode.kind !== 'liveFollow') {
-      // A rider browsing the map keeps their viewport; only the fixed-heading mode has an answer
-      // that does not depend on where the GPS puck is.
       if (mapOrientationMode !== 'northUp') return
       engine.setTarget({ heading: 0 })
       onHeadingChange(0)

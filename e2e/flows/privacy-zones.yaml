@@ -12,7 +12,6 @@ appId: ${APP_ID}
       id: privacy-zone-pill-e2e-office
     timeout: 15000
 
-# Toggle the seeded zone on and off.
 - tapOn:
     id: privacy-zone-pill-e2e-office
 - extendedWaitUntil:
@@ -35,7 +34,6 @@ appId: ${APP_ID}
       text: Enable
     timeout: 5000
 
-# Rename the zone via the long-press menu.
 - longPressOn:
     id: privacy-zone-pill-e2e-office
 - extendedWaitUntil:
@@ -60,7 +58,6 @@ appId: ${APP_ID}
       text: HQ
     timeout: 5000
 
-# Delete the zone via the long-press menu.
 - longPressOn:
     id: privacy-zone-pill-e2e-office
 - extendedWaitUntil:
@@ -78,7 +75,6 @@ appId: ${APP_ID}
       id: privacy-zone-pill-e2e-office
     timeout: 5000
 
-# Add a new custom zone from scratch.
 - tapOn:
     id: privacy-zone-add-button
 - extendedWaitUntil:
@@ -109,7 +105,6 @@ appId: ${APP_ID}
     notVisible: Gym
     timeout: 5000
 
-# Add again and save the custom zone.
 - tapOn:
     id: privacy-zone-add-button
 - extendedWaitUntil:

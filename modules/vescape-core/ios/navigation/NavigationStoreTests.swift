@@ -1,9 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The stored form has to carry why there is no path, or a restart turns a rider's "no path here,
-/// retry?" into a blank map with a pin on it.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/navigation/NavigationJsonTest.kt
 final class NavigationStoreTests: XCTestCase {
 

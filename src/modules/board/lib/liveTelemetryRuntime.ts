@@ -7,7 +7,6 @@ import { finite, absolute } from '@/helpers/finite'
 interface LiveTelemetryValues {
   speedKmh: SharedValue<number | null>
   dutyPercent: SharedValue<number | null>
-  /** Highest speed / duty across the live window, from native. */
   speedPeakKmh: SharedValue<number | null>
   dutyPeakPercent: SharedValue<number | null>
   motorCurrent: SharedValue<number | null>
@@ -26,7 +25,6 @@ interface LiveTelemetryValues {
   pullRateHz: SharedValue<number | null>
 }
 
-/** Plain scalar bundle shipped to the UI thread in one hop, instead of separate SharedValue writes. */
 type TickScalars = Record<keyof LiveTelemetryValues, number | null>
 
 const EMPTY_TICK: TickScalars = {
@@ -54,7 +52,6 @@ export interface LiveTelemetryRuntime {
   values: LiveTelemetryValues
   syncConnectionSeq: (connectionSeq: number) => void
   seedFromBoardState: (state: LiveStateEvent['board']) => void
-  /** Per-frame presentation values; native owns telemetry history and series. */
   ingestTick: (tick: TelemetryEvent) => void
   reset: () => void
 }
@@ -87,7 +84,6 @@ function createValues(): LiveTelemetryValues {
   }
 }
 
-/** Pure JS projection of a telemetry frame into the scalar bundle. No SharedValue writes. */
 function tickScalars(telemetry: TelemetryEvent): TickScalars {
   return {
     speedKmh: absolute(telemetry.speed),
@@ -114,9 +110,6 @@ function tickScalars(telemetry: TelemetryEvent): TickScalars {
 export function createLiveTelemetryRuntime(): LiveTelemetryRuntime {
   const values = createValues()
 
-  // One UI-thread worklet assigns all SharedValues. Only the scalar bundle crosses the
-  // JS→UI boundary (a single serialization per frame) instead of separate `.value=` hops
-  // on the JS thread, which were the dominant live-telemetry cost (createSerializable + GC).
   function applyTick(next: TickScalars): void {
     'worklet'
     values.speedKmh.value = next.speedKmh

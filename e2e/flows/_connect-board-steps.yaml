@@ -18,7 +18,6 @@ appId: ${APP_ID}
 - assertVisible:
     id: battery-bar
 
-# Editing lives in the board selector now, not on the pill.
 - tapOn:
     id: board-selector-trigger
 - tapOn:
@@ -26,8 +25,6 @@ appId: ${APP_ID}
 - assertVisible: 21s2p.*
 - tapOn:
     id: edit-board-name-edit
-# The field mounts focused with its text selected; tapping it again would drop the cursor
-# mid-word and leave a tail behind the erase.
 - eraseText: 50
 - inputText: E2E Renamed Board
 - pressKey: Enter

@@ -10,13 +10,11 @@ import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-/** Several rides as one `.zip`: one file per ride, no folders, written as a stream so memory stays
- * flat at any ride count. Names use device time: `2026-08-03_1726_<name>.<ext>`, `-2`, `-3` on clash.
+/**
  * @parity /modules/vescape-core/ios/telemetry/RideBatch.swift
  * @parity /modules/vescape-core/src/index.ts `RideSelection`
  */
 internal object RideBatch {
-  /** One ride window; [name] is the Board name for rides and the Favorite's name for Favorites. */
   data class Item(val fromMs: Long, val toMs: Long, val boardId: String?, val name: String?) {
     companion object {
       fun from(map: Map<*, *>): Item {
@@ -50,14 +48,12 @@ internal object RideBatch {
     }
   }
 
-  /** `vescape-rides-<day>.zip`, or `vescape-rides-<first>_<last>.zip` when the rides span days. */
   fun zipName(items: List<Item>, zone: ZoneId): String {
     val first = day.withZone(zone).format(Instant.ofEpochMilli(items.minOf { it.fromMs }))
     val last = day.withZone(zone).format(Instant.ofEpochMilli(items.maxOf { it.fromMs }))
     return if (first == last) "vescape-rides-$first.zip" else "vescape-rides-${first}_$last.zip"
   }
 
-  /** ASCII letters and digits; every other run becomes one `-`. */
   fun slug(name: String?): String =
     (name ?: "").replace(Regex("[^A-Za-z0-9]+"), "-").trim('-').ifEmpty { "ride" }
 
@@ -71,7 +67,6 @@ internal object RideBatch {
     writeRide: suspend (Writer, Item) -> Unit,
   ): Map<String, Any> {
     require(items.isNotEmpty()) { "No rides to export" }
-    // Own folder per export: the zip keeps its readable name in the share sheet without clashing.
     val folder = File(directory, "ride-export-${UUID.randomUUID()}").apply { mkdirs() }
     val file = File(folder, zipName(items, zone))
     try {
@@ -94,7 +89,6 @@ internal object RideBatch {
     }
   }
 
-  /** Stops a long ride mid-file instead of only between rides. */
   private class CancellableWriter(private val out: Writer, private val isCancelled: () -> Boolean) : Writer() {
     override fun write(cbuf: CharArray, off: Int, len: Int) {
       if (isCancelled()) throw Cancelled()

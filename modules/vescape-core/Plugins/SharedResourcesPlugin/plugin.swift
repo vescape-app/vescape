@@ -1,7 +1,6 @@
 import Foundation
 import PackagePlugin
 
-/// Keep shared JSON single-source while giving both SwiftPM build systems real bundle files.
 @main
 struct SharedResourcesPlugin: BuildToolPlugin {
   func createBuildCommands(context: PluginContext, target: Target) throws -> [Command] {

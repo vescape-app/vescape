@@ -21,8 +21,6 @@ final class TransportDetectionTests: XCTestCase {
     )
   }
 
-  // MARK: candidatesToProbe — always probe Direct + every responder
-
   func testProbesDirectWithNoCanResponders() {
     XCTAssertEqual([.direct], TransportDetection.candidatesToProbe([]))
   }
@@ -37,8 +35,6 @@ final class TransportDetectionTests: XCTestCase {
   func testDedupesRepeatedResponderIds() {
     XCTAssertEqual([.direct, .can(7)], TransportDetection.candidatesToProbe([7, 7, 7]))
   }
-
-  // MARK: resolve
 
   func testDirectOnlyConfirmedResolvesToDirect() {
     let result = TransportDetection.resolve([probe(.direct, confirmed: true)])
@@ -92,8 +88,6 @@ final class TransportDetectionTests: XCTestCase {
     XCTAssertTrue(result.candidates.isEmpty)
     XCTAssertEqual(.none, result.outcome)
   }
-
-  // MARK: smart-BMS capability carried onto the candidate
 
   func testBmsPresenceCarriedOntoConfirmedCandidate() {
     let result = TransportDetection.resolve([probe(.direct, confirmed: true, hasBms: true)])

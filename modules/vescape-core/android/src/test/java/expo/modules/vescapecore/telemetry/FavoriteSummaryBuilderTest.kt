@@ -12,10 +12,6 @@ import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
 import expo.modules.vescapecore.database.VescapeDatabase
 
 /**
- * Favorites are durable pins over Ride History (ADR 0029). The summary is computed once from the raw
- * Telemetry Samples inside the range — including ranges that cut a minute bucket in half, which is
- * exactly what bucket-derived stats cannot express.
- *
  * @parity /modules/vescape-core/ios/telemetry/FavoriteStoreTests.swift
  */
 class FavoriteSummaryBuilderTest {
@@ -27,15 +23,9 @@ class FavoriteSummaryBuilderTest {
     assertEquals(2_000, summary.avgSpeedCentiKmh)
     assertEquals(2_000, summary.maxSpeedCentiKmh)
     assertEquals(119_000L, summary.movingDurationMs)
-    // 1 m per sample interval. Distance sums per-bucket odometer deltas, so the hop across a bucket
-    // boundary is not counted — the same arithmetic history session rows already use.
     assertEquals(11_800L, summary.distanceCm)
   }
 
-  /**
-   * The point of computing from raw samples: a Favorite trimmed inside a minute bucket must report
-   * the trimmed span, not the whole bucket the samples happen to live in.
-   */
   @Test
   fun summaryOfAMidBucketRangeCoversOnlyTheTrimmedSamples() {
     val trimmed = ridePoints(startMs = 0, count = 120)
@@ -48,14 +38,9 @@ class FavoriteSummaryBuilderTest {
     assertEquals(5_800L, summary.distanceCm)
   }
 
-  /**
-   * Idle samples below the moving threshold are excluded from average speed by the Metric
-   * Sanitizers, exactly as they are while recording — a trimmed Favorite must not average them in.
-   */
   @Test
   fun summaryExcludesIdleSamplesFromAverageSpeed() {
     val idle = ridePoints(startMs = 0, count = 10, speedCentiKmh = 0)
-    // Samples further apart than an acceleration is read across, so 0 → 20 km/h is no spin-up.
     val moving = ridePoints(startMs = 11_000, count = 10)
 
     val summary = buildFavoriteSummary(bucketsFor(idle + moving))
@@ -65,10 +50,6 @@ class FavoriteSummaryBuilderTest {
     assertEquals(9_000L, summary.movingDurationMs)
   }
 
-  /**
-   * A range with no samples at all (deleted telemetry, wrong device) yields an empty summary instead
-   * of failing the create path.
-   */
   @Test
   fun summaryOfAnEmptyRangeIsZeroed() {
     val summary = buildFavoriteSummary(emptyList())
@@ -78,7 +59,6 @@ class FavoriteSummaryBuilderTest {
     assertNull(summary.distanceCm)
   }
 
-  /** A ride recorded without odometer readings still reports distance, from the GPS-distance sum. */
   @Test
   fun summaryFallsBackToGpsDistanceWithoutOdometer() {
     val summary = buildFavoriteSummary(
@@ -97,7 +77,6 @@ class FavoriteSummaryBuilderTest {
     )
 
     assertEquals("board-uuid-1", map["boardId"])
-    // Board name is resolved on read, never snapshotted, so renames propagate to old favorites.
     assertEquals("Onewheel", map["boardName"])
     assertEquals(2_500.0, map["distanceM"])
     assertEquals(15.0, map["avgSpeedKmh"])
@@ -106,10 +85,6 @@ class FavoriteSummaryBuilderTest {
     assertEquals(routePoints, map["routePoints"])
   }
 
-  /**
-   * A range with no odometer and no GPS has no distance to report — the bridge must send null rather
-   * than a fabricated zero, so the row renders "-" like a history row without distance.
-   */
   @Test
   fun missingDistanceStaysNullAcrossTheBridge() {
     assertNull(favorite(distanceCm = null).toMap(boardName = null)["distanceM"])
@@ -213,7 +188,6 @@ class FavoriteSummaryBuilderTest {
     return buildTelemetryBuckets(telemetryPoints = sanitized, locationPoints = emptyList())
   }
 
-  /** A steady ride: constant speed, so no free spin, and the odometer advancing 1 m per second. */
   private fun ridePoints(
     startMs: Long,
     count: Int,

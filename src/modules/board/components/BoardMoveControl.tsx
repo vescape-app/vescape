@@ -12,10 +12,6 @@ import {
   useBoardMoveControl,
 } from '@/modules/board/hooks/useBoardMoveControl'
 
-/**
- * Board Move: hold a direction to roll the board while it is disengaged. The focused panel also
- * exposes the move strength, because how much push is enough depends on the board's own remote limits.
- */
 export function BoardMoveControl() {
   return (
     <ExpandingWidget

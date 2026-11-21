@@ -26,14 +26,12 @@ private func weather(hourly: [WeatherSlot] = [], quarters: [WeatherSlot] = [], f
   )
 }
 
-/// Rain starting at `startMin` after t0, in whichever series covers its lead at `nowMin`.
 private func rainAt(_ startMin: Int64, _ nowMin: Int64, fetchedAtMs: Int64? = nil) -> Weather {
   let fetched = fetchedAtMs ?? t0 + nowMin * minuteMs
   if startMin - nowMin > 60 { return weather(hourly: [hour(startMin)], fetchedAtMs: fetched) }
   return weather(quarters: stride(from: startMin, to: startMin + 60, by: 15).map { quarter($0) }, fetchedAtMs: fetched)
 }
 
-/// A dry hourly slot carrying only a weather code and a gust.
 private func dryHour(_ startMin: Int64, code: Int = 3, gustKmh: Double? = nil) -> WeatherSlot {
   WeatherSlot(
     startMs: t0 + startMin * minuteMs, endMs: t0 + (startMin + 60) * minuteMs, precipitationMmPerHour: 0,
@@ -50,7 +48,6 @@ private struct Said: Equatable {
   }
 }
 
-/// Weather Alert Evaluator: the rain ladder, rounding, gap, escalation-only, re-arm and stale guard.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/weather/WeatherAlertsTest.kt
 final class WeatherAlertsTests: XCTestCase {
   private var state = WeatherAlertState()
@@ -64,14 +61,12 @@ final class WeatherAlertsTests: XCTestCase {
   func testFirstLineRoundsTheLeadDownThenTheLadderSpeaksEachCloserRungOnce() {
     XCTAssertEqual(eval(rainAt(170, 0), 0), [Said(150, 80)])
     XCTAssertEqual(eval(rainAt(170, 10), 10), [])
-    // 2h rung crossed at 115 min, more than 30 min after the first line.
     XCTAssertEqual(eval(rainAt(170, 55), 55), [Said(120, 80)])
     XCTAssertEqual(eval(rainAt(170, 115), 115), [Said(60)])
     XCTAssertEqual(eval(rainAt(170, 125), 125), [])
     XCTAssertEqual(eval(rainAt(170, 145), 145), [Said(30)])
     XCTAssertEqual(eval(rainAt(170, 160), 160), [Said(15)])
     XCTAssertEqual(eval(rainAt(170, 170), 170), [Said(0)])
-    // Raining: never repeats.
     XCTAssertEqual(eval(rainAt(170, 185), 185), [])
   }
 
@@ -80,7 +75,6 @@ final class WeatherAlertsTests: XCTestCase {
     state = WeatherAlertState()
     XCTAssertEqual(eval(rainAt(14, 0), 0), [Said(0)])
     state = WeatherAlertState()
-    // Already raining at connect: "now" once.
     XCTAssertEqual(eval(rainAt(-20, 0), 0), [Said(0)])
     XCTAssertEqual(eval(rainAt(-20, 5), 5), [])
   }
@@ -93,9 +87,7 @@ final class WeatherAlertsTests: XCTestCase {
 
   func testARungAboveAnHourWithin30MinutesOfThePreviousLineIsSkipped() {
     XCTAssertEqual(eval(rainAt(150, 0), 0), [Said(150, 80)])
-    // The forecast pulls it to 100 min: the 2h rung is crossed only 10 min after the last line.
     XCTAssertEqual(eval(rainAt(110, 10), 10), [])
-    // Consumed by the skip, so it does not speak late.
     XCTAssertEqual(eval(rainAt(110, 20), 20), [])
     XCTAssertEqual(eval(rainAt(110, 50), 50), [Said(60)])
   }
@@ -107,11 +99,8 @@ final class WeatherAlertsTests: XCTestCase {
 
   func testDowngradesAndDelaysAreSilentAndAJumpCloserSpeaksOnce() {
     XCTAssertEqual(eval(rainAt(125, 0), 0), [Said(120, 80)])
-    // Delayed out to 2.5 h: no line.
     XCTAssertEqual(eval(rainAt(160, 10), 10), [])
-    // Gone: no line, state kept.
     XCTAssertEqual(eval(weather(fetchedAtMs: t0 + 20 * minuteMs), 20), [])
-    // Back and much closer: only the new rung.
     XCTAssertEqual(eval(rainAt(45, 25), 25), [Said(30)])
     XCTAssertEqual(eval(rainAt(45, 28), 28), [])
   }
@@ -119,7 +108,6 @@ final class WeatherAlertsTests: XCTestCase {
   func testTheHourlyGateNeedsProbabilityAndTheQuarterHourGateDoesNot() {
     XCTAssertEqual(eval(weather(hourly: [hour(120, probability: 40)]), 0), [])
     XCTAssertEqual(eval(weather(hourly: [hour(120, mm: 0.5)]), 0), [])
-    // An hourly slot at or under 1 h out is the quarter-hour series' job.
     XCTAssertEqual(eval(weather(hourly: [hour(30)], quarters: [quarter(30, mmPerHour: 0)]), 0), [])
     XCTAssertEqual(eval(weather(quarters: [quarter(30, mmPerHour: 0.8)]), 0), [])
     XCTAssertEqual(eval(weather(quarters: [quarter(30, mmPerHour: 1.0)]), 0), [Said(30)])
@@ -134,7 +122,6 @@ final class WeatherAlertsTests: XCTestCase {
   func testAnEventLostAtTheHourHandoverKeepsItsStateAndOnlyEscalatesOnReturn() {
     XCTAssertEqual(eval(rainAt(95, 0), 0), [Said(90, 80)])
     XCTAssertEqual(eval(rainAt(95, 30), 30), [])
-    // Inside the hour the quarter-hour series no longer shows it.
     XCTAssertEqual(eval(weather(fetchedAtMs: t0 + 40 * minuteMs), 40), [])
     XCTAssertEqual(eval(rainAt(95, 70), 70), [Said(30)])
   }
@@ -142,10 +129,8 @@ final class WeatherAlertsTests: XCTestCase {
   func testReArmsAfter30MinutesClear() {
     XCTAssertEqual(eval(rainAt(-10, 0), 0), [Said(0)])
     XCTAssertEqual(eval(rainAt(-10, 20), 20), [])
-    // A gap shorter than 30 min is still the same event.
     XCTAssertEqual(eval(weather(fetchedAtMs: t0 + 40 * minuteMs), 40), [])
     XCTAssertEqual(eval(rainAt(60, 49), 49), [])
-    // 30 min with nothing over the threshold.
     XCTAssertEqual(eval(weather(fetchedAtMs: t0 + 79 * minuteMs), 79), [])
     XCTAssertEqual(eval(rainAt(200, 80), 80), [Said(120, 80)])
   }
@@ -153,7 +138,6 @@ final class WeatherAlertsTests: XCTestCase {
   func testALaterEventAlreadyInTheWindowReArms30MinutesAfterTheOneUnderway() {
     XCTAssertEqual(eval(rainAt(-10, 0), 0), [Said(0)])
     XCTAssertEqual(eval(rainAt(-10, 20), 20), [])
-    // The rain stopped and the next shower is already visible: same event until 30 min clear.
     XCTAssertEqual(eval(rainAt(130, 40), 40), [])
     XCTAssertEqual(eval(rainAt(130, 50), 50), [Said(60)])
     XCTAssertEqual(eval(rainAt(130, 100), 100), [Said(30)])
@@ -250,7 +234,6 @@ final class WeatherAlertsTests: XCTestCase {
 
   func testStormOutranksRainAndASuppressedRainConsumesItsRungs() {
     XCTAssertEqual(kinds(weather(hourly: [slot(100, 160, probability: 80, code: 95)]), 0), ["weather.storm 90"])
-    // Storm gone, rain alone: its 90 min rung was consumed, so it waits for the 1 h rung.
     XCTAssertEqual(kinds(weather(hourly: [hour(100)], fetchedAtMs: t0 + 10 * minuteMs), 10), [])
     XCTAssertEqual(kinds(rainAt(100, 40), 40), ["weather.rain 60"])
   }
@@ -271,7 +254,6 @@ final class WeatherAlertsTests: XCTestCase {
       weather(hourly: [hour(180), dryHour(185, gustKmh: 60)], fetchedAtMs: t0 + nowMin * minuteMs)
     }
     XCTAssertEqual(kinds(both(55), 55), ["weather.wind 120"])
-    // Wind spoke 5 min ago; rain's own last line was an hour ago, so its 2 h rung speaks.
     XCTAssertEqual(kinds(both(60), 60), ["weather.rain 120"])
   }
 

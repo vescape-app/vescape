@@ -39,18 +39,18 @@ class RefloatConfigEncoderTest {
   private fun buildRawConfig(schema: RefloatConfigSchema): ByteArray {
     val totalSize = schema.fields.maxOf { it.offset + it.type.byteSize }
     val buf = ByteBuffer.allocate(totalSize).order(ByteOrder.BIG_ENDIAN)
-    buf.putFloat(26.5f)           // f32
-    buf.putInt(1500)              // f32_scaled: 1500/1000 = 1.5
-    buf.putInt(0)                 // f32_auto: placeholder, write via auto
-    buf.putShort(325)             // f16_scaled: 325/100 = 3.25
-    buf.putInt(-42)               // i32
-    buf.putInt(0x80000001.toInt()) // u32 = 2147483649
-    buf.putShort(-100)            // i16
-    buf.putShort(60000.toInt().toShort()) // u16
-    buf.put((-5).toByte())        // i8
-    buf.put(200.toByte())         // u8
-    buf.put(1.toByte())           // bool_true
-    buf.put(0.toByte())           // bool_false
+    buf.putFloat(26.5f)
+    buf.putInt(1500)
+    buf.putInt(0)
+    buf.putShort(325)
+    buf.putInt(-42)
+    buf.putInt(0x80000001.toInt())
+    buf.putShort(-100)
+    buf.putShort(60000.toInt().toShort())
+    buf.put((-5).toByte())
+    buf.put(200.toByte())
+    buf.put(1.toByte())
+    buf.put(0.toByte())
     return buf.array()
   }
 
@@ -215,7 +215,6 @@ class RefloatConfigEncoderTest {
   fun multiFieldModificationOnlyAffectsTargetOffsets() {
     val schema = allTypeSchema()
     val raw = ByteArray(64) { (it * 7 % 256).toByte() }
-    // Write valid values at field offsets so decode works
     val validRaw = buildRawConfig(schema)
     validRaw.copyInto(raw, 0, 0, validRaw.size.coerceAtMost(raw.size))
 

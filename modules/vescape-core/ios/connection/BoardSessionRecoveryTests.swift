@@ -2,7 +2,6 @@ import GRDB
 import XCTest
 @testable import VescapeCore
 
-/// Drives the real session callbacks and watchdogs. Only the radio is replaced; time is virtual.
 final class BoardSessionRecoveryTests: XCTestCase {
   private var scheduler: TestScheduler!
   private var radio: RecoveryTestTransport!
@@ -99,7 +98,6 @@ final class BoardSessionRecoveryTests: XCTestCase {
     for (index, delay) in [500, 1_000, 1_500, 2_000, 2_500, 3_000, 3_500, 4_000, 4_500, 5_000, 5_000].enumerated() {
       controller.onGattConnected()
       controller.onGattFailure(code: "NO_CHAR", message: "missing characteristic")
-      // Duplicate callbacks during the gap must not issue another connect or reset the delay.
       controller.onGattFailure(code: "DISCOVERY_FAILED", message: "duplicate callback")
       scheduler.advance(Int64(delay - 1))
       XCTAssertEqual(radio.connections.count, index + 1)

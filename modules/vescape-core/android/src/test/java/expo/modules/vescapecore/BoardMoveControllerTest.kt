@@ -50,7 +50,6 @@ class BoardMoveControllerTest {
         assertTrue(urgent.last())
         assertNull(controller.currentInput)
 
-        // The repeat loop is cancelled, not merely idle.
         val afterStop = sent.size
         scheduler.advance(1_000)
         assertEquals(afterStop, sent.size)
@@ -64,8 +63,6 @@ class BoardMoveControllerTest {
         assertTrue(controller.hold(25))
         assertEquals(1, sent.size)
 
-        // On the 1.3+ cadence this window would hold six re-sends, and each one restarts the
-        // firmware's current ramp from zero — the motor pulses instead of moving.
         scheduler.advance(600)
         assertEquals(1, sent.size)
 
@@ -146,7 +143,6 @@ class BoardMoveControllerTest {
         val controller = controller()
 
         controller.hold(127)
-        // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]
         assertArrayEquals(byteArrayOf(36, 101, 7, 1, 60, 8, 68), sent.single())
 
         controller.stop()

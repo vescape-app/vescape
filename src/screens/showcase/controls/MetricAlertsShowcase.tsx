@@ -14,7 +14,6 @@ import { DEFAULT_BATTERY_CONFIG } from '@/modules/battery/lib'
 
 const INITIAL_SETUP: DraftAlertSetup = { level: 'normal', rules: [] }
 
-/** The whole per-metric alert block on an in-memory draft, as the add-board wizard drives it. */
 export function MetricAlertsShowcase() {
   const [metric, setMetric] = useState<AlertPresetMetric>('speed')
   const [hasBattery, setHasBattery] = useState(true)

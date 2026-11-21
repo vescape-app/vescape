@@ -1,9 +1,6 @@
 import Foundation
 import GRDB
 
-/// Derived thumbnail geometry. route_preview stores JSON segments [firstFixMs,lastFixMs,polyline],
-/// with signed delta-varint polyline coordinates at E7 precision. NULL means not generated yet.
-/// Always simplify original fixes, never an earlier preview. Endpoints survive every simplification.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BucketRoutePreview.kt
 internal enum BucketRoutePreview {
   static let gapMs: Int64 = 30_000
@@ -110,8 +107,6 @@ internal enum BucketRoutePreview {
   }
 }
 
-/// Called inside recording/rebuild transactions after their raw fixes have been inserted.
-/// Re-read one indexed minute, so restarts and late fixes need no separate cache recovery.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `refreshBucketRoutePreview`
 internal func refreshBucketRoutePreview(_ db: Database, bucketStartMs: Int64, boardId: String) throws {
   let trackBoardId = boardId == UNKNOWN_TELEMETRY_BOARD_ID ? nil : boardId
@@ -126,7 +121,6 @@ internal func refreshBucketRoutePreview(_ db: Database, bucketStartMs: Int64, bo
     """, arguments: [try BucketRoutePreview.build(points), bucketStartMs, boardId])
 }
 
-/// Full minutes reuse previews; only trimmed edge minutes need original fixes for exact boundaries.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BucketRoutePreview.kt `favoriteRoutePreview`
 internal func favoriteRoutePreview(_ db: Database, startMs: Int64, endMs: Int64, boardId: String?) throws -> [[String: Any]] {
   let buckets = try Row.fetchAll(db, sql: """

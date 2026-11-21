@@ -38,7 +38,6 @@ export interface FullMapControlsProps extends Pick<
   onRequireAccount: (reason: AccountGateReason) => boolean
 }
 
-/** Search, the Map Point add menu and the category filter — everything only Explore mode shows. */
 export function FullMapControls({
   mapRef,
   mapInteractionHandlerRef,
@@ -57,7 +56,6 @@ export function FullMapControls({
 }: FullMapControlsProps) {
   const accents = useResolvedAccentColors()
   const riderColor = useSelectedBoardRailColor()
-  // Category visibility and Map Point creation are store truth, not screen wiring.
   const hiddenMapPointCategories = useMapPointStore((s) => s.hiddenMapPointCategories)
   const toggleMapPointCategoryVisibility = useMapPointStore(
     (s) => s.toggleMapPointCategoryVisibility,

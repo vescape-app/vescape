@@ -72,7 +72,6 @@ class WatchFrameDecoderTest {
         assertEquals(WatchTiltControl.FREE, frame.tiltControl)
     }
 
-    /** A newer phone's reason is still a reason: read-only is the only safe reading of it. */
     @Test
     fun `an unknown tilt control code keeps the stick read-only`() {
         val frame = WatchFrameDecoder.decode(
@@ -108,7 +107,6 @@ class WatchFrameDecoderTest {
         }
     }
 
-    /** Encodes lane 0 (speed) plus [lanes], mirroring the phone-side writer. */
     private fun encode(speed: Double, vararg lanes: Float): ByteArray {
         val count = 1 + lanes.size
         return ByteBuffer.allocate(2 + count * 4).order(ByteOrder.LITTLE_ENDIAN).apply {

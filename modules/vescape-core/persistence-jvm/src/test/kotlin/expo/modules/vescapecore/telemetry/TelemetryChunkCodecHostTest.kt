@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-/** Shared contract: `shared/telemetry-chunk-codec-contract.json`, peer `persistence-macos/TelemetryChunkCodecContract.swift`. */
 class TelemetryChunkCodecHostTest {
   private val fixture = JSONObject(File("../shared/telemetry-chunk-codec-contract.json").readText())
   private val chains = fixture.getJSONArray("chains").objects().associateBy { it.getString("name") }
@@ -27,7 +26,6 @@ class TelemetryChunkCodecHostTest {
 
   @Test fun encodeDecodeRoundTripsExactly() {
     for ((name, chain) in chains) assertEquals(name, samples(chain), TelemetryChunkCodec.decode(TelemetryChunkCodec.encode(samples(chain))))
-    // Regenerate the Android golden blobs: VESCAPE_CHUNK_GOLDEN_OUT=<file> then paste into the fixture.
     System.getenv("VESCAPE_CHUNK_GOLDEN_OUT")?.let { path ->
       File(path).writeText(JSONArray(chains.map { (name, chain) ->
         JSONObject().put("chain", name).put("producer", "android")

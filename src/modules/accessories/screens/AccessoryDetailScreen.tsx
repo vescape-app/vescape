@@ -18,28 +18,13 @@ import { useAccessoryStore, useSavedAccessory } from '@/modules/accessories/stor
 import { fmtTimeAgo } from '@/helpers/format'
 import { theme } from '@/constants/theme'
 
-/**
- * One Accessory's configuration screen: who it says it is, whether Vescape can drive it, what it
- * offers, and where its link stands right now.
- *
- * Identity first, because everything saved about an Accessory keys on it. Per-capability setup —
- * clearance calibration, brake-light behaviour — lives behind each capability in its own slice;
- * this screen is the place they hang off, and the place that says plainly when they cannot. A
- * capability row is a way in only when this build has a screen for that type: ground clearance
- * opens calibration, brake light opens controls and parked preview.
- *
- * Every fact here is native's. The link phase is the one a native session is actually in, which is
- * running whether or not this screen was ever opened.
- */
 export function AccessoryDetailScreen({
   accessoryId,
   onForgotten,
   onConfigureCapability,
 }: {
   accessoryId: string
-  /** Called once the Accessory is gone, so the route that opened this can leave. */
   onForgotten?: () => void
-  /** Open one capability's own configuration. Only offered for types this build can configure. */
   onConfigureCapability?: (capabilityId: string, type: string) => void
 }) {
   const accessory = useSavedAccessory(accessoryId)
@@ -52,9 +37,6 @@ export function AccessoryDetailScreen({
     setForgetting(true)
     setForgetFailed(false)
     try {
-      // Native answers false when the saved identity is still there — a storage failure means the
-      // Accessory is still enrolled and still connecting, so leaving the screen would claim
-      // something that did not happen.
       if (await forget(accessoryId)) {
         onForgotten?.()
         return

@@ -31,7 +31,6 @@ import { useDrawerScrollAnimation } from '@/components/overlays/edgeDrawerScroll
 import { measureTrigger } from '@/components/overlays/measureTrigger'
 
 const DRAWER_OPEN_DURATION = 200
-/** Dismissal is a fast fade back toward the drawer's own edge, not a scroll home. */
 const DRAWER_CLOSE_DURATION = 170
 const DRAWER_BOTTOM_CONTENT_PADDING = 32
 
@@ -48,12 +47,6 @@ export interface EdgeDrawerDismissalOptions {
   onReachContentEnd?: () => void
 }
 
-/**
- * The drawer's whole open/close life: which edge it came from, the scroll offset that doubles as a
- * dismissal gesture, and the presence value both the panel and the scrim animate on.
- */
-// Reanimated shared values are mutable handles by design. React's immutability
-// lint cannot distinguish their UI-thread writes from React-owned state.
 /* eslint-disable react-hooks/immutability */
 export function useEdgeDrawerDismissal({
   visible,
@@ -76,8 +69,6 @@ export function useEdgeDrawerDismissal({
   const [keyboardInset, setKeyboardInset] = useDrawerKeyboardInset(mounted)
   const scrollRef = useRef<ScrollView | FlatList<unknown>>(null)
   const positionedRef = useRef(false)
-  // Layout callbacks can race UI-thread shared-value writes. Keep the requested JS position
-  // authoritative until native acknowledges it through onScroll.
   const openingScrollPendingRef = useRef(false)
   const indexedFocusAppliedRef = useRef(false)
   const openStartedRef = useRef(false)
@@ -87,12 +78,8 @@ export function useEdgeDrawerDismissal({
   const previousContentPageKeyRef = useRef(contentPageKey)
   const pinContentStartRef = useRef(false)
   const scrollOffset = useSharedValue(0)
-  /** 0 hidden at the drawer's own edge, 1 fully present. Drives both open and close. */
   const presence = useSharedValue(0)
-  /** Scroll-driven dismissal only arms once the drawer has taken its opening position. */
   const dismissArmed = useSharedValue(false)
-  // Native can deliver its initial zero-offset event after JS requests the opening scroll.
-  // Keep that event from overwriting the position used by content-resize handling.
   const openingScrollTarget = useSharedValue(-1)
   const dismissTriggered = useSharedValue(false)
   const animatedDismissRange = useSharedValue(1)
@@ -111,9 +98,6 @@ export function useEdgeDrawerDismissal({
 
   const scrollToContentStart = useCallback(
     (range: number) => {
-      // A bottom drawer keeps the height it had, unless it was scrolled into the old page or would
-      // fade on the new one. The sticky header pins below the status bar; a page starting flush at
-      // the screen top would tuck its first row under it.
       const contentStart = Math.min(scrollOffsetRef.current, height - insets.top)
       const offset = opensFromTop
         ? 0
@@ -180,15 +164,9 @@ export function useEdgeDrawerDismissal({
     visible,
   ])
 
-  /**
-   * The Modal window appears a frame or more after mount, so the opening animation is started by
-   * `onShow` — kicked off any earlier it would already be over by the time anything is on screen.
-   */
   const animateOpen = useDrawerOpenAnimation(openStartedRef, presence)
   const startOpen = useCallback(() => {
     animateOpen()
-    // Content layout can run before the Modal's native scroll view is attached. Reapply its
-    // latest opening position once onShow confirms that the window is visible.
     requestAnimationFrame(() => {
       if (positionedRef.current) scrollToOffset(scrollOffsetRef.current, false)
     })
@@ -222,12 +200,8 @@ export function useEdgeDrawerDismissal({
     )
   }, [closing, finishClose, mounted, presence])
 
-  /** Settle a half-faded drawer back to the offset where it is fully opaque again. */
   const restoreFullyVisible = useCallback(() => {
     const target = edgeDrawerRestoreOffset(dismissRangeRef.current, height, opensFromTop)
-    // iOS reports a scroll end when a new animated scroll interrupts the running one. Reissuing
-    // the restore from that report interrupts it again, forever, and pins the list in place.
-    // The target is fractional and iOS lands on a pixel; asking again from there loops the same way.
     if (restoreTargetRef.current === target || Math.abs(scrollOffsetRef.current - target) <= 1)
       return
     restoreTargetRef.current = target
@@ -281,11 +255,8 @@ export function useEdgeDrawerDismissal({
         scrollOffsetRef.current = initialOffset
         scrollOffset.value = initialOffset
         requestAnimationFrame(() => {
-          // A header layout may already have focused the row. Never overwrite it with
-          // the default opening offset from an earlier content-size callback.
           if (!indexedFocusAppliedRef.current) {
             if (focus) indexedFocusAppliedRef.current = true
-            // Content may have grown since this callback was queued. Use its latest target.
             scrollToOffset(scrollOffsetRef.current, false)
           }
           if (!openingScrollPendingRef.current) dismissArmed.value = true
@@ -320,9 +291,6 @@ export function useEdgeDrawerDismissal({
         return
       }
 
-      // Content grows over many frames, so this follows every one of them from the live offset —
-      // a per-frame "was the drawer fully open?" test loses the race after the first frame and
-      // leaves the drawer stranded half faded.
       const pinsToOwnEdge =
         !virtualized &&
         !opensFromTop &&
@@ -338,9 +306,6 @@ export function useEdgeDrawerDismissal({
         scrollOffsetRef.current = pinnedOffset
         scrollOffset.value = pinnedOffset
         if (openingScrollPendingRef.current) openingScrollTarget.value = pinnedOffset
-        // The content layout event can precede the native scroll view's new bounds. Scrolling
-        // immediately can clamp to the previous size and strand late rows below the pinned header.
-        // Like opening and page changes, wait for layout and use the latest requested position.
         requestAnimationFrame(() => scrollToOffset(scrollOffsetRef.current, false))
         return
       }
@@ -371,7 +336,6 @@ export function useEdgeDrawerDismissal({
     ],
   )
 
-  // Unlike ref measurement, a known frame can focus a row that FlatList has never mounted.
   const focusOffset = initialFocusLayout?.offset
   const focusHeight = initialFocusLayout?.height
   useEffect(() => {
@@ -385,8 +349,6 @@ export function useEdgeDrawerDismissal({
     )
       return
     const frame = requestAnimationFrame(() => {
-      // A late header/layout pass can temporarily report only the first render window.
-      // Wait until native content bounds can contain the target instead of locking in a clamp.
       if (dismissRangeRef.current < focusOffset + focusHeight / 2 - height / 2) return
       const target = edgeDrawerFocusOffset({
         offset: focusOffset,
@@ -464,7 +426,6 @@ export function useEdgeDrawerDismissal({
   }
 }
 
-/** A bottom drawer's offset after its content resized; see the two policies it picks between. */
 function resizedOffset(
   resize: { offset: number; range: number; previousRange: number; height: number },
   pinsToOwnEdge: boolean,
@@ -477,27 +438,17 @@ function resizedOffset(
   return resize.offset
 }
 
-/**
- * Gesture state that decides how a drawer may be dismissed: scroll dismissal arms only for drags
- * that start at the content edge, and chrome drags move the panel directly.
- */
 function useDismissGestures(
   openingScrollTarget: SharedValue<number>,
   dismissRangeRef: React.RefObject<number>,
   height: number,
   opensFromTop: boolean,
 ) {
-  /** The current drag began at the content edge, so it may carry the drawer off screen. */
   const dragFromEdge = useSharedValue(true)
-  /** A finger is on the scroll view. Only a drag commits a dismissal mid-scroll. */
   const dragging = useSharedValue(false)
-  /** A fling from inside the content is running; stop it where it meets the content edge. */
   const flingGuard = useSharedValue(false)
-  /** Translation from dragging the drawer's chrome toward its edge. */
   const chromeDrag = useSharedValue(0)
-  /** The rider's drag, or its momentum, owns the scroll; any programmatic scroll takes it back. */
   const userScrollRef = useRef(false)
-  /** Offset an animated restore is heading to, until it lands or the rider takes over. */
   const restoreTargetRef = useRef<number | null>(null)
   const resetGestures = useCallback(() => {
     restoreTargetRef.current = null
@@ -509,7 +460,6 @@ function useDismissGestures(
   }, [chromeDrag, dragFromEdge, dragging, flingGuard])
   const handleScrollBeginDrag = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      // The rider has taken over: an opening scroll still awaiting its native echo is moot.
       openingScrollTarget.value = -1
       restoreTargetRef.current = null
       userScrollRef.current = true

@@ -2,9 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// ADR 0034 "Recording never fabricates GPS": a frame records the fix only while it is fresh, so a
-/// dead GPS produces honest gaps instead of thousands of samples repeating one frozen coordinate.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryMapper.kt `freshEnoughToRecord`
 final class TelemetryLocationAgeGateTests: XCTestCase {
   private let capturedAtMs: Int64 = 1_700_000_000_000
@@ -39,7 +36,6 @@ final class TelemetryLocationAgeGateTests: XCTestCase {
     XCTAssertNil(gated(agedMs: telemetryLocationMaxAgeMs + 1))
   }
 
-  /// A fix stamped slightly ahead of the packet clock is skew, not staleness.
   func testFutureFixIsRecorded() {
     XCTAssertNotNil(gated(agedMs: -2_000))
   }

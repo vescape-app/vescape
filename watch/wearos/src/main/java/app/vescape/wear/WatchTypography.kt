@@ -8,7 +8,6 @@ import androidx.wear.compose.foundation.CurvedTextStyle
 import androidx.wear.compose.material.Typography
 
 /**
- * App typography from the shared font assets. Keep symbols in the system font.
  * @parity /watch/watchos/WatchTypography.swift
  */
 internal object WatchTypography {

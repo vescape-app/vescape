@@ -9,11 +9,6 @@ import { useFavoriteStore } from '@/modules/history/store/favoriteStore'
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { useMaintenanceStore } from '@/modules/settings/store/maintenanceStore'
 
-/**
- * Mirror the native Maintenance Job runner into JS, and re-read open history whenever native says
- * committed chunks changed it (`historyRevision`, already throttled natively). Call once at app
- * root; returns an unsubscribe.
- */
 export function startMaintenanceSync(): () => void {
   let revision: number | null = null
   const apply = (state: MaintenanceState) => {

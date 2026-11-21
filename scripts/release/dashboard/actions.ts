@@ -21,10 +21,6 @@ export interface DashboardAction {
   label: string
 }
 
-/**
- * Only operations valid in the current recorded state. Preparing a version starts the pipeline and
- * is by far the most used entry, so it leads; the rest follow pipeline order.
- */
 export function availableActions(state: ReleaseState): DashboardAction[] {
   const actions: DashboardAction[] = []
   const { activeRun, internal, open, production } = state
@@ -71,10 +67,6 @@ export function availableActions(state: ReleaseState): DashboardAction[] {
   return actions
 }
 
-/**
- * Preselection is separate from ordering: preparing leads the list, but a running release is the
- * thing you opened the dashboard for, so Enter still watches it.
- */
 export function defaultActionIndex(
   _actions: readonly DashboardAction[],
   _state: ReleaseState,

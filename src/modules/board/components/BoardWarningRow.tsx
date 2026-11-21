@@ -15,17 +15,10 @@ import { theme } from '@/constants/theme'
 
 interface BoardWarningRowProps {
   warning: BoardWarning
-  /** Rider acknowledged this warning: grayed out here, excluded from the board warning indicator. */
   dismissed: boolean
-  /** Toggle the dismissed (acknowledged) state, persisted on the board record. */
   onSetDismissed: (kind: string, dismissed: boolean) => void
 }
 
-/**
- * One row in the Board Warnings sheet: title, severity chip, description, first/last detected, and
- * payload-driven detail. Passive display only — no sounds or vibration. Data comes from the JS mirror
- * store; dismissing never touches the native warning registry, only the board's dismissed list.
- */
 export function BoardWarningRow({ warning, dismissed, onSetDismissed }: BoardWarningRowProps) {
   const s = severityStatus(warning.severity)
   const description = warningDescription(warning.kind)

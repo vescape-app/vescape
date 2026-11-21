@@ -1,5 +1,3 @@
-# A loaded hosted simulator can miss a gauge tap while live telemetry is rendering.
-# Retry navigation only, and never tap again once the detail screen has opened.
 appId: ${APP_ID}
 ---
 - retry:

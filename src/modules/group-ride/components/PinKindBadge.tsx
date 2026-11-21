@@ -4,10 +4,6 @@ import Svg, { Path } from 'react-native-svg'
 
 import type { PinKindInfo } from '@/modules/group-ride/constants/riderSignalKinds'
 
-/**
- * A pin kind's icon in its warning triangle, wherever the kind is shown: picker tile, own active
- * pin, map pin. Rider Signals and Ride Hazards share the shape; the hue tells the kinds apart.
- */
 export function PinKindBadge({
   info,
   color,
@@ -18,7 +14,6 @@ export function PinKindBadge({
 }: {
   info: PinKindInfo
   color: ColorValue
-  /** Width and height of the triangle's box. */
   size: number
   strokeWidth: number
   fill?: ColorValue
@@ -41,10 +36,6 @@ export function PinKindBadge({
 
 const CORNER_RADIUS_RATIO = 0.12
 
-/**
- * A triangle with rounded corners filling a `side`-wide square, its base flat at the bottom so a map
- * stem drops from its middle. Returns the path and its inscribed circle, which centres the icon.
- */
 function roundedTriangle(side: number, strokeWidth: number) {
   const inset = strokeWidth / 2
   const width = side - 2 * inset

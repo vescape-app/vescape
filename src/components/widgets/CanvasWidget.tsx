@@ -13,26 +13,16 @@ import { theme, type ThemeColor } from '@/constants/theme'
 interface CanvasWidgetProps {
   icon: Icon
   title: string
-  /** Accent for the icon, the active border and the status dot. */
   accent?: ThemeColor
-  /** Raise the border to `accent` and show a status dot. */
   active?: boolean
-  /** Footprint in the widget grid. `square` forces an aspect-1 tile and ignores `height`. */
   size?: WidgetSize
-  /** Fixed widget height — content is centred within it. Ignored when `size` is `square`. */
   height?: number
-  /** Pinned bottom area, e.g. an action button. */
   footer?: ReactNode
-  /** Trailing header control, e.g. a dismiss button or status badge. Far-right of the title
-   *  row; takes the status dot's place (the dot is hidden whenever an action is present). */
   action?: ReactNode
-  /** Free-form body content, vertically centred. */
   children?: ReactNode
-  /** Optional framed surface for canvas widgets presented alongside settings rows. */
   surface?: 'presentation' | 'secondary'
 }
 
-/** A free-canvas widget: header (icon + title + status) over any body, with an optional pinned footer. */
 export function CanvasWidget({
   icon: IconComponent,
   title,

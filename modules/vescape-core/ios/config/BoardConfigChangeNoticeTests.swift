@@ -29,8 +29,6 @@ final class BoardConfigChangeNoticeTests: XCTestCase {
 
     let merged = BoardConfigChangeNotice.mergeDiffs(previous: previous, incoming: incoming)
 
-    // The Refloat diff survives, the twice-diffed field keeps its slot with the newer values, and the
-    // new field lands last.
     XCTAssertEqual(merged.map(\.fieldId), ["fault_adc1", "l_temp_fet_start", "l_current_max"])
     XCTAssertEqual(merged[1].oldValue, .number(75))
     XCTAssertEqual(merged[1].newValue, .number(80))

@@ -33,11 +33,8 @@ import { useActiveRiderSignal } from '@/modules/group-ride/hooks/useActiveRiderS
 
 type OwnLocation = { lat: number; lng: number } | null
 
-/** Below this list width the six stat columns no longer fit one line without ellipsizing values,
- *  so each Rider's stats wrap into two lines of three. */
 const ONE_LINE_STATS_MIN_WIDTH = 290
 
-/** The drawer uses the compact view to keep nearby telemetry scannable. */
 export function RosterList({
   rows,
   ownLocation,
@@ -58,7 +55,6 @@ export function RosterList({
   const neutral = useResolvedNeutralColors()
   const divider = neutral.border
   const [width, setWidth] = useState(0)
-  // Until measured, assume the common wide layout; narrow phones re-render once after layout.
   const wrapStats = width > 0 && width < ONE_LINE_STATS_MIN_WIDTH
   return (
     <View onLayout={compact ? undefined : (e) => setWidth(e.nativeEvent.layout.width)}>
@@ -83,15 +79,11 @@ export function RosterList({
 interface Stat {
   icon: Icon
   color: ThemeColor
-  /** Share of a one-line row; wrapped lines split evenly. */
   weight: number
   value?: string
   level?: TelemetryLevel
 }
 
-/** One stat column, sized by `weight` so every row splits the width the same way. The icon, in
- *  its metric color, names the value; a missing value reads as a muted dash so real readings stand
- *  out. When `level` is warning/critical the icon and value adopt the matching alert color. */
 function StatColumn({ icon: StatIcon, color, weight, value, level = 'normal' }: Stat) {
   const alert = level !== 'normal'
   const iconColor = alert ? TELEMETRY_LEVEL_COLOR[level] : color
@@ -110,7 +102,6 @@ function StatColumn({ icon: StatIcon, color, weight, value, level = 'normal' }: 
   )
 }
 
-/** How long an away Rider has been gone, for the badge after the board name. */
 function awayLabel(lastSeen: number, nowMs: number): string {
   const minutes = Math.floor((nowMs - lastSeen) / 60_000)
   if (minutes < 1) return 'Away'
@@ -211,7 +202,6 @@ function DetailedRiderRow({
         {rider.away ? <Text style={styles.awayTag}>{awayLabel(rider.lastSeen, now)}</Text> : null}
         {signal ? <SignalBadge kind={signal.kind} /> : null}
       </View>
-      {/* An away Rider's numbers are their last presence: dimmed, while the badge stays legible. */}
       <View style={[styles.statLines, rider.away && styles.statsAway]}>
         {(wrapStats ? [stats.slice(0, 3), stats.slice(3)] : [stats]).map((line, index) => (
           <View key={index} style={styles.stats}>
@@ -438,7 +428,6 @@ function SelfTag({ rider }: { rider: RosterRider }) {
   return rider.isSelf && rider.name !== 'You' ? <Text style={styles.selfTag}>You</Text> : null
 }
 
-/** The Rider's active signal, as its kind's icon and label. */
 function SignalBadge({ kind }: { kind: string }) {
   const accents = useResolvedAccentColors()
   const info = riderSignalKindInfo(kind)
@@ -555,8 +544,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   statColumn: {
-    // Weighted flex columns with no content min-width: every row splits the same width the same
-    // way, so each stat sits under the one above it and long values ellipsize instead of shifting.
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
@@ -565,7 +552,6 @@ const styles = StyleSheet.create({
   stats: {
     flexDirection: 'row',
     gap: 4,
-    // Line 2 starts under the name, not the dot.
     paddingLeft: DOT_SIZE + HEAD_GAP,
   },
   statLines: {

@@ -43,7 +43,6 @@ interface HistoryDrawerProps {
   onOpenFavorite: (favoriteId: string, session: HistorySession) => void
 }
 
-/** Riding overview opened from the main History button. */
 export function HistoryDrawer({
   visible,
   triggerRef,
@@ -119,8 +118,6 @@ export function HistoryDrawer({
 
   const showList = useCallback(
     (mode: Exclude<ListMode, null>) => {
-      // iOS ignores a Modal presented while another is still on screen, so the list waits for the
-      // drawer's close animation to finish.
       pendingListRef.current = mode
       onClose()
     },

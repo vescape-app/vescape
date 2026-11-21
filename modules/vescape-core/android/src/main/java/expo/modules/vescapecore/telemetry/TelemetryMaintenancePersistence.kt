@@ -14,7 +14,6 @@ import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.telemetry.sanitizers.FreeSpinCarry
 
-/** App-used outer transactions for maintenance operations that may span several protected ranges. */
 internal class TelemetryMaintenancePersistence(
   private val dao: VescapeDao,
 ) {
@@ -38,7 +37,6 @@ internal data class RebuildState(
   fun point() = BucketTelemetryPoint(at, boardId,
     speed, voltage, motorCurrent, batteryCurrent, duty, odometer, tempMosfet, tempMotor)
   companion object {
-    /** Canonical replay (ADR 0045): a set mask bit replaces the column, NULL included. */
     fun apply(previous: RebuildState?, frame: TelemetryFrameEntity): RebuildState? {
       val keyframe = frame.flags and TELEMETRY_FLAG_KEYFRAME != 0
       val old = previous?.takeIf { !keyframe && it.boardId == frame.boardId }
@@ -60,7 +58,6 @@ internal data class RebuildState(
 internal const val RIDE_SUMMARIES_CHUNK_MS = 3_600_000L
 
 /**
- * Diagnostic Events older than this are pruned by the Cleanup Maintenance Job.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DIAGNOSTIC_EVENT_RETENTION_MS`
  */
 internal const val DIAGNOSTIC_EVENT_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
@@ -71,9 +68,6 @@ internal const val DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
 internal data class DiagnosticEventPruneResult(val deleted: Int, val yielded: Boolean)
 
 /**
- * Delete Diagnostic Events older than [DIAGNOSTIC_EVENT_RETENTION_MS], one fenced batch per chunk so
- * a large backlog never holds a long write lock. Each batch first rechecks, at the current time, whether
- * a ride may be recording and yields to the Cleanup job if so. [MaintenanceJobScope.progress] runs between batches. Throws [MaintenanceRunFenced] when Restore or Clear all replaced the database.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `pruneDiagnosticEvents`
  */
 internal suspend fun pruneDiagnosticEvents(
@@ -94,40 +88,25 @@ internal suspend fun pruneDiagnosticEvents(
   }
 }
 
-
-/**
- * Read-only state one Ride summaries chunk hands the next: each Board's delta chain, its free-spin
- * state, and the last precise Ride Track fix. It shapes the next chunk's output but is never written as it. Every chunk
- * re-checks it against the database, so a ride deleted between chunks cannot leak into the rebuild.
- */
 class RideSummariesContext {
   internal val latestStates = mutableMapOf<String?, RebuildState>()
   internal var previousTrack: RideTrackPoint? = null
   internal var freeSpin = FreeSpinCarry()
 }
 
-/** What one Ride summaries chunk did. Owned ranges are half-open `[from, to)` on whole minutes. */
 sealed class RideSummariesChunkResult {
-  /** Rebuilt `[fromMs, toMs)`; `endMs` is where this run currently stops. */
   data class Rebuilt(val toMs: Long, val endMs: Long) : RideSummariesChunkResult()
-  /** Nothing left to rebuild: every old-generation minute is replaced. */
   data object Finished : RideSummariesChunkResult()
-  /** The rest belongs to a potentially active ride; check again at [retryAtMs]. */
   data class ActiveRide(val retryAtMs: Long) : RideSummariesChunkResult()
 }
 
 private fun floorMinute(ms: Long) = Math.floorDiv(ms, TELEMETRY_BUCKET_SIZE_MS) * TELEMETRY_BUCKET_SIZE_MS
 private fun floorChunk(ms: Long) = Math.floorDiv(ms, RIDE_SUMMARIES_CHUNK_MS) * RIDE_SUMMARIES_CHUNK_MS
 
-/** First owned chunk start, or null for a database with no frames and no Ride Track. */
 internal suspend fun VescapeDao.rideSummariesStartMs(): Long? =
   listOfNotNull(firstFrameAt(), firstRideTrackAt()).minOrNull()?.let(::floorChunk)
 
 /**
- * Start of the derived ride that may still be recording (ADR 0041), or null when the newest sample
- * at or before [nowMs] is a full split gap old. A future-dated sample (a wrong clock) is ignored, so
- * it never holds the database in a ride forever. Every Board and both streams count, and a Stop Recording is ignored, so
- * the cutoff can only be earlier than the real ride start, never later.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `activeRideStartMs`
  */
 internal suspend fun VescapeDao.activeRideStartMs(nowMs: Long, gapMs: Long): Long? {
@@ -143,9 +122,6 @@ internal suspend fun VescapeDao.activeRideStartMs(nowMs: Long, gapMs: Long): Lon
 }
 
 /**
- * Replace the complete minute buckets and exclusion portions in one owned chunk starting at
- * [fromMs], reading frames, Ride Track and boundary context in the same transaction. Live additive
- * upserts never meet a rebuilt bucket: the potentially active ride is never owned.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `rebuildRideSummariesChunk`
  */
 internal suspend fun VescapeDao.rebuildRideSummariesChunkImpl(
@@ -164,7 +140,6 @@ internal suspend fun VescapeDao.rebuildRideSummariesChunkImpl(
   }
   val toMs = minOf(floorChunk(fromMs) + RIDE_SUMMARIES_CHUNK_MS, end)
 
-  // Context that a deletion removed since the last chunk no longer exists to carry.
   for ((boardId, state) in context.latestStates.entries.toList()) {
     if (!frameExists(state.at, boardId)) context.latestStates.remove(boardId)
   }
@@ -177,7 +152,6 @@ internal suspend fun VescapeDao.rebuildRideSummariesChunkImpl(
   trimExclusions(fromMs, toMs)
 
   val states = mutableListOf<RebuildState>()
-  // Carry each independent delta chain across chunks, including unattributed legacy samples.
   for (row in getFrames(fromMs, toMs - 1, null, Int.MAX_VALUE)) {
     val current = RebuildState.apply(context.latestStates[row.boardId], row) ?: continue
     context.latestStates[row.boardId] = current
@@ -196,7 +170,6 @@ internal suspend fun VescapeDao.rebuildRideSummariesChunkImpl(
     excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed,
     excludedFromMaxDuty = sanitization.samples[i].excludedFromMaxDuty,
   ) }
-  // Plain inserts: merging into a neighbouring range would rewrite another chunk's output.
   for (exclusion in sanitization.exclusions) insertExclusionRange(exclusion)
   val buckets = buildTelemetryBuckets(sanitized, locations)
   upsertBuckets(buckets)
@@ -204,7 +177,6 @@ internal suspend fun VescapeDao.rebuildRideSummariesChunkImpl(
   return RideSummariesChunkResult.Rebuilt(toMs, end)
 }
 
-/** Remove the `[fromMs, toMs)` portion of every exclusion range, keeping what lies outside it. */
 private suspend fun VescapeDao.trimExclusions(fromMs: Long, toMs: Long) {
   for (range in getExclusions(fromMs, toMs - 1, null)) {
     deleteExclusionRange(range.id)

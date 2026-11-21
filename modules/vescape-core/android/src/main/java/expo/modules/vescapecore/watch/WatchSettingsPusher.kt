@@ -12,12 +12,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Phone -> Wear OS settings transport. Pushed whenever the applied settings change, which is every
- * settings write the service reloads for — not per tick.
- *
- * A process-scoped publisher handles both service settings and writes made with no service.
- * The Data Layer retains the latest payload while the watch is disconnected.
- *
  * @parity /modules/vescape-core/ios/watch/WatchColdState.swift
  */
 internal class WatchSettingsPusher(
@@ -57,13 +51,8 @@ internal class WatchSettingsPusher(
             }
     }
 
-    /**
-     * Serializes writes. The Data Layer is last-value-wins per path, so two writes in flight can
-     * land in either order and leave the wrist holding the settings the rider just replaced.
-     */
     private val writes = Mutex()
 
-    /** Last settings known to be on the wrist; cleared on failure so the next push retries. */
     @Volatile
     private var pushed: WatchSettings? = null
 
@@ -72,7 +61,6 @@ internal class WatchSettingsPusher(
         pushed = settings
         scope.launch {
             writes.withLock {
-                // A value the rider has already replaced is not worth a round trip to the watch.
                 if (settings != pushed) return@withLock
                 try {
                     write(settings)

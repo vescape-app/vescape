@@ -26,7 +26,6 @@ interface WeatherOption {
   color: ThemeColor
 }
 
-/** Rows follow the native groups: pick within a row for "either", across rows for "both". */
 const ROWS: readonly (readonly WeatherOption[])[] = [
   [
     { condition: 'clear', label: 'Clear', icon: SunIcon, color: theme.weather.sun },
@@ -48,7 +47,6 @@ interface WeatherFilterGridProps {
   onToggle: (condition: RideWeatherCondition) => void
 }
 
-/** Weather condition tiles for the History filter, each with its threshold in the rider's units. */
 export function WeatherFilterGrid({ value, onToggle }: WeatherFilterGridProps) {
   const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
   const distanceUnit = useSettingsStore((state) => state.distanceUnit)

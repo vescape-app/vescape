@@ -21,8 +21,6 @@ import { useActivePin } from '@/modules/group-ride/hooks/useActiveRiderSignal'
 import type { RelayClock } from '@/modules/group-ride/lib/riderSignal'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
-// A peer's recent path, tinted like their marker and fading out toward the tail —
-// the group-ride counterpart to the device's own live trail.
 export function RiderTrail({
   rider,
   highContrastRoutes,
@@ -75,7 +73,6 @@ export function RiderTrail({
   )
 }
 
-/** `onPress` makes the pin a touch target (public riders open their profile). */
 export function RiderPresencePin({ rider, onPress }: { rider: RosterRider; onPress?: () => void }) {
   const accents = useResolvedAccentColors()
   const color = riderMapColor(rider, accents)
@@ -93,8 +90,6 @@ export function RiderPresencePin({ rider, onPress }: { rider: RosterRider; onPre
       >
         <View style={[styles.riderDot, { backgroundColor: color }]}>
           {heading != null && (
-            // Rotating a ring centered on the dot keeps the arrow orbiting the dot;
-            // rotating the arrow itself would spin it in place at a fixed offset.
             <View style={[styles.riderHeadingRing, { transform: [{ rotate: `${heading}deg` }] }]}>
               <View style={[styles.riderHeadingArrow, { borderBottomColor: color }]} />
             </View>
@@ -108,11 +103,9 @@ export function RiderPresencePin({ rider, onPress }: { rider: RosterRider; onPre
   )
 }
 
-/** Every Rider's active signal, your own included (the presence layers leave you out). */
 export function LiveRiderSignalPins() {
   const rosterRows = useGroupRideStore((s) => s.rosterRows)
   const clock = useGroupRideStore((s) => s.relayClock)
-  // On the public ride the rider has no row: its own pins come as sent.
   const publicOwn = useGroupRideStore((s) => s.publicOwnPins)
   const rows = useMemo(
     () =>
@@ -141,7 +134,6 @@ function ownPinsRow(pins: {
   }
 }
 
-/** The signals and hazards in `rows` still active on `clock`. */
 export function RiderSignalPins({
   rows,
   clock,
@@ -171,13 +163,6 @@ export function RiderSignalPins({
   ])
 }
 
-/**
- * A Rider's active signal or hazard, pinned where it was sent. Apart from the presence pin, so it
- * stays put while the sender moves on or goes away. In its kind's hue, like its Ride Notice, roster
- * badge, and picker tile, and never muted by a stale presence. The pin stands on a stem above its
- * spot, clear of a presence dot and name label that sit on the same spot while the sender has not
- * moved.
- */
 function RiderPinMarker({
   rider,
   pin: rawPin,
@@ -218,9 +203,6 @@ function RiderPinMarker({
   )
 }
 
-// The stem lifts the signal pin off its spot, clear of most of a presence marker on the same spot,
-// and ends in a dot on the spot itself. A marker is anchored at its centre, so bottom padding
-// mirrors pin and stem to put that centre on the dot's centre.
 const SIGNAL_PIN_SIZE = 40
 const SIGNAL_STEM_HEIGHT = 22
 const SIGNAL_FOOT_SIZE = 8
@@ -243,8 +225,6 @@ const styles = StyleSheet.create({
     height: SIGNAL_STEM_HEIGHT,
     borderRadius: 1,
   },
-  // A marker is anchored at its centre. The top padding mirrors the label below the dot, so that
-  // centre is the dot and the rider's coordinate is not somewhere between dot and label.
   riderMarker: {
     alignItems: 'center',
     gap: RIDER_LABEL_GAP,

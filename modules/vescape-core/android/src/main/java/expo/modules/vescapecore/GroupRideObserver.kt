@@ -17,13 +17,6 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * The relay link of the public ride: a native WebSocket to the relay server that lives in the
- * foreground service and carries the [PublicRide] — going public, positions, nearby riders, pins.
- * The socket itself sends no location; [PublicRide] decides what leaves the device.
- *
- * Wire protocol: vescape-server `docs/group-ride/PROTOCOL.md`. All state is touched on the
- * main thread ([handler]); OkHttp callbacks hop back onto it before mutating anything.
- *
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift
  */
 internal class GroupRideObserver(
@@ -31,32 +24,22 @@ internal class GroupRideObserver(
     private val emit: (String, Map<String, Any?>) -> Unit,
     private val online: OnlineCapability,
     /**
-     * Plays a Rider Signal or Ride Hazard approach cue.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onCue`
      */
     private val onCue: (String) -> Unit = {},
-    /** The device's latest position (lat, lng), for looking around. */
     private val ownLocation: () -> Pair<Double, Double>? = { null },
     /**
-     * The fix and Privacy Zone state a Rider Signal send is checked against.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `signalContext`
      */
     private val signalContext: () -> RiderSignalContext = { RiderSignalContext(fix = null, insidePrivacyZone = true) },
     /**
-     * Read Account and token together, so a credential change cannot label a new token with the old Account.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `deviceCredential`
      */
     private val deviceCredential: () -> DeviceCredential? = { null },
     private val onPublicRideDemandChanged: () -> Unit = {},
-    /** Persists the public ride switch. */
     persistPublicRide: (PublicRideSwitch) -> Unit = {},
-    /** The last position the phone knew, for looking around without a fresh fix. */
     private val lastKnownLocation: () -> Pair<Double, Double>? = { null },
     now: () -> Long = System::currentTimeMillis,
-    /** Opens the relay socket; tests stand in a fake to see the frames. */
     private val sockets: WebSocket.Factory = OkHttpClient.Builder()
         .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
         .build(),
@@ -67,17 +50,11 @@ internal class GroupRideObserver(
     private var serverUrl: String? = null
     private var reconnectAttempt = 0
     private var stopped = true
-    /** Other Riders' signals as Ride Notices. */
     private val signalNotices = RiderSignalNotices()
-    /** Other Riders' hazards, announced on approach. */
     private val hazardCues = RideHazardCues()
-    /** JS asked to look around; fixes start and re-centre it. */
     private var lookingAround = false
-    /** Last availability handed to JS, so only changes are emitted. */
     private var lastSignalAvailability: Map<String, Any?>? = null
-    /** Last state handed to JS, replayed by [resync] so a fresh JS runtime is not stuck on `idle`. */
     private var lastConnection = "idle"
-    /** Remover for the App Status listener; non-null only while observing. */
     private var onlineUnsub: (() -> Unit)? = null
     private val reconnectRunnable = Runnable { connect() }
     private val missedRetryRunnable = Runnable {
@@ -88,8 +65,6 @@ internal class GroupRideObserver(
     private val ridersFlushRunnable: Runnable = Runnable { publicRide.flushRiders() }
 
     /**
-     * The public ride on this socket. Main thread, like the rest of the observer.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `publicRide`
      */
     private val publicRide: PublicRide = PublicRide(
@@ -101,7 +76,6 @@ internal class GroupRideObserver(
         },
         emit = { name, payload ->
             emit(name, payload)
-            // Going public or off it changes whether a pin can be sent.
             if (name == "onPublicRideStatus") refreshSignalAvailability()
         },
         send = { frame -> webSocket?.takeIf { linkOpen }?.let { send(it, frame) } ?: false },
@@ -122,7 +96,6 @@ internal class GroupRideObserver(
         override fun run() {
             val ws = webSocket
             if (!stopped && ws != null && publicRide.riding) {
-                // The beat also ages the GPS fix a send needs.
                 refreshSignalAvailability()
                 if (send(ws, JSONObject().put("type", "heartbeat"))) {
                     handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
@@ -131,24 +104,17 @@ internal class GroupRideObserver(
         }
     }
 
-    /** True while the observe connection should be kept alive (drives service idle checks). */
     val active: Boolean get() = !stopped
 
-    /** The public ride or a look-around needs the socket, so the owner keeps it up. */
     val publicRideNeedsLink: Boolean get() = publicRide.needsLink
     val publicRideNeedsGps: Boolean get() = publicRide.needsGps
 
     /**
-     * What the Watch Mirror draws: the nearby public riders while the rider rides public, else null.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `watchRoster`
      */
     val watchRoster: GroupRideRoster? get() = publicRide.nearbyRoster.takeIf { !stopped }
 
     fun start(url: String) {
-        // The observer outlives the JS runtime (it runs in the foreground service), so a relaunch
-        // re-subscribes to a socket that will emit nothing on its own. Replay instead of returning
-        // silently, or JS renders `idle`/OFFLINE over a live connection.
         if (!stopped && url == serverUrl) {
             resync()
             return
@@ -158,11 +124,8 @@ internal class GroupRideObserver(
         serverUrl = url
         reconnectAttempt = 0
         onlineUnsub?.invoke()
-        // The gate can outlive the JS runtime, so the observe socket reacts to App Status changes
-        // directly rather than through JS — tearing down on a block, resuming when it clears.
         onlineUnsub = online.addListener(::onOnlineChanged)
         connect()
-        // A fresh JS runtime learns the switch even before the relay answers.
         publicRide.resync()
     }
 
@@ -173,14 +136,12 @@ internal class GroupRideObserver(
         onlineUnsub = null
         webSocket?.close(NORMAL_CLOSURE, "client stop")
         webSocket = null
-        // A restarted observer must re-emit availability to the fresh JS store.
         lastSignalAvailability = null
         stopHeartbeat()
         publicRide.linkLost()
         emitConnection("idle")
     }
 
-    /** Replay the current observe state to a JS runtime that just re-subscribed. */
     private fun resync() {
         emitConnection(lastConnection)
         lastSignalAvailability = null
@@ -188,23 +149,12 @@ internal class GroupRideObserver(
         publicRide.resync()
     }
 
-    /**
-     * React to an App Status change while observing: tear down the moment online work is blocked,
-     * or reconnect once a block clears. Runs on the main thread (the coordinator fetch posts there).
-     */
     private fun onOnlineChanged() {
         if (stopped) return
         if (online.onlineBlocked) tearDownForBlock()
-        // Block cleared while observing with no socket (torn down by an earlier block, or refused
-        // at start): resume. A change arriving while connected leaves the live socket alone.
         else if (webSocket == null) connect()
     }
 
-    /**
-     * Drop an active/reconnecting observe socket because online work is now blocked: cancel
-     * reconnect, close the socket, and surface the distinct `blocked` connection state instead of a
-     * disconnect loop. Board Session, Recording, and History are untouched.
-     */
     private fun tearDownForBlock() {
         handler.removeCallbacks(reconnectRunnable)
         webSocket?.close(NORMAL_CLOSURE, "online blocked")
@@ -215,24 +165,17 @@ internal class GroupRideObserver(
         emitConnection("blocked")
     }
 
-    /** The socket is open: frames sent now reach the relay. */
     private val linkOpen: Boolean get() = webSocket != null && lastConnection == "connected"
 
-    /** Callback may arrive after its socket was closed or superseded. */
     private fun isCurrentSocket(ws: WebSocket): Boolean =
         !stopped && !online.onlineBlocked && webSocket === ws
 
     /**
-     * Raise a Rider Signal of [kind] at the latest GPS fix on the public ride. Rejected (logged,
-     * nothing sent) off the public ride, for an unknown kind, or without a recent fix.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `sendSignal`
      */
     fun sendSignal(kind: String) = sendPin(kind, RiderSignalKind.fromWire(kind))
 
     /**
-     * Mark a Ride Hazard of [kind] at the latest GPS fix; gated like [sendSignal].
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `sendHazard`
      */
     fun sendHazard(kind: String) = sendPin(kind, RideHazardKind.fromWire(kind))
@@ -248,19 +191,15 @@ internal class GroupRideObserver(
         }
     }
 
-    /** Clear the Rider's active signal. */
     fun clearSignal() {
         handler.post { submitPin(RiderPinIntent.Clear(PinSlot.SIGNAL)) }
     }
 
-    /** Clear the Rider's active hazard. */
     fun clearHazard() {
         handler.post { submitPin(RiderPinIntent.Clear(PinSlot.HAZARD)) }
     }
 
     /**
-     * Recompute what JS needs to offer a signal or hazard; emits only on change.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `refreshSignalAvailability`
      * @parity /modules/vescape-core/src/index.ts `GroupRideSignalAvailability`
      */
@@ -282,9 +221,6 @@ internal class GroupRideObserver(
     }
 
     /**
-     * A new device GPS fix: plays the approach cue of another Rider's hazard it just closed in on,
-     * and moves look-around with the rider.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onFix`
      */
     fun onFix(lat: Double, lng: Double) {
@@ -308,15 +244,12 @@ internal class GroupRideObserver(
     }
 
     /**
-     * Start the public ride from the persisted switch and the signed-in Account.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `loadPublicRide`
      */
     fun loadPublicRide(stored: PublicRideSwitch, accountId: String?) {
         handler.post { publicRide.load(stored, accountId) }
     }
 
-    /** The rider moved the switch; a refused change (signed out, end time past) re-emits the status. */
     fun setPublicRide(next: PublicRideSwitch) {
         handler.post {
             if (!publicRide.set(next)) publicRide.resync()
@@ -332,10 +265,6 @@ internal class GroupRideObserver(
         handler.post { publicRide.setBoardConnected(connected) }
     }
 
-    /**
-     * The signed-in Account changed. The public ride ends, and a live socket reconnects so the relay
-     * sees the new credential.
-     */
     fun setAccount(accountId: String?) {
         handler.post {
             val changed = publicRide.setAccount(accountId)
@@ -350,8 +279,6 @@ internal class GroupRideObserver(
     }
 
     /**
-     * Look around: watch public riders near the latest fix, or the last known position without one.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `watchPublicRiders`
      */
     fun watchPublicRiders() {
@@ -376,8 +303,6 @@ internal class GroupRideObserver(
     private fun connect() {
         val url = serverUrl ?: return
         if (stopped) return
-        // Native owns the gate: refuse the upgrade (fresh start or scheduled reconnect) while online
-        // work is blocked, surfacing `blocked` instead of hammering the relay.
         if (online.onlineBlocked) {
             emitConnection("blocked")
             return
@@ -423,8 +348,6 @@ internal class GroupRideObserver(
             handler.post {
                 if (!isCurrentSocket(ws)) return@post
                 if (code == GroupRideOnlineGate.VERSION_REJECTION_CODE) {
-                    // Server refused the upgrade for this app version — refresh App Status so the
-                    // gate learns the block, and surface `blocked` rather than reconnect-looping.
                     online.refresh()
                     tearDownForBlock()
                     return@post
@@ -453,7 +376,6 @@ internal class GroupRideObserver(
             return
         }
         when (val type = json.optString("type")) {
-            // The relay's greeting lists the optional features it speaks.
             "snapshot" -> {
                 publicRide.linkReady(stringSet(json.optJSONArray("features")), socketCredential?.accountId)
                 refreshSignalAvailability()
@@ -494,8 +416,6 @@ internal class GroupRideObserver(
     }
 
     /**
-     * Public riders' pins changed: they drive the signal notices and the hazard approach cues.
-     *
      * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `onPublicPins`
      */
     private fun onPublicPins(signals: List<SignalRider>, hazards: Map<String, RideHazard>, relayNow: Long?) {
@@ -518,16 +438,10 @@ internal class GroupRideObserver(
         private const val TAG = "GroupRideObserver"
         private const val NORMAL_CLOSURE = 1000
         private const val PING_INTERVAL_SECONDS = 20L
-        // Must stay well under the server's 5s stale threshold: it's the sole keepalive
-        // when a Rider isn't actively streaming presence (stationary, no GPS/board), so a
-        // slower beat would leave them perpetually greyed as "Stale".
         private const val HEARTBEAT_INTERVAL_MS = 3_000L
         private val RECONNECT_DELAYS_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 30_000)
 
         /**
-         * Null without both finite coordinates, so neither the phone map nor the watch places the
-         * Rider (not at 0,0, not at NaN).
-         *
          * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `presenceMap`
          */
         internal fun presenceMap(obj: JSONObject?): Map<String, Any?>? {
@@ -551,9 +465,6 @@ internal class GroupRideObserver(
         }
 
         /**
-         * A rider view map as the typed entry native keeps; null when it carries no id. No presence
-         * leaves the Rider unplaced.
-         *
          * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `rosterRider`
          */
         internal fun rosterRider(view: Map<String, Any?>): GroupRideRosterRider? {
@@ -577,7 +488,6 @@ internal class GroupRideObserver(
 }
 
 /**
- * The Rider's shared map target (their direction Map Point).
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `TargetPoint`
  */
 internal data class TargetPoint(
@@ -597,7 +507,6 @@ internal data class RiderPresence(
     val phoneBattery: Double?,
     val boardName: String?,
     val target: TargetPoint? = null,
-    /** GPS time of the fix (epoch ms); sent beside the presence on a public ride, never inside it. */
     val at: Long? = null,
 ) {
     fun toJson(): JSONObject {

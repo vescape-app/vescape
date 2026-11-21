@@ -33,7 +33,6 @@ interface TuneDialProps {
   min: number
   max: number
   step: number
-  /** Badge and previous-value precision, independent of the gesture step. */
   displayDecimals?: number
   unit?: string | null
   indicatorGlow?: 'left' | 'right'
@@ -42,7 +41,6 @@ interface TuneDialProps {
   onValueChange: (value: number) => void
 }
 
-/** A horizontal ruler the rider drags to pick a value, with haptic steps and end stops. */
 export function TuneDial({
   value,
   previousValue,

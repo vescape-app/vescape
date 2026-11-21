@@ -9,7 +9,6 @@ import {
 } from '@/modules/history/lib/metricColorScale'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
-/** The metric's enabled alert marks and its hot colour range, as every live gauge draws them. */
 export function useMetricGaugeDecor(metric: TelemetryMetricConfig) {
   const alertRules = useResolvedAlertRules()
   const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)

@@ -87,7 +87,6 @@ export function useBoardConnection() {
 
   const handleRetryConnect = useCallback(() => {
     if (!activeBoard) return
-    // An unlinked Board can't start a Board Session; route to the link/probe flow.
     if (boardNeedsLink(activeBoard)) {
       router.push({ pathname: routes.editBoardLink, params: { boardId: activeBoard.id } })
       return

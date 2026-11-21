@@ -1,4 +1,3 @@
-# Live telemetry panel pulled up from the bottom strip, over the dashboard.
 appId: ${APP_ID}
 ---
 - tapOn:
@@ -10,9 +9,6 @@ appId: ${APP_ID}
 - waitForAnimationToEnd:
     timeout: 20000
 - takeScreenshot: ${OUT_DIR}/02-telemetry-panel
-# Close on the scrim above the sheet, as the rider does. Its Pressable spans the screen, so an
-# id tap would land on the sheet in the middle; the panel stays mounted when closed, so there is
-# no visibility to wait on either.
 - tapOn:
     point: 50%, 4%
 - waitForAnimationToEnd:

@@ -61,7 +61,6 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 export default function MapComponentsShowcase() {
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  // Fixture camera is north-up and flat, so the arrow shows the raw fixture bearing.
   const mapPose = useSharedValue({ heading: 0, pitch: 0 })
   const puckBearing = useSharedValue<number | null>(FIXTURE_GPS_PUCK_BEARING_DEG)
   const [styleExpanded, setStyleExpanded] = useState(false)
@@ -130,7 +129,6 @@ export default function MapComponentsShowcase() {
           animationMode="none"
         />
         {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
-        {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
         <MainMapLayers
           historyActive={false}
           expandSelectedMapPoints
@@ -173,8 +171,6 @@ export default function MapComponentsShowcase() {
           onFocusDirectionPoint={() => {}}
         />
         <RiderSignalPins rows={FIXTURE_PIN_ROWS} clock={FIXTURE_RELAY_CLOCK} />
-        {/* Rendered alongside the live layer (not behind historyActive) so the ride route,
-            markers and media pins are always visible together with everything above. */}
         <HistoryMapLayers
           rideRouteShape={FIXTURE_RIDE_ROUTE_SHAPE}
           rideRoute={FIXTURE_RIDE_ROUTE}
@@ -211,7 +207,6 @@ export default function MapComponentsShowcase() {
             setLastEvent(`Navigation Profile: ${profile}`)
           }}
         />
-        {/* Open variant: what the navigation sheet shows while a path is on screen. */}
         <NavigationProfileSelector
           activeProfile={navigationProfile}
           open

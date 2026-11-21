@@ -1,6 +1,5 @@
 import Foundation
 
-/// One VESC Fault Occurrence as it crosses the bridge and lives in the durable store.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `VescFaultOccurrence`
 /// @parity /modules/vescape-core/src/index.ts `VescFaultOccurrence`
 struct VescFaultOccurrence {

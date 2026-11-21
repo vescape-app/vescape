@@ -5,7 +5,6 @@ internal let MAX_ENERGY_SAMPLE_GAP_MS: Int64 = 5_000
 
 internal struct BucketTelemetryPoint {
   let capturedAtMs: Int64
-  /// Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028).
   let boardId: String?
   let speedCentiKmh: Int
   let batteryVoltageMv: Int
@@ -28,8 +27,6 @@ internal func telemetryMaxOptional(_ lhs: Int?, _ rhs: Int?) -> Int? {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt
 internal struct TelemetryBucket {
   let bucketStartMs: Int64
-  /// Owning Board (`boards.id`), or `""` when the samples match no saved Board — the column is part
-  /// of the bucket primary key, so unattributed rows need a value rather than null (ADR 0028).
   let boardId: String
   var sampleCount = 0
   var firstSampleAtMs = Int64.max
@@ -91,16 +88,11 @@ internal struct TelemetryBucket {
     lastEnergyPoint = point
   }
 
-  /// The Ride Track's contribution to this minute. Separate from `add` because the track is its own
-  /// stream on its own clock — a fix is not a Telemetry Sample and must not count as one (ADR 0038).
   mutating func addLocation(_ point: BucketLocationPoint) {
     gpsPointCount += 1
     if point.precise { preciseGpsPointCount += 1 }
     firstSampleAtMs = min(firstSampleAtMs, point.capturedAtMs)
     lastSampleAtMs = max(lastSampleAtMs, point.capturedAtMs)
-    // GPS movement extends the Moving Window through a stretch with no telemetry at all, which is
-    // what keeps the seek timeline and Time honest after a board drops mid-ride (ADR 0017). It
-    // stays ends-only trimming: this widens the window, it never counts a Telemetry Sample.
     if point.moving {
       firstMovingAtMs = min(firstMovingAtMs ?? point.capturedAtMs, point.capturedAtMs)
       lastMovingAtMs = max(lastMovingAtMs ?? point.capturedAtMs, point.capturedAtMs)
@@ -114,13 +106,11 @@ internal struct TelemetryBucket {
   }
 }
 
-/// One Ride Track fix as the minute buckets see it.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt `BucketLocationPoint`
 internal struct BucketLocationPoint {
   let capturedAtMs: Int64
   let boardId: String?
   let precise: Bool
-  /// GPS movement evidence: precise, with a reported speed at or above the rider's threshold.
   let moving: Bool
   let distanceFromPreviousCm: Int64?
   let gpsSpeedCentiMps: Int?
@@ -147,8 +137,6 @@ internal func buildTelemetryBuckets(
     let bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
     let boardId = point.boardId ?? UNKNOWN_TELEMETRY_BOARD_ID
     let key = "\(boardId):\(bucketStart)"
-    // A minute can hold fixes and no frame at all — a board dropout is exactly when the Ride Track
-    // matters most — so the track creates its own bucket rather than being discarded (ADR 0038).
     var bucket = buckets[key]
       ?? TelemetryBucket(bucketStartMs: bucketStart, boardId: boardId)
     bucket.addLocation(point)

@@ -12,15 +12,11 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
 import { theme } from '@/constants/theme'
 
 export default function BatteryRawScreen() {
-  // Latest smart-BMS snapshot; the store swaps the whole object each poll, so this
-  // re-renders live as native emits `onBms`.
   const bms = useBleStore((s) => s.latestBms)
   const bmsLinked = useBoardStore(
     (s) => s.boards.find((b) => b.id === s.activeBoardId)?.link?.hasBms === true,
   )
 
-  // Pack-level min/max/spread derived from the raw cell groups, minus the per-group
-  // rows (those already appear verbatim in the raw snapshot above).
   const derived = useMemo(() => {
     const summary = summarizeBms(bms)
     if (!summary) return null

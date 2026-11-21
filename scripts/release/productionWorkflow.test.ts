@@ -38,8 +38,6 @@ describe('production promotion workflow contract', () => {
     expect(workflow).not.toMatch(/gradle|expo prebuild|bundleRelease|\.aab/i)
   })
 
-  // Staged rollout was removed deliberately: every promotion goes to 100% at once, so no
-  // percentage, halt, resume or advance path may creep back into the Play calls.
   test('promotes to a completed release with no staged rollout path', () => {
     expect(fastfile).toContain('when "status"')
     expect(fastfile).toContain('track_promote_release_status: "completed"')
@@ -69,8 +67,6 @@ describe('production promotion workflow contract', () => {
     expect(workflow).toContain('echo skipped > github-release-status.txt')
   })
 
-  // The server reports what the stores serve, so the push must follow a successful Play write
-  // and must never fail a release that already reached production.
   test('tells the server about the Android version only after Play succeeded', () => {
     const play = workflow.indexOf('Apply Wear production operation')
     const push = workflow.indexOf('Tell the server Android now serves this version')
@@ -81,7 +77,6 @@ describe('production promotion workflow contract', () => {
     expect(workflow).toContain('INTERNAL_API_KEY: ${{ secrets.VESCAPE_INTERNAL_API_KEY }}')
   })
 
-  // No store credential belongs in the server repository: it learns the version from here.
   test('records iOS by hand, since nothing here releases it to the App Store', () => {
     expect(recordWorkflow).toContain('options: [ios, android]')
     expect(recordWorkflow).toContain(

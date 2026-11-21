@@ -1,17 +1,3 @@
-/**
- * Semantic color tokens for Vescape.
- *
- * New structure:
- *   - palette: named hue swatches + mono + slate (surface/text scale + map buildings)
- *   - telemetry: single-color token per metric
- *   - map: user/target/building colors
- *   - status: semantic UI-state tokens (info/success/warning/error/favorite)
- *   - alpha: typed opacity helper for every translucent value
- *
- * Never hardcode a color that belongs to one of these categories directly in a
- * component. Add new tokens here first, then reference them via theme.*.
- */
-
 import * as ReactNative from 'react-native'
 
 export type ResolvedTheme = 'light' | 'dark'
@@ -19,7 +5,6 @@ export type ResolvedTheme = 'light' | 'dark'
 const ReactNativeModule =
   (ReactNative as typeof ReactNative & { default?: typeof ReactNative }).default ?? ReactNative
 
-/** Allowed opacity levels for every translucent color value. */
 export type AlphaLevel = 0 | 0.03 | 0.1 | 0.12 | 0.3 | 0.4 | 0.6 | 0.7 | 0.75 | 0.8 | 0.85 | 1
 
 export const ALPHA_RESOURCE_SUFFIX = {
@@ -43,7 +28,6 @@ interface AdaptiveColorMetadata {
   light: string
 }
 
-/** Native-compatible theme token. Resolve it before passing it to a string-only renderer. */
 export type ThemeColor = ReactNative.ColorValue
 
 const adaptiveColorMetadata = new WeakMap<object, AdaptiveColorMetadata>()
@@ -64,7 +48,6 @@ function adaptiveColor(resource: string, dark: string, light: string): ThemeColo
   return color as ReactNative.OpaqueColorValue
 }
 
-/** Resolve an adaptive native color to a renderer-safe string for the current appearance. */
 export function resolveAdaptiveColor(color: ThemeColor, appearance: ResolvedTheme): string {
   if (typeof color === 'string') return color
   const metadata = adaptiveColorMetadata.get(color)
@@ -119,7 +102,6 @@ function alpha(color: ThemeColor, level: AlphaLevel): ThemeColor {
   throw new Error(`Unsupported color format for alpha(): ${color}`)
 }
 
-/** Blend `over` on top of `base` at `level` (0–1). Both must be `#rrggbb` hex. */
 export function blend(base: string, over: string, level: number): string {
   const parse = (hex: string) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16))
   const [br, bg, bb] = parse(base)
@@ -130,7 +112,6 @@ export function blend(base: string, over: string, level: number): string {
 
 interface Hue<Color = string> {
   color: Color
-  /** Alternate shade within the same hue — aliases `light`. */
   alt: Color
   light: Color
   text: Color
@@ -139,9 +120,7 @@ interface Hue<Color = string> {
 }
 
 export type AccentHue = Hue & {
-  /** Filled action background. */
   solid: string
-  /** Content drawn on `solid`. */
   onSolid: string
 }
 
@@ -157,7 +136,6 @@ function hue(
   return { color, alt: light, light, text, bg, border, solid, onSolid }
 }
 
-/** Plain strings for renderers and for semantic solid/on-solid action pairs. */
 export const accentColors = {
   dark: {
     sky: hue('#38bdf8', '#7dd3fc', '#7dd3fc', '#0c2a3f', '#0369a1', '#0369a1', '#ffffff'),
@@ -260,8 +238,6 @@ export const palette = {
   beige: adaptiveHue('beige'),
 } as const
 
-/** Appearance-aware neutral UI colors. Raw slate swatches stay in `palette.slate`; components use
- * this semantic layer so existing StyleSheets update natively without JS style regeneration. */
 export const neutralColors = {
   dark: {
     bg: '#111827',
@@ -285,7 +261,6 @@ export const neutralColors = {
   },
 } as const
 
-/** Interactive surface language. Navy signals that the rider can act on an object. */
 export const controlColors = {
   dark: {
     background: '#0f172a',
@@ -309,10 +284,6 @@ export const controlColors = {
   },
 } as const
 
-/**
- * iOS resolves these values through DynamicColorIOS; Android needs resources, which
- * `scripts/generate-android-theme.ts` generates from them.
- */
 export const neutral = {
   bg: adaptiveColor('neutral_bg', neutralColors.dark.bg, neutralColors.light.bg),
   surface: adaptiveColor(
@@ -379,16 +350,8 @@ export const control = {
   icon: adaptiveColor('control_icon', controlColors.dark.icon, controlColors.light.icon),
 } as const
 
-/**
- * Colored-action surface — the "two-layer" colored button. On dark the accent alone (transparent
- * base) carries the identity; on light the accent tints the navy control surface (navy base + the
- * accent at `tint` on top), so a colored action keeps the weight of a filled control without a new
- * palette color.
- */
 export const coloredAction = {
-  /** Dark theme: accent alone at this opacity on the surface beneath (dev's tinted pill). */
   darkTint: 0.12,
-  /** Accent strength over the navy control base in light mode. */
   tint: 0.3,
 } as const
 
@@ -403,9 +366,6 @@ export const telemetryColors = {
     battVoltage: accentColors.dark.green.light,
     footpad1: neutralColors.dark.textSecondary,
     footpad2: neutralColors.dark.textMuted,
-    // Pitch, roll and balance are read side by side on the IMU dial, with the pink off-balance
-    // reading: unrelated hues, so each mark finds its number. Balance is the setpoint the others
-    // are read against, so it takes the neutral.
     pitch: accentColors.dark.cyan.color,
     roll: accentColors.dark.purple.color,
     balancePitch: neutralColors.dark.textSecondary,
@@ -511,15 +471,12 @@ export const status = {
   },
 } as const
 
-/** Tune Profile actions and entry points. */
 export const tune = palette.purple
 
-/** Board lights control — warm headlight accent. */
 export const light = {
   accent: palette.amber.color,
 } as const
 
-/** Icon accent shared by every entry point for a settings destination. */
 export const settingsIcon = {
   battery: palette.green.color,
   account: palette.cyan.color,
@@ -541,14 +498,12 @@ export const settingsIcon = {
   about: palette.cyan.color,
 } as const
 
-/** Banner callouts — flat row, accent icon + neutral text. */
 export const banner = {
   info: { icon: status.info.color },
   warning: { icon: status.warning.color },
   error: { icon: status.error.color },
 } as const
 
-/** Weather condition icon colors — derived from palette. */
 export const weather = {
   sun: palette.amber.light,
   partly: palette.amber.color,
@@ -561,36 +516,27 @@ export const weather = {
   thunder: palette.purple.thunder,
 } as const
 
-/** Privacy zone tints — derived from palette via alpha(). */
 export const zone = {
   bg: alpha(palette.green.color, 0.12),
   border: alpha(palette.green.color, 0.6),
   borderDim: alpha(palette.slate.color, 0.6),
 } as const
 
-/** Shared press/touch interaction tokens. */
 export const interaction = {
-  /** Android ripple for bounded pressables (cards, cells). */
   ripple: {
     color: alpha(neutral.textSecondary, 0.12),
     borderless: false,
     foreground: true,
   },
-  /** Android ripple for icon-only pressables with no visible bounds. */
   rippleBorderless: {
     color: alpha(neutral.textSecondary, 0.12),
     borderless: true,
     foreground: true,
   },
-  /** iOS/cross-platform pressed background for list rows and sheet items. */
   pressedBg: neutral.surface,
-  /** iOS/cross-platform pressed opacity for metric cells and icon buttons. */
   pressedOpacity: 0.55,
 } as const
 
-/** Board rail choices reuse shared hues; extend this list independently of UI accent roles.
- * `group-ride` is the persisted legacy ID for mint. Keep it stable for saved Boards.
- */
 export const personalizationColorOptions = [
   { id: 'sky', value: palette.sky.color },
   { id: 'cyan', value: palette.cyan.color },
@@ -608,19 +554,12 @@ export const personalizationColorOptions = [
   { id: 'violet', value: palette.violet.color },
 ] as const
 
-/** Weights shipped as static Raleway instances in `assets/fonts/`. Android ignores the
- *  `wght` variation axis of a custom variable font (it renders the file's default
- *  instance), so each weight is its own font file and family name. */
 export type FontWeight = '300' | '400' | '500' | '600' | '700' | '800' | '900'
 
-/** App-wide UI font family for a given weight. Load via `useFonts` in
- *  `src/app/_layout.tsx` before first render. Monospace readouts
- *  (`fontFamily: 'monospace'`) bypass this token by inlining their value. */
 export const font = (weight: FontWeight = '500') => `Raleway-${weight}`
 
 export type MonoWeight = '500' | '600' | '700' | '800'
 
-/** Static JetBrains Mono family used by numeric readouts. */
 export const mono = (weight: MonoWeight = '700') => `JetBrainsMono-${weight}`
 
 export const theme = {

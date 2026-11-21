@@ -1,9 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Wrist dismiss: the wire bytes a wrist sends go through `BoardSessionController`'s real
-/// command routing into the process-wide `RideNotices` the phone card dismisses, and nothing else.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchNoticeDismissTest.kt
 final class WatchNoticeDismissTests: XCTestCase {
   private var controller: BoardSessionController!

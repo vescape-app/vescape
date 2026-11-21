@@ -5,11 +5,8 @@ private func forecastBody(_ temperatureC: Int) -> Data {
   Data(#"{"current":{"time":"2026-06-10T12:00","temperature_2m":\#(temperatureC).0,"weather_code":3}}"#.utf8)
 }
 
-/// Forecast lifecycle: the freshness and distance gate, coalescing of in-flight requests without
-/// losing the ride's newest position, and retention of a successful result across later failures.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/weather/WeatherCoordinatorTest.kt
 final class WeatherCoordinatorTests: XCTestCase {
-  /// Records every request and hands each one's completion back for manual resolution.
   private final class RecordingTransport {
     var urls: [String] = []
     private var pending: [(Data?) -> Void] = []
@@ -41,7 +38,6 @@ final class WeatherCoordinatorTests: XCTestCase {
     coordinator.onPosition(latitude: 52.2000, longitude: 21.0000)
     transport.resolveLast(forecastBody(20))
 
-    // A metre down the road, seconds later: same grid cell, same ten-minute window.
     coordinator.onPosition(latitude: 52.2001, longitude: 21.0001)
     now += 60_000
 
@@ -71,7 +67,6 @@ final class WeatherCoordinatorTests: XCTestCase {
 
   func testFollowsTheRideToThePositionThatArrivedMidFetch() {
     coordinator.onPosition(latitude: 52.2, longitude: 21.0)
-    // The ride keeps moving while the request is out; those Fixes must not simply be dropped.
     coordinator.onPosition(latitude: 52.3, longitude: 21.0)
     coordinator.onPosition(latitude: 52.5, longitude: 21.0)
     XCTAssertEqual(transport.inFlight, 1)
@@ -114,11 +109,9 @@ final class WeatherCoordinatorTests: XCTestCase {
     transport.resolveLast(forecastBody(20))
     var seen: [Int] = []
     _ = coordinator.addNativeChangeListener { seen.append($0.temperatureC) }
-    // The last Fix failed to fetch, but it is still where the rider is.
     coordinator.onPosition(latitude: 52.4, longitude: 21.0)
     transport.resolveLast(nil)
 
-    // Inside the freshness gate, yet the connect fetches anew and stays quiet until it lands.
     coordinator.refresh()
     XCTAssertTrue(transport.urls.last?.contains("latitude=52.4") == true)
     XCTAssertEqual(seen, [])

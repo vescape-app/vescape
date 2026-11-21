@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 
-/// Open-Meteo stand-in: hourly samples for the requested UTC days, temperature from the latitude.
 private final class FakeOpenMeteo: MaintenanceHttp {
   var urls: [String] = []
   var respond: (String) throws -> MaintenanceHttpResponse?
@@ -41,14 +40,12 @@ private final class FakeOpenMeteo: MaintenanceHttp {
   }
 }
 
-/// Ride weather backfill Maintenance Job (#606) through the production GRDB statements and fence.
 /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/RideWeatherBackfillHostTest.kt
 func runRideWeatherBackfillContract() throws {
   let minute: Int64 = 60_000
   let hour = 60 * minute
   let day = 24 * hour
   let board = "board-a"
-  /// 2024-03-10T00:00Z: a US DST change day, inside the historical forecast range.
   let base: Int64 = 1_710_028_800_000
   let now = base + 365 * day
   let job = RideWeatherJob.shared
@@ -66,7 +63,6 @@ func runRideWeatherBackfillContract() throws {
           switchState: 1, adc1Milli: 0, adc2Milli: 0, odometerCm: at, tempMosfetDeciC: 300,
           tempMotorDeciC: 300)
   }
-  /// A ride of `length` with frames every 10 s and, unless `gps` is false, precise fixes at `lat`.
   func ride(_ queue: DatabaseQueue, _ start: Int64, _ length: Int64, lat: Double = 52.0, gps: Bool = true) throws {
     try queue.write { db in
       for at in stride(from: start, to: start + length, by: 10_000) {
@@ -99,7 +95,6 @@ func runRideWeatherBackfillContract() throws {
     try job.run(scope(queue, http, at: at), settings: [:])
   }
 
-  // Fills missing days, then settles without another scan. Midnight-crossing ride; no-GPS ride.
   do {
     let queue = try freshQueue()
     try ride(queue, base + day - 30 * minute, hour)
@@ -120,7 +115,6 @@ func runRideWeatherBackfillContract() throws {
     try require(http.urls.count == 1, "second launch: no request")
   }
 
-  // Usable earlier weather is enough, and live rows committed during the request win.
   do {
     let queue = try freshQueue()
     try queue.write { _ = try storeWeatherObservation($0, WeatherObservation(observedAtMs: base + 8 * hour, temperatureC: 5, weatherCode: 0, gustKmh: nil, isDay: true), force: false) }
@@ -137,7 +131,6 @@ func runRideWeatherBackfillContract() throws {
     try require(try observations(queue, base + 5 * day, base + 6 * day).filter { $0.observedAtMs >= base + 5 * day } == [live], "live row wins")
   }
 
-  // Temporary misses hold the watermark; permanent misses settle. Area A never fills B's days.
   do {
     let queue = try freshQueue()
     try ride(queue, base, 30 * minute, lat: 52.0)
@@ -166,7 +159,6 @@ func runRideWeatherBackfillContract() throws {
     try require(!(try job.hasWork(scope(queue, http), settings: [:])) && http.urls.isEmpty, "permanent miss not refetched")
   }
 
-  // 429 stops the run and honors Retry-After; transport failures are temporary.
   do {
     let queue = try freshQueue()
     try ride(queue, base, 30 * minute, lat: 52.0)
@@ -184,7 +176,6 @@ func runRideWeatherBackfillContract() throws {
     try require(try run(queue, FakeOpenMeteo(), at: later) == .completed, "online completes")
   }
 
-  // Multi-year history uses bounded windows and the archive before the forecast range.
   do {
     let queue = try freshQueue()
     let first = WEATHER_HISTORICAL_FORECAST_FIRST_DAY_MS
@@ -201,7 +192,6 @@ func runRideWeatherBackfillContract() throws {
     try require(spans.count == 4, "window count \(spans.count)")
   }
 
-  // Null and duplicate samples are dropped; timestamps are UTC epoch seconds.
   do {
     let samples = parseWeatherBackfillHourly(Data("""
       {"hourly":{"time":[1710054000,1710054000,1710057600,1710061200],
@@ -219,7 +209,6 @@ func runRideWeatherBackfillContract() throws {
     try require(parseWeatherBackfillWatermark(weatherBackfillWatermarkValue(version: job.version, doneThroughMs: 5), version: job.version) == 5, "watermark round trip")
   }
 
-  // A fence during the fetch prevents late writes.
   do {
     let queue = try freshQueue()
     try ride(queue, base, 30 * minute)
@@ -233,7 +222,6 @@ func runRideWeatherBackfillContract() throws {
     try require(try watermark(queue) == nil, "no late watermark")
   }
 
-  // The active ride is never read and defers to its closure.
   do {
     let queue = try freshQueue()
     try ride(queue, now - 20 * minute, 15 * minute)

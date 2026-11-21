@@ -10,13 +10,6 @@ import { theme, type ThemeColor } from '@/constants/theme'
 import type { TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import type { LiveMetricPoint } from '@/modules/board/hooks/useLiveMetric'
 
-/**
- * Live samples as the parallel arrays a chart draws from, cut to the rider's live window.
- *
- * The window is applied here rather than by the camera: it is the domain a live stack shows, and
- * the stack measures its own domain from the data it is handed. Zooming in is still the camera's
- * job — this only decides how much ride is on the table.
- */
 export function toChartSeries(
   samples: readonly LiveMetricPoint[],
   windowMs?: number,
@@ -36,7 +29,6 @@ function exclusionColor(reason: string): ThemeColor {
   return reason === 'free_spin' ? theme.palette.yellow.color : theme.palette.slate.textSecondary
 }
 
-/** Excluded stretches as hairlines on the floor of the plot, clear of the line they annotate. */
 export function toChartBands(ranges: ExcludedRange[] | undefined): ChartBand[] | undefined {
   if (!ranges || ranges.length === 0) return undefined
   return ranges.map((range) => ({
@@ -48,9 +40,7 @@ export function toChartBands(ranges: ExcludedRange[] | undefined): ChartBand[] |
   }))
 }
 
-/** A live chart plus the alert control it belongs to, if any. */
 export interface LiveChartSpec extends ChartSpec {
-  /** Alert system controlId — the chart of the layout's own control gets its threshold lines. */
   controlId?: string
 }
 
@@ -61,9 +51,7 @@ export interface LiveChartInput {
   range: ChartYRange
   height?: number
   bands?: ChartBand[]
-  /** Horizontal reference lines on the left axis — where a configured threshold sits. */
   thresholds?: number[]
-  /** A second line on the right-hand axis — pack voltage under pack percent. */
   secondary?: {
     key: string
     data: ChartSeriesData
@@ -76,7 +64,6 @@ export interface LiveChartInput {
 
 const DEFAULT_CHART_HEIGHT = 80
 
-/** One detail chart of a live stack, described in the terms a metric config already carries. */
 export function toLiveChart({
   key,
   metric,
@@ -120,7 +107,6 @@ export function toLiveChart({
   }
 }
 
-/** Convert only chart text. Unit changes reuse canonical series, ranges, thresholds and keys. */
 export function presentLiveChart(chart: ChartSpec, distanceUnit: DistanceUnit): ChartSpec {
   const speed = chart.series.some((series) => series.unit === 'km/h' && series.axis !== 'right')
   const rightSpeed = chart.series.some(

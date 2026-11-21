@@ -37,7 +37,6 @@ object BatterySocEstimator {
         loadPresets(json)
     }
 
-    /** Load presets only if not already loaded (history reads may run before the service starts). */
     fun ensureInitialized(context: Context) {
         if (presetById.isEmpty()) init(context)
     }

@@ -24,9 +24,9 @@ final class LiveSeriesEmitterTests: XCTestCase {
 
   func testPrunesOutsideWindow() {
     let emitter = LiveSeriesEmitter()
-    emitter.setWindowMinutes(1) // 60_000 ms window
+    emitter.setWindowMinutes(1)
     emitter.add(sample(ts: 0, speed: 5))
-    emitter.add(sample(ts: 70_000, speed: 9)) // 70s newer -> drops the ts=0 row
+    emitter.add(sample(ts: 70_000, speed: 9))
 
     let snapshot = emitter.recentSnapshot()
     XCTAssertEqual(snapshot.count, 1)
@@ -49,7 +49,6 @@ final class LiveSeriesEmitterTests: XCTestCase {
     }
 
     emitter.start()
-    // Battery is the always-on `onLiveSeries` set; speed streams only on request.
     emitter.add(["lastPacketAt": Int64(1_000), "batteryVoltage": 50.0])
     XCTAssertEqual(1, emissions)
 

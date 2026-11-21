@@ -8,13 +8,6 @@ import expo.modules.vescapecore.database.MigrationDatabase
 import expo.modules.vescapecore.database.MigrationStep
 
 /**
- * The schema edges that made Accessories, and the rider's calibration for them, durable.
- *
- * Pinned to the columns rather than to the SQL text: what matters is that an enrolled Accessory
- * survives a reboot keyed on its manifest identity, that what the rider calibrated for it is keyed
- * on the capability as well, and that a restored database from an older app reaches this shape
- * without losing the Accessories it never had.
- *
  * @parity /modules/vescape-core/ios/database/PersistenceSchema.swift `createAccessories`
  * @parity /modules/vescape-core/ios/database/PersistenceSchema.swift `createAccessoryGroundClearance`
  */
@@ -49,9 +42,6 @@ class AccessoryMigrationTest {
   @Test
   fun aCalibrationIsKeyedOnTheAccessoryAndTheCapability() {
     val create = migrationSql(DatabaseMigrations.MIGRATION_44_45).single()
-    // The composite key is the point: one unit may declare a nose sensor and a tail sensor, and
-    // they cannot share near/far distances or a correction direction. Keying on the Accessory alone
-    // would make the second one overwrite the first.
     assertTrue(create, create.contains("PRIMARY KEY(accessory_id, capability_id)"))
     for (column in listOf(
       "accessory_id TEXT NOT NULL",
@@ -64,16 +54,12 @@ class AccessoryMigrationTest {
     )) {
       assertTrue("missing `$column`", create.contains(column))
     }
-    // Same reconciliation reason as the Accessories table: a database restored from iOS already
-    // holds it under the GRDB migration id.
     assertTrue(create, create.contains("CREATE TABLE IF NOT EXISTS accessory_ground_clearance"))
   }
 
   @Test
   fun anEnrolledAccessoryIsKeyedOnItsManifestIdentity() {
     val create = migrationSql().single()
-    // The primary key is the whole duplicate defence: the same hardware renamed, re-flashed, or
-    // seen on a different BLE handle updates one row rather than adding a second.
     assertTrue(create, create.contains("accessory_id TEXT NOT NULL PRIMARY KEY"))
     for (column in listOf(
       "name TEXT NOT NULL",
@@ -90,8 +76,6 @@ class AccessoryMigrationTest {
 
   @Test
   fun theTableIsCreatedIfAbsentSoARestoredIosDatabaseIsAccepted() {
-    // GRDB creates the same table under its own migration id. A backup restored from iOS arrives
-    // already holding it, and the Room path must reconcile rather than fail.
     assertTrue(migrationSql().single().contains("CREATE TABLE IF NOT EXISTS accessories"))
   }
 }

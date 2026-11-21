@@ -7,7 +7,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-# Replace obsolete PR checks, while keeping a verdict for every dev/main commit.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -18,9 +17,6 @@ jobs:
     with:
       source_sha: ${{ github.sha }}
 
-  # Full app-native builds cost minutes and require SDKs. Keep those filtered by platform source;
-  # the host-only persistence contract above remains unconditional because shared fixtures and
-  # archive exchange span both implementations.
   native-gate:
     name: Native gate
     runs-on: ubuntu-24.04
@@ -59,6 +55,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -67,6 +65,9 @@ jobs:
       - run: bun run copy:shared
       - run: bun run ts
       - run: bun run lint
+      - run: bun run comments:check
+        env:
+          COMMENT_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
       - run: bun run format:check
       - run: bun run knip
       - run: bun run test:bun
@@ -109,9 +110,6 @@ jobs:
         if: always()
         run: cd android && ./gradlew --stop || true
 
-  # Swift was only ever compiled in the release build, so a type error in `modules/vescape-core/ios`
-  # escaped every PR and failed at TestFlight time. The SwiftPM package globs the same tree
-  # CocoaPods ships, so the tests cannot run without compiling it.
   ios:
     needs: native-gate
     if: github.event_name == 'workflow_dispatch' || needs.native-gate.outputs.ios == 'true'
@@ -178,7 +176,6 @@ jobs:
           echo '::warning::Simulator audio cleanup timed out; retrying the iOS suite once in a fresh test process.'
           bun run test:ios
         env:
-          # A cold Swift build of the whole module is far past the local default.
           IOS_TEST_TIMEOUT_MS: '1800000'
       - name: Upload iOS test diagnostics
         if: failure()

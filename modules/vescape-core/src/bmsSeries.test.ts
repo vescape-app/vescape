@@ -3,7 +3,6 @@ import { describe, expect, it } from 'bun:test'
 import { decodeBmsSeriesFrames } from './bmsSeries'
 
 function encodedFrame(): Float64Array<ArrayBuffer> {
-  // capturedAt, balance bits low/high, then three cell-group voltages.
   return new Float64Array([1_725_000_000_000, 0b010, 0, 4.072, 4.073, 4.071])
 }
 

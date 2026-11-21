@@ -30,16 +30,6 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Navigation overlay on the Watch Frame: a hollow chevron riding just inside the rim at the target's
- * bearing (relative to travel direction, so "up" is straight ahead), plus a map-pin and the
- * remaining distance above the battery %. Nav has no slot of its own — it floats over the gauges,
- * and the whole overlay is absent unless the phone actually sent nav lanes, so a rider without a
- * destination sees the plain telemetry frame.
- *
- * [focus] is the nav-focus progress (see [FrameLayout]): as the telemetry readouts leave, the
- * chevron and the distance grow into the room they free up. [stackAlpha] is the opposite pull — the
- * control and weather pages take the whole centre, so the nav stack fades out with the readouts.
- *
  * @parity /watch/watchos/NavPointer.swift `NavPointer`
  */
 @Composable
@@ -49,16 +39,12 @@ internal fun NavPointer(
     muted: Boolean,
     focus: () -> Float = { 0f },
     stackAlpha: () -> Float = { 1f },
-    /** Rides the distance's line after it, e.g. the locked-tilt badge. */
     trailing: @Composable () -> Unit = {},
 ) {
     val color = if (muted) DimText else NavColor
 
-    // The chevron alone is opt-in (phone: Settings > Watch) while its bearing is being worked on.
-    // Everything else nav draws — route, rider dot, pin, distance — is untouched by the switch.
     if (SettingsState.settings.value.navArrowEnabled) {
         Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = stackAlpha() }) {
-            // Read inside the draw scope: focus changes redraw the chevron without recomposing.
             val grow = 1f + CHEVRON_FOCUS_GROWTH * focus()
             val center = Offset(size.width / 2f, size.height / 2f)
             val ring = size.minDimension / 2f - NAV_RIM_INSET.toPx()
@@ -76,7 +62,6 @@ internal fun NavPointer(
             .graphicsLayer {
                 val f = focus()
                 alpha = stackAlpha()
-                // Drops into the band the battery % vacates, and grows there.
                 translationY = f * READOUT_FOCUS_DROP.toPx()
                 scaleX = 1f + READOUT_FOCUS_GROWTH * f
                 scaleY = scaleX
@@ -85,7 +70,6 @@ internal fun NavPointer(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Glyph is inset inside its canvas so the stroke never clips at the edges.
             Canvas(modifier = Modifier.size(PIN_BOX)) {
                 drawMapPin(Offset(size.width / 2f, size.height / 2f), size.minDimension * 0.74f, color)
             }
@@ -100,7 +84,6 @@ internal fun NavPointer(
     }
 }
 
-/** Wide hollow chevron over a translucent fill. Points up before rotation, centred on [at]. */
 private fun DrawScope.drawChevron(at: Offset, width: Float, height: Float, color: Color) {
     val halfW = width / 2f
     val halfH = height / 2f
@@ -118,12 +101,10 @@ private fun DrawScope.drawChevron(at: Offset, width: Float, height: Float, color
     drawPath(outline, color, style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round, cap = StrokeCap.Round))
 }
 
-/** Map-pin glyph: stroked head, two tail lines to the tip, filled centre dot. */
 private fun DrawScope.drawMapPin(at: Offset, size: Float, color: Color) {
     val head = size * 0.36f
     val headCenter = Offset(at.x, at.y - size * 0.5f + head)
     val strokeWidth = 1.4.dp.toPx()
-    // Head arc gap sits at the bottom (canvas y is down), where the two tail lines take over.
     drawArc(
         color = color,
         startAngle = 145f,
@@ -145,7 +126,6 @@ private fun DrawScope.pointOnCircle(center: Offset, radius: Float, deg: Float): 
 }
 
 private val NAV_RIM_INSET = 30.dp
-// Sits in the band between the rider dot and the battery %.
 internal val NAV_READOUT_BOTTOM_PAD = 46.dp
 private const val CHEVRON_FOCUS_GROWTH = 0.18f
 private val READOUT_FOCUS_DROP = 6.dp

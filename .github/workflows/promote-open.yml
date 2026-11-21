@@ -81,7 +81,6 @@ jobs:
           test "$(jq -r .versionCodes.wear candidate/release-manifest.json)" = "$WEAR_VERSION_CODE"
           test "$(jq -r .uploads.phone candidate/release-manifest.json)" = succeeded
           test "$(jq -r .uploads.wear candidate/release-manifest.json)" = succeeded
-          # Older uploaded builds predate storage-test metadata.
           if jq -e 'has("storageContracts")' candidate/release-manifest.json > /dev/null; then
             test "$(jq -r .storageContracts.sourceSha candidate/release-manifest.json)" = "$SOURCE_SHA"
             test "$(jq -r .storageContracts.androidRoom candidate/release-manifest.json)" = passed

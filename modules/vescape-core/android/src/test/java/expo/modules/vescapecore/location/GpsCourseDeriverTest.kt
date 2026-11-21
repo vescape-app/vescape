@@ -37,7 +37,6 @@ class GpsCourseDeriverTest {
     val deriver = GpsCourseDeriver()
     deriver.derive(52.0, 21.0, speedMps = 5.0, bearingDeg = null, timestamp = 1_000)
 
-    // ~11 m due north.
     val course =
       checkNotNull(deriver.derive(52.0001, 21.0, speedMps = 5.0, bearingDeg = null, timestamp = 2_000))
 
@@ -50,7 +49,6 @@ class GpsCourseDeriverTest {
     val deriver = GpsCourseDeriver()
     deriver.derive(52.0, 21.0, speedMps = 5.0, bearingDeg = null, timestamp = 1_000)
 
-    // ~1 m apart.
     val course = deriver.derive(
       52.00001,
       21.0,
@@ -87,7 +85,6 @@ class GpsCourseDeriverTest {
   fun `retention is measured from the source fix, not the last reported one`() {
     val deriver = GpsCourseDeriver()
     deriver.derive(52.0, 21.0, speedMps = 5.0, bearingDeg = 91.0, timestamp = 1_000)
-    // Held at 8 s: still inside the window, and must not refresh the source timestamp.
     deriver.derive(52.0, 21.0, speedMps = 0.0, bearingDeg = null, timestamp = 9_000)
 
     val course = deriver.derive(52.0, 21.0, speedMps = 0.0, bearingDeg = null, timestamp = 15_000)
@@ -102,8 +99,6 @@ class GpsCourseDeriverTest {
 
     deriver.reset()
 
-    // This fix is still inside retention and far enough away to derive a course from the replay.
-    // Neither path may carry the replay's position or course into the new location timeline.
     val live = deriver.derive(52.0001, 21.0, speedMps = 5.0, bearingDeg = null, timestamp = 2_000)
     assertNull(live)
     val next = deriver.derive(52.0002, 21.0, speedMps = 5.0, bearingDeg = null, timestamp = 3_000)

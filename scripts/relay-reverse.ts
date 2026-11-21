@@ -1,8 +1,3 @@
-/**
- * Tunnels the device's localhost ports to this machine. Metro defaults to 8081; E2E owns its port.
- * The API port is added when `EXPO_PUBLIC_SERVER_URL` points at a local server.
- * Safe to run repeatedly before `expo run:android` or after clearing local development state.
- */
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1'])
 
 function localPort(serverUrl: string | undefined): number | null {

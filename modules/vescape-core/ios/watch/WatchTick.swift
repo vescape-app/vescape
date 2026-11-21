@@ -1,12 +1,5 @@
 import Foundation
 
-/// Dedicated watch tick (ADR-0013/0019): a mirror-scoped scheduler, independent of the board
-/// session and poll rate, that reads the latest cold-path `WatchSnapshot` and pushes an encoded Watch
-/// Frame at a configurable cadence. Board lanes may be empty while the session is still connecting.
-///
-/// Capability-gated: `canPush` is checked before building the frame, so when no Mirror is reachable
-/// the tick keeps spinning but skips both encode and send.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTick.kt
 final class WatchTick {
   private let scheduler: Scheduler
@@ -50,8 +43,6 @@ final class WatchTick {
     handle = nil
   }
 
-  /// Live-update the push cadence. Re-arms the active tick (cancel + reschedule) so a lowered
-  /// interval takes effect immediately instead of waiting out the current, possibly longer, delay.
   func setIntervalMs(_ intervalMs: Int64) {
     if intervalMs == self.intervalMs { return }
     self.intervalMs = intervalMs

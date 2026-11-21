@@ -2,7 +2,6 @@ import { applicationId } from '../src/config/appVariant.ts'
 import { maestroCommand } from './lib/maestro.ts'
 import { withE2eSession } from './lib/e2eSession.ts'
 
-/** Wait for this run's Metro to have a connected app, not just an open HTTP port. */
 export async function waitForApp(
   port: number,
   setup: { exitCode: number | null },
@@ -21,16 +20,13 @@ export async function waitForApp(
       })
       const targets = (await response.json()) as { appId?: string }[]
       if (targets.some((target) => target.appId === applicationId)) return
-    } catch {
-      // Metro may not exist yet while Android is building.
-    }
+    } catch {}
     await Bun.sleep(500)
   }
   throw new Error('Timed out waiting for the Android E2E app to connect to Metro.')
 }
 
 async function main(): Promise<void> {
-  // Fail before building if the test CLI is missing or has the wrong version.
   await maestroCommand()
   const args = Bun.argv.slice(2)
   const deviceFlag = args.indexOf('--device')

@@ -2,7 +2,6 @@ import { StyleSheet } from 'react-native'
 
 import { theme } from '@/constants/theme'
 
-/** Chrome shared by the map sheets: the icon badge, the title block and their pressed states. */
 export const mapSheetStyles = StyleSheet.create({
   mapAddRowPressed: {
     opacity: 0.55,

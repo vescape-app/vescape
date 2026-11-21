@@ -1,6 +1,5 @@
 import Foundation
 
-/// Shared contract: `shared/telemetry-chunk-codec-contract.json`, peer `TelemetryChunkCodecHostTest.kt`.
 func runTelemetryChunkCodecContract() throws {
   let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: "shared/telemetry-chunk-codec-contract.json"))) as! [String: Any]
   func longs(_ raw: Any?) -> [Int64?] { (raw as! [Any]).map { ($0 as? NSNumber)?.int64Value } }
@@ -26,7 +25,6 @@ func runTelemetryChunkCodecContract() throws {
     try require(try TelemetryChunkCodec.decode(blob) == expected, "chunk round trip \(name)")
     produced.append(["chain": name, "producer": "ios", "base64": blob.base64EncodedString()])
   }
-  // Regenerate the iOS golden blobs: VESCAPE_CHUNK_GOLDEN_OUT=<file> then paste into the fixture.
   if let path = ProcessInfo.processInfo.environment["VESCAPE_CHUNK_GOLDEN_OUT"] {
     try JSONSerialization.data(withJSONObject: produced, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: path))
   }

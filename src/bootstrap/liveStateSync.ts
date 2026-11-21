@@ -21,11 +21,6 @@ let stopSync: (() => void) | null = null
 let seenConnectionSeq: number | null = null
 let seenConnected = false
 
-/**
- * Status events omit history, so a new Board Session, or a link that has just come up, pulls a full
- * snapshot instead: native may have started that session with history already in place (Replay
- * Warmup) or a trail of its own (a replay's recorded fixes), and both replace what JS holds.
- */
 function onLiveStateEvent(state: LiveStateEvent): void {
   const connected = state.board.phase === 'connected'
   const newSession = state.board.connectionSeq !== seenConnectionSeq
@@ -46,18 +41,15 @@ function applyLiveState(state: LiveStateEvent, source: 'snapshot' | 'event'): vo
   else location.applyStatus(state.gps, getLiveWindowMs())
 }
 
-/** Authoritative catch-up after startup, foreground entry, or a retention-setting change. */
 export function syncLiveState(): void {
   applyLiveState(getLiveState(), 'snapshot')
 }
 
-/** Permission changes are intents; native still chooses GPS power and collection lifecycle. */
 export function refreshGpsDemand(): void {
   refreshLocationDemand()
   syncLiveState()
 }
 
-/** One app-wide subscription owner. Board actions never stop the phone-location stream. */
 export function startLiveStateSync(): () => void {
   stopSync?.()
   const stopBoard = startBoardLiveStreams()
@@ -92,7 +84,6 @@ export function startLiveStateSync(): () => void {
   return cleanup
 }
 
-// Fast Refresh must not leave the previous module's native listeners or publication timer alive.
 const syncGlobal = globalThis as typeof globalThis & { __vescLiveStateSyncCleanup?: () => void }
 syncGlobal.__vescLiveStateSyncCleanup?.()
 syncGlobal.__vescLiveStateSyncCleanup = () => stopSync?.()

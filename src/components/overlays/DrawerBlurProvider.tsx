@@ -4,7 +4,6 @@ import { Platform, type View } from 'react-native'
 
 const DrawerBlurContext = createContext<RefObject<View | null> | undefined>(undefined)
 
-/** Share the screen target across drawers, including drawers hosted in a native Modal window. */
 export function DrawerBlurProvider({ children }: { children: React.ReactNode }) {
   const target = useRef<View | null>(null)
   return (

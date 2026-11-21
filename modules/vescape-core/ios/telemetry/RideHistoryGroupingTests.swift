@@ -8,7 +8,6 @@ final class RideHistoryGroupingTests: XCTestCase {
   private let gapMs: Int64 = 30 * 60_000
   private let base: Int64 = 1_714_521_600_000
 
-  /// A minute with GPS fixes and no Telemetry Sample: the shape a board dropout leaves behind.
   func testGpsOnlyMinutesExtendTheMovingWindowAndTheRide() throws {
     let buckets = [
       bucket(start: base, end: base + 30_000),
@@ -22,12 +21,10 @@ final class RideHistoryGroupingTests: XCTestCase {
     XCTAssertEqual(sessions.first?.movingStartAtMs, base)
     XCTAssertEqual(sessions.first?.movingEndAtMs, base + 10 * 60_000 + 30_000)
     XCTAssertEqual(sessions.first?.endAtMs, base + 10 * 60_000 + 30_000)
-    // The track-only minute widens the window without pretending it held Telemetry Samples.
     XCTAssertEqual(sessions.first?.sampleCount, 2)
     XCTAssertEqual(sessions.first?.avgSpeedSampleCount, 2)
   }
 
-  /// Disconnect, app kill or auto close, then riding again inside the split window: one ride.
   func testDisconnectMarkersNoLongerSplitARide() throws {
     let buckets = [
       bucket(start: base, end: base + 10_000),
@@ -38,7 +35,6 @@ final class RideHistoryGroupingTests: XCTestCase {
     XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs).count, 1)
   }
 
-  /// A long stop while still connected (Idle Pause writes no frames) splits on the frame gap.
   func testAFrameGapLongerThanTheSplitWindowStartsANewRide() throws {
     let buckets = [
       bucket(start: base, end: base + 30_000),
@@ -75,7 +71,6 @@ final class RideHistoryGroupingTests: XCTestCase {
     XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs).map(\.boardId), ["board-1", "board-2"])
   }
 
-  /// The Ride Dropout Grace tail after the last frame belongs to that ride.
   func testAGpsOnlyTailAttachesToThePrecedingRide() throws {
     let sessions = try groupRideSessions(
       buckets: [bucket(start: base, end: base + 30_000), trackOnlyBucket(start: base + 60_000, end: base + 90_000)],
@@ -90,14 +85,12 @@ final class RideHistoryGroupingTests: XCTestCase {
   func testGpsOnlyMinutesNeverCreateOrExtendARideOnTheirOwn() throws {
     XCTAssertTrue(
       try groupRideSessions(buckets: [trackOnlyBucket(start: base, end: base + 30_000)], markers: [], gapMs: gapMs).isEmpty)
-    // GPS 20 min after the last frame does not move the split baseline: frames 40 min apart split.
     let buckets = [
       bucket(start: base, end: base + 10_000),
       trackOnlyBucket(start: base + 20 * 60_000, end: base + 20 * 60_000 + 10_000),
       bucket(start: base + 40 * 60_000, end: base + 40 * 60_000 + 10_000),
     ]
     XCTAssertEqual(try groupRideSessions(buckets: buckets, markers: [], gapMs: gapMs).count, 2)
-    // Another Board's GPS never joins this ride.
     let foreign = try groupRideSessions(
       buckets: [bucket(start: base, end: base + 10_000), trackOnlyBucket(start: base + 60_000, end: base + 70_000, boardId: "board-2")],
       markers: [], gapMs: gapMs
@@ -116,7 +109,7 @@ final class RideHistoryGroupingTests: XCTestCase {
 
   /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/ProfileStatsRepositoryTest.kt `recordingMonthsIncludeContinuingRideStartButExcludeOtherHistory`
   func testRecordingMonthsIncludeContinuingRideStartButExcludeOtherHistory() throws {
-    let boundary: Int64 = 1_767_225_600_000 // 2026-01-01 UTC
+    let boundary: Int64 = 1_767_225_600_000
     let sessions = try groupRideSessions(buckets: [
       bucket(start: boundary - 90 * 86_400_000, end: boundary - 90 * 86_400_000 + 10_000),
       bucket(start: boundary - 60_000, end: boundary - 30_000),
@@ -137,7 +130,6 @@ final class RideHistoryGroupingTests: XCTestCase {
     Row(["occurred_at_ms": at, "type": type, "board_id": boardId])
   }
 
-  /// The 100th and 101st buckets share a minute. Neither Board may be skipped by the cursor.
   /// @parity /modules/vescape-core/android/src/androidTest/java/expo/modules/vescapecore/telemetry/RideReadQueriesTest.kt
   func testBucketPagingIncludesTheWholeBoundaryMinute() throws {
     let database = try DatabaseQueue()

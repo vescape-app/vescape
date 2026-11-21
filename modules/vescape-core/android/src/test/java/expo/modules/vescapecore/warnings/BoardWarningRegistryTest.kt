@@ -96,7 +96,6 @@ class BoardWarningRegistryTest {
 
     registry.reportFinding("board-a", "cell-spread", BoardWarningSeverity.WARN, "{}")
     registry.clearWarning("board-a", "cell-spread")
-    // No row (e.g. lost to a swallowed write) still re-arms the detector.
     registry.clearWarning("board-a", "battery-config-mismatch")
     registry.clearAllWarnings("board-a")
 
@@ -134,7 +133,6 @@ class BoardWarningRegistryTest {
     assertEquals("board_warning_detected", breadcrumbs.single().first)
     assertEquals("cell-spread", breadcrumbs.single().second["kind"])
 
-    // A new session re-arms the breadcrumb for the same still-true kind.
     registry.beginSession("board-a")
     registry.reportFinding("board-a", "cell-spread", BoardWarningSeverity.CRITICAL, "{}")
     assertEquals(2, breadcrumbs.size)

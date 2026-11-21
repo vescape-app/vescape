@@ -1,5 +1,4 @@
 /* eslint-disable react-hooks/immutability */
-// A small, continuously moving preview of the selected rail shape and color.
 import { useEffect } from 'react'
 import {
   cancelAnimation,

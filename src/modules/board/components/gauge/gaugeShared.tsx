@@ -26,7 +26,6 @@ import {
 } from '@/modules/board/components/gauge/arcGeometry'
 import { textAdvanceWidth } from '../../../../helpers/skiaText'
 
-/** Ramp the gauge color toward the hot color across the metric's hot range. */
 export function gaugeRampColor(
   current: number | null,
   baseColor: string,
@@ -42,12 +41,9 @@ export function gaugeRampColor(
   return interpolateColor(fraction, [0, 1], [baseColor, hotColor])
 }
 
-// ── Gradients ────────────────────────────────────────────────────────────────
-
 interface GlowGradientProps {
   arc: Arc
   color: string
-  /** Stop offsets + opacities, matching the SVG RadialGradient stops. */
   stops: number[]
   opacities: AlphaLevel[]
 }
@@ -59,8 +55,6 @@ export function GlowGradient({ arc, color, stops, opacities }: GlowGradientProps
 
 const ALERT_STOPS = [0, 0.82, 0.965, 0.99, 1]
 const ALERT_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.12, 0]
-
-// ── Alert markers ────────────────────────────────────────────────────────────
 
 const TICK_LENGHT = 2
 const TICK_WIDTH = 0.35
@@ -82,7 +76,6 @@ function AlertTick({ arc, fraction }: { arc: Arc; fraction: number }) {
   )
 }
 
-// Numeric marker labels sit just inside the arc, centered on the tick.
 const LABEL_INSET = 9
 export const LABEL_FONT_SIZE = 6
 
@@ -116,7 +109,6 @@ interface AlertMarkerProps {
   alert: DualGaugeAlert
   min?: number
   max: number
-  /** Null on gauges too small to carry readable numeric labels. */
   labelFont?: SkFont | null
 }
 
@@ -125,8 +117,6 @@ export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: Aler
   const thresholdFraction = normalizeFraction(alert.threshold, min, max)
   const maxFraction =
     alert.thresholdMax == null ? null : normalizeFraction(alert.thresholdMax, min, max)
-  // The band runs to the end of the scale, not to `thresholdMax`: a range rule sustains its tone
-  // above the max and a repeating rule never stops, so the arc past it is anything but quiet.
   const bandPath = useMemo(() => {
     const band = alertBandFractions(alert, (value) => normalizeFraction(value, min, max))
     if (!band) return null
@@ -158,9 +148,6 @@ export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: Aler
   )
 }
 
-// ── Numeric readout ──────────────────────────────────────────────────────────
-
-/** Gap between the value line and the unit caption under it. */
 const UNIT_GAP = 2
 
 export interface GaugeReadoutBox {
@@ -174,17 +161,12 @@ interface GaugeReadoutProps {
   text: DerivedValue<string>
   color: SharedValue<string> | string
   unit: string
-  /** Bowl the value + unit stack is centered in, in canvas pixels. */
   box: GaugeReadoutBox
   valueSize: number
   valueLineHeight: number
   unitSize: number
 }
 
-/**
- * Value + unit drawn inside the gauge's own canvas. Both used to be RN views
- * layered over the arc, which cost a second native surface per gauge.
- */
 export function GaugeReadout({
   text,
   color,

@@ -67,14 +67,8 @@ internal object ConfigRWFsm {
             appBoardId = event.appBoardId,
             fwVersion = event.fwVersion,
             refloatBaseVersion = event.refloatBaseVersion,
-            // The trusted Board Link already observed this; the skip path never asks the board, and
-            // the read path's get-info response overwrites it with the same value.
             refloatVersion = event.refloatVersion,
         )
-        // A board takes one connection at a time, so while this session holds the link the config can
-        // only have changed through our own writes — the session's fresh bytes are still the board's
-        // bytes and back the write directly. Provisional values carry no write base by construction,
-        // so a cache-restored session falls through to the read (ADR 0035).
         val writeBase = event.writeBase
         if (writeBase != null) {
             return sendWrite(
@@ -136,7 +130,6 @@ internal object ConfigRWFsm {
                 )
                 is RefloatConfigProtocolResult.Success -> {
                     val chunk = parsed.value
-                    // A delayed reply to a retried request must not append the same bytes twice.
                     if (chunk.offset != state.nextOffset) return state to emptyList()
                     val merged = ByteArray(state.xmlBytes.size + chunk.chunk.size)
                     state.xmlBytes.copyInto(merged)
@@ -402,11 +395,6 @@ internal object ConfigRWFsm {
         }
     }
 
-    /**
-     * Decode the whole schema into the session's Board Config Values, retaining the bytes, package
-     * signature, and schema as the write base. Best-effort: any failure yields null so a decode hiccup
-     * never breaks the read/write completion the rider actually asked for.
-     */
     private fun decodeBoardConfig(
         schema: RefloatConfigSchema,
         configBytes: RefloatConfigBytes,
@@ -515,11 +503,6 @@ internal object ConfigRWFsm {
         }
     }
 
-    /**
-     * Patch the write base bytes with the profile fields and send `COMM_SET_CUSTOM_CONFIG`. The base
-     * is either the bytes just read or the session's retained fresh bytes; either way the whole blob
-     * is patched in place, so fields outside the curated tune groups survive untouched.
-     */
     private fun sendWrite(
         ctx: WriteContext,
         schema: RefloatConfigSchema,

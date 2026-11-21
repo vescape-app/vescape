@@ -35,8 +35,6 @@ function niceMajorValue(range: number): number {
 
 export function computeTuneDialLayout(min: number, max: number, step: number): TuneDialLayout {
   const range = max - min
-  // Whole step multiples are independent of a converted, fractional minimum.
-  // Give each physical endpoint its own position instead of replacing a valid tick.
   const totalSteps = Math.max(1, Math.ceil(max / step - 1e-9) - Math.floor(min / step + 1e-9))
 
   const majorVal = niceMajorValue(range)
@@ -142,7 +140,6 @@ export function advanceTuneDialThrow(
   }
 }
 
-/** Preserve physical endpoints even when their converted value is between ruler steps. */
 export function tuneDialStepValue(
   index: number,
   totalSteps: number,
@@ -160,7 +157,6 @@ export function tuneDialStepValue(
   )
 }
 
-/** Each selectable value has one full tick of travel, including fractional endpoints. */
 export function tuneDialValueToOffset(
   value: number,
   min: number,

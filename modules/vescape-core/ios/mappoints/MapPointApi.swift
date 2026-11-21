@@ -1,6 +1,5 @@
 import Foundation
 
-/// Failure codes crossing the bridge.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/mappoints/MapPointApi.kt `MapPointApiException`
 /// @parity /modules/vescape-core/src/index.ts `MapPointErrorCode`
 struct MapPointApiError: Error {
@@ -14,10 +13,6 @@ struct MapPointApiError: Error {
   static let unreachable = "MAP_POINT_UNREACHABLE"
 }
 
-/// Map Points live on the server (`docs/adr/0009-map-points-are-server-owned.md` in the server
-/// repo). This is the only place the app talks to that API: reads are public and gain `ownedByMe` /
-/// `myReaction` when a Device Token exists, writes require one.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/mappoints/MapPointApi.kt
 /// @parity /modules/vescape-core/src/index.ts `MapPoint`
 final class MapPointApi {
@@ -81,7 +76,6 @@ final class MapPointApi {
     try unwrap(await api.request(.delete, path: "\(Self.path)/\(id)", auth: .required) { _ in () })
   }
 
-  /// `nil` removes the reaction; the server keeps at most one per Account and Map Point.
   func setReaction(_ id: String, reaction: String?) async throws {
     let path = "\(Self.path)/\(id)/reaction"
     let result: ApiResult<Void>
@@ -98,7 +92,6 @@ final class MapPointApi {
     try unwrap(result)
   }
 
-  /// Only the fields the caller set are sent: a patch without `name` must not clear the name.
   private static func payload(_ values: [String: Any?]) -> [String: Any] {
     var body: [String: Any] = [:]
     for field in writableFields where values.index(forKey: field) != nil {

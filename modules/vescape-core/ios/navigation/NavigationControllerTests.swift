@@ -1,9 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The rider's last action must win. A Directions call takes seconds, so a fetch started for an
-/// abandoned target routinely resolves after the rider has already moved or cleared the pin.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/navigation/NavigationControllerTest.kt
 final class NavigationControllerTests: XCTestCase {
   private let riderLatitude = 52.2
@@ -12,7 +9,6 @@ final class NavigationControllerTests: XCTestCase {
   private let secondTargetLatitude = 52.4
   private let targetLongitude = 21.1
 
-  /// Routing stub whose calls finish only when the test says so.
   private final class GatedRoutes: DirectionsRoutes, @unchecked Sendable {
     private let lock = NSLock()
     private var gates: [Double: XCTestExpectation] = [:]
@@ -49,13 +45,11 @@ final class NavigationControllerTests: XCTestCase {
     }
   }
 
-  /// Mutable value a test changes while the controller holds a closure reading it.
   private final class Box<T>: @unchecked Sendable {
     var value: T
     init(_ value: T) { self.value = value }
   }
 
-  /// Routing stub that answers immediately with whatever the test hands it.
   private final class FixedRoutes: DirectionsRoutes, @unchecked Sendable {
     private let result: DirectionsResult
     private let callLock = NSLock()
@@ -76,14 +70,12 @@ final class NavigationControllerTests: XCTestCase {
     }
   }
 
-  /// In-memory stand-in for the App Settings rows, so restore and write-through need no database.
   private final class FakeStore: NavigationStore, @unchecked Sendable {
     private let lock = NSLock()
     private var storage: Navigation?
     private var target: (latitude: Double, longitude: Double)?
     private var profile: NavigationProfile?
     private let directionReadFails: Bool
-    /// Held closed to keep the profile read in flight while the test taps.
     private var profileGateOpen: Bool
 
     init(
@@ -129,7 +121,6 @@ final class NavigationControllerTests: XCTestCase {
     }
   }
 
-  /// Routing stub that records the profile it was asked for.
   private final class ProfileRecordingRoutes: DirectionsRoutes, @unchecked Sendable {
     private let lock = NSLock()
     private var seen: [String] = []
@@ -166,8 +157,6 @@ final class NavigationControllerTests: XCTestCase {
   }
 
   func testRidingBackwardsAlongPathDoesNotReroute() {
-    // A path passing near itself makes remaining distance jump between legs; only the distance
-    // from the path may trigger recalculation.
     let routes = FixedRoutes(.failed)
     let old = Navigation(targetLatitude: riderLatitude + 0.01, targetLongitude: riderLongitude,
       profile: .walking, computedAtMs: 1, status: .ready, distanceMeters: 1112,
@@ -200,7 +189,7 @@ final class NavigationControllerTests: XCTestCase {
     controller.reloadRerouteDistance()
     settle()
     controller.onFix(latitude: offLatitude, longitude: riderLongitude, speedMps: 0)
-    XCTAssertFalse(controller.computing) // Strictly greater, including when the projection is unchanged.
+    XCTAssertFalse(controller.computing)
     threshold.value = distance - 0.1
     controller.reloadRerouteDistance()
     settle()
@@ -241,7 +230,6 @@ final class NavigationControllerTests: XCTestCase {
     controller.onFix(latitude: riderLatitude + 0.01, longitude: riderLongitude, speedMps: 0)
     settle()
     XCTAssertEqual(routes.calls, 2)
-    // Repeated failures back off: the next attempt waits 60 s, not 30 s.
     now = 60_000
     controller.onFix(latitude: riderLatitude + 0.01, longitude: riderLongitude, speedMps: 0)
     settle()
@@ -295,7 +283,6 @@ final class NavigationControllerTests: XCTestCase {
     controller.setTarget(toLatitude: targetLatitude, toLongitude: targetLongitude,
                          fromLatitude: riderLatitude, fromLongitude: riderLongitude)
     XCTAssertTrue(controller.computing)
-    // A fresher position arrives while Directions is running; use that, not the request origin.
     controller.onFix(latitude: riderLatitude + 0.01, longitude: riderLongitude + 0.01, speedMps: 0)
     routes.release(targetLatitude)
     settle()
@@ -336,7 +323,6 @@ final class NavigationControllerTests: XCTestCase {
 
     XCTAssertEqual(controller.current?.targetLatitude, targetLatitude)
     XCTAssertEqual(controller.current?.points.count, 2)
-    // Restoring is a read: a path computed last weekend is still the path.
     XCTAssertEqual(routes.calls, 0)
     XCTAssertEqual(emitted.values.count, 1)
   }
@@ -354,7 +340,6 @@ final class NavigationControllerTests: XCTestCase {
     settle()
 
     XCTAssertNil(controller.current)
-    // Dropped from storage too, or every later start would re-read and re-reject it.
     XCTAssertNil(store.stored)
     XCTAssertTrue(emitted.values.isEmpty)
   }
@@ -416,7 +401,6 @@ final class NavigationControllerTests: XCTestCase {
   }
 
   private func settle() {
-    // Lets any in-flight Task reach its publish before the assertion reads state.
     Thread.sleep(forTimeInterval: 0.25)
   }
 
@@ -458,7 +442,6 @@ final class NavigationControllerTests: XCTestCase {
       fromLatitude: riderLatitude,
       fromLongitude: riderLongitude
     )
-    // Newer target resolves first, then the abandoned one.
     routes.release(secondTargetLatitude)
     settle()
     routes.release(targetLatitude)
@@ -490,8 +473,6 @@ final class NavigationControllerTests: XCTestCase {
       fromLongitude: riderLongitude
     )
 
-    // A Navigation belongs to exactly one Direction Point: the old path must not stay drawn under a
-    // pin that has already moved.
     XCTAssertNil(controller.current)
     XCTAssertNil(emitted.values.last ?? nil)
   }
@@ -509,7 +490,6 @@ final class NavigationControllerTests: XCTestCase {
 
     XCTAssertEqual(controller.current?.status, .fetchFailed)
     XCTAssertEqual(controller.current?.points.count, 0)
-    // Nothing to ask with, so nothing was asked.
     XCTAssertEqual(routes.calls, 0)
   }
 
@@ -535,8 +515,6 @@ final class NavigationControllerTests: XCTestCase {
   }
 
   func testPathDetouringAbsurdlyAroundTheTargetIsNoPathAtAll() {
-    // Straight line is ~13 km; this answer rides ~110 km of it, the shape Directions returns when
-    // the only way to the target is back out along a road.
     let detour = DirectionsResult.path(
       points: [
         (riderLatitude, riderLongitude),
@@ -591,8 +569,6 @@ final class NavigationControllerTests: XCTestCase {
     )
     settle()
 
-    // Retry is an ordinary `setTarget` from where the rider is now, which is what the module calls.
-    // The rider has moved since the pin was dropped.
     let routes = GatedRoutes()
     let retrying = NavigationController(api: routes, store: store)
     retrying.setTarget(
@@ -660,7 +636,6 @@ final class NavigationControllerTests: XCTestCase {
 
     XCTAssertEqual(store.storedProfile, .driving)
     XCTAssertEqual(controller.current?.profile, .driving)
-    // The next Direction Point is computed under it without being told again.
     controller.setTarget(
       toLatitude: secondTargetLatitude,
       toLongitude: targetLongitude,
@@ -692,7 +667,6 @@ final class NavigationControllerTests: XCTestCase {
     )
     settle()
 
-    // Losing a working line by asking for a better one is a bad trade.
     XCTAssertEqual(controller.current?.status, .ready)
     XCTAssertEqual(controller.current?.computedAtMs, drawnAt)
     XCTAssertEqual(store.stored?.status, .ready)
@@ -719,7 +693,6 @@ final class NavigationControllerTests: XCTestCase {
     let controller = NavigationController(api: routes, store: store)
 
     controller.restore()
-    // The rider switches while yesterday's value is still being read.
     controller.selectProfile(.driving)
     store.openProfileGate()
     settle()
@@ -749,13 +722,10 @@ final class NavigationControllerTests: XCTestCase {
     settle()
     controller.onFix(latitude: riderLatitude, longitude: riderLongitude, speedMps: 5)
 
-    // The rider is standing on the path's first point, so that is what they project onto.
     XCTAssertEqual(controller.currentProgress?.latitude, riderLatitude)
 
     controller.clear()
 
-    // Route Progress belongs to exactly one Navigation and ends with it — no last known place left
-    // over to describe a path that is no longer drawn.
     XCTAssertNil(controller.currentProgress)
     XCTAssertEqual(progress.values.map { $0 == nil }, [false, true])
   }
@@ -767,9 +737,6 @@ final class NavigationControllerTests: XCTestCase {
 
     XCTAssertNil(controller.currentProgress)
   }
-
-
-  // MARK: - The Watch Mirror seam
 
   func testThePathSlotFiresOnlyWhenThePathItselfChanges() {
     let routes = GatedRoutes()
@@ -783,8 +750,6 @@ final class NavigationControllerTests: XCTestCase {
       fromLatitude: riderLatitude,
       fromLongitude: riderLongitude
     )
-    // The `computing` transition publishes a Navigation with no path; a route push there would send
-    // the wrist a clear the rider never asked for, and then the same route straight back.
     XCTAssertEqual(log.values.count, 0)
 
     routes.release(targetLatitude)
@@ -811,7 +776,6 @@ final class NavigationControllerTests: XCTestCase {
     )
     settle()
 
-    // A failure has no line. It is not an empty polyline the wrist has to tell from a missing one.
     XCTAssertEqual(log.values.compactMap { $0 }.count, 0)
   }
 
@@ -822,8 +786,6 @@ final class NavigationControllerTests: XCTestCase {
       pushes.append($0)
     }
 
-    // The trap this exists for: with no push at all, a wrist reconnecting to the merged Application
-    // Context would still be holding the route from a previous run.
     XCTAssertEqual(pushes.values.count, 1)
     XCTAssertNil(pushes.values[0][WatchRouteKey.points])
     XCTAssertNil(mirror.origin)
@@ -847,8 +809,6 @@ final class NavigationControllerTests: XCTestCase {
 
     XCTAssertEqual(pushes.values.count, 2)
     XCTAssertNotNil(pushes.values[1][WatchRouteKey.points])
-    // Pushed, but not yet known to have landed: the frame's rider lanes must not be measured from
-    // an origin the wrist has never seen.
     XCTAssertNil(mirror.origin)
 
     mirror.channelDelivered(watchRouteChannel)
@@ -858,12 +818,9 @@ final class NavigationControllerTests: XCTestCase {
     controller.clear()
     settle()
     mirror.channelDelivered(watchRouteChannel)
-    // A route that goes away takes the origin with it, so the rider lanes go null in the same tick
-    // the polyline does.
     XCTAssertNil(mirror.origin)
   }
 
-  /// `onPathChange` fires from whichever thread published, so the log needs its own guard.
   private final class PathLog: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [[(latitude: Double, longitude: Double)]?] = []
@@ -884,7 +841,6 @@ final class NavigationControllerTests: XCTestCase {
     var values: [[String: Any]] { lock.withLock { storage } }
   }
 
-  /// `onProgressChange` fires from whichever thread published, so the log needs its own guard.
   private final class ProgressLog: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [RouteProgress?] = []
@@ -896,7 +852,6 @@ final class NavigationControllerTests: XCTestCase {
     var values: [RouteProgress?] { lock.withLock { storage } }
   }
 
-  /// `onChange` fires from whichever thread published, so the log needs its own guard.
   private final class EmissionLog: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [Navigation?] = []

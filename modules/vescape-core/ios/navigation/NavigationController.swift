@@ -1,42 +1,20 @@
 import Foundation
 
-/// How a Navigation ended up. A Navigation exists for as long as its Direction Point does, so a
-/// request that produced no path is still a Navigation — one that says why instead of drawing a
-/// line. JS must never have to infer failure from an empty coordinate array.
-///
-/// The two failures are told apart because they are different rider situations, and will likely
-/// want different copy: `fetchFailed` is worth retrying once the signal comes back, `noPathFound`
-/// is not going to change by trying again from the same spot.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `NavigationStatus`
 /// @parity /modules/vescape-core/src/index.ts `NavigationStatus`
 enum NavigationStatus: String {
-  /// A usable path was computed and is in `points`.
   case ready
-  /// Could not ask: no signal, timeout, HTTP error, missing token. `points` is empty.
   case fetchFailed
-  /// Asked and answered, but nothing rideable leads there. `points` is empty.
   case noPathFound
 }
 
-/// The kind of ways a Navigation may follow. The rider picks it while looking at a path, and the
-/// choice sticks as the default for the next one.
-///
-/// The raw values are Mapbox Directions profile names and go into the request path unchanged, so
-/// they are a contract with the routing service as much as with JS.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `NavigationProfile`
 /// @parity /modules/vescape-core/src/index.ts `NavigationProfile`
 enum NavigationProfile: String {
-  /// Reaches footpaths and forest tracks, which is where Direction Points usually are.
   case walking
-  /// Cycleways and roads; refuses footpaths.
   case cycling
-  /// Roads only.
   case driving
 
-  /// What a rider who has never chosen gets. `cycling` would refuse footpaths and hit the no-path
-  /// state constantly, so the widest-reaching profile leads.
   static let `default` = NavigationProfile.walking
 
   static func fromWire(_ wire: String?) -> NavigationProfile {
@@ -44,34 +22,18 @@ enum NavigationProfile: String {
   }
 }
 
-/// A rideable path from the rider to their Direction Point, following real ways. Replaced natively when
-/// the rider moves beyond the configured distance from the path.
-///
-/// It is a plain value with no behaviour on it, because a later slice shares it over Group Ride.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `Navigation`
 /// @parity /modules/vescape-core/src/index.ts `Navigation`
 struct Navigation {
   let targetLatitude: Double
   let targetLongitude: Double
-  /// The Navigation Profile this path was produced under; it never changes for this Navigation.
   let profile: NavigationProfile
   let computedAtMs: Int64
   let status: NavigationStatus
-  /// How far the path runs, in metres, and how long the routing service thinks it takes, in
-  /// seconds. Both are `0` unless `status` is `ready` — a Navigation with no path has no length to
-  /// report.
-  ///
-  /// The duration is the profile's own estimate (a walking path is timed at walking pace), so it is
-  /// the shape of the ride ahead rather than an EUC arrival time.
   let distanceMeters: Double
   let durationSeconds: Double
-  /// Path points in encoding order, each `(latitude, longitude)`. Empty unless `status` is `ready`.
   let points: [(latitude: Double, longitude: Double)]
-  /// Process-local identity of this published Navigation, assigned by the controller on every
-  /// publish. Route Progress carries the revision it was projected on. Never persisted.
   var revision: Int64 = 0
-  /// Published by automatic recalculation rather than a rider intent. Never persisted.
   var automatic = false
 
   func toMap() -> [String: Any] {
@@ -84,15 +46,11 @@ struct Navigation {
       "status": status.rawValue,
       "distanceMeters": distanceMeters,
       "durationSeconds": durationSeconds,
-      // GeoJSON order, which is what the JS `ShapeSource` expects — flipped from the pairs above.
       "coordinates": points.map { [$0.longitude, $0.latitude] },
     ]
   }
 }
 
-/// The one thing `NavigationController` needs from a routing service. A seam, so the controller's
-/// ordering guarantees are testable without a network.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `DirectionsRoutes`
 protocol DirectionsRoutes {
   func route(
@@ -104,36 +62,17 @@ protocol DirectionsRoutes {
   ) async -> DirectionsResult
 }
 
-/// What one Directions call produced. "Could not ask" and "asked, nothing leads there" are separate
-/// cases all the way down, because the rider's options differ: one is worth retrying, the other is
-/// the honest answer for that pin.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `DirectionsResult`
 enum DirectionsResult {
-  /// Path points as `(latitude, longitude)`, with the service's own length and time for them.
   case path(
     points: [(latitude: Double, longitude: Double)],
     distanceMeters: Double,
     durationSeconds: Double
   )
-  /// The service answered, but returned nothing rideable.
   case noPath
-  /// The service could not be reached or asked at all.
   case failed
 }
 
-/// Owns the process's single Navigation. Setting a Direction Point asks for one; clearing the
-/// Direction Point ends it. The two are strictly 1:1, so this holds at most one at a time.
-///
-/// It recalculates automatically when the rider is farther from the path than the Reroute Distance,
-/// measured with the same nearest projection as Route Progress — see ADR 0042. Automatic requests
-/// never overlap, never replace a usable path with a failure, and back off from 30 seconds up to
-/// 5 minutes while they keep failing.
-///
-/// Durable: every change is written through to `NavigationStore`, and `restore()` brings the stored
-/// path back on cold start. Restoring is a read, never a fetch — the stored path is the truth
-/// however old it is, so a path computed last weekend is still the path.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt
 final class NavigationController {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/RerouteDistance.kt
@@ -143,7 +82,6 @@ final class NavigationController {
   private static let automaticMinBackoffMs = 30_000.0
   private static let automaticMaxBackoffMs = 300_000.0
 
-  /// Process singleton — the Navigation must outlive JS runtime reloads.
   static let shared: NavigationController = {
     let controller = NavigationController(
       api: MapboxDirectionsApi(api: VescapeApi.forOrigin(AppStatusCoordinator.serverBaseUrl)),
@@ -158,8 +96,6 @@ final class NavigationController {
         }
       }
     )
-    // Restore here rather than from the module, so a JS reload — which recreates the module but not
-    // this singleton — cannot re-run it over a Navigation the rider has since replaced.
     controller.restore()
     return controller
   }()
@@ -174,67 +110,34 @@ final class NavigationController {
   private var state: Navigation?
   var current: Navigation? { lock.withLock { state } }
 
-  /// The Navigation Profile the next computed path will use — the rider's last choice, cached here
-  /// so `setTarget` can read it without waiting on a database. Seeded from the store by `restore`.
-  ///
-  /// It is not the profile of the drawn path: a recompute that failed leaves the old path drawn
-  /// under a newer choice, and the path keeps carrying the profile that actually produced it.
   private var profile: NavigationProfile = .default
 
-  /// Set once the rider has chosen, so a slow `restore` cannot overwrite a newer choice.
   private var profileChosen = false
 
-  /// Serializes every write to `store` — the path and the sticky profile alike. Two rows, one
-  /// order: a profile write overtaking an older one would leave the rider's second choice undone by
-  /// their first on the next start.
   private let writes = SerialWrites()
 
-  /// The Navigation Profile the next computed path will use.
   var currentProfile: NavigationProfile { lock.withLock { profile } }
 
-  /// Only the current intent owns the loader; superseded requests may finish in the background.
   private var computingRequest: Int?
 
-  /// Whether a path is being computed right now. The one piece of Navigation state that is not
-  /// durable: a request in flight dies with the process, and a cold start is never waiting.
-  ///
-  /// It exists because the alternative reads as a broken app. A recompute that fails leaves the old
-  /// path in place and publishes nothing, so without this the rider taps a Profile and sees the UI
-  /// do nothing at all for fifteen seconds.
   var computing: Bool { lock.withLock { computingRequest != nil } }
 
-  /// Notified on every change, including the clear to `nil` and every `computing` transition.
   var onChange: ((Navigation?) -> Void)?
 
-  /// Process-scoped watch notification, separate from the JS subscriber. Never read back inline.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `onWatchChange`
   var onWatchChange: (() -> Void)?
 
-  /// Notified with the rideable path of every published Navigation, `nil` when there is none to
-  /// draw — a failed Navigation is a `nil` path, not an empty one. Fired only when the path itself
-  /// changes, so a `computing` transition over an unchanged path does not re-push it.
-  ///
-  /// Separate from `onChange` because the two have different lifetimes: `onChange` belongs to the
-  /// JS module and is re-assigned on every reload, while this one carries the route to the Watch
-  /// Mirror and must survive one — see `WatchRouteMirror`.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `onPathChange`
   var onPathChange: (([(latitude: Double, longitude: Double)]?) -> Void)?
 
-  /// The path the current Navigation actually draws, for a listener attaching after it was
-  /// published — a restore that ran before the Watch Mirror was wired up.
   var currentPath: [(latitude: Double, longitude: Double)]? { lock.withLock { ridePath(state) } }
 
-  /// The path a Navigation actually draws, or `nil` when it has none — a failure has no line.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `ridePath`
   private func ridePath(_ navigation: Navigation?) -> [(latitude: Double, longitude: Double)]? {
     guard let navigation, navigation.status == .ready, !navigation.points.isEmpty else { return nil }
     return navigation.points
   }
 
-  /// Where the rider is along the current path. Derived and never stored: recomputed by `onFix` and
-  /// reprojected when the path changes, including while the rider stands still.
   private var progress: RouteProgress?
   private var latestFix: (latitude: Double, longitude: Double, speedMps: Double?)?
 
@@ -249,7 +152,6 @@ final class NavigationController {
 
   var currentProgress: RouteProgress? { lock.withLock { progress } }
 
-  /// Notified on every Route Progress change, including the clear to `nil`.
   var onProgressChange: ((RouteProgress?) -> Void)?
 
   // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `onFix`
@@ -259,8 +161,6 @@ final class NavigationController {
   private var automaticBackoffMs = automaticMinBackoffMs
   private var rerouteDistanceRead = 0
 
-  /// Re-reads the Reroute Distance setting. Called on cold start and whenever the rider changes it;
-  /// only the newest read applies, so a slow cold-start read cannot undo a later change.
   func reloadRerouteDistance() {
     let read: Int = lock.withLock {
       rerouteDistanceRead += 1
@@ -272,8 +172,6 @@ final class NavigationController {
     }
   }
 
-  /// A GPS Fix arrived. Reprojects Route Progress and, when the rider is farther from the path than
-  /// the Reroute Distance, starts one automatic recalculation from here. Runs while JS is suspended.
   func onFix(latitude: Double, longitude: Double, speedMps: Double?) {
     let work: (Int, Navigation, NavigationProfile)? = lock.withLock {
       latestFix = (latitude, longitude, speedMps)
@@ -285,8 +183,6 @@ final class NavigationController {
       guard let next, let navigation = state, computingRequest == nil, automaticRequest == nil,
         next.deviationMeters > rerouteDistanceMeters, nowMillis() >= nextAutomaticAtMs
       else { return nil }
-      // Reserve in the same critical section as the decision: another fix cannot launch a duplicate,
-      // and a later target/profile/clear intent invalidates this token before the task runs.
       let request = claimRequestLocked()
       automaticRequest = request
       beginComputingLocked(request)
@@ -307,17 +203,10 @@ final class NavigationController {
     }
   }
 
-  /// Ordering token. Every intent claims one *synchronously*, before any network work starts, so
-  /// the rider's last action always wins: a fetch that resolves late finds its token stale and is
-  /// dropped rather than resurrecting a path over a newer target or over a clear.
-  ///
-  /// Claiming it inside the `Task` instead would order requests by whenever the runtime happened to
-  /// schedule them, which is not the order the rider tapped in.
   private var generation = 0
 
   private func claimRequest() -> Int { lock.withLock { claimRequestLocked() } }
 
-  /// `claimRequest` for callers already holding `lock`.
   private func claimRequestLocked() -> Int {
     let wasComputing = computingRequest != nil
     computingRequest = nil
@@ -338,18 +227,11 @@ final class NavigationController {
     self.store = store
   }
 
-  /// Cold start: brings the stored Navigation back, without touching the network.
-  ///
-  /// Claims a token like any other intent, so a rider who taps a new Direction Point while the read
-  /// is still in flight wins over the restore rather than being overwritten by yesterday's path.
-  ///
-  /// Returns immediately; the read runs in its own `Task`.
   func restore() {
     let request = claimRequest()
     reloadRerouteDistance()
     Task {
       if let stored = await store.loadProfile() {
-        // The rider may have switched while this read was in flight; their choice is the newer one.
         lock.withLock { if !profileChosen { profile = stored } }
       }
       guard let stored = await store.load() else { return }
@@ -359,28 +241,14 @@ final class NavigationController {
         RecordingStorageFailure.reportRead(operation: "direction_point_read", error: error)
         return
       }
-      // The two are written separately, so an interrupted write can leave a path leading somewhere
-      // the rider is no longer heading. Drawing a line to the wrong place is worse than drawing none.
       let matchesDirectionPoint = stored.targetLatitude == directionPoint?.latitude
         && stored.targetLongitude == directionPoint?.longitude
       let usable = matchesDirectionPoint ? stored : nil
       publish(request, usable)
-      // `publish(nil)` changed nothing here — nothing had been published yet — so the disagreeing
-      // row has to be dropped explicitly, or every later start would re-read and re-reject it.
       if usable == nil { persist(request) }
     }
   }
 
-  /// Computes the Navigation to `toLatitude`/`toLongitude` from the rider's position. A missing
-  /// rider position, a failed fetch or a path nothing could ride yields a Navigation carrying the
-  /// reason rather than a straight line — see `NavigationStatus`.
-  ///
-  /// Uses the rider's sticky Navigation Profile. Asking for the same target again is `recompute`,
-  /// which keeps a working path when the new request fails; this one always replaces, because the
-  /// target moved and the old path is already wrong.
-  ///
-  /// Returns immediately: the Directions call runs in its own `Task`, so callers never block the
-  /// rider's tap on the network.
   func setTarget(
     toLatitude: Double,
     toLongitude: Double,
@@ -388,13 +256,8 @@ final class NavigationController {
     fromLongitude: Double?
   ) {
     let request = claimRequest()
-    // The previous path led to the previous Direction Point, so it is already wrong. Drop it now
-    // rather than leaving a stale line drawn under a pin that has visibly moved — a Navigation
-    // belongs to exactly one Direction Point.
     publish(request, nil)
 
-    // No fix yet is a "could not ask", not a "nothing leads there": the rider is told, and asking
-    // again once the phone has a position is exactly what `recompute` does.
     guard let fromLatitude, let fromLongitude else {
       publish(request, failed(toLatitude, toLongitude, currentProfile, .fetchFailed))
       return
@@ -411,35 +274,20 @@ final class NavigationController {
     }
   }
 
-  /// Remembers `next` as the rider's Navigation Profile without touching the current path.
-  /// Switching profile is `selectProfile` followed by `recompute`; on its own this only moves the
-  /// default the next Navigation will be computed under.
-  ///
-  /// The choice is stored even when the recompute that follows it fails: the rider chose it, and
-  /// "last choice wins" is about the choice, not about whether that one request found a path.
   func selectProfile(_ next: NavigationProfile) {
     let changed: Bool = lock.withLock {
       guard profile != next || !profileChosen else { return false }
       profile = next
-      _ = claimRequestLocked() // A result under the previous profile is already stale.
-      // A restore still in flight must not undo this with yesterday's value.
+      _ = claimRequestLocked()
       profileChosen = true
       return true
     }
     guard changed else { return }
     Task {
-      // Same converge rule as `persist`: serialized, and re-read when it runs so the last write
-      // saves the rider's latest choice however the taps interleaved.
       await writes.enqueue { [self] in await store.saveProfile(currentProfile) }
     }
   }
 
-  /// The rider asking for a fresh path to the Direction Point they already have, from where they
-  /// are now. Automatic recalculation in `onFix` follows the same publish and failure-retention rules.
-  ///
-  /// Unlike `setTarget` it does not drop the current path first, and a request that produces no
-  /// path is discarded while a usable one is already drawn: losing a working line by asking for a
-  /// better one is a bad trade. The rider is told nothing changed by the line simply staying put.
   func recompute(
     toLatitude: Double,
     toLongitude: Double,
@@ -466,9 +314,6 @@ final class NavigationController {
     }
   }
 
-  /// Bracket around one in-flight Directions call. Both ends notify, because `computing` is part of
-  /// what JS mirrors: the spinner has to come on before the fetch and go off after the result has
-  /// already been published, or the rider sees a gap between the two.
   private func beginComputing(_ request: Int) { lock.withLock { beginComputingLocked(request) } }
 
   private func beginComputingLocked(_ request: Int) {
@@ -542,23 +387,13 @@ final class NavigationController {
     )
   }
 
-  /// Clearing the Direction Point ends the Navigation; they are strictly 1:1.
   func clear() {
     publish(claimRequest(), nil)
   }
 
-  /// Commits `navigation` if `request` is still the newest intent — and, when `keepUsablePath` is
-  /// set, only if it is not a downgrade from a drawn path to a failure — and notifies in that same
-  /// commit order. The staleness check, the write and the notify are one critical section: splitting them
-  /// lets a stale result land after a newer one, leaving JS mirroring a path native no longer holds.
-  ///
-  /// `onChange` only hops to the main queue to emit and never calls back into this controller, so
-  /// holding the lock across it cannot deadlock.
   private func publish(_ request: Int, _ navigation: Navigation?, keepUsablePath: Bool = false, automatic: Bool = false) {
     let committed: Bool = lock.withLock {
       guard request == generation, !isSame(state, navigation) else { return false }
-      // A recompute that found nothing must not take away a path the rider can still ride. Checked
-      // in here rather than at the call site so the read of `state` and the write are one step.
       if keepUsablePath, navigation?.status != .ready, state?.status == .ready { return false }
       let previousPath = ridePath(state)
       var next = navigation
@@ -568,7 +403,6 @@ final class NavigationController {
         next?.automatic = automatic
       }
       state = next
-      // Reproject immediately: foreground GPS may not deliver another fix until the rider moves.
       let previousProgress = progress
       progress = progressAtLatestFix()
       onChange?(state)
@@ -581,13 +415,6 @@ final class NavigationController {
     if committed { persist(request) }
   }
 
-  /// Writes whatever is current through to the store, off the caller's thread.
-  ///
-  /// Two things make storage converge on what native holds rather than on whichever write happened
-  /// to finish last. Writes are serialized through `writes`, so they land in the order they were
-  /// enqueued; and each one re-reads `state` *when it runs* rather than carrying a value, so the
-  /// last write to run necessarily saves the newest state. Either alone leaves a stale row behind:
-  /// unordered writes can land out of order, and a carried value can be stale before its turn comes.
   private func persist(_ request: Int) {
     Task {
       await writes.enqueue { [self] in
@@ -598,8 +425,6 @@ final class NavigationController {
     }
   }
 
-  /// Tuple arrays are not `Equatable`, so the path comparison Android gets from `List<Pair<..>>`
-  /// equality is written out here.
   private func samePath(
     _ a: [(latitude: Double, longitude: Double)]?,
     _ b: [(latitude: Double, longitude: Double)]?
@@ -613,10 +438,6 @@ final class NavigationController {
     }
   }
 
-  /// `Navigation` holds a tuple array, which is not `Equatable`, so redundant no-op emits are
-  /// filtered field by field instead. Every field takes part, matching the Android peer's whole-value
-  /// comparison: a recompute can land in the same millisecond as the path it replaces and differ
-  /// only in profile or geometry, and dropping that would leave JS drawing the older one.
   private func isSame(_ a: Navigation?, _ b: Navigation?) -> Bool {
     switch (a, b) {
     case (nil, nil): return true
@@ -635,8 +456,6 @@ final class NavigationController {
   }
 }
 
-/// Runs enqueued writes one after another, in enqueue order. An `actor` alone would not do: actors
-/// are reentrant across `await`, so two writes suspended on the database would interleave.
 private actor SerialWrites {
   private var tail: Task<Void, Never>?
 

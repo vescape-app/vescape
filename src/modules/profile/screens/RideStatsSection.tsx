@@ -9,7 +9,6 @@ import { ProfileStatsDetails } from '@/modules/profile/components/ProfileStatsDe
 import { theme } from '@/constants/theme'
 
 interface RideStatsSectionProps {
-  /** Tapping Top speed or Longest ride opens the ride that set it. */
   onOpenRecordRide?: OpenRecordRide
 }
 

@@ -72,7 +72,6 @@ function motorDestination(id: string): string {
   return 'motor'
 }
 
-/** Newer firmware fields stay reachable in their topic, without guessing their units. */
 export function boardConfigTabs(
   refloat?: Record<string, number | boolean | undefined>,
   motor?: Record<string, number | boolean | undefined>,

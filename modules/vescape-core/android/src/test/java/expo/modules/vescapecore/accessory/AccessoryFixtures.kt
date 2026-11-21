@@ -4,10 +4,6 @@ import java.io.File
 import org.json.JSONObject
 
 /**
- * The shared Accessory Protocol corpus, read straight off the repo tree the way the Refloat schema
- * fixtures are. The same files drive the Swift peer and the ESP32 firmware's native tests, so a
- * contract that drifts on one side fails on all three.
- *
  * @parity /modules/vescape-core/ios/accessory/AccessoryFixtures.swift
  */
 internal object AccessoryFixtures {

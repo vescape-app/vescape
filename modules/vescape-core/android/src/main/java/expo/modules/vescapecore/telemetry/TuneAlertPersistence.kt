@@ -7,7 +7,6 @@ import expo.modules.vescapecore.database.TuneHistoryEntryEntity
 import expo.modules.vescapecore.database.TuneProfileEntity
 import expo.modules.vescapecore.database.VescapeDao
 
-/** Production Tune History and Alert operations shared by AppDataRepository and host contracts. */
 internal class TuneAlertPersistence(private val dao: VescapeDao) {
   suspend fun createProfile(profile: TuneProfileEntity): TuneProfileEntity = dao.createTuneProfile(
     profile,
@@ -24,7 +23,6 @@ internal class TuneAlertPersistence(private val dao: VescapeDao) {
     entries.forEach { JSONObject(it.fieldsJson) }
   }
 
-  /** Rider rules only: preset rows change through `applyAlertPreset`, expanded points never. */
   suspend fun saveAlert(rule: AlertRuleEntity) = dao.upsertAlertRule(riderRule(rule))
   suspend fun alertRules(boardId: String, reportPresetFailure: (Throwable) -> Unit): List<AlertRuleEntity> =
     AlertPresetPersistence.expandedRules(dao, boardId, reportPresetFailure)
@@ -33,14 +31,13 @@ internal class TuneAlertPersistence(private val dao: VescapeDao) {
 
   private fun riderId(id: String) = id.also { require(!AlertPresetPersistence.isPresetId(it)) { "Alert Preset rules are not editable" } }
 
-  /** [rule] when it is a rider's rule: not a preset id and not a preset spec. */
   fun riderRule(rule: AlertRuleEntity) = rule.also {
     riderId(it.id)
     require(AlertPresetSpec.parse(it.spec) == null) { "A rider rule cannot hold a preset spec" }
   }
 }
 
-/** Tune compatibility ignores patch and suffix; Board Link identity retains both.
+/**
  * @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift `validRefloatBaseVersion`
  * @parity /src/modules/tune/lib/tuneCompatibility.ts `tuneCompatibilityVersion`
  */

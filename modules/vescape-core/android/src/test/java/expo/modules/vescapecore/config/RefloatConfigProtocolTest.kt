@@ -325,8 +325,6 @@ class RefloatConfigProtocolTest {
     assertEquals(0, confInd)
   }
 
-  // --- Direct connection tests ---
-
   @Test
   fun buildsDirectCustomConfigXmlRequest() {
     val payload = RefloatConfigProtocol.buildGetCustomConfigXml(

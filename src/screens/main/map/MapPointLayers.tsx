@@ -10,7 +10,6 @@ import {
 import { isMapPinKindVisible } from '@/modules/map-points/lib/mapPointVisibility'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
-/** Saved Map Points, with the one the rider tapped (or is navigating to) drawn as selected. */
 export function MapPointLayers({
   mapPoints,
   hiddenMapPointCategories,

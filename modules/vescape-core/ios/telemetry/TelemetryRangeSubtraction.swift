@@ -1,8 +1,5 @@
 import Foundation
 
-/// Inclusive telemetry time range. Deletion uses inclusive SQL bounds, so subtraction returns the
-/// exact inclusive holes that remain deletable.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRangeSubtraction.kt `TelemetryTimeRange`
 internal struct TelemetryTimeRange: Equatable {
   let startMs: Int64
@@ -15,9 +12,6 @@ internal struct TelemetryTimeRange: Equatable {
   }
 }
 
-/// Deletion protection is bucket-granular: retain every raw sample in each minute bucket touched by
-/// a Favorite so its existing precomputed bucket stays truthful without a history-wide rebuild.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRangeSubtraction.kt `expandTelemetryRangeToBuckets`
 internal func expandTelemetryRangeToBuckets(
   _ range: TelemetryTimeRange,
@@ -29,9 +23,6 @@ internal func expandTelemetryRangeToBuckets(
   return TelemetryTimeRange(startMs: start, endMs: endStart + bucketSizeMs - 1)
 }
 
-/// Carve protected ranges out of one requested delete range. Protected ranges are clipped, sorted,
-/// and merged first so overlapping Favorites never produce duplicate or inverted delete ranges.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRangeSubtraction.kt `subtractProtectedTelemetryRanges`
 internal func subtractProtectedTelemetryRanges(
   deleteRange: TelemetryTimeRange,

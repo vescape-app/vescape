@@ -1,15 +1,9 @@
 import Foundation
 
-/// Keeps a rolling in-memory window of recent telemetry ticks and, ~1 Hz, emits a per-metric
-/// decimated `onLiveSeries` event (flat `[ts, value, ...]` arrays over `LIVE_SERIES_BUCKETS`
-/// buckets across the live-history window). This is what the center-screen sparklines and the
-/// battery gauge read — `onLiveTick` only carries the instant scalar for the numeric gauges.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/LiveSeriesEmitter.kt
 /// @platform-diff iOS decimates a plain in-memory tick buffer instead of Android's `TelemetryPipeline`,
 /// and has no metric-sanitizer exclusions yet (speed/duty are emitted unconditionally). The event
 /// shape, cadence, bucket count, and window semantics match.
-/// Highest speed (km/h) and duty (%) across the live window, as the live charts plot them.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `ProcessedTelemetry`
 internal struct LivePeaks {
   let speed: Double?
@@ -19,32 +13,21 @@ internal struct LivePeaks {
 internal final class LiveSeriesEmitter {
   private static let intervalMs = 1_000
   private static let buckets = 64
-  /// Focused detail-chart resolution: fixed-width time buckets, uncapped, and narrower than
-  /// the board packet interval (~30-50ms) so at most one sample lands per bucket — the focused
-  /// series is effectively full-resolution. Only mounted `/control` detail charts pay for it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `FOCUSED_SERIES_BUCKET_WIDTH_MS`
   private static let focusedBucketWidthMs: Int64 = 20
 
-  /// Send a native event to JS. Wired by the coordinator.
   var emit: ((String, [String: Any?]) -> Void)?
-  /// Current connection generation, stamped onto each emit so JS can drop stale series.
   var generation: () -> Int64 = { 0 }
 
   private var windowMs: Int64 = 5 * 60_000
-  /// Guards `samples`: appended/pruned on the main (BLE callback) queue, but read via
-  /// `recentSnapshot()` from the JS thread on `getLiveState`. All access holds `samplesLock`.
   private let samplesLock = NSLock()
   private var samples: [[String: Any?]] = []
-  /// Guarded by `samplesLock` with the window they track.
   private let speedPeak = LiveWindowPeak(select: LiveSeriesEmitter.metric("speed").select)
   private let dutyPeak = LiveWindowPeak(select: LiveSeriesEmitter.metric("duty").select)
   private var active = false
   private var primed = false
   private var tickSeq = 0
-  /// Metric keys the mounted `/control` detail charts are focused on (JS intent); empty = none.
-  /// Mutated and read on the main queue alongside the tick.
   private var focusedMetrics: Set<String> = []
-  /// Metrics added to the always-on center set while JS shows them (the telemetry panel). Main queue.
   private var extraLiveMetrics: [Metric] = []
   private let scheduler: Scheduler
 
@@ -52,7 +35,6 @@ internal final class LiveSeriesEmitter {
     self.scheduler = scheduler
   }
 
-  /// Set the live-history window (minutes) from the `liveHistoryLimit` setting.
   func setWindowMinutes(_ minutes: Int) {
     windowMs = Int64(max(1, minutes)) * 60_000
     samplesLock.lock()
@@ -60,9 +42,6 @@ internal final class LiveSeriesEmitter {
     samplesLock.unlock()
   }
 
-  /// Thread-safe copy of the recent raw-tick window backing `board.recentTelemetry`. Same buffer,
-  /// window, and ordering as the decimated `onLiveSeries` emit — no second buffer. Mirrors Android
-  /// `TelemetryPipeline.recentSnapshot`.
   func recentSnapshot() -> [[String: Any?]] {
     samplesLock.lock()
     defer { samplesLock.unlock() }
@@ -87,9 +66,6 @@ internal final class LiveSeriesEmitter {
     samplesLock.unlock()
   }
 
-  /// Append a decoded tick (the same map emitted on `onLiveTick`, carrying `lastPacketAt` plus the
-  /// metric fields). Emits immediately on the first sample of a session so gauges light up without
-  /// waiting a full tick interval.
   @discardableResult
   func add(_ sample: [String: Any?]) -> LivePeaks {
     samplesLock.lock()
@@ -103,8 +79,6 @@ internal final class LiveSeriesEmitter {
     return peaks
   }
 
-  /// Replay Warmup (ADR 0048): a back-stamped sample fills the window without emitting, so the
-  /// session's first emit already draws full charts.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `prefill`
   func prefill(_ sample: [String: Any?]) {
     samplesLock.lock()
@@ -112,7 +86,6 @@ internal final class LiveSeriesEmitter {
     samplesLock.unlock()
   }
 
-  /// Caller must hold `samplesLock`.
   private func append(_ sample: [String: Any?]) {
     samples.append(sample)
     speedPeak.add(sample)
@@ -120,7 +93,6 @@ internal final class LiveSeriesEmitter {
     prune()
   }
 
-  /// Caller must hold `samplesLock`.
   private func prune() {
     guard let newest = timestamp(samples.last) else { return }
     let oldest = newest - windowMs
@@ -163,8 +135,6 @@ internal final class LiveSeriesEmitter {
     emit?("onLiveSeries", ["metrics": metrics, "generation": generation()])
   }
 
-  /// Set the metrics streamed on `onLiveSeries` beyond the always-on `centerMetrics` (empty to drop
-  /// back to those); emits immediately so the new rows fill without waiting a tick.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/LiveSeriesEmitter.kt `setLiveMetrics`
   func setLiveMetrics(_ metrics: [String]) {
     DispatchQueue.main.async { [weak self] in
@@ -177,7 +147,6 @@ internal final class LiveSeriesEmitter {
     }
   }
 
-  /// Set which metrics the high-res focused stream covers (empty to stop it); emits immediately.
   func setFocusedMetrics(_ metrics: [String]) {
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
@@ -191,8 +160,6 @@ internal final class LiveSeriesEmitter {
     let samples = recentSnapshot()
     guard !samples.isEmpty else { return }
     let bucketCount = max(1, Int(windowMs / Self.focusedBucketWidthMs))
-    // Span and rate describe the data actually held, not the configured window, so the
-    // detail screen can caption exactly what the rider is looking at.
     let firstTs = timestamp(samples.first) ?? 0
     let lastTs = timestamp(samples.last) ?? 0
     let spanMs = max(0, lastTs - firstTs)
@@ -206,7 +173,6 @@ internal final class LiveSeriesEmitter {
         timestamp: { self.timestamp($0) ?? 0 },
         value: m.select
       )
-      // iOS has no metric sanitizer yet, so no exclusion spans ride along — see the class @platform-diff.
       emit?("onFocusedSeries", [
         "metric": metric,
         "series": series,
@@ -224,14 +190,11 @@ internal final class LiveSeriesEmitter {
     return Self.num(sample, "lastPacketAt").map { Int64($0) }
   }
 
-  // MARK: - Metric selectors (mirrors Android `LIVE_SERIES_METRICS`)
-
   private struct Metric {
     let key: String
     let select: ([String: Any?]) -> Double?
   }
 
-  /// Center-screen metrics streamed continuously on `onLiveSeries` (the battery bar).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `LIVE_SERIES_METRICS`
   /// @parity /src/modules/board/hooks/useLiveMetric.ts `liveSelectors`
   private static let centerMetrics: [Metric] = [
@@ -239,7 +202,6 @@ internal final class LiveSeriesEmitter {
     Metric(key: "batteryPercent") { num($0, "batteryPercent") },
   ]
 
-  /// Metrics streamed only on request: focused by a detail chart, or added by the telemetry panel.
   private static let focusedOnlyMetrics: [Metric] = [
     Metric(key: "motorTemp") { num($0, "tempMotor").flatMap { $0 > 0 ? $0 : nil } },
     Metric(key: "controllerTemp") { num($0, "tempMosfet") },
@@ -254,7 +216,6 @@ internal final class LiveSeriesEmitter {
     Metric(key: "footpadAdc2") { num($0, "adc2") },
   ]
 
-  /// Every metric a `/control` detail chart can focus (center + detail-only).
   private static let allMetrics: [Metric] = centerMetrics + focusedOnlyMetrics
 
   private static func metric(_ key: String) -> Metric {

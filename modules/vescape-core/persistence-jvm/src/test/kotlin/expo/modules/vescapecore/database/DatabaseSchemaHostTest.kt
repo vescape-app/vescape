@@ -12,7 +12,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
 
-/** Checks the database Room builds against the neutral schema both platforms must produce. */
 class DatabaseSchemaHostTest {
   @Test fun freshDatabaseMatchesTheSharedSchema() {
     val path = Files.createTempFile("vescape-schema-fresh-", ".db").also(Files::delete)
@@ -34,7 +33,6 @@ class DatabaseSchemaHostTest {
   }
 }
 
-/** Fails with a per-table summary, and writes the full dump under `build/`, when [path] differs from the neutral schema. */
 internal fun assertMatchesSharedSchema(label: String, path: Path) {
   val schemaFile = Path.of("../schema/database.json")
   val actual = BundledSQLiteDriver().open(path.toString()).use(::dumpDatabaseSchema)
@@ -49,7 +47,6 @@ internal fun assertMatchesSharedSchema(label: String, path: Path) {
 private val internalTables = setOf("room_master_table", "android_metadata", "grdb_migrations")
 
 /**
- * Tables, columns, indexes, and foreign keys in a form that does not depend on which platform built them.
  * @parity /modules/vescape-core/persistence-macos/DatabaseSchemaDump.swift `dumpDatabaseSchema`
  */
 internal fun dumpDatabaseSchema(db: SQLiteConnection): JSONObject {
@@ -82,7 +79,6 @@ internal fun dumpDatabaseSchema(db: SQLiteConnection): JSONObject {
       val name = index["name"] as String
       val indexColumns = rows("PRAGMA index_info(`$name`)").sortedBy { (it["seqno"] as String).toInt() }.map { it["name"] }
       val sql = rows("SELECT sql FROM sqlite_master WHERE type='index' AND name='$name'").singleOrNull()?.get("sql") as String?
-      // Constraint indexes get generated names, so key them by what they cover instead.
       val key = if (index["origin"] == "c") name else "unique(${indexColumns.joinToString(",")})"
       indexes.put(key, JSONObject().apply {
         put("columns", JSONArray(indexColumns))

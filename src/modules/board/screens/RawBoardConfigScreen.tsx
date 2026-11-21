@@ -18,10 +18,6 @@ import {
   useMotorConfigValuesStore,
 } from '@/modules/board/store/motorConfigValuesStore'
 
-/**
- * Raw dump of the requested Board's decoded Refloat and motor config. Current session values take
- * priority over the durable Last Known copy; metadata identifies each config's freshness.
- */
 export default function RawBoardConfigScreen() {
   const { boardId } = useLocalSearchParams<{ boardId: string }>()
   const values = useBoardConfigFields(boardId)
@@ -44,10 +40,6 @@ export default function RawBoardConfigScreen() {
     [motor],
   )
 
-  /**
-   * 196 fields arrive in map order, which is meaningless to read. Sorting by id groups the firmware's
-   * own prefixes together — `bms.*`, `foc_*`, `l_*`, `m_*`, `si_*` — so related settings sit adjacent.
-   */
   const motorValues = useMemo(() => {
     if (!motor) return null
     return Object.fromEntries(Object.entries(motor.values).sort(([a], [b]) => a.localeCompare(b)))

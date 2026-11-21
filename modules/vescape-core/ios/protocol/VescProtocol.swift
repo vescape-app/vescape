@@ -13,11 +13,8 @@ internal let COMM_SET_CUSTOM_CONFIG = 95
 internal let COMM_PING_CAN = 62
 internal let COMM_SET_CHUCK_DATA = 35
 
-/// Read-only terminal request. Vescape only ever sends the fixed literal `faults`; the command
-/// byte is deliberately not exposed with a caller-supplied string anywhere.
 internal let COMM_TERMINAL_CMD = 20
 
-/// Controller terminal output. Multi-frame, with no explicit completion frame.
 internal let COMM_PRINT = 21
 internal let REFLOAT_MAGIC = 101
 internal let REFLOAT_GET_INFO = 0
@@ -26,10 +23,6 @@ internal let REFLOAT_RC_MOVE = 7
 internal let REFLOAT_REMOTE = 15
 internal let REFLOAT_LIGHTS_CONTROL = 20
 
-/// `LIGHTS_CONTROL` on Refloat 1.1 and older, where it still lived in the unstable range the enum
-/// documents as "commands above 200 can change protocol at any time". Refloat 1.2.0 promoted it to
-/// `REFLOAT_LIGHTS_CONTROL` and widened the mask, so the two ids are two different wire formats.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `REFLOAT_LIGHTS_CONTROL_LEGACY`
 internal let REFLOAT_LIGHTS_CONTROL_LEGACY = 202
 // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `REMOTE_TILT_CENTER`
@@ -37,49 +30,27 @@ internal let REFLOAT_LIGHTS_CONTROL_LEGACY = 202
 // @parity /modules/vescape-core/ios/watch/WatchTiltStick.swift `center`
 internal let REMOTE_TILT_CENTER = 128
 
-/// The one and only terminal command Vescape sends. VESC's `faults` command prints the controller's
-/// retained in-memory fault register and mutates nothing. Keeping it a private constant behind
-/// `buildFaultsTerminalCommand` is what stops this from becoming a generic command surface.
 private let vescFaultsTerminalCommand = "faults"
 
-/// Frames the read-only `faults` terminal request for the Board Link's transport, so a CAN-forwarded
-/// Refloat Board asks the same controller the Board Link proved.
-///
-/// There is intentionally **no** string parameter: the payload is fixed.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildFaultsTerminalCommand`
 internal func buildFaultsTerminalCommand(_ transport: BoardTransport) -> [UInt8] {
   transport.frame([UInt8(COMM_TERMINAL_CMD)] + Array(vescFaultsTerminalCommand.utf8))
 }
 
-/// Which light switches a `LIGHTS_CONTROL` request addresses: bit 0 the lights as a whole, bit 1 the
-/// headlights. Firmware only applies the bits the mask names; both are always named so a write states
-/// the complete light state rather than editing one switch against whatever the board had.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `LIGHTS_CONTROL_MASK`
 private let LIGHTS_CONTROL_MASK = 0x3
 
-/// Board lights as the board reports them back on its `LIGHTS_CONTROL` echo.
 internal struct BoardLightsState: Equatable {
   let enabled: Bool
   let headlightsEnabled: Bool
 }
 
-/// Which `LIGHTS_CONTROL` wire format the board speaks. The command was renumbered and its mask
-/// widened in Refloat 1.2.0, and firmware silently drops an unknown command id — a board on the
-/// wrong generation answers nothing at all, which is indistinguishable from a dead link.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `BoardLightsGeneration`
 internal enum BoardLightsGeneration {
-  /// Refloat 1.0–1.1: command 202, one mask byte, writing straight to the stored config.
   case legacy
 
-  /// Refloat 1.2+: command 20, `uint32` mask, writing a runtime override.
   case current
 
-  /// Resolves the generation from a normalized Refloat base version such as `"1.2.0"`. Unknown or
-  /// unparseable versions fall back to `.current`: a wrong guess only means the board ignores the
-  /// command, matching `BoardMoveGeneration.forBaseVersion`.
   static func forBaseVersion(_ baseVersion: String?) -> BoardLightsGeneration {
     let parts = baseVersion?.split(separator: ".") ?? []
     guard let major = parts.first.flatMap({ Int($0) }) else { return .current }
@@ -88,19 +59,6 @@ internal enum BoardLightsGeneration {
   }
 }
 
-/// Builds the Refloat lights switch: states the LEDs and the headlights, each on or off.
-///
-/// On `.current` the write is runtime only — firmware applies it live and never writes config, so a
-/// power cycle restores the board's own setting. It is sticky for the rest of that power cycle:
-/// firmware marks the runtime value as overriding the configured one, so later config changes to the
-/// lights stop taking effect live. On `.legacy` there is no runtime layer; firmware assigns the
-/// in-memory config directly, so the switch reads back as the board's configured value until
-/// something saves or restores config.
-///
-/// A board with its LEDs configured off still accepts the command and echoes back `enabled` — the
-/// flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a client
-/// knows not to offer the switch at all.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildLightsControlCommand`
 internal func buildLightsControlCommand(
   transport: BoardTransport,
@@ -116,7 +74,6 @@ internal func buildLightsControlCommand(
       UInt8(COMM_CUSTOM_APP_DATA),
       UInt8(REFLOAT_MAGIC),
       UInt8(REFLOAT_LIGHTS_CONTROL),
-      // mask, uint32 big-endian
       0,
       0,
       0,
@@ -128,7 +85,6 @@ internal func buildLightsControlCommand(
       UInt8(COMM_CUSTOM_APP_DATA),
       UInt8(REFLOAT_MAGIC),
       UInt8(REFLOAT_LIGHTS_CONTROL_LEGACY),
-      // mask, a single byte before Refloat 1.2.0
       UInt8(LIGHTS_CONTROL_MASK),
       UInt8(value),
     ]
@@ -136,9 +92,6 @@ internal func buildLightsControlCommand(
   return transport.frame(payload)
 }
 
-/// Decodes the board's `LIGHTS_CONTROL` echo, the authoritative answer to what the switch did.
-/// Returns `nil` for any payload that is not one, including the CAN-forwarded form.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `parseLightsControlResponse`
 internal func parseLightsControlResponse(_ payload: [UInt8]) -> BoardLightsState? {
   let body: [UInt8]
@@ -151,41 +104,24 @@ internal func parseLightsControlResponse(_ payload: [UInt8]) -> BoardLightsState
   }
   guard body.count >= 4,
     Int(body[1]) == REFLOAT_MAGIC,
-    // Both generations echo the same status byte under their own command id.
     Int(body[2]) == REFLOAT_LIGHTS_CONTROL || Int(body[2]) == REFLOAT_LIGHTS_CONTROL_LEGACY
   else { return nil }
   return BoardLightsState(enabled: body[3] & 0x1 != 0, headlightsEnabled: body[3] & 0x2 != 0)
 }
 
-/// Board Move input range for the Refloat 1.3+ `REMOTE` byte (`-128` is ignored by firmware).
 internal let BOARD_MOVE_INPUT_MAX = 127
 
-/// Motor current a full-scale `RC_MOVE` request asks for, in tenths of an amp.
 private let RC_MOVE_CURRENT_MAX_DECIAMPS = 60
 
-/// How long one `RC_MOVE` request runs. `time` is not seconds: firmware runs the request for
-/// `time * 100` control-loop steps, and that loop ticks at ~832 Hz, so one unit is only ~120 ms.
-/// Eight units cover ~1s, which outlives the controller's repeat tick — a request that lapses before
-/// its re-send lands is exactly what makes the motor stutter.
 private let RC_MOVE_TIME_STEPS = 8
 
-/// Which Refloat command carries app-driven Board Move for a given firmware.
-///
-/// Refloat 1.3 replaced the current/time `RC_MOVE` payload with a single signed remote-input byte,
-/// so the wire format is chosen from the linked base version.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `BoardMoveGeneration`
 /// @parity /modules/vescape-core/src/index.ts `startBoardMove`
 internal enum BoardMoveGeneration {
-  /// Refloat 1.0–1.2: `RC_MOVE` with explicit current and time bytes.
   case rcMove
 
-  /// Refloat 1.3+: `REMOTE` with one signed input byte.
   case remote
 
-  /// Resolves the generation from a normalized Refloat base version such as `"1.2.0"`. Unknown or
-  /// unparseable versions fall back to `.remote`: a wrong guess only means the board ignores the
-  /// command.
   static func forBaseVersion(_ baseVersion: String?) -> BoardMoveGeneration {
     let parts = baseVersion?.split(separator: ".") ?? []
     guard let major = parts.first.flatMap({ Int($0) }) else { return .remote }
@@ -194,10 +130,6 @@ internal enum BoardMoveGeneration {
   }
 }
 
-/// Builds a Board Move command: motor output while the board is disengaged, not tilt. `input` is
-/// `-127...127`, where `0` stops. Firmware applies it only in the ready (disengaged) state and
-/// clamps the resulting output itself.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildBoardMoveCommand`
 internal func buildBoardMoveCommand(
   transport: BoardTransport,
@@ -241,8 +173,6 @@ internal enum VescUartUUIDs {
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardTransport.kt
-/// Persisted form (`boards.transport` TEXT scalar): `null` | `"direct"` | `"<canId>"`.
-/// Bridge form (JS): `null` | `"direct"` | Int.
 internal enum BoardTransport: Equatable {
   case direct
   case can(Int)
@@ -257,7 +187,6 @@ internal enum BoardTransport: Equatable {
     }
   }
 
-  /// Wire scalar for JS: `"direct"` or a CAN id. Mirrors `BoardTransport.toBridge`.
   var bridgeValue: Any {
     switch self {
     case .direct: return "direct"
@@ -265,8 +194,6 @@ internal enum BoardTransport: Equatable {
     }
   }
 
-  /// Coerce a bridge value coming from JS (`null` | `"direct"` | Number). Junk → `nil`
-  /// (undetected). Mirrors Android `BoardTransport.fromBridge`.
   static func fromBridge(_ value: Any?) -> BoardTransport? {
     switch value {
     case let text as String where text == "direct":
@@ -279,8 +206,6 @@ internal enum BoardTransport: Equatable {
     }
   }
 
-  /// Decode the persisted TEXT column. Junk decodes to `nil` (undetected).
-  /// Mirrors Android `BoardTransport.decode`.
   static func decode(_ stored: String?) -> BoardTransport? {
     switch stored {
     case nil:
@@ -293,7 +218,6 @@ internal enum BoardTransport: Equatable {
     }
   }
 
-  /// Encode to the persisted TEXT column. Mirrors Android `BoardTransport.encode`.
   static func encode(_ transport: BoardTransport?) -> String? {
     switch transport {
     case nil: return nil
@@ -455,9 +379,6 @@ internal final class VescPacketReassembler {
   }
 }
 
-// MARK: - Refloat telemetry decode
-
-/// One decoded Refloat `GET_ALLDATA` telemetry frame. Mirrors Android `RefloatTelemetry`.
 internal struct RefloatTelemetry {
   let hasFault: Bool
   let faultCode: Int
@@ -482,8 +403,6 @@ internal struct RefloatTelemetry {
   let pullRateHz: Double?
   let lastPacketAt: Int64
 
-  /// Bridge shape matching the TS `TelemetryEvent`. `location` is omitted here (added by
-  /// higher layers when GPS lands); the hot-path live tick never carries it.
   func toMap() -> [String: Any?] {
     [
       "pitch": pitch,
@@ -511,8 +430,6 @@ internal struct RefloatTelemetry {
   }
 }
 
-/// Decode a Refloat `COMM_CUSTOM_APP_DATA` / `GET_ALLDATA` telemetry reply. Returns `nil` for
-/// unrelated payloads or truncated frames. Mirrors Android `parseRefloatGetAllData`.
 internal func parseRefloatGetAllData(
   payload: [UInt8],
   avgLatency: Int?,
@@ -582,7 +499,6 @@ internal func parseRefloatGetAllData(
   )
 }
 
-/// One decoded smart-BMS `COMM_BMS_GET_VALUES` snapshot. Mirrors Android `BmsTelemetry`.
 internal struct BmsTelemetry {
   let capturedAt: Int64
   let voltageTotal: Double
@@ -602,7 +518,6 @@ internal struct BmsTelemetry {
   let tempMaxCell: Double?
   let canId: Int?
 
-  /// Bridge shape matching the TS `BmsEvent`. Mirrors Android `BmsTelemetry.toMap`.
   func toMap() -> [String: Any?] {
     [
       "capturedAt": capturedAt,
@@ -626,19 +541,6 @@ internal struct BmsTelemetry {
   }
 }
 
-/// Decode a `COMM_BMS_GET_VALUES` reply from a VESC-attached smart BMS.
-///
-/// The VESC firmware packs scaled big-endian integers (not IEEE floats): float32 fields are
-/// `int32 / scale`, float16 fields are `int16 / scale`. Layout mirrors `commands.c`:
-///   v_tot, v_charge, i_in, i_in_ic (float32 1e6) · ah_cnt, wh_cnt (float32 1e3) ·
-///   cell_num (u8) · v_cell[cell_num] (float16 1e3) · bal_state[cell_num] (u8) ·
-///   temp_adc_num (u8) · temps_adc[] (float16 1e2) · temp_ic/temp_hum/hum/temp_max_cell (float16 1e2) ·
-///   soc (u8 ×255) · soh (u8 ×255) · can_id (u8) ...
-///
-/// Only the stable prefix (voltages + balancing) is required; soc is best-effort so firmware
-/// variants with different trailing fields still yield cell data. A non-nil result also proves a
-/// real BMS answered — the Board Probe uses that as the `hasBms` capability signal.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt (parseBmsValues)
 internal func parseBmsValues(_ payload: [UInt8], packetAt: Int64) -> BmsTelemetry? {
   guard !payload.isEmpty else { return nil }
@@ -671,8 +573,6 @@ internal func parseBmsValues(_ payload: [UInt8], packetAt: Int64) -> BmsTelemetr
     }
   }
 
-  // Everything past balancing is firmware-variant dependent, so each trailing field is
-  // read best-effort behind a bounds check and stays nil/empty when the variant omits it.
   var temps: [Double] = []
   var tempIc: Double?
   var tempHum: Double?
@@ -722,8 +622,6 @@ internal func parseBmsValues(_ payload: [UInt8], packetAt: Int64) -> BmsTelemetr
   )
 }
 
-/// Refloat/Float package board state → wire label.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `stateName`
 internal func stateName(_ state: Int) -> String {
   switch state & 0x0f {

@@ -1,7 +1,6 @@
 import React, { type ReactNode } from 'react'
 import { Box, type Key, Text } from 'ink'
 
-/** Ink only sets `key.return` for CR; Codex terminals may deliver Enter as one or more LFs. */
 export function isEnter(input: string, key: Pick<Key, 'return'>): boolean {
   return key.return || /^[\r\n]+$/.test(input)
 }
@@ -12,7 +11,6 @@ export interface MenuItem {
   detail?: string
 }
 
-/** Arrow/Enter navigation is the only input model in this CLI; no letter shortcuts. */
 export function Menu({ items, index }: { items: readonly MenuItem[]; index: number }) {
   return (
     <Box flexDirection="column">
@@ -52,11 +50,6 @@ export interface ConfirmField {
   value: ReactNode
 }
 
-/**
- * Single confirm presentation for every mutating flow: title, the exact facts the workflow will
- * act on, then a two-item menu. Confirm comes first so Enter continues; callers that guard a
- * public-facing mutation start the selection on Cancel instead.
- */
 export function Confirm({
   title,
   fields,

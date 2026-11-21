@@ -26,7 +26,6 @@ import type { useTuneScreenData } from '@/modules/tune/hooks/useTuneScreenData'
 
 type TuneScreenData = ReturnType<typeof useTuneScreenData>
 
-/** Profile pills, plus history and re-read actions. Rendered as the navigator's own header. */
 export function TuneScreenHeader({
   paddingTop,
   profiles,

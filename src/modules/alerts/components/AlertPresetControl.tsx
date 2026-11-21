@@ -33,26 +33,17 @@ import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTh
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 import { PresetGeigerSound } from '@/modules/alerts/components/PresetGeigerSound'
 
-/** Controlled preset selection and gauge. The caller supplies one resolved rule snapshot (preset
- * and rider rules) for markers and the sound preview, and the preset's own points for its
- * description; saved Boards never regenerate rules here. */
-
 interface PresetGaugeDescriptor {
   color: ThemeColor
-  /** Readout unit shown under the live value. */
   unit: string
   decimals: number
   min: number
-  /** Full-scale value; speed overrides this with Board Top Speed. */
   defaultMax: number
-  /** Compact label drawn at a threshold marker (e.g. `20%`, `70°`, `38 km/h`). */
   formatMarker: (value: number) => string
 }
 
 const round = (value: number) => Math.round(value)
 
-// JS-only presentation: colors, units, and label formatting the gauge preview draws.
-// Battery is percent-scaled here (its thresholds are SoC %), unlike the voltage telemetry metric.
 const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
   battery: {
     color: telemetry.battVoltage.color,
@@ -96,12 +87,7 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
   },
 }
 
-/**
- * Structural mirror of the gauge hot-range span. Kept local so this alerts-module
- * component never imports the history module (no `alerts → history` edge); it is
- * assignable to {@link SingleGauge}'s `MetricHotRange` prop.
- */
-interface PresetGaugeHotRange {
+export interface PresetGaugeHotRange {
   start: number
   end: number
 }
@@ -110,28 +96,17 @@ interface AlertPresetControlProps {
   metric: AlertPresetMetric
   level: AlertPresetLevel
   onLevelChange: (level: AlertPresetLevel) => void
-  /** Live telemetry value; when supplied the gauge overlays a moving needle + readout. */
   liveValue?: SharedValue<number | null>
-  /** Board Top Speed (km/h) — resolves speed thresholds and the speed gauge full-scale. */
   boardTopSpeedKmh?: number | null
-  /** Metrics whose preset follows the board's own configuration. */
   matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
   onMatchBoardConfigChange?: (enabled: boolean) => void
-  /** Sound of the saved preset's geiger rules; null when the level has none (off, discrete). */
   geigerSound?: string | null
-  /** Pick the geiger sound of a range preset; omitted hides the select. */
   onGeigerSoundChange?: (spec: string) => void
-  /** The board's decoded configs, for resolving what a matched preset lands on right now. */
   configBases?: BoardConfigBases
-  /** History hot-range gradient for the gauge arc (kept in sync with the detail gauge). */
   hotRange?: PresetGaugeHotRange | null
-  /** Blocks the level switch and dims it (e.g. battery without a valid config). */
   levelDisabled?: boolean
-  /** Exact visible rules (preset and rider) to evaluate while the synthetic needle sweeps the gauge. */
   ruleSnapshot: AlertTestRule[]
-  /** The preset's own expanded points, which the description speaks for. */
   presetRules: AlertTestRule[]
-  /** Detail-screen Alerts heading, placed directly below the gauge. */
   controlsHeader?: ReactNode
 }
 
@@ -184,7 +159,6 @@ export function AlertPresetControl({
     [ruleSnapshot, gauge],
   )
 
-  // A stable null placeholder so the gauge always has a SharedValue; the needle is hidden offline.
   const placeholder = useSharedValue<number | null>(null)
 
   const alertTest = useAlertTest({
@@ -194,7 +168,6 @@ export function AlertPresetControl({
     alertAbove: metric !== 'battery',
   })
   const gaugeValue = alertTest.running ? alertTest.value : liveValue
-  // Says what this level actually sounds like — the ramp is otherwise learned by riding it.
   const description =
     presetRules.length > 0
       ? describeRules(metric, presetRules)
@@ -219,7 +192,6 @@ export function AlertPresetControl({
         showValue={gaugeValue != null}
         containerStyle={styles.gauge}
       />
-      {/* The test drives the alerts, so it sits with the Alerts heading rather than the gauge. */}
       <View style={styles.headerRow}>
         {controlsHeader}
         <Button
@@ -248,7 +220,6 @@ export function AlertPresetControl({
         onChange={onLevelChange}
         disabled={levelDisabled}
       />
-      {/* Ticks belong to the level picked above; Off has none to shape. */}
       {level === 'off' ? null : (
         <PresetGeigerSound spec={geigerSound} onChange={onGeigerSoundChange} />
       )}
@@ -256,24 +227,12 @@ export function AlertPresetControl({
   )
 }
 
-/**
- * Per-metric wording for the match note. The board's setting has a different name on every metric,
- * and "follows the board" alone does not tell a rider *which* number moved.
- */
 const MATCH_SUBJECT: Partial<Record<AlertPresetMetric, string>> = {
   duty: 'duty pushback',
   'motor-temp': 'motor temperature limiting',
   'controller-temp': 'controller temperature limiting',
 }
 
-/**
- * Opt one metric's preset into following the board's own configuration. The note underneath states
- * the number being followed, because that is the whole promise of the checkbox.
- *
- * Where the board has no such number the checkbox is not offered as a choice at all — it is
- * disabled and the note says why. Ticking it would only produce a preset that stays silent, and a
- * board with duty pushback at 100% has genuinely nothing to match.
- */
 function BoardConfigMatchControl({
   metric,
   checked,
@@ -293,8 +252,6 @@ function BoardConfigMatchControl({
   const subject = MATCH_SUBJECT[metric] ?? 'configuration'
   const format = PRESET_GAUGE[metric].formatMarker
   const available = base.status === 'resolved'
-  // Ticking on needs an anchor; ticking off never does, or a rider who matched while connected
-  // would be stuck with a dormant preset the moment the board goes away.
   const interactive = available || checked
   let note: string | null = null
   if (base.status === 'resolved') {
@@ -335,15 +292,11 @@ interface LevelTone {
 
 const LEVEL_OPTIONS: { id: AlertPresetLevel; label: string }[] = [
   { id: 'off', label: 'Off' },
-  // Rising cautiousness left to right, so the row reads as one ramp out of `off`: risky (yellow)
-  // → balanced (green) → careful (blue). Green marks the recommended default; orange and red stay
-  // reserved for real alerts, so `minimal` must not borrow either — it is a choice, never a fault.
   { id: 'minimal', label: 'Minimal' },
   { id: 'normal', label: 'Normal' },
   { id: 'safe', label: 'Safe' },
 ]
 
-/** The row's own order — the preset levels themselves have no ranking. */
 const ALL_LEVELS: AlertPresetLevel[] = LEVEL_OPTIONS.map((option) => option.id)
 const SLIDER_ANIMATION = { duration: 180 } as const
 

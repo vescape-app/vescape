@@ -1,15 +1,4 @@
 #!/usr/bin/env bun
-/**
- * `bun run android:emulator` — boot a phone AVD, using the repo's device picker.
- *
- * The phone flow assumed a device was already attached (`bun run android` fails with "start an
- * emulator or plug one in"), which meant leaving the terminal for Studio's device manager. Watch
- * AVDs are filtered out for the same reason `bun run android` filters watches: the phone app does
- * not run on Wear.
- *
- *   bun run android:emulator                       # pick, or take the only phone AVD
- *   bun run android:emulator --device Medium_Phone # skip the picker
- */
 import { avdHome, bootAvd, isAvdRunning, listAvds, PHONE_AVD_KEY } from './lib/avds.ts'
 import { pickDevice } from './lib/devices.ts'
 

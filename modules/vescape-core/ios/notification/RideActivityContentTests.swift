@@ -78,7 +78,6 @@ final class RideActivityContentTests: XCTestCase {
     XCTAssertEqual(state.noticeSeverity, "warning")
   }
 
-  /// An activity started by a build without notice fields must still decode.
   func testContentStateFromOlderBuildDecodesWithoutNotice() throws {
     let json = Data(
       #"{"deviceName":"ADV","phase":"connected","statusText":"Connected","shortCritical":"45%","batteryPercent":45}"#

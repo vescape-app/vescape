@@ -16,7 +16,6 @@ interface ButtonProps {
   onPress: () => Promise<void> | void
   testID?: string
   accessibilityLabel?: string
-  /** Overrides the variant's accent for field-specific actions. */
   accent?: ThemeColor
   variant?:
     | 'primary'
@@ -56,8 +55,6 @@ export function Button({
   const coloredAction = useColoredAction(accentToken)
   const coloredBorder = useColoredActionForeground(accentToken)
   const coloredForeground = useColoredActionForeground(accent ?? variantColors.foreground)
-  // A disabled button drops its accent, then dims the plain neutral pill. A filled disabled surface
-  // read stronger than an enabled secondary button; dimming the accent pill itself washes it out.
   const button = isDisabled
     ? {
         backgroundColor: theme.control.background,
@@ -129,10 +126,6 @@ export function Button({
 
 const DISABLED_OPACITY = 0.4
 
-/**
- * `foreground` is the label/icon/indicator token. Colored variants sit on the navy colored-action
- * surface, so their foreground is resolved through `useColoredActionForeground`.
- */
 const accentColors = {
   primary: {
     colored: false,

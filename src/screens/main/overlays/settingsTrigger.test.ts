@@ -38,7 +38,6 @@ describe('settingsTriggerState', () => {
     })
     expect(state.takeover).toBe('update')
     expect(state.accent).toBe(theme.status.upgrade.color)
-    // A required update outranks a running backup, so the dot does not double up on it.
     expect(state.dot).toBeUndefined()
   })
 

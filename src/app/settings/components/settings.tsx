@@ -36,7 +36,6 @@ const MOCK_BOARDS: AutoStartBoard[] = [
   { id: 'showcase-3', name: 'Pint X', bleId: 'AA:BB:CC:77:88:99' },
 ]
 
-/** Drives the showcase AutoStartCard so every state is reachable by tapping. */
 function useMockAutoStart(): AutoStartCardProps {
   const [enabled, setEnabled] = useState(true)
   const [armedBoardIds, setArmed] = useState<string[]>([MOCK_BOARDS[0].id])
@@ -64,7 +63,6 @@ const STORAGE_JOB: MaintenanceJobState = {
   lastError: null,
 }
 
-/** The drawer's Storage cell: size, a running Maintenance Job, and a failed one. */
 function StorageCellShowcase() {
   const [mode, setMode] = useState('running')
   const progress =

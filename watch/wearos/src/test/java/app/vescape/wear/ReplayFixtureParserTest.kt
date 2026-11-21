@@ -79,7 +79,7 @@ class ReplayFixtureParserTest {
             sequenceOf(
                 "",
                 "not json",
-                """{"t":0,"duty":17}""", // no speed lane
+                """{"t":0,"duty":17}""",
                 """{"t":1000,"speed":20,"duty":30,"battery":50,"motorTemp":40,"ctrlTemp":30}""",
             ),
         )

@@ -14,7 +14,6 @@ const TTS_EXAMPLES = [
   'Warning! {value} {unit}',
 ]
 
-/** Speaks an alert message template, so placeholder substitution can be heard. */
 export function TtsProbe() {
   const accents = useResolvedAccentColors()
   const [ttsTemplate, setTtsTemplate] = useState('Battery {voltage} volts, {percent}%')

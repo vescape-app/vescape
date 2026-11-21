@@ -7,10 +7,6 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 
 /**
- * The condition pictogram a forecast resolves to. Native owns the classification so the phone, the
- * wrist and iOS cannot drift apart on what a WMO code looks like; every renderer only maps a slug
- * to its own artwork and palette.
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `WeatherIcon`
  * @parity /modules/vescape-core/src/index.ts `WeatherIconSlug`
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `weatherIconRes`
@@ -28,9 +24,6 @@ enum class WeatherIcon(val slug: String) {
 }
 
 /**
- * WMO weather code into a pictogram. Only the clear and lightly-clouded codes have a night form;
- * rain looks the same at every hour.
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `weatherIcon`
  */
 fun weatherIcon(code: Int, night: Boolean): WeatherIcon = when {
@@ -46,9 +39,6 @@ fun weatherIcon(code: Int, night: Boolean): WeatherIcon = when {
 }
 
 /**
- * Human label for a WMO code. One line, wrist-width, and deliberately coarser than the WMO table:
- * a rider needs "Rain", not "moderate intensity rain showers".
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `weatherLabel`
  */
 fun weatherLabel(code: Int): String = when {
@@ -64,9 +54,6 @@ fun weatherLabel(code: Int): String = when {
 }
 
 /**
- * One forecast hour. Times are local to the forecast location (Open-Meteo is asked for the device
- * timezone), carried as minutes since local midnight so no renderer has to parse an ISO string.
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `WeatherHour`
  * @parity /modules/vescape-core/src/index.ts `WeatherHour`
  */
@@ -87,11 +74,6 @@ data class WeatherHour(
 }
 
 /**
- * One forecast period in absolute time, the shape the Weather Alert Evaluator reads. Open-Meteo
- * values describe the period *before* their timestamp, so [startMs] is that timestamp minus the
- * period. Precipitation is normalised to mm/h whatever the period; probability exists hourly only.
- * Native-only: the JS payload keeps [WeatherHour].
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `WeatherSlot`
  */
 data class WeatherSlot(
@@ -104,9 +86,6 @@ data class WeatherSlot(
 )
 
 /**
- * The weather where the rider is. Native truth: fetched, cached and aged natively so the wrist and
- * the recording pipeline keep seeing it while the JS runtime is gone.
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `Weather`
  * @parity /modules/vescape-core/src/index.ts `Weather`
  */
@@ -116,30 +95,21 @@ data class Weather(
     val icon: WeatherIcon,
     val precipitationProbability: Int,
     val hourly: List<WeatherHour>,
-    /** Minutes since local midnight, or null when the forecast omitted the day's sun times. */
     val sunriseMinuteOfDay: Int?,
     val sunsetMinuteOfDay: Int?,
     val latitude: Double,
     val longitude: Double,
     val fetchedAtMs: Long,
-    /** Hourly series as absolute slots, for Weather Alerts. Not mirrored to JS. */
     val hourlySlots: List<WeatherSlot> = emptyList(),
-    /** `minutely_15` series as absolute slots, for Weather Alerts. Not mirrored to JS. */
     val quarterHourSlots: List<WeatherSlot> = emptyList(),
-    /** Open-Meteo `current.time` as epoch ms, or null when the response carried none. */
     val observedAtMs: Long? = null,
-    /** Current `wind_gusts_10m` in km/h, or null when the response omitted it. */
     val windGustsKmh: Double? = null,
-    /** Current `is_day`; falls back to the sunrise/sunset night window when omitted. */
     val isDay: Boolean = true,
-    /** Unrounded current temperature, normalized only when stored. */
     val currentTemperatureC: Double = temperatureC.toDouble(),
 ) {
     val label: String get() = weatherLabel(weatherCode)
 
     /**
-     * Normalized current conditions for `weather_observations`, or null without an observation
-     * time: a row must say when the weather was, not when it was fetched.
      * @parity /modules/vescape-core/ios/weather/Weather.swift `Weather.observation`
      */
     fun observation(): WeatherObservation? {
@@ -162,7 +132,6 @@ data class Weather(
     )
 }
 
-/** Minutes since local midnight in an Open-Meteo `YYYY-MM-DDTHH:MM` stamp, or null if unparseable. */
 internal fun minuteOfDay(isoLocalTime: String): Int? {
     val time = isoLocalTime.substringAfter('T', "")
     val hour = time.substringBefore(':', "").toIntOrNull() ?: return null
@@ -171,9 +140,6 @@ internal fun minuteOfDay(isoLocalTime: String): Int? {
 }
 
 /**
- * Epoch ms of an Open-Meteo local `YYYY-MM-DDTHH:MM` stamp at the response's `utc_offset_seconds`.
- * One offset covers the whole window, so a slot past a DST change inside it is off by that hour.
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `epochMs`
  */
 internal fun epochMs(isoLocalTime: String, utcOffsetSeconds: Int): Long? =
@@ -183,9 +149,6 @@ internal fun epochMs(isoLocalTime: String, utcOffsetSeconds: Int): Long? =
     }.getOrNull()
 
 /**
- * One Open-Meteo series into [WeatherSlot]s of [periodMinutes]; [precipitationScale] turns the
- * series' per-period precipitation into mm/h. A slot without a precipitation value is dropped.
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `weatherSlots`
  */
 private fun weatherSlots(
@@ -220,9 +183,6 @@ private fun weatherSlots(
 }
 
 /**
- * Whether a local time falls outside daylight. Sunrise/sunset come from the same forecast, so a
- * polar summer resolves correctly; a forecast that omits them falls back to a fixed night window.
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `isNight`
  */
 internal fun isNight(minuteOfDay: Int, sunriseMinute: Int?, sunsetMinute: Int?): Boolean {
@@ -234,9 +194,6 @@ internal fun isNight(minuteOfDay: Int, sunriseMinute: Int?, sunsetMinute: Int?):
 }
 
 /**
- * Open-Meteo forecast response into a [Weather]. Returns null when the payload carries no usable
- * current conditions — a partial forecast is not worth showing a rider a wrong number for.
- *
  * @parity /modules/vescape-core/ios/weather/Weather.swift `parseOpenMeteoWeather`
  */
 fun parseOpenMeteoWeather(
@@ -262,9 +219,6 @@ fun parseOpenMeteoWeather(
     val precips = hourlyJson?.optJSONArray("precipitation_probability")
     val hourly = buildList {
         for (index in 0 until (times?.length() ?: 0)) {
-            // Every required field must be present at this index. The arrays are parallel but
-            // independent, and a short one would otherwise read as 0 — a fabricated clear sky at
-            // 0 °C, which looks like real weather rather than like missing data.
             val minute = minuteOfDay(times!!.optString(index)) ?: continue
             if (codes == null || index >= codes.length() || codes.isNull(index)) continue
             if (temps == null || index >= temps.length() || temps.isNull(index)) continue
@@ -305,7 +259,6 @@ fun parseOpenMeteoWeather(
         longitude = longitude,
         fetchedAtMs = fetchedAtMs,
         hourlySlots = weatherSlots(hourlyJson, utcOffsetSeconds, periodMinutes = 60, precipitationScale = 1.0),
-        // `minutely_15` precipitation is mm per 15 min.
         quarterHourSlots = weatherSlots(
             json.optJSONObject("minutely_15"),
             utcOffsetSeconds,

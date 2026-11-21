@@ -12,16 +12,6 @@ import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeDatabase
 
 /**
- * Telemetry keys on the Board id (#280, ADR 0028). Schema 41→42 adds `board_id` to
- * `telemetry_frames` and `telemetry_minute_buckets`, backfills it by matching `boards.ble_id`,
- * mints a tombstoned Board for every identifier that resolves to nothing, moves the bucket primary
- * key onto the new column, and drops `device_id` and `device_name` from both tables.
- *
- * Asserted against the emitted SQL rather than a live database: Room's `@Query` has BINARY
- * retention and this module's JVM test source set has no SQLite, the same constraint
- * [SyncCursorMigrationTest] works under. The behavioural half — actual rows after an actual
- * migration — runs on the GRDB peer, which does have an in-memory database.
- *
  * @parity /modules/vescape-core/ios/database/DatabaseMigrationTests.swift
  */
 class TelemetryBoardIdMigrationTest {
@@ -69,12 +59,6 @@ class TelemetryBoardIdMigrationTest {
     assertEquals(42, VescapeDatabase.MIGRATION_41_42.endVersion)
   }
 
-  // MARK: Backfill
-
-  /**
-   * The point of shipping this as a migration rather than a column add: a row left without a
-   * `board_id` is telemetry with no owner, unjoinable and unbackupable.
-   */
   @Test
   fun bothTablesBackfillBoardIdByMatchingTheBleIdentifier() {
     for (match in listOf("INSERT INTO telemetry_frames_new", "INSERT INTO telemetry_minute_buckets_new")) {
@@ -86,12 +70,6 @@ class TelemetryBoardIdMigrationTest {
     }
   }
 
-  /**
-   * Two Boards may claim one `ble_id` — the same peripheral linked twice, which the app supports.
-   * Resolved independently, the two rebuilds are each free to pick a different claimant, and a ride
-   * whose buckets say one Board and whose frames say another renders in History as stats over an
-   * empty route. Neither rebuild may reach `boards` directly; both read one decision.
-   */
   @Test
   fun aDuplicatedIdentifierIsResolvedOnceSoTheTwoRebuildsCannotDiverge() {
     val sql = migrationSql()
@@ -112,7 +90,6 @@ class TelemetryBoardIdMigrationTest {
     }
   }
 
-  /** A tombstone minted for an unresolved identifier carries no `ble_id`, so it never enters the map. */
   @Test
   fun theIdentifierMapIsBuiltAfterTheOrphanMintAndDroppedAfterTheRebuilds() {
     val sql = migrationSql()
@@ -125,7 +102,6 @@ class TelemetryBoardIdMigrationTest {
     assertTrue("the scratch map outlives the migration", dropped > lastRebuild)
   }
 
-  /** A row that never carried an identifier stays unattributed rather than joining a random Board. */
   @Test
   fun framesWithNoIdentifierBackfillToNullAndBucketsToTheUnknownSentinel() {
     assertTrue(
@@ -138,13 +114,6 @@ class TelemetryBoardIdMigrationTest {
     )
   }
 
-  // MARK: Orphan minting
-
-  /**
-   * Telemetry from a Board hard-deleted before tombstones existed, or from a peripheral the Board
-   * was re-linked away from, resolves to nothing. Without a minted Board it loses both its identity
-   * and its label — the one case in this migration sequence that creates rows the Rider never made.
-   */
   @Test
   fun unresolvedIdentifiersMintATombstonedBoardNamedFromTheHistoricalDeviceName() {
     for (table in listOf("telemetry_frames", "telemetry_minute_buckets", "telemetry_markers", "diagnostic_events")) {
@@ -167,17 +136,10 @@ class TelemetryBoardIdMigrationTest {
     }
   }
 
-  /**
-   * A minted Board must never reach the Rider's Board list, and must never capture a future
-   * re-link: the tombstone stamp keeps it out of `getBoards()`, the null `ble_id` keeps it out of
-   * every identifier match — including this migration's own backfill on a later upgrade.
-   */
   @Test
   fun aMintedBoardIsTombstonedAndCarriesNoBoardLink() {
     val sql = statement("FROM telemetry_frames t")
     val columns = sql.substringAfter("(").substringBefore(")").split(",").map { it.trim() }
-    // Tail of the SELECT list, in column order: ble_id, created_at, deleted_at. A literal NULL for
-    // the link, a stamped epoch for the tombstone.
     val selected = sql.substringBefore("FROM telemetry_frames t").lines()
       .map { it.trim().trimEnd(',') }
       .filter { it.isNotEmpty() }
@@ -195,9 +157,6 @@ class TelemetryBoardIdMigrationTest {
     )
   }
 
-  // MARK: Table rebuild
-
-  /** The primary key move is a rebuild, not an `ALTER`. */
   @Test
   fun theBucketRebuildMovesThePrimaryKey() {
     val create = statement("CREATE TABLE telemetry_minute_buckets_new")
@@ -215,10 +174,6 @@ class TelemetryBoardIdMigrationTest {
     )
   }
 
-  /**
-   * The copy is grouped so the rebuild is total: an ungrouped copy would abort the whole migration
-   * on a `board_id` collision, stranding the database mid-upgrade.
-   */
   @Test
   fun theBucketCopyIsGroupedSoAKeyCollisionCannotAbortTheRebuild() {
     val copy = statement("INSERT INTO telemetry_minute_buckets_new")
@@ -228,7 +183,6 @@ class TelemetryBoardIdMigrationTest {
     assertTrue("peak speed is not kept on a fold", copy.contains("MAX(b.max_abs_speed_centi_kmh)"))
   }
 
-  /** Neither table may keep the columns ADR 0028 retires, on either the schema or the copy. */
   @Test
   fun bothRebuiltTablesDropTheBleIdentifierAndTheDenormalizedName() {
     for (table in listOf("telemetry_frames", "telemetry_minute_buckets")) {
@@ -243,7 +197,6 @@ class TelemetryBoardIdMigrationTest {
     }
   }
 
-  /** The frame index that meant "this Board" while saying `device_id` follows the column. */
   @Test
   fun theFrameLookupIndexMovesOntoBoardId() {
     val sql = migrationSql()
@@ -258,14 +211,6 @@ class TelemetryBoardIdMigrationTest {
     )
   }
 
-  // MARK: Untouched tables
-
-  /**
-   * ADR 0028 left Markers, Diagnostic Events and Metric Exclusion Ranges on `device_id` because
-   * that was what crossed the wire for them — circular, and it kept a second copy of the very
-   * defect the Board move existed to remove: a BLE address can be claimed by two Boards, so rows
-   * keyed on it cannot say which Board owns them. All three move with the rest.
-   */
   @Test
   fun markersDiagnosticEventsAndExclusionRangesMoveOntoBoardIdToo() {
     for (table in listOf("telemetry_markers", "diagnostic_events", "metric_exclusion_ranges")) {
@@ -286,10 +231,6 @@ class TelemetryBoardIdMigrationTest {
     }
   }
 
-  /**
-   * A Marker can be written with no Board connected, so its column stays nullable. A Range excludes
-   * one Board's samples and its column is NOT NULL, so it takes the same sentinel a bucket does.
-   */
   @Test
   fun markersWithoutABoardStayNullAndRangesTakeTheUnknownSentinel() {
     assertTrue(

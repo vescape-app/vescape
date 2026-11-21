@@ -33,9 +33,6 @@ export default function BoardLinkScreen() {
     })),
   )
 
-  // The peripheral to link: a freshly-scanned device, else the board's existing
-  // link (re-link). The existing link is left intact until a new one is saved —
-  // a cancelled or failed re-link must not destroy a working link.
   const [bleId] = useState(() => routeBleId ?? board?.link?.bleId ?? null)
   const existingLink = board?.link ?? null
 
@@ -52,7 +49,6 @@ export default function BoardLinkScreen() {
     })
   }, [])
 
-  // Pure persist: config was already acquired as the last step of the linking run.
   const handleSave = async () => {
     if (!board || !link.selectedLink) return
     setSaving(true)

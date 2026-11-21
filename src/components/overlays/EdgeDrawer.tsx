@@ -29,9 +29,7 @@ import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 
 interface EdgeDrawerVirtualizedContent {
-  /** Exact data-row frames allow scrolling to rows outside the render window. */
   getItemLayout?: FlatListProps<unknown>['getItemLayout']
-  /** Focus rectangle relative to the first data row (the drawer adds its header). */
   initialFocus?: { offset: number; height: number }
   data: readonly unknown[]
   renderItem: ListRenderItem<unknown>
@@ -48,45 +46,26 @@ interface EdgeDrawerProps {
   visible: boolean
   triggerRef: React.RefObject<View | null>
   onClose: () => void
-  /** Android back: runs instead of closing, e.g. to leave a mode inside the drawer first. */
   onBack?: () => void
-  /** Which edge the drawer opens from. `auto` picks the edge nearest the trigger. */
   edge?: 'auto' | 'top' | 'bottom'
-  /** Custom interactive header, replacing the default title and icon. */
   header?: React.ReactNode
-  /** Action bar after the content, pinned to the bottom of the screen while the content scrolls. */
   stickyFooter?: React.ReactNode
   title?: string
-  /** Optional glyph shown left of a centred title. */
   icon?: Icon
   iconColor?: ThemeColor
-  /** Scroll newly expanded content into view when the drawer grows. */
   autoScrollOnContentExpand?: boolean
-  /** Return to the start of the drawer content when switching between pages. */
   contentPageKey?: string
-  /** Bring one child into the initially visible drawer area after opening. */
   initialFocusRef?: React.RefObject<View | null>
-  /** Called after scrolling settles near the end of the drawer content. */
   onReachContentEnd?: () => void
-  /** Keep buttons in a form drawer tappable when its keyboard is open. */
   keyboardShouldPersistTaps?: React.ComponentProps<
     typeof Reanimated.ScrollView
   >['keyboardShouldPersistTaps']
   backdropTestID?: string
   testID?: string
   children?: React.ReactNode
-  /** Dedicated FlatList path for long/unknown content; avoids nesting virtualization in a ScrollView. */
   virtualizedContent?: EdgeDrawerVirtualizedContent
 }
 
-/**
- * A full-width edge drawer, dismissed by dragging it back toward the edge it opened from. It comes
- * from the bottom unless told otherwise: that is where a thumb rests, and top drawers are the rare
- * exception rather than something every caller should have to opt out of.
- *
- * Its chrome (grabber, header, sticky footer) stays on screen while long content scrolls, and
- * dragging the chrome toward the drawer's edge closes it from any scroll position.
- */
 export function EdgeDrawer({
   visible,
   triggerRef,
@@ -157,8 +136,6 @@ export function EdgeDrawer({
 
   const focus = useWidgetFocusHost()
   const { rootRef: focusRootRef, active: focusActive, controller: focusController } = focus
-  // JS-side resolution: baked adaptive tokens in a StyleSheet go stale inside a live Modal window
-  // after the rider changes the appearance in place — the window re-resolves only on remount.
   const neutral = useResolvedNeutralColors()
   const blurTint = useThemeStore((state) => state.resolvedTheme)
   const { blurTarget, canBlur } = useDrawerBlurTarget()
@@ -166,7 +143,6 @@ export function EdgeDrawer({
   if (!mounted) return null
 
   const emptyDismissArea = (
-    // Locate the exposed dismiss area: the full-screen scrim also extends behind drawer content.
     <Pressable
       testID={backdropTestID}
       style={{ height: dismissAreaHeight }}
@@ -189,9 +165,6 @@ export function EdgeDrawer({
     </Pressable>
   ) : null
 
-  // A virtualized list commits new rows while it scrolls, and Reanimated holds back animated
-  // styles during commits, so chrome pinned inside the list would stutter. There it is drawn over
-  // the list instead, standing still while pinned, with a spacer holding its place in the rows.
   const overlay = virtualizedContent != null
   const { leadingChrome, trailingChrome } = drawerChrome({
     chrome,
@@ -279,8 +252,6 @@ export function EdgeDrawer({
                     ListHeaderComponent={listHeader}
                     ListHeaderComponentStyle={styles.stickyCell}
                     ListFooterComponentStyle={styles.stickyCell}
-                    // Pinned chrome is translated into view from a cell whose layout box has
-                    // scrolled away; Android's default clipping would detach it.
                     removeClippedSubviews={false}
                     ListEmptyComponent={virtualizedContent.empty}
                     ListFooterComponent={listFooter}
@@ -297,8 +268,6 @@ export function EdgeDrawer({
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
-                    // A status-bar tap would scroll the list to the dismissed edge, fading the drawer
-                    // out through its scroll-driven opacity without ever committing the close.
                     scrollsToTop={false}
                     overScrollMode="never"
                     testID={virtualizedContent.testID}
@@ -321,8 +290,6 @@ export function EdgeDrawer({
                     scrollEventThrottle={16}
                     showsVerticalScrollIndicator={false}
                     bounces={false}
-                    // A status-bar tap would scroll the list to the dismissed edge, fading the drawer
-                    // out through its scroll-driven opacity without ever committing the close.
                     scrollsToTop={false}
                     overScrollMode="never"
                   >
@@ -355,7 +322,6 @@ export function EdgeDrawer({
   )
 }
 
-/** The drawer's grabber, header, and sticky footer, split by which end of the content they lead. */
 function drawerChrome({
   chrome,
   overlay,
@@ -427,7 +393,6 @@ function withListHeaderLayout(
   }
 }
 
-/** Let even the final selected row reach the screen center. */
 function VirtualizedFocusFooter({
   focus,
   opensFromTop,

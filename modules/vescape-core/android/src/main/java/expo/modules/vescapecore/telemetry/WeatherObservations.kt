@@ -7,28 +7,20 @@ import expo.modules.vescapecore.database.DatabaseReplacementFence
 import expo.modules.vescapecore.database.VescapeDao
 
 /**
- * How long one stored Weather Observation keeps describing the weather when nothing changed. A
- * live refresh with unchanged conditions writes a fresh row once the last one is this old, and a
- * ride whose only applicable row is older than this has no weather.
  * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `weatherObservationFreshnessMs`
  */
 internal const val WEATHER_OBSERVATION_FRESHNESS_MS = 24 * 60 * 60 * 1_000L
 
 /**
- * Earliest observation a Favorite starting at [startMs] may read; saturates for the protect-all range.
  * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `weatherProtectionStart`
  */
 internal fun weatherProtectionStart(startMs: Long): Long =
   if (startMs < Long.MIN_VALUE + WEATHER_OBSERVATION_FRESHNESS_MS) Long.MIN_VALUE
   else startMs - WEATHER_OBSERVATION_FRESHNESS_MS
 
-/** Gusts are stored at this granularity so forecast noise does not read as a condition change. */
 private const val GUST_STEP_KMH = 5
 
 /**
- * One stored, normalized observation of current conditions (`weather_observations`). Weather
- * belongs to time, not to a Board or ride, and carries no coordinates so Privacy Zones stay out of
- * it. Condition equality deliberately ignores [observedAtMs].
  * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `WeatherObservation`
  */
 data class WeatherObservation(
@@ -44,8 +36,6 @@ data class WeatherObservation(
 
   companion object {
     /**
-     * Normalize raw Open-Meteo current conditions. Live refreshes and the history backfill both go
-     * through here, so the two writers can never disagree about what "unchanged" means.
      * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `WeatherObservation.normalized`
      */
     fun normalized(
@@ -65,9 +55,6 @@ data class WeatherObservation(
 }
 
 /**
- * Whether [next] earns a row after [previous], the newest stored row at or before it. An identical
- * timestamp is the same observation (a cached or repeated API answer) and never renews freshness.
- * [force] is the first successful refresh of the process.
  * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `shouldStoreWeatherObservation`
  */
 internal fun shouldStoreWeatherObservation(
@@ -83,8 +70,6 @@ internal fun shouldStoreWeatherObservation(
 }
 
 /**
- * The write seam for every observation writer: live refreshes now, the history backfill later.
- * Holds the "first successful refresh after launch" flag, so one instance lives per process.
  * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `WeatherObservationRecorder`
  */
 internal class WeatherObservationRecorder(
@@ -95,7 +80,6 @@ internal class WeatherObservationRecorder(
 
   fun ticket(): Long = fence.ticket()
 
-  /** True when a row was written; false when unchanged, a duplicate, or fenced off. */
   suspend fun record(observation: WeatherObservation, ticket: Long): Boolean =
     fence.write(ticket) {
       val stored = dao().storeWeatherObservation(observation, force = !storedThisProcess)
@@ -105,7 +89,6 @@ internal class WeatherObservationRecorder(
 }
 
 /**
- * Weather of one ride or Favorite, folded natively from the rows in effect across `[start, end]`.
  * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `RideWeather`
  * @parity /modules/vescape-core/src/index.ts `RideWeather`
  */
@@ -126,11 +109,6 @@ data class RideWeather(
 }
 
 /**
- * Fold observations into the weather of `[startMs, endMs]`. [rows] may be a superset sorted by
- * time (one query per History page); the ride uses the last row at or before its start plus every
- * row inside it, each in effect until the next row or the ride end. A start row older than
- * [WEATHER_OBSERVATION_FRESHNESS_MS] is not applicable. The icon is the time-dominant one, night
- * when most of the covered time was night. Classification is the native `weatherIcon()`.
  * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `summarizeRideWeather`
  */
 internal fun summarizeRideWeather(
@@ -149,11 +127,8 @@ internal fun summarizeRideWeather(
     val until = applicable.getOrNull(index + 1)?.observedAtMs ?: endMs
     (until - from).coerceAtLeast(0L)
   }
-  // A zero-length range still has the weather in effect at that instant.
   val effective = if (weights.all { it == 0L }) weights.mapIndexed { i, _ -> if (i == 0) 1L else 0L } else weights
 
-  // Keyed by the day form so a ride crossing sunset still counts one condition; each icon keeps the
-  // first code that produced it so the night form comes from the same `weatherIcon()` rule.
   val iconTime = linkedMapOf<WeatherIcon, Long>()
   val iconCode = mutableMapOf<WeatherIcon, Int>()
   var nightTime = 0L
@@ -178,6 +153,5 @@ internal fun summarizeRideWeather(
   )
 }
 
-/** Rows bounding a span, per the ride weather read query. Shared by History pages and Favorites. */
 internal suspend fun VescapeDao.rideWeather(startMs: Long, endMs: Long): RideWeather? =
   summarizeRideWeather(getWeatherObservationsSpanning(startMs, endMs).map { it.toObservation() }, startMs, endMs)

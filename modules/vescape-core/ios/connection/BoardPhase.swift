@@ -1,9 +1,5 @@
 import Foundation
 
-/// Rider-facing Board Session phase. Mirrors the Android `BoardPhase` wire contract the JS
-/// layer depends on: `idle → connecting → discovering → subscribing → waiting_for_telemetry →
-/// connected`, plus the mid-ride reconnect states `reconnecting → rescanning` (#58).
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardPhase.kt
 /// @parity /modules/vescape-core/src/index.ts `SessionStatus`
 /// @platform-diff Android also exposes `stale` and `disconnecting`. iOS immediately routes stale

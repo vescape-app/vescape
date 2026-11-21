@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The merge is the whole point: watchOS has one Application Context for every channel, so a
-/// settings push that replaced the dictionary would delete the route.
 final class WatchColdStateTests: XCTestCase {
   private final class Wire {
     var context: [String: Any] = [:]
@@ -35,7 +33,6 @@ final class WatchColdStateTests: XCTestCase {
     XCTAssertEqual(wire.writes, 1)
     XCTAssertEqual(WatchSettings.decode(context: wire.context).distanceUnit, "mi")
     let restarted = wire.coldState()
-    // Delivery caches are process-local. Restart republishes the latest settings once.
     restarted.put(channel: watchSettingsChannel, payload: WatchSettings(distanceUnit: "mi").payload)
     XCTAssertEqual(wire.writes, 2)
     XCTAssertEqual(WatchSettings.decode(context: wire.context).distanceUnit, "mi")

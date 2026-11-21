@@ -17,21 +17,9 @@ import { usePermissions } from '@/modules/settings/hooks/usePermissions'
 import { theme } from '@/constants/theme'
 import type { AccessoryInspection } from 'vescape-core'
 
-/**
- * Finding an Accessory, reading what it is, and adding it if the rider wants it.
- *
- * Every row here is a device advertising the Vescape Accessory service — matched on the service,
- * never the name, so a renamed accessory is still found and a namesake is not mistaken for one.
- * Picking one performs the discovery handshake and shows its identity, protocol version and
- * capabilities; nothing is commanded, and the app disconnects as soon as the manifest is read.
- *
- * Adding is a separate, explicit tap. That separation is the product rule: a device Vescape merely
- * found never gets a session, so nothing can be enrolled — or started — by walking past it.
- */
 export function AccessoryScanScreen({
   onOpenAccessory,
 }: {
-  /** Called with a persistent Accessory id once one has been added. */
   onOpenAccessory: (accessoryId: string) => void
 }) {
   const { status, request } = usePermissions()
@@ -60,10 +48,6 @@ export function AccessoryScanScreen({
   const enrolling = useAccessoryStore((s) => s.enrolling)
   const [result, setResult] = useState<AccessoryInspection | null>(null)
   const [enrollError, setEnrollError] = useState<string | null>(null)
-  /**
-   * False once the rider has left. A handshake outlives this screen by up to its timeout, and a
-   * result landing after that must not drag them back out of wherever they went.
-   */
   const live = useRef(true)
 
   useEffect(() => {
@@ -94,8 +78,6 @@ export function AccessoryScanScreen({
   const onAdd = useCallback(
     async (deviceId: string) => {
       setEnrollError(null)
-      // Native re-reads the manifest before saving anything: this hands over a device handle, never
-      // an identity, so an enrollment can only record what the hardware actually said.
       const enrollment = await enroll(deviceId)
       if (!live.current) return
       if (enrollment.accessoryId) {
@@ -133,8 +115,6 @@ export function AccessoryScanScreen({
             id={item.id}
             name={item.name ?? 'Unnamed accessory'}
             rssi={item.rssi}
-            // One handshake at a time: a second tap would be refused natively anyway, and the row
-            // going dead is a clearer answer than a tap that quietly does nothing.
             onPress={() => {
               if (!inspecting && !enrolling) void onSelect(item.id)
             }}

@@ -13,11 +13,6 @@ interface DropdownOptionListProps<T extends string> {
   testID?: string
 }
 
-/**
- * The option rows inside a `Dropdown`. The menu is a navy control surface in both appearances, so
- * rows use the control colors, and the chosen row wears the same colored surface as a selected
- * switch or radio.
- */
 export function DropdownOptionList<T extends string>({
   options,
   value,

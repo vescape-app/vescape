@@ -9,22 +9,15 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export interface BoardIssues {
-  /** Every warning on the board, dismissed ones included — the sheet grays those out itself. */
   warnings: BoardWarning[]
   faults: VescFaultOccurrence[]
-  /** Worst severity among warnings the rider has not dismissed; `null` when nothing is pending. */
   severity: BoardWarningSeverity | null
-  /** Undismissed warnings — what an indicator is allowed to count. */
   warningCount: number
   faultCount: number
   warningsEnabled: boolean
   faultsEnabled: boolean
 }
 
-/**
- * The board's pending trouble, read once for every surface that offers a way into it (the pill
- * badges and the board selector).
- */
 export function useBoardIssues(activeBoardId: string | null): BoardIssues {
   const warnings = useBoardWarningsStore((s) =>
     activeBoardId ? (s.warningsByBoard[activeBoardId] ?? EMPTY_WARNINGS) : EMPTY_WARNINGS,

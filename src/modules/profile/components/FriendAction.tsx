@@ -9,7 +9,6 @@ import { friendRelation } from '@/modules/profile/lib/friends'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 
-/** The one friend action that fits where this rider stands: add, withdraw, answer, or none. */
 export function FriendAction({ accountId, nick }: { accountId: string; nick: string }) {
   const ownId = useRiderProfileStore((s) => s.profile?.accountId ?? null)
   const relation = useFriendsStore((s) => friendRelation(s.lists, accountId, ownId))

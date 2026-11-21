@@ -52,8 +52,6 @@ internal final class RecordingCommitBoundary {
   }
 }
 
-/// Native-owned recording failure episode.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/RecordingStorageFailure.kt
 /// @parity /modules/vescape-core/src/index.ts `RecordingFailureState`
 internal enum RecordingStorageFailure {
@@ -156,7 +154,6 @@ internal enum RecordingStorageFailure {
   }
 
   @discardableResult private static func recordFailureLocked(kind: RecordingStorageFailureKind) -> Bool {
-    // A later operation-specific failure must not hide an already established broad outage.
     let resolved = resolveRecordingFailureKind(current: current, incoming: kind)
     let changed = current != resolved
     current = resolved
@@ -170,7 +167,6 @@ internal enum RecordingStorageFailure {
     if let listener { DispatchQueue.main.async(execute: listener) }
   }
 
-  /// Reports a failed read without changing the recording gate or durable failure state.
   static func reportRead(operation: String, error: Error) {
     reporter.report(operation: operation, category: "query_failed", error: error)
     enterBroadOutage(error)

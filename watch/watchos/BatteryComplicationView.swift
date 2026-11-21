@@ -1,7 +1,6 @@
 import SwiftUI
 import WidgetKit
 
-/// The view used by WidgetKit and by the DEBUG simulator gallery.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/BatteryComplicationService.kt `batteryComplicationData`
 /// @platform-diff A never-seen Board shows its name and `--` here; Wear OS returns No Data, the
 ///   watch face's own empty state.

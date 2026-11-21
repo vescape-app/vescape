@@ -14,9 +14,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Publishes the selected Board's committed battery to the wrist. Fire-and-forget like the iOS
- * Application Context push; each write rereads storage under the mutex, so an older one cannot win.
- *
  * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `pushWatchLastBattery`
  */
 internal object WatchLastBatteryPusher {

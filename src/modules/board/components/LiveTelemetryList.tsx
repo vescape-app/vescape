@@ -24,8 +24,6 @@ import { useLiveWindowMs, useSettingsStore } from '@/modules/settings/store/sett
 import { routes } from '@/navigation/routes'
 
 interface ListCard {
-  /** Caption, `onLiveSeries` key, the metric it draws as and its live reading, per line, and the
-   * line's own detail screen where the lines do not share the card's. */
   lines: {
     title: string
     key: string
@@ -33,10 +31,8 @@ interface ListCard {
     value: SharedValue<number | null>
     route?: Href
   }[]
-  /** The detail screen the whole card opens, unless its lines name their own. */
   route?: Href
   testID: string
-  /** Which extremes the card marks; see `LiveMetricCard`. */
   peaks?: 'max' | 'range'
 }
 
@@ -143,12 +139,7 @@ const CARDS: ListCard[] = [
 
 const SERIES_KEYS = CARDS.flatMap((card) => card.lines.map((line) => line.key))
 
-/**
- * Every live metric over the recent window, one card each, opening its detail screen. Native
- * streams the series only while the list is mounted.
- */
 interface LiveTelemetryListProps {
-  /** Action in the header's top-left corner, opposite the settings link. */
   headerStart?: ReactNode
 }
 
@@ -159,7 +150,6 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
   const distanceUnit = useDistanceUnit()
   const configuredMinutes = useSettingsStore((s) => s.liveHistoryLimit)
   const rateHz = useRoundedPacketRate()
-  // How far back the charts actually reach, which is short of the window early in a session.
   let spanMs = 0
   for (const points of Object.values(series)) {
     if (points.length > 1) spanMs = Math.max(spanMs, points[points.length - 1].ts - points[0].ts)
@@ -216,7 +206,6 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
   )
 }
 
-/** The board's packet rate, re-rendering only when its whole-Hz reading changes. */
 function useRoundedPacketRate(): number | null {
   const [rate, setRate] = useState<number | null>(null)
   useAnimatedReaction(

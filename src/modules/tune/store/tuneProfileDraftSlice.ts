@@ -37,7 +37,6 @@ type TuneProfileDraftSlice = Pick<
   | 'syncToBoard'
 >
 
-/** Field edits against the active profile, and pushing them to the board. */
 type SliceFactory = (
   set: StoreApi<TuneProfileStore>['setState'],
   get: StoreApi<TuneProfileStore>['getState'],

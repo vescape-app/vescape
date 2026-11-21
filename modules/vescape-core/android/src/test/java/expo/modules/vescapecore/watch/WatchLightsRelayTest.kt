@@ -6,7 +6,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The compose step a wrist edit goes through: one switch named, both switches written. */
 class WatchLightsRelayTest {
     private val scheduler = TestScheduler()
     private val writes = mutableListOf<Pair<Boolean, Boolean>>()
@@ -20,7 +19,6 @@ class WatchLightsRelayTest {
         record = { name, _ -> events.add(name) },
     )
 
-    /** Commands hop to the scheduler, so a flush is what makes one actually happen. */
     private fun WatchLightsRelay.send(switch: WatchLightsSwitch, on: Boolean) {
         accept(switch, on)
         scheduler.advance(0)
@@ -37,7 +35,6 @@ class WatchLightsRelayTest {
         assertEquals(listOf(true to true, true to false), writes)
     }
 
-    /** Nothing is written until the board has said what both switches are; a guess is not a write. */
     @Test
     fun anEditWithNoKnownLightsIsDropped() {
         current = null
@@ -46,7 +43,6 @@ class WatchLightsRelayTest {
         assertEquals(listOf("watch_lights_dropped"), events)
     }
 
-    /** Two taps before the echo: the second states the first's value, not the pre-edit one. */
     @Test
     fun aSecondEditBeforeTheEchoKeepsTheFirst() {
         current = BoardLightsState(enabled = false, headlightsEnabled = false)
@@ -56,7 +52,6 @@ class WatchLightsRelayTest {
         assertEquals(listOf(true to false, true to true), writes)
     }
 
-    /** Once the phone's own truth moves, it wins again — a wrist edit never reverts it. */
     @Test
     fun aPhoneSideChangeReplacesThePendingPair() {
         current = BoardLightsState(enabled = false, headlightsEnabled = false)
@@ -67,7 +62,6 @@ class WatchLightsRelayTest {
         assertEquals(listOf(true to false, true to true), writes)
     }
 
-    /** A refused write is not state; the next edit composes from the phone's truth again. */
     @Test
     fun aRefusedWriteLeavesNoPendingPair() {
         current = BoardLightsState(enabled = false, headlightsEnabled = false)
@@ -82,7 +76,6 @@ class WatchLightsRelayTest {
         assertEquals(listOf(true to false, false to true), writes)
     }
 
-    /** A binder-thread command must not touch Board Session state before the hop. */
     @Test
     fun nothingIsWrittenUntilTheSchedulerRunsIt() {
         relay().accept(WatchLightsSwitch.LEDS, true)

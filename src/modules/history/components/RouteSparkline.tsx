@@ -16,20 +16,12 @@ interface RouteSparklineProps {
   points: RoutePoint[]
   width: number
   height: number
-  /** Line color; the ride list tints a selected row and Favorites use their own amber. */
   color?: ThemeColor
-  /** Tiny duty-colored start and neutral end dots, matching the full-map flags. */
   endpoints?: boolean
-  /** Dark street map behind the route once its tiles are on disk; the plain route until then. */
   map?: boolean
   style?: StyleProp<ViewStyle>
 }
 
-/**
- * A ride's route drawn as a thumbnail. One component so a route reads the same everywhere it is
- * previewed — the ride list, the History drawer, a Favorite card. Route and map share one Web
- * Mercator frame, so the line sits on the streets it was ridden on.
- */
 export function RouteSparkline({
   points,
   width,
@@ -42,7 +34,6 @@ export function RouteSparkline({
   const tiles = useRoutePreviewTiles(points, width, height, map)
   const resolvedColor = useResolvedColor(color)
   const startColor = useResolvedColor(theme.telemetry.duty)
-  // The preview map is dark in both appearances; without it the dot sits on the app's surface.
   const endColor = useResolvedColor(tiles ? theme.palette.mono.white : theme.neutral.textPrimary)
   const path = useMemo(() => routePreviewPath(points, width, height), [height, points, width])
   const marks = useMemo(() => {

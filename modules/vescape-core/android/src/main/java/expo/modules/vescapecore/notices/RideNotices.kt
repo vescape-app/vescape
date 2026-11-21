@@ -6,14 +6,6 @@ import android.util.Log
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Process-wide owner of the Ride Notice table. Process-level rather than on the Board Session, so a
- * notice outlives the foreground service and has one owner for every surface (JS card, watch,
- * ride notification). All mutations run on the main looper; expiry is scheduled for the earliest
- * `expiresAt`.
- *
- * Sources call [post] / [clear]; surfaces call [dismiss] and observe the ordered list with
- * [addListener], which fires only when the visible list changes.
- *
  * @parity /modules/vescape-core/ios/notices/RideNotices.swift `RideNotices`
  */
 object RideNotices {
@@ -24,7 +16,6 @@ object RideNotices {
     private val listeners = CopyOnWriteArrayList<(List<RideNotice>) -> Unit>()
     private val expiryTick = Runnable { expireNow() }
 
-    /** The visible notices, most urgent first. Safe to read from any thread. */
     @Volatile
     var current: List<RideNotice> = emptyList()
         private set
@@ -44,13 +35,8 @@ object RideNotices {
 
     fun dismiss(id: Int, rev: Int) = mutate { engine.dismiss(id, rev) }
 
-    /**
-     * Drop anything already past `expiresAt`. The expiry timer runs on uptime, which stops while the
-     * device sleeps, so a surface coming back calls this before trusting [current].
-     */
     fun expireNow() = mutate { engine.tick(System.currentTimeMillis()) }
 
-    /** Listen for the ordered visible list. Returns the unsubscribe. */
     fun addListener(listener: (List<RideNotice>) -> Unit): () -> Unit {
         listeners.add(listener)
         return { listeners.remove(listener) }

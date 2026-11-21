@@ -101,7 +101,6 @@ function noopCatchViolations(path: string, text: string): string[] {
   return violations
 }
 
-/** Masks native comments and string literals while retaining offsets and real marker comments. */
 function lexNative(text: string): { code: string; markers: Set<number> } {
   const chars = [...text]
   const markers = new Set<number>()
@@ -178,10 +177,6 @@ function nativeViolations(path: string, text: string): string[] {
     .map((match) => `${path}:${lineAt(text, match.index!)}`)
 }
 
-// Reads and lexes every source file in the repo, so it scales with the codebase and with whatever
-// disk the runner got. Well under a second locally, but it has already tripped Bun's 5s default on
-// a cold CI runner — the budget is explicit so a slow machine fails the build only when it is
-// genuinely stuck.
 const SCAN_TIMEOUT_MS = 60_000
 
 test(

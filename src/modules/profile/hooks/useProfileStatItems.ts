@@ -20,7 +20,6 @@ import { theme, type ThemeColor } from '@/constants/theme'
 export type ProfileStatKey =
   'distance' | 'rides' | 'rideTime' | 'topSpeed' | 'avgSpeed' | 'longestRide' | 'used' | 'regen'
 
-/** A stat set by one ride, which tapping it opens. */
 export type ProfileRecordKey = 'topSpeed' | 'longestRide'
 
 export type OpenRecordRide = (rideId: string, record: ProfileRecordKey) => void
@@ -31,18 +30,13 @@ export interface ProfileStatItem {
   value: string
   icon: Icon
   accent: ThemeColor
-  /** Optional tint for the value text (e.g. warning/critical telemetry level). */
   valueColor?: ThemeColor
-  /** Set when the figure links somewhere, e.g. the ride that set a record. */
   onPress?: () => void
 }
 
-/** Every riding total as a labelled, formatted, tinted figure — one definition for every surface
- *  that shows profile stats, so a number never carries two different labels. */
 export function useProfileStatItems(
   stats: RiderStats & Partial<Pick<ProfileStats, 'topSpeedRideId' | 'longestRideId'>>,
   keys?: ProfileStatKey[],
-  /** Makes Top speed and Longest ride link to the ride that set them. */
   onOpenRecordRide?: OpenRecordRide,
 ): ProfileStatItem[] {
   const distanceUnit = useDistanceUnit()

@@ -11,7 +11,6 @@ import { FIXTURE_OWN_LOCATION, FIXTURE_ROSTER_ROWS } from '@/screens/showcase/ma
 
 const RIDER_COUNTS = ['1', '3', 'all']
 
-/** The Social sheet roster: own row, live, hot telemetry, stale and away Riders. */
 export function GroupRideRosterShowcase() {
   const [count, setCount] = useState('all')
   const [compact, setCompact] = useState(true)

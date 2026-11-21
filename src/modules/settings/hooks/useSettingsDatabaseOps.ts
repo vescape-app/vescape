@@ -11,8 +11,6 @@ import { errorMessage } from '@/helpers/error'
 
 type OpState = 'idle' | 'running' | 'done' | 'error'
 
-// Restore hot-swaps the native DB; reloading the JS runtime forces every store
-// to re-init from the fresh database. No-ops in Expo Go fall back to DevSettings.
 async function reloadRuntime() {
   try {
     await Updates.reloadAsync()
@@ -48,10 +46,6 @@ export function useSettingsDatabaseOps() {
     }
   }, [refreshDatabaseSize])
 
-  // Pick first, confirm second. iOS will not present the document picker while the confirm card's
-  // modal view controller is on screen or mid-dismissal: the picker never appears and
-  // `getDocumentAsync` never settles, stranding the row on "Restoring...". Nothing is presented
-  // over a modal this way, so there is no dismissal to race.
   const handleRestoreDatabase = useCallback(async () => {
     setRestoreResult(null)
     try {

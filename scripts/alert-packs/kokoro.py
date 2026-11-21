@@ -17,8 +17,6 @@ from mlx_audio.tts.utils import load_model
 
 REPO = "mlx-community/Kokoro-82M-bf16"
 
-# mlx_audio derives `interpolate` sizes as ceil(width * 1/300), which overshoots on exact multiples
-# (ceil(240.00000000000003) == 241) and kills Kokoro with a broadcast error. Snap before the ceil.
 _interpolate = interpolate_module.interpolate
 
 
@@ -41,7 +39,6 @@ istftnet.interpolate = _snapped
 
 job = json.load(sys.stdin)
 voice = job["voice"]
-# Kokoro needs the voice as an absolute .safetensors path.
 voice_path = hf_hub_download(REPO, f"voices/{voice}.safetensors")
 model = load_model(REPO)
 for clip in job["clips"]:

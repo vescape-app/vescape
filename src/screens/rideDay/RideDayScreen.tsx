@@ -18,7 +18,6 @@ import { useProfileStatItems } from '@/modules/profile/hooks/useProfileStatItems
 import { parseRideDay, rideHref } from '@/navigation/links'
 import { openRecordRide } from '@/screens/profileStats/openRecordRide'
 
-/** One day of riding: its totals, then the rides, each opening on the main screen. */
 export function RideDayScreen() {
   const day = parseRideDay(useLocalSearchParams())
   if (!day) {

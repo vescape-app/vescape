@@ -34,7 +34,6 @@ const rule = (threshold: number, thresholdMax: number | null = null) => ({
   repeatEverySeconds: null,
 })
 
-/** Time into the sweep when it first reaches [share] of its travel. */
 function timeAt(sweep: ReturnType<typeof alertZoneSweep>, share: number) {
   let low = 0
   let high = 1
@@ -53,13 +52,11 @@ test('zone sweep crosses empty range fast and lingers around thresholds', () => 
   expect(timeAt(sweep, 0.72)).toBeLessThan(2_000)
   expect(timeAt(sweep, 0.8) - timeAt(sweep, 0.72)).toBeGreaterThan(4_000)
   expect(timeAt(sweep, 0.9) - timeAt(sweep, 0.82)).toBeGreaterThan(4_000)
-  // The tail past the last threshold leaves time for a repeat.
   expect(sweep.durationMs - timeAt(sweep, 0.9)).toBeGreaterThan(10_000)
 })
 
 test('downward sweep lingers at battery thresholds measured from full', () => {
   const sweep = alertZoneSweep([rule(20)], 0, 100, false)
-  // 100 → 23 % is empty, 23 → 15 % is the zone.
   expect(timeAt(sweep, 0.77)).toBeLessThan(2_500)
   expect(timeAt(sweep, 0.85) - timeAt(sweep, 0.77)).toBeGreaterThan(4_000)
 })

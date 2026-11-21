@@ -1,7 +1,6 @@
 import { resolveAdaptiveColor, type ResolvedTheme } from '@/constants/theme'
 import type { ChartBand } from '@/components/charts/line/types'
 
-/** Bands that can share a path: same colour, same row. */
 export interface BandGroup {
   key: string
   color: string

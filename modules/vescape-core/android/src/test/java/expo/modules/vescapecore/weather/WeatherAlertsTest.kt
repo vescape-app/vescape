@@ -15,17 +15,14 @@ private fun quarter(startMin: Int, mmPerHour: Double = 2.0) =
 private fun weather(hourly: List<WeatherSlot> = emptyList(), quarters: List<WeatherSlot> = emptyList(), fetchedAtMs: Long = T0) =
     Weather(15, 61, WeatherIcon.CLOUD_RAIN, 0, emptyList(), null, null, 0.0, 0.0, fetchedAtMs, hourly, quarters)
 
-/** Rain starting at [startMin] after T0, in whichever series covers its lead at [nowMin]. */
 private fun rainAt(startMin: Int, nowMin: Int, fetchedAtMs: Long = T0 + nowMin * MIN): Weather =
     if (startMin - nowMin > 60) weather(hourly = listOf(hour(startMin)), fetchedAtMs = fetchedAtMs)
     else weather(quarters = (startMin until startMin + 60 step 15).map { quarter(it) }, fetchedAtMs = fetchedAtMs)
 
-/** A dry hourly slot carrying only a weather code and a gust. */
 private fun dryHour(startMin: Int, code: Int = 3, gustKmh: Double? = null) =
     WeatherSlot(T0 + startMin * MIN, T0 + (startMin + 60) * MIN, 0.0, 0, code, gustKmh)
 
 /**
- * Weather Alert Evaluator: the rain ladder, rounding, gap, escalation-only, re-arm and stale guard.
  * @parity /modules/vescape-core/ios/weather/WeatherAlertsTests.swift
  */
 class WeatherAlertsTest {
@@ -41,14 +38,12 @@ class WeatherAlertsTest {
     fun `first line rounds the lead down then the ladder speaks each closer rung once`() {
         assertEquals(listOf(150 to 80), eval(rainAt(170, 0), 0))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(170, 10), 10))
-        // 2h rung crossed at 115 min, more than 30 min after the first line.
         assertEquals(listOf(120 to 80), eval(rainAt(170, 55), 55))
         assertEquals(listOf(60 to null), eval(rainAt(170, 115), 115))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(170, 125), 125))
         assertEquals(listOf(30 to null), eval(rainAt(170, 145), 145))
         assertEquals(listOf(15 to null), eval(rainAt(170, 160), 160))
         assertEquals(listOf(0 to null), eval(rainAt(170, 170), 170))
-        // Raining: never repeats.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(170, 185), 185))
     }
 
@@ -58,7 +53,6 @@ class WeatherAlertsTest {
         state = WeatherAlertState()
         assertEquals(listOf(0 to null), eval(rainAt(14, 0), 0))
         state = WeatherAlertState()
-        // Already raining at connect: "now" once.
         assertEquals(listOf(0 to null), eval(rainAt(-20, 0), 0))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(-20, 5), 5))
     }
@@ -73,9 +67,7 @@ class WeatherAlertsTest {
     @Test
     fun `a rung above an hour within 30 minutes of the previous line is skipped`() {
         assertEquals(listOf(150 to 80), eval(rainAt(150, 0), 0))
-        // The forecast pulls it to 100 min: the 2h rung is crossed only 10 min after the last line.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(110, 10), 10))
-        // Consumed by the skip, so it does not speak late.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(110, 20), 20))
         assertEquals(listOf(60 to null), eval(rainAt(110, 50), 50))
     }
@@ -89,11 +81,8 @@ class WeatherAlertsTest {
     @Test
     fun `downgrades and delays are silent and a jump closer speaks once`() {
         assertEquals(listOf(120 to 80), eval(rainAt(125, 0), 0))
-        // Delayed out to 2.5 h: no line.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(160, 10), 10))
-        // Gone: no line, state kept.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(fetchedAtMs = T0 + 20 * MIN), 20))
-        // Back and much closer: only the new rung.
         assertEquals(listOf(30 to null), eval(rainAt(45, 25), 25))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(45, 28), 28))
     }
@@ -102,7 +91,6 @@ class WeatherAlertsTest {
     fun `the hourly gate needs probability and the quarter-hour gate does not`() {
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(hourly = listOf(hour(120, probability = 40))), 0))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(hourly = listOf(hour(120, mm = 0.5))), 0))
-        // An hourly slot at or under 1 h out is the quarter-hour series' job.
         assertEquals(
             emptyList<Pair<Int, Int?>>(),
             eval(weather(hourly = listOf(hour(30)), quarters = listOf(quarter(30, mmPerHour = 0.0))), 0),
@@ -122,7 +110,6 @@ class WeatherAlertsTest {
     fun `an event lost at the 1 h handover keeps its state and only escalates on return`() {
         assertEquals(listOf(90 to 80), eval(rainAt(95, 0), 0))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(95, 30), 30))
-        // Inside the hour the quarter-hour series no longer shows it.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(fetchedAtMs = T0 + 40 * MIN), 40))
         assertEquals(listOf(30 to null), eval(rainAt(95, 70), 70))
     }
@@ -131,10 +118,8 @@ class WeatherAlertsTest {
     fun `re-arms after 30 minutes clear`() {
         assertEquals(listOf(0 to null), eval(rainAt(-10, 0), 0))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(-10, 20), 20))
-        // A gap shorter than 30 min is still the same event.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(fetchedAtMs = T0 + 40 * MIN), 40))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(60, 49), 49))
-        // 30 min with nothing over the threshold.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(weather(fetchedAtMs = T0 + 79 * MIN), 79))
         assertEquals(listOf(120 to 80), eval(rainAt(200, 80), 80))
     }
@@ -143,7 +128,6 @@ class WeatherAlertsTest {
     fun `a later event already in the window re-arms 30 minutes after the one underway`() {
         assertEquals(listOf(0 to null), eval(rainAt(-10, 0), 0))
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(-10, 20), 20))
-        // The rain stopped and the next shower is already visible: same event until 30 min clear.
         assertEquals(emptyList<Pair<Int, Int?>>(), eval(rainAt(130, 40), 40))
         assertEquals(listOf(60 to null), eval(rainAt(130, 50), 50))
         assertEquals(listOf(30 to null), eval(rainAt(130, 100), 100))
@@ -244,7 +228,6 @@ class WeatherAlertsTest {
     fun `storm outranks rain and a suppressed rain consumes its rungs`() {
         val stormRain = WeatherSlot(T0 + 100 * MIN, T0 + 160 * MIN, 2.0, 80, 95, null)
         assertEquals(listOf(WeatherAlertKind.STORM to 90), kinds(weather(hourly = listOf(stormRain)), 0))
-        // Storm gone, rain alone: its 90 min rung was consumed, so it waits for the 1 h rung.
         assertEquals(emptyList<Any>(), kinds(weather(hourly = listOf(hour(100))), 10))
         assertEquals(listOf(WeatherAlertKind.RAIN to 60), kinds(rainAt(100, 40), 40))
     }
@@ -264,7 +247,6 @@ class WeatherAlertsTest {
         val gust = dryHour(185, gustKmh = 60.0)
         val both = { nowMin: Int -> weather(hourly = listOf(hour(180), gust), fetchedAtMs = T0 + nowMin * MIN) }
         assertEquals(listOf(WeatherAlertKind.WIND to 120), kinds(both(55), 55))
-        // Wind spoke 5 min ago; rain's own last line was an hour ago, so its 2 h rung speaks.
         assertEquals(listOf(WeatherAlertKind.RAIN to 120), kinds(both(60), 60))
     }
 

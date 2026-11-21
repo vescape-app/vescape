@@ -32,10 +32,6 @@ struct BoardConfigChangeNotice {
     guard let data = diffsJson.data(using: .utf8) else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Notice is not UTF-8")) }
     return .init(boardId: boardId, detectedAtMs: detectedAtMs, diffs: try JSONDecoder().decode([BoardConfigChangeDiff].self, from: data))
   }
-  /// Relative tolerance for number fields. Two decodes of the same board bytes can differ by a few
-  /// ULP once a value has been through the cache JSON or the `float32_auto` reconstruction, and a
-  /// rider must never be told `0.026 -> 0.026`. Well below the smallest step any Refloat field
-  /// exposes, so a real edit still diffs.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `NUMBER_TOLERANCE`
   static let numberTolerance = 1e-6
 
@@ -44,9 +40,6 @@ struct BoardConfigChangeNotice {
     return a != b
   }
 
-  /// Fold new diffs into an undismissed notice rather than replacing it: a Refloat change and a motor
-  /// config change found in the same session are one piece of news to the rider. A field that diffs
-  /// twice keeps the newer comparison, in its original position.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `mergeDiffs`
   static func mergeDiffs(previous: [BoardConfigChangeDiff], incoming: [BoardConfigChangeDiff]) -> [BoardConfigChangeDiff] {
     var order: [String] = []
@@ -64,18 +57,9 @@ struct BoardConfigChangeNotice {
   }
 }
 
-/// DB-backed Last Known Board Config Values, one row per Board and Refloat base
-/// version — the same scoping Tune Compatibility uses (ADR 0022), because field offsets only mean
-/// anything against the firmware they were read from.
-///
-/// A restored row comes back `lastKnown`: displayable, never a write base. The row is kept while
-/// link integrity is `outdated` and deleted for the whole Board when it goes `mismatched`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getBoardConfigValues`
 struct BoardConfigStore {
   static var onNoticeChanged: ((BoardConfigChangeNotice?) -> Void)?
-  /// Resolves the shared GRDB writer at call time so it always sees the current pool (swapped on
-  /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
   static let shared = BoardConfigStore { VescapeDatabase.pool }
@@ -84,19 +68,15 @@ struct BoardConfigStore {
     self.resolveWriter = resolveWriter
   }
 
-  /// Test seam: bind to an explicit writer (e.g. an in-memory `DatabaseQueue`).
   init(dbWriter: DatabaseWriter) {
     self.resolveWriter = { dbWriter }
   }
 
-  /// Create the Last Known Board Config Values table. Called from the app-data `DatabaseMigrator` and
-  /// reused by tests so the schema stays single-source. Mirrors Android `BoardConfigValuesEntity`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createBoardConfig(db)
   }
 
-  /// Last Known values for this Board + Refloat base version. Nil when none exist for that scope.
   func load(boardId: String, refloatBaseVersion: String) throws -> BoardConfigValues? {
     guard !boardId.isEmpty, !refloatBaseVersion.isEmpty else { return nil }
     guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
@@ -108,13 +88,6 @@ struct BoardConfigStore {
     )
   }
 
-  /// The most recently captured Last Known scope for a Board, whichever Refloat base version it was
-  /// read against.
-  ///
-  /// For readers with no Board Session to tell them the base version — a screen opened while the
-  /// Board is off. Displayable only, exactly like `load`: the newest row is the last thing Vescape
-  /// saw on that Board, and picking a scope is meaningless without a connection to say which
-  /// firmware is running now.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getLatestBoardConfigValues`
   func loadLatest(boardId: String) throws -> BoardConfigValues? {
     guard !boardId.isEmpty else { return nil }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
@@ -125,7 +98,6 @@ struct BoardConfigStore {
     )
   }
 
-  /// Persist values just read from the board. Rows need both Board and Tune Compatibility scope.
   func save(_ values: BoardConfigValues) throws {
     guard
       let boardId = values.boardId, !boardId.isEmpty,
@@ -135,11 +107,6 @@ struct BoardConfigStore {
     try writer.write { db in try BoardConfigRecord(boardId: boardId, refloatBaseVersion: refloatBaseVersion, valuesJson: json, capturedAt: values.capturedAtMs).save(db) }
   }
 
-  /// Teach the config-change baseline about fields a runtime command changed on the board, merging
-  /// into whatever the stored row holds now rather than replacing it with the caller's snapshot.
-  ///
-  /// `captured_at` is deliberately untouched: the row still describes the read it came from, it just
-  /// accounts for a change Vescape itself made since.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `patchBoardConfigValues`
   func patch(boardId: String, refloatBaseVersion: String, values patch: [String: Any]) throws {
     guard !boardId.isEmpty, !refloatBaseVersion.isEmpty, !patch.isEmpty, let writer = resolveWriter()
@@ -163,8 +130,6 @@ struct BoardConfigStore {
     }
   }
 
-  /// Fresh trusted-session read: compare against Last Known, then replace notice + baseline in one
-  /// transaction. No previous row means Board Probe/first-link baseline, never a notice.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `saveFreshBoardConfigValues`
   func saveFresh(_ values: BoardConfigValues) throws {
     guard let boardId = values.boardId, let base = values.refloatBaseVersion else { return }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
@@ -203,8 +168,6 @@ struct BoardConfigStore {
     Self.onNoticeChanged?(nil)
   }
 
-  /// Drop every Last Known scope for a Board. Called when link integrity goes `mismatched`: the firmware
-  /// behind the link is not the one those offsets were decoded against.
   func clear(boardId: String) throws {
     guard !boardId.isEmpty else { return }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
     try writer.write { db in

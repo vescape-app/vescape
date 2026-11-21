@@ -57,7 +57,6 @@ test('a sampling gap breaks the line into separate runs', () => {
 })
 
 test('a sample stranded between gaps becomes a dot rather than vanishing', () => {
-  // Dense, then one sample alone between two long pauses, then dense again.
   const ts = [
     BASE,
     BASE + 500,
@@ -88,7 +87,6 @@ test('chunks stay within the tile size and overlap by one vertex', () => {
   const chunks = chunkRuns([0, 600], 256)
   expect(chunks.length).toBe(3)
   for (const chunk of chunks) expect(chunk.to - chunk.from).toBeLessThanOrEqual(256)
-  // The vertex closing one tile opens the next, so no segment is lost between them.
   expect(chunks[1].from).toBe(chunks[0].to - 1)
   expect(chunks.at(-1)!.to).toBe(600)
 })

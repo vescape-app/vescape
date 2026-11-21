@@ -11,7 +11,6 @@ export interface WidgetHeaderProps {
   accent?: ThemeColor
 }
 
-/** Icon + title + description row shared by a widget's collapsed card and its focused panel. */
 export function WidgetHeader({
   icon: IconComponent,
   title,

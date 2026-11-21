@@ -28,14 +28,11 @@ const DAY_MS = 24 * 60 * 60_000
 
 interface HistoryFilterPanelProps {
   selection: RideFilterSelection
-  /** Matches for the draft, so the rider sees the result size before applying it. */
   countMatches: (filter: RideHistoryFilter) => Promise<number>
-  /** Plural noun for what is counted, e.g. `rides` or `favorites`. */
   noun: { one: string; other: string }
   onApply: (selection: RideFilterSelection) => void
 }
 
-/** Date and Board filter for both History tabs; edits a draft until Apply. */
 export function HistoryFilterPanel({
   selection,
   countMatches,

@@ -24,20 +24,10 @@ interface Props {
   children: ReactNode
   controlId?: string
   unit?: string
-  /**
-   * Live telemetry for the alert gauge. Preset metrics render their gauge inside the alerts block
-   * (markers and levels are the same thing), so the value goes here rather than into `gauge`.
-   */
   liveValue?: SharedValue<number | null>
-  /** Gauge for controls without Alert Presets, rendered above the alerts block. */
   gauge?: ReactNode
 }
 
-/**
- * Shared chrome for a `/control/<metric>` detail screen: title, gauge, the control's alert setup,
- * and the screen's own charts. Every control gets the same alerts block — {@link MetricAlerts}
- * decides whether that means preset levels, the rider's own rules, or the no-board notice.
- */
 export function ControlDetailLayout({
   title,
   children,
@@ -67,10 +57,6 @@ export function ControlDetailLayout({
   )
 }
 
-/**
- * Bind one control's gauge, alert controls, and history chart to one immutable rule snapshot.
- * Alert controls stay directly below the main gauge; telemetry charts follow the complete block.
- */
 function ControlDetailAlerts({
   controlId,
   unit,

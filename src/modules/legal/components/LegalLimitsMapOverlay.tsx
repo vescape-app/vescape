@@ -23,20 +23,16 @@ const LIST_TOGGLE_HEIGHT = 42
 
 interface LegalLimitsMapOverlayProps {
   visible: boolean
-  /** Top of the map's control row, so the back button lines up with the mode tabs. */
   top: number
   onExit: () => void
 }
 
-/** Legal limits mode: the road status legend, the country list and the per-country sheet. */
 export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOverlayProps) {
   const formatReferenceSpeed = useLegalReferenceSpeedFormat()
   const insets = useSafeAreaInsets()
   const [listOpen, setListOpen] = useState(false)
   const [selectedCountry, setSelectedCountry] = useState<LegalLimitCountry | null>(null)
 
-  // Leaving the mode drops the selection, so returning to it starts from the map rather than from
-  // whatever country was last read.
   useEffect(() => {
     if (visible) return
     const frame = requestAnimationFrame(() => {

@@ -20,7 +20,6 @@ import { TuneScreenStates } from '@/modules/tune/screens/TuneScreenStates'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 import { routes } from '@/navigation/routes'
 
-/** Edits the active Tune Profile: basic sliders, advanced field groups, and the sync bar. */
 export function TuneScreen() {
   const navigation = useNavigation()
   const router = useRouter()
@@ -111,7 +110,7 @@ export function TuneScreen() {
 
   const handleSave = () => {
     // intentional-suppression: Tune store error is rendered by the active screen or modal
-    void saveActiveProfile().catch(() => undefined) // Store error renders in the banner below.
+    void saveActiveProfile().catch(() => undefined)
   }
 
   const handleSaveAndSync = () => {
@@ -120,13 +119,13 @@ export function TuneScreen() {
     void (async () => {
       await saveActiveProfile()
       await syncToBoard()
-    })().catch(() => undefined) // Store error renders in the banner below.
+    })().catch(() => undefined)
   }
 
   const handleSync = () => {
     if (!firmwareCommandsTrusted) return
     // intentional-suppression: Tune store error is rendered by the active screen or modal
-    void syncToBoard().catch(() => undefined) // Store error renders in the banner below.
+    void syncToBoard().catch(() => undefined)
   }
 
   const hasTuneView = activeProfile != null
@@ -145,7 +144,7 @@ export function TuneScreen() {
         loadOffline={loadOffline}
         onCreateFirstProfile={() => {
           // intentional-suppression: Tune store error is rendered by the active screen or modal
-          void modals.storeCreateProfile('Main', '', '').catch(() => undefined) // Tune error state replaces the empty screen.
+          void modals.storeCreateProfile('Main', '', '').catch(() => undefined)
         }}
       />
 

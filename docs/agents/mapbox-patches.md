@@ -87,6 +87,10 @@ The layer sits on top of the style. A layer the app adds later without `aboveLay
 covers the puck or a marker. A positioned layer that still lands above is caught the next time the
 puck moves or a marker changes, when `RNMBXPuck` moves its layer back to the top.
 
+The layer is persistent, so Mapbox keeps it across style reloads; it is added on first use and
+removed once neither the puck nor a marker is left. It assumes Mercator: under globe projection
+(zoom below about 5) the coin and markers are misplaced.
+
 ## Files changed inside `@rnmapbox/maps`
 
 The patch updates all layers required by the package:
@@ -147,6 +151,7 @@ the changing zoom. Also verify normal recentering and navigation-mode camera ani
 
 - **Backgrounding does not stop sensor or JS camera loops.** On iOS, `UIBackgroundModes` (`bluetooth-central`, `location`) keeps the JS thread and CoreMotion running with the screen off; only `requestAnimationFrame` pauses. Gate visual-only loops (heading sensors, camera writes) on `useAppActive` (`inactive` counts as away), or writes queue against a dark screen and trigger FrontBoard's 10 s watchdog kill (`0x8BADF00D`) on unlock.
 - **`setCamera` fires `onCameraChanged` synchronously**, and Mapbox's hidden compass ornament still commits a `UIView.animate` per bearing change even with `compassEnabled={false}`. Keep perceptual frame skipping in `src/modules/map/lib/cameraEngine/engine.ts` (`emit(..., { force: true })` is only for the landing frame / post-landing hold that must overwrite a native fling animator).
+- **Use native gesture samples to track the camera while the rider drives it.** The Spring Camera Engine tracks position and velocity without writing over the gesture. It ignores echoes of its own writes so the inferred velocity does not include a jump the engine just made.
 - **Rescale EMA smoothing when changing sample rate.** Halving sensor rate requires `alpha' = 1 - (1 - alpha)²` and a matching dead-band rescale to keep the same time constant and jitter rejection.
 - **Do not treat `setNativeProps` on a `ShapeSource` as a cheap property poke** — it performs a full JSON → parse → `setGeoJSON` → re-tile pass.
 - **Keep the per-frame camera echo to JS** unless replacing what depends on it: it is the single writer for off-screen indicators.

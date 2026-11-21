@@ -57,17 +57,6 @@ internal object RefloatConfigDecoder {
     )
   }
 
-  /**
-   * Decode **every** field the schema describes, each in its real type — a bool field stays a
-   * `Boolean`, never `1.0` / `0.0`.
-   *
-   * A field is left out of the map when the schema places it past the end of the raw config
-   * (`offset + byteSize` precondition), when it fails to decode (e.g. a scaled type with no scale),
-   * or when it decodes to a non-finite number. Non-finite is deliberately treated as missing rather
-   * than as a value: a reader skips an absent field, whereas a NaN would compare false against every
-   * bound and wrongly count as a clean evaluation that clears a valid warning. One bad field is
-   * contained to itself and never discards the rest of the map.
-   */
   fun decodeFieldMap(schema: RefloatConfigSchema, rawConfig: ByteArray): Map<String, Any> {
     val values = mutableMapOf<String, Any>()
     for (field in schema.fields) {
@@ -85,10 +74,6 @@ internal object RefloatConfigDecoder {
     return values
   }
 
-  /**
-   * Decode the whole schema into the Board Session's Board Config Values, retaining the bytes,
-   * package signature, and schema as the write base. Always fresh — it just came off the board.
-   */
   fun decodeBoardConfigValues(
     schema: RefloatConfigSchema,
     configBytes: RefloatConfigBytes,

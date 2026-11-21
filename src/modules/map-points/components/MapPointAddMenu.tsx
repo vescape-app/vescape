@@ -27,10 +27,6 @@ const secondaryMapPointOptions = MAP_POINT_CATEGORY_OPTIONS.filter(
   (option) => !isCompactMapPointCategory(option.kind),
 )
 
-/**
- * Places a new Map Point (or a direction target) at the map centre. Collapsed it is one button;
- * open it is the category sheet.
- */
 export function MapPointAddMenu({
   bottom,
   sheetBottom,
@@ -50,7 +46,6 @@ export function MapPointAddMenu({
 }) {
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
-  // The Navigate button is a colored action: it wears the two-layer colored surface.
   const navigateSurface = useColoredAction(navigationAction.color)
 
   if (!open) {

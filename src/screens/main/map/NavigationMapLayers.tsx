@@ -20,26 +20,15 @@ import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDia
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
 /**
- * Route line when the rider has not picked a colour of their own — the same purple the watch draws.
- *
  * @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `NavColor`
  * @parity /watch/watchos/Palette.swift `nav`
  */
 export const NAVIGATION_ROUTE_COLOR = theme.map.user
 
-/** The dark halo the dots sit on, so a light path stays readable over a satellite tile. */
 const NAVIGATION_CASING_WIDTH = MAP_DEFAULTS.navigationWidth + 4
 
-/** Distance between two dot centres, in screen pixels. Fixed, so both layers dot in step. */
 const NAVIGATION_DOT_SPACING_PX = 11
 
-/**
- * A dotted line: a zero-length dash under a round cap draws a circle, and the gap does the spacing.
- *
- * Mapbox measures a dash pattern in multiples of the line's own width, so the same pattern on the
- * casing would space its dots wider than the line's. Dividing by the width converts the spacing back
- * to pixels and keeps the two layers dot for dot.
- */
 function navigationDots(lineWidth: number): [number, number] {
   return [0, NAVIGATION_DOT_SPACING_PX / lineWidth]
 }
@@ -81,7 +70,6 @@ function getNavigationTargetIcon(target: MapSelection | null) {
   return getMapPointKindIcon('direction')
 }
 
-/** The computed path, the Direction Point pin, and the not-yet-confirmed target pin. */
 export function NavigationMapLayers({
   directionPoint,
   activeNavigationTarget,
@@ -100,15 +88,10 @@ export function NavigationMapLayers({
   onFocusDirectionPoint: MainMapLayersProps['onFocusDirectionPoint']
 }) {
   const neutral = useResolvedNeutralColors()
-  // Native computes and owns the Navigation; this only draws the coordinates it was handed. They
-  // already arrive as GeoJSON `[longitude, latitude]`, so nothing is reordered here.
   const navigation = useMapStore((state) => state.navigation)
-  // No path could be computed. The pin stays exactly where the rider put it — it is still their
-  // Direction Point, with a bearing and a distance — but it stops pretending a route is coming.
   const navigationFailed = navigation != null && navigation.status !== 'ready'
   const progress = useMapStore((state) => state.routeProgress)
   const showConnector = useNavigationDiagnosticsStore((state) => state.showProjectionConnector)
-  // Subscribed only while the connector is on: otherwise every GPS fix would re-render the layers.
   const gpsFix = useNavigationDiagnosticsStore((state) =>
     state.showProjectionConnector ? state.gpsFix : null,
   )
@@ -139,7 +122,6 @@ export function NavigationMapLayers({
   return (
     <>
       {showDirectionPoint && navigationShape && (
-        // Passed and remaining sections are split at native's projection, see navigationPath.ts.
         <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
           <LineLayer
             id="center-navigation-casing"

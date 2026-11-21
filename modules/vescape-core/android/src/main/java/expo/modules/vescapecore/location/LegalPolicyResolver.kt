@@ -13,8 +13,6 @@ internal sealed interface LegalPolicyResolution {
 }
 
 /**
- * Native OS reverse geocoder constrained by the bundled Legal Policy catalog.
- *
  * @parity /modules/vescape-core/ios/location/LegalPolicyResolver.swift
  */
 internal class LegalPolicyResolver(private val context: Context) {

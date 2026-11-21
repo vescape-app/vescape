@@ -2,7 +2,7 @@ package expo.modules.vescapecore.accessory
 
 import kotlin.math.abs
 
-/** Speed is km/h, clock is monotonic. PoC defaults documented in docs/accessories.md.
+/**
  * @parity /modules/vescape-core/ios/accessory/BrakeLight.swift
  */
 class BrakeLightDetector {
@@ -34,7 +34,7 @@ class BrakeLightDetector {
     }
 }
 
-/** Persisted per Accessory capability; automatic state follows whichever Board is current.
+/**
  * @parity /modules/vescape-core/ios/accessory/BrakeLight.swift `BrakeLightSettings`
  * @parity /modules/vescape-core/src/index.ts `BrakeLightSettings`
  */
@@ -54,12 +54,10 @@ class BrakeLightController {
     private var riding = false
     fun configure(key: Key, settings: BrakeLightSettings) { lights.getOrPut(key) { Light() }.settings = settings }
     fun forget(accessoryId: String) { lights.keys.removeAll { it.accessoryId == accessoryId } }
-    /** Returns whether anything a screen renders changed, so an unchanged sample publishes nothing. */
     fun sample(speed: Double, engaged: Boolean, at: Long): Boolean {
         riding = engaged
         var changed = false
         lights.values.forEach { light ->
-            // Riding ends a preview: the rider is on the board and the light follows the board.
             if (engaged && light.preview != null) { light.preview = null; changed = true }
             val before = light.detector.mode
             light.detector.sample(speed, engaged, at, light.settings.sensitivity)

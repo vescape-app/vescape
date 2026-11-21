@@ -2,14 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// Who is allowed to write the Board's remote-input slot, and what happens at every handover.
-///
-/// These are the ownership regressions #479 asks for. The failures they describe are all the same
-/// shape: two of the three writers active at once, each repeating its own value on its own tick, so
-/// the Board receives an alternating stream and does neither thing. On a ridden Board that is not a
-/// glitch, it is a rider on the floor — which is why the interesting assertions here are about what
-/// is *not* sent.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/RemoteInputArbiterTest.kt
 final class RemoteInputArbiterTests: XCTestCase {
   private var sent: [[UInt8]] = []
@@ -62,7 +54,6 @@ final class RemoteInputArbiterTests: XCTestCase {
     buildBoardMoveCommand(transport: .direct, generation: .remote, input: input)
   }
 
-  /// Drives the sensor at full strength for long enough that the slew limit is no longer the story.
   private func settleSensor(at target: Int, file: StaticString = #filePath, line: UInt = #line) {
     for _ in 0..<12 {
       _ = arbiter.sensorDrive(target)
@@ -72,8 +63,6 @@ final class RemoteInputArbiterTests: XCTestCase {
   }
 
   func testSensorRampsToItsTargetInsteadOfSteppingToIt() {
-    // A pothole under the sensor produces a full-range swing in one sample. Handing that to the
-    // firmware as a single step is the same angle error a snapped cancel would be.
     _ = arbiter.sensorDrive(255)
     let first = arbiter.sensorCommand
     XCTAssertGreaterThan(first, REMOTE_TILT_CENTER, "first command must leave neutral")
@@ -85,7 +74,6 @@ final class RemoteInputArbiterTests: XCTestCase {
   func testSensorFollowsItsReadingsOnceRamped() {
     settleSensor(at: 200)
 
-    // Small changes inside the slew allowance land exactly, so steady tracking is not distorted.
     scheduler.advance(100)
     _ = arbiter.sensorDrive(198)
     XCTAssertEqual(arbiter.sensorCommand, 198)
@@ -109,7 +97,6 @@ final class RemoteInputArbiterTests: XCTestCase {
     XCTAssertFalse(arbiter.sensorDrive(255))
     XCTAssertEqual(arbiter.owner, .move)
 
-    // Nothing but move packets reach the board while it is jogging.
     scheduler.advance(300)
     XCTAssertFalse(sent.isEmpty)
     XCTAssertTrue(sent.allSatisfy { $0 == movePacket(BOARD_MOVE_INPUT_MAX) })
@@ -117,16 +104,13 @@ final class RemoteInputArbiterTests: XCTestCase {
 
   func testBoardMoveIsNotOverwrittenByAPendingSensorDecay() {
     settleSensor(at: 255)
-    // The rider steps off: the binding releases and the smooth return starts.
     _ = arbiter.sensorRelease()
     XCTAssertEqual(tilt.phase, .decaying)
 
-    // Board Move, requested while that return is still easing down.
     sent.removeAll()
     XCTAssertTrue(arbiter.startMove(-BOARD_MOVE_INPUT_MAX))
     XCTAssertEqual(arbiter.owner, .move)
 
-    // One neutral tilt hands the slot back, and after it the board hears nothing but the move.
     XCTAssertEqual(sent.first, tiltPacket(REMOTE_TILT_CENTER))
     scheduler.advance(600)
     let afterHandover = Array(sent.dropFirst())
@@ -141,8 +125,6 @@ final class RemoteInputArbiterTests: XCTestCase {
     settleSensor(at: 220)
     sent.removeAll()
 
-    // A board asking for ground-clearance correction is a board being ridden, and jogging one is not
-    // a request this app passes on.
     XCTAssertFalse(arbiter.startMove(BOARD_MOVE_INPUT_MAX))
     XCTAssertEqual(arbiter.owner, .sensor)
     XCTAssertFalse(sent.contains(movePacket(BOARD_MOVE_INPUT_MAX)))
@@ -155,8 +137,6 @@ final class RemoteInputArbiterTests: XCTestCase {
     let total = tilt.decayProgress?.totalMs
     XCTAssertEqual(total, 600)
 
-    // The Board Session calls this on every tick it has no valid reading. Only the first cancels; a
-    // repeat would re-ease from a smaller value and the return would never arrive.
     scheduler.advance(200)
     XCTAssertFalse(arbiter.sensorRelease())
     XCTAssertEqual(tilt.decayProgress?.totalMs, total)
@@ -171,7 +151,6 @@ final class RemoteInputArbiterTests: XCTestCase {
     XCTAssertTrue(arbiter.manualLock(255))
     XCTAssertEqual(arbiter.owner, .manual)
 
-    // A lock never ends on its own, so without this the binding would wait for the slot forever.
     XCTAssertTrue(arbiter.releaseManual())
     XCTAssertEqual(tilt.phase, .decaying)
     scheduler.advance(600)
@@ -193,8 +172,6 @@ final class RemoteInputArbiterTests: XCTestCase {
 
     XCTAssertTrue(arbiter.cancelTilt())
     XCTAssertEqual(tilt.phase, .decaying)
-    // Cancel is not an off switch for the binding: a sensor still holding valid readings takes the
-    // slot back on its next tick, ramped from where the cancel left it.
     XCTAssertEqual(arbiter.sensorCommand, REMOTE_TILT_CENTER)
     scheduler.advance(100)
     let eased = tilt.currentValue
@@ -207,8 +184,6 @@ final class RemoteInputArbiterTests: XCTestCase {
 
   func testASensorReEngagingMidReleaseResumesFromTheStreamRatherThanNeutral() {
     settleSensor(at: 255)
-    // One bad reading releases; the reading after it is good again, which is an ordinary minute of
-    // riding past a puddle, not an exotic case.
     XCTAssertTrue(arbiter.sensorRelease())
     scheduler.advance(200)
     let eased = tilt.currentValue
@@ -217,9 +192,6 @@ final class RemoteInputArbiterTests: XCTestCase {
     sent = []
     XCTAssertTrue(arbiter.sensorDrive(255))
     scheduler.advance(100)
-    // Resuming from neutral here would hand the firmware the whole unfinished decay as one step — a
-    // ~100-count drop on a board with a rider on it, which is the surge a snapped cancel would cause
-    // and the reason nothing in this class is allowed to step.
     XCTAssertGreaterThanOrEqual(
       arbiter.sensorCommand, eased, "re-engage must not step down to neutral")
     XCTAssertFalse(sent.isEmpty)
@@ -229,9 +201,6 @@ final class RemoteInputArbiterTests: XCTestCase {
   }
 
   func testManualTiltIsRefusedWhileABindingIsBoundEvenWithTheSlotFree() {
-    // Bound but not driving: parked, or between readings. The slot is genuinely free, and without
-    // the bound check a manual *lock* taken here would never end on its own — and the pad is
-    // read-only by then, so the rider has no Cancel to press.
     sensorBound = true
     XCTAssertEqual(arbiter.owner, RemoteInputOwner.none)
 
@@ -241,14 +210,11 @@ final class RemoteInputArbiterTests: XCTestCase {
     XCTAssertTrue(sent.isEmpty, "a refused manual command writes nothing")
     XCTAssertEqual(arbiter.owner, RemoteInputOwner.none)
 
-    // The binding can still take the slot it was holding open.
     XCTAssertTrue(arbiter.sensorDrive(200))
     XCTAssertEqual(arbiter.owner, .sensor)
   }
 
   func testABoundBindingKeepsReleasingAManualTiltItDidNotCatchWhenItArmed() {
-    // A lock taken in the window before the pad learned it was read-only, or one whose arming-time
-    // cancel failed on a transport that blinked.
     XCTAssertTrue(arbiter.manualLock(255))
     XCTAssertEqual(arbiter.owner, .manual)
     sensorBound = true
@@ -259,13 +225,11 @@ final class RemoteInputArbiterTests: XCTestCase {
       tiltInput: { .drive(tiltInput: 1.0, valueCm: 5.0) })
     let board = BoardGroundClearanceBinding.BoardInput(commandsTrusted: true, telemetryFresh: true)
 
-    // Already bound on the first tick, so there is no unbound→bound transition to catch it.
     binding.tick(board)
     XCTAssertEqual(binding.state()["release"] as? String, "manual-tilt")
     XCTAssertEqual(tilt.phase, .decaying)
     let total = tilt.decayProgress?.totalMs
 
-    // Repeating the release must not restart the ease, or it would shrink toward zero forever.
     scheduler.advance(200)
     binding.tick(board)
     XCTAssertEqual(tilt.decayProgress?.totalMs, total)
@@ -294,8 +258,6 @@ final class RemoteInputArbiterTests: XCTestCase {
     settleSensor(at: 255)
     transport = nil
 
-    // The repeat loop is the sole sender; with no transport it clears itself, and the arbiter's
-    // derived owner follows the stream rather than remembering a claim it can no longer serve.
     scheduler.advance(100)
     XCTAssertEqual(tilt.phase, .idle)
     XCTAssertEqual(arbiter.owner, RemoteInputOwner.none)
@@ -305,8 +267,6 @@ final class RemoteInputArbiterTests: XCTestCase {
     XCTAssertEqual(GroundClearance.tiltCommand(tiltInput: 0), REMOTE_TILT_CENTER)
     XCTAssertEqual(GroundClearance.tiltCommand(tiltInput: 1), 255)
     XCTAssertEqual(GroundClearance.tiltCommand(tiltInput: -1), 1)
-    // Nothing upstream can produce these; the one place that decides what a board is told is not
-    // where to find that out.
     XCTAssertEqual(GroundClearance.tiltCommand(tiltInput: 4), 255)
     XCTAssertEqual(GroundClearance.tiltCommand(tiltInput: -4), 1)
     XCTAssertEqual(GroundClearance.tiltCommand(tiltInput: .nan), REMOTE_TILT_CENTER)

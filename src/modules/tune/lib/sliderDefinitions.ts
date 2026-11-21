@@ -285,7 +285,6 @@ const BASIC_SLIDERS: BasicSliderDefinition[] = [
   },
 ]
 
-/** Opening an editor does not opt into replacing custom linked values with a formula. */
 export function basicSliderChanges(
   def: BasicSliderDefinition,
   value: number,

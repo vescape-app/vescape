@@ -2,11 +2,6 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native'
 
 import { theme } from '@/constants/theme'
 
-/**
- * Spinner over a chart whose series is still being handed over. Covers the plot area only, so
- * the chart's own header (label, current value, axes) stays readable and the layout never jumps
- * when the data lands.
- */
 export function ChartLoadingOverlay() {
   return (
     <View pointerEvents="none" style={styles.overlay}>

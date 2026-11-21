@@ -1,10 +1,6 @@
 import Compression
 import Foundation
 
-/// One reconstructed Telemetry Sample: every value column resolved, nothing sparse. `values` has
-/// `TELEMETRY_CHUNK_VALUE_COLUMNS` entries in storage mask bit order (`changed_mask_1` bit i =
-/// values[i]); nil is a missing reading.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkCodec.kt `TelemetrySample`
 internal struct TelemetrySample: Equatable {
   var capturedAtMs: Int64
@@ -14,13 +10,8 @@ internal struct TelemetrySample: Equatable {
   var values: [Int64?]
 }
 
-/// Value columns in `changed_mask_1` bit order, `speed_centi_kmh` .. `temp_motor_deci_c`.
 internal let TELEMETRY_CHUNK_VALUE_COLUMNS = 17
 
-/// Canonical reconstruction of a stored `telemetry_frames` row (ADR 0045): masks are authoritative.
-/// A keyframe clears every column first and then counts as all bits set; otherwise a set bit replaces
-/// the column with the row's value, NULL included (an explicit clear), and a clear bit keeps it.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkCodec.kt `reconstructTelemetryValues`
 internal func reconstructTelemetryValues(_ values: inout [Int64?], flags: Int, changedMask1: Int, row: [Int64?]) {
   let keyframe = flags & TELEMETRY_FLAG_KEYFRAME != 0
@@ -32,17 +23,13 @@ internal struct TelemetryChunkFormatError: Error, CustomStringConvertible {
   let description: String
 }
 
-/// Telemetry Chunk codec v1. The codec invariants are in ADR 0045 and the golden contract in `shared/telemetry-chunk-codec-contract.json`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkCodec.kt `TelemetryChunkCodec`
 /// @platform-diff Apple's raw-deflate encoder has a fixed level (5) instead of Android's 6; the
 /// contract is decode equivalence, not identical bytes.
 internal enum TelemetryChunkCodec {
   static let version: UInt8 = 1
   static let maxSamples = 65_536
-  /// Worst case per sample: 21 ten-byte varints plus one presence bit for each of 18 nullable columns.
   private static let maxBodyBytesPerSample = 21 * 10 + 3
-  /// Declared width per value column: `odometer_cm` is 64-bit, every other column 32-bit.
   private static let longColumn = 14
 
   static func encode(_ samples: [TelemetrySample]) throws -> Data {
@@ -104,8 +91,6 @@ internal enum TelemetryChunkCodec {
     }
   }
 
-  /// Raw deflate (RFC 1951) through `COMPRESSION_ZLIB`. Decode stops past `maxOutput`; bytes after the
-  /// final deflate block are ignored, because Apple's decoder does not report them.
   private static func stream(_ operation: compression_stream_operation, input: [UInt8], maxOutput: Int?) throws -> [UInt8] {
     let streamPointer = UnsafeMutablePointer<compression_stream>.allocate(capacity: 1)
     defer { streamPointer.deallocate() }
@@ -128,7 +113,6 @@ internal enum TelemetryChunkCodec {
         if let maxOutput, out.count > maxOutput { throw TelemetryChunkFormatError(description: "body exceeds bound") }
         switch status {
         case COMPRESSION_STATUS_OK:
-          // FINALIZE with an empty source and no output means the decoder wants more input.
           if streamPointer.pointee.src_size == 0, streamPointer.pointee.dst_size == bufferSize {
             throw TelemetryChunkFormatError(description: "truncated deflate stream")
           }
@@ -200,7 +184,6 @@ internal enum TelemetryChunkCodec {
       guard bytes.count - position >= n else { throw TelemetryChunkFormatError(description: "truncated") }
       position += n
     }
-    /// Unsigned LEB128, at most 10 bytes; the tenth may only carry the top bit.
     mutating func varint() throws -> UInt64 {
       var result: UInt64 = 0
       for i in 0..<10 {

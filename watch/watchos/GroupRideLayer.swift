@@ -1,15 +1,10 @@
 import SwiftUI
 
-/// Every other Rider who fits on the nav map, as a dot in their colour, over the route and under the
-/// gauges. The Rider's own ring is a separate layer above these marks. In nav focus each live dot
-/// gets its distance label, which carries any flag. Riders beyond the map are `GroupRideEdgeLayer`'s.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideLayer`
 struct GroupRideLayer: View {
   let group: WatchGroupRide
   let mapView: WatchMapView
   let mapMoving: Bool
-  /// Nav-focus progress: the dots grow and the labels fade in as the nav page takes the screen.
   var focus: Double = 0
   var distanceUnit: String = "km"
 
@@ -21,7 +16,6 @@ struct GroupRideLayer: View {
         context.fill(circle(mark.point, mark.size + GROUP_OUTLINE), with: .color(GROUP_OUTLINE_COLOR.opacity(opacity)))
         context.fill(circle(mark.point, mark.size), with: .color(Color(argb: mark.rider.colorArgb).opacity(opacity)))
       }
-      // Labels over every dot, so a neighbour's dot never cuts one.
       context.drawGroupRideLabels(marks: marks, kind: .dot, map: map, focus: focus, distanceUnit: distanceUnit)
     }
   }
@@ -31,16 +25,11 @@ struct GroupRideLayer: View {
   }
 }
 
-/// Every Rider beyond the nav map, as a triangle in their colour on the display edge, apex inward.
-/// Drawn over the rim gauges, so the caller layers it above them. A triangle is always the Rider's
-/// own colour; a flag shows only in its nav-focus label. Hidden in ambient like the dots.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideEdgeLayer`
 struct GroupRideEdgeLayer: View {
   let group: WatchGroupRide
   let mapView: WatchMapView
   let mapMoving: Bool
-  /// Nav-focus progress: the labels fade in as the nav page takes the screen.
   var focus: Double = 0
   var distanceUnit: String = "km"
 
@@ -60,8 +49,6 @@ struct GroupRideEdgeLayer: View {
     }
   }
 
-  /// Base centred on the edge, apex inward, thin dark outline under the fill so it reads over the rim.
-  ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `drawEdgeTriangle`
   private func triangle(_ mark: WatchGroupRideMark) -> Path {
     var path = Path()
@@ -71,7 +58,6 @@ struct GroupRideEdgeLayer: View {
   }
 }
 
-/// One measured nav-focus label.
 private struct GroupRideLabel {
   let distance: GraphicsContext.ResolvedText
   let distanceWidth: CGFloat
@@ -81,12 +67,6 @@ private struct GroupRideLabel {
 }
 
 private extension GraphicsContext {
-  /// Nav-focus labels on `kind`'s marks: grey distance, then a flag — a thermometer when the Rider
-  /// runs hot, else their battery % when it is low, each in its level's colour. Stale Riders get
-  /// none; their distance is as old as their place. Both layers place every label against every
-  /// mark (`placeLabels`) and each draws its own kind's, so a dot's label and a triangle's never
-  /// collide.
-  ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GroupRideLabels`
   func drawGroupRideLabels(
     marks: [WatchGroupRideMark], kind: WatchGroupRideMarkKind, map: WatchMapProjection, focus: Double, distanceUnit: String
@@ -148,10 +128,6 @@ private extension GraphicsContext {
 }
 
 extension GraphicsContext {
-  /// Thermometer in `box`: a round bulb the full box width, under an outlined stem half as wide,
-  /// its lower part filled. The bulb against the narrow stem is what reads as a thermometer
-  /// at label size rather than a pill.
-  ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `drawThermometer`
   func drawThermometer(in box: CGRect, color: Color) {
     let line = THERMOMETER_STROKE
@@ -175,8 +151,6 @@ extension GraphicsContext {
   }
 }
 
-/// Mark sizes on a display of `size`; dots grow towards the nav page, where the map is the page.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `groupRideMarkSizes`
 func groupRideMarkSizes(size: CGSize, focus: Double) -> WatchGroupRideMarkSizes {
   WatchGroupRideMarkSizes(
@@ -189,11 +163,6 @@ func groupRideMarkSizes(size: CGSize, focus: Double) -> WatchGroupRideMarkSizes 
   )
 }
 
-/// A canvas handed the map as the route is drawn this frame, and a stale Rider's opacity. Its
-/// timeline runs only while `group` has a stale Rider or the map is easing; the caller draws nothing
-/// in ambient, so ambient never animates. Both layers take their phase from the same clock, so a
-/// stale dot and a stale triangle pulse together.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `rememberStalePulse`
 private struct GroupRideCanvas: View {
   let group: WatchGroupRide
@@ -215,9 +184,6 @@ private struct GroupRideCanvas: View {
   }
 }
 
-/// Opacity `GROUP_STALE_MAX_OPACITY` → `GROUP_STALE_MIN_OPACITY` and back, `GROUP_STALE_PULSE_SECONDS`
-/// each way.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `staleAlpha`
 private func staleOpacity(at date: Date) -> Double {
   let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: GROUP_STALE_PULSE_SECONDS * 2)
@@ -226,36 +192,25 @@ private func staleOpacity(at date: Date) -> Double {
   return GROUP_STALE_MAX_OPACITY + (GROUP_STALE_MIN_OPACITY - GROUP_STALE_MAX_OPACITY) * t
 }
 
-/// Dots stay this far inside the display edge, clear of the rim gauges.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GROUP_IN_RANGE_MARGIN`
 private let GROUP_IN_RANGE_MARGIN: CGFloat = 38
 private let GROUP_DOT_RADIUS: CGFloat = 3
-/// On the nav page, where the map is the page.
 private let GROUP_FOCUS_DOT_RADIUS: CGFloat = 4.5
-/// Triangle bases sit in the outermost points, over the rim gauges.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRideLayer.kt `GROUP_EDGE_INSET`
 private let GROUP_EDGE_INSET: CGFloat = 1
 private let GROUP_TRIANGLE_MIN: CGFloat = 7
 private let GROUP_TRIANGLE_MAX: CGFloat = 12
 private let GROUP_OUTLINE: CGFloat = 0.75
 private let GROUP_LABEL_FONT_SIZE: CGFloat = 9
-/// Label clear of its dot or triangle apex.
 private let GROUP_LABEL_GAP: CGFloat = 3
-/// Between the distance and its flag.
 private let GROUP_LABEL_FLAG_GAP: CGFloat = 3
-/// Labels are not drawn at all until nav focus is under way.
 private let GROUP_LABEL_MIN_FOCUS = 0.01
-/// A label's thermometer box as shares of its line height.
 private let THERMOMETER_ASPECT: CGFloat = 0.45
 private let THERMOMETER_HEIGHT: CGFloat = 1
-/// Stem width as a share of the bulb's; mercury as a share of the stem's height.
 private let THERMOMETER_STEM: CGFloat = 0.5
 private let THERMOMETER_FILL: CGFloat = 0.5
 private let THERMOMETER_STROKE: CGFloat = 0.8
 private let GROUP_OUTLINE_COLOR = Color.black.opacity(0.9)
-/// A Rider the phone has not heard from for a while: last known place, faded and pulsing.
 private let GROUP_STALE_MAX_OPACITY = 0.7
 private let GROUP_STALE_MIN_OPACITY = 0.2
 private let GROUP_STALE_PULSE_SECONDS = 0.7

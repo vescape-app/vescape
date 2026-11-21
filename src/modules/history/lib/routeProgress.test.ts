@@ -3,7 +3,6 @@ import { describe, expect, test } from 'bun:test'
 import { progressAtTime, routeTimeProgress } from '@/modules/history/lib/routeProgress'
 import type { HistoryGpsSample } from '@/modules/history/store/historyStore'
 
-/** Three fixes on a straight line, the second leg twice as long as the first. */
 const samples = [
   { capturedAtMs: 1_000, latitude: 0, longitude: 0 },
   { capturedAtMs: 2_000, latitude: 0, longitude: 0.001 },
@@ -14,7 +13,6 @@ describe('progressAtTime', () => {
   const progress = routeTimeProgress(samples)
 
   test('measures distance travelled, not time elapsed', () => {
-    // Half the ride by time, a third of it by distance.
     expect(progressAtTime(2_000, progress)).toBeCloseTo(1 / 3, 3)
   })
 

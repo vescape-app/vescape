@@ -8,7 +8,6 @@ import { theme, type ThemeColor } from '@/constants/theme'
 interface SelectWidgetProps {
   icon: Icon
   selectIcon?: Icon
-  /** Status marker shown next to the value pill — an icon alone, no label, no press target. */
   badgeIcon?: Icon
   badgeAccent?: ThemeColor
   label: string
@@ -25,7 +24,6 @@ interface SelectWidgetProps {
   onSelectPress?: () => void
 }
 
-/** A compact 1×4 select-like widget: title + description with a current value pill. */
 export function SelectWidget({
   icon: IconComponent,
   selectIcon: SelectIconComponent,

@@ -1,7 +1,5 @@
 import Foundation
 
-/// Response-paced telemetry polling with a dropped-response safety retry.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/PollingLoop.kt
 internal final class PollingLoop {
   private let scheduler: Scheduler

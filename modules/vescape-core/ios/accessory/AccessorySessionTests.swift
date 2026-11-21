@@ -2,10 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// The operational session contract, driven by `shared/fixtures/accessory-protocol/session.json`:
-/// the exact bytes of every command this app writes, and what each accessory line must mean to a
-/// live session.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/accessory/AccessorySessionTest.kt
 final class AccessorySessionTests: XCTestCase {
   private func fixture() throws -> [String: Any] { try AccessoryFixtures.load("session.json") }
@@ -19,8 +15,6 @@ final class AccessorySessionTests: XCTestCase {
   }
 
   func testTheFirstCommandComesAfterTheHandshakeRequestId() throws {
-    // The hello owns request id 1; an operational request that reused it would look to the
-    // accessory like a duplicate handshake rather than a new command.
     let helloRequestId = try XCTUnwrap(fixture()["helloRequestId"] as? Int)
     XCTAssertEqual(helloRequestId + 1, AccessorySession.firstCommandRequestId)
   }
@@ -96,8 +90,6 @@ final class AccessorySessionTests: XCTestCase {
       XCTAssertEqual(requestId, expected["requestId"] as? Int, name)
       XCTAssertEqual(capabilityId, expected["capabilityId"] as? String, name)
       XCTAssertEqual(leaseMs, expected["leaseMs"] as? Int, name)
-      // The applied values are compared as text so `20` and `20.0` cannot disagree across the two
-      // platforms that have to read the same line.
       if let rate = expected["appliedRateHz"] as? Int {
         XCTAssertEqual(applied["rateHz"], String(rate), name)
       }
@@ -127,8 +119,6 @@ final class AccessorySessionTests: XCTestCase {
   }
 
   func testACapabilityDeclaringNoRateIsNotConfigurable() {
-    // Not a clamp to some default: a rate the hardware never offered is one this app invented, and
-    // a sensor asked to run at it would be right to refuse.
     XCTAssertNil(AccessorySession.resolveRateHz(requested: 20, ratesHz: []))
     XCTAssertNil(AccessorySession.resolveRateHz(requested: 20, ratesHz: [0, -5, .nan]))
   }

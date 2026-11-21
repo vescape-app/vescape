@@ -40,7 +40,6 @@ export default function BatteryScreen() {
   const batteryCurrent = useLiveMetric(liveSelectors.batteryCurrent)
   const windowMs = useLiveWindowMs()
 
-  // One cursor shared by every chart on this screen — scrubbing any chart moves all of them.
   const scrubTimeMs = useSharedValue<number | null>(null)
 
   useLayoutEffect(() => {
@@ -81,8 +80,6 @@ export default function BatteryScreen() {
     [board?.batteryConfig],
   )
 
-  // Pin the V axis to the pack's 0%..100% span so the V line plots at the same height as the
-  // % line and only sag under load separates them. Auto-ranging stretches noise to full height.
   const voltageRange = useMemo(() => {
     if (battery.warning == null) {
       return { min: battery.minVoltage, max: battery.maxVoltage }
@@ -96,8 +93,6 @@ export default function BatteryScreen() {
     })
   }, [battery, voltageSeries])
 
-  // Pack percent with voltage riding on the right axis, then pack current — one stack, so
-  // scrubbing either also moves the cell card above them.
   const charts = useMemo(
     () => [
       toLiveChart({
@@ -126,9 +121,6 @@ export default function BatteryScreen() {
     [currentSeries, neutral.textDim, percentSeries, voltageRange, voltageSeries],
   )
 
-  // Gauge reads the latest of the calm ~1Hz decimated series — the same SoC source/cadence the
-  // center BatteryIndicator uses. The per-frame `liveTelemetryRuntime` tick carries the identical
-  // smoothed estimate but updates every BLE frame, which made the big % readout jitter.
   const latestPercent = batteryPercent.at(-1)?.value ?? null
   const percentValue = useSharedValue<number | null>(latestPercent)
   useEffect(() => {
@@ -142,7 +134,6 @@ export default function BatteryScreen() {
       unit={battVoltageCfg.unit}
       liveValue={percentValue}
     >
-      {/* Cell groups sit above the charts so a scrubbing thumb doesn't cover them. */}
       <BmsCellVoltages scrubTimeMs={scrubTimeMs} windowMs={windowMs} />
       <LiveChartStack charts={charts} scrubTimeMs={scrubTimeMs} />
       <BoardConfigSection rows={BATTERY_CONFIG_ROWS} />

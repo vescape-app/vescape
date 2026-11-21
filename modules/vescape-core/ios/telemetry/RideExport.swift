@@ -2,7 +2,6 @@ import CryptoKit
 import Foundation
 import GRDB
 
-/// Raw keyset page, ordered by timestamp and row id so equal timestamps cannot lose fixes.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getRideExportTrackPage`
 internal func rideExportTrackPage(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
   afterMs: Int64, afterId: Int64) throws -> [Row] {
@@ -13,7 +12,6 @@ internal func rideExportTrackPage(_ db: Database, fromMs: Int64, toMs: Int64, bo
     """, arguments: [fromMs, toMs, boardId, boardId, afterMs, afterMs, afterId, RideExport.batchSize])
 }
 
-/// Caller holds one database snapshot across every page; only the file crosses the bridge.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt
 /// @parity /modules/vescape-core/src/index.ts `RideExportOptions`
 /// @parity /modules/vescape-core/src/index.ts `RideExportFile`
@@ -46,7 +44,6 @@ internal enum RideExport {
     }
   }
 
-  /// `batteryPercent` is the Board's 0–100 estimate for pack volts and battery amps, nil when unknown.
   static func floaty(_ db: Database, directory: URL, options: [String: Any],
     batteryPercent: (_ voltageV: Double, _ batteryCurrentA: Double) -> Double?) throws -> [String: Any] {
     try file(directory: directory, options: options, format: .floaty) { from, to, boardId, write in
@@ -64,8 +61,6 @@ internal enum RideExport {
     }
   }
 
-  /// Live telemetry, every frame at full rate, in the ride CSV's columns. Live frames carry no GPS
-  /// fix, so the location columns stay empty.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt `liveCsv`
   static func liveCsv(_ rows: [[String: Any?]], directory: URL) throws -> [String: Any] {
     guard !rows.isEmpty else {
@@ -172,12 +167,8 @@ internal enum RideExport {
     }
   }
 
-  /// Integration stops across gaps longer than this, so a paused recording adds no energy.
   static let floatyGapMs: Int64 = 5000
 
-  /// Floaty 3 session JSON (`schemaVersion` 2) in Floaty's units: every stored frame as a log, every
-  /// precise fix as a location, timestamps unique per array, no nulls in either. Session totals come
-  /// after the arrays, so one streaming pass suffices.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt `writeFloaty`
   static func writeFloaty(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?, name: String?,
     batteryPercent: (_ voltageV: Double, _ batteryCurrentA: Double) -> Double?,
@@ -187,8 +178,6 @@ internal enum RideExport {
     try write("{\"schemaVersion\":2,\"id\":\"\(id)\",\"name\":\(name.map(jsonString) ?? "null"),\"boardId\":\(jsonString(boardId ?? "")),\"startTime\":\(fromMs),\"endTime\":\(toMs),\"stopReason\":null,\"userId\":null,\"groupRideId\":null,\"logs\":[")
     var lastLog: Int64?, lastOdometer: Int64?, tripCm: Int64 = 0
     var previousVoltage: Int64?, previousCurrent: Int64?
-    // Consumed counters like VESC's: discharge only, regen never subtracts. mA·ms and µW·ms stay
-    // integral, so both platforms round the same totals.
     var milliAmpMs: Int64 = 0, microWattMs: Int64 = 0
     try forEachFrame(db, fromMs: fromMs, toMs: toMs, boardId: boardId) { timestamp, v in
       guard timestamp != lastLog else { return }
@@ -197,7 +186,6 @@ internal enum RideExport {
       }
       let first = lastLog == nil
       lastLog = timestamp; previousVoltage = v[1]; previousCurrent = v[3]
-      // Forward deltas only: an odometer reset rebases instead of going negative.
       if let odometer = v[14] {
         if let previous = lastOdometer, odometer > previous { tripCm += odometer - previous }
         lastOdometer = odometer
@@ -205,7 +193,6 @@ internal enum RideExport {
       let percent = v[1].flatMap { batteryPercent(Double($0) / 1000, Double(v[3] ?? 0) / 1000) }
         .map { Int64((min(max($0, 0), 100) * 100 + 0.5).rounded(.down)) } ?? 0
       func d(_ i: Int, _ scale: Int) -> String { decimal(v[i] ?? 0, scale) }
-      // Floaty stores speed and duty unsigned; reverse riding stays positive like GPS speed.
       func unsigned(_ i: Int, _ scale: Int) -> String { decimal(abs(v[i] ?? 0), scale) }
       let packedState = v[10] ?? 0
       let footpad = footpadSwitch(v[11].map { Int($0) }, v[12].map { Double($0) / 1000 }, v[13].map { Double($0) / 1000 }) ?? 0
@@ -229,7 +216,6 @@ internal enum RideExport {
     try write("],\"distance\":\(decimal(tripCm, 5)),\"polyline\":\(lastFix == nil ? "null" : jsonString(polyline)),\"minLatitude\":\(bound(minLat)),\"maxLatitude\":\(bound(maxLat)),\"minLongitude\":\(bound(minLon)),\"maxLongitude\":\(bound(maxLon))}\n")
   }
 
-  /// Name-based UUID v3 of the exported range, so re-importing the same ride replaces nothing.
   static func floatyId(fromMs: Int64, toMs: Int64, boardId: String?) -> String {
     var b = Array(Insecure.MD5.hash(data: Data("vescape-ride:\(boardId ?? ""):\(fromMs):\(toMs)".utf8)))
     b[6] = b[6] & 0x0f | 0x30; b[8] = b[8] & 0x3f | 0x80
@@ -237,14 +223,12 @@ internal enum RideExport {
       .uuidString.lowercased()
   }
 
-  /// Google encoded polyline, one signed 1e-5 degree delta.
   private static func appendPolyline(_ delta: Int64, to out: inout String) {
     var v = UInt64(bitPattern: delta < 0 ? ~(delta << 1) : delta << 1)
     while v >= 0x20 { out.unicodeScalars.append(UnicodeScalar(UInt8((0x20 | (v & 0x1f)) + 63))); v >>= 5 }
     out.unicodeScalars.append(UnicodeScalar(UInt8(v + 63)))
   }
 
-  /// Exact decimal for an integer stored at `scale` fractional digits, trailing zeros trimmed.
   private static func decimal(_ value: Int64, _ scale: Int) -> String {
     var divisor: UInt64 = 1
     for _ in 0..<scale { divisor *= 10 }
@@ -255,7 +239,6 @@ internal enum RideExport {
     return (value < 0 ? "-" : "") + String(magnitude / divisor) + (fraction.isEmpty ? "" : "." + fraction)
   }
 
-  /// Half-up integer division for positive `divisor`.
   private static func roundDiv(_ value: Int64, _ divisor: Int64) -> Int64 {
     let n = value + divisor / 2
     return n >= 0 ? n / divisor : -((-n + divisor - 1) / divisor)
@@ -274,15 +257,11 @@ internal enum RideExport {
     return out + "\""
   }
 
-  /// Every stored sample in range, Telemetry Chunks and write buffer alike, with its reconstructed
-  /// values, replaying the mask chain from the preceding full state even for Android archives
-  /// imported on iOS. Pages on `(captured_at_ms, ordinal)` (ADR 0045). Values are in storage mask bit order.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideExport.kt `forEachFrame`
   private static func forEachFrame(_ db: Database, fromMs: Int64, toMs: Int64, boardId: String?,
     _ body: (_ timestamp: Int64, _ values: [Int64?]) throws -> Void) throws {
     let start = try telemetryAnchorMs(db, beforeMs: fromMs, boardId: boardId, allBoards: false) ?? fromMs
     var afterMs = start, afterId = Int64.min
-    // Replayed by the canonical `reconstructTelemetryValues` (ADR 0045).
     var values = [Int64?](repeating: nil, count: TELEMETRY_CHUNK_VALUE_COLUMNS)
     while true {
       let rows = try telemetryFrameRows(db, fromMs: start, toMs: toMs, boardId: boardId, allBoards: false,
@@ -313,7 +292,6 @@ internal enum RideExport {
     try write(batch)
   }
 
-  /// Float Control's switch column from Refloat's raw state: one pad down reads as the side that is.
   private static func footpadSwitch(_ raw: Int?, _ adc1: Double?, _ adc2: Double?) -> Int? {
     switch raw.map({ $0 & 15 }) {
     case 0: return 0

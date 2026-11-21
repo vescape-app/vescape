@@ -35,7 +35,6 @@ object LastBatteryState {
 }
 
 /**
- * Stores only a notification fingerprint, never a second copy of durable watch data.
  * @parity /modules/vescape-core/ios/watch/WatchBatteryWakeGate.swift
  */
 internal class BatteryUpdateGate {

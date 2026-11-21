@@ -1,7 +1,4 @@
 /**
- * Android side of the store screenshot runner: emulator/device selection, the Release screenshot
- * build, `adb push`ed fixtures and SystemUI demo mode.
- *
  * @parity /scripts/lib/iosCapture.ts
  */
 import { existsSync, readFileSync, statSync } from 'fs'
@@ -23,13 +20,10 @@ import { buildAndroidFixture } from './fixtureBuild.ts'
 
 const OUT_DIR = 'screenshots/android'
 
-/** Mirrors `fixtureDir` in `src/config/fixtureSession.ts`. */
 const DEVICE_FIXTURE_DIR = `/storage/emulated/0/Android/data/${applicationId}/files`
 
-/** Play's phone screenshots are cut to this; anything else has to be rescaled by hand. */
 const TARGET_RESOLUTION = '1080x2400'
 
-/** An AVD's screen size, read from its own config — the store set must be one consistent size. */
 function avdResolution(name: string): string | null {
   const config = join(avdHome(), `${name}.avd`, 'config.ini')
   if (!existsSync(config)) return null
@@ -39,7 +33,6 @@ function avdResolution(name: string): string | null {
   return width && height ? `${width}x${height}` : null
 }
 
-/** Boots an existing AVD and returns it once adb reports it ready. */
 async function bootAvd(name: string): Promise<AdbDevice> {
   console.log(`› Booting ${name}…`)
   Bun.spawn([emulatorBinary(), '-avd', name, '-no-boot-anim', '-no-snapshot'], {
@@ -66,14 +59,12 @@ async function bootAvd(name: string): Promise<AdbDevice> {
   process.exit(1)
 }
 
-/** `adb-54151FDAS00077-x5XeY4._adb-tls-connect._tcp` → `54151FDAS00077`. */
 function shortSerial(serial: string): string {
   return serial.replace(/^adb-/, '').replace(/-\w+\._adb-tls-connect\._tcp$/, '')
 }
 
 type DeviceChoice = { kind: 'attached'; device: AdbDevice } | { kind: 'avd'; name: string }
 
-/** Cache key for the last capture device picked; see lib/lastDevice. */
 const LAST_DEVICE_KEY = 'capture-android'
 
 async function chooseDevice(requested: string | null): Promise<DeviceChoice> {
@@ -82,8 +73,6 @@ async function chooseDevice(requested: string | null): Promise<DeviceChoice> {
     .filter((device) => !device.isWatch)
     .map((device) => ({ kind: 'attached', device }))
 
-  // An AVD that is already up is listed once, as the running device — offering to "boot" it again
-  // would be the same device under a second name.
   const running = new Set(
     attached.filter((device) => device.isEmulator).map((device) => device.name),
   )
@@ -112,12 +101,10 @@ async function chooseDevice(requested: string | null): Promise<DeviceChoice> {
 async function resolveDevice(requested: string | null, mode: FixtureRunMode): Promise<AdbDevice> {
   const choice = await chooseDevice(requested)
   const device = choice.kind === 'avd' ? await bootAvd(choice.name) : choice.device
-  // Only the store set has to come off one screen size; a smoke run asserts on text, not pixels.
   if (mode === 'screenshots') await warnOnResolution(device.serial)
   return device
 }
 
-/** Play cuts phone screenshots to one size; capturing at another means rescaling by hand later. */
 async function warnOnResolution(device: string): Promise<void> {
   const size = /(\d+x\d+)/.exec(await capture(['adb', '-s', device, 'shell', 'wm', 'size']))?.[1]
   if (size && size !== TARGET_RESOLUTION) {
@@ -159,36 +146,17 @@ export async function createAndroidDriver(
 
     async stageFixtures() {
       console.log('› Staging fixtures…')
-      // `pm clear` wipes the external files dir too, so it has to come before the push.
       await adb('shell', 'pm', 'clear', applicationId)
 
       if (existsSync(FIXTURE_ZIP)) {
         const remote = `${DEVICE_FIXTURE_DIR}/${basename(FIXTURE_ZIP)}`
-        // `pm clear` deleted the external files dir, and `adb push` cannot always recreate it: its
-        // `secure_mkdirs` is refused on the FUSE-backed `Android/data` of an emulator image, so the
-        // push fails outright with ENOENT. `adb shell mkdir` goes through the sdcard mount as
-        // `shell` and is allowed, which is the same explicit `mkdir` the iOS driver does after it
-        // wipes the container.
         await adb('shell', 'mkdir', '-p', DEVICE_FIXTURE_DIR)
-        // The recreated dir is owned by `shell:ext_data_rw`, mode `rwxrws---`. The app is neither
-        // owner nor in that group and cannot traverse its own directory, so `restoreDatabase` fails
-        // with EACCES and the run silently captures an empty app. Reopening both levels is what
-        // makes the push readable.
         await adb('shell', 'chmod', '777', DEVICE_FIXTURE_DIR, dirname(DEVICE_FIXTURE_DIR))
-        // The push does not land on `Android/data` directly: `adb push` chowns what it writes, and
-        // FUSE refuses that ("remote fchown failed: Operation not permitted") *after* transferring
-        // the bytes, so the push exits non-zero on a file that is actually there. Staging through
-        // `/data/local/tmp` (plain ext4, owned by `shell`) keeps the exit code meaningful, and
-        // `cp` as `shell` into the reopened dir needs no chown at all.
         const staging = `/data/local/tmp/${basename(FIXTURE_ZIP)}`
         await runOrDie(['adb', '-s', device.serial, 'push', FIXTURE_ZIP, staging])
         await adb('shell', 'cp', staging, remote)
-        // `cp` keeps the creating process's umask, so the copy lands unreadable to the app's uid.
         await adb('shell', 'chmod', '666', remote)
         await adb('shell', 'rm', '-f', staging)
-        // `capture` discards exit codes, so a rejected copy used to reach the flows as an app with
-        // an empty database — the run then failed several steps later on a missing board, pointing
-        // at the app rather than at the staging that never happened. Assert the whole file landed.
         const expected = statSync(FIXTURE_ZIP).size
         const staged = (await adb('shell', 'stat', '-c', '%s', remote)).trim()
         if (staged !== String(expected)) {
@@ -202,12 +170,6 @@ export async function createAndroidDriver(
         warnMissingFixture()
       }
 
-      // Every runtime permission the app asks for, granted up front. Two reasons, both fatal:
-      // BLUETOOTH_CONNECT gates the foreground service even for a replay session
-      // (`CoreForegroundServiceLauncher`), so without it `startDebugReplay` is skipped and the run
-      // captures an app with no telemetry. And any permission left ungranted raises a system dialog
-      // over the first screen — it takes window focus, so the pending `startForegroundService()`
-      // misses its deadline and the app dies with ForegroundServiceDidNotStartInTimeException.
       for (const permission of [
         'ACCESS_FINE_LOCATION',
         'ACCESS_COARSE_LOCATION',
@@ -221,8 +183,6 @@ export async function createAndroidDriver(
     },
 
     async requireAwakeDisplay() {
-      // KEYCODE_WAKEUP, then ask the window manager to drop the keyguard. A swipe-only lock goes
-      // away here; a PIN, pattern or biometric one cannot be dismissed from adb, and should not be.
       await adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
       await adb('shell', 'wm', 'dismiss-keyguard')
 
@@ -237,8 +197,6 @@ export async function createAndroidDriver(
     },
 
     async pinLocation() {
-      // `geo fix` is an emulator console command; a physical device would need a mock provider app,
-      // which is well past what a screenshot run should install.
       if (!device.serial.startsWith('emulator-')) {
         console.warn('  physical device: location left as-is, the map backdrop will not match iOS')
         return
@@ -248,17 +206,8 @@ export async function createAndroidDriver(
     },
 
     async setChrome(clean: boolean) {
-      // Demo mode exists so panels do not disagree on clock or battery. A smoke run photographs
-      // nothing, so it leaves the device's own status bar alone.
       if (mode === 'smoke') return
 
-      // Animation scales are deliberately left alone. Turning them off device-wide makes a frame
-      // deterministic by abolishing the thing being photographed, and it outlives the run: a failed
-      // flow used to leave every app on the device without animations, with nothing on screen to say
-      // why. The flows wait for animations to finish instead — `waitForAnimationToEnd` before each
-      // shot, which is the same guarantee scoped to the run.
-
-      // SystemUI demo mode pins the status bar so panels do not disagree on clock or battery.
       await adb('shell', 'settings', 'put', 'global', 'sysui_demo_allowed', clean ? '1' : '0')
       const demo = (...args: string[]) =>
         adb('shell', 'am', 'broadcast', '-a', 'com.android.systemui.demo', '-e', ...args)

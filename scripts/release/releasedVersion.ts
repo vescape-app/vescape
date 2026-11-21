@@ -1,18 +1,8 @@
-/**
- * Tells the Vescape server which marketing version a store now serves, so App Status stops
- * being a hand-edited number in the server repository (vescape-server ADR-0012).
- *
- * This runs where the store credentials already live. The server never talks to Google Play
- * or App Store Connect; it only accepts what a release workflow reports, authorized by the
- * Internal API key.
- */
-
 export const PRODUCTION_SERVER_URL = 'https://api.vescape.app'
 export const RELEASED_VERSION_PATH = '/api/internal/app-status/released'
 
 export type ReleasePlatform = 'android' | 'ios'
 
-/** Matches the server's own gate: a strict three-part marketing version, nothing else. */
 const MARKETING_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 
 export interface ReleasedVersionRequest {
@@ -56,10 +46,6 @@ export function createReleasedVersionRequest({
   }
 }
 
-/**
- * A retry per attempt, because the store release has already happened by the time this runs:
- * the version is live either way, and a transient 502 must not be reported as a failed release.
- */
 export async function recordReleasedVersion(
   request: ReleasedVersionRequest,
   {
@@ -80,7 +66,6 @@ export async function recordReleasedVersion(
       const response = await fetchImpl(request.url, request.init)
       if (response.ok) return
       lastError = `${response.status} ${await response.text()}`
-      // The server rejected the request itself; retrying sends the same bad request again.
       if (response.status >= 400 && response.status < 500) break
     } catch (caught) {
       lastError = caught instanceof Error ? caught.message : String(caught)

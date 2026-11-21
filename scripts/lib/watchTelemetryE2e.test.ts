@@ -27,7 +27,6 @@ test('stale, missing, hidden, and foreign-app readouts cannot complete a live se
     const check = new WatchTelemetryCheck()
     check.accept(snapshot('Speed 20 km/h'), packageName)
     expect(check.accept(invalid, packageName)).toBeNull()
-    // Losing live UI resets the sequence; a later reading needs a fresh pair.
     expect(check.accept(snapshot('Speed 22 km/h'), packageName)).toBeNull()
   }
 })

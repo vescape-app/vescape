@@ -4,3 +4,5 @@
 - **Manual sharing override is memory-only:** restarting the app process restores Board Session activation while keeping the selected timed/always expiry.
 - **Android Play Store constraint:** background observing MUST run as a plain (non-foreground) service; do NOT add `FOREGROUND_SERVICE_REMOTE_MESSAGING` (rejected by Google Play policy as reserved for VoIP/SMS handover).
 - **Privacy & signals:** public positions obey Privacy Zones (ADR-0009); Rider Signals and Ride Hazards retain their explicit opt-in location exception and server-clock expiry.
+
+Rider Signal expiry uses the latest relay roster time advanced by local monotonic elapsed time, so differing phone clocks cannot disagree on expiry. Ride Notices convert each signal to phone time once for its `startedAt` revision. Repeated rosters keep the original conversion so network latency does not move the notice's deadline.

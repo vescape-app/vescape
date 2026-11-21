@@ -1,19 +1,14 @@
 import Foundation
 
-/// One payload at its recorded offset.
 internal struct TimedPayload {
   let t: Int64
   let payload: [UInt8]
 }
 
-/// What plays on a `SimulatedBoard`'s timeline, by recorded offset.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayRecording.kt `ReplayEvent`
 internal enum ReplayEvent {
-  /// A board frame nothing asked for, or one the app polls for: telemetry, BMS, anything unknown.
   case frame(t: Int64, payload: [UInt8])
   case fix(ReplayLocation)
-  /// A config write the app made during the recorded ride; the board holds it from here on.
   case configWrite(t: Int64, payload: [UInt8])
 
   var t: Int64 {
@@ -25,9 +20,6 @@ internal enum ReplayEvent {
   }
 }
 
-/// The hardware a recording was made on. A replay presents it as the Board's link, so Link Integrity
-/// judges the recorded board on its own answers (ADR 0048).
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayRecording.kt `RecordedHardware`
 internal struct RecordedHardware: Equatable {
   let deviceId: String?
@@ -38,24 +30,15 @@ internal struct RecordedHardware: Equatable {
   let pollIntervalMs: Int?
 }
 
-/// The replies a recording holds, indexed by what they answer rather than paired with the request
-/// that produced them: replies describe themselves in their header, while the app asks at different
-/// moments than the recorded session did.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayRecording.kt `ReplyBook`
 internal struct ReplyBook {
   let firmware: [UInt8]?
   let refloatInfo: [UInt8]?
   let motorConfig: [UInt8]?
-  /// The custom config XML, reassembled from every chunk the recording saw, keyed by `confInd`.
   let configXml: [Int: [UInt8]]
-  /// Recorded `COMM_GET_CUSTOM_CONFIG` replies per `confInd`, in time order.
   let configSnapshots: [Int: [TimedPayload]]
 }
 
-/// A Debug Recording decoded for a `SimulatedBoard`: the hardware it was made on, the timeline the
-/// board plays on its own, and the replies it gives when asked.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayRecording.kt
 internal struct ReplayRecording {
   let name: String
@@ -87,7 +70,6 @@ internal struct ReplayRecording {
           if payload.count > 1 {
             snapshots[Int(payload[1]), default: []].append(TimedPayload(t: chunk.t, payload: payload))
           }
-        // Acks and echoes are the board's answers to this session's own writes.
         case COMM_SET_CUSTOM_CONFIG: break
         case COMM_CUSTOM_APP_DATA:
           switch refloatCommand(payload) {
@@ -137,7 +119,6 @@ internal struct ReplayRecording {
         hasBms: hasBms,
         pollIntervalMs: pollIntervalMs.flatMap { $0 > 0 ? $0 : nil }
       ),
-      // Stable: a fix and a frame at the same offset keep file order.
       timeline: stableSorted(frames + fixes),
       replies: ReplyBook(
         firmware: firmware,
@@ -149,7 +130,6 @@ internal struct ReplayRecording {
     )
   }
 
-  /// Strip a `COMM_FORWARD_CAN` envelope; CAN boards usually answer unwrapped anyway.
   static func unwrapCan(_ packet: [UInt8]) -> [UInt8]? {
     guard !packet.isEmpty else { return nil }
     guard Int(packet[0]) == COMM_FORWARD_CAN else { return packet }
@@ -187,7 +167,6 @@ internal struct ReplayRecording {
     }
     var bytes = xml[chunk.confInd].flatMap { $0.count == chunk.totalLength ? $0 : nil }
       ?? [UInt8](repeating: 0, count: chunk.totalLength)
-    // The parser has already bounded the chunk inside `totalLength`.
     bytes.replaceSubrange(chunk.offset..<(chunk.offset + chunk.chunk.count), with: chunk.chunk)
     xml[chunk.confInd] = bytes
   }

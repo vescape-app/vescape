@@ -1,13 +1,5 @@
-# Live telemetry off the replayed recording, through the real native stack.
-#
-# This is the flow the whole smoke run exists for. Everything on this screen was decoded from
-# recorded BLE chunks by native, reassembled, run through the telemetry pipeline and pushed to JS —
-# the path a real ride takes. Under `EXPO_PUBLIC_E2E` all of that would be `e2eFake` returning
-# canned values, which is why smoke deliberately does not set it.
 appId: ${APP_ID}
 ---
-# The smoke runner starts with no physical board, so the disconnect control confirms that the
-# fixture opened a Board Session. The battery bar can remain visible after the session ends.
 - assertVisible:
     id: board-disconnect-button
 
@@ -22,14 +14,6 @@ appId: ${APP_ID}
 - assertVisible:
     id: battery-bar
 
-# Deliberately no assertion on a live number here. The gauge is drawn in Skia and the strip's values
-# go through `TickText`, which formats on the UI thread precisely so it does not re-render React —
-# neither reaches Maestro's view hierarchy, so an assert on "24 km/h" would fail on a perfectly
-# healthy screen. The assertions above check that the session is up and its telemetry surfaces
-# are visible.
-
-# Detail panels are the same telemetry under a different presentation, and they are where a broken
-# unit or a missing field shows up as text rather than as a needle.
 - runFlow: ../fixture/_speed.yaml
 
 - runFlow:

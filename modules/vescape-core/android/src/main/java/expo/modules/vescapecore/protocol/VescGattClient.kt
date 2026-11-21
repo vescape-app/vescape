@@ -33,9 +33,6 @@ internal interface VescGattListener {
 }
 
 /**
- * Transport seam under [BoardSessionController] (ADR 0024): everything the controller calls on the
- * board link beyond the [VescGattListener] callbacks. The real [VescGattClient] speaks GATT; the
- * dev-mode SimulatedBoard plays a Debug Recording through the same surface (ADR 0048).
  * @parity /modules/vescape-core/ios/protocol/VescGattClient.swift `SessionTransport`
  */
 internal interface SessionTransport {
@@ -67,11 +64,7 @@ internal class VescGattClient(
         val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
         val device = adapter.getRemoteDevice(deviceId)
         Log.d(VESC_SESSION_TAG, "gatt connect request device=${device.address}")
-        // A lingering gatt from a previous attempt keeps delivering callbacks on the
-        // shared callback object and would race this connection; tear it down first.
         if (gatt != null) clear(markIntentional = true)
-        // Each connection starts unintentional; the teardown flag belongs to the gatt
-        // we just cleared, not to the new one.
         intentionalDisconnect = false
         gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
@@ -82,10 +75,6 @@ internal class VescGattClient(
         return drainWriteQueue()
     }
 
-    /**
-     * Enqueue transient remote input (tilt or Board Move). Only latest unsent value survives, so an
-     * emergency neutral command cannot sit behind stale tilt commands.
-     */
     override fun sendRemoteInput(payload: ByteArray, urgent: Boolean): Boolean {
         if (gatt == null || txChar == null) return false
         writeQueue.replaceRemoteInput(VescPacketCodec.encode(payload), urgent)
@@ -111,9 +100,6 @@ internal class VescGattClient(
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             Log.d(VESC_SESSION_TAG, "onConnectionStateChange status=$status newState=$newState")
-            // Late callback from a previous (already-replaced/cleared) connection. Close it
-            // and leave the current session's state untouched — otherwise a stale disconnect
-            // would clobber the live gatt and freeze telemetry.
             if (gatt !== this@VescGattClient.gatt) {
                 try { gatt.close() } catch (e: Exception) { Log.w(VESC_SESSION_TAG, "stale gatt close failed: ${e.message}") }
                 return
@@ -137,7 +123,6 @@ internal class VescGattClient(
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             if (gatt !== this@VescGattClient.gatt) return
             Log.d(VESC_SESSION_TAG, "onMtuChanged mtu=$mtu status=$status")
-            // ATT header takes 3 bytes. A refused MTU request leaves the link at the default.
             writeQueue.setChunkLimit(
                 if (status == BluetoothGatt.GATT_SUCCESS) mtu - 3 else VescWriteQueue.DEFAULT_CHUNK_LIMIT,
             )
@@ -184,7 +169,6 @@ internal class VescGattClient(
                 Log.w(VESC_SESSION_TAG, "CCCD ack timeout, resolving connect pending=$pendingCccdWrites")
                 dispatchListener { listener.onGattReady() }
             }
-            // Leave room for the notification fallback inside the 2s handshake deadline.
             handler.postDelayed(cccdTimeout!!, 1_000)
         }
 
@@ -206,7 +190,6 @@ internal class VescGattClient(
             dispatchListener { listener.onGattReady() }
         }
 
-        /** API 33+ signature. Below 33 the framework calls the deprecated 2-param peer instead. */
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -251,10 +234,6 @@ internal class VescGattClient(
         }
     }
 
-    /** Android permits one characteristic write at a time. Serializing all writes
-     * prevents telemetry polling and held remote controls from dropping each other.
-     * Each write is one chunk sized to the negotiated MTU, so Android never falls back to a
-     * GATT long write (#620). */
     private fun drainWriteQueue(): Boolean {
         val g = gatt ?: return false
         val tx = txChar ?: return false

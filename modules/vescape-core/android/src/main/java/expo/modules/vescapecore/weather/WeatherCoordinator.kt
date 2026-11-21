@@ -14,33 +14,17 @@ import java.util.concurrent.TimeUnit
 
 private const val TAG = "WeatherCoordinator"
 
-/** One forecast fetch attempt. `null` body means "no usable response" (transport or HTTP error). */
 fun interface WeatherTransport {
     fun fetch(url: String, onResult: (String?) -> Unit)
 }
 
 /**
- * Process-owned weather truth. Every GPS Fix offers the coordinator a position; it refetches only
- * when the rider has moved far enough or the forecast has aged out, and keeps the last **successful**
- * result for the life of the process.
- *
- * It lives native rather than in JS because the two consumers that matter outlive the JS runtime:
- * the wrist mirror keeps rendering through a backgrounded phone, and Weather Alerts
- * have to fire while nobody is looking at a screen.
- *
- * Failure semantics match App Status: a failed refresh never clears a known forecast, and nothing is
- * persisted, so a fresh process starts empty.
- *
- * Main-thread affine: GPS Fixes arrive on the main looper and the transport posts its result back
- * there before touching state.
- *
  * @parity /modules/vescape-core/ios/weather/WeatherCoordinator.swift
  */
 class WeatherCoordinator internal constructor(
     private val transport: WeatherTransport,
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
-    /** Last successful forecast for this process, or `null` while none has landed. */
     @Volatile
     var current: Weather? = null
         private set
@@ -49,27 +33,15 @@ class WeatherCoordinator internal constructor(
 
     private var fetching = false
 
-    /**
-     * Where the rider was when a Fix arrived mid-fetch. A ride moves during the seconds a request
-     * takes, and dropping those Fixes outright would leave the forecast pinned to wherever the ride
-     * started if GPS then stops. Re-evaluated once the in-flight request lands.
-     */
     private var pendingPosition: Pair<Double, Double>? = null
 
-    /** The newest position offered, even one whose fetch failed: where a forced [refresh] asks. */
     private var lastPosition: Pair<Double, Double>? = null
 
-    /** Register a change listener (the JS mirror and the wrist pusher); returns a remover. */
     fun addChangeListener(listener: (Weather?) -> Unit): () -> Unit {
         listeners.add(listener)
         return { listeners.remove(listener) }
     }
 
-    /**
-     * Offer the rider's current position. Cheap to call per GPS Fix: it refetches only when nothing
-     * is known yet, when the forecast has aged past [FORECAST_TTL_MS], or when the rider has left
-     * the area the current forecast was fetched for.
-     */
     fun onPosition(latitude: Double, longitude: Double) {
         if (!latitude.isFinite() || !longitude.isFinite()) return
         lastPosition = latitude to longitude
@@ -83,9 +55,6 @@ class WeatherCoordinator internal constructor(
     }
 
     /**
-     * Refetch at the newest known position, ignoring the freshness gate — the rider asking for
-     * fresh weather, or a Board connect that must not announce from a cached forecast. A no-op
-     * before the first GPS Fix: with nothing known, that Fix fetches anyway.
      * @parity /modules/vescape-core/ios/weather/WeatherCoordinator.swift `refresh`
      */
     fun refresh() {
@@ -93,10 +62,6 @@ class WeatherCoordinator internal constructor(
         refresh(latitude, longitude)
     }
 
-    /**
-     * Fetch now for an explicit position, ignoring the freshness gate. A refresh asked for while one
-     * is already in flight is dropped: the in-flight request answers it.
-     */
     fun refresh(latitude: Double, longitude: Double) {
         if (fetching) {
             pendingPosition = latitude to longitude
@@ -110,14 +75,11 @@ class WeatherCoordinator internal constructor(
 
     private fun onFetched(body: String?, latitude: Double, longitude: Double) {
         fetching = false
-        // Silent on failure by design: expected offline, and it must never clear a known forecast.
         val weather = body?.let { parseOpenMeteoWeather(it, latitude, longitude, nowMs()) }
         if (weather != null) {
             current = weather
             listeners.forEach { it(weather) }
         }
-        // The ride moved while this request was in flight. Re-offer the newest position through the
-        // normal gate, so it refetches only if it actually left the area this forecast describes.
         val pending = pendingPosition ?: return
         pendingPosition = null
         onPosition(pending.first, pending.second)
@@ -125,36 +87,20 @@ class WeatherCoordinator internal constructor(
 
     companion object {
         /**
-         * How long a forecast stays good. Open-Meteo publishes hourly; ten minutes keeps the wrist
-         * honest without spending a request per GPS Fix on a free API.
          * @parity /modules/vescape-core/ios/weather/WeatherCoordinator.swift `forecastTtlMs`
          */
         const val FORECAST_TTL_MS = 10 * 60 * 1_000L
 
         /**
-         * How far the rider must move before the cached forecast stops describing where they are.
-         * ~1.1 km at the equator — under a single Open-Meteo grid cell, so a shorter hop would
-         * refetch the same numbers.
          * @parity /modules/vescape-core/ios/weather/WeatherCoordinator.swift `refetchDeltaDeg`
          */
         const val REFETCH_DELTA_DEG = 0.01
 
-        /** Hours of forecast requested — one wrist page plus the phone's hourly strip. */
         const val FORECAST_HOURS = 12
 
-        /** Quarter-hours of `minutely_15` requested: the 3 h Weather Alert horizon. */
         const val FORECAST_QUARTER_HOURS = 12
 
         /**
-         * Open-Meteo forecast endpoint. Public and keyless, which is why it is called directly
-         * rather than through [expo.modules.vescapecore.api.VescapeApi].
-         *
-         * `timezone=auto` resolves the zone of the **forecast location**, which is what the hour
-         * labels claim to be. The device zone would be a different thing the moment a rider crosses
-         * a border or turns automatic time off.
-         *
-         * `forecast_hours` and `forecast_minutely_15` count from now and override `forecast_days`, so
-         * the window runs past local midnight.
          * @parity /modules/vescape-core/ios/weather/WeatherCoordinator.swift `forecastUrl`
          */
         fun forecastUrl(latitude: Double, longitude: Double): String =
@@ -171,7 +117,6 @@ class WeatherCoordinator internal constructor(
         @Volatile
         private var instance: WeatherCoordinator? = null
 
-        /** Process singleton — its in-memory forecast must outlive JS runtime reloads. */
         fun get(): WeatherCoordinator =
             instance ?: synchronized(this) {
                 instance ?: WeatherCoordinator(
@@ -181,7 +126,6 @@ class WeatherCoordinator internal constructor(
     }
 }
 
-/** Default transport: one short-timeout GET, result handed back on the main thread. */
 internal class OkHttpWeatherTransport(private val handler: Handler) : WeatherTransport {
     private val client = OkHttpClient.Builder()
         .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)

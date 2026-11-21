@@ -2,25 +2,20 @@ import type { RideRoutePoint } from 'vescape-core'
 
 export type RoutePoint = RideRoutePoint
 
-/** Metres the thumbnail always spans at least, so a short or stationary ride still shows its streets. */
 const MIN_SPAN_M = 300
 const EARTH_CIRCUMFERENCE_M = 40_075_016.686
-/** Pixels across one tile served by the native `mapTile`. */
 const TILE_PX = 512
-/** Map tiles never zoom past this, however small the ride. */
 const MAX_TILE_ZOOM = 17
 
 export interface RoutePreviewTile {
   z: number
   x: number
   y: number
-  /** Placement in the thumbnail, in layout points. */
   left: number
   top: number
   size: number
 }
 
-/** Web Mercator in world units (0..1). Longitude stays unwrapped so the caller can wrap around a reference. */
 function mercator(point: RoutePoint) {
   const sin = Math.sin((point.latitude * Math.PI) / 180)
   return {
@@ -30,17 +25,14 @@ function mercator(point: RoutePoint) {
 }
 
 interface PreviewFrame {
-  /** Layout points per world unit. */
   scale: number
   centerX: number
   centerY: number
   width: number
   height: number
-  /** World x of a point, wrapped around the first fix so routes crossing the date line stay together. */
   worldX: (point: RoutePoint) => number
 }
 
-/** Fit the route uniformly into the thumbnail, centred, never tighter than [MIN_SPAN_M]. */
 function previewFrame(
   points: RoutePoint[],
   width: number,
@@ -72,7 +64,6 @@ function previewFrame(
   return { scale, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, width, height, worldX }
 }
 
-/** SVG path for the thumbnail. Move commands preserve native GPS gaps instead of bridging them. */
 export function routePreviewPath(points: RoutePoint[], width: number, height: number, padding = 8) {
   if (points.length < 2) return null
   const project = routePreviewProjection(points, width, height, padding)
@@ -84,7 +75,6 @@ export function routePreviewPath(points: RoutePoint[], width: number, height: nu
     .join(' ')
 }
 
-/** Project a point into the thumbnail with the same Web Mercator frame the map tiles use. */
 export function routePreviewProjection(
   points: RoutePoint[],
   width: number,
@@ -99,10 +89,6 @@ export function routePreviewProjection(
   })
 }
 
-/**
- * Map tiles covering the thumbnail behind its route. The zoom is the lowest whose tiles still have at
- * least one pixel per screen pixel, so tiles are only ever scaled down.
- */
 export function routePreviewTiles(
   points: RoutePoint[],
   width: number,

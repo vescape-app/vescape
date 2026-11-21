@@ -1,18 +1,3 @@
-/**
- * Replay warmup for a fixture session: how much recorded ride the session opens with already on the
- * charts. Native prefills it at session start, back-stamped, so it costs no real waiting.
- *
- * The window is deliberately wider than `AppSettings.liveHistoryLimit` (5 minutes), so the detail
- * charts open full and a smoke run reaches asserted telemetry — speed, temps, duty cycle — without
- * spending minutes earning it.
- *
- * Its own file, not part of `@/config/fixtureSession`, because both the app and the Node runners
- * (`scripts/screenshots.ts`, `scripts/smoke.ts`) read it — and a runner cannot import anything that
- * reaches `react-native`. Keeping it RN-free is what makes it one definition instead of a parity
- * pair.
- */
-
 export const REPLAY_WARMUP_MS = 6 * 60_000
 
-/** Promo footage opens on the later western stretch, with five minutes of live trail. */
 export const PREVIEW_WARMUP_MS = 7 * 60_000

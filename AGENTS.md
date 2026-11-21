@@ -79,6 +79,18 @@ Keep the architecture sharp:
 - Schema migrations stay SQL (set-based copies are fine). Converting existing data row by row (decode, recompute, verify, fetch) is a Maintenance Job in `MAINTENANCE_JOBS` (`docs/history.md` § Maintenance Jobs), never migration code or a new `MaintenanceRunner` path; readers must accept both storage shapes until the job finishes so an incomplete job never hides data.
 - All other background database work (rebuilds, backfills, retention clean-up) is a Maintenance Job too, so it shows on the Maintenance list; clean-up is a step in the `cleanup` job.
 
+## Code Comments
+
+Source carries no ordinary comments. Rationale that outlives the change goes in `docs/` or an ADR;
+everything else belongs in the commit message. Only machine-meaningful lines stay: `@parity`,
+`@platform-diff` and `@legacy-float` paragraphs, `TODO(<platform> parity):`,
+`intentional-suppression: <reason>`, compiler/linter directives, and JSDoc `@type` in `.js` config.
+`bun run comments:check` enforces this (pre-commit on staged content, and CI); generated files are
+excluded by explicit path in `scripts/check-comments.ts`. Shell scripts have no reliable comment
+lexer there and are not scanned; keep them free of comments by hand.
+`scripts/comment-baseline.json` tracks grandfathered comments by file and content. Prune its entries
+as comments are removed. Use `/delete-comment` for a cleanup pass.
+
 ## Parity
 
 `@parity` links code that must stay in sync across implementations. It is a navigation contract: a tag is a

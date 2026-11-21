@@ -5,7 +5,6 @@ import { join } from 'node:path'
 
 const policy = join(import.meta.dir, 'policy.ts')
 
-// Run the Git fixture outside the app test runtime and its native-module mocks.
 async function promotion(newTrailer: boolean) {
   const cwd = mkdtempSync(join(tmpdir(), 'vescape-push-policy-'))
   const hookEnv = {
@@ -54,8 +53,6 @@ async function promotion(newTrailer: boolean) {
       ],
       {
         cwd,
-        // Commit hooks export GIT_DIR and related variables. A fixture must use its own repo,
-        // otherwise `git init` and `git config` can modify the checkout that invoked the hook.
         env: Object.fromEntries(Object.entries(hookEnv).filter(([key]) => !key.startsWith('GIT_'))),
         stdout: 'inherit',
         stderr: 'inherit',

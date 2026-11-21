@@ -16,7 +16,6 @@ export const idleTiltPresentation: TiltPresentation = {
   phase: 'idle',
 }
 
-/** One visual ramp drives both the thumb and readout. Never sends board commands. */
 export function sampleTiltPresentation(presentation: TiltPresentation, progress: number) {
   'worklet'
   const remaining = Math.max(0, 1 - progress)
@@ -29,14 +28,12 @@ export function sampleTiltPresentation(presentation: TiltPresentation, progress:
   }
 }
 
-/** Finger and outstanding intents outrank snapshots. Tokens reject late command completions. */
 export function createTiltPresentationOwner() {
   let revision = 0
   let owner: 'native' | 'finger' | 'pending' = 'native'
   let previous: RemoteTiltState | null | undefined
 
   function snapshot(state: RemoteTiltState | null): TiltPresentation | null {
-    // Repeated samples of one ramp must not restart its visual clock.
     const sameRamp =
       state?.phase === 'decaying' &&
       previous?.phase === 'decaying' &&

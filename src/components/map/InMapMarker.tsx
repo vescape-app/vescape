@@ -15,34 +15,20 @@ import { useInMapLayer } from '@/components/map/inMapLayer'
 import { markerLayerChannel } from '@/components/map/markerLayerChannel'
 import { sameLook } from '@/components/map/sameLook'
 
-/** Snapshots keep running this long after a change: the mount lands on screen a frame or two later. */
 const SNAPSHOT_BURST_MS = 300
 
 const RefreshContext = createContext<() => void>(() => {})
 
-/**
- * Re-snapshots the enclosing in-map marker. For content that changes without a render of the
- * marker's owner, such as an image finishing its decode.
- */
 export function useInMapMarkerRefresh() {
   return useContext(RefreshContext)
 }
 
-/**
- * A point on the map drawn from React views that stays glued to the map while the camera moves.
- *
- * Where the map layer renders (the main map), the marker view stays mounted as the look's source
- * and the touch target, and the native layer hides it on screen and draws a snapshot of it inside
- * the map's frame. Moving the marker never re-snapshots; content that renders differently does
- * (`sameLook`), and so do touches, for pressed feedback. Elsewhere it is a plain `MarkerView`.
- */
 export function InMapMarker({
   coordinate,
   animationMs = 0,
   children,
 }: {
   coordinate: [number, number]
-  /** How long the content animates after mounting, so every frame of it is snapshotted. */
   animationMs?: number
   children: ReactElement
 }) {
@@ -75,7 +61,6 @@ export function InMapMarker({
   )
 }
 
-/** Renders, and so re-snapshots, only when the content would draw differently. */
 const MarkerLook = memo(
   function MarkerLook({ onLook, children }: { onLook?: () => void; children: ReactElement }) {
     useLayoutEffect(() => onLook?.())

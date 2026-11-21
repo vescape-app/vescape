@@ -1,12 +1,3 @@
-/**
- * Regenerates the built-in voice packs under `shared/alerts/packs/` from the manifests
- * in this directory (effects packs are made in a DAW, see EFFECTS.md). Dev-machine only: needs sox, ffmpeg, and a Python with mlx_audio (Kokoro)
- * as `KOKORO_PYTHON` (default `python3`). See docs/alerts.md.
- *
- *   bun run alerts:packs            all packs
- *   bun run alerts:packs voice-radio  one manifest
- *   bun run alerts:packs --force    re-synthesize every voice clip
- */
 import { spawnSync } from 'child_process'
 import { createHash } from 'crypto'
 import {
@@ -61,7 +52,6 @@ function run(command: string, args: string[], input?: string) {
   }
 }
 
-/** Fixed bitrate and bitexact muxing keep re-encoding byte-identical. */
 const encode = (wav: string, out: string) =>
   run('ffmpeg', [
     '-v',
@@ -120,8 +110,6 @@ function generateVoice(manifest: VoiceManifest, dir: string, tmp: string) {
   mkdirSync(join(dir, 'lines'), { recursive: true })
   for (const type of types) mkdirSync(join(dir, 'values', type), { recursive: true })
 
-  // Kokoro on the GPU is not bit-stable run to run, so a clip is synthesized only when its text,
-  // voice, or fx changed; unchanged clips are carried over from the committed pack.
   const sources: Record<string, string> = {}
   const previous = readPreviousPack<VoicePack>(packDir(manifest))
   const synth: { text: string; file: string; raw: string }[] = []
@@ -147,7 +135,6 @@ function generateVoice(manifest: VoiceManifest, dir: string, tmp: string) {
   const fx = manifest.fx.split(' ')
   const wav = join(tmp, 'clip.wav')
   for (const clip of synth) {
-    // A stronger end trim clips word tails; voice fx are baked in so native never applies any.
     run('sox', [
       '-D',
       '-R',
@@ -187,8 +174,6 @@ if (invalid.length) throw new Error(invalid.join('\n'))
 
 for (const manifest of manifests) {
   const dir = packDir(manifest)
-  // Build beside the committed pack and swap only after it validates, so a failed run leaves
-  // the previous pack intact.
   const staging = `${dir}.staging`
   const tmp = mkdtempSync(join(tmpdir(), 'alert-pack-'))
   try {

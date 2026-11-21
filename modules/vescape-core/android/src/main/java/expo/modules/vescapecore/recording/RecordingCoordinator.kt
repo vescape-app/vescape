@@ -21,20 +21,11 @@ internal class RecordingCoordinator(
     private var telemetryStore: TelemetryRepository? = null
     private var connectionLostMarkerAt: Long? = null
 
-    /** Board the armed store records; GPS Fixes carry it because a fix has no Board of its own. */
     private var recordingBoardId: String? = null
     private var recordingStartedAtMs: Long? = null
 
-    /**
-     * The rider stopped recording during this Board Session. Survives reconnects so a re-ready board
-     * cannot auto-restart what they explicitly stopped; cleared when a new Board Session begins.
-     */
     private var explicitlyStopped = false
 
-    /**
-     * Auto-recording is a *connect* rule, not a re-ready rule: it fires at the first board-ready of
-     * a Board Session and stays quiet for every reconnect's board-ready after it.
-     */
     private var boardReadySeen = false
 
     val telemetryRecordingEnabled: Boolean
@@ -51,18 +42,9 @@ internal class RecordingCoordinator(
 
     fun currentRecorder(): SessionRecorder? = recorder
 
-    /**
-     * Begin a Board Session's recording side. Ride boundaries are derived from the recorded data
-     * (ADR 0041), so a connect never opens or closes a ride: it only decides whether capture is
-     * armed.
-     */
     fun beginBoardSession(config: SessionConfig) {
         connectionLostMarkerAt = null
-        // Tapping Connect to the same Board during a reconnect loop keeps capture armed, so no fix is
-        // dropped between this connect and the board-ready that would otherwise enable it (#450).
         val wasRecording = telemetryStore != null && recordingBoardId == config.appBoardId
-        // A new Board Session spends the rider's previous stop: the gate exists to stop a *reconnect*
-        // from restarting what they stopped, not to keep the next ride from recording.
         explicitlyStopped = false
         boardReadySeen = false
         recorder = if (config.recordingEnabled) try {
@@ -83,14 +65,6 @@ internal class RecordingCoordinator(
         }
     }
 
-    /**
-     * Board-ready for the current Board Session — the first one after a connect, and again after
-     * every reconnect that gets telemetry flowing.
-     *
-     * Auto-recording only fires on the first: a reconnect that re-readied the board must not start a
-     * recording the rider stopped (#450). The `connected` marker still lands on every ready, as
-     * disconnect evidence inside a continuing ride.
-     */
     fun markBoardReady(config: SessionConfig) {
         connectionLostMarkerAt = null
         val firstReady = !boardReadySeen
@@ -148,15 +122,10 @@ internal class RecordingCoordinator(
         telemetryStore?.recordTelemetry(capture)
     }
 
-    /**
-     * Offer one GPS Fix to the Ride Track. Independent of telemetry arrival: while recording is
-     * armed and unpaused, fixes keep landing straight through a board dropout (ADR 0038).
-     */
     fun recordGpsFix(location: TelemetryLocationCapture) {
         telemetryStore?.recordGpsFix(location, recordingBoardId)
     }
 
-    /** Marks where recording entered an Idle Pause so the resulting gap is explained (ADR-0021). */
     fun recordIdlePauseMarker(config: SessionConfig?) {
         recordMarker("auto_pause", config, "Recording paused — idle")
     }
@@ -189,7 +158,6 @@ internal class RecordingCoordinator(
     }
 
     fun disableTelemetryRecording(config: SessionConfig?) {
-        // Explicit Stop Recording: the only marker that splits a ride (ADR 0041).
         explicitlyStopped = true
         recordMarker(RECORDING_STOP_MARKER, config, "Recording stopped")
         flushTelemetryBlocking()
@@ -248,7 +216,6 @@ internal class RecordingCoordinator(
         return store
     }
 
-    /** Runs on Board Session owner scheduler after repository IO reports a failed transaction. */
     fun handleStorageFailure() {
         telemetryStore = null
         requestedTelemetryRecordingEnabled = false

@@ -13,11 +13,8 @@ import type { Icon } from 'phosphor-react-native'
 
 import { theme } from '@/constants/theme'
 
-/** One radar ping while the rider is public. */
 export const BROADCAST_WAVE_MS = 1600
-/** Where in a wave the glyph has finished lighting and a ring may take over. */
 export const RING_START = 0.3
-/** Phosphor's Broadcast geometry (256 grid) as strokes, split so each part can light in turn. */
 const BROADCAST_PARTS = [
   'M128 96a32 32 0 1 0 0 64a32 32 0 1 0 0 -64',
   'M181.5 74.5A76 76 0 0 1 181.5 181.5M74.5 181.5A76 76 0 0 1 74.5 74.5',
@@ -25,10 +22,6 @@ const BROADCAST_PARTS = [
 ] as const
 const STROKE = { regular: 16, bold: 24 } as const
 
-/**
- * The broadcast glyph lighting from the centre out (dot, inner arcs, outer arcs) on `wave`.
- * `connecting` swaps it for a spinner of the same size while sharing waits on the server.
- */
 export function BroadcastGlyph({
   size,
   color,
@@ -65,7 +58,6 @@ export function BroadcastGlyph({
   )
 }
 
-/** Drop-in for a phosphor `Icon` slot: the glyph pinging on its own loop. */
 export const PulsingBroadcastIcon = PulsingBroadcast as unknown as Icon
 
 function PulsingBroadcast({
@@ -115,7 +107,6 @@ function BroadcastPart({
     const t = wave.get()
     const step = RING_START / BROADCAST_PARTS.length
     const rise = Math.min(1, Math.max(0, (t - index * step) / step))
-    // Settle back down over the wave's tail so the next wave starts from where this one ended.
     const fall = Math.min(1, Math.max(0, (1 - t) / 0.3))
     return { opacity: 0.5 + Math.min(rise, fall) * 0.5 }
   })

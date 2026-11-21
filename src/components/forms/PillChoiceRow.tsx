@@ -25,16 +25,10 @@ interface PillChoiceRowProps<T extends string | number | null> {
   options: readonly PillChoiceOption<T>[]
   value: T
   onChange: (value: T) => void
-  /** Highlight fill + border + active text colour. Defaults to the sky accent. */
   accent?: PillChoiceAccent
   disabled?: boolean
 }
 
-/**
- * A one-row segmented pill with a sliding highlight — the same selector the alert presets use.
- * Picks one of several short options; the active segment is outlined and tinted, inactive ones
- * stay muted so the current choice reads at a glance.
- */
 export function PillChoiceRow<T extends string | number | null>({
   options,
   value,

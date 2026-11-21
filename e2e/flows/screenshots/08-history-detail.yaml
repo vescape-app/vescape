@@ -1,7 +1,5 @@
-# Ride detail with the optional charts on: duty cycle plus both temperature traces.
 appId: ${APP_ID}
 ---
-# History opens on its overview drawer; the newest ride is the first Last rides card.
 - runFlow: ../fixture/_history.yaml
 - tapOn:
     id: history-latest-ride

@@ -134,7 +134,6 @@ export function MediaHistoryViewer({
   onClose: () => void
 }) {
   const insets = useSafeAreaInsets()
-  // Assets without a recoverable creation time (NaN) sort to the end.
   const orderedAssets = useMemo(() => {
     const time = (asset: MediaAssetInput) =>
       Number.isFinite(asset.creationTime) ? asset.creationTime : Number.POSITIVE_INFINITY

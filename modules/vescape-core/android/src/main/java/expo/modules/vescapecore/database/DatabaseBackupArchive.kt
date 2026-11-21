@@ -11,10 +11,8 @@ import org.json.JSONObject
 
 internal const val BACKUP_MANIFEST_ENTRY = "manifest.json"
 internal const val BACKUP_DATABASE_ENTRY = "db.sqlite"
-/** My sounds manifest, plus the custom app sound pack manifest older backups carry. */
 private val SOUND_MANIFESTS = setOf("my-sounds.json", "packs.json")
 
-/** Production backup container codec. Android adapters only supply the URI streams. */
 internal object DatabaseBackupArchive {
   fun manifest(platform: String, schemaVersion: Int, appVersion: String, dbSizeBytes: Long, createdAt: Long): JSONObject =
     JSONObject(

@@ -15,14 +15,12 @@ interface WeatherPillProps {
   temperature: number
   label: string
   precipProbability?: number | null
-  /** Minutes since local midnight; both present or the sun times are hidden. */
   sunriseMinuteOfDay?: number | null
   sunsetMinuteOfDay?: number | null
   expanded?: boolean
   onPress?: () => void
 }
 
-/** Map weather summary. Collapsed pill or expanded panel with sun times. */
 export function WeatherPill({
   icon,
   temperature,

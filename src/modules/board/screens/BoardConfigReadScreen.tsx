@@ -14,7 +14,6 @@ import {
   useBoardConfigValuesStore,
 } from '@/modules/board/store/boardConfigValuesStore'
 
-/** Metadata for the current or last saved Refloat read of the requested Board. */
 export default function BoardConfigReadScreen() {
   const { boardId } = useLocalSearchParams<{ boardId: string }>()
   const values = useBoardConfigFields(boardId)

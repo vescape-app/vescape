@@ -34,7 +34,6 @@ const STEP_SECONDS = 1 / REFLOAT_LOOP_HZ
 const MAX_RATE_DEGREES_PER_SECOND = 120
 const PITCH_INPUT_RESPONSE_PER_SECOND = 12
 
-/** Pitch Input eases towards its requested rate instead of snapping, so the tune sees a ramp. */
 function stepPitchInputRate(state: TunePreviewState, input: TunePreviewInput, dt: number): number {
   if (input.pitchInputActive !== true) return 0
   const requested = pitchInputControlToRate(input.pitchInputDegrees)
@@ -85,7 +84,6 @@ interface AtrStep {
   atrDegrees: number
 }
 
-/** Refloat ATR: filtered acceleration error becomes a rate-limited tilt target. */
 function stepAtr(
   state: TunePreviewState,
   parameters: TunePreviewParameters,
@@ -126,7 +124,6 @@ function stepAtr(
   }
 }
 
-/** Refloat combines Torque Tilt with ATR + Brake Tilt, then clamps the setpoint. */
 function totalTargetDegrees(target: TunePreviewTarget, atrDegrees: number): number {
   const torqueAndAdaptiveDegrees = aggregateTorqueAndAdaptiveTilt(
     target.torqueTiltDegrees,
@@ -202,9 +199,6 @@ function stepFixed(
     integralLimit,
   )
 
-  // Pitch Input adds a bounded pitch rate instead of imposing an angle. The tune reacts to
-  // the growing error during the gesture and owns recovery after the gesture ends. Pitch response
-  // uses PID balance effort; terrain-load current remains in total current and longitudinal speed.
   const angularAcceleration = calculatePhysicalPitchAcceleration(
     controlledRateDegreesPerSecond,
     calculatePreviewAcceleration(balanceCurrentAmps, 0, physics) / 3.6,

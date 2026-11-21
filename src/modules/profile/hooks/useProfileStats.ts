@@ -9,10 +9,8 @@ import {
 
 import { selectInitialMonth } from '@/modules/profile/lib/profileStats'
 
-/** How far back "Today" reaches: a rolling window, so a ride across midnight never drops out. */
 const TODAY_WINDOW_MS = 12 * 60 * 60_000
 
-/** Totals of the rides still going on or finished within the last 12 hours, shown as Today. */
 export function getTodayStats(): Promise<ProfileStats> {
   return getRecentRideStats(Date.now() - TODAY_WINDOW_MS)
 }
@@ -30,12 +28,6 @@ export const EMPTY_PROFILE_STATS: ProfileStats = {
   longestRideId: null,
 }
 
-/**
- * Lifetime, per-month, and today's riding totals read from native.
- *
- * Reloaded on focus, not just on mount: a ride recorded while the screen sat mounted behind another
- * one would otherwise leave lifetime stats frozen below what Ride History already shows.
- */
 export function useProfileStats(active = true, includeMonthStats = false) {
   const [total, setTotal] = useState<ProfileStats>(EMPTY_PROFILE_STATS)
   const [monthly, setMonthly] = useState<ProfileStats>(EMPTY_PROFILE_STATS)
@@ -99,13 +91,11 @@ export function useProfileStats(active = true, includeMonthStats = false) {
   return {
     total,
     monthly,
-    /** Totals of the current local day, refreshed with the rest. */
     today,
     monthStats,
     selectedMonth,
     loading,
     error,
-    /** Successful zero-ride result; callers render `error` first when the read failed. */
     empty: total.rideCount === 0,
   }
 }

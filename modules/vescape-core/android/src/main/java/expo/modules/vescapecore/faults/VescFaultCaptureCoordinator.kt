@@ -6,12 +6,6 @@ import expo.modules.vescapecore.database.VescFaultCaptureEntity
 import expo.modules.vescapecore.database.VescFaultCaptureSampleEntity
 
 /**
- * One decoded Board sample retained inside a VESC Fault Capture.
- *
- * A projection of the decoded telemetry map, not a Telemetry Sample: no GPS, no derived Ride
- * History fields, nothing that would make this evidence depend on Ride Recording. Every field is
- * nullable because a firmware may simply not report it.
- *
  * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCaptureSample`
  * @parity /modules/vescape-core/src/index.ts `VescFaultCaptureSample`
  */
@@ -51,10 +45,6 @@ data class VescFaultCaptureSample(
   )
 
   companion object {
-    /**
-     * Project one decoded live-window map into a capture sample. Returns null when the map carries
-     * no `lastPacketAt` — an untimestamped row cannot be placed inside a capture window.
-     */
     fun fromLiveSample(map: Map<String, Any?>): VescFaultCaptureSample? {
       val capturedAt = (map["lastPacketAt"] as? Number)?.toLong() ?: return null
       fun num(key: String) = (map[key] as? Number)?.toDouble()
@@ -80,18 +70,13 @@ data class VescFaultCaptureSample(
 }
 
 /**
- * Metadata for one VESC Fault Capture. The occurrence id is the foreign key: one occurrence owns at
- * most one capture, and the capture outlives the Board Session that produced it.
- *
  * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCapture`
  * @parity /modules/vescape-core/src/index.ts `VescFaultCapture`
  */
 data class VescFaultCapture(
   val occurrenceId: String,
   val boardId: String,
-  /** Intended start of the window: detection minus [VescFaultCaptureCoordinator.PRE_ROLL_MS]. */
   val startedAtMs: Long,
-  /** When the fault was detected — the boundary between pre-roll and incident. */
   val openedAtMs: Long,
   val sampleCount: Int,
 ) {
@@ -105,9 +90,6 @@ data class VescFaultCapture(
 }
 
 /**
- * Narrow durable persistence for VESC Fault Captures. Production delegates to the Room DAO; tests
- * supply an in-memory fake so window boundaries are exercised without a database or BLE.
- *
  * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCaptureStoring`
  */
 interface VescFaultCaptureStore {
@@ -117,30 +99,17 @@ interface VescFaultCaptureStore {
 }
 
 /**
- * Copies the native recent-telemetry window once when a live fault opens. No future samples, open
- * windows, flush lifecycle, or session-end reconciliation.
- *
  * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift
  */
 class VescFaultCaptureCoordinator(
   private val store: VescFaultCaptureStore,
 ) {
-  /**
-   * Snapshot of the native recent decoded window, wired by the Board Session to
-   * `TelemetryPipeline.recentSnapshot`. Null outside a session — a capture then opens empty and
-   * produces an empty capture.
-   */
   @Volatile
   var recentWindow: (() -> List<Map<String, Any?>>)? = null
 
-  /**
-   * `VESC Fault Collection` App Setting, mirrored from [VescFaultCoordinator] by the session
-   * controller. Turning it off stops new capture rows. Existing captures stay readable.
-   */
   @Volatile
   private var collectionEnabled = true
 
-  /** Copy and persist recent decoded telemetry at fault detection. */
   suspend fun capturePast(occurrenceId: String, boardId: String, openedAtMs: Long) {
     if (!collectionEnabled) return
     val startedAtMs = openedAtMs - PRE_ROLL_MS
@@ -158,9 +127,6 @@ class VescFaultCaptureCoordinator(
     )
   }
 
-  /**
-   * Mirror the `VESC Fault Collection` App Setting. Existing evidence is never deleted by it.
-   */
   fun setCollectionEnabled(enabled: Boolean) {
     collectionEnabled = enabled
   }
@@ -170,7 +136,6 @@ class VescFaultCaptureCoordinator(
   suspend fun samples(occurrenceId: String): List<VescFaultCaptureSample> = store.getSamples(occurrenceId)
 
   companion object {
-    /** Decoded samples retained before detection. */
     internal const val PRE_ROLL_MS = 5_000L
 
     @Volatile
@@ -187,7 +152,6 @@ class VescFaultCaptureCoordinator(
   }
 }
 
-/** Production [VescFaultCaptureStore] backed by the shared Room DAO. */
 private class RoomVescFaultCaptureStore(
   private val dao: expo.modules.vescapecore.database.VescapeDao,
 ) : VescFaultCaptureStore {

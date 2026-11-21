@@ -56,10 +56,8 @@ object DatabaseBackupManager {
     )
   }
 
-  /** Caller must first await the BoardSessionController-owned stop callback. */
   internal suspend fun restoreBackup(context: Context, uriString: String) =
     VescapeDatabase.rideExportMutex.withLock {
-      // A weather observation fetched before the swap must not land in the restored database.
       DatabaseReplacementFence.process.fence { restoreBackupLocked(context, uriString) }
     }
 
@@ -183,7 +181,6 @@ object DatabaseBackupManager {
     return (if (effective <= 2) 22 else effective) to (lastIdentifier == "v1")
   }
 
-  /** Convert iOS-only columns into Room-owned settings before Room validates the candidate. */
   private fun reconcileIosSchema(file: File, bootstrapLegacyTune: Boolean) {
     SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
       val boardColumns = db.rawQuery("PRAGMA table_info(boards)", null).use { cursor ->

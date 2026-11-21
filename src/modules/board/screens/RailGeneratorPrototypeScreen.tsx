@@ -1,5 +1,4 @@
 /* eslint-disable react-hooks/immutability */
-// PROTOTYPE: large-canvas rail point generator selected from the explored A/B/C variants.
 import { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native'
 import * as Clipboard from 'expo-clipboard'

@@ -13,7 +13,6 @@ import {
   getMapPointKindTextColor,
 } from '@/modules/map-points/constants/mapPoints'
 
-/** Per-category visibility for the Map Points on the map. The direction target is never filtered. */
 export function MapPointFilterMenu({
   bottom,
   open,

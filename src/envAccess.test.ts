@@ -2,17 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-/**
- * Expo inlines `process.env.EXPO_PUBLIC_*` at build time by matching the literal
- * member expression in source. Dynamic indexing or destructuring defeats that
- * substitution, so the value is `undefined` at runtime in a release build while
- * still working in dev — a failure that only surfaces after shipping.
- *
- * `eslint-plugin-expo` guarded this with `no-dynamic-env-var` and
- * `no-env-var-destructuring`; oxlint has no Expo plugin, so the contract lives
- * here instead. Unlike a lint rule, this cannot be silenced with an inline
- * comment.
- */
 const srcDir = join(import.meta.dir)
 
 const listFiles = (dir: string): string[] =>

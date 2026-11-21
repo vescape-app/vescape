@@ -41,7 +41,6 @@ function cachedSeriesPaths(dataKey: string, series: ChartSeriesSpec): SeriesPath
       if (oldest != null) preparedRideCache.delete(oldest)
     }
   } else {
-    // Map insertion order doubles as a tiny LRU for the rides around the current selection.
     preparedRideCache.delete(dataKey)
     preparedRideCache.set(dataKey, ride)
   }
@@ -55,18 +54,6 @@ function cachedSeriesPaths(dataKey: string, series: ChartSeriesSpec): SeriesPath
   return paths
 }
 
-/**
- * Turn every series into its Skia paths and measure the shared time domain, in one pass.
- *
- * Preparing the data and deciding the viewport have to happen together. Reanimated schedules a
- * derived value to the UI thread as the hook is called, so a camera built before the paths
- * would reach the screen first and project the previous dataset through the new viewport — the
- * old line briefly squashed into a corner.
- *
- * The domain is measured across the whole stack even though each chart now draws itself: charts
- * shown side by side have to share one x scale, or the same moment would sit at two different
- * places depending on which metric the rider looks at.
- */
 export function prepareStack(charts: ChartSpec[], dataKey = ''): PreparedStack {
   let startMs = Number.POSITIVE_INFINITY
   let endMs = Number.NEGATIVE_INFINITY
@@ -92,7 +79,6 @@ export function prepareStack(charts: ChartSpec[], dataKey = ''): PreparedStack {
   }
 }
 
-/** Every series and band of a stack in chart time, so the canvas never sees a cut ride. */
 export function compactCharts(charts: ChartSpec[], timeline: ChartTimeline | null): ChartSpec[] {
   if (timeline == null) return charts
   return charts.map((chart) => ({

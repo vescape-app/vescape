@@ -180,8 +180,6 @@ describe('Board config browsing', () => {
         names.forEach((name, index) => expect(row.format(index)).toBe(name))
         if (names.length) checkedEnums++
         if (/<suffix>\s*%<\/suffix>/.test(field)) {
-          // Older XML used editorScale=1 for deadband, while its default and range are
-          // still fractions. Display it as a percentage consistently with newer Refloat.
           const scale =
             row.id === 'inputtilt_deadband'
               ? 100

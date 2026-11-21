@@ -1,14 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Round-trips the Watch Frame wire contract: build a frame, encode it, decode it back.
-///
-/// Unlike Android — where the wrist decoder lives in a separate Gradle app and the test has to
-/// re-declare it — the decoder here is the production one, symlinked into `watch/watchos/`. So the
-/// round trip alone cannot catch a lane reorder: both directions would move together. The byte
-/// layout test below is what pins the order, and it is the test to read first when the wrist starts
-/// showing the wrong number in the right place.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchFrameTest.kt
 final class WatchFrameTests: XCTestCase {
   private func roundTrip(_ frame: WatchFrame) -> WatchFrame? {
@@ -21,8 +13,6 @@ final class WatchFrameTests: XCTestCase {
     return Float(bitPattern: raw.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).littleEndian })
   }
 
-  /// Pins lane order and header layout against the Android encoder, which shares neither code nor
-  /// compiler with this one. A reordered lane changes this test and nothing else.
   func testByteLayoutMatchesTheDeclaredLaneOrder() {
     let frame = WatchFrame(
       speed: 1, duty: 2, battery: 3, motorTemp: 4, ctrlTemp: 5, stale: true,
@@ -33,12 +23,10 @@ final class WatchFrameTests: XCTestCase {
 
     XCTAssertEqual(data.count, WATCH_FRAME_BYTES + 20)
     XCTAssertEqual(Int(data[0]), WATCH_FRAME_FIELD_COUNT)
-    // Only the stale bit: the legacy "waiting" bit is never set by this phone side.
     XCTAssertEqual(Int(data[1]), WATCH_FRAME_FLAG_STALE)
     for index in 0..<12 {
       XCTAssertEqual(lane(data, index), Float(index + 1), "lane \(index)")
     }
-    // The control lane carries Android's wire code, not a value this test picked.
     XCTAssertEqual(lane(data, 12), 4)
   }
 
@@ -63,8 +51,6 @@ final class WatchFrameTests: XCTestCase {
     XCTAssertEqual(frame.tiltControl, .manual)
   }
 
-  /// A newer phone's reason is still a reason: read-only is the only safe reading of it. An absent
-  /// lane is the one case that reads as a free stick.
   func testAnUnknownTiltControlCodeKeepsTheStickReadOnly() {
     XCTAssertEqual(WatchTiltControl(wire: 9), .blocked)
     XCTAssertFalse(WatchTiltControl(wire: 9).drivable)
@@ -73,7 +59,6 @@ final class WatchFrameTests: XCTestCase {
     XCTAssertEqual(WatchTiltControl.allCases.filter(\.drivable), [.free, .manual])
   }
 
-  /// Wire codes are Android's, pinned rather than described.
   func testTiltControlWireCodesMatchAndroid() {
     XCTAssertEqual(WatchTiltControl.allCases.map(\.rawValue), [0, 1, 2, 3, 4])
   }
@@ -98,8 +83,6 @@ final class WatchFrameTests: XCTestCase {
     XCTAssertNil(frame.duty)
   }
 
-  /// Lanes are Float32 on the wire, so a Double that is not exactly representable comes back
-  /// rounded. That is the contract, not a defect — the wrist renders one decimal place.
   func testRoundTripsAllLanesAndTheStaleFlag() throws {
     let frame = WatchFrame(
       speed: 21.3, duty: 64, battery: 73, motorTemp: 51, ctrlTemp: 47, stale: false,
@@ -122,8 +105,6 @@ final class WatchFrameTests: XCTestCase {
     XCTAssertEqual(decoded.routeSpanM, 725)
   }
 
-  /// A frame with no board and no navigation is the normal idle case, not an error: every lane rides
-  /// as the `NaN` sentinel and decodes back to nil, which is how the wrist greys out.
   func testRoundTripsNullSentinelLanes() {
     let decoded = roundTrip(WatchFrame(speed: 0, stale: true))
     XCTAssertEqual(decoded?.speed, 0)
@@ -140,8 +121,6 @@ final class WatchFrameTests: XCTestCase {
     XCTAssertNil(WatchFrameBuilder.decode(Data(count: WATCH_FRAME_BYTES - 1)))
   }
 
-  /// A phone and a wrist built from different commits can disagree about lane count. Misreading
-  /// every lane is worse than showing nothing, so the mismatch is rejected rather than truncated.
   func testDecodeRejectsAFieldCountMismatch() {
     var data = WatchFrameBuilder.encode(WatchFrame(speed: 1, stale: false))
     data[0] = UInt8(WATCH_FRAME_FIELD_COUNT + 1)

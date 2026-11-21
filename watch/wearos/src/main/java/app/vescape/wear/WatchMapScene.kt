@@ -20,10 +20,6 @@ import androidx.wear.compose.material.Text
 import kotlin.math.roundToInt
 
 /**
- * Owns the map's policy, shared camera and drawing order. The telemetry shell supplies gauge and
- * readout slots, without knowing whether Navigation, Group Ride or the rider's trail drives the map.
- * Pager progress stays in draw/layer lambdas; an animated map does not recompose the gauges.
- *
  * @parity /watch/watchos/WatchMapScene.swift `WatchMapScene`
  */
 @Composable
@@ -58,7 +54,6 @@ internal fun WatchMapScene(
     )
     Box(Modifier.fillMaxSize()) {
         if (scene.drawMap) {
-            // Layer order: street map, trail and route, Group Ride marks, gauges.
             if (scene.drawStreetMap) {
                 Box(Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() * scene.mapAlpha(focus()) }) {
                     MapTileLayer(mapView)
@@ -80,8 +75,6 @@ internal fun WatchMapScene(
             }
         }
         gauges()
-        // Navigation, only while the phone is sending it: chevron on the rim + distance above the
-        // battery %. No destination means no nav lanes, and the frame renders exactly as before.
         if (scene.notice != null) {
             if (!ambient.active && scene.notice == WatchRouteNotice.FAILED) RouteFailureNotice(navStackAlpha)
         } else if (navigation != null) {
@@ -94,7 +87,6 @@ internal fun WatchMapScene(
                 trailing = { TiltBadge(frame.remoteTilt, tiltColor, Modifier.padding(start = TILT_BADGE_GAP)) },
             )
         } else {
-            // No navigation: the badge keeps the distance's slot to itself.
             TiltBadge(
                 frame.remoteTilt,
                 tiltColor,
@@ -113,11 +105,6 @@ internal fun WatchMapScene(
     }
 }
 
-/**
- * A locked Remote Tilt, on the navigation distance's line. A lock outlives the Tilt page on purpose,
- * so the gauges are where a rider needs reminding that the board is still being tilted. Nothing at
- * neutral.
- */
 @Composable
 private fun TiltBadge(value: Int?, color: Color, modifier: Modifier = Modifier) {
     val percent = value?.let(::tiltPercent) ?: return
@@ -132,7 +119,7 @@ private fun TiltBadge(value: Int?, color: Color, modifier: Modifier = Modifier) 
 
 private val TILT_BADGE_GAP = 10.dp
 
-/** Loading lives around the rider; only an actionable failure needs visible text.
+/**
  * @parity /watch/watchos/NavPointer.swift `RouteFailureNotice`
  */
 @Composable

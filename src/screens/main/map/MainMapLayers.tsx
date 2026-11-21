@@ -23,7 +23,6 @@ import {
 } from '@/screens/main/map/offscreenMapIndicators'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
-// Ride History Markers are diagnostic detail; the history route stays clean unless they are opted in.
 const NO_MARKERS: MainMapLayersProps['rideMarkers'] = []
 
 export { HistoryMapLayers }
@@ -61,8 +60,6 @@ function BaseTerrainLayers({
           <RasterLayer
             id="center-mapy-tiles-layer"
             sourceID="center-mapy-tiles"
-            // Native rejects an empty style dictionary and logs `Invalid style: [:]`, so the
-            // opaque default is spelled out rather than left blank.
             style={{ rasterOpacity: 1 }}
           />
         </RasterSource>
@@ -71,7 +68,6 @@ function BaseTerrainLayers({
   )
 }
 
-/** Rider Direction Points, so the group can see where everyone is heading. */
 function RiderTargetPins({ riders }: { riders: MainMapLayersProps['riders'] }) {
   const accents = useResolvedAccentColors()
   return (
@@ -81,8 +77,6 @@ function RiderTargetPins({ riders }: { riders: MainMapLayersProps['riders'] }) {
         const color = riderMapColor(rider, accents)
         return (
           <MapPin
-            // Color in the key: PointAnnotation snapshots its children natively, so a
-            // color change must remount the pin to re-render.
             key={`center-rider-target-${rider.id}-${color}`}
             id={`center-rider-target-${rider.id}`}
             coordinate={[rider.presence.target.lng, rider.presence.target.lat]}
@@ -137,8 +131,6 @@ export function MainMapLayers(props: MainMapLayersProps) {
         />
       ) : (
         <>
-          {/* Mapbox paints later style layers above earlier ones. Keep the navigation path before
-              every live point so its dots never cross over the GPS puck or heading arrow. */}
           <NavigationMapLayers
             directionPoint={props.directionPoint}
             activeNavigationTarget={props.activeNavigationTarget}

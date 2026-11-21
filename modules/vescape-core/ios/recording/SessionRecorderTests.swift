@@ -2,9 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// Pins the iOS capture side of the cross-platform Debug Recording contract: line kinds/field
-/// names match Android's `SessionRecorder`, and a captured file feeds straight back through the
-/// replay decoder (format compatibility for cross-platform replay).
 final class SessionRecorderTests: XCTestCase {
   private var directory: URL!
 
@@ -109,8 +106,6 @@ final class SessionRecorderTests: XCTestCase {
     try Data("a".utf8).write(to: first)
     let second = try XCTUnwrap(store.createFile(deviceName: "two"))
     try Data("bb".utf8).write(to: second)
-    // Deterministic modification dates: `list()` sorts newest-first, so avoid depending on
-    // filesystem timestamp resolution between two rapid writes.
     try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000)], ofItemAtPath: first.path)
     try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 2_000)], ofItemAtPath: second.path)
 
@@ -125,9 +120,6 @@ final class SessionRecorderTests: XCTestCase {
     XCTAssertEqual(exported["sizeBytes"] as? Int64, 2)
   }
 
-  /// BLE chunks are written on the CoreBluetooth callback queue while phone heading arrives from
-  /// JS on the module queue — unserialized writes concatenated two objects onto one line and broke
-  /// replay of the whole recording.
   func testConcurrentWritesProduceOnlyWellFormedLines() throws {
     let store = DebugRecordingStore(directory: directory)
     let recorder = try SessionRecorder(
@@ -163,7 +155,6 @@ final class SessionRecorderTests: XCTestCase {
 
     let content = try String(contentsOf: recorder.fileURL, encoding: .utf8)
     let lines = content.split(separator: "\n").filter { !$0.isEmpty }
-    // meta + recording-started + all writes + stopped
     XCTAssertEqual(lines.count, 3 + threads * perThread)
     for line in lines {
       XCTAssertFalse(line.contains("}{"), "concatenated line: \(line)")

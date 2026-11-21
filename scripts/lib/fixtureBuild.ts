@@ -3,7 +3,6 @@ import { basename, join } from 'path'
 
 import { fixtureBuildEnv, ROOT, runOrDie, type FixtureRunMode } from './captureDriver.ts'
 
-/** Build without booting a device so compilation never competes with an emulator in CI. */
 export async function buildAndroidFixture(
   mode: FixtureRunMode,
   replay: string,
@@ -43,7 +42,6 @@ export async function buildIosFixture(mode: FixtureRunMode, replay: string): Pro
   const derivedData = join(ROOT, '.expo', 'capture-ios-build')
   mkdirSync(derivedData, { recursive: true })
   const entitlements = join(derivedData, 'simulator-keychain.entitlements')
-  // Ad-hoc simulator signing still needs an application identifier and keychain access group.
   await Bun.write(
     entitlements,
     `<?xml version="1.0" encoding="UTF-8"?>

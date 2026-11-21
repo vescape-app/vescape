@@ -7,12 +7,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Round-trips the Watch Frame wire contract: build a frame, encode it, then decode it back. [decode]
- * mirrors the wrist-side `app.vescape.wear.WatchFrameDecoder` lane-for-lane (ADR-0018) — the watch
- * module is a separate Gradle app and cannot be imported here, so this copy is the executable proof
- * that the two sides agree on field count, order, the `NaN` null sentinel, and the stale flag.
- */
 class WatchFrameTest {
 
     private fun decode(bytes: ByteArray): WatchFrame? {

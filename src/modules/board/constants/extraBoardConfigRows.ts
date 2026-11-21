@@ -1,6 +1,5 @@
 import { onOff, percent, unit, type ConfigRow } from '@/modules/board/lib/boardConfigReadout'
 
-// Labels, units and enum ordering checked against shared/fixtures/refloat-schema.
 const choice = (labels: string[]) => (value: number | boolean | undefined) =>
   typeof value === 'number' ? (labels[value] ?? `Unknown (${value})`) : '—'
 const row = (

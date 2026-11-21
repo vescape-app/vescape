@@ -1,7 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Ported from Android `RefloatConfigEncoderTest.kt` to keep encode byte-for-byte aligned.
 final class RefloatConfigEncoderTests: XCTestCase {
 
   func testRoundTripPreservesAllBytes() throws {
@@ -149,8 +148,6 @@ final class RefloatConfigEncoderTests: XCTestCase {
     }
   }
 
-  // MARK: - Helpers
-
   private func field(_ id: String, _ type: RefloatConfigValueType, offset: Int, scale: Double? = nil) -> RefloatConfigSchemaField {
     RefloatConfigSchemaField(id: id, type: type, label: id, unit: nil, min: nil, max: nil, offset: offset, scale: scale)
   }
@@ -183,18 +180,18 @@ final class RefloatConfigEncoderTests: XCTestCase {
 
   private func buildRawConfig(_ schema: RefloatConfigSchema) -> [UInt8] {
     var buf: [UInt8] = []
-    buf += float32Bytes(26.5)                       // f32
-    buf += int32Bytes(1500)                         // f32_scaled: 1.5
-    buf += [0, 0, 0, 0]                             // f32_auto placeholder
-    buf += int16Bytes(325)                          // f16_scaled: 3.25
-    buf += int32Bytes(-42)                          // i32
-    buf += int32Bytes(Int32(bitPattern: 0x8000_0001)) // u32
-    buf += int16Bytes(-100)                         // i16
-    buf += int16Bytes(Int16(bitPattern: 60000))     // u16
-    buf += [UInt8(bitPattern: -5)]                   // i8
-    buf += [200]                                     // u8
-    buf += [1]                                       // bool_true
-    buf += [0]                                       // bool_false
+    buf += float32Bytes(26.5)
+    buf += int32Bytes(1500)
+    buf += [0, 0, 0, 0]
+    buf += int16Bytes(325)
+    buf += int32Bytes(-42)
+    buf += int32Bytes(Int32(bitPattern: 0x8000_0001))
+    buf += int16Bytes(-100)
+    buf += int16Bytes(Int16(bitPattern: 60000))
+    buf += [UInt8(bitPattern: -5)]
+    buf += [200]
+    buf += [1]
+    buf += [0]
     return buf
   }
 

@@ -26,11 +26,6 @@ import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useFriendsStore } from '@/modules/profile/store/friendsStore'
 
-/**
- * The top bar's Social button and its drawer. In a ride it grows the Rider Signal button below it,
- * the way History grows today's stats; every signal action lives behind that one, and the Social
- * drawer only shows the ride.
- */
 export function SocialTrigger() {
   const triggerRef = useRef<View>(null)
   const [socialOpen, setSocialOpen] = useState(false)
@@ -47,17 +42,14 @@ export function SocialTrigger() {
     setView(INITIAL_SOCIAL_VIEW)
     if (accountId) router.push(riderProfileHref(accountId))
   }, [])
-  // Seeing Social is seeing who started riding.
   useEffect(() => {
     if (socialOpen) useFriendsStore.getState().acknowledgeRiding()
   }, [socialOpen, friendRiding])
-  // Switched on wears the broadcast icon; it lights up only once positions actually go out.
   const sharingOn = useGroupRideStore((s) => s.publicRide.activation !== 'off')
   const rideActive = useGroupRideStore((s) => s.publicRide.live)
   const requestColor = useColoredActionForeground(theme.palette.blue.color)
   const requestLabel = `${incomingRequests} friend ${incomingRequests === 1 ? 'request' : 'requests'}`
 
-  // The dot names the reason to look: a request or a friend who started riding opens Friends.
   function openSocial() {
     setView({
       ...INITIAL_SOCIAL_VIEW,
@@ -65,14 +57,10 @@ export function SocialTrigger() {
     })
     setSocialOpen(true)
   }
-  // Native judges it: in a ride on a relay with signals, or public. Hidden otherwise.
   const signalsSupported = useGroupRideStore((s) => s.signalAvailability.supported)
-  // Two places so the two never blur: Social wears a signal another Rider needs help with, the
-  // Rider Signal button wears the one this Rider sent, each until cleared or expired.
   const othersSignal = useOthersSignalTakeover()
   const ownSignal = useOwnSignalTakeover()
   const OwnSignalIcon = ownSignal?.icon ?? MegaphoneIcon
-  // Requests and the signal each get their own slot and tap, so neither ever takes the other's place.
   const showRequests = incomingRequests > 0
 
   return (
@@ -80,8 +68,6 @@ export function SocialTrigger() {
       <View ref={triggerRef} collapsable={false} style={styles.trigger}>
         <IconButtonExtension
           direction="down"
-          // The Rider's own live signal blinks until they clear it, so a forgotten one gets noticed.
-          // The pulse covers the whole capsule, so it waits while the request count shares it.
           blink={!showRequests && ownSignal !== null}
           extension={
             showRequests || signalsSupported ? (

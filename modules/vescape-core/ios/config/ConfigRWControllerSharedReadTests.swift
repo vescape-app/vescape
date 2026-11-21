@@ -1,10 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Shared read (#393): the post-trust background read serves every consumer that asks for config
-/// while it is on the wire, instead of rejecting the second caller with `CONFIG_REQUEST_IN_FLIGHT`.
-/// A write in flight is still exclusive.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/ConfigRWControllerSharedReadTest.kt
 final class ConfigRWControllerSharedReadTests: XCTestCase {
   func testReadTimeoutUsesVirtualTime() {

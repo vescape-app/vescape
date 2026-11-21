@@ -105,7 +105,8 @@ no percentage. This preview never sends a command or bypasses the riding and con
 - Saving a calibration that fits the accessory's current manifest is also how the rider accepts declared limits that moved since enrollment. It is the only thing that rewrites the saved capability baseline, and therefore the only thing that clears the "limits changed" warning.
 - The rider supplies Board-specific calibration during initial setup; firmware does not supply an assumed mounting calibration. Once configured, the binding operates automatically during riding with no separate arming step.
 - Calibration edits save automatically when complete and valid, with near distance strictly below far distance. There is no Save or Apply step; a complete valid calibration activates the binding automatically for riding.
-- The eventual hardware includes front and rear sensors. This PoC focuses on capability types and defers arbitration between competing tilt inputs; stable capability IDs leave room for both later.
+- When more than one active ground-clearance binding claims Remote Tilt, native releases tilt and
+  keeps the manual pad read-only. Picking a winner could choose the wrong correction direction.
 - While a configured ground-clearance accessory is connected, the Remote Tilt pad remains visible as a read-only indicator of commanded tilt, with manual input disabled. It displays commanded input, not measured Board pitch.
 - Board Move remains available while not riding, when sensor-driven tilt is inactive. Both use the existing native remote-input controller; transitions must prevent a pending sensor return from overriding Board Move.
 
@@ -114,6 +115,10 @@ no percentage. This preview never sends a command or bypasses the riding and con
 See [Vescape Accessory Protocol v1](./accessory-protocol.md) for the GATT UUIDs, newline-delimited
 JSON framing, handshake/manifest rules, request-id/lease discipline, reading statuses, and PoC
 timing defaults.
+
+Both platforms serialize the stored `capabilities_json` baseline in the same key order. Reconnect
+compares the serialized baseline to detect changed limits, so different key orders would report a
+false change after a cross-platform restore.
 
 ## Brake light
 

@@ -89,25 +89,20 @@ final class VescWriteQueueTests: XCTestCase {
     queue.enqueueNormal(poll)
     XCTAssertEqual(queue.startNext()?.bytes, poll)
     queue.replaceRemoteInput(neutral, urgent: true)
-    // Remote Tilt and Board Move share this slot: a routine tick must not drop a pending stop.
     queue.replaceRemoteInput(otherFeatureTick)
 
     queue.completeInFlight()
     XCTAssertEqual(queue.startNext()?.bytes, neutral)
 
-    // A newer stop still wins over an older one.
     queue.completeInFlight()
     queue.replaceRemoteInput(neutral, urgent: true)
     queue.replaceRemoteInput(newerNeutral, urgent: true)
     XCTAssertEqual(queue.startNext()?.bytes, newerNeutral)
   }
 
-  /// The regression this queue exists for: a held stream at its repeat cadence must not grow the
-  /// backlog, or the neutral that ends the gesture lands seconds late and the board holds tilt.
   func testHeldStreamNeverAccumulatesBacklog() {
     let queue = VescWriteQueue()
 
-    // 100 ticks arrive while a single write is in flight.
     queue.enqueueNormal([0])
     XCTAssertEqual(queue.startNext()?.bytes, [0])
     for tick in 1...100 {
@@ -115,7 +110,6 @@ final class VescWriteQueueTests: XCTestCase {
     }
     queue.completeInFlight()
 
-    // Only the newest survives; the other 99 never reach the board.
     XCTAssertEqual(queue.startNext()?.bytes, [100])
     queue.completeInFlight()
     XCTAssertNil(queue.startNext())
@@ -123,7 +117,6 @@ final class VescWriteQueueTests: XCTestCase {
 
   private func frame(_ size: Int) -> [UInt8] { (0..<size).map { UInt8($0 & 0xFF) } }
 
-  /// Drain every remaining write, completing each one, and return their bytes in order.
   private func drain(_ queue: VescWriteQueue) -> [[UInt8]] {
     var writes: [[UInt8]] = []
     while let write = queue.startNext() {
@@ -169,7 +162,6 @@ final class VescWriteQueueTests: XCTestCase {
     let rest = drain(queue)
 
     XCTAssertEqual(rest.prefix(2).map(\.count), [20, 5])
-    // The stop still goes before later normal traffic, just after the frame in flight.
     XCTAssertEqual(rest[2], neutral)
     XCTAssertEqual(rest[3], poll)
   }

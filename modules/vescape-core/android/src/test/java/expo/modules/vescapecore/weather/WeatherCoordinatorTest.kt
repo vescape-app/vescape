@@ -9,12 +9,9 @@ private fun forecastBody(temperatureC: Int) =
     """{"current":{"time":"2026-06-10T12:00","temperature_2m":$temperatureC.0,"weather_code":3}}"""
 
 /**
- * Forecast lifecycle: the freshness and distance gate, coalescing of in-flight requests without
- * losing the ride's newest position, and retention of a successful result across later failures.
  * @parity /modules/vescape-core/ios/weather/WeatherCoordinatorTests.swift
  */
 class WeatherCoordinatorTest {
-    /** Records every request and hands each one's completion back for manual resolution. */
     private class RecordingTransport : WeatherTransport {
         val urls = mutableListOf<String>()
         private val pending = mutableListOf<(String?) -> Unit>()
@@ -40,7 +37,6 @@ class WeatherCoordinatorTest {
         coordinator.onPosition(52.2000, 21.0000)
         transport.resolveLast(forecastBody(20))
 
-        // A metre down the road, seconds later: same grid cell, same ten-minute window.
         coordinator.onPosition(52.2001, 21.0001)
         now += 60_000
 
@@ -73,7 +69,6 @@ class WeatherCoordinatorTest {
     @Test
     fun `follows the ride to the position that arrived mid-fetch`() {
         coordinator.onPosition(52.2, 21.0)
-        // The ride keeps moving while the request is out; those Fixes must not simply be dropped.
         coordinator.onPosition(52.3, 21.0)
         coordinator.onPosition(52.5, 21.0)
         assertEquals(1, transport.inFlight)
@@ -120,11 +115,9 @@ class WeatherCoordinatorTest {
         transport.resolveLast(forecastBody(20))
         val seen = mutableListOf<Int?>()
         coordinator.addChangeListener { seen.add(it?.temperatureC) }
-        // The last Fix failed to fetch, but it is still where the rider is.
         coordinator.onPosition(52.4, 21.0)
         transport.resolveLast(null)
 
-        // Inside the freshness gate, yet the connect fetches anew and stays quiet until it lands.
         coordinator.refresh()
         assertTrue(transport.urls.last().contains("latitude=52.4"))
         assertEquals(emptyList<Int?>(), seen)

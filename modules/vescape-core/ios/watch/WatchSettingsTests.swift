@@ -1,9 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The settings contract both ends of the mirror compile against: what a missing key means, what a
-/// cleared colour means, and that the wrist never invents a value the rider did not choose.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchSettingsTest.kt
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchSettingsTest.kt
 final class WatchSettingsTests: XCTestCase {
@@ -51,8 +48,6 @@ final class WatchSettingsTests: XCTestCase {
     XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: disabled.payload]), disabled)
   }
 
-  /// Issue #557: an older phone, or a value off the steps, reads as the 60 % default on the wrist
-  /// and in phone persistence; a chosen step survives a settings reload.
   func testMapBehindGaugesKeepsItsStepAndFallsBackToTheDefault() {
     XCTAssertEqual(AppDataRepository.defaultSettings["wearMapGaugesPercent"] as? Int, 60)
     XCTAssertTrue(watchSourceSettingKeys.contains("wearMapGaugesPercent"))
@@ -97,7 +92,6 @@ final class WatchSettingsTests: XCTestCase {
   }
 
   func testAbsentStrengthIsNilRatherThanZeroPercent() {
-    // The trap the Wear OS reader documents: coercing an absent key reads as a rider choosing 0 %.
     XCTAssertNil(WatchSettings.decode([WatchSettingsKey.navArrowEnabled: true]).boardMoveStrengthPercent)
   }
 

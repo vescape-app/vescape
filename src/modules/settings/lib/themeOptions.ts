@@ -11,12 +11,10 @@ import type { ThemeMode } from '@/modules/settings/lib/themeMode'
 
 type ThemeHue = (typeof theme.palette)['cyan']
 
-/** The four theme choices used by the inline quick-settings picker. */
 export const THEME_OPTIONS: {
   mode: ThemeMode
   label: string
   Icon: Icon
-  /** Palette hue for icon, pill, and active-option tinting. */
   hue: ThemeHue
 }[] = [
   {

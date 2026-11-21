@@ -34,8 +34,6 @@ class BoardConfigChangeNoticeTest {
 
     val merged = BoardConfigChangeNotice.mergeDiffs(previous, incoming)
 
-    // The Refloat diff survives, the twice-diffed field keeps its slot with the newer values, and the
-    // new field lands last.
     assertEquals(listOf("fault_adc1", "l_temp_fet_start", "l_current_max"), merged.map { it.fieldId })
     assertEquals(75.0, merged[1].oldValue)
     assertEquals(80.0, merged[1].newValue)

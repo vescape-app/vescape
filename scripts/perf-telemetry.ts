@@ -1,24 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Telemetry rendering perf harness.
- *
- * Drives the e2e fake feed (20 Hz) on the connected home view, then measures
- * how the app renders it: HWUI frame stats via `dumpsys gfxinfo` (jank %,
- * frame-time percentiles, fps) plus best-effort per-thread CPU from /proc.
- *
- * Run the same harness on the SVG build and the Skia build, then diff:
- *
- *   bun run scripts/perf-telemetry.ts --label svg   --seconds 20
- *   bun run scripts/perf-telemetry.ts --label skia  --seconds 20
- *   bun run scripts/perf-telemetry.ts --compare perf-results/svg-*.json perf-results/skia-*.json
- *
- * Notes:
- * - Run on a PHYSICAL device. Emulator frame/jank/CPU numbers are not
- *   representative; only same-device A/B deltas mean anything.
- * - Needs an E2E build installed (`bun run android:e2e`) so the fake feed
- *   exists. For a debug build, keep Metro running.
- * - Headline metric is gfxinfo. CPU is best-effort (some devices block /proc).
- */
 import { join } from 'path'
 import { mkdirSync, writeFileSync, readFileSync } from 'fs'
 import { applicationId } from '../src/config/appVariant.ts'
@@ -54,15 +34,11 @@ interface Result {
   gfx: Gfx
   cpu: {
     clkTck: number
-    /** Whole-process CPU usage as % of one core over the window. */
     processPct: number | null
-    /** Top CPU-consuming threads over the window (name -> % of one core). */
     threads: { comm: string; pct: number }[]
   }
   capturedAt: string
 }
-
-// ── args ─────────────────────────────────────────────────────────────────────
 
 interface Args {
   seconds: number
@@ -92,8 +68,6 @@ function parseArgs(argv: string[]): Args {
   if (!Number.isFinite(args.seconds) || args.seconds <= 0) throw new Error('--seconds must be > 0')
   return args
 }
-
-// ── adb helpers ────────────────────────────────────────────────────────────────
 
 async function sh(cmd: string[]): Promise<string> {
   const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe' })
@@ -125,8 +99,6 @@ async function getPid(device: string): Promise<number | null> {
   return Number.isFinite(pid) && pid > 0 ? pid : null
 }
 
-// ── gfxinfo ──────────────────────────────────────────────────────────────────
-
 function num(re: RegExp, text: string): number {
   const m = text.match(re)
   return m ? Number(m[1]) : 0
@@ -146,9 +118,6 @@ function parseGfx(text: string): Gfx {
   }
 }
 
-// ── per-thread CPU via /proc ───────────────────────────────────────────────────
-
-/** stat fields: comm is wrapped in parens (field 2); utime=14, stime=15. */
 function parseStatJiffies(stat: string): { comm: string; jiffies: number } | null {
   const open = stat.indexOf('(')
   const close = stat.lastIndexOf(')')
@@ -158,7 +127,6 @@ function parseStatJiffies(stat: string): { comm: string; jiffies: number } | nul
     .slice(close + 2)
     .trim()
     .split(/\s+/)
-  // rest[0] is field 3 (state); utime=field14 -> rest[11], stime=field15 -> rest[12]
   const utime = Number(rest[11])
   const stime = Number(rest[12])
   if (!Number.isFinite(utime) || !Number.isFinite(stime)) return null
@@ -167,7 +135,6 @@ function parseStatJiffies(stat: string): { comm: string; jiffies: number } | nul
 
 async function snapshotThreads(device: string, pid: number): Promise<Map<number, ThreadCpu>> {
   const map = new Map<number, ThreadCpu>()
-  // Single shell call: cat every task stat, tids are the dir names.
   const out = await adb(
     device,
     'shell',
@@ -190,8 +157,6 @@ async function getClkTck(device: string): Promise<number> {
   const v = Number((await adb(device, 'shell', 'getconf', 'CLK_TCK')).trim())
   return Number.isFinite(v) && v > 0 ? v : 100
 }
-
-// ── measure ──────────────────────────────────────────────────────────────────
 
 async function runSetup(): Promise<void> {
   console.log('› Setup: connecting board via Maestro (_perf-home.yaml)…')
@@ -222,7 +187,6 @@ async function measure(args: Args): Promise<void> {
 
   const clkTck = await getClkTck(device)
 
-  // Best-effort CPU start snapshot (may be empty if /proc is locked down).
   const startThreads = await snapshotThreads(device, pid)
 
   await adb(device, 'shell', 'dumpsys', 'gfxinfo', PKG, 'reset')
@@ -233,7 +197,6 @@ async function measure(args: Args): Promise<void> {
   const gfx = parseGfx(gfxText)
   const endThreads = await snapshotThreads(device, pid)
 
-  // CPU deltas
   const threadDeltas: { comm: string; pct: number }[] = []
   let totalDeltaJiffies = 0
   for (const [tid, end] of endThreads) {
@@ -268,8 +231,6 @@ async function measure(args: Args): Promise<void> {
   writeFileSync(outPath, JSON.stringify(result, null, 2))
   console.log(`\nSaved → ${outPath}`)
 }
-
-// ── output ──────────────────────────────────────────────────────────────────
 
 function printResult(r: Result, haveCpu: boolean): void {
   const g = r.gfx
@@ -322,8 +283,6 @@ function compare(aPath: string, bPath: string): void {
   }
   console.log('\n(higher fps better; everything else lower is better)')
 }
-
-// ── main ──────────────────────────────────────────────────────────────────────
 
 let args: Args
 try {

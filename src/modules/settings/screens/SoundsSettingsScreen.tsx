@@ -48,7 +48,6 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { formatSlotAlertSound, mySoundRef } from '@/modules/alerts/lib/alertSoundString'
 import { useMySounds } from '@/modules/alerts/hooks/useMySounds'
 
-/** Picked file name without its extension, as a starting name for the sound. */
 function soundName(fileName: string | undefined): string {
   return (
     (fileName ?? '')
@@ -58,7 +57,6 @@ function soundName(fileName: string | undefined): string {
   )
 }
 
-/** One-shot preview of My sound `id`. */
 const previewMySound = (id: string) => previewAlertSound(formatSlotAlertSound(1, mySoundRef(id)))
 
 const PACK_OPTION = ''
@@ -178,7 +176,6 @@ export default function SoundsSettingsScreen() {
                   accessibilityState={{ checked: active, disabled: !enabled }}
                   accessibilityLabel={pack.name}
                   onPress={() => {
-                    // A picked effects pack brings its own voice; Voice can still override it after.
                     void set('soundPack', pack.id)
                     void set('voice', 'matching')
                   }}
@@ -243,7 +240,6 @@ export default function SoundsSettingsScreen() {
                 options={VOICE_PACKS.map((pack) => ({ label: pack.name, value: pack.id }))}
                 value={resolvedVoiceId(voice, soundPack)}
                 onChange={(next) =>
-                  // Preview once native has the new voice; a failed write shows in the storage banner.
                   void set('voice', next).then(
                     () => previewAlertSound(VOICE_LEVEL_INFO.standard.preview),
                     () => undefined,
@@ -263,7 +259,6 @@ export default function SoundsSettingsScreen() {
                 options={[...VOICE_LEVELS]}
                 value={voiceLevel}
                 onChange={(next) =>
-                  // The preview speaks with the new level's wording once native has it.
                   void set('voiceLevel', next).then(
                     () => previewAlertSound(VOICE_LEVEL_INFO[next].preview),
                     () => undefined,

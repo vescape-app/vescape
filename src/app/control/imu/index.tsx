@@ -29,8 +29,6 @@ export default function ImuScreen() {
     (s) => s.boards.find((board) => board.id === s.activeBoardId)?.personalization,
   )
 
-  // Pitch, roll and balance in one stack: they are read against each other, and one gesture over
-  // the column puts the same moment under the finger on all three.
   const charts = useMemo(() => {
     const series = [
       { key: 'pitch', metric: pitchCfg, data: toChartSeries(pitch, windowMs) },

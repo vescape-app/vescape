@@ -7,7 +7,6 @@ import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
 import expo.modules.vescapecore.database.VescapeDao
 
 /**
- * Minutes without a recorded sample that end a ride, when the rider has set no `rideSplitGapMinutes`.
  * @parity /src/modules/history/lib/sessions.ts `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
  * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
  */
@@ -48,7 +47,6 @@ internal suspend fun readProfileStatsSnapshot(
 }
 
 /**
- * Stats of the rides that started on one local calendar day.
  * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getDayStats`
  */
 internal suspend fun readProfileDayStats(
@@ -70,8 +68,6 @@ internal suspend fun readProfileDayStats(
 }
 
 /**
- * Stats of the rides still going on or finished at or after [sinceMs], so a ride that crosses
- * midnight keeps counting as the one being ridden.
  * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getRecentRideStats`
  */
 internal suspend fun readProfileRecentStats(dao: VescapeDao, sinceMs: Long, gapMs: Long): Map<String, Any?> =

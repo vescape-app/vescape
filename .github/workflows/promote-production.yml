@@ -104,7 +104,6 @@ jobs:
           done
           test "$(jq -r .versionCodes.phone candidate/release-manifest.json)" = "$PHONE_VERSION_CODE"
           test "$(jq -r .versionCodes.wear candidate/release-manifest.json)" = "$WEAR_VERSION_CODE"
-          # Older uploaded builds predate storage-test metadata.
           if jq -e 'has("storageContracts")' candidate/release-manifest.json > /dev/null; then
             test "$(jq -r .storageContracts.sourceSha candidate/release-manifest.json)" = "$SOURCE_SHA"
             test "$(jq -r .storageContracts.androidRoom candidate/release-manifest.json)" = passed
@@ -174,9 +173,6 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           MARKETING_VERSION: ${{ inputs.marketing_version }}
-      # After Play, because the server must never advertise a version the store is not serving.
-      # Not fatal: the version is live either way, and the push can be repeated by hand from
-      # .github/workflows/record-released-version.yml.
       - uses: oven-sh/setup-bun@v2
         if: ${{ inputs.operation == 'promote' && steps.phone.outcome == 'success' && steps.wear.outcome == 'success' }}
       - name: Tell the server Android now serves this version

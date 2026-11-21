@@ -4,7 +4,6 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 
-/** A horizontal grid row — each `Cell` child takes an equal fraction of the width. */
 export function Row({ children }: { children: ReactNode }) {
   return <View style={styles.row}>{children}</View>
 }

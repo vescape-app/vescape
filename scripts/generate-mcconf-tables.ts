@@ -1,14 +1,3 @@
-/**
- * Generates the per-signature MCCONF layout tables consumed by both native platforms.
- *
- * Offsets come from VESC firmware's own serializer — see `scripts/mcconf-layout.ts` and
- * `docs/mcconf.md` for why VESC Tool's parameter XML cannot be used instead. Each supported
- * firmware branch contributes one layout keyed by its `MCCONF_SIGNATURE`; an unrecognized
- * signature decodes nothing (see `docs/mcconf.md`).
- *
- *   bun run scripts/generate-mcconf-tables.ts
- */
-
 import { parseMcconfLayout } from './mcconf-layout'
 
 // @legacy-float vesc-6.02: independent firmware support; remove only when VESC 6.02 support ends.
@@ -34,7 +23,6 @@ async function loadBranch(branch: string) {
   if (!signature) throw new Error(`${branch}: MCCONF_SIGNATURE not found`)
 
   const { rows, unparsed } = parseMcconfLayout(await fetchText(branch, 'confgenerator.c'))
-  // An unparsed serializer line shifts every offset after it, so it can never be tolerated.
   if (unparsed.length > 0)
     throw new Error(`${branch}: unparsed serializer lines:\n${unparsed.join('\n')}`)
 
@@ -192,7 +180,6 @@ ${entries}
 `
 }
 
-/** Kotlin and Swift both want a Double literal here; `10000` alone infers Int in Kotlin. */
 function scaleLiteral(scale: number): string {
   return Number.isInteger(scale) ? `${scale}.0` : `${scale}`
 }

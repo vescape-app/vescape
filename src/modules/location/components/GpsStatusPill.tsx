@@ -6,15 +6,6 @@ import { theme } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import type { GpsStatusBadge } from '@/modules/location/lib/gpsStatusBadge'
 
-/**
- * Why the position on screen cannot be trusted, in the fewest possible pixels. It only ever renders
- * for a GPS that is missing, arming, or delivering something weak — a healthy receiver gets no
- * badge at all, so the pill showing up is itself the signal.
- *
- * Deliberately grey in every state: it explains a reading the rider can already see is off, and a
- * red or amber pill would outrank the alerts and warnings that mean something is wrong with the
- * board.
- */
 export function GpsStatusPill({
   badge,
   style,
@@ -22,11 +13,8 @@ export function GpsStatusPill({
 }: {
   badge: GpsStatusBadge
   style?: StyleProp<ViewStyle>
-  /** Given a handler the pill becomes the way in to whatever explains the state it is reporting. */
   onPress?: () => void
 }) {
-  // Resolved strings, not adaptive tokens: the pill can be mounted across a theme switch, and a
-  // native adaptive color only re-resolves when the prop is set again.
   const neutral = useResolvedNeutralColors()
   const pillStyle = {
     borderColor: neutral.border,

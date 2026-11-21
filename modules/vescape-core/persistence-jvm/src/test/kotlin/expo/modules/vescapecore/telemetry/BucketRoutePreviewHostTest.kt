@@ -28,7 +28,6 @@ class BucketRoutePreviewHostTest {
     flush(fixes.take(3))
     assertEquals(2, BucketRoutePreview.decode(db.vescapeDao().getBucket(0, board)!!.routePreview!!).single().points.size)
     db.close(); db = open()
-    // Out-of-order later batches must use every original fix, including the previously removed one.
     flush(fixes.drop(5))
     flush(fixes.subList(3, 5))
     val buckets = db.vescapeDao().getAllHistoryBucketsAsc()
@@ -46,15 +45,12 @@ class BucketRoutePreviewHostTest {
       }
     }
     val previews = buckets.map { it.routePreview }
-    // Telemetry-only merges must preserve the already-written route.
     val telemetry = BucketTelemetryPoint(3000, board, 1500, 80000, 1000, 500, 100, null)
     RecordingPersistence(db.vescapeDao()).commit(emptyList(), buildTelemetryBuckets(listOf(telemetry), emptyList()), emptyList())
     assertEquals(previews, db.vescapeDao().getAllHistoryBucketsAsc().map { it.routePreview })
-    // The GPS-only second minute is the ride's tail: one ride, one route.
     val session = groupRideSessions(db.vescapeDao().getAllHistoryBucketsAsc(), emptyList(), 1_800_000).single()
     assertEquals(8, session.routePoints.size)
     assertEquals(listOf(5), session.routePoints.mapIndexedNotNull { i, p -> i.takeIf { p.breakBefore } })
-    // Existing maintenance is the explicit backfill, and must produce the same geometry.
     rebuildRideSummaries(db.vescapeDao())
     assertEquals(previews, db.vescapeDao().getAllHistoryBucketsAsc().map { it.routePreview })
     db.close()

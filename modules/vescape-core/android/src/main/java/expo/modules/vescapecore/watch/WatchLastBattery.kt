@@ -3,15 +3,12 @@ package expo.modules.vescapecore.watch
 internal const val WATCH_LAST_BATTERY_PATH = "/last-battery"
 
 /**
- * `percent` and `at` are both set or both null; null keys are omitted. A deleted item clears the
- * selected board.
  * @parity /modules/vescape-core/ios/watch/WatchLastBattery.swift
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchLastBattery.kt
  */
 internal data class WatchLastBattery(val boardId: String, val boardName: String, val percent: Double?, val at: Long?) {
     companion object {
         /**
-         * The selected Board as `AppDataRepository.getBoard` returns it; null without a live selection.
          * @parity /modules/vescape-core/ios/watch/WatchLastBattery.swift `selected`
          */
         fun selected(boardId: String?, board: Map<String, Any?>?): WatchLastBattery? {

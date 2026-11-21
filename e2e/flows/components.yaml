@@ -1,5 +1,3 @@
-# Requires the development app already connected to this workspace's Metro server.
-# Preserves app data; no E2E fake board or state reset is needed.
 appId: ${APP_ID}
 ---
 - openLink: 'vescape://settings/components/base'

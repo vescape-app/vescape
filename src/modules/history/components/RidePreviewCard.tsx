@@ -24,11 +24,9 @@ interface RidePreviewCardProps {
   onPress: () => void
   testID?: string
   map?: boolean
-  /** Shown after the date; null renders nothing. */
   weather?: RideWeather | null
 }
 
-/** Compact ride tile shared by recent rides and Favorites in the History drawer. */
 export function RidePreviewCard({
   title,
   date,
@@ -85,11 +83,9 @@ export function RidePreviewCard({
 }
 
 interface RidePreviewCardSkeletonProps {
-  /** Position in the strip; offsets the pulse so it ripples across the tiles. */
   index?: number
 }
 
-/** Loading stand-in with the exact footprint of a RidePreviewCard. */
 export function RidePreviewCardSkeleton({ index = 0 }: RidePreviewCardSkeletonProps) {
   const neutral = useResolvedNeutralColors()
   return (

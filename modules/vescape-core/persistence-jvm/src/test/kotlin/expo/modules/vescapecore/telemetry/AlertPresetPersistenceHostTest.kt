@@ -100,7 +100,6 @@ class AlertPresetPersistenceHostTest {
       dao.updateDistanceUnit(units)
       val expected = switch.getJSONArray(units)
       for (id in listOf("first", "second")) {
-        // `second` has no row: the app default, normal, expands the same way.
         val rule = AlertPresetPersistence.expandedRules(dao, id) { throw it }.single { it.controlId == "speed" }
         assertEquals(expected.getDouble(0), rule.threshold, 0.0000001)
         assertEquals(expected.getDouble(1), rule.thresholdMax!!, 0.0000001)
@@ -186,12 +185,10 @@ class AlertPresetPersistenceHostTest {
     assertEquals(manual, expanded("speed").single { it.id == "manual" })
     assertEquals(1, dao.getAlertRules(board.id).count { it.id.startsWith("preset:") })
 
-    // Board Top Speed is read at expansion: a board save changes the rules, not the row.
     dao.upsertBoardWithSettings(board, listOf(BoardSettingEntity(board.id, "topSpeedKmh", "60", 1)), emptyList(), emptyList())
     assertEquals("preset(safe)", spec("speed"))
     assertNotEquals(30.577536, expanded("speed").single { it.id == "preset:speed:0" }.threshold, 0.0000001)
 
-    // Normal with no options is the default: no row.
     dao.applyAlertPreset(board.id, "speed", "normal", null, null)
     assertTrue(dao.getAlertRules(board.id).none { it.id == "preset:speed" })
     assertEquals("preset(normal)", spec("speed"))

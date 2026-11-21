@@ -164,8 +164,6 @@ test('a camera aimed at this data keeps its zoom', () => {
 })
 
 test('a stack passing no dataKey still shows its whole domain', () => {
-  // An untouched camera must not answer to any dataKey, the empty one included: while it was
-  // keyed by a string it did, and every live chart was drawn through a 20ms viewport.
   const untouched = { spanMs: 0, endMs: null, key: null }
 
   expect(viewportFor(untouched, '', BASE, BASE + 60_000)).toEqual({

@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/immutability */
 import { useEffect, useMemo } from 'react'
 import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -102,7 +101,6 @@ export function TunePreview({
   const neutral = useResolvedNeutralColors()
   const model = useMemo(
     () => createTunePreviewModel(fields),
-    // Restart the animation loop after a model hot reload instead of retaining its old closure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [fields, TUNE_PREVIEW_MODEL_VERSION],
   )
@@ -136,7 +134,6 @@ export function TunePreview({
     }
   }, [scenario, parameters, hillsEnabled, hillHeightMeters, hillSpacingMeters])
 
-  // Physics and readouts run entirely on the UI runtime; the JS thread only syncs scenario props.
   const frameCallback = useFrameCallback((frame) => {
     'worklet'
     const { parameters: activeParameters, ...terrain } = scenario.value

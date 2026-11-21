@@ -3,7 +3,6 @@ import GRDB
 
 private let internalTables: Set<String> = ["room_master_table", "android_metadata", "grdb_migrations"]
 
-/// Tables, columns, indexes, and foreign keys in a form that does not depend on which platform built them.
 /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseSchemaHostTest.kt `dumpDatabaseSchema`
 func dumpDatabaseSchema(_ db: Database) throws -> [String: Any] {
   func text(_ row: Row, _ column: String) -> String? { row[column] as String? }
@@ -29,7 +28,6 @@ func dumpDatabaseSchema(_ db: Database) throws -> [String: Any] {
         .sorted { ($0["seqno"] as Int) < ($1["seqno"] as Int) }
         .map { $0["name"] as String? }
       let sql = try String.fetchOne(db, sql: "SELECT sql FROM sqlite_master WHERE type='index' AND name=?", arguments: [name])
-      // Constraint indexes get generated names, so key them by what they cover instead.
       let key = origin == "c" ? name : "unique(\(indexColumns.map { $0 ?? "null" }.joined(separator: ",")))"
       indexes[key] = [
         "columns": indexColumns.map { $0 as Any? ?? NSNull() },
@@ -54,12 +52,10 @@ private func partialIndexPredicate(_ sql: String) -> String? {
     .trimmingCharacters(in: .whitespaces)
 }
 
-/// Fails with a per-table summary when the database differs from the neutral schema file.
 func requireSharedSchema(_ label: String, _ db: Database, root: URL) throws {
   let schemaURL = root.appendingPathComponent("schema/database.json")
   let expected = try JSONSerialization.jsonObject(with: Data(contentsOf: schemaURL)) as! [String: Any]
   let actual = try dumpDatabaseSchema(db)
-  // Canonical JSON, not NSDictionary equality, which would treat `true` and `1` as the same value.
   if try canonicalJson(expected) == canonicalJson(actual) { return }
   let written = FileManager.default.temporaryDirectory.appendingPathComponent("database-schema.ios-\(label).json")
   try JSONSerialization.data(withJSONObject: actual, options: [.prettyPrinted, .sortedKeys]).write(to: written)

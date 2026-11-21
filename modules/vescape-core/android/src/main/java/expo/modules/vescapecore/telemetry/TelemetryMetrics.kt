@@ -5,11 +5,6 @@ internal data class TelemetryMetricDef(
     val unit: String,
     val decimals: Int,
     val alertAbove: Boolean = true,
-    /**
-     * How far back past its threshold, in this metric's own unit, a fired single-threshold Alert
-     * Rule must travel before it can announce again. Sized so ordinary jitter around the threshold
-     * cannot re-announce, while a real recovery can.
-     */
     val alertRearmMargin: Double,
 )
 

@@ -3,20 +3,6 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import path from 'node:path'
 import { copyWearSharedSources } from './wearSharedSources.ts'
 
-/**
- * Injects the git-tracked Wear OS Mirror (`watch/wearos/`) into the Expo-generated `android/`
- * project on every prebuild (ADR-0019). `android/` is gitignored, so the mirror's durable source
- * cannot live there — this plugin copies it in and wires the Gradle build, the same pattern as
- * `withGradleJvmArgs`. It is load-bearing: keep it in step with the watch module's package name and
- * Gradle layout.
- *
- * Steps, all idempotent:
- *  1. Copy `watch/wearos/` -> `android/wearos/` (clean copy each prebuild).
- *  2. Register the module: `include ':wearos'` in `android/settings.gradle`.
- *
- * Google Play receives `:app` and `:wearos` as separate AABs on mobile and Wear OS tracks. Do not
- * add the obsolete `wearApp` dependency: Play handles delivery for the enabled form factor.
- */
 const GRADLE_MODULE = ':wearos'
 const WATCH_SOURCE_DIR = path.join('watch', 'wearos')
 const WATCH_FONTS = {
@@ -43,14 +29,11 @@ const withWearMirror: ConfigPlugin = (config) =>
         throw new Error(`[withWearMirror] missing watch source at ${source}`)
       }
 
-      // 1. Copy the watch source into the generated project.
       const dest = path.join(androidRoot, 'wearos')
       rmSync(dest, { recursive: true, force: true })
       cpSync(source, dest, { recursive: true })
       copyWearSharedSources(projectRoot, dest)
 
-      // Android resource names cannot contain capitals or hyphens. Copy the shared app faces
-      // under resource-safe names rather than maintaining a second set in the watch source.
       const fontDest = path.join(dest, 'src', 'main', 'res', 'font')
       mkdirSync(fontDest, { recursive: true })
       for (const [assetName, resourceName] of Object.entries(WATCH_FONTS)) {
@@ -61,8 +44,6 @@ const withWearMirror: ConfigPlugin = (config) =>
         cpSync(fontSource, path.join(fontDest, resourceName))
       }
 
-      // Keep phone and Wear application IDs aligned: the Wear Data Layer only connects apps with
-      // the same application ID and signing certificate. Namespace/source packages stay stable.
       const buildGradlePath = path.join(dest, 'build.gradle')
       const buildGradle = readFileSync(buildGradlePath, 'utf8')
       const applicationIdPattern = /^(\s*)applicationId\s+['"][^'"]+['"]/m
@@ -74,7 +55,6 @@ const withWearMirror: ConfigPlugin = (config) =>
         buildGradle.replace(applicationIdPattern, `$1applicationId '${applicationId}'`),
       )
 
-      // 2. Register the Gradle module.
       const settingsPath = path.join(androidRoot, 'settings.gradle')
       const settings = readFileSync(settingsPath, 'utf8')
       const includeLine = `include '${GRADLE_MODULE}'`

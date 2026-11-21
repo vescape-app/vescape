@@ -3,21 +3,13 @@ import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-// The banner is the map's one status line, so it also carries direction point write failures.
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
 
-/**
- * Map Points come from the server and are not cached, so a failed read leaves an empty map that
- * would otherwise look like "no places here". This says which of the two it is, and warns when the
- * server returned only the nearest slice of a denser area.
- */
 export function MapPointStatusBanner({ top }: { top: number }) {
   const mapPointError = useMapPointStore((state) => state.error)
   const directionPointError = useMapStore((state) => state.error)
   const truncated = useMapPointStore((state) => state.truncated)
-  // A failed Map Point read stays on screen until the next read succeeds, so a direction point
-  // failure has to win — it belongs to the action the rider just took.
   const error = directionPointError ?? mapPointError
 
   const message =

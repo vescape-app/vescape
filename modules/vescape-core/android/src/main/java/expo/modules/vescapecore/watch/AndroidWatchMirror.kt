@@ -10,7 +10,6 @@ import expo.modules.vescapecore.weather.WeatherCoordinator
 import kotlinx.coroutines.CoroutineScope
 
 /**
- * Android source/transport adapters; no stream timing or Board Session lifetime decisions.
  * @parity /modules/vescape-core/ios/watch/IOSWatchMirror.swift
  * @platform-diff Android route cold-state publication is process-scoped inside NavigationController;
  * service-scoped mirroring subscribes only to live route status. iOS binds both at process launch.

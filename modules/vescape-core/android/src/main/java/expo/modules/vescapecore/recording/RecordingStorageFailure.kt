@@ -75,8 +75,7 @@ internal inline fun <T> withAvailableStorage(
     return action()
 }
 
-/** Native-owned recording failure episode.
- *
+/**
  * @parity /modules/vescape-core/ios/recording/RecordingStorageFailure.swift
  * @parity /modules/vescape-core/src/index.ts `RecordingFailureState`
  */
@@ -164,7 +163,6 @@ internal object RecordingStorageFailure {
         context: Context,
         kind: RecordingStorageFailureKind,
     ): Boolean {
-        // A later operation-specific failure must not hide an already established broad outage.
         val resolved = resolveRecordingFailureKind(state.current, kind)
         val changed = state.record(kind)
         if (resolved != RecordingStorageFailureKind.WriteFailed) {
@@ -176,7 +174,6 @@ internal object RecordingStorageFailure {
 
     private fun notifyOutage() { outageListener?.let { Handler(Looper.getMainLooper()).post(it) } }
 
-    /** Reports a failed read without changing the recording gate or durable failure state. */
     fun reportRead(operation: String, error: Throwable) {
         reporter.report(operation, "query_failed", error)
         enterBroadOutage(error)
@@ -209,7 +206,6 @@ internal object RecordingStorageFailure {
         is SQLiteDiskIOException,
         is SQLiteReadOnlyDatabaseException -> RecordingStorageFailureKind.StorageUnavailable
         is android.database.SQLException -> {
-            // sqlite-bundled 2.6.2 exposes result codes through this stable exception prefix.
             val code = Regex("^Error code: (\\d+)(?:,|$)").find(error.message.orEmpty())
                 ?.groupValues?.get(1)?.toIntOrNull()?.and(0xff)
             when (code) {

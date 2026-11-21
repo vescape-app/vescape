@@ -20,11 +20,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * LocationManager-backed GPS monitor for live map state and Ride Recording.
- *
- * Driven by demand, never armed open-endedly: the caller hands it a [GpsPowerMode] and the monitor
- * makes the hardware match. `Off` removes the listener rather than leaving it idling.
- *
  * @parity /modules/vescape-core/ios/location/GpsMonitor.swift
  */
 internal class GpsMonitor(
@@ -32,10 +27,6 @@ internal class GpsMonitor(
     private val looper: Looper,
     onLocation: (Location) -> Unit,
     /**
-     * Local Diagnostic Event sink (ADR 0007). GPS arming outlives any Board Session — the map arms
-     * it at app start — so these breadcrumbs are recorded here rather than by the session
-     * controller, which can only report `gps_session_summary` once a session ends.
-     *
      * @parity /modules/vescape-core/ios/location/GpsMonitor.swift `record`
      */
     private val record: (String, Map<String, Any?>) -> Unit = { _, _ -> },
@@ -50,10 +41,6 @@ internal class GpsMonitor(
     private val legalPolicyResolver = LegalPolicyResolver(context.applicationContext)
     private val resolutionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /**
-     * Per-armed-span fix bookkeeping, so `gps_fix_stale` fires at most once per silent stretch
-     * instead of once per watchdog tick.
-     */
     private val staleHandler = Handler(looper)
     private var armedAtMs: Long? = null
     private var lastFixAtMs: Long? = null
@@ -67,14 +54,10 @@ internal class GpsMonitor(
     }
 
     /**
-     * True once location updates are actually requested, so the reported phase can tell a retained
-     * manager apart from flowing fixes.
-     *
      * @parity /modules/vescape-core/ios/location/GpsMonitor.swift `updatesStarted`
      */
     private var armed = false
 
-    /** Mode the live listener is currently registered for. `null` while nothing is armed. */
     private var armedMode: GpsPowerMode? = null
     private var lastError: String? = null
 
@@ -85,8 +68,6 @@ internal class GpsMonitor(
         get() = armed
 
     /**
-     * What the hardware is currently being driven at, for Live State and diagnostics.
-     *
      * @parity /modules/vescape-core/ios/location/GpsMonitor.swift `mode`
      */
     val mode: GpsPowerMode
@@ -96,18 +77,12 @@ internal class GpsMonitor(
         get() = lastError
 
     /**
-     * Live State phase. `active` means updates are running, not merely that a manager is retained.
-     *
      * @parity /modules/vescape-core/ios/location/GpsMonitor.swift `phase`
      */
     val phase: GpsPhase
         get() = GpsPhase.resolve(retained = active, updatesStarted = armed, error = lastError)
 
     /**
-     * Make the hardware match [mode]. Idempotent and safe to call on every demand change:
-     * re-applying the armed mode does nothing, and a changed mode re-registers the listener at the
-     * new spacing without reporting a stop/start pair.
-     *
      * @parity /modules/vescape-core/ios/location/GpsMonitor.swift `apply`
      */
     fun apply(mode: GpsPowerMode): String? {
@@ -126,8 +101,6 @@ internal class GpsMonitor(
         }
 
         val lm = (context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager) ?: return null
-        // A re-registration for the same listener replaces the previous request per provider, but
-        // dropping it first keeps the two providers from briefly running at mixed spacings.
         val reconfiguring = armed
         if (reconfiguring) removeUpdates(lm)
         locationManager = lm
@@ -165,17 +138,12 @@ internal class GpsMonitor(
     fun stop(reason: String = "stop_requested") {
         val lm = locationManager
         if (lm == null) {
-            // A refusal leaves no manager but does leave an error. `apply(Off)` is routine now, so
-            // without this a denied-permission monitor would report `error` forever while iOS
-            // reports `idle` for the same state.
             // @parity /modules/vescape-core/ios/location/GpsMonitor.swift `stop`
             lastError = null
             armedMode = null
             return
         }
         stopStaleWatchdog()
-        // Reported before teardown so the provider-enabled flags describe the monitor that was
-        // actually running, not the nulled-out one.
         recordGpsEvent(
             "gps_updates_stopped",
             "Location updates stopped",
@@ -189,7 +157,6 @@ internal class GpsMonitor(
         locationManager = null
         armed = false
         armedMode = null
-        // A stopped monitor is idle, not failed.
         // @parity /modules/vescape-core/ios/location/GpsMonitor.swift `stop`
         lastError = null
         armedAtMs = null
@@ -211,8 +178,6 @@ internal class GpsMonitor(
         armed = true
         armedMode = mode
         if (reconfiguring) {
-            // Fixes keep flowing across a re-registration, so the armed span — and its fix
-            // bookkeeping — continues rather than restarting. Only the watchdog is re-judged.
             applyStaleWatchdog(mode)
             recordGpsEvent(
                 "gps_mode_changed",
@@ -229,10 +194,6 @@ internal class GpsMonitor(
     }
 
     /**
-     * Only `Ride` mode promises a steady fix stream, so only `Ride` can be meaningfully silent.
-     * `Map` mode gates delivery on [GPS_MAP_MIN_DISTANCE_M], where a rider standing at a bus stop
-     * legitimately produces nothing for minutes — watching it there would log noise, not a fault.
-     *
      * @parity /modules/vescape-core/ios/location/GpsMonitor.swift `applyStaleWatchdog`
      */
     private fun applyStaleWatchdog(mode: GpsPowerMode) {
@@ -244,13 +205,6 @@ internal class GpsMonitor(
         startStaleWatchdog()
     }
 
-    // MARK: - Diagnostics
-
-    /**
-     * Tracks the first fix of an armed span — `gps_session_summary` already reports
-     * time-to-first-fix, so this only feeds the staleness watchdog — and clears a standing
-     * staleness report, so a monitor that recovers leaves both the loss and the recovery in the log.
-     */
     private fun noteFix() {
         lastFixAtMs = nowMs()
         firstFixReported = true
@@ -269,10 +223,6 @@ internal class GpsMonitor(
         staleHandler.removeCallbacks(staleWatchdog)
     }
 
-    /**
-     * Armed but silent is the failure mode a rider actually notices — the map holds its last
-     * position and nothing in the log says why. Reported once per silent stretch.
-     */
     private fun checkStaleFix() {
         if (!armed || armedMode != GpsPowerMode.Ride || staleReported) return
         val since = lastFixAtMs ?: armedAtMs ?: return
@@ -286,11 +236,6 @@ internal class GpsMonitor(
         )
     }
 
-    /**
-     * Deliberately lean: `gps_session_summary` already carries the permission and fix-count picture
-     * per Board Session, so these breadcrumbs only add what an end-of-session aggregate cannot
-     * express — when the monitor stopped, why, and when it went silent mid-span.
-     */
     private fun recordGpsEvent(
         name: String,
         message: String,
@@ -299,10 +244,6 @@ internal class GpsMonitor(
         record(name, mapOf("message" to message, "operation" to "gps") + extra)
     }
 
-    /**
-     * The one event that must stand alone: a refusal means no session will ever start, so no
-     * `gps_session_summary` will report the permission state that caused it.
-     */
     private fun recordAuthorizationRefusal() {
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         recordGpsEvent(

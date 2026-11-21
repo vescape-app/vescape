@@ -16,7 +16,6 @@ import { HUD_ARC_EDGE_INSET } from '@/modules/board/constants/telemetry'
 interface DualGaugeProps {
   speedValue: SharedValue<number | null>
   dutyValue: SharedValue<number | null>
-  /** Highest speed / duty across the live window, marked on each arc. */
   speedPeak?: SharedValue<number | null>
   dutyPeak?: SharedValue<number | null>
   speedMax?: number
@@ -28,12 +27,9 @@ interface DualGaugeProps {
   compact?: boolean
   transparent?: boolean
   containerStyle?: StyleProp<ViewStyle>
-  /** Hangs off the bottom of the arcs — status that qualifies what the gauges are reading. */
   footer?: ReactNode
 }
 
-// Quarter-arc geometry. Left arc sweeps π → π/2, right arc sweeps 0 → π/2,
-// so the two mirror each other around the gap between them.
 export function DualGauge({
   speedValue,
   dutyValue,

@@ -18,16 +18,10 @@ import {
 export interface BatteryVisual {
   icon: Icon
   level: TelemetryLevel
-  /** Battery green when normal, warning/critical status color when low. */
   iconColor: ThemeColor
-  /** Value text tint when non-green (warning/critical); undefined when normal. */
   textColor?: ThemeColor
 }
 
-/**
- * Picks the Phosphor battery fill icon (0–4 bars) and color from a 0–1 SoC fraction using the
- * shared `TELEMETRY_THRESHOLDS.battery` tiers.
- */
 export function batteryVisual(soc: number | null | undefined): BatteryVisual {
   const level = batteryLevel(soc)
   const icon =

@@ -21,7 +21,6 @@ import {
   getPreviousRideSession,
 } from '@/screens/main/mainState'
 
-/** Favorites-tab and trim workflow kept outside the already-busy main screen coordinator. */
 export function useHistoryFavorites(
   selectedSession: HistorySession | null,
   blocks: TelemetryMinuteBucket[],

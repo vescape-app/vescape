@@ -6,7 +6,6 @@ import expo.modules.vescapecore.database.AlertRuleEntity
 
 internal class AlertCoordinator(
     private val feedback: () -> AlertFeedback,
-    /** Test feedback must not start a system vibration that cannot be cancelled per source. */
     private val vibrateSingles: Boolean = true,
 ) {
     // @parity /modules/vescape-core/ios/alerts/AlertCoordinator.swift
@@ -47,7 +46,6 @@ internal class AlertCoordinator(
         )
     }
 
-    /** Isolated alert tests call the same evaluator + feedback path with synthetic metric values. */
     fun evaluateValues(
         values: Map<String, Double>,
         batteryPercent: Double?,
@@ -85,18 +83,14 @@ internal class AlertCoordinator(
 
         val single = fired.filter { it.rangeDepth == null }
         if (single.isNotEmpty()) {
-            // Preset voice rules at Voice level Off play their severity sound only and leave the
-            // spoken slot to the rest.
             val mutedPresets = if (feedback().presetVoiceEnabled) emptySet() else single.filter {
                 it.ruleId.startsWith(PRESET_RULE_PREFIX) && parseVoiceAlertSound(it.spec) != null
             }.mapTo(HashSet()) { it.ruleId }
-            // One spoken announcement per evaluation: the most severe, which sorts first.
             single.firstOrNull {
                 it.thresholdMax == null && isSpokenSpec(it.spec) && it.ruleId !in mutedPresets
             }?.let { alert ->
                 val voice = parseVoiceAlertSound(alert.spec)
                 if (voice != null) {
-                    // A repeat speaks where the metric is now, not the threshold it crossed.
                     val spoken = if (alert.controlId == "battery") batteryPercent ?: alert.threshold else alert.value
                     feedback().speakVoice(
                         voiceAnnouncement(voice, alert.controlId, spoken, batteryPercent != null, distanceUnit, temperatureUnit),

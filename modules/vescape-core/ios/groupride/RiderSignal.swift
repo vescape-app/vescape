@@ -1,8 +1,5 @@
 import Foundation
 
-/// The two pinned slots a Rider holds in a Group Ride, independently: one Rider Signal and one Ride
-/// Hazard. The raw value is the relay's send message type (`<raw>-clear` clears) and roster field.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `PinSlot`
 internal enum PinSlot: String {
   case signal
@@ -16,17 +13,13 @@ internal enum PinSlot: String {
   }
 }
 
-/// A fixed kind of pin, by its relay wire name.
 internal protocol PinKind: Equatable {
   init?(rawValue: String)
   var rawValue: String { get }
-  /// Titles Ride Notices.
   var label: String { get }
   static var slot: PinSlot { get }
 }
 
-/// The fixed **Rider Signal** kinds, by their relay wire name.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
 /// @parity /modules/vescape-core/src/index.ts `RIDER_SIGNAL_KINDS`
 internal enum RiderSignalKind: String, CaseIterable, PinKind {
@@ -42,8 +35,6 @@ internal enum RiderSignalKind: String, CaseIterable, PinKind {
 
   static let slot = PinSlot.signal
 
-  /// Orders kinds when several cue at once: a serious injury over a minor injury or a board
-  /// problem, those over a heads-up (a rider down after a small crash, a wait, a break).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
   /// @parity /src/modules/group-ride/constants/riderSignalKinds.ts `RIDER_SIGNAL_KIND_INFO`
   var rank: Int {
@@ -54,7 +45,6 @@ internal enum RiderSignalKind: String, CaseIterable, PinKind {
     }
   }
 
-  /// A serious injury is critical, a minor injury or a problem a warning, a rider down, a wait, or a break information.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `severity`
   var severity: RideNoticeSeverity {
     switch rank {
@@ -80,8 +70,6 @@ internal enum RiderSignalKind: String, CaseIterable, PinKind {
   }
 }
 
-/// The fixed **Ride Hazard** kinds, by their relay wire name.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RideHazardKind`
 /// @parity /modules/vescape-core/src/index.ts `RIDE_HAZARD_KINDS`
 internal enum RideHazardKind: String, CaseIterable, PinKind {
@@ -103,9 +91,6 @@ internal enum RideHazardKind: String, CaseIterable, PinKind {
   }
 }
 
-/// A Rider's active pin as the relay stamps it. Times are relay epoch ms: compare them against the
-/// roster's relay `now`, never the phone clock.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderPin`
 /// @parity /modules/vescape-core/src/index.ts `GroupRidePin`
 internal struct RiderPin<Kind: PinKind>: Equatable {
@@ -119,7 +104,6 @@ internal struct RiderPin<Kind: PinKind>: Equatable {
     ["kind": kind.rawValue, "lat": lat, "lng": lng, "startedAt": startedAt, "expiresAt": expiresAt]
   }
 
-  /// Nil when absent, of an unknown kind, or missing a coordinate or time.
   static func parse(_ obj: [String: Any]?) -> RiderPin? {
     guard let obj,
       let kind = (obj["kind"] as? String).flatMap(Kind.init(rawValue:)),
@@ -135,11 +119,6 @@ internal struct RiderPin<Kind: PinKind>: Equatable {
 internal typealias RiderSignal = RiderPin<RiderSignalKind>
 internal typealias RideHazard = RiderPin<RideHazardKind>
 
-/// What the device knows when the Rider asks to send a signal. `fix` is the latest GPS fix no older
-/// than `RiderSignals.fixMaxAgeMs`; `insidePrivacyZone` is also true while zones have not loaded.
-/// A send ignores `insidePrivacyZone`: it is an explicit opt-in to share that spot (ADR-0020). The
-/// flag only drives the picker's location warning.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalContext`
 internal struct RiderSignalContext {
   let fix: (lat: Double, lng: Double)?
@@ -158,7 +137,6 @@ internal enum RiderPinIntent: Equatable {
     }
   }
 
-  /// The relay frame; `prefix` `public-` makes it the public ride's (`public-signal`, ...).
   func frame(prefix: String = "") -> [String: Any] {
     switch self {
     case let .send(slot, kind, lat, lng): ["type": prefix + slot.rawValue, "kind": kind, "lat": lat, "lng": lng]
@@ -169,11 +147,8 @@ internal enum RiderPinIntent: Equatable {
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignals`
 internal enum RiderSignals {
-  /// A send needs a GPS fix at most this old.
   static let fixMaxAgeMs: Int64 = 30_000
 
-  /// The intent for a send request, or nil without a recent fix. Goes out inside a Privacy Zone and
-  /// while zones are loading; presence keeps its own gates.
   static func sendIntent<Kind: PinKind>(_ kind: Kind, _ context: RiderSignalContext) -> RiderPinIntent? {
     guard let fix = context.fix else { return nil }
     return .send(slot: Kind.slot, kind: kind.rawValue, lat: fix.lat, lng: fix.lng)

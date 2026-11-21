@@ -6,7 +6,6 @@ import androidx.room.deferredTransaction
 import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeDatabase
 
-/** Android lifecycle adapter around the host-testable production Profile stats query. */
 class ProfileStatsRepository private constructor(private val context: Context) {
   private val database = VescapeDatabase.get(context)
 

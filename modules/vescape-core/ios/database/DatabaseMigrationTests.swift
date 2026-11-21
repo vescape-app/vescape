@@ -2,13 +2,6 @@ import GRDB
 import XCTest
 @testable import VescapeCore
 
-/// Runs the real `VescapeDatabase` migrator against an in-memory database. This is the guard every
-/// future migration inherits: add a case here rather than shipping a schema change no Swift test has
-/// executed.
-///
-/// `v27_alert_board_id` is the current last migration and the only one with data consequences —
-/// Alert Rules become board-owned, pre-release global rules are dropped rather than reassigned, and
-/// three former global settings keys are deleted from `app_settings`.
 final class DatabaseMigrationTests: XCTestCase {
   private var queue: DatabaseQueue!
 
@@ -49,9 +42,6 @@ final class DatabaseMigrationTests: XCTestCase {
     try queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM alerts") }
   }
 
-  /// The `v1` baseline already ships the board-owned `alerts` table, so a fresh install never takes
-  /// `v27`'s rebuild branch. Recreate the pre-`v27` global shape by hand to exercise it, the way an
-  /// install that predates the baseline reaches the migration.
   private func replaceAlertsWithLegacyGlobalTable() throws {
     try queue.write { db in
       try db.execute(sql: "DROP TABLE alerts")
@@ -95,12 +85,8 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertFalse(exportedAndroidDatabaseVersions.contains(39))
   }
 
-  /// The fault migration is the only one that rewrites telemetry tables, so assert both halves:
-  /// the fault tables arrive and the legacy per-frame fault storage is gone without losing frames.
   func testFaultMigrationDropsLegacyTelemetryFaultStorageAndKeepsFrames() throws {
     try migrate(upTo: "v36_motor_config_values")
-    // iOS is greenfield and never created the fault columns, so the rebuild branch only runs for a
-    // restored Room database. Add them by hand to arrive at the migration the way that backup does.
     try queue.write { db in
       try db.execute(sql: """
         ALTER TABLE telemetry_frames ADD COLUMN fault_code INTEGER;
@@ -124,8 +110,6 @@ final class DatabaseMigrationTests: XCTestCase {
     }
   }
 
-  /// Tables the migrator delegates to a store's `createTables` are the easy ones to leave out of a
-  /// fresh install, so assert the schema a clean upgrade actually lands on.
   func testFreshDatabaseHasEveryStoreTable() throws {
     try migrate()
 
@@ -140,8 +124,6 @@ final class DatabaseMigrationTests: XCTestCase {
     }
   }
 
-  /// Alert Rules are owned by one Board: `board_id` is part of the primary key so preset ids repeat
-  /// per board instead of colliding. Incremental sync keys off this shape.
   func testAlertsAreBoardOwnedAfterEveryMigration() throws {
     try migrate()
 
@@ -150,8 +132,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(primaryKey, ["board_id", "id"])
   }
 
-  /// The beep count moves into the sound string and its column goes (#578); speech, geiger, and
-  /// rule identity survive the table rebuild.
   func testAlertSoundCountMigrationFoldsBeepCountIntoTheSoundString() throws {
     try migrate(upTo: "v49_bucket_route_preview")
     try queue.write { db in
@@ -186,8 +166,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(primaryKey, ["board_id", "id"])
   }
 
-  /// Each Board's Alert Presets become one `preset:<metric>` row (#591): the old level (missing or
-  /// custom is Off), geiger choice, and match setting; copied preset rows and the settings go.
   func testPresetRowsMigrationFoldsSettingsIntoOneRowPerMetric() throws {
     try migrate(upTo: "v50_alert_sound_count")
     try queue.write { db in
@@ -231,10 +209,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertTrue(keys.isDisjoint(with: ["alertPreset", "alertPresetSound", "matchBoardConfig"]))
   }
 
-  /// v51 folds each live Board's own settings and old preset rows: nothing leaks between Boards, a
-  /// tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose old preset
-  /// points were all disabled becomes Off while a partly disabled ladder keeps its level.
-  /// A plain Normal level is the app default and writes no row; an unset level stays an explicit Off.
   /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseMigrationMatrixHostTest.kt `presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
   func testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() throws {
     try migrate(upTo: "v50_alert_sound_count")
@@ -286,7 +260,6 @@ final class DatabaseMigrationTests: XCTestCase {
       "preset:motor-temp": "preset(off)", "preset:controller-temp": "preset(off)", "preset:battery": "preset(off)",
     ])
     XCTAssertEqual(try specs("board-2"), [
-      // Normal with no options is the app default: no row.
       "preset:duty": "preset(off):geiger=mid,match=on",
       "preset:motor-temp": "preset(off)", "preset:controller-temp": "preset(off)", "preset:battery": "preset(off)",
     ])
@@ -308,7 +281,6 @@ final class DatabaseMigrationTests: XCTestCase {
     try migrate()
 
     XCTAssertEqual(try columnNames("alerts").first, "board_id")
-    // Pre-release decision: global rules are dropped, not reassigned to an arbitrary board.
     XCTAssertEqual(try alertCount(), 0)
   }
 
@@ -324,11 +296,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(keys, ["distanceUnit"])
   }
 
-  /// A rider whose database already has the board-owned table must keep their rules: the migration
-  /// must not rebuild the table a second time.
-  // MARK: - Restoring a database GRDB has never migrated
-
-  /// An Android backup carries the schema but not GRDB's ledger. Drop it to reproduce that.
   private func dropMigrationLedger() throws {
     try queue.write { db in try db.execute(sql: "DROP TABLE grdb_migrations") }
   }
@@ -343,8 +310,6 @@ final class DatabaseMigrationTests: XCTestCase {
     try queue.read { db in try VescapeDatabase.migrator.appliedIdentifiers(db) }
   }
 
-  /// Restoring an Android backup used to fail outright: no ledger meant `v1` replayed, and
-  /// `CREATE TABLE boards` on a database that already has `boards` rolled the whole restore back.
   func testCurrentBackupIsStampedRatherThanReplayed() throws {
     try migrate()
     try dropMigrationLedger()
@@ -355,8 +320,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(try applied(), Set(VescapeDatabase.migrator.migrations))
   }
 
-  /// A backup from an older build must still get the migrations it is missing — stamping is a claim
-  /// about what the incoming schema already has, not a way to skip work.
   func testOlderBackupRunsOnlyTheMigrationsItIsMissing() throws {
     try migrate(upTo: "v25_board_warnings")
     try dropMigrationLedger()
@@ -370,8 +333,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(try applied(), Set(VescapeDatabase.migrator.migrations))
   }
 
-  /// iOS kept a Board's proven transport as a `boards` column until v54; Android always filed it as
-  /// a `board_settings` row (#612). The move keeps the value and leaves `boards` in the shared shape.
   func testSharedSchemaMigrationMovesTransportIntoBoardSettings() throws {
     try migrate(upTo: "v53_weather_observations")
     try queue.write { db in
@@ -391,7 +352,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(names, ["Thor301", "Unlinked"])
   }
 
-  /// v54 rebuilds `alerts` and `tune_profiles`; every column keeps its non-default value.
   func testSharedSchemaMigrationKeepsEveryAlertAndTuneColumn() throws {
     let alert = "board_id,id,control_id,threshold,threshold_max,threshold_kind,config_field_id,threshold_offset,threshold_max_offset,enabled,spec,created_at,repeat_every_seconds"
     let tune = "id,board_id,refloat_base_version,name,icon,color,fields_json,created_at,updated_at"
@@ -429,10 +389,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(try alertCount(), 1)
   }
 
-  // MARK: - Telemetry keys on the Board id (#280, ADR 0028)
-
-  /// The last migration before `v42_telemetry_board_id`. Stopping here leaves both telemetry tables
-  /// in their `device_id` shape.
   private static let beforeBoardId = "v41_board_deleted_at"
 
   private func insertBoard(id: String, name: String, bleId: String?) throws {
@@ -498,7 +454,6 @@ final class DatabaseMigrationTests: XCTestCase {
     }
   }
 
-  /// Telemetry that still resolves keeps its Board; the retired columns go with the rebuild.
   func testTelemetryBackfillsBoardIdFromTheLinkedBoardAndDropsTheOldColumns() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertBoard(id: "board-1", name: "ADV", bleId: "ble-a")
@@ -516,12 +471,6 @@ final class DatabaseMigrationTests: XCTestCase {
     }
   }
 
-  /// Two Boards may claim one `ble_id` — the same peripheral linked twice, which the app supports
-  /// and a Rider produces by pairing a board they already own a second time. Telemetry from before
-  /// this migration recorded only the identifier, so which of them was connected is unknowable and
-  /// the pick is arbitrary. What is not arbitrary is that frames and buckets make the *same* pick:
-  /// split across the two Boards, History lists the ride from its buckets, finds no frames under
-  /// that Board, and renders stats over an empty route.
   func testADuplicatedIdentifierSendsFramesAndBucketsToTheSameBoard() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertBoard(id: "board-b", name: "Jeżdżąca Martwica", bleId: "ble-dup")
@@ -537,10 +486,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertNotNil(try board("board-b"), "the losing claimant is still a Board the Rider owns")
   }
 
-  /// ADR-0028 left Markers, Diagnostic Events and Metric Exclusion Ranges on `device_id` because
-  /// "that is what crosses the wire for them" — circular, and it kept a second copy of the defect
-  /// the Board move existed to remove. All three resolve through the same one decision, so a
-  /// duplicated identifier cannot scatter a ride's Markers across the Boards claiming it.
   func testMarkersEventsAndRangesMoveOntoTheSameBoardAsTheirTelemetry() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertBoard(id: "board-b", name: "Jeżdżąca Martwica", bleId: "ble-dup")
@@ -584,8 +529,6 @@ final class DatabaseMigrationTests: XCTestCase {
     }
   }
 
-  /// A Marker can be written with no Board connected, so its column stays nullable. A Range has no
-  /// meaning without a Board, so its NOT NULL column takes the sentinel a bucket takes.
   func testAMarkerWithNoIdentifierStaysUnattributedAndARangeTakesTheSentinel() throws {
     try migrate(upTo: Self.beforeBoardId)
     try queue.write { db in
@@ -618,8 +561,6 @@ final class DatabaseMigrationTests: XCTestCase {
     )
   }
 
-  /// A frame that never carried an identifier stays unattributed rather than joining a random
-  /// Board; the bucket column is part of the primary key, so it takes the sentinel instead.
   func testTelemetryWithNoIdentifierStaysUnattributed() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertLegacyFrame(deviceId: nil, deviceName: nil, capturedAtMs: 60_000)
@@ -632,12 +573,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(try queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM boards") }, 0)
   }
 
-  // MARK: Orphan minting
-
-  /// The regression this exists to prevent: telemetry from a Board hard-deleted before tombstones
-  /// existed resolves to nothing, and without a minted Board it loses both its identity and its
-  /// label. It must end up pointing at a Board that exists, is tombstoned, and keeps the name the
-  /// history itself recorded.
   func testUnresolvedIdentifierMintsATombstonedBoardCarryingTheHistoricalName() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertLegacyFrame(deviceId: "ble-gone", deviceName: "Old Board", capturedAtMs: 60_000)
@@ -653,8 +588,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertNil(minted["ble_id"] as String?, "a minted Board carries a Board Link")
   }
 
-  /// A minted Board is invisible to the Rider: `getBoards()` filters tombstones (ADR 0027), so the
-  /// only place it surfaces is the history label it exists to provide.
   func testAMintedBoardNeverAppearsInTheRidersBoardList() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertBoard(id: "board-1", name: "ADV", bleId: "ble-a")
@@ -668,8 +601,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(live, ["board-1"])
   }
 
-  /// Minting is derived from the identifier, not random, so a database that somehow reaches the
-  /// migration twice does not accumulate a second Board per ride.
   func testMintingTheSameIdentifierTwiceIsANoOp() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertLegacyFrame(deviceId: "ble-gone", deviceName: "Old Board", capturedAtMs: 60_000)
@@ -680,9 +611,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(try queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM boards") }, 1)
   }
 
-  // MARK: Bucket rebuild
-
-  /// The primary key move is a table rebuild, and the retired columns go with it.
   func testTheBucketRebuildMovesThePrimaryKey() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertBoard(id: "board-1", name: "ADV", bleId: "ble-a")
@@ -692,7 +620,6 @@ final class DatabaseMigrationTests: XCTestCase {
 
     XCTAssertEqual(
       try queue.read { db in try db.primaryKey("telemetry_minute_buckets").columns },
-      // v43 added `recording_id` to the key and v52 took it out again (ADR 0041).
       ["bucket_start_ms", "board_id"]
     )
     let columns = try columnNames("telemetry_minute_buckets")
@@ -700,11 +627,8 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertFalse(columns.contains("device_name"))
   }
 
-  // MARK: Ride Track (#448, ADR 0038)
-
   private static let beforeRideTrack = "v42_telemetry_board_id"
 
-  /// A frame the way it looked while position was still seven columns on the telemetry row.
   private func insertFrameWithGps(
     boardId: String?,
     capturedAtMs: Int64,
@@ -735,7 +659,6 @@ final class DatabaseMigrationTests: XCTestCase {
     }
   }
 
-  /// A ride with sparse positions keeps exactly the fixes it had — no more, and none invented.
   func testSparsePositionsMoveIntoTheRideTrackOnTheGpsClock() throws {
     try migrate(upTo: Self.beforeRideTrack)
     try insertFrameWithGps(boardId: "board-1", capturedAtMs: 60_000, latitudeE7: nil, longitudeE7: nil)
@@ -753,7 +676,6 @@ final class DatabaseMigrationTests: XCTestCase {
     let rows = try trackRows()
     XCTAssertEqual(rows.count, 1)
     XCTAssertEqual(rows[0]["latitude_e7"] as Int64, 520_000_000)
-    // The GPS clock wins over the frame clock the fix was merely stamped onto.
     XCTAssertEqual(rows[0]["fix_at_ms"] as Int64, 60_800)
     XCTAssertEqual(rows[0]["board_id"] as String?, "board-1")
     XCTAssertEqual(rows[0]["accuracy_cm"] as Int?, 500)
@@ -761,7 +683,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(rows[0]["altitude_cm"] as Int?, 12_000)
   }
 
-  /// A ride recorded without GPS migrates to an empty track, and keeps its telemetry.
   func testARideWithNoPositionsMigratesToAnEmptyTrack() throws {
     try migrate(upTo: Self.beforeRideTrack)
     try insertFrameWithGps(boardId: "board-1", capturedAtMs: 60_000, latitudeE7: nil, longitudeE7: nil)
@@ -775,8 +696,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(speed, 1234)
   }
 
-  /// A fix with no timestamp of its own falls back to the frame's, and a poor fix is kept: the
-  /// precision rule moved to read time, so the migration must not filter on accuracy.
   func testFixesWithoutTimestampsOrGoodAccuracyAreStillMigrated() throws {
     try migrate(upTo: Self.beforeRideTrack)
     try insertFrameWithGps(
@@ -796,8 +715,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(rows[0]["accuracy_cm"] as Int?, 15_000)
   }
 
-  /// Board attribution comes from the column the board-id migration already resolved, so a fix on a
-  /// re-linked or deleted Board keeps whatever that migration decided, through both upgrade paths.
   func testBoardAttributionSurvivesTheOlderUpgradePath() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertLegacyFrame(deviceId: "ble-gone", deviceName: "Old Board", capturedAtMs: 60_000)
@@ -817,7 +734,6 @@ final class DatabaseMigrationTests: XCTestCase {
     XCTAssertEqual(rows[0]["board_id"] as String?, "orphan-ble-gone")
   }
 
-  /// The seven raw GPS columns go, and the telemetry that shared the row stays.
   func testFramesLoseTheirGpsColumnsAndKeepTheirTelemetry() throws {
     try migrate(upTo: Self.beforeRideTrack)
     try insertFrameWithGps(
@@ -844,8 +760,6 @@ final class DatabaseMigrationTests: XCTestCase {
     )
   }
 
-  /// v52 drops durable recording identity (ADR 0041): two recordings of one Board in one minute
-  /// fold into one bucket, and legacy fixes without accuracy keep reading as precise.
   /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseMigrationMatrixHostTest.kt `dropRideRecordingsFoldsSharedMinutes`
   func testDropRideRecordingsFoldsSharedMinutes() throws {
     try migrate(upTo: "v51_preset_rows")

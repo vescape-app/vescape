@@ -8,17 +8,11 @@ import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
 internal const val TELEMETRY_BUCKET_SIZE_MS = 60_000L
 
 /**
- * Stand-in Board id for buckets whose samples match no saved Board. `board_id` is part of the
- * bucket primary key, so unattributed rows need a value rather than null.
- *
  * @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `UNKNOWN_TELEMETRY_BOARD_ID`
  */
 internal const val UNKNOWN_TELEMETRY_BOARD_NAME = "VESC Board"
 
 /**
- * Id prefix for the tombstoned Boards migration 41→42 mints for telemetry whose BLE identifier
- * resolves to nothing. Derived from the identifier rather than random so the mint is idempotent.
- *
  * @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `ORPHAN_BOARD_ID_PREFIX`
  */
 internal const val ORPHAN_BOARD_ID_PREFIX = "orphan-"
@@ -26,7 +20,6 @@ private const val MAX_ENERGY_SAMPLE_GAP_MS = 5_000L
 
 internal data class BucketTelemetryPoint(
   val capturedAtMs: Long,
-  /** Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028). */
   val boardId: String?,
   val speedCentiKmh: Int,
   val batteryVoltageMv: Int,
@@ -45,7 +38,6 @@ internal data class BucketLocationPoint(
   val capturedAtMs: Long,
   val boardId: String?,
   val precise: Boolean,
-  /** GPS movement evidence: precise, with a reported speed at or above the rider's threshold. */
   val moving: Boolean = false,
   val distanceFromPreviousCm: Long?,
   val gpsSpeedCentiMps: Int?,
@@ -70,8 +62,6 @@ internal fun buildTelemetryBuckets(
     val bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
     val boardId = point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID
     val key = bucketStart to boardId
-    // A minute can hold fixes and no frame at all — a board dropout is exactly when the Ride Track
-    // matters most — so the track creates its own bucket rather than being discarded (ADR 0038).
     val bucket = buckets.getOrPut(key) { MutableBucket(bucketStart, boardId) }
     bucket.addLocation(point)
   }
@@ -157,9 +147,6 @@ private class MutableBucket(
     if (point.precise) preciseGpsPointCount++
     firstSampleAtMs = minOf(firstSampleAtMs, point.capturedAtMs)
     lastSampleAtMs = maxOf(lastSampleAtMs, point.capturedAtMs)
-    // GPS movement extends the Moving Window through a stretch with no telemetry at all, which is
-    // what keeps the seek timeline and Time honest after a board drops mid-ride (ADR 0017). It
-    // stays ends-only trimming: this widens the window, it never counts a Telemetry Sample.
     if (point.moving) {
       firstMovingAtMs = minOf(firstMovingAtMs ?: point.capturedAtMs, point.capturedAtMs)
       lastMovingAtMs = maxOf(lastMovingAtMs ?: point.capturedAtMs, point.capturedAtMs)

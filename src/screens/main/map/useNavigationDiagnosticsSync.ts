@@ -29,8 +29,6 @@ export function useNavigationDiagnosticsSync({
 }) {
   const updateNavigationDiagnostics = useNavigationDiagnosticsStore((state) => state.update)
 
-  // Synced per fix; the camera heading is sampled then, not tracked — re-rendering the map for it
-  // cost a render per camera idle.
   useEffect(() => {
     const cameraHeadingDeg = mapPose.get().heading
     updateNavigationDiagnostics({

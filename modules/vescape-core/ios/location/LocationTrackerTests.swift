@@ -48,7 +48,6 @@ final class LocationTrackerTests: XCTestCase {
       NSDictionary(dictionary: approximate.map.mapValues { $0 ?? NSNull() }),
       NSDictionary(dictionary: fix(101_000, precise: false, bearing: 180).map.mapValues { $0 ?? NSNull() })
     )
-    // An approximate bearing must not change the retained precise course.
     let next = tracker.onLocationUpdated(fix(102_000, bearing: nil))
     XCTAssertEqual(next.courseDeg, 90)
     XCTAssertEqual(next.courseSourceTimestamp, 100_000)
@@ -70,7 +69,6 @@ final class LocationTrackerTests: XCTestCase {
     tracker.pruneRecentLocations(now: 160_002)
     XCTAssertEqual(tracker.recentLocations.count, 1)
     XCTAssertEqual(tracker.recentLocations.first?["timestamp"] as? Int64, 160_001)
-    // Pruning the trail does not discard the last known fix.
     tracker.pruneRecentLocations(now: 200_000)
     XCTAssertTrue(tracker.recentLocations.isEmpty)
     XCTAssertEqual(tracker.latestLocation?.timestamp, 160_001)
@@ -87,7 +85,6 @@ final class LocationTrackerTests: XCTestCase {
     XCTAssertNil(tracker.latestPreciseLocation)
     XCTAssertNil(tracker.riderPosition)
     XCTAssertTrue(tracker.recentLocations.isEmpty)
-    // Far enough to derive a bearing from the replay's last coordinate if reset left it behind.
     let live = tracker.onLocationUpdated(fix(101_000, bearing: nil, latitude: 52.0001))
     XCTAssertNil(live.courseDeg)
     XCTAssertNil(live.courseSourceTimestamp)

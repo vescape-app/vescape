@@ -13,19 +13,8 @@ import kotlinx.coroutines.launch
 
 private const val WATCH_TELEMETRY_PATH = "/telemetry"
 
-/** How long a connected-node lookup is trusted before the next frame triggers a refresh. */
 private const val NODE_CACHE_TTL_MS = 30_000L
 
-/**
- * Phone -> Wear OS Mirror transport (ADR-0019). Fire-and-forget
- * [com.google.android.gms.wearable.MessageClient] send of an already-encoded Watch Frame to every
- * connected node. Lives native (in vescape-core, beside the telemetry truth) so it keeps pushing while
- * JS is backgrounded mid-ride. The frame is built and throttled by [WatchTick]; this only ships bytes.
- *
- * Delivery problems [record] one diagnostic event per issue streak (not per frame — frames flow at
- * ~2 Hz), plus one recovery event, so silent failures like a package/certificate mismatch between
- * phone and watch builds are readable from the in-app event log in the field.
- */
 internal class WatchTelemetryPusher(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -37,11 +26,6 @@ internal class WatchTelemetryPusher(
     @Volatile
     private var activeIssue: String? = null
 
-    /**
-     * Cached target node ids. Looking these up is a blocking Play-services IPC, and at frame cadence
-     * that costs more than the send it precedes — so it is refreshed on a slow TTL and invalidated
-     * whenever a send fails, which is the event that actually means the node set moved.
-     */
     @Volatile
     private var nodeIds: List<String> = emptyList()
 
@@ -53,8 +37,6 @@ internal class WatchTelemetryPusher(
     fun pushFrame(frame: ByteArray) = send(WATCH_TELEMETRY_PATH, frame)
 
     /**
-     * A Group Ride Frame on its own path (ADR-0039), sharing this pusher's node cache.
-     *
      * @parity /modules/vescape-core/ios/watch/WatchTelemetryPusher.swift `pushGroupRideFrame`
      */
     fun pushGroupRideFrame(frame: ByteArray) = send(WATCH_GROUP_RIDE_PATH, frame)
@@ -64,12 +46,9 @@ internal class WatchTelemetryPusher(
 
     private fun send(path: String, frame: ByteArray) {
         val targets = nodeIds
-        // On the timestamp, never on emptiness: "no nodes" is a valid cached answer, and re-asking
-        // for it every frame would restore the very 4 Hz blocking lookup the cache exists to remove.
         if (nodeIdsAtMs == 0L || SystemClock.elapsedRealtime() - nodeIdsAtMs > NODE_CACHE_TTL_MS) {
             refreshNodes()
         }
-        // A frame is worthless once stale; the next tick ships against the refreshed cache.
         if (targets.isEmpty()) return
         for (nodeId in targets) {
             messageClient.sendMessage(nodeId, path, frame)
@@ -97,8 +76,6 @@ internal class WatchTelemetryPusher(
                 if (nodes != null) {
                     nodeIds = nodes.map { it.id }
                 }
-                // Back off failed IPC probes too. Keep the last trusted nodes, but do not turn every
-                // 2 Hz telemetry frame into another blocking Play-services query.
                 nodeIdsAtMs = SystemClock.elapsedRealtime()
             } finally {
                 refreshing.set(false)

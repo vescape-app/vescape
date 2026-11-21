@@ -1,15 +1,5 @@
 import Foundation
 
-/// Keeps the wrist's copy of the route in step with the Navigation the rider is following.
-///
-/// Process scoped on purpose. A route is Navigation truth, not session truth: it is pushed the
-/// moment a Navigation is published — cold-start restore included — and cleared when it ends,
-/// whether or not a board is connected. The per-fix half of the same picture (where the rider is on
-/// that route) rides the Watch Frame lanes instead, measured from `origin`.
-///
-/// Phone side only. The polyline the wrist actually draws is `WatchRoute.swift`, which is compiled
-/// into both targets; this type never leaves the phone.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRouteMirror.kt `WatchRouteMirror`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRoutePusher.kt `WatchRoutePusher`
 /// @platform-diff Android needs a pusher with a mutex and a generation counter because each
@@ -19,20 +9,12 @@ import Foundation
 ///   rule, which is not about ordering: the origin moves only once the route it belongs to is known
 ///   to be on the wrist.
 final class WatchRouteMirror {
-  /// Process singleton — the route must outlive JS runtime reloads, exactly as the Navigation does.
   static let shared = WatchRouteMirror()
 
   private let lock = NSLock()
 
-  /// Origin of the route the wrist actually holds — the frame's rider lanes are offsets from it.
-  ///
-  /// Committed only once its push has landed. Anything looser lets the two halves of the wrist
-  /// picture disagree: an origin pointing at a route the wrist does not have places the rider off
-  /// the drawn line, and that state lasts until the next route change.
   private var committedOrigin: WatchGeoPoint?
 
-  /// Origin of the route the phone last *tried* to push. Promoted to `committedOrigin` by
-  /// `channelDelivered`, which is the cold state saying the payload is on the wrist.
   private var desiredOrigin: WatchGeoPoint?
 
   private var push: (([String: Any]) -> Void)?
@@ -50,31 +32,15 @@ final class WatchRouteMirror {
 
   var origin: WatchGeoPoint? { lock.withLock { committedOrigin } }
 
-  /// The route the phone last published, as the street-map plan walks it; nil without one. Not
-  /// waiting for the wrist to hold it: tiles ahead are useful before the polyline lands.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRouteMirror.kt `mapRoute`
   var mapRoute: WatchMapRoute? { lock.withLock { publishedRoute } }
 
-  /// Settled phone-map horizontal viewport span, carried on the next live Watch Frame.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRouteMirror.kt `viewportSpanM`
   var viewportSpanM: Double? {
     get { lock.withLock { spanM } }
     set { lock.withLock { spanM = newValue } }
   }
 
-  /// Attach to `controller` so every published path lands on the wrist through `push`.
-  ///
-  /// The current path is pushed straight away rather than waited for. Two reasons, and both are the
-  /// clear-vs-restore trap: `restore()` may already have published before this ran, so waiting would
-  /// leave a restored route off the wrist until the rider touched it; and with no route at all the
-  /// immediate push is the *explicit clear*, which is what stops a reconnecting wrist from
-  /// restoring a route the rider cleared in an earlier run of this process' predecessor.
-  ///
-  /// Idempotent: attaching again over a live mirror keeps the committed origin rather than
-  /// orphaning the route already on the wrist.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRouteMirror.kt `attach`
   func attach(to controller: NavigationController, push: @escaping ([String: Any]) -> Void) {
     lock.withLock { self.push = push }
@@ -82,13 +48,11 @@ final class WatchRouteMirror {
     publish(controller.currentPath)
   }
 
-  /// Release only the mirror-owned subscription; route identity and committed origin survive.
   func detach(from controller: NavigationController) {
     controller.onPathChange = nil
     lock.withLock { push = nil }
   }
 
-  /// A cold-state channel landed on the wrist. The route channel is the one that moves an origin.
   func channelDelivered(_ channel: String) {
     guard channel == watchRouteChannel else { return }
     lock.withLock {
@@ -106,8 +70,6 @@ final class WatchRouteMirror {
     let push: (([String: Any]) -> Void)? = lock.withLock {
       routeId = (payload[WatchRouteKey.points] as? Data).map(WatchRouteStatusCodec.routeId) ?? 0
       transferFailed = false
-      // The clear carries a nil origin, so a route that goes away takes the rider lanes with it
-      // rather than leaving them measured against a polyline nothing is drawing.
       desiredOrigin = WatchRouteCodec.origin(points: points)
       publishedRoute = mapRoute
       return self.push

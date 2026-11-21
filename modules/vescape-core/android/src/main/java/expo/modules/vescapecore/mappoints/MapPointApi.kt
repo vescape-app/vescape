@@ -11,10 +11,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Map Points live on the server (`docs/adr/0009-map-points-are-server-owned.md` in the server
- * repo). This is the only place the app talks to that API: reads are public and gain `ownedByMe` /
- * `myReaction` when a Device Token exists, writes require one.
- *
  * @parity /modules/vescape-core/ios/mappoints/MapPointApi.swift
  * @parity /modules/vescape-core/src/index.ts `MapPoint`
  */
@@ -59,7 +55,6 @@ class MapPointApi(private val api: VescapeApi) {
     unwrap(api.request(HttpMethod.DELETE, "$PATH/$id", auth = AuthMode.Required) { })
   }
 
-  /** `null` removes the reaction; the server keeps at most one per Account and Map Point. */
   suspend fun setReaction(id: String, reaction: String?) {
     val path = "$PATH/$id/reaction"
     val result = if (reaction == null) {
@@ -75,7 +70,6 @@ class MapPointApi(private val api: VescapeApi) {
     unwrap(result)
   }
 
-  /** Only the fields the caller set are sent: a patch without `name` must not clear the name. */
   private fun payload(values: Map<String, Any?>): JSONObject {
     val body = JSONObject()
     WRITABLE_FIELDS.filter { values.containsKey(it) }.forEach { field ->
@@ -117,7 +111,6 @@ class MapPointApi(private val api: VescapeApi) {
     private val WRITABLE_FIELDS = listOf("category", "latitude", "longitude", "name", "description")
 
     /**
-     * Failure codes crossing the bridge.
      * @parity /modules/vescape-core/ios/mappoints/MapPointApi.swift `MapPointApiError`
      * @parity /modules/vescape-core/src/index.ts `MapPointErrorCode`
      */
@@ -140,5 +133,4 @@ class MapPointApi(private val api: VescapeApi) {
   }
 }
 
-/** Carries the code JS branches on; Expo turns it into a rejected promise with that code. */
 class MapPointApiException(code: String, message: String) : CodedException(code, message, null)

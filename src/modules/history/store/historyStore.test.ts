@@ -231,7 +231,6 @@ test('selects ride immediately while loading its full route', async () => {
     id: 'current',
     startAtMs: 5_000_000,
     endAtMs: 5_060_000,
-    // Known geography, so selecting it takes one range call and no GPS preview.
     firstLatitude: 52,
     firstLongitude: 18,
   })
@@ -274,8 +273,6 @@ test('selects ride immediately while loading its full route', async () => {
   expect(useHistoryStore.getState().selectedSession?.id).toBe(
     useHistoryStore.getState().sessions[1].id,
   )
-  // Samples never outlive the ride they belong to: the charts would otherwise rebuild the whole
-  // previous dataset against the new ride's bounds while the real samples are still loading.
   expect(useHistoryStore.getState().sessionSamples).toEqual([])
   await Promise.resolve()
   expect(getHistoryRange).toHaveBeenLastCalledWith({

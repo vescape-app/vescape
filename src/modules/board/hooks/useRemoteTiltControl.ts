@@ -15,15 +15,8 @@ import {
   type GroundClearanceTiltState,
 } from 'vescape-core'
 
-/** No Accessory bound, nothing driving. What an unbound Board looks like. */
 const UNBOUND: GroundClearanceTiltState = { bound: false, driving: false, release: null }
 
-/**
- * How often the binding's verdict is re-read.
- *
- * Slower than the pad's own 100ms tilt poll on purpose: this answers "whose pad is this", which
- * changes when an Accessory connects or the rider finishes a calibration, not every frame.
- */
 const SENSOR_POLL_MS = 250
 
 export function useRemoteTiltControl() {
@@ -31,9 +24,6 @@ export function useRemoteTiltControl() {
   const linkIntegrity = useBleStore((state) => state.linkIntegrity)
   const [sensorTilt, setSensorTilt] = useState<GroundClearanceTiltState>(UNBOUND)
 
-  // Native arbitrates and refuses manual commands on its own; this only decides what the pad looks
-  // like. A failed read therefore keeps the last verdict rather than falling back to "yours" — the
-  // safe direction for a rider is a pad that stays read-only, not one that quietly comes back.
   useEffect(() => {
     if (!boardConnected) {
       setSensorTilt(UNBOUND)
@@ -52,7 +42,7 @@ export function useRemoteTiltControl() {
             : next,
         )
       } catch {
-        // Native still refuses what it refuses; only the caption is stale.
+        // intentional-suppression: Native still refuses what it refuses; only the caption is stale.
       }
     }
     void read()
@@ -83,7 +73,6 @@ export function useRemoteTiltControl() {
   return {
     boardConnected,
     canCommand,
-    /** What the ground-clearance binding is doing; `bound` makes the pad a read-only indicator. */
     sensorTilt,
     blockedMessage:
       boardConnected && !canCommand && !sensorTilt.bound

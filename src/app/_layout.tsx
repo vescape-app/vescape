@@ -6,8 +6,6 @@ import { ClerkProvider } from '@clerk/expo'
 import { tokenCache } from '@clerk/expo/token-cache'
 import { resourceCache } from '@clerk/expo/resource-cache'
 import { useFonts } from 'expo-font'
-// App navigation chrome is intentionally JS-rendered. Native iOS headers apply system visual
-// treatments (including Liquid Glass) that conflict with Vescape's cross-platform header design.
 import { Stack } from 'expo-router/js-stack'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
@@ -60,13 +58,8 @@ function requireClerkPublishableKey(): string {
   return key
 }
 
-// Keep the native splash visible until Raleway loads so there is no font-flash
-// on cold start. `expo-router` already prevents auto-hide; this makes the gate
-// explicit and ties `hideAsync()` to font readiness.
 void SplashScreen.preventAutoHideAsync()
 
-// Reanimated 4.5.0 strict mode false-positives on useAnimatedStyle's initial
-// render evaluation; drop this once the Expo SDK pin reaches reanimated >=4.5.1.
 configureReanimatedLogger({ strict: false })
 
 initSentry()
@@ -103,8 +96,6 @@ function RootContent() {
     if (fontsLoaded || fontError) void SplashScreen.hideAsync()
   }, [fontsLoaded, fontError])
 
-  // A fixture build (screenshots, smoke) restores a database before anything reads it; every other
-  // build is ready on the first render.
   const fixturesReady = useSessionFixtures()
 
   useEffect(() => {
@@ -148,8 +139,6 @@ function RootContent() {
     }
   }, [fixturesReady])
 
-  // Hold the splash until Raleway is ready (or fails to load). Returning null
-  // keeps the native splash up without an unmount/mount churn.
   if (!fontsLoaded && !fontError) return null
   if (!fixturesReady) return null
 
@@ -157,8 +146,6 @@ function RootContent() {
     <ClerkProvider
       publishableKey={clerkPublishableKey}
       tokenCache={tokenCache}
-      // Keeps the signed-in identity readable offline — losing connectivity must not
-      // blank the account UI or look like a sign-out.
       __experimental_resourceCache={resourceCache}
     >
       <TimeFormatContext value={timeFormat}>
@@ -196,8 +183,6 @@ function RootContent() {
                     }}
                   />
                   <Stack.Screen name={stackScreens.rideDay} options={{ title: 'Day' }} />
-                  {/* iOS: Clerk's native bar shows its own back for each step, so it owns dismiss
-              too and the JS header would only add a second back. Android: the JS header. */}
                   <Stack.Screen
                     name={stackScreens.signIn}
                     options={{ title: 'Sign in', headerShown: Platform.OS !== 'ios' }}
@@ -330,14 +315,12 @@ function RootContent() {
                   />
                 </Stack>
               </ThemeController>
-              {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
               <ReleaseSurfaces />
               <AppStorageFailureBanner top={insets.top + 8} />
               <View
                 pointerEvents="box-none"
                 style={{
                   position: 'absolute',
-                  // DevBadge owns 8px of real top hit padding; offset it so the visible pill stays put.
                   top: Math.max(2, insets.top - 6) - 8,
                   bottom: 0,
                   left: 0,

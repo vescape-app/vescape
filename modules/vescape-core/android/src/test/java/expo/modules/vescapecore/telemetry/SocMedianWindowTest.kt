@@ -23,7 +23,6 @@ class SocMedianWindowTest {
         val w = SocMedianWindow(windowMs = 20_000L)
         w.median(50.0, 0L)
         w.median(90.0, 1_000L)
-        // sorted [50, 55, 90] -> 55
         assertEquals(55.0, w.median(55.0, 2_000L), 0.001)
     }
 
@@ -33,7 +32,6 @@ class SocMedianWindowTest {
         w.median(50.0, 0L)
         w.median(52.0, 1_000L)
         w.median(58.0, 2_000L)
-        // sorted [50, 52, 58, 90] -> (52 + 58) / 2 = 55
         assertEquals(55.0, w.median(90.0, 3_000L), 0.001)
     }
 
@@ -42,16 +40,14 @@ class SocMedianWindowTest {
         val w = SocMedianWindow(windowMs = 20_000L)
         w.median(54.0, 0L)
         w.median(53.0, 1_000L)
-        // sorted [48, 53, 54] -> median 53; the lone 5% sag dip is ignored
         assertEquals(53.0, w.median(48.0, 2_000L), 0.001)
     }
 
     @Test
     fun `drops samples older than the window`() {
         val w = SocMedianWindow(windowMs = 5_000L)
-        w.median(0.0, 0L) // expires before 7_000
+        w.median(0.0, 0L)
         w.median(100.0, 6_000L)
-        // window holds [100, 50] -> median 75
         assertEquals(75.0, w.median(50.0, 7_000L), 0.001)
     }
 
@@ -73,7 +69,6 @@ class SocMedianWindowTest {
 
     @Test
     fun `damps oscillation so it stays below the re-arm threshold`() {
-        // Pack resting ~54%, responsive % swings 50..60 with load.
         val w = SocMedianWindow(windowMs = 20_000L)
         val swing = listOf(54.0, 60.0, 50.0, 58.0, 51.0, 59.0, 52.0, 57.0, 53.0, 56.0)
         var t = 0L

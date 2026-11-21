@@ -64,10 +64,6 @@ const TIMELINE_CAPTIONS = [
   'Checking the signature',
 ]
 
-/** Build a 4-step list where everything before `reach` is done, the step at
- *  `reach` is active, and the rest pending. A negative `reach` fails the last
- *  done step instead, to show the error state. `content` demos the inline block
- *  slot under a done step's caption. */
 function buildDemoSteps(reach: number, failed: boolean, content: boolean): TimelineStep[] {
   return TIMELINE_LABELS.map((label, i): TimelineStep => {
     let state: StepState = i < reach ? 'done' : i === reach ? 'active' : 'pending'
@@ -118,7 +114,6 @@ function StepTimelineShowcase() {
 function BoardWarningRowShowcase() {
   const [now] = useState(() => Date.now())
   const [dismissedKinds, setDismissedKinds] = useState<string[]>([])
-  // One critical + one warn row, so both severity styles stay visible side by side.
   const warnings = [
     {
       boardId: 'demo',
@@ -169,7 +164,6 @@ function BoardWarningRowShowcase() {
 function VescFaultRowShowcase() {
   const [now] = useState(() => Date.now())
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
-  // The live-fault shapes: an active known code, a cleared known code and a cleared unknown code.
   const faults = [
     {
       id: 'active',
@@ -222,7 +216,6 @@ function VescFaultRowShowcase() {
   )
 }
 
-/** A response-paced burst: ~30 Hz easing out as the controller struggles into the fault. */
 function buildCaptureSamples(openedAtMs: number) {
   let t = openedAtMs - 5_000
   const samples = []
@@ -331,7 +324,6 @@ function RimTempArcShowcase() {
 
 const ROW_WINDOW_MS = 5 * 60_000
 
-/** A wavy series ending now, sampled every 5 s over `spanMs`. */
 function demoSeries(spanMs: number, base: number, swing: number, phase = 0) {
   const now = Date.now()
   return Array.from({ length: Math.floor(spanMs / 5000) }, (_, i) => ({
@@ -347,7 +339,6 @@ function LiveMetricCardShowcase() {
   const first = useSharedValue<number | null>(null)
   const second = useSharedValue<number | null>(null)
 
-  // Split: each half opens its own detail, the way the temperatures card does.
   const split = kind === 'split'
   const series =
     kind === 'single'

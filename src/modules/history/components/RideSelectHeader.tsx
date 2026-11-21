@@ -9,11 +9,9 @@ import { useRideSelectStore } from '@/modules/history/store/rideSelectStore'
 
 interface RideSelectHeaderProps {
   selectedCount: number
-  /** Every ride the active filter matches, loaded or not. */
   matchingTotal: number
 }
 
-/** Select mode's drawer header: leave, count, Select all / Select none. */
 export function RideSelectHeader({ selectedCount, matchingTotal }: RideSelectHeaderProps) {
   const { exit, start, selectAll } = useRideSelectStore.getState()
   const allTicked = matchingTotal > 0 && selectedCount >= matchingTotal

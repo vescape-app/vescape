@@ -39,7 +39,6 @@ final class GpsCourseDeriverTests: XCTestCase {
       latitude: 52.0, longitude: 21.0, speedMps: 5.0, bearingDeg: nil, timestamp: 1_000
     )
 
-    // ~11 m due north.
     let course = deriver.derive(
       latitude: 52.0001, longitude: 21.0, speedMps: 5.0, bearingDeg: nil, timestamp: 2_000
     )
@@ -54,7 +53,6 @@ final class GpsCourseDeriverTests: XCTestCase {
       latitude: 52.0, longitude: 21.0, speedMps: 5.0, bearingDeg: nil, timestamp: 1_000
     )
 
-    // ~1 m apart.
     let course = deriver.derive(
       latitude: 52.00001, longitude: 21.0, speedMps: 5.0, bearingDeg: nil, timestamp: 2_000
     )
@@ -96,7 +94,6 @@ final class GpsCourseDeriverTests: XCTestCase {
     _ = deriver.derive(
       latitude: 52.0, longitude: 21.0, speedMps: 5.0, bearingDeg: 91.0, timestamp: 1_000
     )
-    // Held at 8 s: still inside the window, and must not refresh the source timestamp.
     _ = deriver.derive(
       latitude: 52.0, longitude: 21.0, speedMps: 0.0, bearingDeg: nil, timestamp: 9_000
     )

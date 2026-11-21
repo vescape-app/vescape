@@ -12,7 +12,6 @@ class TiltStickTest {
 
     @Test
     fun `rate rises with the square of deflection and caps at the rider's rate`() {
-        // Halfway between the deadzone and full deflection is a quarter of the rate.
         assertEquals(2.5f, stickRatePercentPerSecond(34f, deadzonePx = 8f, fullPx = 60f, ratePercent = 10), 1e-4f)
         assertEquals(10f, stickRatePercentPerSecond(60f, deadzonePx = 8f, fullPx = 60f, ratePercent = 10), 1e-4f)
         assertEquals(10f, stickRatePercentPerSecond(500f, deadzonePx = 8f, fullPx = 60f, ratePercent = 10), 1e-4f)

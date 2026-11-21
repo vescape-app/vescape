@@ -59,7 +59,6 @@ class ProfileStatsRepositoryTest {
     val may = ProfileStatsMonth(year = 2024, month = 5)
     val buckets = listOf(
       bucket(start = 1_714_521_600_000L, end = 1_714_521_660_000L, firstOdo = 0L, lastOdo = 10_000L),
-      // 40 min after the first bucket ends — past the 30 min default split gap.
       bucket(start = 1_714_524_060_000L, end = 1_714_524_120_000L, firstOdo = 10_000L, lastOdo = 15_000L),
       bucket(start = 1_717_459_200_000L, end = 1_717_459_260_000L, firstOdo = 0L, lastOdo = 9_000L),
     )
@@ -87,7 +86,6 @@ class ProfileStatsRepositoryTest {
 
   @Test
   fun rideTimeUsesMovingWindowNotWallClock() {
-    // 120s wall-clock, but movement only spans 30s → ride time is the Moving Window.
     val buckets = listOf(
       bucket(start = 1_714_521_600_000L, end = 1_714_521_660_000L, firstOdo = 0L, lastOdo = 5_000L, avgSpeedSamples = 1, firstMoving = 1_714_521_630_000L, lastMoving = 1_714_521_660_000L),
       bucket(start = 1_714_521_660_001L, end = 1_714_521_720_000L, firstOdo = 5_000L, lastOdo = 6_000L, avgSpeedSamples = 0, avgSpeedSum = 0L),
@@ -104,7 +102,6 @@ class ProfileStatsRepositoryTest {
     val start = 1_714_521_600_000L
     val buckets = listOf(
       bucket(start = start, end = start + 60_000L, firstOdo = 0L, lastOdo = 10_000L),
-      // ~11.5 min stop: one ride at the 30 min default, two when the rider tightens it to 5 min.
       bucket(start = start + 756_000L, end = start + 816_000L, firstOdo = 10_000L, lastOdo = 20_000L),
     )
 

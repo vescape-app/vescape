@@ -236,7 +236,6 @@ function emitLiveSeries(sample: TelemetryEvent): void {
       batteryPercent: point(sample.batteryPercent),
       speed: point(abs(sample.speed)),
       duty: point(abs(sample.dutyCycle) == null ? null : (abs(sample.dutyCycle) as number) * 100),
-      // Detail-chart-only metrics (mirrors LIVE_SERIES_METRICS on native).
       pitch: point(sample.pitch),
       roll: point(sample.roll),
       balancePitch: point(sample.balancePitch),
@@ -279,9 +278,6 @@ function stopBoardSession(): void {
   emitLiveState()
 }
 
-// ---------------------------------------------------------------------------
-// Telemetry history fake storage
-// ---------------------------------------------------------------------------
 const SAMPLE_COLUMN_COUNT = 21
 
 let nextHistorySampleId = 1
@@ -334,7 +330,6 @@ function matchesRideFilter(bucket: TelemetryMinuteBucket, filter: RideHistoryFil
   if (filter.fromMs != null && bucket.startAtMs < filter.fromMs) return false
   if (filter.toMs != null && bucket.startAtMs >= filter.toMs) return false
   if (filter.boardIds?.length && !filter.boardIds.includes(bucket.boardId ?? '')) return false
-  // Fake rides carry no weather summary, and a ride without one never meets a weather condition.
   if (filter.weather?.length) return false
   return true
 }
@@ -525,7 +520,6 @@ function seedHistoryData(boardId: string, boardName: string): void {
 
   const rides: RideSeed[] = [
     {
-      // Older ride, selected by pressing "previous" from the newest ride.
       startOffsetMs: -2 * 60 * 60_000,
       durationMs: 5 * 60_000,
       distanceM: 800,
@@ -539,7 +533,6 @@ function seedHistoryData(boardId: string, boardName: string): void {
       startLongitude: 17.0285,
     },
     {
-      // Newest ride, selected automatically when entering history mode.
       startOffsetMs: -60 * 60_000,
       durationMs: 5 * 60_000,
       distanceM: 1500,
@@ -767,7 +760,6 @@ export const e2eFake = {
 
   upsertBoard(board: BoardInput): void {
     const index = e2eBoards.findIndex((b) => b.id === board.id)
-    // A tombstone survives an upsert, like native — only a delete stamps one.
     const stored: Board = {
       ...board,
       deletedAt: index >= 0 ? e2eBoards[index].deletedAt : null,
@@ -801,7 +793,6 @@ export const e2eFake = {
     e2eSettings.companionPresenceEnabled = true
   },
 
-  /** Native keeps the master switch on at zero boards (the "nothing armed" state) — mirror that. */
   removeCompanionPresenceBoard(boardId: string): void {
     e2eCompanionBoardIds.delete(boardId)
   },

@@ -2,9 +2,6 @@ import GRDB
 import XCTest
 @testable import VescapeCore
 
-/// Favorites are durable pins over Ride History (ADR 0029): identity and timestamps are native, and
-/// the summary is computed once from the raw Telemetry Samples inside the range — including ranges
-/// that cut a minute bucket in half, which is exactly what bucket-derived stats cannot express.
 final class FavoriteStoreTests: XCTestCase {
   private var queue: DatabaseQueue!
   private var store: FavoriteStore!
@@ -23,7 +20,6 @@ final class FavoriteStoreTests: XCTestCase {
     queue = nil
   }
 
-  /// GPS movement after the display cap still contributes to the saved Favorite summary.
   /// @parity /modules/vescape-core/android/src/androidTest/java/expo/modules/vescapecore/telemetry/RideReadQueriesTest.kt
   func testFavoriteSummaryReadsMovementBeyondTheDisplayCap() throws {
     let database = try DatabaseQueue()
@@ -51,8 +47,6 @@ final class FavoriteStoreTests: XCTestCase {
     try store.insert(favorite)
     XCTAssertEqual(try store.list().first?.summary.movingDurationMs, 60_000)
   }
-
-  // MARK: - Store
 
   func testInsertedFavoriteRoundTripsThroughTheStore() throws {
     let favorite = makeFavorite(
@@ -174,7 +168,6 @@ final class FavoriteStoreTests: XCTestCase {
     )
   }
 
-  /// Removing a Favorite unpins it and nothing else: only its own row goes away.
   func testDeleteRemovesOnlyTheTargetRow() throws {
     try store.insert(makeFavorite(id: "fav-1", startMs: 1_000, endMs: 2_000))
     try store.insert(makeFavorite(id: "fav-2", startMs: 3_000, endMs: 4_000))
@@ -228,8 +221,6 @@ final class FavoriteStoreTests: XCTestCase {
     XCTAssertEqual(map["routePoints"] as? [[String: Double]], routePoints)
   }
 
-  /// A range with no odometer readings has no distance to report — the bridge must send `nil`
-  /// rather than a fabricated zero, so the row renders "-" like a history row without distance.
   func testMissingDistanceStaysNullAcrossTheBridge() {
     let map = makeFavorite(id: "fav-1", startMs: 1_000, endMs: 2_000).toMap(boardName: nil)
 
@@ -245,8 +236,6 @@ final class FavoriteStoreTests: XCTestCase {
     )
   }
 
-  // MARK: - Summary from raw samples
-
   func testSummaryAggregatesRawSamplesAcrossBucketBoundaries() {
     let points = ridePoints(startMs: 0, count: 120, speedCentiKmh: 2_000, intervalMs: 1_000)
 
@@ -256,13 +245,9 @@ final class FavoriteStoreTests: XCTestCase {
     XCTAssertEqual(summary.avgSpeedCentiKmh, 2_000)
     XCTAssertEqual(summary.maxSpeedCentiKmh, 2_000)
     XCTAssertEqual(summary.movingDurationMs, 119_000)
-    // 1 m per sample interval. Distance sums per-bucket odometer deltas, so the hop across a bucket
-    // boundary is not counted — the same arithmetic history session rows already use.
     XCTAssertEqual(summary.distanceCm, 11_800)
   }
 
-  /// The point of computing from raw samples: a Favorite trimmed inside a minute bucket must report
-  /// the trimmed span, not the whole bucket the samples happen to live in.
   func testSummaryOfAMidBucketRangeCoversOnlyTheTrimmedSamples() {
     let all = ridePoints(startMs: 0, count: 120, speedCentiKmh: 2_000, intervalMs: 1_000)
     let trimmed = all.filter { $0.capturedAtMs >= 30_000 && $0.capturedAtMs <= 89_000 }
@@ -274,11 +259,8 @@ final class FavoriteStoreTests: XCTestCase {
     XCTAssertEqual(summary.distanceCm, 5_800)
   }
 
-  /// Idle samples below the moving threshold are excluded from average speed by the Metric
-  /// Sanitizers, exactly as they are while recording — a trimmed Favorite must not average them in.
   func testSummaryExcludesIdleSamplesFromAverageSpeed() {
     let idle = ridePoints(startMs: 0, count: 10, speedCentiKmh: 0, intervalMs: 1_000)
-    // Samples further apart than an acceleration is read across, so 0 → 20 km/h is no spin-up.
     let moving = ridePoints(startMs: 11_000, count: 10, speedCentiKmh: 2_000, intervalMs: 1_000)
 
     let summary = TelemetryRepository.favoriteSummary(idle + moving, config: MetricSanitizerConfig())
@@ -288,8 +270,6 @@ final class FavoriteStoreTests: XCTestCase {
     XCTAssertEqual(summary.movingDurationMs, 9_000)
   }
 
-  /// A range with no samples at all (deleted telemetry, wrong device) yields an empty summary
-  /// instead of crashing the create path.
   func testSummaryOfAnEmptyRangeIsZeroed() {
     let summary = TelemetryRepository.favoriteSummary([], config: MetricSanitizerConfig())
 
@@ -297,8 +277,6 @@ final class FavoriteStoreTests: XCTestCase {
     XCTAssertEqual(summary.movingDurationMs, 0)
     XCTAssertNil(summary.distanceCm)
   }
-
-  // MARK: - Fixtures
 
   private func makeFavorite(
     id: String,
@@ -321,7 +299,6 @@ final class FavoriteStoreTests: XCTestCase {
     )
   }
 
-  /// A steady ride: constant speed, so no free spin, and the odometer advancing 1 m per interval.
   private func ridePoints(
     startMs: Int64,
     count: Int,

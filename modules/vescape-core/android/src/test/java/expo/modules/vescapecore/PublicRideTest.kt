@@ -91,7 +91,6 @@ class PublicRideTest {
         assertFalse(sent.last().has("until"))
         ride.setBoardConnected(false)
         assertEquals(listOf("public-on", "public-off"), types())
-        // The switch stays on for the next board connect.
         assertTrue(ride.switch.on)
     }
 
@@ -117,7 +116,7 @@ class PublicRideTest {
         assertEquals("board", status()["activation"])
         assertFalse(ride.needsGps)
         assertTrue(ride.riding)
-        ride.setManualSharing(true) // A tap queued before the board connected.
+        ride.setManualSharing(true)
         assertFalse(ride.needsGps)
         assertEquals(listOf("public-on", "public-position"), types())
         ride.setBoardConnected(false)
@@ -333,11 +332,11 @@ class PublicRideTest {
         ready()
         receive(5, 8)
         receive(9, 9)
-        receive(null, 10) // The relay withdrew the pin without a clear.
+        receive(null, 10)
         receive(11, 11)
         receive(null, 12, cleared = 11)
         receive(null, 13, cleared = 11)
-        receive(11, 21) // Expired signal.
+        receive(11, 21)
         assertEquals(List(3) { "groupRide.signal.serious" } + "groupRide.signal.ok", cues)
     }
 
@@ -445,7 +444,6 @@ class PublicRideTest {
         ride.position(presence, 26_000L)
         assertEquals(1, types().count { it == "missed-positions" })
         assertEquals(listOf(10_000L, 15_000L, 21_000L), batchAts())
-        // Historical upload precedes even public-on; live positions still wait for status.
         assertEquals(listOf("missed-positions", "public-on"), types().takeLast(2))
         ride.handle("public-status", JSONObject().put("on", true))
         ride.position(presence, 30_000L)
@@ -510,7 +508,7 @@ class PublicRideTest {
                 "disconnect" -> ride.setBoardConnected(false)
                 else -> { now += 60_000; ride.expire() }
             }
-            ride.position(presence, 20_000) // Never collect private positions.
+            ride.position(presence, 20_000)
             assertFalse(ride.wanted)
             assertTrue(ride.needsLink)
             sent.clear()
@@ -518,7 +516,7 @@ class PublicRideTest {
             assertEquals(listOf("missed-positions"), types())
             assertEquals(listOf(10_000L), batchAts())
             assertFalse(ride.riding)
-            assertTrue(ride.needsLink) // Still owns the socket while waiting for ack.
+            assertTrue(ride.needsLink)
             ride.handleError("missed positions not stored")
             assertEquals(PublicRide.MISSED_RETRY_MS, retry)
             ride.linkLost()
@@ -567,7 +565,7 @@ class PublicRideTest {
             sent.clear()
             ride.linkLost()
             ready(withMissed)
-            ride.handle("missed-stored", JSONObject()) // Old ack cannot resurrect data.
+            ride.handle("missed-stored", JSONObject())
             assertTrue(sent.isEmpty())
         }
     }
@@ -579,10 +577,9 @@ class PublicRideTest {
         ride.position(presence, 0)
         ride.position(presence, 5_000)
         ready(withMissed)
-        // A new public ride has not been confirmed yet; its fixes still belong in the buffer.
         val late = PublicRide.MISSED_MAX_AGE_MS + 10_000
         ride.position(presence, late)
-        ride.position(presence, late + 1_000) // Still thinned to five seconds.
+        ride.position(presence, late + 1_000)
         assertEquals(listOf(0L, 5_000L), batchAts())
         ride.handle("missed-stored", JSONObject())
         assertEquals(listOf(late), batchAts())
@@ -604,7 +601,6 @@ class PublicRideTest {
             assertTrue((events.last { it.first == "onPublicPins" }.second["pins"] as List<*>).isEmpty())
             ride.submitPin(RiderPinIntent.Send(RiderSignalKind.WAIT, 52.0, 21.0))
             if (changeAccount) {
-                // A former Account's far-away friend must not survive an identity reset either.
                 ride.handle("public-pins", peer)
                 ride.setAccount("other")
                 assertTrue(pinUpdates.last().first.isEmpty())

@@ -10,7 +10,6 @@ const MINE = '__mine__'
 
 interface SoundPickerProps {
   presets: AlertSound[]
-  /** Rider's own sounds; any count fits, listed as radios under one "Mine" segment. */
   mySounds?: AlertSound[]
   selected: string
   onSelect: (uri: string) => void
@@ -34,7 +33,6 @@ export function SoundPicker({ presets, mySounds = [], selected, onSelect }: Soun
         ]}
         value={mine ? MINE : selected}
         onChange={(value) => {
-          // Mine picks the first sound so the list below opens on a choice; re-tapping keeps it.
           if (value === MINE) {
             if (!mine) pick(mySounds[0].uri)
           } else pick(value)

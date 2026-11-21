@@ -1,7 +1,6 @@
 import { mkdirSync, openSync, closeSync, writeFileSync, readFileSync, unlinkSync } from 'fs'
 import { dirname, resolve } from 'path'
 
-/** Builds share generated native directories and installs share the phone. Reject overlapping runs. */
 export function acquireE2eLock(
   path = resolve(import.meta.dir, '../../.expo/e2e.lock'),
 ): () => void {
@@ -26,7 +25,6 @@ export function acquireE2eLock(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
       const owner = Number(readFileSync(path, 'utf8'))
-      // An incomplete/invalid lock is not evidence that another build can safely be started.
       if (!Number.isSafeInteger(owner) || owner <= 0)
         throw new Error(`Invalid E2E lock at ${path}. Check for an active run before removing it.`)
       try {

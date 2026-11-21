@@ -36,7 +36,6 @@ function PresetButton({
   )
 }
 
-/** Alert sound presets, single playback, and the Geiger simulation with its range depth. */
 export function AlertSoundProbe() {
   const accents = useResolvedAccentColors()
   const presets = useMemo(() => getAlertSounds(), [])

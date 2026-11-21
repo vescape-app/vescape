@@ -1,7 +1,5 @@
 import Foundation
 
-/// App-lifetime last position, independent of Ride Recording and Board Session teardown.
-/// Calls arrive serially from the GPS callback; database writes run on a serial utility queue.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `persistLastGpsLocation`
 final class LastGpsLocationPersistence {
   private let appData: AppDataRepository

@@ -12,9 +12,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Shared read (#393): the post-trust background read serves every consumer that asks for config while
- * it is on the wire, instead of rejecting the second caller with `CONFIG_REQUEST_IN_FLIGHT`.
- *
  * @parity /modules/vescape-core/ios/config/ConfigRWControllerSharedReadTests.swift
  */
 class ConfigRWControllerSharedReadTest {

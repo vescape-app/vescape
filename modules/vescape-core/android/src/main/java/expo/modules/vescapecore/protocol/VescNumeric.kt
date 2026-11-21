@@ -4,8 +4,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Big-endian readers for VESC's wire encodings, shared by every config and telemetry decoder.
- *
  * @parity /modules/vescape-core/ios/protocol/VescNumeric.swift
  */
 internal object VescNumeric {
@@ -20,10 +18,6 @@ internal object VescNumeric {
 
     fun uint32(bytes: ByteArray, offset: Int): Long = int32(bytes, offset).toLong() and 0xffffffffL
 
-    /**
-     * VESC's `buffer_get_float32_auto`: a packed sign/exponent/mantissa form that is deliberately
-     * not IEEE-754. Ported from upstream `util/buffer.c`.
-     */
     fun float32Auto(bytes: ByteArray, offset: Int): Double {
         val raw = int32(bytes, offset)
         val eRaw = (raw ushr 23) and 0xff

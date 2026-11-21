@@ -7,14 +7,12 @@ final class BatterySocEstimatorTests: XCTestCase {
 
   override func setUpWithError() throws {
     estimator = BatterySocEstimator()
-    // Load the canonical curves straight from the shared source (single source of truth), located
-    // relative to this test file so no resource bundling is needed for the pure unit under test.
     let root = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent() // telemetry
-      .deletingLastPathComponent() // ios
-      .deletingLastPathComponent() // vescape-core
-      .deletingLastPathComponent() // modules
-      .deletingLastPathComponent() // repo root
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
     let json = try String(
       contentsOf: root.appendingPathComponent("shared/data/cell-presets.json"),
       encoding: .utf8
@@ -26,7 +24,6 @@ final class BatterySocEstimatorTests: XCTestCase {
     let config: [String: Any] = [
       "mode": "preset", "cellPresetId": "molicel:21700:p50b", "seriesCount": 20, "parallelCount": 2,
     ]
-    // 84V = 4.2V/cell = 100%, 50V = 2.5V/cell = 0%, 76V = 3.8V/cell ≈ 55%
     XCTAssertEqual(estimator.estimateBatteryPercent(voltageV: 84.0, config: config)!, 100.0, accuracy: 0.0)
     XCTAssertEqual(estimator.estimateBatteryPercent(voltageV: 50.0, config: config)!, 0.0, accuracy: 0.0)
     XCTAssertEqual(estimator.estimateBatteryPercent(voltageV: 76.0, config: config)!, 55.0, accuracy: 3.0)
@@ -88,8 +85,6 @@ final class BatterySocEstimatorTests: XCTestCase {
   func testReturnsNilForUnknownCellPreset() {
     XCTAssertNil(estimator.getCellPreset("unknown:cell:id"))
   }
-
-  // MARK: IR compensation
 
   func testPresetIrCompensationBoostsSocUnderLoad() {
     let config: [String: Any] = [

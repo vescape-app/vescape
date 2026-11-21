@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 
-/// Minutes without a recorded sample that end a ride, when the rider has set no `rideSplitGapMinutes`.
 /// @parity /src/modules/history/lib/sessions.ts `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
 internal let DEFAULT_RIDE_SPLIT_GAP_MINUTES = 30
@@ -12,8 +11,6 @@ internal struct ProfileStatsMonth: Equatable, Hashable {
   let month: Int
 }
 
-/// Profile stats queries over precomputed Ride History buckets.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt
 internal final class ProfileStatsRepository {
   static let shared = ProfileStatsRepository()
@@ -31,13 +28,11 @@ internal final class ProfileStatsRepository {
     self.gapMsProvider = gapMsProvider
   }
 
-  /// Lifetime, available months, and selected-month stats from one read/grouping pass.
   /// @parity /modules/vescape-core/src/index.ts `ProfileStatsSnapshot`
   func getProfileStatsSnapshot(_ options: [String: Any]) throws -> [String: Any?] {
     profileStatsSnapshot(sessions: try readSessions(), options: options)
   }
 
-  /// Stats of the rides that started on one local calendar day.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `readProfileDayStats`
   /// @parity /modules/vescape-core/src/index.ts `getDayStats`
   func getDayStats(_ options: [String: Any]) throws -> [String: Any?] {
@@ -54,8 +49,6 @@ internal final class ProfileStatsRepository {
     })
   }
 
-  /// Stats of the rides still going on or finished at or after `sinceMs`, so a ride that crosses
-  /// midnight keeps counting as the one being ridden.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `readProfileRecentStats`
   /// @parity /modules/vescape-core/src/index.ts `getRecentRideStats`
   func getRecentRideStats(sinceMs: Int64) throws -> [String: Any?] {

@@ -1,7 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Ported from Android `RefloatConfigWriteVerifierTest.kt`.
 final class RefloatConfigWriteVerifierTests: XCTestCase {
 
   func testAcceptsByteIdenticalConfig() {

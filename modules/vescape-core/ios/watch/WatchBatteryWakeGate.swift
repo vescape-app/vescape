@@ -1,6 +1,3 @@
-/// Phone-side dedupe for complication wake transfers: one per change the complication can show.
-/// The transfer budget reserve is checked by the caller first, so an exhausted budget never
-/// consumes a change.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchLastBattery.kt `BatteryUpdateGate`
 /// @platform-diff Only iOS budgets complication wake transfers, so the gate runs on the phone;
 ///   Wear dedupes on the wrist when the Data Layer item changes.

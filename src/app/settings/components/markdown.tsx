@@ -11,7 +11,6 @@ import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 
-/** 24×8 solid PNG — inline so the "loaded" case works without a network. */
 const OK_IMAGE =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAICAMAAADUf89RAAAAA1BMVEUDaaGw0sATAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQI12NgGB4AAADIAAF8Y2l9AAAAAElFTkSuQmCC'
 

@@ -133,7 +133,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     marginBottom: 4,
   },
-  /** Under the running row's text: row padding 14 + icon 32 + gap 12. */
   progressTrack: {
     marginLeft: 58,
     marginRight: 14,

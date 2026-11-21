@@ -44,9 +44,6 @@ class BoardLinkPersistenceTest {
     assertNull(link?.get("linkVersion"))
   }
 
-  // A link stored by an older app version must keep reading as legacy. Defaulting an absent or
-  // outdated stored version to the current one would launder a stale link into a trusted one and
-  // silently skip the re-probe.
   @Test
   fun storedOutdatedLinkVersionReadsAsLegacy() {
     val board = mapOf("id" to "b1", "name" to "Board", "createdAt" to 0L)

@@ -30,7 +30,6 @@ class PollingLoopTest {
         telemetryRecordingEnabled = false,
     )
 
-    /** One response-paced round-trip: response lands after [roundTripMs], next poll fires on the floor. */
     private fun cycle(loop: PollingLoop, roundTripMs: Long, floorMs: Long) {
         scheduler.advance(roundTripMs)
         loop.onResponse()
@@ -43,7 +42,6 @@ class PollingLoopTest {
         assertNull(loop.measuredRateHz())
 
         loop.start(config(20), session, BoardTransport.Direct)
-        // Only the first poll has been sent; no interval to measure yet.
         assertNull(loop.measuredRateHz())
     }
 
@@ -54,7 +52,6 @@ class PollingLoopTest {
 
         repeat(10) { cycle(loop, roundTripMs = 20, floorMs = 50) }
 
-        // Steady 50ms spacing → 20 Hz.
         assertEquals(20.0, loop.measuredRateHz()!!, 0.001)
     }
 
@@ -66,7 +63,6 @@ class PollingLoopTest {
         assertEquals(20.0, loop.measuredRateHz()!!, 0.001)
 
         loop.start(config(10), BoardSession(2), BoardTransport.Direct)
-        // Fresh session: prior cadence is discarded until a new interval is measured.
         assertNull(loop.measuredRateHz())
     }
 }

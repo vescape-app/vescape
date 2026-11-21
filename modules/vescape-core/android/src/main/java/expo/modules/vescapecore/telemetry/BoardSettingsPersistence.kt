@@ -17,7 +17,6 @@ internal fun jsonValue(value: Any?): Any? = when (value) {
   else -> value
 }
 
-/** Production Room operations shared by the Android adapter and host persistence contract. */
 internal class BoardSettingsPersistence(private val dao: VescapeDao) {
   suspend fun getBoards(): List<BoardEntity> = dao.getBoards()
   suspend fun getBoard(id: String): BoardEntity? = dao.getBoard(id)

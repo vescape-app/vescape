@@ -5,16 +5,6 @@ import type { getSatelliteImageryPaint } from '@/modules/map/constants/satellite
 
 const LAYER_TRANSITION = { duration: 260, delay: 0 } as const
 
-/**
- * Satellite imagery for the satellite-overlay style.
- *
- * The layer is owned rather than adopted from the style JSON with `existing`: on iOS Release builds
- * an adopted raster layer never receives its paint updates, so the map stayed stuck at the telemetry
- * dimming (#423). Owning the source and layer routes paint through the same path the Mapy tiles use,
- * which works on both platforms.
- *
- * Inserted below `road-path` so the style's street lines and labels stay on top of the imagery.
- */
 export const SatelliteImageryLayer = memo(function SatelliteImageryLayer({
   paint,
 }: {

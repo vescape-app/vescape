@@ -1,19 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Vescape sygnet, mirrored from assets/logo/vescape-sygnet.svg. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="667dp"
     android:height="667dp"
     android:viewportWidth="667"
     android:viewportHeight="667">
-    <!-- The splash icon is masked to a circle of radius ~222 (the inner 2/3 of the 48x48dp icon
-         frame), so the sygnet has to fit that circle rather than the square viewport. Its ink spans
-         (10.9, 423.5) to (657, 147), whose smallest enclosing circle is centred at (334, 285) with
-         radius 351 — off the viewport centre, because the mark is wide and sits high. Scaling about
-         the viewport centre alone therefore clips the top-right tip first, which is what 0.66 did.
-         Scaling by 0.56 gives radius 197 and translating down by 27 moves that enclosing circle onto
-         the mask centre, leaving ~26 units (2.8dp of the 48dp icon) of breathing room between the
-         mark and the edge of the icon background disc. -->
     <group
         android:pivotX="333.5"
         android:pivotY="333.5"

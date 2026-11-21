@@ -7,11 +7,9 @@ import type { ChartBand, ChartCamera, ChartPlotBox } from '@/components/charts/l
 import { useThemeStore } from '@/hooks/useTheme'
 import { groupBands, type BandGroup } from '@/components/charts/line/bandGroups'
 
-/** A hairline, clear of the plot floor, with the next row stacked just above it. */
 const BAND_HEIGHT = 1
 const BAND_INSET = 1
 const ROW_PITCH = BAND_HEIGHT + 1
-/** A band shorter than this would vanish at low zoom; it is widened so it stays findable. */
 const MIN_WIDTH = 2
 const BAND_OPACITY = 0.85
 
@@ -24,13 +22,6 @@ export interface BandsLayerProps {
   domainEndMs: number
 }
 
-/**
- * Time ranges marked out along the floor of a plot, in plot coordinates.
- *
- * Drawn from the camera like everything else on the canvas, so bands pan and zoom with the line
- * they annotate without any JS work per frame. Only the bands that overlap the viewport reach
- * the path.
- */
 export function BandsLayer({
   bands,
   plot,
@@ -71,7 +62,6 @@ function BandGroupPath({
   domainStartMs,
   domainEndMs,
 }: BandGroupPathProps) {
-  // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
   const color = group.color
   const { starts, ends } = group
@@ -92,6 +82,5 @@ function BandGroupPath({
     return built
   }, [camera, dataKey, domainEndMs, domainStartMs, ends, height, plot.width, starts, y])
 
-  // A wash carries its own alpha; the hairlines are solid marks that only need to sit back a little.
   return <Path path={path} color={color} opacity={wash ? 1 : BAND_OPACITY} />
 }

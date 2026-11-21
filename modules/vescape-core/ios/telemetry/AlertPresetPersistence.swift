@@ -1,24 +1,18 @@
 import Foundation
 import GRDB
 
-/// An Alert Preset is one `alerts` row per Board and metric, id `preset:<metric>`, whose spec is
-/// `preset(<level>)[:key=value,…]`. Native expands the rows whenever it loads rules; the expanded
-/// rules are never stored.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetPersistence.kt
 final class AlertPresetPersistence {
   let writer: any DatabaseWriter
   init(writer: any DatabaseWriter) { self.writer = writer }
   static let metrics = AlertPresetGenerator.metrics
-  /// A metric without a preset row: the app default.
   private static let defaultSpec = AlertPresetSpec(level: "normal")
   enum InvalidPreset: Error { case invalidIntent, missingBoard }
 
   private static func rowId(_ metric: String) -> String { presetRulePrefix + metric }
 
-  /// True for a stored preset row or an expanded preset rule: neither is a rider's rule.
   static func isPresetId(_ id: String) -> Bool { id.hasPrefix(presetRulePrefix) }
 
-  /// Expand an unsaved draft `spec` for the add-board wizard, without touching the database.
   static func preview(
     metric: String,
     spec: String,
@@ -46,15 +40,11 @@ final class AlertPresetPersistence {
     Dictionary(rows.filter { $0.id == rowId($0.controlId) }.map { ($0.controlId, $0) }, uniquingKeysWith: { first, _ in first })
   }
 
-  /// Each metric's stored spec, or the app default when it has no row.
   static func specs(_ db: Database, boardId: String) throws -> [String: String] {
     let presets = presetRows(try rows(db, boardId))
     return Dictionary(uniqueKeysWithValues: metrics.map { ($0, presets[$0]?.spec ?? defaultSpec.encode()) })
   }
 
-  /// The Board's rules as native evaluates them and JS reads them: rider rules plus expanded presets.
-  /// A missing or tombstoned Board expands nothing. A metric that fails to expand is passed to
-  /// `reportFailure` and skipped, so the rider rules and the other metrics still load.
   static func expandedRules(_ db: Database, boardId: String, reportFailure: (Error) -> Void) throws -> [PersistedAlertRule] {
     let stored = try rows(db, boardId)
     let riderRules = stored.filter { !isPresetId($0.id) }
@@ -65,7 +55,6 @@ final class AlertPresetPersistence {
     let units = validDistanceUnit(try rawUnits.map { try decode($0.valueJson) } as? String) ?? "km"
     let expanded = metrics.flatMap { metric -> [PersistedAlertRule] in
       do {
-        // A row this app cannot read expands to nothing rather than the default.
         let spec = presets[metric].map { AlertPresetSpec.parse($0.spec) ?? AlertPresetSpec(level: "off") } ?? defaultSpec
         let field = spec.option("match") == "on" ? try AlertPresetGenerator.matchField(metric) : nil
         let input = PresetInput(
@@ -84,7 +73,6 @@ final class AlertPresetPersistence {
     return riderRules + expanded
   }
 
-  /// Rewrite `metric`'s preset row with exactly one of a new level, geiger level, or match choice.
   func apply(boardId: String, metric: String, level: String?, geiger: String?, match: Bool?) throws {
     try writer.write { db in
       guard Self.metrics.contains(metric),
@@ -110,8 +98,6 @@ final class AlertPresetPersistence {
     }
   }
 
-  /// `metric`'s stored preset row holding `spec`, or nil when `spec` is the app default: a row exists
-  /// only when it differs from the default. Rejects an unknown metric or a non-preset spec.
   static func presetRow(boardId: String, metric: String, spec: String, createdAt: Int64) throws -> PersistedAlertRule? {
     guard metrics.contains(metric), let parsed = AlertPresetSpec.parse(spec) else { throw InvalidPreset.invalidIntent }
     if parsed == defaultSpec { return nil }

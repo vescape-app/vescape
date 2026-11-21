@@ -1,24 +1,15 @@
 import XCTest
 @testable import VescapeCore
 
-/// Route Progress is the number the rider reads while riding, so what matters is that it follows
-/// the path rather than the crow: projecting between vertices, measuring along the line, and aiming
-/// far enough ahead to be a direction rather than a jitter.
-///
-/// Paths here run along the equator so a degree of longitude is a flat ~111.19 km and the expected
-/// metres can be read straight off the coordinates.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/navigation/RouteProgressTest.kt
 final class RouteProgressTests: XCTestCase {
   private let metersPerDegree = 111_194.9
   private var legMeters: Double { 0.002 * metersPerDegree }
 
-  /// 222 m east, then 222 m north. The corner is the only vertex between the ends.
   private let cornerPath: [(latitude: Double, longitude: Double)] = [
     (0.0, 0.0), (0.0, 0.002), (0.002, 0.002),
   ]
 
-  /// One long straight run east with nothing between its ends — the sparse-vertex case.
   private let straightPath: [(latitude: Double, longitude: Double)] = [(0.0, 0.0), (0.0, 0.01)]
 
   func testRemainingDurationShrinksWithProgressWithoutUsingRiderSpeed() throws {
@@ -31,7 +22,6 @@ final class RouteProgressTests: XCTestCase {
     XCTAssertEqual(try XCTUnwrap(at(0.005).remainingDurationSeconds), 300, accuracy: 0.01)
     XCTAssertEqual(try at(0.005, speed: 20).remainingDurationSeconds, try at(0.005).remainingDurationSeconds)
     XCTAssertEqual(try at(0.01).remainingDurationSeconds, 0)
-    // The distance fallback beyond the endpoint is not part of the timed path.
     XCTAssertGreaterThan(try at(0.012).remainingMeters, 200)
     XCTAssertNil(try at(0.012).remainingDurationSeconds)
     XCTAssertNil(RouteProgress.compute(points: straightPath, riderLatitude: 0,
@@ -54,7 +44,6 @@ final class RouteProgressTests: XCTestCase {
   }
 
   func testProjectsOntoSegmentRatherThanNearestVertex() throws {
-    // Halfway along a 1.1 km run with no vertex near: the nearest *vertex* is 550 m away.
     let progress = try XCTUnwrap(
       RouteProgress.compute(
         points: straightPath, riderLatitude: 0.0, riderLongitude: 0.005, speedMps: nil
@@ -66,8 +55,6 @@ final class RouteProgressTests: XCTestCase {
   }
 
   func testRemainingDistanceIsMeasuredAlongThePathFromMidSegment() throws {
-    // Standing 55 m north of the middle of the first leg: half of it is left, plus all of the
-    // second. The straight line to the target would be ~250 m — the ride is 333 m.
     let progress = try XCTUnwrap(
       RouteProgress.compute(
         points: cornerPath, riderLatitude: 0.0005, riderLongitude: 0.001, speedMps: nil
@@ -89,9 +76,6 @@ final class RouteProgressTests: XCTestCase {
   }
 
   func testARiderWhoRodePastTheDirectionPointReadsTheStraightLineBackToIt() throws {
-    // 300 m north of the end of a path whose last leg runs north: projected onto the end, with no
-    // path left along it. Not 0 ft while the pin is behind them, and the arrow points back south at
-    // it rather than on along the last leg (#560).
     let pastEnd = 0.002 + 300.0 / metersPerDegree
     let progress = try XCTUnwrap(
       RouteProgress.compute(
@@ -105,8 +89,6 @@ final class RouteProgressTests: XCTestCase {
   }
 
   func testAimPointFollowsThePathAroundACorner() throws {
-    // 15 m before the corner with a 25 m aim: the aim lands past it, so the bearing is already
-    // turning north while the target still lies north-east. 15 m east then 10 m north: atan2(15, 10).
     let progress = try XCTUnwrap(
       RouteProgress.compute(
         points: cornerPath,
@@ -120,8 +102,6 @@ final class RouteProgressTests: XCTestCase {
   }
 
   func testAimPointClampsToTheEndOfThePath() throws {
-    // 5 m from the end with 15 m of aim: there is nothing further along to aim at, so the aim sits
-    // on the Direction Point itself and the bearing is the last leg's, not zero or NaN.
     let progress = try XCTUnwrap(
       RouteProgress.compute(
         points: cornerPath,
@@ -135,8 +115,6 @@ final class RouteProgressTests: XCTestCase {
   }
 
   func testStandingOnTheDirectionPointKeepsTheLastLegsHeading() throws {
-    // Nothing is left to aim at, so the bearing has no aim point to come from. It must not fall out
-    // as due north — the last leg ran north, and on the corner path that is the answer.
     let progress = try XCTUnwrap(
       RouteProgress.compute(
         points: cornerPath, riderLatitude: 0.002, riderLongitude: 0.002, speedMps: nil
@@ -145,7 +123,6 @@ final class RouteProgressTests: XCTestCase {
 
     XCTAssertEqual(progress.bearingDeg, 0, accuracy: 1.0)
 
-    // Same path ridden the other way round: arriving westbound must not read as north either.
     let westward: [(latitude: Double, longitude: Double)] = [(0.0, 0.002), (0.0, 0.0)]
     let arrived = try XCTUnwrap(
       RouteProgress.compute(
@@ -157,7 +134,6 @@ final class RouteProgressTests: XCTestCase {
   }
 
   func testAPathThatGoesNowhereStillYieldsABearing() throws {
-    // Degenerate but not crashing: every point identical leaves no leg to take a heading from.
     let progress = try XCTUnwrap(
       RouteProgress.compute(
         points: [(0.0, 0.0), (0.0, 0.0)], riderLatitude: 0, riderLongitude: 0, speedMps: nil
@@ -170,7 +146,6 @@ final class RouteProgressTests: XCTestCase {
 
   func testAimDistanceFallsBackToItsFloorWithoutASpeed() {
     XCTAssertEqual(RouteProgress.aimDistanceMeters(nil), RouteProgress.minAimMeters)
-    // A standing or crawling rider is on the floor too — 2.5 s of 2 m/s is only 5 m.
     XCTAssertEqual(RouteProgress.aimDistanceMeters(0), RouteProgress.minAimMeters)
     XCTAssertEqual(RouteProgress.aimDistanceMeters(2), RouteProgress.minAimMeters)
     XCTAssertEqual(RouteProgress.aimDistanceMeters(.nan), RouteProgress.minAimMeters)
@@ -178,7 +153,6 @@ final class RouteProgressTests: XCTestCase {
 
   func testAimDistanceScalesWithSpeedUpToItsCap() {
     XCTAssertEqual(RouteProgress.aimDistanceMeters(10), 25)
-    // 2.5 s of 30 m/s would be 75 m, which is past the next turn on anything but a highway.
     XCTAssertEqual(RouteProgress.aimDistanceMeters(30), RouteProgress.maxAimMeters)
   }
 
@@ -194,8 +168,6 @@ final class RouteProgressTests: XCTestCase {
   }
 
   func testARiderFarOffThePathStillAttaches() throws {
-    // 5 km north of the line. There is no threshold to fall outside of: the projection is taken and
-    // the remaining distance is measured from it like any other fix.
     let progress = try XCTUnwrap(
       RouteProgress.compute(
         points: straightPath, riderLatitude: 0.045, riderLongitude: 0.005, speedMps: nil

@@ -22,7 +22,6 @@ interface LocationActions {
 
 const PUBLISH_INTERVAL_MS = 1_000
 
-/** JS presentation of native GPS state, independent of board connections. */
 export function createLocationStore() {
   let history = createLocationHistory()
   let pending: ReturnType<typeof setTimeout> | null = null
@@ -60,7 +59,6 @@ export function createLocationStore() {
       },
 
       applyStatus(gps, windowMs) {
-        // Routine native status events omit history. They cannot replace the retained trail.
         appendLatest(gps, windowMs)
         publish(gps.phase)
       },

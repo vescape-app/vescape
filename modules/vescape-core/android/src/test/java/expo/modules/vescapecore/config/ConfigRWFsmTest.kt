@@ -235,7 +235,6 @@ class ConfigRWFsmTest {
             ConfigRWEvent.ConfigBytesPayloadReceived(buildConfigBytesPayload(configBytes), 0L),
         ).first
 
-        // Build a corrupt set-config response (wrong command byte = read instead of set)
         val bogus = byteArrayOf(
             COMM_GET_CUSTOM_CONFIG.toByte(),
             0,
@@ -430,7 +429,7 @@ class ConfigRWFsmTest {
             .put((canId ?: 0).toByte())
             .put(COMM_GET_CUSTOM_CONFIG.toByte())
             .put(0.toByte())
-            .putInt(0x12345678) // package signature
+            .putInt(0x12345678)
             .put(config)
         return buf.array()
     }

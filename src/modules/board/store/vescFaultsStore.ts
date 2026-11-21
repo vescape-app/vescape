@@ -3,21 +3,12 @@ import { create } from 'zustand'
 import { addVescFaultsListener, getVescFaults, type VescFaultOccurrence } from 'vescape-core'
 import { omitKey } from '@/helpers/records'
 
-/** Stable empty slice so `faultsByBoard[id] ?? EMPTY_FAULTS` selectors don't churn references. */
 export const EMPTY_FAULTS: VescFaultOccurrence[] = []
 
-/**
- * Dumb JS mirror of the durable native VESC Fault Occurrence store. Native owns detection, the
- * occurrence lifecycle, and dismissal truth; this store only renders. Same full-slice contract as
- * `boardWarningsStore`: each `onVescFaults` emit carries the whole list for one Board and replaces
- * that board's slice wholesale.
- */
 interface VescFaultsState {
-  /** Occurrences keyed by boardId, newest first. A board with no faults has no entry. */
   faultsByBoard: Record<string, VescFaultOccurrence[]>
   error: string | null
   replaceBoard: (boardId: string, faults: VescFaultOccurrence[]) => void
-  /** Replace the entire mirror from a native pull — heals boards changed while away. */
   replaceAll: (faults: VescFaultOccurrence[]) => void
   clear: () => void
 }
@@ -44,15 +35,7 @@ export const useVescFaultsStore = create<VescFaultsState>((set) => ({
   clear: () => set({ faultsByBoard: {} }),
 }))
 
-/**
- * Wire the native → JS VESC Fault mirror. Call once at app root; returns an unsubscribe.
- *
- * Two channels, exactly like `startBoardWarningsSync`: live pushes while foregrounded and listening,
- * plus a foreground catch-up pull. A fault opened during a headless ride is dropped by the frontend
- * gate, so re-reading native truth on `AppState -> active` is what makes it appear.
- */
 export function startVescFaultsSync(): () => void {
-  // A live push always reflects newer native truth than an in-flight pull snapshot.
   let revision = 0
   const sub = addVescFaultsListener((event) => {
     revision += 1
@@ -65,7 +48,6 @@ export function startVescFaultsSync(): () => void {
         if (revision !== startedAt) return
         useVescFaultsStore.setState({ faultsByBoard: groupByBoard(faults), error: null })
       })
-      // A failed pull keeps the last known mirror; the next foreground or push heals it.
       .catch(() => {
         if (revision !== startedAt) return
         useVescFaultsStore.setState({ error: 'Controller faults could not be refreshed.' })

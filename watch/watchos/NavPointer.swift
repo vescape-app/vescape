@@ -1,15 +1,5 @@
 import SwiftUI
 
-/// Navigation overlay on the Watch Frame: a hollow chevron riding just inside the rim at the
-/// target's bearing (relative to travel direction, so "up" is straight ahead), plus a map pin and
-/// the remaining distance above the battery readout. Nav has no slot of its own — it floats over
-/// the gauges, and the whole overlay is absent unless the phone actually sent nav lanes, so a rider
-/// without a destination sees the plain telemetry frame.
-///
-/// `focus` is the nav-focus progress: as the telemetry readouts leave, the chevron and the distance
-/// grow into the room they free up. `stackAlpha` is the opposite pull — the control and weather
-/// pages take the whole centre, so the nav stack fades out with the readouts.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavPointer.kt `NavPointer`
 /// @platform-diff Wear OS places the chevron on the circle its gauges ring. Here it rides the
 ///   display's own rounded-rectangle perimeter (``Rim``) at the same bearing, so a bearing of 90°
@@ -20,11 +10,8 @@ struct NavPointer: View {
   var distanceUnit: String = "km"
   var focus: Double = 0
   var stackAlpha: Double = 1
-  /// Whether the rider turned the direction arrow on. The chevron alone is opt-in (phone: Settings
-  /// > Watch); everything else nav draws — route, rider dot, pin, distance — ignores the switch.
   var arrowEnabled: Bool
   var color: Color
-  /// Commanded Remote Tilt, badged after the distance on the same line.
   var remoteTilt: Int?
   var tiltColor: Color = Palette.tilt
 
@@ -65,7 +52,6 @@ struct NavPointer: View {
         }
         .padding(.bottom, NAV_READOUT_BOTTOM_INSET)
       }
-      // Drops into the band the battery readout vacates, and grows there.
       .offset(y: READOUT_FOCUS_DROP * focus)
       .scaleEffect(1 + READOUT_FOCUS_GROWTH * focus)
       .opacity(stackAlpha)
@@ -77,8 +63,6 @@ struct NavPointer: View {
 }
 
 extension GraphicsContext {
-  /// Wide hollow chevron over a translucent fill. Points up before rotation, centred on `at`.
-  ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavPointer.kt `drawChevron`
   func drawChevron(at: CGPoint, width: CGFloat, height: CGFloat, rotationDeg: Double, color: Color) {
     let halfW = width / 2
@@ -101,15 +85,12 @@ extension GraphicsContext {
     stroke(rotated, with: .color(color), style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
   }
 
-  /// Map-pin glyph: stroked head, two tail lines to the tip, filled centre dot.
-  ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavPointer.kt `drawMapPin`
   func drawMapPin(at: CGPoint, size: CGFloat, color: Color) {
     let head = size * 0.36
     let headCentre = CGPoint(x: at.x, y: at.y - size * 0.5 + head)
     let stroke = StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round)
     var arc = Path()
-    // Head arc gap sits at the bottom (canvas y is down), where the two tail lines take over.
     arc.addArc(
       center: headCentre, radius: head,
       startAngle: .degrees(145), endAngle: .degrees(145 + 250), clockwise: false
@@ -139,7 +120,6 @@ private func pointOnCircle(centre: CGPoint, radius: CGFloat, degrees: Double) ->
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavPointer.kt `NAV_RIM_INSET`
 private let NAV_RIM_INSET: CGFloat = 22
-/// Sits in the band between the rider dot and the battery readout.
 let NAV_READOUT_BOTTOM_INSET: CGFloat = 32
 private let CHEVRON_FOCUS_GROWTH = 0.18
 private let READOUT_FOCUS_DROP: CGFloat = 6
@@ -150,10 +130,6 @@ private let PIN_BOX: CGFloat = 11
 private let PIN_GAP: CGFloat = 3
 private let DISTANCE_FONT_SIZE: CGFloat = 12
 
-/// A locked Remote Tilt, on the navigation distance's line. A lock outlives the Tilt page on purpose,
-/// so the gauges are where a rider needs reminding that the board is still being tilted. Nothing at
-/// neutral.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `TiltBadge`
 struct TiltBadge: View {
   let value: Int?
@@ -173,7 +149,6 @@ struct TiltBadge: View {
 
 private let TILT_BADGE_GAP: CGFloat = 8
 
-/// Loading lives around the rider; only an actionable failure needs visible text.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `RouteFailureNotice`
 struct RouteFailureNotice: View {
   var body: some View {

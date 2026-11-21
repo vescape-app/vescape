@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test'
 
 test('legacy marker accuracy keeps fixed feet, missing accuracy stays absent', () => {
-  // Isolate icon mocks from other files in Bun's shared test process.
   const script = `
     import { expect, mock } from 'bun:test'
     mock.module('phosphor-react-native', () => ({

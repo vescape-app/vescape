@@ -50,12 +50,9 @@ class MirrorStateReducerTest {
 
     @Test
     fun `the disconnect window follows the observed push cadence`() {
-        // Default cadence when nothing has been observed yet, and its own floor.
         assertEquals(750L, mirrorDisconnectedTimeoutMs(null))
         assertEquals(750L, mirrorDisconnectedTimeoutMs(50L))
-        // A rider-chosen slower cadence widens the window instead of pinning the mirror offline.
         assertEquals(3_000L, mirrorDisconnectedTimeoutMs(1_000L))
-        // A long stall cannot widen it without bound.
         assertEquals(30_000L, mirrorDisconnectedTimeoutMs(600_000L))
     }
 
@@ -71,7 +68,6 @@ class MirrorStateReducerTest {
     fun `a reachable phone app that is not pushing gets no notice`() {
         val disconnected = MirrorStateReducer.reduce(frame = null, lastFrameAtMs = null, nowMs = 0L)
 
-        // No Board is not a fault (ADR-0039): the shell stays empty and says nothing.
         assertNull(MirrorStateReducer.linkNotice(disconnected.status, PhoneLink.APP_REACHABLE))
     }
 
@@ -102,7 +98,6 @@ class MirrorStateReducerTest {
         assertEquals(MirrorStatus.LIVE, state.status)
         assertEquals(1_250.0, state.frame?.navDistanceM)
         assertNull(state.frame?.speed)
-        // The link view is irrelevant once frames flow, whatever it last said.
         PhoneLink.entries.forEach { assertNull(MirrorStateReducer.linkNotice(state.status, it)) }
     }
 

@@ -1,9 +1,5 @@
 import Foundation
 
-/// Device Token lifecycle: verify a freshly exchanged credential, store it, revoke it. The HTTP
-/// boundary itself belongs to `VescapeApi` so every native caller shares one credential and one 401
-/// policy.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/NativeAuthCoordinator.kt
 final class NativeAuthCoordinator {
   static let shared = NativeAuthCoordinator()
@@ -21,8 +17,6 @@ final class NativeAuthCoordinator {
     ]
   }
 
-  /// Verifies the exchanged token against the Account it claims before storing it. The token is not
-  /// in the store yet, so the call carries it explicitly.
   func provision(
     serverUrl: String,
     token: String,
@@ -44,7 +38,6 @@ final class NativeAuthCoordinator {
     switch result {
     case .ok(let returnedId):
       guard returnedId == accountId else { throw NSError(domain: "NativeAuth", code: -4) }
-    // `VescapeApi` already rejected the stored credential and refreshed App Status.
     case .unauthorized:
       throw NSError(domain: "NativeAuth", code: 401)
     case .cancelled:
@@ -66,8 +59,6 @@ final class NativeAuthCoordinator {
     return try stateMap()
   }
 
-  /// Revokes server-side before the local copy goes away. A `401` means the server already considers
-  /// it gone, which is the same end state.
   func revoke() async throws {
     guard let credential = try store.read() else { return }
     let result: ApiResult<Void> = await VescapeApi.forOrigin(credential.serverUrl).request(

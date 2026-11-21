@@ -24,9 +24,7 @@ export interface SparklinePathOptions {
 
 export interface SparklinePaths {
   linePath: ReturnType<typeof Skia.Path.Make> | null
-  /** Flat stand-in when there is no line to draw: no samples, one, or no spread. */
   baselinePath: ReturnType<typeof Skia.Path.Make> | null
-  /** Flat stub across the window before the first sample. */
   leadInPath: ReturnType<typeof Skia.Path.Make> | null
   maxPos: { x: number; y: number } | null
   minPos: { x: number; y: number } | null
@@ -38,7 +36,6 @@ function makeBaseline(fromX: number, toX: number, y: number) {
   return Skia.PathBuilder.Make().moveTo(fromX, y).lineTo(toX, y).detach()
 }
 
-/** A single sample has no line to draw — it becomes a baseline at its own height. */
 function singlePointPaths(
   point: SparklinePoint,
   width: number,
@@ -63,7 +60,6 @@ function singlePointPaths(
   }
 }
 
-/** The y range the line is drawn in: the caller's, or the data's own padded extent. */
 function resolveValueRange(
   points: SparklinePoint[],
   range: SparklinePathOptions['range'],
@@ -104,9 +100,6 @@ export function buildSparklinePaths({
   if (points.length === 1) return singlePointPaths(points[0], width, height, range, minSpan)
   if (points.length < 2) return { ...empty, baselinePath: makeBaseline(0, width, height / 2) }
 
-  // Skia draws every point; the live series is already min/max-decimated natively
-  // on a stable absolute grid, so no JS re-bucketing (which re-quantised and made
-  // the line squiggle on each tick) is needed.
   const xMax = points[points.length - 1].ts
   const xMin = windowMs ? xMax - windowMs : points[0].ts
   const xSpan = xMax - xMin
@@ -146,11 +139,9 @@ interface SparklineLayerProps {
   color: ThemeColor
   showMax?: boolean
   showMin?: boolean
-  /** Draw `leadInPath`; off where an empty stretch reads better than a flat line. */
   showLeadIn?: boolean
 }
 
-/** Draw-only layer. Parent owns Canvas, so many lines share one GPU surface. */
 export function SparklineLayer({
   paths,
   color,

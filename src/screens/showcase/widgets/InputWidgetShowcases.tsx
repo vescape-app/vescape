@@ -21,7 +21,6 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { theme } from '@/constants/theme'
 import { Cell, Row, SizeLabel } from '@/screens/showcase/widgets/WidgetGrid'
 
-/** A horizontal grid row — each `Cell` child takes an equal fraction of the width. */
 export function InputWidgetShowcase() {
   const [full, setFull] = useState<string | null>('Kacper')
   const [half, setHalf] = useState<string | null>('Sunset')

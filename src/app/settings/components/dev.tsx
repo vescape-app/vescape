@@ -15,8 +15,6 @@ function DevBadgeShowcase() {
   return (
     <ShowcaseCard name="DevBadge">
       <Text style={styles.caption}>Tap to expand · long press hides it for a minute</Text>
-      {/* The badge stretches to fill its mount point (placement is the overlay's job), so the
-          preview gives it a bounded stage tall enough for the expanded menu. */}
       <View style={styles.badgeStage}>
         <DevBadge />
       </View>

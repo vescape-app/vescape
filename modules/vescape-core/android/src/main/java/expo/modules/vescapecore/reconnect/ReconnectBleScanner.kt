@@ -8,11 +8,6 @@ import android.bluetooth.le.ScanSettings
 import android.util.Log
 import expo.modules.vescapecore.runtime.Scheduler
 
-/**
- * Android BLE-scanner implementation of [ReconnectBlePort]. Self-contained: depends only on a
- * scanner supplier and the session [scheduler], so scan callbacks are marshalled onto the session
- * thread before reaching the reconnect state machine.
- */
 @SuppressLint("MissingPermission")
 internal class ReconnectBleScanner(
     private val scanner: () -> BluetoothLeScanner?,

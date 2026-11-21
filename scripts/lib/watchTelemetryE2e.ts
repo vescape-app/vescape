@@ -8,7 +8,6 @@ interface Readouts {
   duty: number
 }
 
-/** Only visible, live readouts in our app count; stale labels and dash placeholders do not. */
 function readouts(xml: string, packageName: string): Readouts | null {
   let speed: number | undefined
   let unit = ''
@@ -25,7 +24,6 @@ function readouts(xml: string, packageName: string): Readouts | null {
   return speed === undefined || duty === undefined || duty > 100 ? null : { speed, unit, duty }
 }
 
-/** A cached frame cannot pass. Both snapshots must contain live speed + duty in the same units. */
 export class WatchTelemetryCheck {
   private first: Readouts | null = null
 
@@ -43,7 +41,6 @@ export class WatchTelemetryCheck {
   }
 }
 
-/** Real-device UI assertions, independent of Maestro's phone-only device discovery. */
 export async function verifyWatchTelemetry(serial: string, packageName: string, artifacts: string) {
   mkdirSync(artifacts, { recursive: true })
   const check = new WatchTelemetryCheck()
@@ -70,7 +67,6 @@ export async function verifyWatchTelemetry(serial: string, packageName: string, 
     }
     throw new Error(`Watch telemetry UI did not update: ${lastError}. Artifacts: ${artifacts}`)
   } finally {
-    // Best effort: a disconnected emulator must not replace the original assertion failure.
     try {
       await Bun.write(
         join(artifacts, 'watch.png'),

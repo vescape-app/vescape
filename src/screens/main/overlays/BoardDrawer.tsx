@@ -35,8 +35,6 @@ interface TuneDrawerProps {
 export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
   const formatReferenceSpeed = useLegalReferenceSpeedFormat()
   const [legalWarningOpen, setLegalWarningOpen] = useState(false)
-  // The message outlives `visible` on purpose: `FadeCardModal` keeps rendering its children through
-  // the exit animation, so clearing it on dismiss would blank the card as it fades.
   const [legalModeError, setLegalModeError] = useState({ message: '', visible: false })
   const activeBoardId = useBoardStore((state) => state.activeBoardId)
   const tuneCompatibility = useBoardStore(
@@ -87,7 +85,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
 
   useEffect(() => {
     // intentional-suppression: board config store error is rendered by the drawer
-    if (activeBoardId) void loadProfiles(activeBoardId, tuneCompatibility).catch(() => undefined) // Store error renders in this drawer.
+    if (activeBoardId) void loadProfiles(activeBoardId, tuneCompatibility).catch(() => undefined)
   }, [activeBoardId, loadProfiles, tuneCompatibility])
 
   const openTune = () => {

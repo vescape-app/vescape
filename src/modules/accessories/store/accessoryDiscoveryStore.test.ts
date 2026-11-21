@@ -68,8 +68,6 @@ test('inspecting a device remembers nothing — only enrollment does', async () 
   }
   const result = await useAccessoryDiscoveryStore.getState().inspect('AA:01')
 
-  // The manifest is the answer to "what is this", handed straight back to the screen. Anything
-  // durable is native's, reached through `enrollAccessory`, and never inferred from a scan.
   expect(result.manifest?.accessoryId).toBe('acc-1')
   expect(useAccessoryDiscoveryStore.getState()).not.toHaveProperty('accessories')
   expect(useAccessoryDiscoveryStore.getState().inspecting).toBeNull()
@@ -102,7 +100,6 @@ test('a second selection is refused while a handshake is running', async () => {
   const second = await useAccessoryDiscoveryStore.getState().inspect('BB:02')
 
   expect(second.error).toBe('busy')
-  // The refused tap must not take `inspecting` away from the handshake that is still running.
   expect(useAccessoryDiscoveryStore.getState().inspecting).toBe('AA:01')
 
   release!()

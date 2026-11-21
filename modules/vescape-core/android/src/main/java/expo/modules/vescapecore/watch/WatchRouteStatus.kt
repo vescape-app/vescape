@@ -3,8 +3,7 @@ package expo.modules.vescapecore.watch
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/** Live route state, separate from telemetry so older watch builds keep decoding their frames.
- * Compiled by both the Android phone and wrist. Version, phase, uint32 route fingerprint (LE).
+/**
  * @parity /modules/vescape-core/ios/watch/WatchRouteStatus.swift
  */
 const val WATCH_ROUTE_STATUS_PATH = "/route-status"
@@ -36,7 +35,6 @@ object WatchRouteStatusCodec {
         return WatchRouteStatus(phase, ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getInt(2).toLong() and 0xffffffffL)
     }
 
-    /** FNV-1a of the exact transferred bytes. Zero is reserved for no route. */
     fun routeId(bytes: ByteArray): Long {
         var hash = 2166136261L
         for (byte in bytes) hash = ((hash xor (byte.toLong() and 255)) * 16777619L) and 0xffffffffL

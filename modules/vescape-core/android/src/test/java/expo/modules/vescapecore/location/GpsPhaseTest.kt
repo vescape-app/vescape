@@ -4,9 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * The monitor itself needs a `Context` and a `Looper`, so the JVM suite covers the phase decision
- * the monitor delegates to. iOS drives the same transitions through the monitor.
- *
  * @parity /modules/vescape-core/ios/location/GpsMonitorPhaseTests.swift
  */
 class GpsPhaseTest {

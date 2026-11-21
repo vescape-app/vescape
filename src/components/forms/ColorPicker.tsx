@@ -4,16 +4,12 @@ import { CheckIcon } from 'phosphor-react-native'
 import { interaction, theme } from '@/constants/theme'
 
 interface ColorPickerProps {
-  /** Currently selected color (hex), or null when none is chosen. */
   value: string | null
-  /** Selectable swatches. */
   colors: readonly string[]
   onChange: (color: string | null) => void
-  /** Swatch diameter. */
   size?: number
 }
 
-/** A wrap of color swatches; the selected one shows a ring + check. Presentational. */
 export function ColorPicker({ value, colors, onChange, size = 34 }: ColorPickerProps) {
   return (
     <View style={styles.grid}>

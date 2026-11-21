@@ -56,7 +56,6 @@ describe('phoneHeading', () => {
   })
 
   test('re-bases yaw onto the top edge of the phone for sources with an offset origin', () => {
-    // iOS: `-yaw` is the bearing of the right edge, so the top edge is 90° counter-clockwise.
     expect(phoneHeadingFromDeviceMotion(motion(0), -90)).toBe(270)
     expect(phoneHeadingFromDeviceMotion(motion(-Math.PI / 2), -90)).toBe(0)
     expect(phoneHeadingFromDeviceMotion(motion(-Math.PI / 2, RIGHT_LANDSCAPE), -90)).toBe(90)

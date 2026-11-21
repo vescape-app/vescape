@@ -191,7 +191,6 @@ test('reload applies only the keys that actually changed', async () => {
 
   expect(changed).toEqual(['liveHistoryLimit'])
   expect(useSettingsStore.getState().liveHistoryLimit).toBe(nextLiveHistoryLimit)
-  // Untouched object field keeps identity, so its consumers don't re-render.
   expect(useSettingsStore.getState().historyMetricHotRanges).toBe(hotRangesRef)
 })
 

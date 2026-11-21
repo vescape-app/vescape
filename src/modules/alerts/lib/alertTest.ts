@@ -3,25 +3,16 @@ import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 
 const EMPTY_RANGE_MS = 2_500
 const ALERT_ZONE_MS = 5_000
-/** A Geiger range plays its ramp over this long, end to end. */
 const RANGE_ZONE_MS = 8_000
 const TAIL_MS = 12_000
-/** Share of the range before a threshold that already plays slowly, so the crossing is watchable. */
 const ZONE_LEAD = 0.03
-/** Share of the range after a threshold that stays slow while its line plays. */
 const ZONE_TRAIL = 0.05
 
 export interface AlertTestSweep {
   durationMs: number
-  /** Piecewise-linear progress→share of the sweep; slow around alerts, fast between them. */
   easing: (progress: number) => number
 }
 
-/**
- * Pace a preview sweep by its rules: empty stretches pass in [EMPTY_RANGE_MS] for the whole range,
- * each threshold zone takes [ALERT_ZONE_MS], a Geiger range [RANGE_ZONE_MS], and past the last
- * alert the sweep slows to leave time for a repeat. [alertAbove] false sweeps from max down.
- */
 export function alertZoneSweep(
   rules: AlertTestRule[],
   min: number,
@@ -81,7 +72,6 @@ export function alertZoneSweep(
   }
 }
 
-/** Deduplicate the start and optional ceiling of every visible rule for chart rendering. */
 export function getAlertThresholdValues(rules: AlertTestRule[]): number[] {
   const values = new Set<number>()
   for (const rule of rules) {

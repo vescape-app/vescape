@@ -2,14 +2,11 @@ import CoreGraphics
 import XCTest
 @testable import VescapeCore
 
-/// Heading-up placement of Group Ride marks on a 400 pt face, 600 m across (the route's own fit).
-///
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchMapProjectionTest.kt
 final class WatchMapProjectionTests: XCTestCase {
   private let size = CGSize(width: 400, height: 400)
   private let margin: CGFloat = 40
   private let drop = WatchMapProjection.riderDrop
-  /// Points per metre at the default span.
   private var scale: CGFloat { (400 - WatchMapProjection.edgeInset) / 600 }
 
   private func map(courseDeg: Double = 0, spanM: Double? = 600) -> WatchMapProjection {
@@ -17,7 +14,6 @@ final class WatchMapProjectionTests: XCTestCase {
   }
 
   func testARiderAheadOnTheCourseSitsStraightAboveTheRider() {
-    // Riding east; the other Rider is 100 m east.
     let placed = map(courseDeg: 90).place(eastM: 100, northM: 0, margin: margin)
 
     XCTAssertEqual(placed.point.x, 200, accuracy: 0.01)
@@ -36,8 +32,6 @@ final class WatchMapProjectionTests: XCTestCase {
   }
 
   func testTheRectangularDisplaysCornersAreInRange() {
-    // 45° ahead-right, 150 pt out from the centre on each axis: past a 160 pt circle, inside the
-    // display inset by 40 pt.
     let reach = Double(hypot(150, 150 + drop) / scale)
     let bearing = atan2(150, 150 + drop)
     let placed = map().place(eastM: reach * sin(bearing), northM: reach * cos(bearing), margin: margin)
@@ -93,7 +87,6 @@ final class WatchMapProjectionTests: XCTestCase {
 
     let far = map().mark(for: rider(eastM: 0, northM: 1_000), sizes: sizes)
     XCTAssertEqual(far.kind, .triangle)
-    // Straight ahead: the top edge, one inset point in, apex pointing down.
     XCTAssertEqual(far.point.x, 200, accuracy: 0.01)
     XCTAssertEqual(far.point.y, 1, accuracy: 0.01)
     XCTAssertEqual(far.direction.dx, 0, accuracy: 1e-6)
@@ -101,8 +94,6 @@ final class WatchMapProjectionTests: XCTestCase {
   }
 
   func testTheEdgePointIsOnTheRayFromTheRiderNotFromTheCentre() {
-    // Ahead-right at 45° from the Rider, who sits `drop` below the centre: the ray reaches the right
-    // edge (x = 399) at y = 200 + drop - 199, not the corner a centre ray would hit.
     let far = map().mark(for: rider(eastM: 5_000, northM: 5_000), sizes: sizes)
 
     XCTAssertEqual(far.kind, .triangle)
@@ -117,24 +108,19 @@ final class WatchMapProjectionTests: XCTestCase {
     let rounded = WatchGroupRideMarkSizes(
       inRangeMargin: 40, edgeInset: 1, edgeCornerRadius: radius, dotRadius: 3, triangleMin: 7, triangleMax: 12
     )
-    // Towards the top-right corner from the Rider.
     let far = map().mark(for: rider(eastM: 5_000, northM: 5_000 * Double(200 + drop) / 200), sizes: rounded)
     let corner = CGPoint(x: 399 - radius, y: 1 + radius)
 
     XCTAssertEqual(hypot(far.point.x - corner.x, far.point.y - corner.y), radius, accuracy: 0.01)
-    // Square to the arc: outward points away from the corner's centre.
     XCTAssertEqual(far.direction.dx, (far.point.x - corner.x) / radius, accuracy: 1e-6)
     XCTAssertEqual(far.direction.dy, (far.point.y - corner.y) / radius, accuracy: 1e-6)
-    // On the ray from the Rider.
     let ray = CGVector(dx: far.point.x - 200, dy: far.point.y - (200 + drop))
     XCTAssertEqual(ray.dx, -ray.dy * 200 / (200 + drop), accuracy: 0.01)
-    // Inside the square corner a sharp rectangle would have put it on.
     XCTAssertLessThan(far.point.x, 399)
     XCTAssertGreaterThan(far.point.y, 1)
   }
 
   func testACloserFarRiderGetsABiggerTriangleLogScaledOutTo3Km() {
-    // Ahead the map ends (160 + drop) / scale metres out.
     let boundaryM = Double((160 + drop) / scale)
     let justOut = map().mark(for: rider(eastM: 0, northM: boundaryM + 1), sizes: sizes).size
     let mid = map().mark(for: rider(eastM: 0, northM: 1_000), sizes: sizes).size
@@ -164,11 +150,8 @@ final class WatchMapProjectionTests: XCTestCase {
     XCTAssertEqual(marks.map(\.rider.northM), [2_000, 200, 50])
   }
 
-  // MARK: - Nav-focus labels
-
   private let labelSize = CGSize(width: 30, height: 10)
 
-  /// Places one `labelSize` label per mark and returns their origins.
   private func labels(_ marks: [WatchGroupRideMark], labelSize: CGSize? = nil, focus: Double = 1) -> [CGPoint?] {
     map().placeLabels(
       marks: marks, labels: marks.map { _ in labelSize ?? self.labelSize }, gap: 3, navFocus: focus
@@ -197,7 +180,6 @@ final class WatchMapProjectionTests: XCTestCase {
   }
 
   func testADotsLabelThatWouldRunOffTheDisplayTakesTheRidersSide() {
-    // 150 pt right of the centre, level with it: a 60 pt label outward would leave the display.
     let nearEdge = map().mark(for: rider(eastM: Double(150 / scale), northM: Double(drop / scale)), sizes: sizes)
     XCTAssertEqual(nearEdge.point.x, 350, accuracy: 0.01)
     XCTAssertEqual(label(nearEdge, labelSize: CGSize(width: 60, height: 10)).x, nearEdge.point.x - 3 - 3 - 60, accuracy: 0.01)
@@ -205,7 +187,6 @@ final class WatchMapProjectionTests: XCTestCase {
   }
 
   func testATrianglesLabelSitsInwardOfItsApex() {
-    // Straight ahead: triangle on the top edge, apex down; the label box centres below it.
     let far = map().mark(for: rider(eastM: 0, northM: 1_000), sizes: sizes)
     let at = label(far)
     XCTAssertEqual(at.x, 200 - 15, accuracy: 0.01)
@@ -213,8 +194,6 @@ final class WatchMapProjectionTests: XCTestCase {
   }
 
   func testALabelJustOntoTheNavReadoutSlidesUpClearOfIt() {
-    // At full focus the readout spans y 328–376. A dot level with the readout's top, left of the
-    // Rider: its label (y 323–333) slides up to end the 3 pt gap above it.
     let onReadout = map().mark(for: rider(eastM: Double(-10 / scale), northM: Double((drop - 128) / scale)), sizes: sizes)
     XCTAssertEqual(onReadout.point.y, 328, accuracy: 0.01)
     let at = label(onReadout)
@@ -223,29 +202,24 @@ final class WatchMapProjectionTests: XCTestCase {
   }
 
   func testATrianglesLabelDeepInTheNavReadoutIsDroppedNotDraggedOffItsMark() {
-    // Straight behind: the triangle sits under the readout; clearing it would move the label far
-    // above its apex.
     let behind = map().mark(for: rider(eastM: 0, northM: -2_000), sizes: sizes)
     XCTAssertEqual(behind.kind, .triangle)
     XCTAssertNil(labels([behind], labelSize: CGSize(width: 30, height: 20))[0])
   }
 
   func testTwoCloseRidersGetLabelsThatOverlapNeitherEachOtherNorTheOthersDot() {
-    // 8 pt apart on the same side of the Rider: the second label would sit on the first.
     let near = map().mark(for: riderAt("near", eastM: 60, northM: 100), sizes: sizes)
     let next = map().mark(for: riderAt("next", eastM: 60, northM: 100 + Double(8 / scale)), sizes: sizes)
     let placed = labels([near, next])
     let boxA = CGRect(origin: placed[0]!, size: labelSize)
     let boxB = CGRect(origin: placed[1]!, size: labelSize)
     XCTAssertFalse(boxA.intersects(boxB))
-    // The nearer Rider keeps the natural spot; the other is moved, not dropped.
     XCTAssertEqual(boxA.minY, near.point.y - 5, accuracy: 0.01)
     XCTAssertFalse(boxA.intersects(dotBounds(next)))
     XCTAssertFalse(boxB.intersects(dotBounds(near)))
   }
 
   func testALabelWithNoClearSpotIsDroppedRatherThanOverlap() {
-    // Seven Riders on one spot: both sides and every nudge fill up before the last.
     let marks = (0..<7).map { map().mark(for: riderAt("r\($0)", eastM: 60, northM: 100), sizes: sizes) }
     let placed = labels(marks)
     XCTAssertEqual(placed[0]!.y, marks[0].point.y - 5, accuracy: 0.01)
@@ -266,8 +240,6 @@ final class WatchMapProjectionTests: XCTestCase {
   }
 
   func testANudgedLabelNeverLandsOnItsOwnTriangleOrAnyOtherMark() {
-    // Pairs of far Riders a few degrees apart all round the rim: the farther one's label is crowded
-    // off its natural spot and nudged along the edge, back towards its own triangle.
     let boxSize = CGSize(width: 40, height: 12)
     for bearing in stride(from: 0, to: 360, by: 5) {
       for apart in [4, 8, 12] {
@@ -298,7 +270,6 @@ final class WatchMapProjectionTests: XCTestCase {
     }
   }
 
-  /// Convex polygons overlap unless an edge normal of either separates them.
   private func polygonsOverlap(_ a: [CGPoint], _ b: [CGPoint]) -> Bool {
     [a, b].allSatisfy { poly in
       poly.indices.allSatisfy { i in

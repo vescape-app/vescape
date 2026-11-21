@@ -37,11 +37,9 @@ export default function EditBoardScreen() {
   )
   const navigation = useNavigation()
   const editingBoard = boards.find((b) => b.id === boardId)
-  // Kill switch off hides the whole Board Warnings surface, matching the board pill.
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
   const storedWarnings = useBoardWarningsStore((s) => s.warningsByBoard[boardId] ?? EMPTY_WARNINGS)
   const warnings = boardWarningsEnabled ? storedWarnings : EMPTY_WARNINGS
-  // Fault evidence stays readable with collection off; only the indicator is suppressed.
   const faults = useVescFaultsStore((s) => s.faultsByBoard[boardId] ?? EMPTY_FAULTS)
   const warningsAnchorRef = useRef<View>(null)
   const [warningsOpen, setWarningsOpen] = useState(false)
@@ -83,7 +81,6 @@ export default function EditBoardScreen() {
     }
   }, [editingBoard, removeBoard])
 
-  // Link a device: scan, then probe and save the Board Link.
   const handleLink = () => {
     router.push({
       pathname: routes.addBoardScan,
@@ -91,7 +88,6 @@ export default function EditBoardScreen() {
     })
   }
 
-  // Re-link the board: re-probe its existing peripheral and replace the link.
   const handleRelink = () => {
     router.push({
       pathname: routes.editBoardLink,

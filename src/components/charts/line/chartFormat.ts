@@ -1,4 +1,3 @@
-/** Axis ticks are read at a glance, so they drop decimals as soon as the scale allows. */
 export function formatAxisNumber(value: number): string {
   'worklet'
   const magnitude = Math.abs(value)
@@ -6,7 +5,6 @@ export function formatAxisNumber(value: number): string {
   return value.toFixed(1)
 }
 
-/** Offset from the live head, for charts whose right edge is always "now". */
 export function formatRelative(offsetMs: number): string {
   'worklet'
   const seconds = Math.round(offsetMs / 1000)

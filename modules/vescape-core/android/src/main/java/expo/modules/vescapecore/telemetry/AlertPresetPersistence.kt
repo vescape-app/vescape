@@ -10,24 +10,17 @@ import expo.modules.vescapecore.database.AlertRuleEntity
 import expo.modules.vescapecore.database.VescapeDao
 
 /**
- * An Alert Preset is one `alerts` row per Board and metric, id `preset:<metric>`, whose spec is
- * `preset(<level>)[:key=value,…]`. Native expands the rows whenever it loads rules; the expanded
- * rules are never stored.
- *
  * @parity /modules/vescape-core/ios/telemetry/AlertPresetPersistence.swift
  */
 internal object AlertPresetPersistence {
   val metrics = AlertPresetGenerator.metrics
 
-  /** A metric without a preset row: the app default. */
   private val DEFAULT_SPEC = AlertPresetSpec("normal")
 
   private fun rowId(metric: String) = "$PRESET_RULE_PREFIX$metric"
 
-  /** True for a stored preset row or an expanded preset rule: neither is a rider's rule. */
   fun isPresetId(id: String) = id.startsWith(PRESET_RULE_PREFIX)
 
-  /** Expand an unsaved draft [spec] for the add-board wizard, without touching the database. */
   fun preview(
     metric: String,
     spec: String,
@@ -40,17 +33,11 @@ internal object AlertPresetPersistence {
     return records("", metric, AlertPresetGenerator.generate(metric, parsed, input), createdAt = 0)
   }
 
-  /** Each metric's stored spec, or the app default when it has no row. */
   suspend fun specs(dao: VescapeDao, boardId: String): Map<String, String> {
     val rows = presetRows(dao.getAlertRules(boardId))
     return metrics.associateWith { rows[it]?.spec ?: DEFAULT_SPEC.encode() }
   }
 
-  /**
-   * The Board's rules as native evaluates them and JS reads them: rider rules plus expanded presets.
-   * A missing or tombstoned Board expands nothing. A metric that fails to expand is passed to
-   * [reportFailure] and skipped, so the rider rules and the other metrics still load.
-   */
   suspend fun expandedRules(dao: VescapeDao, boardId: String, reportFailure: (Throwable) -> Unit): List<AlertRuleEntity> {
     val rows = dao.getAlertRules(boardId)
     val riderRules = rows.filterNot { isPresetId(it.id) }
@@ -61,7 +48,6 @@ internal object AlertPresetPersistence {
     val units = validDistanceUnit(dao.getAppSetting("distanceUnit")?.let { decodeSettingJson(it.valueJson) }) ?: "km"
     val expanded = metrics.flatMap { metric ->
       try {
-        // A row this app cannot read expands to nothing rather than the default.
         val spec = presets[metric]?.let { AlertPresetSpec.parse(it.spec) ?: AlertPresetSpec("off") } ?: DEFAULT_SPEC
         val field = AlertPresetGenerator.matchField(metric).takeIf { spec.option("match") == "on" }
         val input = PresetInput(
@@ -81,7 +67,6 @@ internal object AlertPresetPersistence {
     return riderRules + expanded
   }
 
-  /** Rewrite [metric]'s preset row with exactly one of a new level, geiger level, or match choice. */
   suspend fun apply(dao: VescapeDao, boardId: String, metric: String, level: String?, geiger: String?, match: Boolean?) {
     require(metric in metrics) { "Unknown alert preset metric" }
     require(listOfNotNull(level, geiger, match).size == 1) { "Expected one preset change" }
@@ -106,10 +91,6 @@ internal object AlertPresetPersistence {
     if (row == null) dao.deleteAlertRule(boardId, rowId(metric)) else dao.upsertAlertRule(row)
   }
 
-  /**
-   * [metric]'s stored preset row holding [spec], or null when [spec] is the app default: a row exists
-   * only when it differs from the default. Rejects an unknown metric or a non-preset spec.
-   */
   fun presetRow(boardId: String, metric: String, spec: String, createdAt: Long): AlertRuleEntity? {
     require(metric in metrics) { "Unknown alert preset metric" }
     val parsed = requireNotNull(AlertPresetSpec.parse(spec)) { "Invalid preset spec" }

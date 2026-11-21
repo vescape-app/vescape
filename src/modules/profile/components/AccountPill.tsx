@@ -20,18 +20,9 @@ import { routes } from '@/navigation/routes'
 
 interface AccountPillProps {
   signInSize?: 'lg'
-  /** Called before navigating away so the host can dismiss its sheet. */
   onNavigate?: () => void
 }
 
-/**
- * The Vescape Account as one compact pill: sign in, or who you are signed in as — the rider's
- * nick once they have one, else their Clerk name or email.
- *
- * Credential provisioning is part of the identity, not a separate widget — a failed Clerk →
- * Device Token exchange turns the pill into a retry button, because until it succeeds the account
- * buys the Rider nothing.
- */
 export function AccountPill({ onNavigate, signInSize }: AccountPillProps) {
   const router = useRouter()
   const { isLoaded, isSignedIn, user } = useUser()

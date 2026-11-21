@@ -21,8 +21,6 @@ import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /**
- * Telemetry Chunks (#687, ADR 0045) through the production Room DAO: every sample reader returns
- * the same over sealed + buffered data as over the same rows left unsealed.
  * @parity /modules/vescape-core/persistence-macos/main.swift `runTelemetryChunkContract`
  */
 class TelemetryChunkStoreHostTest {
@@ -34,11 +32,6 @@ class TelemetryChunkStoreHostTest {
   private fun memory() = Room.inMemoryDatabaseBuilder<VescapeRoomDatabase>().setDriver(BundledSQLiteDriver()).build()
   private fun file(path: String) = Room.databaseBuilder<VescapeRoomDatabase>(path).setDriver(BundledSQLiteDriver()).build()
 
-  /**
-   * Android's delta chain over [minutes] minutes at 2 Hz. The keyframe sits 3.5 s into each minute,
-   * so every minute opens with deltas anchored in the previous one; temperature is cleared now and
-   * then by a set mask bit with NULL.
-   */
   private fun recording(boardId: String?, fromMs: Long = t0, minutes: Int = 4) = (0 until minutes * 120).map { i ->
     val at = fromMs + i * 500L
     val keyframe = i % 120 == 7
@@ -68,7 +61,6 @@ class TelemetryChunkStoreHostTest {
     for (m in minutes) for (owner in boards) sealTelemetryMinute(owner, t0 + m * minute)
   }
 
-  /** Reconstructed samples of [boardId] in `[fromMs, toMs]`, read the way History reads them. */
   private suspend fun VescapeDao.canonical(fromMs: Long, toMs: Long, boardId: String?): List<Pair<Long, List<Long?>>> {
     val values = arrayOfNulls<Long>(TELEMETRY_CHUNK_VALUE_COLUMNS)
     val start = telemetryAnchorMs(fromMs + 1, boardId, false) ?: fromMs
@@ -89,7 +81,6 @@ class TelemetryChunkStoreHostTest {
     val windows = listOf(
       t0 to t0 + 4 * minute,
       t0 + 30_000 to t0 + 90_000,
-      // Starts on the buffered deltas that open minute 2, anchored only in sealed minute 1.
       t0 + 2 * minute + 1_000 to t0 + 3 * minute,
       t0 + 61_000 to t0 + 61_000,
     )
@@ -106,7 +97,6 @@ class TelemetryChunkStoreHostTest {
     for (at in listOf(t0 + 30_500, t0 + 30_250, t0 + 2 * minute)) for (owner in boards + "other") {
       assertEquals("exists $owner $at", expected.frameExists(at, owner), actual.frameExists(at, owner))
     }
-    // Every Board in one read: the same samples, in time order (Boards sharing a timestamp in any order).
     fun everyBoard(dao: VescapeDao) = runBlocking { dao.getFrames(t0, t0 + 4 * minute, null, 10_000) }
       .map { it.capturedAtMs to it.boardId }.also { read -> assertEquals(read.map { it.first }.sorted(), read.map { it.first }) }
       .sortedWith(compareBy({ it.first }, { it.second ?: "" }))
@@ -128,11 +118,6 @@ class TelemetryChunkStoreHostTest {
     } finally { reference.close(); sealed.close() }
   }
 
-  /**
-   * A partial delete re-encodes the chunks it cuts, and the buffered deltas after a sealed minute
-   * keep their anchor. Sealed samples were reconstructed before the delete, so every surviving
-   * sample keeps exactly the values it was recorded with.
-   */
   @Test fun deletesAndFavoriteProtectionKeepEverySurvivingSample(): Unit = runBlocking {
     val reference = memory()
     val sealed = memory()
@@ -166,7 +151,6 @@ class TelemetryChunkStoreHostTest {
     try {
       for (db in listOf(reference, sealed)) db.vescapeDao().seed()
       sealed.vescapeDao().seal(0..0)
-      // A late sample lands after a maintenance run sealed its minute.
       val late = recording(board, t0 + 250, 1)[20]
       for (db in listOf(reference, sealed)) db.vescapeDao().insertFrames(listOf(late))
       assertSameReads(reference.vescapeDao(), sealed.vescapeDao())
@@ -177,14 +161,12 @@ class TelemetryChunkStoreHostTest {
     } finally { reference.close(); sealed.close() }
   }
 
-  /** "Now" one minute past the recording: minute 3 is still open, and no ride is recording with a 500 ms gap. */
   private val drainNow = t0 + 4 * minute
   private val drainGapMs = 500L
 
   private fun drainScope(db: VescapeRoomDatabase, fence: DatabaseReplacementFence, progress: (Int, Int) -> Unit = { _, _ -> }) =
     MaintenanceJobScope({ db.vescapeDao() }, fence, fence.ticket(), { drainNow }, progress)
 
-  /** Pre-chunk backlog, a sealed minute with a late sample, and minutes a crashed or failed seal left behind. */
   private suspend fun VescapeDao.seedLeftovers(backlog: List<TelemetryFrameEntity>, late: TelemetryFrameEntity, sealFirst: Boolean) {
     seed()
     insertFrames(backlog)
@@ -202,7 +184,6 @@ class TelemetryChunkStoreHostTest {
       drained.vescapeDao().seedLeftovers(backlog, late, sealFirst = true)
       val failures = mutableListOf<TelemetryMinuteKey>()
       val result = drainTelemetryBuffer(drainScope(drained, DatabaseReplacementFence()), drainGapMs, batch = 3) { key, _ -> failures += key }
-      // Backlog: 2 minutes of one Board; minute 0 of the Board merges its late sample; minutes 1..2 of both owners.
       assertEquals(TelemetryDrainResult(minutes = 7, sealedMinutes = 7, failures = 0, yielded = false), result)
       assertEquals(emptyList<TelemetryMinuteKey>(), failures)
       val dao = drained.vescapeDao()
@@ -227,7 +208,6 @@ class TelemetryChunkStoreHostTest {
     } finally { db.close() }
   }
 
-  /** Restore or Clear all fences a drain between batches: what committed stays, the next run finishes the rest. */
   @Test fun fencedDrainEndsConsistentAndResumes(): Unit = runBlocking {
     val reference = memory()
     val drained = memory()
@@ -249,7 +229,6 @@ class TelemetryChunkStoreHostTest {
     } finally { reference.close(); drained.close() }
   }
 
-  /** A codec failure (here an unreadable existing chunk) skips its minute; the minutes around it seal. */
   @Test fun drainSkipsAMinuteThatFailsToEncodeOrDecode(): Unit = runBlocking {
     val db = memory()
     try {
@@ -269,7 +248,6 @@ class TelemetryChunkStoreHostTest {
     } finally { db.close() }
   }
 
-  /** A minute that closes during the fixed run snapshot remains for the next drain. */
   @Test fun drainLeavesMinutesThatCloseDuringTheRun(): Unit = runBlocking {
     val db = memory()
     try {
@@ -283,7 +261,6 @@ class TelemetryChunkStoreHostTest {
     } finally { db.close() }
   }
 
-  /** A future-dated sample (a wrong clock) is not a recording ride: the old backlog still drains. */
   @Test fun futureDatedSampleDoesNotBlockTheDrain(): Unit = runBlocking {
     val db = memory()
     try {
@@ -295,7 +272,6 @@ class TelemetryChunkStoreHostTest {
     } finally { db.close() }
   }
 
-  /** Clear all forgets the drained marker in its own transaction, with or without protected Favorites. */
   @Test fun clearAllForgetsTheDrainedMarker(): Unit = runBlocking {
     val db = memory()
     try {
@@ -331,14 +307,12 @@ class TelemetryChunkStoreHostTest {
     } finally { db.close(); dir.deleteRecursively() }
   }
 
-  /** The limit counts samples in range: an anchor reaching back into a chunk never eats the page. */
   @Test fun limitedAnchoredReadsKeepTheirPageAfterSealing(): Unit = runBlocking {
     val db = memory()
     try {
       val dao = db.vescapeDao()
       dao.seed()
       dao.seal(0..0)
-      // Inside the sealed minute, and on buffered deltas anchored only at that chunk's start.
       for (from in listOf(t0 + 50_250, t0 + minute + 250)) {
         val read = dao.getAnchoredFrames(from, t0 + 4 * minute, board, 10).filter { it.capturedAtMs >= from }
         assertEquals("from $from", (1..10).map { from - 250 + it * 500L }, read.map { it.capturedAtMs })

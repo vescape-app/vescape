@@ -1,6 +1,5 @@
 import Foundation
 
-/// Installs a staged SQLite file and restores the complete former file set on any failure.
 internal func replacingDatabaseFiles<T>(
   source: URL,
   target: URL,

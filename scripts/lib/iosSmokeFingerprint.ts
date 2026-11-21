@@ -5,8 +5,6 @@ import { isAbsolute, join, relative } from 'path'
 
 import { ROOT } from './captureDriver.ts'
 
-// Expo discovers installed pods, but its directory hasher skips symlinks and cannot discover
-// arbitrary files read by config plugins. Hash the durable sources of our native copies too.
 const NATIVE_INPUTS = [
   'app.config.ts',
   'package.json',
@@ -37,8 +35,6 @@ const BUILD_INPUTS = [
   'scripts/lib/iosSmokeFingerprint.ts',
 ]
 
-// These can change generated native files or compilation. Do not hash all process.env: CI commit
-// IDs and workspace paths change on every run, while credentials must never appear in diagnostics.
 const NATIVE_ENV = [
   'APPLE_TEAM_ID',
   'VERSION_CODE',
@@ -68,8 +64,6 @@ interface Dependencies {
 }
 
 function requireCompleteExpoFingerprint(fingerprint: Fingerprint): void {
-  // Expo catches config/autolinking subprocess failures and returns partial fingerprints. Those
-  // are useful for diagnostics, but must never authorize reusing a compiled app.
   if (!fingerprint.hash) throw new Error('Incomplete iOS fingerprint: project hash is missing.')
   for (const id of [
     'expoConfig',
@@ -95,12 +89,9 @@ function requireCompleteExpoFingerprint(fingerprint: Fingerprint): void {
 
 function nativeInputs(root: string): string {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-  // This app currently uses Expo Modules, not app-level RN codegen. A future codegen declaration
-  // may make arbitrary src/*.ts files native inputs; require explicit coverage before cache reuse.
   if (pkg.codegenConfig) throw new Error('App-level codegen requires iOS fingerprint coverage.')
 
   const git = Bun.spawnSync(['git', '-C', root, 'ls-files', '-z'], {
-    // Pre-commit hooks export GIT_INDEX_FILE/GIT_DIR. Never let those redirect another worktree.
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_'))),
   })
   if (git.exitCode !== 0) throw new Error('Cannot enumerate tracked iOS fingerprint inputs.')
@@ -114,8 +105,6 @@ function nativeInputs(root: string): string {
           NATIVE_INPUTS.some((input) => file === input || file.startsWith(`${input}/`)),
       ),
   )
-  // Include newly added build helpers before they are staged as well. Missing optional helpers
-  // have an explicit marker, so both adding and deleting one invalidate the cache.
   BUILD_INPUTS.forEach((file) => files.add(file))
   const hash = createHash('sha256')
   const resolvedRoot = realpathSync(root)
@@ -133,14 +122,11 @@ function nativeInputs(root: string): string {
       if (isAbsolute(target) || target === '..' || target.startsWith('../'))
         throw new Error(`Native symlink escapes the repository: ${file}`)
     }
-    // readFile follows file symlinks, covering both rewiring and edits to their canonical target.
-    // Unexpected directory links fail closed rather than silently omitting their native contents.
     hash.update(createHash('sha256').update(readFileSync(path)).digest())
   }
   return hash.digest('hex')
 }
 
-/** Xcode/SDK identity belongs in the workflow cache key alongside this project fingerprint. */
 export async function createIosSmokeFingerprint(
   root = ROOT,
   deps: Dependencies = { fingerprint: createFingerprintAsync, env: process.env },

@@ -107,6 +107,15 @@ Install dependencies:
 bun install
 ```
 
+Environment: `.env` holds the committed public production defaults; local overrides and secrets go
+in `.env.local` (gitignored), which Expo layers on top. `.env.example` lists every variable. Unset
+`EXPO_PUBLIC_VESCAPE_APP_VARIANT` builds production (`app.vescape`); unset `EXPO_PUBLIC_SENTRY_DSN`
+disables Sentry, and `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` are only for build-time
+source-map and symbol upload. For a local `bun dev` server in `../vescape-server`, set
+`EXPO_PUBLIC_SERVER_URL=http://localhost:3000`; `bun run android` tunnels the device's
+`localhost:3000`, and `bun run relay:reverse` restores the tunnel after a device or adb restart.
+`MAPBOX_SECRET_TOKEN` is only for `scripts/publish-map-thumbnail-style.ts`.
+
 Start Expo:
 
 ```bash

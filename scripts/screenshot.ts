@@ -1,11 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Ad-hoc "what is on screen right now" screenshot, copied to the clipboard.
- *
- * Unlike `scripts/screenshots.ts` (the store set) this drives nothing and builds nothing: it grabs
- * whatever is on an attached Android device or a booted iOS simulator. With more than one target
- * it asks; agents and other non-TTY callers pass `--device <serial|udid|name>` instead.
- */
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -14,19 +7,12 @@ import { listAdbDevices, pickDevice } from './lib/devices.ts'
 
 interface Target {
   platform: 'android' | 'ios'
-  /** What gets remembered and what `--device` matches: a hardware id or a simulator udid. */
   id: string
   name: string
-  /** What the capture command addresses: an adb transport id or the same udid. */
   serial: string
-  /** Extra `--device` spelling: the adb model token for a device, the name for a simulator. */
   expoName: string
 }
 
-/**
- * Every adb device, watches included — grabbing the wrist screen is half of why this exists. The
- * shared listing is what collapses a watch that advertises itself over mDNS twice.
- */
 function androidTargets(): Target[] {
   return listAdbDevices().map((device) => ({
     platform: 'android',
@@ -55,7 +41,6 @@ async function iosTargets(): Promise<Target[]> {
     }))
 }
 
-/** Cache key for the last device picked; see lib/lastDevice. */
 const LAST_DEVICE_KEY = 'screenshot-device'
 
 async function resolveTarget(requested: string | null): Promise<Target> {

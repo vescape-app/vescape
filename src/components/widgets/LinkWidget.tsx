@@ -19,7 +19,6 @@ interface LinkWidgetProps {
   onPress: () => void
 }
 
-/** A tappable widget that links somewhere — icon, label, hint and a chevron. */
 export function LinkWidget({
   icon: IconComponent,
   label,

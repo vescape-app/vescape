@@ -27,7 +27,6 @@ import { useResolvedNeutralColors } from '@/hooks/useTheme'
 const OPEN_DURATION = 260
 const CLOSE_DURATION = 180
 const SCREEN_EDGE_PADDING = 10
-/** Fraction of the screen height a sheet is allowed to occupy. */
 const HEIGHT_FRACTION = 0.75
 
 interface SheetLayoutMode {
@@ -43,7 +42,6 @@ interface ComputedLayout {
   width: number
   maxHeight: number
   transformOrigin: string
-  /** translateY the panel animates in from (px). */
   translateFrom: number
 }
 
@@ -55,8 +53,6 @@ function computeLayout(
   const screen = Dimensions.get('window')
   const screenHeight = screen.height + getModalCoordinateOffset()
 
-  // Floating: centered on the trigger, fully covering it — grows down (or, if
-  // short on space, up) from the trigger's own edge instead of dropping below it.
   const topSafe = insets.top + SCREEN_EDGE_PADDING
   const bottomSafe = insets.bottom + SCREEN_EDGE_PADDING
   const spaceAbove = trigger.y + trigger.height - topSafe
@@ -104,20 +100,12 @@ interface SheetProps {
   onClose: () => void
   layout: SheetLayoutMode
   title?: string
-  /** Optional glyph shown left of a centred title. */
   icon?: Icon
   iconColor?: ThemeColor
   contentContainerStyle?: StyleProp<ViewStyle>
   children: React.ReactNode
 }
 
-/**
- * Shared chrome for popover-style "sheets": a translucent, dimmed-backdrop
- * panel that scales + slides in from the trigger that opened it. Positioning
- * (grow from a screen corner vs. float centered under the trigger) is picked
- * via `layout`; {@link FloatingSheet} below wires up
- * the two shapes callers actually need.
- */
 function Sheet({
   visible,
   triggerRef,
@@ -130,8 +118,6 @@ function Sheet({
   children,
 }: SheetProps) {
   const insets = useSafeAreaInsets()
-  // JS-side resolution: a Modal opens its own window whose native color-scheme resolution can lag
-  // the forced activity appearance, so adaptive tokens mislead right after an in-place theme change.
   const neutral = useResolvedNeutralColors()
   const [triggerLayout, setTriggerLayout] = useState<TriggerLayout | null>(null)
   const [mounted, setMounted] = useState(false)
@@ -243,11 +229,6 @@ interface FloatingSheetProps {
   children: React.ReactNode
 }
 
-/**
- * A compact popover that floats centered under (or above, if short on space)
- * its trigger — same translucent/animated feel as {@link EdgeDrawer}, sized
- * to its content instead of growing from a screen corner.
- */
 export function FloatingSheet({
   matchTriggerWidth = true,
   minWidth,
@@ -297,11 +278,6 @@ const styles = StyleSheet.create({
   modalGestureRoot: {
     flex: 1,
   },
-  /**
-   * A flat translucent scrim rather than a vignette gradient. The gradient was there to fake a panel
-   * edge, but its falloff never lined up with where the drawer actually ended, and the dismissal
-   * fade is what conveys the drawer leaving.
-   */
   drawerScrim: {
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },

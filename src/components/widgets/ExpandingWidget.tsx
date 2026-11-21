@@ -8,19 +8,10 @@ import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSu
 import { theme } from '@/constants/theme'
 
 interface ExpandingWidgetProps extends WidgetHeaderProps {
-  /**
-   * The expanded content. A component, not an element: the panel is rendered by the focus layer, so
-   * the body has to own whatever state it needs rather than inherit it from this row's render.
-   */
   body: React.ComponentType
   surface?: boolean
 }
 
-/**
- * A widget row whose body opens as a focused panel over the rest of the container instead of
- * pushing it around. Growing in place fought the drawer's scroll — which is also its dismissal
- * gesture — so the expanded state lives in the focus layer, above a scrim, until it is dismissed.
- */
 export function ExpandingWidget({ body, surface = true, ...header }: ExpandingWidgetProps) {
   const surfaceStyle = useResolvedSecondaryWidgetSurface()
   const rowRef = useRef<View>(null)

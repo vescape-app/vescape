@@ -25,7 +25,6 @@ class BatterySocEstimatorTest {
             "parallelCount" to 2,
         )
 
-        // 84V = 4.2V/cell = 100%, 50V = 2.5V/cell = 0%, 76V = 3.8V/cell ≈ 55%
         assertEquals(100.0, BatterySocEstimator.estimateBatteryPercent(84.0, config)!!, 0.0)
         assertEquals(0.0, BatterySocEstimator.estimateBatteryPercent(50.0, config)!!, 0.0)
         assertEquals(55.0, BatterySocEstimator.estimateBatteryPercent(76.0, config)!!, 3.0)
@@ -128,8 +127,6 @@ class BatterySocEstimatorTest {
         assertNull(BatterySocEstimator.getCellPreset("unknown:cell:id"))
     }
 
-    // --- IR compensation ---
-
     @Test
     fun `preset IR compensation boosts SoC under load`() {
         val config = mapOf<String, Any?>(
@@ -138,8 +135,6 @@ class BatterySocEstimatorTest {
             "seriesCount" to 20,
             "parallelCount" to 2,
         )
-        // P50B: 13mΩ, R_pack = 0.013 * 20 / 2 = 0.13Ω
-        // At 30A discharge: correction = +3.9V
         val noLoad = BatterySocEstimator.estimateBatteryPercent(72.0, config, 0.0)!!
         val withLoad = BatterySocEstimator.estimateBatteryPercent(72.0, config, 30.0)!!
         assertTrue("IR compensation should increase SoC under load", withLoad > noLoad)
@@ -165,7 +160,6 @@ class BatterySocEstimatorTest {
             "minVoltage" to 60.0,
             "maxVoltage" to 84.0,
         )
-        // Estimated series = round(84/4.2) = 20, R_pack = 0.018 * 20 / 2 = 0.18Ω
         val noLoad = BatterySocEstimator.estimateBatteryPercent(70.0, config, 0.0)!!
         val withLoad = BatterySocEstimator.estimateBatteryPercent(70.0, config, 20.0)!!
         assertTrue("Manual mode IR compensation should increase SoC under load", withLoad > noLoad)

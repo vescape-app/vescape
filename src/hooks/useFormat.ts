@@ -2,7 +2,6 @@ import { useCallback, useMemo } from 'react'
 import { formatSpeedKmh, formatSpeedValue, speedUnit, formatDistanceMeters } from '@/helpers/units'
 import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 
-/** Speed inputs are canonical km/h. Precision is a maximum; trailing zeros are omitted. */
 export function useFormat() {
   const distanceUnit = useDistanceUnit()
   const formatSpeed = useCallback(

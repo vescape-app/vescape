@@ -18,12 +18,6 @@ interface PillAction {
   ref?: RefObject<View | null>
 }
 
-/**
- * A live Accessory link, handed in already resolved.
- *
- * The icon and the label arrive as props because the pill belongs to the Board domain and must not
- * learn what an Accessory is — the same seam the Board selector uses for its Accessories section.
- */
 export interface BoardPillAccessory {
   icon: Icon
   label: string
@@ -36,16 +30,13 @@ interface BoardPillProps {
   bleStatus: string
   onOpenSelector: () => void
   onDisconnect: () => void
-  /** Starts a connection while the board is idle; absent when there is no board to reach. */
   onConnect?: () => void
   onStopRecording?: () => void
   warning?: PillAction & { severity: BoardWarningSeverity }
   fault?: PillAction
-  /** Present only while at least one Accessory is actually connected. */
   accessory?: BoardPillAccessory
 }
 
-/** Shared presentation for the live board bar and its state-controlled design preview. */
 export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
   {
     maxWidth,
@@ -76,8 +67,6 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
 
   return (
     <View ref={ref} collapsable={false} style={[styles.pill, { maxWidth }]}>
-      {/* Leads the pill, green, only while a link is up: a rider glancing down sees that the
-          hardware is talking without opening anything. */}
       {accessory && (
         <BoardPillButton
           icon={accessory.icon}
@@ -100,7 +89,6 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
           {name ?? 'No board'}
         </Text>
       </Pressable>
-      {/* One power key: red while there is a link to cut, quiet gray while there is one to open. */}
       {canDisconnect ? (
         <BoardPillButton
           icon={PowerIcon}
@@ -166,7 +154,6 @@ function BoardPillButton({
   label: string
   testID: string
   color?: ThemeColor
-  /** Which edge the separator sits on, so a leading button is cut off from the name, not the air. */
   dividerSide?: 'before' | 'after'
 }) {
   const divider = <View style={styles.divider} />
@@ -228,8 +215,6 @@ const styles = StyleSheet.create({
     maxWidth: 180,
     flexShrink: 1,
   },
-  // Runs the pill's full height rather than floating in the middle of it — same rule as the
-  // board selector's links strip and the settings status strip.
   divider: {
     width: StyleSheet.hairlineWidth * 2,
     alignSelf: 'stretch',

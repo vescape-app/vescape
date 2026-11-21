@@ -12,17 +12,12 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The rider's last action must win. A Directions call takes seconds, so a fetch started for an
- * abandoned target routinely resolves after the rider has already moved or cleared the pin.
- *
  * @parity /modules/vescape-core/ios/navigation/NavigationControllerTests.swift
  */
 class NavigationControllerTest {
 
     @Test
     fun `riding backwards along the path does not reroute`() {
-        // A path passing near itself makes remaining distance jump between legs; only the distance
-        // from the path may trigger recalculation.
         val routes = FixedRoutes(DirectionsResult.Failed)
         val old = Navigation(RIDER_LAT + 0.01, RIDER_LNG, NavigationProfile.WALKING,
             1L, NavigationStatus.READY, 1112.0, 600.0,
@@ -99,7 +94,6 @@ class NavigationControllerTest {
         controller.onFix(RIDER_LAT + 0.01, RIDER_LNG, 0.0)
         Thread.sleep(SETTLE_MS)
         assertEquals(2, routes.calls.get())
-        // Repeated failures back off: the next attempt waits 60 s, not 30 s.
         now = 60_000L
         controller.onFix(RIDER_LAT + 0.01, RIDER_LNG, 0.0)
         Thread.sleep(SETTLE_MS)
@@ -149,11 +143,9 @@ class NavigationControllerTest {
         assertEquals(2, projections.get())
     }
 
-    /** Compares the stored path, ignoring the process-local revision fields publish assigns. */
     private fun assertSamePath(expected: Navigation?, actual: Navigation?) =
         assertEquals(expected?.copy(revision = 0, automatic = false), actual?.copy(revision = 0, automatic = false))
 
-    /** Routing stub whose calls finish only when the test says so. */
     private class GatedRoutes(private val result: DirectionsResult? = null) : DirectionsRoutes {
         private val gates = mutableMapOf<Double, CountDownLatch>()
         val started = CountDownLatch(1)
@@ -180,7 +172,6 @@ class NavigationControllerTest {
         }
     }
 
-    /** Routing stub that answers immediately with whatever the test hands it. */
     private class FixedRoutes(private val result: DirectionsResult) : DirectionsRoutes {
         val calls = AtomicInteger(0)
         override suspend fun route(
@@ -192,12 +183,10 @@ class NavigationControllerTest {
         ): DirectionsResult { calls.incrementAndGet(); return result }
     }
 
-    /** In-memory stand-in for the App Settings rows, so restore and write-through need no database. */
     private class FakeStore(
         var stored: Navigation? = null,
         var directionPoint: Pair<Double, Double>? = null,
         var storedProfile: NavigationProfile? = null,
-        /** Held open to keep the profile read in flight while the test taps. */
         private val profileGate: CountDownLatch? = null,
     ) : NavigationStore {
         private val lock = Any()
@@ -220,7 +209,6 @@ class NavigationControllerTest {
         }
     }
 
-    /** Routing stub that records the profile it was asked for. */
     private class ProfileRecordingRoutes : DirectionsRoutes {
         private val seen = mutableListOf<String>()
 
@@ -275,7 +263,6 @@ class NavigationControllerTest {
 
         assertEquals(TARGET_LAT, controller.current?.targetLatitude)
         assertEquals(navigation().points, controller.current?.points)
-        // Restoring is a read: a path computed last weekend is still the path.
         assertEquals(0, routes.calls.get())
         synchronized(emitted) { assertEquals(1, emitted.size) }
     }
@@ -289,7 +276,6 @@ class NavigationControllerTest {
         Thread.sleep(SETTLE_MS)
 
         assertNull(controller.current)
-        // Dropped from storage too, or every later start would re-read and re-reject it.
         assertNull(store.stored)
         synchronized(emitted) { assertTrue(emitted.isEmpty()) }
     }
@@ -349,7 +335,6 @@ class NavigationControllerTest {
         controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
         assertTrue(routes.started.await(WAIT_SECONDS, TimeUnit.SECONDS))
         controller.setTarget(SECOND_TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
-        // Newer target resolves first, then the abandoned one.
         routes.gate(SECOND_TARGET_LAT).countDown()
         Thread.sleep(SETTLE_MS)
         routes.gate(TARGET_LAT).countDown()
@@ -370,8 +355,6 @@ class NavigationControllerTest {
 
         controller.setTarget(SECOND_TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
 
-        // A Navigation belongs to exactly one Direction Point: the old path must not stay drawn
-        // under a pin that has already moved.
         assertNull(controller.current)
         synchronized(emitted) { assertNull(emitted.last()) }
     }
@@ -385,7 +368,6 @@ class NavigationControllerTest {
 
         assertEquals(NavigationStatus.FETCH_FAILED, controller.current?.status)
         assertTrue(controller.current?.points.isNullOrEmpty())
-        // Nothing to ask with, so nothing was asked.
         assertEquals(0, routes.calls.get())
     }
 
@@ -405,8 +387,6 @@ class NavigationControllerTest {
 
     @Test
     fun `a path that detours absurdly around the target is no path at all`() {
-        // Straight line is ~13 km; this answer rides ~110 km of it, the shape Directions returns
-        // when the only way to the target is back out along a road.
         val detour = DirectionsResult.Path(
             listOf(RIDER_LAT to RIDER_LNG, RIDER_LAT + 0.5 to RIDER_LNG, TARGET_LAT to TARGET_LNG),
             distanceMeters = 110_000.0,
@@ -445,8 +425,6 @@ class NavigationControllerTest {
         controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
         Thread.sleep(SETTLE_MS)
 
-        // Retry is an ordinary `setTarget` from where the rider is now, which is what the module
-        // calls. The rider has moved since the pin was dropped.
         val (retrying, _) = controller(routes, store)
         retrying.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT + 0.01, RIDER_LNG)
         routes.gate(TARGET_LAT).countDown()
@@ -496,7 +474,6 @@ class NavigationControllerTest {
 
         assertEquals(NavigationProfile.DRIVING, store.storedProfile)
         assertEquals(NavigationProfile.DRIVING, controller.current?.profile)
-        // The next Direction Point is computed under it without being told again.
         controller.setTarget(SECOND_TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
         Thread.sleep(SETTLE_MS)
         assertEquals(listOf("driving", "driving"), routes.profiles)
@@ -514,7 +491,6 @@ class NavigationControllerTest {
         controller.recompute(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
         Thread.sleep(SETTLE_MS)
 
-        // Losing a working line by asking for a better one is a bad trade.
         assertSamePath(drawn, controller.current)
         assertEquals(NavigationStatus.READY, store.stored?.status)
         synchronized(emitted) { assertEquals(NavigationStatus.READY, emitted.last()?.status) }
@@ -538,7 +514,6 @@ class NavigationControllerTest {
         val (controller, _) = controller(routes, store)
 
         controller.restore()
-        // The rider switches while yesterday's value is still being read.
         controller.selectProfile(NavigationProfile.DRIVING)
         gate.countDown()
         Thread.sleep(SETTLE_MS)
@@ -561,22 +536,14 @@ class NavigationControllerTest {
         Thread.sleep(SETTLE_MS)
         controller.onFix(RIDER_LAT, RIDER_LNG, speedMps = 5.0)
 
-        // The rider is standing on the path's first point, so that is what they project onto.
         assertEquals(RIDER_LAT, controller.currentProgress?.latitude)
 
         controller.clear()
 
-        // Route Progress belongs to exactly one Navigation and ends with it — no last known place
-        // left over to describe a path that is no longer drawn.
         assertNull(controller.currentProgress)
         synchronized(progress) { assertEquals(listOf(false, true), progress.map { it == null }) }
     }
 
-    /**
-     * The Wear Mirror pushes a whole polyline per path change, so it must hear about the path and
-     * nothing else: a restore fires it, a clear takes the route off the wrist, and a failed
-     * recompute that leaves the drawn path alone must not re-push the same coordinates.
-     */
     @Test
     fun `the path listener fires on restore and clear, and not on a failure over a drawn path`() {
         val store = FakeStore(navigation(), TARGET_LAT to TARGET_LNG)

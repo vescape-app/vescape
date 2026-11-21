@@ -15,11 +15,6 @@ const HINTS: { icon: Icon; label: string }[] = [
   { icon: HandPointingIcon, label: 'Drag to read' },
 ]
 
-/**
- * Says what the fingers can do to a chart stack. `compact` shrinks it onto the history panel's
- * legend row. The gestures themselves are discoverable only by
- * trying them — see {@link useChartGestures} — so the stack says it once, quietly, underneath.
- */
 export function ChartGestureHint({ compact = false }: { compact?: boolean }) {
   return (
     <View style={[styles.row, compact && styles.rowCompact]}>
@@ -56,7 +51,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.3,
   },
-  /** Sized to sit on the legend row of the history panel, whose type runs smaller. */
   labelCompact: {
     fontSize: 8,
     fontWeight: '600',

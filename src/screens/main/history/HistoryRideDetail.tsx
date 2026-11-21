@@ -20,12 +20,7 @@ import type { MainHistoryOverlayProps } from '@/screens/main/history/HistoryOver
 
 interface HistoryRideDetailProps {
   history: MainHistoryOverlayProps
-  /** The ride being replayed: a grouped history session, or a favorite-backed one. */
   session: HistorySession
-  /**
-   * Favorite detail rather than a history ride: the header carries the Favorite's name, rename and
-   * delete, and the ride-only affordances (prev/next, star, trim, ride delete) are gone.
-   */
   favoriteMode: boolean
   busy: boolean
   onRemoveSession: () => void
@@ -33,10 +28,8 @@ interface HistoryRideDetailProps {
   listButtonRef: RefObject<View | null>
 }
 
-/** Stable identity: a Favorite has no Favorite ranges drawn over it, and a fresh [] re-renders. */
 const NO_FAVORITE_RANGES: { startMs: number; endMs: number }[] = []
 
-/** The replayed ride: chart panel, stats and header. Shared by history mode and favorite mode. */
 export function HistoryRideDetail({
   history,
   session,
@@ -64,7 +57,6 @@ export function HistoryRideDetail({
   }
   const openFavorite = favoriteMode ? history.openFavorite : null
 
-  // Company is an online extra read per ride; leaving the ride forgets it.
   const loadRodeWith = useRodeWithStore((s) => s.load)
   const clearRodeWith = useRodeWithStore((s) => s.clear)
   useEffect(() => {
@@ -73,8 +65,6 @@ export function HistoryRideDetail({
   useEffect(() => clearRodeWith, [clearRodeWith])
   const trimming = history.trimming
 
-  // Stable handlers, so the panel — which rebuilds every chart series it is handed — re-renders
-  // when the ride changes rather than every time this screen does.
   const {
     selectPreviousFavorite,
     selectPreviousRide,
