@@ -1,24 +1,7 @@
 import Foundation
 
-/// Serializes BLE writes while keeping transient remote input (tilt, Board Move) replaceable.
-///
-/// Normal commands preserve FIFO ordering. Remote input has at most one pending command: a newer
-/// value replaces an older one. Ordinary remote commands and normal traffic alternate when both are
-/// pending; emergency neutral always dispatches first once the current write completes.
-///
-/// Without the replaceable slot a held control at its repeat cadence appends a write per tick, which
-/// outruns the link and leaves the board executing values seconds behind the finger — and leaves the
-/// neutral that ends the gesture stuck behind that backlog.
-///
-/// A frame larger than the chunk limit goes out as consecutive chunks. Some BLE modules hang on the
-/// GATT long write the OS would otherwise use (#620). No other write runs between chunks of one
-/// frame: extra bytes mid-frame corrupt the VESC byte stream. So an urgent neutral waits for the
-/// frame in flight to finish. At MTU 23 the largest frames (about 500 bytes) take about 25 writes.
-/// A failed write drops the rest of its frame; the board would reject the broken frame anyway.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescWriteQueue.kt
 /// @platform-diff CoreBluetooth cannot refuse to start a write, so there is no retry of a refused
-/// write here; Android's `writeCharacteristic` can refuse, and its queue puts the write back.
 internal final class VescWriteQueue {
   enum Write {
     case normal(bytes: [UInt8])
@@ -42,15 +25,12 @@ internal final class VescWriteQueue {
   private var inFlight: Write?
   private var preferRemoteInput = false
 
-  /// Payload of one write at the default ATT MTU of 23.
   static let defaultChunkLimit = 20
 
-  /// Frame whose chunks are being sent, and the offset of its next unsent byte.
   private var frame: Write?
   private var frameOffset = 0
   private var chunkLimit = VescWriteQueue.defaultChunkLimit
 
-  /// Largest single write the link accepts (ATT MTU - 3). Applies from the next chunk on.
   func setChunkLimit(_ bytes: Int) {
     lock.lock()
     defer { lock.unlock() }
@@ -63,11 +43,6 @@ internal final class VescWriteQueue {
     normal.append(bytes)
   }
 
-  /// Replace any unsent remote input with `bytes`.
-  ///
-  /// An unsent urgent write survives: it is a neutral/stop, and Remote Tilt and Board Move share
-  /// this one slot, so a routine tick from the other feature must not swallow a stop that has not
-  /// reached the board yet. A newer urgent write still replaces an older one.
   func replaceRemoteInput(_ bytes: [UInt8], urgent: Bool = false) {
     lock.lock()
     defer { lock.unlock() }
@@ -75,8 +50,6 @@ internal final class VescWriteQueue {
     pendingRemoteInput = PendingRemoteInput(bytes: bytes, urgent: urgent)
   }
 
-  /// Start next chunk, or `nil` while another write is active or the queue is empty. The rest of a
-  /// partly sent frame always goes before any other write.
   func startNext() -> Write? {
     lock.lock()
     defer { lock.unlock() }
@@ -113,7 +86,6 @@ internal final class VescWriteQueue {
     return next
   }
 
-  /// Complete the current chunk after its GATT callback. A failed write drops the rest of its frame.
   @discardableResult
   func completeInFlight(failed: Bool = false) -> Write? {
     lock.lock()
@@ -124,7 +96,6 @@ internal final class VescWriteQueue {
     return completed
   }
 
-  /// Drop everything the old link had queued, and forget its chunk limit.
   func clear() {
     lock.lock()
     defer { lock.unlock() }

@@ -1,7 +1,5 @@
 import Foundation
 
-/// Third-party service tokens the server hands out (`GET /api/service-config`). A `nil` token means
-/// that service is not configured, and the feature that needs it stays off.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/serviceconfig/ServiceConfig.kt `ServiceConfig`
 /// @parity /modules/vescape-core/src/index.ts `ServiceConfig`
 struct ServiceConfig: Equatable {
@@ -10,7 +8,6 @@ struct ServiceConfig: Equatable {
 
   func toMap() -> [String: Any?] { ["mapboxToken": mapboxToken, "mapyToken": mapyToken] }
 
-  /// `{ "tokens": { "mapbox"?, "mapy"? } }`; `nil` when the body is not that shape.
   static func parse(_ body: Data) -> ServiceConfig? {
     // intentional-suppression: a malformed body is a failed refresh, which keeps the known config
     guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
@@ -27,7 +24,6 @@ struct ServiceConfig: Equatable {
   }
 }
 
-/// Where the last successful service-config body lives across launches.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/serviceconfig/ServiceConfig.kt `ServiceConfigPersistence`
 protocol ServiceConfigPersistence {
   func read() -> Data?
@@ -41,27 +37,16 @@ struct UserDefaultsServiceConfigPersistence: ServiceConfigPersistence {
   func write(_ body: Data) { UserDefaults.standard.set(body, forKey: Self.bodyKey) }
 }
 
-/// Process-owned Service Config truth. Resolution order:
-/// 1. the last successful server answer, persisted so a cold start offline keeps working;
-/// 2. the build-time seed baked by `plugins/withServiceTokens.ts`, until the server has answered once.
-///
-/// Refreshed on launch and every foreground beside App Status. A failed refresh keeps what is known;
-/// a successful one replaces it whole, so a token the server stops returning is dropped.
-///
-/// Main-thread affine, like `AppStatusCoordinator`: the transport hops results back there.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/serviceconfig/ServiceConfig.kt `ServiceConfigCoordinator`
 final class ServiceConfigCoordinator {
-  /// Public Service Config route on the Vescape server.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/serviceconfig/ServiceConfig.kt `SERVICE_CONFIG_PATH`
   static let serviceConfigPath = "/api/service-config"
 
-  /// Info.plist keys holding the build-time seed tokens.
   /// @parity /plugins/withServiceTokens.ts `IOS_INFO_PLIST_KEYS`
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/serviceconfig/ServiceConfig.kt `MAPBOX_SEED_METADATA`
   static let mapboxSeedInfoKey = "VescapeMapboxAccessToken"
   static let mapySeedInfoKey = "VescapeMapyApiKey"
 
-  /// Process singleton — the resolved tokens must outlive JS runtime reloads.
   static let shared = ServiceConfigCoordinator(
     installedVersion: AppStatusCoordinator.installedMarketingVersion(),
     baseUrl: AppStatusCoordinator.serverBaseUrl,
@@ -97,7 +82,6 @@ final class ServiceConfigCoordinator {
     current = persistence.read().flatMap(ServiceConfig.parse) ?? seed
   }
 
-  /// Observe changes; returns a remover. Invoked on the main thread.
   func addChangeListener(_ listener: @escaping (ServiceConfig) -> Void) -> () -> Void {
     nextListenerToken += 1
     let token = nextListenerToken
@@ -105,7 +89,6 @@ final class ServiceConfigCoordinator {
     return { [weak self] in self?.listeners.removeValue(forKey: token) }
   }
 
-  /// Fetch now; a refresh asked for while one is in flight is answered by that one.
   func refresh() {
     guard !refreshing else { return }
     refreshing = true

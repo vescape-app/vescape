@@ -14,9 +14,6 @@ import java.util.concurrent.CopyOnWriteArrayList
 private const val TAG = "ServiceConfig"
 
 /**
- * Third-party service tokens the server hands out (`GET /api/service-config`). A `null` token means
- * that service is not configured, and the feature that needs it stays off.
- *
  * @parity /modules/vescape-core/ios/serviceconfig/ServiceConfig.swift `ServiceConfig`
  * @parity /modules/vescape-core/src/index.ts `ServiceConfig`
  */
@@ -24,7 +21,6 @@ data class ServiceConfig(val mapboxToken: String?, val mapyToken: String?) {
   fun toMap(): Map<String, Any?> = mapOf("mapboxToken" to mapboxToken, "mapyToken" to mapyToken)
 
   companion object {
-    /** `{ "tokens": { "mapbox"?, "mapy"? } }`; `null` when the body is not that shape. */
     fun parse(body: String): ServiceConfig? = try {
       val tokens = JSONObject(body).optJSONObject("tokens")
       tokens?.let { ServiceConfig(it.token("mapbox"), it.token("mapy")) }
@@ -37,7 +33,6 @@ data class ServiceConfig(val mapboxToken: String?, val mapyToken: String?) {
   }
 }
 
-/** Where the last successful service-config body lives across launches. */
 interface ServiceConfigPersistence {
   fun read(): String?
   fun write(body: String)
@@ -59,15 +54,6 @@ private class SharedPreferencesServiceConfigPersistence(context: Context) : Serv
 }
 
 /**
- * Process-owned Service Config truth. Resolution order:
- * 1. the last successful server answer, persisted so a cold start offline keeps working;
- * 2. the build-time seed baked by `plugins/withServiceTokens.ts`, until the server has answered once.
- *
- * Refreshed on launch and every foreground beside App Status. A failed refresh keeps what is known;
- * a successful one replaces it whole, so a token the server stops returning is dropped.
- *
- * Main-thread affine, like [AppStatusCoordinator]: the transport posts results back there.
- *
  * @parity /modules/vescape-core/ios/serviceconfig/ServiceConfig.swift `ServiceConfigCoordinator`
  */
 class ServiceConfigCoordinator internal constructor(
@@ -84,13 +70,11 @@ class ServiceConfigCoordinator internal constructor(
   private val listeners = CopyOnWriteArrayList<(ServiceConfig) -> Unit>()
   private var refreshing = false
 
-  /** Observe changes; returns a remover. Invoked on the main thread. */
   fun addChangeListener(listener: (ServiceConfig) -> Unit): () -> Unit {
     listeners.add(listener)
     return { listeners.remove(listener) }
   }
 
-  /** Fetch now; a refresh asked for while one is in flight is answered by that one. */
   fun refresh() {
     if (refreshing) return
     refreshing = true
@@ -108,13 +92,11 @@ class ServiceConfigCoordinator internal constructor(
 
   companion object {
     /**
-     * Public Service Config route on the Vescape server.
      * @parity /modules/vescape-core/ios/serviceconfig/ServiceConfig.swift `serviceConfigPath`
      */
     const val SERVICE_CONFIG_PATH = "/api/service-config"
 
     /**
-     * Manifest meta-data holding the build-time seed tokens.
      * @parity /plugins/withServiceTokens.ts `ANDROID_METADATA`
      * @parity /modules/vescape-core/ios/serviceconfig/ServiceConfig.swift `mapboxSeedInfoKey`
      */
@@ -124,7 +106,6 @@ class ServiceConfigCoordinator internal constructor(
     @Volatile
     private var instance: ServiceConfigCoordinator? = null
 
-    /** Process singleton — the resolved tokens must outlive JS runtime reloads. */
     fun get(context: Context): ServiceConfigCoordinator =
       instance ?: synchronized(this) {
         instance ?: run {

@@ -58,7 +58,6 @@ export function LegalModeWidget({
           {description}
         </Text>
       </View>
-      {/* The whole widget is the control; the switch mirrors it rather than competing for the tap. */}
       <View pointerEvents="none">
         <Switch value={value} onValueChange={onValueChange} accent={theme.status.error.color} />
       </View>

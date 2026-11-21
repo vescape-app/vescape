@@ -94,8 +94,6 @@ export function useTuneScreenData() {
       ? boardSnapshot
       : null
   const boardConfigValues = useBoardConfigValuesStore((s) => s.values)
-  // Cached board values render while the session read is still on the wire; the fresh snapshot
-  // replaces them the moment it lands (ADR 0035).
   const prefill = useMemo(
     () => (currentBoardSnapshot ? null : boardConfigPrefill(boardConfigValues, selectedBoardId)),
     [boardConfigValues, currentBoardSnapshot, selectedBoardId],
@@ -178,8 +176,6 @@ export function useTuneScreenData() {
       clearBoardSnapshot()
       return
     }
-    // The session read is authoritative until the link drops (ADR 0035), so re-entering the screen
-    // reuses what it produced instead of putting a second read on the wire.
     if (currentBoardSnapshot) return
     void retryBoardSnapshot()
   }, [
@@ -190,8 +186,6 @@ export function useTuneScreenData() {
     retryBoardSnapshot,
   ])
 
-  // Only the fresh Tune Snapshot backs the board diff and "accept board value": a diff is a
-  // comparison against the board, and a lastKnown value is not board truth (ADR 0035).
   useEffect(() => {
     setBoardSnapshot(boardSnapshot)
   }, [boardSnapshot, setBoardSnapshot])

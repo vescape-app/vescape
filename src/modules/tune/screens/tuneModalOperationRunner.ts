@@ -1,4 +1,3 @@
-/** Prevents a modal action from starting twice before React can render its pending state. */
 export function createTuneModalOperationRunner(setPending: (pending: boolean) => void) {
   let pending = false
   return (operation: () => Promise<unknown>, onSuccess?: () => void) => {
@@ -8,7 +7,7 @@ export function createTuneModalOperationRunner(setPending: (pending: boolean) =>
     // intentional-suppression: Tune store error is rendered by the active screen or modal
     void operation()
       .then(onSuccess)
-      .catch(() => undefined) // The active Tune modal renders the store-owned failure.
+      .catch(() => undefined)
       .finally(() => {
         pending = false
         setPending(false)

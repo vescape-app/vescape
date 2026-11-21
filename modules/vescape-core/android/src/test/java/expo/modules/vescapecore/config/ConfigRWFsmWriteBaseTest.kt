@@ -11,10 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Trust session config on write (#396): a push backed by the session's fresh Board Config Values
- * patches the retained bytes and goes straight to `COMM_SET_CUSTOM_CONFIG`. Without a write base —
- * lastKnown values, or none at all — the write still reads the board first.
- *
  * @parity /modules/vescape-core/ios/config/ConfigRWControllerWriteBaseTests.swift
  */
 class ConfigRWFsmWriteBaseTest {

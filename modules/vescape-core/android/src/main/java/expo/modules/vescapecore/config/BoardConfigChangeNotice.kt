@@ -18,12 +18,6 @@ internal data class BoardConfigChangeNotice(val boardId: String, val detectedAtM
   fun toMap() = mapOf("boardId" to boardId, "detectedAtMs" to detectedAtMs, "diffs" to diffs.map { it.toMap() })
   fun diffsJson() = JSONArray().also { a -> diffs.forEach { a.put(it.toJson()) } }.toString()
   companion object {
-    /**
-     * Relative tolerance for number fields. Two decodes of the same board bytes can differ by a few
-     * ULP once a value has been through the cache JSON or the `float32_auto` reconstruction, and a
-     * rider must never be told `0.026 -> 0.026`. Well below the smallest step any Refloat field
-     * exposes, so a real edit still diffs.
-     */
     private const val NUMBER_TOLERANCE = 1e-6
 
     private fun changed(a: Any?, b: Any?): Boolean {
@@ -32,9 +26,6 @@ internal data class BoardConfigChangeNotice(val boardId: String, val detectedAtM
     }
 
     /**
-     * Fold new diffs into an undismissed notice rather than replacing it: a Refloat change and a motor
-     * config change found in the same session are one piece of news to the rider. A field that diffs
-     * twice keeps the newer comparison, in its original position.
      * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `mergeDiffs`
      */
     fun mergeDiffs(previous: List<BoardConfigChangeDiff>, incoming: List<BoardConfigChangeDiff>): List<BoardConfigChangeDiff> {

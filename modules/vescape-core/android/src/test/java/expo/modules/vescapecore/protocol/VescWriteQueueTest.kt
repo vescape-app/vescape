@@ -91,13 +91,11 @@ class VescWriteQueueTest {
         queue.enqueueNormal(poll)
         assertArrayEquals(poll, queue.startNext()!!.bytes)
         queue.replaceRemoteInput(neutral, urgent = true)
-        // Remote Tilt and Board Move share this slot: a routine tick must not drop a pending stop.
         queue.replaceRemoteInput(otherFeatureTick)
 
         queue.completeInFlight()
         assertArrayEquals(neutral, queue.startNext()!!.bytes)
 
-        // A newer stop still wins over an older one.
         queue.completeInFlight()
         queue.replaceRemoteInput(neutral, urgent = true)
         queue.replaceRemoteInput(newerNeutral, urgent = true)
@@ -120,7 +118,6 @@ class VescWriteQueueTest {
 
     private fun frame(size: Int) = ByteArray(size) { it.toByte() }
 
-    /** Drain every remaining write, completing each one, and return their bytes in order. */
     private fun drain(queue: VescWriteQueue): List<ByteArray> = buildList {
         while (true) {
             val write = queue.startNext() ?: break
@@ -168,7 +165,6 @@ class VescWriteQueueTest {
         val rest = drain(queue)
 
         assertEquals(listOf(20, 5), rest.take(2).map { it.size })
-        // The stop still goes before later normal traffic, just after the frame in flight.
         assertArrayEquals(neutral, rest[2])
         assertArrayEquals(poll, rest[3])
     }

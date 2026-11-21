@@ -6,10 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Board Config Values contract (#393): the decoded map spans the whole schema in real types, a field
- * the bytes cannot supply is absent rather than guessed, and a cached object comes back lastKnown
- * with its bools intact.
- *
  * @parity /modules/vescape-core/ios/config/BoardConfigValuesTests.swift
  */
 class BoardConfigValuesTest {
@@ -52,7 +48,6 @@ class BoardConfigValuesTest {
     val values = RefloatConfigDecoder.decodeFieldMap(schema, bytes)
 
     assertEquals(4.5, values["kp"] as Double, 1e-9)
-    // A bool field stays a Boolean — the whole-schema map never coerces to 1.0 / 0.0.
     assertEquals(true, values["fault_moving_fault_disabled"])
     assertEquals(85.0, values["tiltback_duty"] as Double, 1e-9)
   }
@@ -61,9 +56,7 @@ class BoardConfigValuesTest {
   fun truncatedAndUnparseableFieldsAreMissingNotValues() {
     val schema = schema(
       field("present", RefloatConfigValueType.UINT8, offset = 0),
-      // Past the end of the raw config: the `offset + byteSize` precondition drops it.
       field("truncated", RefloatConfigValueType.FLOAT32, offset = 1),
-      // A scaled field with no scale cannot decode; one bad field must not take the map down.
       field("unparseable", RefloatConfigValueType.FLOAT32_SCALED, offset = 0),
     )
 
@@ -83,7 +76,6 @@ class BoardConfigValuesTest {
       byteArrayOf(0x7f, 0xc0.toByte(), 0, 0),
     )
 
-    // NaN counts as missing: a rule skips an absent field, but would read a NaN as a clean evaluation.
     assertNull(values["nan"])
   }
 
@@ -126,13 +118,11 @@ class BoardConfigValuesTest {
     assertEquals(BoardConfigFreshness.LAST_KNOWN, restored.freshness)
     assertNull(restored.writeBase)
     assertEquals(0.8, restored.number("tiltback_duty")!!, 1e-9)
-    // A cached bool must not come back as 1.0.
     assertTrue(restored.bool("fault_moving_fault_disabled")!!)
     assertNull(restored.number("fault_moving_fault_disabled"))
   }
 
   /**
-   * The bridge map is the whole JS contract: decoded fields and freshness, never the write base.
    * @parity /modules/vescape-core/ios/config/BoardConfigValuesTests.swift `testBridgeMapCarriesValuesAndFreshnessButNoWriteBase`
    */
   @Test
@@ -160,7 +150,6 @@ class BoardConfigValuesTest {
     val decoded = map["values"] as Map<String, Any>
     assertEquals(0.8, decoded["fault_adc1"] as Double, 1e-9)
     assertEquals(true, decoded["fault_moving_fault_disabled"])
-    // Raw bytes and package signature stay native — JS never gets a write base.
     assertNull(map["writeBase"])
     assertNull(map["rawConfig"])
   }

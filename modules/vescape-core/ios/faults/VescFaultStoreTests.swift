@@ -3,8 +3,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// Durable VESC Fault Occurrence storage: reads come back newest-first per Board, lifecycle updates
-/// preserve dismissal, and removing a Board leaves its fault evidence behind.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 final class VescFaultStoreTests: XCTestCase {
   private var queue: DatabaseQueue!
@@ -45,8 +43,6 @@ final class VescFaultStoreTests: XCTestCase {
     XCTAssertEqual(try store.openLive("board")?.id, "open")
   }
 
-  /// An unreadable database must not look like "no open fault": the coordinator would hydrate to
-  /// empty and open a duplicate activation for a fault that is already durably open.
   func testOpenLiveThrowsWhenThePoolIsUnavailable() {
     let unavailable = VescFaultStore { nil }
 
@@ -71,7 +67,6 @@ final class VescFaultStoreTests: XCTestCase {
       try db.execute(sql: "DELETE FROM boards WHERE id = 'board'")
     }
 
-    // No foreign key, no cascade: the evidence outlives the Board record on purpose.
     XCTAssertEqual(try store.getForBoard("board").count, 1)
   }
 }

@@ -12,7 +12,6 @@ export const BADGE_BASELINE = 17
 export const LABEL_BASELINE_Y =
   RULER_LABEL_BAND_TOP + (VALUE_LABEL_HEIGHT + LABEL_FONT_SIZE) / 2 - 1.5
 
-/** Snap-to-step spring, shared by the drag settle and the external value sync. */
 export const SNAP_SPRING = { damping: 18, stiffness: 700, mass: 0.8 }
 
 export function formatDisplayValue(value: number, decimals: number): string {

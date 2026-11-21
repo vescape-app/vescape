@@ -2,7 +2,6 @@ import { DASH } from '@/helpers/format'
 import type { BoardConfigFieldId } from 'vescape-core'
 
 interface AppTuneFieldDefinition {
-  /** Refloat schema field id, typed against the named set so a typo cannot reach a slider. */
   id: BoardConfigFieldId
   label: string
   unit: string | null
@@ -336,15 +335,10 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
   },
 ]
 
-/**
- * Field ids are typed where they are *authored*; lookups stay string-keyed because the ids come back
- * from native groups and stored profiles at runtime, where any id is possible.
- */
 export const APP_TUNE_FIELD_BY_ID = new Map<string, AppTuneFieldDefinition>(
   APP_TUNE_GROUPS.flatMap((group) => group.fields.map((field) => [field.id, field])),
 )
 
-/** Presentation conversion only; profiles and native commands retain raw values. */
 export function tuneDisplayScale(fieldId: string): number {
   return APP_TUNE_FIELD_BY_ID.get(fieldId)?.displayScale ?? 1
 }

@@ -7,17 +7,8 @@ private struct MotorConfigRecord: Codable, FetchableRecord, PersistableRecord {
   enum CodingKeys: String, CodingKey { case boardId = "board_id"; case mcconfSignature = "mcconf_signature"; case firmware; case valuesJson = "values_json"; case capturedAt = "captured_at" }
 }
 
-/// DB-backed Last Known Motor Config Values, one row per Board and MCCONF signature — the signature
-/// is the layout identity, so values only mean anything against the one they were read under
-/// (ADR 0036).
-///
-/// A restored row comes back `lastKnown`: displayable, and never a write base — motor config is
-/// read-only permanently. Rows are deleted for the whole Board when link integrity goes `mismatched`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getLatestMotorConfigValues`
 struct MotorConfigStore {
-  /// Resolves the shared GRDB writer at call time so it always sees the current pool (swapped on
-  /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
   static let shared = MotorConfigStore { VescapeDatabase.pool }
@@ -26,21 +17,15 @@ struct MotorConfigStore {
     self.resolveWriter = resolveWriter
   }
 
-  /// Test seam: bind to an explicit writer (e.g. an in-memory `DatabaseQueue`).
   init(dbWriter: DatabaseWriter) {
     self.resolveWriter = { dbWriter }
   }
 
-  /// Create the Last Known Motor Config Values table. Called from the app-data `DatabaseMigrator`
-  /// and reused by tests so the schema stays single-source.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createMotorConfig(db)
   }
 
-  /// The Board's most recently captured values, whatever signature they were read under. The live
-  /// board's signature is unknown until it answers, so the caller restores optimistically and lets
-  /// the session's own read replace this.
   func loadLatest(boardId: String) throws -> MotorConfigValues? {
     guard !boardId.isEmpty else { return nil }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
     guard let row = try writer.read({ db in try MotorConfigRecord.filter(Column("board_id") == boardId).order(Column("captured_at").desc).fetchOne(db) }) else { return nil }
@@ -51,15 +36,6 @@ struct MotorConfigStore {
     )
   }
 
-  /// A freshly decoded motor config: compare against the Board's last stored motor values, then merge
-  /// any differences into the Board's change notice and replace the baseline in one transaction.
-  ///
-  /// No previous row means first read — a baseline, never a notice. Values read under a *different*
-  /// signature are not compared either: a firmware update rewrites the layout wholesale, and every
-  /// field would diff.
-  ///
-  /// Both configs write into one `board_config_change_notices` row per Board: a rider does not care
-  /// which subsystem a setting lives in, only that their board changed while Vescape was away.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `saveFreshMotorConfigValues`
   func saveFresh(_ values: MotorConfigValues) throws {
     guard let boardId = values.boardId, !boardId.isEmpty else { return }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
@@ -75,7 +51,6 @@ struct MotorConfigStore {
           capturedAtMs: 0,
           valuesJson: oldRow.valuesJson
         )
-        // Motor config carries no schema, so a field's id is its own label (ADR 0036).
         let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: nil)
         if !diffs.isEmpty {
           let existing = try Row.fetchOne(
@@ -98,7 +73,6 @@ struct MotorConfigStore {
     if committed, let notice { BoardConfigStore.onNoticeChanged?(notice) }
   }
 
-  /// Drop every stored signature for a Board. Called when link integrity goes `mismatched`.
   func clear(boardId: String) throws {
     guard !boardId.isEmpty else { return }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
     try writer.write { db in

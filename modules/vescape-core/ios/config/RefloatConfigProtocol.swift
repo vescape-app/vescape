@@ -22,8 +22,6 @@ enum RefloatConfigProtocolResult<T> {
   case failure(String)
 }
 
-/// COMM_GET_CUSTOM_CONFIG_XML / COMM_GET_CUSTOM_CONFIG / COMM_SET_CUSTOM_CONFIG framing, parity with Android.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigProtocol.kt
 enum RefloatConfigProtocol {
   static func normalizeBaseVersion(_ version: String?) -> String? {
@@ -213,8 +211,6 @@ enum RefloatConfigProtocol {
     return .failure("Unexpected Refloat app response command \(cmd), expected \(COMM_CUSTOM_APP_DATA)")
   }
 
-  // @legacy-float info-v1: remove only when Float AND Refloat INFO v1 support ends.
-  // Removal checklist: /docs/legacy-float.md#info-v1
   private static func parseGetInfoV1(
     _ payload: [UInt8],
     _ dataOffset: Int
@@ -223,7 +219,6 @@ enum RefloatConfigProtocol {
       return .failure("Short Refloat info v1 response: \(payload.count - dataOffset) bytes")
     }
     let versionCode = Int(payload[dataOffset])
-    // Legacy INFO has no package name. Float and Refloat share this response format.
     return .success(RefloatPackageInfo(version: "Float/Refloat \(versionCode / 10).\(versionCode % 10)"))
   }
 

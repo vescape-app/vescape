@@ -13,18 +13,9 @@ import { theme } from '@/constants/theme'
 
 interface VescFaultRowProps {
   fault: VescFaultOccurrence
-  /** Toggle the occurrence-level dismissal. Never deletes the occurrence. */
   onSetDismissed: (id: string, dismissed: boolean) => void
 }
 
-/**
- * One row in the VESC Faults group: what the controller reported, when it happened, and whether it
- * is still active. Distinct from `BoardWarningRow` on purpose — a fault is the controller's own
- * evidence, not an app-authored finding, and it is dismissed per occurrence rather than per kind.
- *
- * Expanding the row pulls the occurrence's VESC Fault Capture — the decoded Board samples retained
- * before detection — on demand, keeping samples out of the always-on fault mirror.
- */
 export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
   const [expanded, setExpanded] = useState(false)
   const dismissed = fault.dismissed

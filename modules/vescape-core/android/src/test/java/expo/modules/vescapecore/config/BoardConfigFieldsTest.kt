@@ -8,20 +8,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Every field in [BoardConfigFlagField] and [BoardConfigNumberField], resolved against the real `settings.xml` of each Refloat
- * version we support. The fixtures are the firmware's own files, taken from the Refloat repository
- * tags, so a field renamed or retyped upstream fails here rather than on a rider's board.
- *
- * They are stored zlib-compressed and handed to the parser exactly as they arrive, which is also how
- * a board sends them: [RefloatConfigSchemaParser.normalizeXmlBytes] inflates the stream itself, so
- * the fixture exercises the real entry point rather than a pre-decompressed shortcut.
- *
- * `1.1.x` is one fixture on purpose: v1.1.0, v1.1.1 and v1.1.2 ship byte-identical XML.
- *
  * @parity /modules/vescape-core/ios/config/BoardConfigFieldsTests.swift
  */
 class BoardConfigFieldsTest {
-  /** The shared fixture corpus, found by walking up from the Gradle module directory. */
   private fun repoRoot(): File {
     var dir: File? = File(System.getProperty("user.dir")!!).absoluteFile
     while (dir != null && !File(dir, "shared/fixtures/refloat-schema").isDirectory) dir = dir.parentFile
@@ -46,11 +35,6 @@ class BoardConfigFieldsTest {
     }
   }
 
-  /**
-   * Refloat declares its on/off params as single-byte numbers, never as a schema `bool`. This is the
-   * assumption [encodeFlag] and [BoardConfigValues.flag] are built on, so it is asserted rather than
-   * trusted: a widened field would silently change the decoded representation.
-   */
   @Test
   fun flagFieldsAreSingleByteInEverySupportedRefloatVersion() {
     for (version in versions()) {
@@ -62,11 +46,6 @@ class BoardConfigFieldsTest {
     }
   }
 
-  /**
-   * The regression this whole seam exists for: rebasing a flag must produce the exact runtime type
-   * the decoder produces, or the config-change notice reports the rider's own tap as an outside edit
-   * forever — `Off -> 0`, a `Boolean` compared against a `Double`.
-   */
   @Test
   fun rebasedFlagKeepsTheDecodedRuntimeTypeAndRaisesNoDiff() {
     for (version in versions()) {
@@ -101,7 +80,6 @@ class BoardConfigFieldsTest {
     }
   }
 
-  /** Zeroed bytes decode to `off`, so the accessor must answer `false` — not null, not `0.0`. */
   @Test
   fun flagReadsTheNumericRepresentationRefloatActuallyUses() {
     val schema = schema("1.1.x")
@@ -118,10 +96,6 @@ class BoardConfigFieldsTest {
     assertEquals(true, values.withFlag(BoardConfigFlagField.LEDS_ON, true)!!.flag(BoardConfigFlagField.LEDS_ON))
   }
 
-  /**
-   * A number field that stops resolving does not misreport, it stops evaluating — a Board Warning
-   * quietly never fires again. Rules read finite numbers, so the decoded type is asserted too.
-   */
   @Test
   fun everyNumberFieldDecodesAsAFiniteNumberInEverySupportedRefloatVersion() {
     for (version in versions()) {
@@ -141,7 +115,6 @@ class BoardConfigFieldsTest {
     }
   }
 
-  /** A field no schema carries stays absent: adding the key would itself register as a change. */
   @Test
   fun withFlagRefusesAFieldNeitherSchemaNorValuesKnow() {
     val values = BoardConfigValues(

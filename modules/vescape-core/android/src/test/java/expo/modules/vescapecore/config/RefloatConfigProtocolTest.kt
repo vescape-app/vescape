@@ -46,7 +46,6 @@ class RefloatConfigProtocolTest {
 
     val parsed = RefloatConfigProtocol.parseGetInfoResponse(payload).success()
 
-    // @legacy-float info-v1: replace with rejection coverage when support ends; /docs/legacy-float.md#info-v1.
     assertEquals("Float/Refloat 1.2", parsed.version)
   }
 
@@ -324,8 +323,6 @@ class RefloatConfigProtocolTest {
       .success()
     assertEquals(0, confInd)
   }
-
-  // --- Direct connection tests ---
 
   @Test
   fun buildsDirectCustomConfigXmlRequest() {

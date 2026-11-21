@@ -5,9 +5,6 @@ enum RefloatConfigWriteVerification {
   case failure(String)
 }
 
-/// Confirms a config write took by comparing the patched bytes against the board readback, surfacing
-/// the same failure vocabulary as Android.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigWriteVerifier.kt
 enum RefloatConfigWriteVerifier {
   static func verifyExactBytes(expected: [UInt8], actual: [UInt8]) -> RefloatConfigWriteVerification {

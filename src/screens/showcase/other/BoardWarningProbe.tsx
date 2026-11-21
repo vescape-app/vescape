@@ -11,12 +11,9 @@ import { theme } from '@/constants/theme'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { EMPTY_WARNINGS, useBoardWarningsStore } from '@/modules/board/store/boardWarningsStore'
 
-/** Fake kind used by the dev warning injector; real detector kinds land in later slices. */
 const DEV_WARNING_KIND = 'cell-spread'
-/** Board id used when no board is selected, so the pipe is demoable without a saved board. */
 const DEV_WARNING_BOARD_ID = 'dev-board'
 
-/** Fires warnings through the native registry and mirrors what the store received back. */
 export function BoardWarningProbe() {
   const warningBoardId = useBoardStore((s) => s.activeBoardId) ?? DEV_WARNING_BOARD_ID
   const boardWarnings = useBoardWarningsStore(

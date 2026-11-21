@@ -42,10 +42,6 @@ export interface TuneDialGestureOptions {
   onValueChange: (value: number) => void
 }
 
-/**
- * The dial's motion: dragging the strip, throwing it, snapping to a step, and reporting the value
- * — including the haptic ticks that make each step and each end stop felt.
- */
 export function useTuneDialGesture({
   value,
   min,

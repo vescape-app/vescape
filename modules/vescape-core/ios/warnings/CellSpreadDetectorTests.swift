@@ -1,10 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Cell-spread detector behavior: sustain gating (transient spikes never fire), warn/critical tiers on
-/// the peak spread, charging/balancing payload context, peak tracking through re-reports, worst-group
-/// selection, and the session-end clean-evaluation contract. Payload assertions decode the JSON (its
-/// key order is serializer-dependent) and check each field, rather than matching an exact string.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/warnings/CellSpreadDetectorTest.kt
 final class CellSpreadDetectorTests: XCTestCase {
   private let noBalance = [false, false]
@@ -18,7 +14,6 @@ final class CellSpreadDetectorTests: XCTestCase {
 
   func testSingleFrameSpikeDoesNotFire() throws {
     let detector = CellSpreadDetector()
-    // One frame well over threshold, then it drops — a transient spike must never fire.
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 0))
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.90, 3.91], balancing: noBalance, vCharge: 0.0, atMs: 100))
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 5_000))
@@ -26,7 +21,6 @@ final class CellSpreadDetectorTests: XCTestCase {
 
   func testSustainedSpreadFiresWarnWithPayload() throws {
     let detector = CellSpreadDetector()
-    // Spread 0.24 V: over warn (0.20), under critical (0.50).
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 0))
     let finding = try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 3_000)
     XCTAssertNotNil(finding)
@@ -40,7 +34,6 @@ final class CellSpreadDetectorTests: XCTestCase {
 
   func testSustainedSpreadOverCriticalFiresCritical() throws {
     let detector = CellSpreadDetector()
-    // Spread 0.58 V: over critical (0.50).
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.40, 3.98], balancing: noBalance, vCharge: 0.0, atMs: 0))
     let finding = try detector.onFrame(cellVoltages: [3.40, 3.98], balancing: noBalance, vCharge: 0.0, atMs: 3_000)
     XCTAssertNotNil(finding)
@@ -62,7 +55,6 @@ final class CellSpreadDetectorTests: XCTestCase {
 
   func testChargeDetectionMirrorsThreshold() throws {
     let detector = CellSpreadDetector()
-    // vCharge just under the 10 V floor is not charging.
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 9.5, atMs: 0))
     let finding = try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 9.5, atMs: 3_000)
     XCTAssertEqual(payloadFields(finding?.payloadJson)["charging"] as? Bool, false)
@@ -74,11 +66,9 @@ final class CellSpreadDetectorTests: XCTestCase {
     let first = try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 3_000)
     XCTAssertEqual(payloadFields(first?.payloadJson)["peakSpread"] as? Double, 0.24)
 
-    // Peak climbs to 0.32 V (still warn): re-report with the new peak.
     let second = try detector.onFrame(cellVoltages: [3.80, 4.12], balancing: noBalance, vCharge: 0.0, atMs: 3_100)
     XCTAssertEqual(payloadFields(second?.payloadJson)["peakSpread"] as? Double, 0.32)
 
-    // A 2 mV further climb is below the report epsilon (5 mV): nothing new.
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.122], balancing: noBalance, vCharge: 0.0, atMs: 3_200))
   }
 
@@ -95,7 +85,6 @@ final class CellSpreadDetectorTests: XCTestCase {
 
   func testWorstGroupIsFurthestFromAverage() throws {
     let detector = CellSpreadDetector()
-    // Cells 3.70 / 3.85 / 3.98: group 0 is furthest below the 3.843 average.
     let cells = [3.70, 3.85, 3.98]
     let balancing = [false, false, false]
     XCTAssertNil(try detector.onFrame(cellVoltages: cells, balancing: balancing, vCharge: 0.0, atMs: 0))
@@ -105,14 +94,12 @@ final class CellSpreadDetectorTests: XCTestCase {
 
   func testInvalidCellsAreFilteredAndCountAsNoData() throws {
     let detector = CellSpreadDetector()
-    // No finite positive cells: not usable data, never fires, not clean at session end.
     XCTAssertNil(try detector.onFrame(cellVoltages: [0.0, Double.nan], balancing: noBalance, vCharge: 0.0, atMs: 0))
     XCTAssertFalse(detector.sessionEndClean())
   }
 
   func testSingleValidCellIsNotUsableData() throws {
     let detector = CellSpreadDetector()
-    // Only one valid group: spread is undefined, so the frame is not usable data and never fires.
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 0.0], balancing: noBalance, vCharge: 0.0, atMs: 0))
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, -1.0], balancing: noBalance, vCharge: 0.0, atMs: 3_000))
     XCTAssertFalse(detector.sessionEndClean())
@@ -120,11 +107,8 @@ final class CellSpreadDetectorTests: XCTestCase {
 
   func testLongGapBreaksSustainContinuity() throws {
     let detector = CellSpreadDetector()
-    // Over threshold, then a gap longer than the continuity tolerance (reconnect / interruption):
-    // the unobserved time must not count toward the sustain window.
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 0))
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 5_000))
-    // Sustain restarts at the post-gap frame, so it fires only 3 s after that.
     let finding = try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 8_000)
     XCTAssertNotNil(finding)
     XCTAssertEqual(finding?.severity, .warn)
@@ -132,20 +116,17 @@ final class CellSpreadDetectorTests: XCTestCase {
 
   func testLaterWeakerEpisodeDoesNotDowngrade() throws {
     let detector = CellSpreadDetector()
-    // Critical episode fires and then falls back under threshold.
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.40, 3.98], balancing: noBalance, vCharge: 0.0, atMs: 0))
     let critical = try detector.onFrame(cellVoltages: [3.40, 3.98], balancing: noBalance, vCharge: 0.0, atMs: 3_000)
     XCTAssertEqual(critical?.severity, .critical)
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.90, 3.91], balancing: noBalance, vCharge: 0.0, atMs: 3_100))
 
-    // A later sustained warn episode must not overwrite the stored critical with weaker data.
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 4_000))
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 7_000))
   }
 
   func testInFlightEpisodeAtSessionEndBlocksClean() throws {
     let detector = CellSpreadDetector()
-    // Session ends while spread is over threshold but before it sustained: not a clean session.
     _ = try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 0)
     XCTAssertFalse(detector.sessionEndClean())
   }
@@ -159,7 +140,6 @@ final class CellSpreadDetectorTests: XCTestCase {
     XCTAssertFalse(noData.sessionEndClean())
 
     let transientOnly = CellSpreadDetector()
-    // Over-threshold spikes that never sustain do not block the clean clear.
     _ = try transientOnly.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 0)
     _ = try transientOnly.onFrame(cellVoltages: [3.90, 3.91], balancing: noBalance, vCharge: 0.0, atMs: 100)
     XCTAssertTrue(transientOnly.sessionEndClean())
@@ -178,7 +158,6 @@ final class CellSpreadDetectorTests: XCTestCase {
 
     detector.reset()
     XCTAssertFalse(detector.sessionEndClean())
-    // After reset the sustain window starts fresh: a lone over-threshold frame does not fire.
     XCTAssertNil(try detector.onFrame(cellVoltages: [3.80, 4.04], balancing: noBalance, vCharge: 0.0, atMs: 10_000))
   }
 }

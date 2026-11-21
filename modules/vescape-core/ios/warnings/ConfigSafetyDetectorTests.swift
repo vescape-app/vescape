@@ -1,10 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Config-safety rule boundaries: each rule fires with the right severity + payload, clears when the
-/// setting is safe, per-cell rules skip (report nothing) when they cannot resolve their bound, and the
-/// pushback voltage rules follow the firmware's per-cell (6.05+) vs pack units. Payload assertions
-/// decode the JSON (its key order is serializer-dependent) rather than matching an exact string.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/warnings/ConfigSafetyDetectorTest.kt
 final class ConfigSafetyDetectorTests: XCTestCase {
   private func values(
@@ -94,7 +90,6 @@ final class ConfigSafetyDetectorTests: XCTestCase {
   }
 
   func testLvPushbackLowFiresBelowPackMinimum() throws {
-    // Pack mode, 15s: safe minimum 45.0 V; 44.0 is unsafe.
     let report = try ConfigSafetyDetector.evaluate(values(tiltbackLv: 44.0), seriesCount: 15, perCell: false)
     let f = finding(report, .lvPushbackLow)
     XCTAssertEqual(f?.severity, .critical)
@@ -108,7 +103,6 @@ final class ConfigSafetyDetectorTests: XCTestCase {
   }
 
   func testHvPushbackHighFiresAbovePackMaximum() throws {
-    // Pack mode, 15s: safe maximum 64.5 V; 66.0 is unsafe.
     let report = try ConfigSafetyDetector.evaluate(values(tiltbackHv: 66.0), seriesCount: 15, perCell: false)
     let f = finding(report, .hvPushbackHigh)
     XCTAssertEqual(f?.severity, .warn)
@@ -116,7 +110,6 @@ final class ConfigSafetyDetectorTests: XCTestCase {
   }
 
   func testPerCellFirmwareComparesRawVoltageWithoutSeries() throws {
-    // Per-cell mode (6.05+): the bound is the per-cell constant directly; series count is irrelevant.
     let clean = try ConfigSafetyDetector.evaluate(values(tiltbackLv: 3.0, tiltbackHv: 4.3), seriesCount: nil, perCell: true)
     XCTAssertTrue(clean.cleanKinds.contains(.lvPushbackLow))
     XCTAssertTrue(clean.cleanKinds.contains(.hvPushbackHigh))
@@ -133,7 +126,6 @@ final class ConfigSafetyDetectorTests: XCTestCase {
   }
 
   func testPerCellCapableFirmwareStillAcceptsPackVoltageThresholds() throws {
-    // Refloat 1.2+ keeps legacy pack totals valid. It treats only values below 10 V as per-cell.
     let clean = try ConfigSafetyDetector.evaluate(
       values(tiltbackLv: 57.0, tiltbackHv: 81.7),
       seriesCount: 19,
@@ -153,18 +145,15 @@ final class ConfigSafetyDetectorTests: XCTestCase {
   }
 
   func testPerCellRulesSkippedWithoutSeriesCountInPackMode() throws {
-    // Pack mode, dangerous LV/HV values, but no series count — the two rules must report nothing.
     let report = try ConfigSafetyDetector.evaluate(values(tiltbackLv: 10.0, tiltbackHv: 90.0), seriesCount: nil, perCell: false)
     XCTAssertNil(finding(report, .lvPushbackLow))
     XCTAssertNil(finding(report, .hvPushbackHigh))
     XCTAssertFalse(report.cleanKinds.contains(.lvPushbackLow))
     XCTAssertFalse(report.cleanKinds.contains(.hvPushbackHigh))
-    // The non-cell rules still evaluate.
     XCTAssertTrue(report.cleanKinds.contains(.dutyPushbackHigh))
   }
 
   func testVoltageRulesSkippedWhenFirmwareModeUnknown() throws {
-    // perCell nil (unparseable firmware): units are ambiguous, so LV/HV report nothing even with series.
     let report = try ConfigSafetyDetector.evaluate(values(tiltbackLv: 10.0, tiltbackHv: 90.0), seriesCount: 15, perCell: nil)
     XCTAssertNil(finding(report, .lvPushbackLow))
     XCTAssertNil(finding(report, .hvPushbackHigh))

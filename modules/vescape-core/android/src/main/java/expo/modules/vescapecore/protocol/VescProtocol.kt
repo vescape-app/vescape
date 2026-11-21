@@ -21,13 +21,8 @@ internal const val COMM_SET_CUSTOM_CONFIG = 95
 internal const val COMM_PING_CAN = 62
 internal const val COMM_SET_CHUCK_DATA = 35
 
-/**
- * Read-only terminal request. Vescape only ever sends the fixed literal [VESC_FAULTS_TERMINAL_COMMAND];
- * the command byte is deliberately not exposed with a caller-supplied string anywhere.
- */
 internal const val COMM_TERMINAL_CMD = 20
 
-/** Controller terminal output. Multi-frame, with no explicit completion frame. */
 internal const val COMM_PRINT = 21
 internal const val REFLOAT_MAGIC = 101
 internal const val REFLOAT_GET_INFO = 0
@@ -37,28 +32,14 @@ internal const val REFLOAT_REMOTE = 15
 internal const val REFLOAT_LIGHTS_CONTROL = 20
 
 /**
- * `LIGHTS_CONTROL` on Refloat 1.1 and older, where it still lived in the unstable range the enum
- * documents as "commands above 200 can change protocol at any time". Refloat 1.2.0 promoted it
- * to [REFLOAT_LIGHTS_CONTROL] and widened the mask, so the two ids are two different wire formats.
- *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `REFLOAT_LIGHTS_CONTROL_LEGACY`
  */
 internal const val REFLOAT_LIGHTS_CONTROL_LEGACY = 202
 private const val REFLOAT_FAULT_MODE = 69
 
-/**
- * The one and only terminal command Vescape sends. VESC's `faults` command prints the controller's
- * retained in-memory fault register and mutates nothing. Keeping it a private constant behind
- * [buildFaultsTerminalCommand] is what stops this from becoming a generic command surface.
- */
 private const val VESC_FAULTS_TERMINAL_COMMAND = "faults"
 
 /**
- * Frames the read-only `faults` terminal request for the Board Link's transport, so a CAN-forwarded
- * Refloat Board asks the same controller the Board Link proved.
- *
- * There is intentionally **no** string parameter: the payload is fixed.
- *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildFaultsTerminalCommand`
  */
 internal fun buildFaultsTerminalCommand(transport: BoardTransport): ByteArray =
@@ -67,37 +48,21 @@ internal fun buildFaultsTerminalCommand(transport: BoardTransport): ByteArray =
     )
 
 /**
- * Which light switches a `LIGHTS_CONTROL` request addresses: bit 0 the lights as a whole, bit 1 the
- * headlights. Firmware only applies the bits the mask names; both are always named so a write states
- * the complete light state rather than editing one switch against whatever the board had.
- *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `LIGHTS_CONTROL_MASK`
  */
 private const val LIGHTS_CONTROL_MASK = 0x3
 
-/** Board lights as the board reports them back on its `LIGHTS_CONTROL` echo. */
 internal data class BoardLightsState(val enabled: Boolean, val headlightsEnabled: Boolean)
 
 /**
- * Which `LIGHTS_CONTROL` wire format the board speaks. The command was renumbered and its mask
- * widened in Refloat 1.2.0, and firmware silently drops an unknown command id — a board on the
- * wrong generation answers nothing at all, which is indistinguishable from a dead link.
- *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `BoardLightsGeneration`
  */
 internal enum class BoardLightsGeneration {
-    /** Refloat 1.0–1.1: command 202, one mask byte, writing straight to the stored config. */
     Legacy,
 
-    /** Refloat 1.2+: command 20, `uint32` mask, writing a runtime override. */
     Current;
 
     companion object {
-        /**
-         * Resolves the generation from a normalized Refloat base version such as `"1.2.0"`.
-         * Unknown or unparseable versions fall back to [Current]: a wrong guess only means the
-         * board ignores the command, matching [BoardMoveGeneration.forBaseVersion].
-         */
         fun forBaseVersion(baseVersion: String?): BoardLightsGeneration {
             val parts = baseVersion?.split('.') ?: return Current
             val major = parts.getOrNull(0)?.toIntOrNull() ?: return Current
@@ -108,19 +73,6 @@ internal enum class BoardLightsGeneration {
 }
 
 /**
- * Builds the Refloat lights switch: states the LEDs and the headlights, each on or off.
- *
- * On [BoardLightsGeneration.Current] the write is runtime only — firmware applies it live and never
- * writes config, so a power cycle restores the board's own setting. It is sticky for the rest of
- * that power cycle: firmware marks the runtime value as overriding the configured one, so later
- * config changes to the lights stop taking effect live. On [BoardLightsGeneration.Legacy] there is
- * no runtime layer; firmware assigns the in-memory config directly, so the switch reads back as the
- * board's configured value until something saves or restores config.
- *
- * A board with its LEDs configured off still accepts the command and echoes back `enabled` — the
- * flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a client
- * knows not to offer the switch at all.
- *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildLightsControlCommand`
  */
 internal fun buildLightsControlCommand(
@@ -135,7 +87,6 @@ internal fun buildLightsControlCommand(
             COMM_CUSTOM_APP_DATA.toByte(),
             REFLOAT_MAGIC.toByte(),
             REFLOAT_LIGHTS_CONTROL.toByte(),
-            // mask, uint32 big-endian
             0,
             0,
             0,
@@ -147,7 +98,6 @@ internal fun buildLightsControlCommand(
             COMM_CUSTOM_APP_DATA.toByte(),
             REFLOAT_MAGIC.toByte(),
             REFLOAT_LIGHTS_CONTROL_LEGACY.toByte(),
-            // mask, a single byte before Refloat 1.2.0
             LIGHTS_CONTROL_MASK.toByte(),
             value.toByte(),
         )
@@ -156,9 +106,6 @@ internal fun buildLightsControlCommand(
 }
 
 /**
- * Decodes the board's `LIGHTS_CONTROL` echo, the authoritative answer to what the switch did.
- * Returns `null` for any payload that is not one, including the CAN-forwarded form.
- *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `parseLightsControlResponse`
  */
 internal fun parseLightsControlResponse(payload: ByteArray): BoardLightsState? {
@@ -170,24 +117,16 @@ internal fun parseLightsControlResponse(payload: ByteArray): BoardLightsState? {
     if (body.size < 4) return null
     if ((body[1].toInt() and 0xff) != REFLOAT_MAGIC) return null
     val command = body[2].toInt() and 0xff
-    // Both generations echo the same status byte under their own command id.
     if (command != REFLOAT_LIGHTS_CONTROL && command != REFLOAT_LIGHTS_CONTROL_LEGACY) return null
     val bits = body[3].toInt() and 0xff
     return BoardLightsState(enabled = bits and 0x1 != 0, headlightsEnabled = bits and 0x2 != 0)
 }
 
-/** Neutral position of the remote-tilt slider (0..255). */
 // @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `REMOTE_TILT_CENTER`
 // @parity /src/modules/board/lib/remoteTiltPresentation.ts `TILT_CENTER`
 // @parity /watch/wearos/src/main/java/app/vescape/wear/TiltStick.kt `TILT_CENTER`
 internal const val REMOTE_TILT_CENTER = 128
 
-/**
- * Builds Floaty's temporary remote-tilt input. It emulates a Nunchuk/remote
- * throttle on the chuck Y axis, which Refloat reads as Remote Tilt input when
- * `inputtilt_remote_type` is UART. `value` is the 0..255 slider (128 = neutral);
- * the wire byte is inverted to `255 - value`. Runtime only; never writes config.
- */
 internal fun buildRemoteTiltCommand(transport: BoardTransport, value: Int): ByteArray {
     require(value in 0..255) { "Remote tilt value must be between 0 and 255" }
     return transport.frame(
@@ -200,27 +139,15 @@ internal fun buildRemoteTiltCommand(transport: BoardTransport, value: Int): Byte
 }
 
 /**
- * Which Refloat command carries app-driven Board Move for a given firmware.
- *
- * Refloat 1.3 replaced the current/time `RC_MOVE` payload with a single signed
- * remote-input byte, so the wire format is chosen from the linked base version.
- *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `BoardMoveGeneration`
  * @parity /modules/vescape-core/src/index.ts `startBoardMove`
  */
 internal enum class BoardMoveGeneration {
-    /** Refloat 1.0–1.2: `RC_MOVE` with explicit current and time bytes. */
     RcMove,
 
-    /** Refloat 1.3+: `REMOTE` with one signed input byte. */
     Remote;
 
     companion object {
-        /**
-         * Resolves the generation from a normalized Refloat base version such as
-         * `"1.2.0"`. Unknown or unparseable versions fall back to [Remote]: a
-         * wrong guess only means the board ignores the command.
-         */
         fun forBaseVersion(baseVersion: String?): BoardMoveGeneration {
             val parts = baseVersion?.split('.') ?: return Remote
             val major = parts.getOrNull(0)?.toIntOrNull() ?: return Remote
@@ -230,26 +157,13 @@ internal enum class BoardMoveGeneration {
     }
 }
 
-/** Board Move input range for the Refloat 1.3+ `REMOTE` byte (`-128` is ignored by firmware). */
 internal const val BOARD_MOVE_INPUT_MAX = 127
 
-/** Motor current a full-scale `RC_MOVE` request asks for, in tenths of an amp. */
 private const val RC_MOVE_CURRENT_MAX_DECIAMPS = 60
 
-/**
- * How long one `RC_MOVE` request runs. `time` is not seconds: firmware runs the
- * request for `time * 100` control-loop steps, and that loop ticks at ~832 Hz,
- * so one unit is only ~120 ms. Eight units cover ~1s, which outlives the
- * controller's repeat tick — a request that lapses before its re-send lands is
- * exactly what makes the motor stutter.
- */
 private const val RC_MOVE_TIME_STEPS = 8
 
 /**
- * Builds a Board Move command: motor output while the board is disengaged, not
- * tilt. `input` is `-127..127`, where `0` stops. Firmware applies it only in the
- * ready (disengaged) state and clamps the resulting output itself.
- *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildBoardMoveCommand`
  */
 internal fun buildBoardMoveCommand(
@@ -287,7 +201,6 @@ internal fun buildBoardMoveCommand(
     return transport.frame(payload)
 }
 
-/** Decodes the human-readable portion of a COMM_FW_VERSION response. */
 internal fun parseFwVersion(payload: ByteArray): String? {
     if (payload.size < 3) return null
     val major = payload[1].toInt() and 0xff
@@ -295,7 +208,6 @@ internal fun parseFwVersion(payload: ByteArray): String? {
     var hwNameEnd = 3
     while (hwNameEnd < payload.size && payload[hwNameEnd] != 0.toByte()) hwNameEnd++
     val hwName = if (hwNameEnd > 3) String(payload, 3, hwNameEnd - 3, Charsets.UTF_8) else null
-    // After HW name null: 12 UUID + 1 paired + 1 test version + 1 hw type = 15 bytes.
     var offset = hwNameEnd + 1 + 15
     val customConfigs = mutableListOf<String>()
     if (offset < payload.size) {
@@ -457,19 +369,6 @@ internal fun parseRefloatGetAllData(
     )
 }
 
-/**
- * Decode a COMM_BMS_GET_VALUES reply from a VESC-attached smart BMS.
- *
- * The VESC firmware packs scaled big-endian integers (not IEEE floats): float32 fields are
- * `int32 / scale`, float16 fields are `int16 / scale`. Layout mirrors `commands.c`:
- *   v_tot, v_charge, i_in, i_in_ic (float32 1e6) · ah_cnt, wh_cnt (float32 1e3) ·
- *   cell_num (u8) · v_cell[cell_num] (float16 1e3) · bal_state[cell_num] (u8) ·
- *   temp_adc_num (u8) · temps_adc[] (float16 1e2) · temp_ic/temp_hum/hum/temp_max_cell (float16 1e2) ·
- *   soc (u8 ×255) · soh (u8 ×255) · can_id (u8) ...
- *
- * Only the stable prefix (voltages + balancing) is required; soc is best-effort so firmware
- * variants with different trailing fields still yield cell data.
- */
 internal fun parseBmsValues(payload: ByteArray, packetAt: Long): BmsTelemetry? {
     if (payload.isEmpty()) return null
     if ((payload[0].toInt() and 0xff) != COMM_BMS_GET_VALUES) return null
@@ -501,8 +400,6 @@ internal fun parseBmsValues(payload: ByteArray, packetAt: Long): BmsTelemetry? {
         }
     }
 
-    // Everything past balancing is firmware-variant dependent, so each trailing field is
-    // read best-effort behind a bounds check and stays null/empty when the variant omits it.
     var temps: List<Double> = emptyList()
     var tempIc: Double? = null
     var tempHum: Double? = null

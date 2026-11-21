@@ -26,7 +26,7 @@ export function getTuneCompatibilityIssue(
   }
 }
 
-/** Tune compatibility uses major/minor; exact firmware identity remains on the Board Link.
+/**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TuneAlertPersistence.kt `tuneCompatibilityVersion`
  * @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift `validRefloatBaseVersion`
  */

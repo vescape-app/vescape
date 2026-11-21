@@ -1,7 +1,5 @@
 import Foundation
 
-/// Big-endian readers for VESC's wire encodings, shared by every config and telemetry decoder.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescNumeric.kt
 enum VescNumeric {
   static func uint16(_ bytes: [UInt8], _ offset: Int) -> UInt16 {
@@ -21,8 +19,6 @@ enum VescNumeric {
     Int32(bitPattern: uint32(bytes, offset))
   }
 
-  /// VESC's `buffer_get_float32_auto`: a packed sign/exponent/mantissa form that is deliberately
-  /// not IEEE-754. Ported from upstream `util/buffer.c`.
   static func float32Auto(_ bytes: [UInt8], _ offset: Int) -> Double {
     let raw = uint32(bytes, offset)
     let eRaw = (raw >> 23) & 0xff

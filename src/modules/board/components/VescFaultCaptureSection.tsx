@@ -12,22 +12,13 @@ import {
 } from '@/modules/board/lib/vescFaultCapture'
 import { theme } from '@/constants/theme'
 
-/** Newest pre-fault rows to render. Remaining samples stay in native storage. */
 const VISIBLE_SAMPLES = 40
 
 interface VescFaultCaptureSectionProps {
-  /** Native pre-fault capture for this occurrence. */
   capture: VescFaultCaptureDetail | null
   loading: boolean
 }
 
-/**
- * The VESC Fault Capture for one occurrence: how much evidence exists, at what rate it actually
- * arrived, and the decoded values around the incident.
- *
- * Presentation only. Native copies its existing recent window once at detection. Rate comes from
- * retained timestamps because the Board Session is response-paced.
- */
 export function VescFaultCaptureSection({ capture, loading }: VescFaultCaptureSectionProps) {
   const { formatSpeed, speedUnit } = useFormat()
   if (loading) {
@@ -107,7 +98,6 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-/** A field the firmware did not report stays visibly absent instead of rendering as zero. */
 function num(value: number | null, digits: number): string {
   return value == null ? '—' : value.toFixed(digits)
 }

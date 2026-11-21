@@ -1,16 +1,11 @@
 'worklet'
 
-// Longitudinal target equations and transition signs derive from Refloat v1.2.1
-// torque_tilt.c and brake_tilt.c (GPL-3.0-or-later), matching the bundled schema.
-
 export const TUNE_PREVIEW_MODEL_VERSION = 'refloat-bundled-legacy-v18' as const
 export const REFERENCE_ERPM_PER_KMH = 1000 / 3.5
 export const MAX_TUNE_PREVIEW_SPEED_KMH = 50
 export const TUNE_PREVIEW_RESET_SPEED_KMH = 15
 export const COMPARATIVE_ACCELERATION_KMH_PER_SECOND = 6
 export const MAX_SYNTHETIC_CURRENT_AMPS = 60
-// A typical Refloat kp of 20 reaches the 60 A preview limit at 3 degrees of error.
-// A wider gesture range makes most of the control indistinguishable current saturation.
 export const MAX_PITCH_INPUT_DEGREES = 3
 export const MAX_PITCH_INPUT_RATE_DEGREES_PER_SECOND = 130
 

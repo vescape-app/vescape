@@ -1,22 +1,8 @@
 package expo.modules.vescapecore.protocol
 
 /**
- * Serializes BLE writes while keeping transient remote input (tilt, Board Move) replaceable.
- *
- * Normal commands preserve FIFO ordering. Remote input has at most one pending
- * command: a newer value replaces an older one. Ordinary remote commands and
- * normal traffic alternate when both are pending; emergency neutral always
- * dispatches first once the current write completes.
- *
- * A frame larger than [chunkLimit] goes out as consecutive chunks. Some BLE modules hang on
- * the GATT long write the OS would otherwise use (#620). No other write runs between chunks of one
- * frame: extra bytes mid-frame corrupt the VESC byte stream. So an urgent neutral waits for the
- * frame in flight to finish. At MTU 23 the largest frames (about 500 bytes) take about 25 writes.
- * A failed write drops the rest of its frame; the board would reject the broken frame anyway.
- *
  * @parity /modules/vescape-core/ios/protocol/VescWriteQueue.swift
  * @platform-diff Android's `writeCharacteristic` can refuse to start a write, so [retryInFlight]
- * puts it back; CoreBluetooth cannot refuse, and the iOS queue has no retry.
  */
 internal class VescWriteQueue {
     sealed interface Write {
@@ -33,13 +19,11 @@ internal class VescWriteQueue {
     private var inFlight: Write? = null
     private var preferRemoteInput = false
 
-    /** Frame whose chunks are being sent, and the offset of its next unsent byte. */
     private var frame: Write? = null
     private var frameOffset = 0
     private var inFlightOffset = 0
     private var chunkLimit = DEFAULT_CHUNK_LIMIT
 
-    /** Largest single write the link accepts (ATT MTU - 3). Applies from the next chunk on. */
     @Synchronized
     fun setChunkLimit(bytes: Int) {
         chunkLimit = bytes.coerceAtLeast(DEFAULT_CHUNK_LIMIT)
@@ -50,23 +34,12 @@ internal class VescWriteQueue {
         normal.addLast(bytes)
     }
 
-    /**
-     * Replace any unsent remote input with [bytes].
-     *
-     * An unsent urgent write survives: it is a neutral/stop, and Remote Tilt and Board Move share
-     * this one slot, so a routine tick from the other feature must not swallow a stop that has not
-     * reached the board yet. A newer urgent write still replaces an older one.
-     */
     @Synchronized
     fun replaceRemoteInput(bytes: ByteArray, urgent: Boolean = false) {
         if (!urgent && pendingRemoteInput?.urgent == true) return
         pendingRemoteInput = RemoteInput(bytes, urgent)
     }
 
-    /**
-     * Start next chunk, or `null` while another write is active or the queue is empty. The rest of
-     * a partly sent frame always goes before any other write.
-     */
     @Synchronized
     fun startNext(): Write? {
         if (inFlight != null) return null
@@ -102,7 +75,6 @@ internal class VescWriteQueue {
         return next
     }
 
-    /** Complete current chunk after its GATT callback. A failed write drops the rest of its frame. */
     @Synchronized
     fun completeInFlight(failed: Boolean = false): Write? {
         val completed = inFlight
@@ -111,11 +83,6 @@ internal class VescWriteQueue {
         return completed
     }
 
-    /**
-     * Put a chunk that Android refused to start back into the queue. A partly sent frame resumes
-     * from the refused chunk. A frame with nothing sent yet goes back whole, and a newer remote
-     * input value wins over a refused one.
-     */
     @Synchronized
     fun retryInFlight() {
         if (inFlight == null) return
@@ -134,7 +101,6 @@ internal class VescWriteQueue {
         frame = null
     }
 
-    /** Drop everything the old link had queued, and forget its chunk limit. */
     @Synchronized
     fun clear() {
         normal.clear()
@@ -148,7 +114,6 @@ internal class VescWriteQueue {
     }
 
     companion object {
-        /** Payload of one write at the default ATT MTU of 23. */
         const val DEFAULT_CHUNK_LIMIT = 20
     }
 }

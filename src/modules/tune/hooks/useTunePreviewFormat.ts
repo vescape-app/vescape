@@ -3,7 +3,6 @@ import { formatLengthMeters } from '@/helpers/units'
 import { useDistanceUnit } from '@/hooks/useDistanceUnit'
 import { hillsOptions, movementOptions } from '@/modules/tune/lib/tunePreviewPresentation'
 
-/** Bind Tune Preview preset labels and read-only dimensions to current display units. */
 export function useTunePreviewFormat() {
   const distanceUnit = useDistanceUnit()
   const options = useMemo(

@@ -163,7 +163,6 @@ export function calculateLongitudinalTarget(
     Math.abs(parameters.tiltbackVariableMax),
   )
   const variableTiltbackDegrees = Math.sign(parameters.tiltbackVariableMax) * variableMagnitude
-  // Refloat passes its base setpoint minus pitch into Brake Tilt before adding TT/ATR/Brake Tilt.
   const balanceOffsetDegrees =
     constantTiltbackDegrees + variableTiltbackDegrees - state.angleDegrees
   const brakeTarget = brakeTiltTarget(parameters, syntheticCurrentAmps, balanceOffsetDegrees, erpm)
@@ -217,8 +216,6 @@ export function calculateControllerCurrentAmps(
   return currentAmps === 0 ? 0 : currentAmps
 }
 
-/** Refloat v1.2.1 ATR expected acceleration, including its fixed 8 A rolling offset. */
-
 export function calculateAtrExpectedAcceleration(
   filteredCurrentAmps: number,
   erpmSign: number,
@@ -230,8 +227,6 @@ export function calculateAtrExpectedAcceleration(
   if (absCurrent < 25) return (filteredCurrentAmps - Math.sign(erpmSign) * 8) / ratio
   return (sign * 25 - Math.sign(erpmSign) * 8) / ratio + (sign * (absCurrent - 25)) / (ratio * 1.3)
 }
-
-/** Refloat combines same-direction Torque Tilt and ATR/Brake Tilt using the larger value. */
 
 export function aggregateTorqueAndAdaptiveTilt(
   torqueTiltDegrees: number,

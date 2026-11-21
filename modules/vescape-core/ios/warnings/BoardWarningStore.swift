@@ -1,14 +1,11 @@
 import Foundation
 import GRDB
 
-/// One current Board Warning, as it crosses the bridge and lives in the durable store. Mirrors the
-/// Android `BoardWarning` model + `board_warnings` Room table.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/warnings/BoardWarningRegistry.kt `BoardWarning`
 /// @parity /modules/vescape-core/src/index.ts `BoardWarning`
 struct BoardWarning {
   let boardId: String
   let kind: String
-  /// Two-level severity, fixed at detection time: `warn` or `critical`.
   let severity: String
   let firstDetectedAtMs: Int64
   let lastDetectedAtMs: Int64
@@ -26,10 +23,6 @@ struct BoardWarning {
   }
 }
 
-/// DB-backed storage for Board Warnings, upsert-keyed by (board_id, kind). Not a time series — one
-/// row per active warning per Board. Lifecycle rules live on `BoardWarningRegistry`; this struct is
-/// pure CRUD. Mirrors the Android Room DAO methods behind `BoardWarningStore`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct BoardWarningStore {
   private struct InvalidSeverity: Error {}

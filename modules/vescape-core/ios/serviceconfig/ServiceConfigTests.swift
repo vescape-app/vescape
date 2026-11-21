@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Service Config resolution: persisted answer over the baked seed, failures keep what is known, and a
-/// successful answer replaces the config whole.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/serviceconfig/ServiceConfigCoordinatorTest.kt
 final class ServiceConfigTests: XCTestCase {
   private final class RecordingTransport {

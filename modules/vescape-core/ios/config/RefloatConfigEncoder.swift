@@ -5,9 +5,6 @@ struct RefloatConfigEncodeException: Error {
   init(_ message: String) { self.message = message }
 }
 
-/// Patches Refloat config bytes with Tune Profile field values, big-endian, byte-for-byte identical
-/// to the Android encoder so a write verifies against the same board readback.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigEncoder.kt
 enum RefloatConfigEncoder {
   static func encode(
@@ -100,8 +97,6 @@ enum RefloatConfigEncoder {
     }
   }
 
-  /// Kotlin `roundToInt` rounds half toward positive infinity (`floor(x + 0.5)`); match it so scaled
-  /// and auto-float fields serialize to identical bytes.
   private static func roundHalfUp(_ value: Double) -> Double { (value + 0.5).rounded(.down) }
 
   private static func int32Saturating(_ value: Double) -> Int32 {

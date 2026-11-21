@@ -18,7 +18,6 @@ import {
   SPEED_WIDTH,
 } from '@/modules/tune/components/tunePreviewCanvasGeometry'
 
-/** Title, live speed, the enable switch, and the board/target/motor legend. */
 export function TunePreviewHeader({
   speedKmh,
   boardAngleStr,

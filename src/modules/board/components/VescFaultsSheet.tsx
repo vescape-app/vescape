@@ -12,19 +12,9 @@ import { useVescFaultsStore } from '@/modules/board/store/vescFaultsStore'
 interface VescFaultsSheetProps {
   boardId: string
   visible: boolean
-  /** VESC Fault Occurrences for this Board, newest first. */
   faults: VescFaultOccurrence[]
 }
 
-/**
- * VESC Fault sheet for the selected Board: the controller's own evidence, one row per activation,
- * dismissed per occurrence in native storage. Deliberately separate from the Board Warnings sheet —
- * app-authored warnings and controller faults are different subsystems with different dismissal
- * models, and blurring them hides which one produced a finding.
- *
- * Dismissed occurrences stay listed here even though they do not light the indicator. Raw VESC
- * terminal output is fetched once per drawer opening and never becomes an occurrence.
- */
 export function VescFaultsSheet({ boardId, faults, visible }: VescFaultsSheetProps) {
   const [faultLog, setFaultLog] = useState<string | null>(null)
   const [faultLogError, setFaultLogError] = useState<string | null>(null)

@@ -9,7 +9,6 @@ import {
 export type HillsPresetId = 'flat' | 'large' | 'small' | 'pumptrack' | 'custom'
 export type MovementPresetId = 'manual' | 'slow' | 'rapid' | 'frontBack' | 'custom'
 
-/** Canonical simulation inputs; selected units only affect the generated option labels. */
 export const HILLS_PRESETS = {
   flat: { label: 'Flat road', heightMeters: 0, spacingMeters: 0 },
   large: { label: 'Large hills', heightMeters: 8, spacingMeters: 90 },

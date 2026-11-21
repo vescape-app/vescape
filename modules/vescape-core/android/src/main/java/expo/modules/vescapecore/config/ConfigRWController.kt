@@ -33,10 +33,6 @@ internal data class ConfigConnectionSnapshot(
     val transport: BoardTransport?,
     val fwVersion: String?,
     val linkIntegrity: LinkIntegrity,
-    /**
-     * The session's held Board Config Values. A fresh object carries the write base a tune push
-     * patches, which is what lets the push skip the pre-read entirely (ADR 0035).
-     */
     val boardConfigValues: BoardConfigValues? = null,
 )
 
@@ -49,10 +45,6 @@ internal interface ConfigRWControllerPort {
     fun captureDiagnostic(name: String, properties: Map<String, Any?>)
     fun diagnosticProperties(config: SessionConfig?, category: String): Map<String, Any?>
     fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray)
-    /**
-     * Hand the freshly decoded Board Config Values to the session controller, which holds them as the
-     * session's config truth, caches them, and runs warning evaluation.
-     */
     fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin)
 }
 
@@ -64,25 +56,17 @@ internal class ConfigRWController(
     private val port: ConfigRWControllerPort,
 ) {
     private var state: ConfigRWState = ConfigRWState.Idle
-    /**
-     * Every consumer waiting on the current read. A read started in the background (post-trust config
-     * acquisition) is joined by a later caller instead of rejecting it with `CONFIG_REQUEST_IN_FLIGHT`
-     * — one board read serves them all.
-     */
     private val readCallbacks = mutableListOf<PendingConfigRead>()
     private var writeCallbacks: PendingConfigWrite? = null
     private var timeoutHandle: Cancellable? = null
 
     val isInFlight: Boolean get() = state !is ConfigRWState.Idle
 
-    /** Whether the in-flight operation is a read (joinable) rather than a write (not). */
     private val isReadInFlight: Boolean
         get() = state is ConfigRWState.ReadCollectingXml || state is ConfigRWState.ReadAwaitingConfig
 
     fun consumeRead(pending: PendingConfigRead) {
         if (isInFlight) {
-            // Join the read already on the wire; it completes for every waiter at once. A write is
-            // still exclusive.
             if (!isReadInFlight) return pending.inFlight()
             readCallbacks += pending
             return
@@ -170,8 +154,6 @@ internal class ConfigRWController(
     private fun dispatch(event: ConfigRWEvent) {
         val (next, effects) = ConfigRWFsm.apply(state, event)
         state = next
-        // A failed frame is terminal: `GattWriteFailed` already completed the operation, so the
-        // remaining effects — including a queued `COMM_SET_CUSTOM_CONFIG` — must not still go out.
         for (effect in effects) if (!interpret(effect)) return
     }
 

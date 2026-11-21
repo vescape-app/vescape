@@ -1,10 +1,6 @@
 import type { BoardWarning, BoardWarningKind, BoardWarningSeverity } from 'vescape-core'
 import { DASH } from '@/helpers/format'
 
-/**
- * Rider-facing titles per Board Warning kind. Keyed by the exhaustive `BoardWarningKind` union, so adding a
- * native kind without a title here is a compile error rather than a warning that renders as a raw slug.
- */
 const WARNING_TITLES: Record<BoardWarningKind, string> = {
   'cell-spread': 'Cell voltage spread',
   'battery-config-mismatch': 'Battery config mismatch',
@@ -14,10 +10,6 @@ const WARNING_TITLES: Record<BoardWarningKind, string> = {
   'duty-pushback-high': 'Duty pushback too high',
 }
 
-/**
- * Rider-facing one-liners explaining what each warning means and why it matters, since payload params
- * like `tiltback_hv` mean nothing to most riders.
- */
 const WARNING_DESCRIPTIONS: Record<BoardWarningKind, string> = {
   'cell-spread':
     'Battery cell groups differ in voltage more than expected — a sign of a weak or unbalanced pack.',
@@ -33,24 +25,14 @@ const WARNING_DESCRIPTIONS: Record<BoardWarningKind, string> = {
     'Duty pushback starts above the safe maximum, leaving too little motor headroom before a nosedive.',
 }
 
-/**
- * Human title for a warning kind, falling back to the raw kind for unknown detectors (a newer native build
- * may emit a kind this app version does not know).
- */
 export function warningTitle(kind: string): string {
   return WARNING_TITLES[kind as BoardWarningKind] ?? kind
 }
 
-/** Rider-facing explanation for a warning kind, or null for unknown kinds. */
 export function warningDescription(kind: string): string | null {
   return WARNING_DESCRIPTIONS[kind as BoardWarningKind] ?? null
 }
 
-/**
- * Warnings still waiting on the rider. A dismissed kind stays in the board's list — the warnings
- * sheet renders it grayed — but stops counting toward any indicator, so every count and severity
- * an indicator shows runs through here first.
- */
 export function pendingWarnings(
   warnings: BoardWarning[],
   dismissedKinds: string[] | undefined,
@@ -59,7 +41,6 @@ export function pendingWarnings(
   return warnings.filter((w) => !dismissedKinds.includes(w.kind))
 }
 
-/** Worst active severity across a board's warnings, or null when there are none. */
 export function worstSeverity(warnings: BoardWarning[]): BoardWarningSeverity | null {
   if (warnings.length === 0) return null
   return warnings.some((w) => w.severity === 'critical') ? 'critical' : 'warn'
@@ -70,11 +51,6 @@ export interface WarningDetailEntry {
   value: string
 }
 
-/**
- * Bespoke value/bound rendering for the config-scoped kinds sharing the `{ param, value, bound }`
- * payload shape (see docs/board-warnings.md). Maps the raw numbers to unit-labelled "current vs safe
- * limit" rows. `footpad-disabled` renders no numeric rows — the description says it all.
- */
 const CONFIG_DETAIL: Partial<
   Record<BoardWarningKind, { boundLabel: string; format: (n: number) => string }>
 > = {
@@ -84,11 +60,6 @@ const CONFIG_DETAIL: Partial<
   'footpad-disabled': { boundLabel: '', format: () => '' },
 }
 
-/**
- * Decode a warning's kind-specific JSON payload into label/value detail rows. Config-scoped kinds get
- * unit-aware "Current value / Safe limit" rows; other kinds fall back to generic key/value rendering of
- * whatever payload keys are present.
- */
 export function parseWarningDetail(kind: string, payloadJson: string): WarningDetailEntry[] {
   let parsed: unknown
   try {
@@ -121,7 +92,6 @@ function fmtVolts(n: number): string {
   return `${n % 1 === 0 ? n.toFixed(0) : n.toFixed(1)} V`
 }
 
-/** Duty payload values are 0–1 fractions; riders think in percent. */
 function fmtDutyPercent(n: number): string {
   return `${Math.round(n * 100)}%`
 }
