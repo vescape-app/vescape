@@ -13,12 +13,10 @@ import { isLiveRide, rideMovingWindow, type HistorySession } from '@/modules/his
 const SKELETON_COUNT = 3
 
 interface RidePreviewStripProps {
-  /** How far the strip scrolls past its container's sides, to the screen edge. */
   bleed: number
   children: ReactNode
 }
 
-/** Horizontal strip of ride tiles that scrolls out to the screen edge. */
 export function RidePreviewStrip({ bleed, children }: RidePreviewStripProps) {
   return (
     <ScrollView
@@ -37,7 +35,6 @@ interface RidePreviewStripSkeletonProps {
   accessibilityLabel: string
 }
 
-/** Loading state of a RidePreviewStrip: pulsing tiles in the same slots. */
 export function RidePreviewStripSkeleton({
   bleed,
   accessibilityLabel,
@@ -57,12 +54,10 @@ export function RidePreviewStripSkeleton({
 interface RidePreviewCardListProps {
   sessions: HistorySession[]
   onOpenRide: (session: HistorySession) => void
-  /** Set on the first card, for tests. */
   firstTestID?: string
   bleed: number
 }
 
-/** A horizontal strip of ride cards, newest first. */
 export function RidePreviewCardList({
   sessions,
   onOpenRide,

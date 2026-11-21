@@ -3,16 +3,6 @@ package expo.modules.vescapecore.telemetry
 import kotlin.math.roundToInt
 
 /**
- * Median-windowed Battery SoC Estimate (ADR-0016).
- *
- * IR compensation (ADR-0011) leaves residual sag transients that drop the percentage a few
- * points for a few seconds, making the displayed % jump and flapping battery alerts. This holds
- * a trailing window of percentages and returns their median — rejecting brief spikes harder than
- * a mean while lagging the real trend less. Display and alert evaluation both read the median so
- * they never diverge; raw voltage stays the untouched Telemetry Sample.
- *
- * A [windowMs] of 0 disables smoothing: every call returns the latest percentage unchanged.
- *
  * @parity /modules/vescape-core/ios/telemetry/SocMedianWindow.swift
  */
 class SocMedianWindow(@Volatile var windowMs: Long = 20_000L) {
@@ -28,7 +18,6 @@ class SocMedianWindow(@Volatile var windowMs: Long = 20_000L) {
         sampleCount = 0
     }
 
-    /** Adds a sample and returns the median SoC over the trailing window. */
     fun median(percent: Double, nowMs: Long): Double {
         if (windowMs <= 0L) {
             reset()

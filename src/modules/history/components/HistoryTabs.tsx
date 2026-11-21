@@ -7,7 +7,6 @@ interface HistoryTabsProps {
   onSelectTab: (tab: 'history' | 'favorites') => void
 }
 
-/** Shared compact tabs: only the active destination shows its label. */
 export function HistoryTabs({ tab, onSelectTab }: HistoryTabsProps) {
   return (
     <PillSelector activeId={tab} contained fitContent variant="lightTabs">

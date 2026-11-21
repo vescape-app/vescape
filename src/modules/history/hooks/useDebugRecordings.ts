@@ -74,7 +74,6 @@ export function useDebugRecordings() {
     }
   }, [])
 
-  /** Start a replay on the selected Board; the normal live UI takes over (disconnect to stop). */
   const replayRecording = useCallback(async (name: string): Promise<boolean> => {
     setReplayingName(name)
     setError(null)

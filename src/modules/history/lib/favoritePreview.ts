@@ -1,11 +1,5 @@
 import type { HistoryGpsSample, TelemetrySample } from 'vescape-core'
 
-/**
- * Stats shown live while trimming a Favorite. A best-effort JS preview from the already-loaded
- * ride samples — the durable Favorite summary is recomputed natively at save (slice 1). Field names
- * mirror {@link HistorySession} so a trim preview can be spread over the selected session and fed to
- * the existing stats bar unchanged.
- */
 export interface FavoriteRangeStats {
   sampleCount: number
   distanceM: number | null
@@ -18,7 +12,6 @@ export interface FavoriteRangeStats {
   batteryRegenWh: number
 }
 
-// Board samples that straddle a long recording gap should not integrate energy across the gap.
 const MAX_ENERGY_INTEGRATION_GAP_MS = 5_000
 
 const EMPTY_STATS: FavoriteRangeStats = {
@@ -34,14 +27,9 @@ const EMPTY_STATS: FavoriteRangeStats = {
 }
 
 /**
- * Summarize a trimmed time range from ride samples. `samples` and `gpsSamples` must be sorted
- * ascending by `capturedAtMs` — the caller sorts once per session, not per drag frame. Range bounds
- * are order-independent; `[a, b]` and `[b, a]` summarize the same span.
- *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/FavoriteSummaryBuilder.kt `buildFavoriteSummary`
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `favoriteSummary`
  * @platform-diff This is a best-effort UI preview over already-loaded samples; native recomputes
- * durable stats with Metric Sanitizers and persisted bucket semantics when the Favorite is saved.
  */
 export function summarizeFavoriteRange(
   samples: TelemetrySample[],
@@ -86,7 +74,6 @@ export function summarizeFavoriteRange(
     if (previous && previous.capturedAtMs >= lo) {
       const dtMs = sample.capturedAtMs - previous.capturedAtMs
       if (dtMs > 0 && dtMs <= MAX_ENERGY_INTEGRATION_GAP_MS) {
-        // Trapezoidal energy over the interval: pack power (V·I) integrated across dt.
         const powerW =
           (previous.batteryVoltage * previous.batteryCurrent +
             sample.batteryVoltage * sample.batteryCurrent) /
@@ -114,7 +101,6 @@ export function summarizeFavoriteRange(
   }
 }
 
-/** Distance from GPS deltas inside the range; null when the range carries no GPS distance. */
 function sumGpsDistance(gpsSamples: HistoryGpsSample[], lo: number, hi: number): number | null {
   let total = 0
   let counted = false

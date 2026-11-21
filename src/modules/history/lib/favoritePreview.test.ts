@@ -59,11 +59,9 @@ test('speed uses magnitude so reverse riding still counts', () => {
 
 test('integrates pack energy across time, splitting used and regen', () => {
   const samples = [
-    // 1 h at +100 W → +100 Wh used.
     sample({ capturedAtMs: 0, batteryVoltage: 50, batteryCurrent: 2 }),
     sample({ capturedAtMs: 3_600_000, batteryVoltage: 50, batteryCurrent: 2 }),
   ]
-  // Long gap must not integrate: cap at 5 s, so a single interval this long is skipped.
   const stats = summarizeFavoriteRange(samples, [], 0, 3_600_000)
   expect(stats.batteryUsedWh).toBe(0)
   expect(stats.batteryRegenWh).toBe(0)
@@ -79,7 +77,6 @@ test('integrates within the gap cap and separates regen', () => {
     0,
     1_000,
   )
-  // 500 W over 1 s = 500 / 3600 Wh.
   expect(used.batteryUsedWh).toBeCloseTo(500 / 3600, 6)
   expect(used.batteryRegenWh).toBe(0)
 
@@ -100,8 +97,6 @@ test('distance sums GPS deltas inside the range, null when absent', () => {
   const gpsSamples = [gps(500, null), gps(1_000, 10), gps(1_500, 25), gps(2_500, 99)]
   const samples = [sample({ capturedAtMs: 1_000 }), sample({ capturedAtMs: 2_000 })]
   const stats = summarizeFavoriteRange(samples, gpsSamples, 1_000, 2_000)
-  // Only GPS at 1_500 falls in (1000, 2000]; the 1000 boundary is exclusive to avoid the
-  // pre-range delta leaking in.
   expect(stats.distanceM).toBe(25)
 
   const noGps = summarizeFavoriteRange(samples, [], 1_000, 2_000)

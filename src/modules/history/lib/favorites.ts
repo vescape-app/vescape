@@ -2,7 +2,6 @@ import type { Favorite, TelemetryMinuteBucket } from 'vescape-core'
 
 import { rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
 
-/** The canonical full-ride range. Legacy rides fall back from Moving Window to wall-clock span. */
 export function favoriteRangeForSession(
   session: Pick<HistorySession, 'movingStartAtMs' | 'movingEndAtMs' | 'startAtMs' | 'endAtMs'>,
 ): { startMs: number; endMs: number } {
@@ -10,13 +9,6 @@ export function favoriteRangeForSession(
   return window ?? { startMs: session.startAtMs, endMs: session.endAtMs }
 }
 
-/**
- * Seed trim handles visibly inside the ride so their draggable direction is obvious.
- *
- * When the chart is zoomed, seed inside the visible window instead of the whole ride: handles
- * seeded off-screen read as a broken control, and a zoom is the rider pointing at the stretch
- * they mean to keep.
- */
 export function initialFavoriteTrimRangeForSession(
   session: Pick<HistorySession, 'movingStartAtMs' | 'movingEndAtMs' | 'startAtMs' | 'endAtMs'>,
   visible?: { startMs: number; endMs: number } | null,
@@ -31,11 +23,6 @@ export function initialFavoriteTrimRangeForSession(
   return { startMs: range.startMs + inset, endMs: range.endMs - inset }
 }
 
-/**
- * The Favorite already covering this ride's Moving Window, so the star reads as filled. Matched on
- * the range alone: only one Board Session records at a time, so a range never spans two boards, and
- * a Favorite stores a Board id rather than the ble id a history session carries.
- */
 export function findSessionFavorite(
   favorites: Favorite[],
   session: Pick<HistorySession, 'movingStartAtMs' | 'movingEndAtMs' | 'startAtMs' | 'endAtMs'>,
@@ -48,15 +35,6 @@ export function findSessionFavorite(
   )
 }
 
-/**
- * A Favorite seen as a ride, so opening one reuses the whole history detail path — range load,
- * chart, map route and stats bar — instead of a parallel implementation.
- *
- * The pinned summary wins over anything derivable from buckets: it was computed from raw samples at
- * creation and is exact for a range that cuts a bucket in half. Native also projects the route
- * from the pinned range, so the card never depends on whichever History page JS currently holds.
- * Remaining telemetry detail comes from overlapping buckets when the Favorite is opened.
- */
 export function favoriteToSession(
   favorite: Favorite,
   blocks: TelemetryMinuteBucket[],
@@ -73,8 +51,6 @@ export function favoriteToSession(
     boardName: favorite.boardName ?? spanned[0]?.boardName ?? '',
     startAtMs: favorite.startMs,
     endAtMs: favorite.endMs,
-    // A Favorite is already a trimmed span: it is its own Moving Window, so the chart and the title
-    // cover exactly what was pinned.
     movingStartAtMs: favorite.startMs,
     movingEndAtMs: favorite.endMs,
     blockIds: spanned.map((block) => block.id),
@@ -104,7 +80,6 @@ export function favoriteToSession(
   }
 }
 
-/** Namespaced so a favorite-backed session never collides with a grouped history session id. */
 export function favoriteSessionId(favoriteId: string): string {
   return `favorite:${favoriteId}`
 }
@@ -131,7 +106,6 @@ function maxOrNull(values: (number | null)[]): number | null {
   return finite.length > 0 ? Math.max(...finite) : null
 }
 
-/** Any overlap means deleting this history session must leave a protected telemetry island. */
 export function sessionContainsFavorite(
   favorites: Favorite[],
   session: Pick<HistorySession, 'startAtMs' | 'endAtMs'>,

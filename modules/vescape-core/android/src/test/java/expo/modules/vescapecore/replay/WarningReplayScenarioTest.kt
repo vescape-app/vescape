@@ -8,11 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Fault-injection scenarios on the replay harness (ADR 0024): decode-level transforms layered onto
- * the clean fixture's decoded frames — never byte mutation, never a second fixture. Fault windows
- * are anchored relative to the fixture's own first timestamp, so swapping the placeholder fixture
- * for a real recording keeps every scenario valid.
- *
  * @parity /modules/vescape-core/ios/replay/WarningReplayScenarioTests.swift
  */
 class WarningReplayScenarioTest {
@@ -20,15 +15,12 @@ class WarningReplayScenarioTest {
     javaClass.classLoader!!.getResourceAsStream("fixtures/replay-synthetic-bms.jsonl")!!
       .bufferedReader().readText()
 
-  /** The fixture's known cell-group count; scenario counts are chosen distinct from it. */
   private val fixtureSeries = 16
 
-  /** First recorded timestamp — all fault windows anchor relative to this, not absolute ms. */
   private val t0 = ReplayChunkDecoder.bmsFrames(jsonl).first().capturedAt
 
   private fun window(startMs: Long, endMs: Long) = (t0 + startMs)..(t0 + endMs)
 
-  /** Lift one cell group by [deltaV] inside [range] — the canonical spread fault. */
   private fun spread(range: LongRange, group: Int, deltaV: Double) =
     { bms: expo.modules.vescapecore.protocol.BmsTelemetry, t: Long ->
       if (t in range) {
@@ -67,7 +59,6 @@ class WarningReplayScenarioTest {
     assertTrue(result.cellSpreadFindings.size >= 2)
     assertEquals(BoardWarningSeverity.WARN, result.cellSpreadFindings.first().severity)
     assertEquals(BoardWarningSeverity.CRITICAL, result.cellSpreadFindings.last().severity)
-    // Severity is monotonic: once critical, no later finding may downgrade back to warn.
     val firstCritical = result.cellSpreadFindings.indexOfFirst { it.severity == BoardWarningSeverity.CRITICAL }
     assertTrue(
       result.cellSpreadFindings.drop(firstCritical).all { it.severity == BoardWarningSeverity.CRITICAL },
@@ -98,8 +89,6 @@ class WarningReplayScenarioTest {
 
   @Test
   fun configMismatchFiresOnceAfterStableFrames() {
-    // 18 BMS groups vs 15 configured — both distinct from the fixture's 16. Padding repeats the
-    // frame's own last group value so the spread detector sees an unchanged spread.
     val result = WarningReplayHarness.run(
       jsonl, configuredSeries = 15,
       transform = { bms, _ ->
@@ -123,14 +112,12 @@ class WarningReplayScenarioTest {
     val result = WarningReplayHarness.run(
       jsonl, configuredSeries = 15,
       transform = { bms, _ ->
-        // Alternate 16/15 groups every frame — the count is never stable for 3 consecutive frames.
         (frameIndex++).let { i ->
           if (i % 2 == 0) bms else bms.copy(cellVoltages = bms.cellVoltages.dropLast(1))
         }
       },
     )
     assertEquals(emptyList<String>(), result.mismatchFindings)
-    // Never stable means never evaluated — not a clean pass that would clear a stored warning.
     assertFalse(result.mismatchSessionEndClean)
   }
 

@@ -2,8 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// Ported from Android `PrivacyZoneFilterTest.kt` — same fixtures and assertions so the pure
-/// geometry stays behaviourally aligned across platforms.
 final class PrivacyZoneFilterTests: XCTestCase {
   private func zone(
     lat: Double,

@@ -62,22 +62,12 @@ private const val FLUSH_DELAY_MS = 5_000L
 private const val MAX_PENDING_FRAMES = 1_000
 private const val DEFAULT_HISTORY_LIMIT = 100
 private const val DEFAULT_SAMPLE_LIMIT = 2_000
-// Read cap: hard ceiling on samples materialized per range read. Bounds heap +
-// bridge cost so a long/garbage session can't OOM the app. At 2 Hz persistence
-// this covers ~2 h 46 min of riding before a read truncates. See recordTelemetry.
 private const val MAX_SAMPLE_LIMIT = 20_000
-/** Bottom history chart overview; full samples remain available for map and chart screen. */
 // @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `HISTORY_CHART_OVERVIEW_SAMPLES`
 private const val HISTORY_CHART_OVERVIEW_SAMPLES = 600
-// Write gate: minimum spacing between persisted detail frames (2 Hz), shrinking DB
-// growth ~8x. Minute buckets are aggregated from the full-rate stream separately
-// (see pendingBucketStates), so avg/energy/peaks stay exact; live display and the
-// live series stream are also separate full-rate paths.
 private const val MIN_PERSIST_INTERVAL_MS = 500L
 
 /**
- * Float64 lanes per sample in the columnar history payload. Must match the JS decoder.
- *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `SAMPLE_COLUMN_COUNT`
  * @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
  */
@@ -97,7 +87,6 @@ data class TelemetryLocationCapture(
 data class TelemetryCapture(
   val capturedAtMs: Long,
   val elapsedRealtimeMs: Long,
-  /** Owning Board (`boards.id`) — what every telemetry table is keyed on (ADR 0028). */
   val boardId: String?,
   val canId: Int?,
   val pitch: Double,
@@ -146,7 +135,7 @@ class TelemetryRepository private constructor(context: Context) {
     }
   }
 
-  /** Every selected ride in one `.zip`, read from one database snapshot.
+  /**
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `exportRides`
    */
   internal suspend fun exportRides(
@@ -179,14 +168,8 @@ class TelemetryRepository private constructor(context: Context) {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val lock = Any()
   private val pending = ArrayDeque<PendingFrame>()
-  // Full-rate states for bucket aggregation (exact avg / energy / peaks), decoupled
-  // from the 2 Hz `pending` detail trace. Every received frame lands here; only a
-  // 2 Hz subset is persisted as frames. Flushed and cleared together with `pending`.
   private val pendingBucketStates = ArrayDeque<FullTelemetryState>()
   private val pendingMarkers = ArrayDeque<TelemetryMarkerEntity>()
-  // Ride Track fixes admitted but not yet durable. Written on the GPS clock, never aligned to a
-  // telemetry frame, and already carrying the Board and Ride Recording they were captured under —
-  // a Board change flushes them under those identities rather than the new session's (ADR 0038).
   private val pendingTrack = ArrayDeque<RideTrackPoint>()
   private var lastFlushedTrackPoint: RideTrackPoint? = null
   private var lastFlushedFreeSpin = FreeSpinCarry()
@@ -205,8 +188,6 @@ class TelemetryRepository private constructor(context: Context) {
       RecordingStorageFailure.fail(appContext, error)
       onRecordingFailure?.invoke()
     },
-    // Database restore can recreate this repository in the same process. A prior failure remains
-    // fail-closed until the next process startup check succeeds.
     initiallyAccepting = RecordingStorageFailure.value() == null,
   )
   private val flushMutex = Mutex()
@@ -231,23 +212,11 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Offer one GPS Fix to the **Ride Track**.
-   *
-   * Stored with the accuracy the platform reported, poor fixes included: write-time discard is
-   * unrecoverable and would bake one consumer's threshold into everyone's data (ADR 0038). The fix
-   * does not have to line up with a telemetry frame, so a board dropout no longer erases the route.
-   *
-   * Two gates still drop a fix, and both are shared with the Telemetry Sample stream: an enabled
-   * Privacy Zone (ADR 0009 — a separate stream leaks straight through a zone otherwise), and the
-   * recording being off or in Idle Pause, which the caller owns (ADR 0021). [boardId] is the Board
-   * being recorded; a fix has no Board of its own.
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `recordGpsFix`
    */
   fun recordGpsFix(location: TelemetryLocationCapture, boardId: String?) {
     if (!recordingCommitBoundary.isAccepting()) return
     val scaled = ScaledLocation.from(location)
-    // The one Privacy Zone geometry check, shared with the Telemetry Sample filter below.
     if (isInsideAnyPrivacyZone(scaled.latitudeE7, scaled.longitudeE7, enabledPrivacyZones)) return
     synchronized(lock) {
       if (databaseSwapInProgress || !recordingCommitBoundary.isAccepting()) return
@@ -263,7 +232,6 @@ class TelemetryRepository private constructor(context: Context) {
           altitudeCm = scaled.altitudeCm,
         ),
       )
-      // A dropped fix is a dropped sample: `getSummary().droppedPendingSamples` must say so.
       while (pendingTrack.size > MAX_PENDING_FRAMES) {
         pendingTrack.removeFirst()
         droppedPendingFrames++
@@ -331,21 +299,14 @@ class TelemetryRepository private constructor(context: Context) {
       val gap = gapMs != null && gapMs > GAP_BOUNDARY_MS
       val keyframe = forceNextKeyframe ||
         previous == null ||
-        // Readers chain deltas per Board, so a Board change re-anchors the chain.
         previous.boardId != capture.boardId ||
         gap ||
         lastKeyframeAtMs == null ||
         capture.capturedAtMs - (lastKeyframeAtMs ?: 0L) >= KEYFRAME_INTERVAL_MS
 
-      // Every frame feeds bucket aggregation at full rate — avg, energy and peak
-      // max(current/duty/speed/temp) stay exact regardless of the persisted rate.
       pendingBucketStates.addLast(current)
       while (pendingBucketStates.size > MAX_PENDING_FRAMES) pendingBucketStates.removeFirst()
 
-      // 2 Hz persistence gate for the stored detail trace only. Keep keyframes
-      // (delta-chain anchors / gaps); otherwise keep one frame per
-      // MIN_PERSIST_INTERVAL_MS. Gated frames leave lastState/lastHistoryAtMs untouched
-      // so the next persisted delta chains against the last persisted state.
       val sinceKept = lastHistoryAtMs?.let { capture.capturedAtMs - it }
       val persist = keyframe || sinceKept == null || sinceKept >= MIN_PERSIST_INTERVAL_MS
       if (persist) {
@@ -440,7 +401,6 @@ class TelemetryRepository private constructor(context: Context) {
     val boardNames = boardNamesById()
     buckets.map { bucket ->
       val marker = markers.lastOrNull {
-        // An all-Boards read leaves the marker query unscoped, so the bucket has to claim its own.
         it.occurredAtMs >= bucket.firstSampleAtMs - 5_000L &&
           it.occurredAtMs <= bucket.firstSampleAtMs + 1_000L &&
           (it.boardId ?: "") == bucket.boardId
@@ -505,11 +465,6 @@ class TelemetryRepository private constructor(context: Context) {
     )
   }
 
-  /**
-   * Recomputes the Battery SoC Estimate per sample on read (ADR-0016): IR-compensated % run
-   * through a per-device median window. Mirrors how IR compensation is already applied on read;
-   * approximate because stored frames are delta-encoded.
-   */
   private suspend fun smoothedSampleMaps(
     samples: List<HistoryTelemetryState>,
     configs: Map<String, Map<String, Any?>>,
@@ -531,14 +486,6 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Columnar binary encoding of [smoothedSampleMaps] for the history read path. Each sample is 21
-   * little-endian Float64 lanes packed row-major into one direct ByteBuffer, returned as a JSI
-   * ArrayBuffer. This replaces ~21 per-field JSI conversions × N samples (the dominant history-load
-   * cost) with a single buffer transfer; JS rebuilds TelemetrySample objects locally. Position is
-   * not among them: the route is the Ride Track, its own stream on its own clock (ADR 0038).
-   * Nullable
-   * numeric lanes use NaN as the null sentinel; the Board id and name are dictionary-encoded.
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `sampleColumns`
    */
   private suspend fun smoothedSampleColumns(
@@ -619,11 +566,6 @@ class TelemetryRepository private constructor(context: Context) {
     }
   }
 
-  /**
-   * `boards.id` -> the Board's normalized battery config. Keyed on the Board rather than its BLE
-   * identifier now that samples carry the Board id (ADR 0028), so a re-linked Board keeps its
-   * config across its whole history.
-   */
   private suspend fun batteryConfigByBoard(): Map<String, Map<String, Any?>> {
     BatterySocEstimator.ensureInitialized(appContext)
     val result = mutableMapOf<String, Map<String, Any?>>()
@@ -636,14 +578,9 @@ class TelemetryRepository private constructor(context: Context) {
     return result
   }
 
-  /**
-   * `boards.id` -> Board name, tombstones included: Ride History still has to name a Board the
-   * Rider deleted (ADR 0027), and resolving on read is what makes a rename retroactive.
-   */
   private suspend fun boardNamesById(): Map<String, String> =
     dao.getBoardNames().associate { it.id to it.name }
 
-  /** Derive IR-compensated battery % on read, mirroring the live native path. */
   private fun deriveBatteryPercent(
     state: FullTelemetryState,
     configs: Map<String, Map<String, Any?>>,
@@ -675,10 +612,6 @@ class TelemetryRepository private constructor(context: Context) {
     return samples
   }
 
-  /**
-   * The Ride Track over a range: every stored fix, on the GPS clock, independent of whether a
-   * telemetry frame arrived near it.
-   */
   private suspend fun rideTrackPage(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPoint> =
     dao.getRideTrackPoints(fromMs, toMs, boardId, MAX_SAMPLE_LIMIT)
 
@@ -722,8 +655,7 @@ class TelemetryRepository private constructor(context: Context) {
     return deleteRides(listOf(RideBatch.Item(query.fromMs, query.toMs, query.boardId, null)))
   }
 
-  /** Telemetry, markers, buckets and Ride Track of every ride, in one transaction. Favorite ranges
-   * inside a ride survive, like a single-range delete.
+  /**
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `deleteRides`
    */
   internal suspend fun deleteRides(items: List<RideBatch.Item>): Int = withContext(Dispatchers.IO) {
@@ -736,12 +668,7 @@ class TelemetryRepository private constructor(context: Context) {
     maintenancePersistence.deleteBoardRanges(byBoard)
   }
 
-  // Favorites (ADR 0029)
-
   /**
-   * Board names are resolved here, not stored on the row: a Favorite outlives board renames, and a
-   * snapshot would drift.
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `getFavorites`
    */
   suspend fun getFavorites(): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
@@ -756,10 +683,6 @@ class TelemetryRepository private constructor(context: Context) {
     dao.favoriteRoutePreview(favorite.startMs, favorite.endMs, favorite.boardId)
 
   /**
-   * Pin a time range as a Favorite. Identity and timestamps are minted here — the range and the
-   * optional name are the only things JS gets to supply. Summary stats come from the raw samples
-   * inside the range, so a range that cuts mid-bucket still gets exact numbers.
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `createFavorite`
    */
   suspend fun createFavorite(options: Map<String, Any?>): Map<String, Any?>? = withContext(Dispatchers.IO) {
@@ -782,9 +705,6 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Re-trim/rename a Favorite in place. Identity, creation time and Favorite Media stay attached;
-   * summary stats are rebuilt from raw samples for the new exact range.
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `updateFavorite`
    */
   suspend fun updateFavorite(
@@ -809,8 +729,6 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Unpin a Favorite. Telemetry in its range stays and becomes normally deletable (ADR 0029).
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `deleteFavorite`
    */
   suspend fun deleteFavorite(id: String): Boolean = withContext(Dispatchers.IO) {
@@ -820,9 +738,6 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Read and reconcile Favorite Media. Missing files remove their manifest rows; temp/orphan files
-   * are deleted and never published to JS.
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `getFavoriteMedia`
    */
   suspend fun getFavoriteMedia(favoriteId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
@@ -830,9 +745,6 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Copy picker bytes into canonical app storage, hashing as they stream, then publish the
-   * immutable manifest only after the final file exists.
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `importFavoriteMedia`
    */
   suspend fun importFavoriteMedia(options: Map<String, Any?>): Map<String, Any?> = withContext(Dispatchers.IO) {
@@ -840,10 +752,6 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Run the raw samples of a Favorite range through the same Metric Sanitizers the recording flush
-   * applies, then collapse the resulting buckets into one denormalized summary. Exclusion ranges are
-   * deliberately not persisted: creating a Favorite is a read of Ride History, not a rewrite.
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `favoriteSummary`
    */
   private fun favoriteSummary(
@@ -892,9 +800,6 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Favorites protect time ranges globally. A Board can be re-linked after a Favorite is created,
-   * so its current BLE id cannot safely identify the historical telemetry device id.
-   *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `favoriteTelemetryRanges`
    */
   private suspend fun favoriteTelemetryRanges(): List<TelemetryTimeRange> =
@@ -902,12 +807,6 @@ class TelemetryRepository private constructor(context: Context) {
       expandTelemetryRangeToBuckets(TelemetryTimeRange(it.startMs, it.endMs))
     }
 
-  /**
-   * Android stores delta frames. Promote the first retained frame in each protected island before
-   * deleting its predecessor, otherwise the Favorite could survive in SQLite but become undecodable.
-   *
-   * iOS stores full keyframe rows for every sample and needs no promotion.
-   */
   private suspend fun promoteProtectedRangeStarts(
     protected: Collection<TelemetryTimeRange>,
     boardId: String?,
@@ -957,7 +856,6 @@ class TelemetryRepository private constructor(context: Context) {
     }
   }
 
-  /** Commit what is pending; runs under [flushMutex]. */
   private suspend fun writePendingLocked() {
     val frames: List<PendingFrame>
     val bucketStates: List<FullTelemetryState>
@@ -984,18 +882,14 @@ class TelemetryRepository private constructor(context: Context) {
     }
 
     val zones = enabledPrivacyZones
-    // Persisted detail trace (2 Hz).
     val filteredFrames = if (zones.isEmpty()) frames else frames.filter { pending ->
       val loc = pending.state.location ?: return@filter true
       !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
     }
-    // Bucket source (full rate) — aggregates stay exact.
     val filteredStates = if (zones.isEmpty()) bucketStates else bucketStates.filter { state ->
       val loc = state.location ?: return@filter true
       !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
     }
-    // The Ride Track is re-filtered here too, against the zones enabled *now*: a zone switched on
-    // mid-ride must suppress what is still buffered, in both streams alike (ADR 0009).
     val filteredTrack = if (zones.isEmpty()) trackPoints else trackPoints.filter { point ->
       !isInsideAnyPrivacyZone(point.latitudeE7, point.longitudeE7, zones)
     }
@@ -1009,7 +903,6 @@ class TelemetryRepository private constructor(context: Context) {
     }
 
     val telemetryPoints = filteredStates.map { it.toBucketPoint() }
-    // Free spin continues from the previous flush, so a spin crossing a flush stays excluded.
     val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig, previousFreeSpin)
     val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
       point.copy(
@@ -1020,8 +913,6 @@ class TelemetryRepository private constructor(context: Context) {
     }
     val committed = recordingCommitBoundary.commit(
       frames = filteredFrames.map { it.frame },
-      // Minute buckets aggregate the Ride Track that was admitted, not the fix stamped onto a
-      // frame: the two streams keep their own clocks and are joined here only for the summary.
       buckets = buildTelemetryBuckets(
         telemetryPoints = sanitizedPoints,
         locationPoints = filteredTrack.toBucketLocationPoints(
@@ -1040,7 +931,6 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * A seal that kept its rows: one Diagnostic Event, so the failure is visible in diagnostics.
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `recordSealFailure`
    */
   internal fun recordSealFailure(key: TelemetryMinuteKey, error: Exception) {
@@ -1057,8 +947,6 @@ class TelemetryRepository private constructor(context: Context) {
     private var instance: TelemetryRepository? = null
 
     fun get(context: Context): TelemetryRepository {
-      // Force the real database open/write probe before any repository can be acquired. This also
-      // turns an open or migration failure into the native recording failure state.
       RecordingStorageFailure.initialize(context.applicationContext)
       return instance ?: synchronized(this) {
         instance ?: TelemetryRepository(context.applicationContext).also { instance = it }
@@ -1220,12 +1108,9 @@ internal data class FullTelemetryState(
       odometerCm = if (include(changedBy(previous?.odometerCm, odometerCm, 25), TELEMETRY_MASK_ODOMETER)) odometerCm else null,
       tempMosfetDeciC = if (include(changedBy(previous?.tempMosfetDeciC, tempMosfetDeciC, 5), TELEMETRY_MASK_TEMP_MOSFET)) tempMosfetDeciC else null,
       tempMotorDeciC = if (include(changedBy(previous?.tempMotorDeciC, tempMotorDeciC, 5), TELEMETRY_MASK_TEMP_MOTOR)) tempMotorDeciC else null,
-      // `changed_mask_2` is reserved: no field of the delta chain lands in it now that position
-      // lives in Ride Track (ADR 0038). Kept as a column so the frame layout can grow again.
     ).copy(changedMask1 = mask1, changedMask2 = 0)
   }
 
-  /** Board name is resolved by the caller from `boards`, never read off the row (ADR 0028). */
   fun toSampleMap(id: Long, boardName: String?, batteryPercent: Double? = null): Map<String, Any?> = mapOf(
     "id" to id,
     "capturedAtMs" to capturedAtMs,
@@ -1291,8 +1176,6 @@ internal data class FullTelemetryState(
     )
 
     fun applyFrame(previous: FullTelemetryState?, frame: TelemetryFrameEntity): FullTelemetryState? {
-      // Canonical reconstruction (ADR 0045, `reconstructTelemetryValues`): masks are authoritative, so
-      // a set bit with NULL clears an optional reading instead of keeping the previous one.
       val keyframe = frame.flags and TELEMETRY_FLAG_KEYFRAME != 0
       val base = if (keyframe) null else previous
       fun <T> pick(value: T?, fallback: T?, mask: Int): T? =
@@ -1333,8 +1216,6 @@ internal data class FullTelemetryState(
         odometerCm = pick(frame.odometerCm, base?.odometerCm, TELEMETRY_MASK_ODOMETER),
         tempMosfetDeciC = pick(frame.tempMosfetDeciC, base?.tempMosfetDeciC, TELEMETRY_MASK_TEMP_MOSFET),
         tempMotorDeciC = pick(frame.tempMotorDeciC, base?.tempMotorDeciC, TELEMETRY_MASK_TEMP_MOTOR),
-        // Position is not on the frame any more, and no read path puts it back: the route is the
-        // Ride Track, read on its own clock (ADR 0038).
         location = null,
       )
     }
@@ -1371,7 +1252,6 @@ private fun changedBy(previous: Long?, current: Long?, threshold: Long): Boolean
 
 private fun changedBy(previous: Int?, current: Int?, threshold: Int): Boolean =
   previous != current && (previous == null || current == null || abs(current - previous) >= threshold)
-
 
 private fun distanceDeltaM(bucket: TelemetryMinuteBucketEntity): Double? {
   val first = bucket.firstOdometerCm ?: return null
@@ -1434,9 +1314,6 @@ private fun Map<String, Any?>.long(key: String): Long? = (this[key] as? Number)?
 private fun Map<String, Any?>.int(key: String): Int? = (this[key] as? Number)?.toInt()
 
 /**
- * Favorite ranges are required bridge input. Invalid bounds return through the module's controlled
- * `ERR_CREATE_FAVORITE` / `ERR_UPDATE_FAVORITE` path instead of leaking IllegalArgumentException.
- *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `favoriteRange`
  */
 internal fun favoriteRange(options: Map<String, Any?>): TelemetryTimeRange? {

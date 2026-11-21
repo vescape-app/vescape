@@ -35,7 +35,6 @@ import { useBleStore } from '@/modules/board/store/bleStore'
 import { routes } from '@/navigation/routes'
 
 const DEV_BADGE_HIDE_MS = 60_000
-/** Bundled ride the menu replays in one tap, the same one the smoke and screenshot runs use. */
 const QUICK_REPLAY = 'replay-thor301.jsonl'
 
 // @parity /src/app/settings/dev.tsx `DEV_PAGE_SHORTCUTS`
@@ -86,11 +85,9 @@ async function reloadRuntime() {
   }
 }
 
-/** Global dev-tools launcher. Renders the anchored menu; overlay placement remains the mount point's job. */
 export function DevBadge() {
   const [hidden, setHidden] = useState(false)
   const [expanded, setExpanded] = useState(false)
-  // Read when the menu opens; the controls write back what native reports after each change.
   const [replay, setReplay] = useState<DebugReplayState | null>(null)
   const recordDebugSession = useBleStore((state) => state.recordDebugSession)
   const setRecordDebugSession = useBleStore((state) => state.setRecordDebugSession)
@@ -249,9 +246,6 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
   },
-  // Dev-only chrome that floats over the map, so it takes one fixed appearance rather than the
-  // adaptive warning tokens: those resolve fill and text against different configurations on
-  // Android and left pale text on a pale fill.
   badge: {
     paddingHorizontal: 5,
     paddingVertical: 1,
@@ -287,7 +281,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
   },
-  // Shortcuts share the row so any count fits the fixed-width menu.
   shortcut: {
     flex: 1,
     height: 38,

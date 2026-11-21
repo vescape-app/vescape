@@ -41,7 +41,6 @@ import type { RideWeather } from 'vescape-core'
 
 interface HistoryStatsBarProps {
   session: HistorySession
-  /** Ride extras shown under the stats, such as who the rider rode with. */
   children?: ReactNode
 }
 
@@ -121,8 +120,6 @@ interface CompactStatProps {
 function CompactStat({ item }: CompactStatProps) {
   const IconComponent = item.icon
   return (
-    // Flows assert on the id, not the label: `compactLabel` is uppercased by `textTransform`, and
-    // iOS reports the rendered text where Android reports the source string.
     <View testID={`history-stat-${item.key}`} style={styles.compactCell} pointerEvents="none">
       <Text style={styles.compactLabel} numberOfLines={1} adjustsFontSizeToFit>
         {item.label}
@@ -149,7 +146,6 @@ function chunk<T>(items: T[], size: number): T[][] {
   return rows
 }
 
-/** Ride weather, when stored observations cover the ride: condition + temperature, gusts, rain. */
 function weatherStats(
   weather: RideWeather | null,
   distanceUnit: DistanceUnit,
@@ -190,7 +186,6 @@ function weatherStats(
   return stats
 }
 
-/** Weather and gusts take the last column's slots so they stack together; the stats they displace move after. */
 const WEATHER_SLOTS: Record<string, string> = { weather: 'maxDuty', gust: 'samples' }
 
 function withWeather(stats: StatItem[], weather: StatItem[]): StatItem[] {
@@ -305,8 +300,6 @@ function formatCount(value: number): string {
 }
 
 function formatDuration(valueMs: number): Pick<StatItem, 'value' | 'unit'> {
-  // A zoomed window is often shorter than a minute, and "1 min" for eight seconds of riding is
-  // a wrong number rather than a rounded one.
   if (valueMs < 60_000) return { value: String(Math.max(1, Math.round(valueMs / 1000))), unit: 's' }
   const totalMinutes = Math.max(1, Math.round(valueMs / 60_000))
   if (totalMinutes < 60) return { value: String(totalMinutes), unit: 'min' }
@@ -328,8 +321,6 @@ function formatDuty(value: number): string {
 
 function formatWh(value: number): Pick<StatItem, 'value' | 'unit'> {
   if (value < 1) return { value: (value * 1000).toFixed(0), unit: 'mWh' }
-  // Whole watt-hours: the cell is one line of a five-across bar, and the decimal was the digit
-  // that pushed the number into shrinking to fit.
   return { value: String(Math.round(value)), unit: 'Wh' }
 }
 

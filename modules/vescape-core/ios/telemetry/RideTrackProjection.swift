@@ -1,18 +1,9 @@
 import Foundation
 import GRDB
 
-/// Reported horizontal accuracy a Ride Track fix must beat to count as a route point or as GPS
-/// movement evidence. Read-side, deliberately: every fix is stored with the accuracy the platform
-/// reported, and this is the one rule that decides what those numbers are good enough for
-/// (ADR 0038). It is the same number on both platforms and does not look at the Android provider;
-/// it does not change live GPS classification.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `RIDE_TRACK_PRECISE_ACCURACY_CM`
 internal let rideTrackPreciseAccuracyCm = Int(MAX_RECORDING_ACCURACY_M * 100.0)
 
-/// A fix with no reported accuracy is genuinely unknown and does not count. Legacy fixes migrated
-/// out of `telemetry_frames` passed the old write-time precision gate; migration v52 stamps them
-/// with `rideTrackPreciseAccuracyCm` so they keep reading as precise.
 internal func rideTrackFixIsPrecise(accuracyCm: Int?) -> Bool {
   guard let accuracyCm else { return false }
   return accuracyCm <= rideTrackPreciseAccuracyCm
@@ -22,11 +13,6 @@ internal func rideTrackFixIsPrecise(_ point: RideTrackPoint) -> Bool {
   rideTrackFixIsPrecise(accuracyCm: point.accuracyCm)
 }
 
-/// Does this fix evidence movement? The fix's **own reported speed**, checked after the accuracy
-/// rule and against the rider's movement threshold — never a speed derived from the displacement
-/// between two coordinates, which turns GPS scatter into a phantom ride. A fix with no reported
-/// speed is not movement evidence, but stays a perfectly good route point (ADR 0038).
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `isMovementEvidence`
 internal func rideTrackFixIsMovement(_ point: RideTrackPoint, movingThresholdCentiKmh: Int) -> Bool {
   guard rideTrackFixIsPrecise(point), let speedCentiMps = point.gpsSpeedCentiMps else { return false }
@@ -36,15 +22,6 @@ internal func rideTrackFixIsMovement(_ point: RideTrackPoint, movingThresholdCen
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `gpsSpeedCentiMpsToCentiKmh`
 internal func gpsSpeedCentiMpsToCentiKmh(_ centiMps: Int) -> Int { (centiMps * 36) / 10 }
 
-/// The Ride Track as JS reads it: the route stream.
-///
-/// Only fixes that pass the shared read-side precision rule cross the bridge. A poor fix stays in
-/// storage — that is the whole point of ADR 0038's write-everything decision — but it never draws
-/// a route, never anchors a marker and never contributes a step distance, so the rule is applied
-/// exactly once, here, instead of in every JS consumer.
-///
-/// Distance is measured only between two qualifying fixes of the same Board.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `toGpsSampleMaps`
 /// @parity /modules/vescape-core/src/index.ts `HistoryGpsSample`
 internal func rideTrackGpsMaps(_ rows: [Row], boardNames: [String: String]) -> [[String: Any?]] {
@@ -77,12 +54,6 @@ internal func rideTrackGpsMaps(_ rows: [Row], boardNames: [String: String]) -> [
   }
 }
 
-/// The same projection, as the minute-bucket location contribution.
-///
-/// Every stored fix is counted, so `gpsPointCount` stays an honest measure of what was captured,
-/// but only qualifying fixes derive anything: the bucket's route anchor, its step distances and
-/// its GPS movement evidence.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `toBucketLocationPoints`
 internal func rideTrackBucketPoints(
   _ points: [RideTrackPoint],

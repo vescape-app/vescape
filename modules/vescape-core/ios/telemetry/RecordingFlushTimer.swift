@@ -1,7 +1,5 @@
 import Foundation
 
-/// One deadline from the first buffered sample, never postponed by later samples. Access only on
-/// the recording queue. Threshold/manual flushes cancel it before starting another batch.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `scheduleFlushLocked`
 internal final class RecordingFlushTimer {
   private let queue: DispatchQueue

@@ -1,15 +1,6 @@
 import Foundation
 import GRDB
 
-/// CRUD over the single GRDB database for app data: boards (with Board Link), alert rules, privacy
-/// zones and key-value settings. Values cross the bridge as `[String: Any?]` bags to
-/// mirror the JS contract; persistence uses the same column/table shapes as Android Room.
-///
-/// A Board Link is whole-or-nothing: it is composed only when a board has both a `ble_id` and a
-/// proven `transport` setting, and decomposed back into the column and the setting on upsert. A
-/// partial `ble_id`-without-transport row reads as unlinked (`link == nil`).
-///
-/// Scope of an `onAppDataChanged` emit; mirrors the JS `AppDataChangedEvent['scope']` union.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `AppDataScope`
 /// @parity /modules/vescape-core/src/index.ts `AppDataChangedEvent`
 enum AppDataScope: String {
@@ -22,13 +13,8 @@ enum AppDataScope: String {
 final class AppDataRepository {
   static let shared = AppDataRepository()
 
-  /// JS-sync hook, wired by `VescapeCoreModule` on create. Called with a scope wire string after every
-  /// persisting write so the matching JS store reloads live. Mirrors Android's
-  /// `CoreForegroundService.emitEvent` static — a module-owned emit the repo funnels through.
   static var onDataChanged: ((String) -> Void)?
 
-  /// Test seam, mirroring `TuneProfileStore(dbWriter:)` / `BoardWarningStore(dbWriter:)`: nil in the
-  /// app so every access follows the shared pool (including a hot-swap after a restore).
   private let dbWriter: (any DatabaseWriter)?
 
   private var writer: (any DatabaseWriter)? { dbWriter ?? VescapeDatabase.pool }
@@ -45,15 +31,10 @@ final class AppDataRepository {
     self.dbWriter = dbWriter
   }
 
-  /// In-memory instance for DB-backed tests. The app always uses `shared`.
   static func forTesting(dbWriter: any DatabaseWriter) -> AppDataRepository {
     AppDataRepository(dbWriter: dbWriter)
   }
 
-  /// Notify JS that persisted data in [scope] changed, so the matching store reloads and stays in
-  /// sync without an app restart. Every mutating method below funnels through here — new writes get
-  /// sync for free by tagging the right scope. Idempotent on the JS side, so emitting after a
-  /// JS-initiated write is harmless (the reload just confirms native truth).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `notifyDataChanged`
   private func notifyDataChanged(_ scope: AppDataScope) {
     Self.onDataChanged?(scope.rawValue)
@@ -61,9 +42,6 @@ final class AppDataRepository {
 
   private func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
-  // MARK: - Boards
-
-  /// Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getBoards`
   func getBoards() throws -> [[String: Any?]] {
     let persistence = try boardSettingsPersistence()
@@ -73,8 +51,6 @@ final class AppDataRepository {
     return boards.map { Self.composeBoard($0, settings: byBoard[$0.id, default: []].map { ($0.key, $0.valueJson) }) }
   }
 
-  /// Resolves tombstones too, deliberately: Ride History still has to name a deleted Board. Callers
-  /// that act on a Board rather than describe one check `deletedAt` and refuse.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `getBoard`
   func getBoard(_ id: String) throws -> [String: Any?]? {
     let persistence = try boardSettingsPersistence()
@@ -89,8 +65,6 @@ final class AppDataRepository {
     Self.onDataChanged?(AppDataScope.alerts.rawValue)
   }
 
-  /// Saves the Board; `initialAlerts` (`presets` metric → spec, `rules` rider rules) is a new Board's
-  /// alert setup, written in the same transaction.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `upsertBoard`
   func upsertBoard(_ board: [String: Any?], initialAlerts: [String: Any]? = nil) throws {
     guard let id = board["id"] as? String else { return }
@@ -100,7 +74,6 @@ final class AppDataRepository {
     let bleId = link?["bleId"] as? String
     let linkSettings = BoardLinkPersistence.settings(from: board["link"] ?? nil)
 
-    // Other board-scoped settings. `nil` means the setting row is removed.
     let settings: [(String, Any?)] = [
       ("description", (board["description"] as? String).flatMap { $0.isEmpty ? nil : $0 }),
       ("personalization", Self.normalizePersonalization(board["personalization"] ?? nil)),
@@ -108,7 +81,6 @@ final class AppDataRepository {
       ("dismissedWarnings", Self.normalizeDismissedWarnings(board["dismissedWarnings"] ?? nil)),
       ("topSpeedKmh", Self.topSpeedKmh(board["topSpeedKmh"] ?? nil)),
       ("alertPresetsOnboarded", board["alertPresetsOnboarded"] as? Bool),
-      // Legal Mode changes only through the dedicated native intent.
     ] + linkSettings
     let updatedAt = nowMs()
 
@@ -129,10 +101,6 @@ final class AppDataRepository {
     notifyDataChanged(.alerts)
   }
 
-  /// The Rider-facing delete: configuration goes, the Board row stays as a tombstone (ADR 0027).
-  /// Telemetry and Tune Profiles are untouched — both outlive the Board.
-  ///
-  /// A Board that is not there (or already deleted) is left alone.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `deleteBoardWithSettings`
   func deleteBoard(_ id: String) throws {
     let deletedAt = nowMs()
@@ -140,8 +108,6 @@ final class AppDataRepository {
     notifyDataChanged(.boards)
   }
 
-  /// Persist the last Battery SoC Estimate per board so it survives full app kill (#152). Written as
-  /// the `lastBattery` board setting; `upsertBoard` never touches this key, so board edits keep it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLastBattery`
   func updateLastBattery(boardId: String, percent: Double, voltage: Double?, atMs: Int64) throws {
     let value: [String: Any] = ["percent": percent, "voltage": voltage ?? NSNull(), "at": atMs]
@@ -150,7 +116,6 @@ final class AppDataRepository {
     notifyDataChanged(.boards)
   }
 
-  /// Dedicated native Legal Mode write; generic Board upserts cannot bypass enable validation.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLegalMode`
   func updateLegalMode(boardId: String, enabled: Bool) throws {
     let json = try Self.encodeJson(["enabled": enabled])
@@ -174,8 +139,6 @@ final class AppDataRepository {
       "batteryConfig": values["batteryConfig"],
       "lastBattery": values["lastBattery"],
       "dismissedWarnings": values["dismissedWarnings"],
-      // Normalized to display defaults when the row is absent so JS always reads a concrete Board
-      // Top Speed / onboarded flag.
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
       "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
       "legalMode": values["legalMode"] ?? ["enabled": false],
@@ -247,8 +210,6 @@ final class AppDataRepository {
     return ["enabled": enabled]
   }
 
-  /// Dismissed Board Warning kinds persisted as a board setting: a non-empty array of kind slugs, or
-  /// nil (row removed) when empty/invalid.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeDismissedWarnings`
   private static func normalizeDismissedWarnings(_ raw: Any?) -> [String]? {
     guard let list = raw as? [Any] else { return nil }
@@ -264,8 +225,6 @@ final class AppDataRepository {
     else { return nil }
     return ["percent": percent, "voltage": doubleValue(map["voltage"]), "at": at]
   }
-
-  // MARK: - Alert rules
 
   func getAlertRules(_ boardId: String) throws -> [[String: Any?]] {
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
@@ -293,9 +252,6 @@ final class AppDataRepository {
     return try AlertRulePersistence(writer: writer).presets(boardId: boardId)
   }
 
-  /// The given Board's enabled rules materialized as `AlertRule` for the alert engine. The engine
-  /// evaluates only the connected Board's rules. Mirrors Android
-  /// `AppDataRepository.getEnabledAlertRuleEntities`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getEnabledAlertRuleEntities`
   func getEnabledAlertRules(_ boardId: String) throws -> [AlertRule] {
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
@@ -367,8 +323,6 @@ final class AppDataRepository {
     try AlertRulePersistence(writer: writer).delete(boardId: boardId, id: id)
   }
 
-  // MARK: - Privacy zones
-
   func getPrivacyZones() throws -> [[String: Any?]] {
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
     return try PrivacyZonePersistence(writer: writer).zones().map { row in
@@ -409,10 +363,6 @@ final class AppDataRepository {
     try PrivacyZonePersistence(writer: writer).delete(id: id)
   }
 
-  // MARK: - Direction point
-
-  /// The personal direction target. Not a Map Point: it is never shared, and it is one coordinate,
-  /// so it rides in app settings rather than a table of its own.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getDirectionPoint`
   static let directionPointLatitudeKey = "directionPointLatitude"
   static let directionPointLongitudeKey = "directionPointLongitude"
@@ -440,12 +390,6 @@ final class AppDataRepository {
     return (latitude, longitude)
   }
 
-  // MARK: - Navigation
-
-  /// The rider's stored Navigation, as the opaque JSON its own codec writes. Deliberately excluded
-  /// from `getSettings` below: it is native-owned, JS receives it through `onNavigation` instead,
-  /// and it is by far the largest value here (~14 KB for a long path) so it must not ride along on
-  /// every settings read.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationPath`
   static let navigationPathKey = "navigationPath"
 
@@ -460,9 +404,6 @@ final class AppDataRepository {
     try boardSettingsPersistence().saveSetting(.init(key: Self.navigationPathKey, valueJson: encoded, updatedAt: nowMs()))
   }
 
-  /// The rider's last chosen Navigation Profile, as its wire string. App data rather than a
-  /// user-facing setting: nothing in the settings UI shows it, the rider only ever moves it by
-  /// switching profile while looking at a path.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationProfile`
   static let navigationProfileKey = "navigationProfile"
 
@@ -482,10 +423,7 @@ final class AppDataRepository {
     return value
   }
 
-  // MARK: - Settings
-
   func getSettings() throws -> [String: Any?] {
-    // A corrupt unit override must not prevent loading the other app settings.
     // intentional-suppression: invalid unit JSON is deleted and reported as app_setting_invalid below.
     if let row = try boardSettingsPersistence().setting("distanceUnit"),
       validDistanceUnit(try? Self.decodeStoredString(row.valueJson)) == nil {
@@ -495,7 +433,6 @@ final class AppDataRepository {
     var merged = try boardSettingsPersistence().settings(defaults: Self.defaultSettings)
     merged.removeValue(forKey: Self.navigationPathKey)
     merged.removeValue(forKey: Self.navigationProfileKey)
-    // Maintenance Job fingerprints are native-owned state, not settings.
     for key in merged.keys where key.hasPrefix(MAINTENANCE_JOB_KEY_PREFIX) { merged.removeValue(forKey: key) }
     if merged["movingSpeedThresholdKmh"] == nil {
       if let legacy = merged["avgSpeedCutoffKmh"] ?? merged["movingAvgSpeedThresholdKmh"] {
@@ -505,7 +442,6 @@ final class AppDataRepository {
     return Self.normalizeSettings(merged)
   }
 
-  /// Persist both coordinates together so readers cannot observe a mixed position.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLastGpsLocation`
   func updateLastGpsLocation(latitude: Double, longitude: Double) throws {
     let lat = try Self.encodeJson(latitude)
@@ -519,9 +455,6 @@ final class AppDataRepository {
   }
 
   func updateSetting(_ key: String, rawValue: Any?) throws {
-    // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
-    // The Navigation is native-owned too: JS moves the path by setting a Direction Point and the
-    // profile through `setNavigationProfile`, never by writing these rows.
     guard
       key != "legalPolicy", key != "legalMode",
       key != Self.navigationPathKey, key != Self.navigationProfileKey,
@@ -581,12 +514,9 @@ final class AppDataRepository {
       guard let mode = Self.themeMode(rawValue) else { return }
       value = mode
     } else if key == "boardWarningsEnabled" {
-      // Strict Bool (Android rejects non-Boolean too): the board-warnings kill switch must never
-      // persist a malformed value that reads back truthy.
       guard let flag = rawValue as? Bool else { return }
       value = flag
     } else if key == "vescFaultCollectionEnabled" {
-      // Strict Bool, same reasoning as the board-warnings switch above.
       guard let flag = rawValue as? Bool else { return }
       value = flag
     } else if key == "navigationRerouteDistanceMeters" {
@@ -607,8 +537,6 @@ final class AppDataRepository {
       guard let percent = WatchMapGauges.percent(rawValue) else { return }
       value = percent
     } else if key == "wearAutoLaunchOnConnect" || key == "wearNavArrowEnabled" || key == "wearTelemetryTrailEnabled" || key == "wearTelemetryGroupEnabled" || key == "wearTelemetryRouteEnabled" || key == "wearStreetMapEnabled" {
-      // Strict Bool, like Android: a truthy string persisted here would reach the wrist as a
-      // setting the rider never chose.
       guard let flag = rawValue as? Bool else { return }
       value = flag
     } else if key == "rideSplitGapMinutes" {
@@ -625,7 +553,6 @@ final class AppDataRepository {
     notifyDataChanged(.settings)
   }
 
-  /// Persist only the resolved jurisdiction reference; policy values stay in the shared catalog.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLegalPolicy`
   func updateLegalPolicy(jurisdictionCode: String?) throws {
     let code = jurisdictionCode?.trimmingCharacters(in: .whitespaces).uppercased()
@@ -640,10 +567,6 @@ final class AppDataRepository {
     notifyDataChanged(.settings)
   }
 
-  // MARK: - Shared pure helpers (also used by VescapeCoreModule bridge glue)
-
-  /// Durable app-scoped settings shape. A TS/Android/iOS parity triangle — the container tag covers
-  /// every key; individual literals are not tagged separately (see AGENTS.md).
   /// @parity /modules/vescape-core/src/index.ts `AppSettings`
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `AppSettings`
   static let defaultSettings: [String: Any] = [
@@ -655,7 +578,6 @@ final class AppDataRepository {
     "vescFaultCollectionEnabled": true,
     "companionPresenceCooldownMinutes": 60,
     // @platform-diff Auto close is Android-only behavior (iOS forbids programmatic app exit);
-    // the keys exist here only so getSettings() returns the full settings shape.
     "autoCloseEnabled": false,
     "autoCloseDelayMinutes": 15,
     "selectedBoardId": NSNull(),
@@ -680,8 +602,6 @@ final class AppDataRepository {
     "telemetryPollRateHz": 20,
     "wearPushRateHz": defaultWearPushRateHz,
     // @platform-diff Opening the Mirror when a board connects is Android-only: watchOS has no
-    // public API for an iPhone app to launch its watch companion (see docs/watchos.md). The key
-    // exists here only so getSettings() returns the full settings shape.
     "wearAutoLaunchOnConnect": true,
     "wearNavArrowEnabled": false,
     "wearTelemetryTrailEnabled": true,
@@ -763,7 +683,6 @@ final class AppDataRepository {
     normalized["weatherWindAlertLevel"] = weatherAlertLevel(settings["weatherWindAlertLevel"]) ?? weatherAlertLevelDefault
     let saved = settings["soundPack"] as? String ?? effectsPackFallback
     let pack = renamedEffectsPackIds[saved] ?? saved
-    // A custom app sound pack id from before My sounds turns into overrides, then reads as the fallback.
     MySounds.adoptLegacyPack(saved)
     normalized["soundPack"] = effectsPackIds.contains(pack) ? pack : effectsPackFallback
     normalized["satelliteImageryOpacity"] =
@@ -789,44 +708,33 @@ final class AppDataRepository {
     return normalized
   }
 
-  /// Android's default Watch Frame cadence, in Hz. The one number both platforms fall back to when
-  /// nothing is stored, so a wrist reads the same rate on either phone.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `wearPushRateHz`
   static let defaultWearPushRateHz = 4
 
-  /// Watch push rate, clamped to the range the settings screen offers. Out of range is clamped
-  /// rather than rejected — Android clamps too, and a stored 0 would mean an infinite interval.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validWearPushRateHz`
   static func wearPushRateHz(_ value: Any?) -> Int? {
     guard let number = value as? NSNumber, !(value is Bool) else { return nil }
     return min(20, max(1, number.intValue))
   }
 
-  /// Wrist Tilt stick speed at full deflection, percent of full tilt per second. Clamped like
-  /// Android: a stored 0 would be a stick that never moves.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validWearTiltRatePercent`
   static func wearTiltRatePercent(_ value: Any?) -> Int? {
     guard let number = value as? NSNumber, !(value is Bool) else { return nil }
     return min(100, max(1, number.intValue))
   }
 
-  /// Board Move strength, percent of full remote input. Floored so a stored `0` cannot mean
-  /// "no move", and a negative value cannot invert the direction buttons.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validBoardMoveStrengthPercent`
   static func boardMoveStrengthPercent(_ value: Any?) -> Int? {
     guard let number = value as? NSNumber, !(value is Bool) else { return nil }
     return min(100, max(10, number.intValue))
   }
 
-  /// Ride split gap in minutes; at least 1 so every ride can still end, capped at 24h.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validRideSplitGapMinutes`
   static func rideSplitGapMinutes(_ value: Any?) -> Int? {
     guard let number = value as? NSNumber, !(value is Bool) else { return nil }
     return min(1440, max(1, number.intValue))
   }
 
-  /// Acknowledged Community Message IDs: a de-duplicated list of non-empty ID strings, or `nil` when
-  /// the raw value is not an array at all. An empty or all-invalid array normalizes to `[]`.
   static func dismissedCommunityMessageIds(_ value: Any?) -> [String]? {
     guard let array = value as? [Any] else { return nil }
     var seen = Set<String>()
@@ -847,11 +755,9 @@ final class AppDataRepository {
     return code.count == 2 ? ["jurisdictionCode": code] : nil
   }
 
-  /// Display default Board Top Speed in km/h, applied when a Board has no `topSpeedKmh` setting.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `DEFAULT_TOP_SPEED_KMH`
   static let defaultTopSpeedKmh: Double = 50
 
-  /// Board Top Speed in km/h; the speed gauge full-scale. Clamped to a sane 5–150 km/h band.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validTopSpeedKmh`
   static func topSpeedKmh(_ value: Any?) -> Double? {
     guard let topSpeed = doubleValue(value), topSpeed.isFinite else { return nil }
@@ -956,11 +862,9 @@ final class AppDataRepository {
 private enum AppDataJsonDecodeError: Error { case invalidEncoding }
 
 private extension Int64 {
-  /// Convert an e7-scaled integer coordinate to decimal degrees.
   var asE7Degrees: Double { Double(self) / 10_000_000.0 }
 }
 
 private extension Double {
-  /// Convert decimal degrees to an e7-scaled integer coordinate.
   var toE7: Int64 { Int64(self * 10_000_000.0) }
 }

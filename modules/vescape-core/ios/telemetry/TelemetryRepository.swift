@@ -8,30 +8,20 @@ internal let KEYFRAME_INTERVAL_MS: Int64 = 60_000
 internal let MIN_PERSIST_INTERVAL_MS: Int64 = 500
 internal let DEFAULT_HISTORY_LIMIT = 100
 internal let DEFAULT_SAMPLE_LIMIT = 2_000
-/// Float64 lanes per sample in the columnar history payload. Must match the JS decoder.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `SAMPLE_COLUMN_COUNT`
 /// @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
 internal let SAMPLE_COLUMN_COUNT = 21
 
-/// GRDB writer for iOS Ride Recording telemetry. Raw Telemetry Samples are preserved; Metric
-/// Sanitizers only write exclusion ranges and bucket-derived metric values.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt
 /// @platform-diff iOS stores full keyframe rows for v1 instead of Android's delta chain; schema,
-/// metric exclusions, bucket semantics, markers, and read payloads stay aligned.
 internal final class TelemetryRepository {
   static let shared = TelemetryRepository()
 
-  /// Internal, not private: `getRange` lives in `TelemetryRangePayload.swift` because it returns an
-  /// Expo `NativeArrayBuffer`, and a cross-file extension can only reach internal members.
   internal var pool: DatabasePool? { VescapeDatabase.pool }
   private let queue = DispatchQueue(label: "vesc.telemetry.repository")
   private var pendingStates: [FullTelemetryState] = []
   private var pendingPersisted: [FullTelemetryState] = []
   private var pendingMarkers: [[String: Any?]] = []
-  // Ride Track fixes admitted but not yet durable. Written on the GPS clock, never aligned to a
-  // telemetry frame, and already carrying the Board they were captured under (ADR 0038).
   private var pendingTrack: [RideTrackPoint] = []
   private var lastFlushedTrackPoint: RideTrackPoint?
   private var lastFlushedFreeSpin = FreeSpinCarry()
@@ -66,7 +56,6 @@ internal final class TelemetryRepository {
     }
   }
 
-  /// Every selected ride in one `.zip`, read from one database snapshot.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `exportRides`
   func exportRides(_ items: [RideBatch.Item], format: RideExport.Format, isCancelled: @escaping () -> Bool,
     onProgress: (_ done: Int, _ total: Int) -> Void) throws -> [String: Any] {
@@ -110,32 +99,17 @@ internal final class TelemetryRepository {
     queue.async { self.metricConfig = MetricSanitizerConfig.from(settings: settings) }
   }
 
-  /// Replace the enabled Privacy Zones consulted while flushing recorded telemetry. Fixes whose
-  /// GPS location falls inside any zone are dropped (both the persisted frame and its bucket
-  /// contribution) so no location leaks into Ride History.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `reloadPrivacyZones`
   func reloadPrivacyZones(_ zones: [PrivacyZoneEntity]) {
     queue.async { self.enabledPrivacyZones = zones }
   }
 
-  /// Offer one GPS Fix to the **Ride Track**.
-  ///
-  /// Stored with the accuracy the platform reported, poor fixes included: write-time discard is
-  /// unrecoverable and would bake one consumer's threshold into everyone's data (ADR 0038). The fix
-  /// does not have to line up with a telemetry frame, so a board dropout no longer erases the route.
-  ///
-  /// Two gates still drop a fix, and both are shared with the Telemetry Sample stream: an enabled
-  /// Privacy Zone (ADR 0009 — a separate stream leaks straight through a zone otherwise), and the
-  /// recording being off or in Idle Pause, which the caller owns (ADR 0021). `boardId` is the Board
-  /// being recorded; a fix has no Board of its own.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `recordGpsFix`
   func recordGpsFix(_ location: TelemetryLocationCapture, boardId: String?) {
     queue.async {
       guard !self.databaseSwapInProgress, self.recordingCommitBoundary.isAccepting() else { return }
       let latitudeE7 = Int64((location.latitude * 10_000_000.0).rounded())
       let longitudeE7 = Int64((location.longitude * 10_000_000.0).rounded())
-      // The one Privacy Zone geometry check, shared with the Telemetry Sample filter below.
       guard
         !isInsideAnyPrivacyZone(
           latitudeE7: Int(latitudeE7),
@@ -208,7 +182,6 @@ internal final class TelemetryRepository {
     queue.sync { self.flushOnQueue() }
   }
 
-  /// Flush accepted work and reject new ingestion until the candidate or original pool is open.
   func beginDatabaseSwap() {
     queue.sync {
       flushOnQueue()
@@ -289,8 +262,6 @@ internal final class TelemetryRepository {
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
     let boardId = options["boardId"] as? String
-    // Battery configs, board names and the smoothing window are read up front (each opens its own
-    // DB read) so the estimate stays a pure computation inside the frames read below.
     let windowMs = try socWindowMs()
     return try pool.read { db in
       batteryEstimator.ensureLoaded()
@@ -303,13 +274,6 @@ internal final class TelemetryRepository {
     }
   }
 
-  // MARK: - Battery SoC on read (ADR-0016)
-
-  /// Per-sample Battery SoC Estimate for a run of frames (ordered by captured_at_ms): the
-  /// IR-compensated % from the Board's stored battery config, smoothed by a per-Board
-  /// `SocMedianWindow`. Returns one entry per row (nil where no config is known for the Board).
-  /// Mirrors how the live path derives % per frame; approximate on read only because Android stores
-  /// delta-encoded frames.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `smoothedSampleMaps`
   internal func batteryPercents(_ rows: [Row], configs: [String: [String: Any]], windowMs: Int64) -> [Double?] {
     var windows: [String: SocMedianWindow] = [:]
@@ -329,16 +293,12 @@ internal final class TelemetryRepository {
     }
   }
 
-  /// Derive IR-compensated battery % for one sample, mirroring the live native path.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `deriveBatteryPercent`
   private func deriveBatteryPercent(boardId: String, voltageV: Double, batteryCurrentA: Double, configs: [String: [String: Any]]) -> Double? {
     guard let config = configs[boardId] else { return nil }
     return batteryEstimator.estimateBatteryPercent(voltageV: voltageV, config: config, batteryCurrentA: batteryCurrentA)
   }
 
-  /// `boards.id` -> the Board's normalized battery config. Keyed on the Board rather than its BLE
-  /// identifier now that samples carry the Board id (ADR 0028), so a re-linked Board keeps its
-  /// config across its whole history.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `batteryConfigByBoard`
   internal func batteryConfigByBoard() throws -> [String: [String: Any]] {
     batteryEstimator.ensureLoaded()
@@ -353,15 +313,10 @@ internal final class TelemetryRepository {
     return result
   }
 
-  /// SoC median window length from app settings (seconds → ms), defaulting to Android's 20 s.
   internal func socWindowMs() throws -> Int64 {
     Int64(telemetryInt(try AppDataRepository.shared.getSettings()["socEstimateWindowSeconds"] ?? nil) ?? 20) * 1000
   }
 
-  // MARK: - Favorites (ADR 0029)
-
-  /// Board names are resolved here, not stored on the row: a Favorite outlives board renames, and
-  /// a snapshot would drift.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getFavorites`
   func getFavorites() throws -> [[String: Any?]] {
     try FavoriteMediaStore.shared.reconcileAll()
@@ -375,14 +330,12 @@ internal final class TelemetryRepository {
     }
   }
 
-  /// Ride weather over the pinned range, read like a History ride's.
   private func favoriteWeather(_ favorite: Favorite) throws -> RideWeather? {
     try VescapeDatabase.requirePool().read { db in
       try rideWeather(db, startMs: favorite.startMs, endMs: favorite.endMs)
     }
   }
 
-  /// Coarse native route projection for Favorite cards, independent of JS history pagination.
   private func favoriteRoutePoints(_ favorite: Favorite) throws -> [[String: Any]] {
     let pool = try VescapeDatabase.requirePool()
     return try pool.read { db in
@@ -390,9 +343,6 @@ internal final class TelemetryRepository {
     }
   }
 
-  /// Pin a time range as a Favorite. Identity and timestamps are minted here — the range and the
-  /// optional name are the only things JS gets to supply. Summary stats come from the raw samples
-  /// inside the range, so a range that cuts mid-bucket still gets exact numbers.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `createFavorite`
   func createFavorite(_ options: [String: Any]) throws -> [String: Any?]? {
     flushBlocking()
@@ -421,8 +371,6 @@ internal final class TelemetryRepository {
     )
   }
 
-  /// `boards.id` -> Board name, tombstones included: Ride History still has to name a Board the
-  /// Rider deleted (ADR 0027), and resolving on read is what makes a rename retroactive.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `boardNamesById`
   internal static func boardNamesById() throws -> [String: String] {
     let pool = try VescapeDatabase.requirePool()
@@ -433,8 +381,6 @@ internal final class TelemetryRepository {
     }
   }
 
-  /// Favorite ranges are required bridge input. Missing or inverted bounds must fail instead of
-  /// silently pinning epoch zero.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `favoriteRange`
   internal static func favoriteRange(_ options: [String: Any]) -> TelemetryTimeRange? {
     guard
@@ -445,8 +391,6 @@ internal final class TelemetryRepository {
     return TelemetryTimeRange(startMs: startMs, endMs: endMs)
   }
 
-  /// Re-trim/rename a Favorite in place. Identity, creation time and Favorite Media stay attached;
-  /// summary stats are rebuilt from raw samples for the new exact range.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `updateFavorite`
   func updateFavorite(_ id: String, options: [String: Any]) throws -> [String: Any?]? {
     flushBlocking()
@@ -475,7 +419,6 @@ internal final class TelemetryRepository {
     )
   }
 
-  /// Unpin a Favorite. Telemetry in its range stays and becomes normally deletable (ADR 0029).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `deleteFavorite`
   func deleteFavorite(_ id: String) throws -> Bool {
     let deleted = try FavoriteStore.shared.delete(id)
@@ -483,8 +426,6 @@ internal final class TelemetryRepository {
     return deleted
   }
 
-  /// Read and reconcile Favorite Media. Missing files remove their manifest rows; temp/orphan files
-  /// are deleted and never published to JS.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getFavoriteMedia`
   func getFavoriteMedia(_ favoriteId: String) throws -> [[String: Any?]] {
     try FavoriteMediaStore.shared.list(favoriteId: favoriteId).map {
@@ -492,8 +433,6 @@ internal final class TelemetryRepository {
     }
   }
 
-  /// Copy picker bytes into canonical app storage, hashing as they stream, then publish the
-  /// immutable manifest only after the final file exists.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `importFavoriteMedia`
   func importFavoriteMedia(_ options: [String: Any]) throws -> [String: Any?] {
     guard
@@ -512,14 +451,9 @@ internal final class TelemetryRepository {
     return media.toMap(fileURL: FavoriteMediaStore.shared.fileURL(for: media))
   }
 
-  /// Run the raw samples of a Favorite range through the same Metric Sanitizers the recording flush
-  /// applies, then collapse the resulting buckets into one denormalized summary. Exclusion ranges
-  /// are deliberately not persisted: creating a Favorite is a read of Ride History, not a rewrite.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `favoriteSummary`
   /// @parity /src/modules/history/lib/favoritePreview.ts `summarizeFavoriteRange`
   /// @platform-diff JS is a live preview over loaded samples; this is the durable sanitized summary.
-  /// Both halves of a Favorite's summary input: the Telemetry Samples in the range and the Ride
-  /// Track over it. Read together because a Favorite spans two streams on two clocks (ADR 0038).
   private func favoriteSummaryInputs(
     startMs: Int64,
     endMs: Int64,
@@ -570,8 +504,6 @@ internal final class TelemetryRepository {
     return try deleteRides([RideBatch.Item(fromMs: fromMs, toMs: toMs, boardId: options["boardId"] as? String, name: nil)])
   }
 
-  /// Telemetry, markers, buckets and Ride Track of every ride, in one transaction. Favorite ranges
-  /// inside a ride survive, like a single-range delete.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `deleteRides`
   func deleteRides(_ items: [RideBatch.Item]) throws -> Int {
     flushBlocking()
@@ -605,9 +537,6 @@ internal final class TelemetryRepository {
     }
   }
 
-  /// Favorites protect time ranges globally. A Board can be re-linked after a Favorite is created,
-  /// so its current BLE id cannot safely identify the historical telemetry device id.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `favoriteTelemetryRanges`
   private func favoriteTelemetryRanges() -> [TelemetryTimeRange] {
     do {
@@ -622,7 +551,6 @@ internal final class TelemetryRepository {
     }
   }
 
-  /// Commit what is pending. Runs on `queue`.
   private func flushOnQueue() {
     flushTimer.cancel()
     guard recordingCommitBoundary.isAccepting(),
@@ -631,10 +559,6 @@ internal final class TelemetryRepository {
     else { return }
     let markers = pendingMarkers
     let previousTrackPoint = lastFlushedTrackPoint
-    // Drop any fix inside an enabled Privacy Zone before it reaches storage. Fixes without a
-    // location always pass. Bucket source (full rate), persisted frames and the Ride Track are all
-    // filtered here, against the zones enabled *now*: a zone switched on mid-ride must suppress
-    // what is still buffered, in both streams alike (ADR 0009).
     let zones = enabledPrivacyZones
     let states = zones.isEmpty ? pendingStates : pendingStates.filter { !Self.isInPrivacyZone($0, zones) }
     let persisted = zones.isEmpty ? pendingPersisted : pendingPersisted.filter { !Self.isInPrivacyZone($0, zones) }
@@ -653,7 +577,6 @@ internal final class TelemetryRepository {
     guard !states.isEmpty || !persisted.isEmpty || !markers.isEmpty || !track.isEmpty else { return }
 
     let telemetryPoints = states.map { $0.toBucketPoint() }
-    // Free spin continues from the previous flush, so a spin crossing a flush stays excluded.
     let sanitization = sanitizeTelemetrySamples(telemetryPoints, config: metricConfig, freeSpinCarry: lastFlushedFreeSpin)
     lastFlushedFreeSpin = sanitization.freeSpinCarry
     var sanitized = telemetryPoints
@@ -662,8 +585,6 @@ internal final class TelemetryRepository {
       sanitized[i].excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed
       sanitized[i].excludedFromMaxDuty = sanitization.samples[i].excludedFromMaxDuty
     }
-    // Minute buckets aggregate the Ride Track that was admitted, not the fix stamped onto a frame:
-    // the two streams keep their own clocks and are joined here only for the summary.
     let buckets = buildTelemetryBuckets(
       sanitized,
       locationPoints: rideTrackBucketPoints(
@@ -683,7 +604,6 @@ internal final class TelemetryRepository {
     }
   }
 
-  /// A seal that kept its rows: one Diagnostic Event, so the failure is visible in diagnostics.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `recordSealFailure`
   func recordSealFailure(_ key: TelemetryMinuteKey, _ error: Error) {
     let properties: [String: Any] = ["operation": "telemetry_seal", "board_id": key.boardId ?? NSNull(),
@@ -715,11 +635,6 @@ internal final class TelemetryRepository {
     return isInsideAnyPrivacyZone(latitudeE7: latE7, longitudeE7: lonE7, zones: zones)
   }
 
-  // MARK: - Local Diagnostic Events (ADR 0007)
-
-  /// Persist one Local Diagnostic Event to GRDB. Debug-facing, low-volume connection/telemetry
-  /// breadcrumbs — the durable source of truth for field debugging even when remote transport
-  /// misses the exact path. Property values are sanitized to JSON scalars; `nil`s are dropped.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `recordDiagnosticEvent`
   func recordDiagnosticEvent(eventName: String, properties: [String: Any?] = [:]) {
     guard let pool else { return }
@@ -732,7 +647,6 @@ internal final class TelemetryRepository {
     let propertiesJson = Self.encodeDiagnosticProperties(properties)
     queue.async {
       do { try DiagnosticEventPersistence(writer: pool).insert(.init(id: nil, occurredAtMs: occurredAtMs, elapsedRealtimeMs: elapsed, eventName: eventName, operation: operation, phase: phase, boardId: boardId, message: message, propertiesJson: propertiesJson)) } catch {
-        // Sentry only: writing another Local Diagnostic Event would recurse into the failed store.
         RecordingStorageFailure.report(operation: "diagnostic_event_insert", category: "write_failed", error: error)
       }
     }
@@ -763,7 +677,6 @@ internal final class TelemetryRepository {
     for (key, value) in properties {
       switch value {
       case let value as String: sanitized[key] = value
-      // `Bool` bridges to `NSNumber` (as a CFBoolean) so booleans still serialize as true/false.
       case let value as NSNumber:
         let number = value.doubleValue
         if CFGetTypeID(value) == CFBooleanGetTypeID() || number.isFinite { sanitized[key] = value }

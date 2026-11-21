@@ -44,11 +44,6 @@ class SessionRecorderTest {
         telemetryRecordingEnabled = false,
     )
 
-    /**
-     * BLE chunks are written on the GATT callback thread while phone heading arrives from JS on
-     * the module thread — unserialized writes concatenated two objects onto one line and broke
-     * replay of the whole recording.
-     */
     @Test
     fun concurrentWritesProduceOnlyWellFormedLines() {
         val file = File.createTempFile("session-recorder-test", ".jsonl").also { it.deleteOnExit() }
@@ -77,11 +72,10 @@ class SessionRecorderTest {
         recorder.finish("stopped")
 
         val lines = file.readLines().filter { it.isNotBlank() }
-        // meta + recording-started + all writes + stopped
         assertEquals(3 + threads * perThread, lines.size)
         lines.forEach { line ->
             assertEquals(false, line.contains("}{"))
-            val json = JSONObject(line) // throws on a truncated line
+            val json = JSONObject(line)
             assertEquals(true, json.has("kind"))
         }
     }

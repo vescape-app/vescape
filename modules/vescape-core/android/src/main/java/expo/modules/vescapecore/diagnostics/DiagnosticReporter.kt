@@ -4,10 +4,6 @@ import expo.modules.vescapecore.telemetry.TelemetryRepository
 import java.util.UUID
 
 /**
- * Diagnostic captures surfaced to JS through `reportUiError` / `reportDiagnosticTest` /
- * `getDiagnosticStatus`. Events are kept as Local Diagnostic Events (ADR 0007) in the telemetry
- * store; there is no remote analytics transport — crash and error monitoring is Sentry's job.
- *
  * @parity /modules/vescape-core/ios/diagnostics/DiagnosticReporter.swift
  */
 fun interface DiagnosticSink {

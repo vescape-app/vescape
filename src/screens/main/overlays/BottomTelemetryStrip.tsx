@@ -19,12 +19,9 @@ import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitude
 import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
 import { useTelemetryPanelFadeStyle } from '@/screens/main/overlays/TelemetryPanel'
 
-/** Temperature arc radius: the arcs run the strip's height down to the battery line. */
 const ARC_RADIUS = 72
 const ARC_RADIUS_COMPACT = 60
-/** Room under the battery line for the pack voltage. */
 const AUX_HEIGHT = 16
-/** Air between the voltage and the home indicator. */
 const STRIP_BOTTOM_PADDING = 10
 const STRIP_TOP_PADDING = 4
 export const STRIP_CONTENT_HEIGHT =
@@ -32,10 +29,7 @@ export const STRIP_CONTENT_HEIGHT =
 export const STRIP_CONTENT_HEIGHT_COMPACT =
   STRIP_TOP_PADDING + ARC_RADIUS_COMPACT + AUX_HEIGHT + STRIP_BOTTOM_PADDING
 const SMALL_SCREEN_HEIGHT = 700
-/** The icon row is only the bar's height off the arcs; slop brings the target back to glove size. */
 const SIDE_ICON_HIT_SLOP = { top: 12, bottom: 12 }
-/** Share of the bottom inset kept under the strip. iOS reserves 34pt for its home indicator against
- * Android's 24dp gesture bar, so a smaller share lands both labels just over the indicator. */
 const INSET_SHARE = Platform.OS === 'ios' ? 0.35 : 0.5
 
 export function isSmallScreen(height: number): boolean {
@@ -55,12 +49,9 @@ export function useAboveStripBottom(): number {
 
 interface BottomTelemetryStripProps {
   revealProgress?: SharedValue<number>
-  /** The telemetry panel this strip opens into: pulled up, the strip fades into it. */
   panelProgress: SharedValue<number>
   panelActive: boolean
-  /** Upward drag anywhere on the strip that opens the panel. */
   openGesture: GestureType
-  /** Tap on the handle, for riders who would not think to drag. */
   onOpenPanel: () => void
 }
 
@@ -79,7 +70,6 @@ export function BottomTelemetryStrip({
   const personalization = useBoardStore(
     (s) => s.boards.find((board) => board.id === s.activeBoardId)?.personalization,
   )
-  // Live numbers, IMU tilt and the footpad pad read SharedValues (hot path, ~31Hz, no re-render).
   const tick = liveTelemetryRuntime.values
 
   const revealStyle = useAnimatedStyle(() => ({
@@ -134,7 +124,6 @@ export function BottomTelemetryStrip({
                   testID="telemetry-attitude-indicator"
                 />
               </Pressable>
-              {/* Grip for the telemetry panel: the whole strip pulls up into it, or a tap opens it. */}
               <Pressable
                 style={({ pressed }) => [styles.handleHit, pressed && styles.cellPressed]}
                 hitSlop={SIDE_ICON_HIT_SLOP}
@@ -195,7 +184,6 @@ const styles = StyleSheet.create({
   },
   center: {
     flex: 1,
-    // Keeps the battery line apart from the temperature arcs either side of it.
     marginHorizontal: 8,
   },
   upperRow: {
@@ -210,7 +198,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
     marginBottom: 0,
   },
-  // Wider than the bar so a thumb finds it; the side icons keep their own width either side.
   handleHit: {
     flex: 1,
     alignSelf: 'stretch',

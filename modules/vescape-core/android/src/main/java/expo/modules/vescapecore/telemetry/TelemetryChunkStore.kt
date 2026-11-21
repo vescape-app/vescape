@@ -6,17 +6,10 @@ import expo.modules.vescapecore.database.TelemetryChunkHeader
 import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeDao
 
-// Telemetry Chunks (ADR 0045): sealed samples live in `telemetry_chunks`, unsealed ones in the
-// `telemetry_frames` write buffer. Everything here runs inside the caller's transaction, so a read
-// sees chunks and buffer from one snapshot and a write replaces both together.
-
-/** Every value bit of `changed_mask_1`: a decoded chunk sample carries its full state. */
 private const val ALL_VALUE_BITS = (1 shl TELEMETRY_CHUNK_VALUE_COLUMNS) - 1
 
-/** Wall-clock grace past a minute's end before it is sealed; above the 5 s recording flush delay. */
 internal const val TELEMETRY_SEAL_GRACE_MS = 10_000L
 
-/** One Board and wall-clock minute of telemetry; the unit a seal works on. */
 data class TelemetryMinuteKey(val boardId: String?, val minuteStartMs: Long)
 
 internal class TelemetrySealMismatch(boardId: String?, minuteStartMs: Long) :
@@ -25,15 +18,11 @@ internal class TelemetrySealMismatch(boardId: String?, minuteStartMs: Long) :
 internal fun telemetryMinuteStart(atMs: Long) = Math.floorDiv(atMs, TELEMETRY_BUCKET_SIZE_MS) * TELEMETRY_BUCKET_SIZE_MS
 
 /**
- * Read order position of the [index]th sample of chunk [chunkId]: negative, so it sorts before any
- * buffer row (positive id) at the same timestamp, and increasing with [index]. Unique across chunks,
- * it doubles as the sample id the bridge reports, exact in a JS number.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `chunkSampleOrdinal`
  */
 internal fun chunkSampleOrdinal(chunkId: Long, index: Int): Long =
   -(chunkId * TelemetryChunkCodec.MAX_SAMPLES + (TelemetryChunkCodec.MAX_SAMPLES - 1 - index))
 
-/** A decoded chunk sample as a row: a full keyframe, so every reader treats it as its own anchor. */
 private fun TelemetrySample.toFrame(id: Long, boardId: String?): TelemetryFrameEntity {
   fun int(i: Int) = values[i]?.toInt()
   return TelemetryFrameEntity(
@@ -46,7 +35,6 @@ private fun TelemetrySample.toFrame(id: Long, boardId: String?): TelemetryFrameE
   )
 }
 
-/** A buffer row's stored value columns in mask bit order, for [reconstructTelemetryValues]. */
 private fun TelemetryFrameEntity.storedValues(): Array<Long?> = arrayOf(
   speedCentiKmh?.toLong(), batteryVoltageMv?.toLong(), motorCurrentMa?.toLong(), batteryCurrentMa?.toLong(),
   dutyPermille?.toLong(), pitchCentiDeg?.toLong(), rollCentiDeg?.toLong(), balancePitchCentiDeg?.toLong(),
@@ -54,15 +42,11 @@ private fun TelemetryFrameEntity.storedValues(): Array<Long?> = arrayOf(
   adc2Milli?.toLong(), odometerCm, tempMosfetDeciC?.toLong(), tempMotorDeciC?.toLong(),
 )
 
-/** One sample of the merged stream: a buffer row, or a decoded chunk sample with its original flags. */
 private class StreamItem(val frame: TelemetryFrameEntity, val sample: TelemetrySample?)
 
 private val streamOrder = compareBy<StreamItem>({ it.frame.capturedAtMs }, { it.frame.id })
 
 /**
- * Chunks and buffer in `[fromMs, toMs]` merged in `(captured_at_ms, ordinal)` order, after the
- * cursor and at most [limit]. [allBoards] ignores [boardId]; otherwise null [boardId] means the
- * unowned samples. Chunks are decoded only as far as the page needs.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `telemetryStream`
  */
 private suspend fun VescapeDao.telemetryStream(
@@ -73,7 +57,6 @@ private suspend fun VescapeDao.telemetryStream(
   var fromChunks = 0
   var lastMinute: Long? = null
   for (header in getTelemetryChunkHeaders(maxOf(fromMs, afterMs), toMs, boardId, allBoards)) {
-    // Later minutes cannot reach a page already filled by earlier ones.
     if (fromChunks >= limit && header.minuteStartMs != lastMinute) break
     lastMinute = header.minuteStartMs
     TelemetryChunkCodec.decode(getTelemetryChunkPayload(header.id)).forEachIndexed { index, sample ->
@@ -88,28 +71,23 @@ private suspend fun VescapeDao.telemetryStream(
   return if (items.size > limit) items.subList(0, limit) else items
 }
 
-/** @see telemetryStream */
 internal suspend fun VescapeDao.readTelemetryFramesImpl(
   fromMs: Long, toMs: Long, boardId: String?, allBoards: Boolean, afterMs: Long, afterId: Long, limit: Int,
 ): List<TelemetryFrameEntity> = telemetryStream(fromMs, toMs, boardId, allBoards, afterMs, afterId, limit).map { it.frame }
 
 /**
- * Start of the latest full state strictly before [beforeMs]: a buffer keyframe or any chunk sample.
- * Replaying from here reconstructs every later buffer delta, across a seal boundary included.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `telemetryAnchorMs`
  */
 internal suspend fun VescapeDao.telemetryAnchorMs(beforeMs: Long, boardId: String?, allBoards: Boolean): Long? =
   listOfNotNull(latestBufferKeyframeBefore(beforeMs, boardId, allBoards), latestChunkStartBefore(beforeMs, boardId, allBoards))
     .maxOrNull()
 
-/** Samples of one chunk header, decoded. */
 private suspend fun VescapeDao.chunkSamples(header: TelemetryChunkHeader) =
   TelemetryChunkCodec.decode(getTelemetryChunkPayload(header.id))
 
 /** @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `firstTelemetrySampleAtOrAfter` */
 internal suspend fun VescapeDao.firstTelemetrySampleAtOrAfter(fromMs: Long): Long? {
   val minute = telemetryMinuteStart(fromMs)
-  // Only chunks of fromMs's own minute can straddle it; every later chunk starts after it.
   val straddling = getTelemetryChunkHeaders(fromMs, minute + TELEMETRY_BUCKET_SIZE_MS - 1, null, true)
     .mapNotNull { header -> chunkSamples(header).firstOrNull { it.capturedAtMs >= fromMs }?.capturedAtMs }
   return (straddling + listOfNotNull(firstBufferFrameAtOrAfter(fromMs), firstChunkStartAfterMinute(minute))).minOrNull()
@@ -123,8 +101,6 @@ internal suspend fun VescapeDao.telemetrySampleExists(atMs: Long, boardId: Strin
     }
 
 /**
- * Remove the samples in `[fromMs, toMs]` from every matching chunk, re-encoding a chunk that keeps
- * any. Returns the samples removed. The buffer side is the caller's plain range delete.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `trimTelemetryChunks`
  */
 internal suspend fun VescapeDao.trimTelemetryChunks(fromMs: Long, toMs: Long, boardId: String?, allBoards: Boolean): Int {
@@ -148,12 +124,6 @@ internal suspend fun VescapeDao.trimTelemetryChunks(fromMs: Long, toMs: Long, bo
 }
 
 /**
- * Seal one Board's minute: replay its buffer rows from the preceding full state into canonical
- * samples, merge them with the minute's existing chunk, encode, verify the decode round-trips, write
- * the chunk and delete exactly the sealed rows. Returns the rows sealed; 0 when there is nothing to
- * seal. A Board id with no row is minted as a Board Tombstone first, so the chunk keeps its owner.
- * Throws [TelemetrySealMismatch] before any write when verification fails, so the caller's
- * transaction keeps every row.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `sealTelemetryMinute`
  */
 internal suspend fun VescapeDao.sealTelemetryMinuteImpl(boardId: String?, minuteStartMs: Long): Int {
@@ -190,14 +160,9 @@ internal suspend fun VescapeDao.sealTelemetryMinuteImpl(boardId: String?, minute
   return sealed.size
 }
 
-/** What one batch of seals did; a failed minute kept its rows and wrote nothing. */
 class TelemetrySealBatch(val sealedMinutes: Int, val failures: List<Pair<TelemetryMinuteKey, Exception>>)
 
 /**
- * One drain batch in the caller's transaction: null, writing nothing, when a ride may be recording
- * at [nowMs]; otherwise seal [keys]. A minute whose seal fails before any write (verification, or a
- * codec format error such as an unreadable existing chunk or more samples than the codec holds) is
- * skipped and reported while the rest of the batch commits. Database errors propagate.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `drainTelemetryMinutes`
  */
 internal suspend fun VescapeDao.drainTelemetryMinutesImpl(keys: List<TelemetryMinuteKey>, nowMs: Long, gapMs: Long): TelemetrySealBatch? {
@@ -217,7 +182,6 @@ internal suspend fun VescapeDao.drainTelemetryMinutesImpl(keys: List<TelemetryMi
 }
 
 /**
- * Minutes starting before this are closed: their end is [TELEMETRY_SEAL_GRACE_MS] past.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `telemetryDrainCutoffMs`
  */
 internal fun telemetryDrainCutoffMs(nowMs: Long) = telemetryMinuteStart(nowMs - TELEMETRY_SEAL_GRACE_MS)
@@ -225,17 +189,9 @@ internal fun telemetryDrainCutoffMs(nowMs: Long) = telemetryMinuteStart(nowMs - 
 /** @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `TELEMETRY_DRAIN_BATCH_MINUTES` */
 internal const val TELEMETRY_DRAIN_BATCH_MINUTES = 30
 
-/** Outcome of one drain. [yielded]: a ride may be recording, so the drain stopped early. */
 internal data class TelemetryDrainResult(val minutes: Int, val sealedMinutes: Int, val failures: Int, val yielded: Boolean)
 
 /**
- * Seal every closed minute left in the `telemetry_frames` buffer: the pre-chunk backlog, late
- * samples, failed seals and minutes a crashed process never sealed. A minute that already has a
- * chunk merges into it. Batches of [batch] minutes, one fenced transaction each, oldest first; before
- * each batch a possibly recording ride stops the drain. The buffer itself is the progress, so a run
- * cut short resumes on the next one. A minute that fails to seal keeps its rows and
- * is reported through [onFailure].
- * Throws [MaintenanceRunFenced] once Restore or Clear all replaced the database.
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `drainTelemetryBuffer`
  */
 internal suspend fun drainTelemetryBuffer(

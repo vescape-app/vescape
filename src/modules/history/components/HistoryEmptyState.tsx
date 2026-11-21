@@ -8,7 +8,6 @@ import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const DIM_POSITIONS = [0, 0.4, 0.7, 1]
 
-/** Soft center dim so the placeholder stays readable over map labels — no box, blends into the edge vignette. */
 function CenterDim() {
   const neutral = useResolvedNeutralColors()
   const { width, height } = useWindowDimensions()

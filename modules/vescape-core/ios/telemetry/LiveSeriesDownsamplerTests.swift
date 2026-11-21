@@ -66,8 +66,6 @@ final class LiveSeriesDownsamplerTests: XCTestCase {
   }
 
   func testSharedBucketsIdenticalAcrossSlidingWindows() {
-    // Absolute grid (width = windowMs / buckets = 10): a bucket fully inside two differently
-    // offset windows must emit identical points — no re-quantising as old rows prune.
     let buckets = 5
     let windowMs: Int64 = 50
     let older = (0...49).map { Row(ts: Int64($0), v: Double($0 % 7)) }

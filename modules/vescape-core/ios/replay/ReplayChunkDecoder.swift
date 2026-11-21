@@ -1,14 +1,10 @@
 import Foundation
 
-/// One recorded BLE chunk: milliseconds since recording start plus the raw bytes.
 internal struct ReplayChunk {
   let t: Int64
   let bytes: [UInt8]
 }
 
-/// One recorded GPS fix, replayed in place of the phone's own. A replay reproduces the ride that was
-/// recorded, and position is the centre of that ride — so the recording owns it outright.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayChunkDecoder.kt `ReplayLocation`
 internal struct ReplayLocation {
   let t: Int64
@@ -20,18 +16,10 @@ internal struct ReplayLocation {
   let altitudeM: Double?
 }
 
-/// Pure decode core for Debug Recording replay (ADR 0048): turns a `.jsonl` Debug Recording into the
-/// byte streams and GPS track the session originally saw. Shared by the unit replay harnesses (test
-/// source) and `ReplayRecording`. `ble-chunk` lines carry the board stream (`rx`) and the app's
-/// writes (`tx`), `location` lines the ride's GPS track; every other kind and any malformed line —
-/// real recordings can end mid-write — is skipped, never fatal.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayChunkDecoder.kt
 internal enum ReplayChunkDecoder {
-  /// Recorded `rx` chunks in file order with their recorded time offsets.
   static func rxChunks(_ jsonl: String) -> [ReplayChunk] { chunks(jsonl, direction: "rx") }
 
-  /// Recorded `tx` chunks (what the app wrote) in file order; thinned fixtures carry none.
   static func txChunks(_ jsonl: String) -> [ReplayChunk] { chunks(jsonl, direction: "tx") }
 
   private static func chunks(_ jsonl: String, direction: String) -> [ReplayChunk] {
@@ -50,7 +38,6 @@ internal enum ReplayChunkDecoder {
     }
   }
 
-  /// Recorded GPS fixes in file order with their recorded time offsets.
   static func locations(_ jsonl: String) -> [ReplayLocation] {
     jsonl.split(separator: "\n").compactMap { line in
       guard
@@ -74,8 +61,6 @@ internal enum ReplayChunkDecoder {
     }
   }
 
-  /// Decoded smart-BMS frames with the recorded chunk time as `capturedAt`, produced by running the
-  /// recorded `rx` bytes through the real packet reassembler and BMS parser.
   static func bmsFrames(_ jsonl: String) -> [BmsTelemetry] {
     let reassembler = VescPacketReassembler()
     return rxChunks(jsonl).flatMap { chunk in

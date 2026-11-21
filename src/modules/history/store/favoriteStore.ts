@@ -16,18 +16,14 @@ const FAVORITE_MEDIA_CLEANUP_ERROR = 'ERR_DELETE_FAVORITE_MEDIA_CLEANUP'
 interface FavoriteState {
   favorites: Favorite[]
   loading: boolean
-  /** One create/update/delete at a time; controls must not queue a second mutation. */
   saving: boolean
   error: string | undefined
 }
 
 interface FavoriteActions {
   load: () => Promise<void>
-  /** Pin a range. Native owns identity, timestamps and stats — JS only sends range + name. */
   add: (options: CreateFavoriteOptions) => Promise<Favorite | null>
-  /** Re-trim/rename in place. Native preserves identity/media and recomputes the summary. */
   update: (id: string, options: UpdateFavoriteOptions) => Promise<Favorite | null>
-  /** Unpin. Telemetry inside the range stays (ADR 0029). */
   remove: (id: string) => Promise<void>
 }
 

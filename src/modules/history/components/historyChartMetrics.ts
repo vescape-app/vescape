@@ -10,17 +10,8 @@ import { theme, type ThemeColor } from '@/constants/theme'
 import { telemetry, type TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 
-/** Breathing room above and below the ride's own extremes, as a fraction of the span. */
 const PADDING_RATIO = 0.1
 
-/**
- * The y domain of a metric's chart, taken from the metric's own definition.
- *
- * `minSpan` is what keeps a flat ride from being drawn as a mountain range: without it a motor
- * temperature that never moved more than a degree fills the plot with sensor noise. It and the
- * fallback bounds belong to the metric, not to this chart — {@link telemetry} already states both,
- * so read them from there rather than restating them per chart.
- */
 function rangeOf(
   metric: TelemetryMetricConfig,
   { includeZero = false, fixed = false } = {},
@@ -32,9 +23,6 @@ function rangeOf(
     snap: true,
     fallbackMin: metric.chartRange.min,
     fallbackMax: metric.chartRange.max,
-    // Metrics read against a scale the rider already knows keep it, and only stretch past it when
-    // the ride actually did. The rest have no meaningful fixed scale — a ±300 A axis would hide
-    // every current a ride ever draws.
     baseline: fixed ? metric.chartRange : undefined,
   }
 }
@@ -47,14 +35,12 @@ export interface ChartMetricDef {
   label: string
   color: ThemeColor
   range: AutoRangeOptions
-  /** Session-exclusion stat keys that grey out this chart's ranges. */
   statKeys?: string | string[]
 }
 
 export interface OptionalChartMetricDef extends ChartMetricDef {
   key: OptionalChartMetric
   multilineLabel?: [string, string]
-  /** Short form for a metric tab, where the chart's own label would wrap. */
   tabLabel?: string
   unit: string
   decimals: number
@@ -130,18 +116,9 @@ export const HISTORY_CHART_DEFS: readonly ChartMetricDef[] = [
   ...OPTIONAL_CHART_METRICS,
 ]
 
-/**
- * Metrics the ride records but the map cannot be coloured by.
- *
- * Kept apart from {@link OPTIONAL_CHART_METRICS} because a {@link HistoryMetricKey} is a promise
- * that the route can be painted with it — attitude, footpad voltage and the GPS fix have no such
- * meaning on a line drawn over a map. They are chart-only, and only the full-screen charts page
- * offers them; the map panel would not have the room.
- */
 export type ExtraChartMetric =
   'pitch' | 'roll' | 'balancePitch' | 'footpadAdc1' | 'footpadAdc2' | 'altitude' | 'gpsAccuracy'
 
-/** Whether a chart-only metric reads the board stream or the phone's own GPS log. */
 export type ExtraChartSource = 'board' | 'gps'
 
 export interface ExtraChartMetricDef {
@@ -155,7 +132,6 @@ export interface ExtraChartMetricDef {
   decimals?: number
 }
 
-/** The GPS metrics have no board-side definition, so they state their own scale here. */
 function gpsRange(min: number, max: number, minSpan: number, fixed = false): AutoRangeOptions {
   return {
     minSpan,
@@ -201,8 +177,6 @@ export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
     label: telemetry.footpadAdc1.label,
     multilineLabel: ['Footpad', 'ADC 1'],
     color: telemetry.footpadAdc1.color,
-    // Fixed to the sensor's own 0-3.3 V scale: a pad that reads low is only readable against the
-    // voltage it should have been, and auto-ranging would hide exactly that.
     range: rangeOf(telemetry.footpadAdc1, { includeZero: true, fixed: true }),
     source: 'board',
     unit: telemetry.footpadAdc1.unit,
@@ -239,15 +213,8 @@ export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
   },
 ]
 
-/**
- * Anything a metric tab can switch on: a map-colourable metric, or a chart-only one.
- *
- * Speed is in here even though the ride panel always draws it — on a page that is only charts,
- * the rider is entitled to close it like any other line.
- */
 export type ChartToggleMetric = 'speed' | OptionalChartMetric | ExtraChartMetric
 
-/** What a metric tab renders, whichever kind of metric it switches on. */
 export interface ChartTabMetricDef {
   key: ChartToggleMetric
   label: string
@@ -256,19 +223,12 @@ export interface ChartTabMetricDef {
   tabLabel?: string
 }
 
-/** The speed chart as a tab, for the surfaces that let the rider close it. */
 const SPEED_TAB: ChartTabMetricDef = {
   key: SPEED_CHART_DEF.key,
   label: SPEED_CHART_DEF.label,
   color: SPEED_CHART_DEF.color,
 }
 
-/**
- * What the ride panel offers under the map.
- *
- * Deliberately shorter than the full list: the panel is a strip over a map, and the metrics left
- * out of it are a tap away on the full-screen charts page, which has the room to read them.
- */
 export const PANEL_CHART_METRICS: readonly ChartTabMetricDef[] = [
   SPEED_TAB,
   ...OPTIONAL_CHART_METRICS.filter(
@@ -276,7 +236,6 @@ export const PANEL_CHART_METRICS: readonly ChartTabMetricDef[] = [
   ),
 ]
 
-/** Every metric a full-screen stack can show, speed first and map-colourable ones ahead of the rest. */
 export const ALL_CHART_METRICS: readonly ChartTabMetricDef[] = [
   SPEED_TAB,
   ...OPTIONAL_CHART_METRICS,
@@ -285,18 +244,10 @@ export const ALL_CHART_METRICS: readonly ChartTabMetricDef[] = [
 
 const HISTORY_METRIC_KEYS = new Set<string>(HISTORY_CHART_DEFS.map((def) => def.key))
 
-/** Whether a chart key names a metric — the stack keys its charts by one. */
 export function isHistoryMetricKey(key: string): key is HistoryMetricKey {
   return HISTORY_METRIC_KEYS.has(key)
 }
 
-/**
- * The chart sitting at the top of the stack, or `null` when nothing is open.
- *
- * Stack order is fixed — speed, then the optional metrics, then the chart-only ones — so the top
- * chart is whatever comes first in that list. What the map is coloured by follows it: closing the
- * chart the route was coloured by has to hand the colour to the line the rider can still see.
- */
 export function topActiveChartMetric(
   activeMetrics: ReadonlySet<ChartToggleMetric>,
 ): ChartToggleMetric | null {
@@ -316,7 +267,6 @@ export function toggleOptionalChartMetric<T extends ChartToggleMetric>(
   return next
 }
 
-/** Display metadata only: series, domains and color ramps remain canonical. */
 export function historyChartPresentation(
   key: ChartToggleMetric,
   distanceUnit: DistanceUnit,

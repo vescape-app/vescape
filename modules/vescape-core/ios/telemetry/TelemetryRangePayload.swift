@@ -2,14 +2,8 @@ import ExpoModulesCore
 import Foundation
 import GRDB
 
-/// Bottom history chart overview; full samples remain available for map and chart screen.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `HISTORY_CHART_OVERVIEW_SAMPLES`
 private let HISTORY_CHART_OVERVIEW_SAMPLES = 600
-
-// The bridge edge of Ride History reads. `NativeArrayBuffer` is an Expo type, so the columnar range
-// payload — and the one query that returns it — live here instead of in `TelemetryRepository.swift`.
-// That keeps the repository, the DAO and the migrator free of the Expo runtime, which is what lets
-// the SPM test target (`bun run test:ios`) compile and exercise them.
 
 extension TelemetryRepository {
   func getRange(_ options: [String: Any]) throws -> [String: Any?] {
@@ -18,8 +12,6 @@ extension TelemetryRepository {
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
     let boardId = options["boardId"] as? String
     let pool = try VescapeDatabase.requirePool()
-    // Battery configs, board names and the smoothing window are read up front (each opens its own
-    // DB read) so the estimate stays a pure computation inside the range read below.
     let windowMs = try socWindowMs()
     return try pool.read { db -> [String: Any?] in
       batteryEstimator.ensureLoaded()
@@ -37,8 +29,6 @@ extension TelemetryRepository {
         sql: "SELECT * FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY start_ms ASC",
         arguments: [fromMs, toMs, boardId, boardId]
       ).map(exclusionMap)
-      // Ride Track is the route source now — denser than the frames, alive through a board
-      // dropout, and read over exactly the requested window on its own clock.
       let track = try fetchRideTrack(db, fromMs: fromMs, toMs: toMs, boardId: boardId)
       let percents = self.batteryPercents(sampleRows, configs: configs, windowMs: windowMs)
       let overviewIndices = evenlySpacedIndices(sampleRows.count, limit: HISTORY_CHART_OVERVIEW_SAMPLES)
@@ -70,10 +60,6 @@ private func evenlySpacedIndices(_ count: Int, limit: Int) -> [Int] {
   }
 }
 
-/// Packs Telemetry Samples into the Float64 lane buffer the JS history decoder reads. This is the
-/// bridge boundary, not storage: `NativeArrayBuffer` is an Expo type, so it lives with the repository
-/// that answers JS calls rather than in the DAO.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `smoothedSampleColumns`
 internal func sampleColumns(
   _ rows: [Row],

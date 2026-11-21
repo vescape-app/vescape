@@ -1,12 +1,9 @@
 import Compression
 import Foundation
 
-/// Several rides as one `.zip`: one file per ride, no folders, written as a stream so memory stays
-/// flat at any ride count. Names use device time: `2026-08-03_1726_<name>.<ext>`, `-2`, `-3` on clash.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideBatch.kt
 /// @parity /modules/vescape-core/src/index.ts `RideSelection`
 internal enum RideBatch {
-  /// One ride window; `name` is the Board name for rides and the Favorite's name for Favorites.
   struct Item: Equatable {
     let fromMs: Int64
     let toMs: Int64
@@ -64,7 +61,6 @@ internal enum RideBatch {
     }
   }
 
-  /// `vescape-rides-<day>.zip`, or `vescape-rides-<first>_<last>.zip` when the rides span days.
   static func zipName(_ items: [Item], zone: TimeZone) -> String {
     let day = formatter("yyyy-MM-dd", zone)
     let first = day.string(from: date(items.map(\.fromMs).min() ?? 0))
@@ -72,7 +68,6 @@ internal enum RideBatch {
     return first == last ? "vescape-rides-\(first).zip" : "vescape-rides-\(first)_\(last).zip"
   }
 
-  /// ASCII letters and digits; every other run becomes one `-`.
   static func slug(_ name: String?) -> String {
     var out = ""
     for scalar in (name ?? "").unicodeScalars {
@@ -87,7 +82,6 @@ internal enum RideBatch {
     isCancelled: @escaping () -> Bool, onProgress: (_ done: Int, _ total: Int) -> Void,
     writeRide: (_ item: Item, _ write: (String) throws -> Void) throws -> Void) throws -> [String: Any] {
     guard !items.isEmpty else { throw RideBatchError.invalid("No rides to export") }
-    // Own folder per export: the zip keeps its readable name in the share sheet without clashing.
     let folder = directory.appendingPathComponent("ride-export-\(UUID().uuidString)", isDirectory: true)
     let file = folder.appendingPathComponent(zipName(items, zone: zone))
     do {
@@ -120,14 +114,12 @@ internal enum RideBatch {
   }
 }
 
-/// DEFLATE entries with trailing data descriptors, so no entry is ever held in memory. No Zip64:
-/// one archive stays under 4 GB.
 private final class ZipStreamWriter {
   private struct Record { let name: [UInt8]; let crc: UInt32; let compressed: UInt32; let size: UInt32; let offset: UInt32 }
   private let handle: FileHandle
   private var offset: UInt64 = 0
   private var records: [Record] = []
-  private static let flags: UInt16 = 0x0808 // data descriptor + UTF-8 names
+  private static let flags: UInt16 = 0x0808
 
   init(handle: FileHandle) { self.handle = handle }
 
@@ -141,7 +133,7 @@ private final class ZipStreamWriter {
     let start = UInt32(offset)
     var header = Data()
     header.append(le32: 0x0403_4b50); header.append(le16: 20); header.append(le16: Self.flags); header.append(le16: 8)
-    header.append(le16: 0); header.append(le16: 0x21) // 1980-01-01, no clock in the archive
+    header.append(le16: 0); header.append(le16: 0x21)
     header.append(le32: 0); header.append(le32: 0); header.append(le32: 0)
     header.append(le16: UInt16(nameBytes.count)); header.append(le16: 0)
     header.append(contentsOf: nameBytes)

@@ -9,7 +9,6 @@ import type { MediaAssetInput, MediaHistoryAsset } from '@/modules/history/lib/m
 
 const GRID_COLUMNS = 4
 const GRID_GAP = 6
-// EdgeDrawer body horizontal padding — tiles fill the remaining drawer width.
 const DRAWER_HORIZONTAL_PADDING = 12
 
 function MediaGrid({
@@ -47,11 +46,6 @@ function MediaGrid({
   )
 }
 
-/**
- * Favorite Media gallery shown inside the detail drawer: matched assets as a
- * thumbnail grid, assets outside the ride in their own section, and the picker
- * entry point.
- */
 export function MediaHistoryGallery({
   assets,
   unmatched,

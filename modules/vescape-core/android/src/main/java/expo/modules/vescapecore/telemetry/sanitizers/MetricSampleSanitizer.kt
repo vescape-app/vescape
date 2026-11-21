@@ -15,7 +15,6 @@ internal data class MetricSanitizerOutput(
   val exclusions: List<MetricExclusionSample> = emptyList(),
 )
 
-/** Sees every sample once, in capture order. */
 internal interface MetricSampleSanitizer {
   fun sanitize(point: BucketTelemetryPoint): MetricSanitizerOutput
 }

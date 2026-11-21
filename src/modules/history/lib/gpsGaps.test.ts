@@ -3,7 +3,6 @@ import { describe, expect, test } from 'bun:test'
 import { toGpsGapRanges } from '@/modules/history/lib/gpsGaps'
 
 const fixes = (...ms: number[]) => ms.map((capturedAtMs) => ({ capturedAtMs }))
-/** A continuous recording: one board sample per second between the two moments. */
 const recording = (startMs: number, endMs: number) => {
   const times: number[] = []
   for (let ms = startMs; ms <= endMs; ms += 1_000) times.push(ms)

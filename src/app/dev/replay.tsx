@@ -5,7 +5,6 @@ import { startDebugReplay } from 'vescape-core'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
 async function startReplay(recording: string, board?: string, warmup?: string, loop?: string) {
-  // A replay runs as the selected Board, so a named one is selected first, as a rider's pick would.
   if (board) useBoardStore.getState().setActiveBoard(board)
   const warmupMs = Number(warmup)
   await startDebugReplay(recording, {
@@ -15,11 +14,6 @@ async function startReplay(recording: string, board?: string, warmup?: string, l
   console.log(`[replay] ${recording} running`)
 }
 
-/**
- * Dev-only deep link that starts a Debug Recording replay:
- * `vescape://dev/replay?recording=<name>&board=<boardId>&warmup=<ms>&loop=1`. Only `recording` is
- * required. Release builds ignore it.
- */
 export default function ReplayLink() {
   const { recording, board, warmup, loop } = useLocalSearchParams<{
     recording: string

@@ -25,7 +25,6 @@ export async function shareRideExport(
   await shareExportFile(file, rideExportLabels[format])
 }
 
-/** Native closes the writer before returning. Keep its cache file alive for share consumers. */
 export async function shareExportFile(file: RideExportFile, dialogTitle: string): Promise<void> {
   await Sharing.shareAsync(file.uri, { mimeType: file.mimeType, UTI: file.uti, dialogTitle })
 }

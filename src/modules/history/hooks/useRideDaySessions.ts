@@ -9,10 +9,6 @@ const DAY_PAGE_SIZE = 50
 const DAY_MS = 24 * 60 * 60_000
 const NO_SESSIONS: HistorySession[] = []
 
-/**
- * The rides that started on `day`, newest first: the same rule native applies to that day's stats.
- * Paging starts a day past it so a ride running over midnight is read whole, not cut at the cursor.
- */
 export function useRideDaySessions(day: RideDay) {
   return useAsyncRead(() => readDay(rideDayBounds(day)), NO_SESSIONS, calendarDayKey(day))
 }

@@ -6,9 +6,7 @@ import { EMPTY_RIDE_SELECT, toggleRides, type RideSelect } from '@/modules/histo
 interface RideSelectState {
   active: boolean
   select: RideSelect
-  /** Last export format, kept for the next export. */
   format: RideExportFormat
-  /** Turns select mode on, optionally with rides already ticked (the long-pressed row or day). */
   start: (ids?: readonly string[]) => void
   exit: () => void
   toggle: (ids: readonly string[]) => void

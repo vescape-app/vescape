@@ -5,14 +5,11 @@ import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
 import expo.modules.vescapecore.database.VescapeDao
 
 /**
- * Denormalized ride stats for one Favorite range, mirroring the history session summary fields.
- *
  * @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `FavoriteSummary`
  */
 internal data class FavoriteSummary(
   val sampleCount: Int = 0,
   val gpsPointCount: Int = 0,
-  /** Odometer delta across the range, or null when the range carries no odometer readings. */
   val distanceCm: Long? = null,
   val movingDurationMs: Long = 0,
   val avgSpeedCentiKmh: Int = 0,
@@ -20,7 +17,6 @@ internal data class FavoriteSummary(
   val batteryUsedWhMilli: Long = 0,
 )
 
-/** App-used create/update transaction mapping, injectable only for the host persistence contract. */
 /** @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `persistFavorite` */
 internal suspend fun persistFavorite(
   dao: VescapeDao,
@@ -50,10 +46,6 @@ internal suspend fun persistFavorite(
 }
 
 /**
- * Aggregate the buckets built from a Favorite's raw samples into one denormalized summary. Pure so
- * both the create path and its tests share one definition. Mirrors how JS collapses minute buckets
- * into a history session summary, including the GPS-distance fallback for rides with no odometer.
- *
  * @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `buildFavoriteSummary`
  * @parity /src/modules/history/lib/favoritePreview.ts `summarizeFavoriteRange`
  * @platform-diff JS is a live preview over loaded samples; this is the durable sanitized summary.
@@ -96,8 +88,6 @@ internal fun buildFavoriteSummary(buckets: Collection<TelemetryMinuteBucketEntit
     lastSampleAtMs = maxOf(lastSampleAtMs, bucket.lastSampleAtMs)
   }
 
-  // Moving Window when the range has moving samples, otherwise the wall-clock span it covers — the
-  // same fallback JS applies to legacy rides with no precomputed window.
   val movingStart = firstMovingAtMs
   val movingEnd = lastMovingAtMs
   val movingDurationMs = when {

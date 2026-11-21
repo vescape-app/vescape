@@ -23,7 +23,6 @@ class HistoryGpsProjectionTest {
     assertTrue("ride boundaries are not the projection's concern", (points[2].distanceFromPreviousCm ?: 0L) > 0L)
   }
 
-  /** A poor fix stays stored, but the route stream JS reads never contains it. */
   @Test
   fun keepsPoorFixesOutOfTheRouteStream() {
     val boardNames = mapOf("board-1" to "ADV2")
@@ -37,7 +36,6 @@ class HistoryGpsProjectionTest {
     assertNull("a poor predecessor never contributes a step", maps[0]["distanceFromPreviousM"])
   }
 
-  /** Buckets still count every stored fix; only qualifying ones derive anything. */
   @Test
   fun countsPoorFixesButDerivesNothingFromThem() {
     val poor = point(9L, 5_000L, latitudeE7 = 500_000_000, accuracyCm = 12_000, gpsSpeedCentiMps = 500)
@@ -49,11 +47,10 @@ class HistoryGpsProjectionTest {
     assertNull(bucketPoint.latitudeE7)
   }
 
-  /** Movement is the fix's own reported speed, never a coordinate-displacement derivation. */
   @Test
   fun readsMovementFromTheFixesReportedSpeed() {
-    val rolling = point(1L, 1_000L, gpsSpeedCentiMps = 200) // 7.2 km/h
-    val crawling = point(2L, 2_000L, gpsSpeedCentiMps = 50) // 1.8 km/h
+    val rolling = point(1L, 1_000L, gpsSpeedCentiMps = 200)
+    val crawling = point(2L, 2_000L, gpsSpeedCentiMps = 50)
     val speedless = point(3L, 3_000L, gpsSpeedCentiMps = null)
 
     val points = listOf(rolling, crawling, speedless)
@@ -87,7 +84,6 @@ class HistoryGpsProjectionTest {
     assertEquals(500, bucketPoint.gpsSpeedCentiMps)
   }
 
-  /** A haversine step is only ever chained between two fixes of one Board. */
   @Test
   fun neverChainsLegacyDistanceAcrossBoards() {
     val track = listOf(
@@ -104,7 +100,6 @@ class HistoryGpsProjectionTest {
     assertTrue("board A continues its own track", step in 1L..20_000L)
   }
 
-  /** A fix without reported accuracy is unknown, not precise (migration 52 stamps legacy rows). */
   @Test
   fun readsFixesWithoutAccuracyAsImprecise() {
     assertFalse(point(1L, 1_000L, accuracyCm = null).isPrecise())

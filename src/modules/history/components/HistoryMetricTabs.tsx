@@ -11,9 +11,7 @@ import {
 interface HistoryMetricTabsProps {
   activeCharts: ReadonlySet<ChartToggleMetric>
   onToggle: (metric: ChartToggleMetric) => void
-  /** Which metrics to offer. Defaults to the map-colourable ones the ride panel shows. */
   metrics?: readonly ChartTabMetricDef[]
-  /** Tabs per row; the rest wrap onto the next one. Defaults to a single row. */
   columns?: number
 }
 
@@ -24,8 +22,6 @@ export function HistoryMetricTabs({
   columns,
 }: HistoryMetricTabsProps) {
   const perRow = columns ?? metrics.length
-  // A single row reads as a pill; once tabs wrap, that radius cuts into the corner labels, so a
-  // multi-row group is a card instead.
   const wrapped = perRow < metrics.length
   return (
     <View style={[styles.metricTabs, wrapped && styles.metricTabsWrapped]}>
@@ -109,8 +105,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   metricTabFlex: {
-    // A single row splits by flex, not by percentage: percentage widths round up per tab and the
-    // rounding error pushes the last tab onto a second line.
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: 0,

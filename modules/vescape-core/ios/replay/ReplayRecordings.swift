@@ -1,19 +1,13 @@
 import Foundation
 
-/// Resolves a replayable Debug Recording by name: the on-device store first, then the bundled
-/// fixtures shipped in the `VescapeCoreAssets` resource bundle (symlinked from `shared/fixtures/`
-/// via the podspec). Bundled fixtures make replay usable on a device with no captures yet.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayRecordings.kt
 internal enum ReplayRecordings {
-  /// Resolve a recording to a readable URL: on-device store first, bundled fixture second.
   static func url(name: String) -> URL? {
     if let stored = DebugRecordingStore.recordingURL(name: name) { return stored }
     guard (name as NSString).lastPathComponent == name, name.hasSuffix(".jsonl") else { return nil }
     return bundledFixtureURLs().first { $0.lastPathComponent == name }
   }
 
-  /// Bundled fixture names + sizes, sorted by name (bundle resources have no capture timestamps).
   static func listBundled() -> [[String: Any]] {
     bundledFixtureURLs()
       .sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -24,9 +18,6 @@ internal enum ReplayRecordings {
       }
   }
 
-  /// Fixture `.jsonl` files. The dedicated `VescapeCoreAssets` resource bundle is authoritative
-  /// (only fixtures glob `.jsonl` there); the bare module bundle is a fallback for builds without
-  /// the CocoaPods bundle step, checked second so stray `.jsonl` files can never shadow fixtures.
   private static func bundledFixtureURLs() -> [URL] {
     let moduleBundle = Bundle(for: DebugRecordingStore.self)
     let bundles = [

@@ -23,7 +23,6 @@ export function DebugRecordingsScreen() {
   const timeFormat = useTimeFormat()
   const debug = useDebugRecordings()
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
-  // A replay plays as the selected Board; pick another Board first to replay on it.
   const replayBoardName = useBoardStore(
     (state) => state.boards.find((board) => board.id === state.activeBoardId)?.name ?? null,
   )
@@ -39,7 +38,6 @@ export function DebugRecordingsScreen() {
 
   const startReplay = async (name: string) => {
     const started = await debug.replayRecording(name)
-    // Replay drives the normal live UI — jump back to the main screen to watch it.
     if (started) router.dismissAll()
   }
 

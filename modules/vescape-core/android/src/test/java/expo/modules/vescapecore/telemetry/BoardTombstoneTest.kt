@@ -13,14 +13,6 @@ import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeDatabase
 
 /**
- * Board tombstones (ADR 0027): deleting a Board stamps `boards.deleted_at` instead of removing the
- * row, so Ride History outlives the Board that produced it. Configuration still goes; telemetry and
- * Tune Profiles never did and still do not.
- *
- * Room's `@Query` has BINARY retention and its generated implementation keeps the SQL in a
- * method-local string, so a JVM unit test has no runtime handle on the statements Room will run —
- * the read/delete contracts are asserted against the DAO source.
- *
  * @parity /modules/vescape-core/ios/telemetry/BoardTombstoneTests.swift
  */
 class BoardTombstoneTest {
@@ -58,10 +50,6 @@ class BoardTombstoneTest {
   private fun daoSource(): String =
     File("src/main/java/expo/modules/vescapecore/database/VescapeDao.kt").readText()
 
-  /**
-   * Additive and nullable: existing rows stay null, which is what "alive" means. A `NOT NULL DEFAULT`
-   * would tombstone every Board on the device the moment it upgraded.
-   */
   @Test
   fun migrationAddsNullableDeletedAtColumn() {
     val sql = migrationSql(VescapeDatabase.MIGRATION_40_41)
@@ -75,7 +63,6 @@ class BoardTombstoneTest {
     assertEquals(41, VescapeDatabase.MIGRATION_40_41.endVersion)
   }
 
-  /** The Rider-facing list drops tombstones; lookup by id keeps them so history can name them. */
   @Test
   fun listReadFiltersTombstonesAndLookupByIdDoesNot() {
     val dao = daoSource()
@@ -90,10 +77,6 @@ class BoardTombstoneTest {
     )
   }
 
-  /**
-   * The regression this change exists to prevent: a Board delete that still removes the row takes
-   * Ride History with it on the server, and the phone can never re-upload it.
-   */
   @Test
   fun deleteTombstonesTheBoardInsteadOfRemovingTheRow() {
     val dao = daoSource()
@@ -105,7 +88,6 @@ class BoardTombstoneTest {
     )
   }
 
-  /** Configuration is still hard-deleted — only the Board row survives. */
   @Test
   fun deleteStillRemovesBoardConfiguration() {
     val dao = daoSource()
@@ -116,7 +98,6 @@ class BoardTombstoneTest {
     }
   }
 
-  /** Deletion is terminal: an ordinary upsert must not clear a tombstone already on the row. */
   @Test
   fun upsertPreservesAnExistingTombstone() {
     val dao = daoSource()

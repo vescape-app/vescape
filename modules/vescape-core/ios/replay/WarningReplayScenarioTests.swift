@@ -1,28 +1,21 @@
 import XCTest
 @testable import VescapeCore
 
-/// Fault-injection scenarios on the replay harness (ADR 0024): decode-level transforms layered onto
-/// the clean fixture's decoded frames — never byte mutation, never a second fixture. Fault windows
-/// are anchored relative to the fixture's own first timestamp, so swapping the placeholder fixture
-/// for a real recording keeps every scenario valid.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/replay/WarningReplayScenarioTest.kt
 final class WarningReplayScenarioTests: XCTestCase {
   private var jsonl = ""
 
-  /// The fixture's known cell-group count; scenario counts are chosen distinct from it.
   private let fixtureSeries = 16
 
-  /// First recorded timestamp — all fault windows anchor relative to this, not absolute ms.
   private var t0: Int64 = 0
 
   override func setUpWithError() throws {
     let root = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent() // replay
-      .deletingLastPathComponent() // ios
-      .deletingLastPathComponent() // vescape-core
-      .deletingLastPathComponent() // modules
-      .deletingLastPathComponent() // repo root
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
     jsonl = try String(
       contentsOf: root.appendingPathComponent("shared/fixtures/replay-synthetic-bms.jsonl"),
       encoding: .utf8
@@ -34,7 +27,6 @@ final class WarningReplayScenarioTests: XCTestCase {
     (t0 + startMs)...(t0 + endMs)
   }
 
-  /// Lift one cell group by `deltaV` inside `range` — the canonical spread fault.
   private func spread(
     _ range: ClosedRange<Int64>, group: Int, deltaV: Double
   ) -> (BmsTelemetry, Int64) -> BmsTelemetry {
@@ -78,7 +70,6 @@ final class WarningReplayScenarioTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(result.cellSpreadFindings.count, 2)
     XCTAssertEqual(result.cellSpreadFindings.first?.severity, .warn)
     XCTAssertEqual(result.cellSpreadFindings.last?.severity, .critical)
-    // Severity is monotonic: once critical, no later finding may downgrade back to warn.
     let firstCritical = result.cellSpreadFindings.firstIndex { $0.severity == .critical } ?? 0
     XCTAssertTrue(result.cellSpreadFindings[firstCritical...].allSatisfy { $0.severity == .critical })
     let peaks = result.cellSpreadFindings.map { payloadFields($0.payloadJson)["peakSpread"] as? Double ?? 0 }
@@ -105,8 +96,6 @@ final class WarningReplayScenarioTests: XCTestCase {
   }
 
   func testConfigMismatchFiresOnceAfterStableFrames() throws {
-    // 18 BMS groups vs 15 configured — both distinct from the fixture's 16. Padding repeats the
-    // frame's own last group value so the spread detector sees an unchanged spread.
     let result = try WarningReplayHarness.run(
       jsonl, configuredSeries: 15,
       transform: { bms, _ in
@@ -129,13 +118,11 @@ final class WarningReplayScenarioTests: XCTestCase {
     let result = try WarningReplayHarness.run(
       jsonl, configuredSeries: 15,
       transform: { bms, _ in
-        // Alternate 16/15 groups every frame — the count is never stable for 3 consecutive frames.
         defer { frameIndex += 1 }
         return frameIndex % 2 == 0 ? bms : bms.with(cellVoltages: Array(bms.cellVoltages.dropLast()))
       }
     )
     XCTAssertTrue(result.mismatchFindings.isEmpty)
-    // Never stable means never evaluated — not a clean pass that would clear a stored warning.
     XCTAssertFalse(result.mismatchSessionEndClean)
   }
 
@@ -157,7 +144,6 @@ final class WarningReplayScenarioTests: XCTestCase {
 }
 
 private extension BmsTelemetry {
-  /// Scenario copy helper — Kotlin's `data class copy` peer for the fields transforms touch.
   func with(cellVoltages: [Double]? = nil, balancing: [Bool]? = nil, vCharge: Double? = nil) -> BmsTelemetry {
     BmsTelemetry(
       capturedAt: capturedAt,

@@ -1,9 +1,5 @@
 import Foundation
 
-/// iOS diagnostic reporter surfaced to JS through `reportUiError` / `reportDiagnosticTest` /
-/// `getDiagnosticStatus`. Tracks capture counters for the settings status panel exactly like
-/// Android's `DiagnosticReporter`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/diagnostics/DiagnosticReporter.kt
 internal final class DiagnosticReporter {
   static let shared = DiagnosticReporter()
@@ -18,8 +14,6 @@ internal final class DiagnosticReporter {
     self.recorder = recorder
   }
 
-  /// Count the capture and keep the breadcrumb in the local store (Local Diagnostic Events,
-  /// ADR 0007). There is no remote analytics transport on either platform.
   func capture(eventName: String, properties: [String: Any?] = [:]) {
     lock.lock()
     captureCount += 1
@@ -38,8 +32,6 @@ internal final class DiagnosticReporter {
       "lastCaptureAt": lastCaptureAt,
     ]
   }
-
-  // MARK: - Bridge entry points
 
   func reportUiError(message: String, source: String?, stack: String?) {
     capture(eventName: "ui_error", properties: [

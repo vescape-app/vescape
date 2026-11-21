@@ -46,7 +46,6 @@ import expo.modules.vescapecore.database.VescapeDatabase
 
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `AppDataScope`
 // @parity /modules/vescape-core/src/index.ts `AppDataChangedEvent`
-/** Scope of an `onAppDataChanged` emit; mirrors the JS `AppDataChangedEvent['scope']` union. */
 internal enum class AppDataScope(val wire: String) {
   BOARDS("boards"),
   ALERTS("alerts"),
@@ -87,14 +86,11 @@ internal fun validLiveHistoryLimitMinutes(value: Any?): Int? =
     ?.toInt()
     ?.coerceIn(MIN_LIVE_HISTORY_LIMIT_MINUTES, MAX_LIVE_HISTORY_LIMIT_MINUTES)
 
-/** SoC Estimate median window in seconds; 0 disables smoothing, capped at 120s (ADR-0016). */
 internal fun validSocEstimateWindowSeconds(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
     ?.coerceIn(0, 120)
 
-/** Max telemetry poll rate in Hz; 0 = unlimited (pure response-paced), capped at 100Hz. */
-/** Board Move strength, percent of full remote input. Floored so a stored 0 cannot mean "no move". */
 internal fun validBoardMoveStrengthPercent(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
@@ -105,39 +101,29 @@ internal fun validTelemetryPollRateHz(value: Any?): Int? =
     ?.toInt()
     ?.coerceIn(0, 100)
 
-/** Companion auto-start pause after manual app exit, minutes; 0 = off, capped at 24h. */
 internal fun validCompanionCooldownMinutes(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
     ?.coerceIn(0, 1440)
 
-/**
- * Acknowledged Community Message IDs: a de-duplicated list of non-empty ID strings, or `null` when
- * the raw value is not a list at all. An empty or all-invalid list normalizes to `[]` (not `null`)
- * so a legitimately-empty stored value is never treated as corrupt.
- */
 internal fun validDismissedCommunityMessageIds(value: Any?): List<String>? {
   val list = value as? List<*> ?: return null
   return list.filterIsInstance<String>().filter { it.isNotEmpty() }.distinct()
 }
 
-/** Ride split gap in minutes; at least 1 so every ride can still end, capped at 24h. */
 internal fun validRideSplitGapMinutes(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
     ?.coerceIn(1, 1440)
 
-/** Auto close delay in minutes; at least 1 so a fired timer always had a real wait. */
 internal fun validAutoCloseDelayMinutes(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
     ?.coerceIn(1, 1440)
 
-/** Display default Board Top Speed in km/h, applied when a Board has no `topSpeedKmh` setting. */
 internal const val DEFAULT_TOP_SPEED_KMH = 50.0
 
 /**
- * Board Top Speed in km/h; the speed gauge full-scale. Clamped to a sane 5–150 km/h band.
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `topSpeedKmh`
  */
 internal fun validTopSpeedKmh(value: Any?): Double? =
@@ -146,13 +132,11 @@ internal fun validTopSpeedKmh(value: Any?): Double? =
     ?.takeIf { it.isFinite() }
     ?.coerceIn(5.0, 150.0)
 
-/** Wrist Tilt stick speed at full deflection, percent of full tilt per second. */
 internal fun validWearTiltRatePercent(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
     ?.coerceIn(1, 100)
 
-/** Watch push rate in Hz; 1 Hz floor, 20 Hz ceiling (the 50 ms the wrist link can still keep up with). */
 internal fun validWearPushRateHz(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
@@ -214,10 +198,6 @@ class AppDataRepository private constructor(private val context: Context) {
   private val tuneAlerts = TuneAlertPersistence(dao)
   private val boardSettings = BoardSettingsPersistence(dao)
 
-  /** Notify JS that persisted data in [scope] changed, so the matching store reloads and stays in
-   *  sync without an app restart. Every mutating method below funnels through here — new writes get
-   *  sync for free by tagging the right scope. Idempotent on the JS side, so emitting after a
-   *  JS-initiated write is harmless (the reload just confirms native truth). */
   private fun notifyDataChanged(scope: AppDataScope) {
     CoreForegroundService.emitEvent?.invoke("onAppDataChanged", mapOf("scope" to scope.wire))
   }
@@ -234,8 +214,6 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
-   * Saves the Board; [initialAlerts] (`presets` metric → spec, `rules` rider rules) is a new Board's
-   * alert setup, written in the same transaction.
    * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `upsertBoard`
    */
   suspend fun upsertBoard(board: Map<String, Any?>, initialAlerts: Map<String, Any?>?): Unit = withContext(Dispatchers.IO) {
@@ -252,15 +230,12 @@ class AppDataRepository private constructor(private val context: Context) {
     notifyDataChanged(AppDataScope.ALERTS)
   }
 
-  /** Tombstones the Board and hard-deletes its configuration; see [VescapeDao.deleteBoardWithSettings]. */
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
     boardSettings.deleteBoard(id, System.currentTimeMillis())
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
   /**
-   * Last Known Board Config Values for this Board + Refloat base version — displayable, never a
-   * write base (ADR 0035). Null when none exist for that scope.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `load`
    */
   internal suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValues? =
@@ -276,13 +251,6 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   /**
-   * The most recently captured Last Known scope for a Board, whichever Refloat base version it was
-   * read against.
-   *
-   * For readers with no Board Session to tell them the base version — a screen opened while the
-   * Board is off. Displayable only, exactly like [getBoardConfigValues]: the newest row is the last
-   * thing Vescape saw on that Board, and picking a scope is meaningless without a connection to say
-   * which firmware is running now.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `loadLatest`
    */
   internal suspend fun getLatestBoardConfigValues(boardId: String): BoardConfigValues? =
@@ -298,7 +266,6 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   /**
-   * Persist values just read from the board. Values need both Board and Tune Compatibility scope.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `save`
    */
   internal suspend fun saveBoardConfigValues(values: BoardConfigValues): Unit = withContext(Dispatchers.IO) {
@@ -315,11 +282,6 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
-   * Teach the config-change baseline about fields a runtime command changed on the board, merging
-   * into whatever the stored row holds now rather than replacing it with the caller's snapshot.
-   *
-   * `capturedAt` is deliberately untouched: the row still describes the read it came from, it just
-   * accounts for a change Vescape itself made since.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `patch`
    */
   internal suspend fun patchBoardConfigValues(
@@ -350,9 +312,6 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
-   * The Board's most recently captured Motor Config Values, whatever signature they were read
-   * under. Restored as `lastKnown`; the caller drops them if the live board turns out to answer
-   * with a different signature.
    * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `loadLatest`
    */
   internal suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValues? =
@@ -369,12 +328,6 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   /**
-   * A freshly decoded motor config: compare against the Board's last stored motor values, then merge
-   * any differences into the Board's change notice and replace the baseline in one transaction.
-   *
-   * No previous row means first read — a baseline, never a notice. Values read under a *different*
-   * signature are not compared either: a firmware update rewrites the layout wholesale, and every
-   * field would diff.
    * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `saveFresh`
    */
   internal suspend fun saveFreshMotorConfigValues(values: MotorConfigValues): BoardConfigChangeNotice? =
@@ -384,8 +337,6 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   /**
-   * Drop every Last Known scope for a Board. Called when link integrity goes `mismatched`: the firmware
-   * behind the link is not the one those offsets were decoded against.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `clear`
    */
   internal suspend fun clearBoardConfigValues(boardId: String): Unit = withContext(Dispatchers.IO) {
@@ -393,7 +344,6 @@ class AppDataRepository private constructor(private val context: Context) {
     dao.clearBoardConfigState(boardId)
   }
 
-  /** Rider rules plus expanded Alert Presets, the list every rule reader uses. */
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     tuneAlerts.alertRules(boardId, ::reportPresetFailure).map { it.toMap() }
   }
@@ -412,12 +362,10 @@ class AppDataRepository private constructor(private val context: Context) {
 
   private fun reportPresetFailure(error: Throwable) = RecordingStorageFailure.reportRead("alert_preset_expand", error)
 
-  /** Each preset metric's stored `preset(…)` spec, the app default where the Board has no row. */
   suspend fun getAlertPresets(boardId: String): Map<String, String> = withContext(Dispatchers.IO) {
     AlertPresetPersistence.specs(dao, boardId)
   }
 
-  /** The given Board's enabled rules — the alert engine evaluates only the connected Board's rules. */
   suspend fun getEnabledAlertRuleEntities(boardId: String): List<AlertRuleEntity> =
     withContext(Dispatchers.IO) {
       tuneAlerts.alertRules(boardId, ::reportPresetFailure).filter { it.enabled }
@@ -489,8 +437,6 @@ class AppDataRepository private constructor(private val context: Context) {
       boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
       soundPack = req("soundPack", EFFECTS_PACK_FALLBACK) {
-        // A custom app sound pack id from before My sounds turns into overrides, then reads as invalid;
-        // a retired built-in id reads as the default, a renamed one as its new id.
         (it as? String)?.also { pack -> MySounds.adoptLegacyPack(context, pack) }
           ?.let { pack -> if (pack in RETIRED_EFFECTS_PACK_IDS) EFFECTS_PACK_FALLBACK else RENAMED_EFFECTS_PACK_IDS[pack] ?: pack }
           ?.takeIf { pack -> pack in EFFECTS_PACK_IDS }
@@ -617,7 +563,6 @@ class AppDataRepository private constructor(private val context: Context) {
         validAutoCloseDelayMinutes(value) ?: return@withContext
       "rideSplitGapMinutes" ->
         validRideSplitGapMinutes(value) ?: return@withContext
-      // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
       "legalPolicy" -> return@withContext
       "dismissedCommunityMessageIds" ->
         if (value == null || value == JSONObject.NULL) emptyList()
@@ -712,8 +657,6 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
-   * Persist only the resolved jurisdiction reference; policy values stay in the shared catalog.
-   *
    * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `updateLegalPolicy`
    */
   suspend fun updateLegalPolicy(jurisdictionCode: String?): Unit = withContext(Dispatchers.IO) {
@@ -746,7 +689,6 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
-   * Dedicated native Legal Mode write; generic Board upserts cannot bypass enable validation.
    * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `updateLegalMode`
    */
   suspend fun updateLegalMode(boardId: String, enabled: Boolean): Unit = withContext(Dispatchers.IO) {
@@ -761,7 +703,6 @@ class AppDataRepository private constructor(private val context: Context) {
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
-  // Tune Profiles: per-board VESC tune configs with reversible Tune History.
   // @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift
   suspend fun getTuneProfiles(boardId: String, refloatBaseVersion: String?): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     val compatibility = validRefloatBaseVersion(refloatBaseVersion) ?: return@withContext emptyList()
@@ -873,9 +814,6 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
-   * The personal direction target. Not a Map Point: it is never shared, and Group Ride presence
-   * reads it natively while JS is gone.
-   *
    * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `getDirectionPoint`
    */
   suspend fun getDirectionPoint(): Pair<Double, Double>? = withContext(Dispatchers.IO) {
@@ -899,11 +837,6 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   /**
-   * The rider's stored Navigation, as the opaque JSON its own codec writes. Deliberately not part of
-   * the settings projection: it is native-owned, JS receives it through `onNavigation` instead, and
-   * it is by far the largest value here (~14 KB for a long path) so it must not ride along on every
-   * settings read.
-   *
    * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationPath`
    */
   suspend fun getNavigationPath(): String? = withContext(Dispatchers.IO) {
@@ -921,10 +854,6 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
-   * The rider's last chosen Navigation Profile, as its wire string. App data rather than a
-   * user-facing setting: nothing in the settings UI shows it, the rider only ever moves it by
-   * switching profile while looking at a path.
-   *
    * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationProfile`
    */
   suspend fun getNavigationProfile(): String? = withContext(Dispatchers.IO) {
@@ -974,16 +903,11 @@ private val boardLinkStringIdentityKeys = listOf(
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `composeBoard` / `upsertBoard`
 fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
   val values = settings.mapNotNull { it.decodeBoardSetting() }.toMap()
-  // A Board Link exists only when both a BLE peripheral and a proven transport
-  // are stored; a partial bleId-without-transport row reads as unlinked.
   val transport = values["transport"]
   val link = if (bleId != null && transport != null) {
     buildMap<String, Any?> {
       put("bleId", bleId)
       put("transport", transport)
-      // Only the current schema version survives the read. A missing or older stored version
-      // reads as absent so the link registers as legacy and re-probes, instead of being laundered
-      // into a current-looking link by a default.
       (values["linkVersion"] as? Int)?.takeIf { it == BOARD_LINK_VERSION }?.let { put("linkVersion", it) }
       (values["hasBms"] as? Boolean)?.let { put("hasBms", it) }
       boardLinkStringIdentityKeys.forEach { key ->
@@ -1002,8 +926,6 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "batteryConfig" to values["batteryConfig"],
     "lastBattery" to values["lastBattery"],
     "dismissedWarnings" to values["dismissedWarnings"],
-    // Normalized to display defaults when the row is absent so JS always reads a concrete Board
-    // Top Speed / onboarded flag.
     "topSpeedKmh" to (values["topSpeedKmh"] ?: DEFAULT_TOP_SPEED_KMH),
     "alertPresetsOnboarded" to (values["alertPresetsOnboarded"] ?: false),
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
@@ -1184,8 +1106,6 @@ fun PrivacyZoneEntity.toMap(): Map<String, Any?> = mapOf(
 )
 
 /**
- * Direction target settings keys. The target is one coordinate, so it rides in app settings rather
- * than a table of its own.
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `directionPointLatitudeKey`
  * @parity /modules/vescape-core/src/index.ts `AppSettings`
  */
@@ -1193,15 +1113,11 @@ internal const val DIRECTION_POINT_LATITUDE = "directionPointLatitude"
 internal const val DIRECTION_POINT_LONGITUDE = "directionPointLongitude"
 
 /**
- * The stored Navigation, next to the Direction Point it belongs to. Native-owned and outside the
- * settings projection — see `getNavigationPath`.
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationPathKey`
  */
 internal const val NAVIGATION_PATH = "navigationPath"
 
 /**
- * The rider's sticky Navigation Profile. Native-owned app data outside the settings projection —
- * see `getNavigationProfile`.
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationProfileKey`
  */
 internal const val NAVIGATION_PROFILE = "navigationProfile"
@@ -1261,7 +1177,6 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   putOrDelete("dismissedWarnings", normalizeDismissedWarnings(get("dismissedWarnings")))
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
   putOrDelete("alertPresetsOnboarded", get("alertPresetsOnboarded") as? Boolean)
-  // Legal Mode changes only through the dedicated native intent.
   val link = normalizedBoardLink()
   putOrDelete("transport", BoardTransport.encode(BoardTransport.fromBridge(link?.get("transport"))))
   putOrDelete("linkVersion", (link?.get("linkVersion") as? Number)?.toInt()?.takeIf { it == BOARD_LINK_VERSION })
@@ -1311,8 +1226,6 @@ private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =
   (raw.asStringKeyMap()?.get("enabled") as? Boolean)?.let { mapOf("enabled" to it) }
 
 /**
- * Dismissed Board Warning kinds persisted as a board setting: a non-empty list of kind slugs, or
- * null (row removed) when empty/invalid.
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeDismissedWarnings`
  */
 private fun normalizeDismissedWarnings(raw: Any?): List<String>? {

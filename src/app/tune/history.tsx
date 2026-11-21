@@ -63,7 +63,7 @@ export default function TuneHistoryScreen() {
     // intentional-suppression: Tune store error is rendered by the active screen or modal
     void loadHistory(activeProfile.id)
       .then(setEntries)
-      .catch(() => undefined) // Store error renders in Tune.
+      .catch(() => undefined)
   }, [activeProfile, loadHistory])
 
   const handleRestore = useCallback((entryId: number) => {
@@ -127,7 +127,7 @@ export default function TuneHistoryScreen() {
             // intentional-suppression: Tune store error is rendered by the active screen or modal
             void rollbackToHistory(rollbackConfirmEntryId)
               .then(() => router.back())
-              .catch(() => undefined) // Keep this screen open; the store owns the visible error.
+              .catch(() => undefined)
           }
           setRollbackConfirmEntryId(null)
         }}

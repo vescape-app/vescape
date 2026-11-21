@@ -3,7 +3,6 @@ import XCTest
 
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/sanitizers/FreeSpinMetricSanitizerTest.kt
 final class FreeSpinTests: XCTestCase {
-  /// A wheel in the air: 20 → 40 km/h in half a second on a few amps.
   private lazy var spinUp = [sample(0, 20, 10), sample(500, 40, 5)]
 
   func testSpinUpOnLittleCurrentIsExcludedFromEverySpeedMetric() {
@@ -37,7 +36,6 @@ final class FreeSpinTests: XCTestCase {
     let result = sanitizeTelemetrySamples(spinUp + [
       sample(1_000, 40, 10),
       sample(1_500, 40, 10),
-      // Landed: braking that takes a rider's worth of current.
       sample(2_000, 38, -60),
       sample(2_500, 36, -60),
       sample(3_000, 34, -60),

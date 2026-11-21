@@ -11,9 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * A real ride decodes into the hardware a Simulated Board presents and the replies it answers from
- * (ADR 0048), whether or not the recording kept its `tx` side.
- *
  * @parity /modules/vescape-core/ios/replay/ReplayRecordingTests.swift
  */
 class ReplayRecordingTest {
@@ -39,12 +36,10 @@ class ReplayRecordingTest {
 
     assertNotNull(book.firmware)
     assertNotNull(book.refloatInfo)
-    // Every recorded chunk lands in one blob: the reassembled XML has no unwritten tail.
     val xml = book.configXml.getValue(0)
     assertTrue(xml.isNotEmpty())
     assertTrue("reassembled XML must be fully covered", xml.last() != 0.toByte())
     assertTrue(book.configSnapshots.getValue(0).isNotEmpty())
-    // Answers to requests never play on the timeline.
     assertTrue(
       recording.timeline.none { event ->
         event is ReplayEvent.Frame &&

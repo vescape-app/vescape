@@ -25,7 +25,6 @@ import expo.modules.vescapecore.database.VescapeDatabase
 @RunWith(AndroidJUnit4::class)
 class RideExportSnapshotTest {
   private fun resetDatabase(context: android.content.Context) {
-    // All owners must release their DAO before closing the process-wide Room instance.
     TelemetryRepository.resetForDatabaseSwap()
     AppDataRepository.resetForDatabaseSwap()
     ProfileStatsRepository.resetForDatabaseSwap()
@@ -35,7 +34,6 @@ class RideExportSnapshotTest {
   }
 
   @Test fun productionSnapshotKeepsRecordingWritable(): Unit = runBlocking {
-    // Instrumentation APK context owns disposable data, never the installed application's DB.
     val context = InstrumentationRegistry.getInstrumentation().context
     val db = VescapeDatabase.get(context)
     try {

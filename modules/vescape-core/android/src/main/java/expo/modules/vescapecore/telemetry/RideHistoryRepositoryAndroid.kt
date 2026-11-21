@@ -5,7 +5,6 @@ import androidx.room.useReaderConnection
 import androidx.room.deferredTransaction
 import expo.modules.vescapecore.database.VescapeDatabase
 
-/** Android lifecycle adapter around the host-testable production Ride History query. */
 internal class RideHistoryRepository private constructor(private val context: Context) {
   private val database = VescapeDatabase.get(context)
 

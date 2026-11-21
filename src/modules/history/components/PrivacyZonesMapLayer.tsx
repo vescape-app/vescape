@@ -7,7 +7,6 @@ import { makeCircleFeature } from '@/helpers/mapGeometry'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { usePrivacyZoneStore } from '@/modules/history/store/privacyZoneStore'
 
-/** Dash pattern is in multiples of the line width, so keep the width fixed to keep the dots even. */
 const ZONE_LINE_WIDTH = 1.5
 const ZONE_DASH: [number, number] = [3, 3]
 

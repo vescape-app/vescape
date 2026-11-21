@@ -2,8 +2,6 @@ import XCTest
 import GRDB
 @testable import VescapeCore
 
-/// App Settings contract: the dismissed Community Message IDs default empty, keep non-empty unique
-/// strings, and reject malformed values.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/AppSettingsMapPreferencesTest.kt
 final class AppDataRepositorySettingsTests: XCTestCase {
   func testInvalidRequiredJsonPreservesExistingSetting() throws {
@@ -39,10 +37,8 @@ final class AppDataRepositorySettingsTests: XCTestCase {
   }
 
   func testDismissedCommunityMessageIdsNormalizesEmptyAndRejectsNonLists() {
-    // An empty or all-invalid array normalizes to [] (never treated as corrupt).
     XCTAssertEqual(AppDataRepository.dismissedCommunityMessageIds([Any]()), [])
     XCTAssertEqual(AppDataRepository.dismissedCommunityMessageIds(["", 1]), [])
-    // A non-array is malformed input and falls back to the default via normalizeSettings.
     XCTAssertNil(AppDataRepository.dismissedCommunityMessageIds("a"))
     let normalized = AppDataRepository.normalizeSettings(["dismissedCommunityMessageIds": "a"])
     XCTAssertEqual(normalized["dismissedCommunityMessageIds"] as? [String], [])

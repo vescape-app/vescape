@@ -14,13 +14,12 @@ import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 import kotlin.math.floor
 
-/** Export intent and temporary-file result cross the bridge; null Board means unassigned Board.
+/**
  * @parity /modules/vescape-core/ios/telemetry/RideExport.swift
  * @parity /modules/vescape-core/src/index.ts `RideExportOptions`
  * @parity /modules/vescape-core/src/index.ts `RideExportFile`
  */
 internal object RideExport {
-  // Driver-backed export Room instance: one WAL read snapshot across all generated DAO calls.
   suspend fun <T> snapshot(db: VescapeRoomDatabase, block: suspend (VescapeDao) -> T): T =
     db.useReaderConnection { reader -> reader.deferredTransaction { block(db.vescapeDao()) } }
 
@@ -41,7 +40,6 @@ internal object RideExport {
   suspend fun csv(dao: VescapeDao, directory: File, options: Map<String, Any?>): Map<String, Any> =
     file(directory, options, Format.CSV) { writer, fromMs, toMs, boardId -> writeCsv(dao, writer, fromMs, toMs, boardId) }
 
-  /** [batteryPercent] is the Board's 0–100 estimate for pack volts and battery amps, null when unknown. */
   suspend fun floaty(dao: VescapeDao, directory: File, options: Map<String, Any?>,
     batteryPercent: (voltageV: Double, batteryCurrentA: Double) -> Double?): Map<String, Any> =
     file(directory, options, Format.FLOATY) { writer, fromMs, toMs, boardId ->
@@ -56,8 +54,7 @@ internal object RideExport {
     return write(directory, "vescape-ride", format) { writer -> body(writer, fromMs, toMs, options["boardId"] as? String) }
   }
 
-  /** Live telemetry, every frame at full rate, in the ride CSV's columns. Live frames carry no GPS fix,
-   * so the location columns stay empty.
+  /**
    * @parity /modules/vescape-core/ios/telemetry/RideExport.swift `liveCsv`
    */
   fun liveCsv(rows: List<Map<String, Any?>>, directory: File): Map<String, Any> {
@@ -73,7 +70,6 @@ internal object RideExport {
     } catch (error: Throwable) { file.delete(); throw error }
   }
 
-  // Caller holds a database snapshot for the complete export.
   suspend fun writeGpx(dao: VescapeDao, writer: Writer, fromMs: Long, toMs: Long,
     boardId: String?, name: String) {
     writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
@@ -129,12 +125,9 @@ internal object RideExport {
     }
   }
 
-  /** Integration stops across gaps longer than this, so a paused recording adds no energy. */
   const val FLOATY_GAP_MS = 5000L
 
-  /** Floaty 3 session JSON (`schemaVersion` 2) in Floaty's units: every stored frame as a log, every
-   * precise fix as a location, timestamps unique per array, no nulls in either. Session totals come
-   * after the arrays, so one streaming pass suffices.
+  /**
    * @parity /modules/vescape-core/ios/telemetry/RideExport.swift `writeFloaty`
    */
   suspend fun writeFloaty(dao: VescapeDao, writer: Writer, fromMs: Long, toMs: Long, boardId: String?,
@@ -147,8 +140,6 @@ internal object RideExport {
     var tripCm = 0L
     var previousVoltage: Long? = null
     var previousCurrent: Long? = null
-    // Consumed counters like VESC's: discharge only, regen never subtracts. mA·ms and µW·ms stay
-    // integral, so both platforms round the same totals.
     var milliAmpMs = 0L
     var microWattMs = 0L
     forEachFrame(dao, fromMs, toMs, boardId) { timestamp, v ->
@@ -160,7 +151,6 @@ internal object RideExport {
         milliAmpMs += ma * (timestamp - last); microWattMs += mv * ma * (timestamp - last)
       }
       lastLog = timestamp; previousVoltage = v[1]; previousCurrent = v[3]
-      // Forward deltas only: an odometer reset rebases instead of going negative.
       v[14]?.let { odometer ->
         lastOdometer?.let { previous -> if (odometer > previous) tripCm += odometer - previous }
         lastOdometer = odometer
@@ -168,7 +158,6 @@ internal object RideExport {
       val percent = v[1]?.let { batteryPercent(it / 1000.0, (v[3] ?: 0L) / 1000.0) }
         ?.let { floor(it.coerceIn(0.0, 100.0) * 100 + 0.5).toLong() } ?: 0L
       fun d(i: Int, scale: Int) = decimal(v[i] ?: 0L, scale)
-      // Floaty stores speed and duty unsigned; reverse riding stays positive like GPS speed.
       fun unsigned(i: Int, scale: Int) = decimal(kotlin.math.abs(v[i] ?: 0L), scale)
       val packedState = v[10] ?: 0L
       val footpad = footpadSwitch(v[11]?.toInt(), v[12]?.div(1000.0), v[13]?.div(1000.0)) ?: 0
@@ -197,18 +186,15 @@ internal object RideExport {
     writer.write("],\"distance\":${decimal(tripCm, 5)},\"polyline\":${if (lastFix == null) "null" else jsonString(polyline.toString())},\"minLatitude\":${bound(minLat)},\"maxLatitude\":${bound(maxLat)},\"minLongitude\":${bound(minLon)},\"maxLongitude\":${bound(maxLon)}}\n")
   }
 
-  /** Name-based UUID v3 of the exported range, so re-importing the same ride replaces nothing. */
   fun floatyId(fromMs: Long, toMs: Long, boardId: String?): String =
     UUID.nameUUIDFromBytes("vescape-ride:${boardId ?: ""}:$fromMs:$toMs".toByteArray(Charsets.UTF_8)).toString()
 
-  /** Google encoded polyline, one signed 1e-5 degree delta. */
   private fun appendPolyline(delta: Long, out: StringBuilder) {
     var v = if (delta < 0) (delta shl 1).inv() else delta shl 1
     while (v >= 0x20) { out.append(((0x20L or (v and 0x1f)) + 63).toInt().toChar()); v = v ushr 5 }
     out.append((v + 63).toInt().toChar())
   }
 
-  /** Exact decimal for an integer stored at [scale] fractional digits, trailing zeros trimmed. */
   private fun decimal(value: Long, scale: Int): String {
     var divisor = 1L
     repeat(scale) { divisor *= 10 }
@@ -217,7 +203,6 @@ internal object RideExport {
     return "${if (value < 0) "-" else ""}${magnitude / divisor}${if (fraction.isEmpty()) "" else ".$fraction"}"
   }
 
-  /** Half-up integer division for positive [divisor]. */
   private fun roundDiv(value: Long, divisor: Long): Long = Math.floorDiv(value + divisor / 2, divisor)
 
   private fun jsonString(value: String): String = buildString {
@@ -233,16 +218,13 @@ internal object RideExport {
     append('"')
   }
 
-  /** Every stored sample in range, Telemetry Chunks and write buffer alike, with its reconstructed
-   * values, replaying the mask chain from the preceding full state with the canonical
-   * [reconstructTelemetryValues] (ADR 0045). Pages on `(captured_at_ms, ordinal)` (ADR 0045).
+  /**
    * @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
    */
   private suspend inline fun forEachFrame(dao: VescapeDao, fromMs: Long, toMs: Long, boardId: String?,
     body: (timestamp: Long, values: Array<Long?>) -> Unit) {
     val start = dao.telemetryAnchorMs(fromMs, boardId, allBoards = false) ?: fromMs
     var afterMs = start
-    // Include every row at the start timestamp, including keyframes sharing that timestamp.
     var afterId = Long.MIN_VALUE
     val values = arrayOfNulls<Long>(TELEMETRY_CHUNK_VALUE_COLUMNS)
     while (true) {
@@ -275,7 +257,6 @@ internal object RideExport {
     }
   }
 
-  /** Float Control's switch column from Refloat's raw state: one pad down reads as the side that is. */
   private fun footpadSwitch(raw: Int?, adc1: Double?, adc2: Double?): Int? = when (raw?.and(15)) {
     0 -> 0
     2 -> 3

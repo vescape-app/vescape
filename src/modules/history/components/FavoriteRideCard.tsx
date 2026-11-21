@@ -12,7 +12,6 @@ interface FavoriteRideCardProps {
   onPress: () => void
 }
 
-/** A Favorite uses the same browsable tile as a recent ride. */
 export function FavoriteRideCard({ favorite, routePoints, onPress }: FavoriteRideCardProps) {
   const { formatRideDetails } = useRideFormat()
 

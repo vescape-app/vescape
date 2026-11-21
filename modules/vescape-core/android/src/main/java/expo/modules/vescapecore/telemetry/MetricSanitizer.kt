@@ -37,17 +37,10 @@ internal data class SanitizedSample(
 internal data class SanitizationResult(
   val samples: List<SanitizedSample>,
   val exclusions: List<MetricExclusionRangeEntity>,
-  /** Free-spin state after the last sample; hand it to the batch that continues these samples. */
   val freeSpinCarry: FreeSpinCarry,
 )
 
 /**
- * Metric Sanitizers preserve raw Telemetry Samples while marking metric values excluded.
- *
- * [samples] must be in capture order. Free spin reads each sample against the one before it, so a
- * batch that continues earlier samples passes the earlier batch's [SanitizationResult.freeSpinCarry]
- * as [freeSpinCarry].
- *
  * @parity /modules/vescape-core/ios/telemetry/MetricSanitizer.swift `sanitizeTelemetrySamples`
  */
 internal fun sanitizeTelemetrySamples(

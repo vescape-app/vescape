@@ -6,7 +6,6 @@ final class RideHistoryPagingTests: XCTestCase {
   private let hour: Int64 = 3_600_000
 
   func testKeepsCurrentRideWhenOlderBucketsRemain() throws {
-    // Production fetches newest first; grouping returns oldest first.
     let buckets = [bucket(6 * hour), bucket(3 * hour), bucket(60_000), bucket(0)]
     let grouped = try groupRideSessions(buckets: buckets, markers: [], gapMs: hour / 2)
     XCTAssertEqual(grouped.count, 3)

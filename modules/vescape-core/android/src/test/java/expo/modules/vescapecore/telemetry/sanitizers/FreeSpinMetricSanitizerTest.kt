@@ -10,7 +10,6 @@ import org.junit.Test
 
 /** @parity /modules/vescape-core/ios/telemetry/FreeSpinTests.swift */
 class FreeSpinMetricSanitizerTest {
-  /** A wheel in the air: 20 → 40 km/h in half a second on a few amps. */
   private val spinUp = listOf(sample(0, 20.0, 10.0), sample(500, 40.0, 5.0))
 
   @Test
@@ -51,7 +50,6 @@ class FreeSpinMetricSanitizerTest {
       spinUp + listOf(
         sample(1_000, 40.0, 10.0),
         sample(1_500, 40.0, 10.0),
-        // Landed: braking that takes a rider's worth of current.
         sample(2_000, 38.0, -60.0),
         sample(2_500, 36.0, -60.0),
         sample(3_000, 34.0, -60.0),

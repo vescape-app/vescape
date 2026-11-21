@@ -1,12 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Board Warning replay harness (ADR 0024): drives a `.jsonl` Debug Recording through the real
-/// byte→reassemble→decode path and feeds every decoded BMS frame into the telemetry-scoped detectors,
-/// using recorded timestamps as the clock so sustain windows run instantly, no wall-clock waits.
-/// Fault scenarios layer a decode-level `transform` onto the clean frames — never byte mutation.
-/// The configured series count is a scenario parameter because recordings do not carry it usably.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/replay/WarningReplayHarness.kt
 enum WarningReplayHarness {
   struct Result {
@@ -53,28 +47,19 @@ enum WarningReplayHarness {
   }
 }
 
-/// Clean-run false-positive guard: the committed clean Debug Recording fixture replayed through the
-/// real byte→decode path must produce zero findings on every frame and a clean session-end result
-/// from both telemetry-scoped detectors. A detector change that fires on this fixture is a CI failure
-/// to investigate, not a snapshot to update (ADR 0024). Also pins the replay decoder contract: frame
-/// count and pacing survive the reassembler, tx/meta/location/malformed lines are skipped.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/replay/WarningReplayCleanRunTest.kt
 final class WarningReplayHarnessTests: XCTestCase {
   private var jsonl = ""
 
-  /// The fixture's known shape; matching the configured series makes the mismatch run comparable.
   private let fixtureSeries = 16
 
   override func setUpWithError() throws {
-    // Read the fixture straight from the shared source (single source of truth), located relative
-    // to this test file so no resource bundling is needed — the BatterySocEstimatorTests pattern.
     let root = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent() // replay
-      .deletingLastPathComponent() // ios
-      .deletingLastPathComponent() // vescape-core
-      .deletingLastPathComponent() // modules
-      .deletingLastPathComponent() // repo root
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
     jsonl = try String(
       contentsOf: root.appendingPathComponent("shared/fixtures/replay-synthetic-bms.jsonl"),
       encoding: .utf8
@@ -83,11 +68,8 @@ final class WarningReplayHarnessTests: XCTestCase {
 
   func testDecoderYieldsOrderedBmsFramesFromRxChunksOnly() throws {
     let frames = ReplayChunkDecoder.bmsFrames(jsonl)
-    // No vacuous green: a fixture that decodes to nothing must fail loudly.
     XCTAssertFalse(frames.isEmpty, "fixture yielded zero BMS frames")
     XCTAssertEqual(frames.first?.cellVoltages.count, fixtureSeries)
-    // Every recorded frame survives the reassembler at the recorded 4 Hz pacing — a decoder that
-    // silently drops frames must fail here, not stay vacuously green on the clean run.
     XCTAssertEqual(frames.count, 480)
     XCTAssertEqual(frames.first?.capturedAt, 250)
     XCTAssertEqual(frames.last?.capturedAt, 120_000)

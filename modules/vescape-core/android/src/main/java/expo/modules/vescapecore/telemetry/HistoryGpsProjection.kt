@@ -9,29 +9,14 @@ import kotlin.math.sqrt
 import expo.modules.vescapecore.database.RideTrackPoint
 
 /**
- * Reported horizontal accuracy a Ride Track fix must beat to count as a route point or as GPS
- * movement evidence. Read-side, deliberately: every fix is stored with the accuracy the platform
- * reported, and this is the one rule that decides what those numbers are good enough for (ADR 0038).
- * It does not depend on the Android provider identity and does not change live GPS classification.
- *
  * @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `rideTrackPreciseAccuracyCm`
  */
 internal val RIDE_TRACK_PRECISE_ACCURACY_CM = (MAX_RECORDING_ACCURACY_M * 100.0).toInt()
 
-/**
- * A fix with no reported accuracy is genuinely unknown and does not count. Legacy fixes migrated
- * out of `telemetry_frames` passed the old write-time precision gate; migration 52 stamps them
- * with [RIDE_TRACK_PRECISE_ACCURACY_CM] so they keep reading as precise.
- */
 internal fun RideTrackPoint.isPrecise(): Boolean =
   accuracyCm != null && accuracyCm <= RIDE_TRACK_PRECISE_ACCURACY_CM
 
 /**
- * Does this fix evidence movement? The fix's **own reported speed**, checked after the accuracy
- * rule and against the rider's movement threshold — never a speed derived from the displacement
- * between two coordinates, which turns GPS scatter into a phantom ride. A fix with no reported
- * speed is not movement evidence, but stays a perfectly good route point (ADR 0038).
- *
  * @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `rideTrackFixIsMovement`
  */
 internal fun RideTrackPoint.isMovementEvidence(movingThresholdCentiKmh: Int): Boolean =
@@ -41,13 +26,11 @@ internal fun RideTrackPoint.isMovementEvidence(movingThresholdCentiKmh: Int): Bo
 /** @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `gpsSpeedCentiMpsToCentiKmh` */
 internal fun gpsSpeedCentiMpsToCentiKmh(centiMps: Int): Int = (centiMps * 36) / 10
 
-/** One Ride Track fix with the distance from the fix before it, which is a sequence property. */
 internal data class RideTrackProjectionPoint(
   val point: RideTrackPoint,
   val distanceFromPreviousCm: Long?,
   val movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
 ) {
-  /** [boardNames] resolves `boards.id` -> name on read; the row never carried one (ADR 0028). */
   // @parity /modules/vescape-core/src/index.ts `HistoryGpsSample`
   // @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `rideTrackGpsMaps`
   fun toSampleMap(boardNames: Map<String, String>): Map<String, Any?> = mapOf(
@@ -80,13 +63,6 @@ internal data class RideTrackProjectionPoint(
   }
 }
 
-/**
- * Project a Ride Track into points carrying their step distance. [previous] continues the sequence
- * across a batch boundary so the first fix of a flush is not silently free of distance.
- *
- * Distance is only measured between two **qualifying** fixes of the same Board; the predecessor
- * is tracked per Board, exactly as the frame columns this replaced did.
- */
 internal fun List<RideTrackPoint>.toRideTrackProjection(
   previous: RideTrackPoint? = null,
   movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
@@ -105,25 +81,12 @@ internal fun List<RideTrackPoint>.toRideTrackProjection(
   return points
 }
 
-/**
- * The Ride Track as JS reads it: the route stream.
- *
- * Only fixes that pass the shared read-side precision rule cross the bridge. A poor fix stays in
- * storage — that is the whole point of ADR 0038's write-everything decision — but it never draws a
- * route, never anchors a marker and never contributes a step distance, so the rule is applied
- * exactly once, here, instead of in every JS consumer.
- */
 internal fun List<RideTrackPoint>.toGpsSampleMaps(
   boardNames: Map<String, String>,
 ): List<Map<String, Any?>> = toRideTrackProjection()
   .filter { it.point.isPrecise() }
   .map { it.toSampleMap(boardNames) }
 
-/**
- * The same projection, as the minute-bucket location contribution. Every stored fix is counted, so
- * `gpsPointCount` stays an honest measure of what was captured, but only qualifying fixes derive
- * anything: the bucket's route anchor, its step distances and its GPS movement evidence.
- */
 internal fun List<RideTrackPoint>.toBucketLocationPoints(
   previous: RideTrackPoint? = null,
   movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,

@@ -3,16 +3,11 @@ import type { HistoryGpsSample, HistoryMarker, TelemetrySample } from 'vescape-c
 import { findNearestSampleIndexByTime } from '@/modules/history/lib/playback'
 
 const MEDIA_GPS_TOLERANCE_MS = 30_000
-// Longest hole between two *route-quality* fixes that still counts as one continuous span. Native
-// filters the Ride Track to the shared 20m precision rule before it crosses the bridge (ADR 0038),
-// so this measures a gap in usable fixes, not a gap in GPS reception: a stretch where fixes kept
-// arriving at worse accuracy reads as a hole here, and media inside it stays unmatched.
 const MEDIA_PRECISE_GPS_SPAN_GAP_MS = 30_000
 export const MEDIA_CLUSTER_DISTANCE_M = 12
 const MEDIA_TELEMETRY_TOLERANCE_MS = 5_000
 const MEDIA_TELEMETRY_SPAN_GAP_MS = 10_000
 
-// Telemetry continuity for video overlays: a telemetry gap or a lost link breaks the sample run.
 const SPAN_BREAK_MARKERS = new Set<HistoryMarker['type']>([
   'gap',
   'disconnected',
@@ -20,8 +15,6 @@ const SPAN_BREAK_MARKERS = new Set<HistoryMarker['type']>([
   'recording_stop',
   'error',
 ])
-// The Ride Track keeps landing through BLE loss, so only an explicit Stop Recording breaks a GPS
-// span — the same marker that splits a ride (ADR 0041).
 const GPS_SPAN_BREAK_MARKERS = new Set<HistoryMarker['type']>(['recording_stop'])
 
 export interface MediaAssetInput {
@@ -42,9 +35,7 @@ export interface MediaHistoryCluster {
   assets: MediaHistoryAsset[]
 }
 
-// EXIF DateTime* values: "YYYY:MM:DD HH:MM:SS", local time without timezone.
 const EXIF_DATE_RE = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/
-// Camera filenames: VID_20240101_123456, PXL_20240101_123456789, 20240101_123456, IMG-20240101-WA…
 const FILENAME_DATE_RE = /(20\d{2})(\d{2})(\d{2})[_-](\d{2})(\d{2})(\d{2})/
 
 function toEpochMs(
@@ -57,8 +48,6 @@ function toEpochMs(
   return Number.isFinite(ms) ? ms : null
 }
 
-// The system photo picker exposes no asset creation time, so recover it from EXIF (photos)
-// or camera filename conventions (videos). Returns null when neither source yields a date.
 export function resolvePickedAssetCreationTime({
   exif,
   filename,
@@ -73,7 +62,6 @@ export function resolvePickedAssetCreationTime({
   }
   const match = FILENAME_DATE_RE.exec(filename)
   if (!match) return null
-  // Pixel camera filenames (PXL_*) encode UTC; other conventions use local time.
   return toEpochMs(match.slice(1).map(Number), filename.startsWith('PXL_'))
 }
 
@@ -91,11 +79,6 @@ function hasBreakBetween(
   )
 }
 
-/**
- * Is `targetMs` inside the same continuous run of route-quality fixes as `samples[index]`? Span
- * continuity is measured over the precision-filtered stream, so a run of imprecise fixes breaks a
- * span exactly like a reception gap does — see [MEDIA_PRECISE_GPS_SPAN_GAP_MS].
- */
 function belongsToGpsSpan(
   samples: readonly HistoryGpsSample[],
   index: number,
