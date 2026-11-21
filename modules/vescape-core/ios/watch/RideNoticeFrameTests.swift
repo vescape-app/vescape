@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Ride Notice Frame codec and the phone's wrist slice.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/RideNoticeFrameTest.kt
 final class RideNoticeFrameTests: XCTestCase {
   private let frame = RideNoticeFrame(
@@ -58,7 +56,6 @@ final class RideNoticeFrameTests: XCTestCase {
 
   func testAnUnknownSeverityReadsAsAWarning() {
     var bytes = [UInt8](RideNoticeFrameCodec.encode(frame))
-    // version, sentAt, count, recordBytes, id, rev -> severity of the first notice.
     bytes[1 + 8 + 1 + 2 + 1 + 1] = 9
 
     XCTAssertEqual(RideNoticeFrameCodec.decode(Data(bytes))?.notices.first?.severity, .warning)

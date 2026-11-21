@@ -1,10 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The weather contract both ends of the mirror compile against: what the phone puts on the wire,
-/// what a wrist reads back out of a merged Application Context, and what it refuses to invent when
-/// the bag is short.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchWeather.kt
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt
 final class WatchWeatherTests: XCTestCase {
@@ -56,8 +52,6 @@ final class WatchWeatherTests: XCTestCase {
   }
 
   func testAPayloadWithoutCurrentConditionsIsNothingRatherThanZeroDegrees() {
-    // The trap the phone's own parser documents: a short bag coerced to numbers reads as a
-    // fabricated clear sky at 0 °C, which looks like real weather rather than like missing data.
     XCTAssertNil(WatchWeather.decode([WatchWeatherKey.label: "Rain"]))
   }
 
@@ -76,8 +70,6 @@ final class WatchWeatherTests: XCTestCase {
   }
 
   func testRefetchingTheSameNumbersIsNotAChange() {
-    // Equality drives the push gate: a ten-minute refresh that produced identical conditions must
-    // not spend a round trip or redraw the wrist.
     XCTAssertEqual(sample(fetchedAtMs: 1), sample(fetchedAtMs: 9_999_999))
   }
 
@@ -98,7 +90,6 @@ final class WatchWeatherTests: XCTestCase {
     let daytime = watchNextSunEvent(nowMinuteOfDay: 700, sunriseMinuteOfDay: 380, sunsetMinuteOfDay: 1_180)
     XCTAssertEqual(daytime, WatchSunEvent(minuteOfDay: 1_180, rising: false))
 
-    // After dark it is tomorrow's sunrise, not a sunset that already happened.
     let night = watchNextSunEvent(nowMinuteOfDay: 1_300, sunriseMinuteOfDay: 380, sunsetMinuteOfDay: 1_180)
     XCTAssertEqual(night, WatchSunEvent(minuteOfDay: 380, rising: true))
 
@@ -113,9 +104,7 @@ final class WatchWeatherTests: XCTestCase {
     XCTAssertEqual(watchFormatHour(845, timeFormat: "12h", seconds: 9), "2:05:09 PM")
     XCTAssertEqual(watchFormatHour(9 * 60 + 5), "09:05")
     XCTAssertEqual(watchFormatHour(23 * 60 + 59), "23:59")
-    // A minute-of-day past midnight wraps rather than printing a 24th hour.
     XCTAssertEqual(watchFormatHour(24 * 60 + 30), "00:30")
-    // Only a corrupt bag produces this, and a clock face must not grow a minus sign from it.
     XCTAssertEqual(watchFormatHour(-30), "23:30")
   }
 

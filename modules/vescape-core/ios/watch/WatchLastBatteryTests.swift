@@ -32,12 +32,10 @@ final class WatchLastBatteryTests: XCTestCase {
     var latest: [String: Any] = [watchLastBatteryChannel: a.payload]
     let receive = { WatchBatteryDefaults.receiveLatestContext({ latest }, store: store) }
     XCTAssertTrue(receive())
-    // A's wake is still queued when selected B's context arrives.
     latest[watchLastBatteryChannel] = b.payload
     XCTAssertTrue(receive())
     XCTAssertFalse(receive(), "Delayed A wake rereads B, rather than applying its A snapshot")
     XCTAssertEqual(WatchLastBattery.decode(store.dictionary(forKey: watchLastBatteryChannel)), b)
-    // A newer same-percent reading must retain its source timestamp despite wake deduplication.
     let newer = WatchLastBattery(boardId: "b", boardName: "B", percent: 42.1, at: 3000)
     latest[watchLastBatteryChannel] = newer.payload
     XCTAssertTrue(receive())
@@ -48,7 +46,6 @@ final class WatchLastBatteryTests: XCTestCase {
     let restartedStore = try XCTUnwrap(UserDefaults(suiteName: suite))
     XCTAssertFalse(WatchBatteryDefaults.receiveLatestContext({ latest }, store: restartedStore))
     XCTAssertNil(WatchLastBattery.decode(restartedStore.dictionary(forKey: watchLastBatteryChannel)))
-    // A context from a phone build without this channel cannot undo the persisted clear.
     latest = [:]
     XCTAssertFalse(receive())
     XCTAssertNil(WatchLastBattery.decode(store.dictionary(forKey: watchLastBatteryChannel)))

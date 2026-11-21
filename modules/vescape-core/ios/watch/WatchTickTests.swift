@@ -1,9 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Verifies the dedicated watch tick fires at its configured cadence, re-arms live when the cadence
-/// changes, and spends nothing while the wrist is unreachable.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchTickTest.kt
 final class WatchTickTests: XCTestCase {
   private let snapshot = WatchSnapshot(
@@ -29,8 +26,6 @@ final class WatchTickTests: XCTestCase {
   func testPushesAFrameEveryInterval() {
     let scheduler = TestScheduler()
     var pushes = 0
-    // Held, not chained off `tick(...)`: the tick only re-arms while its owner is alive, so a
-    // dropped reference stops the stream. `BoardSessionController` holds it for the process.
     let watchTick = tick(scheduler, intervalMs: 500) { _ in pushes += 1 }
     watchTick.start()
 
@@ -48,8 +43,6 @@ final class WatchTickTests: XCTestCase {
     scheduler.advance(1000)
     XCTAssertEqual(pushes, 0)
 
-    // The pending 2s tick is cancelled and rescheduled at the new 100ms cadence rather than waiting
-    // out the longer delay the rider just turned off.
     watchTick.setIntervalMs(100)
     scheduler.advance(100)
     XCTAssertEqual(pushes, 1)
@@ -70,7 +63,6 @@ final class WatchTickTests: XCTestCase {
     XCTAssertEqual(pushes, 3)
   }
 
-  /// The gate is checked before the frame is built, so an unreachable wrist costs an encode too.
   func testKeepsSpinningButSendsNothingWhileUnreachable() {
     let scheduler = TestScheduler()
     var reachable = false

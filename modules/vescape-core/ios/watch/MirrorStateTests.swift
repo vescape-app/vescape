@@ -1,10 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The wrist's own reducer, checked against the Android one case for case. Both wrists have to
-/// decide "live / stale / waiting / disconnected" from the same frame and the same clock, or the
-/// rectangular layout would be free to disagree about when a reading stopped being true.
-///
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/MirrorStateReducerTest.kt
 final class MirrorStateTests: XCTestCase {
   private func frame(stale: Bool, waiting: Bool = false) -> WatchFrame {
@@ -57,12 +53,9 @@ final class MirrorStateTests: XCTestCase {
   }
 
   func testTheDisconnectWindowFollowsTheObservedPushCadence() {
-    // Default cadence when nothing has been observed yet, and its own floor.
     XCTAssertEqual(MirrorStateReducer.disconnectedTimeoutMs(frameGapMs: nil), 750)
     XCTAssertEqual(MirrorStateReducer.disconnectedTimeoutMs(frameGapMs: 50), 750)
-    // A rider-chosen slower cadence widens the window instead of pinning the mirror offline.
     XCTAssertEqual(MirrorStateReducer.disconnectedTimeoutMs(frameGapMs: 1_000), 3_000)
-    // A long stall cannot widen it without bound.
     XCTAssertEqual(MirrorStateReducer.disconnectedTimeoutMs(frameGapMs: 600_000), 30_000)
   }
 
@@ -76,7 +69,6 @@ final class MirrorStateTests: XCTestCase {
   func testAReachablePhoneAppThatIsNotPushingGetsNoNotice() {
     let disconnected = MirrorStateReducer.reduce(frame: nil, lastFrameAtMs: nil, nowMs: 0)
 
-    // No Board is not a fault (ADR-0039): the shell stays empty and says nothing.
     XCTAssertNil(MirrorStateReducer.linkNotice(status: disconnected.status, link: .appReachable))
   }
 
@@ -96,14 +88,11 @@ final class MirrorStateTests: XCTestCase {
     XCTAssertEqual(state.status, .live)
     XCTAssertEqual(state.frame?.navDistanceM, 1_250)
     XCTAssertNil(state.frame?.speed)
-    // The link view is irrelevant once frames flow, whatever it last said.
     for link in [MirrorPhoneLink.unknown, .noPhone, .phoneOnly, .appReachable] {
       XCTAssertNil(MirrorStateReducer.linkNotice(status: state.status, link: link))
     }
   }
 
-  /// The waiting bit is never set by this phone side, but it is part of the wire format. A decoder
-  /// that dropped it would hand the reducer a `live` frame full of empty lanes.
   func testTheWaitingFlagSurvivesTheWire() throws {
     let decoded = try XCTUnwrap(
       WatchFrameBuilder.decode(WatchFrameBuilder.encode(frame(stale: false, waiting: true)))

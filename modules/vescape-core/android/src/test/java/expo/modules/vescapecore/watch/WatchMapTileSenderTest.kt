@@ -9,12 +9,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Issue #551: delivery order, the in-flight limit, sleep and drops, against a scripted transport. */
 class WatchMapTileSenderTest {
     private class Transport(var held: Set<WatchMapTile> = emptySet()) : WatchMapTileTransport {
         val sends = mutableListOf<Pair<WatchMapTile, CompletableDeferred<Boolean>>>()
         val holds = mutableListOf<Pair<List<WatchMapTile>, Set<WatchMapTile>>>()
-        /** While set and open, a hold has not reached the wrist yet. */
         var holdGate: CompletableDeferred<Unit>? = null
         override suspend fun delivered() = held
         override suspend fun hold(wanted: List<WatchMapTile>, dropped: Set<WatchMapTile>) {
@@ -42,7 +40,7 @@ class WatchMapTileSenderTest {
         val ring = watchMapTileNeeded(rider, 15)
         val transport = Transport(held = setOf(ring[1]))
         val sender = sender(transport)
-        tick(sender, rider) // Reads what the wrist holds.
+        tick(sender, rider)
         tick(sender, rider)
         assertEquals(ring.filter { it != ring[1] }.take(WATCH_MAP_TILE_MAX_SENDS_IN_FLIGHT), transport.sends.map { it.first })
         transport.sends.first().second.complete(true)
@@ -65,7 +63,6 @@ class WatchMapTileSenderTest {
         val sender = sender(transport)
         tick(sender, onRoute)
         tick(sender, onRoute)
-        // Complete every send as it starts; the order they started in is the order they were wanted.
         completeSends(transport)
         val sent = transport.sends.map { it.first }
         assertEquals(ring, sent.take(ring.size))
@@ -83,7 +80,7 @@ class WatchMapTileSenderTest {
         transport.sends.first().second.complete(true)
         scheduler.runPending()
         assertEquals(started, transport.sends.size)
-        tick(sender, rider) // Waking re-reads the wrist, then resumes.
+        tick(sender, rider)
         tick(sender, rider)
         assertTrue(transport.sends.size > started)
     }
@@ -94,12 +91,9 @@ class WatchMapTileSenderTest {
         val sender = sender(transport)
         tick(sender, rider)
         tick(sender, rider)
-        // Left over from an earlier session.
         assertEquals(setOf(WatchMapTile(15, 0, 0)), transport.holds.single().second)
-        // Zooming in keeps z15 as the one-out level.
         tick(sender, rider.copy(spanM = 300.0))
         assertEquals(emptySet<WatchMapTile>(), transport.holds.last().second)
-        // Two levels out, z15 is neither planned nor the level just left, so every z15 tile leaves.
         tick(sender, rider.copy(spanM = 1_400.0))
         assertEquals(z15, transport.holds.last().second)
         assertTrue(transport.holds.last().first.none { it.z == 15 })
@@ -112,7 +106,6 @@ class WatchMapTileSenderTest {
         val sender = sender(transport)
         tick(sender, zoomedIn)
         tick(sender, zoomedIn)
-        // Out to z14, z16 stays as the level just left; back in to z15 it leaves.
         tick(sender, rider.copy(spanM = 1_400.0))
         completeSends(transport)
         val gate = CompletableDeferred<Unit>()
@@ -120,11 +113,9 @@ class WatchMapTileSenderTest {
         tick(sender, rider)
         assertTrue(transport.holds.last().second.containsAll(z16))
         completeSends(transport)
-        // Wanted again while that drop is still queued.
         tick(sender, zoomedIn)
         completeSends(transport)
         assertTrue(transport.sends.none { it.first in z16 })
-        // Sent before the drop drained, the drop would delete it while the phone counts it delivered.
         gate.complete(Unit)
         scheduler.runPending()
         assertTrue(transport.sends.any { it.first in z16 })
@@ -144,7 +135,6 @@ class WatchMapTileSenderTest {
         tick(sender, rider)
         assertTrue(transport.holds.last().second.containsAll(z16))
         completeSends(transport)
-        // Asleep and awake again before the drop lands: the reload still finds z16 on the wrist.
         tick(sender, null)
         tick(sender, zoomedIn)
         tick(sender, zoomedIn)

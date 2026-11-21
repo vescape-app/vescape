@@ -3,55 +3,31 @@ package expo.modules.vescapecore.watch
 import expo.modules.vescapecore.database.AppSettings
 
 /**
- * Data Layer path carrying the rider's phone settings to the wrist. Cold data like the route: it
- * changes when the rider changes a setting, not per tick, so it rides the Data Layer and survives
- * disconnects instead of being dropped like an undelivered message.
- *
- * The payload is a `DataMap`, not a packed frame: settings arrive one at a time over the life of the
- * app, and a key-value bag is forward- and backward-compatible for free — an older wrist ignores
- * keys it does not know, and a newer wrist falls back to its own default for keys an older phone
- * never sends. That is why there is no version byte here and lanes are numbered in the Watch Frame.
- *
- * The wrist-side peer carries the same path and key names by convention.
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt
  * @parity /modules/vescape-core/ios/watch/WatchSettings.swift
  */
 internal const val WATCH_SETTINGS_PATH = "/settings"
 
-/** Board Move strength as a percentage of full scale; the wrist displays it but never applies it. */
 internal const val WATCH_SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
 
-/** Whether the wrist draws the direction arrow over the route. Off hides the arrow, not the route. */
 internal const val WATCH_SETTING_NAV_ARROW = "navArrowEnabled"
 
-/** Show the trail behind telemetry gauges. The map page always retains its trail. */
 internal const val WATCH_SETTING_TELEMETRY_TRAIL = "telemetryTrailEnabled"
 
-/** Whether the telemetry screen draws Group Ride marks. Off: they fade in on the map page only. */
 internal const val WATCH_SETTING_TELEMETRY_GROUP = "telemetryGroupEnabled"
 
-/** Whether the telemetry screen draws the Navigation route line. Off: it fades in on the map page only. */
 internal const val WATCH_SETTING_TELEMETRY_ROUTE = "telemetryRouteEnabled"
 
-/** Whether the wrist draws the street map. Off: the phone sends no tiles; tiles already on the wrist stay. */
 internal const val WATCH_SETTING_STREET_MAP = "streetMapEnabled"
 
-/** Street map opacity behind the gauges, integer percent from [WatchMapGauges.STEPS]. */
 internal const val WATCH_SETTING_MAP_GAUGES = "mapGaugesPercent"
 
-/** App-wide speed and distance preference; older phones default to metric. */
 internal const val WATCH_SETTING_DISTANCE_UNIT = "distanceUnit"
 internal const val WATCH_SETTING_TIME_FORMAT = "timeFormat"
 
-/** Tilt stick speed at full deflection, percent of full tilt per second. Applied on the wrist. */
 internal const val WATCH_SETTING_TILT_RATE = "tiltRatePercent"
 
 /**
- * Every [AppSettings] key the wrist depends on: the ones [toWatchSettings] mirrors (Board Move's
- * wrist relay also reads `boardMoveStrengthPercent`), plus the push cadence. A JS write to any of
- * them must reload native settings, or the wrist and the relay keep the old value until the app
- * restarts — which is how a Move strength change once never reached the watch.
- *
  * @parity /modules/vescape-core/ios/watch/WatchSettings.swift `watchSourceSettingKeys`
  */
 internal val WATCH_SOURCE_SETTING_KEYS = setOf(
@@ -68,7 +44,6 @@ internal val WATCH_SOURCE_SETTING_KEYS = setOf(
     "wearPushRateHz",
 )
 
-/** The wrist-relevant slice of [AppSettings]. Equality is what decides whether a push is needed. */
 internal data class WatchSettings(
     val boardMoveStrengthPercent: Int,
     val navArrowEnabled: Boolean,
@@ -82,11 +57,6 @@ internal data class WatchSettings(
     val mapGaugesPercent: Int = WatchMapGauges.DEFAULT_PERCENT,
 )
 
-/**
- * Everything the wrist mirrors from the phone's settings. Adding a setting means adding a field
- * here, a key constant above, its [AppSettings] key to [WATCH_SOURCE_SETTING_KEYS], a `putX` in
- * [WatchSettingsPusher], and a read on the wrist.
- */
 internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     boardMoveStrengthPercent = boardMoveStrengthPercent,
     navArrowEnabled = wearNavArrowEnabled,

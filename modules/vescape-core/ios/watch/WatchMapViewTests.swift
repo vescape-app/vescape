@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The wrist map's eased zoom and course, which the route and the Group Ride marks both read.
-///
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchMapViewTest.kt
 final class WatchMapViewTests: XCTestCase {
   private let start = Date(timeIntervalSinceReferenceDate: 1_000)
@@ -39,7 +37,6 @@ final class WatchMapViewTests: XCTestCase {
     var map = WatchMapView(spanM: 600, courseDeg: 0)
     map.retarget(spanM: 1_000, courseDeg: nil, at: start, animate: true)
 
-    // Fast out: past three quarters of the way at half the time.
     XCTAssertEqual(map.spanM(at: at(WatchMapView.zoomEase / 2)), 910.2, accuracy: 0.5)
     XCTAssertEqual(map.spanM(at: at(WatchMapView.zoomEase)), 1_000)
     XCTAssertEqual(fastOutSlowIn(0.5), 0.7755, accuracy: 0.001)

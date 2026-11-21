@@ -1,9 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The wrist's field readout. What is worth pinning is not the counting — it is the three things
-/// that decide whether the ring is still readable during the incident it exists to explain: the
-/// streak guards, the cap, and the fact that leaving the app writes its own line.
 final class WatchDiagnosticsTests: XCTestCase {
   func testFirstFrameIsAnnouncedOnceAndLaterFramesOnlyCount() {
     var log = WatchDiagnosticsLog()
@@ -18,8 +15,6 @@ final class WatchDiagnosticsTests: XCTestCase {
     XCTAssertEqual(log.events.first?.warn, false)
   }
 
-  /// A 4 Hz stream of undecodable frames must not flush the ring: the line that explains the
-  /// mismatch is the first one, and everything before it is the context for why it started.
   func testDecodeFailuresEmitOneEventPerStreakButCountEveryFrame() {
     var log = WatchDiagnosticsLog()
     log.recordLink("reachable", nowMs: 500)
@@ -33,8 +28,6 @@ final class WatchDiagnosticsTests: XCTestCase {
     XCTAssertEqual(log.events.first?.warn, true)
     XCTAssertEqual(log.events.last?.text, "link reachable")
 
-    // A frame that decodes ends the streak, so the next failure is a new finding rather than a
-    // continuation of the old one.
     log.recordFrame(nowMs: 7_000)
     log.recordDecodeFailure(byteCount: 9, lanes: nil, nowMs: 7_250)
     XCTAssertEqual(log.events.first?.text, "decode fail 9B v-1")
@@ -57,8 +50,6 @@ final class WatchDiagnosticsTests: XCTestCase {
     )
   }
 
-  /// Leaving the app is the one lifecycle fact the rider cannot otherwise see from the wrist, and
-  /// it is checked by coming back to a ring that already says it happened.
   func testLeavingAndReturningLeavesBothTransitionsInTheRing() {
     var log = WatchDiagnosticsLog()
     log.recordWakeLevel(.active, nowMs: 1_000)
@@ -105,7 +96,6 @@ final class WatchDiagnosticsTests: XCTestCase {
     var received = WatchFrameRate()
     var applied = WatchFrameRate()
     for timestamp: Int64 in [0, 250, 500] { received.record(nowMs: timestamp) }
-    // A busy main queue applies all three queued frames at once.
     for _ in 0..<3 { applied.record(nowMs: 1_000) }
     XCTAssertEqual(received.hertz(nowMs: 1_000), 2, accuracy: 0.001)
     XCTAssertEqual(applied.hertz(nowMs: 1_000), 0)

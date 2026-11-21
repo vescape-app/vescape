@@ -3,12 +3,12 @@ package expo.modules.vescapecore.watch
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/** A precise recent phone fix, in metres from the current Rider, independent of Navigation.
+/**
  * @parity /modules/vescape-core/ios/watch/WatchTrail.swift
  */
 data class WatchTrailPoint(val eastM: Double, val northM: Double)
 
-/** Absolute GPS anchor for map motion, independent of the route origin and history retention.
+/**
  * @parity /modules/vescape-core/ios/watch/WatchTrail.swift `WatchMapPosition`
  */
 data class WatchMapPosition(val latitude: Double, val longitude: Double) {
@@ -23,9 +23,7 @@ data class WatchMapPosition(val latitude: Double, val longitude: Double) {
 
 data class WatchTrailSnapshot(val points: List<WatchTrailPoint> = emptyList(), val position: WatchMapPosition? = null)
 
-/** Bounded snapshot appended after the fixed Watch Frame lanes. Older wrists ignore these bytes.
- * Header: ASCII TR, version 2, count, Float64 rider latitude/longitude (NaN if absent), followed by
- * little-endian Float32 east/north pairs. Missing/unknown/malformed leaves telemetry readable.
+/**
  * @parity /modules/vescape-core/ios/watch/WatchTrail.swift `WatchTrailCodec`
  */
 object WatchTrailCodec {

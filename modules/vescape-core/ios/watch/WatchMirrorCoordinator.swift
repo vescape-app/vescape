@@ -1,12 +1,10 @@
 import Foundation
 
-/// Active default and ambient cadence; independent of Board telemetry polling.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMirrorCoordinator.kt `WATCH_FRAME_INTERVAL_MS`
 let WATCH_FRAME_INTERVAL_MS: Int64 = 250
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMirrorCoordinator.kt `WATCH_FRAME_AMBIENT_INTERVAL_MS`
 let WATCH_FRAME_AMBIENT_INTERVAL_MS: Int64 = 5_000
 
-/// Delivery and reachability only. The coordinator owns subscriptions, clocks, and stream lifetime.
 protocol WatchMirrorTransport: AnyObject {
   var reachable: Bool { get }
   var requiresWakeReport: Bool { get }
@@ -26,7 +24,6 @@ protocol WatchMirrorTransport: AnyObject {
 
 protocol WatchMirrorSources: AnyObject {
   func routeStatus() -> WatchRouteStatus
-  /// The rider on the published Navigation route, for street-map tiles ahead; nil without one.
   func mapRoute() -> WatchMapRouteProgress?
   func subscribe(
     routeChanged: @escaping () -> Void,
@@ -35,8 +32,6 @@ protocol WatchMirrorSources: AnyObject {
   ) -> () -> Void
 }
 
-/// Process-scoped wrist streams, independent of Board Session ownership (ADR-0033/0039).
-/// Coordination state lives on the supplied scheduler, including commands arriving from WCSession.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMirrorCoordinator.kt
 final class WatchMirrorCoordinator {
   private let scheduler: Scheduler
@@ -49,7 +44,6 @@ final class WatchMirrorCoordinator {
   private let command: (WatchCommand) -> Void
   private let record: (String, [String: Any?]) -> Void
   private let onNavigatingChanged: () -> Void
-  /// Street-map tile planning and sending (`WatchMapTileSender`); nil pauses it.
   private let mapTiles: (WatchMapRider?) -> Void
   private var running = false
   private var generation = 0
@@ -57,13 +51,8 @@ final class WatchMirrorCoordinator {
   private var wakeLevel: WatchMirrorWakeLevel = .asleep
   private var wakeAtMs: Int64 = 0
   private var configuredIntervalMs: Int64 = WATCH_FRAME_INTERVAL_MS
-  /// The rider's Street map setting (#554). Off pauses tile sending; tiles already on the wrist stay.
   private var streetMapEnabled = true
-  /// The wrist is taking frames while Navigation has a drawable route. Its route can only be drawn
-  /// around a live rider position, so this is a GPS demand input: without it a pocketed phone with no
-  /// Board and no Group Ride stops GPS and the wrist route freezes or never appears (#550).
   private(set) var navigating = false
-  // The tile plan reads the snapshot the frame is built from, so it costs no second read.
   private lazy var tick = WatchTick(
     scheduler: scheduler,
     snapshot: { [weak self] in
@@ -135,7 +124,6 @@ final class WatchMirrorCoordinator {
         }
       },
       routePayload: { [weak self] payload in
-        // Navigation and the synchronous cold-state origin commit already share the main queue.
         guard let self, running, generation == currentGeneration else { return }
         transport.pushRoute(payload)
       }
@@ -155,7 +143,6 @@ final class WatchMirrorCoordinator {
     mapTiles(nil)
     transport.stop()
     wakeLevel = .asleep
-    // A stopped mirror demands nothing; no edge, the caller is tearing the stream down.
     navigating = false
     applyInterval()
   }
@@ -168,7 +155,6 @@ final class WatchMirrorCoordinator {
     running && transport.reachable && (!transport.requiresWakeReport || effectiveWakeLevel != .asleep)
   }
 
-  /// Evaluated every tick, which also runs while nothing is pushed, so reachability edges land.
   private func canPushAndTrackNavigation() -> Bool {
     let canPush = canPush
     let next = canPush && sources.routeStatus().phase == .ready
@@ -180,9 +166,6 @@ final class WatchMirrorCoordinator {
     return canPush
   }
 
-  /// The one gate on street-map tiles: only while the rider has the street map on, only to a wrist
-  /// that is awake and not in ambient, which is the only time it draws a map, and only with a GPS
-  /// fix to plan around.
   private func updateMapTiles(_ snapshot: WatchSnapshot) {
     guard streetMapEnabled, let position = snapshot.mapPosition, effectiveWakeLevel == .active else { return mapTiles(nil) }
     mapTiles(WatchMapRider(
@@ -214,7 +197,6 @@ final class WatchMirrorCoordinator {
   }
 
   func pushBoard(_ board: WatchBoardLights) { transport.pushBoard(board) }
-  /// The full visible Ride Notice list; process lifetime, like the board push.
   func pushRideNotices(_ notices: [RideNotice]) { transport.pushRideNotices(notices) }
   func pushLastBattery(_ battery: WatchLastBattery?) { transport.pushLastBattery(battery) }
 }

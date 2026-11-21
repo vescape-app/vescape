@@ -62,7 +62,6 @@ class RideNoticeFrameTest {
     @Test
     fun `an unknown severity reads as a warning`() {
         val bytes = RideNoticeFrameCodec.encode(frame)
-        // version, sentAt, count, recordBytes, id, rev -> severity of the first notice.
         bytes[1 + 8 + 1 + 2 + 1 + 1] = 9
 
         assertEquals(RideNoticeFrameSeverity.WARNING, RideNoticeFrameCodec.decode(bytes)!!.notices.first().severity)

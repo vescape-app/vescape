@@ -9,32 +9,20 @@ import kotlinx.coroutines.launch
 /** @parity /modules/vescape-core/ios/watch/WatchMapTileSender.swift `maxSendsInFlight` */
 internal const val WATCH_MAP_TILE_MAX_SENDS_IN_FLIGHT = 4
 
-/** A tile whose download or send failed waits this long before it is tried again. */
 internal const val WATCH_MAP_TILE_RETRY_MS = 30_000L
 
 /**
- * How each platform puts tiles on the wrist and records which ones are there. The wrist never
- * reports its holdings (ADR-0019, ADR-0033), so the phone's own record is the truth.
- *
  * @parity /modules/vescape-core/ios/watch/WatchMapTileSender.swift `WatchMapTileTransport`
  */
 internal interface WatchMapTileTransport {
-    /** Tiles of the current style the wrist already holds. */
     suspend fun delivered(): Set<WatchMapTile>
 
-    /** The wrist should hold [wanted]; [dropped] leave it. Calls arrive in plan order. */
     suspend fun hold(wanted: List<WatchMapTile>, dropped: Set<WatchMapTile>)
 
-    /** Sends one tile's JPEG unchanged. True once the wrist is known to get it. */
     suspend fun send(tile: WatchMapTile, jpeg: File): Boolean
 }
 
 /**
- * Phone-owned street map for the wrist (#551): plans the wanted tiles with [WatchMapTilePlanner],
- * downloads them through the shared `MapTiles` cache ([fetch]) and sends the missing ones nearest
- * first, at most [WATCH_MAP_TILE_MAX_SENDS_IN_FLIGHT] at a time. State is confined to [scheduler];
- * downloads and transport calls run in [scope], which must not be the scheduler's thread.
- *
  * @parity /modules/vescape-core/ios/watch/WatchMapTileSender.swift `WatchMapTileSender`
  */
 internal class WatchMapTileSender(
@@ -45,7 +33,6 @@ internal class WatchMapTileSender(
     private val transport: WatchMapTileTransport,
 ) {
     private val planner = WatchMapTilePlanner()
-    /** Hold updates must reach the wrist in plan order; sends may overlap. */
     private val holds = Channel<Pair<List<WatchMapTile>, Set<WatchMapTile>>>(Channel.UNLIMITED)
     private var holdsDraining = false
     private var active = false
@@ -54,23 +41,16 @@ internal class WatchMapTileSender(
     private var loading = false
     private var holdPending = false
     private val inFlight = mutableSetOf<WatchMapTile>()
-    /** Tiles with a queued drop, by count: a send before the drop drains would be deleted by it. */
     private val dropping = mutableMapOf<WatchMapTile, Int>()
-    /** Drops that reached the wrist while [load] ran; its answer may predate them. */
     private val droppedDuringLoad = mutableSetOf<WatchMapTile>()
     private val failedAtMs = mutableMapOf<WatchMapTile, Long>()
 
-    /**
-     * One watch tick. A null [rider] pauses sending: the wrist is asleep, in ambient or out of reach,
-     * or there is no GPS fix. Sends already in flight finish; nothing new starts.
-     */
     fun update(rider: WatchMapRider?) {
         if (rider == null) {
             active = false
             return
         }
         if (!active) {
-            // A wrist coming back may have been reinstalled or reset; ask again what it holds.
             active = true
             generation++
             delivered = null
@@ -101,9 +81,7 @@ internal class WatchMapTileSender(
                 if (requested != generation) return@post
                 loading = false
                 if (tiles != null) {
-                    // A tile whose drop is queued or landed meanwhile is gone however the query saw it.
                     delivered = (tiles - dropping.keys - droppedDuringLoad).toMutableSet()
-                    // Tiles left from an older plan or session leave with the next hold.
                     holdPending = true
                 }
             }
@@ -157,7 +135,6 @@ internal class WatchMapTileSender(
         when {
             !sent -> failedAtMs[tile] = nowMs()
             tile in wanted -> delivered?.add(tile)
-            // The plan moved on while it was in flight: take it straight back off the wrist.
             else -> publishHold(wanted, setOf(tile))
         }
         pump()

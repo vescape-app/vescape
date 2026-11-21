@@ -71,14 +71,10 @@ final class WatchMirrorIntakeTests: XCTestCase {
     atMs += 60_000
     intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: atMs, appliedAtMs: atMs)
     intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: atMs + 250, appliedAtMs: atMs + 250)
-    // The next drop is caught at the cadence's window, not the 30 s cap.
     intake.refresh(nowMs: atMs + 250 + 751)
     XCTAssertEqual(intake.mirror.status, .disconnected)
   }
 
-  /// Regression: the watchOS simulator delivers each second's frames as one burst. A window sized
-  /// by the last gap (~0 inside a burst) dropped to the floor and blinked the mirror offline in every
-  /// pause between bursts.
   func testBurstDeliveryStaysLiveBetweenBurstsAndTheWindowShrinksBackOnceTheCadenceSteadies() {
     var intake = WatchMirrorIntake()
     for burstAtMs in stride(from: Int64(1_000), through: 3_000, by: 1_000) {
@@ -159,8 +155,6 @@ final class WatchMirrorIntakeTests: XCTestCase {
     XCTAssertNil(intake.route)
   }
 
-  /// Issue #551: the phone's tile list survives a context without one, so tiles are not dropped by
-  /// a payload this build cannot read.
   func testMapTileListIsReplacedOnlyByAReadableList() {
     var intake = WatchMirrorIntake()
     let list = WatchMapTileList(style: "a/b", tiles: [WatchMapTile(z: 15, x: 1, y: 2)])

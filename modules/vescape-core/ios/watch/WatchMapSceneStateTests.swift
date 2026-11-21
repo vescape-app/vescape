@@ -51,7 +51,6 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(waiting.target.spanM, 1200)
     XCTAssertEqual(scene(frame, status: WatchRouteStatus(phase: .computing), group: group).notice, .computing)
     XCTAssertEqual(scene(frame, status: WatchRouteStatus(phase: .failed), group: group).notice, .failed)
-    // Older phones have no status channel and retain lane-driven navigation.
     XCTAssertNotNil(scene(frame, status: nil, group: group).navigation)
   }
 
@@ -67,7 +66,7 @@ final class WatchMapSceneStateTests: XCTestCase {
       let ambient = scene(frame, status: ready, group: group, ambient: true, trail: enabled)
       XCTAssertFalse(ambient.drawMap)
       XCTAssertEqual(ambient.trailAlpha(navFocus: 1), 0)
-      XCTAssertNotNil(ambient.navigation) // Ambient retains the destination pointer, without map motion.
+      XCTAssertNotNil(ambient.navigation)
     }
   }
 
@@ -78,7 +77,6 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(scene(frame, status: ready, group: nil, ambient: true).mapAlpha(navFocus: 1), 0)
   }
 
-  /// Issue #557: Map behind gauges sets the gauge page opacity; the map page stays full.
   func testMapBehindGaugesSetsTheGaugePageOpacityOnly() {
     XCTAssertEqual(scene(frame, status: ready, group: nil, mapGauges: 30).mapAlpha(navFocus: 0), 0.3, accuracy: 1e-9)
     XCTAssertEqual(scene(frame, status: ready, group: nil, mapGauges: 90).mapAlpha(navFocus: 0), 0.9, accuracy: 1e-9)
@@ -87,7 +85,6 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(scene(frame, status: ready, group: nil, ambient: true, mapGauges: 90).mapAlpha(navFocus: 0), 0)
   }
 
-  /// Issue #536: Group Ride marks leave the telemetry screen only; the map page fades them in.
   func testGroupSettingAffectsTelemetryOnlyAndAmbientHidesIt() {
     let off = scene(frame, status: ready, group: group, groupOnTelemetry: false)
     XCTAssertEqual(off.groupAlpha(navFocus: 0), 0)
@@ -98,7 +95,6 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(scene(frame, status: ready, group: group, ambient: true).groupAlpha(navFocus: 1), 0)
   }
 
-  /// Issue #558: the route line leaves the telemetry screen only; the map page fades it in.
   func testRouteSettingAffectsTelemetryOnlyAndAmbientHidesIt() {
     let off = scene(frame, status: ready, group: group, routeOnTelemetry: false)
     XCTAssertEqual(off.routeAlpha(navFocus: 0), 0)
@@ -110,7 +106,6 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(scene(frame, status: ready, group: group, ambient: true).routeAlpha(navFocus: 1), 0)
   }
 
-  /// Issue #557 + #536: the Off step hides the street map behind the gauges only.
   func testMapBehindGaugesOffFadesTheStreetMapInOnTheMapPage() {
     let off = scene(frame, status: ready, group: nil, mapGauges: 0)
     XCTAssertTrue(off.drawStreetMap)
@@ -119,7 +114,6 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(off.mapAlpha(navFocus: 1), 1)
   }
 
-  /// Issues #536 + #558: the rider circle leaves the telemetry screen only once every layer there is off.
   func testRiderCircleLeavesTheGaugesOnlyWhenEveryTelemetryLayerIsOff() {
     XCTAssertEqual(scene(frame, status: ready, group: group).riderAlpha(navFocus: 0), 1)
     XCTAssertEqual(scene(frame, status: ready, group: group, trail: false, groupOnTelemetry: false, routeOnTelemetry: false).riderAlpha(navFocus: 0), 1)
@@ -141,7 +135,7 @@ final class WatchMapSceneStateTests: XCTestCase {
     let off = scene(frame, status: ready, group: nil, streetMap: false)
     XCTAssertFalse(off.drawStreetMap)
     XCTAssertEqual(off.mapAlpha(navFocus: 1), 0)
-    XCTAssertTrue(off.drawMap) // Route, trail and Group Ride marks keep drawing.
+    XCTAssertTrue(off.drawMap)
     XCTAssertEqual(off.trailAlpha(navFocus: 0), 1)
     XCTAssertTrue(scene(frame, status: ready, group: nil).drawStreetMap)
   }

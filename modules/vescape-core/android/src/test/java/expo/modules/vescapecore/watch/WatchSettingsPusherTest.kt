@@ -32,7 +32,6 @@ class WatchSettingsPusherTest {
         failing = false
         publisher.push(miles)
         assertEquals(miles, retained)
-        // The Data Layer retains the last item offline; a phone restart republishes that preference.
         newPublisher().push(miles)
         assertEquals(miles, retained)
         assertEquals(3, writes)

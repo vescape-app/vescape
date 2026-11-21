@@ -16,40 +16,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** Wear capability our Mirror app declares (watch/wearos res/values/wear.xml). Keep the two in sync. */
 internal const val WATCH_MIRROR_CAPABILITY = "vescape_watch_mirror"
 
-/**
- * Declared only by wrist builds that report a [WatchMirrorWakeLevel]. Phone and watch ship as
- * separate Play tracks and update independently, so the wake gate has to be opt-in per wrist build:
- * without this, a phone that updated first would gate on a level an older wrist never sends and
- * leave its Mirror permanently blank. Delete once the minimum supported wrist build sends one.
- */
 internal const val WATCH_MIRROR_WAKE_CAPABILITY = "vescape_watch_mirror_wake"
 
-/**
- * Re-query cadence: a quick burst right after session start (the window where the watch link is
- * most likely still settling), then a slow steady heartbeat. The CapabilityClient listener stays
- * the instant path; this only backstops missed events.
- */
 private val PRESENCE_REFRESH_BURST_MS = longArrayOf(1_000L, 2_000L, 5_000L)
 private const val PRESENCE_REFRESH_STEADY_MS = 15_000L
 
-/**
- * Tracks whether a reachable Wear node actually runs our Watch Mirror, gating the phone push (ADR-0019).
- * A *paired* watch is not enough — only a declared [CapabilityClient] capability proves our app is
- * installed and connected, so we never burn Bluetooth/battery pushing frames into the void.
- *
- * Reactive like [CompanionPresence] (note: that one tracks a CompanionDeviceManager BLE device —
- * unrelated concept, do not conflate): a [CapabilityClient] listener gives the instant positive, and a
- * slow periodic re-query keeps the cached [present] flag honest — a watch whose Bluetooth link was
- * down at session start must start receiving frames once it comes back, not stay dark all session.
- * The watch tick reads [present] each tick; it never does an async lookup.
- *
- * [record] feeds the in-app diagnostic event log: one baseline event per session start plus every
- * transition, each with the raw connected-node count so "no watch at all" and "watch linked but
- * Mirror app missing" are distinguishable in the field without watch access.
- */
 internal class WatchMirrorPresence(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -62,7 +35,6 @@ internal class WatchMirrorPresence(
     var present: Boolean = false
         private set
 
-    /** Whether the reachable wrist build reports a wake level, and can therefore be gated on one. */
     @Volatile
     var reportsWakeLevel: Boolean = false
         private set
@@ -102,7 +74,6 @@ internal class WatchMirrorPresence(
                     reportsWakeLevel = wakePresent
                     val debugPresent = if (capabilityPresent) false else debugReachableWearNode()
                     if (debugPresent != null) {
-                        // Baseline event on the first successful query so an absent watch leaves a trace.
                         update(capabilityPresent || debugPresent, source = "refresh", force = attempt == 0)
                     }
                 }
@@ -115,7 +86,6 @@ internal class WatchMirrorPresence(
     fun stop() {
         refreshJob?.cancel()
         refreshJob = null
-        // Listener removal races with Play-services shutdown; stopped state is authoritative locally.
         // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort
         runCatching { capabilityClient.removeListener(listener, WATCH_MIRROR_CAPABILITY) }
         // intentional-suppression: watch presence errors are reported or lifecycle teardown is best effort

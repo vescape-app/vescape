@@ -15,15 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-/** Must match the browsable VIEW intent-filter on the Mirror's MainActivity (watch/wearos AndroidManifest). */
 private const val WATCH_MIRROR_URI = "vescape://mirror"
 
-/**
- * Phone -> watch app launch on board connect. Asks Wear OS to bring the Watch Mirror to the
- * foreground via [RemoteActivityHelper], targeting only nodes that declare
- * [WATCH_MIRROR_CAPABILITY] so a merely-paired watch is never poked. Fire-and-forget: the ride
- * never depends on this — outcomes only [record] to the in-app diagnostic event log.
- */
 internal class WatchMirrorLauncher(
     private val context: Context,
     private val scope: CoroutineScope,

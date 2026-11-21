@@ -33,7 +33,6 @@ class WatchRouteTest {
 
     @Test
     fun `rounding does not accumulate along a long route`() {
-        // Each hop is half a micro-degree, so naive per-hop rounding would drift a full step per point.
         val points = (0..500).map { GeoPoint(52.0 + it * 0.0000005, 21.0) }
         val bytes = WatchRouteEncoder.encode(points)!!
         val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).apply { position(19) }

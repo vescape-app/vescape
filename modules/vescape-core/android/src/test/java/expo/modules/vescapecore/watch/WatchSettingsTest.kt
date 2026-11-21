@@ -6,10 +6,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class WatchSettingsTest {
-    /**
-     * Regression: `boardMoveStrengthPercent` was missing from the reload list, so a strength change
-     * never reached the watch. Every mirrored field needs its key in the list, and vice versa.
-     */
     @Test
     fun `every mirrored setting has its key in the reload list`() {
         val changedByKey = mapOf(
@@ -32,7 +28,6 @@ class WatchSettingsTest {
         }
     }
 
-    /** Issue #557: JS writes arrive as doubles; only whole steps persist. */
     @Test
     fun `map behind gauges accepts whole steps from the bridge only`() {
         assertEquals(45, WatchMapGauges.percent(45.0))

@@ -2,10 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// The wrist Move path, against a virtual clock. Every delivery failure the link can produce —
-/// a delayed tick, a lost release, a reordered pair, a wrist that simply stops — is a fixture here,
-/// because the acceptance criterion for #490 is that these are pinned *before* a motor turns.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchMoveRelayTest.kt
 final class WatchMoveRelayTests: XCTestCase {
   private var scheduler = TestScheduler()
@@ -41,13 +37,11 @@ final class WatchMoveRelayTests: XCTestCase {
     )
   }
 
-  // MARK: - Strength stays the phone's
-
   func testAHeldDirectionScalesFullInputByThePhoneStrengthSetting() {
     let relay = relay()
 
     relay.accept(1)
-    XCTAssertEqual(started, [76])  // 127 * 60%
+    XCTAssertEqual(started, [76])
 
     strength = 100
     relay.accept(1)
@@ -66,11 +60,8 @@ final class WatchMoveRelayTests: XCTestCase {
 
     strength = -50
     relay.accept(1)
-    // 0 % is a stop as far as the controller is concerned, never a reversed push.
     XCTAssertEqual(started, [BOARD_MOVE_INPUT_MAX, 0])
   }
-
-  // MARK: - Release
 
   func testAReleaseStopsOnceAndDisarmsTheDeadMan() {
     let relay = relay()
@@ -79,7 +70,6 @@ final class WatchMoveRelayTests: XCTestCase {
     relay.accept(0)
     XCTAssertEqual(stops, 1)
 
-    // A repeated release on an already-stopped board is not another stop.
     relay.accept(0)
     XCTAssertEqual(stops, 1)
 
@@ -95,8 +85,6 @@ final class WatchMoveRelayTests: XCTestCase {
     XCTAssertEqual(started, [])
     XCTAssertEqual(events, [])
   }
-
-  // MARK: - The dead-man, which is the feature
 
   func testSilenceStopsTheBoardWithoutARelease() {
     let relay = relay()
@@ -119,15 +107,12 @@ final class WatchMoveRelayTests: XCTestCase {
     }
     XCTAssertEqual(stops, 0)
     XCTAssertEqual(started.count, 10)
-    // Only the first tick of a continuous hold is worth a diagnostic event.
     XCTAssertEqual(events, ["watch_move_held"])
 
     scheduler.advance(watchMoveDeadManMs)
     XCTAssertEqual(stops, 1)
   }
 
-  /// The wrist's own tick spacing has to sit safely inside the phone's dead-man, or an ordinary
-  /// hold would stutter. Two missed ticks must still not stop a board the rider is holding.
   func testTwoMissedTicksAreSurvivableAndTheThirdIsNot() {
     let relay = relay()
 
@@ -139,8 +124,6 @@ final class WatchMoveRelayTests: XCTestCase {
     XCTAssertEqual(stops, 1)
   }
 
-  /// A hold refused at the moment it started — a board mid-connect, a link that has not earned
-  /// trust — is retried by the next tick rather than needing the rider to let go and press again.
   func testARefusedHoldSelfHealsOnTheNextTick() {
     let relay = relay()
 
@@ -155,18 +138,12 @@ final class WatchMoveRelayTests: XCTestCase {
     XCTAssertEqual(stops, 1)
   }
 
-  // MARK: - Delivery failures
-
-  /// A release that never arrives, followed by silence: the board stops on the phone's clock, and
-  /// the hold that was still in flight when the rider let go cannot outlive it by more than one
-  /// dead-man. This is the lost-release, dead-watch, killed-app and out-of-range case, all four.
   func testALostReleaseStopsOnTheDeadManAndStaysStopped() {
     let relay = relay()
 
     relay.accept(1)
     scheduler.advance(watchMoveRepeatMs)
     relay.accept(1)
-    // The release is dropped by the link here; nothing else arrives.
     scheduler.advance(watchMoveDeadManMs)
     XCTAssertEqual(stops, 1)
 
@@ -175,9 +152,6 @@ final class WatchMoveRelayTests: XCTestCase {
     XCTAssertEqual(started.count, 2)
   }
 
-  /// A hold delayed past the release it was sent before. The stop happens on arrival, and the late
-  /// hold that follows it can only roll for one dead-man — it cannot resurrect the press silently
-  /// and indefinitely, which is the property that makes the direction-only wire safe to reorder.
   func testALateHoldAfterAReleaseCannotOutliveOneDeadMan() {
     let relay = relay()
 
@@ -185,16 +159,12 @@ final class WatchMoveRelayTests: XCTestCase {
     relay.accept(0)
     XCTAssertEqual(stops, 1)
 
-    // The straggler lands after the release it was sent before.
     relay.accept(1)
     XCTAssertEqual(started.count, 2)
     scheduler.advance(watchMoveDeadManMs)
     XCTAssertEqual(stops, 2)
   }
 
-  /// Delivery is latest-wins, not a queue, so a reconnect cannot replay a backlog. Even if it
-  /// somehow did, a burst of stale holds is still one dead-man of roll and no more — there is no
-  /// accumulation, because each tick re-arms the same timer rather than adding one.
   func testABurstOfStaleHoldsIsStillOneDeadMan() {
     let relay = relay()
 
@@ -216,8 +186,6 @@ final class WatchMoveRelayTests: XCTestCase {
     XCTAssertEqual(stops, 1)
   }
 
-  // MARK: - The wire
-
   func testMoveCommandCarriesADirectionAndNothingElse() {
     for direction in [-1, 0, 1] {
       XCTAssertEqual(
@@ -227,7 +195,6 @@ final class WatchMoveRelayTests: XCTestCase {
     }
   }
 
-  /// The exact bytes Android writes and reads, pinned rather than described.
   func testMoveWireValuesMatchAndroid() {
     XCTAssertEqual(Array(WatchCommandCodec.encode(.move(1))), [1, 1])
     XCTAssertEqual(Array(WatchCommandCodec.encode(.move(0))), [1, 0])
@@ -246,8 +213,6 @@ final class WatchMoveRelayTests: XCTestCase {
     XCTAssertNil(WatchCommandCodec.decode(Data([99, 1])))
   }
 
-  /// The tick spacing and the dead-man are one contract in two places; a change to either that is
-  /// not a change to both is the bug this pins.
   func testTheWristTickSpacingIsAThirdOfThePhoneDeadMan() {
     XCTAssertEqual(watchMoveDeadManMs, 900)
     XCTAssertEqual(watchMoveRepeatMs, 300)

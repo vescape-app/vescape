@@ -12,7 +12,6 @@ final class WatchMapTilePlanTests: XCTestCase {
     WatchMapRider(position: position ?? wroclaw, courseDeg: courseDeg, speedMps: speedMps, spanM: spanM, route: route)
   }
 
-  /// A straight path east from Wroclaw, about 21 km, and the rider `doneM` along it.
   private func eastRoute(_ doneM: Double) -> (rider: WatchMapRider, route: WatchMapRoute) {
     let route = WatchMapRoute(points: (0...30).map {
       WatchMapPosition(latitude: wroclaw.latitude, longitude: wroclaw.longitude + Double($0) * 0.01)
@@ -28,26 +27,21 @@ final class WatchMapTilePlanTests: XCTestCase {
   }
 
   func testZoomFollowsSpanAndLatitudeWithTheWristClamp() {
-    // 600 m on 480 px is 1.25 m/px; z15 tiles are about 1.5 m/px there, a 1.2x upscale.
     XCTAssertEqual(zoom(600), 15)
     XCTAssertEqual(zoom(nil), 15)
     XCTAssertEqual(zoom(300), 16)
-    // Clamped to the wrist's 150 m .. 2 km before choosing.
     XCTAssertEqual(zoom(10), zoom(150))
     XCTAssertEqual(zoom(50_000), zoom(2_000))
-    // Ground per pixel shrinks towards the poles, so the same span needs fewer levels there.
     XCTAssertGreaterThan(zoom(600, 0), zoom(600, 70))
   }
 
   func testAHeldZoomSurvivesASpanNearItsBoundary() {
-    // At Wroclaw z15 is the lowest level from about 554 m to 1107 m of span.
     XCTAssertEqual(zoom(570), 15)
     XCTAssertEqual(zoom(570, current: 16), 16)
     XCTAssertEqual(zoom(520), 16)
     XCTAssertEqual(zoom(520, current: 15), 15)
     XCTAssertEqual(zoom(1_150), 14)
     XCTAssertEqual(zoom(1_150, current: 15), 15)
-    // Past the band the held level gives way.
     XCTAssertEqual(zoom(1_400, current: 15), 14)
     XCTAssertEqual(zoom(400, current: 15), 16)
   }
@@ -61,7 +55,6 @@ final class WatchMapTilePlanTests: XCTestCase {
     XCTAssertGreaterThan(meanX(ring), meanX(still))
     XCTAssertGreaterThanOrEqual(ring.map(\.x).max()!, still.map(\.x).max()!)
     XCTAssertEqual(ring.count, Set(ring).count)
-    // Speed pushes the centre further than half a span: 30 s at 40 m/s is 1.2 km.
     let fast = WatchMapTilePlan.ring(rider(courseDeg: 90, speedMps: 40), zoom: 15)
     XCTAssertGreaterThan(fast.map(\.x).max()!, ring.map(\.x).max()!)
   }
@@ -86,10 +79,8 @@ final class WatchMapTilePlanTests: XCTestCase {
       needed: [here], held: [behindOld, aheadOld, recentBehind], rider: north, step: 3, cap: 3)
     XCTAssertEqual(kept.map(\.tile), [here, recentBehind.tile, aheadOld.tile])
     XCTAssertEqual(kept[0].neededAt, 3)
-    // Other zoom levels are not carried over.
     let other = WatchMapTileNeed(tile: WatchMapTile(z: 14, x: here.x / 2, y: here.y / 2), neededAt: 2)
     XCTAssertFalse(WatchMapTilePlan.retain(needed: [here], held: [other], rider: north, step: 3).contains { $0.tile.z == 14 })
-    // The plan never exceeds the cap.
     let many = (0..<300).map { WatchMapTileNeed(tile: WatchMapTile(z: 15, x: $0, y: 0), neededAt: 1) }
     XCTAssertEqual(WatchMapTilePlan.retain(needed: [here], held: many, rider: north, step: 2).count, WatchMapTilePlan.tileCap)
   }
@@ -115,7 +106,6 @@ final class WatchMapTilePlanTests: XCTestCase {
     let face = WatchMapTilePlan.ring(rider(courseDeg: 0), zoom: 15, lookahead: false)
     XCTAssertEqual(Array(needed.dropFirst(out.count).prefix(face.count)), face)
     XCTAssertEqual(needed.count, Set(needed).count)
-    // Every tile at the planned level is a quarter of a planned one-out tile.
     let outAll = Set(needed.filter { $0.z == 14 })
     XCTAssertTrue(needed.filter { $0.z == 15 }.allSatisfy { $0.parent.map(outAll.contains) == true })
   }
@@ -124,7 +114,6 @@ final class WatchMapTilePlanTests: XCTestCase {
     let fast = rider(courseDeg: 90, speedMps: 15, spanM: 150)
     let level = zoom(150)
     let here = WatchMapTilePlan.ring(rider(spanM: 150), zoom: level)[0]
-    // 30 s at 15 m/s centres the ring 450 m ahead, three spans: it misses the rider's tile.
     XCTAssertFalse(WatchMapTilePlan.ring(fast, zoom: level).contains(here))
     let needed = WatchMapTilePlan.needed(fast, zoom: level)
     XCTAssertEqual(needed.first, here.parent)
@@ -135,20 +124,17 @@ final class WatchMapTilePlanTests: XCTestCase {
     let planner = WatchMapTilePlanner()
     _ = planner.update(rider(spanM: 600))
     let z15 = Set(planner.wanted.map(\.tile).filter { $0.z == 15 })
-    // Zoom in: the old level is now the one-out level, still wanted.
     _ = planner.update(rider(spanM: 300))
     var wanted = planner.wanted.map(\.tile)
     XCTAssertTrue(z15.isSubset(of: Set(wanted)))
     XCTAssertTrue(wanted.contains { $0.z == 16 })
     XCTAssertFalse(wanted.contains { $0.z == 14 })
-    // Zoom back out: the z16 tiles stay as the previous level, behind z15 and z14.
     let z16 = Set(wanted.filter { $0.z == 16 })
     _ = planner.update(rider(spanM: 800))
     wanted = planner.wanted.map(\.tile)
     XCTAssertTrue(z16.isSubset(of: Set(wanted)))
     XCTAssertTrue(wanted.contains { $0.z == 14 })
     XCTAssertGreaterThan(wanted.firstIndex { $0.z == 16 }!, wanted.lastIndex { $0.z != 16 }!)
-    // Two levels out: z16 is no longer the level just left.
     _ = planner.update(rider(spanM: 1_400))
     XCTAssertFalse(planner.wanted.contains { $0.tile.z == 16 })
     XCTAssertLessThanOrEqual(planner.wanted.count, WatchMapTilePlan.tileCap)
@@ -164,9 +150,7 @@ final class WatchMapTilePlanTests: XCTestCase {
     var cache = WatchMapTileCache<String>()
     for tile in [own, parent] + finer { cache.put(tile, tile.key) }
     let frame = cache.frame(cells: [own, quarter, zoomedOut, empty], held: Set([own, quarter, parent, zoomedOut] + finer))
-    // One-out tiles go under, so the cell with its own tile covers that quarter of the parent.
     XCTAssertEqual(frame.draw, [parent, own] + finer)
-    // Each cell waits on its own tile only; fallbacks are drawn when decoded, never decoded for it.
     XCTAssertEqual(frame.missing, [quarter, zoomedOut])
     XCTAssertTrue(cache.frame(cells: [empty], held: []).draw.isEmpty)
   }
@@ -179,7 +163,6 @@ final class WatchMapTilePlanTests: XCTestCase {
   }
 
   func testADecodeIsKeptWhenTheDisplayAlreadyPinsAFullCache() {
-    // Zoomed out: 12 old-level tiles fill three new cells as one-in fallbacks.
     let cells = (0..<3).map { WatchMapTile(z: 15, x: 50 + $0, y: 100) }
     let finer = cells.flatMap(\.children)
     var cache = WatchMapTileCache<String>()
@@ -187,7 +170,6 @@ final class WatchMapTilePlanTests: XCTestCase {
     let held = Set(cells + finer)
     XCTAssertEqual(cache.frame(cells: cells, held: held).missing, cells)
     cache.put(cells[0], cells[0].key)
-    // Neither the new tile nor anything on screen is evicted, so the next frame does not decode it again.
     let next = cache.frame(cells: cells, held: held)
     XCTAssertEqual(next.missing, Array(cells.dropFirst()))
     XCTAssertEqual(next.draw, [cells[0]] + finer.dropFirst(4))
@@ -219,7 +201,6 @@ final class WatchMapTilePlanTests: XCTestCase {
     XCTAssertFalse(planner.update(rider(nudged, courseDeg: 90)))
     XCTAssertTrue(planner.update(rider(courseDeg: 90, spanM: 300)))
     XCTAssertEqual(Set(planner.wanted.map(\.tile.z)), [15, 16])
-    // Moving a tile east keeps what was needed before, behind the fresh ring.
     let moved = WatchMapTilePlanner()
     _ = moved.update(rider())
     let before = Set(moved.wanted.map(\.tile))
@@ -232,11 +213,8 @@ final class WatchMapTilePlanTests: XCTestCase {
     let tiles = WatchMapTilePlan.routeTiles(onRoute, zoom: 15)
     let here = WatchMapTilePlan.ring(rider(onRoute.position), zoom: 15).first!
     XCTAssertEqual(tiles.first, here)
-    // Ahead only: nothing west of the corridor around the progress point.
     XCTAssertTrue(tiles.allSatisfy { $0.x >= here.x - 1 })
-    // Walked in order: columns never step back by more than the corridor.
     for (a, b) in zip(tiles, tiles.dropFirst()) { XCTAssertGreaterThanOrEqual(b.x, a.x - 1) }
-    // The corridor covers the path itself to its end.
     let end = WatchMapTilePlan.ring(
       rider(WatchMapPosition(latitude: wroclaw.latitude, longitude: wroclaw.longitude + 0.3)), zoom: 15
     ).first!
@@ -254,7 +232,6 @@ final class WatchMapTilePlanTests: XCTestCase {
     let ring = WatchMapTilePlan.needed(onRoute, zoom: 15)
     let wanted = planner.wanted
     XCTAssertEqual(wanted.count, 40)
-    // The ring goes first, untouched by the route; route tiles fill the rest, not the ring.
     XCTAssertEqual(wanted.prefix(ring.count).map(\.tile), ring)
     XCTAssertTrue(wanted.prefix(ring.count).allSatisfy { !$0.route })
     XCTAssertTrue(wanted.dropFirst(ring.count).allSatisfy { $0.route && !ring.contains($0.tile) })
@@ -272,13 +249,10 @@ final class WatchMapTilePlanTests: XCTestCase {
         position: rider.position, courseDeg: rider.courseDeg, speedMps: rider.speedMps, spanM: rider.spanM,
         route: WatchMapRouteProgress(route: route, remainingM: route.lengthM - doneM))
     }
-    // Same rider tile, same progress tile: nothing to do.
     XCTAssertFalse(planner.update(moved(route, doneM: 5_010, start)))
-    // A new route object with the same path is a reroute.
     XCTAssertTrue(planner.update(moved(WatchMapRoute(points: route.points), doneM: 5_000, start)))
     let routeTiles = planner.wanted.filter(\.route).map(\.tile)
     XCTAssertFalse(routeTiles.isEmpty)
-    // Clearing Navigation takes every route-only tile off the list at once.
     var cleared = start
     cleared.route = nil
     XCTAssertTrue(planner.update(cleared))
@@ -301,8 +275,6 @@ final class WatchMapTilePlanTests: XCTestCase {
     XCTAssertEqual(sent?.generation, 7)
   }
 
-  /// A receipt the latest list already planned away is not kept; one sent under a list the wrist has
-  /// not seen yet waits for that list.
   func testAListSupersedesOnlyFilesSentNoLaterThanIt() {
     let kept = WatchMapTile(z: 15, x: 1, y: 2), gone = WatchMapTile(z: 15, x: 1, y: 3)
     let list = WatchMapTileList(style: "a/b", tiles: [kept], generation: 7)

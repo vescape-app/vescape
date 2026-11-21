@@ -2,8 +2,6 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/AndroidWatchMirror.kt
 /// @platform-diff WCSession lives for the process; stop releases callbacks without deactivating the system session.
-/// WCSession delivery adapter. System reachability already gates sleeping/unreachable wrist apps;
-/// unlike Wear's Data Layer, the wake lease is needed for cadence and Group Ride only (ADR-0033).
 private final class IOSWatchMirrorTransport: WatchMirrorTransport {
   private let pusher: WatchTelemetryPusher
   private var pushedWeather: WatchWeather?
@@ -34,7 +32,6 @@ private final class IOSWatchMirrorTransport: WatchMirrorTransport {
   func pushRoute(_ payload: [String: Any]) { pusher.pushColdState(channel: watchRouteChannel, payload: payload) }
   func pushLastBattery(_ battery: WatchLastBattery?) { pusher.pushLastBattery(battery) }
   func pushBoard(_ board: WatchBoardLights) { pusher.pushColdState(channel: watchBoardChannel, payload: board.payload) }
-  /// Strictly increasing, so two writes in one millisecond never look like a repeat to the wrist.
   private var lastRideNoticesSentAtMs: Int64 = 0
   func pushRideNotices(_ notices: [RideNotice]) {
     lastRideNoticesSentAtMs = max(Int64(Date().timeIntervalSince1970 * 1000), lastRideNoticesSentAtMs + 1)
@@ -100,8 +97,6 @@ func iosWatchMirror(
 }
 
 extension WatchMirrorCoordinator {
-  /// Settings are process scoped, even when the board telemetry settings have no session to reload.
-  /// The returned strength belongs to the existing Board Move relay, not the mirror.
   func reloadSettings(from appData: AppDataRepository) -> Int? {
     let settings: [String: Any?]
     do { settings = try appData.getSettings() }

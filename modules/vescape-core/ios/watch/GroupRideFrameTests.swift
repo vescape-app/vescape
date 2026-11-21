@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Group Ride Frame codec.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/GroupRideFrameTest.kt
 final class GroupRideFrameTests: XCTestCase {
   func testAFrameSurvivesTheRoundTrip() {
@@ -51,7 +49,6 @@ final class GroupRideFrameTests: XCTestCase {
     var second = rider
     second.id = "b"
     let base = [UInt8](GroupRideFrameCodec.encode(GroupRideFrame(courseDeg: 10, spanM: 600, riders: [rider, second])))
-    // Rebuild with two extra bytes after each record, as a later version of the record would carry.
     let header = 1 + 4 + 4 + 1
     var out = Array(base[0..<header])
     var at = header
@@ -66,7 +63,6 @@ final class GroupRideFrameTests: XCTestCase {
     XCTAssertEqual(GroupRideFrameCodec.decode(Data(out))?.riders, [rider, second])
   }
 
-  /// `bytes` with the last `drop` bytes of every rider record cut, as an older encoder wrote them.
   private func withRecordsCut(_ bytes: Data, riders: Int, drop: Int) -> Data {
     let base = [UInt8](bytes)
     let header = 1 + 4 + 4 + 1
@@ -103,7 +99,6 @@ final class GroupRideFrameTests: XCTestCase {
       GroupRideFrameRider(id: "b", name: "Kuba", colorArgb: 0, eastM: -7, northM: 8, stale: false, heatLevel: .warning),
     ]
     let bytes = [UInt8](GroupRideFrameCodec.encode(GroupRideFrame(courseDeg: 10, spanM: 600, riders: riders)))
-    // The first release's decoder: fixed fields up to flags, then a jump to the record's end.
     var at = 1 + 4 + 4
     let count = Int(bytes[at])
     at += 1
