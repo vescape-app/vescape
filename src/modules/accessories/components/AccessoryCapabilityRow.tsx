@@ -8,29 +8,13 @@ import { capabilityStateCopy } from '@/modules/accessories/lib/capabilityStateCo
 import { interaction, theme } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
-/**
- * One capability an Accessory declares, with what the app can do about it.
- *
- * An unsupported capability is shown rather than filtered out: a rider holding hardware Vescape
- * half-understands should be told which half, not handed a shorter list.
- *
- * A capability the rider switched off says so here too. Otherwise the list reads identically
- * whether or not the thing is actually doing anything, and the only way to find out is to open
- * every row.
- *
- * A row is only a way in when this build has a configuration screen for that capability type. An
- * unsupported capability, or a recognized one whose slice has not shipped, stays a flat row rather
- * than a tap that leads somewhere empty — [onPress] is simply absent.
- */
 export function AccessoryCapabilityRow({
   capability,
   phase,
   onPress,
 }: {
   capability: AccessoryCapability
-  /** The link this capability lives on. Given, the row also says what it is doing right now. */
   phase?: AccessoryLinkPhase
-  /** Omit when this capability has nothing to open. */
   onPress?: () => void
 }) {
   const neutral = useResolvedNeutralColors()
@@ -46,8 +30,6 @@ export function AccessoryCapabilityRow({
     : off
       ? { label: 'Off', tint: theme.status.caution.color }
       : null
-  // "Off" is already the badge's job, and the link phase is the screen header's — the state line is
-  // for the half-second answer the list otherwise makes the rider open a row to get.
   const state =
     phase === 'connected' && capability.supported && !off
       ? capabilityStateCopy(capability, phase)

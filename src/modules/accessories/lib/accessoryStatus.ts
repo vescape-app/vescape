@@ -6,17 +6,9 @@ import type {
 
 export interface AccessoryStatusCopy {
   label: string
-  /** A `theme.status` / `theme.palette` key resolved by the caller, never a color literal. */
   tone: 'success' | 'neutral' | 'caution'
 }
 
-/**
- * Rider-facing phrasing for native's link phase. Native decides; this only phrases it.
- *
- * A dropped link reads as "Connecting", not as a failure: both platforms keep the reconnect alive
- * on their own, so a rider who walked out of range is waiting rather than broken. "Not reachable"
- * is reserved for a session that actually went wrong.
- */
 export function accessoryStatusCopy(phase: AccessoryLinkPhase): AccessoryStatusCopy {
   switch (phase) {
     case 'connected':
@@ -34,7 +26,6 @@ export function accessoryStatusCopy(phase: AccessoryLinkPhase): AccessoryStatusC
   }
 }
 
-/** Rider-facing summary of native's compatibility verdict. Native decides; this only phrases it. */
 export function compatibilityCopy(compatibility: AccessoryCompatibility): {
   title: string
   detail: string
@@ -64,12 +55,6 @@ export function compatibilityCopy(compatibility: AccessoryCompatibility): {
   }
 }
 
-/**
- * Why a handshake produced no manifest, in rider language.
- *
- * The parameter is widened past the union on purpose: these are native's wire strings, and a code
- * this app has no copy for is still worth showing verbatim rather than rendering blank.
- */
 export function inspectionErrorCopy(error: AccessoryInspectionError | (string & {})): string {
   switch (error) {
     case 'malformed':
@@ -100,13 +85,6 @@ export function inspectionErrorCopy(error: AccessoryInspectionError | (string & 
   }
 }
 
-/**
- * Why a live session is unhappy, in rider language.
- *
- * These are native's own wire strings, which overlap the handshake errors but add the ones only a
- * session can produce. An unrecognized code falls through to the handshake phrasing rather than
- * being hidden — a code this app has no copy for is still worth showing.
- */
 export function linkErrorCopy(error: string): string {
   switch (error) {
     case 'identity-mismatch':

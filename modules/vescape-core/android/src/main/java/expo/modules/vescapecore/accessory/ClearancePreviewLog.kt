@@ -1,6 +1,6 @@
 package expo.modules.vescapecore.accessory
 
-/** Short-lived display history. Control still consumes every original reading.
+/**
  * @parity /modules/vescape-core/ios/accessory/ClearancePreviewLog.swift
  * @parity /modules/vescape-core/src/index.ts `ClearancePreviewDiagnostics`
  */

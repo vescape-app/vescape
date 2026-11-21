@@ -32,12 +32,10 @@ import {
 import { useSavedAccessory } from '@/modules/accessories/store/accessoryStore'
 import { theme } from '@/constants/theme'
 
-/** Starting point for a rider who has never calibrated this sensor. Deliberately conservative. */
 const DEFAULT_NEAR_CM = 5
 const DEFAULT_FAR_CM = 20
 const DEFAULT_STRENGTH_PERCENT = 50
 
-/** How long the rider has to stop moving a stepper before the calibration is offered to native. */
 const SAVE_DEBOUNCE_MS = 400
 
 interface Draft {
@@ -47,19 +45,6 @@ interface Draft {
   strengthPercent: number
 }
 
-/**
- * Live ground clearance for one capability, and the calibration that turns it into a tilt binding.
- *
- * Two halves, both of them native's. The reading is one sample native accepted, range-checked
- * against what the accessory declares and carrying an explicit status — never a blank filled in
- * with the last good number. The calibration is offered as the rider edits it and native decides
- * whether it is complete; there is no Save button, and what comes back is either "saved" or the
- * rule it broke.
- *
- * Opening this screen is what makes the sensor measure. The demand is released on unmount and on
- * backgrounding, and the accessory stops its continuous measurement while its BLE session stays up
- * — so a rider who wandered off this screen is not quietly draining an accessory battery.
- */
 export function GroundClearanceScreen({
   accessoryId,
   capabilityId,
@@ -76,15 +61,8 @@ export function GroundClearanceScreen({
   const [savingRate, setSavingRate] = useState(false)
   const [rateFailed, setRateFailed] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  /** The edit the debounce has not offered to native yet. Flushed rather than dropped on exit. */
   const pending = useRef<Draft | null>(null)
 
-  // Native's saved calibration seeds the editor once, and only once native has actually said what
-  // this capability is. Seeding before the first snapshot lands would fill the steppers with
-  // defaults and then refuse the rider's real calibration a frame later, because `current` is set.
-  //
-  // After the first seed the rider owns the fields: taking every push would yank a stepper back
-  // under their thumb the moment a save round-trips.
   const known = capability != null
   useEffect(() => {
     if (!known) return
@@ -107,9 +85,6 @@ export function GroundClearanceScreen({
     })
   }, [known, saved])
 
-  // Leaving flushes, it does not cancel. A screen that saves on its own must not silently throw away
-  // the rider's last change because they navigated back inside the debounce window — they were told
-  // it saves, and nothing on the way out says otherwise.
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current)
@@ -129,9 +104,6 @@ export function GroundClearanceScreen({
         const next = { ...current, ...patch }
         pending.current = next
         if (timer.current) clearTimeout(timer.current)
-        // Debounced, because a stepper held down would otherwise write a row per tap. Native still
-        // decides validity — this only decides how often it is asked, and native applies whatever
-        // arrives in the order it arrives.
         timer.current = setTimeout(() => {
           timer.current = null
           pending.current = null
@@ -169,9 +141,6 @@ export function GroundClearanceScreen({
     )
   }
 
-  // The saved calibration's own verdict, re-decided natively against the live manifest, outranks
-  // the last save's answer: a firmware that narrowed its range invalidates a calibration nobody
-  // touched, and the rider needs to hear that before they hear nothing at all.
   const blocking = saved?.problem ?? problem
   const configured = saved != null && saved.problem == null
 
@@ -322,12 +291,6 @@ export function GroundClearanceScreen({
   )
 }
 
-/**
- * A `SegmentedToggle` on a settings row's trailing edge.
- *
- * The toggle has no disabled state of its own — a control that still answers taps while a save is
- * in flight would let the rider queue two rates native has to pick between.
- */
 function Choice<T extends string>({
   options,
   value,

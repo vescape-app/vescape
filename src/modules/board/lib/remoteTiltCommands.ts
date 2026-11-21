@@ -1,4 +1,3 @@
-/** Serialize native intents. Only one unsent drag value survives; terminal intents stay ordered. */
 export function createTiltCommands(onFailure: (error: unknown) => void) {
   interface Command {
     run: () => Promise<boolean>

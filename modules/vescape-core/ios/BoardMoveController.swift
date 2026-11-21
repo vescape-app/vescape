@@ -1,14 +1,7 @@
 import Foundation
 
-/// Refresh interval for the 1.3+ `REMOTE` input byte, which firmware lapses after ~1s of silence.
-/// The packet only carries a value, so re-sending it often is free.
 private let BOARD_MOVE_REMOTE_REPEAT_MS = 100
 
-/// Refresh interval for the 1.0–1.2 `RC_MOVE` command. That packet is a *duration* request carrying
-/// `RC_MOVE_TIME_STEPS` (~1s of run time), and firmware zeroes its move current and ramps it back to
-/// the target on every request. So both extremes stutter: repeating on the 1.3+ cadence restarts the
-/// ramp ten times a second, and repeating slower than the request's own life leaves silent gaps.
-/// Re-send inside that life, rarely enough that the ramp restart stays a dip rather than the signal.
 private let BOARD_MOVE_RC_MOVE_REPEAT_MS = 700
 
 private func boardMoveRepeatMs(_ generation: BoardMoveGeneration) -> Int {
@@ -18,28 +11,11 @@ private func boardMoveRepeatMs(_ generation: BoardMoveGeneration) -> Int {
   }
 }
 
-/// Streams Refloat's Board Move input: motor output while the board is disengaged. This is not
-/// Remote Tilt — it never touches the tilt setpoint and never writes config.
-///
-/// The rider holds a direction button and the board keeps moving until release, so the held input is
-/// repeated on a tick chosen per generation (both firmware generations drop the request after ~1s of
-/// silence, but only the 1.3+ packet tolerates a fast refresh — see `boardMoveRepeatMs`). Releasing
-/// sends a neutral stop so the board halts immediately instead of coasting to the firmware timeout.
-///
-/// Firmware owns the safety envelope: 1.0–1.2 `cmd_rc_move` and 1.3+ `remote_command_input` both
-/// apply output only from the ready (disengaged) state, and 1.3+ additionally holds a 2s grace after
-/// disengaging.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/BoardMoveController.kt
 internal final class BoardMoveController {
-  /// Supplies the active transport only while the session can talk to the board; `nil` otherwise.
   private let transport: () -> BoardTransport?
-  /// Whether move commands are allowed at all (trusted link). Re-checked every tick, so a link that
-  /// loses trust mid-hold is stopped with a neutral rather than left streaming.
   private let canMove: () -> Bool
-  /// Picks the wire format from the linked Refloat version.
   private let generation: () -> BoardMoveGeneration
-  /// `urgent` means the neutral stop, which must pass normal traffic at the next write boundary.
   private let send: (_ payload: [UInt8], _ urgent: Bool) -> Bool
   private let scheduler: Scheduler
 
@@ -60,20 +36,16 @@ internal final class BoardMoveController {
     self.scheduler = scheduler
   }
 
-  /// The input currently being streamed (`-127...127`), or `nil` when idle.
   var currentInput: Int? { input }
 
   var isMoving: Bool { input != nil }
 
-  /// Hold a constant move input until `stop()`. `input` is `-127...127`; `0` is treated as a stop.
   @discardableResult
   func hold(_ input: Int) -> Bool {
     let clamped = min(max(input, -BOARD_MOVE_INPUT_MAX), BOARD_MOVE_INPUT_MAX)
     if clamped == 0 { return stop() }
     guard canMove(), let transport = transport() else { return false }
 
-    // A running loop picks the new input up on its next tick; changing direction mid-hold must not
-    // schedule an extra write.
     let alreadyStreaming = repeatWork != nil
     self.input = clamped
     if alreadyStreaming { return true }

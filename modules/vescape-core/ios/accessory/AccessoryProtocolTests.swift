@@ -2,10 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// The discovery handshake contract, driven by
-/// `shared/fixtures/accessory-protocol/handshake.json`: the exact `hello` line discovery writes, and
-/// every manifest the parser must either accept with a compatibility verdict or refuse outright.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/accessory/AccessoryProtocolTest.kt
 final class AccessoryProtocolTests: XCTestCase {
   private func fixture() throws -> [String: Any] { try AccessoryFixtures.load("handshake.json") }
@@ -105,8 +101,6 @@ final class AccessoryProtocolTests: XCTestCase {
     }
   }
 
-  /// Discovery must not be able to speak past `hello`. There is one encoder on this path and it
-  /// produces one message type; anything operational would have to be added here first.
   func testDiscoveryEncodesNothingButHello() throws {
     let sessionId = try XCTUnwrap(try hello()["sessionId"] as? String)
     let line = AccessoryProtocol.encodeHello(sessionId: sessionId)

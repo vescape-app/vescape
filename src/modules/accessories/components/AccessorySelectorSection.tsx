@@ -19,13 +19,6 @@ interface AccessorySelectorSectionProps {
   onSelectAccessory: (accessoryId: string) => void
 }
 
-/**
- * The Accessories half of the Board selector: its own section, not a branch of any Board.
- *
- * Accessories target whichever Board is connected, so nesting them under one would promise a
- * per-Board binding that does not exist. The section is presentational — the screen composing the
- * selector supplies the list and selection action.
- */
 export function AccessorySelectorSection({
   accessories,
   onSelectAccessory,

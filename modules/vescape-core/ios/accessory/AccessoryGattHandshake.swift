@@ -1,28 +1,14 @@
 import CoreBluetooth
 import Foundation
 
-/// What one handshake produced, ready to cross the bridge.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryGattHandshake.kt `AccessoryHandshakeOutcome`
 enum AccessoryHandshakeOutcome {
   case ok(AccessoryManifest, advertisedName: String?)
   case failed(String, advertisedName: String?)
 }
 
-/// One Accessory discovery handshake: connect, subscribe, write `hello`, read the manifest back,
-/// disconnect. Nothing else is ever written on the link.
-///
-/// That single-write shape is the guarantee behind "no control activates from discovery": the class
-/// has no path that can emit `configure` or `state`, so inspecting an Accessory cannot start a
-/// measurement or change a light. The operational session is a separate concern built on top of the
-/// same protocol in later slices.
-///
-/// Short-lived by design — it is torn down the moment it has an answer, so discovery never holds a
-/// connection an Accessory's real session would have to fight for.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryGattHandshake.kt
 final class AccessoryGattHandshake {
-  /// Connect, discover and subscribe must all land before the handshake is even sent.
   private static let connectTimeout: TimeInterval = 10
 
   private let peripheral: CBPeripheral
@@ -58,8 +44,6 @@ final class AccessoryGattHandshake {
 
   func cancel() { finish(.failed("cancelled", advertisedName: peripheral.name)) }
 
-  // MARK: - Central callbacks, forwarded by `AccessoryDiscovery`
-
   func onConnected() {
     peripheral.discoverServices([AccessoryProtocol.serviceUUID])
   }
@@ -71,8 +55,6 @@ final class AccessoryGattHandshake {
   func onConnectFailed() {
     finish(.failed("connect-failed", advertisedName: peripheral.name))
   }
-
-  // MARK: - Peripheral callbacks
 
   func onServicesDiscovered(error: Error?) {
     guard error == nil,
@@ -122,8 +104,6 @@ final class AccessoryGattHandshake {
       case .ok(let manifest):
         return finish(.ok(manifest, advertisedName: peripheral.name))
       case .failed(let reason):
-        // A message from another session is noise on a shared characteristic, not a protocol
-        // violation: keep waiting for the manifest this hello asked for.
         if reason != .sessionMismatch {
           return finish(.failed(reason.rawValue, advertisedName: peripheral.name))
         }
@@ -134,9 +114,6 @@ final class AccessoryGattHandshake {
     }
   }
 
-  // MARK: - Internals
-
-  /// Subscribed and ready: write the one line discovery is allowed to send.
   private func sendHello() {
     guard pendingChunks.isEmpty, !writeInFlight else { return }
     let payload = Data((AccessoryProtocol.encodeHello(sessionId: sessionId) + "\n").utf8)
@@ -147,12 +124,10 @@ final class AccessoryGattHandshake {
       pendingChunks.append(payload.subdata(in: offset..<end))
       offset = end
     }
-    // The clock starts at the request, not at connect: a slow connect has its own budget.
     arm(TimeInterval(AccessoryProtocol.handshakeTimeoutMs) / 1000, error: "timeout")
     drain()
   }
 
-  /// One outstanding write at a time; the chunks of one line stay in order.
   private func drain() {
     guard !writeInFlight, let characteristic = writeCharacteristic, !pendingChunks.isEmpty else {
       return

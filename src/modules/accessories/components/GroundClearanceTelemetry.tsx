@@ -13,7 +13,6 @@ import { SensorBar } from './SensorBar'
 import { useGroundClearancePreview } from '../hooks/useGroundClearancePreview'
 import { readingCopy } from '../lib/groundClearanceCopy'
 
-/** Preview-only display. Native owns history and statistics; calibration never rerenders at sample rate. */
 export function GroundClearanceTelemetry({
   accessoryId,
   capabilityId,

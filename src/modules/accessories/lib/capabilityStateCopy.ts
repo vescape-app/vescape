@@ -1,6 +1,5 @@
 import type { AccessoryCapability, AccessoryLinkPhase } from 'vescape-core'
 
-/** Native requested state; the protocol does not report physical light output. */
 export function capabilityStateCopy(
   capability: AccessoryCapability,
   phase: AccessoryLinkPhase,

@@ -5,10 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The operational session contract, driven by `shared/fixtures/accessory-protocol/session.json`:
- * the exact bytes of every command this app writes, and what each accessory line must mean to a
- * live session.
- *
  * @parity /modules/vescape-core/ios/accessory/AccessorySessionTests.swift
  */
 class AccessorySessionTest {
@@ -26,8 +22,6 @@ class AccessorySessionTest {
 
     @Test
     fun theFirstCommandComesAfterTheHandshakeRequestId() {
-        // The hello owns request id 1; an operational request that reused it would look to the
-        // accessory like a duplicate handshake rather than a new command.
         assertEquals(
             fixture.getInt("helloRequestId") + 1,
             AccessorySession.FIRST_COMMAND_REQUEST_ID,
@@ -99,8 +93,6 @@ class AccessorySessionTest {
                     assertEquals(name, expected.getInt("requestId"), ack.requestId)
                     assertEquals(name, expected.getString("capabilityId"), ack.capabilityId)
                     assertEquals(name, expected.getLong("leaseMs"), ack.leaseMs)
-                    // The applied values are compared as text so `20` and `20.0` cannot disagree
-                    // across the two platforms that have to read the same line.
                     if (expected.has("appliedRateHz")) {
                         assertEquals(name, expected.getInt("appliedRateHz").toString(), ack.applied["rateHz"])
                     }
@@ -140,8 +132,6 @@ class AccessorySessionTest {
 
     @Test
     fun aCapabilityDeclaringNoRateIsNotConfigurable() {
-        // Not a clamp to some default: a rate the hardware never offered is one this app invented,
-        // and a sensor asked to run at it would be right to refuse.
         assertEquals(null, AccessorySession.resolveRateHz(20.0, emptyList()))
         assertEquals(null, AccessorySession.resolveRateHz(20.0, listOf(0.0, -5.0, Double.NaN)))
     }

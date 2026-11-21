@@ -7,16 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The ground-clearance contract, driven by `shared/fixtures/accessory-protocol/session.json`: what
- * a sample decodes to, what the declared range does to it, which samples are accepted, and what a
- * saved calibration turns a distance into.
- *
- * The property most of these cases exist to defend is one sentence: **a missing measurement is
- * never a distance.** Every way a reading can fail to be one — no value, a null value, a textual
- * value, a status from a newer firmware, a number outside the declared window — has a case here,
- * and all of them end at `error` or `out_of_range` with no value attached. None of them ends at the
- * top of the range, which is the reading that would tell a board it is safe to tilt.
- *
  * @parity /modules/vescape-core/ios/accessory/GroundClearanceTests.swift
  */
 class GroundClearanceTest {
@@ -94,8 +84,6 @@ class GroundClearanceTest {
             ).withinDeclaredRange(min, max)
             assertEquals(name, case.getString("resolvedStatus"), reading.status.wire)
             if (case.isNull("resolvedValueCm")) {
-                // The whole point: a number the hardware no longer promises loses its value rather
-                // than being squeezed to the nearest limit.
                 assertNull(name, reading.valueCm)
             } else {
                 assertEquals(name, case.getDouble("resolvedValueCm"), reading.valueCm!!, 1e-9)
@@ -137,9 +125,6 @@ class GroundClearanceTest {
 
     @Test
     fun aFreshSessionKeepsNothingFromTheOldOne() {
-        // Sequence numbers restart with the next hello. Without the reset the new session's first
-        // samples would be refused as duplicates and the screen would sit on a distance measured
-        // before the accessory rebooted.
         val tracker = AccessoryReadingTracker()
         val ok = AccessoryReading("clearance", 40, 9_000, AccessoryReadingStatus.OK, 12.0)
         assertTrue(tracker.accept(ok, receivedAtMs = 1_000))
@@ -159,7 +144,6 @@ class GroundClearanceTest {
                 GroundClearance.staleAfterMs(case.getDouble("rateHz")),
             )
         }
-        // An unacknowledged rate is not a reason to widen the window; the floor still applies.
         assertEquals(GroundClearance.MISSING_STREAM_FLOOR_MS, GroundClearance.staleAfterMs(0.0))
         assertEquals(GroundClearance.MISSING_STREAM_FLOOR_MS, GroundClearance.staleAfterMs(Double.NaN))
     }
@@ -219,14 +203,11 @@ class GroundClearanceTest {
 
         runtime.previewOpen = false
         runtime.riding = true
-        // Riding an uncalibrated sensor measures nothing: there is no binding to consume the samples,
-        // so the accessory would burn power producing them for nobody.
         assertFalse("riding without a calibration has no consumer", runtime.measurementDemanded)
 
         runtime.calibration = GroundClearanceCalibration(5.0, 20.0, "nose", 60)
         assertTrue(runtime.measurementDemanded)
 
-        // A firmware that narrowed its range invalidates the saved numbers, and with them the demand.
         runtime.rangeMin = 8.0
         assertFalse("a calibration that no longer fits drives nothing", runtime.measurementDemanded)
     }
@@ -255,7 +236,6 @@ class GroundClearanceTest {
         )
 
         runtime.calibration = GroundClearanceCalibration(5.0, 20.0, "nose", 100)
-        // Calibrated, connected, riding — and no sample has ever arrived. That is stale, not zero.
         assertEquals(GroundClearanceInput.Release(GroundClearanceRelease.STALE), input())
 
         runtime.tracker.accept(
@@ -263,7 +243,6 @@ class GroundClearanceTest {
             receivedAtMs = 1_000,
         )
         assertEquals(GroundClearanceInput.Drive(0.5, 12.5), input(now = 1_100))
-        // Past the missing-stream window the same sample is no longer evidence of anything.
         assertEquals(GroundClearanceInput.Release(GroundClearanceRelease.STALE), input(now = 1_400))
 
         runtime.tracker.accept(
@@ -287,8 +266,6 @@ class GroundClearanceTest {
 
     @Test
     fun anOkReadingWithoutAValueCannotBeConstructed() {
-        // The type refuses the pairing that would make a status and a number disagree, which is what
-        // lets every consumer treat "has a value" as "is a measurement".
         val thrown = runCatching {
             AccessoryReading("clearance", 1, 100, AccessoryReadingStatus.OUT_OF_RANGE, 12.0)
         }

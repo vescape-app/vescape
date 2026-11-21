@@ -4,7 +4,6 @@ import type { SharedValue } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 import { LiveNumber } from './LiveNumber'
 
-/** Hypothetical sensor output, calculated natively from calibration and a fresh reading. */
 export function GroundClearanceTiltPreview({ value }: { value: SharedValue<number> }) {
   return (
     <View style={styles.row}>
