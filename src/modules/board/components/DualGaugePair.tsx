@@ -38,13 +38,10 @@ const MARKER_INSET = 10
 const LEFT_ARC: Arc = { cx: 100, cy: 100, r: R, from: Math.PI, to: Math.PI / 2 }
 const RIGHT_ARC: Arc = { cx: 10, cy: 100, r: R, from: 0, to: Math.PI / 2 }
 
-// Readout box: line height is set explicitly so the drawn value keeps the same
-// vertical footprint the readout view used to reserve.
 const VALUE_FONT_SIZE = 36
 const VALUE_LINE_HEIGHT = 40
 const UNIT_FONT_SIZE = 10
 
-// Cropped viewBox per side — removes empty space so arc fills container width
 const CROP_PAD = 1
 const CROP_TOP = 12
 const VB_CROP_W = R + CROP_PAD * 2
@@ -52,20 +49,15 @@ const VB_CROP_H = VB_H - CROP_TOP
 const VB_CROP_LEFT_X = LEFT_ARC.cx - R - CROP_PAD
 const VB_CROP_RIGHT_X = RIGHT_ARC.cx - CROP_PAD
 
-// Arcs end at the arc centre line (cy), well above the bottom of the gauge box.
-// The touch row is clipped to that so it matches what the rider actually sees.
 const ARC_BOTTOM_RATIO = (LEFT_ARC.cy - CROP_TOP) / VB_CROP_H
 
 const ARC_GAP = 32
 
-// Peak marker, in arc units: a faint tick across the stroke with the value just outside the arc.
 const PEAK_TICK_INSET = 3.5
 const PEAK_TICK_OUTSET = 2
 const PEAK_LABEL_SIZE = 6
 const PEAK_LABEL_GAP = 1
-/** Level line from the tick's outer end to the value, so the value reads as level with it. */
 const PEAK_LEADER_LENGTH = 2.5
-/** Low peaks are of no interest, and lower on the arc the label would run off the screen. */
 const PEAK_MIN_FRACTION = 0.4
 
 const GLOW_STOPS = [0, 0.6, 0.95, 1]
@@ -83,7 +75,6 @@ interface QuarterArcProps {
   displayScale?: number
   alerts?: DualGaugeAlert[]
   hotRange?: MetricHotRange | null
-  /** Highest value across the live window, marked on the arc. */
   peak?: SharedValue<number | null>
 }
 
@@ -122,12 +113,10 @@ function QuarterArcLayer({
 
   return (
     <Group transform={transform}>
-      {/* Gradient wedge fill */}
       <Path path={wedgePathValue}>
         <GlowGradient arc={arc} color={color} stops={GLOW_STOPS} opacities={GLOW_OPACITIES} />
       </Path>
 
-      {/* Static background arc */}
       <Path
         path={isLeft ? BG_ARC_LEFT : BG_ARC_RIGHT}
         color={theme.palette.slate.border}
@@ -136,7 +125,6 @@ function QuarterArcLayer({
         strokeCap="butt"
       />
 
-      {/* Animated colored arc overlay */}
       <Path
         path={arcPathValue}
         color={arcColor}
@@ -160,17 +148,11 @@ function QuarterArcLayer({
         />
       ) : null}
 
-      {/* Position marker */}
       <Path path={markerPath} color={arcColor} style="stroke" strokeWidth={1.5} strokeCap="butt" />
     </Group>
   )
 }
 
-/**
- * Where the live window topped out: a tick across the arc, then a short level line out to the value
- * on the gauge's outer side — left of the speed arc, right of the duty arc — clear of the top bar.
- * Hidden while the peak is low on the arc.
- */
 function PeakMarker({
   arc,
   side,
@@ -286,7 +268,6 @@ interface GaugePairProps {
   dutyAlerts: DualGaugeAlert[]
   speedHotRange: MetricHotRange | null
   dutyHotRange: MetricHotRange | null
-  /** Rendered against the bottom of the arcs, inside the space the gauge box leaves below them. */
   footer?: ReactNode
   onPressSpeed: () => void
   onPressDuty: () => void
@@ -325,11 +306,6 @@ export function GaugePair({
     ],
     [cellWidth, scale],
   )
-  // Bowls the readouts are centered in, in canvas pixels. They used to be
-  // percentage-positioned overlay views; the numbers match those percentages.
-  // Where the drawn gauges actually end. The box is a fixed aspect ratio and the arcs stop at
-  // their centre line, so everything below this — the touch row's floor, the footer slot — has to
-  // be placed against this line rather than against the box.
   const arcBottom = gaugeHeight * ARC_BOTTOM_RATIO
   const bowlTop = gaugeHeight * 0.1
   const bowl = {
@@ -338,8 +314,6 @@ export function GaugePair({
     height: gaugeHeight * 0.95 - bowlTop,
   }
   return (
-    // The touch cells size the box: each holds the arcs' fixed aspect and the gap between them is
-    // fixed, so no single aspect ratio fits every screen, but the cells lay it out in one pass.
     <View style={styles.gaugePair} onLayout={onLayout}>
       {scale > 0 ? (
         <Canvas style={styles.svg}>
@@ -421,7 +395,6 @@ const styles = StyleSheet.create({
     flex: 1,
     aspectRatio: VB_CROP_W / VB_CROP_H,
   },
-  // Touch stops where the arcs do, leaving the footer's strip below to the footer.
   halfPressable: {
     height: `${ARC_BOTTOM_RATIO * 100}%`,
     overflow: 'visible',

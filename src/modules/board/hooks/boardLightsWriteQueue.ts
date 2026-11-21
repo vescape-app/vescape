@@ -3,7 +3,6 @@ interface BoardLightsState {
   headlightsEnabled: boolean | null
 }
 
-/** Serializes complete board-light intents while native echoes remain the rendered truth. */
 export function createBoardLightsWriteQueue(
   send: (enabled: boolean, headlightsEnabled: boolean) => Promise<unknown>,
   setError: (error: string | null) => void,

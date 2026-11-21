@@ -12,17 +12,6 @@ import expo.modules.vescapecore.telemetry.AppDataRepository
 internal const val DEFAULT_BOARD_NAME = "VESC Board"
 
 /**
- * Builds a [SessionConfig] from a stored board record. Shared by JS-driven connect
- * ([VescapeCoreModule.selectBoard]) and notification-driven connect ([BoardSessionController]).
- *
- * Poll rate cap (Hz) → minimum spacing floor between requests. 0 Hz = unlimited (pure
- * response-paced: send the next poll as soon as the reply lands). Polling stays response-paced
- * either way, so the floor caps the rate without outrunning the controller. Changing the cap
- * mid-session is applied live via reloadTelemetrySettings (see updateSetting).
- *
- * A replay passes the [hardware] its recording was made on: the link it presents comes from the
- * recording, not the Board row, so the Board needs no Board Link of its own (ADR 0048).
- *
  * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `resolve`
  */
 internal suspend fun buildSessionConfig(
@@ -41,7 +30,6 @@ internal suspend fun buildSessionConfig(
         throw error
     }
         ?: throw IllegalArgumentException("Board not found: $boardId")
-    // Reads resolve tombstones so history can name them (ADR 0027); connecting to one is refused.
     if (board["deletedAt"] != null) {
         throw IllegalArgumentException("Board is deleted: $boardId")
     }

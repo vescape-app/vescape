@@ -44,8 +44,6 @@ final class AutoConnectGateTests: XCTestCase {
     XCTAssertEqual(decide(suppressedBoardId: "board-2"), .connect(boardId: "board-1"))
   }
 
-  /// Restoration adoption decides first (ADR 0034): a launch that is resuming a live session must
-  /// not start a second one alongside it.
   func testStandsDownWhileStateRestorationIsPending() {
     XCTAssertEqual(decide(resumePending: true), .skip(reason: "state_restoration_pending"))
   }

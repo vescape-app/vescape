@@ -1,8 +1,5 @@
 import Foundation
 
-// Re-probing a connected board tears down the live GATT and reconnects immediately; the OS
-// releases the old connection asynchronously, so connecting too soon can fail. Settle before the
-// first connect, then retry a bounded number of times with backoff on connect-phase drops.
 private let PROBE_CONNECT_TIMEOUT_MS = 8_000
 private let PROBE_HANDSHAKE_FW_DELAY_MS = 300
 private let PROBE_PING_DELAY_MS = 600
@@ -16,19 +13,8 @@ private let PROBE_CONNECT_MAX_ATTEMPTS = 3
 private let PROBE_CAN_PING_TIMEOUT_MS = 3_500
 private let PROBE_TRANSPORT_TIMEOUT_MS = 2_500
 
-/// BLE orchestration that runs a single Board Probe and resolves it through the pure
-/// `TransportDetection` brain. It owns its own `VescGattClient` (separate `CBCentralManager`),
-/// kept apart from the live Board Session so probing stays out of the runtime hot path, and
-/// surfaces live milestones through `onProgress`.
-///
-/// Flow: connect → ping CAN (collect every responder, not just the first) → probe Direct and each
-/// responder by polling telemetry and confirming a transport only once it yields a valid decoded
-/// Refloat Telemetry Sample → resolve. The central runs on the main queue, so every callback and
-/// timer here is single-threaded on main.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardTransportDetector.kt
 /// @platform-diff iOS gets no BLE disconnect status code from CoreBluetooth, so connect-phase
-/// retries key off attempt count alone.
 internal final class BoardTransportDetector: VescGattListener {
   private enum Phase { case connecting, pinging, probing }
 
@@ -81,13 +67,6 @@ internal final class BoardTransportDetector: VescGattListener {
 
   private func elapsed() -> Int64 { nowMs() - startMs }
 
-  /// Surface live probe milestones to JS, named for what the probe is doing right now:
-  /// `connecting` → `handshake` (service discovery) → `pinging` (CAN scan) → per candidate
-  /// `probing` (waiting for telemetry proof) → `bms` (transport confirmed, waiting for a BMS
-  /// answer) → `identity` (BMS answered, waiting for the Refloat info reply). `transport` names
-  /// the candidate being probed and `canIds` the CAN scan responders. The UI still reads final
-  /// facts from the returned candidates; full detail stays in Diagnostic Events.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardTransportDetector.kt `emitProgress`
   /// @parity /modules/vescape-core/src/index.ts `BoardProbeStep`
   private func emitProgress(_ step: String, transport: BoardTransport? = nil, withCanIds: Bool = false) {
@@ -131,8 +110,6 @@ internal final class BoardTransportDetector: VescGattListener {
     attemptConnect(initial: true)
   }
 
-  /// Open the probe's GATT connection after a settle delay. The first attempt waits for any
-  /// just-released live connection to clear; retries back off after a transient connect-phase drop.
   private func attemptConnect(initial: Bool) {
     if finished { return }
     connectAttempts += 1
@@ -147,12 +124,8 @@ internal final class BoardTransportDetector: VescGattListener {
     }
   }
 
-  // MARK: - VescGattListener (all on the main queue)
-
   func onDeviceDiscovered(id: String, name: String, rssi: Int, serviceUUIDs: [String]) {}
   func onScanFailure(_ message: String) {}
-  /// The probe’s client is built without a restore identifier (ADR 0034) — probing is never
-  /// resurrected — so its central never restores and this can never fire.
   func onGattRestored(peripheralIds: [String]) {}
   func onGattConnected() {
     recordDiagnostic(
@@ -188,8 +161,6 @@ internal final class BoardTransportDetector: VescGattListener {
   func onGattDisconnected(intentional: Bool, message: String) {
     if finished || intentional { return }
     if phase == .connecting {
-      // Connect-phase drops are typically transient (a not-yet-released prior connection) —
-      // retry a bounded number of times before giving up.
       if connectAttempts < PROBE_CONNECT_MAX_ATTEMPTS {
         cancelStep()
         recordDiagnostic(
@@ -206,7 +177,6 @@ internal final class BoardTransportDetector: VescGattListener {
       }
       fail(code: "PROBE_DISCONNECTED", message: "Board disconnected during probe")
     } else {
-      // Dropped mid-detection: resolve with whatever was confirmed so far rather than hanging.
       recordProbeDiagnostic(
         "board_probe_disconnected_mid_detection",
         [
@@ -235,7 +205,6 @@ internal final class BoardTransportDetector: VescGattListener {
     guard !payload.isEmpty else { return }
     switch Int(payload[0]) {
     case COMM_PING_CAN:
-      // Collect EVERY responding CAN id, not just payload[1].
       if phase == .pinging {
         var changed = false
         for i in 1..<payload.count {
@@ -258,18 +227,12 @@ internal final class BoardTransportDetector: VescGattListener {
         parseRefloatGetAllData(payload: payload, avgLatency: nil, packetAt: nowMs(), pullRateHz: nil) != nil {
         markConfirmed()
       }
-      // Custom-app-data replies come back bare even over CAN (like telemetry
-      // above), and only one transport is probed at a time, so this reply
-      // belongs to the current candidate.
       if phase == .probing, current != nil { markRefloatInfo(payload) }
     case COMM_FW_VERSION:
-      // FW replies also come back bare over CAN, like custom app data above.
       if phase == .probing, current != nil { markFwVersion(payload) }
     case COMM_BMS_GET_VALUES:
-      // Direct smart-BMS reply.
       if phase == .probing, current != nil, parseBmsValues(payload, packetAt: nowMs()) != nil { markBms() }
     case COMM_FORWARD_CAN:
-      // CAN-forwarded smart-BMS reply (telemetry stays bare, but BMS comes wrapped).
       if phase == .probing, current != nil, payload.count >= 3, forwardedForCurrent(payload) {
         if Int(payload[2]) == COMM_FW_VERSION {
           markFwVersion(Array(payload[2...]))
@@ -284,8 +247,6 @@ internal final class BoardTransportDetector: VescGattListener {
       break
     }
   }
-
-  // MARK: - Probe sequencing
 
   private func beginProbing() {
     if finished { return }
@@ -318,16 +279,11 @@ internal final class BoardTransportDetector: VescGattListener {
         "elapsed_ms": elapsed(),
       ]
     )
-    // Ask for telemetry (confirms the transport) and BMS values (capability) in one window. The
-    // BMS reply is best-effort: absence within the window means no BMS.
     sendProbeBurst(transport)
-    // Re-send once mid-window in case the first request dropped.
     after(PROBE_TRANSPORT_TIMEOUT_MS / 2) { [weak self] in self?.sendProbeBurst(transport) }
     armStep(PROBE_TRANSPORT_TIMEOUT_MS) { [weak self] in self?.finalizeProbe() }
   }
 
-  /// Send the telemetry then BMS request, staggered so each write lands rather than the second
-  /// dropping a false "no BMS".
   private func sendProbeBurst(_ transport: BoardTransport) {
     if finished || current != transport { return }
     _ = gatt.sendPayload(transport.frame([
@@ -347,8 +303,6 @@ internal final class BoardTransportDetector: VescGattListener {
     }
   }
 
-  /// Telemetry sample proves the transport works; the window now waits on BMS —
-  /// unless the BMS reply already raced in first, then it waits on identity.
   private func markConfirmed() {
     if currentConfirmed { return }
     currentConfirmed = true
@@ -363,9 +317,6 @@ internal final class BoardTransportDetector: VescGattListener {
     emitProgress(currentHasBms ? "identity" : "bms", transport: current, withCanIds: true)
   }
 
-  /// A smart-BMS answered on the current transport; the window now waits on identity.
-  /// Burst replies race, so only advance once telemetry confirmed — an early BMS
-  /// reply is recorded and reported when the confirm lands.
   private func markBms() {
     if currentHasBms { return }
     currentHasBms = true
@@ -511,8 +462,6 @@ internal final class BoardTransportDetector: VescGattListener {
     cancelStep()
     gatt.disconnect()
   }
-
-  // MARK: - Timers (main queue)
 
   private func after(_ ms: Int, _ block: @escaping () -> Void) {
     scheduler.postDelayed(Int64(ms), block)

@@ -1,8 +1,6 @@
 package expo.modules.vescapecore.connection
 
 /**
- * Deadline, not a delay. Preserve the increased allowance across scan/connect attempts until
- * telemetry proves recovery, or a new logical Board Session starts.
  * @parity /modules/vescape-core/ios/connection/GattHandshakeDeadline.swift
  */
 internal class GattHandshakeDeadline {

@@ -35,13 +35,10 @@ interface BoardActions {
     batteryConfig?: BatteryConfig | null
     topSpeedKmh?: number
     alertPresetsOnboarded?: boolean
-    /** Alert setup saved with the Board in one transaction. */
     alerts?: InitialBoardAlerts
   }) => Promise<Board>
   updateBoard: (board: Board) => Promise<void>
-  /** Dismiss (acknowledge) or restore a Board Warning kind; persisted on the board record. */
   setWarningDismissed: (boardId: string, kind: string, dismissed: boolean) => Promise<void>
-  /** Dismiss every given Board Warning kind at once (the sheet's "Dismiss all"). */
   dismissAllWarnings: (boardId: string, kinds: string[]) => Promise<void>
   removeBoard: (id: string) => Promise<void>
   setActiveBoard: (id: string | null) => void
@@ -65,9 +62,6 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
           ? settings.selectedBoardId
           : (boards[0]?.id ?? null)
 
-    // Reuse prior object refs for unchanged boards (and the whole array when nothing changed) so a
-    // reload — e.g. the session-end lastBattery refresh — only re-renders consumers of the board
-    // that actually changed, never the whole app.
     const mergedBoards = mergeBoards(prevBoards, boards)
     const patch: Partial<BoardState> = {}
     if (mergedBoards !== prevBoards) patch.boards = mergedBoards
@@ -138,7 +132,6 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     await nativeDeleteBoard(id)
     const remaining = get().boards.filter((b) => b.id !== id)
     set({ boards: remaining })
-    // Native owns the selection; leaving it on the deleted Board would keep it on the wrist.
     if (get().activeBoardId === id) get().setActiveBoard(remaining[0]?.id ?? null)
   },
 
@@ -148,8 +141,6 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
   },
 }))
 
-/** Merge freshly-loaded boards into the prior array, keeping object identity for any board whose
- *  contents are unchanged, and returning the prior array untouched when nothing changed at all. */
 function mergeBoards(prev: Board[], next: Board[]): Board[] {
   const merged = next.map((n) => {
     const old = prev.find((p) => p.id === n.id)

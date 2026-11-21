@@ -21,10 +21,6 @@ internal class ReconnectScheduler(
     private val scheduler: Scheduler,
     private val port: ReconnectBlePort,
     private val listener: ReconnectListener,
-    /**
-     * Whether the rider is currently looking at the app. Exempts the retry loop from the slow tier:
-     * a rider watching "Reconnecting" must not wait 30s between attempts.
-     */
     private val appForeground: () -> Boolean = { false },
 ) {
     private var attempt = 0
@@ -135,7 +131,6 @@ internal class ReconnectScheduler(
                 port.stopScan()
             // intentional-suppression: transport port owns stop-scan logging
             } catch (_: Exception) {
-                // Port impl handles logging.
             }
         }
     }

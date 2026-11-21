@@ -10,7 +10,6 @@ import { theme } from '@/constants/theme'
 interface LightsCellProps {
   icon: Icon
   label: string
-  /** `null` while the board has not said — the switch reads off but refuses input. */
   value: boolean | null
   disabled: boolean
   onValueChange: (value: boolean) => void
@@ -43,7 +42,6 @@ function LightsCell({
       <Text style={styles.label} numberOfLines={1}>
         {label}
       </Text>
-      {/* The whole cell is the control; the switch mirrors it rather than competing for the tap. */}
       <View pointerEvents="none">
         <Switch
           value={value}
@@ -56,10 +54,6 @@ function LightsCell({
   )
 }
 
-/**
- * The board's two light switches as one control: they are the same board feature and every write
- * states both, so they share a surface rather than sitting as two unrelated widgets.
- */
 export function BoardLightsControl({ enabled }: { enabled: boolean }) {
   const surface = useResolvedSecondaryWidgetSurface()
   const lights = useBoardLights()

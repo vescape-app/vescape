@@ -3,7 +3,6 @@ package expo.modules.vescapecore.connection
 // @parity /modules/vescape-core/ios/connection/BoardPhase.swift `BoardPhase`
 // @parity /modules/vescape-core/src/index.ts `SessionStatus`
 // @platform-diff Android also exposes Stale/Disconnecting for foreground-service notification and
-// stale-telemetry reporting windows; iOS documents those as accepted wire differences on its enum.
 internal enum class BoardPhase(val wireValue: String) {
     Idle("idle"),
     Connecting("connecting"),

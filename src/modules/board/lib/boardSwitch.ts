@@ -4,10 +4,6 @@ export interface BoardSwitchPort {
   setActiveBoard(id: string): void
 }
 
-/**
- * A Board switch ends the current Board Session before changing durable
- * selection. This keeps live telemetry and Ride Recording bound to one Board.
- */
 export async function switchBoard(
   currentBoardId: string | null,
   nextBoardId: string,

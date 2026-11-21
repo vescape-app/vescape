@@ -11,7 +11,6 @@ interface BoardNameFieldProps {
   onSave: (name: string) => Promise<void> | void
 }
 
-/** Board name shown inline in the hero, with an inline pencil that swaps it for a text input. */
 export function BoardNameField({ name, saving = false, onSave }: BoardNameFieldProps) {
   const [draft, setDraft] = useState<string | null>(null)
 

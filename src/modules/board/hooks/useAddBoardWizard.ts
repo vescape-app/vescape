@@ -27,7 +27,6 @@ import { DEFAULT_RAIL_COLOR_ID, type RailColorId } from '@/modules/board/lib/rai
 import type { RailId } from '@/modules/board/lib/railPresets'
 import { getBoardPreset, getCustomRailOption } from '@/modules/board/lib/boardPresets'
 
-/** The wizard's buffered alert setup for every preset metric, flushed onto the Board on save. */
 export type DraftAlertSetupBag = Record<AlertPresetMetric, DraftAlertSetup>
 
 const DEFAULT_DRAFT_ALERT_SETUP = Object.fromEntries(
@@ -37,18 +36,15 @@ const DEFAULT_DRAFT_ALERT_SETUP = Object.fromEntries(
   ]),
 ) as DraftAlertSetupBag
 
-/** Canonical step order. `presets` is the per-board Alert Preset setup step. */
 export const WIZARD_STEPS = ['scan', 'name', 'battery', 'presets', 'confirm'] as const
 export type WizardStepId = (typeof WIZARD_STEPS)[number]
 
-/** Sub-phase of the Pair step: choosing a peripheral, or probing the chosen one. */
 type PairPhase = 'select' | 'probing'
 
 interface AddBoardWizardState {
   boardId: string
   step: number
   stepId: WizardStepId
-  /** Active steps for this run. */
   steps: readonly WizardStepId[]
   pairPhase: PairPhase
   bleId: string
@@ -68,12 +64,9 @@ interface AddBoardWizardState {
   manualMaxVoltage: string
   batteryWarning: string | null
   batterySummary: BatterySummary
-  /** Draft Board Top Speed + per-metric alert setup, persisted to the new Board on save. */
   topSpeedKmh: number
   alertSetup: DraftAlertSetupBag
-  /** True when the draft battery config is usable (gates SoC %-based presets). */
   hasBatteryConfig: boolean
-  /** The draft's derived battery config when valid, for SoC %-scaled battery rules. */
   batteryConfig: DerivedBatteryConfig | null
   canSave: boolean
 }
@@ -111,7 +104,6 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     useShallow((s) => ({ addBoard: s.addBoard, setActiveBoard: s.setActiveBoard })),
   )
 
-  // Alert setup is per-board now (#254), so every new board gets its own guided preset step.
   const steps = WIZARD_STEPS
 
   const [step, setStep] = useState(0)
@@ -173,7 +165,6 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     setRailId(option.railId)
   }
 
-  // Memoized on the draft inputs so draft alert controllers only rebuild when the battery changes.
   const derivedBattery = useMemo(() => {
     const previewConfig: BatteryConfig =
       batteryMode === 'preset'
@@ -201,7 +192,6 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   const next = () => setStep((s) => Math.min(s + 1, steps.length - 1))
   const back = () => setStep((s) => Math.max(s - 1, 0))
 
-  // Selecting a peripheral starts a Board Probe before the rest of the wizard.
   const selectDevice = (id: string, deviceName: string) => {
     setBleId(id)
     setBleName(deviceName)
@@ -210,7 +200,6 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     setPairPhase('probing')
   }
 
-  // Drop the chosen peripheral and return to the device list.
   const clearDevice = () => {
     setBleId('')
     setBleName('')
@@ -218,14 +207,12 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     setPairPhase('select')
   }
 
-  // A successful probe yields a draft Board Link; advance to the rest of setup.
   const onDeviceProbed = (link: BoardLink) => {
     setDraftLink(link)
     setPairPhase('select')
     next()
   }
 
-  // Explicit offline path: create the Board with no Board Link.
   const continueOffline = () => {
     clearDevice()
     next()
@@ -241,8 +228,6 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       manualMinVoltage,
       manualMaxVoltage,
     )
-    // Each draft level is saved with its draft rider rules in one write; native stores a preset
-    // row only for a level that differs from the default.
     const presets = Object.fromEntries(
       ALERT_PRESET_METRICS.map((metric) => {
         const { level } = alertSetup[metric]

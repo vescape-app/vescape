@@ -2,17 +2,9 @@ import { create } from 'zustand'
 import type { FocusedSeriesEvent } from 'vescape-core'
 import { omitKey } from '@/helpers/records'
 
-/**
- * High-resolution live series for the metrics a `/control` detail chart currently has
- * focused. Native emits each at full resolution (20ms buckets, below the packet interval)
- * and pushes ~1Hz on `onFocusedSeries`, one event per focused metric. `series[metric]` is
- * a flat `[ts0, v0, ts1, v1, ...]` array; `exclusions[key]` is a flat `[start0, end0, ...]`
- * span list per exclusion key, shared across metrics, for redrawing overlay bands.
- */
 interface FocusedSeriesState {
   series: Record<string, number[]>
   exclusions: Record<string, number[]>
-  /** Coverage of the focused data, measured natively — see {@link FocusedSeriesEvent}. */
   spanMs: number
   sampleRateHz: number
   generation: number

@@ -134,7 +134,6 @@ final class BoardSessionLinkIntegrityTests: XCTestCase {
     )
   }
 
-  // @legacy-float saved-link: compatibility regression group; see /docs/legacy-float.md#saved-link.
   func testLegacyInfoCanGainPackageAndPatchPrecisionWithoutInvalidatingLink() {
     let cases = [
       ("Refloat 1.2", "Float/Refloat 1.2"),

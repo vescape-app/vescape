@@ -1,10 +1,5 @@
 import Foundation
 
-/// Identity token for one Board Session. Long-lived native work (GATT callbacks, poll
-/// timers) captures the session it started under and checks `isActive` before touching
-/// shared state, so a callback from a torn-down or reconnected session is discarded
-/// instead of clobbering the live one. See ADR 0010.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/runtime/BoardSession.kt
 final class BoardSession {
   let id: Int64
@@ -31,10 +26,6 @@ final class BoardSession {
     return linkIntegrity
   }
 
-  /// The probe ran but never proved the link either way. Nothing here says the board changed, only
-  /// that trust could not be established, so this resolves to `outdated` — the state whose CTA asks
-  /// the rider to re-link. A `checking` that never ends is a dead end: commands stay blocked and no
-  /// warning offers a way out.
   func markCheckTimedOut() -> LinkIntegrity {
     if linkIntegrity == .checking { linkIntegrity = .outdated }
     return linkIntegrity
@@ -116,7 +107,6 @@ func legalModeEnableError(
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/runtime/BoardSession.kt
 struct LinkIdentity {
-  /// The Board Link schema a complete identity is written under.
   static let currentLinkVersion = 4
 
   var linkVersion: Int?
@@ -125,8 +115,6 @@ struct LinkIdentity {
   var refloatVersion: String?
   var refloatBaseVersion: String?
 
-  // refloatBaseVersion is derived from refloatVersion and may be absent for malformed or unknown
-  // version strings, so it is not required here; matches/mismatches still compare it when present.
   var isComplete: Bool {
     linkVersion == Self.currentLinkVersion &&
       hasBms != nil &&
@@ -148,18 +136,12 @@ struct LinkIdentity {
       (hasBms != true || observed.hasBms == true)
   }
 
-  // @legacy-float saved-link: keep until legacy saved links migrate or require explicit re-link.
-  // Removal checklist: /docs/legacy-float.md#saved-link
-  // INFO v1 reported only major/minor, and older app versions asserted "Refloat" even for Float.
-  // Accept richer observations only for those saved identities. Never discard package, patch or
-  // suffix facts already captured by INFO v2, or broaden this to unrelated packages.
   private func packageVersionMatches(_ observed: LinkIdentity) -> Bool {
     if refloatVersion == observed.refloatVersion { return true }
     guard let expected = refloatVersion, let current = observed.refloatVersion,
       expected.range(of: #"^(?:Refloat|Float/Refloat) (\d+\.\d+)$"#, options: .regularExpression) == expected.startIndex..<expected.endIndex,
       current.range(of: #"^(?:Float|Refloat|Float/Refloat) (\d+\.\d+)(?:\.\d+(?:-.+)?)?$"#, options: .regularExpression) == current.startIndex..<current.endIndex
     else { return false }
-    // Both patterns require major/minor; the legacy value deliberately has no patch precision.
     return Self.normalizeRefloatBaseVersion(expected) ==
       Self.normalizeRefloatBaseVersion(current)?.split(separator: ".").prefix(2).joined(separator: ".")
   }

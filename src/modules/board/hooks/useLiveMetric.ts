@@ -44,7 +44,6 @@ export const liveSelectors = {
   balancePitch: (s: TelemetryEvent) => finite(s.balancePitch),
 } as const
 
-/** Reverse map: a `liveSelectors` function → its metric key, matching the native series names. */
 const SELECTOR_KEYS = new Map<TelemetrySelector, string>(
   (Object.entries(liveSelectors) as [string, TelemetrySelector][]).map(([key, selector]) => [
     selector,
@@ -52,13 +51,11 @@ const SELECTOR_KEYS = new Map<TelemetrySelector, string>(
   ]),
 )
 
-/** Grace period after interactions settle before the heavy focused stream is opened. */
 export const FOCUS_DEFER_MS = 500
 
 const EMPTY_FLAT: number[] = []
 const EMPTY_RANGES: ExcludedRange[] = []
 
-/** Native emits every series flat as `[ts0, v0, ts1, v1, ...]` — the most compact bridge shape. */
 function flatToPoints(flat: number[]): LiveMetricPoint[] {
   const points: LiveMetricPoint[] = []
   for (let i = 0; i + 1 < flat.length; i += 2) {
@@ -67,17 +64,11 @@ function flatToPoints(flat: number[]): LiveMetricPoint[] {
   return points
 }
 
-/**
- * Center-screen series (the battery bar): decimated natively (min/max per bucket) and pushed ~1Hz
- * on `onLiveSeries`. `metricKey` matches the native `LIVE_SERIES_METRICS` set. No raw samples
- * cross the bridge and no per-render projection runs.
- */
 export function useLiveSeries(metricKey: string): LiveMetricPoint[] {
   const flat = useLiveSeriesStore((s) => s.metrics[metricKey] ?? EMPTY_FLAT)
   return useMemo(() => flatToPoints(flat), [flat])
 }
 
-/** `useLiveSeries` for several metrics at once, keyed by metric. Pass a stable array. */
 export function useLiveSeriesGroup(
   metricKeys: readonly string[],
 ): Record<string, LiveMetricPoint[]> {
@@ -89,10 +80,6 @@ export function useLiveSeriesGroup(
   )
 }
 
-/**
- * Adds `metricKeys` to the ~1Hz `onLiveSeries` stream while mounted, so native decimates them
- * only while something shows them. Pass a stable array.
- */
 export function useLiveSeriesMetrics(metricKeys: readonly string[]): void {
   useEffect(() => {
     acquireLiveSeries(metricKeys)
@@ -100,16 +87,6 @@ export function useLiveSeriesMetrics(metricKeys: readonly string[]): void {
   }, [metricKeys])
 }
 
-/**
- * Full-resolution live series for a `/control` detail chart. Focusing the metric makes native
- * stream it on `onFocusedSeries` at full resolution (20ms buckets, below the packet interval);
- * unmounting releases it so native stops. The center screen never focuses anything, so the
- * high-res stream costs nothing while riding.
- *
- * The focus is taken only after the screen has settled ({@link FOCUS_DEFER_MS}): the first
- * emit hands over the whole window at once, which is the single heaviest moment of the screen,
- * and it must not land while the navigation transition is still running.
- */
 export function useLiveMetric(pick: TelemetrySelector): LiveMetricPoint[] {
   const metricKey = SELECTOR_KEYS.get(pick) ?? ''
   if (__DEV__ && !metricKey) {
@@ -126,10 +103,6 @@ export function useLiveMetric(pick: TelemetrySelector): LiveMetricPoint[] {
 }
 
 /**
- * Overlay bands for a detail chart, rebuilt from the excluded spans riding along with the
- * focused series (flat `[start, end, ...]` per exclusion key). Unions the requested keys, then
- * reuses {@link toExcludedRanges} to merge nearby spans. Reason mirrors the old sample-scan rule:
- * `low_speed` when only `avg_speed` is requested, else `free_spin`.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `excludedSpans`
  */
 export function buildFocusedExcludedRanges(

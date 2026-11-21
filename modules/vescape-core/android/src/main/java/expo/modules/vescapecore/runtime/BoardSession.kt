@@ -27,12 +27,6 @@ class BoardSession(val id: Long) {
         return linkIntegrity
     }
 
-    /**
-     * The probe ran but never proved the link either way. Nothing here says the board changed, only
-     * that trust could not be established, so this resolves to `Outdated` — the state whose CTA asks
-     * the rider to re-link. A `Checking` that never ends is a dead end: commands stay blocked and no
-     * warning offers a way out.
-     */
     fun markCheckTimedOut(): LinkIntegrity {
         if (linkIntegrity == LinkIntegrity.Checking) linkIntegrity = LinkIntegrity.Outdated
         return linkIntegrity
@@ -102,8 +96,6 @@ data class LinkIdentity(
     val refloatVersion: String? = null,
     val refloatBaseVersion: String? = null,
 ) {
-    // refloatBaseVersion is derived from refloatVersion and may be absent for malformed or unknown
-    // version strings, so it is not required here; matches/mismatches still compare it when present.
     val isComplete: Boolean
         get() = linkVersion == CURRENT_LINK_VERSION &&
             hasBms != null &&
@@ -122,11 +114,6 @@ data class LinkIdentity(
             baseVersionMatches(observed) &&
             (hasBms != true || observed.hasBms == true)
 
-    // @legacy-float saved-link: keep until legacy saved links migrate or require explicit re-link.
-    // Removal checklist: /docs/legacy-float.md#saved-link
-    // INFO v1 reported only major/minor, and older app versions asserted "Refloat" even for Float.
-    // Accept richer observations only for those saved identities. Never discard package, patch or
-    // suffix facts already captured by INFO v2, or broaden this to unrelated packages.
     private fun packageVersionMatches(observed: LinkIdentity): Boolean {
         if (refloatVersion == observed.refloatVersion) return true
         val legacy = legacyPackageVersion.matchEntire(refloatVersion ?: return false) ?: return false
@@ -141,7 +128,6 @@ data class LinkIdentity(
                 observed.refloatBaseVersion == normalizeRefloatBaseVersion(observed.refloatVersion))
 
     companion object {
-        /** The Board Link schema a complete identity is written under. */
         const val CURRENT_LINK_VERSION = 4
 
         private val legacyPackageVersion = Regex("""^(?:Refloat|Float/Refloat) (\d+\.\d+)$""")

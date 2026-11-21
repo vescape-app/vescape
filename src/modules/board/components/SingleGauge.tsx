@@ -39,19 +39,15 @@ interface SingleGaugeProps {
   color: ThemeColor
   unit: string
   decimals?: number
-  /** Numeric readout only; arc, color ramp, markers and max stay canonical. */
   displayScale?: number
   label?: string
-  /** Optional action aligned with the gauge label in the chart's top-right corner. */
   headerRight?: ReactNode
   alerts?: DualGaugeAlert[]
   hotRange?: MetricHotRange | null
-  /** Draw the live needle + numeric readout. Off for static, offline previews. */
   showValue?: boolean
   containerStyle?: StyleProp<ViewStyle>
 }
 
-// Half-arc geometry: sweeps π (f=0) → 0 (f=1) around a center near the bottom.
 const HALF_ARC: Arc = { cx: 100, cy: 100, r: 88, from: Math.PI, to: 0 }
 const HALF_VB_W = 200
 const HALF_VB_H = 112
@@ -61,8 +57,6 @@ const GLOW_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.3]
 
 const BG_ARC = svgPath(arcPath(HALF_ARC, 1))
 
-// Readout box: explicit line height keeps the drawn value at the vertical
-// footprint the readout view used to reserve.
 const HALF_VALUE_FONT_SIZE = 52
 const HALF_VALUE_LINE_HEIGHT = 58
 const HALF_UNIT_FONT_SIZE = 12
@@ -105,7 +99,6 @@ function HalfArc({
     svgPath(wedgePath(HALF_ARC, normalizeFraction(value.value ?? min, min, max))),
   )
   const markerPath = useDerivedValue(() => {
-    // No live value → no needle: a zero-position needle next to a "—" readout reads as a real 0.
     if (value.value == null) return svgPath('')
     return radialTickPath(HALF_ARC, normalizeFraction(value.value, min, max), MARKER_INSET)
   })

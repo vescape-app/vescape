@@ -36,13 +36,10 @@ export interface BoardConfigGroup {
   title: string
   source: 'refloat' | 'motor'
   rows: ConfigRow<string>[]
-  /** Less frequently changed setup, shown under the tab's disclosure when it is large. */
   advanced?: boolean
-  /** When the tab is large, keep just these fields in this group visible initially. */
   primaryIds?: string[]
 }
 
-/** The same row definitions used alongside live telemetry, grouped for browsing a Board's setup. */
 export const BOARD_CONFIG_TABS: { id: string; label: string; groups: BoardConfigGroup[] }[] = [
   {
     id: 'quick',
