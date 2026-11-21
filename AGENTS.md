@@ -88,6 +88,8 @@ everything else belongs in the commit message. Only machine-meaningful lines sta
 `bun run comments:check` enforces this (pre-commit on staged content, and CI); generated files are
 excluded by explicit path in `scripts/check-comments.ts`. Shell scripts have no reliable comment
 lexer there and are not scanned; keep them free of comments by hand.
+`scripts/comment-baseline.json` tracks grandfathered comments by file and content. Prune its entries
+as comments are removed. Use `/delete-comment` for a cleanup pass.
 
 ## Parity
 

@@ -1,9 +1,36 @@
 import { describe, expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkCommentsInSource, isExcludedPath, runStagedCommentLint } from './check-comments'
+import {
+  applyCommentBaseline,
+  checkCommentsInSource,
+  isExcludedPath,
+  runStagedCommentLint,
+} from './check-comments'
+
+test('ratchets exact comments by file and multiplicity across line shifts', () => {
+  const file = 'src/demo.ts'
+  const legacy = '// grandfathered comment'
+  const key = `${file}:${createHash('sha256').update(legacy).digest('hex')}`
+  const baseline = { [key]: 1 }
+  const shifted = checkCommentsInSource(
+    file,
+    `export const value = 1\n${legacy}\n${legacy}\n// new prose`,
+  )
+  const moved = checkCommentsInSource('src/other.ts', legacy)
+  const result = applyCommentBaseline([...shifted, ...moved], baseline)
+
+  expect(result.newViolations.map(({ file, line }) => `${file}:${line}`)).toEqual([
+    `${file}:3`,
+    `${file}:4`,
+    'src/other.ts:1',
+  ])
+  expect(result.remaining).toEqual({})
+  expect(applyCommentBaseline([], baseline).remaining).toEqual(baseline)
+})
 
 describe('check-comments: TS/TSX/JS', () => {
   test('flags ordinary single-line, block, JSDoc, TODO, and JSX comments', () => {

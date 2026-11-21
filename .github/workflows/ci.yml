@@ -55,6 +55,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -64,6 +66,8 @@ jobs:
       - run: bun run ts
       - run: bun run lint
       - run: bun run comments:check
+        env:
+          COMMENT_BASELINE_REF: ${{ github.event.pull_request.base.sha }}
       - run: bun run format:check
       - run: bun run knip
       - run: bun run test:bun
