@@ -2,6 +2,7 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BatterySocEstimator.kt
 /// @platform-diff Android is a singleton `object` loaded from an Android asset; iOS is an instance
+/// (owned by the coordinator) loaded from a CocoaPods resource bundle. Curve math is identical.
 internal final class BatterySocEstimator {
   struct SocPoint { let voltage: Double; let soc: Double }
   private struct NormPoint { let norm: Double; let soc: Double }

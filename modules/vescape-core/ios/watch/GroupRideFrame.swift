@@ -2,6 +2,8 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrame.kt `GroupRideFrameCodec`
 /// @platform-diff Android sends the bytes on their own `MessageClient` path. `WCSession` has one
+///   message stream, and the Watch Frame already owns `sendMessageData`, so the Group Ride Frame
+///   rides `sendMessage` under ``watchGroupRideMessageKey`` instead.
 let watchGroupRideMessageKey = "groupRide"
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/GroupRideFrame.kt `WATCH_GROUP_RIDE_VERSION`

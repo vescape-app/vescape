@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.withLock
 /**
  * @parity /modules/vescape-core/ios/watch/WatchRouteMirror.swift `WatchRouteMirror`
  * @platform-diff `updateApplicationContext` is synchronous and latest-value-wins, so the iOS peer
+ *   needs neither the write mutex nor the generation counter an async `putDataItem` requires here.
  */
 internal class WatchRoutePusher(
     private val context: Context,

@@ -30,6 +30,7 @@ const EMPTY_STATS: FavoriteRangeStats = {
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/FavoriteSummaryBuilder.kt `buildFavoriteSummary`
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `favoriteSummary`
  * @platform-diff This is a best-effort UI preview over already-loaded samples; native recomputes
+ * durable stats with Metric Sanitizers and persisted bucket semantics when the Favorite is saved.
  */
 export function summarizeFavoriteRange(
   samples: TelemetrySample[],

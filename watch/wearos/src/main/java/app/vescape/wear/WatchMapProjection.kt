@@ -28,6 +28,7 @@ internal data class WatchMapPlacement(
 /**
  * @parity /modules/vescape-core/ios/watch/WatchMapProjection.swift `WatchMapProjection`
  * @platform-diff The face edge and in range are the round face's circle here; watchOS uses its
+ *   rounded-rectangle display for the edge and its rectangle for range.
  */
 internal class WatchMapProjection(
     val width: Float,

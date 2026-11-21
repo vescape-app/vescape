@@ -7,6 +7,7 @@ internal struct SessionResumeMarker: Equatable {
 }
 
 /// @platform-diff Android has no peer: its `CoreForegroundService` keeps the process alive, so
+/// there is no death to resume from and no launch marker to keep.
 internal final class SessionResumeStore {
   static let shared = SessionResumeStore(defaults: .standard)
 

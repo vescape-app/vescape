@@ -2,6 +2,12 @@ import SwiftUI
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/GroupRidePage.kt `GroupRidePage`
 /// @platform-diff Wear OS has no crown binding on its pager, so its settled list owns the crown even
+///   when it fits. Row width is clamped to the display less the rim inset rather than a round
+///   face's chord. Only watchOS shrinks an over-wide name or distance; Compose here cannot. The
+///   position indicator is a straight bar beside the flat right edge, Wear OS's a curved arc. A
+///   SwiftUI drag on the list takes the touch from the paging scroll view outright, so a pull down
+///   from the top rubber-bands the list and pages back on release; Compose's nested scroll hands the
+///   same pull to its pager as it happens.
 struct GroupRidePage: View {
   let group: WatchGroupRide
   let settled: Bool

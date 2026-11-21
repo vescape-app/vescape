@@ -578,6 +578,7 @@ final class AppDataRepository {
     "vescFaultCollectionEnabled": true,
     "companionPresenceCooldownMinutes": 60,
     // @platform-diff Auto close is Android-only behavior (iOS forbids programmatic app exit);
+    // the keys exist here only so getSettings() returns the full settings shape.
     "autoCloseEnabled": false,
     "autoCloseDelayMinutes": 15,
     "selectedBoardId": NSNull(),
@@ -602,6 +603,8 @@ final class AppDataRepository {
     "telemetryPollRateHz": 20,
     "wearPushRateHz": defaultWearPushRateHz,
     // @platform-diff Opening the Mirror when a board connects is Android-only: watchOS has no
+    // public API for an iPhone app to launch its watch companion (see docs/watchos.md). The key
+    // exists here only so getSettings() returns the full settings shape.
     "wearAutoLaunchOnConnect": true,
     "wearNavArrowEnabled": false,
     "wearTelemetryTrailEnabled": true,

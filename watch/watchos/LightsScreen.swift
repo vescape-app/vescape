@@ -3,6 +3,8 @@ import WatchKit
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/LightsScreen.kt `LightsScreen`
 /// @platform-diff Wear OS splits the circle its rim gauges ring. Here the split is the display's own
+///   rounded rectangle one step inside the rim, the same shape the route clips to, so the halves use
+///   the corners the rectangle has.
 struct LightsScreen: View {
   @ObservedObject var link: PhoneLink
   let interactionEnabled: Bool

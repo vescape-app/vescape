@@ -2,6 +2,9 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/RideNoticeFrame.kt `RideNoticeFrameCodec`
 /// @platform-diff Android writes the bytes as a Data Layer item at `/ride-notices`. watchOS puts them
+///   in the merged Application Context under ``watchRideNoticesChannel`` and, while the watch is
+///   reachable, also sends them as a `sendMessage` under the same key: the context alone is
+///   delivered opportunistically, which is too slow for "Rider down".
 let watchRideNoticesChannel = "rideNotices"
 
 let watchRideNoticesFrameKey = "frame"

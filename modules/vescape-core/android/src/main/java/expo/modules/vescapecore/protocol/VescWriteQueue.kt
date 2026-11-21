@@ -3,6 +3,7 @@ package expo.modules.vescapecore.protocol
 /**
  * @parity /modules/vescape-core/ios/protocol/VescWriteQueue.swift
  * @platform-diff Android's `writeCharacteristic` can refuse to start a write, so [retryInFlight]
+ * puts it back; CoreBluetooth cannot refuse, and the iOS queue has no retry.
  */
 internal class VescWriteQueue {
     sealed interface Write {

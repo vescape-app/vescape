@@ -2,6 +2,9 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMoveRelay.kt
 /// @platform-diff The Android relay owns the hop onto its scheduler because Wear commands arrive on
+///   a binder thread. `WCSession` hands commands to its delegate on its own queue and the caller
+///   already posts to the controller's scheduler before this is touched, so `accept` is synchronous
+///   here — and therefore testable without racing the scheduler it schedules the dead-man on.
 final class WatchMoveRelay {
   private let scheduler: Scheduler
   private let strengthPercent: () -> Int

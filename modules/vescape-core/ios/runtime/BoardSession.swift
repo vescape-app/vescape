@@ -136,6 +136,8 @@ struct LinkIdentity {
       (hasBms != true || observed.hasBms == true)
   }
 
+  // @legacy-float saved-link: keep until legacy saved links migrate or require explicit re-link.
+  // Removal checklist: /docs/legacy-float.md#saved-link
   private func packageVersionMatches(_ observed: LinkIdentity) -> Bool {
     if refloatVersion == observed.refloatVersion { return true }
     guard let expected = refloatVersion, let current = observed.refloatVersion,

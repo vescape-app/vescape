@@ -3,6 +3,7 @@ import WatchKit
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MoveScreen.kt `MoveScreen`
 /// @platform-diff Wear OS splits the circle its rim gauges ring. Here the split is the display's own
+///   rounded rectangle one step inside the rim, the same shape Lights and the route clip to.
 struct MoveScreen: View {
   @ObservedObject var link: PhoneLink
   let interactionEnabled: Bool

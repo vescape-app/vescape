@@ -1,3 +1,4 @@
+/** @type {import('@bacons/apple-targets').ConfigFunction} */
 module.exports = (config) => ({
   type: 'watch-widget',
   name: 'WatchBattery',

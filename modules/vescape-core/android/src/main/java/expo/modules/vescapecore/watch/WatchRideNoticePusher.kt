@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.withLock
 /**
  * @parity /modules/vescape-core/ios/watch/WatchTelemetryPusher.swift `pushRideNotices`
  * @platform-diff iOS pushes through the process-scoped Watch Mirror transport, which owns the one
+ *   `WCSession`; Android's Data Layer needs no shared session, so this subscribes on its own.
  */
 internal class WatchRideNoticePusher private constructor(
     private val context: Context,

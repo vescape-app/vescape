@@ -25,6 +25,7 @@ internal struct TelemetryChunkFormatError: Error, CustomStringConvertible {
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkCodec.kt `TelemetryChunkCodec`
 /// @platform-diff Apple's raw-deflate encoder has a fixed level (5) instead of Android's 6; the
+/// contract is decode equivalence, not identical bytes.
 internal enum TelemetryChunkCodec {
   static let version: UInt8 = 1
   static let maxSamples = 65_536

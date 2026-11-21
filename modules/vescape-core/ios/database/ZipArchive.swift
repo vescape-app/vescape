@@ -2,6 +2,8 @@ import Compression
 import Foundation
 
 /// @platform-diff No Android peer: Android zips via `java.util.zip` inside
+/// `database/DatabaseBackupManager.kt`; iOS ships this minimal pure-Swift implementation so
+/// cross-platform backups stay readable on both sides.
 enum ZipArchive {
   struct Entry {
     let name: String

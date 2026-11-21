@@ -51,6 +51,7 @@ struct WatchMirrorIntake {
   }
 
   /// @platform-diff The Application Context channel is never deleted, so there is no Wear OS-style
+  ///   deletion path.
   @discardableResult
   mutating func acceptRideNotices(_ bytes: Data) -> Bool {
     guard let frame = RideNoticeFrameCodec.decode(bytes) else { return false }

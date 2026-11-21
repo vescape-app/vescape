@@ -24,6 +24,7 @@ fun interface AppStatusTransport {
 
 /**
  * @platform-diff Android-only: Group Ride networking is the sole Online Capability consumer and has
+ * no iOS peer, so the iOS [AppStatusCoordinator] keeps a single `onChange` sink with none of this.
  */
 /**
  * @parity /modules/vescape-core/ios/appstatus/AppStatusCoordinator.swift `OnlineCapability`

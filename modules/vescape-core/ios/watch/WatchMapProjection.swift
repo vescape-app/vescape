@@ -41,6 +41,7 @@ struct WatchMapProjection {
   var centre: CGPoint { CGPoint(x: size.width / 2, y: size.height / 2) }
   var rider: CGPoint { Self.riderPoint(in: size) }
   /// @platform-diff Wear OS measures range against the round face's circle. The Apple Watch display
+  ///   is a rectangle and the route already runs into its corners, so a Rider there is in range too.
   func place(eastM: Double, northM: Double, margin: CGFloat) -> WatchMapPlacement {
     let rad = relativeBearingDeg(eastM: eastM, northM: northM, courseDeg: courseDeg) * .pi / 180
     let direction = CGVector(dx: sin(rad), dy: -cos(rad))
@@ -52,6 +53,7 @@ struct WatchMapProjection {
   }
 
   /// @platform-diff Wear OS meets its round face's circle. The Apple Watch display is a rounded
+  ///   rectangle, so the triangle lands on it and stands square to the straight edge or corner arc.
   func edgePoint(direction: CGVector, inset: CGFloat, cornerRadius: CGFloat) -> WatchEdgePoint {
     let bounds = CGRect(origin: .zero, size: size).insetBy(dx: inset, dy: inset)
     let exit = rayExit(direction: direction, rect: bounds, cornerRadius: cornerRadius)
@@ -278,6 +280,7 @@ let GROUP_TRIANGLE_BASE: CGFloat = 0.9
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `NAV_READOUT_LEFT`
 /// @platform-diff The readout takes more of the narrow 40 mm display ("2.5 km" alone spans 29–72%),
+///   so the keep-out is wider here than Wear OS's 29–71%.
 private let NAV_READOUT_KEEP_OUT = (left: 0.25, right: 0.75, top: 0.745, focusDrop: 0.075, bottom: 0.94)
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapProjection.kt `GROUP_FAR_M`

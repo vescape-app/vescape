@@ -72,6 +72,10 @@ internal let alertAudioLatencyReportMs: Int64 = 150
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `AlertFeedback`
 /// @platform-diff iOS uses `AVAudioEngine` + `AVAudioPlayerNode` with pre-loaded `AVAudioPCMBuffer`s
+/// instead of `SoundPool`; geiger tick scheduling uses a dedicated dispatch-backed scheduler;
+/// sustained loops schedule the buffer with a completion callback instead of SoundPool
+/// loop index. TTS uses `AVSpeechSynthesizer` instead of Android `TextToSpeech`.
+/// Android's alarm/media stream setting has no iOS equivalent; this player retains its playback session.
 internal final class AlertAudioPlayer {
   private static let audioSessionLock = NSLock()
   private static var audioSessionOwnerCount = 0

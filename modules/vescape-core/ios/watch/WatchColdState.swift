@@ -2,6 +2,9 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchSettingsPusher.kt
 /// @platform-diff Android gets one Data Layer path per channel and a per-path last-value-wins.
+///   watchOS has a single Application Context, so the channels share one dictionary and are merged
+///   rather than published independently. There is no `setUrgent` equivalent and none is needed:
+///   `updateApplicationContext` already replaces any undelivered value.
 enum WatchColdStateError: Error {
   case sessionNotActivated
 }

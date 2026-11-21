@@ -116,6 +116,7 @@ internal func persistFavorite(
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/FavoriteSummaryBuilder.kt `buildFavoriteSummary`
 /// @platform-diff Distance uses the odometer delta only. iOS never fills `gps_distance_cm` (its
+/// bucket writer stores 0), so the Android GPS-distance fallback has no iOS counterpart yet.
 internal func buildFavoriteSummary(_ buckets: [TelemetryBucket]) -> FavoriteSummary {
   var summary = FavoriteSummary()
   guard !buckets.isEmpty else { return summary }

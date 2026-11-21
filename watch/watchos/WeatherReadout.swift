@@ -2,6 +2,7 @@ import SwiftUI
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WeatherReadout.kt `WeatherReadout`
 /// @platform-diff Wear OS places the strip under its own wall clock; on watchOS the system clock
+///   sits at the upper right, so the strip sits above speed at the upper left.
 struct WeatherReadout: View {
   let forecast: WatchWeather?
   var ambient: AmbientMode = .off

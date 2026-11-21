@@ -15,6 +15,7 @@ private let PROBE_TRANSPORT_TIMEOUT_MS = 2_500
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardTransportDetector.kt
 /// @platform-diff iOS gets no BLE disconnect status code from CoreBluetooth, so connect-phase
+/// retries key off attempt count alone.
 internal final class BoardTransportDetector: VescGattListener {
   private enum Phase { case connecting, pinging, probing }
 

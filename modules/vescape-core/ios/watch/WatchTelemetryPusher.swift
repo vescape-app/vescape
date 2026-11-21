@@ -3,6 +3,8 @@ import WatchConnectivity
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTelemetryPusher.kt
 /// @platform-diff Android looks up target nodes through a blocking Play-services IPC and caches
+/// them on a TTL. `WCSession` publishes `isReachable` as a property with no per-send lookup, so
+/// there is nothing to cache and no node set to invalidate.
 final class WatchTelemetryPusher: NSObject, WCSessionDelegate {
   private let record: (String, [String: Any?]) -> Void
   var onCommand: ((WatchCommand) -> Void)?

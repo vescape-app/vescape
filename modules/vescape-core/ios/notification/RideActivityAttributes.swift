@@ -3,6 +3,7 @@ import AppIntents
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notification/NotificationController.kt
 /// @platform-diff Android's notification is a foreground-service keep-alive as well as UI; this
+/// surface is render-only and grants the process no lifetime (see `RideLiveActivityController`).
 struct RideActivityAttributes: ActivityAttributes {
   struct ContentState: Codable, Hashable {
     var deviceName: String

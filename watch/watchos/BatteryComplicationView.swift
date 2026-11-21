@@ -3,6 +3,7 @@ import WidgetKit
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/BatteryComplicationService.kt `batteryComplicationData`
 /// @platform-diff A never-seen Board shows its name and `--` here; Wear OS returns No Data, the
+///   watch face's own empty state.
 struct BatteryComplicationView: View {
   let battery: WatchLastBattery?
   let date: Date

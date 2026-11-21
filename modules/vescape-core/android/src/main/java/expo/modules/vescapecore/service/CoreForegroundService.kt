@@ -540,6 +540,7 @@ class CoreForegroundService : Service() {
                 ),
                 "gps" to mapOf(
                     // @platform-diff Android defers GPS arming to the foreground service; iOS has
+                    // no serviceless window, its monitor reports `starting` itself.
                     "phase" to if (pendingGpsStart) "starting" else "idle",
                     "mode" to GpsPowerMode.Off.slug,
                     "latestFix" to null,

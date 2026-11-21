@@ -51,6 +51,8 @@ internal func isUnknownTable(_ name: String) -> Bool {
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseBackupManager.kt
 /// @platform-diff iOS returns a `file://` URL (Android returns a content URI) and hot-swaps the
+/// GRDB pool in place; there is no Room `closeAndReset`, so `VescapeDatabase.replaceDatabase`
+/// closes and reopens the pool.
 enum DatabaseBackupManager {
   enum BackupError: LocalizedError {
     case databaseUnavailable

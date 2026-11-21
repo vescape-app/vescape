@@ -19,6 +19,7 @@ final class RefloatConfigProtocolTests: XCTestCase {
       0,
     ]))
 
+    // @legacy-float info-v1: replace with rejection coverage when support ends; /docs/legacy-float.md#info-v1.
     XCTAssertEqual("Float/Refloat 1.2", parsed.version)
   }
 

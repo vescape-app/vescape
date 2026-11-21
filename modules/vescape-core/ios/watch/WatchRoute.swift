@@ -3,6 +3,10 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRoute.kt `WATCH_ROUTE_PATH`
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRoute.kt `ROUTE_PATH`
 /// @platform-diff Android gets one Data Layer path per channel and clears the route by *deleting*
+///   the data item. watchOS has a single Application Context whose channels are merged, and the
+///   delivery is latest-value-wins with no delete: an absent key is indistinguishable from a key a
+///   push never reached. So a cleared route is an explicit payload — the version with no points —
+///   and never a removed channel, or a reconnecting wrist would restore the route the rider cleared.
 let watchRouteChannel = "route"
 
 enum WatchRouteKey {
@@ -21,6 +25,13 @@ let WATCH_ROUTE_HEADER_BYTES = 1 + 2 + 8 + 8
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRoute.kt `WATCH_ROUTE_MAX_POINTS`
 /// @platform-diff Android allows 8 000 points because a Data Layer item is its own asset and the
+///   route has a path to itself. Here the route shares one Application Context with the settings
+///   and the forecast, and the whole dictionary is replaced as a unit, so the ceiling is lower:
+///   2 000 points is ~16 KB packed, which leaves the context comfortably clear of the size limit
+///   `updateApplicationContext` rejects with `WCErrorCodePayloadTooLarge`. The exact limit is not
+///   published and has not been measured on hardware, which is the reason for the margin rather
+///   than for a number tuned against it. The decoder is version-compatible with Android either way:
+///   the cap is a pusher-side decision, not part of the wire format.
 let WATCH_ROUTE_MAX_POINTS = 2_000
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRoute.kt `GeoPoint`

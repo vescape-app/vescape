@@ -19,6 +19,7 @@ import expo.modules.vescapecore.watch.WatchTrailPoint
 /**
  * @parity /modules/vescape-core/ios/watch/WatchMapView.swift `WatchMapView`
  * @platform-diff Compose `Animatable`s here. watchOS interpolates on a `TimelineView` instead,
+ *   because a `Canvas` cannot read a shape's `animatableData`.
  */
 @Stable
 internal class WatchMapView(spanM: Float, courseDeg: Float) {

@@ -3,6 +3,8 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsMonitor.kt
 /// @platform-diff iOS requests When In Use authorization and relies on Expo config's
+/// `UIBackgroundModes.location` for continued ride updates. Background delivery is asked for only in
+/// `ride` mode, so a foreground-only `map` span cannot outlive the app going to the background.
 internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   private let onLocation: (TelemetryLocationCapture) -> Void
   private let onAuthorizationResolved: () -> Void

@@ -3,6 +3,8 @@ import GRDB
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt
 /// @platform-diff iOS is greenfield, so the schema starts at a single `v1` migration that creates
+/// the final table shapes directly instead of replaying Android's incremental Room migrations. The
+/// telemetry tables are created schema-only here; their writers land in later slices (#60/#61/#63).
 enum VescapeDatabase {
   private static let databaseName = "vescape.db"
   private static let legacyDatabaseName = "telemetry.db"

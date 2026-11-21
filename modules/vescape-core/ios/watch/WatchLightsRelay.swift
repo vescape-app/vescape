@@ -2,6 +2,9 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchLightsRelay.kt
 /// @platform-diff The Android relay owns the hop onto its scheduler because Wear commands arrive on
+///   a binder thread. `WCSession` hands commands to its delegate on its own queue and the caller
+///   already posts to the controller's scheduler before this is touched, so the relay itself is
+///   synchronous — and therefore testable without a scheduler double.
 final class WatchLightsRelay {
   private let currentLights: () -> BoardLightsState?
   private let setLights: (Bool, Bool) -> Bool

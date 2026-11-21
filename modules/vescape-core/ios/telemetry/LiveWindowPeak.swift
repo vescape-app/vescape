@@ -2,6 +2,7 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/LiveWindowPeak.kt
 /// @platform-diff iOS has no live metric-sanitizer exclusions, so nothing re-labels past samples and
+/// there is no `invalidate`.
 internal final class LiveWindowPeak {
   private let select: ([String: Any?]) -> Double?
   private var peak: Double?

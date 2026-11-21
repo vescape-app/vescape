@@ -2,6 +2,7 @@ import Foundation
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `WatchMapView`
 /// @platform-diff Wear OS eases with Compose `Animatable`s. Here a `Canvas` cannot read a shape's
+///   `animatableData`, so the map interpolates explicitly and every layer reads the same function.
 struct WatchMapView: Equatable {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapView.kt `MAP_ZOOM_EASE_MS`
   static let zoomEase: TimeInterval = 0.35

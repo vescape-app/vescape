@@ -3,6 +3,7 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchWeather.kt `WATCH_WEATHER_PATH`
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `WEATHER_PATH`
 /// @platform-diff Android gets one Data Layer path per channel; watchOS has a single Application
+///   Context, so `weather` is a key in the merged dictionary rather than a path of its own.
 let watchWeatherChannel = "weather"
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchWeather.kt

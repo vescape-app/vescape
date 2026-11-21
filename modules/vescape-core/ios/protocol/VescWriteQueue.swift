@@ -2,6 +2,7 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescWriteQueue.kt
 /// @platform-diff CoreBluetooth cannot refuse to start a write, so there is no retry of a refused
+/// write here; Android's `writeCharacteristic` can refuse, and its queue puts the write back.
 internal final class VescWriteQueue {
   enum Write {
     case normal(bytes: [UInt8])

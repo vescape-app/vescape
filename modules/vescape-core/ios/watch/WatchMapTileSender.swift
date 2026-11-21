@@ -11,6 +11,10 @@ protocol WatchMapTileTransport: AnyObject {
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTileSender.kt `WatchMapTileSender`
 /// @platform-diff `delivered()` is a synchronous read of the transfer record here; Android's is a
+///   Data Layer query, so it loads asynchronously. A reinstalled watch app loses its files and the
+///   record here, so `onWatchReset` re-reads it; Data Layer items outlive a Wear reinstall. A
+///   transfer queued by an earlier process counts as delivered until `onLost` says it failed; a Data
+///   Layer put is done when `send` returns.
 final class WatchMapTileSender {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTileSender.kt `WATCH_MAP_TILE_MAX_SENDS_IN_FLIGHT`
   static let maxSendsInFlight = 4

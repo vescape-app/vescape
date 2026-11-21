@@ -9,6 +9,8 @@ struct WatchDiagnosticEvent: Equatable {
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchDiagnostics.kt `WatchDiagnostics`
 /// @platform-diff Wear OS also counts messages that arrived on an unknown Data Layer path and logs
+///   receiver on/off. `WCSession` has no paths and no registration of its own, so the wrist records
+///   activation and wake level instead — the two lifecycle facts watchOS actually publishes.
 struct WatchDiagnosticsLog: Equatable {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchDiagnostics.kt `MAX_EVENTS`
   static let maxEvents = 50

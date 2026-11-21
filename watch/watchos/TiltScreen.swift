@@ -3,7 +3,10 @@ import WatchKit
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/TiltScreen.kt `TiltScreen`
 /// @platform-diff Only the active scene phase drives, as on Move and Lights: watchOS keeps an
+///   inactive app on screen, and a stick nobody is looking at must not keep steering.
 /// @platform-diff A drivable page drives the pager's drag itself — offset live, snapped on release or
+///   cancel — because on watchOS any drag gesture here takes the whole touch from the paging scroll
+///   view. Wear OS leaves a sideways drag to its pager through touch slop.
 struct TiltScreen: View {
   @ObservedObject var link: PhoneLink
   let interactionEnabled: Bool

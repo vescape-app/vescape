@@ -1,3 +1,4 @@
+/** @type {import('@bacons/apple-targets').Config} */
 module.exports = (config) => ({
   type: 'watch',
   name: 'VescapeWatch',

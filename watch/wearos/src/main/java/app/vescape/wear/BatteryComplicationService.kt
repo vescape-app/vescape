@@ -39,6 +39,7 @@ internal fun decodeLastBatteryItem(item: DataItem): WatchLastBattery? {
 /**
  * @parity /watch/watchos/BatteryComplicationView.swift
  * @platform-diff A never-seen Board is No Data, the watch face's own empty state; watchOS shows
+ *   the Board name with `--`.
  */
 internal fun batteryComplicationData(battery: WatchLastBattery?, type: ComplicationType, now: Long, tap: PendingIntent?, packageName: String): ComplicationData {
     if (battery?.percent == null) return NoDataComplicationData()

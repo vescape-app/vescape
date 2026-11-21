@@ -3,6 +3,11 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRouteMirror.kt `WatchRouteMirror`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRoutePusher.kt `WatchRoutePusher`
 /// @platform-diff Android needs a pusher with a mutex and a generation counter because each
+///   `putDataItem` is an async round trip that can land out of order. `updateApplicationContext` is
+///   synchronous and latest-value-wins, and `WatchColdState` is the single writer, so ordering is
+///   already the call order and there is nothing to serialize. What survives is the *origin commit*
+///   rule, which is not about ordering: the origin moves only once the route it belongs to is known
+///   to be on the wrist.
 final class WatchRouteMirror {
   static let shared = WatchRouteMirror()
 

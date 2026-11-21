@@ -307,6 +307,7 @@ export interface LocationEvent {
  * @parity /modules/vescape-core/ios/connection/BoardPhase.swift `BoardPhase`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardPhase.kt `BoardPhase`
  * @platform-diff `stale` and `disconnecting` are Android-only. iOS routes stale telemetry through
+ * `reconnecting` and stops straight to `idle`/`error`, so JS must treat both as optional.
  */
 export type SessionStatus =
   | 'idle'

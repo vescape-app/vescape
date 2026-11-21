@@ -72,6 +72,10 @@ import kotlinx.coroutines.launch
 /**
  * @parity /watch/watchos/GroupRidePage.swift `GroupRidePage`
  * @platform-diff The pager here does not take the crown, so the settled list owns it even when it
+ *   fits; watchOS pages with the crown and hands it over only when the list scrolls. Rows are clamped
+ *   to the round face's chord at their live centre line here, to the display less the rim inset on
+ *   watchOS. Compose hands a pull past the list's top to the pager as it happens; watchOS pages
+ *   back once that pull is released.
  */
 @Composable
 internal fun GroupRidePage(settled: Boolean) {

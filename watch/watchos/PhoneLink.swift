@@ -95,12 +95,15 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
 
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendMove`
   /// @platform-diff `WCSession.sendMessageData` is already latest-wins and non-blocking, so the
+  ///   wrist needs no coalescing queue of its own.
   func sendMove(_ direction: Int) {
     send(.move(direction))
   }
 
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchCommand.kt `sendTiltLock`
   /// @platform-diff Android coalesces lock and cancel into one latest-wins slot because its Data
+  ///   Layer send blocks and a backlog would build behind it; WatchConnectivity delivers in order
+  ///   without blocking the caller, so the wrist keeps no slot and relies on that ordering.
   func sendTiltLock(_ value: Int) {
     if let replayTiltEcho { return replayTiltEcho(min(max(value, 0), 255)) }
     send(.tiltLock(value))
@@ -154,6 +157,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   private static func wallClockMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
   /// @platform-diff `WCSession.isPaired` is iOS-only; the wrist infers the same three reasons from
+  ///   activation, companion-installed and reachability.
   private func syncCounterpart(_ session: WCSession) {
     activation = session.activationState
     reachable = session.isReachable

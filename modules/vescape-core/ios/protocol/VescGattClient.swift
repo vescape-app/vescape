@@ -12,6 +12,7 @@ internal protocol VescGattListener: AnyObject {
   func onGattFailure(code: String, message: String)
   func onGattFrameChunk(_ chunk: [UInt8])
   /// @platform-diff No Android peer: its `CoreForegroundService` keeps the process alive, so there
+  /// is nothing to restore.
   func onGattRestored(peripheralIds: [String])
 }
 
@@ -176,6 +177,8 @@ internal final class VescGattClient: NSObject, SessionTransport {
   }
 
   /// @platform-diff Android has no gatt-level peer: its `connectGatt(autoConnect = false)` is
+  /// one-shot and the `ReconnectScheduler` drives retries with a fresh connect each attempt. iOS
+  /// leans on CoreBluetooth's built-in persistent connect instead (see `BoardSessionController`).
   func reconnect() {
     resetLinkState()
     pendingConnectId = nil

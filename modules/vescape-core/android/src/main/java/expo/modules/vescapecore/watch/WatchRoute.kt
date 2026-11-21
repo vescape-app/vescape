@@ -21,6 +21,7 @@ private const val WATCH_ROUTE_HEADER_BYTES = 1 + 2 + 8 + 8
 /**
  * @parity /modules/vescape-core/ios/watch/WatchRoute.swift `WATCH_ROUTE_MAX_POINTS`
  * @platform-diff watchOS caps lower (2 000): its channels share one Application Context that is
+ *   replaced as a unit, where a Data Layer item here has a path to itself.
  */
 internal const val WATCH_ROUTE_MAX_POINTS = 8_000
 

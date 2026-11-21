@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 
 /// @platform-diff Android has no peer: `CoreForegroundService` keeps the process alive across the
+/// background transition, so its telemetry store flushes on its own schedule.
 internal final class BackgroundFlushGuard {
   private let notificationCenter: NotificationCenter
   private let flush: (String) -> Void

@@ -15,6 +15,7 @@ import java.io.File
 /**
  * @parity /modules/vescape-core/ios/watch/WatchMapTilePusher.swift `WatchMapTilePusher`
  * @platform-diff watchOS has no per-tile item. It sends files with `transferFile`, lists the held
+ *   tiles in the Application Context and records finished transfers in its watch directory.
  */
 internal class WatchMapTilePusher(context: Context) : WatchMapTileTransport {
     private val dataClient by lazy { Wearable.getDataClient(context) }

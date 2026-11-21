@@ -3,6 +3,10 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notification/NotificationController.kt
 /// @platform-diff Android's `NotificationController` drives a persistent foreground-service
+/// notification, which is both the process keep-alive and the status UI. The iOS Live Activity is
+/// render-only: it grants the process no lifetime at all (the anchor is the location manager, ADR
+/// 0034), so it must self-label death via `staleDate` instead. Action parity also differs: Android
+/// offers Disconnect/Connect/Exit, iOS only Stop ride.
 final class RideLiveActivityController {
   private let staleWindow: TimeInterval = 5
   private let heartbeatInterval: TimeInterval = 2.5

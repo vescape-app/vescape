@@ -4,6 +4,7 @@ import os
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTilePusher.kt `WatchMapTilePusher`
 /// @platform-diff Wear OS keeps one Data Layer item per tile and drops a tile by deleting it; its
+///   held set is read back from the Data Layer, so it needs neither a list nor a record.
 final class WatchMapTilePusher: WatchMapTileTransport, @unchecked Sendable {
   private static let recordFile = "map-tiles-delivered.json"
   private static let log = Logger(subsystem: "app.vescape.core", category: "WatchMapTiles")

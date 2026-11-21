@@ -2,6 +2,8 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt
 /// @platform-diff Android hosts the socket in its foreground service; iOS has no such process, so
+/// the observer lives on `BoardSessionController` and rides the app's BLE/`location` background
+/// modes — a backgrounded iPhone with neither active drops the connection until it returns.
 internal final class GroupRideObserver: NSObject {
   private let emit: (String, [String: Any?]) -> Void
   private let online: OnlineCapability

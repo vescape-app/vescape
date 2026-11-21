@@ -2,6 +2,8 @@ import SwiftUI
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/NavPointer.kt `NavPointer`
 /// @platform-diff Wear OS places the chevron on the circle its gauges ring. Here it rides the
+///   display's own rounded-rectangle perimeter (``Rim``) at the same bearing, so a bearing of 90°
+///   points at the right *edge* rather than at a point on a circle the panel does not have.
 struct NavPointer: View {
   let bearingDeg: Double
   let distanceM: Double

@@ -2,6 +2,7 @@ import SwiftUI
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/Ambient.kt `AmbientMode`
 /// @platform-diff watchOS exposes only luminance reduction; the panel-capability flags and the
+///   burn-in pixel walk are the system's job, not the app's.
 struct AmbientMode {
   var active: Bool = false
 

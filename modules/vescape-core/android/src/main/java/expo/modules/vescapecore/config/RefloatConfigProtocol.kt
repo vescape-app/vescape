@@ -256,6 +256,8 @@ internal object RefloatConfigProtocol {
     return parseGetInfoV1(payload, dataOffset)
   }
 
+  // @legacy-float info-v1: remove only when Float AND Refloat INFO v1 support ends.
+  // Removal checklist: /docs/legacy-float.md#info-v1
   private fun parseGetInfoV1(
     payload: ByteArray,
     dataOffset: Int,

@@ -4,6 +4,7 @@ import android.location.LocationManager
 
 /**
  * @platform-diff The `GPS_PROVIDER` requirement is Android-only and iOS has no provider concept.
+ * It is confined to live classification and no longer reaches durable data.
  */
 internal fun isPreciseGpsFix(provider: String?, accuracyM: Double?): Boolean =
     provider == LocationManager.GPS_PROVIDER &&

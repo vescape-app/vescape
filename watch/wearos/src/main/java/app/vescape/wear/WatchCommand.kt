@@ -58,6 +58,7 @@ fun encodeDismissNoticeCommand(id: Int, rev: Int): ByteArray =
 /**
  * @parity /watch/watchos/PhoneLink.swift `sendMove`
  * @platform-diff `WCSession.sendMessageData` is already non-blocking and latest-wins, so the
+ *   watchOS wrist needs no coalescing slot to keep a release from queueing behind stale holds.
  */
 class CommandSender(context: Context) {
     private val appContext = context.applicationContext

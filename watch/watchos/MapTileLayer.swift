@@ -3,6 +3,7 @@ import SwiftUI
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MapTileLayer.kt `MapTileState`
 /// @platform-diff Wear OS reads tiles from Data Layer Assets and has no list: deleting an item is
+///   the drop. Here the files are the wrist's own and the list decides which ones stay.
 final class MapTileStore: ObservableObject {
   static let shared = MapTileStore()
   private static let decodeRetry: TimeInterval = 10
