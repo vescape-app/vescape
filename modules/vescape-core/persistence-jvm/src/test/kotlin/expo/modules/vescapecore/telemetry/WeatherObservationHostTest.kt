@@ -12,7 +12,6 @@ import expo.modules.vescapecore.database.VescapeRoomDatabase
 import expo.modules.vescapecore.database.WeatherObservationEntity
 
 /**
- * Ride weather storage (#604) through the production Room DAO, recorder and fence.
  * @parity /modules/vescape-core/persistence-macos/WeatherObservationContract.swift `runWeatherObservationContract`
  */
 class WeatherObservationHostTest {
@@ -40,7 +39,6 @@ class WeatherObservationHostTest {
     assertTrue("a day after the last stored row", first.record(obs(2 * day - 1 + hour, temp = 15), first.ticket()))
     db.close()
 
-    // A new process: its first refresh writes even when nothing changed, then the rules resume.
     db = open()
     val relaunched = WeatherObservationRecorder({ db.vescapeDao() }, DatabaseReplacementFence())
     assertTrue(relaunched.record(obs(2 * day + 2 * hour, temp = 15), relaunched.ticket()))
@@ -89,7 +87,6 @@ class WeatherObservationHostTest {
     for (at in listOf(0L, 10 * day, 20 * day + 1, 21 * day, 30 * day)) dao.insertWeatherObservation(WeatherObservationEntity.of(obs(at)))
     dao.clearExcept(listOf(TelemetryTimeRange(21 * day, 22 * day)))
     assertEquals(listOf(20 * day + 1, 21 * day), dao.getWeatherObservationsSpanning(0, 40 * day).map { it.observedAtMs })
-    // The protect-all fallback range must not wrap and delete everything.
     dao.clearExcept(listOf(TelemetryTimeRange(Long.MIN_VALUE, Long.MAX_VALUE)))
     assertEquals(2, dao.getWeatherObservationsSpanning(0, 40 * day).size)
     db.close()
@@ -98,13 +95,11 @@ class WeatherObservationHostTest {
   @Test fun rideWeatherReadsTheApplicableRows(): Unit = withDb { _, open ->
     val db = open()
     val dao = db.vescapeDao()
-    // Sun all along, five minutes of rain inside a two-hour ride.
     dao.insertWeatherObservation(WeatherObservationEntity.of(obs(0, temp = 8, code = 0, gust = 15)))
     dao.insertWeatherObservation(WeatherObservationEntity.of(obs(hour, temp = 20, code = 61, gust = 40)))
     dao.insertWeatherObservation(WeatherObservationEntity.of(obs(hour + 5 * 60_000, temp = 19, code = 0, gust = 10)))
     val weather = dao.rideWeather(30 * 60_000, 2 * hour + 30 * 60_000)!!
     assertEquals(RideWeather("sun", 8, 20, 40, 5), weather)
-    // Only a row older than a day applies at the start, and nothing changes inside: no weather.
     assertNull(dao.rideWeather(3 * day, 3 * day + hour))
     db.close()
   }

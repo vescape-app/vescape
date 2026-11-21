@@ -8,7 +8,6 @@ import expo.modules.vescapecore.database.BoardConfigValuesEntity
 import expo.modules.vescapecore.database.MotorConfigValuesEntity
 import expo.modules.vescapecore.database.VescapeDao
 
-/** Production transaction seam shared by the app and host persistence contract. */
 internal class ConfigPersistence(private val dao: VescapeDao) {
   suspend fun saveFreshBoard(
     boardId: String,

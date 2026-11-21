@@ -82,8 +82,6 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
-  // Host contracts consume shared fixtures and per-run cross-platform artifacts outside this
-  // Gradle project. Never reuse a prior test result for a different archive exchange.
   outputs.upToDateWhen { false }
   outputs.cacheIf { false }
 }

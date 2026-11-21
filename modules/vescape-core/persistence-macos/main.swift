@@ -5,7 +5,6 @@ struct Failure: Error, CustomStringConvertible {
   let description: String
 }
 
-// The production repositories' default app adapter is not used by this host runner.
 final class AppDataRepository {
   static let shared = AppDataRepository()
   func getSettings() -> [String: Any?] { [:] }
@@ -277,7 +276,6 @@ try maintenanceQueue!.read { db in
 }
 try maintenanceQueue!.close()
 try FileManager.default.removeItem(at: maintenanceURL)
-// GPS-only writes retain poor fixes and roll back their bucket if a later track insert fails.
 let trackURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-track-\(UUID().uuidString).db")
 var trackQueue = try DatabaseQueue(path: trackURL.path)
 try VescapeDatabase.migrator.migrate(trackQueue)
@@ -319,7 +317,6 @@ try trackQueue.read { db in
 }
 try trackQueue.close()
 
-// Ride reads and deletes scope to Board and time only (ADR 0041).
 let scopeQueue = try DatabaseQueue(path: trackURL.path)
 try scopeQueue.write { db in
   try db.execute(sql: "DROP TRIGGER reject_track")
@@ -356,7 +353,6 @@ let points = samples.map { sample in
   )
 }
 
-/// Keyframe + delta in minute 60 000, sealed by the exporter; a delta at 120 500 left in the buffer.
 /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseRestoreHostTest.kt `crossChunkFrames`
 func crossChunkFrames() -> [RecordingPersistenceSQL.Frame] {
   [(Int64(60_000), 1), (60_500, 0), (120_500, 0)].enumerated().map { i, frame in
@@ -368,7 +364,6 @@ func crossChunkFrames() -> [RecordingPersistenceSQL.Frame] {
   }
 }
 
-/// The other platform's sealed chunk and buffered delta read back as one stream.
 func requireCrossChunkSpeeds(_ db: Database, _ label: String) throws {
   let chunks = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_chunks WHERE minute_start_ms = 60000")
   try require(chunks == 1, "\(label) lost its Telemetry Chunk")
@@ -491,7 +486,6 @@ let secondPage = try history.getPage(["limit": int(historyFixture["pageSize"]), 
 try require((secondPage["sessions"] as! [[String: Any?]]).count == int(historyExpected["secondPageSessionCount"]), "second page count")
 try require(secondPage["hasMore"] as? Bool == historyExpected["secondPageHasMore"] as? Bool, "second page hasMore")
 try require((secondPage["sessions"] as! [[String: Any?]]).first?["startAtMs"] as? Int64 == older.firstSampleAtMs, "older ride")
-// The Ride History Filter pages and counts natively, by ride start and Board.
 let currentStart = currentSession["startAtMs"] as! Int64
 let fromCurrent = try history.getPage(["limit": 50, "fromMs": currentStart])
 try require((fromCurrent["sessions"] as! [[String: Any?]]).map { $0["startAtMs"] as? Int64 } == [currentStart], "filter from")
@@ -502,7 +496,6 @@ try require((try history.getPage(["boardIds": ["other-board"]])["sessions"] as! 
 try require(try history.countRides([:]) == 2, "count all rides")
 try require(try history.countRides(["fromMs": currentStart]) == 1, "count filtered rides")
 try require(try history.countRides(["boardIds": [boardId]]) == 2, "count board rides")
-// Weather matches on the ride's summary; a ride without one never meets a condition.
 try historyPool.write { db in
   try db.execute(
     sql: "INSERT INTO weather_observations (observed_at_ms, temperature_c, weather_code, gust_kmh, is_day) VALUES (?, 2, 0, NULL, 1)",
@@ -511,7 +504,6 @@ try historyPool.write { db in
 }
 try require((try history.getPage(["weather": ["cold"]])["sessions"] as! [[String: Any?]]).map { $0["startAtMs"] as? Int64 } == [currentStart], "filter cold")
 try require((try history.getPage(["weather": ["hot"]])["sessions"] as! [Any]).isEmpty, "filter hot")
-// Alternatives inside a group, every picked group must hold: a clear cold ride is not a rainy one.
 try require(try history.countRides(["weather": ["clear", "rain", "cold"]]) == 1, "count weather rides")
 try require(try history.countRides(["weather": ["rain", "cold"]]) == 0, "weather groups must all hold")
 try historyPool.write { db in try db.execute(sql: "DELETE FROM weather_observations") }
@@ -534,7 +526,6 @@ try require(monthStats.count == 1 && chartMonth["year"] as? Int == originalMonth
 try require(chartStats["distanceM"] as? Double == originalMonthlyStats["distanceM"] as? Double, "chart uses monthly distance")
 try require(chartStats["longestRideId"] as? String == originalMonthlyStats["longestRideId"] as? String, "chart keeps record ride IDs")
 try require(populatedStats["monthStats"] == nil, "monthly series is opt-in")
-// A record's ride id opens that ride, including one that is not the newest.
 let currentRideId = currentSession["id"] as! String
 let olderRideId = (secondPage["sessions"] as! [[String: Any?]]).first!["id"] as! String
 try require(total["longestRideId"] as? String == currentRideId, "longest ride id")
@@ -544,15 +535,13 @@ try require(try history.getSession("\(boardId):1:2") == nil, "missing ride by id
 let selectedMonth = populatedStats["selectedMonth"] as! [String: Int]
 try require(selectedMonth["year"] == int(historyExpected["selectedYear"]), "selected year")
 try require(selectedMonth["month"] == int(historyExpected["selectedMonth"]), "selected month")
-// A bulk selection resolves natively: every ride matching the filter, minus the rides unticked.
 let olderSession = (secondPage["sessions"] as! [[String: Any?]]).first!
 let picked = try history.selectedRides(["filter": ["boardIds": [boardId]], "excludeIds": [currentRideId]])
 try require(picked.map(\.fromMs) == [older.firstSampleAtMs], "selection minus unticked rides")
 try require(picked.first?.name == olderSession["boardName"] as? String, "selection carries the Board name")
 try require(try history.selectedRides(["rides": [["fromMs": 1, "toMs": 2, "name": "Fav"]]]) == [RideBatch.Item(fromMs: 1, toMs: 2, boardId: nil, name: "Fav")], "explicit selection")
-// One zip, one file per ride, clashing names suffixed, streamed through DEFLATE.
 let utc = TimeZone(secondsFromGMT: 0)!
-let day = Int64(1_785_772_800_000) // 2026-08-03 16:00 UTC
+let day = Int64(1_785_772_800_000)
 let batch = [RideBatch.Item(fromMs: day, toMs: day + 1, boardId: nil, name: "Pint X"),
   RideBatch.Item(fromMs: day + 30_000, toMs: day + 40_000, boardId: nil, name: "Pint X"),
   RideBatch.Item(fromMs: day + 86_400_000, toMs: day + 86_400_001, boardId: nil, name: "Ł")]
@@ -577,7 +566,6 @@ do {
 } catch RideBatch.RideBatchError.cancelled {}
 try require(try FileManager.default.contentsOfDirectory(atPath: exportDir.path).count == 1, "cancel leaves no archive")
 try FileManager.default.removeItem(at: exportDir)
-// Bulk delete removes every Board's ranges in one write.
 _ = try TelemetryMaintenancePersistence(writer: historyPool).deleteBoardRanges(
   [boardId: [TelemetryTimeRange(startMs: older.firstSampleAtMs, endMs: olderSession["endAtMs"] as! Int64)]])
 try require(try history.countRides([:]) == 1, "bulk delete removes the ride")
@@ -591,10 +579,6 @@ do { _ = try profile.getProfileStatsSnapshot([:]); throw Failure(description: "p
 try historyPool.close()
 try FileManager.default.removeItem(at: historyURL)
 
-// MARK: - Board key (#684)
-//
-// The Ride Track references `boards.key`: rename, re-link and tombstone update the Board in place,
-// so the key and every fix's owner survive them; v55 keeps each fix's owner and mints orphans.
 // @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/RideTrackPersistenceHostTest.kt `boardWritesKeepTheKeyTheTrackReferences`
 // @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseMigrationMatrixHostTest.kt `v54RideTrackMovesToBoardKeyAndMintsOrphans`
 do {
@@ -923,7 +907,6 @@ let reopenedTuneHistory = try tuneStore.getProfileHistory(tuneId)
 try require(reopenedTune?["boardId"] as? String == tuneAlertBoardId, "Tune Profile ownership/reopen")
 try require((reopenedTune?["fields"] as? [String: Any])?["kp"] as? Int == 2, "Tune Profile values/reopen")
 try require(reopenedTuneHistory.count == int(tuneAlertExpected["historyCount"]), "Tune History/reopen")
-// The Board has no preset rows, so the app-default presets expand beside the rider's rule.
 let reopenedAlerts = try alertPersistence.rules(boardId: tuneAlertBoardId, reportPresetFailure: unexpectedPresetFailure).filter { !AlertPresetPersistence.isPresetId($0.id) }
 try require(reopenedAlerts.count == int(tuneAlertExpected["alertCount"]), "Alert count/reopen")
 try require(reopenedAlerts.first?.id == alertValues["id"] as? String, "Alert identity/reopen")
@@ -950,9 +933,6 @@ try require(alertQueryFailed, "Alert query failure became empty")
 try tuneQueue!.close()
 try FileManager.default.removeItem(at: tuneURL)
 
-// Every registered GRDB prefix is a supported restore start. Seed values available at that prefix,
-// run the remaining production migrator, and prove both preservation and the final ledger here in
-// the fast macOS host command.
 let migrationManifest = try JSONSerialization.jsonObject(
   with: Data(contentsOf: root.appendingPathComponent("shared/migration-fixture-manifest.json"))
 ) as! [String: Any]
@@ -1025,8 +1005,6 @@ for start in migrationIdentifiers {
   try migrationQueue.close()
 }
 
-// Reconstruct the original db6e9b9 v1 release shape, including global Alert Rules and the legacy
-// telemetry fault columns, then run the real destructive/preserving migrations.
 let authenticV1 = try DatabaseQueue()
 try VescapeDatabase.migrator.migrate(authenticV1, upTo: "v1")
 try authenticV1.write { db in
@@ -1051,7 +1029,6 @@ try authenticV1.read { db in
 }
 try authenticV1.close()
 
-// v51 folds the v50 Alert Preset Board Settings and copied preset rows into one row per metric.
 // @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/database/DatabaseMigrationMatrixHostTest.kt
 let presetRowsQueue = try DatabaseQueue()
 try VescapeDatabase.migrator.migrate(presetRowsQueue, upTo: "v50_alert_sound_count")
@@ -1239,7 +1216,6 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try insertRideTrackPoint(db, RideTrackPoint(boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
     let previewFixes = try bucketPreviewFixes()
     try RecordingPersistenceSQL.insertTrackAndBuckets(db, track: previewFixes, buckets: buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints(previewFixes)))
-    // A sealed minute and a buffered delta anchored in it (ADR 0045).
     for frame in crossChunkFrames() {
       try db.execute(sql: RecordingPersistenceSQL.insertFrame, arguments: RecordingPersistenceSQL.frameArguments(frame))
     }
@@ -1255,9 +1231,6 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
   try DatabaseBackupArchive.archive(database: iosData, manifest: iosManifest)
     .write(to: exchange.appendingPathComponent("ios.zip"), options: .atomic)
 
-  // The last shape before the shared schema, as an installed iOS app still writes it: transport is a
-  // `boards` column (also on a tombstone), and an install from before #470 declared the capture
-  // sample id nullable. iOS upgrades it here; Android restores the archive in its import phase.
   let iosV53URL = exchange.appendingPathComponent("ios-v53.sqlite")
   let iosV53 = try DatabaseQueue(path: iosV53URL.path)
   try VescapeDatabase.migrator.migrate(iosV53, upTo: "v53_weather_observations")
@@ -1292,12 +1265,6 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
   }
   try upgradedV53.close()
 }
-// MARK: - Enrolled Accessories
-//
-// The scenario that actually matters for this table: an Accessory the rider renamed and re-flashed,
-// met again on a different peripheral id, must stay one Accessory. If identity ever slipped to the
-// name or the handle, this is where a second row would appear.
-//
 // @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/AccessoryPersistenceHostTest.kt
 let accessoryFixture = try JSONSerialization.jsonObject(
   with: Data(contentsOf: root.appendingPathComponent("shared/accessory-persistence-contract.json"))
@@ -1357,7 +1324,6 @@ try require(revalidated, "Accessory revalidate")
 let afterRevalidation = try accessoryStore.accessories()
 try require(afterRevalidation.count == 2, "rename duplicated an Accessory")
 
-// Update-only: a handshake landing after the rider forgot an Accessory must not recreate it.
 let revalidatedUnknown = try accessoryStore.revalidate(
   savedAccessory(accessorySpec, overrides: ["accessoryId": "not-enrolled"]))
 try require(!revalidatedUnknown, "revalidate invented an Accessory")
@@ -1373,13 +1339,9 @@ try require(
 try require(
   persistedAccessory?.firmwareVersion == accessorySpec["updatedFirmwareVersion"] as? String,
   "Accessory firmware reopen")
-// Reading a manifest again is not adding the Accessory again.
 try require(
   persistedAccessory?.enrolledAt == Int64(int(accessorySpec["enrolledAt"])),
   "Accessory enrolledAt moved")
-// The baseline the rider's saved settings were validated against survives revalidation. It is what
-// the "declared limits changed" warning is derived from, so overwriting it here would make the
-// warning vanish on the next launch.
 try require(
   persistedAccessory?.capabilitiesJson == accessorySpec["capabilitiesJson"] as? String,
   "Accessory capability baseline overwritten")
@@ -1387,7 +1349,6 @@ try require(
   persistedAccessory?.lastConnectedAt == Int64(int(accessorySpec["connectedAt"])),
   "Accessory last connected reopen")
 
-// Forgetting takes the Accessory and nothing else.
 let forgotten = try accessoryStore.forget(accessorySpec["accessoryId"] as! String)
 try require(forgotten, "Accessory forget")
 let forgottenAgain = try accessoryStore.forget(accessorySpec["accessoryId"] as! String)
@@ -1403,14 +1364,6 @@ try require(
 try accessoryQueue!.close()
 try? FileManager.default.removeItem(at: accessoryURL)
 
-// Ground-clearance calibration, keyed on the Accessory *and* the capability.
-//
-// The composite key is the point: one unit declaring a nose sensor and a tail sensor keeps two
-// independent calibrations, and re-saving one must leave the other exactly as it was. Revalidating a
-// manifest must not disturb either; forgetting the Accessory must take both, because a re-enrollment
-// that inherited old numbers would drive the board to a mounting position the rider has since
-// changed.
-//
 // @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/AccessoryPersistenceHostTest.kt `calibrationSurvivesRestartAndIsForgottenWithItsAccessory`
 let clearanceSpec = accessoryFixture["groundClearance"] as! [String: Any]
 let clearanceOwner = accessorySpec["accessoryId"] as! String
@@ -1450,7 +1403,6 @@ try clearanceStore.saveGroundClearance(
     otherAccessorySpec["calibration"] as! [String: Any]))
 try clearanceQueue!.close()
 
-// Settings survive restart: the whole reason this is a table and not process state.
 clearanceQueue = try DatabaseQueue(path: clearanceURL.path)
 clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
 let reopenedCalibration = try clearanceStore.groundClearance(clearanceOwner, noseCapability)
@@ -1460,8 +1412,6 @@ try require(
 let reopenedCalibrationCount = try clearanceStore.groundClearances().count
 try require(reopenedCalibrationCount == 3, "calibration reopen count")
 
-// Recalibrating the nose sensor leaves the tail sensor alone. Keyed on the Accessory alone, the
-// second row would have overwritten the first.
 try clearanceStore.saveGroundClearance(
   savedCalibration(clearanceOwner, noseCapability, noseRecalibratedSpec))
 let afterRecalibration = try clearanceStore.groundClearances()
@@ -1475,7 +1425,6 @@ try require(
   untouchedTail?.direction == tailCalibrationSpec["direction"] as? String,
   "recalibrating one capability disturbed another")
 
-// Reading a manifest again must not disturb what the rider set, or move the frozen baseline.
 let clearanceRevalidated = try clearanceStore.revalidate(
   savedAccessory(accessorySpec, overrides: ["name": accessorySpec["renamedTo"]!]))
 try require(clearanceRevalidated, "calibration-scenario revalidate")
@@ -1486,7 +1435,6 @@ try require(
   baselineAfterRevalidation?.capabilitiesJson == accessorySpec["capabilitiesJson"] as? String,
   "revalidate moved the capability baseline")
 
-// Accepting limits that moved, which is what saving a fitting calibration means.
 let adopted = try clearanceStore.adoptCapabilities(
   clearanceOwner, capabilitiesJson: accessorySpec["changedCapabilitiesJson"] as! String)
 try require(adopted, "adoptCapabilities on an enrolled Accessory")
@@ -1533,7 +1481,6 @@ let calibrationAfterToggle = try clearanceStore.groundClearance(clearanceOwner, 
 try require(calibrationBeforeToggle == calibrationAfterToggle, "toggling must preserve calibration")
 try clearanceStore.saveCapabilitySettings(switchSettings)
 
-// Forgetting takes the Accessory and every calibration made against it, and nothing else.
 let clearanceForgotten = try clearanceStore.forget(clearanceOwner)
 try require(clearanceForgotten, "calibration-scenario forget")
 try clearanceQueue!.close()

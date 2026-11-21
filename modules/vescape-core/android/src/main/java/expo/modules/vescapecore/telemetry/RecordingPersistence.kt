@@ -9,7 +9,6 @@ import expo.modules.vescapecore.database.TelemetryMarkerEntity
 import expo.modules.vescapecore.database.TelemetryMinuteBucketEntity
 import expo.modules.vescapecore.database.VescapeDao
 
-/** Host-runnable recording transaction seam. OS lifecycle stays in [TelemetryRepository]. */
 internal class RecordingPersistence(private val dao: VescapeDao) {
   suspend fun commit(
     frames: List<TelemetryFrameEntity>,
@@ -22,7 +21,6 @@ internal class RecordingPersistence(private val dao: VescapeDao) {
   suspend fun readCommittedRide(): List<TelemetryMinuteBucketEntity> = dao.getAllHistoryBucketsAsc()
 }
 
-/** Process-lifetime fail-closed gate around Ride Recording ingestion and commits. */
 internal class RecordingWriteGate(
   private val onFailure: (Exception) -> Unit,
   initiallyAccepting: Boolean = true,
@@ -40,7 +38,6 @@ internal class RecordingWriteGate(
   }
 }
 
-/** App-used transaction boundary: failed commit closes ingestion before another batch can enter. */
 internal class RecordingCommitBoundary(
   private val persistence: RecordingPersistence,
   onFailure: (Exception) -> Unit,

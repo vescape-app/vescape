@@ -1,18 +1,9 @@
 import Foundation
 import GRDB
 
-/// Schema generation stamped into backup manifests, and the ceiling a restore accepts. Shared with
-/// Android: the migrators move together, and the number is what tells a restore which migrations
-/// the incoming database already satisfies. It must match the newest migration in
-/// `VescapeDatabase.migrator`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeRoomDatabase.kt `VESCAPE_DATABASE_VERSION`
 internal let VESCAPE_DATABASE_VERSION = 56
 
-/// Released schema generations that have a complete production path to the current schema.
-/// 37–39 never shipped as standalone migrations: Android deliberately jumps 36→40.
-/// Android backup export first shipped with database version 14 (commit dc985d80). Room can
-/// upgrade older on-device databases, but those generations could never have produced an archive.
 internal let supportedAndroidDatabaseVersions: Set<Int> =
   Set(3...36).union(40...VESCAPE_DATABASE_VERSION)
 internal let exportedAndroidDatabaseVersions: Set<Int> =
@@ -20,10 +11,6 @@ internal let exportedAndroidDatabaseVersions: Set<Int> =
 internal let exportedIOSDatabaseVersions: Set<Int> =
   Set([1]).union(23...36).union(40...VESCAPE_DATABASE_VERSION)
 
-/// Tables the current schema owns, matching `schema/database.json`. A restored database drops any
-/// other table once its migrations have run, so a stray table from an old or foreign app cannot
-/// survive into this one.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseUpgradeContract.kt `SHARED_DATABASE_TABLES`
 internal let sharedDatabaseTables: Set<String> = [
   "accessories",
@@ -62,16 +49,9 @@ internal func isUnknownTable(_ name: String) -> Bool {
   !sharedDatabaseTables.contains(name) && !engineTables.contains(name) && !name.hasPrefix("sqlite_")
 }
 
-/// Exports/imports the single GRDB database as a shareable `.zip` (manifest.json + db.sqlite),
-/// matching the Android backup format so the JS layer (share sheet / document picker) is identical.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseBackupManager.kt
 /// @platform-diff iOS returns a `file://` URL (Android returns a content URI) and hot-swaps the
-/// GRDB pool in place; there is no Room `closeAndReset`, so `VescapeDatabase.replaceDatabase`
-/// closes and reopens the pool.
 enum DatabaseBackupManager {
-  /// `LocalizedError`, because the bridge rejects with `error.localizedDescription`: a bare `Error`
-  /// enum reaches JS as "undefined reason", which is what a failing restore used to report.
   enum BackupError: LocalizedError {
     case databaseUnavailable
     case invalidBackup(String)
@@ -88,7 +68,6 @@ enum DatabaseBackupManager {
     guard let pool = VescapeDatabase.pool, let dbURL = VescapeDatabase.databaseURL else {
       throw BackupError.databaseUnavailable
     }
-    // Land every buffered sample before snapshotting so the export is complete.
     TelemetryRepository.shared.flushBlocking()
 
     let fm = FileManager.default
@@ -102,14 +81,11 @@ enum DatabaseBackupManager {
     // intentional-suppression: temporary-file cleanup is best effort and invalid backup is returned explicitly
     try? fm.removeItem(at: zipExport)
 
-    // VACUUM INTO produces a clean, consistent single-file snapshot (no WAL sidecars).
     let escaped = sqliteExport.path.replacingOccurrences(of: "'", with: "''")
     try pool.writeWithoutTransaction { db in
       try db.execute(sql: "VACUUM INTO '\(escaped)'")
     }
 
-    // GRDB tracks migrations in its ledger, while Room reads SQLite's user_version. Stamp the
-    // exported copy so the same artifact can be opened and schema-validated by Android.
     let exportQueue = try DatabaseQueue(path: sqliteExport.path)
     try exportQueue.writeWithoutTransaction { db in
       try db.execute(sql: "PRAGMA user_version = \(VESCAPE_DATABASE_VERSION)")
@@ -142,7 +118,6 @@ enum DatabaseBackupManager {
 
     TelemetryRepository.shared.beginDatabaseSwap()
     defer { TelemetryRepository.shared.endDatabaseSwap() }
-    // A weather observation fetched before the swap must not land in the restored database.
     try DatabaseReplacementFence.process.fence {
       try VescapeDatabase.replaceDatabase(withFileAt: staged.database, schemaVersion: staged.roomVersion) { _ in
         try MySounds.replaceFromBackup(staged.sounds)
@@ -150,7 +125,6 @@ enum DatabaseBackupManager {
     }
   }
 
-  /// Portable archive/manifest/database validation used by restore and host contracts.
   internal static func stageBackupArchive(_ zipData: Data, in workDir: URL) throws -> (database: URL, roomVersion: Int, sounds: [String: Data]) {
     let (manifestData, dbData, sounds) = try DatabaseBackupArchive.extract(zipData)
     try MySounds.validateBackup(sounds)
@@ -161,16 +135,11 @@ enum DatabaseBackupManager {
     return (restoredDb, validated.roomVersion, sounds)
   }
 
-  // MARK: - Helpers
-
   private static func fileURL(from uriString: String) -> URL {
     if let url = URL(string: uriString), url.isFileURL { return url }
     return URL(fileURLWithPath: uriString)
   }
 
-  /// Returns the backup's schema generation, which the restore needs to reconcile a foreign
-  /// database against this app's migrations.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseBackupManager.kt
   private struct BackupSchema {
     let platform: String
@@ -196,7 +165,6 @@ enum DatabaseBackupManager {
         "Backup schema version \(schemaVersion) has no supported migration path to app schema \(VESCAPE_DATABASE_VERSION)"
       )
     }
-    // iOS v1 shipped alongside Android v22. Later public schema generations use Room's number.
     return BackupSchema(
       platform: platform,
       declaredVersion: schemaVersion,
@@ -204,7 +172,6 @@ enum DatabaseBackupManager {
     )
   }
 
-  /// Integrity-check the incoming database before it replaces the live one.
   private static func validateDatabase(_ url: URL, manifest: BackupSchema) throws -> BackupSchema {
     let queue = try DatabaseQueue(path: url.path)
     let validation = try queue.read { db -> (Bool, Int, [String]) in

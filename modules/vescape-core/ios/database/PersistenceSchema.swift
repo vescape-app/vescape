@@ -1,6 +1,5 @@
 import GRDB
 
-/// Store-owned durable schema, isolated from UIKit/Expo and shared by app migrations + host contracts.
 enum PersistenceSchema {
   static func createTuneProfiles(_ db: Database) throws {
     try db.execute(sql: "CREATE TABLE tune_profiles (id TEXT NOT NULL PRIMARY KEY, board_id TEXT NOT NULL, refloat_base_version TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, icon TEXT NOT NULL DEFAULT 'sliders-horizontal', color TEXT NOT NULL DEFAULT 'purple', fields_json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
@@ -50,25 +49,16 @@ enum PersistenceSchema {
     try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_vesc_fault_capture_samples_occurrence_id_captured_at ON vesc_fault_capture_samples(occurrence_id, captured_at)")
   }
 
-  /// Enrolled Accessories. Keyed on the manifest's persistent accessory id, so the same hardware
-  /// renamed, re-flashed or seen on a different peripheral id stays one row.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_43_44`
   static func createAccessories(_ db: Database) throws {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessories (accessory_id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, firmware_version TEXT NOT NULL, protocol_version INTEGER, device_id TEXT, capabilities_json TEXT NOT NULL, enrolled_at INTEGER NOT NULL, last_connected_at INTEGER)")
   }
 
-  /// Ground-clearance calibration, keyed on the Accessory and the capability it was made for.
-  ///
-  /// A table rather than a column on `accessories`: one unit may declare several measurement
-  /// capabilities — the eventual hardware has a nose sensor and a tail sensor on one board — and
-  /// they cannot share near/far distances or a correction direction.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_44_45`
   static func createAccessoryGroundClearance(_ db: Database) throws {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessory_ground_clearance (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, near_cm REAL NOT NULL, far_cm REAL NOT NULL, direction TEXT NOT NULL, strength_percent INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
   }
 
-  /// Brake-light behaviour, keyed the same way and for the same reason: one unit may carry more
-  /// than one light, and sensitivity and the parked preference belong to a light, not to a unit.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_45_46`
   static func createAccessoryBrakeLight(_ db: Database) throws {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessory_brake_light (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, sensitivity INTEGER NOT NULL, parked TEXT NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
@@ -79,8 +69,6 @@ enum PersistenceSchema {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessory_capability_settings (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, enabled INTEGER NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
   }
 
-  /// Weather Observations: rows of current conditions keyed on observation time, tied to no Board,
-  /// ride or place. The key makes a repeated observation impossible to store twice.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_52_53`
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `WeatherObservationEntity`
   static func createWeatherObservations(_ db: Database) throws {

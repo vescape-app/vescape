@@ -1,9 +1,6 @@
 import Foundation
 import GRDB
 
-/// A Board row. `id` is the UUID sync identity; `key` is the local integer the Ride Track references
-/// (ADR 0028), assigned on first insert and never changed — so the row is looked up and written by
-/// `id` only, never through GRDB's primary-key `save`.
 struct PersistedBoard: Decodable, FetchableRecord, TableRecord {
   static let databaseTableName = "boards"
   let id: String
@@ -11,7 +8,6 @@ struct PersistedBoard: Decodable, FetchableRecord, TableRecord {
   let bleId: String?
   let createdAt: Int64
   let deletedAt: Int64?
-  /// Nil until the row exists.
   var key: Int64? = nil
 
   enum CodingKeys: String, CodingKey {
@@ -25,7 +21,6 @@ struct PersistedBoard: Decodable, FetchableRecord, TableRecord {
     try PersistedBoard.filter(Column("id") == id).fetchOne(db)
   }
 
-  /// Writes the Board by its UUID, updating the existing row in place so `key` never changes.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `saveBoardRow`
   func saveBoardRow(_ db: Database) throws {
     try db.execute(
@@ -68,7 +63,6 @@ struct PersistedAppSetting: Codable, FetchableRecord, PersistableRecord {
   }
 }
 
-/// Production Board/settings GRDB operations. The app adapter and macOS contract call this exact code.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BoardSettingsPersistence.kt
 final class BoardSettingsPersistence {
   private let writer: any DatabaseWriter
@@ -92,8 +86,6 @@ final class BoardSettingsPersistence {
     }
   }
 
-  /// The Board, its settings, and any `alerts` rows (a new Board's preset rows and rider rules) in
-  /// one transaction, so no reader sees the Board without its alert setup.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `upsertBoardWithSettings`
   func upsertBoard(_ board: PersistedBoard, settings: [PersistedBoardSetting], deletedKeys: [String], alerts: [PersistedAlertRule] = []) throws {
     try writer.write { db in

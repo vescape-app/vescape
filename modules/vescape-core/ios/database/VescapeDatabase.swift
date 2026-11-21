@@ -1,20 +1,12 @@
 import Foundation
 import GRDB
 
-/// Single on-device database for iOS. One GRDB file backs both app data (boards, alert rules,
-/// privacy zones, map points, settings) and telemetry tables — mirroring the single Android Room
-/// database. GRDB `DatabasePool` opens in WAL mode by default, matching Room's WAL concurrency.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt
 /// @platform-diff iOS is greenfield, so the schema starts at a single `v1` migration that creates
-/// the final table shapes directly instead of replaying Android's incremental Room migrations. The
-/// telemetry tables are created schema-only here; their writers land in later slices (#60/#61/#63).
 enum VescapeDatabase {
   private static let databaseName = "vescape.db"
   private static let legacyDatabaseName = "telemetry.db"
 
-  /// Pool installed by a database restore, replacing the originally opened `poolResult`. Callers
-  /// read `pool` on every access, so a swap is picked up transparently across the app.
   private static var reopened: DatabasePool?
 
   private static let poolResult: Result<DatabasePool, Error> = {
@@ -29,24 +21,17 @@ enum VescapeDatabase {
     }
   }()
 
-  /// The shared pool, or `nil` if the database could not be opened. Startup health owns the
-  /// resulting outage; bridge operations use `requirePool()` so the original error is preserved.
   static var pool: DatabasePool? {
     if let reopened { return reopened }
     if case let .success(pool) = poolResult { return pool }
     return nil
   }
 
-  /// Resolve the shared pool while preserving its original open or migration error for startup
-  /// health checks. Ordinary callers keep using `pool` so reads can still degrade gracefully.
   static func requirePool() throws -> DatabasePool {
     if let reopened { return reopened }
     return try poolResult.get()
   }
 
-  /// One-time file rename from the pre-release "telemetry.db" name. Checkpoints the legacy WAL so
-  /// the whole database lives in the main file, then renames it in place. Idempotent: once the new
-  /// file exists (or no legacy file is present) this is a no-op.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `migrateLegacyDatabaseFile`
   internal static func migrateLegacyDatabaseFile(to url: URL) throws {
     let fm = FileManager.default
@@ -66,7 +51,6 @@ enum VescapeDatabase {
     try FileManager.default.moveItem(at: legacy, to: target)
   }
 
-  /// On-disk location of the single database file.
   static var databaseURL: URL? {
     // intentional-suppression: obsolete sidecar cleanup is best effort and support-directory absence is explicit
     guard let support = try? FileManager.default.url(
@@ -78,7 +62,6 @@ enum VescapeDatabase {
     return support.appendingPathComponent(databaseName)
   }
 
-  /// Size of the live database file in bytes, or 0 when it does not exist yet.
   static func databaseSizeBytes(
     at url: URL? = databaseURL,
     attributes: (String) throws -> [FileAttributeKey: Any] = {
@@ -95,26 +78,12 @@ enum VescapeDatabase {
     return size.int64Value
   }
 
-  /// GRDB's own ledger of applied migrations. A backup taken on Android carries the schema but not
-  /// this table, so restoring one used to replay every migration against tables that already exist
-  /// — `CREATE TABLE boards` on a database that has `boards` — and the whole restore rolled back.
   private static let migrationLedgerTable = "grdb_migrations"
 
-  /// Room version a migration corresponds to, read off its `v<N>_…` identifier.
-  ///
-  /// The identifiers are named after Android's Room versions on purpose: the two schemas move
-  /// together, so the number is what makes an incoming Room database comparable to this migrator.
-  /// (`v1` is the exception in content, not in numbering — iOS is greenfield, so it creates the
-  /// v1-era shapes directly rather than replaying Android's early steps.)
   private static func roomVersion(of identifier: String) -> Int {
     Int(identifier.dropFirst().prefix { $0.isNumber }) ?? Int.max
   }
 
-  /// Mark the migrations an incoming foreign database already satisfies, so `migrate` runs only the
-  /// genuinely newer ones. A backup from an older Android build stamps fewer of them and gets the
-  /// remaining migrations applied for real.
-  ///
-  /// Internal, not private, so the migration tests can stamp a database the way a restore does.
   internal static func stampAppliedMigrations(_ db: Database, schemaVersion: Int) throws {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS \(migrationLedgerTable) (identifier TEXT NOT NULL PRIMARY KEY)")
     for identifier in migrator.migrations where roomVersion(of: identifier) <= schemaVersion {
@@ -125,11 +94,6 @@ enum VescapeDatabase {
     }
   }
 
-  /// Bring an exported Room database from the first backup-capable generation to the shared v22
-  /// baseline. Android backup export shipped at v14, before the GRDB migration names became
-  /// aligned with Room versions. These are the production Room 14→22 operations expressed through
-  /// GRDB so an old Android archive follows the same data-preserving path on iOS.
-  ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_14_15` through `MIGRATION_21_22`
   internal static func upgradeExportedAndroidDatabase(_ db: Database, from version: Int) throws {
     guard version < 22 else { return }
@@ -227,13 +191,6 @@ enum VescapeDatabase {
     try db.execute(sql: "PRAGMA user_version = 22")
   }
 
-  /// Hot-swap the database file with a validated restore, closing the live pool so SQLite releases
-  /// the file + WAL sidecars, then reopening (and migrating) at the same path. On any failure the
-  /// previous file is rolled back so the app is never left without a database.
-  ///
-  /// `schemaVersion` comes from the backup manifest and only matters for a database that has never
-  /// been migrated by GRDB — an Android backup. An iOS backup brings its own ledger and is migrated
-  /// from wherever it left off.
   static func replaceDatabase(withFileAt source: URL, schemaVersion: Int, afterInstall: (DatabasePool) throws -> Void = { _ in }) throws {
     guard let target = databaseURL else { throw CocoaError(.fileNoSuchFile) }
     do {
@@ -278,8 +235,6 @@ enum VescapeDatabase {
       try stampAppliedMigrations(db, schemaVersion: max(schemaVersion, 22))
     }
     try migrator.migrate(pool)
-    // Foreign keys are checked at commit, so stray tables that reference each other drop in any order.
-    // Clear the archive's telemetry job state and legacy marker so its buffer drains again (ADR 0045).
     try pool.write { db in
       try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
       for table in try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type='table'") where isUnknownTable(table) {
@@ -290,13 +245,10 @@ enum VescapeDatabase {
     return pool
   }
 
-  /// Internal, not private, so migration tests can run the real migrator against an in-memory
-  /// database and stop at a chosen version with `migrate(_:upTo:)`.
   internal static var migrator: DatabaseMigrator {
     var migrator = DatabaseMigrator()
 
     migrator.registerMigration("v1") { db in
-      // MARK: App data
 
       try db.execute(sql: """
         CREATE TABLE boards (
@@ -372,8 +324,6 @@ enum VescapeDatabase {
           updated_at INTEGER NOT NULL
         )
         """)
-
-      // MARK: Telemetry (schema only — populated by #60/#61/#63)
 
       try db.execute(sql: """
         CREATE TABLE telemetry_frames (
@@ -511,8 +461,6 @@ enum VescapeDatabase {
         """)
     }
 
-    // MARK: Tune Profiles (#161)
-    // Per-board VESC tune configs with reversible Tune History. Host and app share the DDL.
     migrator.registerMigration("v2_tune_profiles") { db in
       try PersistenceSchema.createTuneProfiles(db)
     }
@@ -536,8 +484,6 @@ enum VescapeDatabase {
       try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_tune_profiles_board_id_refloat_base_version ON tune_profiles(board_id, refloat_base_version)")
     }
 
-    // MARK: Board Warnings (#208)
-    // Durable one-row-per-(board, kind) warning store. Mirrors Android Room migration 24→25.
     migrator.registerMigration("v25_board_warnings") { db in
       try PersistenceSchema.createBoardWarnings(db)
     }
@@ -550,8 +496,6 @@ enum VescapeDatabase {
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_26_27`
-    // Per-board Alert Rules (#254). Existing global rules are intentionally dropped; the former
-    // global alert settings are now board-scoped settings.
     migrator.registerMigration("v27_alert_board_id") { db in
       let hasBoardId = try db.columns(in: "alerts").contains { $0.name == "board_id" }
       if !hasBoardId {
@@ -580,34 +524,22 @@ enum VescapeDatabase {
         """)
     }
 
-    // Map Points became server-owned (server ADR-0009), so the app keeps no local copy. Drops the
-    // v27 table and the reaction table that only ever existed on a feature branch. The direction
-    // target it used to hold moves to app settings, which start empty here — a rider re-picks it.
-    // GRDB keys migrations by name, so one migration covers both released and feature-branch
-    // installs; Room needs two steps because it keys them by version number.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_28_29`
     migrator.registerMigration("v29_drop_map_points") { db in
       try db.execute(sql: "DROP TABLE IF EXISTS map_point_reactions")
       try db.execute(sql: "DROP TABLE IF EXISTS map_points")
     }
 
-    // MARK: Favorites (#287)
-    // Durable, optionally named time ranges over Ride History (ADR 0029). Mirrors Android Room
-    // migration 29→30.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_29_30`
     migrator.registerMigration("v30_favorites") { db in
       try PersistenceSchema.createFavorites(db)
     }
 
-    // Favorite Media (#291). Native manifest metadata truth; bytes live in canonical Favorite-owned
-    // app storage (ADR 0030).
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_30_31`
     migrator.registerMigration("v31_favorite_media") { db in
       try PersistenceSchema.createFavoriteMedia(db)
     }
 
-    // Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
-    // former hardcoded 3 beeps, so nothing a rider already configured changes how it sounds.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_31_32`
     migrator.registerMigration("v32_alert_repeat") { db in
       let columns = try db.columns(in: "alerts").map(\.name)
@@ -621,8 +553,6 @@ enum VescapeDatabase {
       }
     }
 
-    // Last Known Board Config Values: latest decoded Refloat config per Board + base version,
-    // restored as `lastKnown` on connect (#393).
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_32_33`
     migrator.registerMigration("v33_board_config_values") { db in
       try PersistenceSchema.createBoardConfig(db)
@@ -643,17 +573,6 @@ enum VescapeDatabase {
       try PersistenceSchema.createMotorConfig(db)
     }
 
-    /// VESC Fault Evidence (#430): dedicated Board-owned fault storage replaces the partial Ride
-    /// History fault path. Creates the fault tables and removes the legacy telemetry fault storage —
-    /// `telemetry_frames.fault_code` with its partial index, and
-    /// `telemetry_minute_buckets.fault_count`. Legacy values are dropped, not backfilled.
-    ///
-    /// Both tables are rebuilt by copy rather than `DROP COLUMN`, matching Android and staying
-    /// correct on SQLite builds older than 3.35.
-    ///
-    /// Numbered `v40` rather than `v37` because Room reached the same shape at version 40. The
-    /// identifiers in between only existed in development builds while the feature was being cut
-    /// down; a database that recorded them is beyond this migrator and has to be reinstalled.
     /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_36_40`
     migrator.registerMigration("v40_vesc_faults") { db in
       try PersistenceSchema.createVescFaults(db)
@@ -769,9 +688,6 @@ enum VescapeDatabase {
       }
     }
 
-    // Board tombstones (#279). Deleting a Board stops removing its row and stamps `deleted_at`
-    // instead, so Ride History outlives the Board that produced it (ADR 0027). Additive: existing
-    // rows stay null, i.e. alive.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_40_41`
     migrator.registerMigration("v41_board_deleted_at") { db in
       let hasDeletedAt = try db.columns(in: "boards").contains { $0.name == "deleted_at" }
@@ -780,13 +696,6 @@ enum VescapeDatabase {
       }
     }
 
-    // Telemetry keys on the Board id (#280, ADR 0028). `telemetry_frames` and
-    // `telemetry_minute_buckets` gain `board_id` and lose `device_id` (the BLE identifier) and
-    // `device_name` (the Board name denormalized at capture time); Ride History resolves the name
-    // by looking the Board up instead.
-    //
-    // Both tables are rebuilt rather than altered: the bucket primary key moves to
-    // `(bucket_start_ms, board_id)`, and the rebuild is what drops the two retired columns.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDatabase.kt `MIGRATION_41_42`
     migrator.registerMigration("v42_telemetry_board_id") { db in
       try mintOrphanBoards(db)
@@ -799,16 +708,6 @@ enum VescapeDatabase {
       try db.execute(sql: "DROP TABLE IF EXISTS \(DEVICE_BOARD_MAP)")
     }
 
-    // Ride Track becomes the durable home for ride position (#448, ADR 0038). GPS stops being seven
-    // nullable columns on the telemetry row and gets its own table on its own clock, so a board
-    // dropout no longer erases the route; Ride Recordings gain durable identity and explicit
-    // boundaries, held apart from the Board they belong to.
-    //
-    // The existing values are moved, not dropped — the frames' own `board_id` is the attribution,
-    // already resolved once by the board-id migration, so this migration never re-decides who owns
-    // a row. Rides recorded before today gain no new points: their tracks come out exactly as
-    // sparse as their telemetry was. Legacy rows get no recording identity either;
-    // `rideSplitGapMinutes` still groups them.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_42_43`
     migrator.registerMigration("v43_ride_track") { db in
       try createRideRecordingTables(db)
@@ -842,11 +741,6 @@ enum VescapeDatabase {
       try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN route_preview TEXT")
     }
 
-    // A single alert's beep count moves into its sound string (#578): `preset:beep` with
-    // `beep_count` 3 becomes `alert(3):warning`, playing the effects pack's severity slot. Legacy
-    // `preset:beep|urgent|notify` (and the older bare names) map to warning, critical, info. TTS,
-    // geiger, and unknown strings keep their sound. `beep_count` is then dropped by copy, matching
-    // Android, which cannot rely on `DROP COLUMN`.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_49_50`
     migrator.registerMigration("v50_alert_sound_count") { db in
       try db.execute(sql: alertSoundCountSql)
@@ -886,13 +780,6 @@ enum VescapeDatabase {
       try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_alerts_created_at ON alerts(created_at)")
     }
 
-    // An Alert Preset becomes one `preset:<metric>` row (#591) whose `spec` is
-    // `preset(<level>)[:geiger=<level>][,match=on]`; native expands it at load, so the copied
-    // `source = 'preset'` rows go. Existing Boards keep what fired: a missing level or `custom` is
-    // `off` (custom's rider rules stay), the geiger choice comes from `alertPresetSound` or else the
-    // old preset rows, and `matchBoardConfig` becomes `match=on`. The column `sound_type` is renamed
-    // `spec`, `source` is dropped by copy (matching Android), and the three obsolete Board Settings
-    // are deleted.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_50_51`
     migrator.registerMigration("v51_preset_rows") { db in
       try db.execute(sql: """
@@ -931,12 +818,6 @@ enum VescapeDatabase {
       try db.execute(sql: "DELETE FROM board_settings WHERE key IN ('alertPreset', 'matchBoardConfig', 'alertPresetSound')")
     }
 
-    // Ride boundaries move from durable recording identity to the recorded data (ADR 0041):
-    // `ride_recordings` and every `recording_id` column go, and the bucket key returns to
-    // `(bucket_start_ms, board_id)`. Two recordings of one Board that shared a minute fold into one
-    // bucket. Legacy fixes with no reported accuracy read as precise only through their missing
-    // recording id, so they are stamped with the 20 m precision threshold first — a literal, so a
-    // later threshold change cannot rewrite what this step did.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_51_52`
     migrator.registerMigration("v52_drop_ride_recordings") { db in
       try db.execute(sql: "UPDATE ride_track_points SET accuracy_cm = 2000 WHERE recording_id IS NULL AND accuracy_cm IS NULL")
@@ -949,17 +830,10 @@ enum VescapeDatabase {
     migrator.registerMigration("v53_weather_observations") { db in
       try PersistenceSchema.createWeatherObservations(db)
     }
-    // Align with the shared schema (`schema/database.json`, #612). A Board's proven transport moves
-    // from the iOS-only `boards.transport` column into the `board_settings` row Android has always
-    // used. Android's restore makes the same move for an incoming iOS file. A restored Room v53
-    // file has no such column and lacks the `alerts` and `tune_profiles` defaults, so both tables
-    // are rebuilt with the same rows, exactly as Android's v54 does. Installs from before the
-    // shared schema declared `vesc_fault_capture_samples.id` nullable; that table is rebuilt too.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_53_54`
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseUpgradeContract.kt `iosSchemaReconciliationStatements`
     migrator.registerMigration("v54_shared_schema") { db in
       if try db.columns(in: "boards").contains(where: { $0.name == "transport" }) {
-        // A tombstoned Board keeps no settings rows (ADR 0027).
         try db.execute(sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) SELECT id, 'transport', json_quote(transport), created_at FROM boards WHERE transport IS NOT NULL AND deleted_at IS NULL")
         try db.execute(sql: "CREATE TABLE boards_v54 (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, ble_id TEXT, created_at INTEGER NOT NULL, deleted_at INTEGER)")
         try db.execute(sql: "INSERT INTO boards_v54 (id, name, ble_id, created_at, deleted_at) SELECT id, name, ble_id, created_at, deleted_at FROM boards")
@@ -977,16 +851,11 @@ enum VescapeDatabase {
       }
       for sql in sharedSchemaV54Sql { try db.execute(sql: sql) }
     }
-    // Board key (#684, ADR 0028): `boards.key` becomes the local integer the Ride Track references
-    // instead of repeating the Board UUID; orphan `board_id`s in the track or frames are minted as
-    // tombstoned Boards first. A database whose `boards` already has `key` is left alone.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_54_55`
     migrator.registerMigration("v55_board_key") { db in
       guard try !db.columns(in: "boards").contains(where: { $0.name == "key" }) else { return }
       for sql in boardKeyV55Sql { try db.execute(sql: sql) }
     }
-    // Telemetry Chunks (#687, ADR 0045): one codec blob per Board key and minute. Only the table is
-    // created; existing frames stay in the write buffer, never converted inside a migration.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_55_56`
     migrator.registerMigration("v56_telemetry_chunks") { db in
       for sql in telemetryChunksV56Sql { try db.execute(sql: sql) }
@@ -1090,32 +959,17 @@ enum VescapeDatabase {
     """
 }
 
-/// Stand-in Board id for buckets whose samples match no saved Board. `board_id` is part of the
-/// bucket primary key, so unattributed rows need a value rather than null.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt `UNKNOWN_TELEMETRY_BOARD_ID`
 internal let UNKNOWN_TELEMETRY_BOARD_ID = ""
 internal let UNKNOWN_TELEMETRY_BOARD_NAME = "VESC Board"
 
-/// Id prefix for the tombstoned Boards the board-id migration mints for telemetry whose BLE
-/// identifier resolves to nothing. Derived from the identifier rather than random so the mint is
-/// idempotent.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt `ORPHAN_BOARD_ID_PREFIX`
 internal let ORPHAN_BOARD_ID_PREFIX = "orphan-"
 
-/// Telemetry whose `device_id` matches no Board would lose both its identity and its label: either
-/// the Board was hard-deleted before tombstones existed (ADR 0027), or it was re-linked to a
-/// different peripheral and the old identifier no longer resolves. One tombstoned Board is minted
-/// per unresolved identifier, named from that telemetry's own historical `device_name`, so the
-/// history stays joinable, keeps a label, and can be backed up.
-///
-/// The minted row is a tombstone with no Board Link: `deleted_at` keeps it out of every
-/// Rider-facing list, and a null `ble_id` stops it from ever capturing a future re-link.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `mintOrphanBoards`
 internal func mintOrphanBoards(_ db: Database) throws {
   let now = telemetryNowMs()
   for (table, timeColumn) in telemetryTablesKeyedOnDeviceId {
-    // Metric Exclusion Ranges never carried a `device_name`, so there is nothing to name a Board
-    // after there — a range on an identifier no other table saw falls back to the generic name.
     let historicalName =
       table == "metric_exclusion_ranges"
         ? "NULL"
@@ -1143,10 +997,6 @@ internal func mintOrphanBoards(_ db: Database) throws {
   }
 }
 
-/// Every table the board-id migration moves off the BLE identifier, with the time column its rows
-/// are ordered by. All five are minted for and rebuilt together: a Board minted from one table's
-/// identifiers has to exist before any other table resolves the same identifier, or the two
-/// disagree about who owns the history — the defect this migration exists to remove.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `TELEMETRY_TABLES_KEYED_ON_DEVICE_ID`
 private let telemetryTablesKeyedOnDeviceId = [
   ("telemetry_frames", "captured_at_ms"),
@@ -1156,26 +1006,9 @@ private let telemetryTablesKeyedOnDeviceId = [
   ("metric_exclusion_ranges", "start_ms"),
 ]
 
-/// Scratch table holding the board-id migration's one and only BLE identifier → Board decision.
-/// Temp, so it belongs to the connection and never reaches the durable schema.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `DEVICE_BOARD_MAP`
 private let DEVICE_BOARD_MAP = "telemetry_device_board_map"
 
-/// One BLE identifier can be claimed by more than one Board — the same peripheral linked twice,
-/// which the app supports and a Rider produces by pairing a board they already own a second time.
-/// Telemetry predating this migration recorded only the identifier, so for such rows there is no
-/// evidence of which of those Boards was connected, and no rule can recover it.
-///
-/// What must not happen is the two rebuilds disagreeing. Resolved independently, each
-/// `SELECT … LIMIT 1` is free to return a different Board for the same identifier, and then the
-/// frames of a ride sit under one Board while its buckets sit under another: History lists the ride
-/// from the buckets and finds no frames for it, so stats render over an empty route.
-///
-/// So the choice is made exactly once, here, and both rebuilds read it. `MIN(b.id)` is an arbitrary
-/// but stable pick among the claimants — arbitrary because the information to do better does not
-/// exist, stable because re-running the migration reaches the same answer. Deliberately not left
-/// unattributed: an unowned row is never uploaded and is pruned on age, so "unknown" would quietly
-/// destroy the history a merely mis-labelled ride keeps intact.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `buildDeviceBoardMap`
 internal func buildDeviceBoardMap(_ db: Database) throws {
   try db.execute(sql: """
@@ -1193,13 +1026,6 @@ internal func buildDeviceBoardMap(_ db: Database) throws {
     """)
 }
 
-/// Resolves a telemetry row's `device_id` to a Board id: the Board `buildDeviceBoardMap` chose for
-/// the identifier, otherwise the tombstone minted for it. A row that never carried an identifier
-/// stays unattributed — `unattributed` is NULL for frames and the sentinel for buckets, whose
-/// column is part of the primary key.
-///
-/// The lookup hits a primary key holding one row per identifier, so unlike a scan over `boards` it
-/// cannot resolve the same identifier two ways in two statements.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `boardIdFromDeviceId`
 private func boardIdFromDeviceId(_ alias: String, unattributed: String) -> String {
   """
@@ -1278,8 +1104,6 @@ private func rebuildFramesOnBoardId(_ db: Database) throws {
     """)
 }
 
-/// The primary key move from `(bucket_start_ms, device_id)` to `(bucket_start_ms, board_id)` is a
-/// table rebuild, not an `ALTER`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildBucketsOnBoardId`
 private func rebuildBucketsOnBoardId(_ db: Database) throws {
   let columns = """
@@ -1325,12 +1149,6 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
       PRIMARY KEY (bucket_start_ms, board_id)
     )
     """)
-  // Grouped rather than copied row-for-row so the rebuild is total. A `board_id` collision on the
-  // new key needs two identifiers resolving to one Board inside one minute, which the resolver
-  // cannot produce — the map is keyed on the identifier and a Board carries one — but an ungrouped
-  // copy would abort the whole migration on a constraint error if it ever did, stranding the
-  // database mid-upgrade. The fold sums the additive lanes and takes the extreme of the peaks, as
-  // an upsert merge would.
   try db.execute(sql: """
     INSERT INTO telemetry_minute_buckets_new (board_id, \(columns))
     SELECT
@@ -1372,9 +1190,6 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
     """)
 }
 
-/// A Marker notes something that happened while recording — a gap, a resume. It belongs to the
-/// Board it happened on, and `board_id` stays nullable because a Marker can be written with no
-/// Board connected. `device_name` goes with the identifier: the Board holds that text once.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildMarkersOnBoardId`
 private func rebuildMarkersOnBoardId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_markers_occurred_at_ms")
@@ -1440,10 +1255,6 @@ private func rebuildDiagnosticEventsOnBoardId(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_diagnostic_events_board_id_occurred_at_ms ON diagnostic_events(board_id, occurred_at_ms)")
 }
 
-/// A Metric Exclusion Range is a span of *one Board's* samples the app decided not to count, so
-/// unlike a Marker it has no meaning without one: `board_id` is NOT NULL, as `device_id` was. A row
-/// that never named a device takes the same unattributed sentinel a bucket does — the column is NOT
-/// NULL on both, so one sentinel across the two keeps "no Board" a single idea.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildExclusionRangesOnBoardId`
 private func rebuildExclusionRangesOnBoardId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_metric_exclusion_ranges_start_ms_end_ms")
@@ -1504,10 +1315,6 @@ internal func createRideRecordingTables(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_ride_track_points_recording_id_fix_at_ms ON ride_track_points(recording_id, fix_at_ms)")
 }
 
-/// Every frame that carried a fix becomes a Ride Track point. `location_timestamp_ms` is the GPS
-/// clock and is preferred over the frame's capture time, which is the clock the fix was merely
-/// stamped onto. A frame with no coordinates contributes nothing — a ride recorded without GPS
-/// migrates to an empty track, not to fabricated points.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `migrateFrameGpsIntoRideTrack`
 internal func migrateFrameGpsIntoRideTrack(_ db: Database) throws {
   try db.execute(sql: """
@@ -1531,8 +1338,6 @@ internal func migrateFrameGpsIntoRideTrack(_ db: Database) throws {
     """)
 }
 
-/// Drops the seven raw GPS columns and adds `recording_id`. A rebuild rather than an `ALTER`, which
-/// keeps the two platforms' migrations shaped the same way.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildFramesWithoutGps`
 internal func rebuildFramesWithoutGps(_ db: Database) throws {
   let columns = """
@@ -1585,9 +1390,6 @@ internal func rebuildFramesWithoutGps(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_telemetry_frames_recording_id_captured_at_ms ON telemetry_frames(recording_id, captured_at_ms)")
 }
 
-/// The bucket primary key gains `recording_id`, so two recordings of one Board inside one minute
-/// stop aggregating into a single row. Existing buckets take an empty recording id and keep
-/// grouping exactly as they did.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `rebuildBucketsOnRecordingId`
 internal func rebuildBucketsOnRecordingId(_ db: Database) throws {
   let columns = """
@@ -1716,10 +1518,6 @@ private func rebuildFramesWithoutRecordingId(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_telemetry_frames_board_id_captured_at_ms ON telemetry_frames(board_id, captured_at_ms)")
 }
 
-/// Rows of one Board and minute fold like an upsert merge: additive lanes sum, peaks take the
-/// extreme, and the position anchor comes from the earliest row that has one. A folded minute's
-/// route preview is dropped — it was built per recording — and falls back to the anchor until
-/// history maintenance rebuilds it.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `foldBucketsWithoutRecordingId`
 private func foldBucketsWithoutRecordingId(_ db: Database) throws {
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_minute_buckets_bucket_start_ms")

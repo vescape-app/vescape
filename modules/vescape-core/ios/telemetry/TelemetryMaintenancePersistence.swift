@@ -1,7 +1,5 @@
 import GRDB
 
-/// Production telemetry maintenance transactions. The app and macOS host contract execute this
-/// same orchestration so statement coverage cannot hide ordering or rollback defects.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct TelemetryMaintenancePersistence {
   let writer: any DatabaseWriter
@@ -24,7 +22,6 @@ struct TelemetryMaintenancePersistence {
     try writer.write { db in try Self.deleteRanges(db, ranges, boardId: boardId, allBoards: allBoards) }
   }
 
-  /// Several Boards' ranges in one transaction, e.g. a bulk ride delete.
   func deleteBoardRanges(_ rangesByBoard: [String?: [TelemetryTimeRange]]) throws -> Int {
     try writer.write { db in
       try rangesByBoard.reduce(0) { $0 + (try Self.deleteRanges(db, $1.value, boardId: $1.key, allBoards: false)) }
@@ -86,7 +83,6 @@ struct TelemetryMaintenancePersistence {
           try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ?", arguments: [range.startMs, range.endMs])
           try db.execute(sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ?", arguments: [range.startMs, range.endMs])
         }
-        // A Favorite keeps the rows its weather reads: every row inside it, and an applicable start row.
         let weatherProtected = protectedRanges.map {
           TelemetryTimeRange(startMs: weatherProtectionStart($0.startMs), endMs: $0.endMs)
         }
@@ -100,7 +96,6 @@ struct TelemetryMaintenancePersistence {
 
 internal let RIDE_SUMMARIES_CHUNK_MS: Int64 = 3_600_000
 
-/// Diagnostic Events older than this are pruned by the Cleanup Maintenance Job.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DIAGNOSTIC_EVENT_RETENTION_MS`
 internal let DIAGNOSTIC_EVENT_RETENTION_MS: Int64 = 30 * 24 * 60 * 60 * 1000
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DIAGNOSTIC_EVENT_PRUNE_BATCH`
@@ -112,9 +107,6 @@ struct DiagnosticEventPruneResult {
   let yielded: Bool
 }
 
-/// Delete Diagnostic Events older than `DIAGNOSTIC_EVENT_RETENTION_MS`, one fenced batch per chunk so
-/// a large backlog never holds a long write lock. Each batch first rechecks, at the current time, whether
-/// a ride may be recording and yields to the Cleanup job if so. `scope.progress` runs between batches. Throws `MaintenanceRunFenced` when Restore or Clear all replaced the database.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `pruneDiagnosticEvents`
 @discardableResult
 internal func pruneDiagnosticEvents(_ scope: MaintenanceJobScope, gapMs: Int64, batch: Int = DIAGNOSTIC_EVENT_PRUNE_BATCH) throws -> DiagnosticEventPruneResult {
@@ -136,24 +128,16 @@ internal func pruneDiagnosticEvents(_ scope: MaintenanceJobScope, gapMs: Int64, 
   }
 }
 
-/// Read-only state one Ride summaries chunk hands the next: each Board's free-spin state and the
-/// last precise Ride Track fix. It shapes the next chunk's output but is never written as it, and
-/// every chunk re-checks it against the database, so a ride deleted between chunks cannot leak into
-/// the rebuild.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `RideSummariesContext`
 final class RideSummariesContext {
   fileprivate(set) var previousTrack: RideTrackPoint?
   fileprivate(set) var freeSpin = FreeSpinCarry()
 }
 
-/// What one Ride summaries chunk did. Owned ranges are half-open `[from, to)` on whole minutes.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `RideSummariesChunkResult`
 enum RideSummariesChunkResult: Equatable {
-  /// Rebuilt `[fromMs, toMs)`; `endMs` is where this run currently stops.
   case rebuilt(toMs: Int64, endMs: Int64)
-  /// Nothing left to rebuild: every old-generation minute is replaced.
   case finished
-  /// The rest belongs to a potentially active ride; check again at `retryAtMs`.
   case activeRide(retryAtMs: Int64)
 }
 
@@ -170,14 +154,11 @@ internal func lastSampleAt(_ db: Database) throws -> Int64? {
    try Int64.fetchOne(db, sql: "SELECT MAX(fix_at_ms) FROM ride_track_points")].compactMap { $0 }.max()
 }
 
-/// First owned chunk start, or nil for a database with no frames and no Ride Track.
 internal func rideSummariesStartMs(_ db: Database) throws -> Int64? {
   [try firstTelemetrySampleAt(db),
    try Int64.fetchOne(db, sql: "SELECT MIN(fix_at_ms) FROM ride_track_points")].compactMap { $0 }.min().map(floorChunk)
 }
 
-/// Newest telemetry sample or Ride Track fix at or before `nowMs`; a future-dated one is ignored. A
-/// chunk straddling `nowMs` counts as `nowMs`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `lastSampleAtOrBefore`
 internal func lastSampleAtOrBefore(_ db: Database, nowMs: Int64) throws -> Int64? {
   try Int64.fetchOne(db, sql: """
@@ -189,10 +170,6 @@ internal func lastSampleAtOrBefore(_ db: Database, nowMs: Int64) throws -> Int64
     """, arguments: ["nowMs": nowMs])
 }
 
-/// Start of the derived ride that may still be recording (ADR 0041), or nil when the newest sample
-/// at or before `nowMs` is a full split gap old. A future-dated sample (a wrong clock) is ignored, so
-/// it never holds the database in a ride forever. Every Board and both streams count, and a Stop Recording is ignored, so
-/// the cutoff can only be earlier than the real ride start, never later.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `activeRideStartMs`
 internal func activeRideStartMs(_ db: Database, nowMs: Int64, gapMs: Int64) throws -> Int64? {
   guard let last = try lastSampleAtOrBefore(db, nowMs: nowMs), nowMs - last < gapMs else { return nil }
@@ -207,9 +184,6 @@ internal func activeRideStartMs(_ db: Database, nowMs: Int64, gapMs: Int64) thro
   }
 }
 
-/// Replace the complete minute buckets and exclusion portions in one owned chunk starting at
-/// `fromMs`, reading frames, Ride Track and boundary context in the same transaction. Live additive
-/// upserts never meet a rebuilt bucket: the potentially active ride is never owned.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `rebuildRideSummariesChunkImpl`
 internal func rebuildRideSummariesChunk(
   _ db: Database,
@@ -226,7 +200,6 @@ internal func rebuildRideSummariesChunk(
   guard fromMs < end else { return active != nil ? .activeRide(retryAtMs: last + gapMs) : .finished }
   let toMs = min(floorChunk(fromMs) + RIDE_SUMMARIES_CHUNK_MS, end)
 
-  // Context that a deletion removed since the last chunk no longer exists to carry.
   if let previous = context.previousTrack,
      try Bool.fetchOne(db, sql: "SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE fix_at_ms = ? AND board_key IS \(BOARD_KEY_OF_BOARD_ID))", arguments: [previous.fixAtMs, previous.boardId, previous.boardId]) != true {
     context.previousTrack = nil
@@ -250,7 +223,6 @@ internal func rebuildRideSummariesChunk(
     points[i].excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed
     points[i].excludedFromMaxDuty = sanitization.samples[i].excludedFromMaxDuty
   }
-  // Plain inserts: merging into a neighbouring range would rewrite another chunk's output.
   for range in sanitization.exclusions { try insertExclusion(db, range) }
   for bucket in buildTelemetryBuckets(points, locationPoints: locations) {
     try upsertBucket(db, bucket)
@@ -259,7 +231,6 @@ internal func rebuildRideSummariesChunk(
   return .rebuilt(toMs: toMs, endMs: end)
 }
 
-/// Remove the `[fromMs, toMs)` portion of every exclusion range, keeping what lies outside it.
 private func trimExclusions(_ db: Database, fromMs: Int64, toMs: Int64) throws {
   let rows = try Row.fetchAll(db, sql: "SELECT * FROM metric_exclusion_ranges WHERE start_ms <= ? AND end_ms >= ?", arguments: [toMs - 1, fromMs])
   for row in rows {

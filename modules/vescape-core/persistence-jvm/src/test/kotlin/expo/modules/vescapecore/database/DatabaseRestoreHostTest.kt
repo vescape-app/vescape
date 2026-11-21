@@ -45,7 +45,6 @@ class DatabaseRestoreHostTest {
         dao.insertRideTrackPoints(listOf(RideTrackPoint(boardId = "cross-board", fixAtMs = 1200, latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500, gpsSpeedCentiMps = 400, bearingCentiDeg = 9000, altitudeCm = 12300)))
         val previewFixes = bucketPreviewFixes()
         RecordingPersistence(dao).commit(emptyList(), buildTelemetryBuckets(emptyList(), previewFixes.toBucketLocationPoints()), emptyList(), trackPoints = previewFixes)
-        // A sealed minute and a buffered delta anchored in it (ADR 0045).
         dao.insertFrames(crossChunkFrames())
         assertEquals(2, dao.sealTelemetryMinute("cross-board", 60_000))
         room.close()
@@ -66,7 +65,6 @@ class DatabaseRestoreHostTest {
         val manifest = exchange.resolve("ios.zip").inputStream().use { DatabaseBackupArchive.extract(it, database) }
         assertEquals("ios", manifest.getString("platform"))
         assertEquals(VESCAPE_DATABASE_VERSION, manifest.getInt("schemaVersion"))
-        // From v54 iOS writes the shared schema, so the archive needs no reconciliation.
         assertMatchesSharedSchema("restored-ios", database.toPath())
         val room = open(database.path)
         val dao = room.vescapeDao()
@@ -93,7 +91,6 @@ class DatabaseRestoreHostTest {
         assertEquals(listOf(1000L), dao.getVescFaultCaptureSamples("cross-fault").map { it.capturedAtMs })
         room.close()
 
-        // An archive from an iOS app before the shared schema still carries `boards.transport`.
         val v53 = exchange.resolve("ios-v53-restored.sqlite")
         val v53Manifest = exchange.resolve("ios-v53.zip").inputStream().use { DatabaseBackupArchive.extract(it, v53) }
         assertEquals(53, v53Manifest.getInt("schemaVersion"))
@@ -118,7 +115,6 @@ class DatabaseRestoreHostTest {
     }
   }
 
-  /** Keyframe + delta in minute 60 000, sealed by the exporter; a delta at 120 500 left in the buffer. */
   private fun crossChunkFrames() = listOf(60_000L to 1, 60_500L to 0, 120_500L to 0).mapIndexed { i, (at, flags) ->
     TelemetryFrameEntity(capturedAtMs = at, elapsedRealtimeMs = at, boardId = "cross-board", canId = null, flags = flags,
       changedMask1 = if (flags == 1) (1 shl 17) - 1 else TELEMETRY_MASK_SPEED, changedMask2 = 0, speedCentiKmh = 100 * (i + 1),
@@ -131,7 +127,6 @@ class DatabaseRestoreHostTest {
       tempMosfetDeciC = null, tempMotorDeciC = null)
   }
 
-  /** The other platform's sealed chunk and buffered delta read back as one stream. */
   private suspend fun assertCrossChunkSpeeds(dao: VescapeDao) {
     assertEquals(1L, dao.getTelemetryChunkHeaders(60_000, 60_000, "cross-board", false).size.toLong())
     val frames = dao.getAnchoredFrames(60_000, 121_000, "cross-board", 10)
@@ -143,7 +138,6 @@ class DatabaseRestoreHostTest {
     assertEquals(listOf(60_000L to 100L, 60_500L to 200L, 120_500L to 300L), speeds)
   }
 
-  /** An archive carries `app_settings`; the restored database must not inherit its drained marker (ADR 0045). */
   @Test
   fun restoredArchiveForgetsTheTelemetryDrainedMarker(): Unit = runBlocking {
     val directory = Files.createTempDirectory("vescape-restore-drained").toFile()
@@ -183,8 +177,6 @@ class DatabaseRestoreHostTest {
   fun productionMigrationGraphRejectsVersionsWithoutAPath() {
     assertTrue((3..36).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
     assertTrue((40..VESCAPE_DATABASE_VERSION).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
-    // The gap and the generation past the current one: 37-39 never shipped, and a database from a
-    // newer app than this one is not something an older migration graph may guess at.
     assertTrue(
       (listOf(1, 2, 37, 38, 39) + (VESCAPE_DATABASE_VERSION + 1))
         .all { it !in SUPPORTED_ANDROID_DATABASE_VERSIONS },

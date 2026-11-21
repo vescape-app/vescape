@@ -3,7 +3,6 @@ import Foundation
 internal let backupManifestEntry = "manifest.json"
 internal let backupDatabaseEntry = "db.sqlite"
 
-/// Production backup container codec, independent of the iOS file-picker and live database pool.
 enum DatabaseBackupArchive {
   static func manifest(
     platform: String,

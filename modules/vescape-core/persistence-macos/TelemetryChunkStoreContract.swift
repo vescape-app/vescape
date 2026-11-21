@@ -1,8 +1,6 @@
 import Foundation
 import GRDB
 
-/// Telemetry Chunks (#687, ADR 0045) through the production GRDB statements: every sample reader
-/// returns the same over sealed + buffered data as over the same rows left unsealed.
 /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/TelemetryChunkStoreHostTest.kt
 func runTelemetryChunkContract() throws {
   let minute: Int64 = 60_000
@@ -10,12 +8,9 @@ func runTelemetryChunkContract() throws {
   let board = "board-a"
   let owners: [String?] = [board, nil]
 
-  /// Android's delta chain at 2 Hz, keyframe 3.5 s into each minute, temperature cleared now and
-  /// then. Unmasked columns hold the carried value, so readers that take rows as full states agree.
   func recording(_ boardId: String?, from: Int64 = t0, minutes: Int = 4) -> [RecordingPersistenceSQL.Frame] {
     var temp: Int? = nil
     return (0..<(minutes * 120)).map { i in
-      // iOS reads rows as full states, so the very first row anchors the chain too.
       let key = i % 120 == 7 || i == 0
       let at = from + Int64(i) * 500
       if key || i % 10 == 0 { temp = i % 20 == 0 ? nil : 300 + i }
@@ -45,7 +40,6 @@ func runTelemetryChunkContract() throws {
       for m in minutes { for owner in owners { try sealTelemetryMinute(db, TelemetryMinuteKey(boardId: owner, minuteStartMs: t0 + m * minute)) } }
     }
   }
-  /// Reconstructed samples of `boardId` in `[from, to]`, replayed from the preceding full state.
   func canonical(_ pool: DatabasePool, _ from: Int64, _ to: Int64, _ boardId: String?) throws -> [String] {
     try pool.read { db in
       let start = try telemetryAnchorMs(db, beforeMs: from + 1, boardId: boardId, allBoards: false) ?? from
@@ -87,7 +81,6 @@ func runTelemetryChunkContract() throws {
     try require(try summary(expected) == summary(actual), "\(label): summary, maintenance checks and every-Board read")
   }
 
-  // Consecutive seals read exactly like the buffer, including deltas anchored across the boundary.
   let reference = try fresh(), sealed = try fresh()
   try seed(reference); try seed(sealed)
   try seal(sealed, 0...1)
@@ -106,13 +99,11 @@ func runTelemetryChunkContract() throws {
   }
   try require(rebuilt[0] == rebuilt[1] && !rebuilt[0].isEmpty, "ride summaries rebuild the same from chunks")
 
-  // A limited read counts only samples in range, inside a sealed minute and just after one.
   for from in [t0 + 50_250, t0 + 2 * minute + 250] {
     let page = try sealed.read { try telemetryFrameRows($0, fromMs: from, toMs: t0 + 4 * minute, boardId: board, allBoards: false, limit: 10) }
     try require(page.map { $0["captured_at_ms"] as Int64 } == (1...10).map { from - 250 + Int64($0) * 500 }, "limited read from \(from)")
   }
 
-  // A Board id with no boards row seals under a minted Board Tombstone instead of being dropped.
   let ghost = "board-without-row"
   let orphan = try fresh()
   try orphan.write { try insert($0, recording(ghost, minutes: 1)) }
@@ -126,7 +117,6 @@ func runTelemetryChunkContract() throws {
   }
   try require(ghostState?["tombstoned"] == true && ghostState?["sample_count"] == 120, "unknown Board id minted as a tombstone")
 
-  // A late sample of a sealed minute stays readable and merges on the next seal.
   let late = recording(board, from: t0 + 250, minutes: 1)[20]
   for pool in [reference, sealed] { try pool.write { try insert($0, [late]) } }
   try assertSameReads(reference, sealed, "late sample")
@@ -135,7 +125,6 @@ func runTelemetryChunkContract() throws {
   }
   try assertSameReads(reference, sealed, "late sample merged")
 
-  // Deletes re-encode cut chunks; every surviving sample keeps the values it was recorded with.
   let truth = try Dictionary(uniqueKeysWithValues: owners.map { ($0 ?? "", try canonical(reference, t0, t0 + 4 * minute, $0)) })
   func assertSurvivors(_ label: String, _ kept: (Int64, String?) -> Bool) throws {
     for owner in owners {
@@ -155,8 +144,6 @@ func runTelemetryChunkContract() throws {
   try maintenance.clear(protectedRanges: [])
   try require(try sealed.read { try telemetrySampleCount($0) } == 0, "clear all removes chunks")
 
-  // Drain: every closed minute leaves the buffer (backlog, late sample, minutes a crash or a failed
-  // seal left behind), a sealed minute merges instead of duplicating, and the open minute stays.
   let backlog = recording(board, from: t0 - 30 * minute, minutes: 2)
   let drainNow = t0 + 4 * minute
   let drainGapMs: Int64 = 500
@@ -192,14 +179,12 @@ func runTelemetryChunkContract() throws {
   try require(try drainTelemetryBuffer(drainScope(drained, DatabaseReplacementFence()), gapMs: drainGapMs) { _, _ in }
     == TelemetryDrainResult(minutes: 0, sealedMinutes: 0, failures: 0, yielded: false), "second drain is a no-op")
 
-  // A ride that may still be recording stops the drain before any write.
   let recordingPool = try fresh()
   try seed(recordingPool)
   let yielded = try drainTelemetryBuffer(drainScope(recordingPool, DatabaseReplacementFence()), gapMs: 10 * minute) { _, _ in }
   try require(yielded == TelemetryDrainResult(minutes: 6, sealedMinutes: 0, failures: 0, yielded: true), "drain yields to recording")
   try require(try bufferCount(recordingPool, Int64.min, Int64.max) == 4 * 2 * 120, "yielded drain wrote nothing")
 
-  // Restore or Clear all fences a drain between batches: what committed stays, the next run finishes.
   let interruptedPool = try leftovers(sealFirst: false)
   let fence = DatabaseReplacementFence()
   let interrupted = drainScope(interruptedPool, fence) { done, _ in if done == 2 { fence.fence {} } }
@@ -212,7 +197,6 @@ func runTelemetryChunkContract() throws {
   try assertSameReads(drainReference, interruptedPool, "resumed drain")
   try require(try canonical(drainReference, 0, t0, board) == canonical(interruptedPool, 0, t0, board), "resumed backlog reads")
 
-  // A codec failure (here an unreadable existing chunk) skips its minute; the minutes around it seal.
   let codecPool = try fresh()
   try codecPool.write { db in
     try db.execute(sql: "INSERT INTO boards (id,name,created_at) VALUES (?,'Board A',1)", arguments: [board])
@@ -245,7 +229,6 @@ func runTelemetryChunkContract() throws {
   try require(jobProgress.count == 1 && jobProgress[0].0 == 1 && jobProgress[0].1 == 1 && jobCommits == 1, "job progress and commit")
   try require(try !successJob.hasWork(successScope, settings: successSettings), "successful job stays done")
 
-  // Registered job completes failed minutes, retries next launch and after replacement.
   let storageJob = TelemetryStorageJob()
   let storageFence = DatabaseReplacementFence()
   let storageScope = drainScope(codecPool, storageFence)
@@ -265,7 +248,6 @@ func runTelemetryChunkContract() throws {
   try openOnly.write { try insert($0, [recording(board, from: drainNow - 500, minutes: 1)[0]]) }
   try require(try !TelemetryStorageJob().hasWork(drainScope(openOnly, DatabaseReplacementFence()), settings: storageSettings), "open minute alone is not work")
 
-  // A minute that closes during the fixed run snapshot remains for the next drain.
   let advancing = try fresh()
   try seed(advancing)
   var advancingNow = drainNow
@@ -277,21 +259,18 @@ func runTelemetryChunkContract() throws {
   let caughtUp = try drainTelemetryBuffer(advancingScope, gapMs: drainGapMs) { _, _ in }
   try require(caughtUp == TelemetryDrainResult(minutes: 2, sealedMinutes: 2, failures: 0, yielded: false), "catch-up drain \(caughtUp)")
 
-  // A future-dated sample (a wrong clock) is not a recording ride: the old backlog still drains.
   let futurePool = try fresh()
   try futurePool.write { try insert($0, recording(board, from: t0 - 30 * minute, minutes: 2) + [recording(board, from: drainNow + 60 * minute, minutes: 1)[7]]) }
   let future = try drainTelemetryBuffer(drainScope(futurePool, DatabaseReplacementFence()), gapMs: 10 * minute) { _, _ in }
   try require(future == TelemetryDrainResult(minutes: 2, sealedMinutes: 2, failures: 0, yielded: false), "future-dated drain \(future)")
   try require(try futurePool.read { try activeRideStartMs($0, nowMs: drainNow, gapMs: 10 * minute) } == nil, "future sample is not a ride")
 
-  // Clear all forgets the drained marker in its own transaction, with or without protected Favorites.
   for protected in [[], [TelemetryTimeRange(startMs: t0, endMs: t0 + minute)]] {
     try drained.write { try publishMaintenanceFingerprint($0, id: "telemetryStorage", fingerprint: "drained", nowMs: drainNow) }
     try TelemetryMaintenancePersistence(writer: drained).clear(protectedRanges: protected)
     try require(try drainedMarker(drained) == nil, "clear all forgets the marker")
   }
 
-  // An archive carries app_settings; the restored database must not inherit the drained marker.
   let archiveDir = FileManager.default.temporaryDirectory.appendingPathComponent("drained-restore-\(UUID().uuidString)", isDirectory: true)
   try FileManager.default.createDirectory(at: archiveDir, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(at: archiveDir) }
@@ -322,7 +301,6 @@ func runTelemetryChunkContract() throws {
   try cleanup.complete(restoredScope, settings: [:])
   try require(try restored.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM diagnostic_events") } == 0, "restored old event pruned")
 
-  // Readers racing the sealer see every sample exactly once.
   let race = try fresh()
   try race.write { db in
     try db.execute(sql: "INSERT INTO boards (id,name,created_at) VALUES (?,'Board A',1)", arguments: [board])

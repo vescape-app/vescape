@@ -18,9 +18,7 @@ import java.nio.file.NoSuchFileException
 import java.io.IOException
 import expo.modules.vescapecore.telemetry.RideExport
 
-/** Android lifecycle and Room adapters for the portable production migration graph. */
 internal object VescapeDatabase {
-  // Only exports and file replacement take this lock. Recording writes never do.
   internal val rideExportMutex = Mutex()
 
   suspend fun <T> withRideExportSnapshot(context: Context, block: suspend (VescapeDao) -> T): T =

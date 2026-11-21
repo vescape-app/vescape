@@ -37,7 +37,6 @@ import expo.modules.vescapecore.database.VescFaultCaptureSampleEntity
 import expo.modules.vescapecore.database.VescFaultOccurrenceEntity
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
-/** Production Room DAO contract on host SQLite. No Android framework, emulator, or test DAO. */
 class RecordingPersistenceHostTest {
   @Test
   fun telemetryMaintenanceUsesOneProductionTransactionAcrossRanges(): Unit = runBlocking {
@@ -329,7 +328,6 @@ class RecordingPersistenceHostTest {
     assertTrue(lastDeleteFailed)
     assertEquals(1, persistence.history("compat-3").size)
     assertEquals(expected.getInt("historyCount"), dao.getTuneHistoryEntries(profile.id).size)
-    // The Board has no preset rows, so the app-default presets expand beside the rider's rule.
     val riderRule = persistence.alertRules(boardId) { throw it }.single { !AlertPresetPersistence.isPresetId(it.id) }
     assertEquals(alertValues.getString("id"), riderRule.id)
     assertEquals(expected.getBoolean("alertEnabled"), riderRule.enabled)
@@ -630,7 +628,6 @@ class RecordingPersistenceHostTest {
     assertEquals(expected.getInt("secondPageSessionCount"), (second["sessions"] as List<*>).size)
     assertEquals(expected.getBoolean("secondPageHasMore"), second["hasMore"])
     assertEquals(older.firstSampleAtMs, (second["sessions"] as List<Map<String, Any?>>).single()["startAtMs"])
-    // The Ride History Filter pages and counts natively, by ride start and Board.
     val currentStart = firstSession["startAtMs"] as Long
     val fromCurrent = readRideHistoryPage(db.vescapeDao(), mapOf("limit" to 50, "fromMs" to currentStart), gapMs)
     assertEquals(listOf(currentStart), (fromCurrent["sessions"] as List<Map<String, Any?>>).map { it["startAtMs"] })
@@ -641,14 +638,12 @@ class RecordingPersistenceHostTest {
     assertEquals(2, countRideHistory(db.vescapeDao(), emptyMap(), gapMs))
     assertEquals(1, countRideHistory(db.vescapeDao(), mapOf("fromMs" to currentStart), gapMs))
     assertEquals(2, countRideHistory(db.vescapeDao(), mapOf("boardIds" to listOf(boardId)), gapMs))
-    // Weather matches on the ride's summary; a ride without one never meets a condition.
     db.vescapeDao().insertWeatherObservation(
       WeatherObservationEntity.of(WeatherObservation(currentStart - 1, 2, 0, null, true)),
     )
     val cold = readRideHistoryPage(db.vescapeDao(), mapOf("weather" to listOf("cold")), gapMs)
     assertEquals(listOf(currentStart), (cold["sessions"] as List<Map<String, Any?>>).map { it["startAtMs"] })
     assertTrue((readRideHistoryPage(db.vescapeDao(), mapOf("weather" to listOf("hot")), gapMs)["sessions"] as List<*>).isEmpty())
-    // Alternatives inside a group, every picked group must hold: a clear cold ride is not a rainy one.
     assertEquals(1, countRideHistory(db.vescapeDao(), mapOf("weather" to listOf("clear", "rain", "cold")), gapMs))
     assertEquals(0, countRideHistory(db.vescapeDao(), mapOf("weather" to listOf("rain", "cold")), gapMs))
     db.vescapeDao().clearWeatherObservations()
@@ -663,7 +658,6 @@ class RecordingPersistenceHostTest {
     val withMonthStats = readProfileStatsSnapshot(db.vescapeDao(), mapOf("includeMonthStats" to true), gapMs)
     assertEquals(listOf((stats["selectedMonth"] as Map<*, *>) + ("stats" to stats["monthly"])), withMonthStats["monthStats"])
     assertNull(stats["monthStats"])
-    // A record's ride id opens that ride, including one that is not the newest.
     val currentId = firstSession["id"] as String
     val olderId = (second["sessions"] as List<Map<String, Any?>>).single()["id"] as String
     assertEquals(currentId, total["longestRideId"])
@@ -672,16 +666,14 @@ class RecordingPersistenceHostTest {
     assertNull(readRideSession(db.vescapeDao(), "$boardId:1:2", gapMs))
     assertEquals(expected.getInt("selectedYear"), (stats["selectedMonth"] as Map<*, *>)["year"])
     assertEquals(expected.getInt("selectedMonth"), (stats["selectedMonth"] as Map<*, *>)["month"])
-    // A bulk selection resolves natively: every ride matching the filter, minus the rides unticked.
     val olderSession = (second["sessions"] as List<Map<String, Any?>>).single()
     val picked = selectedRides(db.vescapeDao(), mapOf("filter" to mapOf("boardIds" to listOf(boardId)), "excludeIds" to listOf(currentId)), gapMs)
     assertEquals(listOf(older.firstSampleAtMs), picked.map { it.fromMs })
     assertEquals(olderSession["boardName"], picked.single().name)
     assertEquals(listOf(RideBatch.Item(1, 2, null, "Fav")),
       selectedRides(db.vescapeDao(), mapOf("rides" to listOf(mapOf("fromMs" to 1, "toMs" to 2, "name" to "Fav"))), gapMs))
-    // One zip, one file per ride, clashing names suffixed.
     val utc = java.time.ZoneOffset.UTC
-    val day = 1_785_772_800_000L // 2026-08-03 16:00 UTC
+    val day = 1_785_772_800_000L
     val batch = listOf(RideBatch.Item(day, day + 1, null, "Pint X"), RideBatch.Item(day + 30_000, day + 40_000, null, "Pint X"),
       RideBatch.Item(day + 86_400_000, day + 86_400_001, null, "Ł"))
     val exportDir = Files.createTempDirectory("vescape-batch").toFile()
@@ -705,7 +697,6 @@ class RecordingPersistenceHostTest {
     assertTrue(cancelled)
     assertEquals(1, exportDir.listFiles()!!.size)
     exportDir.deleteRecursively()
-    // Bulk delete removes every Board's ranges in one transaction.
     db.vescapeDao().deleteBoardRanges(mapOf(boardId to listOf(TelemetryTimeRange(older.firstSampleAtMs, olderSession["endAtMs"] as Long))))
     assertEquals(1, countRideHistory(db.vescapeDao(), emptyMap(), gapMs))
 

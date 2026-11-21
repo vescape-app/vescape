@@ -17,17 +17,6 @@ import expo.modules.vescapecore.database.SavedAccessoryEntity
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /**
- * Enrolled Accessories through the production Room path, driven by the shared contract fixture the
- * GRDB host runs too.
- *
- * The scenario is the one that actually matters for this table: an Accessory the rider renamed and
- * re-flashed, met again on a different BLE handle, must stay one Accessory. If identity ever slipped
- * to the name or the handle, this is where two rows would appear.
- *
- * The second scenario covers what the rider calibrated for it: keyed on the capability as well, so a
- * nose sensor and a tail sensor on one unit never share numbers, and taken with the Accessory when
- * it is forgotten.
- *
  * @parity /modules/vescape-core/persistence-macos/main.swift `accessory-enrollment-close-reopen`
  */
 class AccessoryPersistenceHostTest {
@@ -81,8 +70,6 @@ class AccessoryPersistenceHostTest {
     assertEquals(spec.getString("capabilitiesJson"), reopened.first().capabilitiesJson)
     assertNull(reopened.first().lastConnectedAt)
 
-    // The same unit after a rename, a firmware update and a new BLE handle. Anything keyed on a
-    // name or an address would add a second row here.
     val observed = enrolled.copy(
       name = spec.getString("renamedTo"),
       firmwareVersion = spec.getString("updatedFirmwareVersion"),
@@ -94,7 +81,6 @@ class AccessoryPersistenceHostTest {
     assertTrue(store.revalidate(observed))
     assertEquals(2, store.getAccessories().size)
 
-    // Update-only: a handshake landing after the rider forgot an Accessory must not recreate it.
     assertFalse(store.revalidate(observed.copy(accessoryId = "not-enrolled")))
     assertEquals(2, store.getAccessories().size)
     db.close()
@@ -106,14 +92,9 @@ class AccessoryPersistenceHostTest {
     assertEquals(spec.getString("updatedFirmwareVersion"), persisted.firmwareVersion)
     assertEquals(spec.getString("movedDeviceId"), persisted.deviceId)
     assertEquals(spec.getLong("connectedAt"), persisted.lastConnectedAt)
-    // Reading a manifest again is not adding the Accessory again.
     assertEquals(spec.getLong("enrolledAt"), persisted.enrolledAt)
-    // The baseline the rider's saved settings were validated against survives revalidation. It is
-    // what the "declared limits changed" warning is derived from, so overwriting it here would make
-    // the warning vanish on the next launch.
     assertEquals(spec.getString("capabilitiesJson"), persisted.capabilitiesJson)
 
-    // Forgetting takes the Accessory and nothing else: the other enrollment is untouched.
     assertTrue(store.forget(spec.getString("accessoryId")))
     assertFalse(store.forget(spec.getString("accessoryId")))
     db.close()
@@ -183,7 +164,6 @@ class AccessoryPersistenceHostTest {
     )
     db.close()
 
-    // Settings survive restart: the whole reason this is a table and not process state.
     db = open()
     store = AccessoryPersistence(db.vescapeDao())
     assertEquals(listOf(lightRow, lightRow.copy(accessoryId = otherId)).sortedBy { it.accessoryId }, store.getBrakeLights())
@@ -198,8 +178,6 @@ class AccessoryPersistenceHostTest {
     )
     assertEquals(3, store.getGroundClearances().size)
 
-    // The composite key doing its job: recalibrating the nose sensor leaves the tail sensor alone.
-    // Keyed on the Accessory alone, the second row would have overwritten the first.
     store.saveGroundClearance(row(accessoryId, nose, clearance.getJSONObject("recalibrated")))
     assertEquals(3, store.getGroundClearances().size)
     assertEquals(
@@ -212,7 +190,6 @@ class AccessoryPersistenceHostTest {
       store.getGroundClearance(accessoryId, tail)!!.direction,
     )
 
-    // Reading a manifest again must not disturb what the rider set.
     assertTrue(
       store.revalidate(
         store.getAccessory(accessoryId)!!.copy(
@@ -222,17 +199,14 @@ class AccessoryPersistenceHostTest {
       ),
     )
     assertEquals(3, store.getGroundClearances().size)
-    // ...and it must not move the baseline either. Only accepting new limits does that.
     assertEquals(spec.getString("capabilitiesJson"), store.getAccessory(accessoryId)!!.capabilitiesJson)
 
-    // Toggling preserves calibration and the other accessory's switch.
     store.saveCapabilitySettings(switchRow.copy(enabled = true))
     assertEquals(switchRow.samplingRateHz, store.getCapabilitySettings().first { it.accessoryId == accessoryId }.samplingRateHz)
     assertEquals(3, store.getGroundClearances().size)
     assertEquals(otherSwitch, store.getCapabilitySettings().first { it.accessoryId == otherId })
     store.saveCapabilitySettings(switchRow)
 
-    // Accepting limits that moved, which is what saving a fitting calibration means.
     assertTrue(store.adoptCapabilities(accessoryId, spec.getString("changedCapabilitiesJson")))
     assertEquals(
       spec.getString("changedCapabilitiesJson"),
@@ -247,7 +221,6 @@ class AccessoryPersistenceHostTest {
     assertFalse(store.clearGroundClearance(accessoryId, tail))
     assertEquals(2, store.getGroundClearances().size)
 
-    // Forgetting takes the Accessory and every calibration made against it, and nothing else.
     assertTrue(store.forget(accessoryId))
     assertEquals(listOf(lightRow.copy(accessoryId = otherId)), store.getBrakeLights())
     assertEquals(listOf(otherSwitch), store.getCapabilitySettings())
