@@ -9,6 +9,7 @@ export interface CommentToken {
   end: number
   line: number
   text: string
+  wholeLine: boolean
 }
 
 export interface CommentViolation {
@@ -33,13 +34,13 @@ const EXCLUDED_EXACT_PATHS = new Set([
 const EXCLUDED_PATH_PATTERNS = [/^watch\/wearos\/src\/main\/res\/drawable\/ic_ph_[^/]+\.xml$/]
 
 const PARAGRAPH_TAG_START =
-  /^(?:@platform-diff(?:\s|$)|@legacy-float(?:\s|$)|TODO\((?:iOS|ios|Android|android|watchOS|Wear OS) parity\):\s*\S)/
+  /^(?:@platform-diff\s+\S|@legacy-float\s+\S|TODO\((?:iOS|ios|Android|android|watchOS|Wear OS) parity\):\s*\S)/
 
 const CODE_DIRECTIVE_LINE =
-  /^(?:@parity(?:\s|$)|@platform-diff(?:\s|$)|intentional-suppression:\s*\S|@legacy-float(?:\s|$)|TODO\((?:iOS|ios|Android|android|watchOS|Wear OS) parity\):\s*\S|(?:eslint-(?:disable|enable)(?:-(?:next-)?line)?|oxlint-disable(?:-(?:next-)?line)?)(?:\s|$)|@ts-(?:expect-error|ignore|nocheck|check)(?:\s|$)|swiftlint:(?:disable|enable)(?::(?:next|this|previous))?(?:\s|$)|ktlint-(?:disable|enable)(?:\s|$)|(?:biome-ignore|prettier-ignore|fmt-ignore|knip-ignore|@knipignore|noinspection)(?:\s|:|$)|(?:istanbul|c8|v8)\s+ignore\b|swift-tools-version:\s*\d|<reference\s+(?:path|types|lib)=|@jsx(?:ImportSource)?\s|@refresh\s|[@#]\s*sourceMappingURL=|language=\w|@(?:vitest|jest)-environment\s)/
+  /^(?:@parity\s+\/\S|@platform-diff\s+\S|intentional-suppression:\s*\S|@legacy-float\s+\S|TODO\((?:iOS|ios|Android|android|watchOS|Wear OS) parity\):\s*\S|(?:eslint-(?:disable|enable)(?:-(?:next-)?line)?|oxlint-disable(?:-(?:next-)?line)?)(?:\s|$)|@ts-(?:expect-error|ignore|nocheck|check)(?:\s|$)|swiftlint:(?:disable|enable)(?::(?:next|this|previous))?(?:\s|$)|ktlint-(?:disable|enable)(?:\s|$)|(?:biome-ignore|prettier-ignore|fmt-ignore|knip-ignore|@knipignore|noinspection)(?:\s|:|$)|(?:istanbul|c8|v8)\s+ignore\b|swift-tools-version:\s*\d|<reference\s+(?:path|types|lib)=|@jsx(?:ImportSource)?\s|@refresh\s|[@#]\s*sourceMappingURL=|language=\w|@(?:vitest|jest)-environment\s)/
 
 const XML_DIRECTIVE_LINE =
-  /^(?:@parity(?:\s|$)|@platform-diff(?:\s|$)|intentional-suppression:\s*\S|@legacy-float(?:\s|$)|noinspection(?:\s|:|$))/
+  /^(?:@parity\s+\/\S|@platform-diff\s+\S|intentional-suppression:\s*\S|@legacy-float\s+\S|noinspection(?:\s|:|$))/
 
 const JS_TYPE_ANNOTATION_LINE = /^@type(?:def)?\s*\{/
 
@@ -71,6 +72,20 @@ function lineNumberAt(lineStarts: number[], offset: number): number {
     else hi = mid - 1
   }
   return hi + 1
+}
+
+function isWholeLineComment(
+  text: string,
+  lineStarts: number[],
+  line: number,
+  start: number,
+): boolean {
+  const lineStart = lineStarts[line - 1]
+  for (let i = lineStart; i < start; i++) {
+    const ch = text[i]
+    if (ch !== ' ' && ch !== '\t') return false
+  }
+  return true
 }
 
 export function scanJsComments(filePath: string, text: string): CommentToken[] {
@@ -105,12 +120,14 @@ export function scanJsComments(filePath: string, text: string): CommentToken[] {
     seen.add(range.pos)
     const raw = text.slice(range.pos, range.end)
     if (range.pos === 0 && raw.startsWith('#!')) return
+    const line = lineNumberAt(lineStarts, range.pos)
     tokens.push({
       kind: range.kind === ts.SyntaxKind.SingleLineCommentTrivia ? 'line' : 'block',
       start: range.pos,
       end: range.end,
-      line: lineNumberAt(lineStarts, range.pos),
+      line,
       text: raw,
+      wholeLine: isWholeLineComment(text, lineStarts, line, range.pos),
     })
   }
 
@@ -149,12 +166,14 @@ export function scanNativeComments(filePath: string, text: string): CommentToken
     const start = i
     const end = text.indexOf('\n', i)
     const stop = end < 0 ? n : end
+    const line = lineNumberAt(lineStarts, start)
     tokens.push({
       kind: 'line',
       start,
       end: stop,
-      line: lineNumberAt(lineStarts, start),
+      line,
       text: text.slice(start, stop),
+      wholeLine: isWholeLineComment(text, lineStarts, line, start),
     })
     i = stop
   }
@@ -174,12 +193,14 @@ export function scanNativeComments(filePath: string, text: string): CommentToken
         i++
       }
     }
+    const line = lineNumberAt(lineStarts, start)
     tokens.push({
       kind: 'block',
       start,
       end: i,
-      line: lineNumberAt(lineStarts, start),
+      line,
       text: text.slice(start, i),
+      wholeLine: isWholeLineComment(text, lineStarts, line, start),
     })
   }
 
@@ -345,12 +366,14 @@ export function scanXmlComments(text: string): CommentToken[] {
       const start = i
       const end = text.indexOf('-->', i + 4)
       const stop = end < 0 ? n : end + 3
+      const line = lineNumberAt(lineStarts, start)
       tokens.push({
         kind: 'xml',
         start,
         end: stop,
-        line: lineNumberAt(lineStarts, start),
+        line,
         text: text.slice(start, stop),
+        wholeLine: isWholeLineComment(text, lineStarts, line, start),
       })
       i = stop
       continue
@@ -395,22 +418,27 @@ function isAllowedCommentLine(
   cleaned: string,
   kind: CommentToken['kind'],
   allowJsTypeAnnotation: boolean,
-  inPlatformDiffParagraph: boolean,
-): { allowed: boolean; nextInPlatformDiff: boolean } {
+  inContinuation: boolean,
+  allowEmpty: boolean,
+): { allowed: boolean; nextInContinuation: boolean; matchedDirective: boolean } {
   if (cleaned === '') {
-    return { allowed: true, nextInPlatformDiff: false }
+    return { allowed: allowEmpty, nextInContinuation: false, matchedDirective: false }
   }
   const directivePattern = kind === 'xml' ? XML_DIRECTIVE_LINE : CODE_DIRECTIVE_LINE
   if (directivePattern.test(cleaned)) {
-    return { allowed: true, nextInPlatformDiff: PARAGRAPH_TAG_START.test(cleaned) }
+    return {
+      allowed: true,
+      nextInContinuation: PARAGRAPH_TAG_START.test(cleaned),
+      matchedDirective: true,
+    }
   }
   if (allowJsTypeAnnotation && kind !== 'xml' && JS_TYPE_ANNOTATION_LINE.test(cleaned)) {
-    return { allowed: true, nextInPlatformDiff: false }
+    return { allowed: true, nextInContinuation: false, matchedDirective: true }
   }
-  if (inPlatformDiffParagraph && !cleaned.startsWith('@')) {
-    return { allowed: true, nextInPlatformDiff: true }
+  if (inContinuation && !cleaned.startsWith('@')) {
+    return { allowed: true, nextInContinuation: true, matchedDirective: false }
   }
-  return { allowed: false, nextInPlatformDiff: false }
+  return { allowed: false, nextInContinuation: false, matchedDirective: false }
 }
 
 export function checkCommentsInSource(filePath: string, text: string): CommentViolation[] {
@@ -427,21 +455,24 @@ export function checkCommentsInSource(filePath: string, text: string): CommentVi
   const violations: CommentViolation[] = []
 
   let prevLineEndLine = -2
-  let inLinePlatformDiff = false
+  let prevWholeLine = false
+  let inLineContinuation = false
 
   for (const token of tokens) {
     if (token.kind === 'line') {
-      const contiguous = token.line === prevLineEndLine + 1
-      if (!contiguous) inLinePlatformDiff = false
-      const cleaned = stripCommentSyntax(token.text, 'line')
-      const { allowed, nextInPlatformDiff } = isAllowedCommentLine(
+      const contiguous = token.line === prevLineEndLine + 1 && prevWholeLine && token.wholeLine
+      if (!contiguous) inLineContinuation = false
+      const cleaned = stripCommentSyntax(token.text, token.kind)
+      const { allowed, nextInContinuation } = isAllowedCommentLine(
         cleaned,
-        'line',
+        token.kind,
         allowJsTypeAnnotation,
-        inLinePlatformDiff,
+        inLineContinuation,
+        false,
       )
-      inLinePlatformDiff = nextInPlatformDiff
+      inLineContinuation = token.wholeLine ? nextInContinuation : false
       prevLineEndLine = token.line
+      prevWholeLine = token.wholeLine
       if (!allowed) {
         violations.push({
           file: filePath,
@@ -452,22 +483,26 @@ export function checkCommentsInSource(filePath: string, text: string): CommentVi
       continue
     }
 
-    inLinePlatformDiff = false
+    inLineContinuation = false
     prevLineEndLine = -2
+    prevWholeLine = false
 
     const lines = token.text.split('\n')
-    let inBlockPlatformDiff = false
+    let inBlockContinuation = false
+    let hasDirective = false
     let firstDisallowedLine: { line: number; raw: string } | null = null
 
     for (let idx = 0; idx < lines.length; idx++) {
       const cleaned = stripCommentSyntax(lines[idx], token.kind)
-      const { allowed, nextInPlatformDiff } = isAllowedCommentLine(
+      const { allowed, nextInContinuation, matchedDirective } = isAllowedCommentLine(
         cleaned,
         token.kind,
         allowJsTypeAnnotation,
-        inBlockPlatformDiff,
+        inBlockContinuation,
+        true,
       )
-      inBlockPlatformDiff = nextInPlatformDiff
+      if (matchedDirective) hasDirective = true
+      inBlockContinuation = nextInContinuation
       if (!allowed && firstDisallowedLine === null) {
         firstDisallowedLine = { line: token.line + idx, raw: lines[idx].trim() }
       }
@@ -478,6 +513,12 @@ export function checkCommentsInSource(filePath: string, text: string): CommentVi
         file: filePath,
         line: firstDisallowedLine.line,
         snippet: firstDisallowedLine.raw.slice(0, 100),
+      })
+    } else if (!hasDirective) {
+      violations.push({
+        file: filePath,
+        line: token.line,
+        snippet: token.text.trim().slice(0, 100),
       })
     }
   }
@@ -492,26 +533,46 @@ export function trackedRepoFiles(cwd = process.cwd()): string[] {
     .filter((line) => line.length > 0 && isSupportedPath(line) && !isExcludedPath(line))
 }
 
+export function parseStagedEntries(rawZOutput: string): Array<{ mode: string; path: string }> {
+  const parts = rawZOutput.split('\0')
+  const entries: Array<{ mode: string; path: string }> = []
+  let idx = 0
+  while (idx < parts.length) {
+    const header = parts[idx++]
+    if (!header || !header.startsWith(':')) continue
+    const fields = header.slice(1).split(' ')
+    const newMode = fields[1] ?? ''
+    const status = fields[4] ?? ''
+    if (status.startsWith('R') || status.startsWith('C')) {
+      idx++
+      const destPath = parts[idx++]
+      if (destPath) entries.push({ mode: newMode, path: destPath })
+    } else {
+      const filePath = parts[idx++]
+      if (filePath) entries.push({ mode: newMode, path: filePath })
+    }
+  }
+  return entries
+}
+
 export function runStagedCommentLint(cwd = process.cwd()): CommentViolation[] {
-  const output = execFileSync(
-    'git',
-    ['diff', '--cached', '--name-only', '-z', '--diff-filter=ACMR'],
-    { cwd, encoding: 'utf8' },
+  const output = execFileSync('git', ['diff', '--cached', '--raw', '-z', '--diff-filter=ACMR'], {
+    cwd,
+    encoding: 'utf8',
+  })
+  const entries = parseStagedEntries(output).filter(
+    (entry) =>
+      entry.mode !== '120000' && isSupportedPath(entry.path) && !isExcludedPath(entry.path),
   )
-  const files = output
-    .split('\0')
-    .filter((file) => file.length > 0 && isSupportedPath(file) && !isExcludedPath(file))
 
   const violations: CommentViolation[] = []
-  for (const file of files) {
-    const abs = resolve(cwd, file)
-    if (existsSync(abs) && lstatSync(abs).isSymbolicLink()) continue
-    const text = execFileSync('git', ['show', `:${file}`], {
+  for (const entry of entries) {
+    const text = execFileSync('git', ['show', `:${entry.path}`], {
       cwd,
       encoding: 'utf8',
       maxBuffer: 32 * 1024 * 1024,
     })
-    violations.push(...checkCommentsInSource(file, text))
+    violations.push(...checkCommentsInSource(entry.path, text))
   }
   return violations
 }

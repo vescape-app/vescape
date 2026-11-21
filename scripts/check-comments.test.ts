@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { checkCommentsInSource, isExcludedPath } from './check-comments'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { checkCommentsInSource, isExcludedPath, runStagedCommentLint } from './check-comments'
 
 describe('check-comments: TS/TSX/JS', () => {
   test('flags ordinary single-line, block, JSDoc, TODO, and JSX comments', () => {
@@ -55,6 +59,23 @@ describe('check-comments: TS/TSX/JS', () => {
       'export const x = 1',
     ].join('\n')
     expect(checkCommentsInSource('src/allowed.ts', src)).toEqual([])
+  })
+
+  test('rejects empty comments, bare contract tags, and trailing-comment continuation leaks', () => {
+    const src = [
+      '//',
+      '/* */',
+      '// @parity',
+      '// @parity not a repo path',
+      '// @platform-diff',
+      '// @legacy-float',
+      'const a = 1 // @platform-diff inline reason',
+      '// sneaky prose must not inherit continuation from trailing comment',
+      'export const x = a',
+    ].join('\n')
+    expect(checkCommentsInSource('src/bypasses.ts', src).map((v) => v.line)).toEqual([
+      1, 2, 3, 4, 5, 6, 8,
+    ])
   })
 
   test('rejects ordinary prose that merely mentions a directive or bun: mid-comment', () => {
@@ -146,26 +167,33 @@ describe('check-comments: Kotlin, Swift & Gradle', () => {
 })
 
 describe('check-comments: XML & exclusions', () => {
-  test('flags authored XML comments including prose mentioning directives, while ignoring CDATA and attrs', () => {
+  test('flags authored XML comments including empty and directive-mentioning prose, while ignoring CDATA and attrs', () => {
     const xml = [
       '<resources>',
       '  <string name="a">foo <!-- ordinary xml comment --></string>',
       '  <!-- ordinary prose mentioning @parity or eslint-disable -->',
+      '  <!-- -->',
       '  <string name="b"><![CDATA[<!-- inside cdata -->]]></string>',
       '  <item attr="<!-- inside attr -->" />',
       '</resources>',
     ].join('\n')
     expect(
       checkCommentsInSource('watch/wearos/src/main/res/values/wear.xml', xml).map((v) => v.line),
-    ).toEqual([2, 3])
+    ).toEqual([2, 3, 4])
   })
 
   test('scans plist and svg with the XML scanner', () => {
-    const plist = ['<dict>', '  <!-- ordinary plist prose -->', '  <key>A</key>', '</dict>'].join(
-      '\n',
-    )
-    expect(checkCommentsInSource('watch/watchos/Info.plist', plist).map((v) => v.line)).toEqual([2])
-    expect(checkCommentsInSource('assets/logo.svg', '<svg><!-- x --></svg>')).toHaveLength(1)
+    expect(
+      checkCommentsInSource(
+        'targets/ride-activity/Info.plist',
+        '<plist><!-- prose --></plist>',
+      ).map((v) => v.line),
+    ).toEqual([1])
+    expect(
+      checkCommentsInSource('assets/logo/vescape-sygnet.svg', '<svg><!-- prose --></svg>').map(
+        (v) => v.line,
+      ),
+    ).toEqual([1])
   })
 
   test('excludes generated and third-party files by explicit provenance only', () => {
@@ -178,5 +206,28 @@ describe('check-comments: XML & exclusions', () => {
     expect(isExcludedPath('watch/wearos/src/main/res/drawable/ic_ph_sun.xml')).toBe(true)
     expect(isExcludedPath('watch/wearos/src/main/res/values/wear.xml')).toBe(false)
     expect(isExcludedPath('src/app/_layout.tsx')).toBe(false)
+  })
+})
+
+describe('check-comments: --staged uses git index mode and bytes', () => {
+  test('flags a staged regular file even if replaced by a symlink in the worktree, and skips staged symlinks', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'comment-lint-staged-'))
+    try {
+      const git = (args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' })
+      git(['init'])
+      writeFileSync(join(dir, 'target.ts'), 'export const ok = 1\n')
+      writeFileSync(join(dir, 'test.ts'), '// ordinary staged comment\nexport const x = 1\n')
+      git(['add', 'target.ts', 'test.ts'])
+      unlinkSync(join(dir, 'test.ts'))
+      symlinkSync('target.ts', join(dir, 'test.ts'))
+
+      symlinkSync('target.ts', join(dir, 'linked.ts'))
+      git(['add', 'linked.ts'])
+
+      const violations = runStagedCommentLint(dir)
+      expect(violations.map((v) => `${v.file}:${v.line}`)).toEqual(['test.ts:1'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

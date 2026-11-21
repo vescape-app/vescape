@@ -365,7 +365,7 @@ platform :ios do
       automatic_release:    false,
       skip_metadata:        true,
       skip_screenshots:     true,
-      skip_binary_upload:   true   # reuse the build already uploaded via TestFlight
+      skip_binary_upload:   true
     )
   end
 end
