@@ -6,10 +6,10 @@
 # canned values, which is why smoke deliberately does not set it.
 appId: ${APP_ID}
 ---
-# The session is a replay, not a board. Asserting the badge first means a later failure cannot be
-# blamed on having tested the wrong kind of session.
+# The smoke runner starts with no physical board, so the disconnect control confirms that the
+# fixture opened a Board Session. The battery bar can remain visible after the session ends.
 - assertVisible:
-    id: replay-badge
+    id: board-disconnect-button
 
 - assertVisible:
     id: gauge-speed
@@ -25,8 +25,8 @@ appId: ${APP_ID}
 # Deliberately no assertion on a live number here. The gauge is drawn in Skia and the strip's values
 # go through `TickText`, which formats on the UI thread precisely so it does not re-render React —
 # neither reaches Maestro's view hierarchy, so an assert on "24 km/h" would fail on a perfectly
-# healthy screen. Liveness is carried by `battery-bar` and `replay-badge` instead: both are gated on
-# a session that is actually delivering, and `_boot` will not get past them otherwise.
+# healthy screen. The assertions above check that the session is up and its telemetry surfaces
+# are visible.
 
 # Detail panels are the same telemetry under a different presentation, and they are where a broken
 # unit or a missing field shows up as text rather than as a needle.

@@ -42,9 +42,8 @@ export const smokeMode = process.env.EXPO_PUBLIC_SMOKE === '1'
 export const fixtureSession = captureMode || smokeMode
 
 /**
- * Whether capture builds show diagnostic badges: REPLAY, development build and GPS receiver
- * status. Rider controls, including connection actions and ride recording, always remain visible.
- * Smoke keeps replay diagnostics so its flows can assert which session is running.
+ * Whether to show developer controls such as the development badge and GPS diagnostics.
+ * Rider controls, including connection actions and ride recording, always remain visible.
  */
 export const showDevControls = !captureMode
 

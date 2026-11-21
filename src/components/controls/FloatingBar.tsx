@@ -1,7 +1,14 @@
 import { CaretRightIcon, XIcon, type Icon } from 'phosphor-react-native'
 import { useCallback, useState, type ReactNode } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, View, type TextLayoutEvent } from 'react-native'
-import Animated from 'react-native-reanimated'
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  View,
+  type TextLayoutEvent,
+  type ViewStyle,
+} from 'react-native'
+import Animated, { type AnimatedStyle } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
@@ -41,7 +48,7 @@ const STATUS_TRANSITION = {
   transitionProperty: ['width', 'backgroundColor', 'borderColor'],
   transitionDuration: 220,
   transitionTimingFunction: 'ease-out',
-}
+} satisfies AnimatedStyle<ViewStyle>
 const STATUS_MIN_WIDTH = 170
 const STATUS_MAX_TEXT_WIDTH = 180
 const SPINNER_FIXED_WIDTH = 88
@@ -104,7 +111,7 @@ export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) 
       onPress={pill.onPress}
       testID={isSpinner ? (pill.cancelTestID ?? pill.testID) : pill.testID}
     >
-      <Animated.View style={[styles.statusIcon, iconStyle, STATUS_TRANSITION]}>
+      <Animated.View style={{ ...styles.statusIcon, ...iconStyle, ...STATUS_TRANSITION }}>
         {StatusIcon ? (
           <StatusIcon size={17} color={resolvedAccent} weight="duotone" />
         ) : isSpinner ? (
@@ -139,7 +146,7 @@ export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) 
       >
         {pill.text}
       </Text>
-      <Animated.View style={[styles.pillShell, shellStyle, STATUS_TRANSITION]}>
+      <Animated.View style={{ ...styles.pillShell, ...shellStyle, ...STATUS_TRANSITION }}>
         {content}
       </Animated.View>
     </View>

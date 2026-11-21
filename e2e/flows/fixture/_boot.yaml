@@ -4,8 +4,8 @@
 # and fixtures pushed by the runner. The app's own bootstrap restores the backup zip and starts the
 # replay session before it mounts, so this wait covers a database restore plus a replay handshake.
 #
-# Wait for the restored dashboard instead of animations settling. Flows that need an active
-# replay also assert its badge; the battery bar alone can remain visible after replay ends.
+# Wait for the restored dashboard instead of animations settling. The telemetry flow also checks
+# the session control because the battery bar can remain visible after replay ends.
 appId: ${APP_ID}
 ---
 # Android smoke launches through bounded adb after fixture preparation. Other callers still launch
