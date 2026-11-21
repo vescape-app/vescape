@@ -64,7 +64,6 @@ export function readE2eArgs(argv: string[]): E2eArgs {
     else if (arg === '--list') args.list = true
     else throw new Error(`Unknown argument: ${arg}. Run bun run e2e --help`)
   }
-  // Preserve the quick single-flow command; never silently apply --flow to an entire suite set.
   if (args.flow) {
     args.suite ??= 'phone'
     if (args.suite !== 'phone' && args.suite !== 'smoke')
@@ -98,7 +97,6 @@ export function workflowCommand(
   ]
 }
 
-/** Shared execution seam: suites cannot overlap emulator installs, and a failure never prints all passed. */
 export async function runWorkflowPlan(
   plan: Workflow[],
   run: (suite: Workflow) => Promise<void>,

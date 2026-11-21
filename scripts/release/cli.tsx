@@ -109,7 +109,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const initialRef =
     initialSourceRef ?? process.argv.find((value) => value.startsWith('--sha='))?.slice(6) ?? 'HEAD'
   const [sourceRef, setSourceRef] = useState(initialRef)
-  // The prefilled ref is a suggestion: the first keystroke replaces it instead of appending to it.
   const [sourceRefEdited, setSourceRefEdited] = useState(false)
   const [sourcePreview, setSourcePreview] = useState<SourceRefPreview | null>(null)
   const [sourceChecking, setSourceChecking] = useState(false)
@@ -172,7 +171,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   useEffect(() => {
     if (initialPhase === 'dashboard') loadDashboard()
-    // Preparation already fixed the commit to build; asking for it again answers nothing.
     else if (initialSourceRef) void prepare(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -320,10 +318,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     await runProduction(next)
   }
 
-  /**
-   * A status refresh reads whatever is already on production, so only `promote` needs the
-   * candidate picker; `status` resolves its candidate from the recorded production version.
-   */
   const prepareProduction = async (operation: ProductionOperation, chooseCandidate = false) => {
     goto('checking')
     setStatus('Checking builds available in Open testing…')
@@ -705,7 +699,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         setSourceRefEdited(true)
         setSourceRef((value) => (sourceRefEdited ? value.slice(0, -1) : ''))
       } else if (input && !key.ctrl && !key.meta) {
-        // Keep other buffered control characters out of the source ref.
         const typed = input.replace(/[^\w./-]/g, '')
         if (typed) {
           setSourceRefEdited(true)

@@ -1,4 +1,3 @@
-/** A real WebSocket participant; no app state or native events are injected. */
 interface PeerPresence {
   lat: number
   lng: number

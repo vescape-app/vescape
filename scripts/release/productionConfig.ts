@@ -1,17 +1,6 @@
-/**
- * Release-time contract for the runtime configuration a production artifact must carry.
- *
- * A missing `EXPO_PUBLIC_*` value does not fail the build — it silently ships an artifact that
- * either crashes on cold start (Clerk key, VESCAPE-294) or, worse, ships unmonitored because
- * `plugins/withSentryNativeInit` no-ops and `initSentry()` runs disabled. The release workflow
- * checks this contract before prebuild so the failure is loud and early.
- */
 export const REQUIRED_PRODUCTION_ENV = [
-  // No map tokens: the server hands them out as Service Config. `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`
-  // and `EXPO_PUBLIC_MAPY_API_KEY` are optional seeds for the first, still-offline launch.
   'EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY',
   'EXPO_PUBLIC_SENTRY_DSN',
-  // No analytics keys: diagnostics stay local-only (ADR 0031) and Sentry owns monitoring.
   'SENTRY_ORG',
   'SENTRY_PROJECT',
   'SENTRY_AUTH_TOKEN',
@@ -20,11 +9,6 @@ export const REQUIRED_PRODUCTION_ENV = [
 export const missingProductionConfig = (env: Record<string, string | undefined>): string[] =>
   REQUIRED_PRODUCTION_ENV.filter((name) => !env[name]?.trim())
 
-/**
- * The merged Android manifest must start the Sentry SDK from the manifest ContentProvider, before
- * the JS bundle loads. `@sentry/react-native` ships `auto-init=false`, so a merge that drops
- * `plugins/withSentryNativeInit` leaves a production build blind to pre-JS startup failures.
- */
 export type SentryNativeInitProblem = string
 
 export const sentryManifestInitProblems = (mergedManifest: string): SentryNativeInitProblem[] => {
@@ -45,17 +29,10 @@ export const sentryManifestInitProblems = (mergedManifest: string): SentryNative
   return problems
 }
 
-/**
- * The generated iOS AppDelegate must call `SentrySDK.start` before React Native boots. sentry-cocoa
- * only starts from code, so if `plugins/withSentryNativeInit` fails to inject (Expo template drift,
- * missing DSN at prebuild), the artifact ships blind to everything that crashes before JS runs.
- */
 export const sentryAppDelegateInitProblems = (appDelegate: string): SentryNativeInitProblem[] => {
   const problems: SentryNativeInitProblem[] = []
   const start = appDelegate.indexOf('SentrySDK.start')
   const directBoot = appDelegate.indexOf('startReactNative')
-  // Expo 57 boots from ExpoAppSceneDelegate using the factory supplied by AppDelegate.
-  // Require Sentry before that handoff; an arbitrary factory assignment is not sufficient.
   const sceneFactory = /class\s+AppDelegate\s*:[^{]*\bExpoReactNativeFactoryProvider\b/.test(
     appDelegate,
   )
@@ -67,8 +44,6 @@ export const sentryAppDelegateInitProblems = (appDelegate: string): SentryNative
   if (start < 0) {
     problems.push('SentrySDK.start is missing')
   }
-  // No boot marker means the ordering claim cannot be checked at all — treat that as a failure
-  // rather than passing an artifact whose init order is unknown.
   if (reactNative < 0) {
     problems.push('startReactNative is missing — cannot verify Sentry starts first')
   } else if (start >= 0 && start > reactNative) {

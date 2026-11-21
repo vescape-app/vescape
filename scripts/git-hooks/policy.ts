@@ -39,13 +39,11 @@ switch (Bun.argv[2]) {
       if (!localRef || !localSha || !remoteRef || !remoteSha) {
         reject('Invalid pre-push input.')
       }
-      // Allow deleting existing branches, including ones with blocked names.
       if (/^0+$/.test(localSha)) continue
       checkBranch(localRef)
       checkBranch(remoteRef)
       const remoteCommitExists =
         Bun.spawnSync(['git', 'cat-file', '-e', `${remoteSha}^{commit}`]).exitCode === 0
-      // Promotion between branches must not re-check already published history.
       const range = [...(remoteCommitExists ? [`^${remoteSha}`] : []), '--not', '--remotes']
       const commits = git('rev-list', localSha, ...range)
         .split('\n')

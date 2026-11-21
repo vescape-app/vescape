@@ -1,4 +1,3 @@
-/** Mount the sibling server's real relay, with ephemeral storage and no external services. */
 import { resolve } from 'path'
 import { pathToFileURL } from 'url'
 

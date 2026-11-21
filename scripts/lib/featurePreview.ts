@@ -4,7 +4,6 @@ import type { PreviewTake } from './previewRecording.ts'
 
 export type FeaturePreviewScene = 'history' | 'board-alerts'
 
-/** These scenes need real two-pointer input, which Maestro's command set cannot express. */
 export async function filmFeaturePreview(
   driver: CaptureDriver,
   scene: FeaturePreviewScene,
@@ -68,7 +67,6 @@ export async function filmFeaturePreview(
     )
     await wait('battery-bar')
     await dwell(2000)
-    // The Android emulator needs additional time to drain native replay and map rendering work.
     if (driver.platform === 'android') {
       for (let i = 0; i < 3; i++) await dwell(30_000)
     }
@@ -145,7 +143,6 @@ export async function filmFeaturePreview(
     try {
       await recording.stop()
     } finally {
-      // Cleanup must run even when a gesture fails or the command's AbortSignal is cancelled.
       const cleanup = Bun.spawn(['bunx', 'agent-device@0.21.23', 'close', '--session', session], {
         cwd: ROOT,
         stdout: 'ignore',

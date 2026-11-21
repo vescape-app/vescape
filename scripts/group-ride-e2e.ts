@@ -1,4 +1,3 @@
-/** Real local relay → native phone presence → Social UI → Wear Data Layer → wrist roster. */
 import { mkdirSync } from 'fs'
 import { join, resolve } from 'path'
 import { applicationId } from '../src/config/appVariant.ts'
@@ -76,7 +75,6 @@ try {
   const gpsFix = () =>
     adb(phone.serial, 'emu', 'geo', 'fix', String(PHONE_FIX.lng), String(PHONE_FIX.lat))
   await gpsFix()
-  // Keep fixes arriving while clearState cold-starts the app and reopens native GPS.
   gpsTimer = setInterval(() => {
     void gpsFix().catch((error) => console.warn('Emulator GPS:', error))
   }, 3000)
@@ -120,7 +118,6 @@ try {
       session.abort.signal.throwIfAborted()
       try {
         if (battery === null) {
-          // Ambient returns to gauges. Deliberately visit the last page before asserting removal.
           await adb(watch.serial, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
           await swipeUp()
           await swipeUp()
@@ -163,7 +160,6 @@ try {
           console.log(`group E2E: wrist ${name} passed${distance ? `, distance ${distance}` : ''}`)
           return distance ? Number(distance.slice(0, -1)) : 0
         }
-        // Gauges → navigation focus → group roster, through the actual pager gestures.
         if (battery !== null && !groupVisible) {
           await swipeUp()
         }
@@ -184,7 +180,6 @@ try {
   peer.update()
   await flow('update')
   const updatedDistance = await watchCheck('updated', '23%')
-  // The peer moved from ~111 m to ~334 m north. The wrist must receive position, not just battery.
   if (!(
     initialDistance > 0 &&
     updatedDistance > initialDistance * 2.5 &&

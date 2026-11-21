@@ -1,10 +1,4 @@
 /**
- * iOS side of the store screenshot runner: simulator selection and boot, the Release screenshot
- * build, fixtures copied straight into the simulator container and `simctl status_bar`.
- *
- * No physical device: `simctl status_bar` has no device equivalent, and a pinned clock/battery is
- * what makes the panels a coherent store set.
- *
  * @parity /scripts/lib/androidCapture.ts
  */
 import { existsSync, mkdirSync, rmSync } from 'fs'
@@ -25,10 +19,6 @@ import { buildIosFixture } from './fixtureBuild.ts'
 
 const OUT_DIR = 'screenshots/ios'
 
-/**
- * The 6.9" size App Store Connect requires (1320x2868). Apple downscales it to the smaller phone
- * sizes, so the store set needs this one simulator and no other.
- */
 const PREFERRED_DEVICE = 'iPhone 17 Pro Max'
 
 interface Simulator {
@@ -57,16 +47,11 @@ async function bootSimulator(sim: Simulator): Promise<Simulator> {
     console.log(`› Booting ${sim.name}…`)
     await runOrDie(['xcrun', 'simctl', 'boot', sim.udid], undefined, 180_000)
   }
-  // Booted only means the process started. Wait for SpringBoard and first-boot setup before
-  // installing the app or starting XCTest; this returns immediately for a ready local simulator.
-  // Hosted runners can spend 5+ minutes in first-boot Data Migration.
   await runOrDie(['xcrun', 'simctl', 'bootstatus', sim.udid, '-b'], undefined, 600_000)
-  // Maestro drives the simulator through its UI, so the Simulator app has to be on screen.
   await capture(['open', '-a', 'Simulator'])
   return { ...sim, state: 'Booted' }
 }
 
-/** Cache key for the last capture simulator picked; see lib/lastDevice. */
 const LAST_SIMULATOR_KEY = 'capture-ios'
 
 async function chooseSimulator(simulators: Simulator[]): Promise<Simulator> {
@@ -112,7 +97,6 @@ async function resolveSimulator(requested: string | null): Promise<Simulator> {
   return chosen
 }
 
-/** The simulator's container is a host directory, so the fixture zip is a plain file copy. */
 async function containerDir(udid: string): Promise<string | null> {
   const path = (await simctl('get_app_container', udid, applicationId, 'data')).trim()
   return path.startsWith('/') && existsSync(path) ? path : null
@@ -158,8 +142,6 @@ export async function createIosDriver(
         process.exit(1)
       }
 
-      // There is no `pm clear` here: wiping the two dirs the app writes to (the GRDB database lives
-      // in Application Support, the fixture zip in Documents) is the same fresh start.
       for (const dir of ['Documents', 'Library/Application Support']) {
         rmSync(join(container, dir), { recursive: true, force: true })
       }
@@ -175,9 +157,7 @@ export async function createIosDriver(
       await simctl('privacy', sim.udid, 'grant', 'location-always', applicationId)
     },
 
-    async requireAwakeDisplay() {
-      // A simulator has no keyguard: nothing can come between the flows and the app.
-    },
+    async requireAwakeDisplay() {},
 
     async pinLocation() {
       const { latitude, longitude } = CAPTURE_LOCATION

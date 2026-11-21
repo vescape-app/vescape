@@ -9,43 +9,16 @@ import {
   type AlertPresetLevel,
 } from '../src/modules/alerts/lib/alertPresets.ts'
 
-/**
- * Turns a real database backup into the committed screenshot fixture
- * (`shared/fixtures/screenshot-db.zip`) that `bun run screenshots` restores on the device.
- *
- * A raw backup cannot be committed: it carries every ride ever recorded, tens of thousands of
- * diagnostic events, and Privacy Zones that by definition mark the rider's home. This keeps the
- * last few rides and drops the rest:
- *
- *   keep    the N most recent ride windows (same 10-minute gap rule as `history/lib/sessions.ts`)
- *   drop    every other telemetry frame/bucket/marker, all diagnostic events, Privacy Zones,
- *           Board Warnings, favorites, and every board except the one the rides belong to
- *   rename  the device id/MAC to a fixture value; boards and tunes to presentable names
- *   rebase  every timestamp by one offset so the newest ride reads as "today"
- *   vacuum
- *
- * A coordinate offset is deliberately NOT applied: the capture rides were picked to be shareable
- * as they are, and translating a route keeps its shape anyway (see #320).
- *
- * Usage:
- *   bun run scripts/sanitize-db-fixture.ts <backup.zip|db.sqlite> [--rides 2] [--out <zip>]
- */
-
 const ROOT = join(import.meta.dir, '..')
 const DEFAULT_OUT = join(ROOT, 'shared', 'fixtures', 'screenshot-db.zip')
 
-/** `history/lib/sessions.ts` `DEFAULT_GAP_MS` — what makes two blocks one ride. */
 const RIDE_GAP_MS = 10 * 60_000
-/** Frames are kept slightly wider than the bucket window so a ride's edges survive rounding. */
 const WINDOW_PADDING_MS = 60_000
 
-/** Stand-in for the real board MAC, applied to the database and expected in the replay fixture. */
 const FIXTURE_DEVICE_ID = 'A1:B2:C3:D4:E5:F6'
 const FIXTURE_DEVICE_NAME = 'Thor301'
 const FIXTURE_BOARD_NAME = 'Thor301'
-/** Alert Preset level applied to every metric, so the alerts panel has a normal setup to show. */
 const FIXTURE_ALERT_PRESET_LEVEL: AlertPresetLevel = 'normal'
-/** Tune profiles are reassigned to the kept board and renamed, oldest first. */
 const FIXTURE_TUNE_NAMES = ['Cruise', 'Trail']
 
 interface Args {
@@ -94,10 +67,6 @@ interface RideWindow {
   endMs: number
 }
 
-/**
- * Groups minute buckets into rides the way the history screen does, and returns the newest `count`
- * windows in chronological order.
- */
 function findRideWindows(db: Database, count: number): RideWindow[] {
   const buckets = db
     .query<{ first: number; last: number }, []>(
@@ -121,7 +90,6 @@ function findRideWindows(db: Database, count: number): RideWindow[] {
   return windows.slice(-count)
 }
 
-/** `captured_at_ms BETWEEN ...` for every kept window, as one reusable predicate. */
 function keepPredicate(column: string, windows: RideWindow[]): string {
   return windows
     .map(
@@ -131,7 +99,6 @@ function keepPredicate(column: string, windows: RideWindow[]): string {
     .join(' OR ')
 }
 
-/** Every timestamp column that must move together so the screens keep agreeing with each other. */
 const TIMESTAMP_COLUMNS: Record<string, string[]> = {
   telemetry_frames: ['captured_at_ms', 'location_timestamp_ms'],
   telemetry_minute_buckets: [
@@ -151,13 +118,6 @@ const TIMESTAMP_COLUMNS: Record<string, string[]> = {
   app_settings: ['updated_at'],
 }
 
-/**
- * Gives the kept board the `normal` Alert Preset on every metric, the way the Alerts setup screen
- * would. Native expands preset rows at load, so this only writes the rider's choice: a
- * `preset(normal)` row per metric (schema 51+), or for an older backup the `alertPreset` Board
- * Setting its v51 migration turns into those rows. A real backup can have no alerts at all, which
- * leaves the alerts panel blank.
- */
 function seedAlertPresets(db: Database, boardId: string): void {
   const now = Date.now()
   const hasSpec = db
@@ -201,7 +161,6 @@ function sanitize(dbPath: string, rides: number): void {
 
   db.exec('BEGIN')
 
-  // Rides: everything outside the kept windows goes.
   db.exec(`DELETE FROM telemetry_frames WHERE NOT (${kept})`)
   db.exec(
     `DELETE FROM telemetry_minute_buckets WHERE NOT (${keepPredicate('last_sample_at_ms', windows)})`,
@@ -209,14 +168,12 @@ function sanitize(dbPath: string, rides: number): void {
   db.exec(`DELETE FROM telemetry_markers WHERE NOT (${keepPredicate('occurred_at_ms', windows)})`)
   db.exec(`DELETE FROM metric_exclusion_ranges WHERE NOT (${keepPredicate('start_ms', windows)})`)
 
-  // Whole tables that are either private (home location, ride history in another shape) or noise.
   db.exec('DELETE FROM diagnostic_events')
   db.exec('DELETE FROM privacy_zones')
   db.exec('DELETE FROM board_warnings')
   db.exec('DELETE FROM favorite_media')
   db.exec('DELETE FROM favorites')
 
-  // One board — the one the kept rides belong to — under a fixture identity.
   const boardId = db
     .query<{ id: string }, []>(
       'SELECT id FROM boards ORDER BY (SELECT COUNT(*) FROM telemetry_minute_buckets WHERE device_id = boards.ble_id) DESC LIMIT 1',
@@ -231,7 +188,6 @@ function sanitize(dbPath: string, rides: number): void {
 
   seedAlertPresets(db, boardId)
 
-  // Tunes follow the surviving board so the tune panel is not empty.
   const tuneIds = db
     .query<{ id: string }, []>('SELECT id FROM tune_profiles ORDER BY created_at')
     .all()
@@ -248,7 +204,6 @@ function sanitize(dbPath: string, rides: number): void {
     ])
   })
 
-  // The MAC is an identifier of a real board; the joins only need it to be consistent.
   for (const table of ['telemetry_frames', 'telemetry_minute_buckets', 'telemetry_markers']) {
     db.exec(`UPDATE ${table} SET device_id = ?, device_name = ? WHERE device_id IS NOT NULL`, [
       FIXTURE_DEVICE_ID,
@@ -257,7 +212,6 @@ function sanitize(dbPath: string, rides: number): void {
   }
   db.exec('UPDATE metric_exclusion_ranges SET device_id = ?', [FIXTURE_DEVICE_ID])
 
-  // Settings that carry the rider's identity or last known position.
   db.exec(
     "DELETE FROM app_settings WHERE key IN ('lastGpsLatitude','lastGpsLongitude','directionPointLatitude','directionPointLongitude','riderId','riderName','dismissedCommunityMessageIds')",
   )
@@ -265,12 +219,8 @@ function sanitize(dbPath: string, rides: number): void {
     JSON.stringify(boardId),
   ])
 
-  // Rebase: the newest ride ends now, minute-aligned so bucket keys stay on their minute.
   const lastEnd = windows.at(-1)!.endMs
   const shift = Math.floor((Date.now() - lastEnd) / 60_000) * 60_000
-  // `telemetry_minute_buckets` keys on `bucket_start_ms`, and a whole-minute shift lands rows on
-  // each other's keys mid-update. Parking them far past every existing key first makes both halves
-  // of the move collision-free.
   const PARK = 1_000_000_000_000
   for (const [table, columns] of Object.entries(TIMESTAMP_COLUMNS)) {
     const steps = table === 'telemetry_minute_buckets' ? [PARK, shift - PARK] : [shift]

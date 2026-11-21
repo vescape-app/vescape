@@ -232,7 +232,6 @@ export interface SourceRefPreview {
   releasedBranch: boolean
 }
 
-/** Non-throwing preview of what a typed ref points at, so the build screen can show it live. */
 export async function describeSourceRef(input: string): Promise<SourceRefPreview | null> {
   const ref = input.trim()
   if (!ref) return null
@@ -591,11 +590,6 @@ function parseWorkflowArtifact<T>(
   }
 }
 
-/**
- * Downloads artifacts in id order, skipping ones whose payload no longer parses. `limit` stops
- * after that many valid artifacts — the dashboard only needs the newest per track, and each
- * download is a slow `gh run download` round trip.
- */
 export async function loadValidWorkflowArtifacts<T>(
   runIds: readonly number[],
   load: (runId: number) => Promise<T>,
@@ -621,23 +615,10 @@ export interface WorkflowArtifact<T> {
 
 export interface NewestArtifactOutcome<T> {
   success: WorkflowArtifact<T> | null
-  /** Failed runs newer than `success` — work that was attempted and did not land. */
   failures: Array<WorkflowArtifact<T>>
-  /**
-   * The scan hit `maxScan` before finding a success, so older state may exist unread. Without
-   * this a truncated scan is indistinguishable from "this track was never published".
-   */
   truncated: boolean
 }
 
-/**
- * Walks newest-first until it finds an artifact that records a successful operation, collecting
- * the newer failures on the way. A failed run never advanced a track, so it must not be read as
- * track state — but it does need surfacing, and it must not mask the retry.
- *
- * Every download attempt consumes scan budget, including ones that fail to parse: the bound
- * exists to cap dashboard latency, and unparseable artifacts cost the same round trip.
- */
 export async function newestSuccessfulArtifact<T>(
   runIds: readonly number[],
   load: (runId: number) => Promise<T>,
@@ -693,10 +674,6 @@ export function parseManifestRunIds(value: unknown): number[] {
   return parseArtifactRunIds(value, 'release-manifest')
 }
 
-/**
- * Lists workflow runs that published `artifactName`, newest first. One cheap API call, no
- * artifact downloads — the dashboard counts pending work from these ids alone.
- */
 export async function listArtifactRuns(
   repo: string,
   artifactName: string,
@@ -826,7 +803,6 @@ export function parseReleases(value: unknown): GitHubRelease[] {
     .map((entry) => ({ tagName: entry.tagName, isPrerelease: entry.isPrerelease }))
 }
 
-/** Prerelease tags are cut after internal; they graduate to a full release only at production. */
 export async function listPrereleaseTags(repo: string, limit = 20): Promise<string[]> {
   const output = await checkedGh(
     ['release', 'list', '--repo', repo, '--limit', String(limit), '--json', 'tagName,isPrerelease'],

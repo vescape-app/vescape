@@ -16,10 +16,6 @@ const CACHE_DIR = join(ROOT, '.expo', 'native-sync')
 const PLATFORMS = ['ios', 'android'] as const
 export type Platform = (typeof PLATFORMS)[number]
 
-/**
- * Durable inputs that Expo prebuild turns into `ios/` and `android/`. Files or directories,
- * repo-relative. Anything generated (`ios/`, `android/`, Pods) is output, never input.
- */
 const PREBUILD_INPUTS = [
   'app.config.ts',
   'src/config/appVariant.ts',
@@ -27,28 +23,19 @@ const PREBUILD_INPUTS = [
   'bun.lock',
   'plugins',
   'patches',
-  // Prebuild reads the loaded env: `app.config.ts` and the plugins bake values (server origin,
-  // Sentry DSN, Apple team) into the native projects, so an env edit is a native input.
   '.env',
   '.env.local',
-  // Every file here is baked into the native projects by prebuild (launcher icon, adaptive icon
-  // layers, splash). Images the JS bundle loads at runtime live in `assets/logo` and
-  // `assets/map-points`, so this stays narrow enough not to prebuild on unrelated art edits.
   'assets/images',
 ]
 
-/** iOS-only prebuild inputs: `@bacons/apple-targets` copies these into the generated Xcode project. */
 const IOS_PREBUILD_INPUTS = ['targets']
 
-/** Android-only prebuild inputs: `withWearMirror` copies the Wear OS Mirror into `android/wearos/`. */
 const ANDROID_PREBUILD_INPUTS = ['watch', ...wearSharedSources]
 
-/** Per-Expo-module prebuild inputs: native registration and dependency declarations. */
 const MODULE_PREBUILD_INPUTS = ['expo-module.config.json', 'package.json']
 
 const IGNORED_ENTRIES = new Set(['.DS_Store', '.build', 'node_modules'])
 
-/** Input key -> content hash (or, for `#layout` keys, a hash of the file path list). */
 export type Fingerprint = Record<string, string>
 
 export interface NativeState {
@@ -124,12 +111,6 @@ export function prebuildFingerprint(platform: Platform, root = ROOT): Fingerprin
   return fingerprint
 }
 
-/**
- * CocoaPods compiles whatever the podspec globbed at `pod install` time, so Pods go stale when the
- * *file list* under a module's `ios/` changes — a new Swift file is invisible to Xcode until Pods
- * are regenerated. Edits to already-compiled files are picked up by Xcode directly, so this hashes
- * the sorted path list, not file contents. Podspecs are hashed by content: they define the globs.
- */
 export function podsFingerprint(root = ROOT): Fingerprint {
   const fingerprint: Fingerprint = {}
 
@@ -151,11 +132,6 @@ export function podsFingerprint(root = ROOT): Fingerprint {
   return fingerprint
 }
 
-/**
- * `shared/` is the single source of truth for alert audio and shared data catalogs. Android needs real
- * copies of it inside the module (Gradle cannot follow a symlink out of the module), so those copies
- * are generated state that drifts whenever `shared/` changes — or whenever someone deletes them.
- */
 export function sharedFingerprint(root = ROOT): Fingerprint {
   const fingerprint: Fingerprint = {}
 
@@ -166,7 +142,6 @@ export function sharedFingerprint(root = ROOT): Fingerprint {
   return fingerprint
 }
 
-/** Copies `copyShared()` should have produced but that are not on disk. */
 export function missingSharedOutputs(root = ROOT): string[] {
   return sharedTargets(root)
     .flatMap((target) => sharedSources(target).map((source) => sharedOutput(target, source)))
@@ -204,8 +179,6 @@ export function planSync(input: {
   const { platform, nativeDirExists, podsDirExists, missingSharedOutputs, cached, next } = input
   const steps: SyncStep[] = []
 
-  // Android compiles the copies under `modules/vescape-core/android/src/`; iOS bundles the copied
-  // alert packs and fixtures under `modules/vescape-core/ios/`, so both platforms need them fresh.
   {
     const cachedShared = cached?.shared ?? {}
     const shared = isEmpty(cachedShared)
@@ -274,8 +247,6 @@ function run(command: string[], options: { cwd?: string; env?: Record<string, st
     stdout: 'inherit',
   })
 
-  // `exitCode` is null when the child dies from a signal, and `process.exit(null)` exits 0 — which
-  // would let the `&&` in `bun run ios` launch the app on a half-generated native project.
   if (!result.success) {
     const status = result.exitCode ?? `signal ${result.signalCode}`
     console.error(`\nnative-sync failed: ${command.join(' ')} exited with ${status}`)
@@ -284,8 +255,6 @@ function run(command: string[], options: { cwd?: string; env?: Record<string, st
 }
 
 function syncPlatform(platform: Platform) {
-  // Android compiles these generated module resources directly. Keep them beside copy:shared's
-  // generated assets, but never make an iOS sync perform Android-only work.
   if (platform === 'android') run(['bun', 'run', 'theme:android'])
 
   const steps = planSync({
@@ -317,11 +286,8 @@ function syncPlatform(platform: Platform) {
     if (action === 'shared') {
       copyShared()
     } else if (action === 'prebuild') {
-      // The plan owns CocoaPods below; Expo's automatic install would run it twice.
       run(['bunx', 'expo', 'prebuild', '--platform', platform, '--no-install'])
     } else {
-      // CocoaPods reads paths as ASCII-8BIT and crashes on `unicode_normalize` unless the locale is
-      // UTF-8, which non-interactive shells often lack; Expo's own CLI pins LANG for the same reason.
       const lang = process.env.LANG ?? ''
       run(['pod', 'install'], {
         cwd: join(ROOT, 'ios'),
@@ -330,7 +296,6 @@ function syncPlatform(platform: Platform) {
     }
   }
 
-  // Fingerprint the post-sync tree: prebuild can rewrite its own inputs (lockfile, package.json).
   writeCache(platform, readState(platform))
   console.log(`\nnative-sync ${platform}: synced`)
 }

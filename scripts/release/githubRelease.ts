@@ -32,7 +32,6 @@ function requireCommand(result: ReleaseCommandResult, label: string): string {
   return result.stdout
 }
 
-/** Read the accepted canonical notes from the immutable source commit. */
 export async function readCanonicalReleaseBody(
   sourceSha: string,
   marketingVersion: string,
@@ -48,10 +47,6 @@ export async function readCanonicalReleaseBody(
   return `${body}\n`
 }
 
-/**
- * The GitHub release is published from the release commit, before any build: the tag and the notes
- * describe the source, not the artifacts. Play upload outcomes live in the release manifest.
- */
 export async function publishGithubRelease(
   repo: string,
   target: { marketingVersion: string; sourceSha: string },

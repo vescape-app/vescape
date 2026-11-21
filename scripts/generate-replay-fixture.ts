@@ -1,15 +1,6 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
-/**
- * Regenerates the synthetic BMS Debug Recording fixture at `shared/fixtures/replay-synthetic-bms.jsonl`.
- * Stand-in for a real smart-BMS clean ride: two minutes of healthy 16s BMS
- * frames encoded as real framed VESC packets (start byte, length, payload, CRC16, 0x03), split into
- * MTU-sized `rx` chunks so replay exercises the packet reassembler. Deterministic (seeded PRNG) so
- * reruns are diff-stable. Includes `tx` chunks, location lines, and one malformed line the replay
- * decoder must tolerate.
- */
-
 const ROOT = join(import.meta.dir, '..')
 
 const DURATION_MS = 120_000
@@ -18,7 +9,6 @@ const CELL_COUNT = 16
 const CHUNK_SIZE = 20
 const COMM_BMS_GET_VALUES = 96
 
-// Same LCG as classic minstd; good enough for stable plausible jitter.
 let seed = 20260719
 function random(): number {
   seed = (seed * 48271) % 2147483647
@@ -66,30 +56,29 @@ class PayloadWriter {
   }
 }
 
-/** Mirrors the `COMM_BMS_GET_VALUES` layout `parseBmsValues` decodes on both platforms. */
 function bmsPayload(cellVoltages: number[], current: number, ampHours: number): Uint8Array {
   const writer = new PayloadWriter()
   const totalV = cellVoltages.reduce((sum, v) => sum + v, 0)
   writer.u8(COMM_BMS_GET_VALUES)
   writer.i32(totalV * 1e6)
-  writer.i32(0) // vCharge: no charger on a ride
+  writer.i32(0)
   writer.i32(current * 1e6)
   writer.i32(current * 1e6)
   writer.i32(ampHours * 1e3)
   writer.i32(ampHours * totalV * 1e3)
   writer.u8(cellVoltages.length)
   for (const v of cellVoltages) writer.i16(v * 1e3)
-  for (const _ of cellVoltages) writer.u8(0) // balancing off
-  writer.u8(2) // temp ADC count
+  for (const _ of cellVoltages) writer.u8(0)
+  writer.u8(2)
   writer.i16(24.5 * 1e2)
   writer.i16(25.1 * 1e2)
-  writer.i16(26.0 * 1e2) // tempIc
-  writer.i16(24.0 * 1e2) // tempHum
-  writer.i16(41.0 * 1e2) // humidity
-  writer.i16(25.4 * 1e2) // tempMaxCell
-  writer.u8(Math.round(0.82 * 255)) // soc
-  writer.u8(Math.round(0.97 * 255)) // soh
-  writer.u8(10) // canId
+  writer.i16(26.0 * 1e2)
+  writer.i16(24.0 * 1e2)
+  writer.i16(41.0 * 1e2)
+  writer.i16(25.4 * 1e2)
+  writer.u8(Math.round(0.82 * 255))
+  writer.u8(Math.round(0.97 * 255))
+  writer.u8(10)
   return Uint8Array.from(writer.bytes)
 }
 
@@ -122,12 +111,10 @@ const lines: string[] = [
   line({ t: 0, kind: 'session-state', status: 'recording-started' }),
 ]
 
-// Per-cell resting offsets stay tiny so spread never approaches the 0.10 V warn threshold.
 const cellOffsets = Array.from({ length: CELL_COUNT }, () => (random() - 0.5) * 0.02)
 let ampHours = 0.4
 
 for (let t = FRAME_INTERVAL_MS; t <= DURATION_MS; t += FRAME_INTERVAL_MS) {
-  // Slow discharge over the ride plus per-frame measurement jitter (±4 mV).
   const baseV = 3.92 - 0.04 * (t / DURATION_MS)
   const cells = cellOffsets.map((offset) => baseV + offset + (random() - 0.5) * 0.008)
   const current = -(4 + random() * 10)
@@ -135,7 +122,6 @@ for (let t = FRAME_INTERVAL_MS; t <= DURATION_MS; t += FRAME_INTERVAL_MS) {
   lines.push(...chunkLines(t, 'rx', frame(bmsPayload(cells, current, ampHours))))
 
   if (t % 5_000 === 0) {
-    // The poll request the app would have sent; replay must ignore tx traffic.
     lines.push(...chunkLines(t, 'tx', frame(Uint8Array.from([COMM_BMS_GET_VALUES]))))
     lines.push(
       line({
@@ -153,7 +139,6 @@ for (let t = FRAME_INTERVAL_MS; t <= DURATION_MS; t += FRAME_INTERVAL_MS) {
   }
 }
 
-// A truncated write mid-line — real recordings can end this way; decoders must skip it.
 lines.push('{"t":119900,"kind":"ble-chu')
 lines.push(line({ t: DURATION_MS, kind: 'session-state', status: 'disconnected' }))
 

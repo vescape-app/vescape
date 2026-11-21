@@ -72,7 +72,6 @@ Group rides need ../vescape-server with dependencies, or GROUP_RIDE_SERVER_DIR.
   }
   const release = acquireE2eLock()
   try {
-    // Fail on prerequisites before a long build or a partially completed all run.
     if (plan.some((item) => item !== 'watch')) await ensureMaestro()
     if (plan.includes('group')) {
       const server = resolve(

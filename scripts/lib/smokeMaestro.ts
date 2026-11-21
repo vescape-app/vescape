@@ -3,7 +3,6 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { CommandFailed } from './captureDriver.ts'
 
-/** Require every outer subflow, including boot, to finish. Nested successes prove nothing. */
 export function completedSmokeCommands(value: unknown, expected: number): boolean {
   if (!Array.isArray(value)) return false
   const commands = value.filter(
@@ -20,7 +19,6 @@ export async function runSmokeMaestro(
   shutdownGraceMs = 60_000,
 ): Promise<void> {
   const expected = JSON.parse(readFileSync(flow, 'utf8').split('\n---\n')[1]).length
-  // Keep artifacts under Maestro's normal upload root, isolated from previous invocations.
   const debug = join(homedir(), '.maestro', 'tests', `smoke-${Date.now()}`)
   const proc = Bun.spawn([...command.slice(0, -1), '--debug-output', debug, command.at(-1)!], {
     stdout: 'inherit',
@@ -54,9 +52,7 @@ export async function runSmokeMaestro(
       ) {
         completedAt ??= Date.now()
       }
-    } catch {
-      // The reporter writes JSON while commands execute. An incomplete write is not success.
-    }
+    } catch {}
     if (
       (completedAt && Date.now() - completedAt > shutdownGraceMs) ||
       Date.now() - started > 25 * 60_000

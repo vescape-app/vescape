@@ -1,6 +1,5 @@
 import { withE2eSession } from './lib/e2eSession.ts'
 
-// Normal native mode, served by this run's Metro. No pre-existing dev server is required.
 await withE2eSession(async (session) => {
   const port = await session.port()
   session.env.E2E_METRO_PORT = String(port)

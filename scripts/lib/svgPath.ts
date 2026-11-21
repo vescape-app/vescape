@@ -1,18 +1,5 @@
-/**
- * Normalise an SVG path `d` attribute down to the four commands a SwiftUI `Path` speaks natively:
- * absolute `M`, `L`, `C` and `Z`.
- *
- * Android takes Phosphor's `d` verbatim — VectorDrawable understands the whole grammar. watchOS
- * does not: SwiftUI has `move`/`addLine`/`addCurve`/`closeSubpath` and nothing else, so either the
- * watch carries a full SVG parser at runtime or the grammar gets flattened here, once, at build
- * time. Flattening here keeps the arc trigonometry in a language with tests and leaves the watch a
- * scanner over four letters.
- */
-
-/** A number token, permissive about the exponent and implicit-sign forms Phosphor emits. */
 const NUMBER = /-?\d*\.?\d+(?:[eE][-+]?\d+)?/g
 
-/** How many arguments each command takes, per repetition. */
 const ARITY: Record<string, number> = {
   m: 2,
   l: 2,
@@ -31,10 +18,6 @@ interface Command {
   args: number[]
 }
 
-/**
- * Split `d` into commands, expanding the shorthand where a command letter is followed by more
- * arguments than it takes — `M` repeated becomes `L`, everything else repeats itself.
- */
 function tokenize(d: string, name: string): Command[] {
   const commands: Command[] = []
   for (const match of d.matchAll(/([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)/g)) {
@@ -50,7 +33,6 @@ function tokenize(d: string, name: string): Command[] {
       throw new Error(`${name}: ${code} got ${args.length} arguments, not a multiple of ${arity}`)
     }
     for (let i = 0; i < args.length; i += arity) {
-      // A repeated moveto is a lineto after the first pair, per the SVG grammar.
       const repeated = i > 0 && (code === 'M' || code === 'm')
       commands.push({
         code: repeated ? (code === 'M' ? 'L' : 'l') : code,
@@ -67,11 +49,6 @@ interface Point {
   y: number
 }
 
-/**
- * An elliptical arc as up to four cubic segments, one per quadrant it spans. The endpoint-to-centre
- * conversion is the one in the SVG implementation notes, including the radii correction for an
- * ellipse too small to reach the endpoint.
- */
 function arcToCurves(
   from: Point,
   rxIn: number,
@@ -81,7 +58,6 @@ function arcToCurves(
   sweep: boolean,
   to: Point,
 ): number[][] {
-  // Degenerate radii draw a straight line, and so does an arc that goes nowhere.
   if (rxIn === 0 || ryIn === 0) return [[from.x, from.y, to.x, to.y, to.x, to.y]]
 
   const phi = (rotationDeg * Math.PI) / 180
@@ -122,7 +98,6 @@ function arcToCurves(
 
   const segments = Math.max(1, Math.ceil(Math.abs(sweepAngle) / (Math.PI / 2)))
   const delta = sweepAngle / segments
-  // The magic constant that makes a cubic hug a circular arc of `delta` radians.
   const alpha = (4 / 3) * Math.tan(delta / 4)
 
   const onEllipse = (theta: number): Point => ({
@@ -154,19 +129,13 @@ function arcToCurves(
   return curves
 }
 
-/** Trim float noise without moving a 256-unit glyph by anything the eye can find. */
 function round(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
-/**
- * Rewrite `d` using only absolute `M`, `L`, `C` and `Z`. Arcs become cubics, shorthand curves get
- * their implied control point spelled out, and every coordinate is absolute.
- */
 export function normalizeSvgPath(d: string, name = 'path'): string {
   let current: Point = { x: 0, y: 0 }
   let subpathStart: Point = { x: 0, y: 0 }
-  // The reflected control point `S`/`T` need, or null when the previous command was not a curve.
   let lastCubicControl: Point | null = null
   let lastQuadControl: Point | null = null
   const out: string[] = []
@@ -180,7 +149,6 @@ export function normalizeSvgPath(d: string, name = 'path'): string {
     lastCubicControl = c2
     lastQuadControl = null
   }
-  /** A quadratic's two control points, as the equivalent cubic's. */
   const quadAsCubic = (control: Point, end: Point) => {
     const c1 = {
       x: current.x + (2 / 3) * (control.x - current.x),
@@ -195,7 +163,6 @@ export function normalizeSvgPath(d: string, name = 'path'): string {
     lastCubicControl = null
     lastQuadControl = control
   }
-  /** The previous control point mirrored through the current point, or the point itself. */
   const reflect = (last: Point | null): Point =>
     last === null ? { ...current } : { x: 2 * current.x - last.x, y: 2 * current.y - last.y }
 

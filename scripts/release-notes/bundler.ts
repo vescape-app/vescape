@@ -88,11 +88,6 @@ export async function readCanonicalReleaseNotes(): Promise<CanonicalReleaseNote[
   )
 }
 
-/**
- * The generated module is committed, so its bytes must survive a formatter pass. Formatting here
- * keeps `bun fmt` the single style authority and stops `release-notes:check` from drifting the moment
- * anything else formats the file.
- */
 async function formatGenerated(source: string): Promise<string> {
   const child = Bun.spawn(
     [process.execPath, 'fmt', `--stdin-filepath=${GENERATED_RELEASE_NOTES_FILE}`],

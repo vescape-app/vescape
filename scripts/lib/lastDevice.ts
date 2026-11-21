@@ -1,10 +1,3 @@
-/**
- * "Which device did you pick last time" for the repo's device-choosing CLIs.
- *
- * Remembered per machine rather than per checkout: which phone or watch is on the desk is a
- * property of the desk, not of the repo. A missing or unreadable file is never an error — the id it
- * names is simply gone, and the list falls back to its natural order.
- */
 import { homedir } from 'os'
 import { join } from 'path'
 
@@ -19,10 +12,9 @@ export async function readLastDevice(key: string): Promise<string | null> {
 
 export async function rememberDevice(key: string, id: string): Promise<void> {
   // intentional-suppression: missing device history is an expected CLI result
-  await Bun.write(join(CACHE_DIR, key), `${id}\n`).catch(() => undefined) // Optional CLI preference cache.
+  await Bun.write(join(CACHE_DIR, key), `${id}\n`).catch(() => undefined)
 }
 
-/** Last pick first, everything else in its original order. */
 export function lastFirst<T>(items: T[], id: (item: T) => string, last: string | null): T[] {
   return [...items].sort((a, b) => Number(id(b) === last) - Number(id(a) === last))
 }

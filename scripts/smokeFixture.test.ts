@@ -11,7 +11,6 @@ test('smoke telemetry outlives cold XCTest startup and the full CI flow budget',
     .split('\n')
     .map((line) => JSON.parse(line))
   const chunks = events.filter((event) => event.kind === 'ble-chunk' && event.direction === 'rx')
-  // Thirty minutes of CI execution plus six minutes consumed by native warmup.
   expect(chunks.at(-1).t).toBeGreaterThan(36 * 60_000)
   expect(events.filter((event) => event.kind === 'meta')).toHaveLength(1)
   for (let index = 1; index < chunks.length; index++) {
