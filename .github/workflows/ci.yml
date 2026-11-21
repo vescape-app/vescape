@@ -67,6 +67,7 @@ jobs:
       - run: bun run copy:shared
       - run: bun run ts
       - run: bun run lint
+      - run: bun run comments:check
       - run: bun run format:check
       - run: bun run knip
       - run: bun run test:bun
