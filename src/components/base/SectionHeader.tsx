@@ -8,21 +8,12 @@ import { theme, type ThemeColor } from '@/constants/theme'
 interface SectionHeaderProps {
   icon: Icon
   title: string
-  /** Tint of the icon; sections are told apart by it. */
   color?: ThemeColor
-  /** One line under the title saying what the section is for. */
   description?: string
-  /** Action belonging to the section, pinned to the right of the title row. */
   right?: ReactNode
-  /** Centred headings name a section that owns the full width, such as one inside a drawer. */
   align?: 'left' | 'center'
 }
 
-/**
- * Heading of a section inside a screen: icon, title, an optional line of detail, and an optional
- * action. One component so every section on every screen reads at the same weight — a screen that
- * invents its own heading is a screen that drifts out of the set.
- */
 export function SectionHeader({
   icon: HeaderIcon,
   title,
@@ -37,8 +28,6 @@ export function SectionHeader({
       <View style={[styles.row, centered && styles.rowCentered]}>
         <HeaderIcon size={20} color={color} weight="duotone" />
         <Text style={styles.title}>{title}</Text>
-        {/* Rendered only when there is an action: an empty auto-margin spacer still claims the
-            free space, which shoved a centred heading back to the left. */}
         {right ? <View style={styles.right}>{right}</View> : null}
       </View>
       {description ? (
@@ -52,7 +41,6 @@ export function SectionHeader({
 
 const styles = StyleSheet.create({
   container: {
-    // The description is part of the heading, but it is not the title's second line.
     gap: 4,
   },
   containerCentered: {

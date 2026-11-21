@@ -16,14 +16,9 @@ import { useResolvedAccentColors } from '@/hooks/useTheme'
 
 const TRACK_COLOR = theme.palette.slate.border
 export const LINE_THICK = 2
-// Sizes mirror the gauge, expressed against the line thickness (gauge STROKE):
-// alert tick 0.35× wide / 2× long. The particle band tracks bar height.
 const TICK_W = LINE_THICK * 0.35
 const TICK_LEN = LINE_THICK * 2
-/** Height of the band above the line, as a share of the bar height: value slot and charge particles. */
 export const BAND_RATIO = 0.5
-// Band tint fades in over the first stretch past the threshold so the edge reads as a soft entry
-// rather than a wall, then holds flat: nothing about the rule escalates further along the scale.
 const ALERT_BAND_STOPS = [0, 0.3, 1]
 export const VALUE_GAP = 6
 export const BAR_H = 40
@@ -43,19 +38,13 @@ const PARTICLE_COUNT_MIN = 6
 const PARTICLE_COUNT_MAX = 48
 const PARTICLE_R = 0.7
 const PARTICLE_FADE_IN_PX = 14
-// Short fade so particles visibly slam into the fill head instead of dissolving early.
 const PARTICLE_FADE_OUT_PX = 3
 
 interface ParticleSpec {
-  /** Travel speed in px/s. */
   speed: number
-  /** Loop phase offset, 0–1 of the travel span. */
   phase: number
-  /** Baseline height above the line, as a fraction of the band length. */
   yFrac: number
-  /** Sine-wobble amplitude, as a fraction of the band length. */
   waveAmpFrac: number
-  /** Sine-wobble angular speed in rad/s. */
   waveFreq: number
   wavePhase: number
 }
@@ -69,13 +58,9 @@ function particleCountFor(headX: number): number {
 
 function makeParticleSpecs(count: number): ParticleSpec[] {
   return Array.from({ length: count }, (_, i) => {
-    // Amplitude spans from subtle jitter up to the full band height (0.5 of the
-    // band length swings the dot from the line to the band top). Baseline is
-    // then confined so the swing never leaves the band.
     const waveAmpFrac = 0.05 + Math.random() * 0.45
     return {
       speed: 80 + Math.random() * 180,
-      // Each particle starts in its own slice of the span, jittered within it.
       phase: (i + Math.random()) / count,
       yFrac: waveAmpFrac + Math.random() * (1 - 2 * waveAmpFrac),
       waveAmpFrac,
@@ -88,7 +73,6 @@ function makeParticleSpecs(count: number): ParticleSpec[] {
 interface ChargeParticleProps {
   clock: SharedValue<number>
   spec: ParticleSpec
-  /** X of the fill head — where particles get absorbed. */
   headX: number
   lineY: number
   bandLen: number
@@ -100,13 +84,11 @@ function ChargeParticle({ clock, spec, headX, lineY, bandLen, color }: ChargePar
     const travel = (clock.value / 1000) * spec.speed
     return ((travel / headX + spec.phase) % 1) * headX
   })
-  // Sine wobble around the baseline height makes the drift read organic.
   const cy = useDerivedValue(() => {
     const base = lineY - spec.yFrac * bandLen
     const amp = spec.waveAmpFrac * bandLen
     return base - amp * Math.sin((clock.value / 1000) * spec.waveFreq + spec.wavePhase)
   })
-  // Fade in from the left edge, snuff out into the fill head.
   const opacity = useDerivedValue(() => {
     const x = cx.value
     const fade = Math.min(x / PARTICLE_FADE_IN_PX, (headX - x) / PARTICLE_FADE_OUT_PX, 1)
@@ -168,7 +150,6 @@ export function GaugeBar({
     ],
     [alertColor],
   )
-  // Line sits at the bottom (the "rim", like the gauge arc). Ticks/glow rise from it.
   const lineY = height - LINE_THICK
   const fillW = width * fraction
   const bandLen = height * BAND_RATIO
@@ -176,7 +157,6 @@ export function GaugeBar({
 
   return (
     <Canvas style={{ width, height }}>
-      {/* Glow wedge — bounded to the head, brightest at the line, fading up (gauge glow ramp). */}
       {fillW > 0 ? (
         <Rect x={0} y={0} width={fillW} height={height}>
           <LinearGradient
@@ -193,7 +173,6 @@ export function GaugeBar({
         </Rect>
       ) : null}
 
-      {/* Full dim track line at the bottom */}
       <RoundedRect
         x={0}
         y={lineY}
@@ -203,7 +182,6 @@ export function GaugeBar({
         color={TRACK_COLOR}
       />
 
-      {/* Alert bands — faint highlight tint hugging the line, fading in at the threshold edge */}
       {alerts.map((a) => {
         const band = alertBandFractions(a, (value) => fractionOf(value, min, max))
         if (!band) return null
@@ -228,7 +206,6 @@ export function GaugeBar({
         )
       })}
 
-      {/* Colored progress line, 0 → head */}
       {fillW > 0 ? (
         <RoundedRect
           x={0}
@@ -240,7 +217,6 @@ export function GaugeBar({
         />
       ) : null}
 
-      {/* Alert ticks — tiny highlight marks just above the line (gauge AlertTick) */}
       {alerts.map((a) => {
         const ticks = [a.threshold, ...(a.thresholdMax == null ? [] : [a.thresholdMax])]
         return ticks.map((t, i) => (
@@ -255,8 +231,6 @@ export function GaugeBar({
         ))
       })}
 
-      {/* Charging particles streaming into the fill head. Mounted only while
-          charging so the animation clock doesn't run otherwise. */}
       {charging && fillW > PARTICLE_FADE_IN_PX + PARTICLE_FADE_OUT_PX ? (
         <ChargeParticles headX={fillW} lineY={lineY} bandLen={bandLen} color={color} />
       ) : null}

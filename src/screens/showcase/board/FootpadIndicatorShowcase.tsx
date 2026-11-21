@@ -13,7 +13,6 @@ import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
 
 const WIDTHS: Record<string, number> = { strip: 26, medium: 64, detail: 132 }
-/** Refloat's own default `fault_adc`, a high one, a disabled zone, and no config at all. */
 const THRESHOLDS: Record<string, number | null> = {
   '0.8': 0.8,
   '2.0': 2,
@@ -37,8 +36,6 @@ export function FootpadIndicatorShowcase() {
       adc2.value = null
       return
     }
-    // Two sweeps of different length, so the zones are usually out of step — that difference is the
-    // thing the two rails exist to show.
     adc1.value = 0
     adc2.value = 0
     adc1.value = withRepeat(

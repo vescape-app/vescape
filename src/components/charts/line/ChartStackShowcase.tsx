@@ -33,7 +33,6 @@ const SIZES = {
 
 type SizeKey = keyof typeof SIZES
 
-/** Blends between stops — the faster the reading, the hotter the line. */
 const SPEED_RAMP: ChartColorRamp = {
   stops: [
     { value: 0, color: theme.palette.cyan.color },
@@ -42,7 +41,6 @@ const SPEED_RAMP: ChartColorRamp = {
   ],
 }
 
-/** Holds each colour flat to the next boundary, so the zones read as zones. */
 const DUTY_BANDS: ChartColorRamp = {
   mode: 'bands',
   stops: [
@@ -52,20 +50,14 @@ const DUTY_BANDS: ChartColorRamp = {
   ],
 }
 
-/**
- * A pause dropped into every generated ride, so the chart's gap seam is always on show. Real rides
- * stop for lights and coffee; the samples simply stop arriving.
- */
 const PAUSE_AT = 0.55
 const PAUSE_MS = 30 * 60_000
 
-/** Where each sample lands once the pause is inserted. */
 function sampleTime(index: number, count: number, stepMs: number): number {
   const paused = index >= Math.floor(count * PAUSE_AT) ? PAUSE_MS : 0
   return BASE + index * stepMs + paused
 }
 
-/** Deterministic ride-shaped signal with occasional one-sample spikes to prove they survive. */
 function generateSeries(count: number, stepMs: number, seed: number, scale: number) {
   const ts: number[] = []
   const vs: number[] = []
@@ -91,7 +83,6 @@ function rangeOf(data: ChartSeriesData) {
   return { min: Math.floor(min), max: Math.ceil(max) }
 }
 
-/** Stand-ins for the history chart's excluded stretches and favourite segments. */
 function generateBands(count: number, stepMs: number): ChartBand[] {
   return [
     {
@@ -206,7 +197,6 @@ export function ChartStackShowcase() {
     [speed],
   )
 
-  // Stack-level: a stretch the rider chose, washed through every plot rather than marked under one.
   const stackBands: ChartBand[] = useMemo(
     () => [
       {

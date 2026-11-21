@@ -10,10 +10,6 @@ import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMap
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import type { useMainScreenController } from '@/screens/main/useMainScreenController'
 
-/**
- * The map's write side: what the rider tapped, long-pressed or is navigating to, and the reverse
- * geocoding that fills a dropped pin in after the fact.
- */
 export function useMainScreenMapTargets(
   controller: ReturnType<typeof useMainScreenController>,
   mapRef: React.RefObject<MainMapHandle | null>,
@@ -190,7 +186,6 @@ export function useMainScreenMapTargets(
     },
     [controller, mapRef],
   )
-  /** Enter map mode centred on a point: a Ride Notice's location or a roster Rider Signal. */
   const handleFocusCoordinate = useCallback(
     (coordinate: { latitude: number; longitude: number }) => {
       controller.dismissMapSelector()
@@ -210,8 +205,6 @@ export function useMainScreenMapTargets(
       })
       clearSelectedMapPoints()
       setSelectedNavigationTarget(null)
-      // Deliberately stays on the map: the path is a proposal until the rider accepts it from the
-      // navigation sheet, which is what closes the map. See `onConfirmNavigation`.
     },
     [clearSelectedMapPoints, setDirectionPoint],
   )

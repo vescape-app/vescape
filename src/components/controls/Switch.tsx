@@ -33,10 +33,6 @@ const SPIN_DURATION_MS = 850
 
 const SwitchAccentContext = createContext<ThemeColor | undefined>(undefined)
 
-/**
- * Lends every switch below it an accent, so a tinted row does not have to repeat its colour on the
- * control it already states in its icon. An explicit `accent` on the switch still wins.
- */
 export function SwitchAccentProvider({
   accent,
   children,
@@ -48,27 +44,15 @@ export function SwitchAccentProvider({
 }
 
 export interface SwitchProps {
-  /** `null` while the owner has not said yet — the thumb rests centred and the caption clears. */
   value: boolean | null
   onValueChange: (value: boolean) => void
-  /** A write is in flight: the thumb centres and spins there until the owner answers. */
   pending?: boolean
   disabled?: boolean
-  /** Tint of the on state. Defaults to the surrounding `SwitchAccentProvider`, then to sky. */
   accent?: ThemeColor
   accessibilityLabel?: string
   testID?: string
 }
 
-/**
- * The app's switch. An outlined capsule whose thumb rides between three rest positions — off, on,
- * and centre — so a control backed by the board can say "I do not know yet" without lying about
- * which way it is set, and can spin in place while a write is in flight.
- *
- * Tap or drag; a drag that does not cross the middle springs back. A disabled switch drops its
- * accent and dashes its outline rather than dimming its on colour: a switch that still reads on
- * while refusing taps looks broken, not locked.
- */
 export function Switch({
   value,
   onValueChange,
@@ -241,7 +225,6 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.45,
   },
-  // A navy pill on a white card stays heavy at the dark-theme fade, so light fades it further.
   disabledOnNavy: {
     opacity: 0.25,
   },

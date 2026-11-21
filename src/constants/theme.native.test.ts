@@ -14,8 +14,6 @@ test('native tokens cannot cross string-only rendering boundaries without resolu
   expectTypeOf(theme.alpha('#123456', 0.3)).toEqualTypeOf<string>()
 })
 
-// Isolate each platform's module cache and mocks. The regular Bun preload has no native colors,
-// so importing theme there alone would exercise only its string fallback.
 for (const platform of ['android', 'ios', 'web']) {
   test(`${platform}: native color resolution survives alpha, chart grouping, and scrub conversion`, () => {
     const script = `

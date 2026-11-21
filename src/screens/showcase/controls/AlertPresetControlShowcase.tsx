@@ -28,7 +28,6 @@ const PRESET_METRICS: AlertPresetMetric[] = [
   'controller-temp',
 ]
 
-// Full-scale per metric, matching AlertPresetControl's gauge — drives the demo needle sweep.
 const PRESET_DEMO_MAX: Record<AlertPresetMetric, number> = {
   speed: 50,
   duty: 100,
@@ -37,7 +36,6 @@ const PRESET_DEMO_MAX: Record<AlertPresetMetric, number> = {
   'controller-temp': 80,
 }
 
-// A couple of rider (non-preset) markers so the showcase demonstrates preset + rider rules together.
 const PRESET_DEMO_RIDER_ALERTS: Record<AlertPresetMetric, { id: string; threshold: number }[]> = {
   speed: [{ id: 'demo-speed', threshold: 45 }],
   duty: [{ id: 'demo-duty', threshold: 92 }],
@@ -46,8 +44,6 @@ const PRESET_DEMO_RIDER_ALERTS: Record<AlertPresetMetric, { id: string; threshol
   'controller-temp': [{ id: 'demo-controller', threshold: 78 }],
 }
 
-// Fixed saved-rule fixtures: this mode demonstrates normal presets following board config.
-// Choosing another level returns to the native draft preview.
 const MATCHED_NORMAL_FIXTURES: Partial<Record<AlertPresetMetric, DraftAlertRule[]>> = {
   duty: [
     {

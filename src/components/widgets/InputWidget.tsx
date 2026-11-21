@@ -19,15 +19,11 @@ interface InputWidgetProps {
   size?: WidgetSize
   onCommit: (value: string) => void
   accessibilityLabel?: string
-  /** Optional visual rendered at the leading edge of a row input. */
   leading?: ReactNode
-  /** Optional content shown below the input while the row is being edited. */
   editingContent?: ReactNode
-  /** Keep the row editor open when the input loses focus, so inline controls remain usable. */
   commitOnBlur?: boolean
 }
 
-/** A labelled value that flips to an inline text field when the pencil is tapped. */
 export function InputWidget(props: InputWidgetProps) {
   if (props.size === 'square') return <SquareInput {...props} />
   return <RowInput {...props} />

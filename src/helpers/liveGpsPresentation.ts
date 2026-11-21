@@ -44,7 +44,6 @@ export function getLiveGpsPresentation({
     cameraFix,
     accuracyFix,
     accuracyRadiusM: degradedAccuracyRadiusM ?? accuracyFix?.accuracyM ?? null,
-    // Native derives the reliable course per fix and retains it across stops; JS only passes it on.
     directionBearingDeg: preciseFix?.courseDeg ?? null,
     directionBearingSourceTimestamp: preciseFix?.courseSourceTimestamp ?? null,
     nextInitialApproximateFix,

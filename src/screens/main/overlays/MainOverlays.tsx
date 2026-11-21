@@ -54,7 +54,6 @@ interface MainMapOverlayProps {
   enterLegalLimits: () => void
   exitLegalLimits: () => void
   weatherLocation: { latitude: number; longitude: number } | null
-  /** The rider's latest precise fix, for live distances; null without one. */
   ownLocation: { latitude: number; longitude: number } | null
   onFocusCoordinate: (coordinate: { latitude: number; longitude: number }) => void
   directionPoint: DirectionPoint | null
@@ -83,10 +82,6 @@ interface MainOverlaysProps {
   history: MainHistoryOverlayProps
 }
 
-/**
- * Everything drawn on top of the map. One overlay per mode, each owning its own state; this only
- * decides which of them is on screen and holds the few values two modes share.
- */
 export function MainOverlays({
   mode,
   mapRef,
@@ -97,16 +92,12 @@ export function MainOverlays({
 }: MainOverlaysProps) {
   const insets = useSafeAreaInsets()
   const weather = useWeatherStore((s) => s.weather)
-  // In the store rather than in state: the map camera frames the route into the space this panel
-  // leaves, and it lives in a different tree.
   const panelHeight = useMainScreenStore((s) => s.historyPanelHeight)
   const setPanelHeight = useMainScreenStore((s) => s.setHistoryPanelHeight)
-  // Owned here because the telemetry drag fades the map vignette as well as the telemetry face.
   const revealProgress = useSharedValue(0)
   const dragOpacity = useSharedValue(0)
   const telemetryPanel = useTelemetryPanel(mode === 'telemetry')
 
-  // Coming back to telemetry undoes whatever the reveal drag left behind.
   useLayoutEffect(() => {
     if (mode !== 'telemetry') return
     revealProgress.value = 0
@@ -116,7 +107,6 @@ export function MainOverlays({
   const mapControlsBottom = Math.max(insets.bottom, 12) + 12
   const mapModeTabsTop = Math.max(insets.top, 8)
   const belowMapModeTabsTop = mapModeTabsTop + 48
-  // Telemetry: clear the top bar. Map: clear the Map Point status banner's slot.
   const rideNoticeTop = mode === 'telemetry' ? belowMapModeTabsTop : belowMapModeTabsTop + 48
   const mapTargetBottom = Math.max(insets.bottom, 16) + 16
   const isMapMode = mode === 'map' || mode === 'weather' || mode === 'legalLimits'

@@ -1,20 +1,3 @@
-/**
- * Markdown source → a small render-ready tree.
- *
- * `markdown-it` produces a flat token stream; this module folds it into nested
- * blocks and inline runs so the renderer stays a dumb tree walk. Keeping the
- * model pure also keeps it testable without a React renderer.
- *
- * Safety: HTML is disabled, so raw tags arrive as plain text and stay inert.
- * Every URL passes `md.validateLink` (rejects `javascript:`, `vbscript:`,
- * `file:`, and non-image `data:`); a rejected link degrades to its label text
- * and a rejected image to its alt text.
- *
- * Unknown tokens (parser upgrades, future plugins) never throw: unknown
- * containers contribute their children to the parent, unknown leaves are
- * dropped.
- */
-
 import MarkdownIt from 'markdown-it'
 import type Token from 'markdown-it/lib/token.mjs'
 
@@ -44,7 +27,6 @@ export type MarkdownBlock =
       rows: MarkdownInline[][][]
     }
 
-/** A paragraph split into text runs and the block-level images between them. */
 export type MarkdownRun =
   { kind: 'text'; nodes: MarkdownInline[] } | { kind: 'image'; src: string; alt: string }
 
@@ -55,7 +37,6 @@ const md = new MarkdownIt('default', {
   typographer: false,
 })
 
-/** Cursor into the flat token stream, shared by the mutually recursive readers. */
 interface Cursor {
   i: number
 }
@@ -64,7 +45,6 @@ export function parseMarkdown(source: string): MarkdownBlock[] {
   return buildBlocks(md.parse(source, {}))
 }
 
-/** Exposed separately so degradation can be tested against synthetic tokens. */
 export function buildBlocks(tokens: Token[]): MarkdownBlock[] {
   return readBlocks(tokens, { i: 0 }, null)
 }
@@ -113,7 +93,6 @@ function readBlocks(tokens: Token[], cursor: Cursor, closeType: string | null): 
         out.push(readTable(tokens, cursor))
         break
       case 'inline': {
-        // Inline outside a paragraph — only plugins emit this; keep the text.
         const children = readInline(token.children ?? [])
         if (children.length > 0) out.push({ type: 'paragraph', children })
         break
@@ -267,10 +246,6 @@ function readInlineNodes(
   return out
 }
 
-/**
- * Images fill the container width, which no `Text` run can do, so a paragraph
- * renders as alternating text runs and standalone images.
- */
 export function splitInlineRuns(children: MarkdownInline[]): MarkdownRun[] {
   const runs: MarkdownRun[] = []
   let nodes: MarkdownInline[] = []
@@ -316,7 +291,6 @@ function headingLevel(tag: string): number {
   return Number.isFinite(level) ? Math.min(6, Math.max(1, level)) : 1
 }
 
-/** Best-effort close token for a container this module does not know about. */
 function pairedCloseType(token: Token): string {
   return token.type.endsWith('_open')
     ? `${token.type.slice(0, -'_open'.length)}_close`

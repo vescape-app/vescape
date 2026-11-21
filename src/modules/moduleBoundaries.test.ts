@@ -2,53 +2,34 @@ import { describe, expect, test } from 'bun:test'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-/**
- * Cross-module import ratchet. `src/modules/<a>` importing `src/modules/<b>` is
- * only allowed when `a -> b` is listed below. Shrink this list over time —
- * never grow it without an ADR-level reason.
- */
 const ALLOWED_EDGES = new Set([
-  // board is the session/telemetry hub; most domains read its stores/constants
   'alerts -> board',
   'battery -> board',
   'group-ride -> board',
   'history -> board',
   'tune -> board',
-  // battery config is a clean leaf board and alerts derive from
   'alerts -> battery',
   'board -> battery',
-  // settings store is app-settings truth read by domain stores
   'accessories -> settings',
   'alerts -> settings',
   'board -> settings',
   'history -> settings',
   'legal -> settings',
-  // ride weather renders the native-classified weather pictogram and its tint
   'history -> weather',
-  // Weather Alert levels are App Settings set from the Weather mode sheet
   'weather -> settings',
-  // release reads/persists dismissed Community Message IDs through App Settings
   'release -> settings',
-  // settings defaults sourced from owning domains
   'settings -> alerts',
   'settings -> history',
   'settings -> legal',
   'settings -> map',
-  // rider trails/pins are map layers and share map rendering defaults
   'group-ride -> map',
-  // a signed-in rider rides under the Account's Rider Profile nick
   'group-ride -> profile',
-  // the nick form pre-selects the country the phone is in
   'profile -> location',
   'profile -> map',
-  // Map Points are read around the map camera and share its navigation target type
   'map-points -> map',
-  // TODO(decouple): board components read alertsStore + history color scale
   'board -> alerts',
   'board -> history',
-  // DevBadge toggles debug session recording on the board store
   'diagnostics -> board',
-  // TODO(decouple): AlertFormModal renders TuneDial
   'alerts -> tune',
 ])
 
@@ -75,7 +56,6 @@ describe('module boundaries', () => {
           violations.push(`${rel}: ${from} -> ${to}`)
         }
       }
-      // modules sit below the composition layer and must never reach up into it
       if (/['"]@\/(screens|app|bootstrap)\//.test(source)) {
         violations.push(`${rel}: ${from} -> composition layer (screens/app/bootstrap)`)
       }

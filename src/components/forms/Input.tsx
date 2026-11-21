@@ -9,7 +9,6 @@ export const inputBase = {
   paddingHorizontal: 14,
   paddingVertical: 12,
   fontSize: 15,
-  // TextInput bypasses the Text wrapper, so the Raleway family is set directly.
   fontFamily: theme.font('600'),
 }
 

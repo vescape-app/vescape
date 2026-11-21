@@ -21,7 +21,6 @@ interface RideNoticeOverlayProps {
   onShowOnMap: (location: { latitude: number; longitude: number }) => void
 }
 
-/** The most urgent Ride Notice, floating under the top bar. */
 export function RideNoticeOverlay({ top, ownLocation, onShowOnMap }: RideNoticeOverlayProps) {
   const notices = useRideNoticesStore((s) => s.notices)
   const pins = useGroupRideStore((s) => s.publicPins)
@@ -41,7 +40,6 @@ export function RideNoticeOverlay({ top, ownLocation, onShowOnMap }: RideNoticeO
   )
 }
 
-/** The notice of a public rider's signal, when the top notice is one. */
 function signalLook(
   key: string,
   pins: Parameters<typeof riderSignalNoticeRider>[1],
@@ -51,7 +49,6 @@ function signalLook(
   return rider && info ? riderSignalNoticeLook(info, rider.nick) : null
 }
 
-/** A rider's signal shows as what happened, in its kind's icon and hue, as on the map pin. */
 export function riderSignalNoticeLook(info: PinKindInfo, nick: string): RideNoticeLook {
   const hue = theme.palette[info.hue]
   return {

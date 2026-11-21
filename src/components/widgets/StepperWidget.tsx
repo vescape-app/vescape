@@ -16,7 +16,6 @@ interface StepperWidgetProps {
   onNext: () => void
 }
 
-/** A widget with two explicit actions at the trailing edge, useful for nudge controls. */
 export function StepperWidget({
   icon: IconComponent,
   label,

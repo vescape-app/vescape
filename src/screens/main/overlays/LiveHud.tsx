@@ -15,7 +15,6 @@ interface LiveHudProps {
 
 export function LiveHud({ revealProgress }: LiveHudProps) {
   const insets = useSafeAreaInsets()
-  // Hangs under the gauges: it qualifies the speed and distance they are showing.
   const gpsBadge = useGpsStatusBadge(showDevControls)
   const revealStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: revealProgress ? -52 * revealProgress.value : 0 }],
@@ -34,7 +33,6 @@ export function LiveHud({ revealProgress }: LiveHudProps) {
             gpsBadge ? (
               <GpsStatusPill
                 badge={gpsBadge}
-                // The badge says what is wrong; Navigation diagnostics says why.
                 onPress={() => router.push(routes.settingsNavigationDiagnostic)}
               />
             ) : null

@@ -17,16 +17,13 @@ import { resolvedVoiceId, VOICE_PACKS } from '@/modules/settings/lib/appSounds'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import catalog from '../../../../scripts/alert-packs/catalog.json'
 
-/** `weather.*` lines need a lead and percent; {@link WeatherProbe} plays them whole. */
 const VOICE_KEYS = (Object.entries(catalog.voiceKeys) as [string, string | null][]).filter(
   ([key]) => !key.startsWith('weather.'),
 )
 const WEATHER_KINDS: WeatherAlertPreviewKind[] = ['storm', 'wind', 'rain']
 const WEATHER_LEADS = [0, 15, 30, 45, 60, 90, 120, 150, 180]
 const WEATHER_PERCENTS = [30, 50, 70, 90]
-/** Kinds whose lines speak a percent; wind has none. */
 const speaksPercent = (kind: WeatherAlertPreviewKind) => kind !== 'wind'
-/** Range value types; the voice keys speak only these. */
 const VALUE_RANGES: Record<string, { min: number; max: number }> = Object.fromEntries(
   Object.entries(catalog.values).filter(
     (entry): entry is [string, { min: number; max: number }] => !Array.isArray(entry[1]),
@@ -44,7 +41,6 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
   )
 }
 
-/** Plays any voice pack line with a severity and value, or a random one. */
 export function VoiceProbe() {
   const voice = useSettingsStore((state) => state.voice)
   const soundPack = useSettingsStore((state) => state.soundPack)
@@ -142,7 +138,6 @@ export function VoiceProbe() {
   )
 }
 
-/** Plays Weather Alert lines whole, built natively the way the evaluator speaks them. */
 export function WeatherProbe() {
   const [kind, setKind] = useState<WeatherAlertPreviewKind>('rain')
   const [lead, setLead] = useState(150)

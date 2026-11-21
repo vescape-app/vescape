@@ -90,8 +90,6 @@ export function TopBar({
   const [selectorOpen, setSelectorOpen] = useState(false)
   const [warningsOpen, setWarningsOpen] = useState(false)
   const [faultsOpen, setFaultsOpen] = useState(false)
-  // What the selector was asked for on its way out. Presenting a modal while another is still
-  // dismissing is dropped, so anything opened from inside the selector waits for it to leave.
   const pendingExit = useRef<{
     kind: 'warnings' | 'faults' | 'edit' | 'config' | 'accessory'
     boardId?: string
@@ -102,15 +100,12 @@ export function TopBar({
   const riderColor = useSelectedBoardRailColor() ?? theme.palette.green.color
   const routeProgress = useMapStore((s) => s.routeProgress)
 
-  // Read once here: the pill wears the badges, the selector offers the same two ways in.
   const issues = useBoardIssues(activeBoardId)
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
-  // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
   const versionWarning =
     appStatus?.version.status === 'update-warning' || appStatus?.version.status === 'online-blocked'
   const backup = useBackupSlot()
-  // Primitives, rounded to whole percent, so a running job re-renders the bar only when the ring moves.
   const maintenanceRunning = useMaintenanceStore((s) => maintenanceProgress(s.state) !== null)
   const maintenanceFraction = useMaintenanceStore((s) => {
     const fraction = maintenanceProgress(s.state)?.fraction
@@ -128,14 +123,9 @@ export function TopBar({
       : activeNavigationTarget?.type === 'place'
         ? getPlaceCategoryIcon(activeNavigationTarget.category)
         : getMapPointKindIcon('direction')
-  // Along the path, from native. A straight line here claimed 679 m for a ride that is 2 km around
-  // the river; the dash while native has no Route Progress is the honest answer, not a reason to
-  // fall back to one.
   const navigationDistance =
     routeProgress && activeNavigationTarget ? formatDistance(routeProgress.remainingMeters) : DASH
 
-  // The pill's leading badge. Only a live link earns it — a saved Accessory that is merely
-  // reconnecting must not read as one that is answering.
   const hasAccessories = useAccessoryStore((s) => s.accessories.length > 0)
   const accessoriesSection = useMemo(
     () =>
@@ -158,8 +148,6 @@ export function TopBar({
       label: only
         ? `${only.name}, connected accessory`
         : `${connectedAccessories.length} accessories connected`,
-      // One link has a detail screen to open. Several have no single "its details", so the badge
-      // opens the selector, which lists them all with their own state.
       onPress: () =>
         only
           ? router.push({ pathname: routes.accessory, params: { accessoryId: only.accessoryId } })
@@ -219,8 +207,6 @@ export function TopBar({
             onConnect={onConnect}
           />
         )}
-        {/* The gear wears whatever is happening inside the drawer — a required update, a running
-            backup or Maintenance Job with its progress — the same way Social wears an active Group Ride. */}
         <View ref={settingsRef} collapsable={false} style={styles.iconRight}>
           <IconButton
             icon={GearSixIcon}

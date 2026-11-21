@@ -6,7 +6,6 @@ import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { ImuAttitudeDial } from '@/modules/board/components/ImuAttitudeDial'
 import { RAILS } from '@/modules/board/lib/railPresets'
 
-/** Pitch, roll and balance setpoint per pose; `null` is no telemetry yet. */
 const POSES: Record<string, [number, number, number] | null> = {
   level: [0, 0, 0],
   'tail down': [20, 0, 0],

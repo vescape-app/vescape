@@ -11,32 +11,14 @@ import {
   type LodPyramid,
 } from '@/components/charts/line/lod'
 
-/**
- * Vertices are held in *data space* — seconds since the start of the domain, and the metric's
- * own units — never in pixels. The viewport then becomes a matrix applied to a finished path
- * rather than a reprojection of every point, which is what keeps zooming free.
- *
- * Seconds rather than milliseconds because Skia stores coordinates as 32-bit floats: a
- * day-long ride in milliseconds would quantise to about 8ms per step, while in seconds it
- * stays exact to well under a millisecond.
- */
 export interface LevelVertices {
-  /** Flat `[t0, v0, t1, v1, ...]`, seconds from the domain start. */
   tv: number[]
-  /** Flat `[startVertex, endVertex, ...]` — the runs a sampling gap breaks the line into. */
   runs: number[]
-  /** Flat `[t, v, ...]`: samples left alone between two gaps, which no run can stroke. */
   dots: number[]
 }
 
 const EMPTY_VERTICES: LevelVertices = { tv: [], runs: [], dots: [] }
 
-/**
- * Vertices for one level of the pyramid, or for the raw samples when `level` is `-1`.
- *
- * Runs once per dataset on the JS thread — the result is turned into a Skia path immediately
- * afterwards, and it is that path, not this array, that the UI thread ever sees.
- */
 export function buildLevelVertices(pyramid: LodPyramid, level: number): LevelVertices {
   if (pyramid.raw.ts.length === 0) return EMPTY_VERTICES
 
@@ -50,7 +32,6 @@ export function buildLevelVertices(pyramid: LodPyramid, level: number): LevelVer
     tv.push((timeMs - origin) / 1000, value)
   }
 
-  /** Close the open run: a single vertex cannot be stroked, so it becomes a dot. */
   const closeRun = () => {
     const end = tv.length / 2
     if (end - runStart === 1) dots.push(tv[runStart * 2], tv[runStart * 2 + 1])
@@ -69,7 +50,6 @@ export function buildLevelVertices(pyramid: LodPyramid, level: number): LevelVer
   }
 
   const { data, count, bucketMs } = pyramid.levels[level]
-  // A gap only reads as a gap once it is wider than the buckets themselves.
   const gapMs = Math.max(pyramid.gapMs, bucketMs * 2)
 
   for (let i = 0; i < count; i += 1) {
@@ -79,8 +59,6 @@ export function buildLevelVertices(pyramid: LodPyramid, level: number): LevelVer
 
     push(tFirst, data[base + LOD_V_FIRST])
 
-    // Extremes in the order they occurred, so the drawn bucket keeps the shape of the signal
-    // instead of always spiking the same way first.
     const tMin = data[base + LOD_T_MIN]
     const tMax = data[base + LOD_T_MAX]
     const minFirst = tMin <= tMax
@@ -99,7 +77,6 @@ export function buildLevelVertices(pyramid: LodPyramid, level: number): LevelVer
   return { tv, runs, dots }
 }
 
-/** Every raw sample, for the zoom levels where individual readings should be marked. */
 export function buildSampleDots(pyramid: LodPyramid): number[] {
   const { ts, vs } = pyramid.raw
   const origin = pyramid.startMs
@@ -108,24 +85,13 @@ export function buildSampleDots(pyramid: LodPyramid): number[] {
   return dots
 }
 
-/**
- * Vertices per tile. A frame composes only the tiles it can see, so this trades a little more
- * per-tile bookkeeping for a per-frame cost that no longer grows as the rider zooms in.
- */
 const TILE_VERTICES = 256
 
 export interface VertexChunk {
-  /** Vertex indices, `[from, to)`. */
   from: number
   to: number
 }
 
-/**
- * Split runs into tiles of at most {@link TILE_VERTICES} vertices.
- *
- * Consecutive tiles of the same run overlap by one vertex, so the segment spanning a tile
- * boundary is drawn by the earlier tile and the line has no gap where the tiles meet.
- */
 export function chunkRuns(runs: number[], maxVertices = TILE_VERTICES): VertexChunk[] {
   const chunks: VertexChunk[] = []
   for (let run = 0; run < runs.length; run += 2) {

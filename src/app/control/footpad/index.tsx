@@ -17,12 +17,6 @@ import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 const adc1 = telemetry.footpadAdc1
 const adc2 = telemetry.footpadAdc2
 
-/**
- * The zone's engagement voltage as a chart reference line, or nothing to draw.
- *
- * No config yet means no line rather than a guessed one, and `fault_adc = 0` means the switch is
- * disabled — a line at zero would read as a threshold the rider could cross.
- */
 function thresholdLines(threshold: number | null): number[] | undefined {
   return threshold != null && threshold > 0 ? [threshold] : undefined
 }
@@ -35,15 +29,11 @@ export default function FootpadScreen() {
   const posiSensor = usePosiSensor()
   const windowMs = useLiveWindowMs()
 
-  // Both sensors in one stack: a footpad is read by comparing them, and one gesture over the
-  // pair puts the same moment under the finger on both.
   const charts = useMemo(() => {
     const first = toChartSeries(adc1Data, windowMs)
     const second = toChartSeries(adc2Data, windowMs)
     const firstLines = thresholdLines(adc1Threshold)
     const secondLines = thresholdLines(adc2Threshold)
-    // The threshold goes into the range input, not beside it: a line the axis crops off is worse
-    // than no line at all.
     return [
       toLiveChart({
         key: 'footpadAdc1',
@@ -70,8 +60,6 @@ export default function FootpadScreen() {
     <ControlDetailLayout
       title="Footpad"
       gauge={
-        // The same pad as the telemetry strip, at a size where each rail's fill is readable while
-        // the rider shifts weight — the charts below answer "what happened", this answers "now".
         <View style={styles.padWrap}>
           <FootpadIndicator
             adc1={liveTelemetryRuntime.values.adc1}

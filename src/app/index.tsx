@@ -23,8 +23,6 @@ export default function IndexRoute() {
     void request()
   }, [request])
 
-  // Native decides whether GPS actually runs (see `GpsPowerMode`); a grant is just the one input
-  // it cannot observe for itself, so the answer is re-resolved once the rider has given it.
   useEffect(() => {
     if (permStatus === 'granted') {
       refreshGpsDemand()

@@ -27,8 +27,6 @@ export default function AddBoardScreen() {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Fixed frame: the wizard pins its own progress bar and footer, and scrolls only the
-          step body between them. */}
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <View style={styles.content}>
           <AddBoardWizard

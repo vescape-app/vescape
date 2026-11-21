@@ -20,28 +20,14 @@ import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 export interface LineChartProps {
   chart: PreparedChart
-  /** Width of the stack, gutters included. */
   width: number
-  /** This chart's position in the stack readout. */
   index: number
 }
 
-/**
- * One chart of a stack, in its own canvas.
- *
- * The canvas is the unit of redrawing: Skia re-records a picture on every React commit and lands
- * it a frame or two late, so anything sharing a canvas shares that lag. Giving each chart its own
- * means a chart's geometry never depends on its neighbours — opening or closing one is a React
- * Native layout change and every other chart's picture is left exactly as it was.
- *
- * What makes the stack a stack lives in {@link useChartStack}: one camera, one scrub head, one
- * readout, all read on the UI thread.
- */
 export function LineChart({ chart, width, index }: LineChartProps) {
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const appearance = useThemeStore((state) => state.resolvedTheme)
-  // Resolved at render: the palette hue is a native adaptive color, which Skia cannot consume.
   const thresholdColor = accents.yellow.color
   const {
     camera,
@@ -75,8 +61,6 @@ export function LineChart({ chart, width, index }: LineChartProps) {
 
   return (
     <Canvas style={[styles.canvas, { height: canvasHeight }]}>
-      {/* Before the plot: the cursor marks a moment, so it belongs behind the readings it
-          points at rather than cutting across them. */}
       <ScrubCursor
         camera={camera}
         dataKey={dataKey}
@@ -116,8 +100,6 @@ export function LineChart({ chart, width, index }: LineChartProps) {
           color={neutral.border}
           strokeWidth={0.5}
         />
-        {/* Thresholds are read against the value axis alone, so they need no camera: panning
-            moves the line under them, never them. */}
         {chart.thresholds?.map((value) => (
           <Line
             key={value}
@@ -134,7 +116,6 @@ export function LineChart({ chart, width, index }: LineChartProps) {
 
       <Group clip={clip}>
         <Group transform={plotTransform}>
-          {/* Ranges belonging to the ride, drawn through every chart at the same x. */}
           {stackBands && stackBands.length > 0 && (
             <BandsLayer
               bands={stackBands}
@@ -145,7 +126,6 @@ export function LineChart({ chart, width, index }: LineChartProps) {
               domainEndMs={domainEndMs}
             />
           )}
-          {/* Under the series: a band is context for the line, never something drawn over it. */}
           {chart.bands && chart.bands.length > 0 && (
             <BandsLayer
               bands={chart.bands}
@@ -205,7 +185,6 @@ export function LineChart({ chart, width, index }: LineChartProps) {
         />
       )}
 
-      {/* Over the plot: what is outside the selection is dimmed, lines included. */}
       {selection && (
         <SelectionLayer
           selection={selection}
@@ -248,7 +227,6 @@ interface AxisTicksProps {
   side: 'left' | 'right'
 }
 
-/** Three ticks — top, middle, bottom — matching the three grid lines of the plot. */
 function AxisTicks({ font, plot, range, side, displayScale = 1 }: AxisTicksProps) {
   const neutral = useResolvedNeutralColors()
   const ticks = useMemo(() => {

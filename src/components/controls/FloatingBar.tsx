@@ -43,7 +43,6 @@ export interface FloatingStatusPillSpinner {
 
 export type FloatingStatusPillModel = FloatingStatusPillAction | FloatingStatusPillSpinner
 
-// Reanimated CSS transition: animates toward the committed style, never replaces it.
 const STATUS_TRANSITION = {
   transitionProperty: ['width', 'backgroundColor', 'borderColor'],
   transitionDuration: 220,
@@ -87,8 +86,6 @@ export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) 
   const handleTextLayout = useCallback((event: TextLayoutEvent) => {
     setTextWidth(Math.min(STATUS_MAX_TEXT_WIDTH, Math.ceil(event.nativeEvent.lines[0]?.width ?? 0)))
   }, [])
-  // The target look is rendered as plain style and Reanimated only transitions toward it, so a
-  // dropped animation (e.g. while the map is covered or backgrounded) cannot leave stale state.
   const fixedWidth = pill.kind === 'spinner' ? SPINNER_FIXED_WIDTH : ACTION_FIXED_WIDTH
   const shellStyle = {
     width: Math.max(STATUS_MIN_WIDTH, textWidth + fixedWidth),
@@ -98,7 +95,6 @@ export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) 
   const iconStyle = { backgroundColor: iconBackground, borderColor: iconBorder }
   const StatusIcon = pill.icon
   const isSpinner = pill.kind === 'spinner'
-  // One tree for both kinds, so the icon ring stays mounted and transitions between them.
   const content = (
     <Pressable
       accessibilityLabel={isSpinner ? 'Cancel' : undefined}
@@ -162,10 +158,6 @@ export function FloatingActionPill({
   disabled = false,
   testID,
 }: FloatingActionPillProps) {
-  // Resolved through the theme store rather than left as adaptive tokens: this pill floats over the
-  // map, where the native trait collection can still report the system appearance and render the
-  // wrong palette. On a filled surface the readable foreground is the status `text` token, not
-  // `color`, which is tuned for the app background.
   const status = theme.status.error
   const filled = active || paused
   const accent = useResolvedColor(paused ? theme.control.border : status.color)

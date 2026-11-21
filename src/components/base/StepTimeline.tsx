@@ -6,20 +6,13 @@ import type { Icon } from 'phosphor-react-native'
 
 import { theme, type ThemeColor } from '@/constants/theme'
 
-/**
- * State of one timeline step. Drives the glyph colour, connector colour, and
- * whether the step shows a spinner (`active`) or dims its text (`pending`/`absent`).
- */
 export type StepState = 'done' | 'active' | 'pending' | 'failed' | 'absent'
 
 export interface TimelineStep {
-  /** Stable React key. */
   key: string
   icon: Icon
   label: string
-  /** Optional subline — e.g. what the step is doing, or its result. */
   caption?: string
-  /** Optional block under the caption — e.g. an inline picker or warning. */
   content?: ReactNode
   state: StepState
 }
@@ -30,12 +23,6 @@ interface Props {
   testID?: string
 }
 
-/**
- * A vertical checklist of steps connected by a rail. Each step is an outlined
- * glyph whose colour carries its state; the connector below a `done` step turns
- * green. Purely presentational — the caller owns the step list and updates states
- * as work progresses. Generic: no knowledge of what the steps represent.
- */
 export function StepTimeline({ steps, style, testID }: Props) {
   return (
     <View style={[styles.timeline, style]} testID={testID}>
@@ -94,7 +81,6 @@ function StepRow({
   )
 }
 
-/** Big thin-bordered outline circle — state lives in the border + icon colour, never a fill. */
 function StepGlyph({ icon: StepIcon, state }: { icon: Icon; state: StepState }) {
   const color = GLYPH_COLOR[state]
   return (

@@ -33,7 +33,6 @@ const ACCENTS: { label: string; accent: ThemeColor }[] = [
   { label: 'pink', accent: theme.palette.pink.color },
 ]
 
-/** A switch whose owner takes a beat to confirm, so the pending state is reachable by tapping. */
 function useSlowSwitch(initial: boolean | null) {
   const [value, setValue] = useState<boolean | null>(initial)
   const [pending, setPending] = useState(false)

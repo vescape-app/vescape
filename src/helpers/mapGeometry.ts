@@ -13,10 +13,8 @@ export function isPointOutsideVisibleMapArea(
   return point.x < 0 || point.x > layout.width || point.y < top || point.y > bottom
 }
 
-/** Earth's equatorial radius, the sphere every coordinate offset here is measured on. */
 const EARTH_RADIUS_M = 6_378_137
 
-/** Offset a coordinate by [distanceM] along [headingDeg] (0 = north, clockwise). */
 export function offsetCoordinate(
   [longitude, latitude]: [number, number],
   headingDeg: number,

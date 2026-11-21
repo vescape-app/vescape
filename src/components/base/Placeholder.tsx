@@ -10,7 +10,6 @@ interface PlaceholderProps {
   description: string
   iconColor?: ThemeColor
   action?: ReactNode
-  /** Sized for an empty section inside a list or drawer rather than a whole empty screen. */
   compact?: boolean
   style?: ViewStyle
 }

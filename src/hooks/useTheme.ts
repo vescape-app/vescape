@@ -24,44 +24,31 @@ export const useThemeStore = create<ThemeState>((set) => ({
   setResolution: (resolvedTheme, outdoorLight) => set({ resolvedTheme, outdoorLight }),
 }))
 
-/** String colors for renderers such as Skia/Reanimated that cannot resolve native ColorValue. */
 export function useResolvedNeutralColors() {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   return neutralColors[resolvedTheme]
 }
 
-/** Plain interaction colors for renderers and native props that reject adaptive color objects. */
 export function useResolvedControlColors() {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   return controlColors[resolvedTheme]
 }
 
-/** Plain accent strings for Mapbox, Skia, Reanimated worklets, and solid action pairs. */
 export function useResolvedAccentColors() {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   return accentColors[resolvedTheme]
 }
 
-/** Plain metric colors for Skia, Mapbox, Reanimated worklets, and chart data structures. */
 export function useResolvedTelemetryColors() {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   return telemetryColors[resolvedTheme]
 }
 
-/** Resolve one adaptive token when a renderer-facing API accepts a caller-selected color. */
 export function useResolvedColor(color: ThemeColor): string {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   return resolveAdaptiveColor(color, resolvedTheme)
 }
 
-/**
- * Background of a colored-action button (trash, Ride it, accent/tune/success/destructive, tonal
- * circles, map-sheet delete/save/vote, group-ride CTA). On dark the accent tints the surface beneath
- * at `coloredAction.darkTint` (dev's tinted pill); on light the accent washes over the navy control
- * surface — navy + accent at `coloredAction.tint`, the "two-layer" look. Both collapse into one
- * computed color (same pixels, no palette addition). Pass the accent as a resolved hex or adaptive
- * token.
- */
 export function useColoredAction(accent: ThemeColor): string {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const accentColor = resolveAdaptiveColor(accent, resolvedTheme)
@@ -69,11 +56,6 @@ export function useColoredAction(accent: ThemeColor): string {
   return blend(controlColors.light.background, accentColor, coloredAction.tint)
 }
 
-/**
- * Foreground (label, icon, border) of a colored-action button. The colored-action surface is navy
- * in both themes, so the accent must keep its dark-theme tone on light as well — the light-theme
- * tone is tuned for a light surface and disappears against the navy wash.
- */
 export function useColoredActionForeground(accent: ThemeColor): string {
   return resolveAdaptiveColor(accent, 'dark')
 }

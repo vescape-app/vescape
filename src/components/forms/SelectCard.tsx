@@ -18,7 +18,6 @@ interface SelectCardProps<T extends string = string> {
   options: SelectOption<T>[]
   value: T
   onChange: (value: T) => void
-  /** Rendered below the trigger row, inside the card (e.g. custom dials). */
   children?: React.ReactNode
   style?: ViewStyle
 }

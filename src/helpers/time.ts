@@ -8,7 +8,6 @@ function pad(value: number): string {
 }
 
 /**
- * Forecast minutes belong to the forecast location, not the device timezone.
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `formatHour`
  * @parity /modules/vescape-core/ios/watch/WatchWeather.swift `watchFormatHour`
  */
@@ -25,7 +24,6 @@ export function formatTimeOfDay(
   return format === '12h' ? `${precise} ${hour < 12 ? 'AM' : 'PM'}` : precise
 }
 
-/** Worklet-safe local wall clock, shared by React and Skia charts. */
 export function formatClock(
   timeMs: number,
   withSeconds = false,

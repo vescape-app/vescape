@@ -105,8 +105,6 @@ describe('accent palettes', () => {
         }
       }
 
-      // Adaptive colors used with theme.alpha() need a native resource too. A missing
-      // entry crashes Android's ColorPropConverter instead of falling back to JS.
       expect(resources.get('vescape_control_background_alpha_085')).toBe(
         `#d9${controlColors[appearance].background.slice(1)}`,
       )

@@ -18,7 +18,6 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { theme } from '@/constants/theme'
 import { Cell, Row, SizeLabel } from '@/screens/showcase/widgets/WidgetGrid'
 
-/** A horizontal grid row — each `Cell` child takes an equal fraction of the width. */
 export function ExpandingWidgetShowcase() {
   const focus = useWidgetFocusHost()
   return (

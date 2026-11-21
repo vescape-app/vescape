@@ -7,7 +7,6 @@ import { useResolvedControlColors, useResolvedNeutralColors } from '@/hooks/useT
 export interface SegmentedOption<T extends string> {
   value: T
   label: string
-  /** Small status dot before the label, e.g. marking a live view. */
   dot?: ThemeColor
 }
 
@@ -15,18 +14,12 @@ interface SegmentedToggleProps<T extends string> {
   options: SegmentedOption<T>[]
   value: T
   onChange: (value: T) => void
-  /** Tint of the selected segment. */
   accent?: ThemeColor
-  /** Surface the toggle sits on. Controls default to navy; secondary cards use adaptive neutrals. */
   variant?: 'control' | 'secondary'
   style?: StyleProp<ViewStyle>
   testID?: string
 }
 
-/**
- * A compact pill switch between a few mutually exclusive views of the same content — the two or
- * three options are always visible, unlike a Select where the alternatives are hidden behind a tap.
- */
 export function SegmentedToggle<T extends string>({
   options,
   value,
@@ -37,7 +30,6 @@ export function SegmentedToggle<T extends string>({
   testID,
 }: SegmentedToggleProps<T>) {
   const secondary = variant === 'secondary'
-  // Resolved in render: iOS bakes a border color once, so an adaptive token goes stale in a Modal.
   const neutral = useResolvedNeutralColors()
   const control = useResolvedControlColors()
   const borderColor = secondary ? neutral.border : control.border
