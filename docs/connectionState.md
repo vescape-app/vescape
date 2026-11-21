@@ -134,6 +134,29 @@ changes restore both mirrors from one `getLiveState()` snapshot.
   `refreshLocationDemand()` once a location permission prompt is answered — a nudge, not a start
   command, because permission grant is the one demand input native cannot observe for itself.
 
+Board Warning and VESC Fault pushes replace the Board's whole slice. If a push arrives during a
+pull, discard the older pull result. Native re-emits Maintenance Job state and Ride Notices when the
+frontend becomes active. See [ADR 0062](./adr/0062-native-js-mirrors-are-gated-pushes-healed-by-foreground-pulls.md)
+for the background delivery rule.
+
+## Navigation
+
+Navigation follows the Direction Point, including while routing fails. Changing the Direction Point
+clears the old path immediately. Recomputing to the same point keeps a usable path if the request fails.
+Native claims intent tokens before dispatching work so the last tap wins across asynchronous requests.
+Path and Navigation Profile writes share a queue and re-read current state before persisting.
+The saved `polyline6` route stays outside the JS settings snapshot to keep unrelated settings reads small.
+
+Route Progress projects onto the nearest segment even far from the route so the rider can reattach
+after a detour. This can snap between nearby legs on a figure eight or out-and-back. Automatic
+reroute uses deviation from the route and backs off after failures.
+
+## Android Board notification
+
+The foreground notification survives a disconnected Board Session as an idle Connect action until
+Exit or auto close. While a session still exists, including during reconnect, the rider can cancel
+it with Disconnect. Live telemetry appears only while Connected.
+
 ## Auto-connect
 
 Auto-connect is triggered by **process launch on both platforms**, never by the JS

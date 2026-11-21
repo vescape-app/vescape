@@ -441,6 +441,10 @@ transports differ.
 
 ### Ride Notices
 
+The phone owns one process-wide Ride Notice list shared by JS, the Watch Mirror and the ride
+notification. A same-revision update keeps a dismissal in place. A new revision shows the notice
+again.
+
 `/ride-notices` carries the phone's whole visible Ride Notice list (dismissed notices are not in it),
 most urgent first, as the Ride Notice Frame: `id`, `rev`, `severity`, `title`, `details` and
 `expiresAt` per notice, plus the phone wall-clock `sentAtMs` of the write. The codec is one file

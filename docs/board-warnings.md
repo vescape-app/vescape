@@ -29,6 +29,10 @@ kind-specific JSON `payloadJson` blob the UI decodes.
 
 ## Detector scopes
 
+On Android, detector evaluation and registry writes have separate failure handling so a warning
+failure cannot take down the Board Session. Registry writes run in order on a dedicated dispatcher
+to preserve monotonic severity.
+
 Two detection scopes decide _when_ a kind is evaluated:
 
 - **Telemetry-scoped (continuous)** — fed each ~4 Hz smart-BMS / telemetry frame during a live Board
@@ -55,7 +59,10 @@ weaker episode never downgrades a stored warning).
   (`clearAllBoardWarnings`). A still-true condition simply re-fires on the next evaluation — including
   within the same Board Session: a manual clear resets the matching telemetry detector's dedupe
   (registry `onManualClear` → session controller), so the detector's sustain window restarts and a
-  persisting condition re-reports rather than staying silently gone until the next session.
+  persisting condition re-reports rather than staying silently gone until the next session. The reset
+  runs even if an earlier write failed and there is no stored warning to delete.
+- **Retired kinds** — config evaluation clears retired slugs from storage because their old detectors
+  no longer run and can never report a clean evaluation.
 - **Re-detection** — updates the existing warning in place (preserving `firstDetectedAtMs`) rather
   than creating a duplicate.
 - **Dismissal (JS-only)** — the warnings sheet's per-row action is a _dismiss_, not a clear: the kind
