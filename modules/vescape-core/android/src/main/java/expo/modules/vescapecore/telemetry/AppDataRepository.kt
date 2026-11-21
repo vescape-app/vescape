@@ -52,7 +52,7 @@ internal enum class AppDataScope(val wire: String) {
   SETTINGS("settings"),
 }
 
-/** `matching` or a built-in voice pack id. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `voice` */
+/** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `voice` */
 internal fun validVoice(value: Any?): String? =
   (value as? String)?.let { RENAMED_VOICE_PACK_IDS[it] ?: it }?.takeIf { it == VOICE_MATCHING || it in VOICE_PACK_IDS }
 

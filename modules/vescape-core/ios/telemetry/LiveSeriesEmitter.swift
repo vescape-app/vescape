@@ -174,7 +174,6 @@ internal final class LiveSeriesEmitter {
         timestamp: { self.timestamp($0) ?? 0 },
         value: m.select
       )
-      // iOS has no metric sanitizer yet, so no exclusion spans ride along — see the class @platform-diff.
       emit?("onFocusedSeries", [
         "metric": metric,
         "series": series,

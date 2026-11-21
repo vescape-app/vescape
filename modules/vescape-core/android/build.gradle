@@ -54,7 +54,6 @@ repositories {
   google()
 }
 
-// Room writes one schema JSON per version; migration tests start from these committed files.
 ksp {
   arg("room.schemaLocation", "$projectDir/schemas")
 }

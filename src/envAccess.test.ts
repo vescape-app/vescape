@@ -2,9 +2,6 @@ import { describe, expect, test } from 'bun:test'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-/**
- * `eslint-plugin-expo` guarded this with `no-dynamic-env-var` and
- */
 const srcDir = join(import.meta.dir)
 
 const listFiles = (dir: string): string[] =>

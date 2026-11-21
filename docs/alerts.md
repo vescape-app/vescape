@@ -205,6 +205,9 @@ shared/alerts/packs/
   voice-<id>/pack.json + lines/<key>.<start|end>.<i>.m4a + values/<type>/<n>.m4a
 ```
 
+- **Kokoro helper**: `kokoro.py` patches `mlx_audio`'s `interpolate`, which sizes outputs as
+  `ceil(width / 300)` and overshoots on exact multiples (`ceil(240.00000000000003) == 241`), killing
+  Kokoro with a broadcast error; the patch snaps near-integers before the ceil.
 - **Effect slots**: required `severity.positive` (a short rising two- or three-note chime),
   `severity.info|warning|critical` (HEV/Pulse: 1/2/3 beeps; Arc: recorded effects with a reverb tail), and `geiger.soft|mid|hard`; optional `cue.on`, `cue.off`, `cue.ride.end`,
   `cue.groupRide.created|joined`, each falling back as in [Sound effects](#sound-effects). All three

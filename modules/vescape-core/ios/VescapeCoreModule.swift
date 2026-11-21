@@ -27,6 +27,8 @@ private final class ActiveBoardProbe {
   }
 }
 
+/// TODO(iOS parity): port Group Ride, debug recording, and Refloat config subsystems to match
+/// Android API/events/errors.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
 public class VescapeCoreModule: Module {
   private let scheduler = MainQueueScheduler()
@@ -65,7 +67,7 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
     Events("onDevice", "onRideExportProgress", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onBms", "onBmsSeries", "onLocation", "onMaintenanceState", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideError", "onGroupRideSignalAvailability", "onPublicRideStatus", "onPublicRiders", "onPublicPins", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onServiceConfig", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading", "onRideNotices")
 
-    // gate. @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
     OnStartObserving("onDevice") { self.observedEvents.insert("onDevice") }
     OnStopObserving("onDevice") { self.observedEvents.remove("onDevice") }
     OnStartObserving("onError") { self.observedEvents.insert("onError") }
@@ -1039,7 +1041,7 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    // idle before the async restore runs. @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `stopNativeWorkForDatabaseRestore`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `stopNativeWorkForDatabaseRestore`
     AsyncFunction("restoreDatabase") { (uri: String, promise: Promise) in
       self.coordinator.stopScan()
       self.coordinator.stopBoard()

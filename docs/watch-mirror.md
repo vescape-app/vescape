@@ -49,12 +49,25 @@ Use `bun run android:up` for paired phone + Wear emulators (see [agents/watch-em
 
 **Signing must match:** Wear Data Layer requires identical package name (`app.vescape` / `app.vescape.dev`) and signing certificate on phone and watch. Phone debug builds sign with `android/app/debug.keystore`, while a standalone Wear debug build may sign with `~/.android/debug.keystore` — causing `WearableService: Mismatched certificate` and dropped `/telemetry` delivery. Re-sign the Wear APK with `android/app/debug.keystore` (or check `adb -s <serial> shell dumpsys package app.vescape | rg 'signatures='`) when local frames fail to land.
 
+**Wear build pins:** the Compose compiler plugin version in `watch/wearos/build.gradle` must equal the
+root `ext.kotlinVersion` (Expo version catalog `kotlin`), because that plugin is Kotlin-version-locked. The Wear
+splash theme must extend `Theme.SplashScreen.IconBackground`: `core-splashscreen` silently ignores
+`windowSplashScreenIconBackgroundColor` under plain `Theme.SplashScreen`.
+
 ## Presence And Frames
 
 The phone only pushes frames when `WatchMirrorPresence.present` is true. Production uses the Wear
 capability declared by the watch app. On local debug installs, `CapabilityClient` may report false even
 when the watch app is installed and open. Debug builds can fall back to any reachable Wear node so local
 testing is not blocked by capability propagation.
+
+Three Wear capabilities split presence, and each name is declared in a `wear.xml` and matched by a
+constant on the other side. The phone advertises `PHONE_APP_CAPABILITY`, so the wrist can tell "Vescape
+phone app reachable" from "a phone is merely paired". The wrist advertises `WATCH_MIRROR_CAPABILITY`
+(Mirror installed and reachable) and `WATCH_MIRROR_WAKE_CAPABILITY` (this build reports its wake level).
+Phone and watch ship on separate Play tracks and update independently, so the phone gates frame pushes
+on the wake level only for a wrist advertising the wake capability; gating unconditionally would blank an
+older wrist that never sends one.
 
 Useful phone log:
 

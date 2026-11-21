@@ -1,11 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <!--
-    Wear capability the PHONE app advertises (merged into the app APK from this library). The Watch
-    Mirror's PhoneLinkMonitor keys on it to tell "Vescape phone app installed and reachable" apart
-    from "a phone is merely paired", so the wrist can name why no frames arrive (ADR-0019). Must
-    match PHONE_APP_CAPABILITY in watch/wearos PhoneLinkMonitor.
-  -->
   <string-array name="android_wear_capabilities">
     <item>vescape_phone_app</item>
   </string-array>

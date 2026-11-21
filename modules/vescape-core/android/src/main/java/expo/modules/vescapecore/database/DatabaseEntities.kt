@@ -470,11 +470,11 @@ data class AppSettings(
   // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings`
   // @parity /modules/vescape-core/src/index.ts `AppSettings`
   val audioSource: String = "alarm",
-  /** `matching` or a voice pack id. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   val voice: String = "matching",
-  /** `off` / `standard` / `full`. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   val voiceLevel: String = "standard",
-  /** `off` or a Weather Alert level. @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
+  /** @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `defaultSettings` */
   val weatherRainAlertLevel: String = WEATHER_ALERT_LEVEL_DEFAULT,
   val weatherWindAlertLevel: String = WEATHER_ALERT_LEVEL_DEFAULT,
   val telemetryPollRateHz: Int = 20,

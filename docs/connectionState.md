@@ -160,6 +160,9 @@ on its own, with or without a JS runtime.
 
 Native owns the connection throughout. On Android the foreground service keeps BLE work
 alive while JS is backgrounded or frozen.
+Companion auto-start starts that service from the background, and Android withholds while-in-use
+location from a background-started foreground service, so hands-off rides record GPS only with
+"Allow all the time" location access.
 
 ### Accessories
 

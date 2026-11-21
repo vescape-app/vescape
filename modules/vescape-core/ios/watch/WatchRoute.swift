@@ -11,7 +11,6 @@ let watchRouteChannel = "route"
 
 enum WatchRouteKey {
   static let version = "version"
-  /// The packed polyline. **Absent means cleared** — see the channel's `@platform-diff`.
   static let points = "points"
 }
 

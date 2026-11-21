@@ -1557,7 +1557,7 @@ class VescapeCoreModule : Module() {
   }
 
   private fun ModuleDefinitionBuilder.registerMapServices() {
-    // Map Points are server-owned; native holds no copy. @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getNearbyMapPoints`
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getNearbyMapPoints`
     AsyncFunction("getNearbyMapPoints") Coroutine { latitude: Double, longitude: Double, radiusMeters: Int ->
       MapPointApi.get(context.applicationContext).nearby(latitude, longitude, radiusMeters)
     }

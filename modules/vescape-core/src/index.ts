@@ -1,8 +1,6 @@
 /**
- * `@platform-diff` or `TODO(iOS parity)`; the file-level tags point at the two module entry points.
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
- * Narrower `@parity` tags below mark the nodes that drift silently: columnar buffer layouts and
  */
 
 import { requireNativeModule, type EventSubscription } from 'expo-modules-core'
@@ -307,7 +305,6 @@ export interface LocationEvent {
  * @parity /modules/vescape-core/ios/connection/BoardPhase.swift `BoardPhase`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardPhase.kt `BoardPhase`
  * @platform-diff `stale` and `disconnecting` are Android-only. iOS routes stale telemetry through
- * `reconnecting` and stops straight to `idle`/`error`, so JS must treat both as optional.
  */
 export type SessionStatus =
   | 'idle'
