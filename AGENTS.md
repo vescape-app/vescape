@@ -76,8 +76,8 @@ Keep the architecture sharp:
 - No duplicate code! We do not want to repeat ourselves.
 - Do not add tests for trivial predicates. Add tests for meaningful behavior, edge cases, contracts, or regressions.
 - New Board Warning detectors must add their kind to `docs/board-warnings.md` (the kinds catalog) alongside the `BoardWarningKind` slug.
-- Schema migrations stay SQL (set-based copies are fine). Converting existing data row by row (decode, recompute, verify, fetch) is a Maintenance Job in `MAINTENANCE_JOBS` (`docs/history.md` § Maintenance Jobs, ADR-0046), never migration code or a new `MaintenanceRunner` path.
-- All other background database work (rebuilds, backfills, retention clean-up) is a Maintenance Job too, so it shows on the Maintenance list; clean-up is a step in the `cleanup` job (ADR-0047).
+- Schema migrations stay SQL (set-based copies are fine). Converting existing data row by row (decode, recompute, verify, fetch) is a Maintenance Job in `MAINTENANCE_JOBS` (`docs/history.md` § Maintenance Jobs), never migration code or a new `MaintenanceRunner` path; readers must accept both storage shapes until the job finishes so an incomplete job never hides data.
+- All other background database work (rebuilds, backfills, retention clean-up) is a Maintenance Job too, so it shows on the Maintenance list; clean-up is a step in the `cleanup` job.
 
 ## Parity
 
@@ -174,8 +174,11 @@ Issues and PRDs are tracked in GitHub Issues for `vescape-app/vescape`. See `doc
 
 ### Triage labels
 
-Use the default five-label triage vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Use the default five-label triage vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. Mapping, kind labels (`🐛🐞🐜🐝🪲 BUG!!!`), and hazard area labels (`area:native`, `area:db`) live in `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 
-This is a single-context repo with root `GLOSSARY.md` and root `docs/adr/`. See `docs/agents/domain.md`.
+This is a single-context repo with root `GLOSSARY.md` and root `docs/adr/`.
+
+- Use `GLOSSARY.md` terms when naming domain concepts in issues, code, refactors, or tests; don't drift to synonyms it avoids.
+- If a change or proposal contradicts an existing ADR in `docs/adr/`, surface the conflict explicitly instead of silently overriding it.

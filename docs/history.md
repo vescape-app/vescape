@@ -13,7 +13,7 @@ Position is not a column on a Telemetry Sample. The **Ride Track** is its own st
 - **Precision** is one shared read-side rule: reported horizontal accuracy of at most 20 m, identical on both platforms and independent of the Android provider. Poorer or unreported accuracy stays stored but never draws a route or evidences movement. Migrated fixes without a stored accuracy count as precise, because the old write-time gate is why they exist at all. Live GPS classification is separate and unchanged.
 - **GPS movement** is the fix's own reported speed at or above the rider's movement threshold (default 3 km/h), checked after the accuracy rule. A fix with no reported speed is not movement evidence but is still a route point; movement is never derived from coordinate displacement.
 
-All of this is precomputed natively per ADR-0005 — minute buckets carry the combined Moving Window, and a minute holding only Ride Track fixes produces its own bucket. Reads never reconstruct it. See [ADR-0038](./adr/0038-ride-track-is-a-separate-durable-gps-stream.md) and [ADR-0004](./adr/0004-ride-history-route-from-telemetry.md).
+All of this is precomputed natively — minute buckets carry the combined Moving Window, and a minute holding only Ride Track fixes produces its own bucket. Reads never reconstruct it.
 
 ## Ownership
 
@@ -35,9 +35,9 @@ Main files:
 
 ## Persisted Data
 
-`telemetry_frames` stores board telemetry samples, without position. Frames are delta encoded with periodic keyframes. Queries reconstruct full samples from nearest keyframe before requested range.
+`telemetry_chunks` holds sealed minutes of board telemetry ([ADR-0045](./adr/0045-telemetry-chunks-replace-sealed-frames.md)), while `telemetry_frames` is the delta-encoded write buffer for unsealed minutes (no position columns). Queries merge both inside one transaction and reconstruct full samples from the nearest keyframe before the requested range.
 
-`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. It references its Board by `board_key` (the local `boards.key`), not the UUID (ADR-0028). There is no recording identity table; ride boundaries are derived from the data (ADR-0041).
+`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. It references its Board by `board_key` (the local `boards.key`), not the UUID ([ADR-0028](./adr/0028-telemetry-is-keyed-on-board-id.md)). There is no recording identity table; ride boundaries are derived from the data.
 
 `telemetry_minute_buckets` stores minute-level summaries used by history lists, keyed on `(bucket_start_ms, board_id)`. Buckets include sample counts, GPS counts, distance, speed, battery/current summaries and the combined Moving Window. A minute with Ride Track fixes and no frame still gets a bucket. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
 
@@ -125,7 +125,7 @@ in JS. The rides list shares the store, so the History drawer's Last rides follo
 
 ### Maintenance Jobs
 
-History reads stay precomputed (ADR-0005). Bringing old summaries up to date with the current app is
+History reads stay precomputed. Bringing old summaries up to date with the current app is
 the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuild history button.
 
 - **Declaration.** `MAINTENANCE_JOBS` in `MaintenanceJobs.kt` and `maintenanceJobs` in
@@ -146,7 +146,7 @@ the job of **Maintenance Jobs**, which native runs by itself. There is no Rebuil
 - **Restore and Clear all.** Every job write is a chunk under `DatabaseReplacementFence`. A fence
   waits for the in-flight chunk, and the next chunk of a run that started before it stops the run.
   The runner then checks again against the resulting database, also when the restore failed.
-- **Active ride.** A job never touches the ride that may still be recording. Under ADR-0041 that is
+- **Active ride.** A job never touches the ride that may still be recording. That is
   every sample, on any Board and either stream, chained back from the newest one by gaps shorter
   than `rideSplitGapMinutes`, while the newest is younger than that gap. A run that had to skip it
   returns without its fingerprint and the runner checks again once the gap has passed, or on the
@@ -268,50 +268,24 @@ regenerates previews from retained Ride Track fixes, alongside the other summari
 and ordinary reads never scan historical tracks or mutate them. Backups preserve the preview column
 across platforms.
 
-`historyStore.selectSession(session)` loads:
+## Favorite Media
 
-- board samples from `getHistoryRange({ fromMs, toMs, boardId, limit: 10000 })`
-- Ride Track fixes over the same range, already reduced natively to those passing the precision rule
-- markers from same range
-
-Selected history is rendered from `sessionSamples`, `sessionGpsSamples`, and `sessionMarkers`.
-
-## Media History
-
-Media History is an optional, local-only view of phone photos and videos captured during the selected Ride Recording. It is off by default and requests photo-library permission only when the user enables it.
-
-The OS photo library remains durable media truth. Ride Recording storage remains durable ride truth. The app does not copy or persist assets, thumbnails, media-to-ride links, media metadata, or routes, and does not upload or publish media or routes.
+Media attaches only to a **Favorite** via an explicit OS picker, copied into Favorite-owned app storage and tracked by the native `favorite_media` manifest ([ADR-0030](./adr/0030-favorite-media-is-curated-copied-storage.md)). Broad photo-library scanning is retired.
 
 ### Qualification And Placement
 
-For each selected-ride Media History read:
-
-1. Query currently accessible OS photo-library assets whose capture time falls inside the selected ride's inclusive `[startAtMs, endAtMs]` range.
-2. Use the OS photo-library asset creation timestamp as capture time. Treat it as playback start time for videos. Exclude assets without a valid creation timestamp; do not substitute file modification time.
-3. Ignore all asset GPS metadata.
-4. Find the nearest GPS fix in `sessionGpsSamples`.
-5. Show the asset only when that recording-backed GPS fix is at most `30_000ms` from capture time and belongs to the same continuous recording-backed GPS span.
+1. Use the asset's creation timestamp as capture time (playback start time for videos). Exclude assets without a valid creation timestamp; do not substitute file modification time.
+2. Ignore all asset EXIF GPS metadata so media never reveals locations omitted by Privacy Zones.
+3. Find the nearest recording-backed GPS fix in `sessionGpsSamples`.
+4. Place the asset on the map only when that recording-backed GPS fix is at most `30_000ms` from capture time and belongs to the same continuous recording-backed GPS span.
 
 A continuous recording-backed GPS span contains adjacent GPS fixes no more than `30_000ms` apart that belong to the same Board. A `recording_stop` marker between them splits the span; BLE disconnects and telemetry gap/error markers do not. Span coverage begins at its first GPS fix and ends at its last GPS fix; matching tolerance does not extend it. Video telemetry overlays still respect telemetry gaps and disconnect markers.
 
-No valid nearby recording-backed GPS fix means no map pin. Media cannot match into or across a gap detected by the span rules above, even when a fix on its other side is within `30_000ms`. Privacy Zone filtering stores no explicit break: a short filtered span below the time-gap threshold may still be treated as continuous. The Ride Track work in #448, #449, and #450 retains this limitation and does not introduce privacy-specific continuity metadata. See [ADR-0009](./adr/0009-privacy-zones-drop-ride-recording-samples.md).
-
-Matching is recomputed from current photo-library access and selected Ride History data whenever Media History is read for a selected ride. Results may live in memory for that active read only; changing ride, disabling Media History, changing permission, or refreshing discards them.
-
-### Permission And Missing Assets
-
-- Full photo-library permission: show all qualifying accessible assets.
-- Limited permission: show only qualifying assets exposed by the OS and explain that results are partial.
-- Denied or restricted permission: show no media and leave selected Ride History usable.
-- Deleted, unavailable, unreadable, or permission-revoked assets: omit them without changing the Ride Recording.
-
-Permission states should expose the relevant OS action for changing access. Asset load or playback failure affects that asset only.
-
-See ADR 0014 for the ownership and matching decision.
+No valid nearby recording-backed GPS fix means no map pin. Media cannot match into or across a gap detected by the span rules above, even when a fix on its other side is within `30_000ms`. Privacy Zone filtering stores no explicit break: a short filtered span below the time-gap threshold may still be treated as continuous. See [ADR-0009](./adr/0009-privacy-zones-drop-ride-recording-samples.md).
 
 ## Ride grouping
 
-Ride boundaries are derived from recorded data only ([ADR-0041](./adr/0041-ride-boundaries-are-derived-from-recorded-data.md)).
+Ride boundaries are derived from recorded data only.
 `RideHistoryRepository` groups minute buckets oldest-first inside one database snapshot. The same
 native grouping implementation feeds both Ride History pages and Profile Stats, for old and new rides
 alike.
@@ -347,96 +321,20 @@ History route comes from `sessionGpsSamples`, which is the Ride Track — the ro
 - Seek pin: the track fix nearest the scrub head, yellow GPS marker color. It keeps moving through telemetry-less stretches, where the graphs show a gap.
 - Marker pins: each `sessionMarker` is mapped to nearest GPS sample by timestamp.
 
-Current marker rendering paints every non-error marker yellow. This means `connected` and `app_stop` can look like important trail points even when they are only lifecycle markers.
-
-## Known Edge Case
-
-Previously observed Android history entry from `2026-05-06` before standalone history GPS was removed:
-
-- Selected range: `13:31:17` to `13:35:27`.
-- GPS rows existed only from `13:31:17` to `13:33:36`.
-- standalone history GPS had `276` precise rows and no duplicate `(location_timestamp_ms, latitude_e7, longitude_e7)` rows.
-- Markers in range were `gap`, `connected`, `app_stop`, `connected`, `connected`.
-
-User-visible symptom: apparent double trail and four yellow points.
-
-Cause: yellow points were marker pins, not duplicate GPS points. Quick stop/start or reconnect markers stayed in one selected session, and `MainMap` painted non-error markers yellow. Standalone history GPS has since been removed from Ride History; routes now come from telemetry-associated GPS only.
-
-## Investigation Checklist
-
-When history map looks wrong:
-
-1. Pull `vescape.db`, `vescape.db-wal`, and `vescape.db-shm` from device.
-2. Check selected range in `telemetry_minute_buckets`.
-3. Check `telemetry_markers` inside selected range.
-4. Compare telemetry sample range against telemetry-associated GPS range.
-5. Verify whether pins are route endpoints, seek pin, or marker pins.
-
-## Improvement Candidates
-
-- Render only actionable marker types (`gap`, `error`) on history map.
-- Style lifecycle markers (`connected`, `app_stop`) differently or hide them by default.
-
-### Persistence integration
-
-Ride Track uses schema generation 43 on both platforms. The production migration graph moves legacy
-GPS fields into the independent stream; frames carry no GPS columns. Schema generation 52 removes
-`ride_recordings` and every `recording_id` column again and folds minute buckets that two recordings
-shared (ADR-0041).
-GPS fixes and their minute buckets share the recording transaction and storage failure gate.
-
-History entries are identified by Board and time range. Opening, exporting or deleting one passes
-that Board and range to native queries, exactly as Favorites do.
-
-`bun run test:persistence` checks real Room/GRDB storage and exchanges production archives in both
-directions, including independent GPS fixes. Native lifecycle tests and
-full app builds cover integration beyond the database hosts. Real-device background GPS behavior
-still requires a device smoke test.
-
 ## Ride export
 
-GPX and CSV exports are implemented on Android and iOS.
+GPX, CSV, and Floaty JSON exports are implemented on Android and iOS, plus multi-ride `.zip` bulk export.
 
-Decisions from the 2026-09-20 design discussion:
-
-- Replace the Delete button with a three-dot menu containing **Export GPX**, **Export CSV**, and
-  **Delete**, for both Ride History entries and Favorites. The two exports are direct menu items;
-  there is no intermediate format picker.
-- Export a history entry's full stored range, scoped to its Board. Export a Favorite's exact saved Board/time range. Chart zoom and playback position do
-  not change the export range.
-- Keep both export items enabled without querying data availability. Empty input may produce an
-  empty export; do not add button-disable logic for missing GPS or telemetry.
-- Native generates the temporary file in batches on both platforms. JS sends the export intent
-  and opens the system share sheet. Read the complete stored range, independently of the chart
-  reader's 20,000-sample cap; do not load a whole ride into JS to serialize it.
-- CSV is for debugging. Include all stored board telemetry, including spikes and samples excluded
-  from statistics. Do not sanitize, smooth, interpolate, or replace readings. Export retained data;
-  do not claim to recover precision or fields that recording never stored.
-- Both formats reuse the existing history GPS precision rule, including its legacy behavior.
-  Fixes with reported accuracy above 20 m are excluded. The rider explicitly accepted this filter
-  for debugging CSV too.
-- Stay close to Floaty's export structure where straightforward. Keep its column names and units
-  for matching fields, omit unsupported columns, and append additional stored telemetry fields
-  such as `erpm` and `balanceCurrent`. External-app import testing belongs to the rider; exact
-  importer compatibility is not yet verified. No VESC-specific CSV contract has been established.
+- Export reads a history entry's full stored range (scoped to its Board) or a Favorite's exact saved range — independently of chart zoom, playback position, or the chart reader's 20,000-sample cap.
+- Native streams the temporary file in batches inside one database snapshot; JS opens the system share sheet. Both menu items stay enabled without preflight queries (empty input produces a valid empty export).
+- CSV is for debugging: includes all retained telemetry (including spikes and sanitizer-excluded samples) without smoothing or interpolation, while applying the standard 20 m GPS precision rule. External-app importer compatibility is rider-led and not verified as a guarantee.
 
 ### Bulk export and delete
 
-History and Favorites have a select mode (#594): the list-check button in the drawer header or a
-long-press on a row turns it on. Rows and day headers get checkboxes; a partly picked day shows a
-partial state. **Select all (N)** picks every ride matching the active Ride History Filter,
-including rides not loaded yet: the selection stays `{filter, excludeIds}` and native resolves it,
-and N comes from `countRideHistory`. Picked rows and Favorites cross as explicit `{rides}` windows.
+**Select all (N)** sends `{filter, excludeIds}` so native resolves matching rides not yet paged in (`N` from `countRideHistory`); explicitly picked rides/Favorites pass `{rides}` windows.
 
-- **Export:** GPX, CSV, or Floaty, one format per export; the choice is kept for the app session.
-  Native writes one `.zip` as a stream (no folders, no ride cap), emits progress after each ride,
-  and stops mid-file on Cancel. Entries are `2026-08-03_1726_<board>.<ext>` in device time, with
-  `-2`, `-3` on clashes; the zip is `vescape-rides-<day>.zip` or `vescape-rides-<first>_<last>.zip`.
-  A Favorite exports its saved window.
-- **Delete:** an inline confirm shows the count. Rides go through `deleteRides`, one transaction,
-  with the single-ride delete's rules: Favorite ranges inside a ride survive. In Favorites, Delete
-  removes the Favorites and keeps their rides.
-- **Exit:** ✕, Android back, or closing the drawer, which also clears the selection.
+- **Export:** one format (GPX, CSV, or Floaty) per run; native streams a flat `.zip` (no ride cap, stops mid-file on Cancel) named `vescape-rides-<day>.zip` or `vescape-rides-<first>_<last>.zip` with entries `YYYY-MM-DD_HHMM_<board>.<ext>` in device time (`-2`, `-3` on clashes).
+- **Delete:** `deleteRides` runs in one transaction and preserves Favorite ranges inside deleted rides; deleting Favorites keeps their underlying rides.
 
 ### CSV mapping and merge
 
@@ -478,42 +376,17 @@ Produce one CSV row per telemetry sample. Match Floaty's GPS merge over chronolo
 
 This merge repeats GPS observations; it does not interpolate coordinates or create new GPS fixes.
 
-### Reference evidence
-
-The supplied research is `~/Workspace/floaty-reverse-engineering/EXPORT.md`, based on static
-inspection of Floaty Android 3.0.0, versionCode 379. Further inspection in this discussion found
-the `session_logs` and `session_locations` column definitions near line 339650 of
-`hermes-pseudocode.js`, the packed state and pitch decoder near line 463380, and the Garmin GPX
-builder near line 1761550. Floaty's GPX is GPX 1.1 with GPS speed in a Garmin TrackPointExtension
-v2. These are reference findings, not proof of a successful import into an external app.
-
 ### GPX implementation
 
-Ride and Favorite detail offer Export GPX, Export CSV, Export Floaty, and Delete in their three-dot
-menu. Favorite editing
-and unpinning retain their existing behavior. Export uses the selected entry's full stored range,
-or the Favorite's exact saved range, independently of movement, chart zoom, and playback.
+`exportRideGpx` takes `RideExportOptions` (exact Board/time scope, including unassigned Boards) and
+returns a closed `RideExportFile` written to a UUID path in native temp/cache storage (partial files
+deleted on failure; JS waits for the menu's native dismissal before invoking iOS system sharing).
 
-`exportRideGpx` accepts `RideExportOptions` and returns a closed `RideExportFile`. Native reads
-raw Ride Track fixes in pages of 1,000 ordered by `(fix_at_ms, id)` inside one database snapshot.
-The cursor advances past the last raw fix, even when an entire page fails precision filtering.
-Board attribution is exact, including an unassigned Board. Every export uses Board/time scope.
-
-The writer emits UTF-8 GPX 1.1, escaped track names, coordinates in degrees, optional altitude
-in metres, UTC timestamps with millisecond precision, and optional GPS speed in metres per second
-under Garmin TrackPointExtension v2. GPS-only spans need no telemetry. Empty input produces a valid
-empty track. No smoothing, movement trimming, or chart cap applies.
-
-A UUID filename under native temporary/cache storage keeps rider names out of paths. Failed writes
-remove their partial file; successful files remain available for share consumers and OS cache
-reclamation. JS waits for the menu's native dismissal before invoking system sharing on iOS.
-Generation and sharing errors appear through the existing information modal. There is no
-data-availability preflight.
-
-Room and GRDB host contracts share a 23,005-fix fixture definition covering rejected raw pages,
-equal timestamps, exact range/Board/recording scope, legacy accuracy, escaping, optional fields,
-and empty XML. JS tests cover ride versus Favorite export intent. Device share-sheet behavior
-and external-app imports remain rider-led verification, not observed compatibility guarantees.
+Native reads raw Ride Track fixes in `(fix_at_ms, id)` keyset pages of 1,000 inside one database
+snapshot, advancing the cursor past the last raw fix even when a full page fails precision filtering.
+Output is UTF-8 GPX 1.1 with escaped names, degree coordinates, optional metre altitude, UTC ms
+timestamps, and optional m/s speed under Garmin TrackPointExtension v2; GPS-only spans need no
+telemetry and empty input writes a valid empty track.
 
 ### CSV implementation
 

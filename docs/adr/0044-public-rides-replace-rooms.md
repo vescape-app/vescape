@@ -1,13 +1,6 @@
-# Public Rides replace rooms
+# Public Rides isolate the sharing switch from backups and respect Play Store FGS limits
 
-Accepted. Replaces [ADR-0020](0020-group-ride-server-relayed-native-presence.md).
-
-Riders are Accounts with unique nicks. Native owns the Public Ride switch, hours expiry, Board Session activation, socket reconnect and location delivery on Android and iOS. JS renders state and sends intents. Room creation, membership, discovery and room cues are retired.
-
-The Public Ride switch starts sharing when a Board Session connects by default. After selecting a timed or Always Public Ride, the rider can start sharing manually from the phone. Manual sharing keeps GPS active with the app in the background and follows the selected expiry. **Wait for my board** restores Board Session activation without changing the selection. When a Board Session connects, it takes over sharing without interrupting the Public Ride or changing its expiry. When the session ends, the switch waits for the next board connection. The manual override is held only in memory, so restarting the app process also restores Board Session activation.
-
-Nearby discovery works while private, using a current or last known location without storing the look-around request. Public positions keep Privacy Zone gates. Signals and hazards retain their explicit location sharing and independent lifetimes. Watches receive nearby public riders.
-
-The server derives Crew Rides from stored Public Ride positions. Private Ride Recording stays local. Solo rides are not listed publicly. See PRD #668 for the agreed Crew Ride and friends behavior.
-
-The deployment cutoff in vescape-app/vescape-server#59 remains pending. No production version or Online Block cutoff changes are made here. Server deployment and blocking old clients are separate operational steps.
+- **NEVER store the Public Ride switch in `app_settings`:** keep it in its own native store so restoring a database backup onto another phone never silently broadcasts location.
+- **Manual sharing override is memory-only:** restarting the app process restores Board Session activation while keeping the selected timed/always expiry.
+- **Android Play Store constraint:** background observing MUST run as a plain (non-foreground) service; do NOT add `FOREGROUND_SERVICE_REMOTE_MESSAGING` (rejected by Google Play policy as reserved for VoIP/SMS handover).
+- **Privacy & signals:** public positions obey Privacy Zones (ADR-0009); Rider Signals and Ride Hazards retain their explicit opt-in location exception and server-clock expiry.

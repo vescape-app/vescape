@@ -93,277 +93,32 @@ underlying firmware concept.
 
 ## Basic Slider Model
 
-All formulas below use `x` as the rider-facing slider value.
-
-Linear interpolation means:
-
-```text
-interpolate(x, [inputMin, inputMax], [outputMin, outputMax])
-```
-
-Display values are rounded after conversion to the underlying field value.
-
-| Slider         | UI range | Step | Underlying behavior                               |
-| -------------- | -------: | ---: | ------------------------------------------------- |
-| Aggressiveness | `-5..10` |  `1` | Writes PID and Mahony filter values together.     |
-| Nose stiffness |  `0..10` |  `1` | Writes acceleration torque tiltback strength.     |
-| Tail stiffness |  `0..10` |  `1` | Writes regen/braking torque tiltback strength.    |
-| Carve tilt     |  `0..15` |  `1` | Writes turn tiltback strength directly.           |
-| Brake tilt     |   `0..5` |  `1` | Writes brake tiltback strength directly.          |
-| ATR intensity  |  `0..15` |  `1` | Writes uphill and downhill ATR strength together. |
-
-Individual field editors keep raw values in profiles and convert only for display. ATR Speed Boost
-uses a usual raw range of `-1..1` and displays `-100..100%` in one-percent steps.
-The Turn Speed Boost ruler spans `0..10000%` in steps of five. The Angle I ruler spans
-`0..0.5` in `0.001` steps, including values
-produced by Aggressiveness. Editor precision does not depend on whether the current value
-happens to be an integer. ATR Threshold Angle Up and Down both use `0..5°` with fixed
-`0.5°` steps.
-
-Tune field editors open in ruler mode. The keyboard button switches to manual input, and the
-ruler button switches back without snapping the value. Only moving the ruler snaps to its step.
-Manual input validates the field's display precision, accepts a decimal comma or point,
-and disables Apply for invalid input. Values outside the ruler's usual range show a warning
-but remain unchanged and can be applied. Percentages are entered in display
-units and converted back to raw values on Apply. Cancel leaves the profile unchanged.
-
-Opening an editor and applying without changing anything preserves the saved values. Basic
-controls show the actual linked values until the dial changes; changing the dial explicitly
-applies its formula. Editing only a linked field preserves the other fields, including unequal
-ATR uphill/downhill strengths.
-
-## Basic Slider Formulas
-
-### Aggressiveness
-
-The aggressiveness slider is a compound ride-feel control. It writes five
-underlying fields:
-
-| Field            | Formula                                             |
-| ---------------- | --------------------------------------------------- |
-| `kp`             | `round(interpolate(x, [-5, 10], [15, 30]), 0)`      |
-| `kp2`            | `round(interpolate(x, [-5, 10], [0.4, 1.1]), 1)`    |
-| `ki`             | `round(interpolate(x, [-5, 10], [0.015, 0.03]), 3)` |
-| `mahony_kp`      | `round(interpolate(x, [-5, 10], [2.2, 1.5]), 1)`    |
-| `mahony_kp_roll` | `round(interpolate(x, [-5, 10], [2.2, 1.5]), 1)`    |
-
-The displayed slider value is derived from `kp - 20`, clamped to `[-5, 10]`.
-That means `kp = 20` displays as neutral `0`, lower `kp` displays negative, and
-higher `kp` displays positive.
-
-Behaviorally:
-
-- Higher `kp` increases angle proportional response.
-- Higher `kp2` increases rate response and damping of quick nose-angle changes.
-- Higher `ki` increases integral correction.
-- Lower `mahony_kp` and `mahony_kp_roll` make the board feel snappier/stiffer;
-  higher values make it feel looser and more lingering.
-
-Because `mahony_kp` moves down while `kp`, `kp2`, and `ki` move up, this slider
-is not just "more PID". It coordinates PID and IMU filter feel.
-
-### Nose Stiffness
-
-Nose stiffness writes acceleration torque tiltback:
-
-```text
-torquetilt_strength = round(x * 0.03, 2)
-```
-
-The displayed slider value is derived from:
-
-```text
-torquetilt_strength / 0.03
-```
-
-At the UI range endpoints:
-
-| Slider | `torquetilt_strength` |
-| -----: | --------------------: |
-|    `0` |          `0.00 deg/A` |
-|    `5` |          `0.15 deg/A` |
-|   `10` |          `0.30 deg/A` |
-
-Behaviorally, this applies nose lift based on positive output current. It can
-increase acceleration and uphill aggressiveness even when ATR is absent or weak.
-
-### Tail Stiffness
-
-Tail stiffness writes regen torque tiltback:
-
-```text
-torquetilt_strength_regen = round(x * 0.03, 2)
-```
-
-The displayed slider value is derived from:
-
-```text
-torquetilt_strength_regen / 0.03
-```
-
-At the UI range endpoints:
-
-| Slider | `torquetilt_strength_regen` |
-| -----: | --------------------------: |
-|    `0` |                `0.00 deg/A` |
-|    `5` |                `0.15 deg/A` |
-|   `10` |                `0.30 deg/A` |
-
-Behaviorally, this applies nose lowering based on negative output current
-regen. It can increase braking and downhill aggressiveness even when ATR is
-absent or weak.
-
-### ATR Intensity
-
-ATR intensity writes both uphill and downhill ATR strengths to the same value:
-
-```text
-atr_strength_up = round(interpolate(x, [0, 15], [0, 2]), 1)
-atr_strength_down = round(interpolate(x, [0, 15], [0, 2]), 1)
-```
-
-The displayed slider value is derived from the stronger of the two ATR fields:
-
-```text
-interpolate(max(atr_strength_up, atr_strength_down), [0, 2], [0, 15])
-```
-
-At useful points:
-
-| Slider | `atr_strength_up` | `atr_strength_down` |
-| -----: | ----------------: | ------------------: |
-|    `0` |             `0.0` |               `0.0` |
-|  `7.5` |             `1.0` |               `1.0` |
-|   `15` |             `2.0` |               `2.0` |
-
-Behaviorally, ATR applies nose lift or lowering based on adaptive torque
-response rather than raw current alone. It is meant to respond to the difference
-between expected acceleration and measured acceleration, which makes uphill and
-downhill response more rider-weight-aware than pure torque tiltback.
-
-Field naming note: Refloat's canonical field IDs are the serialized struct
-names from `<SerOrder>`, not the VESC Tool `cDefine` defaults. For ATR strength,
-use `atr_strength_up` and `atr_strength_down`.
-
-### Carve Tilt
-
-Carve tilt writes turn tiltback strength directly:
-
-```text
-turntilt_strength = x
-```
-
-The slider range is `0..15`. This is a direct one-to-one basic control over the
-turn tiltback strength field.
-
-### Brake Tilt
-
-Brake tilt writes brake tiltback strength directly:
-
-```text
-braketilt_strength = x
-```
-
-The slider range is `0..5`. This is a direct one-to-one basic control over the
-brake tiltback strength field.
-
-## Detailed Field Groups
-
-A useful detailed tune screen groups fields by behavior rather than raw schema
-order.
-
-### General
-
-| Field            | Label             | Notes                                                                                                                                |
-| ---------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `kp`             | Angle P           | Main proportional angle response. Higher values make the board respond more strongly to nose angle error.                            |
-| `kp2`            | Rate P            | Responds to angular velocity. Acts like a damping/derivative component and is especially noticeable in fast or aggressive maneuvers. |
-| `kp_brake`       | Angle P (Braking) | Multiplier for angle response while braking.                                                                                         |
-| `kp2_brake`      | Rate P (Braking)  | Multiplier for rate response while braking.                                                                                          |
-| `ki`             | Angle I           | Integral correction.                                                                                                                 |
-| `ki_limit`       | I Term Limit      | Limits integral term authority.                                                                                                      |
-| `mahony_kp`      | Pitch KP          | Pitch-axis Mahony filter accelerometer correction. Higher values feel looser and linger more; lower values feel snappier.            |
-| `mahony_kp_roll` | Roll KP           | Roll-axis Mahony filter correction. Lower than pitch can help the nose hold up in turns and make tight carves feel stiffer.          |
-
-Rate P and Angle P should be treated as related ride-feel values. If Angle P is
-changed substantially, Rate P usually needs to move in a similar proportion to
-preserve feel.
-
-### ATR
-
-| Field                  | Label                      | Notes                                          |
-| ---------------------- | -------------------------- | ---------------------------------------------- |
-| `atr_strength_up`      | ATR Uphill Strength        | Nose lift applied from ATR response.           |
-| `atr_strength_down`    | ATR Downhill Strength      | Nose lowering applied from ATR response.       |
-| `atr_threshold_up`     | Threshold Angle Up         | Angle threshold for uphill ATR behavior.       |
-| `atr_threshold_down`   | Threshold Angle Down       | Angle threshold for downhill ATR behavior.     |
-| `atr_speed_boost`      | Speed Boost                | Boosts ATR response with speed.                |
-| `atr_angle_limit`      | Tiltback Angle Limit       | Maximum ATR tiltback angle.                    |
-| `atr_on_speed`         | Max Tiltback Speed         | Maximum speed for applying ATR tiltback.       |
-| `atr_off_speed`        | Max Tiltback Release Speed | Maximum speed for releasing ATR tiltback.      |
-| `atr_response_boost`   | Tiltback Response Boost    | Boost factor for tiltback response.            |
-| `atr_transition_boost` | Tiltback Transition Boost  | Boost factor around response transitions.      |
-| `atr_filter`           | Current Filter             | Current filter frequency.                      |
-| `atr_amps_accel_ratio` | Amps to Acceleration Ratio | Ratio used for acceleration-side ATR behavior. |
-| `atr_amps_decel_ratio` | Amps to Deceleration Ratio | Ratio used for deceleration-side ATR behavior. |
-
-Common recommended strength range is around `1.0..2.5`, with `2.5` already
-being aggressive. Older ATR strength values may appear 10x smaller in older
-firmware discussions.
-
-### Torque Tiltback
-
-| Field                       | Label                      | Notes                                                                              |
-| --------------------------- | -------------------------- | ---------------------------------------------------------------------------------- |
-| `torquetilt_strength`       | Strength                   | Nose lift based on positive output current. Basic "Nose stiffness" writes this.    |
-| `torquetilt_strength_regen` | Strength (Regen)           | Nose lowering based on negative regen current. Basic "Tail stiffness" writes this. |
-| `torquetilt_start_current`  | Start Current Threshold    | Current threshold before torque tiltback starts.                                   |
-| `torquetilt_angle_limit`    | Tiltback Angle Limit       | Maximum torque tiltback angle.                                                     |
-| `torquetilt_on_speed`       | Max Tiltback Speed         | Maximum speed for applying torque tiltback.                                        |
-| `torquetilt_off_speed`      | Max Tiltback Release Speed | Maximum speed for releasing torque tiltback.                                       |
-
-Typical strength range for basic controls is `0.00..0.30 deg/A`; broader
-advanced editors may allow up to `1.00 deg/A`.
-
-### Turn Tiltback
-
-| Field                     | Label                    | Notes                                            |
-| ------------------------- | ------------------------ | ------------------------------------------------ |
-| `turntilt_strength`       | Strength                 | Basic "Carve tilt" writes this directly.         |
-| `turntilt_angle_limit`    | Tiltback Angle Limit     | Maximum turn tiltback angle.                     |
-| `turntilt_start_angle`    | Turn Aggregate Threshold | Turn aggregate threshold before response starts. |
-| `turntilt_start_erpm`     | ERPM Threshold           | Speed threshold before response starts.          |
-| `turntilt_speed`          | Max Tiltback Speed       | Maximum speed for applying turn tiltback.        |
-| `turntilt_erpm_boost`     | Speed Boost %            | Boost percentage based on ERPM.                  |
-| `turntilt_erpm_boost_end` | Speed Boost Max ERPM     | ERPM where boost reaches its maximum.            |
-| `turntilt_yaw_aggregate`  | Turn Aggregate Target    | Target accumulated yaw/turn value.               |
-
-### Brake Tilt
-
-| Field                 | Label                | Notes                                     |
-| --------------------- | -------------------- | ----------------------------------------- |
-| `braketilt_strength`  | Brake Tilt Strength  | Basic "Brake tilt" writes this directly.  |
-| `braketilt_lingering` | Brake Tilt Lingering | Controls how brake tilt lingers/releases. |
-
-### Tiltback
-
-| Field                   | Label                    | Notes                              |
-| ----------------------- | ------------------------ | ---------------------------------- |
-| `tiltback_constant`     | Constant Tiltback        | Constant nose angle offset.        |
-| `tiltback_variable`     | Variable Tiltback Rate   | Variable tiltback amount per ERPM. |
-| `tiltback_variable_max` | Variable Tiltback Target | Maximum variable tiltback target.  |
-
-## UI Behavior Notes
-
-### Retrieval and Persistence Model
-
-There are two related but different tuning paths:
-
-- Custom config read/write: full persisted controller package configuration.
-- Runtime tune commands: smaller Refloat package commands for live tune actions.
-
-The safe default for this app is to build the tune screen on custom config
-readback first, then add writes only after the persistence path is fully tested.
+Basic sliders map rider-facing controls onto one or more Refloat fields (canonical definitions, ranges,
+and interpolation/inverse formulas live in `src/modules/tune/lib/sliderDefinitions.ts`):
+
+- **Aggressiveness** (`-5..10`) is compound: it writes `kp`, `kp2`, `ki`, and inversely moves
+  `mahony_kp` / `mahony_kp_roll` together (coordinating PID and IMU filter feel, not just "more PID").
+- **ATR intensity** (`0..15`) writes both `atr_strength_up` and `atr_strength_down` equally; its
+  displayed value tracks `max(atr_strength_up, atr_strength_down)`.
+- **Nose stiffness**, **Tail stiffness**, **Carve tilt**, and **Brake tilt** map to single fields.
+
+Opening an editor and applying without changing anything preserves saved values. Basic controls
+display actual linked values until the dial moves; editing a single linked field preserves unequal
+siblings (e.g. asymmetrical ATR uphill/downhill strengths), while moving a compound basic slider
+collapses that custom shape back onto the basic formula. Individual field editors keep raw values in
+profiles, open in ruler mode with manual numeric entry available without snapping, warn on values
+outside the ruler's usual range without blocking Apply, and convert percentages only at display/input
+boundaries.
+
+Field naming note: Refloat's canonical field IDs are the serialized struct names from `<SerOrder>`,
+not VESC Tool `cDefine` defaults (e.g. `atr_strength_up` / `atr_strength_down`).
+
+## Wire Protocol & Persistence Model
+
+There are two separate Refloat tuning channels:
+
+- **Custom config read/write (`COMM_GET_CUSTOM_CONFIG_XML` / `GET` / `SET`):** full persisted binary controller struct (the path Vescape uses for Tune Profiles — see [ADR-0035](./adr/0035-board-config-is-exclusively-owned-while-connected.md)).
+- **Runtime tune commands (`COMM_CUSTOM_APP_DATA`):** temporary live commands that do not persist without `SAVE_TUNE`. Do not mix these casually with full-config writes.
 
 ### Custom Config Read Flow
 
@@ -422,6 +177,12 @@ The config bytes response carries:
 
 For Refloat package config, `confIndex` is `0`.
 
+**Android XML parser trap**: Android's DOM provider rejects desktop JVM SAX external-entity feature flags (desktop tests pass, but real Android linking fails with `UNSUPPORTED_SCHEMA` and stalls 30 s). `RefloatConfigSchema.kt` keeps `DOCTYPE` rejection with a rejecting entity resolver instead (iOS uses `XMLParser.shouldResolveExternalEntities = false`). Because neither desktop JVM tests nor E2E (`e2eFake.finalizeBoardLink`) catch this provider difference, verify Android XML parser edits on a device/emulator with `RefloatConfigSchemaDeviceTest`:
+
+```sh
+cd android && ./gradlew :vescape-core:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=expo.modules.vescapecore.config.RefloatConfigSchemaDeviceTest
+```
+
 ### Custom Config Write Flow
 
 Persistent config writes should be treated as full-config writes, not individual
@@ -464,7 +225,7 @@ Relevant package command IDs:
 | `LIGHT_INFO`       |  `25` | Read light controller/runtime light info.                                        |
 | `LIGHT_CTRL`       |  `26` | Apply live light control values.                                                 |
 | `LCM_INFO`         |  `27` | Read LCM-related info.                                                           |
-| `GET_INFO`         |  `33` | Read package/device info.                                                        |
+| `GET_INFO`         |   `0` | Read package/device info (`REFLOAT_GET_INFO`).                                   |
 | `GET_RTDATA`       |  `34` | Read runtime data.                                                               |
 | `SET_TUNE`         |  `35` | Apply tune values at runtime.                                                    |
 | `SET_DEFAULT_TUNE` |  `36` | Apply/reset default tune values.                                                 |
@@ -560,7 +321,8 @@ the chuck Y axis, inverted to `255 - value`. The board maps this to a tilt
 target via `throttle_val * inputtilt_angle_limit` (see `float.c`), so the input
 sets dynamic nose tilt while riding. `inputtilt_invert_throttle` flips the
 direction. The board drops the remote input after roughly one second of silence,
-so the app repeats the active value on a fixed ~40 ms tick. This is runtime
+so the app repeats the active value on a fixed 100 ms tick (`REMOTE_TILT_REPEAT_MS` —
+matching Board Move's remote cadence without starving telemetry polling). This is runtime
 input only; it never writes configuration.
 
 The UI is a 2D pad rather than a 1D slider. The horizontal axis is the tilt
@@ -569,7 +331,7 @@ up to `60 s`). The top band of the pad is a **lock** zone: releasing there holds
 the tilt indefinitely (the live hold stream just keeps running) until the user
 cancels. While the finger is down the app streams the held tilt live. On a
 normal release it hands off to a linear ease: the held value is interpolated back
-to `128` (neutral) over the chosen duration, one step per ~40 ms tick, then the
+to `128` (neutral) over the chosen duration, one step per 100 ms tick, then the
 stream stops. The decay is owned natively (`RemoteTiltController`) and is
 tick-based, so JS only sends the intent (`value`, `durationMs`). A duration
 shorter than one tick snaps straight to neutral.
@@ -620,8 +382,9 @@ The Board Settings drawer wires Board Move as a collapsible row: tapping it open
 two hold buttons plus a strength stepper. Holding a direction button streams
 `±(127 × strength%)` and releasing sends a neutral stop. Strength is the
 persisted `boardMoveStrengthPercent` setting (10–100%, default 60). `BoardMoveController` (both platforms) owns the
-repeat tick — 100 ms, because both firmware generations lapse the request after
-about a second — and the wire format is picked from the linked
+repeat tick — 100 ms for 1.3+ `REMOTE`, and 700 ms for 1.0–1.2 `RC_MOVE` (because `RC_MOVE` zeroes and
+re-ramps current on every packet, so repeating inside its ~1 s duration avoids ten-times-per-second
+stutter) — and the wire format is picked from the linked
 `refloatBaseVersion` (`RC_MOVE` below 1.3, `REMOTE` from 1.3 up; unknown
 versions assume `REMOTE`). The commands need a trusted link and stop with the
 Board Session.
@@ -671,60 +434,10 @@ package version. Writes are still gated by schema validation and field presence,
 visibility is gated by Refloat major/minor version; patch versions and suffixes share profiles. The app does not silently convert old tune values
 to new Refloat versions.
 
-### Basic and Advanced Values Must Stay in Sync
+### Basic and Detailed Asymmetry
 
-When detailed values change, the basic sliders should recompute their displayed
-positions from the underlying fields:
-
-- Aggressiveness displays from `kp - 20`.
-- Nose stiffness displays from `torquetilt_strength / 0.03`.
-- Tail stiffness displays from `torquetilt_strength_regen / 0.03`.
-- ATR intensity displays from `max(atr_strength_up, atr_strength_down)` mapped
-  from `[0, 2]` back to `[0, 15]`.
-- Carve tilt displays from `turntilt_strength`.
-- Brake tilt displays from `braketilt_strength`.
-
-This means asymmetrical detailed ATR edits cannot be represented perfectly by
-the one-dimensional ATR intensity slider. The basic slider intentionally shows
-the stronger of uphill and downhill strength.
-
-### Basic Edits Can Overwrite Detailed Asymmetry
-
-Some basic sliders write multiple fields:
-
-- Aggressiveness overwrites five fields.
-- ATR intensity overwrites both uphill and downhill ATR strength.
-
-If a rider customized those fields independently in detailed mode, moving the
-basic slider collapses that custom shape back onto the basic formula. The UI
-should make this interaction predictable by treating basic sliders as presets or
-compound controls, not as harmless aliases.
-
-### Save Semantics
-
-Changing slider state should be treated separately from persisting to the board.
-A safe UX has three distinct phases:
-
-- Read current config from the controller.
-- Apply edits to a local draft.
-- Explicitly write and save the final draft.
-
-The current app should keep read-only tune inspection separate from future write
-paths until mutation commands, save behavior, and failure recovery are designed
-and tested.
-
-## Implementation Notes for This Repo
-
-Current local read-only field groups live in:
-
-```text
-modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RefloatConfigModels.kt
-```
-
-Before implementing writes, keep field IDs aligned with the serialized struct
-names returned by the board's `<SerOrder>`. Do not derive IDs from `cDefine`;
-those defaults are VESC Tool names and can differ from Refloat's wire-format
-field IDs, as with `atr_strength_up` / `atr_strength_down`.
+Basic sliders recompute their displayed positions from underlying fields (`src/modules/tune/lib/sliderDefinitions.ts`).
+Because **ATR intensity** displays `max(atr_strength_up, atr_strength_down)` and overwrites both fields on edit — and **Aggressiveness** overwrites five fields — moving a compound basic slider collapses custom detailed asymmetry back onto the basic formula. Treat basic sliders as compound controls, not harmless field aliases.
 
 ## Profile selector summary
 

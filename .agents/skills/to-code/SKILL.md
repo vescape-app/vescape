@@ -26,7 +26,6 @@ Extract id. Missing -> ask.
 1. Repo rules:
    - `AGENTS.md`
    - `docs/agents/issue-tracker.md`
-   - `docs/agents/domain.md`
    - `docs/agents/react.md` if RN UI
 2. Domain:
    - `GLOSSARY.md` if present

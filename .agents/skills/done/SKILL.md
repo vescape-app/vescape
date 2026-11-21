@@ -27,7 +27,6 @@ Extract issue id from prompt when present. If missing, infer it from current con
 1. Read repo instructions:
    - `AGENTS.md`
    - `docs/agents/issue-tracker.md`
-   - `docs/agents/domain.md`
 2. Resolve issue id.
    - Prefer explicit prompt id.
    - Else use current chat context from the most recent fetched issue.

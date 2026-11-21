@@ -45,8 +45,8 @@ Do not create `index.ts` barrel files under `src/components/` or any of its subd
 
 ## Component Gallery
 
-When creating or significantly changing a reusable UI component, add or update its showcase in
-`src/app/settings/components.tsx` in the same change.
+When creating or significantly changing a reusable UI component, add or update its showcase under
+`src/app/settings/components/` (`index.tsx` registers the screens) in the same change.
 
 - When asked to create a component, create a real component file under `src/components/` or the
   appropriate subdirectory such as `src/components/settings/`. Do not hide reusable UI as a
@@ -60,107 +60,29 @@ When creating or significantly changing a reusable UI component, add or update i
 
 Use **`phosphor-react-native`** for all icons. Do **not** use emoji or unicode characters as icon substitutes.
 
-```tsx
-import { LightningIcon, WarningCircleIcon } from 'phosphor-react-native'
-import { theme } from '@/constants/theme'
-;<LightningIcon size={16} color={theme.gps.text} weight="fill" />
-```
-
 - Always use the **`Icon`-suffixed** export, for example `LightningIcon`, not `Lightning`. The un-suffixed names are deprecated and will produce warnings.
 - The `type Icon` export for typing icon props is **not** suffixed; import it as `type Icon` as-is.
-- `size` is typically `10`-`16` for inline or label icons, larger for standalone UI elements.
 
-## Icon buttons
+## Core UI primitives
 
-Use **`IconButton`** (`@/components/IconButton`) for all circular icon-only pressables. Do not build ad-hoc `Pressable` + icon combinations.
+Use the shared primitives rather than ad-hoc `Pressable` or OS dialogs (read each component's props directly):
 
-```tsx
-import { IconButton } from '@/components/IconButton'
-import { ArrowLeftIcon, TrashIcon } from 'phosphor-react-native'
+- **`Button`** (`@/components/Button`) — all tappable button actions; keep `style` to layout only.
+- **`IconButton`** (`@/components/IconButton`) — all circular icon-only pressables.
+- **`ConfirmModal`** (`@/components/ConfirmModal`) — all confirmation prompts; never use `Alert.alert`.
+- **`Switch`** (`@/components/controls/Switch`) — every boolean toggle (React Native's `Switch` is unused):
+  - `value: boolean | null` (`null` rests the thumb in the centre when state is unknown).
+  - Prefer `pending` over `disabled` for an in-flight write: `disabled` means "you may not", `pending` means "wait" (centres and spins the thumb until the owner answers).
+  - Inside a pressable row, wrap `Switch` in `<View pointerEvents="none">` so the row owns the tap.
+  - Inherits `SettingsRow`'s `iconColor` (or `SwitchAccentProvider`) automatically.
+- **`RadioIndicator`** (`@/components/controls/RadioIndicator`) — one-of-several choices on a pressable row.
 
-<IconButton icon={ArrowLeftIcon} onPress={handleBack} />
-<IconButton icon={TrashIcon} destructive onPress={handleDelete} disabled={!canDelete} />
-<IconButton icon={ArrowsClockwiseIcon} size="lg" loading={syncing} onPress={handleSync} />
-```
+## High-frequency live streams
 
-- `size`: `'sm'` (default, 38×38 — headers, overlays) | `'lg'` (54×54 — bottom/content area)
-- `destructive` shifts border to red-tinted and auto-tints icon to `theme.error.text` — no manual color needed
-- `loading` disables the button and shows an `ActivityIndicator` in the icon color
-- `style` accepts layout-level `ViewStyle` (position, margin, bottom/top/left/right)
-- The default surface uses `theme.control.background`, `theme.control.border`, and `theme.control.icon`; destructive state changes the accent without abandoning the navy interaction language.
+Any source faster than a few Hz (telemetry, GPS, magnetometer/heading, Group Ride presence) **must not** call `setState` or bump a Zustand slice per sample:
 
-## Switches
-
-Use **`Switch`** (`@/components/controls/Switch`) for every boolean toggle. React Native's `Switch` is
-not used anywhere in the app — it cannot show that the board has not answered yet, and its platform
-sizes disagree.
-
-```tsx
-import { Switch } from '@/components/controls/Switch'
-
-<Switch value={enabled} onValueChange={setEnabled} />
-<Switch value={lights} onValueChange={setLights} accent={theme.palette.amber.color} />
-<Switch value={capability.enabled} onValueChange={save} pending={saving} />
-```
-
-- `value` is `boolean | null`. `null` rests the thumb in the centre — the control does not know yet,
-  so it refuses to claim a side.
-- `pending` centres the thumb and spins it there until the owner answers. Prefer it over `disabled`
-  for a write in flight: `disabled` says "you may not", `pending` says "wait".
-- `accent` takes any `ThemeColor` and tints the on state. Inside a `SettingsRow` with an `iconColor`
-  the switch inherits it, so a tinted row states its colour once; without either it falls back to
-  `theme.palette.sky.color`. `SwitchAccentProvider` lends the same accent anywhere else.
-- A disabled switch drops its accent and dashes its outline instead of dimming its on colour.
-- The track follows the colored-action surface: on light it is a navy control base with the accent
-  washed over it when on, and the accent keeps its dark-theme tone; on dark the accent alone tints
-  the card beneath.
-- Tap and drag both toggle it. Inside a row that is itself pressable, wrap the switch in a
-  `<View pointerEvents="none">` so the row owns the tap and the switch only mirrors state.
-
-For one-of-several choices, put **`RadioIndicator`** (`@/components/controls/RadioIndicator`) on
-the row that owns the press. It uses the same colored surface as `Switch`, from
-`useColoredControlSurface`.
-
-## Buttons
-
-Use **`Button`** (`@/components/Button`) for all tappable button actions. Do not build ad-hoc `Pressable` + `Text` combinations for buttons.
-
-```tsx
-import { Button } from '@/components/Button'
-import { TrashIcon } from 'phosphor-react-native'
-
-<Button label="Save" onPress={handleSave} />
-<Button label="Cancel" variant="secondary" onPress={handleCancel} />
-<Button label="Delete" variant="destructive" icon={TrashIcon} onPress={handleDelete} />
-<Button label="Saving…" loading={isSaving} onPress={handleSave} />
-```
-
-- `variant`: `'primary'` (default, blue fill) | `'secondary'` (ghost/outline) | `'destructive'` (red fill)
-- `size`: `'md'` (default, h40) | `'sm'` (h32)
-- `icon`: phosphor `Icon` type — rendered left of the label
-- `loading` disables the button and shows an `ActivityIndicator`
-- `style` accepts layout-level `ViewStyle` (e.g. `flex: 1`, margins) — do not use it for visual overrides
-
-## Confirmation dialogs
-
-Use **`ConfirmModal`** (`@/components/ConfirmModal`) instead of `Alert.alert` for all confirmation prompts. `Alert.alert` renders a plain OS dialog that looks out of place in the dark-themed UI.
-
-```tsx
-import { ConfirmModal } from '@/components/ConfirmModal'
-
-const [confirmVisible, setConfirmVisible] = useState(false)
-
-<ConfirmModal
-  visible={confirmVisible}
-  title="Delete item"
-  message="This cannot be undone."
-  confirmLabel="Delete"
-  destructive
-  onConfirm={() => { deleteItem(); setConfirmVisible(false) }}
-  onCancel={() => setConfirmVisible(false)}
-/>
-```
-
-- Drive visibility with state (`useState<boolean>` or `useState<T | null>` when you need to remember _what_ to confirm).
-- Set `destructive` for irreversible actions — it renders the confirm button in red.
-- `confirmLabel` and `cancelLabel` default to "Confirm" / "Cancel"; override when a specific verb is clearer.
+- Route hot display values to Reanimated SharedValues (`src/modules/board/lib/liveTelemetryRuntime.ts`) and publish a coalesced cold snapshot at ~1 Hz (`LIVE_HISTORY_PUBLISH_MS = 1000`) for components that must re-render.
+- Read natively decimated (`onLiveSeries`) or focused (`onFocusedSeries`) series rather than projecting raw buffers or storing projected arrays in Zustand.
+- Never mix `useSyncExternalStore` with Zustand for the same publish cycle — it triggers synchronous double renders outside React batching.
+- Keep screen subtrees under ~5 renders/second. Wire the dev-only canary `useRenderRateWarning` (`src/hooks/useRenderRateWarning.ts`) at stream boundaries (`MainMap`, `BottomTelemetryStrip`, `GroupRideWidget`).
+- Never trust dev-mode JS profiling numbers — React DevTools adds 40–50% overhead; always verify perf issues in Release builds (`bun run android:release` or iOS Release).

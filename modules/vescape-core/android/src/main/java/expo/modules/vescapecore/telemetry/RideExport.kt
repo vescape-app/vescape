@@ -235,7 +235,7 @@ internal object RideExport {
 
   /** Every stored sample in range, Telemetry Chunks and write buffer alike, with its reconstructed
    * values, replaying the mask chain from the preceding full state with the canonical
-   * [reconstructTelemetryValues] (ADR 0044). Pages on `(captured_at_ms, ordinal)` (ADR 0045).
+   * [reconstructTelemetryValues] (ADR 0045). Pages on `(captured_at_ms, ordinal)` (ADR 0045).
    * @parity /modules/vescape-core/ios/telemetry/RideExport.swift `forEachFrame`
    */
   private suspend inline fun forEachFrame(dao: VescapeDao, fromMs: Long, toMs: Long, boardId: String?,

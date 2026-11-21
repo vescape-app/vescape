@@ -17,7 +17,7 @@ internal struct TelemetrySample: Equatable {
 /// Value columns in `changed_mask_1` bit order, `speed_centi_kmh` .. `temp_motor_deci_c`.
 internal let TELEMETRY_CHUNK_VALUE_COLUMNS = 17
 
-/// Canonical reconstruction of a stored `telemetry_frames` row (ADR 0044): masks are authoritative.
+/// Canonical reconstruction of a stored `telemetry_frames` row (ADR 0045): masks are authoritative.
 /// A keyframe clears every column first and then counts as all bits set; otherwise a set bit replaces
 /// the column with the row's value, NULL included (an explicit clear), and a clear bit keeps it.
 ///
@@ -32,7 +32,7 @@ internal struct TelemetryChunkFormatError: Error, CustomStringConvertible {
   let description: String
 }
 
-/// Telemetry Chunk codec v1. The binary contract is written down in ADR 0044 and on the Android peer.
+/// Telemetry Chunk codec v1. The codec invariants are in ADR 0045 and the golden contract in `shared/telemetry-chunk-codec-contract.json`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryChunkCodec.kt `TelemetryChunkCodec`
 /// @platform-diff Apple's raw-deflate encoder has a fixed level (5) instead of Android's 6; the

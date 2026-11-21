@@ -54,8 +54,4 @@ is tolerated by the board, and the app does not distinguish that case.
 | Surge start     | `surge_duty_start`            | `0.88`  | Only when surge enabled; higher = riskier.                                   |
 | Remote throttle | `remote_throttle_current_max` | `0` A   | Off by default. An idling remote must sit at 0% or it drains the pack.       |
 
-## Live remote-tilt clamp
-
-The remote-tilt (nose Move) value is clamped to `20..80` before the command packet is built —
-a transient runtime command, not a persistent config write.
 </content>

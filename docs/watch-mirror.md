@@ -37,142 +37,17 @@ an encoder regenerates the copied watch source. watchOS reuses Swift sources thr
 
 ## Google Play Release
 
-Phone and Wear builds are separate signed AABs under the existing `app.vescape` Play listing:
+Phone (`:app:bundleRelease`) and Wear (`:wearos:bundleRelease`) ship as separate signed AABs under
+the `app.vescape` Play listing using the same upload key and shared `APP_VERSION`, with monotonic
+disjoint version codes recorded in the release manifest. See [release.md](./release.md) for the
+current release workflow, track promotion, and tags policy. After publishing a test build, install
+both apps from Play on paired hardware to validate Play signing and Data Layer delivery together.
 
-```text
-:app:bundleRelease    -> phone internal -> phone open testing
-:wearos:bundleRelease -> wear:internal  -> wear open testing
-```
+## Local Install & Signing
 
-Both use the existing Android upload key. `APP_VERSION` supplies the shared package version name.
-CI allocates monotonic, disjoint phone and Wear version codes for every internal build and records
-them, with the immutable source SHA and artifact hashes, in the release manifest.
+Use `bun run android:up` for paired phone + Wear emulators (see [agents/watch-emulators.md](./agents/watch-emulators.md)) or the `/wear` skill for physical Wear OS installs. With multiple ADB devices connected, pass explicit `adb -s <serial> install` rather than `:app:installDebug`.
 
-`bun run release` first offers explicit Major, Minor, and Patch release-candidate preparation. It
-updates `package.json`, runs canonical note authoring, commits the version and accepted notes on `dev`,
-merges `dev` into `main`, fast-forwards `dev` to the release merge, and atomically pushes both branches.
-The resulting shared commit is the immutable source offered to the Internal build. The CLI also offers
-internal-build, Internal status/resume, open-promotion, and production actions.
-Status/resume discovers recent GitHub workflow runs, then shows the live job, step, elapsed time, and
-estimated remaining range; it does not depend on terminal-local state. Open promotion selects one
-successful internal manifest and promotes the manifest's exact existing codes. Canonical rider-facing
-notes are bundled per marketing version from `release-notes/<major>.<minor>.<patch>.md`; internal
-builds and open promotion tolerate a missing file for the current version. Open promotion never rebuilds or uploads an AAB.
-Track IDs come from the `PLAY_PHONE_INTERNAL_TRACK`, `PLAY_PHONE_OPEN_TRACK`,
-`PLAY_WEAR_INTERNAL_TRACK`, and `PLAY_WEAR_OPEN_TRACK` repository variables. Production targets use
-`PLAY_PHONE_PRODUCTION_TRACK` and `PLAY_WEAR_PRODUCTION_TRACK`. Defaults are `internal`, `beta`,
-`production`, `wear:internal`, `wear:beta`, and `wear:production`.
-
-Workflow dispatches use the repository's trusted default-branch definition while keeping the immutable
-artifact source SHA separate. Before mutation, the workflow verifies both requested codes against Play. A code may
-be on its internal source track or already on its open target track: this makes a retry converge after
-phone-only or Wear-only success. Promotion then runs phone and Wear serially and publishes a
-per-form-factor result (`promoted`, `already-open`, or `failed`). It does not touch production tracks,
-tags, GitHub Releases, `main`, or `dev`.
-
-Production is a separate, explicitly confirmed `Promote Open → Production` action. Candidate discovery
-uses successful open-promotion manifests, so phone and Wear identity stays pinned to the same source SHA
-and exact version codes from build through production. A trusted workflow rechecks that source against
-`main`, verifies its `package.json` version and canonical release notes, then checks both live open tracks
-before making any production change. It promotes existing Play artifacts only; no build, signing, or AAB
-upload occurs.
-
-The initial production rollout percentage is explicit. Status, halt, resume, and percentage advancement
-all target the selected exact phone and Wear codes and share the non-cancelling `play-publish` concurrency
-boundary. Retries converge when only one form factor or Play itself succeeded. Advancement cannot reduce
-the current percentage.
-
-After both Play production operations succeed, the workflow creates an immutable `v<version>` tag at the
-artifact source SHA and creates the GitHub Release from `release-notes/<version>.md` verbatim. An existing
-tag must already point to that SHA; an existing GitHub Release is reused. Historical `production-*` tags
-stay untouched, but no current workflow triggers from them and no release command mutates `dev` or
-`main`. The `production` GitHub environment is the human approval boundary for live rollout changes.
-
-The internal workflow retains both artifacts even when a Play upload fails:
-
-```text
-android/app/build/outputs/bundle/release/app-release.aab
-android/wearos/build/outputs/bundle/release/wearos-release.aab
-```
-
-One-time Play Console setup remains human-owned:
-
-1. Add the Wear OS form factor to the existing app.
-2. Upload an accurate watch screenshot. Capture from the physical watch with
-   `adb -s <watch-serial> exec-out screencap -p > wear-screenshot.png`.
-3. Enable the dedicated Wear OS testing and production tracks.
-4. Upload the first Wear AAB manually if Console requires it while enabling the form factor.
-5. Opt into Wear OS review.
-
-Protect the GitHub `production` environment with required reviewers before the first live release.
-The production workflow deliberately targets that environment, so a CLI confirmation alone cannot bypass
-the final human approval gate.
-
-After CI publishes a test build, install both phone and watch apps from Play on the paired physical
-devices. Launch the Watch Mirror, connect a Board on the phone, and confirm live telemetry reaches
-the watch. This validates Play signing and Data Layer delivery together; local debug installs do not.
-
-## Local Install
-
-Pair/connect the watch with wireless ADB, then install the Wear app directly:
-
-```bash
-cd android
-./gradlew :wearos:assembleDebug
-adb -s <watch-serial> install -r wearos/build/outputs/apk/debug/wearos-debug.apk
-adb -s <watch-serial> shell am start -n app.vescape/app.vescape.wear.MainActivity
-```
-
-Install the current phone app separately to the phone:
-
-```bash
-cd android
-./gradlew :app:assembleDebug
-adb -s <phone-serial> install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-When multiple ADB devices are connected, avoid `:app:installDebug` because Gradle may pick the watch
-transport. Use explicit `adb -s <phone-serial> install ...`.
-
-## Signing Must Match
-
-Wear Data Layer delivery requires the phone and watch packages to have the same package name and
-signing certificate. Both are `app.vescape`, but debug builds can still diverge:
-
-- Phone debug APK is signed with `android/app/debug.keystore`.
-- Wear debug APK may be signed with the user's global `~/.android/debug.keystore`.
-
-When certs differ, watch logs show:
-
-```text
-WearableService: Mismatched certificate
-WearableService: Failed to deliver message ... action=/telemetry
-```
-
-Fix by signing the Wear APK with the same debug keystore as the phone:
-
-```bash
-cp android/wearos/build/outputs/apk/debug/wearos-debug.apk /tmp/wearos-debug-phone-cert.apk
-zipalign -f -p 4 /tmp/wearos-debug-phone-cert.apk /tmp/wearos-debug-phone-cert-aligned.apk
-apksigner sign \
-  --ks android/app/debug.keystore \
-  --ks-key-alias androiddebugkey \
-  --ks-pass pass:android \
-  --key-pass pass:android \
-  --out /tmp/wearos-debug-phone-cert-signed.apk \
-  /tmp/wearos-debug-phone-cert-aligned.apk
-adb -s <watch-serial> uninstall app.vescape
-adb -s <watch-serial> install /tmp/wearos-debug-phone-cert-signed.apk
-```
-
-Verify signatures if needed:
-
-```bash
-adb -s <phone-serial> shell dumpsys package app.vescape | rg 'signatures='
-adb -s <watch-serial> shell dumpsys package app.vescape | rg 'signatures='
-```
-
-The signature ids must match.
+**Signing must match:** Wear Data Layer requires identical package name (`app.vescape` / `app.vescape.dev`) and signing certificate on phone and watch. Phone debug builds sign with `android/app/debug.keystore`, while a standalone Wear debug build may sign with `~/.android/debug.keystore` — causing `WearableService: Mismatched certificate` and dropped `/telemetry` delivery. Re-sign the Wear APK with `android/app/debug.keystore` (or check `adb -s <serial> shell dumpsys package app.vescape | rg 'signatures='`) when local frames fail to land.
 
 ## Presence And Frames
 
@@ -198,7 +73,7 @@ If the watch says `DISCONNECTED`, distinguish the cause:
 
 - No `Watch mirror presence initial: true` on phone: the phone is not pushing frames.
 - `Mismatched certificate` on watch: frames are pushed but rejected before app delivery.
-- No board telemetry on phone: no Board Session, so there is no Watch Frame source.
+- No Board Session on phone is **not** a fault: `WatchMirrorCoordinator` still pushes Board-less Watch Frames, and `MirrorState` intentionally leaves an empty gauge shell quiet (no `DISCONNECTED` notice) while the phone app is reachable.
 - Emulators only: the watch's `dumpsys activity service WearableService` logs `/telemetry` inbound but
   the wrist never logs `first frame received` (typical after a phone emulator restart). Restart Play
   services on both: `adb -s <serial> shell am force-stop com.google.android.gms`, for each emulator.
@@ -321,17 +196,10 @@ clean and the ring fades in with nav focus like the trail
 (`riderAlpha` in `WatchMapSceneState`, both wrists). The map page never shows a placeholder: with
 nothing else to draw it still has the ring, and usually the trail and street map.
 
-The recent ridden trail uses the same native precise GPS history as the phone's
-live map. Its 3-point stroke fades from transparent at the oldest end to 60% opacity at the
-newest end, measured along the full retained path. The lower peak than the phone's 85% distinguishes
-the trail from the planned route. It uses the Rider's colour or the phone dark-map
-violet by default. There is no watch-only distance cutoff or shortened fade. At a close zoom the
-old, transparent end may be offscreen, just as on the phone. It shares the route/group map's heading
-and zoom. Route and trail also share one 300 ms position animation, driven by an absolute GPS
-anchor in the same frame. It works without Navigation and survives route-origin changes and
-history trimming. The trail tip stays pinned to the Rider while the newest segment grows.
-Overlapping stroke joins composite once, avoiding bright dotted joins. The ring sits above
-paths and other Riders. Ambient continues to skip the map.
+The recent ridden trail comes from the same native precise GPS history as the phone's live map
+(no watch-only cutoff; ambient skips the map). Route and trail share one position animation anchored
+to the frame's absolute GPS coordinate, so the trail works without Navigation and survives
+route-origin changes and history trimming.
 
 The phone sends a complete trail snapshot with each Watch Frame, capped at 120 evenly sampled
 points with both endpoints retained. Points are metres east/north of the current Rider, independent
@@ -368,7 +236,7 @@ These switches remain inside the existing emulator/simulator replay gates.
 
 A dark raster street map sits under the trail and route whenever the wrist is awake and the phone
 has a GPS fix, with or without Navigation or a Group Ride. The phone owns every decision; the wrist
-never reports what it holds (ADR-0019, ADR-0033).
+never reports what it holds.
 
 **Zoom** (`watchMapTileZoom` / `WatchMapTile.zoom`, shared with both wrists): the span the wrist draws (`routeSpanM`
 clamped by `WatchMapSpan` / `WatchMapProjection.clampedSpanM`, 600 m while the phone map is
@@ -490,7 +358,7 @@ since they are gauges rather than a map layer, and the phone keeps pushing `/rou
 Preview the receiving state with `bun run wear:replay ride --route-loading`. This is an emulator
 fixture using the live rendering state, not a measurement of Bluetooth transfer latency.
 
-`/group-ride` carries the Group Ride Frame (ADR-0039): the Rider's course, the phone map's span, and
+`/group-ride` carries the Group Ride Frame: the Rider's course, the phone map's span, and
 each other Rider's id, name, colour (the palette slot their id owns, the same slot the phone map
 and roster use), stale flag, east/north offset from the Rider's latest GPS Fix,
 battery % (none without a Board Session), battery level and heat level. The phone derives both
@@ -520,18 +388,10 @@ battery and level bytes were appended this way: an older wrist skips them, and a
 older phone decodes as no battery and normal levels.
 
 While the wrist holds a Group Ride, the vertical axis gains a last page one swipe below nav focus:
-the Group Ride page. Title "Group · N", then every other Rider nearest first — colour dot, name cut
-to five characters, an arrow to their bearing off the Rider's course, distance, and one status slot:
-"lost" when stale, else a thermometer in the heat level's colour when hot, else "—" without a Board,
-else battery % (orange or red at its level). Alone it reads "Waiting for riders". Five rows fit;
-past that the list scrolls under a fixed five-row window: a vertical drag moves it with the finger
-and flings, settling on a whole row, and the crown steps it a row at a time, sliding the rows. A pull
-down that begins at the list's top pages back to nav focus; a flick back up the list stops at its
-top. While the list fits, every swipe stays the pager's. A position indicator on the
-right shows where the window sits: a thin arc just below 3 o'clock on Wear OS, a short bar just
-below the right edge's midpoint on watchOS, both clear of the duty head tick. The map, route, nav readout and Group Ride marks
-fade out as the page arrives. The group dropping while the page is shown lands the rider on nav
-focus. Not joined, the axis is exactly radar, weather, gauges, nav focus.
+the Group Ride page (nearest-first roster with bearing arrow, distance, and status: stale / hot /
+no-Board / battery %; scrolls past 5 rows, pulling down at top returns to nav focus). Dropping the
+group while on this page lands back on nav focus. Not joined, the axis is radar, weather, gauges,
+nav focus.
 
 `/settings` is a `DataMap` rather than a packed frame because settings accrete one at a time: an
 unknown key is ignored by an older watch, and a key an older phone never sends leaves the watch on
@@ -558,7 +418,10 @@ Adding a mirrored setting:
 
 Rider Units travels on this channel as `distanceUnit`, defaulting to `km` for missing or invalid
 values. Both wrists convert speed, navigation, radar, and accessibility readouts while frame values,
-route geometry, and gauge proportions stay metric.
+route geometry, and gauge proportions stay metric. The 12h/24h time-format preference also travels
+here: Wear OS applies it to its app clock, weather, radar, and diagnostic timestamps; watchOS
+applies it to weather, radar, and diagnostic timestamps while its system clock follows watchOS
+settings.
 
 The watchOS Mirror carries the same bag on its own channel — see `docs/watchos.md` for how the two
 transports differ.

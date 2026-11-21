@@ -97,7 +97,7 @@ data class TelemetryFrameEntity(
 
 /**
  * One **Telemetry Chunk**: every sealed Telemetry Sample of one Board for one wall-clock minute,
- * encoded by `TelemetryChunkCodec` (ADR 0044, ADR 0045). A sealed sample lives only here; an unsealed
+ * encoded by `TelemetryChunkCodec` (ADR 0045). A sealed sample lives only here; an unsealed
  * one only in `telemetry_frames`. A chunk is a replaceable minute record: a late sample, a range
  * delete or a trim re-encodes it. [boardKey] is `boards.key`, null for samples that match no saved
  * Board; one chunk per Board key and minute, the unowned minute kept unique by the sealer.

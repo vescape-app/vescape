@@ -12,48 +12,13 @@ It is driven **entirely from native** (`ConnectionCoordinator` → `RideLiveActi
 keeps updating while the screen is off and the JS runtime is dead — same ownership model as the
 Android foreground notification. JS never touches it.
 
-### Architecture
+### Lifecycle & Ride Notice constraints
 
-- `RideActivityAttributes` (`modules/vescape-core/ios/notification/`) — the ActivityKit contract:
-  static `deviceName` + a mutable `ContentState` (phase, status text, short-critical glyph, battery
-  percent, fault code).
-- `RideLiveActivityController` — thin ActivityKit wrapper: `start` / `update` / `end`, holds the one
-  `Activity<RideActivityAttributes>`.
-- `RideActivityContent` — pure formatter that builds `ContentState`; mirrors Android
-  `NotificationFormatter` + `BoardPhase.displayText` / `shortCriticalSymbol` wording.
-- `targets/ride-activity/` — the widget extension (SwiftUI Lock Screen + Dynamic Island views) that
-  renders the activity. It only reads `context.state`; it owns no logic.
+Driven in `BoardSessionController` (`modules/vescape-core/ios/notification/` + `targets/ride-activity/` widget extension):
 
-### Lifecycle (wired in `ConnectionCoordinator`)
-
-- **Start** in `beginSession` — iOS only allows _starting_ a Live Activity while the app is
-  foreground, and a session always begins from a user-initiated connect, so this is safe. (Starting
-  at `connected` would race a backgrounded app.)
-- **Update** from BLE callbacks via `setPhase` (every phase change), battery (only when the integer
-  percent steps, so the hot per-frame telemetry path does not spam ActivityKit), and fault
-  (edge-triggered). Updates are background-safe.
-- **End** in `endSession` / `fail`. A mid-ride drop does **not** end it — the session survives, so
-  `setPhase(.reconnecting)` just refreshes the same card.
-- Faults fold into the card's state (no separate banner), which is what killed the notification mess.
-
-### Ride Notice
-
-The card shows the top visible **Ride Notice** (most severe, then newest) as a line above the ride
-status: title plus a severity symbol and color (critical / warning / info), on the Lock Screen and in
-the expanded Dynamic Island. The compact and minimal island presentations stay ride status only.
-When the last notice clears, the line goes away. A stale card hides it with the rest of its state.
-
-- `BoardSessionController` listens to `RideNotices` and pushes a new `ContentState` only when the top
-  notice's `(id, rev, title, severity)` changes, never per engine tick, so notices do not eat the ActivityKit
-  update budget.
-- `noticeTitle` / `noticeSeverity` are optional `ContentState` fields, so a state from an activity
-  started by an older build still decodes.
-- A notice never starts a Live Activity and never posts a notification. With no activity running it
-  is shown only in the app and on the watch.
-- The Live Activity exists only during a Board Session, so a board-less Group Ride shows no notice on
-  the Lock Screen. Android's peer is the foreground-service notification, which leads its status line
-  with the notice (`⚠ Title · status`) whenever that notification is up; it is never posted
-  for a notice either.
+- **Start vs resume in `beginSession`:** `Activity.request` is foreground-only on iOS, while `update` is background-safe. A foreground session calls `liveActivity.start(...)`; a headless restoration or background auto-connect calls `liveActivity.resume(...)` to adopt any surviving Live Activity rather than ending one it cannot replace.
+- **Throttled background updates:** pushed on phase changes, integer battery-percent steps, edge-triggered faults (folded into the card — no separate banner), and when the top Ride Notice's `(id, rev, title, severity)` changes (never per telemetry/engine tick, to preserve ActivityKit's update budget). `noticeTitle` / `noticeSeverity` are optional `ContentState` fields so activities started by an older build still decode.
+- **Session-scoped lifetime:** `endSession` / `fail` ends the card; mid-ride dropouts refresh the same card to `.reconnecting`. A Ride Notice never starts a Live Activity or posts a notification (no board-less Lock Screen card; Android mirrors this by only leading its existing foreground-service status line).
 
 ### Cross-target type sharing
 
@@ -128,54 +93,27 @@ Live Activity.
 
 ## Background Ride Recording
 
-iOS has no Android `ForegroundService` equivalent. A locked-screen ride cannot rely on a permanent BLE worker or notification. The implementable path for this app is native iOS ownership of the ride session, with background location used as the legitimate long-running activity and CoreBluetooth used for BLE event restoration.
+iOS has no Android `ForegroundService` equivalent. A locked-screen ride relies on native iOS ownership of the ride session, with background location as the legitimate long-running activity and CoreBluetooth state restoration for BLE wakeups.
 
-### Implement
+### Implementation
 
-- Keep `UIBackgroundModes` in Expo config for `bluetooth-central` and `location`.
-- Implement native `CLLocationManager` ride tracking:
-  - start when a Board Session starts;
-  - stop when the rider explicitly stops the Board Session;
-  - set `allowsBackgroundLocationUpdates = true`;
-  - set `pausesLocationUpdatesAutomatically = false`;
-  - request the location permission level needed for locked-screen ride recording.
-- Keep BLE polling and telemetry persistence in native Swift. JS should render state and send intents, not own durable ride work.
-- **Background modes keep JS and the sensors running.** `bluetooth-central` and `location` mean the
-  JS thread, CoreMotion, and CoreLocation all keep going with the screen off; only
-  `requestAnimationFrame` pauses. Anything that exists purely to be looked at — map camera writes,
-  heading sensors, animations — must gate on `AppState`, or it burns battery against a dark screen
-  and pays the backlog on the main thread at unlock. See
-  [performance-map-camera.md](./performance-map-camera.md) (#420).
-- CoreBluetooth state preservation/restoration (done, #378 / ADR 0034):
-  - the Board Session central carries `CBCentralManagerOptionRestoreIdentifierKey`; the Board Probe
-    central stays bare;
-  - `VescapeLaunchSubscriber` (autolinked app-delegate subscriber) re-creates that central inside
-    `didFinishLaunching`, gated on the `SessionResumeStore` marker so a normal cold start starts no
-    BLE;
-  - `centralManager(_:willRestoreState:)` hands restored peripherals to `BoardSessionController`,
-    which rebuilds the session from the saved Board Link through the ordinary `beginSession` wiring:
-    recording keeps appending to the open recording, GPS re-arms, alerts and the Live Activity
-    resume, all with no JS involved.
-- Move live session ownership below Expo module lifetime:
-  - use a native singleton/runtime, e.g. `VescapeCoreRuntime.shared`, to own `ConnectionCoordinator`;
-  - Expo module attaches/detaches event sinks only;
-  - `OnDestroy` must not call `stopBoard()`;
-  - explicit user `stopBoard()` remains the disconnect path.
-- Persist telemetry samples natively during the ride. JS may be suspended while native continues.
+- `UIBackgroundModes` enables `bluetooth-central` and `location`.
+- Native `CLLocationManager` (`GpsMonitor`) runs with `allowsBackgroundLocationUpdates = true` and `pausesLocationUpdatesAutomatically = false` in `ride` GPS Power Mode (see [connectionState.md](./connectionState.md#gps-demand)).
+- BLE polling, alerts, and telemetry persistence run in native Swift (`BoardSessionController.shared`, owned below Expo module lifetime — `VescapeCoreModule.OnDestroy` detaches event sinks only and never calls `stopBoard()`).
+- **Background modes keep JS and the sensors running.** `bluetooth-central` and `location` keep the JS thread, CoreMotion, and CoreLocation active with the screen off; only `requestAnimationFrame` pauses. Gate visual-only loops (map camera writes, heading sensors, animations) on `AppState`, or writes queue against a dark screen and trigger FrontBoard's 10 s watchdog kill on unlock (see [agents/mapbox-patches.md](./agents/mapbox-patches.md#camera-loop--shapesource-traps)).
+- CoreBluetooth state preservation/restoration ([ADR-0034](./adr/0034-ios-background-lifetime-anchor-and-restoration.md)):
+  - the Board Session central carries `CBCentralManagerOptionRestoreIdentifierKey`; the Board Probe central stays bare; Accessories use their own restoration central;
+  - `VescapeLaunchSubscriber` runs in fixed order inside `didFinishLaunching`: `BoardSessionController.prepareForLaunch()` (restoration, gated on `SessionResumeStore` so a cold start without a resume marker doesn't spin up restoration BLE), then `autoConnectSelectedBoard()` (only if no session is resuming and auto-connect is eligible), then `AccessorySessionController.prepareForLaunch()` (enrolled accessories always come up on their own restoration central), then `startWatchMirror()`;
+  - `centralManager(_:willRestoreState:)` hands restored peripherals to `BoardSessionController`, which rebuilds the session, re-arms recording/GPS/alerts, and resumes the Live Activity with no JS involved.
 
 ### Limits
 
 - `bluetooth-central` wakes the app for BLE events; it does not grant continuous arbitrary execution.
 - VESC telemetry is request/response in this app. If iOS suspends all execution, native poll timers stop and the board will not send new telemetry replies.
-- A peripheral-side heartbeat/streaming notification would be the cleanest BLE-native wake source, but it requires firmware/peripheral behavior we do not control.
 - Background scanning is throttled and should be treated as reconnect assistance only.
 - If the user force-quits the app, iOS may prevent background relaunch until the user opens the app again.
 - `BGTaskScheduler`, silent push, or background fetch are not suitable for live ride telemetry.
 - `audio` background mode should not be used as a silent keepalive hack; it risks App Store rejection unless the app has real user-facing audio.
-
-### Why Float Control Can Likely Record Locked Rides
-
-Float Control's App Store listing says it may use location even when not open. That points to the same viable model: real ride GPS tracking keeps the native process eligible for background execution, while BLE polling and ride recording happen inside native code.
 
 ### References
 

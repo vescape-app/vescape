@@ -10,11 +10,11 @@ record unrelated discoveries separately rather than expanding into another audit
 
 ## Find the contract
 
-Paths below are relative to the repository root. Start with the relevant row in the
-[operation inventory](../../../docs/persistence-operation-inventory.md), then inspect its shared
-fixture under `modules/vescape-core/shared/` and both platform implementations linked by `@parity`.
-For design context, consult the relevant section of the
-[reliability plan](../../../docs/persistence-reliability-plan.md).
+Paths below are relative to the repository root. Inspect the shared fixtures under
+`modules/vescape-core/shared/` (`recording-persistence-contract.json`, `history-read-contract.json`,
+`migration-fixture-manifest.json`, `ride-export-contract.json`, `accessory-persistence-contract.json`,
+`alert-preset-contract.json`, `bucket-route-preview-contract.json`, etc.) and both platform
+implementations linked by `@parity`.
 
 - Android contracts: `modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/` — `database/` for schema, migration, and backup tests; `telemetry/` for the stores.
 - Swift contracts: `modules/vescape-core/persistence-macos/main.swift`.
@@ -23,6 +23,13 @@ For design context, consult the relevant section of the
 Use the existing scenario when it fits. Shared fixture values express the common contract; each
 platform must execute its production persistence path. Avoid a duplicate test DAO or copied SQL
 that can pass while the app's implementation breaks.
+
+### Durable invariants & platform hazards
+
+- **Upgrade & archive cutoffs**: Room native upgrades are supported from v3 (versions 37–39 never shipped; Room jumps 36→40), Android backup archives from v14, and iOS archives from the original GRDB ledger generation. Keep `shared/migration-fixture-manifest.json` and both host matrices updated with every newly released generation.
+- **Android mixed-driver hazard**: Live Room uses `sqlite-bundled` 2.6.2 with WAL. Framework SQLite may open only legacy, staged, or closed restored files — never alongside the bundled engine on the live DB. Export holds a deferred reader transaction across keyset pages and shares a mutex with restore (recording writes never take this mutex); backup `VACUUM INTO` uses Room's writer outside a transaction.
+- **Swift host vs shipping pod**: The macOS host resolves GRDB 6.29.3 while the app ships CocoaPods GRDB 6.24.1; host tests prove SQL/schema contracts, not shipping-binary crash durability.
+- **Failure semantics**: Recording write failures fail fast — discard the uncommitted batch, stop accepting recording samples, keep BLE/live gauges/in-memory alerts running, and report once per episode to native Sentry without SQL, args, telemetry, or GPS. Storage unavailability (full disk, corruption, I/O, cannot-open, read-only) enters App Storage Failure until a startup transactional create/write/drop probe succeeds; ordinary query failures reject only that operation. Recovery guidance is app restart (free storage first if full disk), no retry loop.
 
 ## Extend the changed behavior
 
@@ -41,8 +48,7 @@ failed read versus empty result, preserved old values, or rollback of a multi-wr
 For rollback, fail after an earlier write inside the transaction and verify that no partial state
 survives. Use disposable test databases and fixtures, never an installed app's data.
 
-Update the operation inventory when adding an operation or changing its coverage owner. Keep
-intentional platform differences explicit; do not weaken one platform's expectations to make both
+Keep intentional platform differences explicit; do not weaken one platform's expectations to make both
 green. Filesystem, credential, bridge, and lifecycle behavior may need platform tests outside these
 SQLite hosts.
 
@@ -101,6 +107,10 @@ unverified boundary. CI's reusable `.github/workflows/persistence-contracts.yml`
 source SHA; an older green run is not evidence for new code.
 
 Do not equate test count with coverage percentage, close/reopen with a process crash, or host success
-with a passing app smoke test. The Swift host and shipping pod have different GRDB dependency
-constraints; inspect `modules/vescape-core/Package.swift` and its podspec when that distinction matters. For current-bundle
-app integration, use the separate smoke/E2E workflow described in [e2e/README.md](../../../e2e/README.md).
+with a passing app smoke test. Specific boundaries that host contracts cannot prove:
+
+- **Swift host vs shipping pod**: inspect `modules/vescape-core/Package.swift` vs its podspec when GRDB version differences matter.
+- **Export & bridge**: native bridge wiring, OS share-sheet behavior, and external GPX/CSV/Floaty importer compatibility require device/rider verification.
+- **Native Sentry delivery**: compile checks and SDK invocation tests do not prove Sentry received an event. A release-device delivery check must trigger a deterministic recording write failure and confirm that exact event id in production without SQL, args, telemetry, or GPS data.
+
+For current-bundle app integration, use the separate smoke/E2E workflow described in [e2e/README.md](../../../e2e/README.md).

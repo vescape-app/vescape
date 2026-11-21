@@ -43,7 +43,7 @@ are starting values, not validated ones, and no physical LED hardware has been c
 
 The capability list contains navigation rows only. Each capability's setup screen holds its **Use**
 switch, live status, and settings; hardware metadata sits under Sensor details. The switch defaults
-on; native persists it by accessory ID and capability ID before applying a
+on for missing rows (a failed settings read **never** enables hardware); native persists it by accessory ID and capability ID before applying a
 change. Turning it off preserves calibration and light settings. Disabled clearance capabilities
 stop measuring (including setup preview), release sensor tilt through its existing smooth return,
 and no longer claim the manual tilt pad. Re-enabling requires fresh measurements.
@@ -111,20 +111,9 @@ no percentage. This preview never sends a command or bypasses the riding and con
 
 ## Wire protocol
 
-- Use a small versioned JSON protocol for the PoC, covering the manifest, sensor readings, and app commands. [Protocol v1](./accessory-protocol.md) defines the implementation draft, including schemas and proposed defaults.
-- Frame messages as newline-delimited JSON: one compact JSON object followed by `\n`. Both receivers buffer BLE chunks until a complete line arrives; BLE packet boundaries are not message boundaries.
-- Enforce the protocol's fixed maximum message size and disconnect on malformed or oversized messages.
-- Receivers ignore unknown optional fields within a supported protocol version. Changes to existing field meanings require a new protocol version.
-- Unsupported protocol versions block operational commands and bindings. Vescape may show the discovered accessory with an incompatibility explanation, but does not activate its controls.
-- Configuration requests carry a request ID. Firmware responds with a matching acknowledgement containing the settings actually applied, including the accepted measurement rate, or an explicit error. Vescape does not treat a successful BLE write as configuration acceptance.
-- Sensor readings are unacknowledged streams; individual samples do not require a round trip.
-- Commands set explicit desired values or states, such as measurement enabled/disabled or braking state. Do not use toggle/cycle commands: repeating a request must preserve the same result without restarting an unchanged light animation.
-- Runtime commands expire unless renewed by Vescape. On expiry, sensors return to measurement standby and lights use their firmware-defined unavailable behavior. Protocol v1 proposes timeout values for PoC validation.
-- Detect loss in both directions without requiring a final disconnect message: accessories detect expired app commands, and Vescape detects missing expected sensor readings. If accessory power dies, stale sensor input releases tilt through the existing smooth cancellation while the Board connection remains available.
-- Keep unavailable Board telemetry distinct from an expired app command: Vescape can remain responsive while reporting that Board telemetry is unavailable.
-- Every reconnect starts a fresh protocol session: read and validate the manifest again, then resend the current applicable configuration and state. Discard old queued commands and ignore acknowledgements or callbacks belonging to the previous session.
-- Sensor reading messages identify their capability and carry an explicit status: `ok` with a numeric value, `out_of_range`, or `error`. Ground-clearance values are in centimetres.
-- Out-of-range readings, sensor errors, and stale or missing readings release sensor-driven tilt through the existing smooth return behavior. A missing value never represents a valid maximum-distance sample.
+See [Vescape Accessory Protocol v1](./accessory-protocol.md) for the GATT UUIDs, newline-delimited
+JSON framing, handshake/manifest rules, request-id/lease discipline, reading statuses, and PoC
+timing defaults.
 
 ## Brake light
 

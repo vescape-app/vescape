@@ -17,9 +17,9 @@ Read-only code review. Every finding must come from code you actually read.
 - **`@parity` peers**: read peer files across `modules/vescape-core/{ios,android}` and the TS bridge. Flag undocumented drift (`@platform-diff` / `TODO(<platform> parity)`). Report shared bugs once citing both files.
 - **Bugs & repo traps**:
   - State/lifecycle bugs, missing resets, event ordering, BLE reconnect / board-switch / background races.
-  - Swallowed errors returning silent fallbacks (`docs/error-handling-audit.md`).
+  - Swallowed errors returning silent fallbacks: failed durable writes must not look successful; failed reads stay distinct from absent/empty; preserve privacy rules and valid state on refresh failure; keep one Sentry reporting owner (local Diagnostic Events are local-only, not Sentry); intentional suppressions require a nearby `// intentional-suppression: <reason or reporting owner>` (enforced by `scripts/no-swallowed-errors.test.ts`).
   - VESC/Refloat safety, pushback/fault/warning paths, km/mi units, clock domains.
-  - `AGENTS.md` architecture: native owns durable truth, `src/modules/` boundaries, no dead/duplicated code, `docs/board-warnings.md`, row-by-row conversions in `MAINTENANCE_JOBS` (ADR-0046/0047).
+  - `AGENTS.md` architecture: native owns durable truth, `src/modules/` boundaries, no dead/duplicated code, `docs/board-warnings.md`, row-by-row conversions in `MAINTENANCE_JOBS`.
   - UI/Skia hot paths and theme tokens when touched (`docs/agents/skia.md`, `docs/agents/react.md`).
   - Tests (read, never run): happy-path only, mocks hiding the real boundary, weakened assertions, duplicated SQL/logic, or trivial predicates.
 

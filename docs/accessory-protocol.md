@@ -9,30 +9,13 @@ for `ground_clearance`, including its status discipline, sequence/sample-time pr
 missing-stream timeout. `brake_light` state is driven from Board speed: see the PoC defaults in
 [accessories.md](./accessories.md#brake-light-poc-implementation).
 
-The implemented half has an executable form: `shared/fixtures/accessory-protocol/` holds the
-framing, handshake and session corpus that Android Kotlin, iOS Swift and the ESP32 firmware all run
-(`bun run test:android`, `bun run test:ios`, and `pio test -e native` in `vescape-accessories`). Change
-the fixtures first; three implementations of one wire format drift silently otherwise.
-
-`session.json` pins four things the prose below only describes: the exact bytes of every command the
-app writes; what each accessory line must mean to a live session; through its `peer` sequences, the
-replies an accessory must produce for a stale id, a reused id, and the app's one permitted retry;
-and under `readings` and `groundClearance`, every way a sample can fail to be a measurement together
-with what a saved calibration turns a distance into.
-
-The reading cases exist to pin one rule in executable form: **a missing measurement is never a
-distance.** A missing `value`, a null one, a textual one, a status this app does not know, and a
-number outside the declared window each have a case, and none of them resolves to the top of the
-range.
-
-Two rules below are app-side decisions the fixtures pin down, rather than wire format:
-
-- A recognized capability type is not automatically a usable one. A `ground_clearance` must declare
-  centimetres, a range whose minimum is below its maximum, and at least one positive rate; anything
-  else is reported as an unsupported capability rather than guessed at.
-- Compatibility is one of `supported`, `unsupported-version` (no common protocol version), or
-  `unsupported-capabilities` (version agreed, nothing recognized). A version mismatch marks every
-  capability unsupported, because none of them can be driven.
+The executable contract lives in `shared/fixtures/accessory-protocol/` (`session.json` + framing/handshake
+corpus), run by Android Kotlin (`bun run test:android`), iOS Swift (`bun run test:ios`), and ESP32
+firmware (`pio test -e native` in `vescape-accessories`). Change the fixtures first so the three
+implementations cannot drift. Two app-side invariants pinned there: a missing/invalid/out-of-window
+measurement is never a distance, and a recognized capability type is only usable if its manifest
+declares valid units/bounds/rates (version mismatch marks every capability unsupported; compatibility
+is `supported`, `unsupported-version`, or `unsupported-capabilities`).
 
 ## Ownership
 

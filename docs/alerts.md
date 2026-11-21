@@ -148,7 +148,7 @@ stay cached.
 - **Value**: from the sound string, else the metric's current reading, so a repeat says where it is now. Battery speaks a
   percent, so a battery rule without a battery percent speaks no value. Speed is km/h, read in mph
   under the `mi` distance unit. Degrees are °C, converted
-  to °F under the `mi` distance unit before rounding to the nearest clip (degree clips say only
+  to °F under the `fahrenheit` temperature unit (`temperatureUnit`) before rounding to the nearest clip (degree clips say only
   "degrees", −30…300). A missing value clip is skipped.
 - **Multi-value lines**: a `VoiceAnnouncement` carries an ordered list of `VoiceValue(type, value)`;
   the type travels with each value, so one line can say "Rain" + "in two and a half hours" +
@@ -175,9 +175,6 @@ severity sound and the voice line with the threshold as value, or the TTS text. 
 the Voice pack and the Voice level's wording.
 
 Presets play the app-wide effects and voice packs; there is no per-preset pack choice.
-
-Planned (not implemented): all sounds that can fire during a ride stay decoded in memory for the
-session (#576).
 
 ### Built-in packs
 
@@ -264,26 +261,9 @@ Legal Mode is durable per-Board state in `board_settings`, independent of Board-
 rows. Native combines that Board's `legalMode.enabled` with the app-wide Legal Policy jurisdiction
 and adds a virtual geiger speed rule whenever rules load. Nothing is written to `alerts`.
 
-## Schema — `alerts` table
+## Storage note
 
-| column                 | type             | notes                                                                    |
-| ---------------------- | ---------------- | ------------------------------------------------------------------------ |
-| `board_id`             | TEXT             | owning Board; PK is `(board_id, id)`                                     |
-| `id`                   | TEXT             | UUID, or `preset:<metric>` for an Alert Preset row                       |
-| `control_id`           | TEXT             | see Control IDs below                                                    |
-| `threshold`            | REAL             | trigger point                                                            |
-| `threshold_max`        | REAL nullable    | range upper bound (Geiger mode)                                          |
-| `enabled`              | INTEGER 0/1      | toggled by user                                                          |
-| `spec`                 | TEXT             | sound string, e.g. `alert(3):warning`, `tts:Slow down`, `preset(normal)` |
-| `created_at`           | INTEGER          | ms epoch                                                                 |
-| `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot             |
-| `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                             |
-| `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                                |
-| `threshold_offset`     | REAL nullable    | start offset in alert units                                              |
-| `threshold_max_offset` | REAL nullable    | range ceiling offset in alert units                                      |
-
-A preset row uses only `board_id`, `id`, `control_id`, `spec`, and `created_at`; threshold,
-repeat, enabled, and config-relative columns are ignored, because the preset definition owns them.
+The `alerts` table schema lives in `modules/vescape-core/schema/database.json` (PK `(board_id, id)`). A preset row (`id = preset:<metric>`) uses only `board_id`, `id`, `control_id`, `spec`, and `created_at`; threshold, repeat, enabled, and config-relative columns are ignored because the preset definition owns them.
 
 ## Control IDs & implicit direction
 
@@ -323,7 +303,8 @@ A single-threshold rule announces when the metric crosses it, then latches. It s
 until it re-arms — the metric must travel back past the threshold by that metric's re-arm margin
 (`TelemetryMetricDef.alertRearmMargin`: 3 °C temperature, 5 pp duty, 3 km/h speed, 10 pp battery).
 A value hovering on the threshold therefore cannot re-announce, and there is no time-based debounce
-anywhere in the engine (ADR 0032).
+anywhere in the engine. Because no global cooldown safety net exists, any new alert rule flavor must
+define its own re-arm condition or it will fire on every telemetry tick.
 
 Set `repeat_every_seconds` to keep announcing on a fixed cadence for as long as the metric stays
 past the threshold. Native floors it at `ALERT_REPEAT_MIN_SECONDS` (3 s). Re-arming resets the
@@ -366,7 +347,8 @@ delay:
 
 Everything that is not a telemetry alert plays through the native **Announcement Queue**
 (`AnnouncementQueue.kt` / `AnnouncementQueue.swift`, one per alert player, confined to its audio
-thread). See [ADR-0040](./adr/0040-announcement-queue-serializes-non-critical-audio.md).
+thread). Platform TTS queues (`QUEUE_ADD` / `AVSpeechSynthesizer`) cannot coordinate SoundPool or
+voice-pack clips, priority, expiry, or pre-emption, so native owns the queue.
 
 - **Members today:** every app cue — `on`, `off`, `error`, `ride.end`, every `groupRide.*` — and
   [Weather Alert](#weather-alerts) lines. Battery-at-connect lines are a planned producer. Phone
@@ -551,14 +533,6 @@ its points. The metric screen shows the level switch (and Soft / Mid / Hard for 
 then the rider's rules, then **+ Add custom alert**. There is no edit of a preset's points: to replace
 them, set the preset Off and add rules.
 
-Schema v51 turned the earlier per-Board settings into these rows: each live Board gets one row per
-metric from its old `alertPreset` level (none or `custom` became `off`, so nothing new started
-firing; a metric whose old preset points were all disabled became `off` too, while a partly
-disabled ladder kept its level), the geiger level it had chosen, and `match=on` where it matched
-its board config. The
-copied preset rows, the `source` column, and the `alertPreset`, `matchBoardConfig`, and
-`alertPresetSound` Board Settings went; `sound_type` became `spec`.
-
 `applyAlertPreset` sets the level or an option. Native rewrites the preset row in one database
 transaction, reloads evaluation, and publishes an `alerts` data-change event.
 
@@ -587,60 +561,15 @@ Five metrics, in two feedback families:
 
 Both native expanders consume the single preset definition; edit that file to change preset values.
 
-### Board Top Speed
+### Board Top Speed & units
 
-`topSpeedKmh` (a **Board Settings** key, renamed from the former profile-level Rider Top Speed) scales
-the speed preset's thresholds and the speed gauge full-scale — it is the rider's self-assessed top speed
-for that Board, not a legal or firmware limit. The speed preset reads it at expansion. Missing ⇒
-display default 50 km/h.
+`topSpeedKmh` (a **Board Settings** key, default 50 km/h when missing) scales the speed preset's
+thresholds and the speed gauge full-scale — it is the rider's self-assessed top speed for that
+Board, not a legal or firmware limit.
 
-### Board Settings keys
-
-Three per-Board keys sit beside the preset rows, backed by the `board_settings` table and composed
-onto the `Board` object (like `batteryConfig`). Missing keys normalize to display defaults:
-
-| key                     | default  | meaning                                          |
-| ----------------------- | -------- | ------------------------------------------------ |
-| `topSpeedKmh`           | 50       | Board Top Speed (km/h)                           |
-| `alertPresetsOnboarded` | false    | one-time guided-setup gate for this Board        |
-| `legalMode`             | disabled | native-owned `{ enabled }` Legal Mode activation |
-
-### Setup surfaces
-
-One block, `MetricAlerts`, renders a metric's whole alert setup: the preset gauge and level switch
-(`AlertPresetControl`), then the rider's own rules (`AlertRuleList`) and **+ Add custom alert**. It renders
-a `MetricAlertsController` and is reached two ways:
-
-- **Add-board wizard** — the alerts step (`AlertsStep`) sets Board Top Speed, then one sub-step per
-  preset metric, each a `MetricAlerts` over the wizard's in-memory draft (`useDraftMetricAlerts`).
-  On save the levels and draft rules are written to the new Board, which is marked
-  `alertPresetsOnboarded`.
-- **`/control` details** — each control's detail screen shows `MetricAlerts` for the active Board
-  (`useBoardMetricAlerts`), writing presets through `applyAlertPreset` and rules through the Alerts
-  store.
-
-## JS side
-
-```ts
-// store — backed by native VescapeCore APIs, bound to the active Board (#254)
-store.load(boardId)                     // `startAlertsBoardSync` calls this on every active-board change
-store.add(controlId, threshold, thresholdMax?)   // stamps the bound boardId
-store.toggle(id)
-store.remove(id)
-
-// native API is board-scoped
-applyAlertPreset(boardId, metric, { level: 'normal' })   // or { geiger: 'mid' } / { match: true }
-getAlertRules(boardId)
-upsertAlertRule(rule)                    // rule carries boardId
-setAlertRuleEnabled(boardId, id, enabled)
-deleteAlertRule(boardId, id)
-
-// fired alerts arrive on every matching telemetry packet
-onTelemetry: (e) => e.firedAlerts?.forEach(a => ...)
-```
-
-Native alert mutations reload the connected Board's foreground-service rules after writing.
-
-## iOS
-
-iOS mirrors the Android native alert path: persisted rules feed a native evaluator, presets/TTS play without JS, and fired alerts are attached to telemetry payloads.
+All stored thresholds and telemetry stay metric (km/h); conversion happens at presentation and input
+boundaries. Because native expands the speed preset from `topSpeedKmh`, the preset definition, and
+the current display unit on every load, changing display units re-expands speed presets to
+whole-number endpoints in the newly selected unit (changing actual firing speeds without
+accumulating rounding drift). Custom/manual alert thresholds and `topSpeedKmh` are preserved
+verbatim across unit switches and never overwritten with rounded display values unless edited.

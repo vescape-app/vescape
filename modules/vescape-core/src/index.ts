@@ -2564,7 +2564,7 @@ export interface BoardConfigValuesEvent {
  *
  * Read-only permanently — there is no write base and no encoder. The board serves no schema for
  * MCCONF, so values exist only when a layout carries the board's signature; an unrecognized
- * signature yields `null` rather than a guess (ADR 0036).
+ * signature yields `null` rather than a guess (see `docs/mcconf.md`).
  * @parity /modules/vescape-core/ios/config/MotorConfigValues.swift `MotorConfigValues`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/MotorConfigValues.kt `MotorConfigValues`
  */

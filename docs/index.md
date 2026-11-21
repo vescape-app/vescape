@@ -1,94 +1,50 @@
 # Vescape App — Documentation
 
-**Target device**: Floatwheel ADV2 (VESC-based onewheel)
-**Stack**: Expo SDK 54 · React Native 0.81.5 · New Architecture · Android · Bun
+**Target**: VESC-based self-balancing boards running Refloat
+**Stack**: Expo SDK 57 · React Native 0.86 · Android & iOS · Wear OS & watchOS · Bun
 
-## Documents
+Domain vocabulary lives in [GLOSSARY.md](../GLOSSARY.md); hard-to-reverse architectural traps live in [docs/adr/](./adr/).
 
-### Platform & architecture
+## Unfinished / PoC / Planned
 
-- [architecture.md](./architecture.md) — hardware topology, BLE profile, protocol stack
-- [native-api.md](./native-api.md) — the native↔JS surface: modules, events, payloads
-- [connectionState.md](./connectionState.md) — native-owned live state, GPS, recording, auto-connect
-- [ios.md](./ios.md) — iOS specifics: Live Activity, background ride recording, notifications
-- [bleAndroid.md](./bleAndroid.md) — BLE connection problems & fixes (custom native module)
-- [watch-mirror.md](./watch-mirror.md) — Wear OS Mirror local install and Data Layer troubleshooting
-- [watchos.md](./watchos.md) — watchOS requirements, platform decisions, constraints, and device findings
+- [accessories.md](./accessories.md) — in-progress accessory behavior: ground-clearance tilt sensor and unvalidated brake-light PoC
+- [accessory-protocol.md](./accessory-protocol.md) — JSON/BLE protocol v1 draft shared with ESP32 firmware
+- [pin-lock.md](./pin-lock.md) — upstream VESC PIN write-lock firmware research (not implemented)
+- [legacy-float.md](./legacy-float.md) — removal checklist for legacy INFO v1, saved links, and VESC 6.02 support (`@legacy-float` markers)
+- [watchos.md](./watchos.md) — watchOS platform differences, build/simulator traps, and open physical-device verification (#491)
 
-### Board protocol & telemetry
+## Board protocol & safety
 
-- [vescProtocol.md](./vescProtocol.md) — VESC packet framing, CAN forwarding, Refloat commands
-- [refloatAlldata.md](./refloatAlldata.md) — Refloat `COMMAND_GET_ALLDATA` binary layout
-- [mcconf.md](./mcconf.md) — VESC motor config binary layout, signature versioning, decode traps
-- [legacy-float.md](./legacy-float.md) — removal checklist for legacy INFO, saved links, and VESC 6.02 support
-- [chargingDetection.md](./chargingDetection.md) — charging indicator investigation & findings
-- [pin-lock.md](./pin-lock.md) — upstream VESC PIN write-lock: fork firmware, commands, what it blocks (not implemented)
+- [vescProtocol.md](./vescProtocol.md) — ESP32 BLE→CAN topology, NUS `6e400002` quirk, VESC framing, CAN forwarding, smart-BMS layout
+- [refloatAlldata.md](./refloatAlldata.md) — Refloat `COMMAND_GET_ALLDATA` binary layout, `LIGHTS_CONTROL` v1.1/v1.2, `RC_MOVE`/`REMOTE`, unimplemented read commands
+- [mcconf.md](./mcconf.md) — VESC motor config binary signatures, `confgenerator.c` vs XML decode traps, layout generator
+- [safety.md](./safety.md) — Refloat firmware pushbacks, per-cell vs pack voltage rules, fault thresholds
+- [board-warnings.md](./board-warnings.md) — Board Warnings catalog: every `BoardWarningKind` slug, severity, trigger, payload, clear semantics
 
-### Features
+## Core system behavior
 
-- [units.md](./units.md) — km/mi distance-unit preference, conversion, editing, alerts, and watches
-- [accessories.md](./accessories.md) — in-progress accessory design: ground-clearance tilt sensor and brake light
-- [accessory-protocol.md](./accessory-protocol.md) — JSON/BLE protocol v1: discovery implemented against shared fixtures; commands, readings, and failure handling still draft
-- [history.md](./history.md) — ride history persistence, grouping, markers, and map rendering
-- [Ride boundaries from data](./adr/0041-ride-boundaries-are-derived-from-recorded-data.md) — a ride is one Board's Telemetry Samples; frame gap, Board change or Stop Recording split it
-- [Navigation recalculates on path deviation](./adr/0042-navigation-recalculates-on-path-deviation.md) — native reroutes once the rider is farther from the path than the Reroute Distance; distance from the path is the only trigger
-- [Free spin from Board telemetry](./adr/0043-free-spin-is-detected-from-board-telemetry.md) — a fast speed climb on little motor current starts a free spin; no GPS, no per-Board state
-- [Telemetry Chunk codec](./adr/0044-telemetry-chunks-use-a-columnar-deflate-codec.md) — one Board-minute of reconstructed samples as columnar zigzag-varint deltas in raw deflate; masks are authoritative; decode equivalence across platforms
-- [Telemetry Chunks replace sealed frames](./adr/0045-telemetry-chunks-replace-sealed-frames.md) — `telemetry_chunks` holds sealed minutes and `telemetry_frames` is the write buffer; readers merge both from one snapshot; buckets stay untouched
-- [Data conversions run as Maintenance Jobs](./adr/0046-data-conversions-run-as-maintenance-jobs.md) — migrations stay SQL; per-row conversion of stored data is a Maintenance Job with no runner path of its own; readers accept both shapes until it finishes
-- [Background database work runs as Maintenance Jobs](./adr/0047-background-database-work-runs-as-maintenance-jobs.md) — every conversion, rebuild, backfill and clean-up is a job on the Maintenance list; clean-up is one `cleanup` job with a list of steps; `MaintenanceRunner` only schedules jobs
-- [Replay drives a real Board through a Simulated Board](./adr/0048-replay-drives-a-real-board-through-a-simulated-board.md) — a Debug Recording replay is an ordinary Board Session of a chosen Board; a Simulated Board answers requests from the recording and holds config writes; Replay Warmup prefills live state; no Session Clock
-- [tune.md](./tune.md) — Refloat tune screen behavior, basic slider formulas, field groups
-- [tune-preview-pl.md](./tune-preview-pl.md) — Tune vs Tune Preview, explained (Polish)
-- [remote-tilt.md](./remote-tilt.md) — Remote Tilt gesture ownership, native command timing, and latency checks
-- [alerts.md](./alerts.md) — telemetry alerts: storage, native evaluation, Geiger mode
-- [safety.md](./safety.md) — safety warnings & thresholds: firmware pushbacks, faults, voltage cutoffs
-- [board-warnings.md](./board-warnings.md) — Board Warnings catalog: every kind's slug, title, severity, trigger, payload, clear semantics
-- [Announcement Queue](./adr/0040-announcement-queue-serializes-non-critical-audio.md) — non-critical cues and lines play one at a time by priority; telemetry alerts pre-empt
-- [VESC fault evidence](./adr/0037-vesc-faults-are-board-owned-evidence.md) — live occurrences, past telemetry captures, and the on-demand Controller Fault Log
-- [Board tombstones](./adr/0027-boards-are-tombstoned-never-deleted.md) — deleting a Board keeps its row so Ride History can still name it
-- [Telemetry keyed on board id](./adr/0028-telemetry-is-keyed-on-board-id.md) — every telemetry table keys on the Board, not the BLE identifier
-- [legal-mode-speed-limits.md](./legal-mode-speed-limits.md) — legal mode: jurisdictions and speed caps
+- [connectionState.md](./connectionState.md) — native-owned live state, GPS Power Mode demand, auto-connect, fast-connect deadlines, Idle Pause, ride boundaries
+- [history.md](./history.md) — two-stream Ride History, Maintenance Jobs, Ride weather, bucket route previews, Favorite Media span rules, exports
+- [alerts.md](./alerts.md) — native alerts, sound/voice packs, Geiger mode, re-arm semantics, Announcement Queue, Weather Alerts, Alert Presets
+- [tune.md](./tune.md) — Tune Preview physical model, Basic slider formulas, Refloat config/runtime protocols, Board Move, version compatibility
+- [remote-tilt.md](./remote-tilt.md) — Remote Tilt gesture ownership, wrist stick, single native arbiter rules
+- [ios.md](./ios.md) — iOS Live Activity, critical-alert notifications, background ride recording & OS limits
+- [watch-mirror.md](./watch-mirror.md) — Wear OS & shared Watch Mirror ownership, channels, ambient, trail, street map, Ride Notices, battery complication
 
-### Performance
+## Design & release
 
-- [performance-findings.md](./performance-findings.md) — live telemetry: hot/cold split, render-rate rules
-- [performance-map-camera.md](./performance-map-camera.md) — compass-mode camera cost, watchdog kill & fix
-
-### Process
-
-- [persistence-reliability-plan.md](./persistence-reliability-plan.md) — in-progress Android/iOS persistence reliability plan and shared native DB contract tests
-- [persistence-operation-inventory.md](./persistence-operation-inventory.md) — every native durable operation and its executable contract owner
-- [error-handling-audit.md](./error-handling-audit.md) — swallowed-error audit, explicit failure outcomes, and regression checks
-
-- [design.md](./design.md) — visual design language: colors, layout, typography
-- [release.md](./release.md) — versioning, per-version notes tiers, tags & GitHub Releases
+- [design.md](./design.md) — visual design language: adaptive colors, layout, typography, icons
+- [release.md](./release.md) — versioning, two-tier release notes, tags, GitHub Releases, Released App Versions
 
 ## Agent guides (`docs/agents/`)
 
-Working rules and tooling recipes. `AGENTS.md` holds the rules that always apply; these are the
-deeper references it points at.
+Working rules and tooling recipes. `AGENTS.md` holds the rules that always apply; these are the deeper references it points at.
 
-- [agents/react.md](./agents/react.md) — React Native UI conventions, icon usage
+- [agents/react.md](./agents/react.md) — React Native UI conventions, adaptive colors, components, high-frequency live-stream rules
 - [agents/skia.md](./agents/skia.md) — Skia canvas: gesture frame cost, transform-only animation, worklet traps
-- [agents/native-sync.md](./agents/native-sync.md) — keeping generated `ios/`, `android/`, Pods in sync
+- [agents/mapbox-patches.md](./agents/mapbox-patches.md) — Mapbox dependency patches, direct camera/marker layers, background camera-loop traps
+- [agents/native-sync.md](./agents/native-sync.md) — keeping generated `ios/`, `android/`, Pods, and SwiftPM in sync
 - [agents/watch-emulators.md](./agents/watch-emulators.md) — `android:up`: phone + Wear emulators paired and mirroring, failures and fixes
-- [agents/mapbox-patches.md](./agents/mapbox-patches.md) — Mapbox dependency patches and native camera semantics
 - [agents/ios-profiling.md](./agents/ios-profiling.md) — headless Instruments on a real device: record, export, parse
-- [agents/clerk-auth.md](./agents/clerk-auth.md) — Clerk production auth setup, Android email-link debugging
-- [agents/issue-tracker.md](./agents/issue-tracker.md) — issues and PRDs on GitHub
-- [agents/triage-labels.md](./agents/triage-labels.md) — the five-label triage vocabulary
-- [agents/domain.md](./agents/domain.md) — `GLOSSARY.md` and `docs/adr/` conventions
-
-## Status
-
-| Area                               | State                                                                            |
-| ---------------------------------- | -------------------------------------------------------------------------------- |
-| BLE scan & connect                 | ✅                                                                               |
-| BLE notifications (Android 13+)    | ✅ fixed — see [bleAndroid.md](./bleAndroid.md)                                  |
-| CAN forwarding to motor controller | ✅ fixed — see [vescProtocol.md](./vescProtocol.md)                              |
-| Refloat GET_ALLDATA telemetry      | ✅                                                                               |
-| Smart-BMS cell-group voltages      | 🧪 Experimental — see [vescProtocol.md](./vescProtocol.md#bms-cell-group-values) |
-| iOS                                | stub only                                                                        |
-
-- [Public Rides replace rooms](./adr/0044-public-rides-replace-rooms.md) — Account identity, native public sharing and Crew Rides; supersedes ADR-0020.
+- [agents/clerk-auth.md](./agents/clerk-auth.md) — Clerk production auth setup, Device Token rules, Android email-link debugging
+- [agents/issue-tracker.md](./agents/issue-tracker.md) — issues, PRDs, triage vocabulary, and labels on GitHub

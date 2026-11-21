@@ -37,7 +37,7 @@ Use this shape for new PR bodies. Describe outcome and problem, not changed-file
 
 ## PR labels
 
-Read `../../../docs/agents/issue-tracker.md` and `../../../docs/agents/triage-labels.md` before choosing labels.
+Read `docs/agents/issue-tracker.md` before choosing labels.
 
 - Every new or refreshed PR gets one or more matching `area:*` labels and exactly one `complexity:low`, `complexity:medium`, or `complexity:high` label.
 - Reuse repo issue-label vocabulary exactly. Never create a new label as part of PR creation.

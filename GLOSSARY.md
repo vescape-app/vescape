@@ -33,7 +33,7 @@ A saved rideable device that can be connected over BLE and may expose one motor 
 _Avoid_: Device, controller, scooter
 
 **Board Tombstone**:
-A deleted Board's surviving row, marked by a deletion stamp. The Board leaves every Rider-facing list but stays resolvable by id, so Ride History can still name the Board that produced it. Its configuration is hard-deleted; its telemetry and Tune Profiles are not (ADR 0027).
+A deleted Board's surviving row, marked by a deletion stamp. The Board leaves every Rider-facing list but stays resolvable by id, so Ride History can still name the Board that produced it. Its configuration is hard-deleted; its telemetry and Tune Profiles are not (ADR 0028).
 _Avoid_: Soft delete, archived Board
 
 **Board Link**:
@@ -93,7 +93,7 @@ A rule that marks an implausible telemetry-derived value as excluded from ride m
 _Avoid_: Filter, smoother, cleaner
 
 **Free Spin**:
-The wheel turning without the rider's weight on it: in the air, or slipping. Found from Board telemetry, as a fast speed climb on little motor current, and kept until the Board is loaded again. Its samples are excluded from every speed metric and Max Duty (ADR 0043).
+The wheel turning without the rider's weight on it: in the air, or slipping. Found from Board telemetry, as a fast speed climb on little motor current, and kept until the Board is loaded again. Its samples are excluded from every speed metric and Max Duty.
 _Avoid_: Wheel spin, air spin
 
 **Metric Exclusion**:
@@ -128,7 +128,7 @@ ends — and GPS stands down even though the Ride Recording and the reconnect lo
 _Avoid_: Reconnect timeout, GPS grace period, disconnect window
 
 **Ride Recording**:
-One **Board**'s ride as Ride History derives it from recorded data: that Board's **Telemetry Samples**, with an optional **Ride Track**. A new Ride Recording starts on a Board change, when consecutive Telemetry Samples are more than `rideSplitGapMinutes` apart, or at an explicit Stop Recording; disconnects, app kills and Idle Pause do not split it. GPS-only stretches attach to the preceding ride and never start one. There is no stored recording identity (ADR-0041).
+One **Board**'s ride as Ride History derives it from recorded data: that Board's **Telemetry Samples**, with an optional **Ride Track**. A new Ride Recording starts on a Board change, when consecutive Telemetry Samples are more than `rideSplitGapMinutes` apart, or at an explicit Stop Recording; disconnects, app kills and Idle Pause do not split it. GPS-only stretches attach to the preceding ride and never start one. There is no stored recording identity.
 _Avoid_: Session recording, raw recording
 
 **Ride Track**:
@@ -148,7 +148,7 @@ The weather a ride or **Favorite** was ridden in, folded natively from stored We
 _Avoid_: ride forecast, weather log
 
 **Maintenance Job**:
-App-owned work that brings already-stored data up to date with the current app, such as rebuilding ride summaries or filling in missing ride weather. Each job has its own version; a job whose stored data predates its version is stale and runs again on its own, without the Rider asking. Jobs run one at a time and never change the ride being recorded. Per-row conversion of existing data after a schema change is a Maintenance Job, never part of the migration (ADR-0046). Retention clean-up, such as deleting old Diagnostic Events, is a step of the Cleanup job (ADR-0047).
+App-owned work that brings already-stored data up to date with the current app, such as rebuilding ride summaries or filling in missing ride weather. Each job has its own version; a job whose stored data predates its version is stale and runs again on its own, without the Rider asking. Jobs run one at a time and never change the ride being recorded. Per-row conversion of existing data after a schema change and retention clean-up (as steps of the Cleanup job) are Maintenance Jobs, never migration code or separate runner paths.
 _Avoid_: Background job, data upgrade, migration, rebuild history, task
 
 **Ride History Marker**:
@@ -180,7 +180,7 @@ One rider's private navigation target on the map, stored on the phone only. It i
 _Avoid_: Direction map point, navigation Map Point, destination marker
 
 **Navigation**:
-The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Native recalculates it when the rider is farther from the path than the **Reroute Distance** (ADR-0042). It describes where the rider could go and is never **Ride History**, which records where they did go.
+The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Native recalculates it when the rider is farther from the path than the **Reroute Distance**. It describes where the rider could go and is never **Ride History**, which records where they did go.
 _Avoid_: Route, ride route, navigation mode, guidance, directions
 
 **Route Progress**:
@@ -584,14 +584,14 @@ _Avoid_: Hazard signal, warning, POI, map point
 - An **Alert Rule** evaluates against live **Telemetry Samples**.
 - A **One-Shot** or **Repeating Alert Rule** announces only while fired and needs an **Alert Re-Arm** before it can announce again; a **Geiger Alert Rule** has neither, its cadence follows **Alert Range Depth**.
 - An **Alert Rule** belongs to one **Board**; the alert engine evaluates only the connected **Board**'s rules, and deleting a **Board** deletes its rules.
-- Deleting a **Board** leaves a **Board Tombstone**: its configuration goes, its **Ride History** and **Tune Profiles** stay, and the row stays resolvable by id so history can still name it (ADR 0027).
+- Deleting a **Board** leaves a **Board Tombstone**: its configuration goes, its **Ride History** and **Tune Profiles** stay, and the row stays resolvable by id so history can still name it (ADR 0028).
 - Every durable record that belongs to a **Board** identifies it by **Board** id, never by BLE identifier. The BLE address survives in exactly one place, the **Board Link**'s `ble_id`, where it is a reachability detail of that Board and not a key anything else joins on (ADR 0028).
 - **Ride History** resolves the **Board** name by lookup rather than reading a copy stored at capture time, so renaming a **Board** relabels its whole history (ADR 0028).
 - An **Alert Preset** is one **Alert Rule** row per metric that native expands into zero or more rules from the preset definition; it is never copied into rows, and it coexists with the rider's own **Alert Rules** for that metric.
 - A speed **Alert Preset** resolves its km/h thresholds from **Board Top Speed** at expansion, so a changed **Board Top Speed** applies on the next rule load.
 - An **Alert Message Template** belongs to one **Alert Rule**.
 - A **Watch Mirror** receives **Watch Frames** from the phone and can send rider commands and its own awake state back; it is not a **Board**, a **Board Session**, or a source of **Telemetry Samples**.
-- A **Watch Frame** is derived from **Live State** and is pushed whenever the phone feeds an awake **Watch Mirror**, with or without a **Board Session**; without one its Board readings are empty (ADR 0039).
+- A **Watch Frame** is derived from **Live State** and is pushed whenever the phone feeds an awake **Watch Mirror**, with or without a **Board Session**; without one its Board readings are empty.
 - A **Group Ride Frame** is the legacy wire name for nearby public riders sent to an awake **Watch Mirror**.
 - A **Watch Mirror** shows nearby public riders independently of Board telemetry.
 - An **App Setting** affects app behavior and is not part of a **Tune Profile** or **Board** identity.

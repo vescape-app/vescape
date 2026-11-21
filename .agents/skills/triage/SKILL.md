@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Move issues on the project issue tracker through a small state machine of triage roles.
 
-The issue tracker and triage label vocabulary live in `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`.
+The issue tracker and triage label vocabulary live in `docs/agents/issue-tracker.md`.
 
 ## Reference docs
 
@@ -34,7 +34,7 @@ Every triaged issue should carry exactly one category role and one state role. I
 
 Every implementation-ready issue must also carry exactly one complexity label: `complexity:low`, `complexity:medium`, or `complexity:high`. Use the project's issue-tracker definitions; complexity reflects risk and precision needed, not estimated size.
 
-These are canonical role names. Map them to the actual label strings in `docs/agents/triage-labels.md`.
+These are canonical role names. Map them to the actual label strings in `docs/agents/issue-tracker.md`.
 
 State transitions: an unlabeled issue normally goes to `needs-triage` first; from there it moves to `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`. `needs-info` returns to `needs-triage` once the reporter replies. The maintainer can override at any time; flag transitions that look unusual and ask before proceeding.
 

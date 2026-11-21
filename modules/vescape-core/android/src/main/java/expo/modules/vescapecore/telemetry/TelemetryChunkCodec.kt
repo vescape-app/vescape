@@ -25,7 +25,7 @@ internal data class TelemetrySample(
 internal const val TELEMETRY_CHUNK_VALUE_COLUMNS = 17
 
 /**
- * Canonical reconstruction of a stored `telemetry_frames` row (ADR 0044): masks are authoritative.
+ * Canonical reconstruction of a stored `telemetry_frames` row (ADR 0045): masks are authoritative.
  * A keyframe clears every column first and then counts as all bits set; otherwise a set bit replaces
  * the column with the row's value, NULL included (an explicit clear), and a clear bit keeps it.
  *
@@ -40,7 +40,7 @@ internal fun reconstructTelemetryValues(values: Array<Long?>, flags: Int, change
 internal class TelemetryChunkFormatException(message: String) : Exception(message)
 
 /**
- * Telemetry Chunk codec v1: one Board's samples for one minute in, one blob out (ADR 0044).
+ * Telemetry Chunk codec v1: one Board's samples for one minute in, one blob out (ADR 0045).
  *
  * Blob = `version:u8` `count:uvarint` `baseCapturedAtMs:svarint` then raw deflate (RFC 1951) of the
  * column body. Body = one column after another, in order `captured_at_ms`, `elapsed_realtime_ms`,
@@ -49,7 +49,7 @@ internal class TelemetryChunkFormatException(message: String) : Exception(messag
  * (`ceil(count/8)` bytes, LSB first, bit set = present) followed by zigzag-varint deltas of the present
  * values only. Each delta is against the column's previous value (previous present value for nullable
  * columns), starting from `baseCapturedAtMs` for `captured_at_ms` and 0 for every other column.
- * Deltas use wrapping 64-bit arithmetic; a value outside its column's declared width rejects. Full contract: ADR 0044.
+ * Deltas use wrapping 64-bit arithmetic; a value outside its column's declared width rejects. Invariants: ADR 0045.
  *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkCodec.swift `TelemetryChunkCodec`
  */

@@ -70,7 +70,7 @@ iOS has a peer Swift implementation, including background recording and Live
 Activity support. Native contracts are linked by `@parity` tags so changes stay
 aligned across platforms.
 
-See [Architecture](docs/architecture.md), [Connection state](docs/connectionState.md),
+See [Connection state](docs/connectionState.md), [VESC protocol](docs/vescProtocol.md),
 and [iOS](docs/ios.md) for the details.
 
 ## Project layout
@@ -206,12 +206,11 @@ For hard bugs, `/diagnosing-bugs` builds a fast red repro loop, minimises it, an
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
+- [Documentation index](docs/index.md)
 - [Domain language](GLOSSARY.md)
 - [Architecture Decision Records](docs/adr/)
 - [VESC protocol](docs/vescProtocol.md)
 - [Refloat GET_ALLDATA layout](docs/refloatAlldata.md)
-- [Android BLE notes](docs/bleAndroid.md)
 - [Tune](docs/tune.md)
 - [Alerts](docs/alerts.md)
 - [Ride history](docs/history.md)

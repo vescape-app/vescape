@@ -11,6 +11,7 @@ import kotlin.math.abs
  * spin, and a latch keeps excluding the steady spinning after it, which looks like cruising.
  *
  * Every value is fixed: per-Board calibration changed no Max Speed on the test rides (#629).
+ * Validation caveat: checked on 61–88 V Boards; not yet validated on 147–168 V Boards or light trick riders.
  *
  * @parity /modules/vescape-core/ios/telemetry/MetricSanitizer.swift `FreeSpinState`
  */

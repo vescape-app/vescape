@@ -282,7 +282,7 @@ internal enum RideExport {
     _ body: (_ timestamp: Int64, _ values: [Int64?]) throws -> Void) throws {
     let start = try telemetryAnchorMs(db, beforeMs: fromMs, boardId: boardId, allBoards: false) ?? fromMs
     var afterMs = start, afterId = Int64.min
-    // Replayed by the canonical `reconstructTelemetryValues` (ADR 0044).
+    // Replayed by the canonical `reconstructTelemetryValues` (ADR 0045).
     var values = [Int64?](repeating: nil, count: TELEMETRY_CHUNK_VALUE_COLUMNS)
     while true {
       let rows = try telemetryFrameRows(db, fromMs: start, toMs: toMs, boardId: boardId, allBoards: false,

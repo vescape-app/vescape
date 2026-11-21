@@ -100,6 +100,7 @@ internal struct FreeSpinCarry {
 ///
 /// Every value is fixed: per-Board calibration changed no Max Speed on the test rides (#629).
 ///
+/// Validation caveat: checked on 61–88 V Boards; not yet validated on 147–168 V Boards or light trick riders.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/sanitizers/FreeSpinMetricSanitizer.kt
 internal struct FreeSpinState {
   var previous: BucketTelemetryPoint?

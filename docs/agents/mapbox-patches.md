@@ -8,37 +8,23 @@ This project carries a Bun patch for `@rnmapbox/maps@10.3.2`:
 
 ## Direct camera property updates
 
-The patch adds this imperative camera method for high-frequency camera properties:
+The patch adds an imperative camera method that bypasses Mapbox's transition queue (`CameraOptions` applied directly on Android `MapboxMap.setCamera` and iOS `mapboxMap.setCamera(to:)`):
 
 ```ts
-cameraRef.current?.setCameraDirect({ pitch })
-cameraRef.current?.setCameraDirect({ heading })
+cameraRef.current?.setCameraDirect({ center, zoom, heading, pitch, padding })
 ```
 
-It is used by `src/screens/main/MainMap.tsx` to continuously derive pitch from zoom while the
-map camera is moving, including native deceleration after the user releases a pinch gesture. The
-pitch calculation remains pure in `src/modules/map/lib/cameraProfiles.ts` (`getPitchForZoom`).
+It is used in two places:
 
-It also carries the fused phone heading in Compass mode (`usePhoneHeading` retargets the camera
-engine, which writes through `setCameraDirect`) without starting and repeatedly cancelling Mapbox
-camera transitions for every sensor sample.
+- **Spring camera engine** (`src/screens/main/map/useCameraControls.ts`): every app-driven camera move (recenter, follow, mode changes, fused Compass heading via `usePhoneHeading`, focus) funnels through the JS spring engine, which writes `center`, `zoom`, `heading`, `pitch`, and `padding` per frame via `setCameraDirect` so retargets stay velocity-continuous without starting/cancelling Mapbox transitions.
+- **Pitch-follows-zoom** (`src/screens/main/MainMap.tsx`): derives pitch from zoom (`getPitchForZoom`) while the camera moves, including native pinch deceleration.
 
 ### Why normal `setCamera` is not used
 
-`Camera.setCamera({ pitch, animationDuration: 0 })` does not perform a neutral property write in
+`Camera.setCamera({ ..., animationDuration: 0 })` does not perform a neutral property write in
 `@rnmapbox/maps`. On Android it reaches `CameraUpdateItem`, which calls Mapbox `flyTo` with a
-zero-duration animation. Repeating that call from `onCameraChanged` starts camera transitions and
-cancels the native pinch-zoom/deceleration transaction. The visible symptom is zoom momentum
-stopping when automatic tilt changes.
-
-`setCameraDirect` bypasses that transition queue:
-
-- Android: `MapboxMap.setCamera(CameraOptions.Builder().pitch(pitch).build())`
-- iOS: `mapboxMap.setCamera(to: CameraOptions(pitch: pitch))`
-
-Use `setCameraDirect` only for camera properties that must track an already-running native camera
-gesture or animation. Continue using normal `setCamera` for intentional app-driven camera moves,
-such as focus, mode changes, recentering, and animated perspective toggles.
+zero-duration animation. Repeating that call from `onCameraChanged` or a spring frame loop starts
+camera transitions and cancels native pinch-zoom/deceleration momentum.
 
 ## Cancelling native camera motion
 
@@ -49,18 +35,13 @@ cameraRef.current?.cancelCameraAnimations()
 - iOS: `mapView.camera.cancelAnimations()`
 - Android: `mapView.camera.cancelAllAnimators()`
 
-The counterpart to the property above. `setCameraDirect` writes camera state without touching
-native animators, which is exactly what pitch-follows-zoom needs and exactly what an app-driven
-camera move cannot live with: a fling started before the move keeps writing the camera every frame
-and overwrites each frame the spring engine writes. The visible symptom is a recenter that lands
-and then drifts on in the direction of the throw, ignoring repeated taps.
+The counterpart to `setCameraDirect`: because `setCameraDirect` deliberately does not touch native
+animators, a user fling started before an app-driven move keeps writing the camera every frame and
+overwrites the spring engine (symptom: recenter lands, then drifts in the direction of the throw).
 
 `src/screens/main/map/useCameraControls.ts` wires it to the camera engine's `cancelNativeMotion`,
 which fires once when an app-issued target claims the camera — never per frame, and not for
 retargets inside a move the engine already owns.
-
-The current native bridge intentionally accepts only `pitch` and `heading`. Do not broaden it to
-arbitrary camera options without a concrete use case and gesture-behavior verification.
 
 ## Drawing marker views inside the map frame
 
@@ -161,3 +142,11 @@ cd android && ./gradlew :app:compileDebugKotlin
 
 On a device, pinch and release quickly in map mode. Zoom must keep decelerating while pitch follows
 the changing zoom. Also verify normal recentering and navigation-mode camera animations.
+
+## Camera loop & `ShapeSource` traps
+
+- **Backgrounding does not stop sensor or JS camera loops.** On iOS, `UIBackgroundModes` (`bluetooth-central`, `location`) keeps the JS thread and CoreMotion running with the screen off; only `requestAnimationFrame` pauses. Gate visual-only loops (heading sensors, camera writes) on `useAppActive` (`inactive` counts as away), or writes queue against a dark screen and trigger FrontBoard's 10 s watchdog kill (`0x8BADF00D`) on unlock.
+- **`setCamera` fires `onCameraChanged` synchronously**, and Mapbox's hidden compass ornament still commits a `UIView.animate` per bearing change even with `compassEnabled={false}`. Keep perceptual frame skipping in `src/modules/map/lib/cameraEngine/engine.ts` (`emit(..., { force: true })` is only for the landing frame / post-landing hold that must overwrite a native fling animator).
+- **Rescale EMA smoothing when changing sample rate.** Halving sensor rate requires `alpha' = 1 - (1 - alpha)²` and a matching dead-band rescale to keep the same time constant and jitter rejection.
+- **Do not treat `setNativeProps` on a `ShapeSource` as a cheap property poke** — it performs a full JSON → parse → `setGeoJSON` → re-tile pass.
+- **Keep the per-frame camera echo to JS** unless replacing what depends on it: it is the single writer for off-screen indicators.

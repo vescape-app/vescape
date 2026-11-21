@@ -186,15 +186,13 @@ Do not hand-edit layouts. Regenerate them.
   Refloat base version, MCCONF keys by `MCCONF_SIGNATURE`.
 - **Unknown signature means no data, not a guess.** Report the signature alongside firmware version
   and hardware name so unseen signatures surface and a layout can be added.
-- **MCCONF cannot be mandatory link state.** ADR 0035 makes Refloat config mandatory because the
-  board always serves its own schema, so it is always decodable. MCCONF may legitimately be absent
-  on an unknown signature, so it must not gate linking. That difference is principled — it follows
-  from where the schema comes from — and needs its own ADR rather than a caveat on 0035.
+- **Mandatory link state.** Like Refloat config, Board Probe waits for decoded MCCONF values and
+  refuses linking when the board's signature has no carried layout, rather than silently dropping
+  voltage/temperature cutoffs at ride time. At runtime an unknown or malformed payload clears the
+  cached values (`motorConfigValues = null`) instead of keeping stale data from another signature.
 - **Read-only.** Writing MCCONF is out of scope. A partial layout cannot back a write, and the
   consequences of a bad motor config write are severe.
 
 ## Sources
 
-- `vedderb/bldc`, `confgenerator.c` and `confgenerator.h`, branches listed above. Read 2026-08-24.
-- Floaty's bundled parameter dictionaries (`~/Workspace/floaty-reverse-engineering`) confirm the
-  per-version bundling approach and were the source of the XML metadata compared above.
+- `vedderb/bldc`, `confgenerator.c` and `confgenerator.h`, branches listed above (read 2026-08-24).

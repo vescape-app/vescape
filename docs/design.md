@@ -35,29 +35,6 @@ Android native `Switch` color props also receive resolved string colors. Its nat
 
 Satellite follows the effective app appearance with a navy backdrop in dark mode and a light backdrop in light mode. Home and Explore retain independent imagery-opacity preferences.
 
-| Role           | Token                         |
-| -------------- | ----------------------------- |
-| Background     | `theme.neutral.bg`            |
-| Card / surface | `theme.neutral.surface`       |
-| Deep surface   | `theme.neutral.surfaceDeep`   |
-| Border         | `theme.neutral.border`        |
-| Primary text   | `theme.neutral.textPrimary`   |
-| Secondary text | `theme.neutral.textSecondary` |
-| Muted text     | `theme.neutral.textMuted`     |
-| Dim text       | `theme.neutral.textDim`       |
-
-Interactive surfaces use a separate semantic family:
-
-| Role                | Token                              |
-| ------------------- | ---------------------------------- |
-| Control background  | `theme.control.background`         |
-| Pressed background  | `theme.control.backgroundPressed`  |
-| Disabled background | `theme.control.backgroundDisabled` |
-| Control border      | `theme.control.border`             |
-| Control divider     | `theme.control.divider`            |
-| Control text/icon   | `theme.control.text` / `.icon`     |
-| Muted control text  | `theme.control.textMuted`          |
-
 ## Layout Principles
 
 - **No decorative boxes or elevation.** Cards wrap only interactive groups (rows with inputs, switches, buttons). Do not wrap static info or labels in bordered containers, and do not use shadows to make hierarchy.
@@ -67,84 +44,12 @@ Interactive surfaces use a separate semantic family:
 
 ## Semantic Colors
 
-Use `src/constants/theme.ts` for all accent colors. Never hardcode a hex value, `rgba(...)` literal, or any color string directly in a component.
+All token names and swatches live in `src/constants/theme.ts` (`neutral`, `control`, `palette`, `telemetry`, `map`, `status`, `tune`). Selection rules:
 
-`theme.tune` aliases the purple palette for Tune Profile actions and entry points.
-
-The theme is organized into domains:
-
-### `palette`
-
-Each accent hue has two appearance-specific palettes. Use `color` for icons and thin emphasis, `text` for foreground text, `bg`/`border` for tinted controls, and the `solid`/`onSolid` pair for filled actions such as primary buttons. Never place a guessed black or white label over an accent fill.
-
-Named hue swatches. Every hue exposes `.color`, `.alt` (alias of `.light`), `.light`, `.text`, `.bg`, and `.border`.
-
-| Hue       | Purpose                                        |
-| --------- | ---------------------------------------------- |
-| `cyan`    | Brand / primary accents                        |
-| `sky`     | Board data, version, distance, speed           |
-| `green`   | GPS, Android platform, success, battery        |
-| `purple`  | Time, iOS platform, profiles                   |
-| `amber`   | Weather sun, diagnostic indicators             |
-| `orange`  | Warnings, motor and controller temperatures    |
-| `red`     | Destructive actions, errors                    |
-| `yellow`  | Stars, achievements, gauges                    |
-| `blue`    | Currents, info states                          |
-| `fuchsia` | Roll telemetry                                 |
-| `pink`    | Balance pitch telemetry                        |
-| `violet`  | Map trail / marker accents                     |
-| `slate`   | Neutral surfaces, text, borders, map buildings |
-| `mono`    | Pure black and white                           |
-
-### `telemetry`
-
-Appearance-specific tokens for every metric. Use these for charts, sparklines, gauges, and live readouts so the same metric keeps its identity while meeting the contrast needs of dark and white canvases.
-
-| Token            | Source hue             |
-| ---------------- | ---------------------- |
-| `speed`          | Speed / distance blue  |
-| `duty`           | Duty-cycle teal        |
-| `motorCurrent`   | Motor-current blue     |
-| `battCurrent`    | Battery-current blue   |
-| `motorTemp`      | Motor-temperature red  |
-| `controllerTemp` | Controller-temp orange |
-| `battVoltage`    | Battery green          |
-| `footpad1`       | Footpad neutral 1      |
-| `footpad2`       | Footpad neutral 2      |
-| `pitch`          | Pitch purple           |
-| `roll`           | Roll fuchsia           |
-| `balancePitch`   | Balance-pitch pink     |
-
-### `map`
-
-| Token           | Purpose              |
-| --------------- | -------------------- |
-| `user`          | Current GPS position |
-| `target`        | Destination / target |
-| `buildingDark`  | Dark map buildings   |
-| `buildingLight` | Light map buildings  |
-
-### `status`
-
-Semantic UI-state tokens. Each exposes `.color`, `.text`, `.bg`, and `.border`.
-
-| Token      | Meaning                |
-| ---------- | ---------------------- |
-| `info`     | Informational callouts |
-| `success`  | Success / connected    |
-| `warning`  | Warnings               |
-| `error`    | Errors / destructive   |
-| `favorite` | Favorites / stars      |
-
-### `alpha`
-
-Every translucent value (overlays, backdrops, zone tints, glow gradients, vignettes) must be created with `theme.alpha(color, level)` using one of the typed levels:
-
-```ts
-type AlphaLevel = 0 | 0.12 | 0.3 | 0.4 | 0.6 | 0.7 | 0.8 | 0.85 | 1
-```
-
-Neutral row icons use `theme.neutral.textSecondary`.
+- **`theme.neutral` vs `theme.control`:** read-only surfaces/borders/copy use `theme.neutral.*` (neutral row icons use `theme.neutral.textSecondary`); interactive surfaces and their foregrounds use `theme.control.*`. Never use fixed-dark `theme.palette.slate` for app UI.
+- **`theme.palette.<hue>`:** use `.color` for icons/thin borders, `.text` for foreground text, `.bg`/`.border` for tinted pills, and the contrast-checked `.solid`/`.onSolid` pair for filled buttons — never place a guessed black/white label over an accent fill. `theme.tune` aliases purple for Tune Profile actions.
+- **`theme.telemetry` / `theme.status` / `theme.map`:** use domain tokens instead of picking raw palette hues so metrics and states stay consistent and contrast-safe across appearances.
+- **`theme.alpha(color, level)`:** every translucent value must go through `theme.alpha(...)` with its typed `AlphaLevel`, never hand-written `rgba(...)`.
 
 ## Icons
 

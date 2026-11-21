@@ -23,7 +23,7 @@ bunx expo run:ios --device <hardware-udid> --configuration Release
 ```
 
 Release matters: Hermes bytecode is optimized and the dev-tools overhead is gone. Debug numbers are
-worthless (see [performance-findings.md](../performance-findings.md), 40–50% skew).
+worthless (React DevTools adds 40–50% JS thread overhead).
 
 The dev variant installs as `app.vescape.dev` and can run side by side with the store build — check
 you are profiling the right one.

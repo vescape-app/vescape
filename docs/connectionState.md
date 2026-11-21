@@ -25,61 +25,14 @@ allow an observation to drop those known facts. VESC firmware, BMS, and Board Li
 still apply. The comparison also accepts the corresponding derived base-version precision change;
 it does not rewrite persisted versions or change Tune Compatibility keys.
 
-## Shape
+## Snapshot vs event contract
 
-Native emits `onLiveState` and exposes `getLiveState()`. Both platforms use the same history
-contract: `getLiveState()` includes the retained `recentTelemetry` and `recentLocations` windows;
-`onLiveState` status events carry empty history arrays, including storage-failure events. The arrays
-in an event mean history was omitted, not cleared. JS merges the latest GPS fixes from events and
-replaces its history only from an explicit snapshot. Replay teardown still clears replay fixes.
-
-The shared shape is:
-
-```ts
-type LiveState = {
-  board: {
-    phase:
-      | 'idle'
-      | 'connecting'
-      | 'discovering'
-      | 'subscribing'
-      | 'waiting_for_telemetry'
-      | 'connected'
-      | 'stale'
-      | 'reconnecting'
-      | 'disconnecting'
-      | 'error'
-    selectedBoardId: string | null
-    connectedBoardId: string | null
-    bleId: string | null
-    name: string | null
-    connectionSeq: number
-    lastTelemetryAt: number | null
-    recentTelemetry: TelemetryEvent[]
-    error: string | null
-    autoConnect: boolean
-  }
-
-  gps: {
-    phase: 'idle' | 'starting' | 'active' | 'error'
-    latestFix: LocationEvent | null
-    recentLocations: LocationEvent[]
-    error: string | null
-  }
-
-  scan: {
-    phase: 'idle' | 'scanning' | 'error'
-    devices: DeviceFoundEvent[]
-    error: string | null
-  }
-
-  recording: {
-    enabled: boolean
-    activeBoardId: string | null
-    startedAt: number | null
-  }
-}
-```
+Native emits `onLiveState` and exposes `getLiveState()` (canonical `LiveStateEvent` type lives in
+`modules/vescape-core/src/index.ts`). Both platforms use the same history contract: `getLiveState()`
+includes the retained `recentTelemetry` and `recentLocations` windows; `onLiveState` status events
+carry empty history arrays, including storage-failure events. The empty arrays in an event mean
+history was omitted, not cleared. JS merges the latest GPS fixes from events and replaces its
+history only from an explicit snapshot. Replay teardown still clears replay fixes.
 
 ## Runtime split
 
@@ -142,8 +95,8 @@ Consequences worth naming:
   on an edge.
 - Backgrounding the app with no ride, no Group Ride and no wrist Navigation stops GPS entirely. On
   Android that also drops the `LOCATION` foreground-service type, which lets an otherwise idle host stop existing.
-- Idle Pause stands GPS down while the app is backgrounded. Recording is already halted there
-  (ADR 0021), so nothing is lost but the time-to-first-fix on resume.
+- Idle Pause stands GPS down while the app is backgrounded. Recording is already halted there,
+  so nothing is lost but the time-to-first-fix on resume.
 - The `gps_fix_stale` watchdog runs only in `ride` mode. In `map` mode a stationary rider produces no
   fixes by design, so watching for silence would log noise rather than a fault.
 
@@ -177,16 +130,9 @@ changes restore both mirrors from one `getLiveState()` snapshot.
 - Starting or ending a debug replay sends a full snapshot with the trail cleared, so replay
   coordinates cannot join the real trail.
 - Board connect/disconnect and GPS permission refresh do not own the location subscription.
-  Background collection and GPS power decisions stay native on both platforms.
-
-Commands call native only:
-
-- `connect(boardId)` → `selectBoard(boardId)`
-- `disconnect()` → `stopBoard()`
-- `refreshGpsDemand()` → `refreshLocationDemand()` — a nudge, not a command to start. JS calls it
-  once the location permission is answered, because a grant is the one demand input native cannot
-  observe for itself.
-- `startTelemetryRecording()` → `setTelemetryRecordingEnabled(true)`
+  Background collection and GPS power decisions stay native on both platforms. JS calls
+  `refreshLocationDemand()` once a location permission prompt is answered — a nudge, not a start
+  command, because permission grant is the one demand input native cannot observe for itself.
 
 ## Auto-connect
 
@@ -268,11 +214,11 @@ writes during startup.
 ## Recording
 
 Recording means real Ride Recording capture. A connected Board arms it; what becomes a ride in
-history is decided afterwards from the recorded data alone (ADR 0041).
+history is decided afterwards from the recorded data alone.
 
 - A connected Board must have armed it. Standalone GPS never starts one — GPS without a Board is
   map/status only, and creates no ride history.
-- It saves Board telemetry **and** a Ride Track of GPS fixes, on two separate clocks (ADR 0038).
+- It saves Board telemetry **and** a Ride Track of GPS fixes, on two separate clocks.
 - **It outlives the Board Link.** An unexpected drop does not disarm capture, and telemetry resumes
   when the Board returns. GPS fixes keep landing for the **Ride Dropout Grace**; past it the phone
   stops producing fixes, so the Ride Track ends there even though capture and the reconnect loop
@@ -298,15 +244,17 @@ picks it up.
 
 ### Idle Pause and disconnection
 
-While **connected**, the Board controls Idle Pause (ADR 0021): the first disengaged Refloat sample
+While **connected**, the Board controls Idle Pause: the first disengaged Refloat sample
 pauses both telemetry and Ride Track writes. RUNNING, TILTBACK, and WHEELSLIP are engaged states;
 the next sample in any of those states resumes both streams, even at zero speed. Polling remains
 at about 1 Hz while paused, accepting about a second of resume latency to save battery.
 Phone movement cannot override the Board, and paused samples are never backfilled.
 
 On **unexpected disconnection the pause gate is released**, because it halts GPS too and off the link
-there is no Board engagement signal to ever reopen it. Recording continues on GPS alone until the rider
-stops it. On reconnection the detector takes over again from the next board-ready.
+there is no Board engagement signal to ever reopen it. Recording continues on GPS alone for the
+**Ride Dropout Grace** (`RIDE_DROPOUT_GRACE_MS = 120_000` ms) while capture and reconnect stay open;
+past that grace, `ride` GPS demand drops until the Board returns or the rider stops recording. On
+reconnection the detector takes over again from the next board-ready.
 
 ### Changing Boards
 
@@ -336,7 +284,7 @@ service truth, not from cached JS status.
 
 A CoreBluetooth state-restoration relaunch (ADR 0034) rebuilds the Board Session that was live when
 the process died, and re-arms capture when the resume marker says recording was on. Whether that
-makes one ride or two is decided by the recorded data (ADR 0041): riding again inside the split
+makes one ride or two is decided by the recorded data: riding again inside the split
 window stays one ride. The dead interval stays a real gap in both streams: nothing is fabricated for
 time the process could not run.
 

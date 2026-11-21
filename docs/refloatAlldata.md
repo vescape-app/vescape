@@ -11,7 +11,7 @@ Source: [`lukash/refloat`](https://github.com/lukash/refloat) `src/main.c` → `
 ```
 
 Modes: `1` = RT data only, `2` += odometer + temps, `3` += energy counters, `4` += charging.
-We use mode 2. Mode 4 was tried for charging detection but reverted — see [chargingDetection.md](./chargingDetection.md).
+We use mode 2. Mode 4 (`charging.current` / `charging.voltage` at bytes 55–58) and `state_compat = 14` (`CHARGING`) were tested and reverted: on boards whose wall charger wires directly to the battery pack bypassing the VESC (such as ADV2), both mode 4 fields always read `0.0` and stationary plugged-in boards report `FAULT_STARTUP` (11). Reliable charging detection needs either BMS CAN charging telemetry or a dedicated charge-detect pin wired to the VESC.
 
 ## Response payload layout (mode = 2, normal — no fault)
 

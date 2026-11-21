@@ -34,9 +34,12 @@ The integration is owned by these durable files:
   requests. Android encrypts with an Android Keystore key. iOS uses Keychain accessibility
   `AfterFirstUnlockThisDeviceOnly`, so long-lived native work can read it while the screen is locked.
 
-Device Tokens are never exposed back to JS after provisioning. Native App Status attaches the
+Device Tokens are bound to the server origin they were minted for (a token for one origin is never
+sent to another) and are never exposed back to JS after provisioning. Native App Status attaches the
 credential, persists renewed expiry, and changes the credential state to `rejected` for expired or
-revoked tokens. A `401` from a native authenticated request does the same without retrying.
+revoked tokens. A `401` from a native request using `AuthMode.Required` with the stored token does
+the same without retrying; optional-auth requests and explicit bearer provisioning calls do not
+reject the stored credential.
 
 Sign-out ordering is security-sensitive:
 

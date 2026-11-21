@@ -81,8 +81,8 @@ owner cannot outlive the stream that claimed the slot.
   sensor is a full-range swing in one 20 Hz sample — can hand the firmware an instant angle error.
   Steady state still follows the readings exactly; only the rate of change is bounded.
 
-The binding's own release conditions, Board-side and Accessory-side, are tabulated in
-[native-api.md](./native-api.md#ground-clearance-tilt).
+The binding's own release conditions (`GroundClearanceRelease` in `modules/vescape-core/src/index.ts`)
+and sensor lifecycle rules live in [accessories.md](./accessories.md).
 
 Native limitations remain: return durations are quantized to the existing 100ms controller tick and
 the GATT write queue still lacks a write-completion watchdog. Neither the UI rework nor the ownership

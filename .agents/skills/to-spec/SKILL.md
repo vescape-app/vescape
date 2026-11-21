@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 This skill takes the current conversation context and Vescape app codebase understanding and produces a spec (PRD). Do NOT interview the user except for the explicit approval gates below; synthesize what you already know.
 
-The issue tracker, app-area labels, and triage label vocabulary live in `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`. Domain docs live in `GLOSSARY.md` and `docs/adr/`.
+The issue tracker, app-area labels, and triage label vocabulary live in `docs/agents/issue-tracker.md`. Domain docs live in `GLOSSARY.md` and `docs/adr/`.
 
 ## Titles and Area Tags
 

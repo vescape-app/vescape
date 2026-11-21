@@ -1291,7 +1291,7 @@ internal data class FullTelemetryState(
     )
 
     fun applyFrame(previous: FullTelemetryState?, frame: TelemetryFrameEntity): FullTelemetryState? {
-      // Canonical reconstruction (ADR 0044, `reconstructTelemetryValues`): masks are authoritative, so
+      // Canonical reconstruction (ADR 0045, `reconstructTelemetryValues`): masks are authoritative, so
       // a set bit with NULL clears an optional reading instead of keeping the previous one.
       val keyframe = frame.flags and TELEMETRY_FLAG_KEYFRAME != 0
       val base = if (keyframe) null else previous

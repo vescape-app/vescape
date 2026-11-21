@@ -50,7 +50,7 @@ the supported controller firmware policy drops that version.
   decoding path only if no remaining supported layout uses it.
 - Update `docs/mcconf.md`. Run both motor-decoder suites and retain structural checks for every
   supported table. Cover the removed signature `776184161` as unsupported, with no fallback.
-- Verify unsupported motor config still prevents linking as required by ADR 0036.
+- Verify unsupported motor config still prevents linking as required by `docs/mcconf.md`.
 
 ## Keep
 

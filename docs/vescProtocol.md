@@ -1,6 +1,27 @@
 # VESC Protocol
 
-→ [index](./index.md) | [architecture](./architecture.md) | [refloatAlldata](./refloatAlldata.md)
+→ [index](./index.md) | [refloatAlldata](./refloatAlldata.md) | [mcconf](./mcconf.md)
+
+## Hardware topology & BLE profile
+
+```text
+Phone (Android / iOS)
+  │  BLE / Nordic UART Service (NUS)
+  ▼
+ESP32 "VESC Express"   ← BLE bridge (CAN bridge boards); direct BLE boards skip this hop
+  │  CAN bus
+  ▼
+STM32 VESC             ← motor controller, runs Refloat VESC package
+```
+
+Service: `6e400001-b5a3-f393-e0a9-e50e24dcca9e` (Nordic UART).
+
+| Characteristic | UUID       | Role                                               |
+| -------------- | ---------- | -------------------------------------------------- |
+| NUS TX         | `6e400002` | Phone **writes** here; ADV2 also **notifies** here |
+| NUS RX         | `6e400003` | Present in GATT but ADV2 does **not** notify on it |
+
+**Key quirk**: ADV2 firmware (`comm_ble.c`) sets `notify_conn_id` inside the write handler for `6e400002`, so both writes and notifications travel on `6e400002`. Native subscribes to **both** `6e400003` and `6e400002` (writing CCCDs sequentially on Android) and accepts packets from either. For BLE write chunking (ATT MTU − 3) and iOS `.withoutResponse` rules, see [ADR-0049](./adr/0049-ble-write-safety-and-remote-input-arbitration.md).
 
 ## Packet framing
 
@@ -10,9 +31,7 @@ Short packet (payload ≤ 255 bytes):
 [0x02] [len: 1B] [payload: N bytes] [crc_hi] [crc_lo] [0x03]
 ```
 
-CRC: CRC-16/XMODEM, poly=0x1021, init=0x0000, big-endian.
-
-The reassembler (`src/vesc/reassembler.ts`) handles packets split across multiple BLE MTU chunks.
+CRC: CRC-16/XMODEM, poly=0x1021, init=0x0000, big-endian. Native reassemblers in `modules/vescape-core/` reassemble packets split across multiple BLE MTU chunks.
 
 ## Command IDs (subset)
 
@@ -30,7 +49,7 @@ The reassembler (`src/vesc/reassembler.ts`) handles packets split across multipl
 
 **Symptom**: `COMM_GET_VALUES` (0x04) sent successfully (write-with-response confirmed), but zero notification packets received.
 
-**Cause**: The ESP32 is a dumb BLE→CAN bridge. It only handles `COMM_FW_VERSION` locally. All other commands including `COMM_GET_VALUES` must be addressed to a specific CAN device ID and prefixed with `COMM_FORWARD_CAN`. Without the prefix the ESP32 has no motor controller CAN ID to forward to.
+**Cause**: The ESP32 is a dumb BLE→CAN bridge. It only handles local bridge commands (`COMM_FW_VERSION`, `COMM_PING_CAN`) directly. All motor/BMS commands including `COMM_GET_VALUES` must be addressed to a specific CAN device ID and prefixed with `COMM_FORWARD_CAN`. Without the prefix the ESP32 has no motor controller CAN ID to forward to.
 
 **Fix**:
 
@@ -66,10 +85,15 @@ Board Probe (setup, once):
 Runtime connect (every session, dumb):
 1. nativeConnect(deviceId)                  — GATT connect, MTU 517, CCCD writes
 2. seed direct/CAN mode from stored Board Transport
-3. poll every 500ms (no discovery probes):
+3. start polling immediately (response-paced with configurable SessionConfig.pollIntervalMs floor, no discovery probes):
    direct: send [CUSTOM_APP_DATA, 101, GET_ALLDATA, 2]
    CAN:    send [FORWARD_CAN, canId, CUSTOM_APP_DATA, 101, GET_ALLDATA, 2]
 ```
+
+## Android BLE traps
+
+- **API 33+ notification callback split**: Android 13 introduced a 3-parameter `BluetoothGattCallback.onCharacteristicChanged(gatt, characteristic, value)` signature. `VescGattClient` must override **both** the 3-parameter and deprecated 2-parameter callbacks, or notifications silently stop firing on Android 13+.
+- **Probe reconnect `status=133`**: re-probing a connected board closes the live GATT first, and Android releases that connection asynchronously after `close()` returns, so an immediate reconnect fails with `GATT_ERROR (133)`. `BoardTransportDetector` settles before its first connect and retries connect-phase drops with backoff.
 
 ## BLE write serialization
 
@@ -149,5 +173,4 @@ and payloads too short for the claimed cell count.
 ### Flow to UI
 
 `handleBmsPayload` → emit `onBms` → `bleStore.latestBms` → `summarizeBms` (min/max/spread/avg,
-extreme tagging) → `BmsCellVoltages` grid on the battery control screen. iOS BMS parsing waits
-for the CoreBluetooth protocol port and must use real board packets, not synthetic values.
+extreme tagging) → `BmsCellVoltages` grid on the battery control screen. Both Android and iOS parse real board packets natively.

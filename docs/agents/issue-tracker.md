@@ -111,17 +111,21 @@ Area-label color communicates implementation hazard, not product identity:
 | Purple | `5319E7` | `area:server`, `area:sync`                         |
 | Gray   | `6E7781` | Every other `area:*` label                         |
 
-When creating a new `area:*` label, use gray unless it belongs to an explicitly approved hazard or server grouping. Do not introduce a new area color ad hoc. If a label changes category, update both GitHub and this policy in the same turn.
+When creating a new `area:*` label, use gray unless it belongs to an explicitly approved hazard or server grouping. Do not introduce a new area color ad hoc. If a label changes category, update both GitHub and this policy in the same turn. When an issue carries `area:native` or `area:db`, expect native rebuilds and/or storage migrations — factor that into the agent brief and complexity rating.
+
+## Triage labels
+
+Every triaged issue carries one state role (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`) and one kind label below. Map canonical role `bug` to `🐛🐞🐜🐝🪲 BUG!!!`.
 
 ## Complexity labels
 
 Every implementation issue must have exactly one complexity label. Complexity reflects **risk and precision needed**, not size. A 5-line native pipeline change can be `complexity:high`; a 100-line UI component can be `complexity:low`.
 
-| Label               | When to use                                                                                                                    | Claude         | OpenAI        |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------- | ------------- |
-| `complexity:low`    | Routine changes with a clear solution and easy checks. Can touch multiple files or platforms when following existing patterns. | sonnet / haiku | GPT-5.3 Codex |
-| `complexity:medium` | Moderate integration surface, needs care but not safety-critical                                                               | sonnet         | GPT-5.4 Codex |
-| `complexity:high`   | Critical paths, subtle correctness, native pipelines, data integrity                                                           | opus           | GPT-5.5       |
+| Label               | When to use                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `complexity:low`    | Routine changes with a clear solution and easy checks. Can touch multiple files or platforms when following existing patterns. |
+| `complexity:medium` | Moderate integration surface, needs care but not safety-critical                                                               |
+| `complexity:high`   | Critical paths, subtle correctness, native pipelines, data integrity                                                           |
 
 ## Kind labels
 
@@ -145,20 +149,3 @@ gh issue list --label "🐛🐞🐜🐝🪲 BUG!!!" --state open
 Do not create a plain `bug` label. A `gh label list | grep -i "^bug"` will miss the real one
 because of the emoji prefix — check the full `gh label list` output before concluding a label is
 absent.
-
-## When a skill says "fetch the relevant ticket"
-
-Run:
-
-```bash
-gh issue view <number> --json number,title,body,state,labels,assignees,comments,url --jq '.'
-```
-
-Do not use unauthenticated HTTP requests or browser scraping for GitHub issue content. Do not treat empty output from plain `gh issue view --comments` as an empty issue; retry with JSON.
-
-## When implementing an issue
-
-1. Fetch the issue with `gh issue view <number> --json number,title,body,state,labels,assignees,comments,url --jq '.'`.
-2. Use local files in the checked-out repo for code and docs.
-3. Use `gh issue comment <number> --body "..."` for implementation notes when needed.
-4. Never rely on public GitHub HTTP URLs for issue or repository contents; this repo is private.

@@ -1,3 +1,5 @@
-# Native App Status gates Online Capabilities
+# Native App Status gates Online Capabilities without interrupting rides
 
-The Vescape server owns a committed **Release Policy**, resolves its version ranges from the native app version sent with each app request, and rejects blocked **Online Capabilities**; native Android and iOS own the device's current App Status, persist dismissed **Community Message** ids, and gate long-lived online work, while JS only renders status and sends intents. An **Update Warning** changes no capability availability, an **Online Block** leaves local capabilities available while denying online ones, and the exceptional **App Block** replaces normal JS UI with update-only UI without ending an already-running **Board Session** or **Ride Recording**; this keeps background work and durable truth native-owned without duplicating version-range evaluation across platforms.
+The Vescape server owns the **Release Policy** and resolves version ranges from the native app version header — never duplicate version-range evaluation on clients. Native Android and iOS own App Status and gate long-lived online work while JS only renders status.
+
+**Safety boundary:** an `Online Block` leaves all local capabilities working, and even an exceptional `App Block` (update-only UI) MUST NEVER terminate an already-running **Board Session** or **Ride Recording**.

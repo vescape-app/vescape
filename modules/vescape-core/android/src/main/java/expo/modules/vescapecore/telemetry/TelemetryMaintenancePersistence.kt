@@ -38,7 +38,7 @@ internal data class RebuildState(
   fun point() = BucketTelemetryPoint(at, boardId,
     speed, voltage, motorCurrent, batteryCurrent, duty, odometer, tempMosfet, tempMotor)
   companion object {
-    /** Canonical replay (ADR 0044): a set mask bit replaces the column, NULL included. */
+    /** Canonical replay (ADR 0045): a set mask bit replaces the column, NULL included. */
     fun apply(previous: RebuildState?, frame: TelemetryFrameEntity): RebuildState? {
       val keyframe = frame.flags and TELEMETRY_FLAG_KEYFRAME != 0
       val old = previous?.takeIf { !keyframe && it.boardId == frame.boardId }

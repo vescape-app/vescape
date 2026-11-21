@@ -7,10 +7,8 @@ They come out of building `src/components/charts/line/` (the zoomable telemetry 
 replacing the chart before it. Most of them are not guessable from the Skia docs; each one below
 cost a visible bug or a dropped frame first.
 
-For React Native conventions generally see [`react.md`](./react.md). For why high-frequency
-telemetry never drives React state, see
-[`docs/performance-findings.md`](../performance-findings.md) — a different problem (render
-pressure), same underlying rule: the UI thread owns anything that moves at touch or sensor rate.
+For React Native conventions and why high-frequency telemetry never drives React state, see
+[`react.md`](./react.md#high-frequency-live-streams) — the UI thread owns anything that moves at touch or sensor rate.
 
 ## What a frame costs
 
