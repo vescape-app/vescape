@@ -1,0 +1,6 @@
+# Board Warnings isolate crashes, serialize writes, and sweep retired kinds
+
+- **Crash-isolated at the session boundary:** **Board Warnings** are secondary to riding; detector evaluation (`guardWarningEval`) and registry database writes (`CoroutineExceptionHandler`) are isolated at the **Board Session** boundary so a detector bug or SQLite failure never crashes the foreground service or BMS hot path. Each failure `(site, session)` is reported at most once per session to avoid per-frame diagnostic spam.
+- **Single-threaded registry write serialization:** registry writes serialize on one dedicated dispatcher (`warningWriteDispatcher`) so concurrent findings commit in submission order, preserving monotonic severity within a Board Session.
+- **Retired kinds are actively swept:** retired `BoardWarningKind` slugs remain durable in the warnings table and no detector ever reports them clean, so config evaluation actively clears retired kinds (otherwise a retired warning would sit on a rider's Board forever).
+- **Manual clear always resets detector dedupe:** `onManualClear` runs even when no row was deleted, so a warning lost to a swallowed write is still re-armed within the same Board Session.
