@@ -9,7 +9,6 @@ final class RideHazardCuesTests: XCTestCase {
     RideHazard(kind: kind, lat: 50 - metresSouth / 111_195, lng: 19, startedAt: startedAt, expiresAt: startedAt + 600_000)
   }
 
-  /// A fix `metres` south of the hazards.
   private func at(_ metres: Double) -> String? { cues.fix(lat: 50 - metres / 111_195, lng: 19, relayNow: 10_000) }
 
   func testCuesOnceWhenClosingInWithin30mNeverOnArrival() {

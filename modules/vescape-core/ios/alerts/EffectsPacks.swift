@@ -1,25 +1,17 @@
 import Foundation
 
-/// Built-in effects packs (`shared/alerts/packs/effects-<id>`): every pack fills the required slots
-/// of `scripts/alert-packs/EFFECTS.md` (positive/info/warning/critical sounds, geiger ticks) and
-/// may fill the optional cue slots (`optionalSlotFallback`). The `soundPack`
-/// setting names one of them; My sounds overrides (`soundOverrideSlots`) win over its slots.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt
 /// @parity /src/modules/settings/lib/appSounds.ts `EFFECTS_PACKS`
 internal let effectsPackIds = ["arc", "pulse", "hev"]
 
-/// Default pack, and the one standing in for an unknown or retired id (`retro`, `simple`).
 internal let effectsPackFallback = "arc"
 
-/// Former effects pack id → its new id; a saved one reads as the renamed pack.
 internal let renamedEffectsPackIds = ["clean": "pulse"]
 
 internal func effectsPackId(_ pack: String) -> String {
   effectsPackIds.contains(pack) ? pack : effectsPackFallback
 }
 
-/// Optional effects slot → the required slot a pack that leaves it out plays instead.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `OPTIONAL_SLOT_FALLBACK`
 internal let optionalSlotFallback = [
   "cue.on": "severity.positive",
@@ -29,17 +21,12 @@ internal let optionalSlotFallback = [
   "cue.groupRide.joined": "severity.positive",
 ]
 
-/// Slot whose clip `slot` plays: `slot` itself when it has a My sound override or the pack fills it,
-/// else the same lookup for its `optionalSlotFallback` slot. An override on the fallback slot so
-/// also covers optional cues the pack leaves out.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `lookupSlot`
 internal func lookupSlot(_ slot: String, hasOverride: (String) -> Bool, packHas: (String) -> Bool) -> String {
   if hasOverride(slot) || packHas(slot) { return slot }
   return optionalSlotFallback[slot].map { lookupSlot($0, hasOverride: hasOverride, packHas: packHas) } ?? slot
 }
 
-/// Group Ride events with an app cue and a line under the same key in every voice pack. Spelled out:
-/// this file also builds into the persistence host, which has no Group Ride types.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `GROUP_RIDE_CUES`
 internal let groupRideCues = [
   "groupRide.created",
@@ -67,9 +54,6 @@ internal let groupRideCues = [
   "groupRide.hazard.sent",
 ]
 
-/// App cue id (the `playAppCue` cue names) → effects slot. Error and the rider and link Group Ride
-/// events have no slot of their own and play a fixed severity sound. A signal kind sounds its notice
-/// severity (`RiderSignalKind.severity`); a hazard approach always warns.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueSlot`
 internal func appCueSlot(_ cue: String) -> String? {
   switch cue {
@@ -92,7 +76,6 @@ internal func appCueSlot(_ cue: String) -> String? {
   }
 }
 
-/// Voice key app cue `cue` speaks after its effect at Voice level `full`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `appCueVoiceKey`
 internal func appCueVoiceKey(_ cue: String) -> String? {
   switch cue {
@@ -104,8 +87,6 @@ internal func appCueVoiceKey(_ cue: String) -> String? {
   }
 }
 
-/// Clip files of every built-in pack's slots under `root` (the folder holding `effects-<id>/`),
-/// keyed `"<pack>/<slot>"`. A pack whose manifest cannot be read contributes nothing.
 internal func effectsPackSlotFiles(root: URL) -> [String: URL] {
   var files: [String: URL] = [:]
   for pack in effectsPackIds {
@@ -121,7 +102,6 @@ internal func effectsPackSlotFiles(root: URL) -> [String: URL] {
   return files
 }
 
-/// Voice pack each built-in effects pack's manifest names for the `matching` voice, keyed by pack id.
 internal func effectsPackVoices(root: URL) -> [String: String] {
   var voices: [String: String] = [:]
   for pack in effectsPackIds {

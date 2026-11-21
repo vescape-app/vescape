@@ -1,6 +1,5 @@
 package expo.modules.vescapecore.notices
 
-/** Ordered most urgent first; the order is the sort order. */
 enum class RideNoticeSeverity(val wire: String) {
     CRITICAL("critical"),
     WARNING("warning"),
@@ -13,7 +12,6 @@ enum class RideNoticeSeverity(val wire: String) {
 
 data class RideNoticeLocation(val lat: Double, val lng: Double)
 
-/** What a source posts. `postedAt` and `expiresAt` are source-supplied epoch ms. */
 data class RideNoticeContent(
     val severity: RideNoticeSeverity,
     val title: String,
@@ -24,9 +22,6 @@ data class RideNoticeContent(
 )
 
 /**
- * One visible Ride Notice. `id` (1–255) and `rev` (1–255, wraps) each fit one byte, so the watch can
- * address and version a notice in a `[kind, id, rev]` command.
- *
  * @parity /modules/vescape-core/ios/notices/RideNoticeEngine.swift `RideNotice`
  * @parity /modules/vescape-core/src/index.ts `RideNotice`
  */
@@ -45,15 +40,6 @@ data class RideNotice(val id: Int, val rev: Int, val key: String, val content: R
 }
 
 /**
- * The Ride Notice table. Pure: no clock, no threads, no platform types, so every rule is unit
- * tested. Each mutation reports whether the visible list changed; callers emit only then.
- *
- * - A post with the same `revision` updates content in place and keeps a dismissed notice hidden.
- *   A new `revision` bumps `rev` and shows it again.
- * - A dismiss names `(id, rev)`; a stale `rev` is ignored, so a re-sent revision is never hidden unseen.
- * - A dismissed notice keeps its key and id until the source clears it or it expires.
- * - Ids are allocated round-robin over 1–255, skipping ids in use; a full table drops the post.
- *
  * @parity /modules/vescape-core/ios/notices/RideNoticeEngine.swift `RideNoticeEngine`
  */
 class RideNoticeEngine {
@@ -70,7 +56,6 @@ class RideNoticeEngine {
     private val entries = LinkedHashMap<String, Entry>()
     private var lastId = 0
 
-    /** Visible notices: severity first, then newest `postedAt`. */
     var active: List<RideNotice> = emptyList()
         private set
 
@@ -97,23 +82,17 @@ class RideNoticeEngine {
 
     fun clear(key: String): Boolean = entries.remove(key) != null && refresh()
 
-    /**
-     * Hide the notice holding [id] at [rev]. A mismatched [rev] is a dismiss aimed at a revision the
-     * rider never saw (the source re-posted in between), so it is ignored.
-     */
     fun dismiss(id: Int, rev: Int): Boolean {
         val entry = entries.values.firstOrNull { it.id == id && it.rev == rev && !it.dismissed } ?: return false
         entry.dismissed = true
         return refresh()
     }
 
-    /** Drops expired notices silently, dismissed or not. */
     fun tick(nowMs: Long): Boolean {
         val removed = entries.values.removeAll { entry -> entry.content.expiresAt?.let { it <= nowMs } == true }
         return removed && refresh()
     }
 
-    /** Earliest `expiresAt` in the table, for the caller's next [tick]. */
     fun nextExpiryAt(): Long? = entries.values.mapNotNull { it.content.expiresAt }.minOrNull()
 
     private fun allocateId(): Int? {

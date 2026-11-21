@@ -148,11 +148,6 @@ class NotificationPresenterTest {
         assertEquals(true, presentation.canDisconnect)
     }
 
-    /**
-     * Whole-phase contract in one table: a new [BoardPhase] fails here until its notification
-     * rendering is decided, and flipping an existing phase's text or Disconnect availability shows
-     * up as an explicit diff instead of riding along with an unrelated change.
-     */
     @Test
     fun `every phase renders its own text and a session-ownership disconnect`() {
         val expected = mapOf(
@@ -178,7 +173,6 @@ class NotificationPresenterTest {
         }
     }
 
-    /** Only Idle may say "not connected" — every other phase must not impersonate an idle service. */
     @Test
     fun `no phase borrows the idle text`() {
         for (phase in BoardPhase.entries - BoardPhase.Idle) {
@@ -187,7 +181,6 @@ class NotificationPresenterTest {
         }
     }
 
-    /** Telemetry numbers belong to a live link only, so a dead link can never show stale values. */
     @Test
     fun `only connected renders telemetry values`() {
         for (phase in BoardPhase.entries - BoardPhase.Connected) {

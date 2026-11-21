@@ -35,7 +35,6 @@ export function getPresetsForCategory(category: AlertSoundCategory): AlertSound[
   return getAlertSounds().filter((p) => p.category === category)
 }
 
-/** My sounds as `category` picker options: `alert:my:<id>` / `geiger:my:<id>`. */
 export function mySoundOptions(
   category: AlertSoundCategory,
   mySounds: { id: string; name: string }[],
@@ -52,7 +51,6 @@ export function getDefaultMessageTemplate(
     return batteryConfig ? 'Battery {percent}%' : 'Battery {voltage}V'
   }
   const metric = telemetryByControlId[controlId]
-  // Drop the "Temp" suffix — the °C unit already makes temperature obvious when spoken.
   if (metric) return `${metric.label.replace(/ Temp$/, '')} {value} {unit}`
   return '{value} {unit}'
 }
@@ -117,7 +115,6 @@ export function getAlertDialConfig(controlId: string, batteryConfig: DerivedBatt
   }
 }
 
-/** A geiger rule's picker shows its level; a pre-grammar tick name reads as its equivalent level. */
 export function geigerPickerSound(spec: string): string {
   if (parseAlertSoundString(spec)?.kind === 'geiger') return spec
   return formatGeigerAlertSound(parseGeigerAlertSound(spec) ?? 'soft')
@@ -133,7 +130,6 @@ export function getEditFormDefaults(
   const tab = (
     tts || voice ? 'message' : editRule.thresholdMax != null ? 'geiger' : 'single'
   ) as AlertTab
-  // A single rule's picker shows the pack slot or My sound; its count lives in the beep stepper.
   const slot = tab === 'single' ? parseSlotAlertSound(editRule.spec) : null
   return {
     tab,

@@ -52,7 +52,6 @@ class AlertEngineTest {
         val relative = rule(controlId = "controller-temp", thresholdKind = "config-relative", configFieldId = "l_temp_fet_start", thresholdOffset = -10.0)
         engine.updateMotorConfigValues(mapOf("l_temp_fet_start" to 90.0))
         assertEquals(80.0, engine.evaluate(listOf(relative), telemetry(tempMosfet = 82.0)).single().threshold, 0.001)
-        // No motor config read: the rule is dormant rather than firing at its stored placeholder.
         engine.updateMotorConfigValues(emptyMap())
         engine.resetAlertState()
         assertTrue(engine.evaluate(listOf(relative), telemetry(tempMosfet = 82.0)).isEmpty())
@@ -151,8 +150,6 @@ class AlertEngineTest {
         assertEquals(30.0, rules[0].thresholdMax!!, 0.0)
     }
 
-    // --- Basic firing ---
-
     @Test
     fun singleAlertFiresWhenAboveThreshold() {
         val fired = engine.evaluate(
@@ -222,8 +219,6 @@ class AlertEngineTest {
         assertEquals(65.0, fired[0].value, 0.01)
     }
 
-    // --- Geiger rangeDepth ---
-
     @Test
     fun geigerRangeDepthCalculatedCorrectly() {
         val fired = engine.evaluate(
@@ -253,9 +248,6 @@ class AlertEngineTest {
         assertEquals(1, fired.size)
         assertNull(fired[0].rangeDepth)
     }
-
-    // --- Priority ordering: user scenario ---
-    // A: duty 70-80 (geiger), B: duty 85-90 (geiger), C: duty 60 (simple)
 
     @Test
     fun at66PercentOnlyCFires() {
@@ -312,8 +304,6 @@ class AlertEngineTest {
         assertEquals("B", firedB[0].ruleId)
     }
 
-    // --- Battery (below direction) priority ---
-
     @Test
     fun batteryLowerThresholdWinsWhenBothFire() {
         val rules = listOf(
@@ -324,8 +314,6 @@ class AlertEngineTest {
         assertEquals(2, fired.size)
         assertEquals("low", fired[0].ruleId)
     }
-
-    // --- Debounce ---
 
     @Test
     fun latchPreventsDuplicateFiring() {
@@ -363,8 +351,6 @@ class AlertEngineTest {
         assertEquals(1, fired.size)
     }
 
-    // --- Re-arm + repeat (#348) ---
-
     @Test
     fun parkedAboveThresholdNeverAnnouncesTwice() {
         val rules = listOf(rule(controlId = "motor-temp", threshold = 70.0))
@@ -379,7 +365,6 @@ class AlertEngineTest {
         val rules = listOf(rule(controlId = "motor-temp", threshold = 70.0))
 
         engine.evaluate(rules, telemetry(tempMotor = 71.0))
-        // Margin is 3°C, so 68 is a wobble around the threshold, not a recovery.
         engine.evaluate(rules, telemetry(tempMotor = 68.0))
         val refired = engine.evaluate(rules, telemetry(tempMotor = 71.0))
 
@@ -425,7 +410,6 @@ class AlertEngineTest {
         clock += 1_000
         engine.evaluate(rules, telemetry(tempMotor = 90.0))
         clock += 1_000
-        // Re-armed, so this is a fresh crossing rather than a repeat — no waiting out the cadence.
         val refired = engine.evaluate(rules, telemetry(tempMotor = 96.0))
 
         assertEquals(1, refired.size)
@@ -453,7 +437,6 @@ class AlertEngineTest {
         )
 
         engine.evaluate(rules, telemetry(tempMotor = 96.0))
-        // Dropping back under the top rung must not hand the lower one a turn to speak.
         val onTheWayDown = engine.evaluate(rules, telemetry(tempMotor = 80.0))
 
         assertTrue(onTheWayDown.isEmpty())
@@ -501,8 +484,6 @@ class AlertEngineTest {
         assertTrue(production.evaluateValues(rules, mapOf("duty" to 70.0)).isEmpty())
     }
 
-    // --- Speed uses abs value ---
-
     @Test
     fun speedAlertUsesAbsoluteValue() {
         val fired = engine.evaluate(
@@ -512,8 +493,6 @@ class AlertEngineTest {
         assertEquals(1, fired.size)
     }
 
-    // --- Duty uses abs * 100 ---
-
     @Test
     fun dutyAlertUsesAbsPercentage() {
         val fired = engine.evaluate(
@@ -522,8 +501,6 @@ class AlertEngineTest {
         )
         assertEquals(1, fired.size)
     }
-
-    // --- Cross-control: geiger wins over simple ---
 
     @Test
     fun crossControlGeigerWinsOverSimple() {
@@ -535,8 +512,6 @@ class AlertEngineTest {
         assertEquals(2, fired.size)
         assertEquals("duty", fired[0].ruleId)
     }
-
-    // --- Battery hysteresis (percent-based, margin = 10%) ---
 
     @Test
     fun batteryHysteresisFiresOnce() {
@@ -556,7 +531,6 @@ class AlertEngineTest {
 
     @Test
     fun batteryHysteresisRearmsAfterPercentRecovery() {
-        // margin = 10%, re-arm needs > 60%
         val rules = listOf(rule(id = "bat", controlId = "battery", threshold = 50.0))
         engine.evaluate(rules, telemetry(), batteryPercent = 45.0)
 
@@ -568,11 +542,9 @@ class AlertEngineTest {
 
     @Test
     fun batteryHysteresisNoRearmsBeforeMargin() {
-        // margin = 10%, threshold = 50%, re-arm needs > 60%
         val rules = listOf(rule(id = "bat", controlId = "battery", threshold = 50.0))
         engine.evaluate(rules, telemetry(), batteryPercent = 45.0)
 
-        // recovers to 58% — below margin (60%), stays disarmed
         engine.evaluate(rules, telemetry(), batteryPercent = 58.0)
 
         val second = engine.evaluate(rules, telemetry(), batteryPercent = 45.0)
@@ -594,10 +566,8 @@ class AlertEngineTest {
             rule(id = "high", controlId = "battery", threshold = 50.0),
             rule(id = "low", controlId = "battery", threshold = 30.0),
         )
-        // only "high" fires at 45%
         engine.evaluate(rules, telemetry(), batteryPercent = 45.0)
 
-        // "high" disarmed; "low" still armed and fires now at 25%
         val second = engine.evaluate(rules, telemetry(), batteryPercent = 25.0)
         assertEquals(1, second.size)
         assertEquals("low", second[0].ruleId)

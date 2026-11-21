@@ -18,36 +18,28 @@ const SEVERITY = {
   info: { Icon: InfoIcon, tone: theme.status.info },
 } as const
 
-/** The colors a notice wears: a severity's, or the hue of what it is about. */
 export interface RideNoticeTone {
   color: ThemeColor
   text: ThemeColor
 }
 
-/** How a notice about something the screen knows (a rider's signal) shows instead of by severity. */
 export interface RideNoticeLook {
-  /** Drawn bare at the card's start, up to 36 pt. */
   icon: ReactNode
   tone: RideNoticeTone
   title: string
-  /** Who or what it is about, first on the meta line. */
   subject: string
 }
 
 interface RideNoticeCardProps {
   notice: RideNotice
-  /** How many more notices are active behind this one. */
   moreCount: number
-  /** The rider's latest position; distance is hidden without it. */
   ownLocation: { latitude: number; longitude: number } | null
   onDismiss: (id: number, rev: number) => void
-  /** Present when the screen can focus the map; hidden for a notice without a location. */
   onShowOnMap?: (location: { latitude: number; longitude: number }) => void
   look?: RideNoticeLook | null
   style?: StyleProp<ViewStyle>
 }
 
-/** The top Ride Notice: severity, title, details, age, and for a located notice its distance. */
 export function RideNoticeCard({
   notice,
   moreCount,
@@ -76,7 +68,6 @@ export function RideNoticeCard({
     .filter(Boolean)
     .join(' · ')
 
-  // Any tap answers the notice: it is gone, and the map shows where it happened when it can.
   const open = () => {
     if (target && onShowOnMap) onShowOnMap(target)
     onDismiss(notice.id, notice.rev)
@@ -93,7 +84,6 @@ export function RideNoticeCard({
         style,
       ]}
     >
-      {/* A faint wash of the tone: the kind reads at a glance without painting the card. */}
       <View style={[styles.wash, { backgroundColor: theme.alpha(tone.color, 0.1) }]} />
       <View style={styles.icon}>
         {look?.icon ?? <severity.Icon size={28} color={tone.color} weight="fill" />}

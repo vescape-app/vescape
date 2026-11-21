@@ -40,7 +40,6 @@ final class VoicePacksTests: XCTestCase {
       voiceAnnouncement(custom, controlId: "battery", reading: 19.6, percentAvailable: true, distanceUnit: "km", temperatureUnit: "celsius"),
       VoiceAnnouncement(severity: .info, key: "battery", values: [VoiceValue(type: "percent", value: 20)])
     )
-    // Without a battery config the threshold is volts, not a percent.
     XCTAssertEqual(
       voiceAnnouncement(custom, controlId: "battery", reading: 42, percentAvailable: false, distanceUnit: "km", temperatureUnit: "celsius"),
       VoiceAnnouncement(severity: .info, key: "battery")
@@ -54,14 +53,11 @@ final class VoicePacksTests: XCTestCase {
       voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, distanceUnit: "km", temperatureUnit: "celsius"),
       VoiceAnnouncement(severity: .critical, key: "motorTemp", values: [VoiceValue(type: "degrees", value: 95)])
     )
-    // °F converts before rounding: 95 °C = 203 °F, −20.6 °C = −5.08 °F.
     XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, distanceUnit: "km", temperatureUnit: "fahrenheit").values.first?.value, 203)
     XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: -20.6, percentAvailable: false, distanceUnit: "km", temperatureUnit: "fahrenheit").values.first?.value, -5)
-    // Degrees follow the temperature unit, not the distance unit.
     XCTAssertEqual(voiceAnnouncement(preset, controlId: "motor-temp", reading: 95, percentAvailable: false, distanceUnit: "mi", temperatureUnit: "celsius").values.first?.value, 95)
     let explicit = VoiceAlertSound(severity: .warning, key: "battery", value: 10)
     XCTAssertEqual(voiceAnnouncement(explicit, controlId: "speed", reading: 50, percentAvailable: false, distanceUnit: "km", temperatureUnit: "celsius").values.first?.value, 10)
-    // Speed reads in mph under mi (50 km/h = 31.07 mph); duty stays a percent.
     let speed = VoiceAlertSound(severity: .warning, key: nil, value: nil)
     XCTAssertEqual(
       voiceAnnouncement(speed, controlId: "speed", reading: 50, percentAvailable: false, distanceUnit: "km", temperatureUnit: "celsius"),
@@ -76,19 +72,15 @@ final class VoicePacksTests: XCTestCase {
 
   func testEachWordingPicksItsPhrasesThenFallsBack() {
     let picker = VoiceVariantPicker { _ in 0 }
-    // Standard: the severity line's start, never an ending.
     XCTAssertEqual(picker.clips(manifest, battery(.critical, .standard)), ["bc.0", "p20"])
     XCTAssertEqual(picker.clips(manifest, battery(.warning, .standard)), ["b.0", "p20"])
-    // Minimal: the generic line's minimal phrase, whatever the severity; start when it has none.
     XCTAssertEqual(picker.clips(manifest, battery(.critical, .minimal)), ["bm.0", "p20"])
     XCTAssertEqual(
       picker.clips(manifest, VoiceAnnouncement(severity: .critical, key: "motorTemp", values: [VoiceValue(type: "degrees", value: -5)], wording: .minimal)),
       ["m.0", "dm5"]
     )
-    // Full: the full pool with its ending; start when the line has no pool.
     XCTAssertEqual(picker.clips(manifest, battery(.critical, .full)), ["bcf.0", "p20", "plug"])
     XCTAssertEqual(picker.clips(manifest, battery(.warning, .full)), ["b.0", "p20"])
-    // A missing value clip is skipped, the line still plays.
     XCTAssertEqual(picker.clips(manifest, battery(.info, .standard, 77)), ["b.0"])
     XCTAssertNil(picker.clips(manifest, VoiceAnnouncement(severity: .info, key: "controllerTemp", values: [VoiceValue(type: "degrees", value: 80)])))
     XCTAssertNil(picker.clips(manifest, VoiceAnnouncement(severity: .info, key: nil)))
@@ -101,7 +93,6 @@ final class VoicePacksTests: XCTestCase {
       picker.clips(manifest, rain([VoiceValue(type: "duration", value: 150), VoiceValue(type: "percent", value: 30)])),
       ["bcf.0", "in150", "p30", "plug"]
     )
-    // The type travels with each value: 30 as a duration has no clip, the percent still plays.
     XCTAssertEqual(
       picker.clips(manifest, rain([VoiceValue(type: "duration", value: 30), VoiceValue(type: "percent", value: 30)])),
       ["bcf.1", "p30", "plug"]
@@ -110,7 +101,6 @@ final class VoicePacksTests: XCTestCase {
   }
 
   func testAnEndingPlaysOnlyAtItsChance() {
-    // Per pick: start variant, then a 0–99 roll that ends the line below 20, then the ending.
     var picks = [0, 19, 0, 0, 20, 0, 99]
     let picker = VoiceVariantPicker { _ in picks.removeFirst() }
     let critical = battery(.critical, .full)
@@ -134,7 +124,6 @@ final class VoicePacksTests: XCTestCase {
     let ahead = picker.next(manifest, critical)
     XCTAssertEqual(ahead, ["bcf.1", "p20", "plug"])
     XCTAssertEqual(picker.clips(manifest, critical), ahead)
-    // Wordings keep separate picks.
     XCTAssertNil(picker.next(manifest, battery(.critical, .standard)))
   }
 
@@ -145,8 +134,6 @@ final class VoicePacksTests: XCTestCase {
     [Float](repeating: 0, count: 10).withUnsafeBufferPointer { XCTAssertEqual(leadingSilenceFrames($0, maxFrames: 4), 4) }
   }
 
-  /// The committed packs carry what the presets speak: every severity of each key resolves, and the
-  /// values the presets announce exist.
   func testCommittedPacksSpeakEveryPresetKey() throws {
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()

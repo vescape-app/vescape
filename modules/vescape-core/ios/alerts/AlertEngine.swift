@@ -1,34 +1,25 @@
 import Foundation
 
-/// Floor on an Alert Rule's repeat cadence, in seconds.
 /// @parity /modules/vescape-core/src/index.ts `ALERT_REPEAT_MIN_SECONDS`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_REPEAT_MIN_SECONDS`
 internal let alertRepeatMinSeconds: Int64 = 3
 
-/// Gap between beeps of one announcement — tight enough that a burst reads as a single signal.
 internal let alertBeepSpacingMs: Double = 200
 
-/// Speech starts once the sound before it ends, but no earlier than `alertSpeechDelayMs` and no
-/// later than `alertSpeechMaxDelayMs` after it starts: a long recorded effect keeps its tail
-/// (reverb, a fade) playing under the voice instead of holding the voice back.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_SPEECH_DELAY_MS`
 internal let alertSpeechDelayMs: Int64 = 350
 internal let alertSpeechMaxDelayMs: Int64 = 1500
 
-/// When speech may start after a sound lasting `durationMs` starts playing.
 internal func speechDelayMs(_ durationMs: Int64) -> Int64 {
   min(max(alertSpeechDelayMs, durationMs), alertSpeechMaxDelayMs)
 }
 
-/// Clamp a repeat cadence coming from JS. Anything non-positive means one-shot; everything else is
-/// floored, so no rule written by any path can announce fast enough to become noise.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `normalizedAlertRepeatSeconds`
 internal func normalizedAlertRepeatSeconds(_ raw: Double?) -> Int64? {
   guard let raw, raw.isFinite, raw > 0 else { return nil }
   return max(alertRepeatMinSeconds, Int64(raw.rounded()))
 }
 
-/// Alert rule persisted in GRDB (`alerts` table). Mirrors Android `AlertRuleEntity`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt
 internal struct AlertRule {
   let boardId: String
@@ -43,12 +34,9 @@ internal struct AlertRule {
   let enabled: Bool
   let spec: String
   let createdAt: Int64
-  /// Repeat cadence in seconds for a single-threshold rule; nil is one-shot. Ignored for range
-  /// rules. Mirrors TS `AlertRule.repeatEverySeconds`.
   var repeatEverySeconds: Int64? = nil
 }
 
-/// Adds Legal Mode's per-Board speed warning to in-memory rules. No Alert Rule row is materialized.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `withLegalModeOverlay`
 internal func withLegalModeOverlay(
   _ rules: [AlertRule],
@@ -80,7 +68,6 @@ internal func withLegalModeOverlay(
   ]
 }
 
-/// One fired alert surfaced to JS through the telemetry event payload.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `FiredAlert`
 internal struct FiredAlert {
   let ruleId: String
@@ -106,16 +93,12 @@ internal struct FiredAlert {
   }
 }
 
-/// Per-control unit / decimal / direction definition for alert value extraction and message
-/// template rendering. Mirrors Android `telemetryMetricByControlId`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMetrics.kt
 internal struct TelemetryMetricDef {
   let controlId: String
   let unit: String
   let decimals: Int
   let alertAbove: Bool
-  /// How far back past its threshold, in this metric's own unit, a fired single-threshold Alert
-  /// Rule must travel before it can announce again.
   let alertRearmMargin: Double
 
   func formatValue(_ value: Double) -> String {
@@ -182,9 +165,6 @@ private func stripPlaceholders(in text: String) -> String {
   return result
 }
 
-/// Render an Alert Message Template against a fired alert. Mirrors Android
-/// `renderAlertMessageTemplate`; reports unavailable/unknown placeholders through the diagnostic
-/// sink so missing values surface in the diagnostic stream instead of silently truncating text.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `renderAlertMessageTemplate`
 internal func renderAlertMessageTemplate(
   _ template: String,
@@ -249,9 +229,6 @@ internal func renderAlertMessageTemplate(
 
 private func alertEngineNowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
-/// Pure alert evaluator. No audio, no side effects. Mirrors Android `AlertEngine`.
-///
-/// - Parameter now: Wall clock in ms. Injected so repeat cadence is testable without sleeping.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `AlertEngine`
 internal final class AlertEngine {
   private let now: () -> Int64
@@ -267,11 +244,8 @@ internal final class AlertEngine {
 
   func updateBoardConfigValues(_ values: [String: Any]) { configValues = values }
 
-  /// VESC motor config (MCCONF), the other half of what a config-relative rule may anchor to.
   func updateMotorConfigValues(_ values: [String: Any]) { motorConfigValues = values }
 
-
-  /// Forget every latch and repeat clock. Called when a new Board Session starts.
   func resetAlertState() {
     lastFiredAt.removeAll(keepingCapacity: true)
     armedState.removeAll(keepingCapacity: true)
@@ -285,9 +259,6 @@ internal final class AlertEngine {
     evaluateRules(rules: rules, batteryPercent: batteryPercent) { self.extractAlertValue($0, t) }
   }
 
-  /// Evaluate already-normalized metric values. Production telemetry and the UI alert test both
-  /// enter the same stateful arm/re-arm path; callers isolate state by owning separate
-  /// `AlertEngine` instances.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `evaluateValues`
   func evaluateValues(
     rules: [AlertRule],
@@ -324,8 +295,6 @@ internal final class AlertEngine {
         continue
       }
 
-      // Single-threshold rule: announce on crossing, then stay latched until the metric travels
-      // back past the threshold by this metric's re-arm margin.
       let armed = armedState[rule.id] ?? true
       if !triggered {
         if !armed && hasRearmed(compareValue, rule: rule, effectiveThreshold: effective.0, aboveDir: aboveDir) {
@@ -366,13 +335,6 @@ internal final class AlertEngine {
     return (base + offset, rule.thresholdMaxOffset.map { base + $0 })
   }
 
-  /// Keep one single-threshold announcement per metric — the most severe, which the caller has
-  /// already sorted first. A fast climb crosses several rungs in one evaluation; the rider wants
-  /// the worst news, not a stutter of speech cut off mid-word. The dropped rules stay latched, so
-  /// they are spent rather than pending.
-  ///
-  /// Range rules pass through untouched: their feedback is a continuous loop keyed by rule id,
-  /// not an announcement.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `coalesceByControl`
   private func coalesceByControl(_ sorted: [FiredAlert]) -> [FiredAlert] {
     var announced = Set<String>()
@@ -395,7 +357,6 @@ internal final class AlertEngine {
     )
   }
 
-  /// True once a fired rule's metric has travelled back past its effective threshold by the re-arm margin.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `hasRearmed`
   private func hasRearmed(_ compareValue: Double, rule: AlertRule, effectiveThreshold: Double, aboveDir: Bool) -> Bool {
     let margin = alertRearmMargin(rule.controlId, effectiveThreshold)
@@ -403,8 +364,6 @@ internal final class AlertEngine {
   }
 
   private func alertRearmMargin(_ controlId: String, _ threshold: Double) -> Double {
-    // Controls with no metric definition (footpad) get a relative margin rather than none: zero
-    // would let a value dithering on the threshold announce on every telemetry tick.
     telemetryMetricByControlId[controlId]?.alertRearmMargin ?? (abs(threshold) * 0.02)
   }
 

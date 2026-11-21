@@ -2,12 +2,7 @@ import AVFoundation
 import XCTest
 @testable import VescapeCore
 
-/// Teardown races around `AVAudioEngine`. `disconnectNodeOutput` on a node the engine no longer
-/// owns raises an ObjC `NSException`, which Swift cannot catch — the process aborts. These tests
-/// drive the paths where `release()` and pending `scheduleBuffer` completion handlers overlap, so
-/// a regression shows up as a crashed test run rather than a Sentry report from a rider.
 final class AlertAudioPlayerTests: XCTestCase {
-  /// The SPM test target has no `VescapeCoreAssets.bundle`; read the effects packs from `shared/`.
   private var assetsDirectory: URL {
     URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()
@@ -16,7 +11,6 @@ final class AlertAudioPlayerTests: XCTestCase {
   }
 
   private func makePlayer() -> AlertAudioPlayer {
-    // Exercise real playback and teardown without sending the test tones to the speakers.
     AlertAudioPlayer(assetsDirectory: assetsDirectory, outputVolume: 0)
   }
 
@@ -28,10 +22,8 @@ final class AlertAudioPlayerTests: XCTestCase {
     player.preview(spec: "alert:critical")
     player.boardConnected(playCue: true)
 
-    // Let buffers actually start so completion handlers are pending when release lands.
     Thread.sleep(forTimeInterval: 0.15)
     player.release()
-    // Give any handler queued behind release() a chance to run and re-enter detach.
     Thread.sleep(forTimeInterval: 0.3)
   }
 
@@ -47,8 +39,6 @@ final class AlertAudioPlayerTests: XCTestCase {
     Thread.sleep(forTimeInterval: 0.1)
   }
 
-  /// No explicit `release()`: `deinit` must tear down without deadlocking, including when the last
-  /// reference drops while completion handlers are still running on the player's own queue.
   func testDeallocWithoutExplicitReleaseWhilePlaybackIsInFlight() {
     for _ in 0..<5 {
       autoreleasepool {
@@ -76,7 +66,6 @@ final class AlertAudioPlayerTests: XCTestCase {
     Thread.sleep(forTimeInterval: 0.3)
   }
 
-  /// Collects outcomes from the player's queue; `wait` blocks until `count` arrived or times out.
   private final class Outcomes {
     private let lock = NSLock()
     private var values: [String: [PlaybackOutcome]] = [:]

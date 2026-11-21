@@ -3,7 +3,6 @@ import XCTest
 
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/alerts/EffectsPacksTest.kt
 final class EffectsPacksTests: XCTestCase {
-  /// A pack filling only the required slots, without `cue.on` or `cue.off`.
   private let packSlots: Set = ["severity.positive", "severity.info", "severity.warning", "severity.critical"]
 
   private func lookup(_ slot: String, overrides: Set<String> = []) -> String {

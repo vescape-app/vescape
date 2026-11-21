@@ -11,11 +11,6 @@ import { theme } from '@/constants/theme'
 const BOARD_TOP_SPEED_MIN = 5
 const BOARD_TOP_SPEED_MAX = 150
 
-/**
- * Board Top Speed stepper card (controlled). Scales the speed gauge full-scale and the speed alert
- * preset thresholds. Board-owned (#254): the caller supplies the current value and persists changes
- * (the active Board in Settings, or a draft in the add-board wizard).
- */
 export function BoardTopSpeedCard({
   value,
   onChange,

@@ -9,7 +9,6 @@ import {
 } from '@/modules/alerts/lib/alertSoundString'
 export type { AlertPresetLevel, AlertPresetMetric } from 'vescape-core'
 
-/** Native expands presets; JS reads each metric's stored spec and formats the expanded rules. */
 export const ALERT_PRESET_FALLBACK_LEVEL: AlertPresetLevel = 'normal'
 
 export type AlertRulePresentation = Pick<
@@ -17,7 +16,6 @@ export type AlertRulePresentation = Pick<
   'threshold' | 'thresholdMax' | 'repeatEverySeconds'
 >
 
-/** Shared config field names for the match-control explanation; no threshold calculation. */
 export const ALERT_PRESET_CONFIG_FIELDS = Object.fromEntries(
   Object.entries(definitions.match).map(([metric, match]) => [metric, match.fieldId]),
 ) as Partial<Record<AlertPresetMetric, string>>
@@ -26,7 +24,6 @@ export function supportsBoardConfigMatch(metric: AlertPresetMetric): boolean {
   return ALERT_PRESET_CONFIG_FIELDS[metric] != null
 }
 
-/** Per-metric unit suffix appended to a threshold value in a summary (JS-only presentation). */
 const ALERT_PRESET_UNIT: Record<AlertPresetMetric, string> = {
   battery: '%',
   duty: '%',
@@ -35,11 +32,6 @@ const ALERT_PRESET_UNIT: Record<AlertPresetMetric, string> = {
   'controller-temp': '°',
 }
 
-/**
- * Human-readable summary for an unsaved preset draft (e.g. `10%, 20%, 30%` for battery,
- * `80–90%` for a geiger range), using the native preview snapshot.
- * Returns `null` when the supplied snapshot has no rules to describe.
- */
 export function formatAlertPresetSummary(
   metric: AlertPresetMetric,
   specs: AlertRulePresentation[],
@@ -54,21 +46,17 @@ export function formatAlertPresetSummary(
       if (spec.thresholdMax != null) {
         return `${number(spec.threshold)}–${number(spec.thresholdMax)}${unit}`
       }
-      // A repeating rung reads as the point it starts at plus a repeat mark: it has no upper
-      // bound, it just keeps going.
       const repeat = spec.repeatEverySeconds == null ? '' : '↻'
       return `${number(spec.threshold)}${unit}${repeat}`
     })
     .join(', ')
 }
 
-/** `1, 2 and 3` — a spoken list, since this text is read as a sentence. */
 function joinList(parts: string[]): string {
   if (parts.length <= 1) return parts[0] ?? ''
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
 }
 
-/** Describe resolved rules supplied by a saved Board or an unsaved wizard preview. */
 export function describeAlertRules(
   metric: AlertPresetMetric,
   specs: readonly AlertRulePresentation[],
@@ -95,12 +83,10 @@ export function describeAlertRules(
   return `Speaks the temperature at ${points}.${nag}`
 }
 
-/** Every metric that carries a preset, in the stable rider-facing order. */
 export const ALERT_PRESET_METRICS = Object.keys(definitions.metrics) as AlertPresetMetric[]
 
 const STORED_LEVELS: AlertPresetLevel[] = ['off', 'safe', 'normal', 'minimal']
 
-/** Narrow a control id to the preset metric it names, or `null` when it has no presets. */
 export function asAlertPresetMetric(controlId: string | undefined): AlertPresetMetric | null {
   return ALERT_PRESET_METRICS.includes(controlId as AlertPresetMetric)
     ? (controlId as AlertPresetMetric)
@@ -108,30 +94,21 @@ export function asAlertPresetMetric(controlId: string | undefined): AlertPresetM
 }
 
 /**
- * Id prefix of a preset row and of the rules native expands it to (`preset:<metric>:<index>`).
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertSoundString.kt `PRESET_RULE_PREFIX`
  * @parity /modules/vescape-core/ios/alerts/AlertSoundString.swift `presetRulePrefix`
  */
 const ALERT_PRESET_RULE_PREFIX = 'preset:'
 
-/** True when native expanded a rule from an Alert Preset rather than the rider authoring it. */
 export function isPresetAlertRule(rule: Pick<AlertRule, 'id'>): boolean {
   return rule.id.startsWith(ALERT_PRESET_RULE_PREFIX)
 }
 
-/** One metric's preset as the setup UI reads it from the stored spec. */
 export interface AlertPresetState {
   level: AlertPresetLevel
-  /** The rider's tick level; `null` plays the definition's default. */
   geiger: GeigerLevel | null
-  /** Config-relative points follow the board config. */
   match: boolean
 }
 
-/**
- * Read a stored spec (`preset(normal)` when the Board has none). A level this app does not know
- * reads as Off, the way native expands it.
- */
 export function alertPresetState(spec: string | undefined): AlertPresetState {
   const parsed = parseAlertPresetSpec(spec ?? `preset(${ALERT_PRESET_FALLBACK_LEVEL})`)
   const stored = STORED_LEVELS.find((level) => level === parsed?.level) ?? 'off'
