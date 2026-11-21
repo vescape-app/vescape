@@ -455,8 +455,6 @@ internal final class TelemetryRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `favoriteSummary`
   /// @parity /src/modules/history/lib/favoritePreview.ts `summarizeFavoriteRange`
   /// @platform-diff JS is a live preview over loaded samples; this is the durable sanitized summary.
-  /// Both halves of a Favorite's summary input: the Telemetry Samples in the range and the Ride
-  /// Track over it. Read together because a Favorite spans two streams on two clocks (ADR 0038).
   private func favoriteSummaryInputs(
     startMs: Int64,
     endMs: Int64,

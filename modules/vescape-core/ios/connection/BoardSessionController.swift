@@ -94,6 +94,11 @@ internal struct ReplaySpec {
 /// @platform-diff below.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt
 /// @platform-diff iOS relies on CoreBluetooth persistent connect for retry timing instead of
+/// Android's backoff scheduler (`ReconnectPolicy.nextRetry`). Both the board-ready watchdog
+/// (`armBoardReadyTimeout`) and the post-connected stale-telemetry watchdog (`armStaleWatchdog` /
+/// `onTelemetryStaleFired`) are ported. iOS has no distinct `Stale` phase: a stale trip routes
+/// straight into the shared reconnect path (`.reconnecting`), where Android first transitions
+/// through `BoardPhase.Stale`.
 internal final class BoardSessionController: VescGattListener {
   static let shared = BoardSessionController()
 
@@ -147,6 +152,8 @@ internal final class BoardSessionController: VescGattListener {
   private let gattHandshakeDeadline = GattHandshakeDeadline()
   private var connectTimeout: Cancellable?
   /// @platform-diff Android scales this per reconnect attempt (base 4s → 15s cap via
+  /// `ReconnectPolicy.boardReadyTimeoutMs`); iOS relies on CoreBluetooth persistent connect and has
+  /// no per-attempt counter, so it uses a fixed value matching Android's base.
   private let boardReadyTimeoutSeconds = 4.0
   private let telemetryStaleSeconds = 4.0
   private let linkIntegrityBmsTimeoutSeconds = 12.0
@@ -853,6 +860,7 @@ internal final class BoardSessionController: VescGattListener {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `syncPublicRideLink`
   /// @platform-diff The observer applies changes inline on the main thread here, so nothing is
+  /// posted; Android posts behind its handler queue.
   private func syncPublicRideLink() {
     let needed = groupRideObserver.publicRideNeedsLink
     if needed && !groupRideObserver.active {

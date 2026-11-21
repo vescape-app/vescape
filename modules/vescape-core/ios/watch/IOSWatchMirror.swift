@@ -2,8 +2,6 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/AndroidWatchMirror.kt
 /// @platform-diff WCSession lives for the process; stop releases callbacks without deactivating the system session.
-/// WCSession delivery adapter. System reachability already gates sleeping/unreachable wrist apps;
-/// unlike Wear's Data Layer, the wake lease is needed for cadence and Group Ride only (ADR-0033).
 private final class IOSWatchMirrorTransport: WatchMirrorTransport {
   private let pusher: WatchTelemetryPusher
   private var pushedWeather: WatchWeather?

@@ -4,7 +4,6 @@ import Foundation
 /// @platform-diff iOS decimates a plain in-memory tick buffer instead of Android's `TelemetryPipeline`,
 /// and has no metric-sanitizer exclusions yet (speed/duty are emitted unconditionally). The event
 /// shape, cadence, bucket count, and window semantics match.
-/// Highest speed (km/h) and duty (%) across the live window, as the live charts plot them.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `ProcessedTelemetry`
 internal struct LivePeaks {
   let speed: Double?
