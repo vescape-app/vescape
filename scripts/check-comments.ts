@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
-import { basename, extname, resolve } from 'node:path'
+import { basename, extname, relative, resolve } from 'node:path'
 import ts from 'typescript'
 import { Parser as YamlParser } from 'yaml'
 
@@ -737,10 +737,7 @@ export function runStagedCommentLint(cwd = process.cwd()): CommentViolation[] {
   return violations
 }
 
-export function runCommentLint(fileArgs: string[], cwd = process.cwd()): CommentViolation[] {
-  if (fileArgs.includes('--staged')) {
-    return runStagedCommentLint(cwd)
-  }
+function runCommentLint(fileArgs: string[], cwd = process.cwd()): CommentViolation[] {
   const files =
     fileArgs.length > 0
       ? fileArgs.filter((f) => isSupportedPath(f) && !isExcludedPath(f))
@@ -811,21 +808,41 @@ function readCommentBaseline(ref?: string): CommentBaseline {
 
 if (import.meta.main) {
   const args = process.argv.slice(2)
-  const files = args.filter((arg) => arg !== '--inventory')
-  const violations = runCommentLint(files)
+  const staged = args.includes('--staged')
+  const files = args
+    .filter((arg) => !['--staged', '--inventory', '--list'].includes(arg))
+    .map((file) => relative(process.cwd(), resolve(file)))
+  const violations = staged ? runStagedCommentLint() : runCommentLint(files)
   if (args.includes('--inventory')) {
     console.log(JSON.stringify(commentInventory(violations), null, 2))
     process.exit(0)
   }
+  if (args.includes('--list')) {
+    for (const v of violations) console.log(`${v.file}:${v.line}: ${v.snippet}`)
+    process.exit(0)
+  }
 
-  const baseline = readCommentBaseline(files.includes('--staged') ? '' : undefined)
+  const baseline = readCommentBaseline(staged ? '' : undefined)
   const { newViolations, remaining } = applyCommentBaseline(violations, baseline)
   for (const v of newViolations) {
     console.error(`${v.file}:${v.line}: disallowed comment: ${v.snippet}`)
   }
-  if (files.length === 0 && Object.keys(remaining).length > 0) {
+  let staleFiles = [
+    ...new Set(Object.keys(remaining).map((key) => key.slice(0, key.lastIndexOf(':')))),
+  ]
+  if (staleFiles.length > 0 && (staged || files.length > 0)) {
+    const scope = new Set(
+      staged
+        ? execFileSync('git', ['diff', '--cached', '--no-renames', '--name-only', '-z'], {
+            encoding: 'utf8',
+          }).split('\0')
+        : files,
+    )
+    staleFiles = staleFiles.filter((file) => scope.has(file))
+  }
+  if (staleFiles.length > 0) {
     console.error(
-      `Removed comments still appear in ${BASELINE_PATH}. Compare with --inventory and prune their entries.`,
+      `Removed comments still appear in ${BASELINE_PATH} for ${staleFiles.join(', ')}. Compare with --inventory and prune their entries.`,
     )
     process.exitCode = 1
   }

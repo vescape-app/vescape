@@ -1,7 +1,15 @@
 import { describe, expect, test } from 'bun:test'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -30,6 +38,38 @@ test('ratchets exact comments by file and multiplicity across line shifts', () =
   ])
   expect(result.remaining).toEqual({})
   expect(applyCommentBaseline([], baseline).remaining).toEqual(baseline)
+})
+
+test('lists grandfathered comments and checks baseline pruning within the selected scope', () => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'comment-lint-baseline-')))
+  try {
+    const lint = (...args: string[]) =>
+      spawnSync(process.execPath, [join(import.meta.dir, 'check-comments.ts'), ...args], {
+        cwd,
+        encoding: 'utf8',
+        env: { ...process.env, COMMENT_BASELINE_REF: '' },
+      })
+    execFileSync('git', ['init', '-q'], { cwd })
+    mkdirSync(join(cwd, 'scripts'))
+    const file = join(cwd, 'legacy.ts')
+    writeFileSync(file, '// legacy prose\nexport const value = 1\n')
+    writeFileSync(join(cwd, 'clean.ts'), 'export const clean = 1\n')
+    const inventory = lint('--inventory', file)
+    expect(inventory.status).toBe(0)
+    writeFileSync(join(cwd, 'scripts/comment-baseline.json'), inventory.stdout)
+    expect(lint(file).status).toBe(0)
+    expect(lint('--list', file).stdout).toContain('legacy.ts:1: // legacy prose')
+
+    writeFileSync(file, 'export const value = 1\n')
+    expect(lint('clean.ts').status).toBe(0)
+    expect(lint(file).stderr).toContain('for legacy.ts')
+    execFileSync('git', ['add', '.'], { cwd })
+    const staged = lint('--staged')
+    expect(staged.status).toBe(1)
+    expect(staged.stderr).toContain('for legacy.ts')
+  } finally {
+    rmSync(cwd, { recursive: true, force: true })
+  }
 })
 
 describe('check-comments: TS/TSX/JS', () => {

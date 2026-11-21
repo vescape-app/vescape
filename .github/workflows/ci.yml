@@ -67,7 +67,7 @@ jobs:
       - run: bun run lint
       - run: bun run comments:check
         env:
-          COMMENT_BASELINE_REF: ${{ github.event.pull_request.base.sha }}
+          COMMENT_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
       - run: bun run format:check
       - run: bun run knip
       - run: bun run test:bun
