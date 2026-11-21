@@ -250,6 +250,9 @@ A JavaScript export error may therefore fail twice, once during repack and again
 The workflow discovers public flow files through `bun run scripts/smoke.ts --list-flows`, so a new
 flow automatically joins both platform matrices. Manual dispatch can select one flow and/or one
 platform. Failed jobs retain their own Maestro diagnostics; one failure does not cancel siblings.
+Pushes gate on Android only; iOS smoke runs by manual dispatch because hosted macOS XCTest startup
+is too flaky to gate on. Android boots the emulator in parallel with setup, since a fresh image can
+sit in Data Migration for minutes.
 Each job runs boot and its selected flow in one Maestro session, so iOS starts XCTest only once.
 Android smoke launches the prepared app through `adb am start -W` with a 60-second timeout, then
 Maestro checks readiness. This avoids its [unbounded Android launch/permission calls](https://github.com/mobile-dev-inc/Maestro/issues/3658);
@@ -315,6 +318,29 @@ than a frozen fake.
 
 `e2e/flows/fixture/` holds what the two runs share: the boot, the return-to-home dismissal ladder
 and the map reveal gesture.
+
+Rules the flows follow:
+
+- Live values never reach Maestro's hierarchy: gauges and chart titles are drawn in Skia and the
+  strip formats through `TickText` on the UI thread. Assert controls, tabs and row wrappers, never a
+  live number.
+- Dismiss through on-screen controls, not `back`. Overlays (map, weather, legal limits, History) are
+  view states, iOS has no hardware back for them, and Maestro's `back` does not close a JS drawer.
+  The same taps on both platforms keep one flow per panel.
+- `_home.yaml` probes with instantaneous `when: visible:` checks and ends on `battery-bar`. A caller
+  hands it a settled screen: after closing a sheet, wait until the sheet is gone and the header is
+  back. Each caller settles its own screen; a blanket settle there would be charged twice.
+- Taps on a live dashboard can be swallowed. Retry only idempotent navigation (History, speed
+  detail, ending the replay) and stop retrying once the destination is open.
+- The map reveal swipe (`_map-mode.yaml`) is slow and retried: `MapRevealGesture` runs on the JS
+  thread next to replay telemetry, a fast swipe drops motion events short of the 120 dp reveal, and
+  a failed attempt springs back to the start.
+- iOS merges labels: a settings row reads as title plus hint, the board name row as
+  `<value>, Name your board`, the selector pill as `<name>, board selector`. Match with a trailing
+  `.*` or an id.
+- Text matching ignores case, and `assertVisible` means inside the viewport: scroll to anything
+  below the fold, such as the add-board link-failure actions.
+- `clearState` drops the dev client's cached bundle, so `_launch.yaml` allows a cold Metro fetch.
 
 ## Store screenshots
 

@@ -1,4 +1,3 @@
-# Short App Store cut. Recorder callbacks omit setup/XCTest startup from the footage.
 appId: ${APP_ID}
 ---
 - runFlow: _boot.yaml

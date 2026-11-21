@@ -1,5 +1,3 @@
-# Profile stats from the restored fixture database.
-# Verify the default month, then select and deselect the recorded month.
 appId: ${APP_ID}
 ---
 - runFlow: ../fixture/_history.yaml

@@ -172,7 +172,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   useEffect(() => {
     if (initialPhase === 'dashboard') loadDashboard()
     else if (initialSourceRef) void prepare(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -198,7 +197,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const activeRunId = releaseState.activeRun?.id ?? null
   useEffect(() => {
     if (phase === 'dashboard') setIndex(defaultActionIndex(actions, releaseState))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRunId])
 
   const prepareVersionMenu = async () => {

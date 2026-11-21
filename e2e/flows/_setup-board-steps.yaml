@@ -26,7 +26,6 @@ appId: ${APP_ID}
     timeout: 15000
 - tapOn:
     id: add-board-name-input
-    # The suggested name is editable in place. Put the cursor at its end before erasing.
     point: '95%,50%'
 - eraseText: 50
 - inputText: E2E Board
@@ -57,7 +56,6 @@ appId: ${APP_ID}
     id: add-board-save
 
 - assertVisible: E2E Board
-# Selection in the E2E fake does not run native auto-connect. Connect the saved board explicitly.
 - extendedWaitUntil:
     visible:
       id: floating-bar-connect

@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/immutability */
 import { useEffect, useMemo } from 'react'
 import { StyleSheet, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'

@@ -62,6 +62,10 @@ would keep the old source list and the new test would silently never run. `scrip
 therefore reuses `podsFingerprint()` (the same sorted-path-list signal Pods drift on) and drops the
 SwiftPM manifest memo when the layout moves. Its own fingerprint lives in `.expo/test-ios/`.
 
+CI runs `test:ios` whenever iOS native sources change: the SwiftPM package globs
+the same tree CocoaPods ships, so it is the only pre-release compile of that Swift. A cold build
+needs `IOS_TEST_TIMEOUT_MS` well above the local default.
+
 The app ships GRDB 6.24.1 (`VescapeCore.podspec`), the last 6.x published to CocoaPods trunk; later
 6.x tags are SwiftPM-only. The SwiftPM test target cannot use it: no 6.x before 6.29.3 imports Darwin
 for `strcmp`, so GRDB fails to compile under SwiftPM on current Xcode. `Package.swift` pins

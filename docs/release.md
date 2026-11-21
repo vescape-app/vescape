@@ -65,12 +65,28 @@ server's `INTERNAL_API_KEY`.
 Every production promotion goes to 100% at once. Staged rollout — percentages, halt, resume,
 advance — was removed deliberately; the only production operations are `promote` and `status`.
 
+## iOS signing
+
+`fastlane ios release` signs on CI with `match` in read-only mode (`CI=true`): certificates and
+profiles come from the private certs repo, App Store Connect auth is the API key, and no Apple ID
+is needed. `setup_ci` alone does not give `match` the keychain password, so the lane creates an
+unlocked keychain first. Expo prebuild writes manual signing with an empty
+`PROVISIONING_PROFILE_SPECIFIER`, so the lane sets each target's profile itself and fails when one
+is missing — read-only `match` never creates a profile, and an unsigned target only fails at export.
+The watchOS Mirror is embedded in the phone IPA and needs its own App Store profile, like the phone
+and widget. `CFBundleVersion` is the workflow's run number. TestFlight external testing needs
+"What to Test" notes, taken from the version's rider-facing notes (capped at 4000 characters), and
+waits for processing (~10–20 min). The lane then stages an App Store draft with `precheck` off:
+precheck cannot inspect in-app purchases with an API key, and a draft is not submitted.
+
 ## Pieces
 
 - `scripts/release/` — release CLI (`prepare`, internal dispatch, promote, production status).
 - `scripts/release/releasedVersion.ts` — tells the server a store now serves a version.
 - `scripts/release-notes/` — codex authoring, validation, and the bundler that compiles `release-notes/*.md` into `src/modules/release/generated/releaseNotes.ts`.
 - `.github/workflows/release-android.yml` — internal build + Play upload from an immutable commit.
+  The Wear upload runs after the phone upload: Play allows one active edit per app, so parallel
+  uploads delete each other's edit.
 - `.github/workflows/promote-open.yml`, `promote-production.yml` — track promotion.
 - `.github/workflows/record-released-version.yml` — manual Released App Version push (iOS, and
   the Android retry path).

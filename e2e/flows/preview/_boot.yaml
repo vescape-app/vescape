@@ -1,8 +1,6 @@
-# Reuse screenshot fixture boot; native prefills the warmup, so playback is live once it is up.
 appId: ${APP_ID}
 ---
 - runFlow: ../fixture/_boot.yaml
-# Android's emulator takes longer to drain the replay event backlog and load map tiles.
 - runFlow:
     when:
       platform: Android
