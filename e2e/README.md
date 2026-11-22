@@ -130,8 +130,7 @@ phone map and Privacy Zone suppression are outside this flow.
 
 ## Component-library smoke
 
-`components.yaml` opens the buttons, chart, history, and typography previews and exercises the
-IconButton progress ring. It preserves app data and does not require E2E mode.
+`components.yaml` opens the buttons preview and exercises the IconButton progress ring. It preserves app data and does not require E2E mode.
 Run it against a development app already connected to Metro for the current workspace:
 
 ```sh

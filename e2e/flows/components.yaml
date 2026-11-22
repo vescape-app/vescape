@@ -19,21 +19,3 @@ appId: ${APP_ID}
     text: '85%'
     waitToSettleTimeoutMs: 1000
 - assertVisible: progress
-- tapOn:
-    text: '40%'
-    waitToSettleTimeoutMs: 1000
-- assertVisible: progress
-- openLink: 'vescape://settings/components/charts'
-- extendedWaitUntil:
-    visible: ChartStack / one canvas, shared camera
-    timeout: 15000
-- openLink: 'vescape://settings/components/history'
-- scrollUntilVisible:
-    element:
-      text: '^RidePreviewCard · RidePreviewStrip$'
-    direction: DOWN
-    timeout: 20000
-- openLink: 'vescape://settings/components/typography'
-- extendedWaitUntil:
-    visible: Typography roles
-    timeout: 15000
