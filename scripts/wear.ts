@@ -358,7 +358,7 @@ async function pairEmulator(watch: AdbDevice, phone: AdbDevice) {
     '1',
   ])
   console.log(
-    'wear: first time? in the companion: menu > Pair with emulator, then clear every permission it asks for',
+    'wear: first time? in the companion: menu > Pair with emulator, then accept every permission it asks for',
   )
   if (!(await waitFor(PAIR_TIMEOUT_MS, () => isLinked(watch) || null))) {
     fail(
