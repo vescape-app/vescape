@@ -89,7 +89,7 @@ class MirrorStateReducerTest {
             motorTemp = null,
             ctrlTemp = null,
             stale = false,
-            navBearing = 42.0,
+            navBearingDeg = 42.0,
             navDistanceM = 1_250.0,
         )
 

@@ -57,7 +57,7 @@ final class WatchMirrorCoordinatorTests: XCTestCase {
     lazy var coordinator = WatchMirrorCoordinator(
       scheduler: scheduler, nowMs: { self.scheduler.currentTimeMs },
       snapshot: {
-        WatchSnapshot(speed: self.board ? 25 : nil, navBearing: 90, navDistanceM: 100, routeSpanM: 800,
+        WatchSnapshot(speed: self.board ? 25 : nil, navBearingDeg: 90, navDistanceM: 100, routeSpanM: 800,
           mapPosition: self.mapPosition, riderSpeedMps: 5)
       },
       isStale: { false }, groupFrame: { GroupRideFrame(courseDeg: 0, spanM: 600, riders: []) },

@@ -12,7 +12,7 @@ import org.junit.Test
 class WatchMapSceneStateTest {
     private val position = WatchMapPosition(50.0, 19.0)
     private val frame = WatchFrame(null, null, null, null, null, false,
-        navBearing = 30.0, navDistanceM = 500.0, riderEastM = 10.0, riderNorthM = 20.0,
+        navBearingDeg = 30.0, navDistanceM = 500.0, riderEastM = 10.0, riderNorthM = 20.0,
         courseDeg = 90.0, routeSpanM = 800.0,
         trail = listOf(WatchTrailPoint(-20.0, 0.0), WatchTrailPoint(0.0, 0.0)), mapPosition = position)
     private val group = WatchGroupRide(180.0, 1200.0, emptyList())
@@ -27,7 +27,7 @@ class WatchMapSceneStateTest {
         assertEquals(800f, navigation.target.spanM, 0f)
         assertEquals(90f, navigation.target.courseDeg)
         assertNotNull(navigation.navigation)
-        val ended = frame.copy(navBearing = null, navDistanceM = null)
+        val ended = frame.copy(navBearingDeg = null, navDistanceM = null)
         val groupMap = scene(ended, WatchRouteStatus(WatchRoutePhase.IDLE))
         assertEquals(1200f, groupMap.target.spanM, 0f)
         assertEquals(180f, groupMap.target.courseDeg)
@@ -44,7 +44,7 @@ class WatchMapSceneStateTest {
         assertEquals(WatchRouteNotice.RECEIVING, receiving.notice)
         assertNull(receiving.navigation)
         assertEquals(1200f, receiving.target.spanM, 0f)
-        val waiting = scene(frame.copy(navBearing = null, navDistanceM = null, riderEastM = null, riderNorthM = null))
+        val waiting = scene(frame.copy(navBearingDeg = null, navDistanceM = null, riderEastM = null, riderNorthM = null))
         assertEquals(WatchRouteNotice.LOCATION, waiting.notice)
         assertNull(waiting.navigation)
         assertEquals(1200f, waiting.target.spanM, 0f)

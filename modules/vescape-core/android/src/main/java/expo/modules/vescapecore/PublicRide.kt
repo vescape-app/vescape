@@ -195,17 +195,17 @@ internal class PublicRide(
         emitStatus()
     }
 
-    fun position(presence: RiderPresence, at: Long) {
+    fun position(presence: RiderPresence, atMs: Long) {
         if (!wanted) return
         if (!riding) {
-            keepMissed(presence, at)
+            keepMissed(presence, atMs)
             return
         }
         sendMissed()
         send(
             JSONObject()
                 .put("type", "public-position")
-                .put("at", at)
+                .put("at", atMs)
                 .put("presence", presence.toJson()),
         )
     }
@@ -435,13 +435,13 @@ internal class PublicRide(
         }
     }
 
-    private fun keepMissed(presence: RiderPresence, at: Long) {
+    private fun keepMissed(presence: RiderPresence, atMs: Long) {
         if (!wanted || (linkReady && !missedSupported)) return
         val last = missed.lastOrNull()?.first
-        if (last != null && at - last < MISSED_SPACING_MS) return
-        missed.addLast(at to presence)
+        if (last != null && atMs - last < MISSED_SPACING_MS) return
+        missed.addLast(atMs to presence)
         while (missed.size > missedInFlight &&
-            (at - missed[missedInFlight].first > MISSED_MAX_AGE_MS || missed.size > MISSED_MAX_AGE_MS / MISSED_SPACING_MS + 1)
+            (atMs - missed[missedInFlight].first > MISSED_MAX_AGE_MS || missed.size > MISSED_MAX_AGE_MS / MISSED_SPACING_MS + 1)
         ) missed.removeAt(missedInFlight)
         emitDemand()
     }
@@ -450,7 +450,7 @@ internal class PublicRide(
         if (!linkReady || accountId == null || authenticatedAccount != accountId || !missedSupported || missedInFlight > 0 || missed.isEmpty()) return
         val batch = missed.take(MISSED_BATCH_MAX)
         val positions = JSONArray()
-        batch.forEach { (at, presence) -> positions.put(JSONObject().put("at", at).put("presence", presence.toJson())) }
+        batch.forEach { (atMs, presence) -> positions.put(JSONObject().put("at", atMs).put("presence", presence.toJson())) }
         if (send(JSONObject().put("type", "missed-positions").put("positions", positions))) {
             missedInFlight = batch.size
             scheduleMissedRetry(MISSED_RETRY_MS)

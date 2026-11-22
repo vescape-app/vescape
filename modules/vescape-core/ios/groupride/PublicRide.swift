@@ -52,7 +52,7 @@ internal final class PublicRide {
   private var pinsReceivedAt: Int64 = 0
   private var missedSupported = false
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/PublicRide.kt `missed`
-  private var missed: [(at: Int64, presence: RiderPresence)] = []
+  private var missed: [(atMs: Int64, presence: RiderPresence)] = []
   private var missedInFlight = 0
   private var authenticatedAccount: String?
   private var lastNeedsLink = false
@@ -202,14 +202,14 @@ internal final class PublicRide {
     emitStatus()
   }
 
-  func position(_ presence: RiderPresence, at: Int64) {
+  func position(_ presence: RiderPresence, atMs: Int64) {
     guard wanted else { return }
     guard riding else {
-      keepMissed(presence, at: at)
+      keepMissed(presence, atMs: atMs)
       return
     }
     sendMissed()
-    _ = send(["type": "public-position", "at": at, "presence": presence.toJson()])
+    _ = send(["type": "public-position", "at": atMs, "presence": presence.toJson()])
   }
 
   func watchNearby(_ point: (lat: Double, lng: Double)) {
@@ -319,7 +319,7 @@ internal final class PublicRide {
       let signal = RiderSignal.parse(json["signal"] as? [String: Any])
       let relayTime = (json["now"] as? NSNumber)?.int64Value
       if id == accountId {
-        if riding, let relayTime { confirmOwnSignal(signal, at: relayTime) }
+        if riding, let relayTime { confirmOwnSignal(signal, atMs: relayTime) }
         return true
       }
       let hazard = RideHazard.parse(json["hazard"] as? [String: Any])
@@ -336,7 +336,7 @@ internal final class PublicRide {
         pinsReceivedAt = self.now()
         announcePeerSignal(
           signal, riderId: id, previous: previous,
-          clearedStartedAt: (json["clearedSignalStartedAt"] as? NSNumber)?.int64Value, at: relayTime
+          clearedStartedAt: (json["clearedSignalStartedAt"] as? NSNumber)?.int64Value, atMs: relayTime
         )
       }
       emitPins()
@@ -351,7 +351,7 @@ internal final class PublicRide {
     return true
   }
 
-  private func confirmOwnSignal(_ signal: RiderSignal?, at relayTime: Int64) {
+  private func confirmOwnSignal(_ signal: RiderSignal?, atMs relayTime: Int64) {
     let previous = confirmedOwnSignal
     confirmedOwnSignal = signal
     if let signal, ownPins[.signal] != nil, signal.expiresAt > relayTime, signal.startedAt != previous?.startedAt {
@@ -362,7 +362,7 @@ internal final class PublicRide {
   }
 
   private func announcePeerSignal(
-    _ signal: RiderSignal?, riderId: String, previous: RiderSignal?, clearedStartedAt: Int64?, at relayTime: Int64
+    _ signal: RiderSignal?, riderId: String, previous: RiderSignal?, clearedStartedAt: Int64?, atMs relayTime: Int64
   ) {
     announcedSignals = announcedSignals.filter { $0.value.expiresAt > relayTime }
     if let signal, signal.expiresAt > relayTime,
@@ -448,12 +448,12 @@ internal final class PublicRide {
     }
   }
 
-  private func keepMissed(_ presence: RiderPresence, at: Int64) {
+  private func keepMissed(_ presence: RiderPresence, atMs: Int64) {
     guard wanted, !linkReady || missedSupported else { return }
-    if let last = missed.last?.at, at - last < Self.missedSpacingMs { return }
-    missed.append((at, presence))
+    if let last = missed.last?.atMs, atMs - last < Self.missedSpacingMs { return }
+    missed.append((atMs, presence))
     while missed.count > missedInFlight,
-          at - missed[missedInFlight].at > Self.missedMaxAgeMs || missed.count > Int(Self.missedMaxAgeMs / Self.missedSpacingMs) + 1 {
+          atMs - missed[missedInFlight].atMs > Self.missedMaxAgeMs || missed.count > Int(Self.missedMaxAgeMs / Self.missedSpacingMs) + 1 {
       missed.remove(at: missedInFlight)
     }
     emitDemand()
@@ -462,7 +462,7 @@ internal final class PublicRide {
   private func sendMissed() {
     guard linkReady, accountId != nil, authenticatedAccount == accountId, missedSupported, missedInFlight == 0, !missed.isEmpty else { return }
     let batch = missed.prefix(Self.missedBatchMax)
-    let positions: [[String: Any]] = batch.map { ["at": $0.at, "presence": $0.presence.toJson()] }
+    let positions: [[String: Any]] = batch.map { ["at": $0.atMs, "presence": $0.presence.toJson()] }
     if send(["type": "missed-positions", "positions": positions]) {
       missedInFlight = batch.count
       scheduleMissedRetry(Self.missedRetryMs)

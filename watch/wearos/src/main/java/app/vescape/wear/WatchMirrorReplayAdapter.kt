@@ -16,7 +16,7 @@ internal object WatchMirrorReplayAdapter {
         val bytes = WatchFrameBuilder.encode(PhoneFrame(
             speed = frame.speed, duty = frame.duty, battery = frame.battery,
             motorTemp = frame.motorTemp, ctrlTemp = frame.ctrlTemp, stale = frame.stale,
-            navBearing = frame.navBearing, navDistanceM = frame.navDistanceM,
+            navBearingDeg = frame.navBearingDeg, navDistanceM = frame.navDistanceM,
             riderEastM = frame.riderEastM, riderNorthM = frame.riderNorthM,
             courseDeg = frame.courseDeg, routeSpanM = frame.routeSpanM,
             remoteTilt = frame.remoteTilt, tiltControl = PhoneTiltControl.entries.first { it.wire == frame.tiltControl.wire },

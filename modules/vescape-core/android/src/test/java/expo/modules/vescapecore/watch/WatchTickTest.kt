@@ -73,7 +73,7 @@ class WatchTickTest {
                     batterySoc = null,
                     motorTemp = null,
                     ctrlTemp = null,
-                    navBearing = 42.0,
+                    navBearingDeg = 42.0,
                     navDistanceM = 100.0,
                 )
             },

@@ -7,7 +7,7 @@ final class WatchMirrorIntakeTests: XCTestCase {
   private let origin = WatchMapPosition(latitude: 51.13, longitude: 16.99)
   private let frame = WatchFrame(
     speed: 21, duty: 40, battery: 80, motorTemp: 30, ctrlTemp: 25,
-    navBearing: 30, navDistanceM: 150, riderEastM: 12, riderNorthM: 20, courseDeg: 90,
+    navBearingDeg: 30, navDistanceM: 150, riderEastM: 12, riderNorthM: 20, courseDeg: 90,
     trail: [WatchTrailPoint(eastM: -12, northM: -20), WatchTrailPoint(eastM: 0, northM: 0)],
     mapPosition: WatchMapPosition(latitude: 50, longitude: 20)
   )
@@ -29,13 +29,13 @@ final class WatchMirrorIntakeTests: XCTestCase {
     intake.acceptRoute(nil)
     intake.acceptRouteStatus(WatchRouteStatusCodec.encode(WatchRouteStatus(phase: .idle)))
     var withoutNavigation = frame
-    withoutNavigation.navBearing = nil
+    withoutNavigation.navBearingDeg = nil
     withoutNavigation.navDistanceM = nil
     withoutNavigation.riderEastM = nil
     withoutNavigation.riderNorthM = nil
     intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(withoutNavigation), receivedAtMs: 1_250, appliedAtMs: 1_250)
     XCTAssertNil(intake.route)
-    XCTAssertNil(intake.mirror.frame?.navBearing)
+    XCTAssertNil(intake.mirror.frame?.navBearingDeg)
     XCTAssertEqual(intake.mirror.frame?.trail, frame.trail)
     XCTAssertEqual(intake.mirror.frame?.mapPosition, frame.mapPosition)
 

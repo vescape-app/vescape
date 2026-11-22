@@ -16,7 +16,7 @@ class WatchMirrorIntakeTest {
     private val origin = WatchMapPosition(51.13, 16.99)
     private val frame = WatchFrame(
         speed = 21.0, duty = 40.0, battery = 80.0, motorTemp = 30.0, ctrlTemp = 25.0, stale = false,
-        navBearing = 30.0, navDistanceM = 150.0, riderEastM = 12.0, riderNorthM = 20.0,
+        navBearingDeg = 30.0, navDistanceM = 150.0, riderEastM = 12.0, riderNorthM = 20.0,
         courseDeg = 90.0, trail = listOf(WatchTrailPoint(-12.0, -20.0), WatchTrailPoint(0.0, 0.0)),
         mapPosition = WatchMapPosition(50.0, 20.0),
     )
@@ -37,9 +37,9 @@ class WatchMirrorIntakeTest {
 
         intake.acceptRoute(null)
         intake.acceptRouteStatus(WatchRouteStatusCodec.encode(WatchRouteStatus(WatchRoutePhase.IDLE)))
-        intake.frame(frame.copy(navBearing = null, navDistanceM = null, riderEastM = null, riderNorthM = null), 1_250)
+        intake.frame(frame.copy(navBearingDeg = null, navDistanceM = null, riderEastM = null, riderNorthM = null), 1_250)
         assertNull(intake.route)
-        assertNull(intake.mirror.frame!!.navBearing)
+        assertNull(intake.mirror.frame!!.navBearingDeg)
         assertEquals(frame.trail, intake.mirror.frame!!.trail)
         assertEquals(frame.mapPosition, intake.mirror.frame!!.mapPosition)
 

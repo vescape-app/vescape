@@ -472,7 +472,7 @@ final class AlertEngineTests: XCTestCase {
 
   func testRepeatingRuleAnnouncesOnItsCadenceWhileStillPast() {
     var clock: Int64 = 0
-    let engine = AlertEngine(now: { clock })
+    let engine = AlertEngine(nowMs: { clock })
     let rules = [rule(controlId: "motor-temp", threshold: 95.0, repeatEverySeconds: 10)]
     let hot = telemetry(tempMotor: 96.0)
 
@@ -489,7 +489,7 @@ final class AlertEngineTests: XCTestCase {
 
   func testRepeatClockRestartsAfterRearming() {
     var clock: Int64 = 0
-    let engine = AlertEngine(now: { clock })
+    let engine = AlertEngine(nowMs: { clock })
     let rules = [rule(controlId: "motor-temp", threshold: 95.0, repeatEverySeconds: 10)]
 
     _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 96.0))

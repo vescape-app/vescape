@@ -905,7 +905,7 @@ internal final class BoardSessionController: VescGattListener {
       phoneBattery: readPhoneBattery(),
       boardName: config.map { $0.name.isEmpty ? boardName : $0.name } ?? nil,
       target: groupRideTarget,
-      at: location.timestamp
+      atMs: location.timestamp
     )
   }
 
@@ -2269,7 +2269,7 @@ internal final class BoardSessionController: VescGattListener {
       batterySoc: current != nil ? latestBatterySoc : nil,
       motorTemp: current?.tempMotor,
       ctrlTemp: current?.tempMosfet,
-      navBearing: offset != nil ? progress?.bearingDeg : nil,
+      navBearingDeg: offset != nil ? progress?.bearingDeg : nil,
       navDistanceM: offset != nil ? progress?.remainingMeters : nil,
       riderEastM: offset?.east,
       riderNorthM: offset?.north,

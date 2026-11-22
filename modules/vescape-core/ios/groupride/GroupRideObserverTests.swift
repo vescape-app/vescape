@@ -111,7 +111,7 @@ final class GroupRideObserverTests: XCTestCase {
       ready()
       observer.onClosed(links.last!, responseCode: nil)
       var presence = RiderPresence(lat: 52, lng: 21)
-      presence.at = 10_000
+      presence.atMs = 10_000
       observer.pushPresence(presence)
       observer.setBoardConnected(false)
       XCTAssertTrue(observer.publicRideNeedsLink)

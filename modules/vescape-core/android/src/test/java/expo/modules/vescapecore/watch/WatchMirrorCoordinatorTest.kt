@@ -56,7 +56,7 @@ class WatchMirrorCoordinatorTest {
         val mapTiles = mutableListOf<WatchMapRider?>()
         val coordinator = WatchMirrorCoordinator(
             scheduler, { scheduler.currentTimeMs },
-            { WatchSnapshot(speed = if (board) 25.0 else null, dutyCycle = null, dutyExcluded = true, batterySoc = null, motorTemp = null, ctrlTemp = null, navBearing = 90.0, navDistanceM = 100.0, mapPosition = mapPosition, riderSpeedMps = 5.0, routeSpanM = 800.0) },
+            { WatchSnapshot(speed = if (board) 25.0 else null, dutyCycle = null, dutyExcluded = true, batterySoc = null, motorTemp = null, ctrlTemp = null, navBearingDeg = 90.0, navDistanceM = 100.0, mapPosition = mapPosition, riderSpeedMps = 5.0, routeSpanM = 800.0) },
             { false }, { GroupRideFrame(0.0, 600.0, emptyList()) }, transport, sources, { _, _ -> },
             { navigatingChanges++ }, { mapTiles += it },
         )

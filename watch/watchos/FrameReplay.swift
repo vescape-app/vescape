@@ -102,7 +102,7 @@ final class FrameReplayer {
             frame.tiltControl = tilt == WatchTiltStick.center ? .free : .manual
           }
           if ProcessInfo.processInfo.arguments.contains("--no-navigation") {
-            frame.navBearing = nil
+            frame.navBearingDeg = nil
             frame.navDistanceM = nil
             frame.riderEastM = nil
             frame.riderNorthM = nil

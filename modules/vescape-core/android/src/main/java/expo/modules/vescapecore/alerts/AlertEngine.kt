@@ -169,7 +169,7 @@ internal fun withLegalModeOverlay(
     )
 }
 
-internal class AlertEngine(private val now: () -> Long = { System.currentTimeMillis() }) {
+internal class AlertEngine(private val nowMs: () -> Long = { System.currentTimeMillis() }) {
     // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `AlertEngine`
     private val lastFiredAt = HashMap<String, Long>()
     private val armedState = HashMap<String, Boolean>()
@@ -206,7 +206,7 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         valueFor: (String) -> Double?,
     ): List<FiredAlert> {
         if (rules.isEmpty()) return emptyList()
-        val now = now()
+        val now = nowMs()
         val fired = mutableListOf<FiredAlert>()
 
         for (rule in rules) {

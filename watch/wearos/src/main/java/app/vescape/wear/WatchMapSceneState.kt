@@ -20,10 +20,10 @@ internal class WatchMapSceneState(
     streetMapEnabled: Boolean,
     mapGaugesPercent: Int,
 ) {
-    val navigation = if (frame.navBearing != null && frame.navDistanceM != null && routeStatus?.canDraw(routeId) != false)
-        WatchMapNavigation(frame.navBearing, frame.navDistanceM) else null
+    val navigation = if (frame.navBearingDeg != null && frame.navDistanceM != null && routeStatus?.canDraw(routeId) != false)
+        WatchMapNavigation(frame.navBearingDeg, frame.navDistanceM) else null
     val hasNavigation: Boolean get() = navigation != null
-    val notice = routeStatus?.notice(routeId, frame.navBearing != null && frame.navDistanceM != null && frame.riderEastM != null && frame.riderNorthM != null)
+    val notice = routeStatus?.notice(routeId, frame.navBearingDeg != null && frame.navDistanceM != null && frame.riderEastM != null && frame.riderNorthM != null)
     val drawMap = !ambient
     val drawStreetMap = drawMap && streetMapEnabled
     val target = WatchMapTarget(

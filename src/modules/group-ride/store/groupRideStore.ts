@@ -28,7 +28,7 @@ import {
 } from 'vescape-core'
 
 import { publicRideUntil, type PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
-import { monotonicNow, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
+import { monotonicNowMs, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
 import {
   publicRiderRoster,
   rosterRowsEqual,
@@ -133,7 +133,7 @@ export const useGroupRideStore = create<GroupRideState>((set, get) => ({
           ...deriveRoster({}, { ...state, publicPins: pins }),
           publicPins: pins,
           publicOwnPins: own,
-          relayClock: { relayNow: now, receivedAt: monotonicNow() },
+          relayClock: { relayNow: now, receivedAt: monotonicNowMs() },
         })),
       ),
       addLocationListener(({ latitude, longitude }) => {

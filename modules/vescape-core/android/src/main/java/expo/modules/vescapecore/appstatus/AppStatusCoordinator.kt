@@ -167,7 +167,6 @@ class AppStatusCoordinator internal constructor(
     private var instance: AppStatusCoordinator? = null
 
     @AnyThread
-
     fun get(context: Context): AppStatusCoordinator =
       instance ?: synchronized(this) {
         instance ?: AppStatusCoordinator(

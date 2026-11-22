@@ -81,7 +81,7 @@ final class MirrorStateTests: XCTestCase {
   }
 
   func testABoardlessNavigationFrameIsLiveWithItsNavLanesAndNoNotice() {
-    let navOnly = WatchFrame(navBearing: 42, navDistanceM: 1_250)
+    let navOnly = WatchFrame(navBearingDeg: 42, navDistanceM: 1_250)
 
     let state = MirrorStateReducer.reduce(frame: navOnly, lastFrameAtMs: 1_000, nowMs: 1_000)
 

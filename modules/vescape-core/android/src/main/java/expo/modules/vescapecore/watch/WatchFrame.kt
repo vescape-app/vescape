@@ -33,7 +33,7 @@ internal data class WatchFrame(
     val motorTemp: Double?,
     val ctrlTemp: Double?,
     val stale: Boolean,
-    val navBearing: Double? = null,
+    val navBearingDeg: Double? = null,
     val navDistanceM: Double? = null,
     val riderEastM: Double? = null,
     val riderNorthM: Double? = null,
@@ -52,7 +52,7 @@ internal data class WatchSnapshot(
     val batterySoc: Double?,
     val motorTemp: Double?,
     val ctrlTemp: Double?,
-    val navBearing: Double? = null,
+    val navBearingDeg: Double? = null,
     val navDistanceM: Double? = null,
     val riderEastM: Double? = null,
     val riderNorthM: Double? = null,
@@ -73,7 +73,7 @@ internal object WatchFrameBuilder {
         motorTemp = snapshot.motorTemp,
         ctrlTemp = snapshot.ctrlTemp,
         stale = stale,
-        navBearing = snapshot.navBearing,
+        navBearingDeg = snapshot.navBearingDeg,
         navDistanceM = snapshot.navDistanceM,
         riderEastM = snapshot.riderEastM,
         riderNorthM = snapshot.riderNorthM,
@@ -96,7 +96,7 @@ internal object WatchFrameBuilder {
             putFloat(frame.battery.toLaneFloat())
             putFloat(frame.motorTemp.toLaneFloat())
             putFloat(frame.ctrlTemp.toLaneFloat())
-            putFloat(frame.navBearing.toLaneFloat())
+            putFloat(frame.navBearingDeg.toLaneFloat())
             putFloat(frame.navDistanceM.toLaneFloat())
             putFloat(frame.riderEastM.toLaneFloat())
             putFloat(frame.riderNorthM.toLaneFloat())

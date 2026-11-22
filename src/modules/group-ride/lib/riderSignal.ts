@@ -5,16 +5,16 @@ export interface RelayClock {
   receivedAt: number
 }
 
-export const monotonicNow = (): number => performance.now()
+export const monotonicNowMs = (): number => performance.now()
 
-export function relayNow(clock: RelayClock, localNow = monotonicNow()): number {
+export function relayNow(clock: RelayClock, localNow = monotonicNowMs()): number {
   return clock.relayNow + (localNow - clock.receivedAt)
 }
 
 export function signalTimeLeftMs(
   signal: GroupRidePin,
   clock: RelayClock,
-  localNow = monotonicNow(),
+  localNow = monotonicNowMs(),
 ): number {
   return Math.max(0, signal.expiresAt - relayNow(clock, localNow))
 }
@@ -23,7 +23,7 @@ export function topRiderSignal(
   signals: readonly GroupRidePin[],
   clock: RelayClock,
   rankOf: (kind: string) => number | null,
-  localNow = monotonicNow(),
+  localNow = monotonicNowMs(),
 ): GroupRidePin | null {
   let top: GroupRidePin | null = null
   let topRank = -Infinity

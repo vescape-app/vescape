@@ -2118,7 +2118,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             batterySoc = if (current != null) latestBatterySoc else null,
             motorTemp = current?.tempMotor,
             ctrlTemp = current?.tempMosfet,
-            navBearing = if (offset != null) progress?.bearingDeg else null,
+            navBearingDeg = if (offset != null) progress?.bearingDeg else null,
             navDistanceM = if (offset != null) progress?.remainingMeters else null,
             riderEastM = offset?.first,
             riderNorthM = offset?.second,
@@ -2985,7 +2985,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             phoneBattery = readPhoneBattery(service),
             boardName = if (boardConfig != null) (boardConfig?.deviceName ?: selectedBoardName) else null,
             target = groupRideTarget,
-            at = location.timestamp,
+            atMs = location.timestamp,
         )
     }
 

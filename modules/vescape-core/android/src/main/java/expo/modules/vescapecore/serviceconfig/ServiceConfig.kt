@@ -111,7 +111,6 @@ class ServiceConfigCoordinator internal constructor(
     private var instance: ServiceConfigCoordinator? = null
 
     @AnyThread
-
     fun get(context: Context): ServiceConfigCoordinator =
       instance ?: synchronized(this) {
         instance ?: run {

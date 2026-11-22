@@ -231,10 +231,10 @@ private func alertEngineNowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `AlertEngine`
 internal final class AlertEngine {
-  private let now: () -> Int64
+  private let nowMs: () -> Int64
 
-  init(now: @escaping () -> Int64 = { alertEngineNowMs() }) {
-    self.now = now
+  init(nowMs: @escaping () -> Int64 = { alertEngineNowMs() }) {
+    self.nowMs = nowMs
   }
 
   private var lastFiredAt: [String: Int64] = [:]
@@ -274,7 +274,7 @@ internal final class AlertEngine {
     valueFor: (String) -> Double?
   ) -> [FiredAlert] {
     guard !rules.isEmpty else { return [] }
-    let now = now()
+    let now = nowMs()
     var fired: [FiredAlert] = []
 
     for rule in rules {

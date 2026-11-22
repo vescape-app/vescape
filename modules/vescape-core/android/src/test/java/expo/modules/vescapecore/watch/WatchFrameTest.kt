@@ -22,7 +22,7 @@ class WatchFrameTest {
             lane(),
             lane(),
             stale = flags and WATCH_FRAME_FLAG_STALE != 0,
-            navBearing = lane(),
+            navBearingDeg = lane(),
             navDistanceM = lane(),
             riderEastM = lane(),
             riderNorthM = lane(),
@@ -63,11 +63,11 @@ class WatchFrameTest {
                 motorTemp = 40.0,
                 ctrlTemp = 35.0,
                 stale = false,
-                navBearing = 128.0,
+                navBearingDeg = 128.0,
                 navDistanceM = 1350.0,
             ),
         )!!
-        assertEquals(128.0, navigating.navBearing!!, 1e-3)
+        assertEquals(128.0, navigating.navBearingDeg!!, 1e-3)
         assertEquals(1350.0, navigating.navDistanceM!!, 1e-3)
 
         val idle = roundTrip(
@@ -80,7 +80,7 @@ class WatchFrameTest {
                 stale = false,
             ),
         )!!
-        assertNull(idle.navBearing)
+        assertNull(idle.navBearingDeg)
         assertNull(idle.navDistanceM)
     }
 
@@ -179,7 +179,7 @@ class WatchFrameTest {
                     batterySoc = null,
                     motorTemp = null,
                     ctrlTemp = null,
-                    navBearing = 42.0,
+                    navBearingDeg = 42.0,
                 ),
                 stale = false,
             ),
@@ -189,7 +189,7 @@ class WatchFrameTest {
         assertNull(decoded.battery)
         assertNull(decoded.motorTemp)
         assertNull(decoded.ctrlTemp)
-        assertEquals(42.0, decoded.navBearing!!, 1e-3)
+        assertEquals(42.0, decoded.navBearingDeg!!, 1e-3)
     }
 
     @Test

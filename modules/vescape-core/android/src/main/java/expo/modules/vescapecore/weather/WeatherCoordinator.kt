@@ -123,7 +123,6 @@ class WeatherCoordinator internal constructor(
         private var instance: WeatherCoordinator? = null
 
         @AnyThread
-
         fun get(): WeatherCoordinator =
             instance ?: synchronized(this) {
                 instance ?: WeatherCoordinator(

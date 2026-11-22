@@ -14,13 +14,13 @@ struct WatchMapSceneState {
   private let mapGaugesAlpha: Double
 
   init(frame: WatchFrame, routeId: UInt32?, routeStatus: WatchRouteStatus?, group: WatchGroupRide?, ambient: Bool, telemetryTrailEnabled: Bool, telemetryGroupEnabled: Bool, telemetryRouteEnabled: Bool, streetMapEnabled: Bool, mapGaugesPercent: Int) {
-    let hasNavigation = frame.navBearing != nil && frame.navDistanceM != nil && routeStatus?.canDraw(receivedRouteId: routeId) != false
-    if hasNavigation, let bearing = frame.navBearing, let distance = frame.navDistanceM {
+    let hasNavigation = frame.navBearingDeg != nil && frame.navDistanceM != nil && routeStatus?.canDraw(receivedRouteId: routeId) != false
+    if hasNavigation, let bearing = frame.navBearingDeg, let distance = frame.navDistanceM {
       navigation = WatchMapNavigation(bearingDeg: bearing, distanceM: distance)
     } else {
       navigation = nil
     }
-    notice = routeStatus?.notice(receivedRouteId: routeId, hasPosition: frame.navBearing != nil && frame.navDistanceM != nil && frame.riderEastM != nil && frame.riderNorthM != nil)
+    notice = routeStatus?.notice(receivedRouteId: routeId, hasPosition: frame.navBearingDeg != nil && frame.navDistanceM != nil && frame.riderEastM != nil && frame.riderNorthM != nil)
     drawMap = !ambient
     drawStreetMap = drawMap && streetMapEnabled
     self.telemetryTrailEnabled = telemetryTrailEnabled

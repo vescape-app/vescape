@@ -255,7 +255,7 @@ enum ReplayFixtureParser {
         motorTemp: lane(json, "motorTemp"),
         ctrlTemp: lane(json, "ctrlTemp"),
         stale: json["stale"] as? Bool ?? false,
-        navBearing: lane(json, "navBearing"),
+        navBearingDeg: lane(json, "navBearing"),
         navDistanceM: lane(json, "navDistance"),
         riderEastM: lane(json, "riderEast"),
         riderNorthM: lane(json, "riderNorth"),

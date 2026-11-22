@@ -5,7 +5,7 @@ import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 import { DEFAULT_HISTORY_METRIC_HOT_RANGES } from '@/modules/history/lib/metricColorScale'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
-import { monotonicNow, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
+import { monotonicNowMs, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
 
 const NOW = Date.now()
 const BASE_LON = 14.4378
@@ -322,7 +322,7 @@ export const FIXTURE_ROSTER_ROWS: RosterRider[] = [
   ...FIXTURE_RIDERS,
 ]
 
-export const FIXTURE_RELAY_CLOCK: RelayClock = { relayNow: NOW, receivedAt: monotonicNow() }
+export const FIXTURE_RELAY_CLOCK: RelayClock = { relayNow: NOW, receivedAt: monotonicNowMs() }
 
 const fixturePin = (kind: string, lat: number, lng: number) => ({
   kind,

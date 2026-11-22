@@ -110,7 +110,7 @@ class PublicRideTest {
         assertEquals(until, sent.last().getLong("until"))
         assertEquals(false, status()["live"])
         ride.handle("public-status", JSONObject().put("on", true))
-        ride.position(presence, at = now)
+        ride.position(presence, atMs = now)
 
         ride.setBoardConnected(true)
         assertEquals("board", status()["activation"])

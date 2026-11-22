@@ -16,7 +16,7 @@ final class WatchFrameTests: XCTestCase {
   func testByteLayoutMatchesTheDeclaredLaneOrder() {
     let frame = WatchFrame(
       speed: 1, duty: 2, battery: 3, motorTemp: 4, ctrlTemp: 5, stale: true,
-      navBearing: 6, navDistanceM: 7, riderEastM: 8, riderNorthM: 9, courseDeg: 10, routeSpanM: 11,
+      navBearingDeg: 6, navDistanceM: 7, riderEastM: 8, riderNorthM: 9, courseDeg: 10, routeSpanM: 11,
       remoteTilt: 12, tiltControl: .blocked
     )
     let data = WatchFrameBuilder.encode(frame)
@@ -86,7 +86,7 @@ final class WatchFrameTests: XCTestCase {
   func testRoundTripsAllLanesAndTheStaleFlag() throws {
     let frame = WatchFrame(
       speed: 21.3, duty: 64, battery: 73, motorTemp: 51, ctrlTemp: 47, stale: false,
-      navBearing: 128, navDistanceM: 1350, riderEastM: -40.5, riderNorthM: 12.25,
+      navBearingDeg: 128, navDistanceM: 1350, riderEastM: -40.5, riderNorthM: 12.25,
       courseDeg: 271, routeSpanM: 725
     )
     let decoded = try XCTUnwrap(roundTrip(frame))
@@ -97,7 +97,7 @@ final class WatchFrameTests: XCTestCase {
     XCTAssertEqual(decoded.motorTemp, 51)
     XCTAssertEqual(decoded.ctrlTemp, 47)
     XCTAssertEqual(decoded.stale, false)
-    XCTAssertEqual(decoded.navBearing, 128)
+    XCTAssertEqual(decoded.navBearingDeg, 128)
     XCTAssertEqual(decoded.navDistanceM, 1350)
     XCTAssertEqual(decoded.riderEastM, -40.5)
     XCTAssertEqual(decoded.riderNorthM, 12.25)
@@ -112,7 +112,7 @@ final class WatchFrameTests: XCTestCase {
     XCTAssertNil(decoded?.battery)
     XCTAssertNil(decoded?.motorTemp)
     XCTAssertNil(decoded?.ctrlTemp)
-    XCTAssertNil(decoded?.navBearing)
+    XCTAssertNil(decoded?.navBearingDeg)
     XCTAssertNil(decoded?.routeSpanM)
     XCTAssertEqual(decoded?.stale, true)
   }

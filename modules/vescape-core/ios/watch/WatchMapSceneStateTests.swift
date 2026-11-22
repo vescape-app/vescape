@@ -5,7 +5,7 @@ import XCTest
 final class WatchMapSceneStateTests: XCTestCase {
   private let position = WatchMapPosition(latitude: 50, longitude: 19)
   private var frame: WatchFrame {
-    WatchFrame(navBearing: 30, navDistanceM: 500, riderEastM: 10, riderNorthM: 20,
+    WatchFrame(navBearingDeg: 30, navDistanceM: 500, riderEastM: 10, riderNorthM: 20,
       courseDeg: 90, routeSpanM: 800,
       trail: [WatchTrailPoint(eastM: -20, northM: 0), WatchTrailPoint(eastM: 0, northM: 0)],
       mapPosition: position)
@@ -22,7 +22,7 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertEqual(navigation.target.courseDeg, 90)
     XCTAssertNotNil(navigation.navigation)
     var ended = frame
-    ended.navBearing = nil
+    ended.navBearingDeg = nil
     ended.navDistanceM = nil
     let groupMap = scene(ended, status: WatchRouteStatus(phase: .idle), group: group)
     XCTAssertEqual(groupMap.target.spanM, 1200)
@@ -41,7 +41,7 @@ final class WatchMapSceneStateTests: XCTestCase {
     XCTAssertNil(receiving.navigation)
     XCTAssertEqual(receiving.target.spanM, 1200)
     var noFix = frame
-    noFix.navBearing = nil
+    noFix.navBearingDeg = nil
     noFix.navDistanceM = nil
     noFix.riderEastM = nil
     noFix.riderNorthM = nil

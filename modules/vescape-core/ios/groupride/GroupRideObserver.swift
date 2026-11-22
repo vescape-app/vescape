@@ -241,7 +241,7 @@ internal final class GroupRideObserver: NSObject {
   func pushPresence(_ presence: RiderPresence) {
     onMain { [self] in
       guard !stopped else { return }
-      if let at = presence.at { publicRide.position(presence, at: at) }
+      if let atMs = presence.atMs { publicRide.position(presence, atMs: atMs) }
     }
   }
 
@@ -611,7 +611,7 @@ internal struct RiderPresence {
   var phoneBattery: Double?
   var boardName: String?
   var target: TargetPoint?
-  var at: Int64?
+  var atMs: Int64?
 
   func toJson() -> [String: Any] {
     var json: [String: Any] = ["lat": lat, "lng": lng]

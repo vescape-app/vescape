@@ -38,7 +38,7 @@ struct WatchFrame: Equatable {
   var ctrlTemp: Double?
   var stale: Bool
   var waiting: Bool
-  var navBearing: Double?
+  var navBearingDeg: Double?
   var navDistanceM: Double?
   var riderEastM: Double?
   var riderNorthM: Double?
@@ -57,7 +57,7 @@ struct WatchFrame: Equatable {
     ctrlTemp: Double? = nil,
     stale: Bool = false,
     waiting: Bool = false,
-    navBearing: Double? = nil,
+    navBearingDeg: Double? = nil,
     navDistanceM: Double? = nil,
     riderEastM: Double? = nil,
     riderNorthM: Double? = nil,
@@ -75,7 +75,7 @@ struct WatchFrame: Equatable {
     self.ctrlTemp = ctrlTemp
     self.stale = stale
     self.waiting = waiting
-    self.navBearing = navBearing
+    self.navBearingDeg = navBearingDeg
     self.navDistanceM = navDistanceM
     self.riderEastM = riderEastM
     self.riderNorthM = riderNorthM
@@ -96,7 +96,7 @@ struct WatchSnapshot {
   var batterySoc: Double?
   var motorTemp: Double?
   var ctrlTemp: Double?
-  var navBearing: Double?
+  var navBearingDeg: Double?
   var navDistanceM: Double?
   var riderEastM: Double?
   var riderNorthM: Double?
@@ -115,7 +115,7 @@ struct WatchSnapshot {
     batterySoc: Double? = nil,
     motorTemp: Double? = nil,
     ctrlTemp: Double? = nil,
-    navBearing: Double? = nil,
+    navBearingDeg: Double? = nil,
     navDistanceM: Double? = nil,
     riderEastM: Double? = nil,
     riderNorthM: Double? = nil,
@@ -133,7 +133,7 @@ struct WatchSnapshot {
     self.batterySoc = batterySoc
     self.motorTemp = motorTemp
     self.ctrlTemp = ctrlTemp
-    self.navBearing = navBearing
+    self.navBearingDeg = navBearingDeg
     self.navDistanceM = navDistanceM
     self.riderEastM = riderEastM
     self.riderNorthM = riderNorthM
@@ -157,7 +157,7 @@ enum WatchFrameBuilder {
       motorTemp: snapshot.motorTemp,
       ctrlTemp: snapshot.ctrlTemp,
       stale: stale,
-      navBearing: snapshot.navBearing,
+      navBearingDeg: snapshot.navBearingDeg,
       navDistanceM: snapshot.navDistanceM,
       riderEastM: snapshot.riderEastM,
       riderNorthM: snapshot.riderNorthM,
@@ -211,7 +211,7 @@ enum WatchFrameBuilder {
     \.battery,
     \.motorTemp,
     \.ctrlTemp,
-    \.navBearing,
+    \.navBearingDeg,
     \.navDistanceM,
     \.riderEastM,
     \.riderNorthM,

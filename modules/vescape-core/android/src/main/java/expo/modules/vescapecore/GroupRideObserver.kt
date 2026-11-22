@@ -242,7 +242,7 @@ internal class GroupRideObserver(
     fun pushPresence(presence: RiderPresence) {
         handler.post {
             if (stopped) return@post
-            presence.at?.let { publicRide.position(presence, it) }
+            presence.atMs?.let { publicRide.position(presence, it) }
         }
     }
 
@@ -515,7 +515,7 @@ internal data class RiderPresence(
     val phoneBattery: Double?,
     val boardName: String?,
     val target: TargetPoint? = null,
-    val at: Long? = null,
+    val atMs: Long? = null,
 ) {
     fun toJson(): JSONObject {
         val json = JSONObject()

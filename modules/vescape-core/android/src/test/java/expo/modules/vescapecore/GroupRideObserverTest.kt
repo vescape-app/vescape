@@ -140,7 +140,7 @@ class GroupRideObserverTest {
             ready()
             links.last().listener.onClosed(links.last().socket, 1000, "offline")
             flush()
-            observer.pushPresence(RiderPresence(52.0, 21.0, null, null, null, null, null, null, null, at = 10_000))
+            observer.pushPresence(RiderPresence(52.0, 21.0, null, null, null, null, null, null, null, atMs = 10_000))
             observer.setBoardConnected(false)
             flush()
             assertTrue(observer.publicRideNeedsLink)

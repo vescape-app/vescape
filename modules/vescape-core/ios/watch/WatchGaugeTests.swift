@@ -27,7 +27,7 @@ final class WatchGaugeTests: XCTestCase {
     let origin = try fixtureOrigin()
     for wander in [false, true] {
       let samples = ReplayFixtureParser.parse(text: text, wander: wander, origin: origin)
-      let arrival = try XCTUnwrap(samples.firstIndex { $0.frame.navBearing == nil })
+      let arrival = try XCTUnwrap(samples.firstIndex { $0.frame.navBearingDeg == nil })
       XCTAssertGreaterThan(arrival, 0)
       let after = samples.dropFirst(arrival)
       XCTAssertFalse(after.isEmpty)
@@ -52,7 +52,7 @@ final class WatchGaugeTests: XCTestCase {
       let frame = detour[i].frame
       let previous = detour[i - 1].frame
       XCTAssertLessThan(hypot(frame.riderEastM! - previous.riderEastM!, frame.riderNorthM! - previous.riderNorthM!), 5)
-      XCTAssertEqual(frame.navBearing, straight[i].frame.navBearing)
+      XCTAssertEqual(frame.navBearingDeg, straight[i].frame.navBearingDeg)
       XCTAssertEqual(frame.trail.first!.eastM, -frame.riderEastM!, accuracy: 0.0001)
       XCTAssertEqual(frame.trail.first!.northM, -frame.riderNorthM!, accuracy: 0.0001)
       XCTAssertEqual(frame.trail.last!.eastM, 0)

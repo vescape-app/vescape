@@ -48,7 +48,7 @@ export interface CameraEngineConfig {
   holdAfterTargetMs?: number
   scheduleFrame?: (callback: (timestampMs: number) => void) => number
   cancelFrame?: (handle: number) => void
-  now?: () => number
+  nowMs?: () => number
 }
 
 export interface CameraEngineOmega {
@@ -162,7 +162,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   let lastEmittedCamera: EngineCamera | null = null
   let targetOwned = false
   let holdUntilMs: number | null = null
-  const now = config.now ?? (() => Date.now())
+  const nowMs = config.nowMs ?? (() => Date.now())
 
   const toCamera = (s: EngineSprings): EngineCamera => ({
     centerCoordinate: [s.lng.x, s.lat.x],
@@ -224,7 +224,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
     } finally {
       emitting = false
       lastEmittedCamera = camera
-      lastEmitMs = now()
+      lastEmitMs = nowMs()
     }
   }
 
@@ -282,7 +282,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
         padding: s.padding.map((p) => snapSpring(p, p.target)) as EngineSprings['padding'],
       }
       emit(springs, { force: true })
-      if (holdUntilMs != null && now() < holdUntilMs) {
+      if (holdUntilMs != null && nowMs() < holdUntilMs) {
         frameHandle = scheduleFrame(frame)
         return
       }
@@ -296,7 +296,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
 
   const ensureLoop = () => {
     if (destroyed || frameHandle != null) return
-    if (springs && settled(springs) && (holdUntilMs == null || now() >= holdUntilMs)) {
+    if (springs && settled(springs) && (holdUntilMs == null || nowMs() >= holdUntilMs)) {
       holdUntilMs = null
       targetOwned = false
       return
@@ -307,7 +307,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   const claimTarget = () => {
     if (!targetOwned) config.cancelNativeMotion?.()
     targetOwned = true
-    holdUntilMs = now() + holdAfterTargetMs
+    holdUntilMs = nowMs() + holdAfterTargetMs
   }
 
   const resolvePitchTarget = (target: CameraEngineTarget, zoomTarget: number) => {
@@ -401,7 +401,7 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
       reset(camera)
       return
     }
-    const sampleMs = now()
+    const sampleMs = nowMs()
     if (options?.gesture) {
       targetOwned = false
       holdUntilMs = null

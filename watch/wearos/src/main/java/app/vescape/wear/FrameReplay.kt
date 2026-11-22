@@ -107,7 +107,7 @@ object ReplayFixtureParser {
                     motorTemp = json.nullableLane("motorTemp"),
                     ctrlTemp = json.nullableLane("ctrlTemp"),
                     stale = json.optBoolean("stale", false),
-                    navBearing = json.nullableLane("navBearing"),
+                    navBearingDeg = json.nullableLane("navBearing"),
                     navDistanceM = json.nullableLane("navDistance"),
                     riderEastM = json.nullableLane("riderEast"),
                     riderNorthM = json.nullableLane("riderNorth"),
@@ -302,7 +302,7 @@ class FrameReplayer(private val context: Context) {
         val origin = routeJson?.let(ReplaySceneParser::parseOrigin)
         samples = load(fixture, wander, origin).map { sample ->
             if (navigation) sample else sample.copy(frame = sample.frame.copy(
-                navBearing = null, navDistanceM = null, riderEastM = null, riderNorthM = null,
+                navBearingDeg = null, navDistanceM = null, riderEastM = null, riderNorthM = null,
             ))
         }
         if (samples.isEmpty()) return

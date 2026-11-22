@@ -79,7 +79,7 @@ const createTestEngine = (options?: {
     cancelFrame: () => {
       pending = null
     },
-    now: () => now,
+    nowMs: () => now,
   })
   const advance = (ms: number) => {
     now += ms
@@ -358,7 +358,7 @@ describe('cameraEngine', () => {
       cancelFrame: () => {
         pending = null
       },
-      now: () => now,
+      nowMs: () => now,
     })
     engine.reset(camera([21, 52]))
     engine.setTarget({ center: [21.001, 52] })
