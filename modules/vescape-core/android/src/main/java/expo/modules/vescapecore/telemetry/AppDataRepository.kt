@@ -316,10 +316,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun setBoardConfigChangeFieldIgnored(boardId: String, fieldId: String, ignored: Boolean) = withContext(Dispatchers.IO) {
-    val (changed, pruned) = configPersistence().setFieldIgnored(boardId, fieldId, ignored)
-    if (changed) {
-      CoreForegroundService.emitEvent?.invoke("onBoardConfigChangeNotice", mapOf("notice" to pruned?.toMap()))
-    }
+    configPersistence().setFieldIgnored(boardId, fieldId, ignored)
     notifyDataChanged(AppDataScope.BOARDS)
   }
 

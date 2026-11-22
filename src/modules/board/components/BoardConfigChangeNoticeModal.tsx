@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, StyleSheet } from 'react-native'
-import { EyeSlashIcon } from 'phosphor-react-native'
+import { ArrowCounterClockwiseIcon, EyeSlashIcon } from 'phosphor-react-native'
 import type { BoardConfigChangeDiff } from 'vescape-core'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
@@ -21,18 +21,20 @@ interface BoardConfigChangeNoticeModalViewProps {
   visible: boolean
   boardName: string
   diffs: BoardConfigChangeDiff[]
+  ignoredFields?: string[]
   error?: string | null
   onDismiss: () => void
-  onIgnoreField?: (fieldId: string) => void
+  onToggleIgnoreField?: (fieldId: string, ignored: boolean) => void
 }
 
 export function BoardConfigChangeNoticeModalView({
   visible,
   boardName,
   diffs,
+  ignoredFields = EMPTY_FIELDS,
   error,
   onDismiss,
-  onIgnoreField,
+  onToggleIgnoreField,
 }: BoardConfigChangeNoticeModalViewProps) {
   const neutral = useResolvedNeutralColors()
   return (
@@ -44,25 +46,31 @@ export function BoardConfigChangeNoticeModalView({
       footer={<Button label="Dismiss" onPress={onDismiss} />}
     >
       <Text style={styles.intro}>{boardName} was changed outside Vescape.</Text>
-      {diffs.map((diff) => (
-        <View key={diff.fieldId} style={[styles.row, { borderBottomColor: neutral.border }]}>
-          <View style={styles.rowText}>
-            <Text style={styles.label}>{diff.label}</Text>
-            <Text style={styles.change}>
-              {value(diff.oldValue, diff.unit)} → {value(diff.newValue, diff.unit)}
-            </Text>
+      {diffs.map((diff) => {
+        const ignored = ignoredFields.includes(diff.fieldId)
+        return (
+          <View key={diff.fieldId} style={[styles.row, { borderBottomColor: neutral.border }]}>
+            <View style={[styles.rowText, ignored && styles.rowTextIgnored]}>
+              <Text style={styles.label}>{diff.label}</Text>
+              <Text style={styles.change}>
+                {value(diff.oldValue, diff.unit)} → {value(diff.newValue, diff.unit)}
+              </Text>
+              {ignored ? <Text style={styles.ignoredNote}>Will be ignored next time</Text> : null}
+            </View>
+            {onToggleIgnoreField ? (
+              <IconButton
+                icon={ignored ? ArrowCounterClockwiseIcon : EyeSlashIcon}
+                size="sm"
+                accessibilityLabel={
+                  ignored ? `Stop ignoring ${diff.label}` : `Ignore ${diff.label}`
+                }
+                testID={`ignore-config-change-${diff.fieldId}`}
+                onPress={() => onToggleIgnoreField(diff.fieldId, !ignored)}
+              />
+            ) : null}
           </View>
-          {onIgnoreField ? (
-            <IconButton
-              icon={EyeSlashIcon}
-              size="sm"
-              accessibilityLabel={`Ignore ${diff.label}`}
-              testID={`ignore-config-change-${diff.fieldId}`}
-              onPress={() => onIgnoreField(diff.fieldId)}
-            />
-          ) : null}
-        </View>
-      ))}
+        )
+      })}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </FadeCardModal>
   )
@@ -85,17 +93,18 @@ export function BoardConfigChangeNoticeModal() {
       visible={visible}
       boardName={board?.name ?? 'Board'}
       diffs={notice?.diffs ?? EMPTY_DIFFS}
+      ignoredFields={board?.ignoredConfigChangeFields ?? EMPTY_FIELDS}
       error={ignoreError}
       onDismiss={() => {
         setIgnoreError(null)
         void dismiss()
       }}
-      onIgnoreField={
+      onToggleIgnoreField={
         board
-          ? (fieldId) => {
+          ? (fieldId, ignored) => {
               setIgnoreError(null)
-              void setConfigChangeFieldIgnored(board.id, fieldId, true).catch(() => {
-                setIgnoreError('Could not save ignored field.')
+              void setConfigChangeFieldIgnored(board.id, fieldId, ignored).catch(() => {
+                setIgnoreError('Could not update ignored field.')
               })
             }
           : undefined
@@ -105,6 +114,7 @@ export function BoardConfigChangeNoticeModal() {
 }
 
 const EMPTY_DIFFS: BoardConfigChangeDiff[] = []
+const EMPTY_FIELDS: string[] = []
 const styles = StyleSheet.create({
   intro: { color: theme.neutral.textSecondary, marginBottom: 12 },
   row: {
@@ -115,7 +125,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   rowText: { flex: 1 },
+  rowTextIgnored: { opacity: 0.55 },
   label: { color: theme.neutral.textPrimary, fontWeight: '700' },
   change: { color: theme.neutral.textSecondary, marginTop: 3 },
+  ignoredNote: { color: theme.neutral.textMuted, fontSize: 12, marginTop: 3 },
   error: { color: theme.status.error.text, fontSize: 12, marginTop: 8 },
 })

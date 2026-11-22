@@ -54,17 +54,15 @@ export function BoardConfigChangeNoticeShowcase() {
   const [ignoredFields, setIgnoredFields] = useState<string[]>([])
   const optionsAnchorRef = useRef<View>(null)
 
-  const visibleDiffs = DEMO_DIFFS.filter((diff) => !ignoredFields.includes(diff.fieldId))
-
-  const handleIgnore = (fieldId: string) => {
+  const handleToggleIgnore = (fieldId: string, ignored: boolean) => {
     if (simulateError) return
-    const nextIgnored = ignoredFields.includes(fieldId)
-      ? ignoredFields
-      : [...ignoredFields, fieldId]
-    setIgnoredFields(nextIgnored)
-    if (DEMO_DIFFS.every((diff) => nextIgnored.includes(diff.fieldId))) {
-      setModalOpen(false)
-    }
+    setIgnoredFields((prev) =>
+      ignored
+        ? prev.includes(fieldId)
+          ? prev
+          : [...prev, fieldId]
+        : prev.filter((id) => id !== fieldId),
+    )
   }
 
   return (
@@ -76,14 +74,10 @@ export function BoardConfigChangeNoticeShowcase() {
     >
       <View style={styles.body}>
         <Text style={styles.summary}>
-          {visibleDiffs.length} pending · {ignoredFields.length} ignored
+          {DEMO_DIFFS.length} shown · {ignoredFields.length} ignored
         </Text>
         <View style={styles.actions}>
-          <Button
-            label="Show change notice"
-            disabled={visibleDiffs.length === 0}
-            onPress={() => setModalOpen(true)}
-          />
+          <Button label="Show change notice" onPress={() => setModalOpen(true)} />
           <View ref={optionsAnchorRef} collapsable={false}>
             <Button
               label="Open options sheet"
@@ -98,12 +92,13 @@ export function BoardConfigChangeNoticeShowcase() {
       </View>
 
       <BoardConfigChangeNoticeModalView
-        visible={modalOpen && visibleDiffs.length > 0}
+        visible={modalOpen}
         boardName="Thor400"
-        diffs={visibleDiffs}
-        error={simulateError ? 'Could not save ignored field.' : null}
+        diffs={DEMO_DIFFS}
+        ignoredFields={ignoredFields}
+        error={simulateError ? 'Could not update ignored field.' : null}
         onDismiss={() => setModalOpen(false)}
-        onIgnoreField={handleIgnore}
+        onToggleIgnoreField={handleToggleIgnore}
       />
 
       <EdgeDrawer

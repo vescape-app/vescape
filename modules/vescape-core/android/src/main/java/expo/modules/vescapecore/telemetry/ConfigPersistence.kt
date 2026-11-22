@@ -81,30 +81,17 @@ internal class ConfigPersistence(
     fieldId: String,
     ignored: Boolean,
     now: Long = System.currentTimeMillis(),
-  ): Pair<Boolean, BoardConfigChangeNotice?> {
-    if (boardId.isBlank() || fieldId.isBlank()) return false to null
-    val (changed, updated) = dao.setIgnoredConfigChangeField(boardId, now) { currentJson, existingNotice ->
+  ) {
+    if (boardId.isBlank() || fieldId.isBlank()) return
+    dao.setIgnoredConfigChangeField(boardId, now) { currentJson ->
       val current = BoardConfigChangeNotice.decodeIgnoredFields(currentJson, onInvalidIgnoredFields).toMutableList()
       if (ignored) {
         if (fieldId !in current) current.add(fieldId)
       } else {
         current.removeAll { it == fieldId }
       }
-      val nextJson = if (current.isEmpty()) null else JSONArray(current).toString()
-      if (!ignored || existingNotice == null) return@setIgnoredConfigChangeField Triple(nextJson, false, existingNotice)
-      val loaded = BoardConfigChangeNotice.from(existingNotice.boardId, existingNotice.detectedAt, existingNotice.diffsJson)
-      val excluded = current.toSet() + BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS
-      val remaining = BoardConfigChangeNotice.filterDiffs(loaded.diffs, excluded)
-      if (remaining.size == loaded.diffs.size) return@setIgnoredConfigChangeField Triple(nextJson, false, existingNotice)
-      if (remaining.isEmpty()) return@setIgnoredConfigChangeField Triple(nextJson, true, null)
-      val nextNotice = BoardConfigChangeNoticeEntity(
-        boardId = loaded.boardId,
-        detectedAt = loaded.detectedAtMs,
-        diffsJson = BoardConfigChangeNotice(loaded.boardId, loaded.detectedAtMs, remaining).diffsJson(),
-      )
-      Triple(nextJson, true, nextNotice)
+      if (current.isEmpty()) null else JSONArray(current).toString()
     }
-    return changed to updated?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
   }
 
   /**

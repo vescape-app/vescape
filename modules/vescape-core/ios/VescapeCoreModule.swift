@@ -1013,7 +1013,7 @@ public class VescapeCoreModule: Module {
     AsyncFunction("setBoardConfigChangeFieldIgnored") { (boardId: String, fieldId: String, ignored: Bool, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
-        _ = try BoardConfigStore.shared.setFieldIgnored(boardId: boardId, fieldId: fieldId, ignored: ignored)
+        try BoardConfigStore.shared.setFieldIgnored(boardId: boardId, fieldId: fieldId, ignored: ignored)
         AppDataRepository.onDataChanged?(AppDataScope.boards.rawValue)
         promise.resolve(nil)
       }

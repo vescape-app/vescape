@@ -312,26 +312,16 @@ class RecordingPersistenceHostTest {
     ignorePersistence.saveFreshBoard(boardId, base, mapOf("kp" to 5.0, "ki" to 3.0), 8300, null)
     assertEquals(listOf("ki"), ignorePersistence.loadNotice(boardId)?.diffs?.map { it.fieldId })
     assertEquals(5.0, JSONObject(db.vescapeDao().getBoardConfigValues(boardId, base)!!.valuesJson).getDouble("kp"), 0.0)
-    val (prunedChanged, prunedNotice) = ignorePersistence.setFieldIgnored(boardId, "ki", true, now = 8350)
-    assertTrue(prunedChanged)
-    assertEquals(null, prunedNotice)
-    assertEquals(null, db.vescapeDao().getBoardConfigChangeNotice(boardId))
+    ignorePersistence.setFieldIgnored(boardId, "ki", true, now = 8350)
+    assertEquals(null, ignorePersistence.loadNotice(boardId))
     assertEquals(
       listOf("kp", "ki"),
       BoardConfigChangeNotice.decodeIgnoredFields(
         db.vescapeDao().getBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson,
       ),
     )
-    db.vescapeDao().upsertBoardConfigChangeNotice(BoardConfigChangeNoticeEntity(boardId, 8400, "not-json"))
-    var pruneRollbackFailed = false
-    try { ignorePersistence.setFieldIgnored(boardId, "kd", true, now = 8450) } catch (_: Exception) { pruneRollbackFailed = true }
-    assertTrue(pruneRollbackFailed)
-    assertEquals(
-      listOf("kp", "ki"),
-      BoardConfigChangeNotice.decodeIgnoredFields(
-        db.vescapeDao().getBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson,
-      ),
-    )
+    ignorePersistence.setFieldIgnored(boardId, "ki", false, now = 8400)
+    assertEquals(listOf("ki"), ignorePersistence.loadNotice(boardId)?.diffs?.map { it.fieldId })
     ignorePersistence.clearIgnoredFields(boardId)
     assertEquals(null, db.vescapeDao().getBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY))
     db.vescapeDao().clearBoardConfigState(boardId)

@@ -112,20 +112,6 @@ struct BoardConfigChangeNotice {
   static func filterDiffs(_ diffs: [BoardConfigChangeDiff], excludedFields: Set<String>) -> [BoardConfigChangeDiff] {
     diffs.filter { !excludedFields.contains($0.fieldId) }
   }
-
-  static func pruneNotice(_ db: Database, boardId: String, ignoredFields: Set<String>) throws -> (changed: Bool, notice: BoardConfigChangeNotice?) {
-    guard !ignoredFields.isEmpty, let row = try ConfigNoticeRecord.fetchOne(db, key: boardId) else { return (false, nil) }
-    let current = try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: row.detectedAt, diffsJson: row.diffsJson)
-    let remaining = filterDiffs(current.diffs, excludedFields: ignoredFields)
-    guard remaining.count != current.diffs.count else { return (false, current) }
-    if remaining.isEmpty {
-      _ = try ConfigNoticeRecord.deleteOne(db, key: boardId)
-      return (true, nil)
-    }
-    let updated = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: current.detectedAtMs, diffs: remaining)
-    try ConfigNoticeRecord(boardId: boardId, detectedAt: updated.detectedAtMs, diffsJson: updated.diffsJson()).save(db)
-    return (true, updated)
-  }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getBoardConfigValues`
@@ -246,11 +232,11 @@ struct BoardConfigStore {
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `setFieldIgnored`
-  func setFieldIgnored(boardId: String, fieldId: String, ignored: Bool) throws -> (changed: Bool, notice: BoardConfigChangeNotice?) {
-    guard !boardId.isEmpty, !fieldId.isEmpty else { return (false, nil) }
+  func setFieldIgnored(boardId: String, fieldId: String, ignored: Bool) throws {
+    guard !boardId.isEmpty, !fieldId.isEmpty else { return }
     guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
     let now = Int64(Date().timeIntervalSince1970 * 1000)
-    let result: (changed: Bool, notice: BoardConfigChangeNotice?) = try writer.write { db in
+    try writer.write { db in
       var current = try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: boardId, onInvalid: Self.onInvalidIgnoredFields)
       if ignored {
         if !current.contains(fieldId) { current.append(fieldId) }
@@ -270,15 +256,7 @@ struct BoardConfigStore {
           arguments: [boardId, BoardConfigChangeNotice.ignoredFieldsSettingKey, json, now]
         )
       }
-      guard ignored else { return (false, nil) }
-      return try BoardConfigChangeNotice.pruneNotice(
-        db,
-        boardId: boardId,
-        ignoredFields: Set(current).union(BoardConfigChangeNotice.volatileMotorFields)
-      )
     }
-    if result.changed { Self.onNoticeChanged?(result.notice) }
-    return result
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `clearIgnoredFields`
