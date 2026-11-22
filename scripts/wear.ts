@@ -210,7 +210,10 @@ function install(serial: string, packageName: string) {
 
   if (result.exitCode === 0) return
 
-  if (!output.includes('INSTALL_FAILED_UPDATE_INCOMPATIBLE')) {
+  if (
+    !output.includes('INSTALL_FAILED_UPDATE_INCOMPATIBLE') &&
+    !output.includes('INSTALL_FAILED_VERSION_DOWNGRADE')
+  ) {
     fail(`install failed with ${result.exitCode}`)
   }
 

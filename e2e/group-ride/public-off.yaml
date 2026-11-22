@@ -1,0 +1,11 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: social-drawer-trigger
+    waitToSettleTimeoutMs: 1000
+- tapOn:
+    text: 'Off\..*'
+    waitToSettleTimeoutMs: 1000
+- extendedWaitUntil:
+    notVisible: Wait for my board
+    timeout: 30000

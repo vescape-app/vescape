@@ -1,0 +1,6 @@
+appId: ${APP_ID}
+---
+- extendedWaitUntil:
+    notVisible: 'Peer, Battery dead, .*'
+    timeout: 30000
+- assertVisible: 'Peer, .*Board battery 23%.*'

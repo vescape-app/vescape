@@ -78,7 +78,8 @@ First-time pairing may need the Wear OS companion's "Pair with emulator" action;
 
 This runs as part of the all-tests workflow or independently. It starts its own Metro and rebuilds/installs the current phone
 development app and watch app, checks the real Data Layer link, and starts the thor301 recording
-on the phone. The watch launches normally, without its standalone fixture replay. No database
+on the phone. A replay runs as the selected Board, so the ride link selects a saved Board, or saves
+`Watch Ride Board` on a cleared phone first. The watch launches normally, without its standalone fixture replay. No database
 backup is restored and navigation is skipped, so Directions is not a prerequisite.
 
 Android UI Automator reads the watch's displayed speed and duty through accessibility. The test
@@ -103,24 +104,33 @@ both current development apps and sets emulator GPS. Phone state is cleared befo
 Mirror, with location, nearby-device, activity and notification permissions granted for the test. The UI
 flow preserves that state and the established phone/watch connection. It mounts
 the server's real Group Ride relay, protocol validation, version gate, and App Status routes using
-`MemoryStore`. No database, Redis, server credentials, production rooms, JS native fake, or watch
-fixture replay are used. The sibling server revision is the implementation under test.
+`MemoryStore` and the server's discarding ride history and Ride Store. No database, Redis, Clerk, server
+credentials, JS native fake, or watch fixture replay are used. The sibling server revision is the
+implementation under test.
 
-A simulated WebSocket rider creates a nearby ride. Maestro sets the phone's rider name and joins
-through Social. The peer must receive native phone GPS presence without a Board Session. The
-watch's real roster must show that peer and battery. Changing the peer's presence must update
-the phone board name/battery and wrist battery/distance. Leaving through Social must remove the phone
-from the relay roster and remove the wrist group page.
+Accounts are stubbed, not authenticated: `scripts/lib/groupRideAccounts.ts` fixes a phone and a peer
+Account, each with a Device Token and nick. The host resolves those tokens for the relay and answers
+`/api/account`, `/api/rider-profile`, `/api/friends` and rider-stats uploads for them. The phone build
+receives its token through `EXPO_PUBLIC_E2E_DEVICE_TOKEN` and `EXPO_PUBLIC_E2E_ACCOUNT_ID` and
+provisions the native credential at startup instead of signing in with Clerk.
+
+A simulated WebSocket peer rides public nearby. Maestro turns the phone's Public Ride to Always and
+shares without a board. The peer must receive native phone GPS presence without a Board Session, and the
+phone's Nearby list and the watch's roster must show the peer and its battery. Changing the peer's
+presence must update the phone battery and the wrist battery/distance. The peer's Rider Signal must
+appear and clear on the phone's Nearby row. The phone's Rider Signal and Ride Hazard, sent from the
+signal picker, must reach the peer and clear there. Turning the phone off must remove it from the
+peer's nearby riders; the peer then turns off, which must remove it from the phone and the wrist group page.
 
 Android UI Automator checks the Wear UI; Maestro drives the phone. Logs, the peer's protocol
 transcript, phone Maestro artifacts, and watch XML/screenshots are saved under
 `.expo/group-ride-e2e/<timestamp>/`. Failures exit nonzero. Owned server/Metro processes stop and their ADB reverse tunnels are removed on success or failure; installed apps remain. Already running emulators are left running. This suite is separate from smoke, regular fake
-phone E2E, and `e2e:watch`. Apple Watch, BLE reception, reconnect, public auto-join and Privacy
-Zone suppression are outside this flow.
+phone E2E, and `e2e:watch`. Apple Watch, BLE reception, reconnect, friends, timed Public Rides, a peer Ride Hazard on the
+phone map and Privacy Zone suppression are outside this flow.
 
 ## Component-library smoke
 
-`components.yaml` opens the base, chart, and typography previews and exercises the
+`components.yaml` opens the buttons, chart, history, and typography previews and exercises the
 IconButton progress ring. It preserves app data and does not require E2E mode.
 Run it against a development app already connected to Metro for the current workspace:
 

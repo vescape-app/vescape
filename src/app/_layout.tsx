@@ -45,6 +45,7 @@ import { ThemeController } from '@/modules/settings/components/ThemeController'
 import { useThemeStore } from '@/hooks/useTheme'
 import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
+import { E2eDeviceAuthSync, e2eDeviceAccount } from '@/modules/profile/components/E2eDeviceAuthSync'
 import { RiderProfileSync } from '@/modules/profile/components/RiderProfileSync'
 import { FriendsSync } from '@/modules/profile/components/FriendsSync'
 import { AppStorageFailureBanner } from '@/screens/AppStorageFailureBanner'
@@ -150,7 +151,7 @@ function RootContent() {
     >
       <TimeFormatContext value={timeFormat}>
         <DistanceUnitContext value={distanceUnit}>
-          <DeviceAuthSync />
+          {e2eDeviceAccount ? <E2eDeviceAuthSync account={e2eDeviceAccount} /> : <DeviceAuthSync />}
           <RiderProfileSync />
           <FriendsSync />
           <BoardConfigChangeNoticeModal />

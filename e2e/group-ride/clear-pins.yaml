@@ -1,0 +1,11 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: rider-signal-trigger
+    waitToSettleTimeoutMs: 1000
+- tapOn:
+    text: Dismiss my signal
+    waitToSettleTimeoutMs: 1000
+- tapOn:
+    text: Clear my hazard
+    waitToSettleTimeoutMs: 1000

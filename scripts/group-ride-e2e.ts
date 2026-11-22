@@ -7,6 +7,7 @@ import { E2eSession } from './lib/e2eSession.ts'
 import { maestroCommand } from './lib/maestro.ts'
 import { adb, appNodes, appUi } from './lib/androidUiE2e.ts'
 import { GroupRidePeer, PHONE_FIX } from './lib/groupRidePeer.ts'
+import { PHONE_ACCOUNT } from './lib/groupRideAccounts.ts'
 import { version } from '../package.json'
 
 const ROOT = resolve(import.meta.dir, '..')
@@ -46,6 +47,8 @@ try {
   const relayPort = await session.port()
   env.GROUP_RIDE_PORT = String(relayPort)
   env.EXPO_PUBLIC_SERVER_URL = `http://127.0.0.1:${relayPort}`
+  env.EXPO_PUBLIC_E2E_DEVICE_TOKEN = PHONE_ACCOUNT.token
+  env.EXPO_PUBLIC_E2E_ACCOUNT_ID = PHONE_ACCOUNT.id
   const metroPort = await session.port()
   env.E2E_METRO_PORT = String(metroPort)
   const relay = start(['bun', 'run', 'scripts/lib/groupRideRelayHost.ts'], 'relay.log')
@@ -173,7 +176,7 @@ try {
       `Watch ${name} failed: ${lastError || 'expected roster state was not displayed'}`,
     )
   }
-  await flow('join')
+  await flow('public-on')
   await peer.verifyPhone()
   console.log('group E2E: peer received phone GPS presence without a Board Session')
   const initialDistance = await watchCheck('joined', '12%')
@@ -187,11 +190,23 @@ try {
   )) {
     throw new Error(`Wrist peer position did not update: ${initialDistance} → ${updatedDistance} m`)
   }
-  await flow('leave')
-  await peer.verifyLeft()
+  peer.raiseSignal('battery')
+  await flow('peer-signal')
+  peer.clearSignal()
+  await flow('peer-signal-cleared')
+  console.log('group E2E: phone showed and cleared the peer Rider Signal')
+  await flow('send-pins')
+  await peer.verifyPhonePins({ signal: 'wait', hazard: 'police' })
+  await flow('clear-pins')
+  await peer.verifyPhonePins({ signal: null, hazard: null })
+  console.log('group E2E: peer received and lost the phone Rider Signal and Ride Hazard')
+  await flow('public-off')
+  await peer.verifyPhoneOff()
+  await peer.stop()
+  await flow('peer-gone')
   await watchCheck('left', null)
   console.log(
-    'Group Ride E2E passed: phone join/presence/update/leave + live Wear roster/update/removal',
+    'Group Ride E2E passed: Public Ride on/presence/update/signals/hazard/off + live Wear roster/update/removal',
   )
 } catch (error) {
   process.exitCode = 1

@@ -1,0 +1,5 @@
+appId: ${APP_ID}
+---
+- extendedWaitUntil:
+    visible: 'Peer, Battery dead, .*'
+    timeout: 30000

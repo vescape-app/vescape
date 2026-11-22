@@ -1,7 +1,5 @@
 appId: ${APP_ID}
 ---
 - extendedWaitUntil:
-    visible: E2E Board Beta
+    visible: 'Peer, .*Board battery 23%.*'
     timeout: 30000
-- assertVisible: Peer
-- assertVisible: '23%'

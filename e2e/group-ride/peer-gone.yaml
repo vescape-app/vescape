@@ -1,0 +1,5 @@
+appId: ${APP_ID}
+---
+- extendedWaitUntil:
+    notVisible: 'Peer, .*'
+    timeout: 30000

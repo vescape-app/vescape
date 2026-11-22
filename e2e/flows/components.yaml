@@ -2,30 +2,37 @@
 # Preserves app data; no E2E fake board or state reset is needed.
 appId: ${APP_ID}
 ---
-- openLink: 'vescape://settings/components/base'
+- openLink: 'vescape://settings/components/buttons'
 - extendedWaitUntil:
     visible: IconButton
     timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: '85%'
+    direction: DOWN
+    timeout: 20000
 - tapOn:
     text: '10%'
     waitToSettleTimeoutMs: 1000
-- assertVisible: IconButton
+- assertVisible: progress
 - tapOn:
     text: '85%'
     waitToSettleTimeoutMs: 1000
-- assertVisible: IconButton
+- assertVisible: progress
 - tapOn:
     text: '40%'
     waitToSettleTimeoutMs: 1000
-- assertVisible: IconButton
+- assertVisible: progress
 - openLink: 'vescape://settings/components/charts'
 - extendedWaitUntil:
     visible: ChartStack / one canvas, shared camera
     timeout: 15000
 - openLink: 'vescape://settings/components/history'
-- extendedWaitUntil:
-    visible: RidePreviewCard · RidePreviewStrip
-    timeout: 15000
+- scrollUntilVisible:
+    element:
+      text: '^RidePreviewCard · RidePreviewStrip$'
+    direction: DOWN
+    timeout: 20000
 - openLink: 'vescape://settings/components/typography'
 - extendedWaitUntil:
     visible: Typography roles

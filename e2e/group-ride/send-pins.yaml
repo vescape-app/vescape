@@ -1,0 +1,20 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: social-drawer-backdrop
+    waitToSettleTimeoutMs: 1000
+- tapOn:
+    id: rider-signal-trigger
+    waitToSettleTimeoutMs: 1000
+- extendedWaitUntil:
+    visible: Wait for me
+    timeout: 30000
+- tapOn:
+    text: Wait for me
+    waitToSettleTimeoutMs: 1000
+- tapOn:
+    id: rider-signal-trigger
+    waitToSettleTimeoutMs: 1000
+- tapOn:
+    text: Police
+    waitToSettleTimeoutMs: 1000
