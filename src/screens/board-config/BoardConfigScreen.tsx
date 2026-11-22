@@ -1,17 +1,25 @@
-import { useLayoutEffect, useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
-import { BracketsCurlyIcon, CaretDownIcon, CaretUpIcon, WrenchIcon } from 'phosphor-react-native'
+import {
+  CaretDownIcon,
+  CaretUpIcon,
+  DotsThreeIcon,
+  GearSixIcon,
+  WrenchIcon,
+} from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
 import { SearchInput } from '@/components/forms/SearchInput'
 import { IconButton } from '@/components/base/IconButton'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { IconHero } from '@/components/settings/IconHero'
 import { Text } from '@/components/base/Text'
 import { PageScrollView } from '@/components/base/PageScrollView'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { theme } from '@/constants/theme'
 import { fmtTimeAgo } from '@/helpers/format'
+import { BoardConfigOptionsSheet } from '@/modules/board/components/BoardConfigOptionsSheet'
 import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
 import {
   useBoardConfigFields,
@@ -33,6 +41,8 @@ export default function BoardConfigScreen() {
   const [activeTab, setActiveTab] = useState('quick')
   const [expandedTabs, setExpandedTabs] = useState<Set<string>>(() => new Set())
   const [query, setQuery] = useState('')
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const optionsAnchorRef = useRef<View>(null)
   const refloat = useBoardConfigFields(boardId)
   const motor = useMotorConfigFields(boardId)
   const refloatError = useBoardConfigValuesStore((state) => state.error)
@@ -44,17 +54,30 @@ export default function BoardConfigScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <IconButton
-          icon={BracketsCurlyIcon}
-          onPress={() => router.push({ pathname: routes.boardConfigRaw, params: { boardId } })}
-          accessibilityLabel="Raw board config"
-          testID="board-config-raw-button"
-        />
+        <View ref={optionsAnchorRef} collapsable={false}>
+          <IconButton
+            icon={DotsThreeIcon}
+            onPress={() => setOptionsOpen(true)}
+            accessibilityLabel="Board config options"
+            testID="board-config-options-button"
+          />
+        </View>
       ),
     })
-  }, [navigation, boardId])
+  }, [navigation])
 
   const tabs = useMemo(() => boardConfigTabs(refloat?.values, motor?.values), [refloat, motor])
+  const fieldLabels = useMemo(() => {
+    const labels: Record<string, string> = {}
+    for (const tab of tabs) {
+      for (const group of tab.groups) {
+        for (const row of group.rows) {
+          if (!labels[row.id]) labels[row.id] = row.label
+        }
+      }
+    }
+    return labels
+  }, [tabs])
   const searching = query.trim().length > 0
   const results = useMemo(() => {
     const loaded = [refloat && 'refloat', motor && 'motor'].filter(
@@ -165,6 +188,22 @@ export default function BoardConfigScreen() {
           </>
         )}
       </PageScrollView>
+      <EdgeDrawer
+        visible={optionsOpen}
+        triggerRef={optionsAnchorRef}
+        title="Board config"
+        icon={GearSixIcon}
+        onClose={() => setOptionsOpen(false)}
+      >
+        <BoardConfigOptionsSheet
+          boardId={boardId}
+          fieldLabels={fieldLabels}
+          onOpenRawConfig={() => {
+            setOptionsOpen(false)
+            router.push({ pathname: routes.boardConfigRaw, params: { boardId } })
+          }}
+        />
+      </EdgeDrawer>
     </View>
   )
 }

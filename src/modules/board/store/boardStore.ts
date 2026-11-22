@@ -40,6 +40,8 @@ interface BoardActions {
   updateBoard: (board: Board) => Promise<void>
   setWarningDismissed: (boardId: string, kind: string, dismissed: boolean) => Promise<void>
   dismissAllWarnings: (boardId: string, kinds: string[]) => Promise<void>
+  setConfigChangeFieldIgnored: (boardId: string, fieldId: string, ignored: boolean) => Promise<void>
+  clearIgnoredConfigChangeFields: (boardId: string) => Promise<void>
   removeBoard: (id: string) => Promise<void>
   setActiveBoard: (id: string | null) => void
 }
@@ -126,6 +128,23 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     const dismissedWarnings = [...new Set([...(board.dismissedWarnings ?? []), ...kinds])]
     if (dismissedWarnings.length === (board.dismissedWarnings ?? []).length) return
     await get().updateBoard({ ...board, dismissedWarnings })
+  },
+
+  async setConfigChangeFieldIgnored(boardId, fieldId, ignored) {
+    const board = get().boards.find((b) => b.id === boardId)
+    if (!board) return
+    const current = board.ignoredConfigChangeFields ?? []
+    if (ignored === current.includes(fieldId)) return
+    const ignoredConfigChangeFields = ignored
+      ? [...current, fieldId]
+      : current.filter((id) => id !== fieldId)
+    await get().updateBoard({ ...board, ignoredConfigChangeFields })
+  },
+
+  async clearIgnoredConfigChangeFields(boardId) {
+    const board = get().boards.find((b) => b.id === boardId)
+    if (!board || (board.ignoredConfigChangeFields?.length ?? 0) === 0) return
+    await get().updateBoard({ ...board, ignoredConfigChangeFields: [] })
   },
 
   async removeBoard(id) {

@@ -42,4 +42,42 @@ final class BoardConfigChangeNoticeTests: XCTestCase {
     )
     XCTAssertEqual(diffs.map(\.fieldId), ["edit"])
   }
+
+  func testDiffSkipsIgnoredAndVolatileMotorFields() {
+    let old: [String: Any] = [
+      "foc_offsets_current[0]": 2010.43,
+      "foc_offsets_current[1]": 2031.32,
+      "foc_offsets_current[2]": 2040.56,
+      "foc_offsets_voltage[0]": -0.0062,
+      "foc_offsets_voltage[1]": 0.001,
+      "foc_offsets_voltage[2]": 0.0025,
+      "foc_offsets_voltage_undriven[0]": 0.001,
+      "foc_offsets_voltage_undriven[1]": 0.002,
+      "foc_offsets_voltage_undriven[2]": 0.003,
+      "foc_offsets_cal_on_boot": 1.0,
+      "l_current_max": 160.0,
+      "l_temp_fet_start": 70.0,
+    ]
+    let new: [String: Any] = [
+      "foc_offsets_current[0]": 2010.67,
+      "foc_offsets_current[1]": 2031.66,
+      "foc_offsets_current[2]": 2040.22,
+      "foc_offsets_voltage[0]": -0.0061,
+      "foc_offsets_voltage[1]": 0.002,
+      "foc_offsets_voltage[2]": 0.0024,
+      "foc_offsets_voltage_undriven[0]": 0.004,
+      "foc_offsets_voltage_undriven[1]": 0.005,
+      "foc_offsets_voltage_undriven[2]": 0.006,
+      "foc_offsets_cal_on_boot": 0.0,
+      "l_current_max": 150.0,
+      "l_temp_fet_start": 75.0,
+    ]
+    let diffs = BoardConfigChangeNotice.diff(
+      old: old,
+      new: new,
+      schema: nil,
+      ignoredFields: BoardConfigChangeNotice.volatileMotorFields.union(["l_current_max"])
+    )
+    XCTAssertEqual(diffs.map(\.fieldId), ["foc_offsets_cal_on_boot", "l_temp_fet_start"])
+  }
 }

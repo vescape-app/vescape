@@ -51,7 +51,9 @@ struct MotorConfigStore {
           capturedAtMs: 0,
           valuesJson: oldRow.valuesJson
         )
-        let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: nil)
+        let ignored = try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: boardId)
+          .union(BoardConfigChangeNotice.volatileMotorFields)
+        let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: nil, ignoredFields: ignored)
         if !diffs.isEmpty {
           let existing = try Row.fetchOne(
             db,

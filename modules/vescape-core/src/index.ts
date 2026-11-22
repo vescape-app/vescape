@@ -407,10 +407,15 @@ export interface Board {
   batteryConfig: BatteryConfig | null
   lastBattery?: LastBattery | null
   /**
-   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeDismissedWarnings`
-   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeDismissedWarnings`
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeStringList`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeStringList`
    */
   dismissedWarnings?: string[]
+  /**
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeStringList`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeStringList`
+   */
+  ignoredConfigChangeFields?: string[]
   topSpeedKmh?: number
   alertPresetsOnboarded?: boolean
   /**

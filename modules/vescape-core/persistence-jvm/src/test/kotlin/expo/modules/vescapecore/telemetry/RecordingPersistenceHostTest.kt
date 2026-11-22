@@ -255,6 +255,34 @@ class RecordingPersistenceHostTest {
     assertEquals(null, db.vescapeDao().getBoardConfigValues(boardId, base))
     assertEquals(null, db.vescapeDao().getLatestMotorConfigValues(boardId))
     assertEquals(null, db.vescapeDao().getBoardConfigChangeNotice(boardId))
+    val ignorePersistence = ConfigPersistence(db.vescapeDao())
+    ignorePersistence.saveFreshMotor(
+      boardId,
+      config.getLong("signature"),
+      config.getString("firmware"),
+      mapOf("foc_offsets_current[0]" to 2010.43, "foc_offsets_voltage[0]" to -0.0062, "l_current_max" to 160.0),
+      8000,
+    )
+    ignorePersistence.saveFreshMotor(
+      boardId,
+      config.getLong("signature"),
+      config.getString("firmware"),
+      mapOf("foc_offsets_current[0]" to 2010.67, "foc_offsets_voltage[0]" to -0.0061, "l_current_max" to 160.0),
+      8100,
+    )
+    assertEquals(null, db.vescapeDao().getBoardConfigChangeNotice(boardId))
+    assertEquals(2010.67, JSONObject(db.vescapeDao().getLatestMotorConfigValues(boardId)!!.valuesJson).getDouble("foc_offsets_current[0]"), 0.0001)
+    ignorePersistence.saveFreshBoard(boardId, base, mapOf("kp" to 1.0, "ki" to 2.0), 8200, null)
+    db.vescapeDao().upsertBoardSetting(BoardSettingEntity(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY, """["kp"]""", 8250))
+    ignorePersistence.saveFreshBoard(boardId, base, mapOf("kp" to 5.0, "ki" to 3.0), 8300, null)
+    assertEquals(listOf("ki"), BoardConfigChangeNotice.from(boardId, 8300, db.vescapeDao().getBoardConfigChangeNotice(boardId)!!.diffsJson).diffs.map { it.fieldId })
+    assertEquals(5.0, JSONObject(db.vescapeDao().getBoardConfigValues(boardId, base)!!.valuesJson).getDouble("kp"), 0.0)
+    val (prunedChanged, prunedNotice) = ignorePersistence.pruneNotice(boardId, setOf("ki"))
+    assertTrue(prunedChanged)
+    assertEquals(null, prunedNotice)
+    assertEquals(null, db.vescapeDao().getBoardConfigChangeNotice(boardId))
+    db.vescapeDao().deleteBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)
+    db.vescapeDao().clearBoardConfigState(boardId)
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("CREATE TRIGGER fail_fault_sample BEFORE INSERT ON vesc_fault_capture_samples WHEN NEW.captured_at = 7900 BEGIN SELECT RAISE(FAIL, 'late fault capture failure'); END")

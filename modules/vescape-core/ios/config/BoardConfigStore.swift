@@ -32,6 +32,22 @@ struct BoardConfigChangeNotice {
     guard let data = diffsJson.data(using: .utf8) else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Notice is not UTF-8")) }
     return .init(boardId: boardId, detectedAtMs: detectedAtMs, diffs: try JSONDecoder().decode([BoardConfigChangeDiff].self, from: data))
   }
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `IGNORED_FIELDS_SETTING_KEY`
+  static let ignoredFieldsSettingKey = "ignoredConfigChangeFields"
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `VOLATILE_MOTOR_FIELDS`
+  static let volatileMotorFields: Set<String> = [
+    "foc_offsets_current[0]",
+    "foc_offsets_current[1]",
+    "foc_offsets_current[2]",
+    "foc_offsets_voltage[0]",
+    "foc_offsets_voltage[1]",
+    "foc_offsets_voltage[2]",
+    "foc_offsets_voltage_undriven[0]",
+    "foc_offsets_voltage_undriven[1]",
+    "foc_offsets_voltage_undriven[2]",
+  ]
+
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `NUMBER_TOLERANCE`
   static let numberTolerance = 1e-6
 
@@ -51,9 +67,42 @@ struct BoardConfigChangeNotice {
     return order.compactMap { byId[$0] }
   }
 
-  static func diff(old: [String: Any], new: [String: Any], schema: RefloatConfigSchema?) -> [BoardConfigChangeDiff] {
+  static func diff(old: [String: Any], new: [String: Any], schema: RefloatConfigSchema?, ignoredFields: Set<String> = []) -> [BoardConfigChangeDiff] {
     let metadata = Dictionary(uniqueKeysWithValues: (schema?.fields ?? []).map { ($0.id, ($0.label, $0.unit)) })
-    return Set(old.keys).union(new.keys).sorted().compactMap { id in let a = ConfigNoticeValue(old[id]), b = ConfigNoticeValue(new[id]); guard changed(a, b) else { return nil }; let meta = metadata[id]; return .init(fieldId: id, label: meta?.0 ?? id, unit: meta?.1, oldValue: a, newValue: b) }
+    return Set(old.keys).union(new.keys).sorted().compactMap { id in
+      guard !ignoredFields.contains(id) else { return nil }
+      let a = ConfigNoticeValue(old[id]), b = ConfigNoticeValue(new[id])
+      guard changed(a, b) else { return nil }
+      let meta = metadata[id]
+      return .init(fieldId: id, label: meta?.0 ?? id, unit: meta?.1, oldValue: a, newValue: b)
+    }
+  }
+
+  static func loadIgnoredFields(_ db: Database, boardId: String) throws -> Set<String> {
+    guard
+      let json = try String.fetchOne(
+        db,
+        sql: "SELECT value_json FROM board_settings WHERE board_id = ? AND key = ?",
+        arguments: [boardId, ignoredFieldsSettingKey]
+      ),
+      let data = json.data(using: .utf8)
+    else { return [] }
+    guard let raw = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? [Any] else { return [] }
+    return Set(raw.compactMap { $0 as? String }.filter { !$0.isEmpty })
+  }
+
+  static func pruneNotice(_ db: Database, boardId: String, ignoredFields: Set<String>) throws -> (changed: Bool, notice: BoardConfigChangeNotice?) {
+    guard !ignoredFields.isEmpty, let row = try ConfigNoticeRecord.fetchOne(db, key: boardId) else { return (false, nil) }
+    let current = try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: row.detectedAt, diffsJson: row.diffsJson)
+    let remaining = current.diffs.filter { !ignoredFields.contains($0.fieldId) }
+    guard remaining.count != current.diffs.count else { return (false, current) }
+    if remaining.isEmpty {
+      _ = try ConfigNoticeRecord.deleteOne(db, key: boardId)
+      return (true, nil)
+    }
+    let updated = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: current.detectedAtMs, diffs: remaining)
+    try ConfigNoticeRecord(boardId: boardId, detectedAt: updated.detectedAtMs, diffsJson: updated.diffsJson()).save(db)
+    return (true, updated)
   }
 }
 
@@ -139,7 +188,8 @@ struct BoardConfigStore {
       let oldRow = try Row.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id = ? AND refloat_base_version = ?", arguments: [boardId, base])
       if let oldJson: String = oldRow?["values_json"] {
         let old = try BoardConfigValues.lastKnown(boardId: boardId, refloatBaseVersion: base, capturedAtMs: 0, valuesJson: oldJson)
-        let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: values.writeBase?.schema)
+        let ignored = try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: boardId)
+        let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: values.writeBase?.schema, ignoredFields: ignored)
         if !diffs.isEmpty {
           let existing = try ConfigNoticeRecord.fetchOne(db, key: boardId)
           let previous = try existing.map {
