@@ -120,8 +120,8 @@ try {
     while (Date.now() < deadline) {
       session.abort.signal.throwIfAborted()
       try {
+        await adb(watch.serial, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
         if (battery === null) {
-          await adb(watch.serial, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
           await swipeUp()
           await swipeUp()
         }

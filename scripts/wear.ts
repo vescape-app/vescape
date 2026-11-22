@@ -461,6 +461,7 @@ async function ensurePhoneApp(
       ],
       { timeoutMs: BUILD_TIMEOUT_MS },
     )
+    run(['adb', '-s', phone.serial, 'shell', 'am', 'force-stop', 'com.google.android.gms'])
   }
 
   if (grantTestPermissions) {
