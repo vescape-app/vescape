@@ -183,6 +183,8 @@ When adding or changing a reusable UI component (or a new visual variant/state o
 
 ## Agent skills
 
+Shared workflow skills are sourced from `../vescape-home/skills/`. Before editing, adding, or removing any skill under `.agents/skills/`, load the `update-skills` skill (`.agents/skills/update-skills/SKILL.md`).
+
 ### Issue tracker
 
 Specs and tickets are tracked in GitHub Issues for `vescape-app/vescape`. See `docs/agents/issue-tracker.md`.
