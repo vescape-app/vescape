@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { View, StyleSheet } from 'react-native'
 import { EyeSlashIcon } from 'phosphor-react-native'
+import type { BoardConfigChangeDiff } from 'vescape-core'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
@@ -15,9 +16,60 @@ function value(v: number | boolean | null, unit: string | null): string {
   const text = typeof v === 'boolean' ? (v ? 'On' : 'Off') : String(v)
   return unit && typeof v === 'number' ? `${text} ${unit}` : text
 }
+
+interface BoardConfigChangeNoticeModalViewProps {
+  visible: boolean
+  boardName: string
+  diffs: BoardConfigChangeDiff[]
+  error?: string | null
+  onDismiss: () => void
+  onIgnoreField?: (fieldId: string) => void
+}
+
+export function BoardConfigChangeNoticeModalView({
+  visible,
+  boardName,
+  diffs,
+  error,
+  onDismiss,
+  onIgnoreField,
+}: BoardConfigChangeNoticeModalViewProps) {
+  const neutral = useResolvedNeutralColors()
+  return (
+    <FadeCardModal
+      visible={visible}
+      title="Board configuration changed"
+      showClose={false}
+      onDismiss={onDismiss}
+      footer={<Button label="Dismiss" onPress={onDismiss} />}
+    >
+      <Text style={styles.intro}>{boardName} was changed outside Vescape.</Text>
+      {diffs.map((diff) => (
+        <View key={diff.fieldId} style={[styles.row, { borderBottomColor: neutral.border }]}>
+          <View style={styles.rowText}>
+            <Text style={styles.label}>{diff.label}</Text>
+            <Text style={styles.change}>
+              {value(diff.oldValue, diff.unit)} → {value(diff.newValue, diff.unit)}
+            </Text>
+          </View>
+          {onIgnoreField ? (
+            <IconButton
+              icon={EyeSlashIcon}
+              size="sm"
+              accessibilityLabel={`Ignore ${diff.label}`}
+              testID={`ignore-config-change-${diff.fieldId}`}
+              onPress={() => onIgnoreField(diff.fieldId)}
+            />
+          ) : null}
+        </View>
+      ))}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+    </FadeCardModal>
+  )
+}
+
 export function BoardConfigChangeNoticeModal() {
   const [ignoreError, setIgnoreError] = useState<string | null>(null)
-  const neutral = useResolvedNeutralColors()
   const notice = useBoardConfigChangeNoticeStore((s) => s.notice)
   const dismiss = useBoardConfigChangeNoticeStore((s) => s.dismiss)
   const board = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
@@ -29,53 +81,30 @@ export function BoardConfigChangeNoticeModal() {
   }, [notice?.detectedAtMs, visible])
 
   return (
-    <FadeCardModal
+    <BoardConfigChangeNoticeModalView
       visible={visible}
-      title="Board configuration changed"
-      showClose={false}
+      boardName={board?.name ?? 'Board'}
+      diffs={notice?.diffs ?? EMPTY_DIFFS}
+      error={ignoreError}
       onDismiss={() => {
         setIgnoreError(null)
         void dismiss()
       }}
-      footer={
-        <Button
-          label="Dismiss"
-          onPress={() => {
-            setIgnoreError(null)
-            void dismiss()
-          }}
-        />
+      onIgnoreField={
+        board
+          ? (fieldId) => {
+              setIgnoreError(null)
+              void setConfigChangeFieldIgnored(board.id, fieldId, true).catch(() => {
+                setIgnoreError('Could not save ignored field.')
+              })
+            }
+          : undefined
       }
-    >
-      <Text style={styles.intro}>{board?.name ?? 'Board'} was changed outside Vescape.</Text>
-      {notice?.diffs.map((diff) => (
-        <View key={diff.fieldId} style={[styles.row, { borderBottomColor: neutral.border }]}>
-          <View style={styles.rowText}>
-            <Text style={styles.label}>{diff.label}</Text>
-            <Text style={styles.change}>
-              {value(diff.oldValue, diff.unit)} → {value(diff.newValue, diff.unit)}
-            </Text>
-          </View>
-          {board ? (
-            <IconButton
-              icon={EyeSlashIcon}
-              size="sm"
-              accessibilityLabel={`Ignore ${diff.label}`}
-              testID={`ignore-config-change-${diff.fieldId}`}
-              onPress={() => {
-                setIgnoreError(null)
-                void setConfigChangeFieldIgnored(board.id, diff.fieldId, true).catch(() => {
-                  setIgnoreError('Could not save ignored field.')
-                })
-              }}
-            />
-          ) : null}
-        </View>
-      ))}
-      {ignoreError ? <Text style={styles.error}>{ignoreError}</Text> : null}
-    </FadeCardModal>
+    />
   )
 }
+
+const EMPTY_DIFFS: BoardConfigChangeDiff[] = []
 const styles = StyleSheet.create({
   intro: { color: theme.neutral.textSecondary, marginBottom: 12 },
   row: {
