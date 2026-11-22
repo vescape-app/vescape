@@ -139,6 +139,18 @@ class BoardWarningRegistryTest {
   }
 
   @Test
+  fun sessionIsScopedToExactBoardIdWhenOneIdPrefixesAnother() = runBlocking {
+    val registry = registry()
+    registry.reportFinding("board-ab", "x", BoardWarningSeverity.WARN, "{}")
+    registry.reportFinding("board-a", "bx", BoardWarningSeverity.WARN, "{}")
+    assertEquals(2, breadcrumbs.size)
+
+    registry.beginSession("board-a")
+    registry.reportFinding("board-ab", "x", BoardWarningSeverity.WARN, "{}")
+    assertEquals(2, breadcrumbs.size)
+  }
+
+  @Test
   fun emitSnapshotEmitsEveryBoardWithWarnings() = runBlocking {
     val registry = registry()
     registry.reportFinding("board-a", "cell-spread", BoardWarningSeverity.WARN, "{}")

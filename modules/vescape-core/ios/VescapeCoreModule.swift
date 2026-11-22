@@ -570,7 +570,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshWeather`
     Function("refreshWeather") {
-      WeatherCoordinator.shared.refresh()
+      DispatchQueue.main.async { WeatherCoordinator.shared.refresh() }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `provisionDeviceCredential`

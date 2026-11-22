@@ -2265,6 +2265,9 @@ internal final class BoardSessionController: VescGattListener {
     return WatchSnapshot(
       speed: current?.speed,
       dutyCycle: current?.dutyCycle,
+      // TODO(ios parity): Android nulls duty while the live sample is excluded from `max_duty`. iOS
+      // decides that exclusion at bucket-build time, not per live sample, so there is no live flag
+      // to read here and the wrist shows raw duty.
       dutyExcluded: current == nil,
       batterySoc: current != nil ? latestBatterySoc : nil,
       motorTemp: current?.tempMotor,

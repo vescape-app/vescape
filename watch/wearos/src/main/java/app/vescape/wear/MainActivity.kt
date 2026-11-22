@@ -189,6 +189,7 @@ class MainActivity : ComponentActivity() {
      */
     private fun replayFixture(): String = when (intent?.getStringExtra("replay")) {
         "sweep" -> REPLAY_FIXTURE_SWEEP
+        // TODO(iOS parity): watchOS has no preview fixture or `replayFrom`; only Android takes film a watch.
         "preview" -> REPLAY_FIXTURE_PREVIEW
         else -> REPLAY_FIXTURE_RIDE
     }

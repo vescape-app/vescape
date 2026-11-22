@@ -638,7 +638,7 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
     Function("refreshWeather") {
-      WeatherCoordinator.get().refresh()
+      mainHandler.post { WeatherCoordinator.get().refresh() }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `provisionDeviceCredential`
     AsyncFunction("provisionDeviceCredential") Coroutine {

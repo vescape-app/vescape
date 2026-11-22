@@ -68,11 +68,11 @@ class BoardWarningRegistry(
   private val lock = Any()
   private val firedThisSession = HashSet<String>()
 
-  private fun sessionKey(boardId: String, kind: String) = "$boardId$kind"
+  private fun sessionKey(boardId: String, kind: String) = "$boardId\u0000$kind"
 
   fun beginSession(boardId: String) {
     synchronized(lock) {
-      firedThisSession.removeAll { it.startsWith("$boardId") }
+      firedThisSession.removeAll { it.startsWith("$boardId\u0000") }
     }
   }
 

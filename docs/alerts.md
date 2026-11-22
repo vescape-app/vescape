@@ -268,6 +268,11 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 
 The `alerts` table schema lives in `modules/vescape-core/schema/database.json` (PK `(board_id, id)`). A preset row (`id = preset:<metric>`) uses only `board_id`, `id`, `control_id`, `spec`, and `created_at`; threshold, repeat, enabled, and config-relative columns are ignored because the preset definition owns them.
 
+A config-relative `thresholdRule` crosses the bridge without a null `thresholdMaxOffset`
+(`bridgeableAlertRule` in `modules/vescape-core/src/index.ts`): Expo's untyped-object converter
+rejects `null` inside a nested object (`Value is null, expected an Object`). Native reads every
+offset optionally, so an omitted key is the same value; top-level nulls are fine.
+
 ## Control IDs & implicit direction
 
 Direction is hardcoded per control — not stored.

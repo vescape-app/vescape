@@ -26,6 +26,8 @@ internal final class LocationTracker {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `riderPosition`
   var riderPosition: TelemetryLocationCapture? { latestLocation ?? latestPreciseLocation }
 
+  /// TODO(android parity): Android records after emitting and offers only precise fixes to
+  /// recording; align consumer ordering in the Ride Track slice #448.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `onLocationUpdated`
   func onLocationUpdated(_ incoming: TelemetryLocationCapture) -> TelemetryLocationCapture {
     let location = withCourse(incoming)
