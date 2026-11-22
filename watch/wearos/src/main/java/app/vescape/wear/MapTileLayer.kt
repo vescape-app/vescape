@@ -29,12 +29,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.annotation.MainThread
 
 private const val DECODE_RETRY_MS = 10_000L
 
 /**
  * @parity /watch/watchos/MapTileLayer.swift `MapTileStore`
  */
+@MainThread
 internal object MapTileState {
     val held = mutableStateOf<Map<WatchMapTile, () -> ByteArray?>>(emptyMap())
     val decodedVersion = mutableIntStateOf(0)

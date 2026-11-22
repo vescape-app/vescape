@@ -14,6 +14,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.annotation.WorkerThread
 
 class BatteryComplicationService : SuspendingComplicationDataSourceService() {
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData = withContext(Dispatchers.IO) {
@@ -60,6 +61,7 @@ internal fun batteryComplicationData(battery: WatchLastBattery?, type: Complicat
 }
 
 class BatteryComplicationListener : WearableListenerService() {
+    @WorkerThread
     override fun onDataChanged(events: DataEventBuffer) {
         for (event in events) {
             if (event.dataItem.uri.path != LAST_BATTERY_PATH) continue

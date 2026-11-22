@@ -10,6 +10,7 @@ import expo.modules.vescapecore.appstatus.AppStatusTransport
 import expo.modules.vescapecore.appstatus.OkHttpAppStatusTransport
 import org.json.JSONObject
 import java.util.concurrent.CopyOnWriteArrayList
+import androidx.annotation.MainThread
 
 private const val TAG = "ServiceConfig"
 
@@ -56,6 +57,7 @@ private class SharedPreferencesServiceConfigPersistence(context: Context) : Serv
 /**
  * @parity /modules/vescape-core/ios/serviceconfig/ServiceConfig.swift `ServiceConfigCoordinator`
  */
+@MainThread
 class ServiceConfigCoordinator internal constructor(
   private val installedVersion: String,
   private val baseUrl: String,

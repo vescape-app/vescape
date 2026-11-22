@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.alerts
 
 import java.util.concurrent.atomic.AtomicReference
+import androidx.annotation.AnyThread
 
 /**
  * @parity /modules/vescape-core/ios/alerts/PlaybackCompletion.swift `PlaybackOutcome`
@@ -17,6 +18,7 @@ internal const val PLAYBACK_DONE_TIMEOUT_MS = 30_000L
 /**
  * @parity /modules/vescape-core/ios/alerts/PlaybackCompletion.swift `PlaybackCompletion`
  */
+@AnyThread
 internal class PlaybackCompletion(
     private val deliver: (() -> Unit) -> Unit,
     onDone: PlaybackDone,

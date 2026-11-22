@@ -26,6 +26,12 @@ def hasReleaseSigning = releaseSigningProperties.every {
 
 android {
   namespace 'app.vescape.wear'
+
+  lint {
+    checkOnly 'WrongThread'
+    abortOnError true
+    checkDependencies false
+  }
   compileSdk 35
 
   defaultConfig {

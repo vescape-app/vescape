@@ -15,6 +15,8 @@ import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import androidx.annotation.WorkerThread
+import androidx.annotation.MainThread
 
 private const val TAG = "AppStatusCoordinator"
 
@@ -42,6 +44,7 @@ interface OnlineCapability {
 /**
  * @parity /modules/vescape-core/ios/appstatus/AppStatusCoordinator.swift
  */
+@MainThread
 class AppStatusCoordinator internal constructor(
   private val installedVersion: String,
   private val baseUrl: String,
@@ -210,10 +213,12 @@ internal class OkHttpAppStatusTransport(private val handler: Handler) : AppStatu
       return
     }
     client.newCall(request).enqueue(object : Callback {
+      @WorkerThread
       override fun onFailure(call: Call, e: IOException) {
         handler.post { onResult(null) }
       }
 
+      @WorkerThread
       override fun onResponse(call: Call, response: Response) {
         val body = response.use { if (it.isSuccessful) it.body?.string() else null }
         handler.post { onResult(body) }

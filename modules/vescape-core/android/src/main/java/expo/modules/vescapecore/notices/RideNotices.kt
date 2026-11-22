@@ -4,10 +4,12 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import java.util.concurrent.CopyOnWriteArrayList
+import androidx.annotation.AnyThread
 
 /**
  * @parity /modules/vescape-core/ios/notices/RideNotices.swift `RideNotices`
  */
+@AnyThread
 object RideNotices {
     private const val TAG = "RideNotices"
 

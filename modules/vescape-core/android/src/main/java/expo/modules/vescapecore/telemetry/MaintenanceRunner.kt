@@ -32,6 +32,7 @@ import kotlin.coroutines.resumeWithException
 import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.database.DatabaseReplacementFence
 import expo.modules.vescapecore.database.VescapeDatabase
+import androidx.annotation.WorkerThread
 
 private const val TAG = "MaintenanceRunner"
 private const val LAUNCH_DELAY_MS = 10_000L
@@ -332,10 +333,12 @@ private class OkHttpMaintenanceHttp : MaintenanceHttp {
     val call = client.newCall(Request.Builder().url(url).build())
     continuation.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {
+      @WorkerThread
       override fun onFailure(call: Call, e: IOException) {
         if (continuation.isActive) continuation.resumeWithException(e)
       }
 
+      @WorkerThread
       override fun onResponse(call: Call, response: Response) {
         val result = try {
           response.use {

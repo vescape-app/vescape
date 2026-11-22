@@ -19,10 +19,12 @@ import java.io.Writer
 import java.nio.file.Files
 import java.nio.file.attribute.BasicFileAttributes
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
+import androidx.annotation.AnyThread
 
 /**
  * @parity /modules/vescape-core/ios/recording/SessionRecorder.swift `SessionRecorder`
  */
+@AnyThread
 internal class SessionRecorder(
     private val boardConfig: SessionConfig,
     val file: File,

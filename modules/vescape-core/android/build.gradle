@@ -21,6 +21,12 @@ android {
 
   namespace "expo.modules.vescapecore"
 
+  lint {
+    checkOnly "WrongThread"
+    abortOnError true
+    checkDependencies false
+  }
+
   defaultConfig {
     minSdkVersion safeExtGet("minSdkVersion", 26)
     targetSdkVersion safeExtGet("targetSdkVersion", 35)

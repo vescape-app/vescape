@@ -27,10 +27,12 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import expo.modules.vescapecore.watch.RideNoticeFrameItem
 import expo.modules.vescapecore.watch.RideNoticeFrameSeverity
+import androidx.annotation.MainThread
 
 /**
  * @parity /watch/watchos/PhoneLink.swift `rideNoticeCard`
  */
+@MainThread
 internal object RideNoticeState {
     val card = mutableStateOf<RideNoticeFrameItem?>(null)
     private var vibrator: Vibrator? = null

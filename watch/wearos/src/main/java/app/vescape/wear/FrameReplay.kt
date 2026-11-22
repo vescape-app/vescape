@@ -22,6 +22,7 @@ import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.PI
 import kotlin.math.sin
+import androidx.annotation.MainThread
 
 const val REPLAY_FIXTURE_RIDE = "watch-ride.jsonl"
 const val REPLAY_FIXTURE_SWEEP = "watch-sweep.jsonl"
@@ -266,6 +267,7 @@ object DevGate {
 }
 
 /** @parity /watch/watchos/FrameReplay.swift `FrameReplayer` */
+@MainThread
 class FrameReplayer(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var samples: List<ReplaySample> = emptyList()

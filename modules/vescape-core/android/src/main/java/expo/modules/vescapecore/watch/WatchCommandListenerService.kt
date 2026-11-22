@@ -4,8 +4,10 @@ import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
 import expo.modules.vescapecore.notices.RideNotices
 import expo.modules.vescapecore.service.CoreForegroundService
+import androidx.annotation.WorkerThread
 
 class WatchCommandListenerService : WearableListenerService() {
+    @WorkerThread
     override fun onMessageReceived(event: MessageEvent) {
         if (event.path != WATCH_COMMAND_PATH) return
         routeWatchCommand(event.data)

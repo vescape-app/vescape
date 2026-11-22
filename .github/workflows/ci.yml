@@ -102,6 +102,7 @@ jobs:
       - run: bun run copy:shared
       - run: bun x expo prebuild --platform android --no-install
       - run: bun run test:android
+      - run: bun run lint:android
       - name: Release Gradle file handles
         if: always()
         run: cd android && ./gradlew --stop || true

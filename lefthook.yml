@@ -40,7 +40,7 @@ pre-commit:
       run: bun run test:bun
     test-android:
       glob: '*.{kt,kts}'
-      run: bun run test:android
+      run: bun run test:android && bun run lint:android
     test-ios:
       glob: '*.swift'
       run: bun run test:ios

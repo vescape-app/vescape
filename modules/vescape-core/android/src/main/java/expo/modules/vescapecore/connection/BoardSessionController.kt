@@ -183,6 +183,7 @@ import expo.modules.vescapecore.telemetry.isRefloatEngaged
 import expo.modules.vescapecore.telemetry.TelemetryPipeline
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.toMetricSanitizerConfig
+import androidx.annotation.AnyThread
 
 private const val CHANNEL_ID = "vesc_monitoring_v5"
 private const val NOTIFICATION_ID = 1001
@@ -1373,6 +1374,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         }
     }
 
+    @AnyThread
     private fun dispatchGattEvent(event: () -> Unit) {
         val session = boardSession ?: return
         scheduler.post {

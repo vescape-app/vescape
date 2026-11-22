@@ -26,6 +26,7 @@ import expo.modules.vescapecore.database.AlertRuleEntity
 import expo.modules.vescapecore.database.AppSettings
 import java.util.concurrent.Executors
 import kotlin.math.abs
+import androidx.annotation.BinderThread
 
 /**
  * @parity /modules/vescape-core/src/index.ts `ALERT_REPEAT_MIN_SECONDS`
@@ -772,11 +773,16 @@ internal class AlertFeedback(
         if (status == TextToSpeech.SUCCESS) {
             tts?.setAudioAttributes(audioAttributes(audioSource, AudioAttributes.CONTENT_TYPE_SPEECH))
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                @BinderThread
                 override fun onStart(utteranceId: String) {}
+                @BinderThread
                 override fun onDone(utteranceId: String) = utteranceEnded(utteranceId, PlaybackOutcome.COMPLETED)
                 @Deprecated("Superseded by onError(String, Int)")
+                @BinderThread
                 override fun onError(utteranceId: String) = utteranceEnded(utteranceId, PlaybackOutcome.FAILED)
+                @BinderThread
                 override fun onError(utteranceId: String, errorCode: Int) = utteranceEnded(utteranceId, PlaybackOutcome.FAILED)
+                @BinderThread
                 override fun onStop(utteranceId: String, interrupted: Boolean) = utteranceEnded(utteranceId, PlaybackOutcome.CANCELLED)
             })
             ttsReady = true

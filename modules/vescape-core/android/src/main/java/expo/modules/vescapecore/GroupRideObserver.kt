@@ -15,10 +15,13 @@ import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import androidx.annotation.WorkerThread
+import androidx.annotation.MainThread
 
 /**
  * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift
  */
+@MainThread
 internal class GroupRideObserver(
     private val handler: Handler,
     private val emit: (String, Map<String, Any?>) -> Unit,
@@ -318,6 +321,7 @@ internal class GroupRideObserver(
     }
 
     private val listener = object : WebSocketListener() {
+        @WorkerThread
         override fun onOpen(ws: WebSocket, response: Response) {
             handler.post {
                 if (!isCurrentSocket(ws)) return@post
@@ -326,22 +330,26 @@ internal class GroupRideObserver(
             }
         }
 
+        @WorkerThread
         override fun onMessage(ws: WebSocket, text: String) {
             handler.post { if (isCurrentSocket(ws)) handleMessage(text) }
         }
 
+        @WorkerThread
         override fun onClosing(ws: WebSocket, code: Int, reason: String) {
             handler.post {
                 if (isCurrentSocket(ws)) ws.close(NORMAL_CLOSURE, null)
             }
         }
 
+        @WorkerThread
         override fun onClosed(ws: WebSocket, code: Int, reason: String) {
             handler.post {
                 if (isCurrentSocket(ws)) scheduleReconnect()
             }
         }
 
+        @WorkerThread
         override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
             Log.w(TAG, "Relay WS failure: ${t.message}")
             val code = response?.code

@@ -4,6 +4,7 @@ import expo.modules.vescapecore.geo.GeoMath
 import expo.modules.vescapecore.watch.GroupRideRoster
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.annotation.MainThread
 
 /**
  * @parity /modules/vescape-core/ios/groupride/PublicRide.swift `PublicRideSwitch`
@@ -19,6 +20,7 @@ internal data class PublicRideSwitch(val on: Boolean, val until: Long?) {
 /**
  * @parity /modules/vescape-core/ios/groupride/PublicRide.swift
  */
+@MainThread
 internal class PublicRide(
     private val now: () -> Long,
     private val persist: (PublicRideSwitch) -> Unit,

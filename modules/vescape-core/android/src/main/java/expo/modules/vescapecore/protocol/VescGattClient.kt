@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Handler
 import android.util.Log
 import java.util.UUID
+import androidx.annotation.BinderThread
 
 private val NUS_SERVICE_UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
 private val NUS_TX_UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
@@ -98,6 +99,7 @@ internal class VescGattClient(
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
+        @BinderThread
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             Log.d(VESC_SESSION_TAG, "onConnectionStateChange status=$status newState=$newState")
             if (gatt !== this@VescGattClient.gatt) {
@@ -120,6 +122,7 @@ internal class VescGattClient(
             }
         }
 
+        @BinderThread
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             if (gatt !== this@VescGattClient.gatt) return
             Log.d(VESC_SESSION_TAG, "onMtuChanged mtu=$mtu status=$status")
@@ -133,6 +136,7 @@ internal class VescGattClient(
             }
         }
 
+        @BinderThread
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (gatt !== this@VescGattClient.gatt) return
             Log.d(VESC_SESSION_TAG, "onServicesDiscovered status=$status")
@@ -172,6 +176,7 @@ internal class VescGattClient(
             handler.postDelayed(cccdTimeout!!, 1_000)
         }
 
+        @BinderThread
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             if (gatt !== this@VescGattClient.gatt) return
             if (descriptor.uuid != CCCD_UUID) return
@@ -190,6 +195,7 @@ internal class VescGattClient(
             dispatchListener { listener.onGattReady() }
         }
 
+        @BinderThread
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -200,6 +206,7 @@ internal class VescGattClient(
 
         @Deprecated("Deprecated in Java")
         @Suppress("DEPRECATION")
+        @BinderThread
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -219,6 +226,7 @@ internal class VescGattClient(
             }
         }
 
+        @BinderThread
         override fun onCharacteristicWrite(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,

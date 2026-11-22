@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.util.Log
 import java.util.UUID
+import androidx.annotation.BinderThread
 
 private const val TAG = "VescapeAccessory"
 private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
@@ -96,6 +97,7 @@ internal class AccessoryGattHandshake(
     }
 
     private val callback = object : BluetoothGattCallback() {
+        @BinderThread
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             handler.post {
                 if (g !== gatt) {
@@ -110,6 +112,7 @@ internal class AccessoryGattHandshake(
             }
         }
 
+        @BinderThread
         override fun onMtuChanged(g: BluetoothGatt, negotiated: Int, status: Int) {
             handler.post {
                 if (g !== gatt) return@post
@@ -118,6 +121,7 @@ internal class AccessoryGattHandshake(
             }
         }
 
+        @BinderThread
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
             handler.post {
                 if (g !== gatt) return@post
@@ -144,6 +148,7 @@ internal class AccessoryGattHandshake(
             }
         }
 
+        @BinderThread
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             handler.post {
                 if (g !== gatt) return@post
@@ -151,6 +156,7 @@ internal class AccessoryGattHandshake(
             }
         }
 
+        @BinderThread
         override fun onCharacteristicWrite(
             g: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -167,10 +173,12 @@ internal class AccessoryGattHandshake(
         }
 
         @Suppress("DEPRECATION")
+        @BinderThread
         override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             deliver(g, characteristic.uuid, characteristic.value ?: return)
         }
 
+        @BinderThread
         override fun onCharacteristicChanged(
             g: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,

@@ -11,6 +11,8 @@ import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import androidx.annotation.WorkerThread
+import androidx.annotation.MainThread
 
 private const val TAG = "WeatherCoordinator"
 
@@ -21,6 +23,7 @@ fun interface WeatherTransport {
 /**
  * @parity /modules/vescape-core/ios/weather/WeatherCoordinator.swift
  */
+@MainThread
 class WeatherCoordinator internal constructor(
     private val transport: WeatherTransport,
     private val nowMs: () -> Long = System::currentTimeMillis,
@@ -139,11 +142,13 @@ internal class OkHttpWeatherTransport(private val handler: Handler) : WeatherTra
             return
         }
         client.newCall(request).enqueue(object : Callback {
+            @WorkerThread
             override fun onFailure(call: Call, e: IOException) {
                 Log.d(TAG, "Weather fetch failed: ${e.message}")
                 handler.post { onResult(null) }
             }
 
+            @WorkerThread
             override fun onResponse(call: Call, response: Response) {
                 val body = response.use { if (it.isSuccessful) it.body?.string() else null }
                 handler.post { onResult(body) }

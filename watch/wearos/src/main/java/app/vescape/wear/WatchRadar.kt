@@ -14,6 +14,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import androidx.annotation.WorkerThread
 
 /**
  * @parity /src/modules/weather/store/rainViewerRadarStore.ts
@@ -115,8 +116,10 @@ object RainViewer {
             "$RADAR_COLOR_SCHEME/$RADAR_OPTIONS.png"
 }
 
+@WorkerThread
 private fun fetchText(url: String): String? = openConnection(url) { it.bufferedReader().readText() }
 
+@WorkerThread
 private fun fetchImage(url: String): ImageBitmap? =
     openConnection(url) { BitmapFactory.decodeStream(it)?.asImageBitmap() }
 

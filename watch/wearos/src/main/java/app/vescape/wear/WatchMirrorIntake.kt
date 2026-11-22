@@ -5,6 +5,7 @@ import expo.modules.vescapecore.watch.RideNoticeFrameCodec
 import expo.modules.vescapecore.watch.RideNoticeFrameItem
 import expo.modules.vescapecore.watch.WatchRouteStatus
 import expo.modules.vescapecore.watch.WatchRouteStatusCodec
+import androidx.annotation.MainThread
 
 /**
  * @parity /modules/vescape-core/ios/watch/WatchMirrorIntake.swift
@@ -100,6 +101,7 @@ internal class WatchMirrorIntake(
     }
 }
 
+@MainThread
 internal object MirrorIntakeState {
     private val intake = WatchMirrorIntake()
 

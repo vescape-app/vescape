@@ -3,6 +3,7 @@ package app.vescape.wear
 import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
+import androidx.annotation.MainThread
 
 private const val TAG = "VescMirror"
 /** @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `maxEvents` */
@@ -21,6 +22,7 @@ data class DiagnosticCounters(
 /**
  * @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `WatchDiagnosticsLog`
  */
+@MainThread
 object WatchDiagnostics {
     val counters = mutableStateOf(DiagnosticCounters())
     val events = mutableStateOf(listOf<DiagnosticEvent>())

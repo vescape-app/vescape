@@ -4,6 +4,8 @@ import expo.modules.vescapecore.alerts.AlertSeverity
 import expo.modules.vescapecore.alerts.VoiceAnnouncement
 import expo.modules.vescapecore.alerts.VoiceValue
 import kotlin.math.roundToInt
+import androidx.annotation.MainThread
+import androidx.annotation.AnyThread
 
 /**
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `weatherAlertMaxForecastAgeMs`
@@ -216,6 +218,7 @@ private fun qualifies(kind: WeatherAlertKind, slot: WeatherSlot, settings: Weath
 /**
  * @parity /modules/vescape-core/ios/weather/WeatherAlerts.swift `WeatherAlertMonitor`
  */
+@MainThread
 internal class WeatherAlertMonitor(
     private val isLive: () -> Boolean,
     private val speak: (WeatherAlertLine) -> Unit,
@@ -223,6 +226,7 @@ internal class WeatherAlertMonitor(
 ) {
     private var state = WeatherAlertState()
 
+    @set:AnyThread
     @Volatile var settings = WeatherAlertSettings()
 
     fun evaluate(weather: Weather?) {
