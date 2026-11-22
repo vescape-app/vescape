@@ -71,6 +71,7 @@ installed; they do not prove that the app contains the current working tree.
 Keep the architecture sharp:
 
 - Native owns durable truth and long-lived work; JS renders state and sends intents.
+- Threading contracts are code, not comments: `@MainThread`/`@WorkerThread`/`@BinderThread`/`@AnyThread` on Android (checked by `bun run lint:android`), `@MainActor`/`Sendable` in Swift. Put units in identifiers (`atMs`, `bearingDeg`, `speedKmh`) except bridge, wire and persistence keys.
 - Prefer clear architecture over compatibility, shortcuts, or hidden assumptions.
 - Remove unused code! Not keep dead code for later.
 - No duplicate code! We do not want to repeat ourselves.
