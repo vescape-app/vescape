@@ -1,7 +1,7 @@
 import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseReplacementFence.kt `DatabaseReplacementFence`
-final class DatabaseReplacementFence {
+final class DatabaseReplacementFence: @unchecked Sendable {
   static let process = DatabaseReplacementFence()
 
   private let workLock = NSLock()

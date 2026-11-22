@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notices/RideNotices.kt `RideNotices`
-final class RideNotices {
+final class RideNotices: @unchecked Sendable {
   static let shared = RideNotices()
 
   private static let log = Logger(subsystem: "VescapeCore", category: "RideNotices")

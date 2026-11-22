@@ -16,6 +16,7 @@ import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import androidx.annotation.WorkerThread
+import androidx.annotation.AnyThread
 import androidx.annotation.MainThread
 
 private const val TAG = "AppStatusCoordinator"
@@ -58,6 +59,7 @@ class AppStatusCoordinator internal constructor(
     }
   },
 ) : OnlineCapability {
+  @get:AnyThread
   @Volatile
   var current: AppStatus? = null
     private set
@@ -163,6 +165,8 @@ class AppStatusCoordinator internal constructor(
 
     @Volatile
     private var instance: AppStatusCoordinator? = null
+
+    @AnyThread
 
     fun get(context: Context): AppStatusCoordinator =
       instance ?: synchronized(this) {

@@ -2,10 +2,12 @@ package expo.modules.vescapecore.database
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import androidx.annotation.AnyThread
 
 /**
  * @parity /modules/vescape-core/ios/database/DatabaseReplacementFence.swift `DatabaseReplacementFence`
  */
+@AnyThread
 internal class DatabaseReplacementFence {
   private val mutex = Mutex()
 

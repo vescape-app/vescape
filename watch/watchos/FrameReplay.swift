@@ -1,6 +1,7 @@
 import Foundation
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `FrameReplayer`
+@MainActor
 final class FrameReplayer {
   private let link: PhoneLink
   private var samples: [ReplaySample] = []

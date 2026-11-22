@@ -15,7 +15,7 @@ internal struct BmsSeriesFrame {
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt
-internal final class BmsSeriesRing {
+internal final class BmsSeriesRing: @unchecked Sendable {
   private let lock = NSLock()
   private var frames: [BmsSeriesFrame] = []
   private var cellCountValue = 0

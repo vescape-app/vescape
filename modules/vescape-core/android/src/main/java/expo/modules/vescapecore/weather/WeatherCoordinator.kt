@@ -12,6 +12,7 @@ import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import androidx.annotation.WorkerThread
+import androidx.annotation.AnyThread
 import androidx.annotation.MainThread
 
 private const val TAG = "WeatherCoordinator"
@@ -28,6 +29,7 @@ class WeatherCoordinator internal constructor(
     private val transport: WeatherTransport,
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
+    @get:AnyThread
     @Volatile
     var current: Weather? = null
         private set
@@ -119,6 +121,8 @@ class WeatherCoordinator internal constructor(
 
         @Volatile
         private var instance: WeatherCoordinator? = null
+
+        @AnyThread
 
         fun get(): WeatherCoordinator =
             instance ?: synchronized(this) {

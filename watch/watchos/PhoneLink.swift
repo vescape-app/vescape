@@ -130,11 +130,13 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
 
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/TelemetryState.kt `refresh`
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMirrorIntake.kt `refresh`
+  @MainActor
   func refresh() {
     intake.refresh(nowMs: Self.nowMs())
     publishIntake()
   }
 
+  @MainActor
   private func publishIntake() {
     if mirror != intake.mirror { mirror = intake.mirror }
     if route != intake.route { route = intake.route }
@@ -158,6 +160,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
 
   /// @platform-diff `WCSession.isPaired` is iOS-only; the wrist infers the same three reasons from
   ///   activation, companion-installed and reachability.
+  @MainActor
   private func syncCounterpart(_ session: WCSession) {
     activation = session.activationState
     reachable = session.isReachable
@@ -221,6 +224,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     publishIntake()
   }
 
+  @MainActor
   private func acceptColdState(_ context: [String: Any]) {
     refreshLastBatteryContext()
     let fresh = intake.restoreColdState(context)
@@ -236,6 +240,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     send(.dismissNotice(id: notice.id, rev: notice.rev))
   }
 
+  @MainActor
   private func acceptRideNotices(_ bytes: Data) {
     let fresh = intake.acceptRideNotices(bytes)
     publishIntake()
@@ -246,11 +251,13 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     WKInterfaceDevice.current().play(.notification)
   }
 
+  @MainActor
   private func acceptGroupRide(_ bytes: Data, receivedAtMs: Int64) {
     intake.acceptGroupRide(bytes, receivedAtMs: receivedAtMs)
     publishIntake()
   }
 
+  @MainActor
   private func acceptTelemetry(_ bytes: Data, receivedAtMs: Int64, receivedAt: Date) {
     let appliedAtMs = Self.nowMs()
     guard intake.acceptTelemetry(bytes, receivedAtMs: receivedAtMs, appliedAtMs: appliedAtMs) else {

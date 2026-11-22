@@ -11,7 +11,7 @@ typealias PlaybackDone = (PlaybackOutcome) -> Void
 let playbackDoneTimeoutMs: Int64 = 30_000
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/PlaybackCompletion.kt `PlaybackCompletion`
-final class PlaybackCompletion {
+final class PlaybackCompletion: @unchecked Sendable {
   private let deliver: (@escaping () -> Void) -> Void
   private var pending: PlaybackDone?
   private let lock = NSLock()
@@ -40,7 +40,7 @@ final class PlaybackCompletion {
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/PlaybackCompletion.kt `PlaybackTracker`
-final class PlaybackTracker {
+final class PlaybackTracker: @unchecked Sendable {
   private let deliver: (@escaping () -> Void) -> Void
   private var live: [ObjectIdentifier: PlaybackCompletion] = [:]
   private var speech: PlaybackCompletion?

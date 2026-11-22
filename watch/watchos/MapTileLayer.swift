@@ -4,8 +4,9 @@ import SwiftUI
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MapTileLayer.kt `MapTileState`
 /// @platform-diff Wear OS reads tiles from Data Layer Assets and has no list: deleting an item is
 ///   the drop. Here the files are the wrist's own and the list decides which ones stay.
+@MainActor
 final class MapTileStore: ObservableObject {
-  static let shared = MapTileStore()
+  nonisolated static let shared = MapTileStore()
   private static let decodeRetry: TimeInterval = 10
 
   @Published private(set) var held: [WatchMapTile: URL] = [:]
@@ -19,7 +20,7 @@ final class MapTileStore: ObservableObject {
   private let root: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
     .appendingPathComponent("map-tiles", isDirectory: true)
 
-  private init() {
+  private nonisolated init() {
     io.async { [root] in
       let found = Self.scan(root)
       DispatchQueue.main.async {
@@ -29,7 +30,7 @@ final class MapTileStore: ObservableObject {
     }
   }
 
-  func receive(_ file: URL, style: String, tile: WatchMapTile, generation: Int64) {
+  nonisolated func receive(_ file: URL, style: String, tile: WatchMapTile, generation: Int64) {
     let target = Self.file(root, style: style, tile: tile)
     do {
       try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -112,17 +113,17 @@ final class MapTileStore: ObservableObject {
     }
   }
 
-  private static func styleName(_ style: String) -> String { style.replacingOccurrences(of: "/", with: "_") }
+  private nonisolated static func styleName(_ style: String) -> String { style.replacingOccurrences(of: "/", with: "_") }
 
-  private static func styleDirectory(_ root: URL, _ style: String) -> URL {
+  private nonisolated static func styleDirectory(_ root: URL, _ style: String) -> URL {
     root.appendingPathComponent(styleName(style), isDirectory: true)
   }
 
-  private static func file(_ root: URL, style: String, tile: WatchMapTile) -> URL {
+  private nonisolated static func file(_ root: URL, style: String, tile: WatchMapTile) -> URL {
     styleDirectory(root, style).appendingPathComponent("\(tile.key)-\(UUID().uuidString).jpg")
   }
 
-  private static func scan(_ root: URL) -> [WatchMapTile: URL] {
+  private nonisolated static func scan(_ root: URL) -> [WatchMapTile: URL] {
     guard let walk = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { return [:] }
     var found: [WatchMapTile: URL] = [:]
     for case let url as URL in walk where url.pathExtension == "jpg" {

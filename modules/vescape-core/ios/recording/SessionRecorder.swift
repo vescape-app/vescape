@@ -1,7 +1,7 @@
 import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/SessionRecorder.kt `SessionRecorder`
-internal final class SessionRecorder {
+internal final class SessionRecorder: @unchecked Sendable {
   private let store: DebugRecordingStore
   private let deviceName: String
   private let deviceId: String

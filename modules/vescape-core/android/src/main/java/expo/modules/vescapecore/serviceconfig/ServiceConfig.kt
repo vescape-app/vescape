@@ -10,6 +10,7 @@ import expo.modules.vescapecore.appstatus.AppStatusTransport
 import expo.modules.vescapecore.appstatus.OkHttpAppStatusTransport
 import org.json.JSONObject
 import java.util.concurrent.CopyOnWriteArrayList
+import androidx.annotation.AnyThread
 import androidx.annotation.MainThread
 
 private const val TAG = "ServiceConfig"
@@ -65,6 +66,7 @@ class ServiceConfigCoordinator internal constructor(
   private val persistence: ServiceConfigPersistence,
   seed: ServiceConfig,
 ) {
+  @get:AnyThread
   @Volatile
   var current: ServiceConfig = persistence.read()?.let(ServiceConfig::parse) ?: seed
     private set
@@ -107,6 +109,8 @@ class ServiceConfigCoordinator internal constructor(
 
     @Volatile
     private var instance: ServiceConfigCoordinator? = null
+
+    @AnyThread
 
     fun get(context: Context): ServiceConfigCoordinator =
       instance ?: synchronized(this) {

@@ -2,6 +2,7 @@ package expo.modules.vescapecore.telemetry
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import androidx.annotation.AnyThread
 
 /**
  * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `BMS_SERIES_FIXED_LANES`
@@ -24,6 +25,7 @@ internal class BmsSeriesFrame(
 /**
  * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift
  */
+@AnyThread
 internal class BmsSeriesRing {
     private val frames = ArrayDeque<BmsSeriesFrame>()
     private var cellCount = 0
