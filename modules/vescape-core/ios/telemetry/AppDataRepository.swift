@@ -74,11 +74,13 @@ final class AppDataRepository {
     let bleId = link?["bleId"] as? String
     let linkSettings = BoardLinkPersistence.settings(from: board["link"] ?? nil)
 
+    let ignoredConfigChangeFields = Self.normalizeStringList(board["ignoredConfigChangeFields"] ?? nil)
     let settings: [(String, Any?)] = [
       ("description", (board["description"] as? String).flatMap { $0.isEmpty ? nil : $0 }),
       ("personalization", Self.normalizePersonalization(board["personalization"] ?? nil)),
       ("batteryConfig", Self.normalizeBatteryConfig(board["batteryConfig"] ?? nil)),
-      ("dismissedWarnings", Self.normalizeDismissedWarnings(board["dismissedWarnings"] ?? nil)),
+      ("dismissedWarnings", Self.normalizeStringList(board["dismissedWarnings"] ?? nil)),
+      (BoardConfigChangeNotice.ignoredFieldsSettingKey, ignoredConfigChangeFields),
       ("topSpeedKmh", Self.topSpeedKmh(board["topSpeedKmh"] ?? nil)),
       ("alertPresetsOnboarded", board["alertPresetsOnboarded"] as? Bool),
     ] + linkSettings
@@ -139,6 +141,7 @@ final class AppDataRepository {
       "batteryConfig": values["batteryConfig"],
       "lastBattery": values["lastBattery"],
       "dismissedWarnings": values["dismissedWarnings"],
+      "ignoredConfigChangeFields": values[BoardConfigChangeNotice.ignoredFieldsSettingKey],
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
       "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
       "legalMode": values["legalMode"] ?? ["enabled": false],
@@ -158,6 +161,7 @@ final class AppDataRepository {
       "personalization": values["personalization"],
       "createdAt": board.createdAt, "batteryConfig": values["batteryConfig"],
       "lastBattery": values["lastBattery"], "dismissedWarnings": values["dismissedWarnings"],
+      "ignoredConfigChangeFields": values[BoardConfigChangeNotice.ignoredFieldsSettingKey],
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
       "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
       "legalMode": values["legalMode"] ?? ["enabled": false],
@@ -182,8 +186,8 @@ final class AppDataRepository {
       return raw as? String
     case "lastBattery":
       return decodeLastBattery(raw)
-    case "dismissedWarnings":
-      return normalizeDismissedWarnings(raw)
+    case "dismissedWarnings", BoardConfigChangeNotice.ignoredFieldsSettingKey:
+      return normalizeStringList(raw)
     case "topSpeedKmh":
       return topSpeedKmh(raw)
     case "alertPresetsOnboarded":
@@ -210,11 +214,12 @@ final class AppDataRepository {
     return ["enabled": enabled]
   }
 
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeDismissedWarnings`
-  private static func normalizeDismissedWarnings(_ raw: Any?) -> [String]? {
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeStringList`
+  private static func normalizeStringList(_ raw: Any?) -> [String]? {
     guard let list = raw as? [Any] else { return nil }
-    let kinds = list.compactMap { $0 as? String }.filter { !$0.isEmpty }
-    return kinds.isEmpty ? nil : kinds
+    var seen = Set<String>()
+    let items = list.compactMap { $0 as? String }.filter { !$0.isEmpty && seen.insert($0).inserted }
+    return items.isEmpty ? nil : items
   }
 
   private static func decodeLastBattery(_ raw: Any?) -> [String: Any?]? {

@@ -296,19 +296,33 @@ class AppDataRepository private constructor(private val context: Context) {
     }
   }
 
+  private fun configPersistence() = ConfigPersistence(dao) { error ->
+    RecordingStorageFailure.reportRead("board_config_ignored_fields_read", error)
+  }
+
   internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
     val boardId = values.boardId ?: return@withContext null
     val base = values.refloatBaseVersion ?: return@withContext null
-    ConfigPersistence(dao).saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.writeBase?.schema)
+    configPersistence().saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.writeBase?.schema)
   }
 
   internal suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
-    dao.getBoardConfigChangeNotice(boardId)?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+    configPersistence().loadNotice(boardId)
   }
 
   suspend fun dismissBoardConfigChangeNotice(boardId: String) = withContext(Dispatchers.IO) {
     dao.deleteBoardConfigChangeNotice(boardId)
     CoreForegroundService.emitEvent?.invoke("onBoardConfigChangeNotice", mapOf("notice" to null))
+  }
+
+  suspend fun setBoardConfigChangeFieldIgnored(boardId: String, fieldId: String, ignored: Boolean) = withContext(Dispatchers.IO) {
+    configPersistence().setFieldIgnored(boardId, fieldId, ignored)
+    notifyDataChanged(AppDataScope.BOARDS)
+  }
+
+  suspend fun clearIgnoredBoardConfigChangeFields(boardId: String) = withContext(Dispatchers.IO) {
+    configPersistence().clearIgnoredFields(boardId)
+    notifyDataChanged(AppDataScope.BOARDS)
   }
 
   /**
@@ -333,7 +347,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveFreshMotorConfigValues(values: MotorConfigValues): BoardConfigChangeNotice? =
     withContext(Dispatchers.IO) {
       val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext null
-      ConfigPersistence(dao).saveFreshMotor(boardId, values.signature, values.firmware, values.values, values.capturedAtMs)
+      configPersistence().saveFreshMotor(boardId, values.signature, values.firmware, values.values, values.capturedAtMs)
     }
 
   /**
@@ -926,6 +940,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "batteryConfig" to values["batteryConfig"],
     "lastBattery" to values["lastBattery"],
     "dismissedWarnings" to values["dismissedWarnings"],
+    "ignoredConfigChangeFields" to values[BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY],
     "topSpeedKmh" to (values["topSpeedKmh"] ?: DEFAULT_TOP_SPEED_KMH),
     "alertPresetsOnboarded" to (values["alertPresetsOnboarded"] ?: false),
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
@@ -1174,7 +1189,11 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   putOrDelete("description", (get("description") as? String)?.takeIf { it.isNotBlank() })
   putOrDelete("personalization", normalizePersonalization(get("personalization")))
   putOrDelete("batteryConfig", normalizeBatteryConfig(get("batteryConfig")))
-  putOrDelete("dismissedWarnings", normalizeDismissedWarnings(get("dismissedWarnings")))
+  putOrDelete("dismissedWarnings", normalizeStringList(get("dismissedWarnings")))
+  putOrDelete(
+    BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY,
+    normalizeStringList(get(BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)),
+  )
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
   putOrDelete("alertPresetsOnboarded", get("alertPresetsOnboarded") as? Boolean)
   val link = normalizedBoardLink()
@@ -1205,7 +1224,8 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "hasBms" -> (raw as? Boolean)?.let { key to it }
     "vescFirmwareVersion", "refloatVersion", "refloatBaseVersion" -> (raw as? String)?.let { key to it }
     "lastBattery" -> decodeLastBattery(raw)?.let { key to it }
-    "dismissedWarnings" -> normalizeDismissedWarnings(raw)?.let { key to it }
+    "dismissedWarnings", BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY ->
+      normalizeStringList(raw)?.let { key to it }
     "topSpeedKmh" -> validTopSpeedKmh(raw)?.let { key to it }
     "alertPresetsOnboarded" -> (raw as? Boolean)?.let { key to it }
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
@@ -1226,12 +1246,12 @@ private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =
   (raw.asStringKeyMap()?.get("enabled") as? Boolean)?.let { mapOf("enabled" to it) }
 
 /**
- * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeDismissedWarnings`
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeStringList`
  */
-private fun normalizeDismissedWarnings(raw: Any?): List<String>? {
+private fun normalizeStringList(raw: Any?): List<String>? {
   val list = raw as? List<*> ?: return null
-  val kinds = list.filterIsInstance<String>().filter { it.isNotEmpty() }
-  return kinds.ifEmpty { null }
+  val items = list.filterIsInstance<String>().filter { it.isNotEmpty() }.distinct()
+  return items.ifEmpty { null }
 }
 
 private fun decodeLastBattery(raw: Any?): Map<String, Any?>? {

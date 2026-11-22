@@ -223,6 +223,9 @@ public class VescapeCoreModule: Module {
         self?.sendBoardWarnings(boardId, warnings)
       }
       BoardConfigStore.onNoticeChanged = { [weak self] notice in self?.sendEvent("onBoardConfigChangeNotice", ["notice": notice?.toMap()]) }
+      BoardConfigStore.onInvalidIgnoredFields = { error in
+        RecordingStorageFailure.reportRead(operation: "board_config_ignored_fields_read", error: error)
+      }
       MaintenanceRunner.shared.onChange = { [weak self] state in self?.emitMaintenanceState(state) }
       MaintenanceRunner.shared.start()
     }
@@ -1004,6 +1007,34 @@ public class VescapeCoreModule: Module {
       try RecordingStorageFailure.requireAvailable()
       do { try BoardConfigStore.shared.dismissNotice(boardId: boardId); promise.resolve(nil) }
       catch { RecordingStorageFailure.report(operation: "board_config_notice_delete", category: "write_failed", error: error); promise.reject("APP_STORAGE_WRITE_FAILED", "Could not dismiss Board Config Change Notice", cause: error) }
+    }
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBoardConfigChangeFieldIgnored`
+    /// @parity /modules/vescape-core/src/index.ts `setBoardConfigChangeFieldIgnored`
+    AsyncFunction("setBoardConfigChangeFieldIgnored") { (boardId: String, fieldId: String, ignored: Bool, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        try BoardConfigStore.shared.setFieldIgnored(boardId: boardId, fieldId: fieldId, ignored: ignored)
+        AppDataRepository.onDataChanged?(AppDataScope.boards.rawValue)
+        promise.resolve(nil)
+      }
+      catch {
+        RecordingStorageFailure.report(operation: "board_config_ignored_field_write", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not update ignored Board Config field", cause: error)
+      }
+    }
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `clearIgnoredBoardConfigChangeFields`
+    /// @parity /modules/vescape-core/src/index.ts `clearIgnoredBoardConfigChangeFields`
+    AsyncFunction("clearIgnoredBoardConfigChangeFields") { (boardId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do {
+        try BoardConfigStore.shared.clearIgnoredFields(boardId: boardId)
+        AppDataRepository.onDataChanged?(AppDataScope.boards.rawValue)
+        promise.resolve(nil)
+      }
+      catch {
+        RecordingStorageFailure.report(operation: "board_config_ignored_fields_clear", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not clear ignored Board Config fields", cause: error)
+      }
     }
 
     AsyncFunction("devReportCleanBoardWarning") { (boardId: String, kind: String, promise: Promise) in

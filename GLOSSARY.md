@@ -501,7 +501,7 @@ _Avoid_: Hazard signal, warning, POI, map point
 - **Last Known Board Config Values** are scoped per **Board** and **Tune Compatibility**, kept while a **Board Link** is outdated, and cleared everywhere when link integrity is mismatched.
 - A **VESC-Relative Alert Rule** resolves from **Last Known Board Config Values** immediately when a **Board Session** starts and follows fresh values automatically when they arrive; it never materializes the referenced config number into the rule.
 - The first **VESC-Relative Alert Rule** is opt-in Duty feedback based on `tiltback_duty`; matching is off by default, and the selected Safe, Normal, or Minimal level determines its lead below the VESC threshold.
-- A fresh read differing from **Last Known Board Config Values** creates or replaces that Board's pending **Board Config Change Notice** unless Vescape made the change itself; every changed field is included and no history is retained.
+- A fresh read differing from **Last Known Board Config Values** creates or replaces that Board's pending **Board Config Change Notice** unless Vescape made the change itself; every changed field is included except boot-calibrated FOC offsets (`foc_offsets_current[0..2]`, `foc_offsets_voltage[0..2]`, `foc_offsets_voltage_undriven[0..2]`) and fields ignored per **Board**, and no history is retained.
 - Only the active **Board** presents its pending **Board Config Change Notice**; dismissing its modal by any route removes the notice.
 - A **Board Firmware Identity** may be rediscovered during a **Board Session**; any mismatch creates a **Stale Board Link**.
 - A **Stale Board Link** does not end a working **Board Session**, but only telemetry remains trusted until a fresh **Board Probe** replaces the link.

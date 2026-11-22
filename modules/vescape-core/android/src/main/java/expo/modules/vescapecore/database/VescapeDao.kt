@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import org.json.JSONObject
+import expo.modules.vescapecore.config.BoardConfigChangeNotice
 import expo.modules.vescapecore.telemetry.AlertPresetPersistence
 import expo.modules.vescapecore.telemetry.BucketRoutePreview
 import expo.modules.vescapecore.telemetry.METRIC_EXCLUSION_RANGE_MERGE_GAP_MS
@@ -817,6 +818,9 @@ interface VescapeDao {
   @Query("SELECT id, name FROM boards")
   suspend fun getBoardNames(): List<BoardNameRow>
 
+  @Query("SELECT * FROM board_settings WHERE board_id = :boardId AND key = :key LIMIT 1")
+  suspend fun getBoardSetting(boardId: String, key: String): BoardSettingEntity?
+
   @Query("SELECT * FROM board_settings WHERE board_id = :boardId")
   suspend fun getBoardSettings(boardId: String): List<BoardSettingEntity>
 
@@ -1219,9 +1223,10 @@ interface VescapeDao {
   @Transaction
   suspend fun replaceMotorBaselineAndNotice(
     values: MotorConfigValuesEntity,
-    buildNotice: (MotorConfigValuesEntity?, BoardConfigChangeNoticeEntity?) -> BoardConfigChangeNoticeEntity?,
+    buildNotice: (MotorConfigValuesEntity?, BoardConfigChangeNoticeEntity?, String?) -> BoardConfigChangeNoticeEntity?,
   ): BoardConfigChangeNoticeEntity? {
-    val notice = buildNotice(getLatestMotorConfigValues(values.boardId), getBoardConfigChangeNotice(values.boardId))
+    val ignoredJson = getBoardSetting(values.boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson
+    val notice = buildNotice(getLatestMotorConfigValues(values.boardId), getBoardConfigChangeNotice(values.boardId), ignoredJson)
     if (notice != null) upsertBoardConfigChangeNotice(notice)
     upsertMotorConfigValues(values)
     return notice
@@ -1237,6 +1242,21 @@ interface VescapeDao {
   suspend fun deleteBoardConfigChangeNotice(boardId: String)
 
   @Transaction
+  suspend fun setIgnoredConfigChangeField(
+    boardId: String,
+    now: Long,
+    transform: (String?) -> String?,
+  ) {
+    val currentJson = getBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson
+    val nextJson = transform(currentJson)
+    if (nextJson == null) {
+      deleteBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)
+    } else {
+      upsertBoardSetting(BoardSettingEntity(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY, nextJson, now))
+    }
+  }
+
+  @Transaction
   suspend fun clearBoardConfigState(boardId: String) {
     deleteBoardConfigValues(boardId)
     deleteMotorConfigValues(boardId)
@@ -1244,8 +1264,12 @@ interface VescapeDao {
   }
 
   @Transaction
-  suspend fun replaceBaselineAndNotice(values: BoardConfigValuesEntity, buildNotice: (BoardConfigValuesEntity?, BoardConfigChangeNoticeEntity?) -> BoardConfigChangeNoticeEntity?): BoardConfigChangeNoticeEntity? {
-    val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion), getBoardConfigChangeNotice(values.boardId))
+  suspend fun replaceBaselineAndNotice(
+    values: BoardConfigValuesEntity,
+    buildNotice: (BoardConfigValuesEntity?, BoardConfigChangeNoticeEntity?, String?) -> BoardConfigChangeNoticeEntity?,
+  ): BoardConfigChangeNoticeEntity? {
+    val ignoredJson = getBoardSetting(values.boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson
+    val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion), getBoardConfigChangeNotice(values.boardId), ignoredJson)
     if (notice != null) upsertBoardConfigChangeNotice(notice)
     upsertBoardConfigValues(values)
     return notice

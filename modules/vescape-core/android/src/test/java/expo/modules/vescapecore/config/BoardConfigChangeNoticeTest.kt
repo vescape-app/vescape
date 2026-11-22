@@ -48,4 +48,58 @@ class BoardConfigChangeNoticeTest {
     )
     assertEquals(listOf("edit"), diffs.map { it.fieldId })
   }
+
+  @Test
+  fun diffSkipsIgnoredAndVolatileMotorFields() {
+    val old = mapOf<String, Any>(
+      "foc_offsets_current[0]" to 2010.43,
+      "foc_offsets_current[1]" to 2031.32,
+      "foc_offsets_current[2]" to 2040.56,
+      "foc_offsets_voltage[0]" to -0.0062,
+      "foc_offsets_voltage[1]" to 0.001,
+      "foc_offsets_voltage[2]" to 0.0025,
+      "foc_offsets_voltage_undriven[0]" to 0.001,
+      "foc_offsets_voltage_undriven[1]" to 0.002,
+      "foc_offsets_voltage_undriven[2]" to 0.003,
+      "foc_offsets_cal_on_boot" to 1.0,
+      "l_current_max" to 160.0,
+      "l_temp_fet_start" to 70.0,
+    )
+    val new = mapOf<String, Any>(
+      "foc_offsets_current[0]" to 2010.67,
+      "foc_offsets_current[1]" to 2031.66,
+      "foc_offsets_current[2]" to 2040.22,
+      "foc_offsets_voltage[0]" to -0.0061,
+      "foc_offsets_voltage[1]" to 0.002,
+      "foc_offsets_voltage[2]" to 0.0024,
+      "foc_offsets_voltage_undriven[0]" to 0.004,
+      "foc_offsets_voltage_undriven[1]" to 0.005,
+      "foc_offsets_voltage_undriven[2]" to 0.006,
+      "foc_offsets_cal_on_boot" to 0.0,
+      "l_current_max" to 150.0,
+      "l_temp_fet_start" to 75.0,
+    )
+    val diffs = BoardConfigChangeNotice.diff(
+      old = old,
+      new = new,
+      schema = null,
+      ignoredFields = BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS + "l_current_max",
+    )
+    assertEquals(listOf("foc_offsets_cal_on_boot", "l_temp_fet_start"), diffs.map { it.fieldId })
+  }
+
+  @Test
+  fun decodeIgnoredFieldsFiltersEmptyAndNonStringEntries() {
+    var invalidCount = 0
+    assertEquals(
+      listOf("l_current_max", "kp"),
+      BoardConfigChangeNotice.decodeIgnoredFields("""["l_current_max", "", 42, "kp", "l_current_max"]""") { invalidCount++ },
+    )
+    assertEquals(0, invalidCount)
+    assertEquals(emptyList<String>(), BoardConfigChangeNotice.decodeIgnoredFields(null) { invalidCount++ })
+    assertEquals(0, invalidCount)
+    assertEquals(emptyList<String>(), BoardConfigChangeNotice.decodeIgnoredFields("{}") { invalidCount++ })
+    assertEquals(emptyList<String>(), BoardConfigChangeNotice.decodeIgnoredFields("not json") { invalidCount++ })
+    assertEquals(2, invalidCount)
+  }
 }

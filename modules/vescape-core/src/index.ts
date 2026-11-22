@@ -407,10 +407,15 @@ export interface Board {
   batteryConfig: BatteryConfig | null
   lastBattery?: LastBattery | null
   /**
-   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeDismissedWarnings`
-   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeDismissedWarnings`
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeStringList`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeStringList`
    */
   dismissedWarnings?: string[]
+  /**
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `composeBoard`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `toMap`
+   */
+  ignoredConfigChangeFields?: string[]
   topSpeedKmh?: number
   alertPresetsOnboarded?: boolean
   /**
@@ -2452,6 +2457,12 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getLastKnownMotorConfigValues(boardId: string): Promise<MotorConfigValues | null>
   getBoardConfigChangeNotice(boardId: string): Promise<BoardConfigChangeNotice | null>
   dismissBoardConfigChangeNotice(boardId: string): Promise<void>
+  setBoardConfigChangeFieldIgnored(
+    boardId: string,
+    fieldId: string,
+    ignored: boolean,
+  ): Promise<void>
+  clearIgnoredBoardConfigChangeFields(boardId: string): Promise<void>
   getDatabaseSizeBytes(): Promise<number>
   backupDatabase(): Promise<DatabaseBackupResult>
   restoreDatabase(uri: string): Promise<void>
@@ -3392,6 +3403,26 @@ export async function getBoardConfigChangeNotice(
 }
 export async function dismissBoardConfigChangeNotice(boardId: string): Promise<void> {
   return native.dismissBoardConfigChangeNotice(boardId)
+}
+
+/**
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBoardConfigChangeFieldIgnored`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBoardConfigChangeFieldIgnored`
+ */
+export async function setBoardConfigChangeFieldIgnored(
+  boardId: string,
+  fieldId: string,
+  ignored: boolean,
+): Promise<void> {
+  return native.setBoardConfigChangeFieldIgnored(boardId, fieldId, ignored)
+}
+
+/**
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `clearIgnoredBoardConfigChangeFields`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `clearIgnoredBoardConfigChangeFields`
+ */
+export async function clearIgnoredBoardConfigChangeFields(boardId: string): Promise<void> {
+  return native.clearIgnoredBoardConfigChangeFields(boardId)
 }
 
 export async function devInjectBoardWarning(

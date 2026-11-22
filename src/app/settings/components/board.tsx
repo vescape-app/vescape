@@ -30,6 +30,7 @@ import { RemoteTiltPadShowcase } from '@/screens/showcase/board/RemoteTiltPadSho
 import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
 import { BoardSelectorSheetShowcase } from '@/screens/showcase/board/BoardSelectorSheetShowcase'
 import { BoardAttitudeIndicatorShowcase } from '@/screens/showcase/board/BoardAttitudeIndicatorShowcase'
+import { BoardConfigChangeNoticeShowcase } from '@/screens/showcase/board/BoardConfigChangeNoticeShowcase'
 import { ImuAttitudeDialShowcase } from '@/screens/showcase/board/ImuAttitudeDialShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { GpsStatusPillShowcase } from '@/screens/showcase/board/GpsStatusPillShowcase'
@@ -511,6 +512,7 @@ export default function BoardComponentsPage() {
         <FootpadIndicatorShowcase />
         <RimTempArcShowcase />
         <LiveMetricCardShowcase />
+        <BoardConfigChangeNoticeShowcase />
         <BoardConfigSectionShowcase />
       </PageScrollView>
     </SafeAreaView>
