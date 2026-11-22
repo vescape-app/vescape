@@ -9,11 +9,11 @@ Read-only. Never run local linters, typecheckers, builds, or tests — read CI c
 
 ## Audit
 
-1. **CI coverage**: read check runs for `<sha>` and flag skipped, stale, or red jobs (watch `ci.yml` `native-gate` path filters and `persistence-contracts`).
-2. **Spec & threads**: verify linked issue/PRD/ADR acceptance criteria against head (catch silent scope cuts, stubbed platforms, unwired halves). Fetch all review threads including resolved/outdated (`gh api graphql` `reviewThreads`), follow moved files, and mark each: **Fixed** | **Answered, not solved** | **Not done** | **Decision** | **Obsolete**.
+1. **CI coverage**: read check runs for `<sha>` and flag skipped, stale, or red jobs.
+2. **Spec & threads**: verify linked ticket/spec/ADR acceptance criteria against head (catch silent scope cuts, stubbed paths, unwired halves). Fetch all review threads including resolved/outdated (`gh api graphql` `reviewThreads`), follow moved files, and mark each: **Fixed** | **Answered, not solved** | **Not done** | **Decision** | **Obsolete**.
 3. **Adversarial [`code-review`](../code-review/SKILL.md)** on `<base>...<sha>`:
-   - Always emit `DB:` explicitly (even `DB: None`, naming what was checked). A PR `DB:` line disagreeing with the diff is a finding. If DB changed, verify `persistence-contracts` passed on `<sha>`.
-   - Actively try to break it: re-entrancy, mid-flight BLE disconnect / board switch / process kill / downgrade, gamed or weakened tests, silent fallbacks or magic retries masking races, speculative abstractions, and drive-by edits.
+   - Always emit `DB:` explicitly (even `DB: None`, naming what was checked). A PR `DB:` line disagreeing with the diff is a finding.
+   - Actively try to break it: auth/scoping leaks, migration safety on existing data, sync/persistence/native lifecycle edge cases, wire contract drift with companion repos (`../vescape`, `../vescape-server`, `../vescape-web`), gamed or weakened tests, silent fallbacks masking errors, speculative abstractions, and drive-by edits.
 
 ## Score
 
@@ -21,8 +21,8 @@ Integer + 1–2 sentences naming concrete files/symbols for **Clarity**, **Code 
 
 **Merge readiness** is a verdict, not an average:
 
-- Possible data loss or any applicable durable-data question unverified -> **cap 3**.
-- Confirmed rider-hitting bug, unmet AC, dodged thread (`Answered, not solved` / `Not done`), weakened test, or missing required CI/device validation -> **cap 6**.
+- Possible data loss, cross-Account data leak, or unverified migration risk -> **cap 3**.
+- Confirmed bug, unmet AC, dodged thread (`Answered, not solved` / `Not done`), weakened test, or missing required CI validation -> **cap 6**.
 - Green CI never raises a cap.
 
 ## Report
@@ -33,19 +33,21 @@ Keep it readable in under a minute:
 **Merge readiness: N/10.** Verdict and blocker.
 
 **DB:** None (what was checked), or changes, data risk, and evidence.
-**CI / Validation:** What ran on `<sha>`, what was skipped/stale/red, what needs device testing.
+**CI / Validation:** What ran on `<sha>`, what was skipped/stale/red, what needs deploy/live testing.
 
-| Thread | Status | What's there now |   <- omit if none
+| Thread | Status | What's there now | <- omit if none
 
 | Area | Score | Why |
 | Clarity | N/10 | ... |
 | Code quality | N/10 | ... |
 | Complexity | N/10 (10 = simple) | ... |
 
-**Findings:**   <- omit if none
+**Findings:** <- omit if none
+
 - `file:line` (`symbol`) — effect. Fix: ...
 
 **To get it to about N/10:**
+
 1. Highest-leverage action first (cover every score < 8, or state plainly why cleanup won't raise it).
 
 Decisions for the maintainer, with recommendation.

@@ -185,7 +185,7 @@ When adding or changing a reusable UI component (or a new visual variant/state o
 
 ### Issue tracker
 
-Issues and PRDs are tracked in GitHub Issues for `vescape-app/vescape`. See `docs/agents/issue-tracker.md`.
+Specs and tickets are tracked in GitHub Issues for `vescape-app/vescape`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

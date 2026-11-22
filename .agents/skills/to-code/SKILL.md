@@ -1,11 +1,11 @@
 ---
 name: to-code
-description: Turn a tracked issue into focused code changes with local docs, code exploration, implementation, and verification. Use when user invokes `/to-code <issue-id>`, says "implement issue #...", or asks to pick up a GitHub/local issue for coding.
+description: Turn a tracked ticket into focused code changes with local docs, code exploration, implementation, and verification. Use when user invokes `/to-code <ticket-id>`, says "implement ticket #...", or asks to pick up a GitHub ticket for coding.
 ---
 
 # To Code
 
-Implement one VESC issue end-to-end.
+Implement one tracked ticket end-to-end.
 
 ## Comms
 
@@ -26,24 +26,25 @@ Extract id. Missing -> ask.
 1. Repo rules:
    - `AGENTS.md`
    - `docs/agents/issue-tracker.md`
-   - `docs/agents/react.md` if RN UI
+   - `docs/agents/domain.md`
 2. Domain:
+   - `../vescape/GLOSSARY.md` — shared domain source of truth
    - `GLOSSARY.md` if present
-   - `docs/tune.md` if tune r/w
-   - `docs/adr/*.md` if relevant
-3. Fetch issue: `gh issue view <id> --json number,title,body,state,labels,assignees,comments,url --jq '.'`. No unauth HTTP for private.
+   - `docs/<feature>/` for the area touched
+   - `docs/adr/*.md` and `../vescape/docs/adr/*.md` if relevant
+3. Fetch ticket: `gh issue view <id> --json number,title,body,state,labels,assignees,comments,url --jq '.'`. No unauth HTTP for private.
 4. Explore code + tests.
 
 ## Workflow
 
 1. **Understand** — Goal, AC, unknowns. Vague/blocked -> stop, ask 1 question. Conflicts `GLOSSARY.md`/ADR -> surface first.
-2. **Plan** — Smallest coherent impl. Name files. Start from issue `## Likely files`, verify. Match existing conventions.
-3. **Implement** — Focused edits. Native = truth, JS = view. `bun` for JS. Native test cmds only if native touched. Routes/layouts in `src/app/`; hooks/helpers/components elsewhere. No scope creep.
-4. **Verify** — Focused tests first. Broader if blast radius wide. Can't run -> say why.
-5. **Report** — Issue id. Files + behavior. Verify cmds + results. Real risks/follow-ups only.
-6. **Commit on request** — Include id. Format: `<summary> #<id>`. Ex: `Move avg filtering into sanitizer #25`. Multi-issue -> all ids first line.
+2. **Plan** — Smallest coherent impl. Name files. Start from ticket `## Likely files`, verify. Match existing conventions.
+3. **Implement** — Focused edits. `bun` for everything. Follow `AGENTS.md` and the repo's architecture docs. When touching shared wire contracts or mirrored schemas, inspect the sibling repos (`../vescape`, `../vescape-server`, `../vescape-web`) — don't drift. No scope creep.
+4. **Verify** — `bun run typecheck` + focused `bun test <file>` first. Broader if blast radius wide. Can't run -> say why.
+5. **Report** — Ticket id. Files + behavior. Verify cmds + results. Real risks/follow-ups only.
+6. **Commit on request** — Include id. Format: `<summary> #<id>`. Ex: `Expand delta chain in sanitizer #9`. Multi-ticket -> all ids first line.
 
-## GitHub Issue Fetch
+## GitHub Ticket Fetch
 
 ```bash
 gh issue view <id> --json number,title,body,state,labels,assignees,comments,url --jq '.'
@@ -57,7 +58,7 @@ Plain `gh issue view --comments` unreliable non-interactive. JSON works.
 
 - No concrete expected behavior.
 - Multiple incompatible directions.
-- Safety-sensitive board behavior at risk.
+- Data integrity or migration correctness at risk.
 - Needs creds/hardware/env not local.
 
 One question at a time.

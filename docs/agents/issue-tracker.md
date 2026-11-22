@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and PRDs for this repo live as GitHub issues. This is a private repo, so use the authenticated `gh` CLI from inside the local clone for all issue operations. Do not fetch GitHub issue pages over plain HTTP.
+Specs and tickets for this repo live as GitHub issues. This is a private repo, so use the authenticated `gh` CLI from inside the local clone for all issue operations. Do not fetch GitHub issue pages over plain HTTP.
 
 ## Conventions
 
@@ -23,21 +23,21 @@ Do not recreate unused GitHub default labels: `documentation`, `duplicate`, `goo
 
 Create a GitHub issue in `vescape-app/vescape`.
 
-## PRD issues
+## Spec issues
 
-When publishing a PRD, create a GitHub issue whose title starts with `[PRD][<Area>] `.
+When publishing a spec, create a GitHub issue whose title starts with `[Spec][<Area>] `.
 
 Example:
 
 ```text
-[PRD][History] Ride export
+[Spec][History] Ride export
 ```
 
 Keep titles short: prefixes plus a 2-5 word noun phrase.
 
-## Implementation issues
+## Ticket titles
 
-When publishing implementation issues from a PRD, keep the same area prefix and include the approved slice number:
+When publishing implementation tickets from a spec, keep the same area prefix and include the approved slice number:
 
 ```text
 [<Area>] <number> - <Short verb phrase>
@@ -49,9 +49,9 @@ Example:
 [History] 1 - Export ride file
 ```
 
-Use the slice number from the approved breakdown, not the GitHub issue number. Publish dependent issues sequentially so blocker references use real issue numbers.
+Use the slice number from the approved breakdown, not the GitHub issue number. Publish dependent tickets sequentially so blocker references use real issue numbers.
 
-Include a `## Likely files` section in each implementation issue. List repo-relative paths that are probably useful starting points for an AFK agent, with one short reason per path:
+Include a `## Likely files` section in each implementation ticket. List repo-relative paths that are probably useful starting points for an AFK agent, with one short reason per path:
 
 ```markdown
 ## Likely files
@@ -97,7 +97,7 @@ Use one or more app-area labels for filtering:
 | `area:pin-lock`     | `[PIN Lock]`     | VESC PIN write-lock: capability probe, PIN on Board Link, unlock-wrapped firmware commands                                  |
 | `area:gps`          | `[GPS]`          | GPS Fixes, Ride Track, location lifetime, precision and phase reporting                                                     |
 
-When a PRD or issue-planning skill creates or starts using a new app-area label, update this table in the same turn. Add the label, title prefix, and a short "Use for" description so future PRDs and implementation issues can reuse the prefix consistently.
+When a spec or ticket-planning skill creates or starts using a new app-area label, update this table in the same turn. Add the label, title prefix, and a short "Use for" description so future specs and implementation tickets can reuse the prefix consistently.
 
 If a user writes a typo for a known area, normalize it in metadata. For example, use `area:sanitizers` and `[Sanitizers]` for `sanatizers`.
 

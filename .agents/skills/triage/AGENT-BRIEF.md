@@ -35,7 +35,7 @@ State what is out of scope. This prevents the agent from gold-plating or making 
 
 ### Likely starting points
 
-Include a small **Likely files** section, usually 3-8 repo-relative paths, with one short reason each. Prefer existing files that own nearby behavior, tests, domain docs, native bridge/module entrypoints, routes, and shared utilities. Paths are navigation hints, not ownership boundaries or a complete change list. Do not include guessed paths; if evidence cannot narrow the area, say which area or module to inspect first.
+Include a small **Likely files** section, usually 3-8 repo-relative paths, with one short reason each. Prefer existing files that own nearby behavior, tests, domain docs, feature modules, routes/views, persistence/migrations (if applicable), and shared utilities. Paths are navigation hints, not ownership boundaries or a complete change list. Do not include guessed paths; if evidence cannot narrow the area, say which area or module to inspect first.
 
 ## Template
 
@@ -55,7 +55,7 @@ Be specific about edge cases and error conditions.
 
 ## Likely files
 
-- `src/or/modules/path.ts` — why this is a useful implementation starting point
+- `src/<feature>/path.ts` — why this file is a useful implementation starting point
 
 **Key interfaces:**
 

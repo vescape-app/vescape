@@ -1,6 +1,6 @@
 ---
 name: pr
-description: Create a branch, commit, push, and open/update a PR on GitHub from the current working tree. Works with or without an issue — just needs changes and a prompt. Use when user invokes `/pr`, `/pr "title"`, says "open a PR", "push and create PR", or wants to ship current work to GitHub.
+description: Create a branch, commit, push, and open/update a PR on GitHub from the current working tree. Works with or without a ticket — just needs changes and a prompt. Use when user invokes `/pr`, `/pr "title"`, says "open a PR", "push and create PR", or wants to ship current work to GitHub.
 ---
 
 # PR
@@ -15,8 +15,8 @@ Caveman full style. Code/commands/paths/labels/PR titles exact.
 
 ```text
 /pr
-/pr "Add dark mode support"
-/pr --title "Add dark mode" --branch feature/dark-mode
+/pr "Add rate limit headers"
+/pr --title "Add rate limit headers" --branch rate-limit-headers
 ```
 
 No args -> infer title from changes. Quoted string -> use as PR title.
@@ -45,9 +45,7 @@ Understand what changed. Use this to infer commit message and PR title/body if n
 - Already on feature branch (not `main`/`dev`) -> reuse.
 - On `main` or `dev` -> create new branch. Derive name from title or changes: `<area-slug>-<short-desc>` (kebab, 2-4 words).
 
-Branch off `origin/dev`, never off local `dev`. A local `dev` that is a few commits behind produces
-a PR whose diff conflicts with work that already merged, and the conflict only shows up after the
-PR is open.
+Branch off `origin/dev`, never off local `dev`. A local `dev` that is a few commits behind produces a PR whose diff conflicts with work that already merged, and the conflict only shows up after the PR is open.
 
 ```bash
 git fetch origin dev
@@ -67,7 +65,7 @@ git add <files>
 git commit -m "<concise summary>"
 ```
 
-Commit message: 1 line, imperative mood, focused on what changed. If an issue id is known (passed by caller), append `#<id>`.
+Commit message: 1 line, imperative mood, focused on what changed. If a ticket id is known (passed by caller), append `#<id>`.
 
 ## Step 4 — Push
 
@@ -107,10 +105,10 @@ Describe the feature/problem outcome. Do not produce a changed-file inventory or
 
 Title: use user-provided title, else derive scope in this order:
 
-1. `[Area] N - ...` prefix on the issue -> title the PR after the **feature**, not the single issue (`[Area] <feature noun>`), since siblings will land on the same branch.
-2. Parent PRD linked in the issue body -> PRD title.
-3. Single issue with no area group -> issue title.
-4. No issue -> infer from the diff.
+1. `[Area] N - ...` prefix on the ticket -> title the PR after the **feature**, not the single ticket (`[Area] <feature noun>`), since siblings will land on the same branch.
+2. Parent spec linked in the ticket body -> spec title.
+3. Single ticket with no area group -> ticket title.
+4. No ticket -> infer from the diff.
 
 Keep under 70 chars.
 
@@ -142,7 +140,7 @@ Other skills (like `/burndown`) can invoke `/pr` by following this skill's steps
 - Branch name may be pre-determined by caller -> use it, skip Step 2 inference.
 - Commit message may be pre-determined -> use it, skip inference.
 - PR title and body may be pre-determined -> use them.
-- Issue ids for `Closes #<id>` may be passed -> include in PR body.
+- Ticket ids for `Closes #<id>` may be passed -> include in PR body.
 
 ## Refusal Triggers
 

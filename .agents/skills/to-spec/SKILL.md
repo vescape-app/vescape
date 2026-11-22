@@ -1,60 +1,53 @@
 ---
 name: to-spec
-description: "Turn the current conversation into a spec (PRD) and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed."
+description: Turn the current conversation into a spec and publish it to the project issue tracker — no interview, just synthesis of what you've already discussed.
 disable-model-invocation: true
 ---
 
-This skill takes the current conversation context and Vescape app codebase understanding and produces a spec (PRD). Do NOT interview the user except for the explicit approval gates below; synthesize what you already know.
+This skill takes the current conversation context and codebase understanding and produces a spec (you may know this document as a PRD). Do NOT interview the user — just synthesize what you already know.
 
-The issue tracker, app-area labels, and triage label vocabulary live in `docs/agents/issue-tracker.md`. Domain docs live in `GLOSSARY.md` and `docs/adr/`.
+The issue tracker, area labels, and triage label vocabulary live in `docs/agents/issue-tracker.md`. Domain docs live in `GLOSSARY.md` (and `../vescape/GLOSSARY.md` for shared terms) and `docs/adr/`.
 
-## Titles and Area Tags
+## Titles and area tags
 
-Keep PRD titles short and scannable.
-
-Format:
+Keep spec titles short and scannable.
 
 ```text
-[PRD][<Area>] <Short noun phrase>
+[Spec][<Area>] <Short noun phrase>
 ```
 
 Examples:
 
 ```text
-[PRD][Sanitizers] Metric exclusions
-[PRD][History] Ride rebuild
+[Spec][Sync] Ride history backup
+[Spec][Auth] Account provisioning
 ```
 
 Rules:
 
-- Use 2-5 meaningful words after the prefixes.
-- Prefer noun phrases over sentences.
-- Pick one primary app area from repo issue docs when available.
-- Before publishing, ask the user to confirm the title prefix. Propose the best prefix you inferred, and explain whether it maps to an existing area label.
-- If no existing app area fits, propose a new short title prefix and ask whether to create/use it. Also propose the matching GitHub area label slug, e.g. `[Firmware Profiles]` -> `area:firmware-profiles`.
-- Use the confirmed prefix in the title.
-- Apply the matching GitHub area label when one exists or when the user approves creating/using a new one.
-- If the user approves a new area label, update the App-area labels table in `docs/agents/issue-tracker.md` in the same turn. Add the area label, title prefix, and a short "Use for" description before or alongside publishing the spec.
-- If user types a typo for a known area, normalize it in issue metadata, e.g. `sanatizers` -> `sanitizers`.
+- Use 2-5 meaningful words after the prefixes. Prefer a noun phrase over a sentence.
+- Pick one primary area from the area-labels table in `docs/agents/issue-tracker.md`.
+- Before publishing, ask the user to confirm the prefix. Propose the best one you inferred and say whether it maps to an existing area label.
+- If no existing area fits, propose a new short prefix and its label slug (`[Rate Limits]` -> `area:rate-limits`) and ask whether to create it.
+- If the user approves a new area, add the row to the area-labels table in `docs/agents/issue-tracker.md` before or alongside publishing.
+- Normalize obvious typos in issue metadata (`grup-ride` -> `group-ride`). If the user gives an explicit bracket tag, use it as written after fixing only clear typos.
 
-When asking for prefix confirmation, keep it focused:
+Keep the confirmation focused:
 
 ```text
-Proposed PRD prefix: [Tunes] (maps to existing `area:tunes`).
-Use this, or should I create/use another prefix? My fallback suggestion: [Firmware Profiles] with `area:firmware-profiles`.
+Proposed spec prefix: [Sync] (maps to existing `area:sync`).
+Use this, or another prefix? Fallback suggestion: [Backup] with `area:backup`.
 ```
 
 ## Process
 
-1. Explore the repo to understand the current state of the Vescape app codebase, if you haven't already. Use the project's domain glossary vocabulary throughout the spec, and respect any ADRs in the area you're touching.
+1. Explore the repo to understand the current state of the codebase, if you haven't already. Use the project's domain glossary vocabulary throughout the spec, and respect any ADRs in the area you're touching.
 
-For this app, check likely JS/TS route or domain files plus native Android/iOS module entrypoints when the spec crosses the bridge. Useful starting areas include `src/modules/`, `src/components/`, `src/hooks/`, `modules/vescape-core/`, `docs/`, `GLOSSARY.md`, and relevant ADRs under `docs/adr/`.
+2. Sketch out the seams at which you're going to test the feature. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better - the ideal number is one.
 
-2. Sketch out the seams at which you're going to test the feature. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better: the ideal number is one.
+Check with the user that these seams match their expectations. In the same approval step, ask the user to confirm the spec title prefix using the rules above.
 
-Check with the user that these seams match their expectations. In the same approval step, ask the user to confirm the PRD title prefix using the rules above.
-
-3. Write the spec using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label and the matching app-area label (no need for additional triage). If the confirmed prefix uses a new area label, update `docs/agents/issue-tracker.md` before or alongside publishing.
+3. Write the spec using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label and the matching area label - no need for additional triage. If the confirmed prefix uses a new area label, update `docs/agents/issue-tracker.md` before or alongside publishing.
 
 <spec-template>
 
@@ -92,7 +85,7 @@ A list of implementation decisions that were made. This can include:
 
 Do NOT include specific file paths or code snippets. They may end up being outdated very quickly.
 
-Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it within the relevant decision and note briefly that it came from a prototype. Trim to the decision-rich parts, not a working demo, just the important bits.
+Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it within the relevant decision and note briefly that it came from a prototype. Trim to the decision-rich parts — not a working demo, just the important bits.
 
 ## Testing Decisions
 
