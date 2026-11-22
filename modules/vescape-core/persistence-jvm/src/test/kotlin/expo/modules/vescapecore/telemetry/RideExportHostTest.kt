@@ -53,7 +53,6 @@ class RideExportHostTest {
       RideExport.snapshot(reader) { RideExport.writeGpx(it, writer, 0, count.toLong(), "board", "Snapshot") }
       recording.await()
       assertEquals(count, "<trkpt ".toRegex().findAll(writer.toString()).count())
-      // A fresh snapshot sees the committed write that the held snapshot excluded from later pages.
       val fresh = StringWriter()
       RideExport.snapshot(reader) { RideExport.writeGpx(it, fresh, 0, count.toLong(), "board", "Fresh") }
       assertEquals(count + 1, "<trkpt ".toRegex().findAll(fresh.toString()).count())
@@ -128,9 +127,7 @@ class RideExportHostTest {
       assertEquals(1, export(board = null, from = base, to = base).size)
       assertTrue(export(board = null, from = base, to = base).single().subList(17, 23).all { it.isEmpty() })
       assertTrue(export(board = "empty").isEmpty())
-      // Range begins mid-chain after more than one page; predecessor is replayed without emitting it.
       assertEquals("84.25", export(from = base + 1200, to = base + 1200).first()[3])
-      // A keyframe later at the exact start timestamp must not erase the earlier delta rows' base.
       dao.insertFrames(listOf(frame(0).copy(capturedAtMs = base + 1200, batteryVoltageMv = 99000)))
       val boundary = export(from = base + 1200, to = base + 1200)
       assertEquals(listOf("84.25", "84.25", "99.0"), boundary.map { it[3] })
@@ -183,7 +180,6 @@ class RideExportHostTest {
       assertTrue(xml.contains("<gpxtpx:speed>4.56</gpxtpx:speed>"))
       val one = export(start = base, end = base)
       assertFalse(one.contains("<trkpt "))
-      // Exact timestamp includes all three equal-time points, with optional fields only when stored.
       val small = export(start = base + 400, end = base + 400)
       assertEquals(3, "<trkpt ".toRegex().findAll(small).count())
       assertEquals(2, "<ele>".toRegex().findAll(small).count())
@@ -207,7 +203,6 @@ class RideExportHostTest {
     } finally { db.close(); dir.deleteRecursively() }
   }
 
-  // Byte-identical with the GRDB contract: the golden file is the cross-platform check.
   @Test fun floatyJsonMatchesSharedGoldenFile(): Unit = runBlocking {
     val root = JSONObject(File("../shared/ride-export-contract.json").readText())
     val base = root.getLong("baseMs")
@@ -217,8 +212,6 @@ class RideExportHostTest {
       .setDriver(BundledSQLiteDriver()).build()
     try {
       val dao = db.vescapeDao()
-      // Keyframe, deltas, a duplicate timestamp, a recording gap, regen, an explicit voltage clear,
-      // reverse speed, and an odometer reset.
       fun frame(offset: Long, mask: Int, changes: Map<Int, Int?> = emptyMap(), board: String? = "board"): TelemetryFrameEntity {
         val key = mask == (1 shl 17) - 1
         val v = arrayOfNulls<Int>(17)

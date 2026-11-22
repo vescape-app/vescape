@@ -34,7 +34,6 @@ test('configures Mapbox from native before any map mounts, then follows native c
   expect(useMapServicesStore.getState().mapyTileUrlTemplate).toBeNull()
 
   const stop = startMapServicesSync()
-  // Native replays the current config on subscribe: same token, no second SDK call.
   onServiceConfig({ config: { mapboxToken: 'pk.seed', mapyToken: 'mapy-key' } })
   expect(sdkTokens).toEqual(['pk.seed'])
   expect(useMapServicesStore.getState().mapyTileUrlTemplate).toContain('apikey=mapy-key')

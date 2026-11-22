@@ -2,12 +2,8 @@ import XCTest
 
 @testable import VescapeCore
 
-/// Credential attachment, the 401 policy and the retry rule — the parts every feature client
-/// inherits without restating.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/api/VescapeApiTest.kt
 final class VescapeApiTests: XCTestCase {
-  /// Answers each call with the next scripted step, repeating the last one once they run out.
   private final class FakeTransport: ApiTransport, @unchecked Sendable {
     private var steps: [() throws -> ApiResponse]
     private(set) var requests: [ApiRequest] = []
@@ -115,7 +111,6 @@ final class VescapeApiTests: XCTestCase {
     XCTAssertEqual(transport.requests.first?.url, "https://api.vescape.app/map-points")
   }
 
-  /// A credential minted against another origin belongs to another environment.
   func testIgnoresCredentialFromAnotherOrigin() async {
     let transport = FakeTransport(ok())
     let result = await text(api(transport, stored: credential, baseUrl: "http://127.0.0.1:3000"))
@@ -133,7 +128,6 @@ final class VescapeApiTests: XCTestCase {
     XCTAssertEqual(transport.requests.count, 1)
   }
 
-  /// An anonymous read cannot say anything about a credential it never sent.
   func testKeepsCredentialWhenAnonymousCallIsUnauthorized() async {
     let transport = FakeTransport(status(401))
     _ = await text(api(transport, stored: nil), auth: .optional)

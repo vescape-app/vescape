@@ -1,9 +1,5 @@
 import Foundation
 
-/// A user-defined Privacy Zone: a circular area (center + radius) inside which recorded GPS fixes
-/// and their telemetry samples are dropped. Coordinates are e7-scaled integers to match the
-/// stored column shapes and Android's `PrivacyZoneEntity`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `PrivacyZoneEntity`
 internal struct PrivacyZoneEntity {
   let id: String
@@ -15,10 +11,6 @@ internal struct PrivacyZoneEntity {
 
 private let METERS_PER_E7_LATITUDE = 0.0111319
 
-/// Pure geometry: whether an e7 coordinate falls inside any of the given zones. Ported directly
-/// from Android; the equirectangular approximation (flat-earth over a small radius, latitude
-/// scaled by `cos`) matches Android exactly so both platforms drop the same fixes.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PrivacyZoneFilter.kt
 internal func isInsideAnyPrivacyZone(
   latitudeE7: Int,

@@ -3,7 +3,6 @@ import { groupsFromFieldValues } from './boardConfigPrefill'
 import { tuneDisplayScale, tuneDisplayValue } from './fields'
 import { BASIC_SLIDER_BY_ID, basicSliderChanges, fieldStep, snapValue } from './sliderDefinitions'
 
-// Values from the Thor301 Main profile that the previous editors could not reproduce.
 test('Thor301 values survive editor display, snapping and conversion back to raw values', () => {
   const values = { ki: 0.026, atr_speed_boost: 0.4, turntilt_erpm_boost: 200 }
   const fields = groupsFromFieldValues(values).flatMap((g) => g.fields)

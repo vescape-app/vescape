@@ -16,23 +16,10 @@ import java.util.UUID
 private const val TAG = "VescapeAccessory"
 
 /**
- * Finding Accessories and asking each one what it is. Scanning matches the Vescape Accessory
- * service UUID, never a name: a name is a label the rider can change and other hardware can copy,
- * so it identifies nothing. The service is what makes a device an Accessory.
- *
- * Discovery is read-only by construction. It hands each device to a short-lived
- * [AccessoryGattHandshake] that writes one `hello`, reads the manifest, and disconnects; nothing on
- * this path can command an Accessory, and finding one never enrolls it. Enrollment is an explicit
- * rider action in a later slice.
- *
- * One inspection runs at a time. Two concurrent GATT handshakes against the same radio mostly
- * produce two timeouts, and the rider is looking at one row anyway.
- *
  * @parity /modules/vescape-core/ios/accessory/AccessoryDiscovery.swift
  */
 @SuppressLint("MissingPermission")
 object AccessoryDiscovery {
-    /** Set by the Expo module so discovery can push devices without holding a module reference. */
     var emit: ((String, Map<String, Any?>) -> Unit)? = null
 
     private val handler = Handler(Looper.getMainLooper())
@@ -40,13 +27,6 @@ object AccessoryDiscovery {
     private var scanContext: Context? = null
     private var inFlight: AccessoryGattHandshake? = null
 
-    /**
-     * Every entry point runs on the main looper.
-     *
-     * The module's `Function` bodies arrive on the JS thread while scan callbacks, the handshake and
-     * its timeouts all run here, and `scanCallback` / `inFlight` are shared between them. Posting is
-     * what stops a stop racing the start that was meant to precede it.
-     */
     fun startScan(context: Context) {
         handler.post { startScanNow(context) }
     }
@@ -67,8 +47,6 @@ object AccessoryDiscovery {
                     "onAccessoryDevice",
                     mapOf(
                         "id" to result.device.address,
-                        // Nullable on purpose: a device that advertises no name is still a valid
-                        // Accessory, and the manifest is where its real name comes from anyway.
                         "name" to (result.scanRecord?.deviceName ?: result.device.name),
                         "rssi" to result.rssi,
                     ),
@@ -116,18 +94,12 @@ object AccessoryDiscovery {
         }
     }
 
-    /**
-     * Connects to one discovered device and reads its manifest. [onResult] receives the bridge
-     * payload exactly once, whether the handshake succeeded, was rejected, or timed out.
-     */
     fun inspect(context: Context, deviceId: String, onResult: (Map<String, Any?>) -> Unit) {
         handler.post {
             if (inFlight != null) {
                 onResult(payload(deviceId, null, null, "busy"))
                 return@post
             }
-            // Scanning while a handshake runs slows the connection down for no benefit: the rider
-            // has already picked a row.
             stopScanNow()
             val sessionId = UUID.randomUUID().toString()
             val handshake = AccessoryGattHandshake(
@@ -151,7 +123,6 @@ object AccessoryDiscovery {
         }
     }
 
-    /** Abandons an inspection the rider walked away from. */
     fun cancelInspection() {
         handler.post { inFlight?.cancel() }
     }

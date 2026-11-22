@@ -55,8 +55,6 @@ const boardLoad = mock(async () => {})
 const settingsLoad = mock(async () => {})
 const alertsLoad = mock(async (_boardId: string | null) => {})
 
-// The stores are module singletons shared across test files, so any `load` override must be undone
-// afterwards or it leaks into other suites (e.g. settingsStore.test) as a silent no-op.
 let restore: () => void = () => {}
 
 beforeEach(async () => {

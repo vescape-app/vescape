@@ -25,7 +25,6 @@ import { historyBottomGradientStart } from '@/screens/main/map/mapVignetteGeomet
 interface MapVignetteProps {
   mode: MainViewState
   panelHeight?: number
-  /** Kept for call-site compatibility; Skia gradients have no global IDs. */
   idPrefix?: string
   topOnly?: boolean
   visible?: boolean
@@ -48,23 +47,13 @@ interface VignetteLayerProps {
 }
 
 const RADIAL_POSITIONS = [0, 0.4, 0.68, 1]
-/** Holds the wash almost to the end of the band, then drops off, instead of fading evenly. */
 const TOP_POSITIONS = [0, 0.82, 1]
-/** The telemetry gauge sits deeper into the screen than a short band reaches. */
 const HOME_TOP_END = 0.44
 const MAP_EDGE_POSITIONS = [0, 0.55, 1]
-/** Holds the wash, then falls off sharply, instead of fading evenly across the band. */
 const LIGHT_MAP_EDGE_POSITIONS = [0, 0.72, 1]
 const HISTORY_TOP_POSITIONS = [0, 0.52, 1]
 const HISTORY_BOTTOM_POSITIONS = [0, 0.5, 0.6, 1]
 
-/**
- * Light mode holds the wash longer and reaches further into the screen for map-surface controls.
- * Its alpha matches dark mode; only the shape of the edge band differs.
- *
- * Weather mode carries the most text of any map surface at the bottom — the radar timeline and the
- * hourly strip — so its bottom band is stronger and starts higher than its top one.
- */
 function mapEdgeVignetteSpace(mode: MainViewState, resolvedTheme: ResolvedTheme) {
   const light = resolvedTheme === 'light'
 

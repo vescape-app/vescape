@@ -19,52 +19,29 @@ import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 import type { presentTelemetryMetric } from '@/modules/board/constants/telemetry'
 
-/** Between a value and its sparkline. */
 const SPARKLINE_GAP = 8
-/** Between the two halves of a pair. */
 const PAIR_GAP = 16
-/** One reading size on every card, so a glance finds each value the same. */
 const VALUE_SIZE = 28
 const UNIT_SIZE = 12
 const LINE_HEIGHT = 38
-/** Room the value and its unit take before the sparkline starts: a whole card, or half of one. */
 const READOUT_COLUMN = { single: 108, pair: 96 } as const
 
 export interface LiveMetricLine {
-  /** Caption over this line's half of the card. */
   title: string
-  /** The metric as presented in the rider's units. */
   metric: ReturnType<typeof presentTelemetryMetric>
-  /** Live reading in the metric's base unit, UI thread. */
   value: SharedValue<number | null>
-  /** Decimated recent series, oldest first. */
   points: SparklinePoint[]
-  /** Opens this line's own detail, splitting a pair into two press targets. Without it the card's
-   * `onPress` takes the whole card. */
   onPress?: () => void
 }
 
 interface LiveMetricCardProps {
-  /** One metric, or a pair (temperatures, footpad sensors, pitch and roll) set side by side, each
-   * with its own value and sparkline. */
   lines: LiveMetricLine[]
-  /** Span the sparkline covers, so a short history starts partway in instead of stretching. */
   windowMs: number
-  /** Extremes over the window, marked on the line and labelled above it: the peak, or for signed
-   * readings like currents both ends. Only where they mean something — the rider's limits — not
-   * a pack voltage or a tilt. */
   peaks?: 'max' | 'range'
-  /** Opens the card's detail, for lines that share one. */
   onPress?: () => void
-  /** On the card; split halves take it suffixed with their index. */
   testID?: string
 }
 
-/**
- * One live metric as a tappable card: its title, the live reading under it and the recent window
- * as a sparkline, all drawn in one canvas. A pair splits the card in two rather than overlaying two
- * lines, which on noisy signals read as one tangle.
- */
 export function LiveMetricCard({ lines, windowMs, peaks, onPress, testID }: LiveMetricCardProps) {
   const surface = useResolvedSecondaryWidgetSurface()
   const pressedSurface = useResolvedSecondaryWidgetPressed()
@@ -115,9 +92,6 @@ export function LiveMetricCard({ lines, windowMs, peaks, onPress, testID }: Live
 
   return (
     <View style={[surface, styles.card]} testID={testID}>
-      {/* Behind the drawing, so the press highlight shows through: one target for the card, or one
-       * per line when each opens its own detail. The drawing is hidden from accessibility; the
-       * targets carry its captions and peaks. */}
       <View style={styles.targets}>
         {targets.map((target, index) => (
           <Pressable
@@ -138,7 +112,6 @@ export function LiveMetricCard({ lines, windowMs, peaks, onPress, testID }: Live
         accessibilityElementsHidden
       >
         <View style={styles.body}>
-          {/* Split like the canvas below: each caption and peak sits over its own sparkline. */}
           <View style={styles.titleRow}>
             {lines.map((line, index) => (
               <View key={line.metric.label} style={styles.titleSegment}>
@@ -195,8 +168,6 @@ export function LiveMetricCard({ lines, windowMs, peaks, onPress, testID }: Live
   )
 }
 
-/** Lowest and highest reading over the window in the rider's units, or null before the first
- * sample. */
 function lineExtremes({ points, metric }: LiveMetricLine): { min: string; max: string } | null {
   if (points.length === 0) return null
   let min = Infinity
@@ -219,8 +190,6 @@ interface LineReadoutProps {
 function LineReadout({ line, x, width }: LineReadoutProps) {
   const { value, metric } = line
   const { decimals, displayScale, unit } = metric
-  // Runs every tick, but an unchanged string stops there: the unit and the glyphs only redraw when
-  // the reading changes at display resolution.
   const text = useDerivedValue(() => {
     const v = value.value
     return v == null ? DASH : (v * displayScale).toFixed(decimals)

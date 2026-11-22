@@ -1,10 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The radar provider contract the wrist fetches against: which frames it takes, what a frame URL
-/// looks like, how far the imagery reaches on the ground, and when what it holds stops describing
-/// where the rider is.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRadar.kt
 final class WatchRadarTests: XCTestCase {
   private let meta = """
@@ -21,8 +17,6 @@ final class WatchRadarTests: XCTestCase {
     """
 
   func testTakesObservedFramesAndNotTheNowcast() {
-    // A nowcast frame is a forecast, not an observation; replaying it as radar would show a rider
-    // rain that has not happened.
     let parsed = RainViewer.parseMeta(Data(meta.utf8))
     XCTAssertEqual(parsed?.host, "https://tilecache.rainviewer.com")
     XCTAssertEqual(parsed?.frames.map(\.timeSec), [1_700_000_000, 1_700_000_600])
@@ -44,8 +38,6 @@ final class WatchRadarTests: XCTestCase {
   }
 
   func testGroundRangeShrinksAwayFromTheEquator() {
-    // Web-Mercator: the same image covers less ground in Oslo than in Madrid, which is what the
-    // range rings have to follow rather than assuming one scale.
     let equator = radarFaceRangeM(latitude: 0)
     let oslo = radarFaceRangeM(latitude: 59.9)
     XCTAssertEqual(equator, 156_543.03392 / 64 * 128, accuracy: 0.001)

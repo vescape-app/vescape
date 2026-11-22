@@ -18,11 +18,8 @@ import {
 } from '@/components/overlays/edgeDrawerDismiss'
 
 const HEIGHT = 900
-/** A three-screen article: scroll travel dwarfs the screen. */
 const LONG_RANGE = 3000
-/** A drawer about a screen tall. */
 const MEDIUM_RANGE = 900
-/** A drawer that never fills the screen. */
 const SHORT_RANGE = 300
 
 const at = (offset: number, range: number, opensFromTop: boolean): EdgeDrawerGeometry => ({
@@ -32,7 +29,6 @@ const at = (offset: number, range: number, opensFromTop: boolean): EdgeDrawerGeo
   opensFromTop,
 })
 
-/** The offset a drawer sits at when it opens. */
 const restingOffset = (range: number, opensFromTop: boolean) =>
   opensFromTop ? 0 : Math.min(range, HEIGHT * DRAWER_INITIAL_OPEN_FRACTION)
 
@@ -73,7 +69,6 @@ describe('edgeDrawerVisibleFraction', () => {
   })
 
   test('a long article scrolls without touching the dismissal', () => {
-    // Reading the middle of a three-screen drawer must not dim it at all.
     expect(edgeDrawerVisibleFraction(at(1200, LONG_RANGE, true))).toBe(1)
     expect(edgeDrawerDismissOpacity(edgeDrawerVisibleFraction(at(1200, LONG_RANGE, true)))).toBe(1)
   })
@@ -99,19 +94,15 @@ describe('edgeDrawerDismissOpacity', () => {
   })
 
   test('buys visible transparency for the first bit of drag', () => {
-    // A tenth of the drawer pushed away must read as clearly fading, not as untouched.
     expect(edgeDrawerDismissOpacity(0.9)).toBeLessThanOrEqual(0.75)
   })
 
   test('keeps something to see across the rest of the drag', () => {
-    // The failure this guards: near zero a quarter of the way in, so the remaining three quarters
-    // of the gesture change nothing and the whole dismissal reads as instant.
     const midway = (1 + COMMIT_FRACTION) / 2
     expect(edgeDrawerDismissOpacity(midway)).toBeGreaterThan(0.3)
   })
 
   test('is transparent exactly when the dismissal commits', () => {
-    // Arriving at the close still visible leaves a timed animation to mop up, which is the pop.
     expect(edgeDrawerDismissOpacity(COMMIT_FRACTION)).toBe(0)
     expect(edgeDrawerDismissOpacity(COMMIT_FRACTION + 0.05)).toBeGreaterThan(0)
     expect(edgeDrawerDismissOpacity(0)).toBe(0)
@@ -122,7 +113,6 @@ describe('edgeDrawerDismissOpacity', () => {
     for (let left = 1; left >= 0; left -= 0.01) {
       const opacity = edgeDrawerDismissOpacity(left)
       expect(opacity).toBeLessThanOrEqual(previous)
-      // No jump: the drag must never buy a visible chunk of transparency at one point.
       expect(previous - opacity).toBeLessThan(0.1)
       previous = opacity
     }
@@ -144,7 +134,6 @@ describe('edgeDrawerRestoreOffset', () => {
   })
 
   test('keeps a long article where it was rather than yanking it home', () => {
-    // The nearest offset that covers the screen again — the end of the article, not the top of it.
     expect(edgeDrawerRestoreOffset(LONG_RANGE, HEIGHT, true)).toBe(LONG_RANGE - HEIGHT)
   })
 })
@@ -229,7 +218,6 @@ describe('edgeDrawerContentResizeOffset', () => {
       range: 900,
       height,
     })
-    // Growth absorbed so the drag does not jump, but no pull back to the opaque mark.
     expect(offset).toBe(200)
     expect(offset).toBeLessThan(edgeDrawerRestoreOffset(900, height, false))
   })

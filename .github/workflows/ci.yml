@@ -67,6 +67,7 @@ jobs:
       - run: bun run copy:shared
       - run: bun run ts
       - run: bun run lint
+      - run: bun run comments:check
       - run: bun run format:check
       - run: bun run knip
       - run: bun run test:bun
@@ -77,7 +78,11 @@ jobs:
     if: needs.native-gate.outputs.android == 'true'
     runs-on: ubuntu-24.04
     env:
-      GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
+      # Maven Central answers bursts with 429; Gradle retries those, so give it more room.
+      GRADLE_OPTS: >-
+        -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
+        -Dorg.gradle.internal.repository.max.retries=8
+        -Dorg.gradle.internal.repository.initial.backoff=2000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -88,7 +93,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
+        id: gradle-cache
         with:
           path: |
             ~/.gradle/caches
@@ -105,9 +111,18 @@ jobs:
       - run: bun run copy:shared
       - run: bun x expo prebuild --platform android --no-install
       - run: bun run test:android
+      - run: bun run lint:android
       - name: Release Gradle file handles
         if: always()
         run: cd android && ./gradlew --stop || true
+      # Saved even on failure so dependencies a flaky download did fetch survive to the rerun.
+      - uses: actions/cache/save@v5
+        if: always() && steps.gradle-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
 
   # Swift was only ever compiled in the release build, so a type error in `modules/vescape-core/ios`
   # escaped every PR and failed at TestFlight time. The SwiftPM package globs the same tree

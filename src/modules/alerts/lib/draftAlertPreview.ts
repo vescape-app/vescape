@@ -6,7 +6,6 @@ import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import { formatAlertPresetSpec } from '@/modules/alerts/lib/alertSoundString'
 
-/** Ask native to expand the draft level's spec, keeping authored draft rules entirely in memory. */
 export function draftAlertPreview(
   metric: AlertPresetMetric,
   level: AlertPresetLevel,

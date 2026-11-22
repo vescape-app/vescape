@@ -94,7 +94,6 @@ function RainWaterFill({ probability }: { probability: number }) {
   )
 }
 
-/** Compact weather control aligned opposite the map selectors on the home overlay. */
 export function WeatherSidePill({
   icon,
   temperature,

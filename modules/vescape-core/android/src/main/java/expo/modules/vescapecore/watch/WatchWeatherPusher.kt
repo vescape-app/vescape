@@ -12,13 +12,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Phone -> Wear OS forecast transport. Pushed whenever the forecast changes, which is at most once
- * per [expo.modules.vescapecore.weather.WeatherCoordinator.FORECAST_TTL_MS] — not per tick.
- *
- * Shaped like [WatchSettingsPusher] and for the same reasons: the Data Layer is last-value-wins per
- * path, so concurrent writes are serialized, and a failed write clears the cache so the next push
- * retries rather than assuming the wrist has data it never received.
- *
  * @parity /modules/vescape-core/ios/watch/WatchColdState.swift
  */
 internal class WatchWeatherPusher(
@@ -30,7 +23,6 @@ internal class WatchWeatherPusher(
 
     private val writes = Mutex()
 
-    /** Last forecast known to be on the wrist; cleared on failure so the next push retries. */
     @Volatile
     private var pushed: WatchWeather? = null
 
@@ -39,7 +31,6 @@ internal class WatchWeatherPusher(
         pushed = weather
         scope.launch {
             writes.withLock {
-                // A forecast already superseded by a newer one is not worth a round trip.
                 if (weather != pushed) return@withLock
                 try {
                     val request = PutDataMapRequest.create(WATCH_WEATHER_PATH).apply {
@@ -60,7 +51,6 @@ internal class WatchWeatherPusher(
                             WATCH_WEATHER_HOUR_PRECIPS,
                             ArrayList(weather.hourPrecips.toList()),
                         )
-                        // Omitted rather than sent as a sentinel: the wrist reads absence directly.
                         weather.sunriseMinuteOfDay?.let { dataMap.putInt(WATCH_WEATHER_SUNRISE, it) }
                         weather.sunsetMinuteOfDay?.let { dataMap.putInt(WATCH_WEATHER_SUNSET, it) }
                         dataMap.putDouble(WATCH_WEATHER_LATITUDE, weather.latitude)

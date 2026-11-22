@@ -47,9 +47,6 @@ final class AppDataRepositoryBoardLinkTests: XCTestCase {
     XCTAssertEqual(link?["hasBms"] as? Bool, false)
   }
 
-  // A link stored by an older app version must keep reading as legacy. Defaulting an absent or
-  // outdated stored version to the current one would launder a stale link into a trusted one and
-  // silently skip the re-probe.
   func testStoredOutdatedLinkVersionReadsAsLegacy() {
     let link = BoardLinkPersistence.compose(
       bleId: "AA:BB",

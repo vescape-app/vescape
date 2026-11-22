@@ -15,34 +15,20 @@ import { errorMessage } from '@/helpers/error'
 export type { AlertSpec } from 'vescape-core'
 
 interface AlertsState {
-  /**
-   * The Board whose rules are currently loaded. Alert Rules are owned by one Board (#254) and the
-   * native alert engine evaluates only the connected Board's rules — so the store mirrors exactly
-   * the active Board's rules, and reloads whenever the active Board changes. `null` ⇒ no Board.
-   */
   boardId: string | null
-  /** The rider's rules plus every Alert Preset as native expanded it. */
   rules: AlertRule[]
-  /** Each preset metric's stored `preset(…)` spec. Empty until the Board's presets load. */
   presets: Partial<Record<AlertPresetMetric, string>>
   error: string | null
 }
 
-/**
- * Everything the rider can author on a rule. Grouped rather than passed positionally: a rule now
- * carries a shape (threshold / range), a sound (with its count), and a repeat cadence, and every one
- * of those travels together from the form to the store to native.
- */
 export interface AlertRuleDraft {
   threshold: number
   thresholdMax: number | null
   spec: AlertSpec
-  /** Seconds between repeats while past the threshold; `null` ⇒ announce once per crossing. */
   repeatEverySeconds: number | null
 }
 
 interface AlertsActions {
-  /** Bind the store to a Board and load its rules. `null` clears to an empty rule set. */
   load(boardId: string | null): Promise<void>
   add(controlId: string, draft: AlertRuleDraft): Promise<void>
   update(id: string, draft: AlertRuleDraft): Promise<void>
@@ -52,8 +38,6 @@ interface AlertsActions {
   remove(id: string): Promise<void>
 }
 
-// Monotonic token so an older in-flight load() can never overwrite a newer one's result (even for
-// the same Board — e.g. a reload racing a regeneration).
 let loadGeneration = 0
 
 export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => ({
@@ -65,8 +49,6 @@ export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => 
   async load(boardId) {
     const request = ++loadGeneration
     const previous = get()
-    // Clear immediately on bind so the UI never shows the previous Board's rules as the new Board's
-    // (their deterministic preset ids overlap, so a stray toggle/delete would target the wrong rows).
     const same = previous.boardId === boardId
     set({
       boardId,
@@ -132,7 +114,6 @@ export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => 
       set({ error: errorMessage(error, 'Unable to save Alert Rule.') })
       throw error
     }
-    // Only reflect the durable rule locally when it belongs to the bound Board.
     if (rule.boardId === get().boardId) {
       set((s) => {
         const exists = s.rules.some((r) => r.id === rule.id)

@@ -78,7 +78,6 @@ final class PublicRideTests: XCTestCase {
     XCTAssertNil(sent.last?["until"])
     ride.setBoardConnected(false)
     XCTAssertEqual(types, ["public-on", "public-off"])
-    // The switch stays on for the next board connect.
     XCTAssertTrue(ride.switchState.on)
   }
 
@@ -97,13 +96,13 @@ final class PublicRideTests: XCTestCase {
     XCTAssertEqual(sent.last?["until"] as? Int64, until)
     XCTAssertEqual(status["live"] as? Bool, false)
     ride.handle(type: "public-status", json: ["on": true])
-    ride.position(presence, at: now)
+    ride.position(presence, atMs: now)
 
     ride.setBoardConnected(true)
     XCTAssertEqual(status["activation"] as? String, "board")
     XCTAssertFalse(ride.needsGps)
     XCTAssertTrue(ride.riding)
-    ride.setManualSharing(true) // A tap queued before the board connected.
+    ride.setManualSharing(true)
     XCTAssertFalse(ride.needsGps)
     XCTAssertEqual(types, ["public-on", "public-position"])
     ride.setBoardConnected(false)
@@ -169,11 +168,11 @@ final class PublicRideTests: XCTestCase {
     ride.load(PublicRideSwitch(on: true, until: nil), accountId: "acc")
     ride.setBoardConnected(true)
     ready()
-    ride.position(presence, at: 5)
+    ride.position(presence, atMs: 5)
     XCTAssertEqual(types, ["public-on"])
     ride.handle(type: "public-status", json: ["on": true])
     XCTAssertEqual(status["live"] as? Bool, true)
-    ride.position(presence, at: 5)
+    ride.position(presence, atMs: 5)
     XCTAssertEqual(sent.last?["at"] as? Int64, 5)
     XCTAssertNil((sent.last?["presence"] as? [String: Any])?["at"])
   }
@@ -305,11 +304,11 @@ final class PublicRideTests: XCTestCase {
     ready()
     receive(5, at: 8)
     receive(9, at: 9)
-    receive(nil, at: 10) // The relay withdrew the pin without a clear.
+    receive(nil, at: 10)
     receive(11, at: 11)
     receive(nil, at: 12, cleared: 11)
     receive(nil, at: 13, cleared: 11)
-    receive(11, at: 21) // Expired signal.
+    receive(11, at: 21)
     XCTAssertEqual(cues, Array(repeating: "groupRide.signal.serious", count: 3) + ["groupRide.signal.ok"])
   }
 
@@ -405,15 +404,14 @@ final class PublicRideTests: XCTestCase {
   func testPositionsMissedOfflineGoAsOneThinnedBatchAfterReconnectAndDropOnlyOnceStored() {
     goLiveWithMissed()
     ride.linkLost()
-    for at: Int64 in [10_000, 12_000, 15_000, 21_000] { ride.position(presence, at: at) }
+    for atMs: Int64 in [10_000, 12_000, 15_000, 21_000] { ride.position(presence, atMs: atMs) }
     ready(withMissed)
-    ride.position(presence, at: 26_000)
+    ride.position(presence, atMs: 26_000)
     XCTAssertEqual(batches, 1)
     XCTAssertEqual(batchAts, [10_000, 15_000, 21_000])
-    // Historical upload precedes even public-on; live positions still wait for status.
     XCTAssertEqual(Array(types.suffix(2)), ["missed-positions", "public-on"])
     ride.handle(type: "public-status", json: ["on": true])
-    ride.position(presence, at: 30_000)
+    ride.position(presence, atMs: 30_000)
     XCTAssertEqual(batches, 1)
     ride.handleError("missed positions not stored")
     XCTAssertEqual(ride.switchState, PublicRideSwitch(on: true, until: nil))
@@ -425,7 +423,7 @@ final class PublicRideTests: XCTestCase {
     ride.handle(type: "missed-stored", json: ["from": 10_000, "to": 26_000, "stored": 4])
     XCTAssertNil(retry)
     ride.handle(type: "public-status", json: ["on": true])
-    ride.position(presence, at: 32_000)
+    ride.position(presence, atMs: 32_000)
     XCTAssertEqual(batches, 2)
   }
 
@@ -433,7 +431,7 @@ final class PublicRideTests: XCTestCase {
     goLiveWithMissed()
     ride.linkLost()
     let count = 3 * 60 * 60 / 5 + 10
-    for i in 0..<count { ride.position(presence, at: Int64(i) * 5_000) }
+    for i in 0..<count { ride.position(presence, atMs: Int64(i) * 5_000) }
     ready(withMissed)
     ride.handle(type: "public-status", json: ["on": true])
     XCTAssertEqual(batchAts.count, 500)
@@ -445,7 +443,7 @@ final class PublicRideTests: XCTestCase {
   func testNothingIsKeptForARelayWithoutTheFeatureAndAnAccountChangeDiscardsTheKept() {
     goLive()
     ride.linkLost()
-    ride.position(presence, at: 10_000)
+    ride.position(presence, atMs: 10_000)
     ready()
     ride.handle(type: "public-status", json: ["on": true])
     XCTAssertFalse(types.contains("missed-positions"))
@@ -453,7 +451,7 @@ final class PublicRideTests: XCTestCase {
     sent = []
     goLiveWithMissed()
     ride.linkLost()
-    ride.position(presence, at: 20_000)
+    ride.position(presence, atMs: 20_000)
     ride.setAccount("other")
     _ = ride.set(PublicRideSwitch(on: true, until: nil))
     ride.linkReady(features: withMissed, authenticatedAccount: "other")
@@ -466,13 +464,13 @@ final class PublicRideTests: XCTestCase {
       goLiveWithMissed()
       ride.set(PublicRideSwitch(on: true, until: now + 60_000))
       ride.linkLost()
-      ride.position(presence, at: 10_000)
+      ride.position(presence, atMs: 10_000)
       switch ending {
       case "off": ride.set(.off)
       case "disconnect": ride.setBoardConnected(false)
       default: now += 60_000; ride.expire()
       }
-      ride.position(presence, at: 20_000) // Never collect private positions.
+      ride.position(presence, atMs: 20_000)
       XCTAssertFalse(ride.wanted)
       XCTAssertTrue(ride.needsLink)
       sent = []
@@ -480,7 +478,7 @@ final class PublicRideTests: XCTestCase {
       XCTAssertEqual(types, ["missed-positions"])
       XCTAssertEqual(batchAts, [10_000])
       XCTAssertFalse(ride.riding)
-      XCTAssertTrue(ride.needsLink) // Still owns the socket while waiting for ack.
+      XCTAssertTrue(ride.needsLink)
       ride.handleError("missed positions not stored")
       XCTAssertEqual(retry, PublicRide.missedRetryMs)
       ride.linkLost()
@@ -499,7 +497,7 @@ final class PublicRideTests: XCTestCase {
       setUp()
       goLiveWithMissed()
       ride.linkLost()
-      ride.position(presence, at: 10_000)
+      ride.position(presence, atMs: 10_000)
       ride.set(.off)
       sent = []
       ride.linkReady(features: withMissed, authenticatedAccount: account)
@@ -513,7 +511,7 @@ final class PublicRideTests: XCTestCase {
       setUp()
       goLiveWithMissed()
       ride.linkLost()
-      ride.position(presence, at: 10_000)
+      ride.position(presence, atMs: 10_000)
       ride.set(.off)
       ready(withMissed)
       XCTAssertNotNil(retry)
@@ -528,7 +526,7 @@ final class PublicRideTests: XCTestCase {
       sent = []
       ride.linkLost()
       ready(withMissed)
-      ride.handle(type: "missed-stored", json: [:]) // Old ack cannot resurrect data.
+      ride.handle(type: "missed-stored", json: [:])
       XCTAssertTrue(sent.isEmpty)
     }
   }
@@ -536,13 +534,12 @@ final class PublicRideTests: XCTestCase {
   func testThinningDuringAnUploadPreservesTheAcknowledgedPrefixAndWaitingTail() {
     goLiveWithMissed()
     ride.linkLost()
-    ride.position(presence, at: 0)
-    ride.position(presence, at: 5_000)
+    ride.position(presence, atMs: 0)
+    ride.position(presence, atMs: 5_000)
     ready(withMissed)
-    // A new public ride has not been confirmed yet; its fixes still belong in the buffer.
     let late = PublicRide.missedMaxAgeMs + 10_000
-    ride.position(presence, at: late)
-    ride.position(presence, at: late + 1_000) // Still thinned to five seconds.
+    ride.position(presence, atMs: late)
+    ride.position(presence, atMs: late + 1_000)
     XCTAssertEqual(batchAts, [0, 5_000])
     ride.handle(type: "missed-stored", json: [:])
     XCTAssertEqual(batchAts, [late])

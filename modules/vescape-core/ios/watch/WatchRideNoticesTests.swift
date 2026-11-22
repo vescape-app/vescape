@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The wrist's Ride Notice card and buzz rules, through the intake the watchOS Mirror runs.
-///
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchRideNoticesTest.kt
 final class WatchRideNoticesTests: XCTestCase {
   private var now: Int64 = 1_000

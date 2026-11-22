@@ -62,7 +62,6 @@ class GroupRideFrameTest {
     fun `fields a newer phone appends to a rider record are skipped`() {
         val rider = GroupRideFrameRider("a", "Ola", 0xFF00FF00.toInt(), 5.0, 6.0, stale = false)
         val base = GroupRideFrameCodec.encode(GroupRideFrame(10.0, 600.0, listOf(rider, rider.copy(id = "b"))))
-        // Rebuild with two extra bytes after each record, as a later version of the record would carry.
         val header = 1 + 4 + 4 + 1
         val out = ArrayList<Byte>(base.slice(0 until header))
         var at = header
@@ -80,7 +79,6 @@ class GroupRideFrameTest {
         assertEquals(listOf(rider, rider.copy(id = "b")), decoded.riders)
     }
 
-    /** [bytes] with the last [drop] bytes of every rider record cut, as an older encoder wrote them. */
     private fun withRecordsCut(bytes: ByteArray, riders: Int, drop: Int): ByteArray {
         val header = 1 + 4 + 4 + 1
         val out = ArrayList<Byte>(bytes.slice(0 until header))
@@ -125,7 +123,6 @@ class GroupRideFrameTest {
         )
         val buffer = java.nio.ByteBuffer.wrap(GroupRideFrameCodec.encode(GroupRideFrame(10.0, 600.0, riders)))
             .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        // The first release's decoder: fixed fields up to flags, then a jump to the record's end.
         buffer.position(1 + 4 + 4)
         val read = List(buffer.get().toInt()) {
             val end = buffer.position() + 1 + buffer.get().toInt()

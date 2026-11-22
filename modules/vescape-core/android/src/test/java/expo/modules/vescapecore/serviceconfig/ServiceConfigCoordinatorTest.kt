@@ -6,8 +6,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Service Config resolution: persisted answer over the baked seed, failures keep what is known, and a
- * successful answer replaces the config whole.
  * @parity /modules/vescape-core/ios/serviceconfig/ServiceConfigTests.swift
  */
 class ServiceConfigCoordinatorTest {

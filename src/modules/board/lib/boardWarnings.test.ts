@@ -117,7 +117,6 @@ test('pending warnings drop dismissed kinds without touching the list the sheet 
   expect(pendingWarnings(warnings, ['cell-spread']).map((w) => w.kind)).toEqual([
     'footpad-disabled',
   ])
-  // The dismissed critical no longer speaks for the board's severity.
   expect(worstSeverity(pendingWarnings(warnings, ['cell-spread']))).toBe('warn')
   expect(worstSeverity(pendingWarnings(warnings, ['cell-spread', 'footpad-disabled']))).toBeNull()
 })

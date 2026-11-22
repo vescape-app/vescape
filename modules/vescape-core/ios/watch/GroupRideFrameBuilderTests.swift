@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Shared test vector: the same ids must land in the same palette slots on every platform.
-///
 /// @parity /src/modules/group-ride/lib/riderColor.test.ts `RIDER_COLOR_VECTOR`
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/GroupRideFrameBuilderTest.kt `RIDER_COLOR_VECTOR`
 private let riderColorVector: [(String, Int)] = [
@@ -107,7 +105,6 @@ final class GroupRideFrameBuilderTests: XCTestCase {
     let near = rider("rider-7", at: WatchGeoPoint(latitude: 52.001, longitude: 21.0))
     let far = rider("rider-1", at: WatchGeoPoint(latitude: 52.002, longitude: 21.0))
     let before = build([rider("me"), far, near])
-    // They swap places and one goes stale: nobody's colour moves.
     var movedNear = near
     movedNear.position = WatchGeoPoint(latitude: 52.003, longitude: 21.0)
     movedNear.stale = true

@@ -44,7 +44,6 @@ export function MapTargetEditBody({
   const [description, setDescription] = useState(point.description ?? '')
   const keyboardLift = useKeyboardLift(true)
   const sheetBottom = Math.max(bottom, keyboardLift + 12)
-  // Colored actions wear the two-layer colored surface.
   const deleteSurface = useColoredAction(theme.palette.red.color)
   const saveSurface = useColoredAction(theme.palette.cyan.color)
   const neutral = useResolvedNeutralColors()

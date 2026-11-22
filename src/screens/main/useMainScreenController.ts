@@ -162,9 +162,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     void loadDirectionPoint()
   }, [loadDirectionPoint])
 
-  // Signing in changes what the server says about the visible Map Points (`ownedByMe`,
-  // `myReaction`), and those only arrive with a read. Without this the rider would have to pan
-  // before their own votes and edit buttons showed up.
   useEffect(() => {
     void reloadMapPoints()
   }, [canContribute, reloadMapPoints])
@@ -204,8 +201,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     mapRef.current?.recenterLive()
   }, [enterTelemetry, mapRef])
 
-  // An accidental reveal undone mid-pinch: back to telemetry without touching the camera, which
-  // the pinch is still driving.
   const cancelMapFocus = useCallback(() => {
     enterTelemetry()
   }, [enterTelemetry])
@@ -249,13 +244,9 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     selectFavoriteRide,
   } = historyNavigation
 
-  // A ride link (`rideHref`) lands here. Its params are cleared first, so going back to home never
-  // reopens it; a ride that no longer exists under that id (it grew, or was deleted) opens nothing.
   const rideLink = parseRideLink(useLocalSearchParams())
   const linkedRideId = rideLink?.rideId
   const linkedRideFocus = rideLink?.focus ?? undefined
-  // Clearing the params re-runs this effect, so the lookup is tracked by request number rather
-  // than effect cleanup: only a newer link (or leaving the screen) drops a pending one.
   const rideLinkRequest = useRef(0)
   useEffect(() => {
     if (!linkedRideId) return

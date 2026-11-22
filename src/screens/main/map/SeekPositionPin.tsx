@@ -11,21 +11,11 @@ const EMPTY_SEEK_SHAPE: GeoJSON.FeatureCollection = { type: 'FeatureCollection',
 const SEEK_PIN_RADIUS = 7
 const SEEK_SOURCE_ID = 'center-seek-position-source'
 
-/**
- * The marker following the finger on the telemetry chart.
- *
- * A GL circle updated imperatively, not an annotation and not React state. Every step of a scrub
- * moved this marker, and a `PointAnnotation` carrying child views re-snapshots those views to a
- * bitmap on every coordinate change — enough work per touch sample to stall the whole app. A
- * circle layer takes a new position as one tiny GeoJSON, so the drag needs no render at all and
- * no throttling: the ride's track is read on the UI thread, and only the result crosses over.
- */
 export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
   const sourceRef = useRef<ShapeSource>(null)
 
-  // Parallel arrays so the lookup can run in a worklet; the samples themselves cannot cross.
   const track = useMemo(() => {
     const ts: number[] = []
     const lon: number[] = []
@@ -46,7 +36,6 @@ export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGps
           properties: {},
         }
       : EMPTY_SEEK_SHAPE
-    // `id` is required by the native prop type but never changes; the shape is the update.
     sourceRef.current?.setNativeProps({ id: SEEK_SOURCE_ID, shape: JSON.stringify(shape) })
   }, [])
 
@@ -59,7 +48,6 @@ export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGps
         scheduleOnRN(moveTo, 0, 0, false)
         return
       }
-      // Binary search for the sample bracketing the moment, then take the nearer of the two.
       let lo = 0
       let hi = ts.length - 1
       while (lo < hi) {

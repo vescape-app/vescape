@@ -7,24 +7,14 @@ export const PACKS_DIR = join(ROOT, 'shared', 'alerts', 'packs')
 export const MANIFESTS = ['voice-nova', 'voice-radio', 'voice-nicole'] as const
 export const CLIP_EXTENSION = '.m4a'
 
-/**
- * `number` is a bare number: speed and duty skip the unit so the line stays short. `duration` is
- * minutes from now, spoken with its preposition ("in two hours").
- */
 export type ValueType = 'percent' | 'degrees' | 'number' | 'duration'
 
 export interface Catalog {
   severities: string[]
   voiceKeys: Record<string, ValueType | null>
-  /** Clip set per value type: every integer of a range, or the listed values. */
   values: Record<ValueType, { min: number; max: number } | number[]>
 }
 
-/**
- * A line, by voice level: Minimal speaks `minimal` (else `start`) on the generic key only; Standard
- * speaks `start`; Full speaks `full.start` (else `start`) and then one of `full.end` at
- * `full.endChance` (default 1). Each list holds variants picked at random.
- */
 export interface Line {
   start: string[]
   minimal?: string[]
@@ -40,14 +30,12 @@ export interface VoiceManifest {
   lines: Record<string, Line>
 }
 
-/** Generated `pack.json`: every path is relative to the pack directory. */
 export interface VoicePack {
   id: string
   kind: 'voice'
   format: string
   lines: Record<string, Line>
   values: Partial<Record<ValueType, Record<string, string>>>
-  /** Clip path → hash of its text, Kokoro settings, and fx; unchanged clips are not re-synthesized. */
   sources: Record<string, string>
 }
 
@@ -67,7 +55,6 @@ export function valueClips(catalog: Catalog, type: ValueType): number[] {
   return Array.from({ length: set.max - set.min + 1 }, (_, i) => set.min + i)
 }
 
-/** Key a line variant falls back to: `battery.critical` → `battery`. */
 export function baseKey(catalog: Catalog, key: string): string | null {
   if (key in catalog.voiceKeys) return key
   const dot = key.lastIndexOf('.')
@@ -76,7 +63,6 @@ export function baseKey(catalog: Catalog, key: string): string | null {
   return base in catalog.voiceKeys && catalog.severities.includes(key.slice(dot + 1)) ? base : null
 }
 
-/** Every phrase of a line: clip paths in a pack, texts in a manifest. */
 export const lineTexts = (line: Line) => [
   ...line.start,
   ...(line.minimal ?? []),
@@ -101,7 +87,6 @@ export function validateManifest(catalog: Catalog, manifest: VoiceManifest) {
   return errors.map((error) => `${manifest.kind}-${manifest.id}: ${error}`)
 }
 
-/** Checks a generated voice pack against the catalog; every listed clip must exist on disk. */
 export function validatePack(catalog: Catalog, dir: string): string[] {
   const path = join(dir, 'pack.json')
   if (!existsSync(path)) return [`${dir}: missing pack.json`]
@@ -150,7 +135,6 @@ const ONES = [
 ]
 const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
 
-/** English words for an integer in −999…999, spelled out so Kokoro never guesses. */
 export function numberWords(n: number): string {
   if (n < 0) return `minus ${numberWords(-n)}`
   if (n < 20) return ONES[n]
@@ -159,7 +143,6 @@ export function numberWords(n: number): string {
   return `${ONES[Math.floor(n / 100)]} hundred${rest ? ` ${numberWords(rest)}` : ''}`
 }
 
-/** `in forty-five minutes.`, `in one hour.`, `in two and a half hours.` */
 export function durationText(minutes: number) {
   if (minutes < 60) return `in ${numberWords(minutes)} minutes.`
   const hours = Math.floor(minutes / 60)

@@ -5,10 +5,8 @@ import type { MainViewState } from '@/screens/main/mainViewState'
 
 export type MapSelector = 'navigation' | 'style' | null
 
-/** Which list the history screen shows: recorded rides, or the Favorites the rider starred. */
 export type HistoryTab = 'history' | 'favorites'
 
-/** The time span a rider is trimming into a Favorite. Non-null means trim mode is active. */
 export interface TrimRange {
   startMs: number
   endMs: number
@@ -17,12 +15,10 @@ export interface TrimRange {
 interface MainScreenState {
   mode: MainViewState
   historyTab: HistoryTab
-  /** The Favorite whose detail is open, or null while the Favorites list is showing. */
   openFavoriteId: string | null
   historySheetVisible: boolean
   mapSelector: MapSelector
   perspectiveEnabled: boolean
-  /** Measured height of the History panel; the map fits the route into what is left above it. */
   historyPanelHeight: number
   trimRange: TrimRange | null
   activeHistoryMapMetric: HistoryMetricKey
@@ -36,20 +32,15 @@ interface MainScreenActions {
   enterLegalLimits: () => void
   enterHistory: () => void
   setHistoryTab: (tab: HistoryTab) => void
-  /** Open one Favorite's detail. */
   openFavorite: (id: string) => void
-  /** Back to the Favorites list. */
   closeFavorite: () => void
   setHistorySheetVisible: (visible: boolean) => void
   setMapSelector: (selector: MapSelector) => void
   dismissMapSelector: () => void
   setPerspectiveEnabled: (enabled: boolean) => void
   setHistoryPanelHeight: (height: number) => void
-  /** Enter trim mode seeded with a default range (the ride's full Moving Window). */
   beginTrim: (range: TrimRange) => void
-  /** Live-update the trimmed span while a handle is dragged. */
   setTrimRange: (range: TrimRange) => void
-  /** Leave trim mode (save or cancel). */
   endTrim: () => void
   setActiveHistoryMapMetric: (metric: HistoryMetricKey) => void
 }

@@ -1,6 +1,5 @@
 import type { ReleaseManifest } from '../contracts'
 
-/** Choosing a build is the user's approval. Check it, then send that exact build. */
 export async function sendToOpenTesting(
   candidate: ReleaseManifest,
   checkNotes: (candidate: ReleaseManifest) => Promise<string>,

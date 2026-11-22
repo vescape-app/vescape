@@ -22,12 +22,6 @@ import { CapabilityEnabledControl } from '@/modules/accessories/components/Capab
 import { useSavedAccessory } from '@/modules/accessories/store/accessoryStore'
 import { theme } from '@/constants/theme'
 
-/**
- * How long a tapped state stays on the light before it is handed back to the Board.
- *
- * Long enough to step behind the board and look at the lamp, short enough that a rider who walked
- * away does not leave the light pinned — native only drops a preview once the board starts moving.
- */
 const PREVIEW_SECONDS = 10
 
 export function BrakeLightScreen({
@@ -66,9 +60,6 @@ export function BrakeLightScreen({
     }
   }, [accessoryId, capabilityId])
 
-  // Native owns whether a preview is up — riding ends one without asking this screen. The countdown
-  // follows that fact rather than the tap that started it, so a preview native dropped stops
-  // counting down here too.
   const held = capability?.lightPreview ?? null
   useEffect(() => {
     if (!held) {

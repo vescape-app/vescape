@@ -25,7 +25,6 @@ export function groupColor(
   return extreme === 'min' ? colors.min : extreme === 'max' ? colors.max : colors.normal
 }
 
-/** Gap between columns in a row, and between stat slots. */
 export const COL_GAP = 8
 
 const INDEX_WIDTH = 14
@@ -42,14 +41,9 @@ const STAT_VALUE_HEIGHT = Math.ceil(STAT_VALUE_FONT_SIZE * TEXT_LINE_RATIO)
 
 export interface BmsStatValue {
   text: DerivedValue<string>
-  /** A derived colour tracks the value it labels (already resolved for the active appearance). */
   color: ThemeColor | DerivedValue<string>
 }
 
-/**
- * One canvas for a whole row of stat values. Each readout used to own a canvas,
- * which is a native surface apiece for numbers that only tick with BMS frames.
- */
 export function BmsStatValues({ values, width }: { values: BmsStatValue[]; width: number }) {
   const slot = (width - (values.length - 1) * COL_GAP) / values.length
   return (
@@ -79,18 +73,9 @@ interface CellRowsProps {
   width: number
 }
 
-/** Height the rows block occupies, so callers can reserve space before layout. */
 export const cellRowsHeight = (groupCount: number) =>
   groupCount * ROW_HEIGHT + Math.max(0, groupCount - 1) * ROW_GAP
 
-/**
- * Every cell group on a single canvas.
- *
- * The bars used to be views animating a percentage `width`, which is a layout
- * prop: each BMS frame ran a Yoga pass per row, and each row also carried its
- * own readout canvas. A pack can be 20+ groups, so that was 20+ native surfaces
- * relaid out on every frame. Here it is one surface and a repaint.
- */
 export function BmsCellRows({ groupCount, summary, scale, width }: CellRowsProps) {
   const accents = useResolvedAccentColors()
   const colors = useMemo(

@@ -1,53 +1,36 @@
 import Foundation
 import GRDB
 
-// Ride weather backfill (#606): hourly Open-Meteo history for past ride days without usable weather.
-// Every constant and rule below is mirrored in RideWeatherBackfill.kt.
-
-/// Candidate keys, batching and insertion bounds use UTC calendar days.
 let WEATHER_BACKFILL_DAY_MS: Int64 = 86_400_000
 
-/// Longest date range one request covers. A network work bound, not a resume cursor.
 let WEATHER_BACKFILL_WINDOW_DAYS: Int64 = 14
 
-/// Days whose representative fixes round to the same 0.1° cell share requests.
 let WEATHER_BACKFILL_AREA_STEPS_PER_DEG = 10.0
 
-/// 2022-01-01T00:00Z. The historical forecast endpoint is complete from here for every model it
-/// blends; earlier days are fetched from the ERA5 reanalysis archive instead.
 let WEATHER_HISTORICAL_FORECAST_FIRST_DAY_MS: Int64 = 1_640_995_200_000
 
-/// 1940-01-01T00:00Z, where the ERA5 archive starts. Older days are a permanent miss.
 let WEATHER_ARCHIVE_FIRST_DAY_MS: Int64 = -946_771_200_000
 
-/// A day this close to now with no data may still be published: a temporary miss, not a permanent one.
 let WEATHER_BACKFILL_RECENT_MS: Int64 = 7 * WEATHER_BACKFILL_DAY_MS
 
-/// Temporary misses one run tolerates before it stops requesting and backs off.
 let WEATHER_BACKFILL_MAX_TEMPORARY_MISSES = 3
 let WEATHER_BACKFILL_BACKOFF_BASE_MS: Int64 = 60_000
 let WEATHER_BACKFILL_BACKOFF_MAX_MS: Int64 = 3_600_000
 
-/// Buckets one scan page reads.
 let WEATHER_BACKFILL_BUCKET_PAGE = 2_000
 
-/// A ride overlapping the watermark is re-read from this far before it.
 let WEATHER_BACKFILL_LOOKBACK_MS: Int64 = WEATHER_BACKFILL_DAY_MS
 
-/// Where one scan page starts: buckets from `bucketFromMs`, rides ending after `ridesAfterMs`.
 struct WeatherBackfillCursor: Equatable {
   let bucketFromMs: Int64
   let ridesAfterMs: Int64
 }
 
-/// One closed derived ride after the watermark.
 struct WeatherBackfillRide: Equatable {
   let startMs: Int64
   let endMs: Int64
 }
 
-/// The part of one ride on one UTC day that has no usable weather but has a precise fix: what
-/// the backfill fetches. `latitude`/`longitude` is the segment's first precise fix.
 struct WeatherBackfillSegment: Equatable {
   let ride: Int
   let dayMs: Int64
@@ -57,8 +40,6 @@ struct WeatherBackfillSegment: Equatable {
   let longitude: Double
 }
 
-/// One bounded scan page. `next` is nil once no closed ride is left; `activeRetryAtMs` is set while
-/// a potentially active ride exists, which the scan never reads.
 struct WeatherBackfillPage {
   let rides: [WeatherBackfillRide]
   let segments: [WeatherBackfillSegment]
@@ -66,7 +47,6 @@ struct WeatherBackfillPage {
   let activeRetryAtMs: Int64?
 }
 
-/// One request: an area's assigned days within one bounded window and one endpoint.
 struct WeatherBackfillWindow: Equatable {
   let latitude: Double
   let longitude: Double
@@ -79,8 +59,6 @@ struct WeatherBackfillWindow: Equatable {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `WeatherBackfillMiss`
 enum WeatherBackfillMiss { case permanent, temporary }
 
-/// What one window request came back as. Kept apart from the live weather transport, which collapses
-/// every failure to nil and could not tell a permanent miss from a retry.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `WeatherBackfillFetch`
 enum WeatherBackfillFetch: Equatable {
   case samples([WeatherObservation])
@@ -90,7 +68,6 @@ enum WeatherBackfillFetch: Equatable {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `weatherBackfillWatermarkValue`
 func weatherBackfillWatermarkValue(version: Int, doneThroughMs: Int64) -> String { "\(version)|\(doneThroughMs)" }
 
-/// The stored watermark of `version`, or nil when absent, unreadable or of another version.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `parseWeatherBackfillWatermark`
 func parseWeatherBackfillWatermark(_ value: String?, version: Int) -> Int64? {
   guard let parts = value?.split(separator: "|", omittingEmptySubsequences: false),
@@ -109,12 +86,8 @@ private func saturatingMinus(_ value: Int64, _ delta: Int64) -> Int64 {
   return overflow ? Int64.min : result
 }
 
-/// Kotlin `Math.round` on a Double: half rounds up.
 private func roundHalfUp(_ value: Double) -> Int64 { Int64((value + 0.5).rounded(.down)) }
 
-/// Group candidate days into requests: one representative fix per day (the day's first precise fix),
-/// days grouped by 0.1° area, each area split into windows of at most `WEATHER_BACKFILL_WINDOW_DAYS`
-/// that never mix endpoints. Days before the archive are left out; they are permanent misses.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `planWeatherBackfillWindows`
 func planWeatherBackfillWindows(_ segments: [WeatherBackfillSegment]) -> [WeatherBackfillWindow] {
   var representative: [Int64: WeatherBackfillSegment] = [:]
@@ -125,7 +98,6 @@ func planWeatherBackfillWindows(_ segments: [WeatherBackfillSegment]) -> [Weathe
     representative[segment.dayMs] = segment
   }
   func cell(_ value: Double) -> Int64 { roundHalfUp(value * WEATHER_BACKFILL_AREA_STEPS_PER_DEG) }
-  // Areas in first-day order, days ascending inside each, as the Kotlin sorted map + groupBy yields.
   var areaOrder: [[Int64]] = []
   var areas: [[Int64]: [WeatherBackfillSegment]] = [:]
   for day in representative.keys.sorted() {
@@ -172,8 +144,6 @@ private func utcDate(_ dayMs: Int64) -> String {
   return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
 }
 
-/// Open-Meteo request for one window: hourly values on UTC days, timestamps as epoch seconds so no
-/// offset (and no DST boundary) is ever applied by hand.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `weatherBackfillUrl`
 func weatherBackfillUrl(_ window: WeatherBackfillWindow) -> String {
   let base = window.archive
@@ -194,9 +164,6 @@ private func number(_ array: [Any]?, _ index: Int) -> Double? {
   return double.isFinite ? double : nil
 }
 
-/// Hourly samples of a backfill response, sorted, one per timestamp. A sample missing its
-/// temperature, code or day flag is dropped rather than read as zero-valued weather; a missing gust
-/// stays nil. Nil for a body that is not the expected shape.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `parseWeatherBackfillHourly`
 func parseWeatherBackfillHourly(_ body: Data) -> [WeatherObservation]? {
   // intentional-suppression: an unparseable body is classified as a temporary miss by the caller.
@@ -224,8 +191,6 @@ func parseWeatherBackfillHourly(_ body: Data) -> [WeatherObservation]? {
   return byTime.keys.sorted().map { byTime[$0]! }
 }
 
-/// Classify one window response. Retryable: transport failure, 408, 429 (stops the run, honoring
-/// Retry-After), 5xx and an unparseable 200. Any other 4xx is a validated, permanent rejection.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `classifyWeatherBackfillResponse`
 func classifyWeatherBackfillResponse(_ response: MaintenanceHttpResponse) -> WeatherBackfillFetch {
   switch response.status {
@@ -243,10 +208,6 @@ func classifyWeatherBackfillResponse(_ response: MaintenanceHttpResponse) -> Wea
   }
 }
 
-/// Rows the backfill stores for `[startMs, endMs]`: the last sample at or before the start (when
-/// still fresh) and every sample inside, change-only against the previous sample of the same series,
-/// with the live freshness renewal. Neither the newest database row nor other days are consulted, so
-/// request order never changes what is stored.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `weatherBackfillRows`
 func weatherBackfillRows(_ samples: [WeatherObservation], startMs: Int64, endMs: Int64) -> [WeatherObservation] {
   let anchor = samples.last { $0.observedAtMs <= startMs }
@@ -259,9 +220,6 @@ func weatherBackfillRows(_ samples: [WeatherObservation], startMs: Int64, endMs:
   return rows
 }
 
-/// One scan page in one read transaction: closed derived rides from `cursor`, with the segments that
-/// still lack usable weather (#604's read and freshness rule) and have a precise fix. Never reads
-/// into the potentially active ride.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `weatherBackfillPageImpl`
 func weatherBackfillPage(_ db: Database, cursor: WeatherBackfillCursor, nowMs: Int64, gapMs: Int64) throws -> WeatherBackfillPage {
   let active = try activeRideStartMs(db, nowMs: nowMs, gapMs: gapMs)
@@ -287,7 +245,6 @@ func weatherBackfillPage(_ db: Database, cursor: WeatherBackfillCursor, nowMs: I
   )
   let grouped = try groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
   let hasMore = buckets.count == WEATHER_BACKFILL_BUCKET_PAGE
-  // The last ride of a full page may continue on the next one, so it is read again there in full.
   let kept: [RideSessionAggregate]
   let next: WeatherBackfillCursor?
   if !hasMore {
@@ -303,7 +260,6 @@ func weatherBackfillPage(_ db: Database, cursor: WeatherBackfillCursor, nowMs: I
       ridesAfterMs: max(cursor.ridesAfterMs, grouped.first?.endAtMs ?? cursor.ridesAfterMs)
     )
   }
-  // Stationary sessions are settled with the rest; only moving rides get weather.
   let rides = kept.filter { $0.endAtMs > cursor.ridesAfterMs }
     .enumerated().sorted { ($0.element.endAtMs, $0.offset) < ($1.element.endAtMs, $1.offset) }.map(\.element)
   var segments: [WeatherBackfillSegment] = []
@@ -338,9 +294,6 @@ func weatherBackfillPage(_ db: Database, cursor: WeatherBackfillCursor, nowMs: I
   )
 }
 
-/// Store one window's samples for its segments in one write transaction. Eligibility is checked
-/// again here, so live observations committed while the request was in flight win. True per
-/// segment when it now has usable weather.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `storeWeatherBackfillImpl`
 func storeWeatherBackfill(_ db: Database, segments: [WeatherBackfillSegment], samples: [WeatherObservation]) throws -> [Bool] {
   try segments.map { segment in
@@ -355,10 +308,6 @@ func storeWeatherBackfill(_ db: Database, segments: [WeatherBackfillSegment], sa
   }
 }
 
-/// Ride weather: fills `weather_observations` for past ride days that have none, from Open-Meteo
-/// hourly history. Its done state is a watermark, `version|doneThroughMs` in `app_settings`: rides
-/// ending at or before it are settled and never read again, and every trigger only scans closed
-/// rides after it. The watermark never passes an unresolved temporary miss or the active ride.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideWeatherBackfill.kt `RideWeatherJob`
 final class RideWeatherJob: MaintenanceJob {
   static let shared = RideWeatherJob()
@@ -368,20 +317,16 @@ final class RideWeatherJob: MaintenanceJob {
   let requiresNetwork = true
   let inputKeys: Set<String> = []
 
-  /// Consecutive runs that ended on a temporary miss, for the backoff. Maintenance work queue only.
   private var failedRuns = 0
 
-  /// A 429 deadline: no trigger fetches before it, network back included. Maintenance work queue only.
   private var rateLimitedUntilMs = Int64.min
 
   func inputs(_ settings: [String: Any?]) -> String { "" }
 
-  /// Settles every ride before the first one needing a fetch; stale only when one exists.
   func hasWork(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws -> Bool {
     try pass(scope, settings: settings, fetch: false) != .completed
   }
 
-  /// The watermark is the done state; a partial run keeps what it settled.
   func begin(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws {}
 
   func complete(_ scope: MaintenanceJobScope, settings: [String: Any?]) throws {}
@@ -391,8 +336,6 @@ final class RideWeatherJob: MaintenanceJob {
     return try pass(scope, settings: settings, fetch: true)
   }
 
-  /// One pass from the watermark. Without `fetch` it stops at the first segment needing weather and
-  /// reports the job stale. Completed means every closed ride is settled.
   private func pass(_ scope: MaintenanceJobScope, settings: [String: Any?], fetch: Bool) throws -> MaintenanceJobOutcome {
     let gapMs = Int64(telemetryInt(settings["rideSplitGapMinutes"] ?? nil) ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
     let stored = try scope.chunk { try storedMaintenanceFingerprint($0, id: id) }
@@ -439,7 +382,6 @@ final class RideWeatherJob: MaintenanceJob {
           let filled = try scope.chunk { try storeWeatherBackfill($0, segments: segments, samples: samples) }
           scope.committed()
           for (i, index) in members.enumerated() {
-            // No data for a day the provider may not have published yet is retried, not settled.
             resolved[index] = filled[i] || scope.nowMs() - page.segments[index].endMs >= WEATHER_BACKFILL_RECENT_MS
             if !resolved[index] { temporaryMisses += 1 }
           }

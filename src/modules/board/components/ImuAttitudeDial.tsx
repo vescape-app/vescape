@@ -11,22 +11,17 @@ import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { useResolvedColor, useResolvedTelemetryColors } from '@/hooks/useTheme'
 import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
 
-/** Drawing size at full scale; narrower screens scale the whole dial down. */
 const DIAL = 300
-/** Kept free on each side of the dial for the corner readings to sit beside the ring. */
 const SIDE_ROOM = 30
 const RADIUS = 128
 const BOARD_SIZE = 190
-/** Each scale spans ± this many degrees around its axis; readings past it pin to the end. */
 const SCALE_DEG = 30
 const TICK_STEP = 5
 const MAJOR_TICK_STEP = 15
 const VALUE_SIZE = 22
 const VALUE_WEIGHT = '800'
-/** The widest reading a corner shows, measured to size its box. */
 const WIDEST_VALUE = '-00.0°'
 
-/** Where each scale sits on the ring, in degrees clockwise from 3 o'clock. */
 const NOSE = 0
 const TAIL = 180
 const BOTTOM = 90
@@ -50,7 +45,6 @@ function buildRing() {
   return path
 }
 
-/** A small triangle just outside the ring at 3 o'clock, pointing in; rotated onto its reading. */
 function buildMarker() {
   const path = Skia.Path.Make()
   path.moveTo(RADIUS + 2, 0)
@@ -60,8 +54,6 @@ function buildMarker() {
   return path
 }
 
-/** An open chevron just inside the ticks at 3 o'clock, pointing out at the ring: the setpoint sits
- * on the inside so it never hides the pitch mark outside. */
 function buildSetpoint() {
   const path = Skia.Path.Make()
   path.moveTo(RADIUS - 20, -6)
@@ -75,15 +67,12 @@ const RING = buildRing()
 const MARKER = buildMarker()
 const SETPOINT = buildSetpoint()
 
-/** The marker's rotation onto `axis` for a reading, clamped to the scale. A missing reading parks
- * it at zero, where `markerOpacity` hides it. */
 function markerRotation(value: number | null, axis: number, sign: 1 | -1) {
   'worklet'
   const v = Math.max(-SCALE_DEG, Math.min(SCALE_DEG, value ?? 0))
   return [{ rotate: ((axis + sign * v) * Math.PI) / 180 }]
 }
 
-/** Hidden without a reading, so no data never reads as a level board. */
 function markerOpacity(value: number | null) {
   'worklet'
   return value == null ? 0 : 1
@@ -98,12 +87,6 @@ interface ImuAttitudeDialProps {
   railColorId?: string
 }
 
-/**
- * Pitch, roll and the balance setpoint read off one ring around the live 3D board. Pitch marks the
- * side arcs, where the nose and tail point; roll marks the bottom arc; the balance setpoint is a
- * chevron inside the ring at both ends, so the gap between it and the pitch mark is how far off
- * balance the board sits. Each corner value takes its mark's colour, which is also its chart's.
- */
 export function ImuAttitudeDial({
   pitch,
   roll,
@@ -121,13 +104,10 @@ export function ImuAttitudeDial({
     const b = balancePitch.value
     return p == null || b == null ? null : p - b
   })
-  // Match the board: positive pitch lifts the right-side nose counter-clockwise.
   const nose = useDerivedValue(() => markerRotation(pitch.value, NOSE, -1))
   const tail = useDerivedValue(() => markerRotation(pitch.value, TAIL, -1))
   const setpointNose = useDerivedValue(() => markerRotation(balancePitch.value, NOSE, -1))
   const setpointTail = useDerivedValue(() => markerRotation(balancePitch.value, TAIL, -1))
-  // Counter-clockwise on the bottom arc, so positive roll moves the mark right and negative left,
-  // reading like a level gauge rather than swinging against it.
   const rollMark = useDerivedValue(() => markerRotation(roll.value, BOTTOM, -1))
   const pitchShown = useDerivedValue(() => markerOpacity(pitch.value))
   const rollShown = useDerivedValue(() => markerOpacity(roll.value))

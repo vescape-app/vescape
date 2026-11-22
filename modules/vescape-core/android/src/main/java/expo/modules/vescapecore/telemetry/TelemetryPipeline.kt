@@ -11,7 +11,6 @@ internal const val MIN_LIVE_HISTORY_LIMIT_MINUTES = 1
 internal const val MAX_LIVE_HISTORY_LIMIT_MINUTES = 50
 internal const val DEFAULT_TELEMETRY_STALE_MS = 4_000L
 
-/** One decimated live metric: a key the JS UI knows + how to read it off a telemetry row. */
 internal data class LiveSeriesMetric(val key: String, val select: (Map<String, Any?>) -> Double?)
 
 private fun Map<String, Any?>.num(key: String): Double? = (this[key] as? Number)?.toDouble()
@@ -20,16 +19,6 @@ private fun Map<String, Any?>.excluded(key: String): Boolean =
     (this["metricExclusions"] as? Map<*, *>)?.get(key) == true
 
 /**
- * Center-screen live metrics streamed continuously as the decimated `onLiveSeries`
- * firehose (the battery bar). Kept in sync with `liveSelectors`
- * on the JS side, keyed by the same names: any abs/scale/exclusion is applied here
- * *before* min/max bucketing so native decimation matches what JS would compute, and
- * the UI renders the values verbatim.
- *
- * The rest live in [FOCUSED_ONLY_SERIES_METRICS]: a `/control` detail screen pulls one via
- * [focusedSeries] on focus, and the telemetry panel adds them to `onLiveSeries` while open
- * (`LiveSeriesEmitter.setLiveMetrics`).
- *
  * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `centerMetrics`
  * @parity /src/modules/board/hooks/useLiveMetric.ts `liveSelectors`
  */
@@ -38,7 +27,6 @@ internal val LIVE_SERIES_METRICS = listOf(
     LiveSeriesMetric("batteryPercent") { row -> row.num("batteryPercent") },
 )
 
-/** Metrics streamed only on request: focused by a detail chart, or added by the telemetry panel. */
 internal val FOCUSED_ONLY_SERIES_METRICS = listOf(
     LiveSeriesMetric("motorTemp") { row -> row.num("tempMotor")?.takeIf { it > 0 } },
     LiveSeriesMetric("controllerTemp") { row -> row.num("tempMosfet") },
@@ -57,26 +45,15 @@ internal val FOCUSED_ONLY_SERIES_METRICS = listOf(
     LiveSeriesMetric("footpadAdc2") { row -> row.num("adc2") },
 )
 
-/** Every live metric a `/control` detail chart can focus (center + detail-only). */
 internal val ALL_SERIES_METRICS = LIVE_SERIES_METRICS + FOCUSED_ONLY_SERIES_METRICS
 
-/** Exclusion keys whose contiguous spans ride along with a focused series for overlay bands. */
 internal val LIVE_EXCLUSION_KEYS = listOf(METRIC_AVG_SPEED, METRIC_MAX_SPEED, METRIC_MAX_DUTY)
 
 /**
- * Focused detail-chart resolution: fixed-width time buckets, uncapped, and narrower than
- * the board packet interval (~30–50ms) so at most one sample lands per bucket — the focused
- * series is effectively full-resolution. Payload therefore scales with the sample count of
- * the live window, not with a bucket budget: only mounted `/control` detail charts pay it.
  * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `focusedBucketWidthMs`
  */
 internal const val FOCUSED_SERIES_BUCKET_WIDTH_MS = 20L
 
-/**
- * Render-ready focused series for one metric plus its excluded spans, per exclusion key.
- * [spanMs] and [sampleRateHz] describe the data actually held (not the configured window),
- * so the detail screen can caption exactly what the rider is looking at.
- */
 internal data class FocusedSeries(
     val series: DoubleArray,
     val exclusions: Map<String, DoubleArray>,
@@ -88,7 +65,6 @@ internal data class FocusedSeries(
 internal data class ProcessedTelemetry(
     val eventMap: MutableMap<String, Any?>,
     val capture: TelemetryCapture,
-    /** Highest speed (km/h) and duty (%) across the live window, as the live charts plot them. */
     val speedPeak: Double?,
     val dutyPeak: Double?,
 )
@@ -106,14 +82,10 @@ internal class TelemetryPipeline(
     )
 
     private val recentTelemetry = ArrayDeque<MutableMap<String, Any?>>()
-    // Guarded by recentLock with the window they track.
     private val speedPeak = LiveWindowPeak(ALL_SERIES_METRICS.first { it.key == "speed" }.select)
     private val dutyPeak = LiveWindowPeak(ALL_SERIES_METRICS.first { it.key == "duty" }.select)
     private val liveTelemetryPoints = ArrayDeque<LivePoint>()
-    // recentTelemetry is appended on the BLE callback thread and read (snapshot/decimated)
-    // on the main thread, so every structural access goes through this lock.
     private val recentLock = Any()
-    // liveTelemetryPoints is also touched by settings/session calls while telemetry is flowing.
     private val liveLock = Any()
     private var session: BoardSession? = null
     private var sessionConfig: SessionConfig? = null
@@ -132,8 +104,6 @@ internal class TelemetryPipeline(
         lastTelemetryAt = 0L
         this.session = session
         this.sessionConfig = config
-        // The active CAN id is seeded by the service from the stored Board
-        // Transport via updateCanId; a fresh session starts untagged.
         this.canId = null
     }
 
@@ -151,11 +121,6 @@ internal class TelemetryPipeline(
         this.canId = canId
     }
 
-    /**
-     * Drops prior connection data before reconnecting within the same Board Session.
-     * Reconnect reuses its session identity, so resetLastTelemetryAt alone would leave
-     * stale values available to the live state and decimated-series read paths.
-     */
     fun clearLiveTelemetry() {
         cancelStaleWatchdog()
         clearRecentTelemetry()
@@ -179,12 +144,7 @@ internal class TelemetryPipeline(
 
     fun recentSnapshot(): List<Map<String, Any?>> = synchronized(recentLock) { recentTelemetry.toList() }
 
-    /**
-     * Render-ready min/max series per metric, decimated from the in-memory live
-     * window. Lets the UI draw sparklines without streaming every raw sample.
-     */
     fun liveSeries(metrics: List<LiveSeriesMetric>, bucketCount: Int): Map<String, DoubleArray> {
-        // Copy the deque under lock, then decimate the snapshot without holding it.
         val rows = synchronized(recentLock) { if (recentTelemetry.isEmpty()) null else recentTelemetry.toList() }
             ?: return emptyMap()
         val windowMs = recentWindowMs()
@@ -201,14 +161,6 @@ internal class TelemetryPipeline(
         return result
     }
 
-    /**
-     * Full-resolution series for a single focused metric on [FOCUSED_SERIES_BUCKET_WIDTH_MS]
-     * buckets — narrower than the packet interval, so every sample survives while the fixed
-     * absolute bucket grid keeps the line stable as the window slides. Rides with the
-     * contiguous excluded spans per exclusion key so the detail chart can redraw its overlay
-     * bands. Pass [spans] to reuse one exclusion scan across every metric of an emit tick.
-     * Returns null for an unknown metric key.
-     */
     fun focusedSeries(metricKey: String, spans: Map<String, DoubleArray>? = null): FocusedSeries? {
         val metric = ALL_SERIES_METRICS.find { it.key == metricKey } ?: return null
         val rows = synchronized(recentLock) { if (recentTelemetry.isEmpty()) null else recentTelemetry.toList() }
@@ -232,7 +184,6 @@ internal class TelemetryPipeline(
         )
     }
 
-    /** Elapsed time between the oldest and newest retained sample, 0 when fewer than two. */
     private fun sampleSpanMs(rows: List<Map<String, Any?>>): Long {
         if (rows.size < 2) return 0L
         val first = (rows.first()["lastPacketAt"] as? Number)?.toLong() ?: return 0L
@@ -240,14 +191,9 @@ internal class TelemetryPipeline(
         return (last - first).coerceAtLeast(0L)
     }
 
-    /** Excluded spans for the current window — shared by every metric of one emit tick. */
     fun focusedExclusionSpans(): Map<String, DoubleArray> =
         excludedSpans(synchronized(recentLock) { recentTelemetry.toList() })
 
-    /**
-     * Contiguous [start, end] runs (flat `[s0, e0, s1, e1, ...]`) per exclusion key across
-     * the window. JS unions the keys a screen cares about and merges them into overlay bands.
-     */
     private fun excludedSpans(rows: List<Map<String, Any?>>): Map<String, DoubleArray> {
         val out = HashMap<String, DoubleArray>(LIVE_EXCLUSION_KEYS.size)
         for (key in LIVE_EXCLUSION_KEYS) {
@@ -288,9 +234,6 @@ internal class TelemetryPipeline(
     }
 
     /**
-     * A valid Refloat response arrived that is not a Telemetry Sample (mode-69 fault frames carry
-     * zeroed metrics). The board is answering, so the staleness clock must advance even though
-     * nothing is captured, aggregated, or persisted.
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `handleTelemetry`
      */
     fun noteResponse(parsed: RefloatTelemetry, sessionToken: BoardSession) {
@@ -308,9 +251,6 @@ internal class TelemetryPipeline(
     }
 
     /**
-     * Replay Warmup (ADR 0048): a recorded sample enters the live window — points, recent
-     * telemetry, peaks — and nothing else. It is not the session's latest frame, so staleness
-     * never reads it.
      * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `prefill`
      */
     fun prefill(parsed: RefloatTelemetry, sessionToken: BoardSession): ProcessedTelemetry? {
@@ -318,7 +258,6 @@ internal class TelemetryPipeline(
         return retain(parsed, cfg, sanitize = false)
     }
 
-    /** Labels the prefilled window once: per sample, the warmup would sanitize it n² times. */
     fun finishPrefill() {
         val updates = synchronized(liveLock) { sanitizeLivePoints() }
         if (updates.isEmpty()) return
@@ -346,7 +285,6 @@ internal class TelemetryPipeline(
             if (sanitize) sanitizeLivePoints() else emptyList()
         }
         val peaks = synchronized(recentLock) {
-            // Re-labelled samples can move the peak either way.
             if (updates.isNotEmpty()) {
                 speedPeak.invalidate()
                 dutyPeak.invalidate()

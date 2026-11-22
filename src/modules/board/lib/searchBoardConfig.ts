@@ -22,7 +22,6 @@ function normalize(text: string): string {
   return words(text).join(' ')
 }
 
-/** Edit distance counting a swapped pair as one typo, giving up once it exceeds `max`. */
 function editDistance(a: string, b: string, max: number): number {
   if (Math.abs(a.length - b.length) > max) return max + 1
   let beforePrevious: number[] = []
@@ -48,13 +47,11 @@ function editDistance(a: string, b: string, max: number): number {
   return previous[b.length]!
 }
 
-/** 1 exact, 0.8 prefix, 0.55 within a typo or two, 0 otherwise. */
 function tokenMatch(query: string, candidate: string, fuzzy: boolean): number {
   if (candidate === query) return 1
   if (query.length >= 2 && candidate.startsWith(query)) return 0.8
   if (!fuzzy || query.length < 4) return 0
   const max = query.length >= 8 ? 2 : 1
-  // Compare against the candidate's own length and the query's, so "landin" finds "landings".
   const distance = Math.min(
     editDistance(query, candidate, max),
     editDistance(query, candidate.slice(0, query.length), max),
@@ -74,7 +71,6 @@ function field(text: string, weight: number, fuzzy: boolean, phrase = false): Fi
   return { text: normalize(text), tokens: words(text), weight, fuzzy, phrase }
 }
 
-/** Phrase matches decide the order: an exact label or alias always beats loose token hits. */
 function score(queryText: string, queryTokens: string[], fields: Field[]): number {
   let total = 0
   for (const token of queryTokens) {
@@ -96,15 +92,9 @@ function score(queryText: string, queryTokens: string[], fields: Field[]): numbe
 }
 
 interface BoardConfigSearchGroup extends BoardConfigGroup {
-  /** The tab this row lives in, for the result's context. */
   tabId: string
 }
 
-/**
- * Every available field matching the query, across all tabs and their hidden details. A field in
- * several tabs is listed once — in its topic tab rather than Quick — while Refloat and motor fields
- * with the same id stay apart. Results are grouped under their tab and group, best match first.
- */
 export function searchBoardConfig(
   tabs: SearchTab[],
   query: string,
@@ -142,7 +132,6 @@ export function searchBoardConfig(
         if (value > 0) hits.push({ tab, group, row, score: value })
       }
     }
-  // Stable sort keeps tab and row order for equal scores, so results never shuffle.
   hits.sort((a, b) => b.score - a.score)
   const groups = new Map<string, BoardConfigSearchGroup>()
   for (const hit of hits) {

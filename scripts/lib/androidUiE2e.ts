@@ -10,7 +10,6 @@ export async function adb(serial: string, ...args: string[]): Promise<Uint8Array
   return stdout
 }
 
-/** UI Automator's visible app nodes, excluding foreign windows and zero-size placeholders. */
 export function appNodes(xml: string, packageName: string): Record<string, string>[] {
   const nodes: Record<string, string>[] = []
   for (const [node] of xml.matchAll(/<node\b[^>]*>/g)) {
@@ -30,7 +29,6 @@ export function appNodes(xml: string, packageName: string): Record<string, strin
   return nodes
 }
 
-/** Remove the previous dump first, so a failed UI Automator invocation cannot reuse it. */
 export async function appUi(serial: string, packageName: string) {
   const path = '/data/local/tmp/vescape-e2e.xml'
   await adb(serial, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
@@ -46,7 +44,6 @@ export async function appUi(serial: string, packageName: string) {
   }
 }
 
-/** Release only this run's device-side listeners; host ports alone do not describe ownership. */
 export async function removeReversePorts(serial: string, ports: readonly number[], command = adb) {
   const owned = new Set(ports.map((port) => `tcp:${port}`))
   const reverses = new TextDecoder().decode(await command(serial, 'reverse', '--list'))

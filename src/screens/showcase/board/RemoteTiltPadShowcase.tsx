@@ -5,7 +5,6 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ToggleRow } from '@/components/dev/ShowcaseControls'
 import type { RemoteTiltState } from 'vescape-core'
 
-/** Synthetic native replies only. Never sends a command to a connected Board. */
 export function RemoteTiltPadShowcase() {
   const [received, setReceived] = useState({ value: 128, count: 0 })
   const [slow, setSlow] = useState(true)
@@ -84,7 +83,6 @@ export function RemoteTiltPadShowcase() {
         key={String(slow)}
         {...native}
         connected={connected}
-        // A bound pad is never dimmed: it is an indicator of a tilt the rider is standing on.
         disabled={!connected && !sensorBound}
         readOnly={sensorBound}
         readOnlyLabel="Ground clearance sensor is controlling tilt."

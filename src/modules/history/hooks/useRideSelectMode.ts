@@ -23,17 +23,12 @@ import { useRideSelectStore } from '@/modules/history/store/rideSelectStore'
 
 interface RideSelectModeOptions {
   favoriteMode: boolean
-  /** Rows as listed, after the filter. */
   sessions: HistorySession[]
   favoritesBySessionId: ReadonlyMap<string, Favorite>
   filterSelection: RideFilterSelection
   noun: { one: string; other: string }
 }
 
-/**
- * Select mode's counts and actions (#594). "Select all" counts natively, so it covers rides not
- * loaded yet; Favorites are all loaded and count here.
- */
 export function useRideSelectMode({
   favoriteMode,
   sessions,
@@ -78,7 +73,6 @@ export function useRideSelectMode({
     setError(null)
     try {
       if (favoriteMode) {
-        // Deleting a Favorite keeps its ride.
         for (const session of sessions) {
           const favorite = favoritesBySessionId.get(session.id)
           if (favorite && isRideSelected(select, session.id)) {

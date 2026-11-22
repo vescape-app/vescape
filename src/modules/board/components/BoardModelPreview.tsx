@@ -2,7 +2,6 @@ import { useSharedValue } from 'react-native-reanimated'
 
 import { BoardAttitudeIndicator } from '@/modules/board/components/BoardAttitudeIndicator'
 
-/** Static pose of the same model used by the live IMU indicator. */
 export function BoardModelPreview({
   railId,
   railColorId,

@@ -45,11 +45,8 @@ const TELEMETRY_FADE_TIMING = { duration: 260 } as const
 interface TelemetryOverlayProps {
   mode: MainViewState
   mapRef: RefObject<MainMapHandle | null>
-  /** Drives the map's parallax while the rider drags the telemetry face away. */
   revealProgress: SharedValue<number>
-  /** Fades this overlay (and the map vignette) out as the drag commits. */
   dragOpacity: SharedValue<number>
-  /** The panel the strip pulls up into; it hides the floating controls while open. */
   telemetryPanel: TelemetryPanelState
   boards: Board[]
   activeBoardId: string | null
@@ -61,7 +58,6 @@ interface TelemetryOverlayProps {
   onStopScan: () => void
   onRetryConnect: () => void
   onEnterMapFocus: () => void
-  /** Undoes an accidental reveal when the drag turns out to be a pinch. */
   onCancelMapFocus: () => void
   onEnterLegalLimits: () => void
   onOpenHistoryRide: (session: HistorySession) => void
@@ -71,11 +67,6 @@ interface TelemetryOverlayProps {
   onCancelNavigation: () => void
 }
 
-/**
- * The riding face: live HUD, telemetry strip, board bar, and the drag that reveals the map behind
- * it. Stays mounted in every mode and fades itself out, so returning to it is a fade and not a
- * remount.
- */
 export function TelemetryOverlay({
   mode,
   mapRef,
@@ -106,8 +97,6 @@ export function TelemetryOverlay({
   const historyButtonRef = useRef<View>(null)
   const revealCommittedRef = useRef(false)
   const tuneButtonRef = useRef<View>(null)
-  // Derived, not effect-driven: the fade follows `mode` from the first evaluation on, so a Fast
-  // Refresh that re-renders without re-running effects can never leave the face stuck invisible.
   const telemetryReturnOpacity = useDerivedValue(() =>
     withTiming(mode === 'telemetry' ? 1 : 0, TELEMETRY_FADE_TIMING),
   )
@@ -218,7 +207,6 @@ export function TelemetryOverlay({
             onNavigationPress={onEnterMapFocus}
             onCancelNavigation={onCancelNavigation}
           />
-          {/* The floating controls step aside for the panel, drifting toward it as they fade. */}
           <Animated.View
             pointerEvents={telemetryPanel.active ? 'none' : 'box-none'}
             style={[styles.floatingControls, panelFadeStyle]}
@@ -275,8 +263,6 @@ export function TelemetryOverlay({
         </Animated.View>
       </MapRevealGesture>
 
-      {/* Outside the reveal detector: a touch on the strip belongs to the panel's pull alone, which
-          a drag the reveal also sees could never win. */}
       <Animated.View
         pointerEvents={interactive ? 'box-none' : 'none'}
         style={[styles.stripLayer, interfaceFadeStyle]}

@@ -20,13 +20,6 @@ import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
- * Authenticated HTTP boundary for every Vescape backend call made from native. Feature clients
- * describe a call; this owns the credential, the headers, the retry rule and the 401 policy, and
- * never learns what the call means.
- *
- * It deliberately holds no Expo or React types: long-lived native work (recording, background
- * drains) must keep talking to the server while the JS runtime is gone.
- *
  * @parity /modules/vescape-core/ios/api/VescapeApi.swift
  */
 class VescapeApi(
@@ -37,7 +30,6 @@ class VescapeApi(
   private val transport: ApiTransport = OkHttpApiTransport,
   private val retryDelayMillis: Long = RETRY_DELAY_MILLIS,
 ) {
-  /** Trailing slash trimmed once, so path joins stay single-slashed and origin compares hold. */
   private val baseUrl = baseUrl.trimEnd('/')
 
   suspend fun <T> request(
@@ -65,11 +57,6 @@ class VescapeApi(
     send(request, rejectsStoredCredential = auth == AuthMode.Required && token.isNotEmpty(), parse = parse)
   }
 
-  /**
-   * Resolved bearer token, empty when the call goes out anonymously, `null` when a required
-   * credential is missing. A credential minted against another origin belongs to another
-   * environment, so it counts as missing rather than being sent to this one.
-   */
   private fun token(auth: AuthMode): String? = when (auth) {
     is AuthMode.Bearer -> auth.token
     AuthMode.Optional -> storedToken() ?: ""
@@ -127,7 +114,6 @@ class VescapeApi(
     }
   }
 
-  /** Only idempotent calls repeat. No endpoint here takes a create key, so a repeated POST duplicates. */
   private fun canRetry(request: ApiRequest, retried: Boolean) = request.method.idempotent && !retried
 
   private fun <T> outcome(
@@ -137,7 +123,6 @@ class VescapeApi(
   ): ApiResult<T> {
     return when {
     response.status == 401 -> {
-      // An anonymous read cannot say anything about the stored credential, so it must not reject it.
       if (rejectsStoredCredential) {
         try { onUnauthorized() }
         catch (error: Exception) {
@@ -173,12 +158,6 @@ class VescapeApi(
     private const val JSON_CONTENT_TYPE = "application/json"
     private const val RETRY_DELAY_MILLIS = 300L
 
-    /**
-     * Client pinned to an origin. Callers pass the baked backend origin
-     * ([AppStatusCoordinator.serverBaseUrl]); provisioning passes the origin named by the credential
-     * it is about to verify, because nothing is stored yet. Reads stay usable while signed out — the
-     * credential is attached only when one exists.
-     */
     fun forOrigin(context: Context, serverUrl: String): VescapeApi {
       val app = context.applicationContext
       val store = DeviceCredentialStore(app)

@@ -5,17 +5,13 @@ import os
 import Sentry
 #endif
 
-/// Startup settles before the first pass: JS, BLE and the first flushes go first.
 private let maintenanceLaunchDelay: TimeInterval = 10
-/// A Stepper fires one change per tap; the run restarts once the Rider stops.
 private let maintenanceInputDebounce: TimeInterval = 3
 private let maintenanceProgressEmitInterval: TimeInterval = 0.25
-/// Open history pages re-read at most this often while chunks commit.
 private let maintenanceHistoryRevisionInterval: TimeInterval = 3
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `MaintenanceJobStatus`
 enum MaintenanceJobStatus: String {
-  /// Not checked yet this process, or stale and waiting for a ride to close or a restart.
   case pending
   case running
   case done
@@ -23,8 +19,6 @@ enum MaintenanceJobStatus: String {
   case failed
 }
 
-/// One job's line on the Database screen. Run history is per process; the durable truth is the
-/// fingerprint alone.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `MaintenanceJobState`
 /// @parity /modules/vescape-core/src/index.ts `MaintenanceJobState`
 struct MaintenanceJobState {
@@ -42,17 +36,12 @@ struct MaintenanceJobState {
   }
 }
 
-/// Runs stale Maintenance Jobs one at a time, in declaration order, on one utility-QoS queue.
-/// Every piece of state is confined to that queue; JS reads `snapshot()` and the `onChange` sink.
-/// Triggers: launch, network back, an input setting change, ride closure, Restore and Clear all.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `MaintenanceRunner`
 final class MaintenanceRunner {
   static let shared = MaintenanceRunner()
 
   private static let log = Logger(subsystem: "app.vescape.core", category: "MaintenanceRunner")
   private let queue = DispatchQueue(label: "app.vescape.maintenance", qos: .utility)
-  /// The pass itself runs here, so the state queue stays free to take triggers mid-run.
   private let workQueue = DispatchQueue(label: "app.vescape.maintenance.work", qos: .utility)
   private let jobs: [MaintenanceJob] = maintenanceJobs
   private let monitor = NWPathMonitor()
@@ -84,7 +73,6 @@ final class MaintenanceRunner {
     published = buildSnapshot()
   }
 
-  /// JS-facing sink; called on the maintenance queue.
   var onChange: (([String: Any?]) -> Void)? {
     get { sinkLock.lock(); defer { sinkLock.unlock() }; return sink }
     set { sinkLock.lock(); sink = newValue; sinkLock.unlock() }
@@ -96,7 +84,6 @@ final class MaintenanceRunner {
     return published
   }
 
-  /// Idempotent per process: the first call arms network tracking and the launch pass.
   func start() {
     queue.async {
       guard !self.started else { return }
@@ -113,13 +100,11 @@ final class MaintenanceRunner {
     queue.async { self.triggerLocked(reason) }
   }
 
-  /// An input setting changed: restart any run with the new values once the Rider settles.
   func onSettingChanged(_ key: String) {
     queue.async {
       guard self.jobs.contains(where: { $0.inputKeys.contains(key) }) else { return }
       self.debounce?.cancel()
       let item = DispatchWorkItem {
-        // The running chunk finishes; the next one sees the bump and stops.
         self.runGeneration += 1
         self.rerun = true
         self.triggerLocked("input:\(key)")
@@ -129,7 +114,6 @@ final class MaintenanceRunner {
     }
   }
 
-  /// Restore or Clear all finished, successfully or not: re-check against the resulting database.
   func onDatabaseReplaced() {
     queue.async {
       guard self.started else { return }
@@ -220,7 +204,6 @@ final class MaintenanceRunner {
       case .deferred(let retryAtMs):
         breadcrumb("deferred", ["job": job.id, "retryAtMs": retryAtMs])
         scheduleClosureCheck(retryAtMs)
-        // A fetch that failed because the network went away waits for it, with no warning.
         status = job.requiresNetwork && !onQueue({ online }) ? .waitingForNetwork : .pending
       }
     } catch is MaintenanceRunFenced {
@@ -264,7 +247,6 @@ final class MaintenanceRunner {
     }
   }
 
-  /// One pending check serves every job: an earlier retry is never pushed back by a later one.
   private func scheduleClosureCheck(_ retryAtMs: Int64) {
     queue.async {
       if let pending = self.closureCheck, !pending.isCancelled, self.closureCheckAtMs <= retryAtMs { return }
@@ -353,8 +335,6 @@ final class MaintenanceRunner {
   }
 }
 
-/// URLSession GET for network Maintenance Jobs, blocking the maintenance work queue only. Polls the
-/// run's cancellation so a cancelled run stops waiting and its late response is dropped.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceRunner.kt `OkHttpMaintenanceHttp`
 private final class URLSessionMaintenanceHttp: MaintenanceHttp {
   private let session: URLSession = {
@@ -397,7 +377,6 @@ private final class URLSessionMaintenanceHttp: MaintenanceHttp {
     return formatter
   }()
 
-  /// Retry-After as delay seconds or an HTTP-date (RFC 9110), as seconds from now.
   private static func retryAfterSeconds(_ header: String) -> Int64? {
     let value = header.trimmingCharacters(in: .whitespaces)
     if let seconds = Int64(value) { return seconds }

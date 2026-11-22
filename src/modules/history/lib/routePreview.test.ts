@@ -11,7 +11,6 @@ describe('route thumbnail geometry', () => {
     const project = routePreviewProjection(points, 74, 52)
     const a = project(points[0])
     const b = project(points[1])
-    // Web Mercator, like the map tiles behind it: square to within its scale change across 100 m.
     expect(b.x - a.x).toBeCloseTo(a.y - b.y, 2)
     expect((a.x + b.x) / 2).toBeCloseTo(37, 5)
     expect((a.y + b.y) / 2).toBeCloseTo(26, 5)
@@ -62,7 +61,6 @@ describe('route thumbnail geometry', () => {
       { latitude: 51.1, longitude: 17.0303 },
     ]
     const project = routePreviewProjection(points, 74, 52)
-    // ~21 m of riding inside a 300 m minimum span.
     expect(project(points[1]).x - project(points[0]).x).toBeLessThan(5)
   })
 })

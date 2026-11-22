@@ -21,14 +21,10 @@ export interface AutoStartBoard {
 }
 
 export interface AutoStartCardProps {
-  /** Master switch — off means nothing wakes the app, whatever boards are armed. */
   enabled: boolean
-  /** Every linked board, armed or not. */
   boards: AutoStartBoard[]
-  /** Ids of boards that currently trigger auto start. */
   armedBoardIds: string[]
   cooldownMinutes: number
-  /** Board mid add/remove — its button spins and locks. */
   busyBoardId?: string | null
   masterBusy?: boolean
   onToggle: (enabled: boolean) => void
@@ -98,8 +94,6 @@ export function AutoStartCard({
           right={
             <Switch
               value={enabled}
-              // Lockable only into the off state: unlinking every board must never strand the
-              // switch on with nothing to turn it off.
               disabled={masterBusy || (noBoards && !enabled)}
               onValueChange={toggle}
             />

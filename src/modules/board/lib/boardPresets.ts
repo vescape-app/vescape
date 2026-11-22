@@ -21,8 +21,6 @@ export interface CustomRailOption {
   railId: RailId
 }
 
-// Conversion defaults describe the stock battery of the board being converted. Riders can
-// replace these values on the battery step when their board has an aftermarket pack.
 const STOCK_XR: BatteryPresetConfig = {
   mode: 'preset',
   cellPresetId: 'murata:18650:us18650vtc6',
@@ -61,8 +59,6 @@ const ADV_20S: BatteryPresetConfig = {
 }
 
 export const BOARD_PRESETS: readonly BoardPreset[] = [
-  // Factory X7 packs: fungineers.us/products/funwheel-x7-supercharged-high-voltage,
-  // /funwheel-x7, and /funwheel-x7-long-range.
   {
     id: 'x7-hv',
     name: 'Funwheel X7 Supercharged (High Voltage)',
@@ -99,7 +95,6 @@ export const BOARD_PRESETS: readonly BoardPreset[] = [
       parallelCount: 2,
     },
   },
-  // ADV2 and Atom: floatwheel.co product IDs 9904 and 9935.
   { id: 'adv', name: 'ADV', brand: 'Floatwheel', railId: 'adv', batteryConfig: ADV_20S },
   {
     id: 'adv2',
@@ -149,7 +144,6 @@ export const BOARD_PRESETS: readonly BoardPreset[] = [
       parallelCount: 2,
     },
   },
-  // gosmilo.io/products/gosmilo-x7 and /gosmilo-x9 list Samsung 50S 18S2P packs.
   {
     id: 'gosmilo-x7',
     name: 'GoSmilo X7',

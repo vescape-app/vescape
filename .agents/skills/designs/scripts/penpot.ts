@@ -1,6 +1,5 @@
 import { join } from 'node:path'
 
-// Use the configured official endpoint without exposing its credential-bearing URL.
 let endpoint = ''
 
 async function main() {

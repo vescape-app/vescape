@@ -1,11 +1,8 @@
 import XCTest
 @testable import VescapeCore
 
-/// App Status lifecycle: header + route, refresh coalescing, fail-open startup, and retention of a
-/// successful in-process result across later failures.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/appstatus/AppStatusCoordinatorTest.kt
 final class AppStatusCoordinatorTests: XCTestCase {
-  /// Records every request and hands each one's completion back for manual resolution.
   private final class RecordingTransport {
     var urls: [String] = []
     var versions: [String] = []
@@ -75,7 +72,6 @@ final class AppStatusCoordinatorTests: XCTestCase {
     XCTAssertEqual(transport.inFlight, 1)
     XCTAssertEqual(transport.urls.count, 1)
 
-    // Once it settles, the next foreground starts a fresh request.
     transport.resolveAll(statusBody("current"))
     coordinator.refresh()
     XCTAssertEqual(transport.urls.count, 2)

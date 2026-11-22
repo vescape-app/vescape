@@ -24,9 +24,6 @@ interface BatteryIndicatorProps {
   containerStyle?: StyleProp<ViewStyle>
 }
 
-/** Warning shade when low on charge, else the battery metric color. Mirrors the gauge fill.
- *  Threshold sourced from the shared telemetry thresholds (battery.warning is a
- *  0-1 fraction; battery percent is 0-100). */
 function pickColor(percent: number | null): ThemeColor {
   if (percent != null && percent < TELEMETRY_THRESHOLDS.battery.warning * 100) {
     return theme.status.warning.color
@@ -37,14 +34,10 @@ function pickColor(percent: number | null): ThemeColor {
 export function BatteryIndicator({ compact, transparent, containerStyle }: BatteryIndicatorProps) {
   const neutral = useResolvedNeutralColors()
   const router = useRouter()
-  // Decimated series (native, ~1Hz). Battery is a slow signal, so the series cadence both
-  // supplies the latest SoC/voltage sample and paces this component's re-render.
   const batterySeries = useLiveSeries('batteryPercent')
   const voltageSeries = useLiveSeries('batteryVoltage')
   const connected = useBleStore((s) => s.status === 'connected')
   const charging = useBleStore((s) => s.status === 'connected' && isBmsCharging(s.latestBms))
-  // Cell spread rounded to display resolution (mV step) in the selector, so
-  // noise below it doesn't re-render the card on every BMS event.
   const spreadV = useBleStore((s) => {
     if (s.status !== 'connected') return null
     const spread = summarizeBms(s.latestBms)?.spread
@@ -62,18 +55,14 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
   )
   const alertRules = useResolvedAlertRules()
 
-  // Disconnected with a natively persisted reading: show it dimmed with its age.
   const stale = !connected && lastBattery != null
   const now = useMinuteNow(stale)
 
-  // Config gates whether a SoC reading exists at all (voltage limits set).
   const batteryConfigured = useMemo(
     () => deriveBatteryConfig(batteryConfig).warning == null,
     [batteryConfig],
   )
 
-  // Battery alert thresholds are percent-scaled, so they only map onto the 0–100 bar once a
-  // pack config exists. Hide them (and show the hint) until then.
   const alerts = useMemo(
     () => (batteryConfigured ? gaugeAlertsFor(alertRules, 'battery') : []),
     [alertRules, batteryConfigured],
@@ -87,7 +76,6 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
   const aux = stale
     ? [
         voltage != null ? telemetry.battVoltage.formatWithUnit(voltage) : null,
-        // Recent readings read as current; only flag the age once it's over an hour old.
         now - lastBattery.at >= 3_600_000 ? fmtTimeAgo(lastBattery.at, now) : null,
       ]
         .filter(Boolean)

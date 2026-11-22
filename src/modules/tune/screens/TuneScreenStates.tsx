@@ -14,7 +14,6 @@ import type { useTuneScreenData } from '@/modules/tune/hooks/useTuneScreenData'
 
 type TuneScreenData = ReturnType<typeof useTuneScreenData>
 
-/** What the screen shows before there is a profile to edit: no board, loading, empty, or failed. */
 export function TuneScreenStates({
   hasTuneView,
   boardsLoaded,

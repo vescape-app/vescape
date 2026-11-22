@@ -2,10 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// The NDJSON framing contract, driven by `shared/fixtures/accessory-protocol/framing.json`. Chunks
-/// arrive as bytes so the cases can split a line mid-UTF-8-character, which is exactly what a BLE
-/// notification boundary does.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/accessory/AccessoryNdjsonFramerTest.kt
 final class AccessoryNdjsonFramerTests: XCTestCase {
   func testEveryFramingCaseMatchesTheSharedFixture() throws {
@@ -39,8 +35,6 @@ final class AccessoryNdjsonFramerTests: XCTestCase {
 
   func testAPeerThatNeverSendsALineFeedCostsAFixedBuffer() {
     let framer = AccessoryNdjsonFramer()
-    // Ten times the limit, in chunks, with no LF anywhere: an unbounded accumulator would hold all
-    // of it. The framer must give up at the limit and stay terminal.
     let chunk = [UInt8](repeating: UInt8(ascii: "x"), count: 1024)
     var failure: AccessoryFramingError?
     for _ in 0..<40 {

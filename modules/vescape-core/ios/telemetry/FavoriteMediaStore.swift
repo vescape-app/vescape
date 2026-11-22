@@ -2,9 +2,6 @@ import CryptoKit
 import Foundation
 import GRDB
 
-/// One immutable Favorite Media manifest row. SQLite owns metadata; the canonical file path is
-/// derived only from the Favorite and media ids plus the stored MIME type.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `FavoriteMediaEntity`
 /// @parity /modules/vescape-core/src/index.ts `FavoriteMedia`
 struct FavoriteMedia {
@@ -66,8 +63,6 @@ enum FavoriteMediaStoreError: Error {
   case cleanupFailed
 }
 
-/// Native Favorite Media import and reconciliation (ADR 0030).
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/FavoriteMediaStore.kt
 struct FavoriteMediaStore {
   private let resolveWriter: () -> DatabaseWriter?
@@ -104,8 +99,6 @@ struct FavoriteMediaStore {
         error: error
       )
       #endif
-      // This is the documented user-domain location. Avoid temporary storage, which the OS may
-      // evict while the manifest still says the favorite owns media.
       return URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
         .appendingPathComponent("Library/Application Support/favoriteMedia", isDirectory: true)
     }
@@ -212,8 +205,6 @@ struct FavoriteMediaStore {
     catch { throw FavoriteMediaStoreError.cleanupFailed }
   }
 
-  /// Repair cross-store disagreement on the normal Favorites read path: remove manifest rows whose
-  /// parent disappeared, reconcile every live Favorite, and delete directories with no parent.
   func reconcileAll() throws {
     guard let writer = resolveWriter() else { throw FavoriteMediaStoreError.manifestWriteFailed }
     let favoriteIds = try writer.write { db -> [String] in

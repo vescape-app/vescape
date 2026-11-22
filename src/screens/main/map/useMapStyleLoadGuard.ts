@@ -8,7 +8,6 @@ import {
   type MapStyleDocument,
 } from '@/screens/main/map/mapStyleLifecycle'
 
-/** Owns the applied document, load readiness, retries, and camera initialization together. */
 export function useMapStyleLoadGuard({
   document,
   onStyleLoaded,
@@ -27,7 +26,6 @@ export function useMapStyleLoadGuard({
 
   useEffect(() => {
     if (state.phase !== 'detaching') return
-    // First commit without adopted layers, then replace the already-completed document.
     const frame = requestAnimationFrame(() => dispatch({ type: 'apply' }))
     return () => cancelAnimationFrame(frame)
   }, [state.phase])

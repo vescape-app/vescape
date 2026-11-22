@@ -7,25 +7,17 @@ import { theme, type AlphaLevel } from '@/constants/theme'
 interface LightState {
   mode: BrakeLightMode
   label: string
-  /** What the rider should see on the light itself, not what the app asked for. */
   appearance: string
-  /** The strip that stands for this state: how bright, how thick, and whether it is broken up. */
   beam: Beam
 }
 
 interface Beam {
-  /** One unbroken bar for a steady light; several for one that blinks. */
   dashes: number
   thickness: number
   alpha: AlphaLevel
-  /** Unlit: drawn in grey, because nothing red is coming out of the lamp. */
   dark?: boolean
 }
 
-/**
- * Every state the light can be in, in the order the board walks through them: standing still,
- * rolling, slowing, stopping hard.
- */
 function lightStates(parked: 'off' | 'glow'): LightState[] {
   return [
     {
@@ -59,27 +51,14 @@ function lightStates(parked: 'off' | 'glow'): LightState[] {
 }
 
 export interface BrakeLightStatesProps {
-  /** What the light is showing right now — the preview if one is held, else the Board's own state. */
   activeMode: BrakeLightMode | null
-  /** Set while the rider is holding the light on one state instead of the Board driving it. */
   previewMode: BrakeLightMode | null
   parked: 'off' | 'glow'
-  /** Seconds before a held state hands the light back on its own. Null when nothing is held. */
   previewSecondsLeft?: number | null
-  /** Inert while the link is down, the light is switched off, or the Board is moving. */
   disabled?: boolean
-  /** Hold that state on the light, or hand it back when the same one is tapped again. */
   onPreview: (mode: BrakeLightMode | null) => void
 }
 
-/**
- * The light's states as a thing to look at and a thing to press, rather than a line of text.
- *
- * One tile per state, each drawn the way the lamp actually looks in it, with the live one lit. A
- * rider comparing "what is it doing" against "what can it do" reads both off the same four tiles —
- * and tapping one holds the light there long enough to walk behind the board and check, which is
- * the only way to verify a light the protocol never reports back.
- */
 export function BrakeLightStates({
   activeMode,
   previewMode,
@@ -133,13 +112,6 @@ export function BrakeLightStates({
   )
 }
 
-/**
- * The light itself, drawn as what it puts out: one bar for a steady lamp, broken dashes for one
- * that blinks, thicker and brighter the harder it burns.
- *
- * Deliberately still. An animated lamp says "something is happening now", which is a lie on three
- * of these four tiles — they are the states the light *can* be in, and only one of them is live.
- */
 function BeamStrip({ beam }: { beam: Beam }) {
   const color = beam.dark
     ? theme.alpha(theme.neutral.textDim, beam.alpha)
@@ -187,8 +159,6 @@ const styles = StyleSheet.create({
   tileHeld: { borderColor: theme.palette.red.color },
   tileDisabled: { opacity: 0.45 },
   tilePressed: { opacity: 0.7 },
-  // A short rule, not a bar across the tile: the design language keeps accent colour to thin
-  // lines and icons, and a full-width red plane is exactly the fill it rules out.
   beam: {
     width: 44,
     flexDirection: 'row',

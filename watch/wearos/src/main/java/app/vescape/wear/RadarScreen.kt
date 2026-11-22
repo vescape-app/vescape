@@ -45,17 +45,6 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
- * Rain radar page, above the forecast. The last two hours of observed rain replay over the rider,
- * who sits pinned at the centre exactly as on the nav page, so "is that band going to hit me" is a
- * question the wrist can answer without the phone.
- *
- * Three parts, in the order they are read: the imagery, the rider at the centre, and a curved
- * timeline along the bottom rim — the battery gauge's shape one ring further in, filling as the
- * animation runs, with the frame's own clock time under it.
- *
- * The only wrist surface that fetches for itself (see [RadarState]); it does so only while it is
- * the page on screen.
- *
  * @parity /watch/watchos/RadarScreen.swift
  */
 @Composable
@@ -63,8 +52,6 @@ fun RadarScreen(visible: Boolean) {
     val forecast = freshWeather()
     LoadRadar(visible = visible, latitude = forecast?.latitude, longitude = forecast?.longitude)
 
-    // Only frames whose image has arrived: the animation runs over what the watch actually has,
-    // and lengthens on its own as the rest land.
     val loaded = RadarState.frames.filter { RadarState.images.containsKey(it.timeSec) }
 
     if (loaded.isEmpty()) {
@@ -76,13 +63,9 @@ fun RadarScreen(visible: Boolean) {
     }
 
     var index by remember { mutableIntStateOf(0) }
-    // Clamped rather than reset: frames arriving mid-loop must not throw the rider back to the
-    // oldest one they already watched.
     val frameIndex = index.coerceIn(0, loaded.lastIndex)
     val frame = loaded[frameIndex]
 
-    // Steps the state itself rather than the value this composition captured: the effect is not
-    // re-keyed per frame, so a captured index would advance to the same frame forever.
     LaunchedEffect(visible, loaded.size) {
         if (!visible) return@LaunchedEffect
         while (true) {
@@ -96,9 +79,6 @@ fun RadarScreen(visible: Boolean) {
     val image = RadarState.images[frame.timeSec]
     val timelineColor = weatherColor("cloud-rain")
     val progress = if (loaded.size <= 1) 1f else frameIndex / (loaded.size - 1).toFloat()
-    // How far out each ring sits, as a fraction of the face. A ring is dropped rather than clipped
-    // when it does not fit: near the poles a frame covers little ground and the wide ring would be
-    // a circle drawn on the bezel.
     val rings = forecast?.latitude?.let { latitude ->
         val rangeM = radarFaceRangeM(latitude)
         RANGE_RING_KM
@@ -106,8 +86,6 @@ fun RadarScreen(visible: Boolean) {
             .filter { (_, fraction) -> fraction <= RING_MAX_FRACTION }
     }.orEmpty()
     val configuration = LocalConfiguration.current
-    // The radar runs to the bezel, so its radius is the screen's own — the rim arcs float over it
-    // rather than boxing it in. In dp, so the labels can sit on rings the canvas draws in pixels.
     val faceRadiusDp = minOf(configuration.screenWidthDp, configuration.screenHeightDp).dp / 2
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -119,8 +97,6 @@ fun RadarScreen(visible: Boolean) {
             }
             clipPath(faceClip) {
                 if (image != null) drawRadar(image, centre, faceRadius)
-                // Dashed, so a ring never reads as another gauge guide or as a coastline in the
-                // imagery under it.
                 val ringStroke = Stroke(
                     width = RING_W.toPx(),
                     pathEffect = PathEffect.dashPathEffect(
@@ -134,12 +110,8 @@ fun RadarScreen(visible: Boolean) {
             }
             drawTimeline(centre, size.minDimension / 2f, progress, timelineColor)
         }
-        // Out to the right of the rider: the page header owns the top, and a horizontal radius
-        // keeps the labels off the imagery the rider is actually reading ahead of them.
         for ((km, fraction) in rings) {
             Text(
-                // Unit on the outermost ring only: the inner one reads as the same scale without
-                // repeating it next to a line 10 dp away.
                 text = if (SettingsState.settings.value.distanceUnit == "mi") UnitPresentation.distance(km * 1000.0, "mi") else if (km == rings.last().first) "$km km" else "$km",
                 style = WatchTypography.mono(MaterialTheme.typography.caption3.copy(fontSize = RING_FONT_SIZE)),
                 color = DimText,
@@ -160,10 +132,6 @@ fun RadarScreen(visible: Boolean) {
     }
 }
 
-/**
- * The imagery, square and centred on the rider, scaled to cover the face. Dimmed: it is a backdrop
- * for the rider and the timeline, not the brightest thing on a screen read in sunlight.
- */
 private fun DrawScope.drawRadar(image: ImageBitmap, centre: Offset, faceRadius: Float) {
     val side = (faceRadius * 2f).roundToInt()
     drawImage(
@@ -176,11 +144,6 @@ private fun DrawScope.drawRadar(image: ImageBitmap, centre: Offset, faceRadius: 
     )
 }
 
-/**
- * The battery gauge's bottom arc, one ring inside it and a little shorter, filling from the oldest
- * frame to the newest. Butt caps and a hair of width, like every other arc on the wrist — nothing
- * here is drawn as a pill. Its own ring rather than the rim so it never reads as another board value.
- */
 private fun DrawScope.drawTimeline(centre: Offset, faceRadius: Float, progress: Float, color: Color) {
     val radius = faceRadius - TIMELINE_INSET.toPx()
     val topLeft = Offset(centre.x - radius, centre.y - radius)
@@ -205,7 +168,6 @@ private fun DrawScope.drawTimeline(centre: Offset, faceRadius: Float, progress: 
     )
 }
 
-/** Names the page, since a radar frame alone is not obviously one. */
 @Composable
 private fun BoxScope.RadarHeader() {
     Column(
@@ -226,7 +188,6 @@ private fun BoxScope.RadarHeader() {
     }
 }
 
-/** Why the page is empty: the phone has not said where the rider is, or the fetch got nothing. */
 @Composable
 private fun RadarAbsentHint(hasLocation: Boolean, loading: Boolean) {
     Column(
@@ -252,16 +213,12 @@ private fun RadarAbsentHint(hasLocation: Boolean, loading: Boolean) {
     }
 }
 
-/** Two hours of frames in about six seconds: fast enough to read as motion, slow enough to follow. */
 private const val FRAME_MS = 450L
 
-/** The newest frame is the one worth looking at, so the loop pauses on it before starting over. */
 private const val LOOP_HOLD_MS = 1_600L
 
-/** Dim enough that the rider and the timeline stay the brightest things on the page. */
 private const val RADAR_ALPHA = 0.75f
 
-/** Distance rings, the scale that turns a band of rain into "twenty minutes away". */
 private val RANGE_RING_KM = listOf(50, 100)
 private const val RING_MAX_FRACTION = 0.95f
 private val RING_W = 1.dp
@@ -269,14 +226,12 @@ private val RING_DASH = 3.dp
 private val RING_GAP = 4.dp
 private val RING_FONT_SIZE = 7.sp
 
-/** Labels sit just inside their ring rather than on the line. */
 private val RING_LABEL_INSET = 10.dp
 
 private val HEADER_TOP_PADDING = 12.dp
 private val HEADER_ICON_SIZE = 14.dp
 private val HEADER_FONT_SIZE = 9.sp
 
-/** Inside the battery arc's ring, so the two never touch. */
 private val TIMELINE_INSET = 20.dp
 private const val TIMELINE_START = 130f
 private const val TIMELINE_SWEEP = 80f

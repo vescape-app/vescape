@@ -21,9 +21,6 @@ import {
   type RiderSignalKind,
 } from 'vescape-core'
 
-/** The hue a pin kind's icon wears everywhere: picker, roster badge, map pin, Social takeover.
- *  Injuries climb yellow, orange, red with severity; the rest each get their own accent, so
- *  neighbouring tiles never share one (docs/design.md, Icons). */
 export type PinHue =
   | 'red'
   | 'orange'
@@ -44,17 +41,11 @@ export interface PinKindInfo {
 }
 
 export interface RiderSignalKindInfo extends PinKindInfo {
-  /** Orders kinds when several are active: a serious injury, a board problem, then a heads-up
-   *  (a rider down after a small crash, a wait). */
   rank: number
-  /** A faint wash of the hue on its picker tile: the injuries that need the group to act. */
   emphasis?: boolean
 }
 
 /**
- * Display label, icon, hue, and urgency per kind, for the picker, roster badge, and map pin. Native
- * titles Ride Notices with the same labels and ranks the kinds the same; the rank carries the
- * notice severity.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RiderSignalKind`
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RiderSignalKind`
  */
@@ -71,8 +62,6 @@ export const RIDER_SIGNAL_KIND_INFO: Record<RiderSignalKind, RiderSignalKindInfo
 }
 
 /**
- * Display label and icon per Ride Hazard kind, for the picker and map pin. Native names the same
- * kinds in its approach cues.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RiderSignal.kt `RideHazardKind`
  * @parity /modules/vescape-core/ios/groupride/RiderSignal.swift `RideHazardKind`
  */
@@ -83,14 +72,12 @@ export const RIDE_HAZARD_KIND_INFO: Record<RideHazardKind, PinKindInfo> = {
   police: { label: 'Police', icon: SirenIcon, hue: 'blue' },
 }
 
-/** The kind's info, or null for a wire kind this build does not know. */
 export function riderSignalKindInfo(kind: string): RiderSignalKindInfo | null {
   return (RIDER_SIGNAL_KINDS as readonly string[]).includes(kind)
     ? RIDER_SIGNAL_KIND_INFO[kind as RiderSignalKind]
     : null
 }
 
-/** The hazard kind's info, or null for a wire kind this build does not know. */
 export function rideHazardKindInfo(kind: string): PinKindInfo | null {
   return (RIDE_HAZARD_KINDS as readonly string[]).includes(kind)
     ? RIDE_HAZARD_KIND_INFO[kind as RideHazardKind]

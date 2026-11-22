@@ -1,9 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Crash-isolation contract for Board Warning DB failures (#214): a failing GRDB read/write must stay
-/// non-fatal but leave one breadcrumb per (site, session) instead of the old silent `try?`. Verifies
-/// the once-per-(site, session) throttle and its per-session reset.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `reportWarningFailure`
 final class BoardWarningFailureReporterTests: XCTestCase {
   private struct StubError: Error {}

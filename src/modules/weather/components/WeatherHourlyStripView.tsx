@@ -27,7 +27,6 @@ function HourItem({ item }: { item: WeatherHour }) {
   )
 }
 
-/** Horizontal scroll of hourly forecast items. */
 export function WeatherHourlyStrip({ hours }: { hours: WeatherHour[] }) {
   return (
     <ScrollView

@@ -5,8 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The forest case: Directions answers `200 OK` with a road detour to a target nothing can reach.
- *
  * @parity /modules/vescape-core/ios/navigation/NavigationUsabilityTests.swift
  */
 class NavigationUsabilityTest {
@@ -33,7 +31,6 @@ class NavigationUsabilityTest {
 
     @Test
     fun `the ratio is not applied to targets a few steps away`() {
-        // ~11 m apart, where rounding one building is already a 10x "detour" and means nothing.
         val nearby = RIDER_LAT + 0.0001
         val points = listOf(
             RIDER_LAT to RIDER_LNG,

@@ -15,12 +15,6 @@ function parseMarketingVersion(version: string): [number, number, number] | null
   return parts as [number, number, number]
 }
 
-/**
- * Select the passive latest-version affordance from native App Status.
- *
- * Native/server supply normalized marketing versions. Unknown or malformed state fails open, and a
- * future/dev build stays current when its installed version is newer than the advertised latest.
- */
 export function selectAvailableUpdate(status: AppStatus | null): AvailableUpdate | null {
   if (!status) return null
 

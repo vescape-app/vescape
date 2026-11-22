@@ -109,7 +109,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 private const val TAG = "VescapeCore"
 private const val SCAN_RETRY_LIMIT = 3
 
-/** Parse the minimal, ephemeral rule shape accepted from JS for an alert test. */
 private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
   val id = this["id"] as? String ?: return null
   val controlId = this["controlId"] as? String ?: return null
@@ -132,7 +131,7 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
 /**
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift
  */
-@SuppressLint("MissingPermission") // permissions are requested at the JS/RN layer
+@SuppressLint("MissingPermission")
 class VescapeCoreModule : Module() {
   private class ActiveBoardProbe(
     val id: String,
@@ -149,18 +148,15 @@ class VescapeCoreModule : Module() {
   private var requestedDebugRecordingEnabled = false
   @Volatile
   private var frontendActive = true
-  // Mutated on the JS thread, read from main and background emitters.
   private val observedEvents: MutableSet<String> = ConcurrentHashMap.newKeySet()
   private val mainHandler = Handler(Looper.getMainLooper())
   private val rideExportCancelled = java.util.concurrent.atomic.AtomicBoolean(false)
   private var activeProbe: ActiveBoardProbe? = null
   private val completedProbes = ConcurrentHashMap<String, TransportDetection.Result>()
   private var previewAlertFeedback: AlertFeedback? = null
-  /** UI alert tests own feedback + evaluator state separate from the live Board Session. */
   private var alertTestFeedback: AlertFeedback? = null
   private var alertTestCoordinator: AlertCoordinator? = null
   private var alertTestControlId: String? = null
-  /** Remover for this module's App Status mirror listener; cleared in OnDestroy. */
   private var appStatusUnsub: (() -> Unit)? = null
   private var rideNoticesUnsub: (() -> Unit)? = null
   private var serviceConfigUnsub: (() -> Unit)? = null
@@ -180,8 +176,6 @@ class VescapeCoreModule : Module() {
 
     CoreForegroundService.emitEvent = eventListener
 
-    // Built at send time, like iOS `attachToCoordinator`: a payload built at emit time and queued
-    // behind the main looper could replay a phase that a `getLiveState` read already superseded.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `attachToCoordinator`
     CoreForegroundService.liveStateChanged = liveStateListener
 
@@ -224,32 +218,24 @@ class VescapeCoreModule : Module() {
       "onRideNotices",
     )
 
-    // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `AccessoryDiscovery`
     AccessoryDiscovery.emit = { name, body ->
       mainHandler.post { if (shouldEmitToFrontend(name)) sendEvent(name, body) }
     }
 
-    // Enrolled Accessory sessions are native-owned and outlive this module; the bridge only mirrors
-    // their state while a JS runtime happens to exist.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `AccessorySessionController`
     AccessorySessionManager.emit = { name, body ->
       mainHandler.post { if (shouldEmitToFrontend(name)) sendEvent(name, body) }
     }
 
-    // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
-    // pull the current snapshot below and through `getAppStatus`).
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendAppStatus`
     // @parity /modules/vescape-core/src/index.ts `AppStatusEvent`
-    // The coordinator already notifies on the main thread, so emit straight from the callback.
     appStatusUnsub = AppStatusCoordinator.get(context).addChangeListener { status ->
       if (shouldEmitToFrontend("onAppStatus")) {
         sendEvent("onAppStatus", mapOf("status" to status?.toMap()))
       }
     }
 
-    // Native owns the resolved Service Config (persisted server answer over the baked seed); JS
-    // mirrors it to configure the map SDKs.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `onServiceConfig`
     // @parity /modules/vescape-core/src/index.ts `ServiceConfigEvent`
     serviceConfigUnsub = ServiceConfigCoordinator.get(context).addChangeListener { config ->
@@ -258,8 +244,6 @@ class VescapeCoreModule : Module() {
       }
     }
 
-    // Navigation is native-owned; JS only renders the coordinates it is handed. Push every change,
-    // including the clear to `null` (late subscribers replay below and through `getNavigation`).
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendNavigation`
     // @parity /modules/vescape-core/src/index.ts `NavigationEvent`
     NavigationController.get(context).onChange = { navigation ->
@@ -274,8 +258,6 @@ class VescapeCoreModule : Module() {
       }
     }
 
-    // Route Progress rides its own event rather than `onNavigation`: it changes on every GPS Fix,
-    // and re-sending the whole coordinate array at ~1 Hz to move one number would be absurd.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendRouteProgress`
     // @parity /modules/vescape-core/src/index.ts `RouteProgressEvent`
     NavigationController.get(context).onProgressChange = { progress ->
@@ -284,8 +266,6 @@ class VescapeCoreModule : Module() {
       }
     }
 
-    // JS keeps a dumb mirror of the durable Board Warning registry; push the full board list on
-    // every registry change so late subscribers self-heal on the next emit (and on subscribe below).
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendBoardWarnings`
     // @parity /modules/vescape-core/src/index.ts `BoardWarningsEvent`
     BoardWarningRegistry.get(context).onChange = { boardId, warnings ->
@@ -301,7 +281,6 @@ class VescapeCoreModule : Module() {
       }
     }
 
-    // Same full-slice mirror for VESC Fault Occurrences; separate channel, separate JS store.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendVescFaults`
     // @parity /modules/vescape-core/src/index.ts `VescFaultsEvent`
     VescFaultCoordinator.get(context).onChange = { boardId, faults ->
@@ -365,13 +344,11 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onVescFaults") { stopObserving("onVescFaults") }
     OnStartObserving("onBoardConfigValues") {
       startObserving("onBoardConfigValues")
-      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
       sendEvent("onBoardConfigValues", mapOf("values" to CoreForegroundService.getBoardConfigValues()))
     }
     OnStopObserving("onBoardConfigValues") { stopObserving("onBoardConfigValues") }
     OnStartObserving("onMotorConfigValues") {
       startObserving("onMotorConfigValues")
-      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
       sendEvent("onMotorConfigValues", mapOf("values" to CoreForegroundService.getMotorConfigValues()))
     }
     OnStopObserving("onMotorConfigValues") { stopObserving("onMotorConfigValues") }
@@ -379,7 +356,6 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onBoardConfigChangeNotice") { stopObserving("onBoardConfigChangeNotice") }
     OnStartObserving("onBoardLights") {
       startObserving("onBoardLights")
-      // Late subscriber: replay what the board last said, so a drawer opened mid-session is right.
       sendEvent("onBoardLights", CoreForegroundService.lightsEventBody())
     }
     OnStopObserving("onBoardLights") { stopObserving("onBoardLights") }
@@ -395,7 +371,6 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onServiceConfig") { stopObserving("onServiceConfig") }
     OnStartObserving("onNavigation") {
       startObserving("onNavigation")
-      // Late subscriber: replay the current Navigation so JS is immediately consistent.
       sendEvent(
         "onNavigation",
         mapOf(
@@ -407,7 +382,6 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onNavigation") { stopObserving("onNavigation") }
     OnStartObserving("onRouteProgress") {
       startObserving("onRouteProgress")
-      // Late subscriber: replay the current Route Progress rather than making JS wait a fix for it.
       sendEvent(
         "onRouteProgress",
         mapOf("progress" to NavigationController.get(context).currentProgress?.toMap()),
@@ -416,8 +390,6 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onRouteProgress") { stopObserving("onRouteProgress") }
     OnStartObserving("onWeather") {
       startObserving("onWeather")
-      // Late subscriber: replay the known forecast. Nothing here triggers a fetch — the coordinator
-      // is fed by GPS Fixes, and a screen opening is not a reason to spend a request.
       sendEvent("onWeather", mapOf("weather" to WeatherCoordinator.get().current?.toMap()))
     }
     OnStopObserving("onWeather") { stopObserving("onWeather") }
@@ -431,7 +403,6 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onAccessoryReading") { stopObserving("onAccessoryReading") }
     OnStartObserving("onRideNotices") {
       startObserving("onRideNotices")
-      // Late subscriber: replay the active list so the card is consistent immediately.
       emitRideNotices(RideNotices.current)
     }
     OnStopObserving("onRideNotices") { stopObserving("onRideNotices") }
@@ -442,8 +413,6 @@ class VescapeCoreModule : Module() {
         emit = { postLiveState(CoreForegroundService::storageUnavailableLiveState) },
       )
       RecordingStorageFailure.observeOutage(storageOutageEvents::onOutage)
-      // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
-      // coalesced into this request.
       AppStatusCoordinator.get(context).refresh()
       ServiceConfigCoordinator.get(context).refresh()
       RiderStatsSender.get(context).foreground()
@@ -455,22 +424,17 @@ class VescapeCoreModule : Module() {
 
     OnActivityEntersForeground {
       frontendActive = true
-      // User opened the app again — re-arm companion auto start immediately.
       CompanionRestartGate.clear(context.applicationContext)
       CoreForegroundService.setAppVisible(context.applicationContext, true)
       AppStatusCoordinator.get(context).refresh()
       ServiceConfigCoordinator.get(context).refresh()
       RiderStatsSender.get(context).foreground()
-      // Emits were gated while hidden; the screen must not keep a stale running state.
       emitMaintenanceState(MaintenanceRunner.snapshot())
       emitRideNotices(RideNotices.current)
       RideNotices.expireNow()
     }
     OnActivityEntersBackground {
       frontendActive = false
-      // Drops GPS demand to `Off` unless a ride or a Group Ride is paying for it. Deliberately not
-      // mirrored in `OnDestroy`: a JS runtime teardown (dev reload, OTA) is not the rider putting
-      // the phone away, and the native session it leaves running still needs its fixes.
       CoreForegroundService.setAppVisible(context.applicationContext, false)
     }
     OnActivityResult { _, result ->
@@ -481,9 +445,6 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.observeOutage(null)
       frontendActive = false
       observedEvents.clear()
-      // Detach the JS-facing emit sink so the process-singleton registry doesn't keep the destroyed
-      // module reachable (mirrors iOS OnDestroy nulling `onChange`). A fresh module re-attaches in
-      // its own definition().
       BoardWarningRegistry.get(context).onChange = null
       VescFaultCoordinator.get(context).onChange = null
       NavigationController.get(context).onChange = null
@@ -501,14 +462,8 @@ class VescapeCoreModule : Module() {
       AccessoryDiscovery.emit = null
       AccessoryDiscovery.stopScan()
       AccessoryDiscovery.cancelInspection()
-      // Only the mirror is dropped. The sessions belong to the foreground service, and JS going
-      // away is not a reason for an enrolled Accessory to stop working.
       AccessorySessionManager.emit = null
-      // A preview is the one piece of demand JS owns, so it dies with JS. Without this a runtime
-      // that reloaded or crashed with the sensor screen open would leave the accessory measuring
-      // with nobody watching, and native's own renewals would keep the lease alive forever.
       AccessorySessionManager.releasePreviews()
-      // A reloaded module may already own the hooks; only clear our own.
       if (CoreForegroundService.emitEvent === eventListener) {
         CoreForegroundService.emitEvent = null
       }
@@ -520,8 +475,6 @@ class VescapeCoreModule : Module() {
     Function("scan") { startScan(resetRetries = true) }
     Function("stopScan") { stopScanInternal() }
 
-    // Accessory discovery. Read-only: it scans for the Vescape Accessory service, reads one
-    // manifest, and disconnects. No Board or Accessory control can start from here.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startAccessoryScan`
     // @parity /modules/vescape-core/src/index.ts `startAccessoryScan`
     Function("startAccessoryScan") { AccessoryDiscovery.startScan(context.applicationContext) }
@@ -531,8 +484,6 @@ class VescapeCoreModule : Module() {
       AccessoryDiscovery.inspect(context.applicationContext, deviceId) { promise.resolve(it) }
     }
 
-    // Enrollment and the saved sessions. JS sends the intent and renders the snapshot; identity,
-    // the manifest and the session all stay native.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `enrollAccessory`
     // @parity /modules/vescape-core/src/index.ts `enrollAccessory`
     AsyncFunction("enrollAccessory") { deviceId: String, promise: Promise ->
@@ -563,8 +514,6 @@ class VescapeCoreModule : Module() {
     }
     Function("getAccessories") { AccessorySessionManager.snapshot() }
 
-    // Ground clearance. JS asks for measurements and offers numbers; native decides whether the
-    // sensor runs and whether the numbers are a calibration.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessoryPreview`
     // @parity /modules/vescape-core/src/index.ts `setAccessoryPreview`
     Function("setAccessoryPreview") { accessoryId: String, capabilityId: String, open: Boolean ->
@@ -596,9 +545,6 @@ class VescapeCoreModule : Module() {
       AccessorySessionManager.clearGroundClearance(accessoryId, capabilityId) { promise.resolve(it) }
     }
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
-    // Nudge, not a command: native owns whether GPS runs (see `GpsDemand`). JS calls this once the
-    // location permission is answered, because a grant is the one demand input native cannot observe
-    // for itself.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshLocationDemand`
     Function("refreshLocationDemand") { refreshLocationDemand() }
     registerGroupRide()
@@ -656,8 +602,6 @@ class VescapeCoreModule : Module() {
     Function("updateAlertTest") { value: Double ->
       val controlId = alertTestControlId ?: return@Function
       alertTestCoordinator?.evaluateValues(
-        // Battery thresholds compare synthetic SoC, while message `{voltage}` keeps a plausible
-        // raw sample instead of incorrectly speaking the percentage as volts.
         values = mapOf(controlId to if (controlId == "battery") 48.0 else value),
         batteryPercent = value.takeIf { controlId == "battery" },
         onDiagnostic = { _, _ -> },
@@ -674,7 +618,6 @@ class VescapeCoreModule : Module() {
     Function("getLiveState") {
       liveStateWithScan(CoreForegroundService.currentLiveState(context.applicationContext))
     }
-    // Last successful App Status for this process, or null while none has been fetched (fail-open).
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAppStatus`
     Function("getAppStatus") {
       AppStatusCoordinator.get(context).current?.toMap()
@@ -695,7 +638,7 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
     Function("refreshWeather") {
-      WeatherCoordinator.get().refresh()
+      mainHandler.post { WeatherCoordinator.get().refresh() }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `provisionDeviceCredential`
     AsyncFunction("provisionDeviceCredential") Coroutine {
@@ -714,7 +657,6 @@ class VescapeCoreModule : Module() {
     Function("clearDeviceCredential") {
       NativeAuthCoordinator.get(context).clear()
     }
-    // Stable Vescape route keeps the app decoupled from the final store destination.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `openAppUpdate`
     // @platform-diff Android uses the stable Android download route.
     // @parity /modules/vescape-core/src/index.ts `openAppUpdate`
@@ -724,8 +666,6 @@ class VescapeCoreModule : Module() {
       try {
         context.startActivity(intent)
       } catch (e: ActivityNotFoundException) {
-        // No browser to take the link. This is the App Block's only action, so failing loudly here
-        // would crash the one screen the rider can still see.
         Log.w(TAG, "Cannot open the download route: ${e.message}")
       }
     }
@@ -948,7 +888,6 @@ class VescapeCoreModule : Module() {
     }
 
     /**
-     * VESC Fault Occurrences across every Board — the JS foreground catch-up pull.
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaults`
      * @parity /modules/vescape-core/src/index.ts `getVescFaults`
      */
@@ -959,7 +898,6 @@ class VescapeCoreModule : Module() {
     }
 
     /**
-     * Occurrence-level dismissal. Never deletes the occurrence — the evidence outlives the badge.
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setVescFaultDismissed`
      * @parity /modules/vescape-core/src/index.ts `setVescFaultDismissed`
      */
@@ -970,8 +908,6 @@ class VescapeCoreModule : Module() {
     }
 
     /**
-     * The VESC Fault Capture owned by one occurrence: window metadata plus every decoded Board
-     * sample retained before detection. Null when no capture was saved. Independent of Ride History.
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaultCapture`
      * @parity /modules/vescape-core/src/index.ts `getVescFaultCapture`
      */
@@ -982,7 +918,7 @@ class VescapeCoreModule : Module() {
         captures.capture(occurrenceId)?.let { capture -> capture.toMap() + mapOf("samples" to captures.samples(occurrenceId).map { it.toMap() }) }
       } catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("vesc_fault_capture_read", error); throw error }
     }
-    /** Manual, ephemeral VESC `faults` terminal output for a connected, stopped Board.
+    /**
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `readVescFaultLog`
      * @parity /modules/vescape-core/src/index.ts `readVescFaultLog`
      */
@@ -996,8 +932,6 @@ class VescapeCoreModule : Module() {
       }
     }
     /**
-     * This Board Session's Board Config Values, decoded map + freshness only. The write base stays
-     * native (ADR 0035).
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
      * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
      */
@@ -1005,8 +939,6 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.getBoardConfigValues()
     }
     /**
-     * This Board Session's Motor Config Values — the decoded MCCONF map plus its signature. Read-only
-     * permanently: there is no write base and no encoder (ADR 0036).
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
      * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
      */
@@ -1015,7 +947,6 @@ class VescapeCoreModule : Module() {
     }
 
     /**
-     * Last Known Motor Config Values for a Board with no Board Session.
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownMotorConfigValues`
      * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
      */
@@ -1026,8 +957,6 @@ class VescapeCoreModule : Module() {
     }
 
     /**
-     * Last Known Board Config Values for a Board with no Board Session — the values survive a
-     * disconnect even though the session object does not.
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownBoardConfigValues`
      * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
      */
@@ -1229,8 +1158,6 @@ class VescapeCoreModule : Module() {
         throw CodedException("ERR_PROFILE_STATS_READ", "Could not load recent ride stats", error)
       }
     }
-    // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
-    // and the denormalized summary are native.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFavorites`
     AsyncFunction("getFavorites") Coroutine { ->
       RecordingStorageFailure.requireAvailable()
@@ -1426,8 +1353,6 @@ class VescapeCoreModule : Module() {
       reloadPrivacyZonesIntoRecorder(appCtx)
     }
     registerMapServices()
-    // The direction target is personal client state, never a Map Point. Native keeps it so Group
-    // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") Coroutine { latitude: Double?, longitude: Double? ->
       RecordingStorageFailure.requireAvailable()
       val appCtx = context.applicationContext
@@ -1440,8 +1365,6 @@ class VescapeCoreModule : Module() {
       }
       CoreForegroundService.reloadGroupRideTarget(appCtx)
 
-      // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
-      // one ends it. The Directions call runs off the promise so the pin lands immediately.
       val navigation = NavigationController.get(appCtx)
       if (latitude == null || longitude == null) {
         navigation.clear()
@@ -1450,18 +1373,12 @@ class VescapeCoreModule : Module() {
         navigation.setTarget(latitude, longitude, origin?.first, origin?.second)
       }
     }
-    // Rider-initiated only: nothing in the app calls this on a timer, on reconnect, or on a new
-    // fix. It recomputes from where the rider is *now*, not from where the pin was first dropped —
-    // by then they have usually ridden somewhere with signal, or somewhere a path exists.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `recomputeNavigation`
     // @parity /modules/vescape-core/src/index.ts `recomputeNavigation`
     AsyncFunction("recomputeNavigation") Coroutine { ->
       RecordingStorageFailure.requireAvailable()
       recomputeNavigation(context.applicationContext)
     }
-    // Switching the Navigation Profile is two things at once: the choice sticks as app data, and the
-    // path is computed again under it. The stored profile moves even with no Direction Point set —
-    // the rider chose, and the next Navigation honours it.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setNavigationProfile`
     // @parity /modules/vescape-core/src/index.ts `setNavigationProfile`
     AsyncFunction("setNavigationProfile") Coroutine { profile: String ->
@@ -1555,7 +1472,6 @@ class VescapeCoreModule : Module() {
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
         key == "wearAutoLaunchOnConnect" ||
-        // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
         key in WATCH_SOURCE_SETTING_KEYS ||
         key == "boardWarningsEnabled" ||
         key == "vescFaultCollectionEnabled" ||
@@ -1575,7 +1491,7 @@ class VescapeCoreModule : Module() {
     }
   }
 
-  /** Bulk ride export and delete; one export at a time, Cancel stops it mid-file.
+  /**
    * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportRides`
    * @parity /modules/vescape-core/src/index.ts `exportRides`
    */
@@ -1640,13 +1556,11 @@ class VescapeCoreModule : Module() {
     }
   }
 
-  /** Server-backed calls: Map Points, the Mapbox search proxy and the Rider Profile. Split out to keep `definition()` under the JVM method size limit. */
   private fun ModuleDefinitionBuilder.registerMapServices() {
-    // Map Points are server-owned; native holds no copy. @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getNearbyMapPoints`
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getNearbyMapPoints`
     AsyncFunction("getNearbyMapPoints") Coroutine { latitude: Double, longitude: Double, radiusMeters: Int ->
       MapPointApi.get(context.applicationContext).nearby(latitude, longitude, radiusMeters)
     }
-    // Place search runs through the server's Mapbox proxy; native only owns the Device Token.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `searchMap`
     AsyncFunction("searchMap") Coroutine { query: String, limit: Int, proximity: String? ->
       MapSearchApi.get(context.applicationContext).search(query, limit, proximity)
@@ -1666,7 +1580,6 @@ class VescapeCoreModule : Module() {
     AsyncFunction("setMapPointReaction") Coroutine { id: String, reaction: String? ->
       MapPointApi.get(context.applicationContext).setReaction(id, reaction)
     }
-    // The Account's Rider Profile is server-owned; native only attaches the Device Token.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRiderProfile`
     AsyncFunction("getRiderProfile") Coroutine { ->
       RiderProfileApi.get(context.applicationContext).mine()
@@ -1674,7 +1587,6 @@ class VescapeCoreModule : Module() {
     AsyncFunction("saveRiderProfile") Coroutine { nick: String, nationality: String? ->
       RiderProfileApi.get(context.applicationContext).save(nick, nationality)
     }
-    // Other riders' profiles and the Account's Friends, server-owned like the Rider Profile.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFriends`
     AsyncFunction("searchRiders") Coroutine { nick: String ->
       RiderProfileApi.get(context.applicationContext).search(nick)
@@ -1697,12 +1609,10 @@ class VescapeCoreModule : Module() {
     AsyncFunction("removeFriend") Coroutine { accountId: String ->
       RiderProfileApi.get(context.applicationContext).removeFriend(accountId)
     }
-    // Who the rider rode with during a past ride; fetched per view, never stored.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRodeWith`
     AsyncFunction("getRodeWith") Coroutine { from: String, to: String ->
       RiderProfileApi.get(context.applicationContext).rodeWith(from, to)
     }
-    // A Friend's public rides and one ride's track; fetched per view, never stored.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFriendRides`
     // @parity /modules/vescape-core/src/index.ts `getFriendRides`
     AsyncFunction("getFriendRides") Coroutine { accountId: String, limit: Int?, before: String? ->
@@ -1722,7 +1632,6 @@ class VescapeCoreModule : Module() {
     Function("stopGroupRideObserve") {
       CoreForegroundService.stopGroupRideObserve(context.applicationContext)
     }
-    // Ride Notices. `dismissRideNotice` is the rider's intent; the dev pair posts test notices.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `dismissRideNotice`
     Function("getRideNotices") { RideNotices.current.map { it.toMap() } }
     Function("dismissRideNotice") { id: Int, rev: Int -> RideNotices.dismiss(id, rev) }
@@ -1795,7 +1704,6 @@ class VescapeCoreModule : Module() {
 
     val feedback = AlertFeedback(context.applicationContext, mainHandler)
     val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context.applicationContext).getTypedSettings() }
-    // A test sounds like the real rule: same effects pack, same output.
     feedback.setSoundSettings(settings)
     val coordinator = AlertCoordinator(feedback = { feedback }, vibrateSingles = false)
     coordinator.distanceUnit = settings.distanceUnit
@@ -1815,7 +1723,6 @@ class VescapeCoreModule : Module() {
   }
 
   /**
-   * Called from the maintenance thread; hops to main like every other JS emit.
    * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `emitMaintenanceState`
    */
   private fun emitMaintenanceState(state: Map<String, Any?>) {
@@ -1846,7 +1753,6 @@ class VescapeCoreModule : Module() {
   }
 
   private val eventListener: (String, Map<String, Any?>) -> Unit = { name, body ->
-    // Durable-data invalidation must bypass the live-telemetry subscription gate.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendAppDataChanged`
     if (name == "onAppDataChanged") {
       mainHandler.post { sendEvent(name, body) }
@@ -1859,10 +1765,6 @@ class VescapeCoreModule : Module() {
 
   private val liveStatePostPending = AtomicBoolean(false)
 
-  /**
-   * Coalesces a burst of state changes into one post; the payload is built when it runs, so the
-   * single event carries the newest state. A change after the build re-arms another post.
-   */
   private val liveStateListener: () -> Unit = {
     if (shouldEmitToFrontend("onLiveState") && liveStatePostPending.compareAndSet(false, true)) {
       mainHandler.post {
@@ -1996,26 +1898,16 @@ class VescapeCoreModule : Module() {
       sendEvent("onError", mapOf("message" to "Location permission not granted"))
       return
     }
-    // Ensures a host exists to arm in. The resolver still decides whether it arms: a permission grant
-    // that lands while the app is backgrounded with no ride running leaves GPS off.
     CoreForegroundService.startGpsMonitoring(context.applicationContext)
   }
 
   /**
-   * Start the real Board Session for a Board Link the rider just saved. Linking already proved the
-   * connect over a throwaway probe session and dropped it (`finalizeBoardLink`), so without this the
-   * rider lands back on a disconnected app until the next process start. Only the Board that proved
-   * a link reconnects, so ordinary Board edits — a rename, a battery config — never disturb a live
-   * session.
-   *
    * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `connectSavedBoardLink`
    */
   private suspend fun connectSavedBoardLink(boardId: String?) {
     if (boardId == null || !PendingLinkConnect.consume(boardId)) return
     if (BoardProbeAutoStartGate.isActive()) return
     val appCtx = context.applicationContext
-    // The probe teardown looks like a manual disconnect to the gate. Saving a link is the opposite
-    // intent, so the suppression must not outlive it.
     ManualDisconnectAutoStartGate.clear(appCtx)
     val config = try {
       buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)
@@ -2056,11 +1948,6 @@ class VescapeCoreModule : Module() {
   }
 
   /**
-   * Replay a Debug Recording on the selected Board (ADR 0048): an ordinary Board Session for that
-   * Board, talking to a Simulated Board that presents the recorded hardware. `warmupMs` prefills the
-   * live display from that much of the recording before playback starts; `loop` restarts the
-   * recording at its end. Stop = normal disconnect.
-   *
    * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startDebugReplay`
    * @parity /modules/vescape-core/src/index.ts `DebugReplayOptions`
    */
@@ -2089,9 +1976,6 @@ class VescapeCoreModule : Module() {
   }
 
   /**
-   * Applies [control] to the playing replay on main (its home) and returns the state after it, or
-   * `null` when no replay session is up.
-   *
    * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `debugReplayStateMap`
    */
   private fun debugReplayStateMap(control: (SimulatedBoard) -> Unit): Map<String, Any?>? {
@@ -2126,8 +2010,6 @@ class VescapeCoreModule : Module() {
     BoardProbeAutoStartGate.enter()
 
     try {
-      // A Board Probe owns the single BLE connection: tear down any live Board
-      // Session before probing so the probe isn't fighting an active session.
       val stopped = CompletableDeferred<Unit>()
       CoreForegroundService.stopBoardSession(appCtx) { stopped.complete(Unit) }
       stopped.await()
@@ -2186,7 +2068,6 @@ class VescapeCoreModule : Module() {
   }
 
   /**
-   * Finalize only a candidate returned by this native probe; config persistence precedes v4.
    * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `finalizeBoardLink`
    * @parity /modules/vescape-core/src/index.ts `finalizeBoardLink`
    */
@@ -2203,8 +2084,6 @@ class VescapeCoreModule : Module() {
       ?: error("PROBE_CANDIDATE_UNVERIFIED: Candidate was not confirmed by this Board Probe")
     val baseVersion = candidate.refloatBaseVersion
       ?: error("PROBE_CONFIG_IDENTITY_MISSING: Refloat Tune Compatibility is required")
-    // The config read runs over a real Board Session — the same path rides use — so linking proves
-    // the production connect, not just the probe's own detection client.
     sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "session", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
     val appCtx = context.applicationContext
     val repo = AppDataRepository.get(appCtx)
@@ -2237,16 +2116,10 @@ class VescapeCoreModule : Module() {
       if (!awaitUntil(120) { (repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE) > previousCapturedAt }) {
         error("PROBE_CONFIG_TIMEOUT: Full Refloat config was not acquired")
       }
-      // Motor config is read after the Refloat read completes, so it is waited for separately rather
-      // than in the same loop. A board whose MCCONF signature no layout carries never lands a row and
-      // fails the link here — deliberate: a Board Link is only offered once every config it will show
-      // is proven readable.
       sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "motor-config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
       if (!awaitUntil(80) { (repo.getLatestMotorConfigValues(boardId)?.capturedAtMs ?: Long.MIN_VALUE) > previousMotorCapturedAt }) {
         error("PROBE_MOTOR_CONFIG_TIMEOUT: VESC motor config was not acquired — this firmware may not be supported yet")
       }
-      // The probe stays finalizable: the rider may still switch transports, and each pick
-      // acquires config for its own candidate before the link can be saved.
       PendingLinkConnect.arm(boardId)
       return mapOf(
         "linkVersion" to 4,
@@ -2264,7 +2137,6 @@ class VescapeCoreModule : Module() {
     }
   }
 
-  /** Poll [condition] every 250 ms up to [attempts] times; false when it never held. */
   private suspend fun awaitUntil(attempts: Int, condition: suspend () -> Boolean): Boolean {
     repeat(attempts) {
       if (condition()) return true
@@ -2301,10 +2173,6 @@ class VescapeCoreModule : Module() {
     }
   }
 
-  /**
-   * Asks for the path again, to the Direction Point the rider already has and from where they are
-   * now. A no-op with no Direction Point: there is nothing to compute a path to.
-   */
   private suspend fun recomputeNavigation(appContext: Context) {
     val repository = AppDataRepository.get(appContext)
     val directionPoint = repository.getDirectionPoint() ?: return
@@ -2318,13 +2186,6 @@ class VescapeCoreModule : Module() {
   }
 
   /**
-   * Where a path starts: the rider's live fix, however weak, falling back to the last GPS position
-   * written to app data only when the phone has produced nothing at all this run.
-   *
-   * The stored row is a survivor of the last session — persisted at most every 30s and only from a
-   * precise fix — so on a cold start indoors it is easily yesterday's position kilometres away. A
-   * live approximate fix is the rider; the stored one only claims to be.
-   *
    * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `navigationOrigin`
    */
   private suspend fun navigationOrigin(repository: AppDataRepository): Pair<Double, Double>? {
@@ -2338,7 +2199,6 @@ class VescapeCoreModule : Module() {
   private suspend fun reloadPrivacyZonesIntoRecorder(appContext: Context) {
     val zones = AppDataRepository.get(appContext).getEnabledPrivacyZoneEntities()
     TelemetryRepository.get(appContext).reloadPrivacyZones(zones)
-    // Keep the Group Ride presence egress gate (issue #144) in sync with the same zones.
     CoreForegroundService.reloadPrivacyZones(appContext)
   }
 

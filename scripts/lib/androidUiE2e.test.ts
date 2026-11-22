@@ -32,7 +32,6 @@ test('teardown releases owned reverse listeners on both devices while preserving
     expect(mappings.delete(args[2])).toBe(true)
     return new Uint8Array()
   }
-  // The runner uses this same cleanup after a pass or a thrown flow error.
   for (const serial of tunnels.keys()) await removeReversePorts(serial, [61349, 61350], command)
   expect([...tunnels.get('phone')!]).toEqual([
     ['tcp:8081', 'tcp:8081'],
@@ -40,6 +39,5 @@ test('teardown releases owned reverse listeners on both devices while preserving
     ['tcp:9000', 'tcp:61350'],
   ])
   expect([...tunnels.get('watch')!]).toEqual([['tcp:8081', 'tcp:8081']])
-  // Repeated cleanup is safe when startup failed before installing either mapping.
   for (const serial of tunnels.keys()) await removeReversePorts(serial, [61349, 61350], command)
 })

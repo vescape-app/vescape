@@ -41,7 +41,6 @@ export function useMapPressHandlers({
     suppressTimeoutRef.current = null
   }, [])
 
-  /** A pin handled the touch itself, so the map press that follows is not a new selection. */
   const suppressNextMapPress = useCallback(() => {
     clearSuppressTimeout()
     suppressNextPressRef.current = true

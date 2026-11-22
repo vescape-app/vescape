@@ -63,7 +63,6 @@ class OngoingActivityController(private val context: Context) {
         NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
     }
 
-    /** Also used by [MainActivity] to decide whether to ask for POST_NOTIFICATIONS first. */
     fun canPostNotifications(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==

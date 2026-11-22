@@ -11,8 +11,6 @@ internal data class LegalPolicySpeeds(
 )
 
 /**
- * Bundled Legal Policy lookup used by jurisdiction resolution and Legal Mode alert synthesis.
- *
  * @parity /modules/vescape-core/ios/location/LegalPolicyResolver.swift `LegalPolicyCatalog`
  */
 internal class LegalPolicyCatalog(context: Context) {

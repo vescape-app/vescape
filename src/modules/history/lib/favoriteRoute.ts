@@ -47,11 +47,6 @@ function mergeRanges(ranges: readonly FavoriteTimeRange[]): FavoriteTimeRange[] 
   return merged
 }
 
-/**
- * Clip the selected ride's GPS polyline to the union of its Favorite ranges. Boundary coordinates
- * are time-interpolated so a short Favorite remains visible even when neither edge lands exactly on
- * a persisted GPS sample. `gpsSamples` must be sorted ascending by `capturedAtMs`.
- */
 export function getFavoriteRouteSegments(
   gpsSamples: readonly HistoryGpsSample[],
   favoriteRanges: readonly FavoriteTimeRange[],

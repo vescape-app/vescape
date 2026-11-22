@@ -6,7 +6,6 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Runs against Android's XML provider, which differs from the desktop JVM provider. */
 @RunWith(AndroidJUnit4::class)
 class RefloatConfigSchemaDeviceTest {
   @Test

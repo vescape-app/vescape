@@ -18,7 +18,6 @@ import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 import { theme } from '@/constants/theme'
 
-/** Every slug native can resolve, so the showcase covers the whole contract. */
 const ICONS: WeatherIconSlug[] = [
   'sun',
   'moon',
@@ -43,7 +42,6 @@ const LABELS: Record<WeatherIconSlug, string> = {
   'cloud-lightning': 'Thunderstorm',
 }
 
-/** Mock of the native level gates; the app reads them from native. */
 const MOCK_THRESHOLDS = {
   sensitive: { gustKmh: 40, rainPercent: 30 },
   normal: { gustKmh: 55, rainPercent: 50 },

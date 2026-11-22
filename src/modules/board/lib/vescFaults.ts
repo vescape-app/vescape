@@ -2,19 +2,9 @@ import type { VescFaultOccurrence } from 'vescape-core'
 
 export interface VescFaultInfo {
   title: string
-  /** What the controller detected, in plain language. Possible causes stay phrased as possibilities. */
   description: string
 }
 
-/**
- * VESC controller fault catalog, keyed by `mc_fault_code` — the byte Refloat returns in its ALLDATA
- * fault-mode response. Not the Refloat riding state (pitch, roll, footpad…) and not a BMS fault code:
- * those are separate enums.
- *
- * Source: `mc_fault_code` in vedderb/bldc `datatypes.h`. Verified identical for codes 0–29 on
- * `release_6_02`, `release_6_05` and `master` (FW 7.01); 30–33 exist on `master` only. Upstream only
- * appends, so a code this table lacks renders as an unknown fault rather than a guess.
- */
 const FAULT_CATALOG: Record<number, VescFaultInfo> = {
   0: { title: 'No fault', description: 'The controller reported no fault.' },
   1: {
@@ -165,7 +155,6 @@ const FAULT_CATALOG: Record<number, VescFaultInfo> = {
   },
 }
 
-/** Title and explanation for a controller fault code. Unknown codes keep their number, no guessing. */
 export function faultInfo(code: number): VescFaultInfo {
   return (
     FAULT_CATALOG[code] ?? {
@@ -175,7 +164,6 @@ export function faultInfo(code: number): VescFaultInfo {
   )
 }
 
-/** Undismissed live occurrences drive the VESC Fault icon. */
 export function indicatorFaults(faults: VescFaultOccurrence[]): VescFaultOccurrence[] {
   return faults.filter((fault) => !fault.dismissed)
 }

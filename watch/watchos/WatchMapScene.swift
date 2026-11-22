@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Owns map policy, the shared camera and drawing order. Gauge and readout slots keep telemetry
-/// layout independent of Navigation, Group Ride and standalone trail rendering.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMapScene.kt `WatchMapScene`
 struct WatchMapScene<Gauges: View, Readouts: View>: View {
   let frame: WatchFrame
@@ -35,15 +33,11 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
 
   var body: some View {
     ZStack {
-      // Layer order: street map, route, trail, Group Ride marks, gauges.
       if scene.drawStreetMap {
         MapTileLayer(mapView: mapView, mapMoving: mapMoving)
           .opacity(navStackAlpha * scene.mapAlpha(navFocus: navFocus))
       }
 
-      // Bottom layer: the route ahead and the rider on it, under every gauge and readout. Ambient
-      // skips it — the lanes animate their zoom, and a moving map is the most expensive thing the
-      // always-on panel could be asked to draw.
       if scene.hasNavigation, scene.drawMap {
         NavRoute(
           route: route,
@@ -61,7 +55,6 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
           .opacity(navStackAlpha * scene.trailAlpha(navFocus: navFocus))
       }
 
-      // Group Ride dots: over the paths, under every gauge and number. Hidden in ambient.
       if let groupRide, scene.drawMap {
         GroupRideLayer(
           group: groupRide,
@@ -80,8 +73,6 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
       }
 
       gauges()
-      // Navigation, only while the phone is sending it. No destination means no nav lanes, and the
-      // frame renders exactly as it would without this slice.
       if let routeNotice = scene.notice {
         if !ambient.active, routeNotice == .failed {
           RouteFailureNotice().opacity(navStackAlpha)
@@ -99,7 +90,6 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
           tiltColor: tiltColor
         )
       } else {
-        // No navigation: the tilt badge keeps the distance's slot to itself.
         VStack(spacing: 0) {
           Spacer(minLength: 0)
           TiltBadge(value: frame.remoteTilt, color: tiltColor)
@@ -109,7 +99,6 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
       }
 
       readouts()
-      // Group Ride edge triangles: over the rim gauges. Hidden in ambient.
       if let groupRide, scene.drawMap {
         GroupRideEdgeLayer(
           group: groupRide, mapView: mapView, mapMoving: mapMoving, focus: navFocus, distanceUnit: distanceUnit
@@ -119,9 +108,7 @@ struct WatchMapScene<Gauges: View, Readouts: View>: View {
     }
     .onAppear { retargetMap(animate: false) }
     .onChange(of: scene.target) { retargetMap(animate: scene.drawMap) }
-    // Ambient lands a map mid-ease, as Wear's relaunched effect does.
     .onChange(of: scene.drawMap) { if !scene.drawMap { retargetMap(animate: false) } }
-    // Stops the layers' timelines once the map has landed, so a still map never redraws.
     .task(id: mapView.settlesAt) {
       let remaining = mapView.settlesAt.timeIntervalSinceNow
       if remaining > 0 {

@@ -36,7 +36,6 @@ describe('spring', () => {
     s = retargetSpring(s, -5)
     expect(s.x).toBe(xBefore)
     expect(s.v).toBe(vBefore)
-    // One frame later position moved by roughly v·dt — no restart-from-rest jump.
     const next = stepSpring(s, 6, 1 / 60)
     expect(Math.abs(next.x - (xBefore + vBefore / 60))).toBeLessThan(Math.abs(vBefore / 60))
     expect(springSettled(settle(s, 6, 3), 1e-3, 1e-3)).toBe(true)
@@ -80,7 +79,7 @@ const createTestEngine = (options?: {
     cancelFrame: () => {
       pending = null
     },
-    now: () => now,
+    nowMs: () => now,
   })
   const advance = (ms: number) => {
     now += ms
@@ -118,15 +117,11 @@ describe('cameraEngine', () => {
   })
 
   test('skips frames a rider could not see, and still lands exactly on target', () => {
-    // No post-landing hold: those writes exist to overwrite a native fling and are forced.
     const { engine, frames, run } = createTestEngine({ holdAfterTargetMs: 0 })
-    // Pitch parked where `derivePitch` wants it, so heading is the only axis in motion.
     engine.reset(camera([21, 52], 14, 0, 28))
-    // A hair of heading: every intermediate frame is far below a pixel of rotation.
     engine.setTarget({ heading: 0.005 })
     run(600)
 
-    // Only the landing write, which has to happen or the map rests off target.
     expect(frames.length).toBe(1)
     expect(frames.at(-1)?.heading).toBeCloseTo(0.005, 6)
     expect(engine.getCamera().heading).toBeCloseTo(0.005, 6)
@@ -169,8 +164,6 @@ describe('cameraEngine', () => {
         Math.abs(frames[i]!.centerCoordinate[0] - frames[i - 1]!.centerCoordinate[0]),
       )
     }
-    // Total travel ~0.003°; a restart-free path never moves more per frame
-    // than the peak spring speed allows.
     expect(maxStep).toBeLessThan(0.0005)
     expect(engine.getCamera().centerCoordinate[0]).toBe(20.998)
   })
@@ -195,11 +188,8 @@ describe('cameraEngine', () => {
   test('external drive carries gesture velocity into the next target', () => {
     const { engine, run } = createTestEngine()
     engine.reset(camera([21, 52]))
-    // Gesture moves east at 0.001°/frame.
     engine.driveExternal(camera([21.001, 52]), { dtSeconds: 1 / 60, gesture: true })
     engine.driveExternal(camera([21.002, 52]), { dtSeconds: 1 / 60, gesture: true })
-    // Release back toward origin: first frames should keep drifting east
-    // (momentum), not reverse instantly.
     engine.setTarget({ center: [21, 52] })
     run(2)
     expect(engine.getCamera().centerCoordinate[0]).toBeGreaterThan(21.002)
@@ -219,8 +209,6 @@ describe('cameraEngine', () => {
       run(2)
       return engine.getCamera().centerCoordinate[0]
     }
-    // Same drag distance, four times slower: the overshoot past the release
-    // point must shrink with the measured speed.
     expect(release(16) - 21.002).toBeGreaterThan(release(64) - 21.002)
   })
 
@@ -229,8 +217,6 @@ describe('cameraEngine', () => {
     engine.reset(camera([21, 52]))
     engine.setTarget({ center: [21.002, 52] })
     run(10)
-    // A gesture grabs the flying camera; the opening sample has no velocity of
-    // its own, so releasing it must not continue the old animation.
     advance(16)
     engine.driveExternal(camera([21.001, 52]), { gesture: true })
     engine.setTarget({ center: [21.001, 52] })
@@ -239,8 +225,6 @@ describe('cameraEngine', () => {
   })
 
   test('burst samples do not fabricate velocity', () => {
-    // Same finger travel per step, delivered either at a steady 16 ms or as a
-    // stalled thread draining four queued touches a millisecond apart.
     const coastAfter = (steps: [gapMs: number, step: number][]) => {
       const { engine, run, advance } = createTestEngine()
       engine.reset(camera([21, 52]))
@@ -279,22 +263,13 @@ describe('cameraEngine', () => {
     engine.release()
     run(1000)
     const drifted = frames.map((f) => f.centerCoordinate[0])
-    // Monotone: the glide always moves the way the finger was going.
     for (let i = 1; i < drifted.length; i++) {
       expect(drifted[i]!).toBeGreaterThanOrEqual(drifted[i - 1]! - 1e-12)
     }
-    // And it actually coasts past the last sample before settling.
     expect(engine.getCamera().centerCoordinate[0]).toBeGreaterThan(21.003)
     expect(engine.isAnimating()).toBe(false)
   })
 
-  /**
-   * Replays the echo race: the engine teleports, and the map answers a frame
-   * late with two change events straddling the write — the stale camera first,
-   * the written one next. Differentiating that pair reads the engine's own
-   * teleport as a driver moving at ~60°/s. Returns the path, because a spring
-   * always converges eventually; the damage is the excursion on the way.
-   */
   const replayTeleportEchoes = (options: { echoWindowMs?: number; maxDriveJumpPx?: number }) => {
     const { engine, frames, run, advance } = createTestEngine({
       teleportDistanceM: 1000,
@@ -306,7 +281,6 @@ describe('cameraEngine', () => {
     engine.driveExternal(camera([21, 52]))
     advance(16)
     engine.driveExternal(camera([22, 52]))
-    // The next framing target, 68 m back west. It must arrive, not fly past.
     engine.setTarget({ center: [21.999, 52] })
     run(600)
     return {
@@ -319,17 +293,11 @@ describe('cameraEngine', () => {
   test('echoes of a teleport do not become velocity', () => {
     const path = replayTeleportEchoes({ maxDriveJumpPx: Number.POSITIVE_INFINITY })
     expect(path.settledAt).toBeCloseTo(21.999, 6)
-    // Nothing is east of the teleport, so a frame past 22° is fabricated
-    // momentum carrying the camera beyond where it was ever asked to go.
     expect(path.furthestEast).toBeLessThanOrEqual(22 + 1e-9)
-    // And the ballistic zoom follows the centre: a camera flying off-target
-    // reads as a long journey and zooms out to fit it.
     expect(path.lowestZoom).toBe(14)
   })
 
   test('a drive sample that jumps further than a finger could starts a new drive', () => {
-    // Same race, but the JS thread stalled long enough that the echoes arrive
-    // after the echo window expired — only the discontinuity check is left.
     const path = replayTeleportEchoes({ echoWindowMs: 0 })
     expect(path.settledAt).toBeCloseTo(21.999, 6)
     expect(path.furthestEast).toBeLessThanOrEqual(22 + 1e-9)
@@ -337,8 +305,6 @@ describe('cameraEngine', () => {
   })
 
   test('gesture samples are trusted right after an engine write', () => {
-    // The echo window must never swallow a finger: grabbing the map mid-flight
-    // still hands control over immediately.
     const { engine, run, advance } = createTestEngine()
     engine.reset(camera([21, 52]))
     engine.setTarget({ center: [21.002, 52] })
@@ -349,15 +315,12 @@ describe('cameraEngine', () => {
   })
 
   test('momentum after a throw does not derail a target set mid-fling', () => {
-    // Throw the map, then recenter while the fling is still decelerating. The
-    // fling keeps reporting camera changes with no finger down; taking them as
-    // a driver leaves the camera parked wherever the throw was heading.
     const { engine, run, advance } = createTestEngine({ teleportDistanceM: 1_000_000 })
     engine.reset(camera([21, 52]))
     engine.setTarget({ center: [21.001, 52] })
     run(3)
     for (const longitude of [21.4, 21.7, 21.9]) {
-      advance(400) // past the echo window: these are not echoes
+      advance(400)
       engine.driveExternal(camera([longitude, 52]))
       run(2)
     }
@@ -370,7 +333,6 @@ describe('cameraEngine', () => {
     engine.reset(camera([21, 52]))
     engine.snap({ center: [21.001, 52] })
     run(4)
-    // Still holding: the loop stays open and keeps writing the target.
     expect(engine.isAnimating()).toBe(true)
     const framesAtTarget = frames.filter((f) => f.centerCoordinate[0] === 21.001).length
     expect(framesAtTarget).toBeGreaterThan(1)
@@ -396,11 +358,10 @@ describe('cameraEngine', () => {
       cancelFrame: () => {
         pending = null
       },
-      now: () => now,
+      nowMs: () => now,
     })
     engine.reset(camera([21, 52]))
     engine.setTarget({ center: [21.001, 52] })
-    // Retargets inside the same claim have no native animation left to stop.
     engine.setTarget({ center: [21.002, 52] })
     expect(cancels).toBe(1)
     for (let i = 0; i < 2000 && pending; i++) {
@@ -409,7 +370,6 @@ describe('cameraEngine', () => {
       now += 16
       callback(now)
     }
-    // The camera is the map's again, so the next target cancels afresh.
     engine.setTarget({ center: [21.003, 52] })
     expect(cancels).toBe(2)
   })
@@ -427,7 +387,6 @@ describe('cameraEngine', () => {
   test('ballistic transit dips zoom out and returns it on arrival', () => {
     const { engine, frames, run } = createTestEngine({ teleportDistanceM: 100_000 })
     engine.reset(camera([21, 52], 16))
-    // ~3.4 km east: below teleport, far enough that zoom 16 can't see the target.
     engine.setTarget({ center: [21.05, 52] })
     run(2000)
     const minZoom = Math.min(...frames.map((f) => f.zoomLevel))

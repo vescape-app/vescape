@@ -41,7 +41,6 @@ describe('history camera', () => {
 
     expect(withInset?.padding.paddingBottom).toBe(ROUTE_CAMERA.routePaddingPx + 320)
     expect(withInset?.padding.paddingBottom).toBeGreaterThan(base!.padding.paddingBottom)
-    // Less room means the route has to be drawn smaller to still fit inside it.
     expect(withInset!.zoomLevel).toBeLessThan(base!.zoomLevel)
   })
 

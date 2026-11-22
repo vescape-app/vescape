@@ -18,13 +18,6 @@ import {
 } from '@/screens/main/map/trackedMapPoints'
 import { useResolvedAccentColors } from '@/hooks/useTheme'
 
-/**
- * Grid the offscreen indicators are tracked on: about a metre.
- *
- * They point at things far enough away to be off screen, so a fix that moved by centimetres cannot
- * change where the arrow points — but it does rebuild the tracked-point list and everything derived
- * from it, once per fix, forever. Snapping to a metre keeps the arrows honest and the work rare.
- */
 const TRACKING_GRID_DEG = 1e-5
 
 function usableCoordinate(location: { longitude: number; latitude: number } | null | undefined) {
@@ -77,8 +70,6 @@ export function useLiveMapModel({
     usableCoordinate(initialApproximateFix) ??
     usableCoordinate(accuracyFix) ??
     usableCoordinate(cameraFix)
-  // Held by value, not by identity: a fix per second would otherwise hand every consumer a new
-  // object describing the same metre of pavement.
   const trackedCoordinateRef = useRef(trackingCoordinate)
   if (
     trackedCoordinateRef.current?.latitude !== trackingCoordinate?.latitude ||

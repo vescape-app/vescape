@@ -13,10 +13,6 @@ import expo.modules.vescapecore.service.VESC_SESSION_TAG
 import java.io.File
 
 /**
- * Street-map tiles on the Wear Data Layer: one item per tile at `/map-tile/<style>/<z>/<x>/<y>`,
- * the JPEG as an Asset (item payloads are small; assets are not). The set of those items *is* what
- * the wrist holds: the phone reads it back with `getDataItems` and drops a tile by deleting its item.
- *
  * @parity /modules/vescape-core/ios/watch/WatchMapTilePusher.swift `WatchMapTilePusher`
  * @platform-diff watchOS has no per-tile item. It sends files with `transferFile`, lists the held
  *   tiles in the Application Context and records finished transfers in its watch directory.
@@ -37,8 +33,6 @@ internal class WatchMapTilePusher(context: Context) : WatchMapTileTransport {
         } finally {
             items.release()
         }
-        // Another style's tiles would never be planned again; they only cost the wrist storage. A
-        // failed cleanup is retried with the next lookup and never holds up sending.
         foreign.forEach(::delete)
         return tiles
     }
@@ -60,7 +54,6 @@ internal class WatchMapTilePusher(context: Context) : WatchMapTileTransport {
     override suspend fun send(tile: WatchMapTile, jpeg: File): Boolean = try {
         val request = PutDataRequest.create(tile.path(MapTiles.STYLE)).apply {
             putAsset(WATCH_MAP_TILE_ASSET, Asset.createFromBytes(jpeg.readBytes()))
-            // Non-urgent items may wait half an hour to sync; the rider is already on this tile.
             setUrgent()
         }
         Tasks.await(dataClient.putDataItem(request))

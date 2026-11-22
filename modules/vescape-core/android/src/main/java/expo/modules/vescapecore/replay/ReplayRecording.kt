@@ -20,28 +20,20 @@ import expo.modules.vescapecore.protocol.parseFwVersion
 
 import org.json.JSONObject
 
-/** One payload at its recorded offset. */
 internal class TimedPayload(val t: Long, val payload: ByteArray)
 
 /**
- * What plays on a [SimulatedBoard]'s timeline, by recorded offset.
- *
  * @parity /modules/vescape-core/ios/replay/ReplayRecording.swift `ReplayEvent`
  */
 internal sealed class ReplayEvent(val t: Long) {
-    /** A board frame nothing asked for, or one the app polls for: telemetry, BMS, anything unknown. */
     class Frame(t: Long, val payload: ByteArray) : ReplayEvent(t)
 
     class Fix(val fix: ReplayLocation) : ReplayEvent(fix.t)
 
-    /** A config write the app made during the recorded ride; the board holds it from here on. */
     class ConfigWrite(t: Long, val payload: ByteArray) : ReplayEvent(t)
 }
 
 /**
- * The hardware a recording was made on. A replay presents it as the Board's link, so Link Integrity
- * judges the recorded board on its own answers (ADR 0048).
- *
  * @parity /modules/vescape-core/ios/replay/ReplayRecording.swift `RecordedHardware`
  */
 internal data class RecordedHardware(
@@ -54,26 +46,17 @@ internal data class RecordedHardware(
 )
 
 /**
- * The replies a recording holds, indexed by what they answer rather than paired with the request
- * that produced them: replies describe themselves in their header, while the app asks at different
- * moments than the recorded session did.
- *
  * @parity /modules/vescape-core/ios/replay/ReplayRecording.swift `ReplyBook`
  */
 internal class ReplyBook(
     val firmware: ByteArray?,
     val refloatInfo: ByteArray?,
     val motorConfig: ByteArray?,
-    /** The custom config XML, reassembled from every chunk the recording saw, keyed by `confInd`. */
     val configXml: Map<Int, ByteArray>,
-    /** Recorded `COMM_GET_CUSTOM_CONFIG` replies per `confInd`, in time order. */
     val configSnapshots: Map<Int, List<TimedPayload>>,
 )
 
 /**
- * A Debug Recording decoded for a [SimulatedBoard]: the hardware it was made on, the timeline the
- * board plays on its own, and the replies it gives when asked.
- *
  * @parity /modules/vescape-core/ios/replay/ReplayRecording.swift
  */
 internal class ReplayRecording(
@@ -107,7 +90,6 @@ internal class ReplayRecording(
                             snapshots.getOrPut(confInd.toInt() and 0xff) { mutableListOf() }
                                 .add(TimedPayload(chunk.t, payload))
                         }
-                        // Acks and echoes are the board's answers to this session's own writes.
                         COMM_SET_CUSTOM_CONFIG -> Unit
                         COMM_CUSTOM_APP_DATA -> when (refloatCommand(payload)) {
                             REFLOAT_GET_INFO -> refloatInfo = refloatInfo ?: payload
@@ -156,7 +138,6 @@ internal class ReplayRecording(
                     hasBms = hasBms,
                     pollIntervalMs = meta?.optLong("pollIntervalMs")?.takeIf { it > 0 },
                 ),
-                // Stable: a fix and a frame at the same offset keep file order.
                 timeline = (frames + fixes).sortedBy(ReplayEvent::t),
                 replies = ReplyBook(
                     firmware = firmware,
@@ -174,7 +155,6 @@ internal class ReplayRecording(
             null
         }
 
-        /** Strip a `COMM_FORWARD_CAN` envelope; CAN boards usually answer unwrapped anyway. */
         fun unwrapCan(packet: ByteArray): ByteArray? {
             if (packet.isEmpty()) return null
             if ((packet[0].toInt() and 0xff) != COMM_FORWARD_CAN) return packet

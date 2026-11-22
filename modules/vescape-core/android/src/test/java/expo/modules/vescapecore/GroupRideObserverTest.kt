@@ -34,11 +34,9 @@ class GroupRideObserverTest {
         val fix = LocationSnapshot(52.0, 21.0, null, null, 5.0, null, timestamp = 1_000, precise = true)
         val zones = PrivacyZoneReadState()
 
-        // Zones still loading: presence is gated, a signal is not.
         assertNull(zones.presenceFix(fix))
         assertNotNull(RiderSignals.sendIntent(RiderSignalKind.DOWN, zones.signalContext(fix, nowMs = 2_000)))
 
-        // Loaded, and the fix is inside one.
         runBlocking { zones.reload { listOf(PrivacyZoneEntity("home", "custom", "Home", true, 520_000_000, 210_000_000, 200, 1, 1)) } }
         assertNull(zones.presenceFix(fix))
         val context = zones.signalContext(fix, nowMs = 2_000)
@@ -47,7 +45,6 @@ class GroupRideObserverTest {
         assertEquals("down", frame.getString("kind"))
         assertEquals(52.0, frame.getDouble("lat"), 0.0)
         assertEquals(21.0, frame.getDouble("lng"), 0.0)
-        // The gate opens again outside every zone.
         assertNotNull(zones.presenceFix(fix.copy(latitude = 53.0)))
     }
 
@@ -143,7 +140,7 @@ class GroupRideObserverTest {
             ready()
             links.last().listener.onClosed(links.last().socket, 1000, "offline")
             flush()
-            observer.pushPresence(RiderPresence(52.0, 21.0, null, null, null, null, null, null, null, at = 10_000))
+            observer.pushPresence(RiderPresence(52.0, 21.0, null, null, null, null, null, null, null, atMs = 10_000))
             observer.setBoardConnected(false)
             flush()
             assertTrue(observer.publicRideNeedsLink)
@@ -197,7 +194,7 @@ class GroupRideObserverTest {
         assertTrue(h.links.last().frames.isEmpty())
         assertTrue(h.observer.publicRideNeedsLink)
         h.token = "restored-token"
-        h.observer.setAccount("acc") // Same Account, restored credential must replace anonymous socket.
+        h.observer.setAccount("acc")
         h.flush()
         h.clock.advance(1_000)
         h.ready()

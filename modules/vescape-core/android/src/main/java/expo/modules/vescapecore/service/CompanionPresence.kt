@@ -37,10 +37,6 @@ internal class CompanionPresence(
         if (enabled) enable(promise) else disable(promise)
     }
 
-    /**
-     * Forgetting is unconditional: a Board whose BLE link was removed still owns an OS association
-     * that no screen can reach, so a missing link means "prune orphans", never an error.
-     */
     fun removeBoard(boardId: String, promise: Promise) {
         CoroutineScope(Dispatchers.IO).launch {
             val bleId = boardBleId(AppDataRepository.get(context), boardId)
@@ -150,8 +146,6 @@ internal class CompanionPresence(
                 promise.reject("COMPANION_BOARD_UNLINKED", "Board must have a BLE link", null)
                 return@launch
             }
-            // Auto-start claims the board exclusively. Rather than ask the user to disconnect first,
-            // drop the live session ourselves and continue once it's down.
             if (isSelectedBoardConnected(bleId)) {
                 CoreForegroundService.stopBoardSession(context.applicationContext) {
                     mainHandler.post { associateOrObserveSafely(bleId, promise) }
@@ -165,8 +159,6 @@ internal class CompanionPresence(
     private fun disable(promise: Promise) {
         CoroutineScope(Dispatchers.IO).launch {
             val repo = AppDataRepository.get(context)
-            // Associations survive a disable: they are what getBoards() reads back, so flipping the
-            // master switch on again restores the same armed Boards without a second chooser.
             for (board in getBoards()) stopObserving(board.getValue("bleId"))
             repo.updateSetting("companionPresenceEnabled", false)
             promise.resolve(null)
@@ -182,8 +174,6 @@ internal class CompanionPresence(
     }
 
     /**
-     * Error codes raised here are a rider-facing contract; the JS peer maps them to copy.
-     *
      * @parity /src/modules/settings/lib/companionErrors.ts
      */
     @SuppressLint("MissingPermission")
@@ -231,8 +221,6 @@ internal class CompanionPresence(
 
                 override fun onFailure(error: CharSequence?) {
                     pending = null
-                    // Android 14+ reports a dismissed chooser here ("user_rejected") instead of a
-                    // cancelled activity result. Both mean "the rider backed out", not a failure.
                     val reason = error?.toString().orEmpty()
                     if (reason.contains("user_rejected", ignoreCase = true) ||
                         reason.contains("cancel", ignoreCase = true)
@@ -317,7 +305,6 @@ internal class CompanionPresence(
         }
     }
 
-    /** Stop watching an address and drop its OS association. Both steps are best-effort. */
     private fun forget(bleId: String) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         stopObserving(bleId)
@@ -329,11 +316,6 @@ internal class CompanionPresence(
         }
     }
 
-    /**
-     * Associations outlive the Boards that created them — unlink a Board's BLE and its association
-     * becomes invisible to every screen while still waking the phone. Drop anything no linked Board
-     * claims. Board associations are the only ones we ever create, so unmatched means orphaned.
-     */
     private suspend fun pruneOrphanAssociations() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         val linked = AppDataRepository.get(context).getBoards()

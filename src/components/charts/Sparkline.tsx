@@ -46,8 +46,6 @@ export function SparklineMaxBadge({
     for (const point of points) max = Math.max(max, point.value)
     return Number.isFinite(max) ? max : null
   }, [points])
-  // No samples yet -> no badge at all; a "max —" placeholder is noise. The row keeps its height
-  // so the strip does not reflow when the first sample lands.
   const value = maxValue == null ? null : fmt(maxValue).replace(/(\d)\s+([a-zA-Z%°])/g, '$1$2')
   return (
     <View
@@ -63,7 +61,6 @@ export function SparklineMaxBadge({
   )
 }
 
-/** Standalone convenience chart. Use SparklineLayer inside a shared Canvas for grids. */
 export function Sparkline({
   points,
   color,

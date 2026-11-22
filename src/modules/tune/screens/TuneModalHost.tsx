@@ -10,7 +10,6 @@ import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 import type { TuneProfileColorId, TuneProfileIconId } from '@/modules/tune/lib/profileMetadata'
 import { createTuneModalOperationRunner } from './tuneModalOperationRunner'
 
-/** Every modal the Tune screen can raise, driven by one `useTuneModals` state bag. */
 export function TuneModalHost({ modals }: { modals: ReturnType<typeof useTuneModals> }) {
   const error = useTuneProfileStore((state) => state.error)
   const [pending, setPending] = useState(false)

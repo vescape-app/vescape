@@ -21,35 +21,20 @@ import { theme } from '@/constants/theme'
 import { openExternalUrl } from '@/components/base/openExternalUrl'
 
 interface MarkdownProps {
-  /** Markdown source. Raw HTML is inert and unsafe URLs are dropped. */
   children: string
-  /** Layout-level container style (margins, flex) — not visual overrides. */
   style?: StyleProp<ViewStyle>
-  /** Horizontal text alignment for paragraphs and headings. Defaults to left. */
   align?: MarkdownAlign
-  /** Defaults to opening the href with the OS handler. */
   onLinkPress?: (href: string) => void
 }
 
-/** Aspect ratio used until the real image reports its intrinsic size. */
 const PLACEHOLDER_RATIO = 16 / 9
 
-/** Fixed column width — RN has no table layout, so columns only line up when
- *  every cell in a column is the same width. Wide tables scroll horizontally. */
 const CELL_WIDTH = 120
 
 const openLink = (href: string) => {
   openExternalUrl(href, 'markdown_link')
 }
 
-/**
- * Renders Markdown as native React Native primitives — no WebView.
- *
- * Supports paragraphs, headings, bold/italic/strikethrough, inline and fenced
- * code, nested ordered and unordered lists, blockquotes, rules, links, images,
- * tables, and soft/hard breaks. Wide tables scroll horizontally; images fill
- * the available width and fall back to their alt text on failure.
- */
 export function Markdown({ children, style, align, onLinkPress = openLink }: MarkdownProps) {
   const blocks = useMemo(() => parseMarkdown(children), [children])
 
@@ -197,7 +182,6 @@ function MarkdownImage({ src, alt }: { src: string; alt: string }) {
   )
 }
 
-/** Inline nodes render as nested `Text` so wrapping and line height stay native. */
 function inlineNodes(nodes: MarkdownInline[], onLinkPress: (href: string) => void) {
   return nodes.map((node, index) => {
     switch (node.type) {
@@ -239,8 +223,6 @@ function inlineNodes(nodes: MarkdownInline[], onLinkPress: (href: string) => voi
           </Text>
         )
       case 'image':
-        // Images are lifted to block level by `splitInlineRuns`; inside a table
-        // cell they stay inline, where alt text is the readable fallback.
         return <Fragment key={index}>{node.alt}</Fragment>
       case 'break':
         return <Fragment key={index}>{node.hard ? '\n' : ' '}</Fragment>
@@ -250,7 +232,6 @@ function inlineNodes(nodes: MarkdownInline[], onLinkPress: (href: string) => voi
 
 const alignStyle = (align: MarkdownAlign | null) => (align ? { textAlign: align } : null)
 
-/** Heading levels are clamped to 1–6 by the parser. */
 const headingStyles: Record<number, TextStyle> = {
   1: { fontSize: 20, lineHeight: 26 },
   2: { fontSize: 17, lineHeight: 23 },

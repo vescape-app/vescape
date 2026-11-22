@@ -8,8 +8,6 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Great-circle helpers shared by everything native that reasons about two positions.
- *
  * @parity /modules/vescape-core/ios/geo/GeoMath.swift
  */
 object GeoMath {
@@ -29,7 +27,6 @@ object GeoMath {
     return 2 * EARTH_RADIUS_METERS * asin(min(1.0, sqrt(a)))
   }
 
-  /** Initial great-circle bearing from one position to another, normalized to `[0, 360)`. */
   fun travelBearingDeg(
     fromLatitude: Double,
     fromLongitude: Double,
@@ -45,7 +42,6 @@ object GeoMath {
     return normalizeBearingDeg(Math.toDegrees(atan2(y, x)))!!
   }
 
-  /** `[0, 360)`, or null when the value is absent or not finite. */
   fun normalizeBearingDeg(value: Double?): Double? {
     if (value == null || !value.isFinite()) return null
     return ((value % 360) + 360) % 360

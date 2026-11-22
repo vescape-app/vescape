@@ -11,7 +11,6 @@ interface ConnectedBoardPillProps {
   maxWidth: number
   activeBoard: Board | undefined
   bleStatus: string
-  /** Pending trouble on the board, read once by the top bar and shared with the selector. */
   issues: BoardIssues
   warningTriggerRef: React.RefObject<View | null>
   faultTriggerRef: React.RefObject<View | null>
@@ -20,11 +19,9 @@ interface ConnectedBoardPillProps {
   onOpenSelector: () => void
   onDisconnect: () => void
   onConnect?: () => void
-  /** Passed straight through: the Board domain never resolves this, the composition layer does. */
   accessory?: BoardPillAccessory
 }
 
-/** Store subscriptions and drawer intents stay outside the pill's presentation. */
 export const ConnectedBoardPill = forwardRef<View, ConnectedBoardPillProps>(
   function ConnectedBoardPill(
     {

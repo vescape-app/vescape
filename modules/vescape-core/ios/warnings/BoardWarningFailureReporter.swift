@@ -1,6 +1,5 @@
 import Foundation
 
-/// Reports Board Warning DB failures to diagnostics, throttled to once per (site, session).
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `reportWarningFailure`
 final class BoardWarningFailureReporter {
   static let shared = BoardWarningFailureReporter()

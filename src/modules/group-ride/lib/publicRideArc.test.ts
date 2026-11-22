@@ -33,7 +33,6 @@ describe('public ride arc', () => {
         ).toBe(index)
       }
     }
-    // Clamp touches at or below the ends of the semicircle to the outer detents.
     expect(publicRideIndexAt(cx - 100, cy)).toBe(0)
     expect(publicRideIndexAt(cx + 100, cy)).toBe(3)
     expect(publicRideIndexAt(cx, cy)).toBe(-1)

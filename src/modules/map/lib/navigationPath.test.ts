@@ -45,7 +45,6 @@ test('split uses native selected leg and shares one exact point without a gap', 
     ],
   ])
   expect(features.map((f) => f.properties?.opacity)).toEqual([0.2, 1])
-  // End-of-path remaining distance includes rider-to-target fallback; it must not move the split.
   expect(navigationPathShape(navigation, { ...progress, remainingMeters: 900 })!.features).toEqual(
     features,
   )

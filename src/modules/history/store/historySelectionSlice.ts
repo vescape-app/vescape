@@ -37,7 +37,6 @@ type SliceFactory = (
   get: StoreApi<HistoryStore>['getState'],
 ) => HistorySelectionSlice
 
-/** Loading the samples behind whichever block or ride the rider opened. */
 export const createHistorySelectionSlice: SliceFactory = (set, get) => ({
   async selectBlock(block) {
     if (!block) {
@@ -100,11 +99,6 @@ export const createHistorySelectionSlice: SliceFactory = (set, get) => ({
     set({
       selectedSession: session,
       sessionFocus: focus,
-      // Cleared, not held: samples and the ride they belong to have to move together. Keeping the
-      // previous ride's samples here leaves the charts deriving series, timeline, ranges and paths
-      // for the whole old dataset against the new ride's bounds — a full build whose result is
-      // thrown away the moment the real samples land. A minute-bucket stand-in had the same
-      // problem, cheaply: it drew a coarser shape of the same charts, then drew them again.
       sessionSamples: [],
       sessionChartSamples: [],
       sessionGpsSamples: [],
@@ -139,8 +133,6 @@ export const createHistorySelectionSlice: SliceFactory = (set, get) => ({
         sessionExclusions: range.exclusions,
         sessionTruncated:
           range.boardSamples.length < session.sampleCount ||
-          // `gpsSamples` is the route stream: native already dropped fixes that fail the shared
-          // precision rule, so the honest comparison is against the precise count (ADR 0038).
           range.gpsSamples.length < session.preciseGpsPointCount,
       })
     } catch (err) {

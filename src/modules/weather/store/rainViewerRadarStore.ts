@@ -38,10 +38,6 @@ function clampFrameIndex(index: number, frameCount: number): number {
 }
 
 /**
- * Slippy-map tile template for the phone's Mapbox overlay. The wrist renders the same provider from
- * single centred images instead of a tile grid, so the two build different URLs from the same
- * metadata — the frame list and the "past frames only" rule are what must stay in step.
- *
  * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRadar.kt `RainViewer`
  */
 export function buildRainViewerTileTemplate(host: string, frame: RainViewerRadarFrame): string {

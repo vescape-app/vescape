@@ -33,11 +33,9 @@ export interface TrackRow {
   detail: string
   runId: number
   age: string | null
-  /** Upstream workflow run this track consumed, when it is a promotion. */
   sourceRunId?: number
 }
 
-/** Compact age for the overview table; the exact timestamp is never the decision-relevant part. */
 export function relativeAge(createdAt: string | null, now = Date.now()): string | null {
   if (!createdAt) return null
   const at = Date.parse(createdAt)
@@ -50,18 +48,9 @@ export function relativeAge(createdAt: string | null, now = Date.now()): string 
 }
 
 export interface ProductionRow extends TrackRow {
-  /**
-   * Identifies the exact artifact pair on production. A status refresh must target this, not a
-   * marketing version — a rebuild of the same version carries different version codes.
-   */
   openPromotionRunId: number
 }
 
-/**
- * Everything the dashboard renders. Derived from workflow manifests, so it is the last state the
- * release pipeline recorded — not live Play truth. The `status` production operation is the only
- * path to live Play data, and it needs credentials only the trusted workflow has.
- */
 export interface ReleaseState {
   repo: string | null
   devVersion: string | null
@@ -156,16 +145,6 @@ export function productionRow(
 const ageOf = (runs: readonly ArtifactRun[], runId: number | undefined): string | null =>
   relativeAge(runs.find((run) => run.runId === runId)?.createdAt ?? null)
 
-/**
- * Runs newer than the one a downstream track already consumed — i.e. work waiting to move.
- * Failed runs published a manifest but advanced nothing, so counting them would advertise
- * pending work that no promotion can act on. Only failures inside the scan window are known;
- * an older failure beyond it can still be overcounted.
- */
-/**
- * A truncated scan renders the track as if it were never published, which would silently hide
- * the version actually on it. Say so instead of showing an empty row as fact.
- */
 export function truncationAlerts(scans: ReadonlyArray<[string, boolean]>): string[] {
   return scans
     .filter(([, truncated]) => truncated)
@@ -177,11 +156,6 @@ export function truncationAlerts(scans: ReadonlyArray<[string, boolean]>): strin
 
 export type ReleaseStatePatch = Partial<ReleaseState>
 
-/**
- * Loads in tiers so the dashboard paints immediately: local git first, then one cheap API call per
- * artifact listing, then the newest manifest per track. Only three artifact downloads happen —
- * pending counts come from the listings, which are ids only.
- */
 export async function loadReleaseState(emit: (patch: ReleaseStatePatch) => void): Promise<void> {
   try {
     const [devVersion, preparedVersion, draft] = await Promise.all([

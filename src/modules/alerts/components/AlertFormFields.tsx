@@ -9,14 +9,8 @@ import {
   type AlertSeverity,
 } from '@/modules/alerts/lib/alertSoundString'
 
-/**
- * Repeat cadences offered to the rider, with `Off` as the one-shot choice. Deliberately coarse: the
- * difference between 12s and 15s is not a choice anyone can make meaningfully in a settings screen,
- * and native floors the value regardless.
- */
 const REPEAT_INTERVAL_CHOICES = [5, 10, 30, 60] as const
 
-/** Repeat cadence for a single-threshold rule; `Off` is the one-shot choice. */
 export function RepeatField({
   value,
   onChange,
@@ -45,7 +39,6 @@ export function RepeatField({
   )
 }
 
-/** Severity of a speech rule: picks the sound played once before the message. */
 export function SeverityField({
   value,
   onChange,

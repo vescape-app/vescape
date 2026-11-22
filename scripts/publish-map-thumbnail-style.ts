@@ -1,12 +1,3 @@
-/**
- * Publishes the One Dark ground layers as a Mapbox-hosted style, so the Static Tiles API can render
- * them as raster tiles for ride thumbnails. Labels, icons and boundaries stay out: they are noise at
- * thumbnail size.
- *
- * Needs `MAPBOX_SECRET_TOKEN`: a secret token on the app's account with `styles:list`,
- * `styles:read` and `styles:write`. Keep it in the shell environment, never in the repo.
- * Re-running updates the existing style in place; tiles already cached on phones stay as they are.
- */
 import {
   ONE_DARK_BASE_LAYERS,
   ONE_DARK_SOURCES,

@@ -142,13 +142,6 @@ internal object CoreForegroundServiceLauncher {
         )
     }
 
-    /**
-     * Brings the host up for enrolled Accessories, independently of any Board.
-     *
-     * An Accessory session is not a Board session: it must come up with no Board selected and with
-     * Board auto-connect switched off, because the rider enrolled the Accessory rather than the
-     * Board it happens to ride with.
-     */
     fun autoConnectAccessories(context: Context): ForegroundServiceLaunchResult {
         val skipReason = foregroundServiceLaunchSkipReason(
             ForegroundServiceLaunchPreflight(

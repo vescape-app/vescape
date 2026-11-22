@@ -8,8 +8,6 @@ import expo.modules.vescapecore.telemetry.isInsideAnyPrivacyZone
 import kotlin.math.roundToInt
 
 /**
- * Fail-closed privacy configuration: an empty loaded list is usable, while a failed read blocks
- * location egress and preserves the last trusted rules for inspection/retry.
  * @parity /modules/vescape-core/ios/connection/PrivacyZoneReadState.swift
  */
 internal class PrivacyZoneReadState {
@@ -31,18 +29,9 @@ internal class PrivacyZoneReadState {
     }
   }
 
-  /**
-   * The fix Group Ride presence may publish (issue #144): none until zones load, none inside a
-   * zone. Local GPS keeps ticking; only the broadcast freezes, resuming on exit.
-   */
   fun presenceFix(location: LocationSnapshot?): LocationSnapshot? =
     location?.takeIf { allowsLocationEgress && !contains(it) }
 
-  /**
-   * What a Rider Signal send is checked against: [location] while recent, and whether it lies
-   * inside a zone (assumed so until zones load). Not the presence gate: a signal carries its own
-   * location even inside a zone; the zone flag only drives the warning.
-   */
   fun signalContext(location: LocationSnapshot?, nowMs: Long): RiderSignalContext {
     val recent = location?.takeIf { nowMs - it.timestamp <= RiderSignals.FIX_MAX_AGE_MS }
     return RiderSignalContext(

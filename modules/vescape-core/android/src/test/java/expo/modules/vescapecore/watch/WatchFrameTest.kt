@@ -7,12 +7,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Round-trips the Watch Frame wire contract: build a frame, encode it, then decode it back. [decode]
- * mirrors the wrist-side `app.vescape.wear.WatchFrameDecoder` lane-for-lane (ADR-0018) — the watch
- * module is a separate Gradle app and cannot be imported here, so this copy is the executable proof
- * that the two sides agree on field count, order, the `NaN` null sentinel, and the stale flag.
- */
 class WatchFrameTest {
 
     private fun decode(bytes: ByteArray): WatchFrame? {
@@ -28,7 +22,7 @@ class WatchFrameTest {
             lane(),
             lane(),
             stale = flags and WATCH_FRAME_FLAG_STALE != 0,
-            navBearing = lane(),
+            navBearingDeg = lane(),
             navDistanceM = lane(),
             riderEastM = lane(),
             riderNorthM = lane(),
@@ -69,11 +63,11 @@ class WatchFrameTest {
                 motorTemp = 40.0,
                 ctrlTemp = 35.0,
                 stale = false,
-                navBearing = 128.0,
+                navBearingDeg = 128.0,
                 navDistanceM = 1350.0,
             ),
         )!!
-        assertEquals(128.0, navigating.navBearing!!, 1e-3)
+        assertEquals(128.0, navigating.navBearingDeg!!, 1e-3)
         assertEquals(1350.0, navigating.navDistanceM!!, 1e-3)
 
         val idle = roundTrip(
@@ -86,7 +80,7 @@ class WatchFrameTest {
                 stale = false,
             ),
         )!!
-        assertNull(idle.navBearing)
+        assertNull(idle.navBearingDeg)
         assertNull(idle.navDistanceM)
     }
 
@@ -185,7 +179,7 @@ class WatchFrameTest {
                     batterySoc = null,
                     motorTemp = null,
                     ctrlTemp = null,
-                    navBearing = 42.0,
+                    navBearingDeg = 42.0,
                 ),
                 stale = false,
             ),
@@ -195,7 +189,7 @@ class WatchFrameTest {
         assertNull(decoded.battery)
         assertNull(decoded.motorTemp)
         assertNull(decoded.ctrlTemp)
-        assertEquals(42.0, decoded.navBearing!!, 1e-3)
+        assertEquals(42.0, decoded.navBearingDeg!!, 1e-3)
     }
 
     @Test

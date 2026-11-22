@@ -2,8 +2,6 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-/// Widget bundle entry point for the `ride-activity` extension. Only hosts the Live Activity — the
-/// board status surface — so there is no Home Screen widget alongside it.
 @main
 struct RideActivityBundle: WidgetBundle {
   var body: some Widget {
@@ -11,8 +9,6 @@ struct RideActivityBundle: WidgetBundle {
   }
 }
 
-/// Renders the Board Session Live Activity from `RideActivityAttributes`. Native code owns all
-/// state transitions; these views are pure functions of `context.state`.
 struct RideActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: RideActivityAttributes.self) { context in
@@ -53,16 +49,12 @@ struct RideActivityWidget: Widget {
   }
 }
 
-/// Full Lock Screen / banner presentation.
 private struct RideActivityLockScreenView: View {
   let state: RideActivityAttributes.ContentState
   let isStale: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      // No `shortCritical` here: the status line below already carries the battery segment plus the
-      // progress bar, so a second big percent is pure duplication. The compact Dynamic Island, which
-      // has no room for a status line, still renders it.
       Label(state.deviceName, systemImage: boardSymbol(state, isStale))
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(statusColor(state, isStale))
@@ -74,8 +66,6 @@ private struct RideActivityLockScreenView: View {
   }
 }
 
-/// Top Ride Notice next to the ride status; absent when no notice is visible. A stale activity
-/// hides it with the rest of the telemetry — the notice may have cleared since.
 private struct RideNoticeRow: View {
   let state: RideActivityAttributes.ContentState
   let isStale: Bool
@@ -107,7 +97,6 @@ private func noticeColor(_ severity: String?) -> Color {
   }
 }
 
-/// Shared details and authenticated native stop for the Lock Screen and expanded Dynamic Island.
 private struct RideActivityDetails: View {
   let state: RideActivityAttributes.ContentState
   let isStale: Bool
@@ -126,7 +115,6 @@ private struct RideActivityDetails: View {
   }
 }
 
-/// Shared status line + battery progress, used by both the Lock Screen and the expanded island.
 private struct RideStatusRow: View {
   let state: RideActivityAttributes.ContentState
   let isStale: Bool
@@ -147,11 +135,6 @@ private struct RideStatusRow: View {
   private func staleAware(_ color: Color) -> Color { isStale ? .secondary : color }
 }
 
-/// The activity outlived its `staleDate`: nothing has pushed a snapshot for a minute, so the numbers
-/// on screen are history, not telemetry. Deliberately not phrased as "ride ended" — stale means
-/// unknown, not terminal: the app is usually dead (killed or jetsammed), but a suspended process can
-/// still come back. The widget extension cannot ask the app anything, so `context.isStale` is the
-/// only signal there is.
 private let staleStatusText = "No connection to the app"
 private let staleShortCritical = "—"
 private let staleOpacity = 0.45

@@ -14,8 +14,8 @@ import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.annotation.WorkerThread
 
-/** Reads the Data Layer directly, including while MainActivity has never been opened. */
 class BatteryComplicationService : SuspendingComplicationDataSourceService() {
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData = withContext(Dispatchers.IO) {
         val items = Tasks.await(Wearable.getDataClient(this@BatteryComplicationService).getDataItems(
@@ -38,7 +38,6 @@ internal fun decodeLastBatteryItem(item: DataItem): WatchLastBattery? {
 }
 
 /**
- * The watch face owns typography and placement; these are its production data fields.
  * @parity /watch/watchos/BatteryComplicationView.swift
  * @platform-diff A never-seen Board is No Data, the watch face's own empty state; watchOS shows
  *   the Board name with `--`.
@@ -61,8 +60,8 @@ internal fun batteryComplicationData(battery: WatchLastBattery?, type: Complicat
     }
 }
 
-/** Closed-app receive path. The Data Layer item itself is the only durable battery store. */
 class BatteryComplicationListener : WearableListenerService() {
+    @WorkerThread
     override fun onDataChanged(events: DataEventBuffer) {
         for (event in events) {
             if (event.dataItem.uri.path != LAST_BATTERY_PATH) continue

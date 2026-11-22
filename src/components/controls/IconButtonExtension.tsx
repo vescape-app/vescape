@@ -13,25 +13,16 @@ import { Text } from '@/components/base/Text'
 import { interaction, theme, type ThemeColor } from '@/constants/theme'
 
 interface IconButtonExtensionProps {
-  /** Shown beside the button, inside the capsule. Null renders the button alone. */
   extension: ReactNode
-  /** Which way the capsule grows: up for a button on the bottom edge, down for one on the top. */
   direction?: 'up' | 'down'
-  /** The round button the capsule grows out of, usually an `IconButton`. */
   children: ReactNode
-  /** Makes the extension pressable, normally the same action as the button. */
   onPress?: () => void
   disabled?: boolean
-  /** Pulses the extension's content: a state the Rider should act on, like clearing a signal. */
   blink?: boolean
   testID?: string
   accessibilityLabel?: string
 }
 
-/**
- * Grows a round button up or down into a translucent capsule of the button's own width, holding any
- * content. The button keeps every one of its own props; the capsule only wraps it.
- */
 export function IconButtonExtension({
   extension,
   direction = 'up',
@@ -42,7 +33,6 @@ export function IconButtonExtension({
   testID,
   accessibilityLabel,
 }: IconButtonExtensionProps) {
-  // The capsule takes the button's width, so content never widens it, whatever the button size.
   const [width, setWidth] = useState<number>()
   const fade = useSharedValue(0)
   useEffect(() => {
@@ -93,7 +83,6 @@ interface IconButtonExtensionStatProps {
   color?: ThemeColor
 }
 
-/** A small value-over-unit readout sized for an extension. */
 export function IconButtonExtensionStat({ value, unit, color }: IconButtonExtensionStatProps) {
   return (
     <View style={styles.stat}>
@@ -113,14 +102,12 @@ const styles = StyleSheet.create({
   capsule: {
     alignSelf: 'flex-start',
     alignItems: 'center',
-    // Outset by the border so the button inside stays exactly where it would sit alone.
     margin: -1,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: theme.control.border,
     backgroundColor: theme.alpha(theme.control.background, 0.6),
   },
-  // The button leads and the extension trails it, so a top-edge button keeps its own spot.
   capsuleDown: {
     flexDirection: 'column-reverse',
   },

@@ -1,9 +1,5 @@
 import Foundation
 
-/// Read-side models + tune-field allowlist for the Refloat config pipeline. Values cross the bridge
-/// as `[String: Any?]` bags via `toMap()`, byte-for-byte the same shape as Android's `toMap()` so JS
-/// handles both platforms identically (#171).
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigModels.kt
 struct RefloatTuneFieldDefinition {
   let id: String
@@ -114,7 +110,6 @@ struct RefloatConfigSnapshot {
 
 }
 
-/// Error vocabulary shared with Android so JS error handling stays identical across platforms.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigModels.kt
 enum RefloatConfigErrorCode: String {
   case BOARD_NOT_CONNECTED

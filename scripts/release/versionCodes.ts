@@ -7,10 +7,6 @@ export interface AndroidArtifactCodes {
   wear: number
 }
 
-/**
- * A workflow's run number is monotonic and remains unchanged when failed jobs are retried.
- * Separate ranges keep phone and Wear artifacts unambiguous in their shared Play listing.
- */
 export function allocateAndroidArtifactCodes(runNumber: number): AndroidArtifactCodes {
   if (!Number.isSafeInteger(runNumber) || runNumber < 1) {
     throw new Error(`Invalid workflow run number "${runNumber}"`)

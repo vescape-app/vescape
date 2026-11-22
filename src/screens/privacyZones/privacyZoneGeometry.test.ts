@@ -3,7 +3,6 @@ import { describe, expect, test } from 'bun:test'
 import { makeCircleFeature } from '@/helpers/mapGeometry'
 import { radiusFromZoom, zoomFromRadius } from './privacyZoneGeometry'
 
-// Independently project a geographic boundary into Mapbox's 512-point Mercator world.
 function horizontalOffsetPx(longitude: number, centerLongitude: number, zoom: number) {
   return ((longitude - centerLongitude) / 360) * 512 * 2 ** zoom
 }
@@ -17,7 +16,6 @@ describe('Privacy Zone editor and saved map boundary', () => {
         const circle = makeCircleFeature(21, latitude, radiusMeters)
         const east = circle.geometry.coordinates[0][16]
         const edgePx = horizontalOffsetPx(east[0], 21, zoom)
-        // Saving rounds to whole metres, allowing half a metre of projection error.
         const halfMeterPx = horizontalOffsetPx(
           makeCircleFeature(21, latitude, 0.5).geometry.coordinates[0][16][0],
           21,

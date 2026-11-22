@@ -13,7 +13,6 @@ interface WeatherStatProps {
   temperature: number
   precipProbability?: number | null
   size?: WeatherStatSize
-  /** Override the weather icon tint. Defaults to muted secondary text. */
   iconColor?: ThemeColor
 }
 
@@ -22,7 +21,6 @@ const SIZES: Record<WeatherStatSize, { icon: number; temp: number; drop: number 
   md: { icon: 16, temp: 13, drop: 12 },
 }
 
-/** Inline icon + temperature + precipitation. Shared atom for the top bar and pill. */
 export function WeatherStat({
   icon,
   temperature,

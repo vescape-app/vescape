@@ -17,7 +17,6 @@ export interface HistoryState {
   sessions: HistorySession[]
   selectedBlock: TelemetryMinuteBucket | null
   selectedSession: HistorySession | null
-  /** Where the selected ride should open once its samples land; cleared once applied. */
   sessionFocus: RideFocus | null
   samples: TelemetrySample[]
   gpsSamples: HistoryGpsSample[]
@@ -41,18 +40,14 @@ export interface HistoryActions {
   loadInitial: () => Promise<void>
   loadMore: () => Promise<void>
   refreshRecent: () => Promise<void>
-  /** Re-read every loaded ride in place after native rewrote summaries; keeps the selection. */
   reloadLoadedSessions: () => Promise<void>
   selectBlock: (block: TelemetryMinuteBucket | null) => Promise<void>
   selectSession: (session: HistorySession | null, focus?: RideFocus | null) => Promise<void>
-  /** The panel applied `sessionFocus`. */
   clearSessionFocus: () => void
   refreshSummary: () => Promise<void>
   regroupSessions: () => void
-  /** Replace the Ride History Filter and reload the first page under it. */
   setRideFilter: (selection: RideFilterSelection) => void
   removeSelectedSession: () => Promise<void>
-  /** Bulk delete from select mode, then the list reloads under the active filter. */
   removeRides: (selection: RideSelection) => Promise<void>
   clearHistory: () => Promise<void>
 }

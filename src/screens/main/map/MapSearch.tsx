@@ -147,7 +147,6 @@ function MapSearchSheet({
   )
 }
 
-/** Place search: a button until it is opened, then a sheet over the top of the map. */
 export function MapSearch({
   open,
   top,

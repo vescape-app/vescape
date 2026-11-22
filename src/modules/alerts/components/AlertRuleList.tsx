@@ -27,11 +27,6 @@ import {
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 
-/**
- * The rider's own Alert Rules for one control: rows with mute + delete, and the add/edit form.
- * Purely a view over a {@link MetricAlertsController}, so the same list serves a saved Board and
- * the add-board wizard's draft.
- */
 export function AlertRuleList({
   controller,
   unit,
@@ -39,7 +34,6 @@ export function AlertRuleList({
 }: {
   controller: MetricAlertsController
   unit: string
-  /** Set for battery, whose rules are state-of-charge % rather than raw volts. */
   batteryConfig: DerivedBatteryConfig | null
 }) {
   const [formVisible, setFormVisible] = useState(false)
@@ -72,7 +66,7 @@ export function AlertRuleList({
           }}
           onToggle={() => {
             // intentional-suppression: Alerts store error is rendered by the active form or list
-            void controller.toggleRule(rule.id).catch(() => undefined) // Store error renders below.
+            void controller.toggleRule(rule.id).catch(() => undefined)
           }}
           onDelete={() => setDeleteTarget(rule)}
         />

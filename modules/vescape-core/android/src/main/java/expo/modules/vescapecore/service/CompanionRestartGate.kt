@@ -2,11 +2,6 @@ package expo.modules.vescapecore.service
 
 import android.content.Context
 
-/**
- * Suppresses companion-presence auto start for a cooldown window after the user exits the app
- * manually, so the board reappearing does not immediately relaunch the session. Cleared when the
- * user opens the app again.
- */
 internal object CompanionRestartGate {
     private const val PREFS = "vesc_companion_restart_gate"
     private const val KEY_SUPPRESSED_UNTIL = "suppressed_until"

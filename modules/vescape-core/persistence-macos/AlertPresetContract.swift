@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 
-/// Host contracts expect every preset to expand; a failure is a contract break.
 let unexpectedPresetFailure: (Error) -> Void = { fatalError("Alert Preset expansion failed: \($0)") }
 
 private func presetRow(_ boardId: String, _ metric: String, _ spec: String) -> PersistedAlertRule {
@@ -165,7 +164,6 @@ func runAlertPresetContract() throws {
 
   try queue.close(); queue = try DatabaseQueue(path: url.path)
   try queue.write { db in
-    // GRDB saves an existing row with UPDATE, a new one with INSERT: fail both.
     for event in ["INSERT", "UPDATE"] {
       try db.execute(sql: "CREATE TRIGGER fail_preset_\(event) BEFORE \(event) ON alerts WHEN NEW.id LIKE 'preset:%' BEGIN SELECT RAISE(ABORT, 'test preset write'); END")
     }
@@ -198,7 +196,6 @@ func runAlertPresetUnitSwitchContract() throws {
     try BoardSettingsPersistence(writer: queue).updateDistanceUnit(units)
     let expected = switchCase[units] as! [Double]
     for (index, id) in ["first", "second"].enumerated() {
-      // `second` has no row: the app default, normal, expands the same way.
       let rule = try AlertRulePersistence(writer: queue).rules(boardId: id, reportPresetFailure: unexpectedPresetFailure).first { $0.controlId == "speed" }!
       try require(abs(rule.threshold - expected[0]) < 0.0000001 && abs(rule.thresholdMax! - expected[1]) < 0.0000001, "unit switch changes every board's expansion")
       try require(try storedRules(queue, id) == stored[index], "unit switch writes no rules")
@@ -207,8 +204,6 @@ func runAlertPresetUnitSwitchContract() throws {
   try queue.close()
 }
 
-/// A missing or tombstoned Board expands nothing, one failing metric leaves the rest, and a new
-/// Board's initial alerts commit or roll back with it.
 /// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/AlertPresetPersistenceHostTest.kt
 func runAlertPresetBoardLifecycleContract() throws {
   let queue = try DatabaseQueue()

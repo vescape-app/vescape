@@ -3,7 +3,6 @@ import { join } from 'path'
 
 import { ROOT, capture, runOrDie, type CaptureDriver } from './captureDriver.ts'
 
-/** Own exactly one platform recorder. Android signals its remote PID, never every screenrecord. */
 export class PreviewRecording {
   private process: ReturnType<typeof Bun.spawn> | null = null
   private remotePid: string | null = null
@@ -102,7 +101,6 @@ export class PreviewRecording {
     clearTimeout(timer)
     if (code !== 0) throw new Error(`Recorder failed (${code}); partial footage: ${this.rawPath}`)
     if (this.driver.platform === 'android') {
-      // The adb shell can return before screenrecord finishes writing the file; pull only after it exits.
       const deadline = Date.now() + 15_000
       while (
         this.remotePid &&
@@ -118,8 +116,6 @@ export class PreviewRecording {
         ).includes('alive')
       )
         await Bun.sleep(250)
-      // The Wear emulator's adb transfer sometimes fails silently mid-copy; the file is intact on
-      // the device, so the copy is retried.
       let pull = Bun.spawnSync(
         ['adb', '-s', this.driver.deviceId, 'pull', this.remotePath, this.rawPath],
         {
@@ -148,14 +144,9 @@ export class PreviewRecording {
   }
 }
 
-/**
- * Several recorders as one take: they start together, once [beforeStart] resolves, and every one is
- * stopped even if another fails.
- */
 export class PreviewTake {
   constructor(
     private recordings: PreviewRecording[],
-    /** Runs on start, before any recorder; the footage begins once it resolves. */
     private beforeStart: () => Promise<void> = async () => {},
   ) {}
 
@@ -179,7 +170,6 @@ export async function exportPreview(
   const stem = rawPath.replace(/-raw\.(mov|mp4)$/, '')
   const web = `${stem}-web.mp4`
   const appPreview = platform === 'ios' && appStore ? `${stem}-app-preview.mp4` : null
-  // Preserve the complete take and its timing. Keep the original for later editing.
   if (appPreview) {
     await runOrDie([
       'ffmpeg',

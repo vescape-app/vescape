@@ -20,21 +20,12 @@ interface DialWidgetProps {
   step: number
   unit?: string | null
   previousValue?: number
-  /** Accent for the label. */
   accent?: ThemeColor
   size?: WidgetSize
-  /** Help text shown in the square tile's editor modal. */
   help?: string
   onValueChange: (value: number) => void
 }
 
-/**
- * A labelled {@link TuneDial} on a widget surface.
- *
- * The dial needs horizontal room to scrub, so at `square` (1×1) it collapses to a
- * value tile that opens a {@link FieldEditorPopover} on tap instead of an unusable
- * mini-dial.
- */
 export function DialWidget(props: DialWidgetProps) {
   if (props.size === 'square') return <SquareDial {...props} />
   return <DialRow {...props} />

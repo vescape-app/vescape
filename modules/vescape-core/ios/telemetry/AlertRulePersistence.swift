@@ -9,7 +9,6 @@ struct PersistedAlertRule: Codable, FetchableRecord, PersistableRecord {
   let threshold: Double
   let thresholdMax: Double?
   let enabled: Bool
-  /// Sound string, or the `preset(<level>)…` spec of an Alert Preset row (see `AlertPresetSpec`).
   var spec: String
   let createdAt: Int64
   let repeatEverySeconds: Int64?
@@ -27,30 +26,25 @@ struct PersistedAlertRule: Codable, FetchableRecord, PersistableRecord {
   }
 }
 
-/// Production Alert Rule CRUD shared by the app repository and host persistence contract.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct AlertRulePersistence {
   let writer: any DatabaseWriter
 
   enum PresetRuleEdit: Error { case notEditable }
 
-  /// Rider rules plus expanded Alert Presets, the list every rule reader uses.
   func rules(boardId: String, reportPresetFailure: (Error) -> Void) throws -> [PersistedAlertRule] {
     try writer.read { db in try AlertPresetPersistence.expandedRules(db, boardId: boardId, reportFailure: reportPresetFailure) }
   }
 
-  /// Each preset metric's stored `preset(…)` spec, the app default where the Board has no row.
   func presets(boardId: String) throws -> [String: String] {
     try writer.read { db in try AlertPresetPersistence.specs(db, boardId: boardId) }
   }
 
-  /// Rider rules only: preset rows change through `applyAlertPreset`, expanded points never.
   func save(_ rule: PersistedAlertRule) throws {
     try Self.requireRiderRule(rule)
     try writer.write { db in try rule.save(db) }
   }
 
-  /// Throws unless `rule` is a rider's rule: not a preset id and not a preset spec.
   static func requireRiderRule(_ rule: PersistedAlertRule) throws {
     try requireRider(rule.id)
     guard AlertPresetSpec.parse(rule.spec) == nil else { throw PresetRuleEdit.notEditable }

@@ -113,7 +113,6 @@ export function useEditBoardForm({
     [saveBoard],
   )
 
-  // Unlinking clears the whole Board Link (BLE id + transport) at once.
   const unlink = useCallback(async () => {
     await saveBoard({ link: null }, 'link')
   }, [saveBoard])

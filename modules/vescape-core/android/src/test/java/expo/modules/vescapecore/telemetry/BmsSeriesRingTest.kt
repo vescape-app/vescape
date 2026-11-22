@@ -20,7 +20,6 @@ class BmsSeriesRingTest {
 
   @Test
   fun snapshotFiltersByWindowWithoutNewAppends() {
-    // Board stopped sending BMS frames; a later focus must not resurface rolled-off rows.
     val ring = BmsSeriesRing()
     ring.append(1_000L, listOf(3.9), listOf(false), windowMs)
     ring.append(5_000L, listOf(4.0), listOf(false), windowMs)
@@ -47,7 +46,6 @@ class BmsSeriesRingTest {
   @Test
   fun encodesColumnsWithSplitBalancingBitmask() {
     val ring = BmsSeriesRing()
-    // 32 cells exercises both balancing lanes (bit 31 lands in the high lane).
     val voltages = List(32) { 3.5 + it * 0.01 }
     val balancing = List(32) { it == 0 || it == 31 }
     ring.append(1_000L, voltages, balancing, windowMs)
@@ -56,8 +54,8 @@ class BmsSeriesRingTest {
     val lanes = buffer.order(ByteOrder.LITTLE_ENDIAN).asDoubleBuffer()
     assertEquals(BMS_SERIES_FIXED_LANES + 32, lanes.capacity())
     assertEquals(1_000.0, lanes.get(0), 0.0)
-    assertEquals(1.0, lanes.get(1), 0.0) // bit 0 → low lane
-    assertEquals(2.0, lanes.get(2), 0.0) // bit 31 → high lane bit 1
+    assertEquals(1.0, lanes.get(1), 0.0)
+    assertEquals(2.0, lanes.get(2), 0.0)
     assertEquals(3.5, lanes.get(BMS_SERIES_FIXED_LANES), 1e-9)
     assertEquals(3.81, lanes.get(BMS_SERIES_FIXED_LANES + 31), 1e-9)
   }

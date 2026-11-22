@@ -19,12 +19,10 @@ import { createHistorySelectionSlice } from '@/modules/history/store/historySele
 
 const BUCKET_PAGE_SIZE = 100
 const RIDE_PAGE_SIZE = 10
-/** Window re-read on every recent refresh, wide enough to cover a ride still being recorded. */
 const RECENT_WINDOW_MS = 60 * 60_000
 const RECENT_BUCKET_LIMIT = 120
 let recentRefreshInFlight = false
 let recentRefreshVersion = 0
-/** A maintenance re-read that arrived while a page was loading. */
 let reloadAfterPaging = false
 
 export const useHistoryStore = create<HistoryStore>((set, get) => ({
@@ -121,14 +119,12 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
   async reloadLoadedSessions() {
     const { sessions: loadedSessions, loading } = get()
     if (loadedSessions.length === 0) return
-    // Pagination owns `loading`; re-read once it lands instead of racing its cursor.
     if (loading) {
       reloadAfterPaging = true
       return
     }
     set({ loading: true })
     try {
-      // Native caps a page, so walk cursors until the range the rider already loaded is covered.
       const summary = await getTelemetrySummary()
       let page = await getRideHistoryPage({ ...getRideFilter(), limit: RIDE_PAGE_SIZE })
       const sessions = [...page.sessions]
@@ -212,7 +208,6 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     void get().loadInitial()
   },
 
-  /** Native owns Ride boundaries; changing the gap invalidates the page cursor and reloads it. */
   regroupSessions() {
     void get().loadInitial()
   },

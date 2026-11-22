@@ -1,23 +1,14 @@
-/**
- * Android Virtual Devices as the SDK's `emulator` binary sees them, for every CLI that boots one
- * (`android:emulator`, `wear:emulator`, `android:up`).
- */
 import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { sdkRoot } from './androidSdk.ts'
 import { pickDevice } from './devices.ts'
 
-/**
- * Cache keys for the last AVD picked on each side (see lib/lastDevice); separate from the adb-device
- * keys, which span real phones and watches too.
- */
 export const PHONE_AVD_KEY = 'android-avd'
 export const WATCH_AVD_KEY = 'wear-avd'
 
 export interface Avd {
   name: string
-  /** `avd.ini.displayname` when the AVD has one, otherwise the directory name. */
   label: string
   isWatch: boolean
 }
@@ -35,10 +26,6 @@ export function emulatorBinary(): string {
   return binary
 }
 
-/**
- * AVDs as the `emulator` binary sees them, annotated from each one's `config.ini`: the binary lists
- * names only, and a name says nothing about whether the image is a watch.
- */
 export function listAvds(): Avd[] {
   const listed = Bun.spawnSync([emulatorBinary(), '-list-avds'], { env: process.env })
   const names = new TextDecoder()
@@ -58,11 +45,6 @@ export function listAvds(): Avd[] {
   })
 }
 
-/**
- * Check the lock's owner, not just the file: crashes can leave stale locks behind. A live owner
- * also covers emulators still booting, before they become available through adb. Let the emulator
- * reclaim stale locks itself rather than deleting a lock that another launch might have acquired.
- */
 export function isAvdRunning(name: string): boolean {
   let owner: string
   try {
@@ -72,8 +54,6 @@ export function isAvdRunning(name: string): boolean {
     throw error
   }
 
-  // The emulator writes an ASCII PID with a trailing NUL. Reject invalid PIDs so signal 0
-  // cannot accidentally query our own process group or all processes.
   const pid = Number(owner.replace(/\0$/, '').trim())
   if (!Number.isSafeInteger(pid) || pid <= 0) return false
   try {
@@ -87,16 +67,11 @@ export function isAvdRunning(name: string): boolean {
   }
 }
 
-/** Boots an AVD detached, so the shell that started it is free again; it outlives this process. */
 export function bootAvd(name: string) {
   console.log(`\n> emulator -avd ${name}\n`)
   Bun.spawn([emulatorBinary(), '-avd', name], { stdio: ['ignore', 'ignore', 'ignore'] }).unref()
 }
 
-/**
- * The phone or watch AVD a wear flow should run on. An explicit name always wins; otherwise one
- * already running of that kind is taken over booting another, and only a cold machine is asked.
- */
 export function pickAvd(watch: boolean, requested: string | null): Promise<Avd> {
   const items = listAvds().filter((it) => it.isWatch === watch)
   const running = items.filter((it) => isAvdRunning(it.name))

@@ -98,8 +98,6 @@ export function TextPromptModalShowcase() {
   )
 }
 
-/** Clearable variant: confirm stays enabled with an empty field, for optional names. */
-
 export function TextPromptModalClearableShowcase() {
   const [visible, setVisible] = useState(false)
 

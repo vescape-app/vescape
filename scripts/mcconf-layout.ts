@@ -1,15 +1,3 @@
-/**
- * Derives the MCCONF binary layout from VESC firmware's own serializer.
- *
- * Offsets in `COMM_GET_MCCONF` blobs are cumulative, so they can only be obtained by walking
- * `confgenerator_serialize_mcconf` field by field. VESC Tool's parameter XML describes editor
- * metadata, not wire format, and disagrees with the firmware on several fields — see
- * `docs/mcconf.md`.
- *
- *   curl -sO https://raw.githubusercontent.com/vedderb/bldc/release_6_05/confgenerator.c
- *   bun run scripts/mcconf-layout.ts confgenerator.c
- */
-
 type Row = { offset: number; type: string; size: number; name: string }
 
 const parsers: { re: RegExp; type: (m: RegExpMatchArray) => string; size: number; name: number }[] =
@@ -71,7 +59,6 @@ export function parseMcconfLayout(source: string): { rows: Row[]; unparsed: stri
       offset += hit.p.size
       continue
     }
-    // An unparsed serializer line would shift every following offset, so it must be reported.
     if (line.includes('buffer_append') || (line.includes('buffer[') && line.includes('ind'))) {
       unparsed.push(line)
     }

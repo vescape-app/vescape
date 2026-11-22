@@ -32,21 +32,15 @@ import kotlin.coroutines.resumeWithException
 import expo.modules.vescapecore.database.AppSettings
 import expo.modules.vescapecore.database.DatabaseReplacementFence
 import expo.modules.vescapecore.database.VescapeDatabase
+import androidx.annotation.WorkerThread
 
 private const val TAG = "MaintenanceRunner"
-/** Startup settles before the first pass: JS, BLE and the first flushes go first. */
 private const val LAUNCH_DELAY_MS = 10_000L
-/** A Stepper fires one change per tap; the run restarts once the Rider stops. */
 private const val INPUT_DEBOUNCE_MS = 3_000L
 private const val PROGRESS_EMIT_INTERVAL_MS = 250L
-/** Open history pages re-read at most this often while chunks commit. */
 private const val HISTORY_REVISION_INTERVAL_MS = 3_000L
 
 /**
- * Runs stale Maintenance Jobs one at a time, in declaration order, on one low-priority thread.
- * Every piece of state is confined to that thread; JS reads [snapshot] and the `onChange` sink.
- * Triggers: launch, network back, an input setting change, ride closure, Restore and Clear all.
- *
  * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `MaintenanceRunner`
  */
 internal object MaintenanceRunner {
@@ -78,12 +72,10 @@ internal object MaintenanceRunner {
 
   @Volatile private var published: Map<String, Any?> = buildSnapshot()
 
-  /** JS-facing sink; called on the maintenance thread. */
   @Volatile var onChange: ((Map<String, Any?>) -> Unit)? = null
 
   fun snapshot(): Map<String, Any?> = published
 
-  /** Idempotent per process: the first call arms network tracking and the launch pass. */
   fun start(context: Context) = scope.launch {
     if (started) return@launch
     started = true
@@ -103,7 +95,6 @@ internal object MaintenanceRunner {
     loop = scope.launch { runPasses() }
   }
 
-  /** An input setting changed: restart any run with the new values once the Rider settles. */
   fun onSettingChanged(key: String) = scope.launch {
     if (jobs.none { key in it.inputKeys }) return@launch
     debounce?.cancel()
@@ -114,7 +105,6 @@ internal object MaintenanceRunner {
     }
   }
 
-  /** Restore or Clear all finished, successfully or not: re-check against the resulting database. */
   fun onDatabaseReplaced() {
     scope.launch {
       if (!started) return@launch
@@ -185,7 +175,6 @@ internal object MaintenanceRunner {
         is MaintenanceJobOutcome.Deferred -> {
           breadcrumb("deferred", mapOf("job" to job.id, "retryAtMs" to outcome.retryAtMs))
           scheduleClosureCheck(outcome.retryAtMs)
-          // A fetch that failed because the network went away waits for it, with no warning.
           val waiting = job.requiresNetwork && !online
           states.getValue(job.id).copy(
             status = if (waiting) MaintenanceJobStatus.WAITING_FOR_NETWORK else MaintenanceJobStatus.PENDING,
@@ -221,7 +210,6 @@ internal object MaintenanceRunner {
     if (revisionPending) bumpHistoryRevision()
   }
 
-  /** One pending check serves every job: an earlier retry is never pushed back by a later one. */
   private fun scheduleClosureCheck(retryAtMs: Long) {
     if (closureCheck?.isActive == true && closureCheckAtMs <= retryAtMs) return
     closureCheck?.cancel()
@@ -304,7 +292,6 @@ internal object MaintenanceRunner {
 
 /** @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `MaintenanceJobStatus` */
 internal enum class MaintenanceJobStatus(val wire: String) {
-  /** Not checked yet this process, or stale and waiting for a ride to close or a restart. */
   PENDING("pending"),
   RUNNING("running"),
   DONE("done"),
@@ -313,8 +300,6 @@ internal enum class MaintenanceJobStatus(val wire: String) {
 }
 
 /**
- * One job's line on the Database screen. Run history is per process; the durable truth is the
- * fingerprint alone.
  * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `MaintenanceJobState`
  * @parity /modules/vescape-core/src/index.ts `MaintenanceJobState`
  */
@@ -339,8 +324,6 @@ internal data class MaintenanceJobState(
 }
 
 /**
- * OkHttp GET for network Maintenance Jobs. Asynchronous, so the maintenance thread is never blocked,
- * and cancelling the run cancels the call: a late response cannot reach the database.
  * @parity /modules/vescape-core/ios/telemetry/MaintenanceRunner.swift `urlSessionMaintenanceHttp`
  */
 private class OkHttpMaintenanceHttp : MaintenanceHttp {
@@ -350,10 +333,12 @@ private class OkHttpMaintenanceHttp : MaintenanceHttp {
     val call = client.newCall(Request.Builder().url(url).build())
     continuation.invokeOnCancellation { call.cancel() }
     call.enqueue(object : Callback {
+      @WorkerThread
       override fun onFailure(call: Call, e: IOException) {
         if (continuation.isActive) continuation.resumeWithException(e)
       }
 
+      @WorkerThread
       override fun onResponse(call: Call, response: Response) {
         val result = try {
           response.use {
@@ -368,7 +353,6 @@ private class OkHttpMaintenanceHttp : MaintenanceHttp {
     })
   }
 
-  /** Retry-After as delay seconds or an HTTP-date (RFC 9110), as seconds from now. */
   private fun retryAfterSeconds(response: Response): Long? {
     val value = response.header("Retry-After")?.trim() ?: return null
     value.toLongOrNull()?.let { return it }

@@ -16,11 +16,6 @@ interface BoardWarningsSheetProps {
   warnings: BoardWarning[]
 }
 
-/**
- * Warnings sheet for the selected Board. Active warnings list first, dismissed (acknowledged) ones
- * grayed below — dismissing never deletes from the native registry, it only persists the kind on the
- * board record, so the row stays visible here while the board warning indicator ignores it.
- */
 export function BoardWarningsSheet({ boardId, warnings }: BoardWarningsSheetProps) {
   const [mutationError, setMutationError] = useState<string | null>(null)
   const readError = useBoardWarningsStore((state) => state.error)
@@ -79,7 +74,6 @@ export function BoardWarningsSheet({ boardId, warnings }: BoardWarningsSheetProp
   )
 }
 
-/** Stable empty array so the selector doesn't churn references for boards with nothing dismissed. */
 const EMPTY_KINDS: string[] = []
 
 const styles = StyleSheet.create({

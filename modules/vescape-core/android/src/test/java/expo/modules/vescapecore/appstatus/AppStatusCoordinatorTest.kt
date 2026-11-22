@@ -7,12 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * App Status lifecycle: header + route, refresh coalescing, fail-open startup, and retention of a
- * successful in-process result across later failures.
  * @parity /modules/vescape-core/ios/appstatus/AppStatusCoordinatorTests.swift
  */
 class AppStatusCoordinatorTest {
-  /** Records every request and hands each one's completion back for manual resolution. */
   private class RecordingTransport : AppStatusTransport {
     val urls = mutableListOf<String>()
     val versions = mutableListOf<String>()
@@ -85,7 +82,6 @@ class AppStatusCoordinatorTest {
     assertEquals(1, transport.inFlight)
     assertEquals(1, transport.urls.size)
 
-    // Once it settles, the next foreground starts a fresh request.
     transport.resolveAll(statusBody("current"))
     coordinator.refresh()
     assertEquals(2, transport.urls.size)
@@ -153,7 +149,6 @@ class AppStatusCoordinatorTest {
     val transport = RecordingTransport()
     val coordinator = coordinator(transport)
 
-    // Unknown startup: online work is permitted (fail open).
     assertFalse(coordinator.onlineBlocked)
 
     coordinator.refresh()

@@ -2,29 +2,17 @@ import XCTest
 
 @testable import VescapeCore
 
-/// Every field in `BoardConfigFlagField` and `BoardConfigNumberField`, resolved against the real `settings.xml` of each Refloat
-/// version we support. The fixtures are the firmware's own files, taken from the Refloat repository
-/// tags, so a field renamed or retyped upstream fails here rather than on a rider's board.
-///
-/// They are stored zlib-compressed and handed to the parser exactly as they arrive, which is also how
-/// a board sends them: `RefloatConfigSchemaParser.normalizeXmlBytes` inflates the stream itself, so
-/// the fixture exercises the real entry point rather than a pre-decompressed shortcut.
-///
-/// `1.1.x` is one fixture on purpose: v1.1.0, v1.1.1 and v1.1.2 ship byte-identical XML.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/BoardConfigFieldsTest.kt
 final class BoardConfigFieldsTests: XCTestCase {
   private let versions = ["1.0.0", "1.1.x", "1.2.x", "1.3.0-beta1"]
 
-  /// The shared fixture corpus, located relative to this file so no resource bundling is needed —
-  /// the `BatterySocEstimatorTests` pattern.
   private func schema(_ version: String) throws -> RefloatConfigSchema {
     let root = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()  // config
-      .deletingLastPathComponent()  // ios
-      .deletingLastPathComponent()  // vescape-core
-      .deletingLastPathComponent()  // modules
-      .deletingLastPathComponent()  // repo root
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
     let data = try Data(
       contentsOf: root.appendingPathComponent(
         "shared/fixtures/refloat-schema/settings-\(version).xml.zlib"
@@ -45,9 +33,6 @@ final class BoardConfigFieldsTests: XCTestCase {
     }
   }
 
-  /// Refloat declares its on/off params as single-byte numbers, never as a schema `bool`. This is the
-  /// assumption `encodeFlag` and `BoardConfigValues.flag(_:)` are built on, so it is asserted rather
-  /// than trusted: a widened field would silently change the decoded representation.
   func testFlagFieldsAreSingleByteInEverySupportedRefloatVersion() throws {
     for version in versions {
       let byId = Dictionary(
@@ -60,9 +45,6 @@ final class BoardConfigFieldsTests: XCTestCase {
     }
   }
 
-  /// The regression this whole seam exists for: rebasing a flag must produce the exact runtime type
-  /// the decoder produces, or the config-change notice reports the rider's own tap as an outside edit
-  /// forever — `Off -> 0`, a `Bool` compared against a `Double`.
   func testRebasedFlagKeepsTheDecodedRuntimeTypeAndRaisesNoDiff() throws {
     for version in versions {
       let schema = try schema(version)
@@ -100,7 +82,6 @@ final class BoardConfigFieldsTests: XCTestCase {
     }
   }
 
-  /// Zeroed bytes decode to `off`, so the accessor must answer `false` — not nil, not `0.0`.
   func testFlagReadsTheNumericRepresentationRefloatActuallyUses() throws {
     let schema = try schema("1.1.x")
     let rawConfig = [UInt8](
@@ -119,8 +100,6 @@ final class BoardConfigFieldsTests: XCTestCase {
     XCTAssertEqual(values.withFlag(.ledsOn, true)?.flag(.ledsOn), true)
   }
 
-  /// A number field that stops resolving does not misreport, it stops evaluating — a Board Warning
-  /// quietly never fires again. Rules read finite numbers, so the decoded type is asserted too.
   func testEveryNumberFieldDecodesAsAFiniteNumberInEverySupportedRefloatVersion() throws {
     for version in versions {
       let schema = try schema(version)
@@ -145,7 +124,6 @@ final class BoardConfigFieldsTests: XCTestCase {
     }
   }
 
-  /// A field no schema carries stays absent: adding the key would itself register as a change.
   func testWithFlagRefusesAFieldNeitherSchemaNorValuesKnow() {
     let values = BoardConfigValues(
       boardId: "board",

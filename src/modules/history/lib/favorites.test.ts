@@ -112,14 +112,11 @@ test('a favorite-backed session reports the pinned range and the pinned summary'
   expect(detail.id).toBe('favorite:fav-1')
   expect(detail.startAtMs).toBe(1_100_000)
   expect(detail.endAtMs).toBe(1_500_000)
-  // A pinned range is its own Moving Window, so the chart shows exactly what was trimmed.
   expect(detail.movingStartAtMs).toBe(1_100_000)
   expect(detail.movingEndAtMs).toBe(1_500_000)
-  // Stats come from the row, not from the buckets: the row was computed from raw samples.
   expect(detail.sampleCount).toBe(90)
   expect(detail.distanceM).toBe(1_180)
   expect(detail.maxSpeedKmh).toBe(32)
-  // Loaded buckets provide detail, but cannot invent geometry when native returns no fixes.
   expect(detail.blockIds).toEqual(['inside', 'tail'])
   expect(detail.routePoints).toEqual([])
   expect(detail.minLatitude).toBeNull()

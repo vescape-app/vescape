@@ -16,7 +16,6 @@ interface HistoryTargetActions {
   selectSession: (session: HistorySession, focus?: RideFocus) => Promise<void>
 }
 
-/** Opens one exact drawer/list target without deriving its identity again after async work. */
 export function openHistoryTarget(
   target: HistoryTarget,
   actions: HistoryTargetActions,

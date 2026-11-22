@@ -5,7 +5,6 @@ import { buildTimeline, toChartMs, toRealMs } from '@/components/charts/line/tim
 const MINUTE = 60_000
 const OPTIONS = { minGapMs: 5 * MINUTE, gapWidthMs: 30_000 }
 
-/** Two minutes of riding, a half-hour pause, then two more. */
 function pausedRide(): number[] {
   const ts: number[] = []
   for (let i = 0; i <= 2; i += 1) ts.push(i * MINUTE)
@@ -22,7 +21,6 @@ test('a pause collapses to the gap width', () => {
   const timeline = buildTimeline(pausedRide(), OPTIONS)!
   expect(timeline.gapStartMs).toEqual([2 * MINUTE])
   expect(timeline.gapEndMs).toEqual([32 * MINUTE])
-  // Two minutes ridden, the cut, two minutes ridden.
   expect(toChartMs(34 * MINUTE, timeline) - toChartMs(0, timeline)).toBe(4 * MINUTE + 30_000)
 })
 

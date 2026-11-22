@@ -6,12 +6,6 @@ import expo.modules.vescapecore.warnings.CellSpreadDetector
 import expo.modules.vescapecore.warnings.CellSpreadFinding
 
 /**
- * Board Warning replay harness (ADR 0024): drives a `.jsonl` Debug Recording through the real
- * byte→reassemble→decode path and feeds every decoded BMS frame into the telemetry-scoped detectors,
- * using recorded timestamps as the clock so sustain windows run instantly, no wall-clock waits.
- * Fault scenarios layer a decode-level [transform] onto the clean frames — never byte mutation.
- * The configured series count is a scenario parameter because recordings do not carry it usably.
- *
  * @parity /modules/vescape-core/ios/replay/WarningReplayHarnessTests.swift
  */
 internal object WarningReplayHarness {

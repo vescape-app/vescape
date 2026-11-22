@@ -12,7 +12,6 @@ import org.junit.Test
 class VescProtocolTest {
   @Test
   fun buildsRemoteTiltChuckCommand() {
-    // Neutral slider (128) inverts to a centered chuck Y byte (127).
     assertArrayEquals(
       byteArrayOf(COMM_SET_CHUCK_DATA.toByte(), 0, 127),
       buildRemoteTiltCommand(BoardTransport.Direct, value = 128),
@@ -21,7 +20,6 @@ class VescProtocolTest {
 
   @Test
   fun framesRemoteTiltChuckForCan() {
-    // Full slider (255) inverts to chuck Y 0, wrapped in a CAN forward frame.
     assertArrayEquals(
       byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_SET_CHUCK_DATA.toByte(), 0, 0),
       buildRemoteTiltCommand(BoardTransport.Can(7), value = 255),
@@ -30,7 +28,6 @@ class VescProtocolTest {
 
   @Test
   fun buildsLightsControlCommandForBothSwitches() {
-    // mask uint32 BE = 3 (lights + headlights), value = 3 (both on).
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 3),
       buildLightsControlCommand(
@@ -40,7 +37,6 @@ class VescProtocolTest {
         headlightsEnabled = true,
       ),
     )
-    // The mask still names both switches when turning them off, so the value clears both.
     assertArrayEquals(
       byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 0),
       buildLightsControlCommand(
@@ -50,7 +46,6 @@ class VescProtocolTest {
         headlightsEnabled = false,
       ),
     )
-    // The two switches are independent: the mask names both, the value states each one.
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 1),
       buildLightsControlCommand(
@@ -73,7 +68,6 @@ class VescProtocolTest {
 
   @Test
   fun buildsLegacyLightsControlCommandForRefloat11() {
-    // Refloat 1.1 and older: command 202 and a single mask byte, not the uint32 of 1.2+.
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3, 3),
       buildLightsControlCommand(
@@ -96,11 +90,9 @@ class VescProtocolTest {
 
   @Test
   fun resolvesLightsGenerationAtTheRefloat12Boundary() {
-    // 1.2.0 is where the command moved out of the unstable 200+ range.
     assertEquals(BoardLightsGeneration.Legacy, BoardLightsGeneration.forBaseVersion("1.1.2"))
     assertEquals(BoardLightsGeneration.Current, BoardLightsGeneration.forBaseVersion("1.2.0"))
     assertEquals(BoardLightsGeneration.Current, BoardLightsGeneration.forBaseVersion("2.0.0"))
-    // An unreadable version guesses Current: the board ignores a command it does not know.
     assertEquals(BoardLightsGeneration.Current, BoardLightsGeneration.forBaseVersion(null))
   }
 
@@ -116,25 +108,20 @@ class VescProtocolTest {
         byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 1),
       ),
     )
-    // Both bits are read independently: headlights on, lights off.
     assertEquals(
       BoardLightsState(enabled = false, headlightsEnabled = true),
       parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 2)),
     )
-    // A telemetry frame must never be mistaken for the lights echo — this interception sits in front
-    // of the telemetry parser, in both the direct and the CAN-forwarded form.
     assertNull(parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 10, 2)))
     assertNull(
       parseLightsControlResponse(
         byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 10, 2),
       ),
     )
-    // The legacy echo carries the same status byte under command 202.
     assertEquals(
       BoardLightsState(enabled = true, headlightsEnabled = true),
       parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3)),
     )
-    // A truncated echo has no state byte to read.
     assertNull(parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20)))
   }
 
@@ -156,13 +143,10 @@ class VescProtocolTest {
 
   @Test
   fun buildsBoardMoveRcMoveCommandForOlderRefloat() {
-    // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]. `time` runs the
-    // request for `time * 100` control-loop steps (~120 ms each), so it must outlive the repeat tick.
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 7, 1, 60, 8, 68),
       buildBoardMoveCommand(BoardTransport.Direct, BoardMoveGeneration.RcMove, input = 127),
     )
-    // A stop needs no run time of its own.
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 7, 1, 0, 1, 1),
       buildBoardMoveCommand(BoardTransport.Direct, BoardMoveGeneration.RcMove, input = 0),
@@ -175,7 +159,6 @@ class VescProtocolTest {
     assertEquals(BoardMoveGeneration.RcMove, BoardMoveGeneration.forBaseVersion("1.0.0"))
     assertEquals(BoardMoveGeneration.Remote, BoardMoveGeneration.forBaseVersion("1.3.0"))
     assertEquals(BoardMoveGeneration.Remote, BoardMoveGeneration.forBaseVersion("2.0.0"))
-    // Unknown firmware guesses the current generation rather than refusing to move.
     assertEquals(BoardMoveGeneration.Remote, BoardMoveGeneration.forBaseVersion(null))
     assertEquals(BoardMoveGeneration.Remote, BoardMoveGeneration.forBaseVersion("nonsense"))
   }
@@ -292,19 +275,19 @@ class VescProtocolTest {
   fun parsesBmsCellVoltagesBalancingAndSoc() {
     val payload = ByteArray(45)
     payload[0] = COMM_BMS_GET_VALUES.toByte()
-    putInt32(payload, 1, 60_000_000) // v_tot 60.0V (scale 1e6)
-    putInt32(payload, 5, 54_000_000) // v_charge 54.0V (scale 1e6)
-    putInt32(payload, 9, 5_000_000) // i_in 5.0A (scale 1e6)
-    putInt32(payload, 13, -2_000_000) // i_in_ic -2.0A (scale 1e6)
-    payload[25] = 3 // cell_num
-    putInt16(payload, 26, 3650) // 3.650V
-    putInt16(payload, 28, 3700) // 3.700V
-    putInt16(payload, 30, 3680) // 3.680V
-    payload[32] = 0 // balancing cell 0
-    payload[33] = 1 // balancing cell 1
-    payload[34] = 0 // balancing cell 2
-    payload[35] = 0 // temp_adc_num
-    payload[44] = 216.toByte() // soc ≈ 0.847
+    putInt32(payload, 1, 60_000_000)
+    putInt32(payload, 5, 54_000_000)
+    putInt32(payload, 9, 5_000_000)
+    putInt32(payload, 13, -2_000_000)
+    payload[25] = 3
+    putInt16(payload, 26, 3650)
+    putInt16(payload, 28, 3700)
+    putInt16(payload, 30, 3680)
+    payload[32] = 0
+    payload[33] = 1
+    payload[34] = 0
+    payload[35] = 0
+    payload[44] = 216.toByte()
 
     val bms = parseBmsValues(payload, packetAt = 555L)!!
 
@@ -320,25 +303,23 @@ class VescProtocolTest {
 
   @Test
   fun parsesBmsTemperaturesSohAndCanId() {
-    // id + 6 float32 (25) + cell_num + 2 cells + 2 bal + temp_adc_num + 2 temps
-    // + temp_ic/hum/hum/max_cell (8) + soc + soh + can_id = 48 bytes.
     val payload = ByteArray(48)
     payload[0] = COMM_BMS_GET_VALUES.toByte()
-    payload[25] = 2 // cell_num
+    payload[25] = 2
     putInt16(payload, 26, 4100)
     putInt16(payload, 28, 4050)
-    payload[30] = 0 // bal 0
-    payload[31] = 0 // bal 1
-    payload[32] = 2 // temp_adc_num
-    putInt16(payload, 33, 2530) // temps[0] 25.30°C (scale 1e2)
-    putInt16(payload, 35, -500) // temps[1] -5.00°C
-    putInt16(payload, 37, 4200) // temp_ic 42.0°C
-    putInt16(payload, 39, 2600) // temp_hum 26.0°C
-    putInt16(payload, 41, 5500) // hum 55.0%
-    putInt16(payload, 43, 4300) // temp_max_cell 43.0°C
-    payload[45] = 216.toByte() // soc ≈ 0.847
-    payload[46] = 240.toByte() // soh ≈ 0.941
-    payload[47] = 10 // can_id
+    payload[30] = 0
+    payload[31] = 0
+    payload[32] = 2
+    putInt16(payload, 33, 2530)
+    putInt16(payload, 35, -500)
+    putInt16(payload, 37, 4200)
+    putInt16(payload, 39, 2600)
+    putInt16(payload, 41, 5500)
+    putInt16(payload, 43, 4300)
+    payload[45] = 216.toByte()
+    payload[46] = 240.toByte()
+    payload[47] = 10
 
     val bms = parseBmsValues(payload, packetAt = 7L)!!
 
@@ -354,7 +335,6 @@ class VescProtocolTest {
 
   @Test
   fun parsesBmsWithoutTrailingFields() {
-    // id + 6 float32 + cell_num + 2 cells, nothing after.
     val payload = ByteArray(30)
     payload[0] = COMM_BMS_GET_VALUES.toByte()
     payload[25] = 2
@@ -374,7 +354,7 @@ class VescProtocolTest {
     assertNull(parseBmsValues(byteArrayOf(COMM_FW_VERSION.toByte()), 1L))
     val tooShort = ByteArray(26)
     tooShort[0] = COMM_BMS_GET_VALUES.toByte()
-    tooShort[25] = 5 // claims 5 cells but no cell bytes follow
+    tooShort[25] = 5
     assertNull(parseBmsValues(tooShort, 1L))
   }
 

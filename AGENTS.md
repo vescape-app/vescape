@@ -71,6 +71,7 @@ installed; they do not prove that the app contains the current working tree.
 Keep the architecture sharp:
 
 - Native owns durable truth and long-lived work; JS renders state and sends intents.
+- Threading contracts are code, not comments: `@MainThread`/`@WorkerThread`/`@BinderThread`/`@AnyThread` on Android (checked by `bun run lint:android`), `@MainActor`/`Sendable` in Swift. Put units in identifiers (`atMs`, `bearingDeg`, `speedKmh`) except bridge, wire and persistence keys.
 - Prefer clear architecture over compatibility, shortcuts, or hidden assumptions.
 - Remove unused code! Not keep dead code for later.
 - No duplicate code! We do not want to repeat ourselves.
@@ -78,6 +79,20 @@ Keep the architecture sharp:
 - New Board Warning detectors must add their kind to `docs/board-warnings.md` (the kinds catalog) alongside the `BoardWarningKind` slug.
 - Schema migrations stay SQL (set-based copies are fine). Converting existing data row by row (decode, recompute, verify, fetch) is a Maintenance Job in `MAINTENANCE_JOBS` (`docs/history.md` § Maintenance Jobs), never migration code or a new `MaintenanceRunner` path; readers must accept both storage shapes until the job finishes so an incomplete job never hides data.
 - All other background database work (rebuilds, backfills, retention clean-up) is a Maintenance Job too, so it shows on the Maintenance list; clean-up is a step in the `cleanup` job.
+
+## Code Comments
+
+Source carries no ordinary comments. Rationale that outlives the change goes in `docs/` or an ADR;
+everything else belongs in the commit message. Only machine-meaningful lines stay: `@parity`,
+`@platform-diff` and `@legacy-float` paragraphs, `TODO(<platform> parity):`,
+`intentional-suppression: <reason>`, compiler/linter directives, and JSDoc `@type` in `.js` config.
+`bun run comments:check` enforces this (pre-commit on staged content, and CI); generated files are
+excluded by explicit path in `scripts/check-comments.ts`. Shell scripts have no reliable comment
+lexer there and are not scanned; keep them free of comments by hand.
+
+The rule covers code: TS/JS, Swift, Kotlin, Gradle, Python and Ruby scripts. Config files (YAML
+workflows and Maestro flows, XML manifests and resources, plists, `.gitignore`, env files, fastlane,
+podspec) are not scanned and may keep comments that explain what the format cannot express.
 
 ## Parity
 

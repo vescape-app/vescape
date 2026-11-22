@@ -13,7 +13,6 @@ private const val MAX_RIDE_PAGE_SIZE = 50
 internal data class RideRoutePoint(val latitude: Double, val longitude: Double, val breakBefore: Boolean = false)
 
 internal data class RideSessionAggregate(
-  /** Owning Board (`boards.id`), blank when the buckets match no saved Board (ADR 0028). */
   val boardId: String,
   var boundaryBefore: String,
   var firstBucketStartMs: Long,
@@ -49,7 +48,6 @@ internal data class RideSessionAggregate(
   var maxLongitude: Double?,
   val routePoints: MutableList<RideRoutePoint>,
   var lastRouteAtMs: Long? = null,
-  /** Last Telemetry Sample bucket of the ride; GPS-only buckets never move it. */
   var lastFrameAtMs: Long,
 ) {
   val distanceM: Double?
@@ -60,7 +58,6 @@ internal data class RideSessionAggregate(
     }
 }
 
-/** Complete-ride paging over minute buckets. JS never observes a provisional, cut-off ride. */
 // @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift
 internal suspend fun readRideHistoryPage(
   dao: VescapeDao,
@@ -76,7 +73,6 @@ internal suspend fun readRideHistoryPage(
       var reachedFrom = false
 
       while (hasOlderBuckets && !reachedFrom && complete.size < limit) {
-        // The limit is soft: include every Board in the boundary minute.
         val batch = dao.getRideBuckets(beforeExclusive, RIDE_BUCKET_BATCH_SIZE)
         if (batch.isEmpty()) {
           hasOlderBuckets = false
@@ -104,14 +100,11 @@ internal suspend fun readRideHistoryPage(
       }
       val exhausted = !hasOlderBuckets || reachedFrom
 
-      // Names resolve from `boards` on read, never off the bucket row (ADR 0028), so a rename
-      // relabels the whole Ride History.
       val boardNames = dao.getBoardNames().associate { it.id to it.name }
       val sorted = complete.sortedByDescending { it.startAtMs }
       val cutoff = sorted.getOrNull(limit - 1)?.firstBucketStartMs
       val page = if (cutoff == null) sorted else sorted.filter { it.firstBucketStartMs >= cutoff }
       val hasMore = !exhausted || (cutoff != null && sorted.any { it.firstBucketStartMs < cutoff })
-      // One weather read per page; each ride picks its rows from the page span in memory.
       val weather = if (page.isEmpty()) emptyList() else dao.getWeatherObservationsSpanning(
         page.minOf { it.startAtMs },
         page.maxOf { it.endAtMs },
@@ -124,7 +117,6 @@ internal suspend fun readRideHistoryPage(
 }
 
 /**
- * Counts every complete ride matching the filter in `options`, independent of loaded pages.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `countRides`
  */
 internal suspend fun countRideHistory(dao: VescapeDao, options: Map<String, Any?>, gapMs: Long): Int {
@@ -133,7 +125,6 @@ internal suspend fun countRideHistory(dao: VescapeDao, options: Map<String, Any?
   return count
 }
 
-/** Every complete ride matching the filter in [options], newest first, page by page. */
 internal suspend fun forEachMatchingRide(
   dao: VescapeDao,
   options: Map<String, Any?>,
@@ -148,7 +139,7 @@ internal suspend fun forEachMatchingRide(
   }
 }
 
-/** Rides a selection names: explicit windows, or every ride matching `filter` minus `excludeIds`.
+/**
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `selectedRides`
  * @parity /modules/vescape-core/src/index.ts `RideSelection`
  */
@@ -167,13 +158,10 @@ internal suspend fun selectedRides(dao: VescapeDao, selection: Map<String, Any?>
 }
 
 /**
- * Weather conditions a ride can be filtered by, judged from its Ride weather summary. Conditions
- * in one group are alternatives; picked groups must all hold ("rain" + "cold" = cold rainy rides).
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideWeatherCondition`
  * @parity /modules/vescape-core/src/index.ts `RideWeatherCondition`
  */
 internal object RideWeatherCondition {
-  /** One stray drizzle reading does not make a rainy ride. */
   const val RAIN_MIN_MINUTES = 5
   const val COLD_MAX_C = 5
   const val HOT_MIN_C = 28
@@ -204,9 +192,6 @@ internal object RideWeatherCondition {
 }
 
 /**
- * Ride History Filter: rides starting in `[fromMs, toMs)` on any of `boardIds` (empty = all) that
- * meet `weather` (empty = any weather; a ride without weather never matches a condition).
- * Applied after grouping, because another Board's buckets still decide where a ride splits.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
  * @parity /modules/vescape-core/src/index.ts `RideHistoryFilter`
  */
@@ -224,7 +209,6 @@ internal data class RideHistoryFilter(
   fun matchesWeather(summary: RideWeather?) =
     weather.isEmpty() || (summary != null && RideWeatherCondition.matchesAll(weather, summary))
 
-  /** Once a complete ride starts before [fromMs], every older ride does too. */
   fun reachedFrom(complete: List<RideSessionAggregate>) =
     fromMs != null && complete.any { it.startAtMs < fromMs }
 
@@ -239,8 +223,6 @@ internal data class RideHistoryFilter(
 }
 
 /**
- * Buckets arrive newest-first, so the only ride that may still grow backwards is the OLDEST one in
- * the window. Dropping the newest instead hides the ride being recorded right now.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `completeRideSessions`
  */
 internal fun completeRideSessions(
@@ -249,12 +231,6 @@ internal fun completeRideSessions(
 ): List<RideSessionAggregate> = if (hasOlderBuckets) grouped.drop(1) else grouped
 
 /**
- * Native source of Ride boundaries and aggregates used by both History pages and Profile stats.
- *
- * Boundaries come from recorded data only (ADR 0041). A ride is one Board's Telemetry Samples; a
- * new one starts on a Board change, when consecutive Telemetry Samples are more than [gapMs]
- * apart, or at an explicit Stop Recording. GPS-only buckets never start or extend a ride on their
- * own: they attach to the preceding ride of their Board.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `groupRideSessions`
  */
 internal fun groupRideSessions(
@@ -269,7 +245,6 @@ internal fun groupRideSessions(
   for (bucket in buckets.sortedBy { it.firstSampleAtMs }) {
     val open = current
     if (bucket.sampleCount == 0) {
-      // A GPS-only minute belongs to the ride its Board was just recording, or to nothing.
       if (open != null && open.boardId == bucket.boardId &&
         bucket.firstSampleAtMs - open.lastFrameAtMs <= gapMs &&
         !stoppedBetween(stops, bucket.boardId, open.lastFrameAtMs, bucket.firstSampleAtMs)
@@ -314,7 +289,6 @@ private fun mergeRideBucket(session: RideSessionAggregate, bucket: TelemetryMinu
   session.firstBucketStartMs = minOf(session.firstBucketStartMs, bucket.bucketStartMs)
   session.startAtMs = minOf(session.startAtMs, bucket.firstSampleAtMs)
   session.endAtMs = maxOf(session.endAtMs, bucket.lastSampleAtMs)
-  // Same identity `getHistory` gives a bucket.
   session.blockIds.add("${bucket.boardId}:${bucket.bucketStartMs}")
   session.blockCount++
   session.sampleCount += bucket.sampleCount
@@ -346,7 +320,6 @@ private fun mergeRideBucket(session: RideSessionAggregate, bucket: TelemetryMinu
       session.lastRouteAtMs = segment.lastAtMs
     }
   } else if (bucket.firstLatitudeE7 != null && bucket.firstLongitudeE7 != null) {
-    // Old buckets keep their coarse preview until explicit history maintenance rebuilds it.
     appendRideRoutePoint(session, bucket.firstLatitudeE7 / 1e7, bucket.firstLongitudeE7 / 1e7, false)
     session.lastRouteAtMs = null
   }
@@ -376,15 +349,12 @@ private fun rideDistanceDeltaM(bucket: TelemetryMinuteBucketEntity): Double? {
 }
 
 /**
- * Stable Ride id: Board, start and end. A ride that grows gets a new id, so a stale link misses.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `rideSessionId`
  */
 internal fun rideSessionId(session: RideSessionAggregate): String =
   "${session.boardId.ifBlank { "unknown" }}:${session.startAtMs}:${session.endAtMs}"
 
 /**
- * One complete ride by [rideSessionId], or null once it no longer exists under that id.
- * Pages from just past the ride's end, so the ride is the newest complete one in the window.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getSession`
  */
 internal suspend fun readRideSession(dao: VescapeDao, id: String, gapMs: Long): Map<String, Any?>? {
@@ -398,7 +368,6 @@ internal suspend fun readRideSession(dao: VescapeDao, id: String, gapMs: Long): 
   return (page["sessions"] as List<Map<String, Any?>>).firstOrNull { it["id"] == id }
 }
 
-/** Other Boards' rides that started during this one sort ahead of it; a few covers them. */
 private const val RIDE_SESSION_LOOKUP_LIMIT = 4
 
 /** @parity /modules/vescape-core/src/index.ts `RideHistorySession` */

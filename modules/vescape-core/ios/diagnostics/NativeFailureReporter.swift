@@ -10,7 +10,6 @@ internal struct NativeFailureReport: Equatable {
   let errorCode: Int?
 }
 
-/// Process-scoped, operation-keyed deduplication shared by persistence and other native failures.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/diagnostics/NativeFailureReporter.kt
 internal final class NativeFailureReporter {
   private let lock = NSLock()

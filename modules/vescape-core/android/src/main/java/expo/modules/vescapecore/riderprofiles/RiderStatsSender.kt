@@ -19,7 +19,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
-/** Native-owned monthly uploads. Failed months remain eligible on the next lifecycle trigger.
+/**
  * @parity /modules/vescape-core/ios/riderprofiles/RiderStatsSender.swift
  */
 class RiderStatsSender private constructor(private val context: Context) {
@@ -76,7 +76,6 @@ class RiderStatsSender private constructor(private val context: Context) {
       months.map { YearMonth.of(it.getValue("year").toInt(), it.getValue("month").toInt()) }.toSet()
     } else emptySet()
     val months = policy.months(YearMonth.now(), foreground, rideMonths, if (backfill) available else null)
-    // Pin this run to its credential: an account change must never upload A's payload as B.
     val api = VescapeApi(
       baseUrl = origin,
       appVersion = AppStatusCoordinator.get(context).appVersion,
@@ -116,7 +115,7 @@ class RiderStatsSender private constructor(private val context: Context) {
   }
 }
 
-/** Scheduling state persists through the supplied preferences; account notifications are identity-only.
+/**
  * @parity /modules/vescape-core/ios/riderprofiles/RiderStatsSender.swift `RiderStatsUploadPolicy`
  */
 internal class RiderStatsUploadPolicy(
@@ -145,7 +144,7 @@ internal class RiderStatsUploadPolicy(
   fun finished(account: String, complete: Boolean) { if (complete) markBackfilled(account) }
 }
 
-/** Server UploadMonthStatsSchema bounds, applied only at the upload boundary.
+/**
  * @parity /modules/vescape-core/ios/riderprofiles/RiderStatsSender.swift `normalizedRiderStats`
  */
 internal fun normalizedRiderStats(stats: Map<String, Any?>): JSONObject = JSONObject().also { payload ->

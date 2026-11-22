@@ -6,8 +6,6 @@ struct RefloatConfigDecodeException: Error {
   init(_ message: String) { self.message = message }
 }
 
-/// Decodes raw Refloat config bytes into the Android-identical snapshot bridge shape.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigDecoder.kt
 enum RefloatConfigDecoder {
   static func decode(
@@ -62,15 +60,6 @@ enum RefloatConfigDecoder {
     )
   }
 
-  /// Decode **every** field the schema describes, each in its real type — a bool field stays a
-  /// `Bool`, never `1.0` / `0.0`.
-  ///
-  /// A field is left out of the map when the schema places it past the end of the raw config
-  /// (`offset + byteSize` precondition), when it fails to decode (e.g. a scaled type with no scale),
-  /// or when it decodes to a non-finite number. Non-finite is deliberately treated as missing rather
-  /// than as a value: a reader skips an absent field, whereas a NaN would compare false against every
-  /// bound and wrongly count as a clean evaluation that clears a valid warning. One bad field is
-  /// contained to itself and never discards the rest of the map.
   static func decodeFieldMap(schema: RefloatConfigSchema, rawConfig: [UInt8]) -> [String: Any] {
     var values: [String: Any] = [:]
     for field in schema.fields {
@@ -86,8 +75,6 @@ enum RefloatConfigDecoder {
     return values
   }
 
-  /// Decode the whole schema into the Board Session's Board Config Values, retaining the bytes,
-  /// package signature, and schema as the write base. Always `fresh` — it just came off the board.
   static func decodeBoardConfigValues(
     schema: RefloatConfigSchema,
     configBytes: RefloatConfigBytes,
@@ -144,8 +131,6 @@ enum RefloatConfigDecoder {
     }
     return scale
   }
-
-
 
   private static func sha256(_ bytes: [UInt8]) -> String {
     SHA256.hash(data: Data(bytes)).map { String(format: "%02x", $0) }.joined()

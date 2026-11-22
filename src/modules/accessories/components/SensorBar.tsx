@@ -15,12 +15,6 @@ interface SensorBarProps {
 
 const HEIGHT = 4
 
-/**
- * A reading drawn as a proportion of its range, for sensors whose numbers move faster than they
- * can be read. Scaled rather than resized: a width animation lays the row out again on every
- * frame, while a transform is the UI thread moving one already-measured view — the same reason
- * the numbers beside it are shared values and not React state.
- */
 export function SensorBar({ value, range, color }: SensorBarProps) {
   const span = range.max - range.min
   const style = useAnimatedStyle(() => {
@@ -47,7 +41,6 @@ const styles = StyleSheet.create({
   },
   fill: {
     height: HEIGHT,
-    // Anchored left so the bar grows out of its origin instead of from its middle.
     transformOrigin: 'left',
     width: '100%',
   },

@@ -4,7 +4,6 @@ import {
   type RailPoint,
 } from '@/modules/board/lib/railProfile'
 
-/** Side profiles authored in the rail generator's 208 × 70 coordinate space. */
 const PRESETS = [
   {
     id: 'xr',
@@ -318,7 +317,6 @@ export function railPreset(id?: string) {
   return RAILS.find((preset) => preset.id === id) ?? RAILS[0]!
 }
 
-/** Both edges follow the same bend. The inner edge is inset at each end for the diagonal cuts. */
 export function railSideFace(
   id?: string,
   customPoints?: readonly RailPoint[],
@@ -330,7 +328,6 @@ export function railSideFace(
   const railThickness = thickness ?? preset.thickness
   const railPointThicknesses =
     pointThicknesses ?? (customPoints ? undefined : preset.pointThicknesses)
-  // Keep editor and built-in X coordinates in the same scale, including rail length.
   const modelX = (x: number) => ((x - 104) * 436) / 180
   const outer = points.map(([x, y], index): RailPoint => [
     modelX(x),
@@ -344,7 +341,6 @@ export function railSideFace(
   return [...outer, ...inner.reverse()]
 }
 
-/** Longitudinal height at the deck corners and every rail bend. */
 export function railDeckProfile(
   id?: string,
   customPoints?: readonly RailPoint[],

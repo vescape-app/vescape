@@ -1,9 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
 /**
- * Inclusive telemetry time range. Deletion uses inclusive SQL bounds, so subtraction returns the
- * exact inclusive holes that remain deletable.
- *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRangeSubtraction.swift `TelemetryTimeRange`
  */
 data class TelemetryTimeRange(
@@ -16,9 +13,6 @@ data class TelemetryTimeRange(
 }
 
 /**
- * Deletion protection is bucket-granular: retain every raw sample in each minute bucket touched by
- * a Favorite so its existing precomputed bucket stays truthful without a history-wide rebuild.
- *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRangeSubtraction.swift `expandTelemetryRangeToBuckets`
  */
 internal fun expandTelemetryRangeToBuckets(
@@ -32,9 +26,6 @@ internal fun expandTelemetryRangeToBuckets(
 }
 
 /**
- * Carve protected ranges out of one requested delete range. Protected ranges are clipped, sorted,
- * and merged first so overlapping Favorites never produce duplicate or inverted delete ranges.
- *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRangeSubtraction.swift `subtractProtectedTelemetryRanges`
  */
 internal fun subtractProtectedTelemetryRanges(

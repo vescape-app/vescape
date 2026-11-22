@@ -8,13 +8,11 @@ import type { ProfileStatItem } from '@/modules/profile/hooks/useProfileStatItem
 
 interface ProfileStatsGridProps {
   items: (Omit<ProfileStatItem, 'key'> & { key: string })[]
-  /** Larger figures for the summary in the History drawer. */
   emphasis?: boolean
   columns?: 2 | 3 | 4
   testID?: string
 }
 
-/** Riding totals laid out as icon, figure, label. */
 export function ProfileStatsGrid({
   items,
   emphasis = false,

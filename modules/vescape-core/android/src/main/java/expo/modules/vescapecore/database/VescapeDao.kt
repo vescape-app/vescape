@@ -40,8 +40,6 @@ import expo.modules.vescapecore.telemetry.weatherBackfillPageImpl
 import expo.modules.vescapecore.telemetry.weatherProtectionStart
 
 /**
- * Ride Track rows as [RideTrackPoint]: the stored Board key joined back to its UUID, so nothing
- * outside this DAO sees `board_key` (ADR 0028).
  * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `RIDE_TRACK_SELECT`
  */
 private const val RIDE_TRACK_SELECT = """
@@ -51,8 +49,6 @@ private const val RIDE_TRACK_SELECT = """
 """
 
 /**
- * The `board_key` a nullable `:boardId` filter means: NULL for the unowned track, the Board's key,
- * or -1 (no row) for a UUID with no Board. Compare with `IS` to match the unowned track too.
  * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `BOARD_KEY_OF_BOARD_ID`
  */
 private const val BOARD_KEY_OF_BOARD_ID =
@@ -128,7 +124,6 @@ interface VescapeDao {
   @Query("DELETE FROM privacy_zones WHERE id = :id")
   suspend fun deletePrivacyZone(id: String)
 
-
   @Insert
   suspend fun insertFrames(frames: List<TelemetryFrameEntity>): List<Long>
 
@@ -193,8 +188,7 @@ interface VescapeDao {
     }
   }
 
-  /** Only called inside recording/rebuild transactions, after the raw fixes are durable there.
-   * Re-read one indexed minute instead of retaining a second mutable cache across process restarts.
+  /**
    * @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift `refreshBucketRoutePreview`
    */
   suspend fun refreshBucketRoutePreview(bucketStartMs: Long, boardId: String) {
@@ -215,9 +209,6 @@ interface VescapeDao {
   suspend fun insertRideTrackPointRows(points: List<RideTrackPointEntity>)
 
   /**
-   * Stores fixes against their Board's key. A UUID with no Board row gets a minted tombstoned
-   * Board first, the same rule the v55 migration applied to orphans, so the key always resolves
-   * and the fix keeps its owner.
    * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `insertRideTrackPoint`
    */
   @Transaction
@@ -230,8 +221,6 @@ interface VescapeDao {
   suspend fun getBoardKey(id: String): Long?
 
   /**
-   * The key of Board [id], minting a tombstoned Board first when no row exists (the v55 orphan
-   * rule), so stored data never loses its owner. Run inside the caller's transaction.
    * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `resolveBoardKey`
    */
   suspend fun resolveBoardKey(id: String): Long {
@@ -243,11 +232,6 @@ interface VescapeDao {
     VALUES (:id, :name, NULL, :nowMs, :nowMs)""")
   suspend fun mintTombstonedBoard(id: String, name: String, nowMs: Long)
 
-  /**
-   * The Ride Track over a time range, on the GPS clock. Every stored fix is returned with the
-   * accuracy it was reported with — filtering poor fixes is a read-side decision the caller makes,
-   * not one this query bakes in.
-   */
   // @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `fetchRideTrack`
   @Query(RIDE_TRACK_RANGE_QUERY + " LIMIT :limit")
   suspend fun getRideTrackPoints(
@@ -257,7 +241,6 @@ interface VescapeDao {
     limit: Int,
   ): List<RideTrackPoint>
 
-  // Raw keyset pages: advance using the last RAW row, even when every row is imprecise.
   // @parity /modules/vescape-core/ios/telemetry/RideExport.swift `rideExportTrackPage`
   @Query("""
     $RIDE_TRACK_SELECT
@@ -269,7 +252,6 @@ interface VescapeDao {
   suspend fun getRideExportTrackPage(fromMs: Long, toMs: Long, boardId: String?,
     afterMs: Long, afterId: Long, limit: Int): List<RideTrackPoint>
 
-  /** Complete input for durable summaries and bucket rebuilds, without the bridge read cap. */
   // @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `fetchRideTrackForAggregation`
   @Query(RIDE_TRACK_RANGE_QUERY)
   suspend fun getRideTrackForAggregation(
@@ -281,10 +263,6 @@ interface VescapeDao {
   @Query("SELECT COUNT(*) FROM ride_track_points")
   suspend fun countRideTrackPoints(): Long
 
-  /**
-   * Ride Track bounds, on the GPS clock. A rebuild covers them as well as the frame bounds: a
-   * minute can hold fixes and no frame at all, and that minute still owns a bucket (ADR 0038).
-   */
   @Query("SELECT MIN(fix_at_ms) FROM ride_track_points")
   suspend fun firstRideTrackAt(): Long?
 
@@ -362,13 +340,6 @@ interface VescapeDao {
   @Query("SELECT * FROM telemetry_minute_buckets ORDER BY bucket_start_ms ASC")
   suspend fun getAllHistoryBucketsAsc(): List<TelemetryMinuteBucketEntity>
 
-  /**
-   * Ride grouping reads every bucket, including the ones a Ride Track wrote with no Telemetry
-   * Sample in them. A board dropout is exactly when those minutes exist, and they carry the Moving
-   * Window and route anchor that keep Time and the seek timeline honest across it (ADR 0038).
-   * [getHistoryBuckets] stays sample-only: its rows are graph buckets.
-   * The limit is soft: every bucket in the boundary minute is included.
-   */
   // @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `fetchRideHistoryBucketBatch`
   @Query(
     """
@@ -416,8 +387,6 @@ interface VescapeDao {
     limit: Int,
   ): List<DiagnosticEventEntity>
 
-  // Telemetry Chunks + write buffer (ADR 0045). Every sample read merges both through
-  // `TelemetryChunkStore.kt`; these are its primitives.
   // @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `telemetryStream`
   @Query("""
     SELECT * FROM telemetry_frames WHERE captured_at_ms >= :fromMs AND captured_at_ms <= :toMs
@@ -441,7 +410,6 @@ interface VescapeDao {
   """)
   suspend fun latestChunkStartBefore(beforeMs: Long, boardId: String?, allBoards: Boolean): Long?
 
-  /** Chunks holding any sample in `[fromMs, toMs]`, minute-ordered, payload left in the table. */
   @Query("""
     SELECT c.id, b.id AS board_id, c.minute_start_ms, c.sample_count, c.first_at_ms, c.last_at_ms
     FROM telemetry_chunks c LEFT JOIN boards b ON b.key = c.board_key
@@ -481,8 +449,6 @@ interface VescapeDao {
   suspend fun deleteFramesByIds(ids: List<Long>)
 
   /**
-   * Every closed minute still in the buffer, oldest first: the pre-chunk backlog and any later
-   * leftover (a late sample, a failed seal, a crash before the seal).
    * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `closedTelemetryMinutes`
    */
   @Query("""
@@ -494,15 +460,10 @@ interface VescapeDao {
   @Query("SELECT EXISTS(SELECT 1 FROM telemetry_frames WHERE captured_at_ms < :beforeMs LIMIT 1)")
   suspend fun hasClosedTelemetryMinute(beforeMs: Long): Boolean
 
-  /** Samples in `[fromMs, toMs]` from one snapshot; null [boardId] reads every Board. */
   @Transaction
   suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity> =
     readTelemetryFramesImpl(fromMs, toMs, boardId, boardId == null, Long.MIN_VALUE, Long.MIN_VALUE, limit)
 
-  /**
-   * [getFrames] preceded by every row from the latest full state before [fromMs], so deltas
-   * reconstruct. [limit] counts only rows inside `[fromMs, toMs]`; the anchor prefix is unbounded.
-   */
   @Transaction
   suspend fun getAnchoredFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity> {
     val allBoards = boardId == null
@@ -516,7 +477,6 @@ interface VescapeDao {
   suspend fun sealTelemetryMinute(boardId: String?, minuteStartMs: Long): Int =
     sealTelemetryMinuteImpl(boardId, minuteStartMs)
 
-  /** The recording check and the seals share one transaction. */
   @Transaction
   suspend fun drainTelemetryMinutes(keys: List<TelemetryMinuteKey>, nowMs: Long, gapMs: Long): TelemetrySealBatch? =
     drainTelemetryMinutesImpl(keys, nowMs, gapMs)
@@ -558,8 +518,6 @@ interface VescapeDao {
   suspend fun lastFrameAt(): Long?
 
   /**
-   * Newest telemetry sample or Ride Track fix at or before [nowMs]; a future-dated one is ignored.
-   * A chunk straddling [nowMs] counts as [nowMs].
    * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `lastSampleAtOrBefore`
    */
   @Query(
@@ -585,7 +543,6 @@ interface VescapeDao {
   @Query("DELETE FROM diagnostic_events WHERE occurred_at_ms < :beforeMs")
   suspend fun deleteDiagnosticEventsBefore(beforeMs: Long): Int
 
-  /** At most [limit] events older than [beforeMs]; one short write for Diagnostic Event retention. */
   @Query(
     "DELETE FROM diagnostic_events WHERE id IN " +
       "(SELECT id FROM diagnostic_events WHERE occurred_at_ms < :beforeMs LIMIT :limit)",
@@ -639,7 +596,6 @@ interface VescapeDao {
   )
   suspend fun deleteBucketsRange(fromMs: Long, toMs: Long, bucketBoardId: String): Int
 
-  /** Every telemetry table keys on [boardId] (ADR 0028). Null means "every Board". */
   @Transaction
   suspend fun deleteRange(fromMs: Long, toMs: Long, boardId: String?): Int {
     val frames = deleteFramesRange(fromMs, toMs, boardId) + trimTelemetryChunks(fromMs, toMs, boardId, false)
@@ -682,7 +638,6 @@ interface VescapeDao {
       else deleteRange(range.startMs, range.endMs, boardId)
     }
 
-  /** Several Boards' ranges in one transaction, e.g. a bulk ride delete. */
   @Transaction
   suspend fun deleteBoardRanges(rangesByBoard: Map<String?, List<TelemetryTimeRange>>): Int =
     rangesByBoard.entries.sumOf { (boardId, ranges) -> deleteRanges(ranges, boardId, allBoards = false) }
@@ -719,7 +674,6 @@ interface VescapeDao {
     subtractProtectedTelemetryRanges(requested, protectedRanges).forEach { range ->
       deleteRangeAllDevices(range.startMs, range.endMs)
     }
-    // A Favorite keeps the rows its weather reads: every row inside it, and an applicable start row.
     val weatherProtected = protectedRanges.map {
       TelemetryTimeRange(weatherProtectionStart(it.startMs), it.endMs)
     }
@@ -731,13 +685,10 @@ interface VescapeDao {
   }
 
   /**
-   * Clear registered telemetry job state and the obsolete pre-job marker on Restore and Clear all.
    * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkStore.swift `forgetTelemetryStorage`
    */
   @Query("DELETE FROM app_settings WHERE key IN ('maintenanceJob.telemetryStorage', 'maintenanceJob.telemetryBacklogDrain')")
   suspend fun forgetTelemetryStorage()
-
-  // Weather Observations (`weather_observations`)
 
   @Query("DELETE FROM weather_observations")
   suspend fun clearWeatherObservations()
@@ -753,8 +704,6 @@ interface VescapeDao {
   suspend fun insertWeatherObservation(row: WeatherObservationEntity): Long
 
   /**
-   * The last row at or before [startMs] plus every row up to [endMs]: what a ride, a Favorite or a
-   * whole History page spans.
    * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `weatherObservationsSpanning`
    */
   @Query(
@@ -770,8 +719,6 @@ interface VescapeDao {
   suspend fun getWeatherObservationsSpanning(startMs: Long, endMs: Long): List<WeatherObservationEntity>
 
   /**
-   * Store [observation] when it earns a row after the newest one at or before it. The read and
-   * the insert share one transaction so two writers cannot both decide on a stale previous row.
    * @parity /modules/vescape-core/ios/telemetry/WeatherObservations.swift `storeWeatherObservation`
    */
   @Transaction
@@ -781,12 +728,10 @@ interface VescapeDao {
     return insertWeatherObservation(WeatherObservationEntity.of(observation)) != -1L
   }
 
-  /** One Ride weather scan page, read in a single transaction. */
   @Transaction
   suspend fun weatherBackfillPage(cursor: WeatherBackfillCursor, nowMs: Long, gapMs: Long): WeatherBackfillPage =
     weatherBackfillPageImpl(cursor, nowMs, gapMs)
 
-  /** One Ride weather window, rechecked and written in a single transaction. */
   @Transaction
   suspend fun storeWeatherBackfill(segments: List<WeatherBackfillSegment>, samples: List<WeatherObservation>): List<Boolean> =
     storeWeatherBackfillImpl(segments, samples)
@@ -807,7 +752,6 @@ interface VescapeDao {
   """)
   suspend fun getFirstPreciseRideTrackFix(fromMs: Long, toMs: Long, maxAccuracyCm: Int): RideTrackPoint?
 
-  /** One Ride summaries Maintenance Job chunk, read and replaced in a single transaction. */
   @Transaction
   suspend fun rebuildRideSummariesChunk(
     fromMs: Long,
@@ -839,14 +783,9 @@ interface VescapeDao {
   @Query("SELECT EXISTS(SELECT 1 FROM ride_track_points WHERE id = :id)")
   suspend fun rideTrackPointExists(id: Long): Boolean
 
-  /** Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027). */
   @Query("SELECT * FROM boards WHERE deleted_at IS NULL ORDER BY created_at ASC")
   suspend fun getBoards(): List<BoardEntity>
 
-  /**
-   * Resolves tombstones too, deliberately: Ride History still has to name a deleted Board. Callers
-   * that act on a Board rather than describe one check [BoardEntity.deletedAt] and refuse.
-   */
   @Query("SELECT * FROM boards WHERE id = :id LIMIT 1")
   suspend fun getBoard(id: String): BoardEntity?
 
@@ -858,9 +797,6 @@ interface VescapeDao {
   suspend fun updateBoardRow(id: String, name: String, bleId: String?, createdAt: Long, deletedAt: Long?): Int
 
   /**
-   * Writes a Board by its UUID, updating the existing row in place so `boards.key` — which every
-   * telemetry-scale row references — never changes. A REPLACE would delete the row and mint a new
-   * key on the `id` conflict.
    * @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `saveBoardRow`
    */
   @Transaction
@@ -873,20 +809,11 @@ interface VescapeDao {
   @Query("SELECT deleted_at FROM boards WHERE id = :id")
   suspend fun getBoardDeletedAt(id: String): Long?
 
-  /**
-   * An existing tombstone survives the write, so an ordinary upsert can never resurrect a deleted
-   * Board — deletion is terminal (ADR 0027). Only [deleteBoardWithSettings] stamps a new one.
-   */
   @Transaction
   suspend fun upsertBoard(board: BoardEntity) {
     saveBoardRow(board.copy(deletedAt = board.deletedAt ?: getBoardDeletedAt(board.id)))
   }
 
-  /**
-   * Every Board including tombstones, for Ride History name resolution. Names are looked up on read
-   * rather than denormalized onto telemetry rows (ADR 0028), so a rename retroactively relabels the
-   * history and a deleted Board is still nameable.
-   */
   @Query("SELECT id, name FROM boards")
   suspend fun getBoardNames(): List<BoardNameRow>
 
@@ -903,8 +830,6 @@ interface VescapeDao {
   suspend fun deleteBoardSetting(boardId: String, key: String)
 
   /**
-   * The Board, its settings, and any [alerts] rows (a new Board's preset rows and rider rules) in
-   * one transaction, so no reader sees the Board without its alert setup.
    * @parity /modules/vescape-core/ios/telemetry/BoardSettingsPersistence.swift `upsertBoard`
    */
   @Transaction
@@ -931,18 +856,11 @@ interface VescapeDao {
   @Query("DELETE FROM board_settings WHERE board_id = :boardId")
   suspend fun deleteBoardSettings(boardId: String)
 
-  /**
-   * The Rider-facing delete: configuration goes, the Board row stays as a tombstone (ADR 0027).
-   * Telemetry and Tune Profiles are untouched — both outlive the Board.
-   *
-   * An unknown or already-tombstoned id is a no-op.
-   */
   @Transaction
   suspend fun deleteBoardWithSettings(id: String, deletedAt: Long) {
     val board = getBoard(id)?.takeIf { it.deletedAt == null } ?: return
     deleteBoardSettings(id)
     deleteBoardWarnings(id)
-    // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
     deleteAlertRules(id)
     deleteBoardConfigValues(id)
     deleteBoardConfigChangeNotice(id)
@@ -991,7 +909,6 @@ interface VescapeDao {
     }
   }
 
-  // Tune Profile / Tune History DAO. Transactional bodies below are mirrored in Swift.
   // @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift
   @Query("SELECT * FROM tune_profiles WHERE board_id = :boardId ORDER BY created_at ASC")
   suspend fun getStoredTuneProfilesByBoard(boardId: String): List<TuneProfileEntity>
@@ -1041,9 +958,6 @@ interface VescapeDao {
     return getTuneProfile(profile.id) ?: throw IllegalStateException("Tune Profile disappeared during save: ${profile.id}")
   }
 
-  // `id` breaks ties: a save and a rollback can land in the same millisecond, and without a
-  // monotonic tiebreaker `created_at DESC` alone returns them in insertion order — oldest first —
-  // which is the opposite of what Tune History shows.
   @Query("SELECT * FROM tune_history_entries WHERE profile_id = :profileId ORDER BY created_at DESC, id DESC")
   suspend fun getTuneHistoryEntries(profileId: String): List<TuneHistoryEntryEntity>
 
@@ -1103,7 +1017,6 @@ interface VescapeDao {
     return profile
   }
 
-  // Board Warnings — see BoardWarningRegistry for lifecycle rules.
   // @parity /modules/vescape-core/ios/warnings/BoardWarningStore.swift
 
   @Query("SELECT * FROM board_warnings WHERE board_id = :boardId AND kind = :kind LIMIT 1")
@@ -1124,8 +1037,6 @@ interface VescapeDao {
   @Query("DELETE FROM board_warnings WHERE board_id = :boardId")
   suspend fun deleteBoardWarnings(boardId: String): Int
 
-  // Enrolled Accessories. Deliberately unrelated to `boards`: an Accessory Binding targets whichever
-  // Board is connected, so deleting a Board must not forget the rider's hardware.
   // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift
 
   @Query("SELECT * FROM accessories ORDER BY enrolled_at ASC")
@@ -1134,25 +1045,12 @@ interface VescapeDao {
   @Query("SELECT * FROM accessories WHERE accessory_id = :accessoryId LIMIT 1")
   suspend fun getAccessory(accessoryId: String): SavedAccessoryEntity?
 
-  /**
-   * Enroll or re-validate. `REPLACE` on the manifest identity is the whole duplicate defence: the
-   * same hardware under a new name, a new firmware version or a new BLE handle updates its row
-   * instead of adding one.
-   */
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertAccessory(accessory: SavedAccessoryEntity)
 
   @Query("DELETE FROM accessories WHERE accessory_id = :accessoryId")
   suspend fun deleteAccessory(accessoryId: String): Int
 
-  /**
-   * Forgetting, with everything the rider calibrated against this Accessory.
-   *
-   * One transaction, and the calibration goes first. Deleting the identity alone would leave rows
-   * nothing can reach and nothing can clean up — and re-adding the same hardware later would find
-   * them and drive the board to numbers the rider set for a mounting position they have since
-   * changed. "Forget" means forget.
-   */
   @Transaction
   suspend fun forgetAccessory(accessoryId: String): Int {
     deleteGroundClearances(accessoryId)
@@ -1161,18 +1059,9 @@ interface VescapeDao {
     return deleteAccessory(accessoryId)
   }
 
-  /**
-   * Adopts what the last handshake declared as the new baseline for saved settings.
-   *
-   * Separate from [revalidateAccessory] on purpose: that one deliberately preserves the baseline so
-   * the "declared limits changed" warning survives a restart. This is the other half — the rider
-   * saved a calibration that fits the *current* manifest, which is the moment the new limits stop
-   * being a change to warn about and start being the limits.
-   */
   @Query("UPDATE accessories SET capabilities_json = :capabilitiesJson WHERE accessory_id = :accessoryId")
   suspend fun adoptAccessoryCapabilities(accessoryId: String, capabilitiesJson: String): Int
 
-  // Ground-clearance calibration, keyed on the Accessory *and* the capability.
   @Query("SELECT * FROM accessory_brake_light ORDER BY accessory_id, capability_id")
   suspend fun getBrakeLights(): List<AccessoryBrakeLightEntity>
 
@@ -1224,13 +1113,6 @@ interface VescapeDao {
   @Query("DELETE FROM accessory_ground_clearance WHERE accessory_id = :accessoryId")
   suspend fun deleteGroundClearances(accessoryId: String): Int
 
-  /**
-   * Records what the last handshake observed, for a row that still exists.
-   *
-   * Update-only on purpose: a handshake landing just after the rider forgot the Accessory must not
-   * resurrect it. `capabilities_json` and `enrolled_at` are left alone — the first is the baseline
-   * saved settings were validated against, the second is when the rider added it.
-   */
   @Query(
     """
     UPDATE accessories
@@ -1251,8 +1133,6 @@ interface VescapeDao {
     connectedAt: Long?,
   ): Int
 
-  // VESC Fault Occurrences — see VescFaultCoordinator for lifecycle rules. Deliberately absent from
-  // `deleteBoardWithSettings`: fault evidence outlives the Board record.
   // @parity /modules/vescape-core/ios/faults/VescFaultStore.swift
 
   @Query("SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId ORDER BY occurred_at DESC, rowid DESC")
@@ -1264,7 +1144,6 @@ interface VescapeDao {
   @Query("SELECT * FROM vesc_fault_occurrences WHERE id = :id LIMIT 1")
   suspend fun getVescFault(id: String): VescFaultOccurrenceEntity?
 
-  /** Newest still-open occurrence for a Board — rehydrates coordinator state after restart. */
   @Query(
     "SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId AND cleared_at IS NULL " +
       "ORDER BY occurred_at DESC, rowid DESC LIMIT 1",
@@ -1283,11 +1162,6 @@ interface VescapeDao {
     clearedAt: Long?,
   )
 
-  /**
-   * Insert-or-advance. Deliberately not a `REPLACE` upsert: that rewrites `dismissed` from the
-   * caller's in-memory snapshot, so a stale heartbeat could un-dismiss what the rider just
-   * acknowledged. Dismissal has its own statement.
-   */
   @Transaction
   suspend fun upsertVescFault(fault: VescFaultOccurrenceEntity) {
     if (insertVescFault(fault) == -1L) {
@@ -1298,8 +1172,6 @@ interface VescapeDao {
   @Query("UPDATE vesc_fault_occurrences SET dismissed = :dismissed WHERE id = :id")
   suspend fun setVescFaultDismissed(id: String, dismissed: Boolean): Int
 
-  // VESC Fault Captures — one self-contained window of decoded Board samples per occurrence. Append
-  // only, no GPS, and outside every Ride History retention/pruning path.
   // @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift
 
   @Upsert
@@ -1344,11 +1216,6 @@ interface VescapeDao {
   @Query("DELETE FROM motor_config_values WHERE board_id = :boardId")
   suspend fun deleteMotorConfigValues(boardId: String)
 
-  /**
-   * Same baseline-then-notice transaction as [replaceBaselineAndNotice], for motor config. Both
-   * configs write into one notice row per Board: a rider does not care which subsystem a setting
-   * lives in, only that their board changed while Vescape was away.
-   */
   @Transaction
   suspend fun replaceMotorBaselineAndNotice(
     values: MotorConfigValuesEntity,
@@ -1369,7 +1236,6 @@ interface VescapeDao {
   @Query("DELETE FROM board_config_change_notices WHERE board_id = :boardId")
   suspend fun deleteBoardConfigChangeNotice(boardId: String)
 
-  /** Clears every cached config scope and its notice as one durable operation. */
   @Transaction
   suspend fun clearBoardConfigState(boardId: String) {
     deleteBoardConfigValues(boardId)
@@ -1385,14 +1251,6 @@ interface VescapeDao {
     return notice
   }
 
-  /**
-   * Patch a few fields of the stored baseline in one transaction, leaving every other field and the
-   * row's `capturedAt` alone.
-   *
-   * A runtime command that mutates config on the board has to teach the baseline about it, but it
-   * holds a snapshot taken when the session read ran — writing that whole snapshot back would undo a
-   * fresh read that landed in between and resurrect its stale values as the comparison base.
-   */
   @Transaction
   suspend fun patchBoardConfigValues(
     boardId: String,
@@ -1403,8 +1261,6 @@ interface VescapeDao {
     upsertBoardConfigValues(patch(row))
   }
 
-  // Favorites — durable pins over Ride History (ADR 0029). Deleting a row only unpins; telemetry
-  // inside the range is never touched here.
   // @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift
 
   @Query("SELECT * FROM favorites ORDER BY start_ms DESC")
@@ -1416,14 +1272,12 @@ interface VescapeDao {
   @Query("SELECT * FROM favorites WHERE id = :id")
   suspend fun getFavorite(id: String): FavoriteEntity?
 
-  /** Re-trim/rename one row in place so its identity and Favorite Media remain stable. */
   @Update
   suspend fun updateFavorite(favorite: FavoriteEntity): Int
 
   @Query("DELETE FROM favorites WHERE id = :id")
   suspend fun deleteFavoriteRow(id: String): Int
 
-  // Favorite Media — native manifest metadata truth (ADR 0030).
   // @parity /modules/vescape-core/ios/telemetry/FavoriteMediaStore.swift
 
   @Query("SELECT * FROM favorite_media WHERE favorite_id = :favoriteId ORDER BY created_at, id")
@@ -1441,7 +1295,6 @@ interface VescapeDao {
   @Query("DELETE FROM favorite_media WHERE favorite_id NOT IN (SELECT id FROM favorites)")
   suspend fun deleteOrphanFavoriteMedia(): Int
 
-  /** Parent-covered raw cascade: media rows and Favorite disappear in one SQLite transaction. */
   @Transaction
   suspend fun deleteFavorite(id: String): Int {
     deleteFavoriteMediaForFavorite(id)

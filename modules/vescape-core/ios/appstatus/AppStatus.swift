@@ -1,7 +1,5 @@
 import Foundation
 
-/// Release Policy outcome for the installed marketing version, resolved **by the server**. Native
-/// never evaluates SemVer ranges — it only carries the resolved slug across the bridge.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatus.kt `AppVersionStatus`
 /// @parity /modules/vescape-core/src/index.ts `AppVersionStatus`
 enum AppVersionStatus: String {
@@ -10,9 +8,6 @@ enum AppVersionStatus: String {
   case onlineBlocked = "online-blocked"
   case appBlocked = "app-blocked"
 
-  /// Whether this outcome denies online work (Group Ride and future backup/sync). Online Block and
-  /// App Block both deny it; `current` and `update-warning` permit it. No TS peer: only the native
-  /// Group Ride gate consumes it, and JS learns of a block via the `blocked` observe state.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatus.kt `blocksOnline`
   var blocksOnline: Bool { self == .onlineBlocked || self == .appBlocked }
 }
@@ -71,8 +66,6 @@ struct AppStatusVersion: Equatable {
   }
 }
 
-/// One resolved App Status snapshot as served by `GET /api/app-status`. Held in memory for the
-/// running process only — never persisted, so a fresh process starts unknown (fail-open).
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatus.kt `AppStatus`
 /// @parity /modules/vescape-core/src/index.ts `AppStatus`
 struct AppStatus: Equatable {
@@ -84,8 +77,6 @@ struct AppStatus: Equatable {
   }
 }
 
-/// Decode an App Status response body. Unknown additive fields are ignored; any invalid or missing
-/// **required** field yields `nil`, which callers treat exactly like a transport failure.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatus.kt `parseAppStatus`
 func decodeAppStatus(_ body: Data) -> AppStatus? {
   // intentional-suppression: malformed remote status produces an explicit unavailable result
@@ -104,7 +95,6 @@ private func decodeVersion(_ json: [String: Any]) -> AppStatusVersion? {
         let statusSlug = json.nonEmptyString("status"),
         let status = AppVersionStatus(rawValue: statusSlug)
   else { return nil }
-  // Absent message is legitimate (a rule may carry none); a present-but-malformed one is not.
   var message: String?
   if json.hasValue("message") {
     guard let resolved = json.nonEmptyString("message") else { return nil }
@@ -113,10 +103,6 @@ private func decodeVersion(_ json: [String: Any]) -> AppStatusVersion? {
   return AppStatusVersion(installed: installed, latest: latest, status: status, message: message)
 }
 
-/// Decode the message array. Community Messages are independent of Release Policy, so nothing here
-/// can invalidate the resolved version status: an absent, null or non-array `messages` field means
-/// "no messages", and an individual invalid entry is skipped so one bad message never hides the
-/// valid ones.
 private func decodeMessages(_ value: Any?) -> [CommunityMessage] {
   guard let json = value as? [Any] else { return [] }
   var messages: [CommunityMessage] = []
@@ -133,7 +119,6 @@ private func decodeMessage(_ json: [String: Any]) -> CommunityMessage? {
         let type = CommunityMessageType(rawValue: typeSlug),
         let body = json.nonEmptyString("body")
   else { return nil }
-  // Absent title is legitimate (the app falls back to its per-type label); a malformed one is not.
   var title: String?
   if json.hasValue("title") {
     guard let resolved = json.nonEmptyString("title") else { return nil }
@@ -159,13 +144,11 @@ private func decodeAction(_ json: [String: Any]) -> CommunityMessageAction? {
 }
 
 private extension Dictionary where Key == String, Value == Any {
-  /// A required string field: present, textual, and non-empty — otherwise `nil`.
   func nonEmptyString(_ key: String) -> String? {
     guard let value = self[key] as? String, !value.isEmpty else { return nil }
     return value
   }
 
-  /// True when the key is present and not JSON `null` — i.e. the server meant to send something.
   func hasValue(_ key: String) -> Bool {
     guard let value = self[key] else { return false }
     return !(value is NSNull)

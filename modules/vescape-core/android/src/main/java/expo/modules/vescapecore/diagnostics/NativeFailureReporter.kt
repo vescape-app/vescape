@@ -11,7 +11,6 @@ internal data class NativeFailureReport(
 )
 
 /**
- * Process-scoped, operation-keyed deduplication shared by persistence and other native failures.
  * @parity /modules/vescape-core/ios/diagnostics/NativeFailureReporter.swift
  */
 internal class NativeFailureReporter(private val sink: (NativeFailureReport) -> Unit) {

@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The forest case: Directions answers `200 OK` with a road detour to a target nothing can reach.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/navigation/NavigationUsabilityTest.kt
 final class NavigationUsabilityTests: XCTestCase {
   private let riderLatitude = 52.2
@@ -54,7 +52,6 @@ final class NavigationUsabilityTests: XCTestCase {
   }
 
   func testRatioIsNotAppliedToTargetsAFewStepsAway() {
-    // ~11 m apart, where rounding one building is already a 10x "detour" and means nothing.
     let nearby = riderLatitude + 0.0001
     let points = [
       (latitude: riderLatitude, longitude: riderLongitude),

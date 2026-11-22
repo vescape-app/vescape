@@ -18,7 +18,6 @@ import { formatMonthLabel } from '@/modules/profile/lib/profileStats'
 type Scope = 'today' | 'total' | 'month'
 
 const SUMMARY_KEYS: ProfileStatKey[] = ['topSpeed', 'distance', 'longestRide', 'rides']
-/** A day is about how far and how hard, not records or ride counts. */
 const TODAY_KEYS: ProfileStatKey[] = [
   'topSpeed',
   'distance',
@@ -29,19 +28,11 @@ const TODAY_KEYS: ProfileStatKey[] = [
 ]
 
 interface ProfileStatsSummaryProps {
-  /** Load and refresh while the containing drawer or screen is visible. */
   active?: boolean
-  /** Action pinned opposite the scope switch, e.g. a link into the full stats screen. */
   action?: ReactNode
-  /** Tapping Top speed or Longest ride opens the ride that set it. */
   onOpenRecordRide?: OpenRecordRide
 }
 
-/**
- * The rider's headline totals: four figures, switchable between all time and the current month.
- * After a ride today, Today replaces the month and opens first; both labels do not fit together.
- * The full breakdown lives on the Profile Stats screen; this is the glance version.
- */
 export function ProfileStatsSummary({
   active = true,
   action,

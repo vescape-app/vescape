@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test'
 
 import { normalizeSvgPath } from './svgPath'
 
-/** Pull the coordinate pairs out of a normalised path, in order. */
 function points(d: string): [number, number][] {
   const pairs: [number, number][] = []
   for (const match of d.matchAll(/[MLC]([-\d.,]+)/g)) {
@@ -32,7 +31,6 @@ describe('normalizeSvgPath', () => {
   })
 
   it('spells out the control point an S mirrors', () => {
-    // The first curve ends at 20,0 with its second control at 15,10, so S reflects to 25,-10.
     expect(normalizeSvgPath('M0,0 C5,10 15,10 20,0 S35,10 40,0')).toBe(
       'M0,0C5,10,15,10,20,0C25,-10,35,10,40,0',
     )
@@ -54,7 +52,6 @@ describe('normalizeSvgPath', () => {
 
   it('splits a full-circle-ish large arc into per-quadrant curves', () => {
     const d = normalizeSvgPath('M10,0 A10,10 0 1 1 -10,0')
-    // A 180 degree sweep is two quadrants, so two cubics.
     expect(d.match(/C/g)?.length).toBe(2)
     const end = points(d).at(-1)
     expect(end?.[0]).toBeCloseTo(-10, 3)

@@ -40,8 +40,6 @@ async function checked(program: string, args: string[], label: string): Promise<
   return result.stdout
 }
 
-/** Candidate bases: every version tag this repo cuts, prerelease (`v*`) or production. */
-// Annotated tags resolve through the dereferenced commit; lightweight tags point at it directly.
 export function parseReleaseTags(value: string): ReleaseTag[] {
   return value
     .split('\n')

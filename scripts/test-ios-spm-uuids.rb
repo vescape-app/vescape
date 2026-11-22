@@ -9,9 +9,6 @@ require "cocoapods"
 require "tmpdir"
 require_relative "../node_modules/react-native/scripts/cocoapods/spm.rb"
 
-# These tests exercise the real `Pod::Project` UUID machinery (via the
-# `xcodeproj`/`cocoapods` gems) because the bug they guard against is emergent
-# from how `Pod::Project` hands out UUIDs, and cannot be observed against a mock.
 class SPMTests < Test::Unit::TestCase
   PodSpecStub = Struct.new(:name)
   InstallerStub = Struct.new(:pods_project)
@@ -48,10 +45,6 @@ class SPMTests < Test::Unit::TestCase
     project.save
   end
 
-  # Simulates the state after an on-disk reload / incremental `pod install`:
-  # existing objects keep their counter-based UUIDs, but the generator counters
-  # reset to zero. This is what makes `Pod::Project#generate_uuid` hand back a
-  # UUID (`<prefix>00000000`) that already belongs to the root object.
   def simulate_reload(project)
     project.instance_variable_set(:@generated_uuids, [])
     project.instance_variable_set(:@available_uuids, [])

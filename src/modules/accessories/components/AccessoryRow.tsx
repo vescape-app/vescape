@@ -15,30 +15,18 @@ const TONE = {
 
 export interface AccessoryRowProps {
   name: string
-  /** Firmware version, or whatever secondary fact best identifies this unit. */
   detail?: string | undefined
-  /** Native's link phase. Never derived here — this row phrases it and nothing else. */
   phase: AccessoryLinkPhase
-  /** True when saved settings can no longer be trusted: changed limits, or nothing usable left. */
   needsSetup?: boolean
   onPress: () => void
 }
 
-/**
- * One Accessory in the Board selector's Accessories section: what it is, whether the app is
- * hearing it, and a way into its configuration.
- *
- * Deliberately dumb — it takes strings and a status, never a store or a manifest, so the same row
- * serves the selector, the showcase, and whatever screen lists Accessories next.
- */
 export function AccessoryRow({ name, detail, phase, needsSetup, onPress }: AccessoryRowProps) {
   const neutral = useResolvedNeutralColors()
   const copy = accessoryStatusCopy(phase)
   const label = needsSetup ? 'Setup required' : copy.label
   const tone = needsSetup ? TONE.caution : TONE[copy.tone]
   const warn = needsSetup || phase === 'incompatible'
-  // Only a link that is actually answering lights the row up. Connecting keeps the quiet tile:
-  // the tint is a claim about the hardware, not about the app's intent.
   const live = phase === 'connected' && !warn
 
   return (
@@ -49,8 +37,6 @@ export function AccessoryRow({ name, detail, phase, needsSetup, onPress }: Acces
       accessibilityLabel={`${name}, ${label}`}
       testID={`accessory-row-${name}`}
     >
-      {/* One glyph in every state — an Accessory does not become a different thing because its
-          link dropped or its setup went stale. The tile's outline carries the state instead. */}
       <View
         style={[
           styles.icon,
@@ -74,8 +60,6 @@ export function AccessoryRow({ name, detail, phase, needsSetup, onPress }: Acces
               styles.dot,
               {
                 borderColor: tone,
-                // Filled only while the link is actually up: a hollow dot is the honest shape for
-                // "trying", and a filled one must never promise a connection there isn't.
                 backgroundColor: live ? tone : 'transparent',
               },
             ]}
@@ -107,7 +91,6 @@ const styles = StyleSheet.create({
   rowPressed: {
     backgroundColor: interaction.pressedBg,
   },
-  // Matches the board rows' tile: same size and place, so the two sections read as one list.
   icon: {
     width: 32,
     height: 32,

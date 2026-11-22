@@ -35,28 +35,9 @@ import { useFavoriteStore } from '@/modules/history/store/favoriteStore'
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 
-/** Tabs per row: the fourteen metrics wrap into two even rows. */
 const TAB_COLUMNS = 7
-/**
- * Floor under a plot, below which a line is a smear rather than a reading.
- *
- * Low on purpose: this page opens with every metric on, and a rider who wants one of them taller
- * switches the others off. Shrinking to fit is what keeps that first screen honest — a taller
- * floor would push the last charts off the bottom instead.
- */
 const MIN_METRIC_HEIGHT = 24
 
-/**
- * A ride's charts with the map out of the way.
- *
- * Same stack and same data as the ride panel, opened on the same stretch: {@link zoomWindowMs} is
- * a module singleton, so whatever the rider pinched into over the map is what this page opens on.
- * It is read and never written — the panel's camera keeps owning the window the map is framed to,
- * so zooming here cannot leave the map showing a stretch the panel is no longer on.
- * What changes is the room: every chart gets a share of the whole screen rather than a strip over
- * a map, and metrics the map could never be coloured by (attitude, footpad voltage, the GPS fix)
- * are offered here because here they cost nothing.
- */
 export function HistoryChartsScreen() {
   useRenderRateWarning('HistoryChartsScreen')
   const { formatRideTime } = useRideFormat()
@@ -66,14 +47,10 @@ export function HistoryChartsScreen() {
   const samples = useHistoryStore((s) => s.sessionSamples)
   const gpsSamples = useHistoryStore((s) => s.sessionGpsSamples)
   const favorites = useFavoriteStore((s) => s.favorites)
-  // Opens with everything on: the page exists to show the whole ride at once, and the tabs are
-  // there to take metrics away rather than to hunt for them.
   const [activeCharts, setActiveCharts] = useState<Set<ChartToggleMetric>>(
     () => new Set(ALL_CHART_METRICS.map((metric) => metric.key)),
   )
   const [stackHeight, setStackHeight] = useState(0)
-  // The window the ride panel was showing when the rider opened this page. Read once: from here
-  // on the two stacks share the same shared value, and re-reading it would fight their gestures.
   const [initialZoom] = useState(() => zoomWindowMs.value)
 
   const visibleSamples = useVisibleRideSamples(
@@ -91,11 +68,7 @@ export function HistoryChartsScreen() {
   const favoriteBands = useFavoriteBands(favorites)
   const gpsGapBands = useGpsGapBands(visibleSamples)
 
-  // Charts are sized to fill the screen rather than to a fixed strip, so the plot heights come
-  // from what the stack was actually given: the canvas spends the rest on labels and the time axis.
   const chartCount = Math.max(1, activeCharts.size)
-  // Every chart gets the same plot height, speed included: the stack reads as one grid, and a
-  // taller speed plot only made the metrics under it harder to compare against each other.
   const chartHeight = useMemo(() => {
     const plotSpace = Math.max(0, stackHeight - stackChromeHeight(chartCount))
     return Math.max(MIN_METRIC_HEIGHT, plotSpace / chartCount)
@@ -143,7 +116,6 @@ export function HistoryChartsScreen() {
             </>
           ) : null}
         </View>
-        {/* Mirrors the back button's width so the title centers on the screen, not the gap. */}
         <View style={styles.headerSpacer} />
       </View>
 

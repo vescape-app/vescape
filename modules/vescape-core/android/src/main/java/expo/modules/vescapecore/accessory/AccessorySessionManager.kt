@@ -23,52 +23,21 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 /**
- * Enrolled Accessories: what is saved, what is connected, and the sessions in between.
- *
- * The durable half lives in the database and the live half in [AccessoryLink]; this object is the
- * only place the two meet. Two rules shape it:
- *
- * - **Only enrolled Accessories auto-connect.** Discovery finds hardware; the rider adds it. A
- *   device that merely advertises nearby is never given a session, so nothing on it can be started
- *   by walking past it.
- * - **Identity is the manifest's accessory id.** Enrollment reads a manifest natively rather than
- *   trusting one handed over the bridge, and every reconnect re-reads it. A renamed unit updates
- *   its row; a different unit on a remembered handle is refused.
- *
- * JS never drives any of this. The launch path starts sessions with or without a JS runtime, and
- * the bridge only sends intents (enroll, forget) and renders the snapshot.
- *
  * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift
  */
 object AccessorySessionManager {
-    /** Set by the Expo module so state can be pushed without holding a module reference. */
     var emit: ((String, Map<String, Any?>) -> Unit)? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * Calibration writes, one at a time and in the order the rider asked for them.
-     *
-     * The general [scope] fans out across the IO pool, which is right for independent work and wrong
-     * for this: a save dispatched before a clear can finish after it and put the row back, and two
-     * saves in quick succession can land out of order and leave the older draft on disk. Both are
-     * reachable from one screen — the editor saves on a debounce and clears on a tap.
-     *
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `saveGroundClearance`
      * @platform-diff iOS writes these on the main queue inside `onMain`, which already orders them.
      */
     private val calibrationScope =
         CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 
-    /**
-     * How many calibration mutations have been *asked for* per capability.
-     *
-     * Ordering the writes is not enough on its own: the in-memory runtime and the published snapshot
-     * are updated after the write, back on the main looper, and an older completion arriving there
-     * would undo a newer one. Each mutation carries the number it was given and applies nothing if a
-     * later one has since been asked for.
-     */
     private val calibrationSeq = HashMap<GroundClearanceBindingController.Key, Long>()
 
     private val links = LinkedHashMap<String, AccessoryLink>()
@@ -77,12 +46,6 @@ object AccessorySessionManager {
     private val samplingRates = HashMap<GroundClearanceBindingController.Key, Double>()
     private val capabilityMutations = HashMap<GroundClearanceBindingController.Key, Long>()
 
-    /**
-     * Live ground-clearance state, one per enrolled capability.
-     *
-     * Keyed on the Accessory *and* the capability, exactly as the durable row is: one unit may
-     * declare a nose sensor and a tail sensor, and they share neither a calibration nor a stream.
-     */
     private val brakeLight = BrakeLightController()
     private val lightSaveMutex = Mutex()
     private val lightMutations = HashMap<BrakeLightController.Key, Long>()
@@ -94,24 +57,10 @@ object AccessorySessionManager {
 
     private val groundClearance = GroundClearanceBindingController(SystemClock::elapsedRealtime)
 
-    /**
-     * The last snapshot built on the main looper.
-     *
-     * The bridge's synchronous getter runs on the JS thread while [saved] and [links] are written
-     * from the main looper; iterating them from two threads is a `ConcurrentModificationException`
-     * waiting for a badly timed render. Publishing an immutable list instead means the getter never
-     * touches the live maps.
-     */
     @Volatile private var published: List<Map<String, Any?>> = emptyList()
 
     private var appContext: Context? = null
 
-    /**
-     * Brings up every enrolled Accessory's session.
-     *
-     * Called from process launch, not from JS coming up. Safe to call repeatedly: a link already
-     * started is left alone.
-     */
     fun start(context: Context) {
         val app = context.applicationContext
         appContext = app
@@ -120,8 +69,6 @@ object AccessorySessionManager {
             val rows = try {
                 store.getAccessories()
             } catch (error: Throwable) {
-                // Nothing starts, and the outage is reported rather than looking like "no
-                // Accessories" — a rider whose database is unreadable has not lost their hardware.
                 RecordingStorageFailure.reportRead("accessory_list", error)
                 return@launch
             }
@@ -132,7 +79,6 @@ object AccessorySessionManager {
                 emptyList()
             }
             val capabilitySettings = try {
-                // A failed preference read must not silently re-enable disabled hardware.
                 store.getCapabilitySettings()
             } catch (error: Throwable) {
                 RecordingStorageFailure.reportRead("accessory_capability_settings", error)
@@ -162,7 +108,6 @@ object AccessorySessionManager {
         }
     }
 
-    /** True when at least one Accessory is enrolled, so a host lifetime is worth holding open. */
     fun hasSessions(): Boolean = links.isNotEmpty()
 
     fun stopAll() {
@@ -173,13 +118,6 @@ object AccessorySessionManager {
         }
     }
 
-    /**
-     * Adds one Accessory the rider picked, by reading its manifest natively first.
-     *
-     * The manifest is never taken from the bridge. JS supplies a device handle it saw in a scan;
-     * identity, protocol version and capability limits are all decided here, so an enrollment can
-     * only ever record what the hardware actually said.
-     */
     fun enroll(context: Context, deviceId: String, onResult: (Map<String, Any?>) -> Unit) {
         val app = context.applicationContext
         appContext = app
@@ -219,15 +157,11 @@ object AccessorySessionManager {
                     publish()
                     onResult(mapOf("accessoryId" to accessoryId, "error" to null))
                 }
-                // The first enrollment arrives when no host is running: process-start auto-connect
-                // already looked and found nothing enrolled. Without this the new link would live
-                // in a bare app process and die the moment the rider backgrounds the app.
                 CoreForegroundService.autoConnectAccessories(app)
             }
         }
     }
 
-    /** Drops the saved identity and the session with it. Forgetting is the only way one goes away. */
     fun forget(context: Context, accessoryId: String, onResult: (Boolean) -> Unit) {
         val app = context.applicationContext
         appContext = app
@@ -235,9 +169,6 @@ object AccessorySessionManager {
             val removed = try {
                 persistence(app).forget(accessoryId)
             } catch (error: Throwable) {
-                // The saved identity is still there, so the Accessory is still enrolled. Tearing
-                // down the live session anyway would make it come back on the next launch with no
-                // explanation.
                 RecordingStorageFailure.report("accessory_forget", "write_failed", error)
                 onResult(false)
                 return@launch
@@ -245,9 +176,6 @@ object AccessorySessionManager {
             handler.post {
                 links.remove(accessoryId)?.stop()
                 saved.remove(accessoryId)
-                // The calibrations went with the row in the same transaction; the live runtimes go
-                // with them, so a re-enrollment starts from "not set up" rather than from whatever
-                // this process still happened to be holding.
                 groundClearance.forget(accessoryId)
                 brakeLight.forget(accessoryId)
                 capabilityEnabled.keys.removeAll { it.accessoryId == accessoryId }
@@ -258,8 +186,6 @@ object AccessorySessionManager {
                 for (key in lightMutations.keys.filter { it.accessoryId == accessoryId }) {
                     lightMutations[key] = (lightMutations[key] ?: 0L) + 1
                 }
-                // A save still in flight for this Accessory must not land on the runtime after the
-                // rider forgot it. Bumping the counter is what makes its completion a no-op.
                 for (key in calibrationSeq.keys.filter { it.accessoryId == accessoryId }) {
                     calibrationSeq[key] = (calibrationSeq[key] ?: 0L) + 1
                 }
@@ -269,13 +195,6 @@ object AccessorySessionManager {
         }
     }
 
-    /**
-     * Current snapshot, for a late subscriber or a JS foreground restore.
-     *
-     * The bridge's synchronous getter reads this off the JS thread while the maps are only written
-     * from the main looper. That is a read of a consistent-enough render state, not a claim of
-     * atomicity: the next `onAccessoryState` corrects anything caught mid-change.
-     */
     fun snapshot(): List<Map<String, Any?>> = published
 
     private fun buildSnapshot(): List<Map<String, Any?>> = saved.values.map { row ->
@@ -283,8 +202,6 @@ object AccessorySessionManager {
         val live = link?.manifest
         mapOf(
             "accessoryId" to row.accessoryId,
-            // The live manifest wins while one is held: an Accessory renamed since enrollment reads
-            // as its current name straight away, and the saved row catches up on the same handshake.
             "name" to (live?.name ?: row.name),
             "firmwareVersion" to (live?.firmwareVersion ?: row.firmwareVersion),
             "protocolVersion" to (live?.protocolVersion ?: row.protocolVersion),
@@ -296,9 +213,6 @@ object AccessorySessionManager {
             "compatibility" to live?.compatibility?.wire,
             "capabilities" to (live?.capabilities?.map { it.toMap() } ?: decodeCapabilities(row.capabilitiesJson))
                 .map { describeCapability(row.accessoryId, it) },
-            // Derived from the frozen baseline rather than remembered in memory: a flag held only
-            // for the life of the process would clear itself on the next launch, which is the one
-            // moment the rider is least likely to be looking.
             "capabilitiesChanged" to (
                 live != null && encodeCapabilityList(live.capabilities) != row.capabilitiesJson
                 ),
@@ -306,17 +220,6 @@ object AccessorySessionManager {
         )
     }
 
-    /**
-     * One capability as JS sees it, with whatever this app has saved and decided about it.
-     *
-     * The saved calibration rides along with the capability rather than in a list of its own: it is
-     * keyed on the capability and meaningless without it, and a screen that had to join two arrays
-     * by id would be a place for them to disagree.
-     *
-     * `measuring` is the demand native actually resolved, not a restatement of what the screen
-     * asked for — a preview on a capability with no usable rate is a screen that is open and a
-     * sensor that is not measuring, and the row should say so.
-     */
     // @parity /modules/vescape-core/src/index.ts `AccessoryCapability`
     private fun describeCapability(accessoryId: String, capability: Map<String, Any?>): Map<String, Any?> {
         val capabilityId = capability["id"] as? String ?: return capability
@@ -388,8 +291,6 @@ object AccessorySessionManager {
         emit?.invoke("onAccessoryState", mapOf("accessories" to snapshot))
     }
 
-    // MARK: - Internals
-
     private fun persistence(context: Context) =
         AccessoryPersistence(VescapeDatabase.get(context).vescapeDao())
 
@@ -406,20 +307,8 @@ object AccessorySessionManager {
             ).also { it.applyDemand(row) }
         }
 
-    /**
-     * A handshake that produced a manifest for an Accessory we have saved.
-     *
-     * The row is refreshed from what the hardware just said — name, firmware, protocol version, the
-     * handle it answered on — and the capability set is compared against the one enrollment
-     * validated. A capability whose limits moved is flagged rather than silently accepted: saved
-     * calibration was made against the old numbers.
-     */
     private fun onManifestValidated(manifest: AccessoryManifest, deviceId: String) {
         val previous = saved[manifest.accessoryId] ?: return
-        // `capabilitiesJson` is deliberately carried over unchanged. It is the baseline the rider's
-        // saved settings were validated against, and the snapshot derives "limits changed" by
-        // comparing the live manifest against it; rewriting it here would answer the question with
-        // the very thing being questioned.
         val row = previous.copy(
             name = manifest.name,
             firmwareVersion = manifest.firmwareVersion,
@@ -432,29 +321,13 @@ object AccessorySessionManager {
         val app = appContext ?: return
         scope.launch {
             try {
-                // Update-only: a handshake completing just as the rider forgets this Accessory must
-                // not write the row back.
                 persistence(app).revalidate(row)
             } catch (error: Throwable) {
-                // The session is live and correct; only the saved copy of what the manifest just
-                // said is stale, which the next successful handshake fixes.
                 RecordingStorageFailure.report("accessory_revalidate", "write_failed", error)
             }
         }
     }
 
-    /**
-     * What every capability of one Accessory should currently be doing.
-     *
-     * The whole demand decision lives here and nowhere else. A ground-clearance capability measures
-     * when someone actually needs the numbers — the rider has its screen open, or the rider is on a
-     * calibrated board — and sits in the protocol's own measurement standby otherwise. Standby is
-     * not a pause in the app: `enabled: false` stops the sensor's continuous measurement on the
-     * accessory while BLE stays up, so leaving the screen genuinely stops measuring rather than
-     * throwing away samples the hardware is still burning power to produce.
-     *
-     * Brake-light state comes from native speed samples or an explicitly parked preview.
-     */
     private fun AccessoryLink.applyDemand(
         row: SavedAccessoryEntity,
         manifest: AccessoryManifest? = null,
@@ -479,7 +352,6 @@ object AccessorySessionManager {
         }
     }
 
-    /** Re-decides demand for every enrolled Accessory, from whatever its session currently knows. */
     private fun reapplyDemand() {
         for ((accessoryId, link) in links) {
             val row = saved[accessoryId] ?: continue
@@ -487,19 +359,13 @@ object AccessorySessionManager {
         }
     }
 
-    // MARK: - Brake light
-
     fun setLightTelemetry(speedKmh: Double, riding: Boolean, receivedAt: Long = SystemClock.elapsedRealtime()) {
         handler.post {
-            // Keep receive time across the thread hop; queued samples cannot renew stale evidence.
             if (SystemClock.elapsedRealtime() - receivedAt >= 1500) return@post
             val changed = brakeLight.sample(speedKmh, riding, receivedAt)
             handler.removeCallbacks(lightExpiry)
             handler.postDelayed(lightExpiry, 1500 - (SystemClock.elapsedRealtime() - receivedAt))
             reapplyDemand()
-            // Only when the rider would see something different. A steady-speed ride produces one
-            // sample after another that says the same thing, and publishing each of them would be a
-            // full snapshot per telemetry sample for no change on screen.
             if (changed) publish()
         }
     }
@@ -552,18 +418,6 @@ object AccessorySessionManager {
         }
     }
 
-    // MARK: - Ground clearance
-
-    /**
-     * The configuration screen for one capability opened or closed.
-     *
-     * The only demand JS is allowed to express, and it is a request to *measure*, never to tilt: a
-     * preview shows numbers on a parked board, and [groundClearanceInput] refuses to drive anything
-     * that is not being ridden regardless of what this says.
-     *
-     * A screen that is gone — backgrounded, unmounted, or its JS runtime killed — stops the sensor,
-     * which is what "leaving the screen stops measurements" means at the hardware.
-     */
     fun setPreview(accessoryId: String, capabilityId: String, open: Boolean) {
         handler.post {
             if (!groundClearance.setPreview(accessoryId, capabilityId, open)) return@post
@@ -573,15 +427,6 @@ object AccessorySessionManager {
     }
 
     /**
-     * Drops every preview, whoever asked for it.
-     *
-     * Preview demand lives in this process and the screen that asked for it lives in a JS runtime
-     * that can disappear without unmounting anything — a reload, a crash, a development refresh. The
-     * accessory's own lease cannot save it either, because native keeps renewing the configuration
-     * on the screen's behalf. So the runtime going away has to be the release.
-     *
-     * Riding demand is deliberately untouched: it comes from the Board Session, which outlives JS.
-     *
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `releasePreviews`
      */
     fun releasePreviews() {
@@ -594,17 +439,9 @@ object AccessorySessionManager {
     }
 
     /**
-     * Board engagement, from the Board Session's own predicate.
-     *
-     * Native's, never JS's: this decides whether a sensor runs while the screen is off, and a value
-     * that arrived over the bridge would stop being true the moment the runtime died.
-     *
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `setRiding`
      */
     fun setRiding(riding: Boolean) {
-        // Compared before the hop, not inside it. This arrives with every telemetry sample for the
-        // whole of a ride, and posting a Runnable per sample to discover that nothing changed is a
-        // few thousand allocations an hour for no decision.
         if (!groundClearance.setRiding(riding)) return
         handler.post {
             reapplyDemand()
@@ -612,18 +449,6 @@ object AccessorySessionManager {
         }
     }
 
-    /**
-     * Saves one calibration, if it is one.
-     *
-     * There is no Save button behind this: the screen sends what the rider has so far and native
-     * decides whether it is complete. Validity is judged against the limits the Accessory declares
-     * *now*, so a calibration is never written that the hardware in front of the rider would refuse.
-     *
-     * Saving a calibration that fits the current manifest is also how the rider accepts limits that
-     * moved since enrollment: the frozen `capabilities_json` baseline is rewritten to what the
-     * session just validated against, which is what clears "this Accessory now declares different
-     * limits". Nothing else in the app may rewrite that baseline.
-     */
     fun saveGroundClearance(
         accessoryId: String,
         capabilityId: String,
@@ -663,9 +488,6 @@ object AccessorySessionManager {
                 try {
                     store.saveGroundClearance(row)
                 } catch (error: Throwable) {
-                    // Nothing is applied in memory either. A binding that drove from a calibration
-                    // the database never took would come back uncalibrated on the next launch, with
-                    // the rider believing they had set it.
                     RecordingStorageFailure.report("accessory_ground_clearance", "write_failed", error)
                     handler.post { onResult(mapOf("saved" to false, "problem" to "storage-unavailable")) }
                     return@launch
@@ -675,16 +497,10 @@ object AccessorySessionManager {
                     try {
                         store.adoptCapabilities(accessoryId, baseline)
                     } catch (error: Throwable) {
-                        // The calibration is saved and correct; only the warning outlives the
-                        // acceptance, and the next save clears it.
                         RecordingStorageFailure.report("accessory_revalidate", "write_failed", error)
                     }
                 }
                 handler.post {
-                    // The row is written either way — the writes are ordered, so the newest ask is
-                    // the one on disk. What is refused here is applying an older ask's *result* over
-                    // a newer one in memory, which is how a save that raced a clear used to put the
-                    // calibration back.
                     if (calibrationSeq[key] != mutation) {
                         onResult(mapOf("saved" to true, "problem" to null))
                         return@post
@@ -701,7 +517,6 @@ object AccessorySessionManager {
         }
     }
 
-    /** Drops a calibration. The binding stops driving and the screen goes back to explaining setup. */
     fun clearGroundClearance(accessoryId: String, capabilityId: String, onResult: (Boolean) -> Unit) {
         handler.post {
             val app = appContext ?: return@post onResult(false)
@@ -728,12 +543,6 @@ object AccessorySessionManager {
     }
 
     /**
-     * What a Remote Tilt binding may do with this capability right now. The seam #479 consumes.
-     *
-     * Two outcomes and no third: a scaled, signed input built from a fresh in-range measurement, or
-     * a named reason to release. Nothing here can be read as "hold the last value" — a consumer that
-     * gets a release has been told to let go, and why.
-     *
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `groundClearanceInput`
      */
     fun groundClearanceInput(accessoryId: String, capabilityId: String): GroundClearanceInput {
@@ -741,25 +550,11 @@ object AccessorySessionManager {
     }
 
     /**
-     * Whether a configured ground-clearance Accessory is connected.
-     *
-     * What makes the Remote Tilt pad a read-only indicator. Deliberately true even when the bindings
-     * are [GroundClearanceRelease.CONTESTED] and none of them is driving: a rider whose two sensors
-     * cancel each other out must not silently get their manual pad back, because the pad is not what
-     * this board is configured for.
-     *
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `groundClearanceBound`
      */
     fun groundClearanceBound(): Boolean = groundClearance.bound(::linkState)
 
     /**
-     * The single ground-clearance input a Remote Tilt binding may act on, across every Accessory.
-     *
-     * v1 binds to whichever Board is connected and has no arbitration between a nose sensor and a
-     * tail sensor — the eventual hardware has both. Two claimants therefore release rather than
-     * resolve: choosing one of them would be choosing a correction *direction* on the rider's behalf,
-     * and the wrong choice tilts the board the wrong way.
-     *
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `groundClearanceTilt`
      */
     fun groundClearanceTilt(): GroundClearanceInput {
@@ -774,17 +569,6 @@ object AccessorySessionManager {
         )
     }
 
-    /**
-     * One sample off an Accessory's reading stream.
-     *
-     * Range-checked against the limits the *live* manifest declares before anything else sees it, so
-     * a number the hardware no longer promises is carried onward as `out_of_range` with no value
-     * rather than as a distance. A sample older than the newest one held is dropped outright.
-     *
-     * The bridge only hears about it while a screen is open. Nothing else in the app consumes single
-     * samples — the tilt binding pulls [groundClearanceInput] on its own cadence — so emitting at
-     * the sensor's rate with nothing mounted would be pure bridge traffic.
-     */
     private fun onReading(accessoryId: String, reading: AccessoryReading, receivedAtMs: Long) {
         val payload = groundClearance.acceptReading(
             accessoryId,
@@ -795,12 +579,6 @@ object AccessorySessionManager {
         emit?.invoke("onAccessoryReading", payload)
     }
 
-    /**
-     * The protocol session for one Accessory ended.
-     *
-     * Sequence numbers restart with the next hello, so anything the tracker still holds would make
-     * the new session's first samples look like duplicates. The calibration is durable and stays.
-     */
     private fun onSessionLost(accessoryId: String) {
         groundClearance.onSessionLost(accessoryId)
     }
@@ -808,18 +586,9 @@ object AccessorySessionManager {
     private fun AccessoryGroundClearanceEntity.toCalibration() =
         GroundClearanceCalibration(nearCm, farCm, direction, strengthPercent)
 
-    /** `docs/accessory-protocol.md` PoC default, resolved against whatever the manifest offers. */
     private const val PREFERRED_RATE_HZ = 10.0
 
     /**
-     * The capability set as one canonical line.
-     *
-     * Built by hand with a fixed key order rather than through [JSONObject], which does not promise
-     * one: this text is compared against the stored text to decide whether an Accessory's declared
-     * limits moved, and it travels between platforms inside a database backup. Two encodings of the
-     * same capabilities must be the same bytes on both, or restoring a backup would claim every
-     * Accessory changed.
-     *
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `encodeCapabilities`
      */
     private fun encodeCapabilities(raw: Any?): String {

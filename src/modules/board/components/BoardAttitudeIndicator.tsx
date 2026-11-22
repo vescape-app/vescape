@@ -173,7 +173,6 @@ function CurvedDeckFace({
   )
 }
 
-/** Neutral faces give the rail profile visible volume without a large accent fill. */
 function SolidFace({
   path,
   color,
@@ -208,7 +207,6 @@ interface BoardAttitudeIndicatorProps {
   testID?: string
 }
 
-/** Live board orientation. Static Skia paths, matrix-only updates; no SVG or telemetry renders. */
 export function BoardAttitudeIndicator({
   pitch,
   roll,
@@ -261,7 +259,6 @@ export function BoardAttitudeIndicator({
   )
   const rotation = useDerivedValue(() => {
     const value = connected ? pitch.value : 0
-    // Refloat positive pitch is nose-up; the nose is +X and canvas Y points down.
     return [{ rotate: value != null && Number.isFinite(value) ? (-value * Math.PI) / 180 : 0 }]
   })
   const farRail = useDerivedValue(() => pose.value.farRail)
@@ -301,13 +298,11 @@ export function BoardAttitudeIndicator({
 
   return (
     <Canvas style={{ width: size, height: size }} testID={testID}>
-      {/* A tiny isolated layer allows opaque-looking wire outlines over the transparent map. */}
       <Group layer transform={[{ translateX: size / 2 }, { translateY: size / 2 }, { scale }]}>
         <Group transform={rotation}>
           <Group matrix={farRail}>
             <SolidFace path={paths.rail} color={color} fill={fill} stroke={stroke} />
           </Group>
-          {/* Cylinder silhouette = two ellipses and their connecting strip. Clear all first. */}
           <Group matrix={farTire}>
             <Path path={paths.tire} blendMode="dstOut" />
           </Group>

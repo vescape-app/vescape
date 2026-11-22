@@ -11,25 +11,11 @@ import {
 } from '@/modules/board/store/boardConfigValuesStore'
 import type { ConfigRow } from '@/modules/board/lib/boardConfigReadout'
 
-/**
- * The shape this section renders: a decoded field map and how fresh it is. Both Refloat config
- * (ADR 0035) and VESC motor config (ADR 0036) satisfy it, which is why one component serves both.
- */
 export interface BoardConfigSectionValues {
   freshness: 'fresh' | 'last-known'
   values: Record<string, number | boolean | undefined>
 }
 
-/**
- * A read-only window onto part of this Board Session's config, next to the live telemetry it
- * explains — a footpad chart means little without the voltage the board actually engages at.
- *
- * Every screen passes its own rows, so the same section serves duty, tiltback or fault angles
- * without a second component. Pass `values` to render a config other than Refloat's — the motor
- * temperature screens read VESC motor config, which has its own store. Read-only on purpose: config
- * is written from Tune against the native write base, never from a decoded map, and motor config is
- * never written at all.
- */
 export function BoardConfigSection({
   title = 'Board config',
   rows,
@@ -41,13 +27,10 @@ export function BoardConfigSection({
   showDescriptions = false,
 }: {
   boardId?: string
-  /** Hide when the containing screen already identifies the config read. */
   showFreshness?: boolean
   showDescriptions?: boolean
   title?: string
-  /** Any schema's rows: the section only reads `values[row.id]`, it never names a field itself. */
   rows: ConfigRow<string>[]
-  /** Defaults to this Board's Refloat config. */
   values?: BoardConfigSectionValues | null
   empty?: string
   error?: string | null
@@ -166,8 +149,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   empty: {
-    // The section is one block in a scrolling screen, so the placeholder sizes to its content
-    // instead of taking the height a whole empty screen would.
     flex: 0,
     paddingVertical: 24,
   },

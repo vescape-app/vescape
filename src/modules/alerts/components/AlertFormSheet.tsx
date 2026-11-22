@@ -57,10 +57,6 @@ interface AlertFormSheetProps {
   onSave(draft: AlertRuleDraft): Promise<void>
 }
 
-/**
- * A Message tab rule: the TTS template, or the voice line of its metric. Metrics without voice
- * lines (no `voiceKey`) speak through TTS only.
- */
 function messageSpec(
   tts: boolean,
   voiceKey: string | null,
@@ -72,7 +68,6 @@ function messageSpec(
     : formatVoiceAlertSound(severity)
 }
 
-/** Writes one alert rule: its threshold, how it sounds, and how often it repeats. */
 export function AlertFormSheet({
   visible,
   triggerRef,
@@ -168,10 +163,9 @@ export function AlertFormSheet({
           : tab === 'single'
             ? formatSlotAlertSound(beepCount, slotSoundPart(spec))
             : spec,
-      // A range rule's cadence follows range depth — it has no repeat interval to honor.
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
     })
-      .catch(() => undefined) // The alerts store owns the error rendered below.
+      .catch(() => undefined)
       .finally(() => setSaving(false))
   }, [
     tab,

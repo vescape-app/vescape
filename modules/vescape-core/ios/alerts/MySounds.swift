@@ -1,8 +1,6 @@
 import AVFoundation
 import Foundation
 
-/// Effects slots a My sound can override. A set override wins over the active effects pack; voice
-/// lines and geiger ticks are not overridable.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/MySounds.kt `SOUND_OVERRIDE_SLOTS`
 /// @parity /src/modules/settings/lib/appSounds.ts `SOUND_OVERRIDE_SLOTS`
 internal let soundOverrideSlots = [
@@ -10,23 +8,12 @@ internal let soundOverrideSlots = [
   "cue.on", "cue.off", "cue.groupRide.created", "cue.groupRide.joined",
 ]
 
-/// My sounds: the rider's audio library (WAV, M4A or MP3, ≤2 MB, ≤15 s) in `custom-app-sounds/`,
-/// plus the override slots that point at it. `my-sounds.json` holds
-/// `{ sounds: [{id, name}], overrides: {slot: id} }`; each sound's audio is `<id>.<wav|m4a|mp3>`,
-/// the extension taken from the imported file's header.
-///
-/// The custom app sound packs this replaces (`packs.json`) migrate on first read: every pack cue
-/// becomes a My sound, and the pack that was selected becomes overrides once `adoptLegacyPack` sees
-/// the `soundPack` setting.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/MySounds.kt
 internal enum MySounds {
   private static let maxBytes = 2_000_000
   private static let maxDuration = 15.0
   private static let manifestName = "my-sounds.json"
   private static let legacyManifestName = "packs.json"
-  /// Legacy pack cue → (override slot, label). Error and rider joined (the legacy `join` was
-  /// another rider joining) have no override slot, so they migrate as plain library sounds.
   private static let legacyCues: [(String, String?, String)] = [
     ("on", "cue.on", "Connect"), ("off", "cue.off", "Disconnect"), ("error", nil, "Error"),
     ("created", "cue.groupRide.created", "New Group Ride"), ("join", nil, "Rider joined"),
@@ -41,7 +28,6 @@ internal enum MySounds {
   private struct Store: Codable {
     var sounds: [Sound] = []
     var overrides: [String: String] = [:]
-    /// Migrated pack id → its cues as overrides, waiting for `adoptLegacyPack`.
     var legacyPacks: [String: [String: String]]?
   }
 
@@ -61,13 +47,11 @@ internal enum MySounds {
 
   private static let audioExtensions = ["wav", "m4a", "mp3"]
 
-  /// File name of a My sound's audio: `<uuid>.<wav|m4a|mp3>`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/MySoundFileName.kt `mySoundFileName`
   private static func isFileName(_ name: String) -> Bool {
     name.range(of: "^[0-9a-fA-F-]{36}\\.(wav|m4a|mp3)$", options: .regularExpression) != nil
   }
 
-  /// Extension for an audio file starting with `header`, nil when it is not WAV, M4A or MP3.
   internal static func audioExtension(_ header: Data) -> String? {
     let bytes = [UInt8](header)
     func ascii(_ from: Int, _ to: Int) -> String {
@@ -76,12 +60,10 @@ internal enum MySounds {
     if ascii(0, 4) == "RIFF" && ascii(8, 12) == "WAVE" { return "wav" }
     if ascii(4, 8) == "ftyp" { return "m4a" }
     if ascii(0, 3) == "ID3" { return "mp3" }
-    // MPEG audio frame sync with a nonzero layer (layer 0 is AAC ADTS).
     if bytes.count >= 2, bytes[0] == 0xFF, bytes[1] & 0xE0 == 0xE0, (bytes[1] >> 1) & 3 != 0 { return "mp3" }
     return nil
   }
 
-  /// Name of My sound `id`'s audio among `names`, nil when it has none.
   private static func audioName(_ id: String, in names: (String) -> Bool) -> String? {
     audioExtensions.map { "\(id).\($0)" }.first { isFileName($0) && names($0) }
   }
@@ -90,7 +72,6 @@ internal enum MySounds {
     audioName(id) { FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path) }
   }
 
-  /// Custom app sound packs → My sounds; each pack's cues are kept for `adoptLegacyPack`.
   private static func migrate(_ data: Data, in dir: URL) throws -> Store {
     let packs = try JSONDecoder().decode([LegacyPack].self, from: data)
     var store = Store()
@@ -120,7 +101,6 @@ internal enum MySounds {
     if let data = try? Data(contentsOf: manifest) {
       // intentional-suppression: an unreadable library reads as empty; pack slots keep playing
       store = (try? JSONDecoder().decode(Store.self, from: data)) ?? Store()
-      // Overrides for slots that no longer exist are dropped.
       let known = { (slot: String, _: String) in soundOverrideSlots.contains(slot) }
       store.overrides = store.overrides.filter(known)
       store.legacyPacks = store.legacyPacks?.mapValues { $0.filter(known) }
@@ -174,7 +154,6 @@ internal enum MySounds {
       let header = handle.readData(ofLength: 12)
       try handle.close()
       guard let ext = audioExtension(header) else { throw error("Use a WAV, M4A or MP3 file") }
-      // AVAudioFile picks its parser from the extension.
       destination = directory.appendingPathComponent("\(id).\(ext)")
       try FileManager.default.moveItem(at: staged, to: destination)
       let audio: AVAudioFile
@@ -214,7 +193,6 @@ internal enum MySounds {
     return state()
   }
 
-  /// Delete a sound and every override using it; rules still naming it fall back to the pack.
   static func delete(_ id: String) throws -> [String: Any] {
     lock.lock(); defer { lock.unlock() }
     var store = read()
@@ -228,7 +206,6 @@ internal enum MySounds {
     return state()
   }
 
-  /// Point `slot` at My sound `id`, or clear it back to the pack with nil.
   static func setOverride(_ slot: String, id: String?) throws -> [String: Any] {
     lock.lock(); defer { lock.unlock() }
     guard soundOverrideSlots.contains(slot) else { throw error("Unknown sound slot") }
@@ -243,8 +220,6 @@ internal enum MySounds {
     return state()
   }
 
-  /// Finish the pack migration: the migrated pack the `soundPack` setting still names becomes
-  /// overrides (where none is set), then the pending packs are dropped.
   static func adoptLegacyPack(_ pack: String) {
     lock.lock(); defer { lock.unlock() }
     var store = read()
@@ -255,7 +230,6 @@ internal enum MySounds {
     try? save(store)
   }
 
-  /// Audio of My sound `id`, nil when it is gone or unreadable.
   static func file(_ id: String) -> URL? {
     lock.lock(); defer { lock.unlock() }
     guard read().sounds.contains(where: { $0.id == id }), let name = audioName(id) else { return nil }
@@ -266,7 +240,6 @@ internal enum MySounds {
     return url
   }
 
-  /// Audio overriding effects `slot`, nil when the slot follows the pack.
   static func overrideFile(_ slot: String) -> URL? {
     lock.lock(); defer { lock.unlock() }
     return read().overrides[slot].flatMap(file)
@@ -297,9 +270,6 @@ internal enum MySounds {
     if let data = entries[manifestName] { _ = try JSONDecoder().decode(Store.self, from: data) }
   }
 
-  /// Install a validated candidate: sounds without audio and overrides naming them are dropped. A
-  /// backup from before My sounds carries `packs.json`, which migrates on first read after restore;
-  /// a backup without sounds clears the library.
   static func replaceFromBackup(
     _ entries: [String: Data],
     at targetDirectory: URL = directory,
@@ -352,7 +322,6 @@ internal enum MySounds {
     }
   }
 
-  /// Length of My sound audio at `url`, 0 when unreadable. Read once per file.
   static func durationMs(_ url: URL) -> Int64 {
     lock.lock(); defer { lock.unlock() }
     if let cachedDuration = durations[url.path] { return cachedDuration }

@@ -21,6 +21,12 @@ android {
 
   namespace "expo.modules.vescapecore"
 
+  lint {
+    checkOnly "WrongThread"
+    abortOnError true
+    checkDependencies false
+  }
+
   defaultConfig {
     minSdkVersion safeExtGet("minSdkVersion", 26)
     targetSdkVersion safeExtGet("targetSdkVersion", 35)
@@ -54,7 +60,6 @@ repositories {
   google()
 }
 
-// Room writes one schema JSON per version; migration tests start from these committed files.
 ksp {
   arg("room.schemaLocation", "$projectDir/schemas")
 }

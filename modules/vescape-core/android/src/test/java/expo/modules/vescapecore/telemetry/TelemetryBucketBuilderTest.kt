@@ -5,11 +5,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class TelemetryBucketBuilderTest {
-  /**
-   * The two streams are independent now, so a board dropout produces a minute of Ride Track fixes
-   * and no telemetry frame at all — the exact case the durable track exists for. That minute owns a
-   * bucket of its own; discarding it would erase the route, the GPS distance and the history entry.
-   */
   @Test
   fun buildsABucketForAMinuteThatOnlyHasTrackFixes() {
     val buckets = buildTelemetryBuckets(
@@ -111,7 +106,6 @@ class TelemetryBucketBuilderTest {
     assertEquals(1_250, buckets.maxGpsSpeedCentiMps)
   }
 
-  /** An unattributed fix still owns a minute; `board_id` just falls back to the stand-in id. */
   @Test
   fun bucketsGpsOnlyPointsThatMatchNoBoard() {
     val buckets = buildTelemetryBuckets(
@@ -220,7 +214,6 @@ class TelemetryBucketBuilderTest {
 
     assertEquals(2, bucket.movingSpeedSampleCount)
     assertEquals(1_700L, bucket.sumMovingAbsSpeedCentiKmh)
-    // Moving Window spans only the non-excluded samples (1_000–2_000), not the leading excluded one.
     assertEquals(1_000L, bucket.firstMovingAtMs)
     assertEquals(2_000L, bucket.lastMovingAtMs)
   }
@@ -249,10 +242,6 @@ class TelemetryBucketBuilderTest {
     assertNull(bucket.lastMovingAtMs)
   }
 
-  /**
-   * The board dropped mid-ride and the phone kept moving: the Moving Window has to follow the GPS,
-   * or the seek timeline and Time stop at the last telemetry frame (ADR 0017, ADR 0038).
-   */
   @Test
   fun extendsMovingWindowThroughGpsOnlyMovement() {
     val bucket = buildTelemetryBuckets(

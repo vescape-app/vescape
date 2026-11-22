@@ -2,14 +2,12 @@ import type { RideHistoryFilter, RideWeather, RideWeatherCondition } from 'vesca
 
 export type RideDatePreset = 'thisMonth' | 'previousMonth' | 'custom'
 
-/** Local-time `[fromMs, toMs)` a date preset or custom range resolved to. */
 export interface RideDateRange {
   preset: RideDatePreset
   fromMs: number
   toMs: number
 }
 
-/** What the rider picked in the filter sheet; native only ever sees `toRideHistoryFilter`. */
 export interface RideFilterSelection {
   date: RideDateRange | null
   boardIds: string[]
@@ -23,7 +21,6 @@ function startOfDay(ms: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
-/** This month ends at the next local midnight, so today's rides are always in. */
 export function presetRange(
   preset: Exclude<RideDatePreset, 'custom'>,
   nowMs: number,
@@ -44,7 +41,6 @@ export function presetRange(
   }
 }
 
-/** Whole local days from `fromDayMs` through `toDayMs`, in either order. */
 export function customRange(fromDayMs: number, toDayMs: number): RideDateRange {
   const [first, last] = fromDayMs <= toDayMs ? [fromDayMs, toDayMs] : [toDayMs, fromDayMs]
   const end = startOfDay(last)
@@ -68,7 +64,6 @@ export function toRideHistoryFilter(selection: RideFilterSelection): RideHistory
 }
 
 /**
- * Native's weather match, repeated for favorites: they are all loaded, so JS filters them.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideWeatherCondition`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideWeatherCondition`
  */
@@ -113,7 +108,6 @@ function matchesWeather(conditions: RideWeatherCondition[], weather: RideWeather
 }
 
 /**
- * Favorites filter in JS: they are not paged natively, so they match by their ride's start and Board.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `RideHistoryFilter`
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `RideHistoryFilter`
  */

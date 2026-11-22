@@ -1,4 +1,3 @@
-/** Delta to the next clean step in the requested direction, including converted boundaries. */
 export function stepDelta(value: number, direction: 1 | -1, step = 1): number {
   const position = value / step
   const nearest = Math.round(position)

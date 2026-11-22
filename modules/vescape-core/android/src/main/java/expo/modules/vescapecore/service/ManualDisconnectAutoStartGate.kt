@@ -2,10 +2,6 @@ package expo.modules.vescapecore.service
 
 import android.content.Context
 
-/**
- * Stops background auto-start from immediately undoing an explicit board disconnect.
- * Cleared by explicit user connect or board selection.
- */
 internal object ManualDisconnectAutoStartGate {
     private const val PREFS = "vesc_manual_disconnect_auto_start_gate"
     private const val KEY_BOARD_ID = "board_id"

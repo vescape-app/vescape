@@ -11,7 +11,7 @@ class WatchFrameDecoderTest {
     fun `reads nav lanes when the phone sends them`() {
         val frame = WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f, 5f, 42f, 1350f))!!
 
-        assertEquals(42.0, frame.navBearing!!, 0.001)
+        assertEquals(42.0, frame.navBearingDeg!!, 0.001)
         assertEquals(1350.0, frame.navDistanceM!!, 0.001)
     }
 
@@ -19,7 +19,7 @@ class WatchFrameDecoderTest {
     fun `a phone without nav leaves the nav lanes null so the overlay stays hidden`() {
         val frame = WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f, 5f, Float.NaN, Float.NaN))!!
 
-        assertNull(frame.navBearing)
+        assertNull(frame.navBearingDeg)
         assertNull(frame.navDistanceM)
     }
 
@@ -29,7 +29,7 @@ class WatchFrameDecoderTest {
 
         assertEquals(12.0, frame.speed!!, 0.001)
         assertEquals(5.0, frame.ctrlTemp!!, 0.001)
-        assertNull(frame.navBearing)
+        assertNull(frame.navBearingDeg)
         assertNull(frame.routeSpanM)
     }
 
@@ -72,7 +72,6 @@ class WatchFrameDecoderTest {
         assertEquals(WatchTiltControl.FREE, frame.tiltControl)
     }
 
-    /** A newer phone's reason is still a reason: read-only is the only safe reading of it. */
     @Test
     fun `an unknown tilt control code keeps the stick read-only`() {
         val frame = WatchFrameDecoder.decode(
@@ -100,7 +99,7 @@ class WatchFrameDecoderTest {
         val payload = core + expo.modules.vescapecore.watch.WatchTrailCodec.encode(points)
         val decoded = WatchFrameDecoder.decode(payload)!!
         assertEquals(points, decoded.trail)
-        assertNull(decoded.navBearing)
+        assertNull(decoded.navBearingDeg)
         for (bytes in listOf(core, payload.copyOf(payload.size - 1))) {
             val frame = WatchFrameDecoder.decode(bytes)!!
             assertEquals(12.0, frame.speed!!, 0.001)
@@ -108,7 +107,6 @@ class WatchFrameDecoderTest {
         }
     }
 
-    /** Encodes lane 0 (speed) plus [lanes], mirroring the phone-side writer. */
     private fun encode(speed: Double, vararg lanes: Float): ByteArray {
         val count = 1 + lanes.size
         return ByteBuffer.allocate(2 + count * 4).order(ByteOrder.LITTLE_ENDIAN).apply {

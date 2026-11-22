@@ -32,7 +32,6 @@ const pulseEntering = () => {
   }
 }
 
-/** The viewfinder the add menu places a feature at, pulsing once per placement. */
 export function CenterPlacementPointer({
   color,
   pulseKey,

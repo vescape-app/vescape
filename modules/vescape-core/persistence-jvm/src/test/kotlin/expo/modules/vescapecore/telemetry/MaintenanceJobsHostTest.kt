@@ -14,7 +14,6 @@ import expo.modules.vescapecore.database.TelemetryFrameEntity
 import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
-/** Rebuild every ride summary the way the runner does, without fingerprint bookkeeping. */
 internal suspend fun rebuildRideSummaries(
   dao: VescapeDao,
   nowMs: Long = Long.MAX_VALUE / 2,
@@ -24,7 +23,6 @@ internal suspend fun rebuildRideSummaries(
   RideSummariesJob.run(MaintenanceJobScope({ dao }, fence, fence.ticket(), { nowMs }, committed = committed), AppSettings())
 
 /**
- * Ride summaries Maintenance Job (#605) through the production Room DAO and fence.
  * @parity /modules/vescape-core/persistence-macos/MaintenanceJobsContract.swift `runMaintenanceJobsContract`
  */
 class MaintenanceJobsHostTest {
@@ -109,13 +107,10 @@ class MaintenanceJobsHostTest {
     val db = db()
     val dao = db.vescapeDao()
     val edge = 10 * hour
-    // A ride across the hour edge with a free spin crossing it: the wheel spins up just before the
-    // edge and keeps spinning after it, so the next chunk needs the spin carried from this one.
     val spinning = edge - 500 until edge + 5_000
     dao.insertFrames((edge - 5 * minute until edge + 5 * minute step 500).map {
       if (it in spinning) frame(it, speed = 5_000, motorCurrentMa = 1_000) else frame(it, speed = 3_000, motorCurrentMa = 20_000)
     })
-    // A live-written range crossing the edge; its outside portion is not another chunk's output.
     dao.insertExclusionRange(MetricExclusionRangeEntity(boardId = board, reason = "live", startMs = edge - 90_000, endMs = edge + 90_000, sampleCount = 4))
 
     assertEquals(MaintenanceJobOutcome.Completed, rebuildRideSummaries(dao))
@@ -134,7 +129,6 @@ class MaintenanceJobsHostTest {
     val dao = db.vescapeDao()
     val now = 100 * hour
     dao.insertFrames((10 * hour until 10 * hour + 10 * minute step 5_000).map { frame(it) })
-    // A three-hour ride still recording: samples every 20 minutes, inside the 30-minute split gap.
     val active = (now - 3 * hour..now - minute step 20 * minute).toList()
     dao.insertFrames(active.map { frame(it) })
     val sentinel = buildTelemetryBuckets(active.map { BucketTelemetryPoint(it, board, 9_999, 80_000, 1_000, 500, 100, null) }, emptyList())
@@ -145,7 +139,6 @@ class MaintenanceJobsHostTest {
     assertEquals(MaintenanceJobOutcome.Deferred(active.last() + 30 * minute), outcome)
     assertEquals(before, dao.getAllHistoryBucketsAsc().filter { it.bucketStartMs >= now - 3 * hour })
     assertEquals(10, dao.getAllHistoryBucketsAsc().count { it.bucketStartMs < now - 3 * hour })
-    // Once the gap has passed, the closed ride is rebuilt with the rest.
     assertEquals(MaintenanceJobOutcome.Completed, rebuildRideSummaries(dao, nowMs = active.last() + 30 * minute))
     assertTrue(dao.getAllHistoryBucketsAsc().none { it.maxAbsSpeedCentiKmh == 9_999 })
     db.close()
@@ -157,14 +150,12 @@ class MaintenanceJobsHostTest {
     dao.insertFrames((0 until 3 * hour step minute).map { frame(it) })
     val fence = DatabaseReplacementFence()
     var chunks = 0
-    // Ride deletion after the first chunk: the second hour must not come back from carried state.
     rebuildRideSummaries(dao, fence = fence, committed = {
       if (++chunks == 1) runBlocking { TelemetryMaintenancePersistence(dao).deleteRanges(listOf(TelemetryTimeRange(hour, 2 * hour - 1)), board, allBoards = false) }
     })
     assertTrue(dao.getAllHistoryBucketsAsc().none { it.bucketStartMs in hour until 2 * hour })
     assertEquals(120, dao.getAllHistoryBucketsAsc().size)
 
-    // Restore/Clear all bump the generation mid-run: the next chunk throws and nothing is published.
     var fenced = false
     try {
       rebuildRideSummaries(dao, fence = fence, committed = { runBlocking { fence.fence { } } })
@@ -227,14 +218,12 @@ class MaintenanceJobsHostTest {
       assertTrue("next launch runs cleanup again", CleanupJob().hasWork(scope(), settings))
       val fingerprint = dao.storedMaintenanceFingerprint(job.id)!!
       fence.fence { dao = replacement.vescapeDao() }
-      // A restored archive can carry this launch's completed fingerprint.
       dao.publishMaintenanceFingerprint(job.id, fingerprint, now)
       seed()
       runJob()
     } finally { original.close(); replacement.close() }
   }
 
-  /** Diagnostic Event retention (#683): age boundary, batching, fence, and the active-ride deferral. */
   @Test fun diagnosticEventPruneKeepsTheBoundaryStopsAtAFenceAndWaitsForAnActiveRide(): Unit = runBlocking {
     val db = db()
     val dao = db.vescapeDao()
@@ -250,7 +239,6 @@ class MaintenanceJobsHostTest {
       MaintenanceJobScope({ dao }, fence, fence.ticket(), { now }, progress)
 
     insertEvents()
-    // Restore/Clear all lands after the first batch: the next batch throws, the rest stays.
     var fenced = false
     try {
       pruneDiagnosticEvents(scope { _, _ -> runBlocking { fence.fence { } } }, gapMs = 10 * minute, batch = 2)
@@ -260,16 +248,13 @@ class MaintenanceJobsHostTest {
     assertTrue(fenced)
     assertEquals(5, remaining().size)
 
-    // Recording starts after the first batch: later batches leave the backlog untouched.
     assertEquals(2, pruneDiagnosticEvents(scope { _, _ -> runBlocking { dao.insertFrames(listOf(frame(now - minute))) } },
       gapMs = 10 * minute, batch = 2).deleted)
     assertEquals(3, remaining().size)
 
-    // A ride that may still be recording defers the prune until ride closure.
     assertEquals(0, pruneDiagnosticEvents(scope(), gapMs = 10 * minute, batch = 2).deleted)
     assertEquals(3, remaining().size)
 
-    // Once the ride is a split gap old, every batch runs; the boundary event and newer stay.
     assertEquals(1, pruneDiagnosticEvents(scope(), gapMs = 30 * 1000, batch = 2).deleted)
     assertEquals(listOf(boundary, now - 1), remaining())
     db.close()

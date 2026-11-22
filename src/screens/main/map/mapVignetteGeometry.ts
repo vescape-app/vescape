@@ -1,5 +1,3 @@
-// History opens with one chart: nav + chart stack + metric tabs + legend + gaps.
-// Its measured height may differ by a few pixels with platform font metrics.
 export const INITIAL_HISTORY_PANEL_HEIGHT = 215
 
 export function historyBottomGradientStart(panelHeight: number, screenHeight: number): number {

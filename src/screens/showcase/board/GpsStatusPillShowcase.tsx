@@ -30,7 +30,6 @@ function fix({ precise, ageMs }: { precise: boolean; ageMs: number }): LocationE
   }
 }
 
-/** Every state the badge can reach, including the healthy one where it renders nothing. */
 export function GpsStatusPillShowcase() {
   const [phase, setPhase] = useState<GpsPhase>('active')
   const [hasFix, setHasFix] = useState(true)

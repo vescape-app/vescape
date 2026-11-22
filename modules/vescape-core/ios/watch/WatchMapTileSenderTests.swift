@@ -1,12 +1,8 @@
 import XCTest
 @testable import VescapeCore
 
-/// Issue #551: delivery order, the in-flight limit, sleep, drops and a watch reset, against a
-/// scripted transport.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchMapTileSenderTest.kt
 final class WatchMapTileSenderTests: XCTestCase {
-  /// Takes posts from the sender's send tasks on any thread; the test runs them.
   private final class QueueScheduler: Scheduler, @unchecked Sendable {
     private final class Posted: Cancellable { func cancel() {} }
     private let lock = NSLock()
@@ -51,7 +47,6 @@ final class WatchMapTileSenderTests: XCTestCase {
       }
     }
 
-    /// Lands every send in flight, oldest first.
     func finishAll(_ sent: Bool) {
       let done = lock.withLock {
         defer { waiting.removeAll() }
@@ -73,8 +68,6 @@ final class WatchMapTileSenderTests: XCTestCase {
       transport: transport)
   }
 
-  /// Runs posted work until `done` or the time is up, waiting for the send tasks to reach the
-  /// transport. Whether `done` held.
   private func wait(upToMs timeoutMs: Double = 5_000, until done: () -> Bool) async -> Bool {
     let deadline = Date().addingTimeInterval(timeoutMs / 1_000)
     while Date() < deadline {
@@ -90,7 +83,6 @@ final class WatchMapTileSenderTests: XCTestCase {
     if await !wait(until: done) { XCTFail("sender did not settle") }
   }
 
-  /// Lets the send tasks started so far reach the transport.
   private func quiet() async {
     _ = await wait(upToMs: 200) { false }
   }
@@ -100,8 +92,6 @@ final class WatchMapTileSenderTests: XCTestCase {
     scheduler.drain()
   }
 
-  /// Lands the sends a batch at a time, until nothing more goes out. A batch is complete at the
-  /// in-flight limit, or once no more of it arrives.
   private func finishEverySend(_ transport: Transport) async {
     while true {
       if await !wait(upToMs: 500, until: { transport.inFlight == WatchMapTileSender.maxSendsInFlight }),
@@ -119,7 +109,6 @@ final class WatchMapTileSenderTests: XCTestCase {
     let sender = sender(transport)
     tick(sender, rider)
     await settle { transport.inFlight == WatchMapTileSender.maxSendsInFlight }
-    // Sends overlap, so they reach the transport in any order within the batch.
     XCTAssertEqual(Set(transport.sends), Set(ring.filter { $0 != ring[1] }.prefix(WatchMapTileSender.maxSendsInFlight)))
     transport.finishAll(true)
     await settle { transport.sends.count == ring.count - 1 }
@@ -135,7 +124,6 @@ final class WatchMapTileSenderTests: XCTestCase {
     let transport = Transport()
     let sender = sender(transport)
     tick(sender, onRoute)
-    // Each batch starts once the one before it lands, so batches go out in the order they were wanted.
     await finishEverySend(transport)
     let sent = transport.sends
     XCTAssertEqual(Set(sent.prefix(ring.count)), Set(ring))
@@ -152,7 +140,7 @@ final class WatchMapTileSenderTests: XCTestCase {
     transport.finishAll(true)
     await quiet()
     XCTAssertEqual(transport.sends.count, WatchMapTileSender.maxSendsInFlight)
-    tick(sender, rider)  // Waking re-reads the wrist, then resumes.
+    tick(sender, rider)
     await settle { transport.sends.count > WatchMapTileSender.maxSendsInFlight }
   }
 
@@ -162,12 +150,9 @@ final class WatchMapTileSenderTests: XCTestCase {
     let transport = Transport(held: z15.union([stray]))
     let sender = sender(transport)
     tick(sender, rider)
-    // Left over from an earlier session.
     XCTAssertEqual(transport.holds.first?.dropped, [stray])
-    // Zooming in keeps z15 as the one-out level.
     tick(sender, WatchMapRider(position: rider.position, courseDeg: 90, speedMps: 5, spanM: 300, route: nil))
     XCTAssertEqual(transport.holds.last?.dropped, [])
-    // Two levels out, z15 is neither planned nor the level just left, so every z15 tile leaves.
     tick(sender, WatchMapRider(position: rider.position, courseDeg: 90, speedMps: 5, spanM: 1_400, route: nil))
     XCTAssertEqual(transport.holds.last?.dropped, z15)
     XCTAssertFalse(transport.holds.last?.wanted.contains { $0.z == 15 } ?? true)
@@ -179,13 +164,11 @@ final class WatchMapTileSenderTests: XCTestCase {
     tick(sender, rider)
     await settle { transport.inFlight == WatchMapTileSender.maxSendsInFlight }
     let first = transport.sends
-    // A reinstall drops the outstanding transfers; the pusher fails their sends.
     transport.onWatchReset?()
     transport.finishAll(false)
     await quiet()
     tick(sender, rider)
     await settle { transport.inFlight == WatchMapTileSender.maxSendsInFlight }
-    // The failed tiles wait out their retry; the next ones go out instead of the sender stalling.
     XCTAssertTrue(Set(transport.sends.dropFirst(first.count)).isDisjoint(with: first))
     nowMs += WatchMapTileSender.retryMs
     transport.finishAll(true)
@@ -195,7 +178,6 @@ final class WatchMapTileSenderTests: XCTestCase {
 
   func testAFailedTransferAnEarlierProcessQueuedIsSentAgainAfterTheRetryWait() async {
     let ring = WatchMapTilePlan.needed(rider, zoom: 15)
-    // Counted delivered: still queued by an earlier process.
     let transport = Transport(held: [ring[0]])
     let sender = sender(transport)
     tick(sender, rider)

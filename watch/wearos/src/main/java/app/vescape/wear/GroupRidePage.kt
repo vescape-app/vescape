@@ -70,19 +70,6 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.launch
 
 /**
- * The Group Ride page, one swipe below nav focus, mounted only while the Rider is joined: every
- * other Rider nearest first, one row each — colour dot, name, an arrow to where they are relative to
- * the Rider's course, distance, and one status slot ([groupRideStatus]). Alone, it says so.
- *
- * Up to [GROUP_PAGE_ROWS] rows, centred on the face. Past that the list scrolls under a fixed
- * five-row window: a vertical drag moves it with the finger and flings, settling on a whole row, and
- * the crown steps it a row at a time once this page has [settled]. The list takes the drag first
- * (nested scroll): a drag that begins at its top — or any drag when it fits — passes what the list
- * cannot use to the vertical pager, so the page swipes back to nav focus from the top. A flick back
- * up the list stops at its top instead of carrying on to nav focus. A position arc on
- * the right shows where the window sits. The nav map and readout are hidden under this page by the
- * caller. Ambient parks the pager on the gauges, so this is never drawn there.
- *
  * @parity /watch/watchos/GroupRidePage.swift `GroupRidePage`
  * @platform-diff The pager here does not take the crown, so the settled list owns it even when it
  *   fits; watchOS pages with the crown and hands it over only when the list scrolls. Rows are clamped
@@ -95,8 +82,6 @@ internal fun GroupRidePage(settled: Boolean) {
     val group = GroupRideState.group.value ?: return
     val rows = group.roster()
     val distanceUnit = SettingsState.settings.value.distanceUnit
-    // The list's travel in px: 0 shows the nearest Riders, maxValue the last window. A Rider leaving
-    // shortens the list, and ScrollState clamps the offset with it.
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     val stepPx = with(LocalDensity.current) { GROUP_ROW_H.toPx() }
@@ -105,7 +90,6 @@ internal fun GroupRidePage(settled: Boolean) {
     val handOff = remember(scroll) { TopHandOff(scroll) }
     val maxFirst = (rows.size - GROUP_PAGE_ROWS).coerceAtLeast(0)
     var crownPx by remember { mutableFloatStateOf(0f) }
-    // The row the crown last aimed at, so steps taken mid-slide add up rather than restart.
     var crownRow by remember { mutableIntStateOf(0) }
     val focusRequester = remember { FocusRequester() }
     val total by rememberUpdatedState(rows.size)
@@ -116,7 +100,6 @@ internal fun GroupRidePage(settled: Boolean) {
         modifier = Modifier
             .fillMaxSize()
             .onRotaryScrollEvent { event ->
-                // One row per row-height of crown travel, accumulated so a slow turn still steps.
                 crownPx += event.verticalScrollPixels
                 val steps = (crownPx / stepPx).toInt()
                 if (steps != 0) {
@@ -129,8 +112,6 @@ internal fun GroupRidePage(settled: Boolean) {
             }
             .focusRequester(focusRequester)
             .focusable(enabled = settled)
-            // The whole page drags the list: up shows further Riders. What the list cannot consume
-            // is dispatched to the pager as nested scroll, from a drag that began at the top only.
             .nestedScroll(handOff)
             .scrollable(scroll, Orientation.Vertical, reverseDirection = true, flingBehavior = fling),
     ) {
@@ -159,8 +140,6 @@ internal fun GroupRidePage(settled: Boolean) {
                     )
                 }
             } else {
-                // The five-row window, clipped to its block so a row half-way out never overflows the
-                // face. The page's own scrollable drives it; this one only lays out and clips.
                 Column(
                     modifier = Modifier.height(bodyH).verticalScroll(scroll, enabled = false),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -169,8 +148,6 @@ internal fun GroupRidePage(settled: Boolean) {
                         GroupRideRowView(
                             row,
                             distanceUnit,
-                            // Narrowed to the safe circle's chord at the row's live centre line, read
-                            // at layout so a drag re-measures the rows without recomposing them.
                             Modifier.layout { measurable, _ ->
                                 val mid = (rowsTop + GROUP_ROW_H * i + GROUP_ROW_H / 2).toPx() - scroll.value
                                 val half = sqrt((limit.toPx() * limit.toPx() - mid * mid).coerceAtLeast(0f))
@@ -185,8 +162,6 @@ internal fun GroupRidePage(settled: Boolean) {
             }
         }
         if (maxFirst > 0) {
-            // The library centres the arc on 3 o'clock; turn it down about the face centre into the
-            // controller temperature's stretch of rim, clear of the duty head tick parked there near 0 %.
             Box(modifier = Modifier.fillMaxSize().graphicsLayer { rotationZ = GROUP_INDICATOR_TURN_DEG }) {
                 PositionIndicator(
                     state = indicator,
@@ -201,11 +176,6 @@ internal fun GroupRidePage(settled: Boolean) {
     }
 }
 
-/**
- * Settles a drag on a whole row: projects the fling's natural stop, rounds it to the nearest row and
- * springs there from the release velocity. A fling toward an edge the list already sits on is handed
- * back whole, so a flick down from the top reaches the pager.
- */
 private class RowSnapFling(
     private val scroll: ScrollState,
     private val stepPx: Float,
@@ -227,17 +197,12 @@ private class RowSnapFling(
             val delta = value - last
             val consumed = scrollBy(delta)
             last = value
-            // An edge stopped the list short: nothing left to animate.
             if (abs(delta - consumed) > 0.5f) cancelAnimation()
         }
         return 0f
     }
 }
 
-/**
- * Lets only a drag that began with the list at its top reach the pager; any other drag's leftover,
- * and its fling, stop here.
- */
 private class TopHandOff(private val scroll: ScrollState) : NestedScrollConnection {
     private var dragging = false
     private var handOff = true
@@ -263,9 +228,6 @@ private class TopHandOff(private val scroll: ScrollState) : NestedScrollConnecti
 }
 
 /**
- * The list window as a [PositionIndicator] reads it: where the scroll sits in its travel, and how
- * much of the list shows. [total] is the list's length.
- *
  * @parity /watch/watchos/GroupRidePage.swift `GroupWindowIndicator`
  */
 private class GroupWindowIndicatorState(
@@ -339,8 +301,6 @@ private fun StatusSlot(status: WatchGroupRideStatus) {
 }
 
 /**
- * Filled arrow pointing up (straight ahead) before rotation, centred in the canvas.
- *
  * @parity /watch/watchos/GroupRidePage.swift `BearingArrow`
  */
 private fun DrawScope.drawBearingArrow(color: Color) {
@@ -358,19 +318,11 @@ private fun DrawScope.drawBearingArrow(color: Color) {
 }
 
 /**
- * Rows on screen before the list scrolls.
- *
  * @parity /watch/watchos/GroupRidePage.swift `GROUP_PAGE_ROWS`
  */
 private const val GROUP_PAGE_ROWS = 5
 
 /**
- * The position arc: 40 dp along the rim, 3 dp thick, its outer edge on [GAUGE_INNER_INSET] — inside
- * the rim arcs, and well clear of the rows, which the safe circle holds to about 75 dp from the
- * centre. Turned [GROUP_INDICATOR_TURN_DEG] below 3 o'clock, it spans about 6–30°: inside the
- * controller temperature arc (4–36°), which draws no head tick, and below the duty head tick, which
- * reaches in past the arc while duty is near 0 %.
- *
  * @parity /watch/watchos/GroupRidePage.swift `GROUP_INDICATOR_LENGTH`
  */
 private val GROUP_INDICATOR_LENGTH = 40.dp
@@ -378,20 +330,13 @@ private val GROUP_INDICATOR_WIDTH = 3.dp
 private const val GROUP_INDICATOR_TURN_DEG = 18f
 
 /**
- * How long one crown step slides the rows.
- *
  * @parity /watch/watchos/GroupRidePage.swift `GROUP_STEP_SECONDS`
  */
 private const val GROUP_STEP_MS = 150
 
-/** Each row's width is clamped to the chord of this share of the face radius at its centre line. */
 private const val GROUP_PAGE_SAFE_RADIUS = 0.8f
 private val GROUP_ROW_H = 22.dp
 /**
- * A row is 150 dp, narrowed to the safe chord but never below [GROUP_ROW_MIN_W]: 93 dp of fixed
- * columns plus 45 dp, a five-character name ("Tomek" is 42.5 dp) unclipped. On a small face the
- * widened outer rows reach just past the safe circle, still inside the face.
- *
  * @parity /watch/watchos/GroupRidePage.swift `GROUP_ROW_WIDTH`
  */
 private val GROUP_ROW_W = 150.dp
@@ -403,12 +348,9 @@ private val GROUP_NAME_FONT = 13.sp
 private val GROUP_VALUE_FONT = 11.sp
 private val GROUP_ROW_DOT = 6.dp
 private val GROUP_ARROW_BOX = 10.dp
-/** Six mono characters ("12.3km") at the value size; "100%" or "lost" in the status slot. */
 private val GROUP_DISTANCE_W = 40.dp
 private val GROUP_STATUS_W = 27.dp
-/** Between the distance and the status slot, so "49m" and "lost" never run together. */
 private val GROUP_VALUE_GAP = 5.dp
 private val GROUP_THERMOMETER_W = 7.dp
 private val GROUP_THERMOMETER_H = 15.dp
-/** A lost Rider's row: there, but plainly not current. */
 private const val GROUP_STALE_ROW_ALPHA = 0.4f

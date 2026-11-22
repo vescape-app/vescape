@@ -34,7 +34,6 @@ export default function NoticesShowcase() {
     key: 'showcase',
     severity,
     ...TITLES[severity],
-    // Native posts a signal's notice with no details: the card names the rider instead.
     ...(signal === 'none' ? {} : { details: '' }),
     postedAt: Date.now() - 4 * 60_000,
     location: located ? { lat: 52.2405, lng: 21.0122 } : null,

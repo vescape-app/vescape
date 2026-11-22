@@ -88,7 +88,6 @@ class BoardTransportTest {
       BoardTransport.Can(canId)
       fail("Expected invalid CAN id to throw")
     } catch (e: IllegalArgumentException) {
-      // expected
     }
   }
 }

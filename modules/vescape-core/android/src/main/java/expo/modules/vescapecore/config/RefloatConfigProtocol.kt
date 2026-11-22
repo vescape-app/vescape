@@ -270,7 +270,6 @@ internal object RefloatConfigProtocol {
     val versionCode = payload[dataOffset].toInt() and 0xff
     val major = versionCode / 10
     val minor = versionCode % 10
-    // Legacy INFO has no package name. Float and Refloat share this response format.
     return RefloatConfigProtocolResult.Success(RefloatPackageInfo("Float/Refloat $major.$minor"))
   }
 

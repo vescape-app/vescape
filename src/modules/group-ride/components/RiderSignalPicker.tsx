@@ -26,19 +26,15 @@ import { topRiderSignal } from '@/modules/group-ride/lib/riderSignal'
 import { PinKindBadge } from '@/modules/group-ride/components/PinKindBadge'
 import { ownPin, useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 
-/** The device's own Rider Signal while it is active on the relay clock, else null. */
 export function useOwnRiderSignal(): GroupRidePin | null {
   return useActiveRiderSignal(useGroupRideStore((s) => ownPin(s, 'signal')))
 }
 
-/** The device's own Ride Hazard while it is active on the relay clock, else null. */
 function useOwnRideHazard(): GroupRidePin | null {
   return useActiveRiderSignal(useGroupRideStore((s) => ownPin(s, 'hazard')))
 }
 
-/** The most urgent signal another Rider has active, see `topRiderSignal`, else null. */
 function useOthersTopSignal(): GroupRidePin | null {
-  // Picks a signal object the roster already holds, so the selector result stays stable.
   const signal = useGroupRideStore((s) =>
     s.relayClock
       ? topRiderSignal(
@@ -56,29 +52,20 @@ function signalTakeover(signal: GroupRidePin | null): IconButtonTakeover | null 
   return info ? { icon: info.icon, accent: theme.palette[info.hue].color } : null
 }
 
-/** The Rider Signal button's takeover while the own signal is live: its kind's icon and hue. */
 export function useOwnSignalTakeover(): IconButtonTakeover | null {
   return signalTakeover(useOwnRiderSignal())
 }
 
-/** Social's takeover while another Rider's signal is live, so "someone needs help" never reads
- *  as the Rider's own signal, which the Rider Signal button wears instead. */
 export function useOthersSignalTakeover(): IconButtonTakeover | null {
   return signalTakeover(useOthersTopSignal())
 }
 
-/** Injuries first, then Board problems and requests to wait or take a break. */
 const SIGNAL_ROWS: readonly (readonly RiderSignalKind[])[] = [
   ['serious', 'minor', 'down'],
   ['battery', 'tire', 'overheat', 'board'],
   ['wait', 'break'],
 ]
 
-/**
- * Shows the active Rider Signal over the choices. Clear it with "I'm OK" to send another.
- * Ride Hazards have their own slot and can still be sent while a Rider Signal is active.
- * A new pin needs a recent GPS fix and can reveal the Rider's position inside a Privacy Zone.
- */
 export function RiderSignalPicker({ onDone }: { onDone: () => void }) {
   const availability = useGroupRideStore((s) => s.signalAvailability)
   const sendSignal = useGroupRideStore((s) => s.sendSignal)
@@ -188,7 +175,6 @@ function PinTile({
   onPress,
 }: {
   info: PinKindInfo
-  /** A faint wash and border of the kind's hue, for the injuries that need the group to act. */
   emphasis?: boolean
   disabled: boolean
   onPress: () => void
@@ -234,7 +220,6 @@ function PinTile({
   )
 }
 
-/** The Rider's own active pin: its kind and the action that ends it. */
 function OwnPin({
   info,
   children,

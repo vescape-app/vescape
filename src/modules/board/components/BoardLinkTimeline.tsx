@@ -28,16 +28,6 @@ import {
 } from '@/modules/board/lib/boardTransport'
 import { interaction, theme } from '@/constants/theme'
 
-/**
- * One row per real probe activity, in the order the probe performs them:
- * open GATT → discover the VESC service → ping the CAN bus → prove a transport
- * with a telemetry request → wait for a BMS answer → read identity → open a real Board Session on
- * the pick → acquire complete config over it.
- *
- * The `session` row is the only check that exercises the production connect path rather than the
- * probe's own detection client, so it stays visible: linking proves rides can connect, and the
- * teardown afterwards is the test cleaning up, not a dropped connection.
- */
 type StepKey =
   | 'connect'
   | 'handshake'
@@ -85,7 +75,6 @@ const STEP_ICON: Record<StepKey, Icon> = {
   motorConfig: GearSixIcon,
 }
 
-/** What each step does — shown until a concrete result replaces it. */
 const STEP_DESC: Record<StepKey, string> = {
   connect: 'Opening the BLE GATT link',
   handshake: 'Discovering the VESC service',
@@ -98,11 +87,6 @@ const STEP_DESC: Record<StepKey, string> = {
   motorConfig: 'Reading VESC motor config',
 }
 
-/**
- * Index of the live step driving the spinner. Every native milestone maps onto
- * one row; a milestone whose reply never comes is skipped — the probe window
- * closing (`completed`) resolves the remaining rows from the candidates.
- */
 const STEP_REACH: Record<BoardProbeStep, number> = {
   connecting: 0,
   handshake: 1,
@@ -123,28 +107,15 @@ interface Props {
   candidates: BoardCandidate[]
   selected: BoardCandidate | null
   onSelect: (candidate: BoardCandidate) => void
-  /** Primary identity of the thing being linked (board name, or BLE name). */
   deviceLabel: string
-  /** Hide the internal IconHero header (caller renders it elsewhere, e.g. pinned top). */
   hideHeader?: boolean
-  /** Peripheral id, surfaced as the "Connected to …" finding. */
   bleId?: string | null
-  /** Terminal actions (Save / Retry / Choose another), rendered after the timeline. */
   actions?: ReactNode
-  /** Muted note under a failed terminal, e.g. "Existing link kept". */
   failureNote?: string
-  /** Active row index while probing; -1 when terminal, so parent scroll can reset. */
   onActiveStepIndexChange?: (index: number) => void
   testIDPrefix: string
 }
 
-/**
- * One fixed linking checklist that fills in as the Board Probe advances. Each
- * row resolves in probe order and its caption is written once — later facts
- * land in later rows instead of rewriting earlier ones. When several transports
- * answer, the picker renders inline inside the Transport step and the BMS and
- * Identity rows follow the selected candidate.
- */
 export function BoardLinkTimeline({
   phase,
   progress,
@@ -197,7 +168,6 @@ interface PickerHandles {
   testIDPrefix: string
 }
 
-/** Resolve the fixed checklist rows for the current phase. */
 function pickingSteps(
   progress: BoardProbeProgressEvent | null,
   candidates: BoardCandidate[],
@@ -205,7 +175,6 @@ function pickingSteps(
   picker: PickerHandles,
 ): TimelineStep[] {
   const single = candidates.length === 1 ? candidates[0] : null
-  // The BMS and Identity rows describe one candidate: the only one, or the pick.
   const resolved = single ?? picker.selected ?? candidates[0] ?? null
   const canIds =
     progress?.canIds ??
@@ -228,11 +197,6 @@ function pickingSteps(
   ]
 }
 
-/**
- * Session + config rows, driven by the acquisition that runs after the probe window closes. The
- * session is opened to read config and torn down afterwards, so its `done` caption says the check
- * passed rather than claiming a connection the rider still has.
- */
 function acquisitionSteps(progress: BoardProbeProgressEvent | null): TimelineStep[] {
   const step = progress?.step
   const sessionDone = step === 'config' || step === 'motor-config' || step === 'completed'
@@ -256,10 +220,6 @@ function acquisitionSteps(progress: BoardProbeProgressEvent | null): TimelineSte
   ]
 }
 
-/**
- * The three acquisition rows of a failed run. Which one failed is whichever step the probe last
- * reported: every row before it got far enough to have passed.
- */
 function failedAcquisitionSteps(step: BoardProbeStep | undefined): TimelineStep[] {
   const reachedConfig = step === 'config' || step === 'motor-config'
   const reachedMotorConfig = step === 'motor-config'
@@ -329,11 +289,6 @@ function failedSteps(
   ]
 }
 
-/**
- * Live linking: the spinner walks the rows in probe order, each upgrading to its result the moment
- * the probe reports it. A caption is written once and never rewritten — facts that arrive later
- * land in later rows.
- */
 function liveSteps(
   progress: BoardProbeProgressEvent | null,
   connected: string,
@@ -386,10 +341,8 @@ function canScanCaption(canIds: number[] | undefined): string {
   return `${label} ${canIds.join(', ')} answered`
 }
 
-/** Refloat identity (plus VESC firmware) of the resolved candidate. */
 function identityRow(candidate: BoardCandidate | null): TimelineStep {
   const identity = candidate ? formatRefloatIdentity(candidate) : null
-  // vescFirmwareVersion is already self-labeled, e.g. "FW 6.05 · ADV500".
   const caption = [identity, candidate?.vescFirmwareVersion].filter(Boolean).join(' · ')
   if (identity) return row('identity', 'done', caption)
   return {

@@ -17,24 +17,14 @@ import { toRealMs } from '@/components/charts/line/timeline'
 import { theme } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
-/** Below this window, wall-clock labels gain seconds — above it they would never change. */
 const CLOCK_SECONDS_BELOW_MS = 10 * 60_000
 
 export interface ChartTimeAxisProps {
-  /** `clock` labels the real time of day; `relative` counts back from the live head. */
   timeMode: 'clock' | 'relative'
-  /** Width of one mono glyph, measured once on the JS thread. */
   glyphWidth: number
 }
 
-/**
- * The stretch of time on screen, written once under the whole stack.
- *
- * Its own canvas rather than a strip of the last chart's: it belongs to the group, not to whichever
- * metric happens to sit at the bottom, and a chart closing must not take the time axis with it.
- */
 export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
-  // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
   const timeFormat = useTimeFormat()
   const neutral = useResolvedNeutralColors()
@@ -83,8 +73,6 @@ export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
   const scrubTimeOpacity = useDerivedValue(() => (readout.value.time ? 1 : 0), [])
   const scrubTimeText = useDerivedValue(() => readout.value.time, [])
 
-  // The strip still takes its height while a ride loads — an empty frame that keeps the panel
-  // still is the point — but there is no window yet to name.
   if (!axisFont || isEmpty) return <Canvas style={styles.canvas} />
 
   return (

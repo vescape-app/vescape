@@ -33,13 +33,8 @@ import {
 import { RIM_TEMP_RANGE, type TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import { useMetricGaugeDecor } from '@/modules/board/hooks/useMetricGaugeDecor'
 
-/**
- * Arc space: a quarter circle in a `UNIT` square, scaled to the drawn radius. Line weights, ticks
- * and alert marks are sized in this space so they match the speed/duty arcs at phone scale.
- */
 const UNIT = 36
 const ARC_R = UNIT - STROKE / 2
-// Both arcs start at the bottom, next to the battery line, and climb to the vertical at the top.
 const LEFT_ARC: Arc = { cx: UNIT, cy: 0, r: ARC_R, from: -Math.PI / 2, to: -Math.PI }
 const RIGHT_ARC: Arc = { cx: 0, cy: 0, r: ARC_R, from: -Math.PI / 2, to: 0 }
 const BG_ARC_LEFT = svgPath(arcPath(LEFT_ARC, 1))
@@ -48,33 +43,23 @@ const GLOW_STOPS = [0, 0.6, 0.95, 1]
 const GLOW_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.3]
 
 const VALUE_SIZE = 16
-/** Small unit after the value, the way the battery readout sets its `%`. */
 const UNIT_SIZE = 9
-/** Readout centre as a share of the radius, measured from the arc's open (inner) side. */
 const VALUE_X = 0.27
 const VALUE_Y = 0.28
 const VALUE_BOX_W = 44
-/** Where the value ends, right of the readout centre, so value + unit sit centred together. */
 const VALUE_END_OFFSET = 6
-/** Gap under the arc to the footer line; the battery bar's aux row lands at the same height. */
 const FOOTER_GAP = 2
 
 interface RimTempArcProps {
   side: 'left' | 'right'
   label: string
   metric: TelemetryMetricConfig
-  /** Live reading, UI thread. */
   value: SharedValue<number | null>
-  /** Drawn radius; the arc fills a square of this size. */
   radius: number
   onPress?: () => void
   testID?: string
 }
 
-/**
- * A temperature as a quarter arc rising out of the battery line, the phone's take on the watch rim:
- * it fills from the bottom corner up toward the vertical over the watch's temperature scale.
- */
 export function RimTempArc({
   side,
   label,
@@ -94,8 +79,6 @@ export function RimTempArc({
   const neutral = useResolvedNeutralColors()
   const scale = radius / UNIT
 
-  // Telemetry ticks ~31 Hz but a temperature drifts a fraction of a degree a second. Only a change
-  // at display resolution reaches the drawing, so the canvas sits idle between them.
   const step = 10 ** -metric.decimals
   const shown = useSharedValue<number | null>(null)
   useAnimatedReaction(
@@ -117,8 +100,6 @@ export function RimTempArc({
   const arcColor = useDerivedValue(() =>
     gaugeRampColor(shown.value, color, hotRange, accents.red.color),
   )
-  // With no reading the unit drops out and the dash centres on its own, so it lines up with the
-  // other empty readouts instead of hanging left of a lone unit.
   const valueText = useDerivedValue(() => shown.value?.toFixed(metric.decimals) ?? '')
   const unitText = useDerivedValue(() => (shown.value == null ? '' : metric.unit))
   const emptyText = useDerivedValue<string>(() => (shown.value == null ? DASH : ''))
@@ -181,7 +162,6 @@ export function RimTempArc({
           />
         </Canvas>
       </View>
-      {/* Footer line, level with the battery's voltage, set against the battery side. */}
       <Text style={[styles.label, { textAlign: isLeft ? 'right' : 'left' }]} numberOfLines={1}>
         {label}
       </Text>
@@ -193,7 +173,6 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: interaction.pressedOpacity,
   },
-  // The battery's footer style, offset to the same line under the bar.
   label: {
     ...GAUGE_FOOTER_TEXT,
     marginTop: FOOTER_GAP,

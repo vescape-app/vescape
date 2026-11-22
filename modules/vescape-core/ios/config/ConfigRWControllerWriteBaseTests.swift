@@ -1,10 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Trust session config on write (#396): a push backed by the session's `fresh` Board Config Values
-/// patches the retained bytes and goes straight to `COMM_SET_CUSTOM_CONFIG`. Provisional values or
-/// none at all still read the board first.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/ConfigRWFsmWriteBaseTest.kt
 final class ConfigRWControllerWriteBaseTests: XCTestCase {
   func testProfileReadFailureDoesNotSendFirmwareCommand() {
@@ -49,7 +45,6 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
       onError: { code, message in XCTFail("write should not fail: \(code) \(message)") }
     )
 
-    // The set frame carries the retained blob with only `tuned` patched; `untouched` survives.
     let base = values.writeBase!
     guard let setFrame = sent.frames.first(where: { command($0) == COMM_SET_CUSTOM_CONFIG }) else {
       return XCTFail("no set frame sent")
@@ -121,8 +116,6 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertEqual(demoted.number("untouched"), 42.0)
   }
 
-  // MARK: - Fixtures
-
   private func schema() -> RefloatConfigSchema {
     RefloatConfigSchema(
       hash: "test",
@@ -181,7 +174,6 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
 
 private enum ProfileReadFailure: Error { case failed }
 
-/// Frames the controller handed to the transport, in send order.
 private final class SentFrames {
   var frames: [[UInt8]] = []
 }

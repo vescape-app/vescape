@@ -8,29 +8,16 @@ export interface SharedTarget {
   dest: string
   extensions: Set<string>
   rename: (file: string) => string
-  /**
-   * Walk subdirectories and keep their layout under `dest`. Only paths `include` accepts (relative
-   * to `src`) are copied.
-   */
   include?: (path: string) => boolean
 }
 
-/** Built-in effects (#578) and voice (#580) packs. */
 const alertPacks = (path: string) =>
   (path.startsWith('effects-') || path.startsWith('voice-')) && path.includes('/')
 
-/**
- * Shared assets have exactly one source of truth: `shared/`. iOS reads single files through symlinks
- * committed under `modules/vescape-core/ios/`; everything else needs real copies — Gradle cannot
- * follow a symlink out of the module, and CocoaPods does not expand a glob through a symlinked
- * directory. These copies are generated, gitignored, and refreshed by `copyShared()`.
- */
 export function sharedTargets(root = ROOT): SharedTarget[] {
   const androidSrc = join(root, 'modules', 'vescape-core', 'android', 'src')
 
   return [
-    // Alert packs keep their `<pack>/pack.json` layout: Android reads them from assets, iOS from a
-    // folder in `VescapeCoreAssets.bundle` (a flattening resource glob would collide on slot names).
     {
       src: join(root, 'shared', 'alerts', 'packs'),
       dest: join(androidSrc, 'main', 'assets', 'alert-packs'),
@@ -57,8 +44,6 @@ export function sharedTargets(root = ROOT): SharedTarget[] {
       extensions: new Set(['.json']),
       rename: (file: string) => file,
     },
-    // Replay fixtures (Debug Recordings): test resources for the CI harness, plus app assets so
-    // the dev-mode Replay UI can play bundled fixtures on-device (dev-only shipping, #230).
     {
       src: join(root, 'shared', 'fixtures'),
       dest: join(androidSrc, 'test', 'resources', 'fixtures'),
@@ -71,10 +56,6 @@ export function sharedTargets(root = ROOT): SharedTarget[] {
       extensions: new Set(['.jsonl']),
       rename: (file: string) => file,
     },
-    // iOS needs real copies here too. A symlinked *file* under the pod root (`cell-presets.json`)
-    // is resolved by CocoaPods, but a symlinked *directory* is not: `fixtures/*.jsonl` expanded to
-    // nothing at `pod install`, so `VescapeCoreAssets.bundle` shipped without a single recording
-    // and `startDebugReplay` had no fixture to play on a fresh install.
     {
       src: join(root, 'shared', 'fixtures'),
       dest: join(root, 'modules', 'vescape-core', 'ios', 'fixtures'),
@@ -84,16 +65,10 @@ export function sharedTargets(root = ROOT): SharedTarget[] {
   ]
 }
 
-/**
- * `to` relative to `from`, always `/`-separated. Path filters and the prune set compare these
- * strings; with the native separator, Windows yielded `effects-arc\pack.json`, the pack filter
- * matched nothing, and the APK shipped without alert packs (#621).
- */
 export function relativePath(from: string, to: string, { relative, sep } = nodePath): string {
   return relative(from, to).split(sep).join('/')
 }
 
-/** Files under `dir`, relative to it; one level unless `recursive`. */
 function listFiles(dir: string, recursive: boolean): string[] {
   if (!existsSync(dir)) return []
   return readdirSync(dir, { recursive, withFileTypes: true })
@@ -101,7 +76,6 @@ function listFiles(dir: string, recursive: boolean): string[] {
     .map((entry) => relativePath(dir, join(entry.parentPath, entry.name)))
 }
 
-/** Source files a target copies, absolute, sorted. */
 export function sharedSources(target: SharedTarget): string[] {
   return listFiles(target.src, !!target.include)
     .filter((file) => target.extensions.has(extname(file).toLowerCase()))
@@ -110,7 +84,6 @@ export function sharedSources(target: SharedTarget): string[] {
     .map((file) => join(target.src, file))
 }
 
-/** Where a source file lands once copied. */
 export function sharedOutput(target: SharedTarget, source: string): string {
   const file = relativePath(target.src, source)
   return join(target.dest, dirname(file), target.rename(parse(file).base))
@@ -127,10 +100,6 @@ export function copyShared(root = ROOT, { quiet = false } = {}) {
 
     log(`\n  ${relativePath(root, target.src)} → ${relativePath(root, target.dest)}`)
 
-    // Copying alone leaves orphans behind: a fixture renamed in `shared/` kept shipping under its
-    // old name inside the Android APK for a week, and showed up in the Replay UI as a recording
-    // that no longer existed in the repo. Only names this target would produce survive, so a
-    // destination it shares with anything else is left alone.
     const expected = new Set(
       sharedSources(target).map((source) =>
         relativePath(target.dest, sharedOutput(target, source)),
@@ -143,8 +112,6 @@ export function copyShared(root = ROOT, { quiet = false } = {}) {
     }
 
     const sources = sharedSources(target)
-    // Other targets copying keeps the total above zero, so an empty pack walk slipped through
-    // silently and the app crashed on launch instead (#621).
     if (target.include && sources.length === 0) {
       throw new Error(`No files under ${relativePath(root, target.src)} passed its filter`)
     }

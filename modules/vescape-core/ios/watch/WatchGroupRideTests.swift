@@ -1,9 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// The wrist's Group Ride: the course it holds, the page's rows (order, names, bearings, the one
-/// status slot), the nav-focus label flag and the distance label.
-///
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/WatchGroupRideTest.kt
 final class WatchGroupRideTests: XCTestCase {
   private func rider(
@@ -42,7 +39,6 @@ final class WatchGroupRideTests: XCTestCase {
   }
 
   func testBearingIsRelativeToTheCourse() {
-    // Riding east; the other Rider is due north, so on the left.
     let row = group(rider("a", northM: 100), courseDeg: 90).roster()[0]
 
     XCTAssertEqual(row.bearingDeg, 270, accuracy: 1e-9)

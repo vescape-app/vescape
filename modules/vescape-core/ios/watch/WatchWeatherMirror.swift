@@ -1,11 +1,5 @@
 import Foundation
 
-/// Everything the wrist mirrors from the phone's forecast. Phone-side only: `WatchWeather.swift` is
-/// symlinked into the watch target and the wrist has no `Weather` to convert from.
-///
-/// Adding a field means adding a key constant in `WatchWeatherKey`, a value in `payload`, a read in
-/// `decode`, and a render on the wrist.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchWeather.kt `toWatchWeather`
 extension Weather {
   var watchWeather: WatchWeather {

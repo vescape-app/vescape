@@ -10,7 +10,6 @@ import { theme } from '@/constants/theme'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
-// Store keys that are actions/flags, not persisted setting data.
 const APP_STORE_OMIT = new Set(['loaded', 'load', 'set', 'setCompanionPresence'])
 
 function pickData(source: Record<string, unknown>, omit: Set<string>): Record<string, unknown> {

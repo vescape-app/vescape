@@ -19,7 +19,6 @@ struct PresetInput {
   var topSpeedKmh: Double = 50
   var hasBatteryConfig = false
   var distanceUnit = "km"
-  /// Base of the metric's config-relative points; read only when its spec has `match=on`.
   var configBase: Double? = nil
 }
 
@@ -61,7 +60,6 @@ private struct PresetDefinition: Decodable {
   }
 }
 
-/// Typed catalog and pure expansion of a preset spec, shared by saved rows and unsaved wizard previews.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt
 final class AlertPresetGenerator {
   static let metrics = ["speed", "duty", "motor-temp", "controller-temp", "battery"]
@@ -110,13 +108,10 @@ final class AlertPresetGenerator {
     }
   }
 
-  /// True when `metric`'s definition ticks, so its spec may carry a `geiger=` option.
   static func hasGeiger(_ metric: String) throws -> Bool {
     try catalog.get().metrics[metric]?.spec?.hasPrefix("geiger:") == true
   }
 
-  /// The rules `spec` stands for. `off`, an unknown level (from a newer app), or a guard failure
-  /// expands to none. `match=on` gives config-relative points; `geiger=` replaces the tick level.
   static func generate(metric: String, spec: AlertPresetSpec, input: PresetInput) throws -> [GeneratedPresetRule] {
     guard metrics.contains(metric), ["km", "mi"].contains(input.distanceUnit) else { throw InvalidPreset.invalidIntent }
     guard activeLevels.contains(spec.level) else { return [] }
@@ -156,7 +151,6 @@ final class AlertPresetGenerator {
           repeatEverySeconds: offset.repeatEverySeconds
         )
       } else {
-        // No anchor yet: keep the relationship, but no firing threshold.
         point = PresetPoint(threshold: 0, repeatEverySeconds: offset.repeatEverySeconds)
       }
       return GeneratedPresetRule(
@@ -167,9 +161,6 @@ final class AlertPresetGenerator {
     }
   }
 
-  /// Sound of a ladder's point `index` of `count`. A `voice:<key>` definition speaks each point with a
-  /// severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`;
-  /// a one-point ladder is `critical`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AlertPresetGenerator.kt `pointSpec`
   private static func pointSpec(_ spec: String, index: Int, count: Int) -> String {
     guard spec.hasPrefix("voice:") else { return spec }

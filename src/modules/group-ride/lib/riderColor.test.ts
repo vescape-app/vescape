@@ -4,8 +4,6 @@ import { accentColors, theme } from '@/constants/theme'
 import { riderMapColor, riderPaletteIndex } from '@/modules/group-ride/lib/riderColor'
 
 /**
- * Shared test vector: the same ids must land in the same palette slots on every platform.
- *
  * @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/GroupRideFrameBuilderTest.kt `RIDER_COLOR_VECTOR`
  * @parity /modules/vescape-core/ios/watch/GroupRideFrameBuilderTests.swift `riderColorVector`
  */

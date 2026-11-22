@@ -23,7 +23,6 @@ class WatchBoardTest {
 
     @Test
     fun `a board that has never said stays unknown rather than off`() {
-        // What the phone sends before any echo or config seed: controllability, and no light keys.
         val payload = mapOf(BOARD_LIGHTS_CONTROLLABLE to true)
 
         val lights = decodeBoardLightsPayload(payload)

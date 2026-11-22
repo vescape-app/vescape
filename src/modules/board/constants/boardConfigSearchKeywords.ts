@@ -1,8 +1,3 @@
-/**
- * Hidden search words for Board Config rows: the words riders use for a setting when its label
- * says something else. They only help find a row; they never appear on screen or claim anything
- * the row's own label and description do not.
- */
 const BOARD_CONFIG_SEARCH_KEYWORDS: Record<'refloat' | 'motor', Record<string, string[]>> = {
   refloat: {
     fault_adc1: ['footpad sensor', 'zone 1', 'sensor voltage', 'adc'],
@@ -105,7 +100,6 @@ const BOARD_CONFIG_SEARCH_KEYWORDS: Record<'refloat' | 'motor', Record<string, s
   },
 }
 
-/** Words shared by a whole family of fields, including ones newer firmware adds. */
 const BOARD_CONFIG_SEARCH_PREFIX_KEYWORDS: Record<'refloat' | 'motor', [string, string[]][]> = {
   refloat: [
     ['leds.', ['lights', 'led']],
@@ -135,7 +129,6 @@ const BOARD_CONFIG_SEARCH_PREFIX_KEYWORDS: Record<'refloat' | 'motor', [string, 
   ],
 }
 
-/** A row's own words, its family's, and the shared LED pattern/brightness/color words. */
 export function boardConfigSearchKeywords(source: 'refloat' | 'motor', id: string): string[] {
   const words = [...(BOARD_CONFIG_SEARCH_KEYWORDS[source][id] ?? [])]
   for (const [prefix, prefixWords] of BOARD_CONFIG_SEARCH_PREFIX_KEYWORDS[source])

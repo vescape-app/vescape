@@ -5,7 +5,7 @@ import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 import { DEFAULT_HISTORY_METRIC_HOT_RANGES } from '@/modules/history/lib/metricColorScale'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
-import { monotonicNow, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
+import { monotonicNowMs, type RelayClock } from '@/modules/group-ride/lib/riderSignal'
 
 const NOW = Date.now()
 const BASE_LON = 14.4378
@@ -184,7 +184,6 @@ export const FIXTURE_ACCURACY_SHAPE = makeCircleFeature(
 )
 export const FIXTURE_GPS_PUCK_BEARING_DEG = 48
 
-/** A short path of `count` points trailing behind `(lat, lng)`, for showcasing rider trails. */
 function fixtureTrail(
   lat: number,
   lng: number,
@@ -198,10 +197,8 @@ function fixtureTrail(
   })
 }
 
-/** Where the showcase roster measures rider distances from: the camera centre. */
 export const FIXTURE_OWN_LOCATION = { lat: BASE_LAT, lng: BASE_LON }
 
-/** Other Riders: live, live with hot telemetry, stale, away for minutes, and phone-only without a board. */
 export const FIXTURE_RIDERS: RosterRider[] = [
   {
     id: 'fixture-rider-ana',
@@ -301,7 +298,6 @@ export const FIXTURE_RIDERS: RosterRider[] = [
   },
 ]
 
-/** The Social roster as the device sees it: its own Rider first, then everyone else by name. */
 export const FIXTURE_ROSTER_ROWS: RosterRider[] = [
   {
     id: 'fixture-rider-me',
@@ -326,22 +322,16 @@ export const FIXTURE_ROSTER_ROWS: RosterRider[] = [
   ...FIXTURE_RIDERS,
 ]
 
-/** A relay clock at the fixture's `NOW`, so fixture pins count as active. */
-export const FIXTURE_RELAY_CLOCK: RelayClock = { relayNow: NOW, receivedAt: monotonicNow() }
+export const FIXTURE_RELAY_CLOCK: RelayClock = { relayNow: NOW, receivedAt: monotonicNowMs() }
 
 const fixturePin = (kind: string, lat: number, lng: number) => ({
   kind,
   lat,
   lng,
   startedAt: NOW,
-  // Long enough that a showcase left open does not watch the pins expire.
   expiresAt: NOW + 24 * 60 * 60_000,
 })
 
-/**
- * Every signal and hazard kind on the map, spread around the riders: one rider's signal sits on its
- * presence, the rest where the sender used to be.
- */
 export const FIXTURE_PIN_ROWS: RosterRider[] = [
   {
     ...FIXTURE_RIDERS[0],

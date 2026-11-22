@@ -4,7 +4,6 @@ import type { PublicRider } from 'vescape-core'
 import { NEARBY_RIDER_LIMIT, publicRiderRoster } from '@/modules/group-ride/lib/roster'
 
 const OWN = { lat: 50.0619, lng: 19.9368 }
-// ~111 m of latitude per 0.001°.
 const NORTH_M = 1 / 111_320
 
 function rider(accountId: string, metersNorth: number | null, away = false): PublicRider {

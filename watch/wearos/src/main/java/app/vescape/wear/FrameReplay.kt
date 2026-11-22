@@ -22,59 +22,28 @@ import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.PI
 import kotlin.math.sin
+import androidx.annotation.MainThread
 
-/**
- * Emulator-only Watch Frame replay: feeds recorded lane samples into [TelemetryState] on the same
- * path a phone push takes, so Mirror visuals can be worked on without a board, a phone or a ride.
- *
- * The watch never sees board protocol (ADR-0019), so the fixtures are lane-only JSONL generated on
- * the host by `scripts/generate-watch-fixtures.ts` from a Debug Recording. Replay is gated to a
- * debuggable build on an emulator: a real watch keeps showing real frames, and a release build has
- * no replay path at all.
- */
-
-/** Fixture assets shipped with the watch app. [RIDE] is a real recorded ride, [SWEEP] walks every lane's full range. */
 const val REPLAY_FIXTURE_RIDE = "watch-ride.jsonl"
 const val REPLAY_FIXTURE_SWEEP = "watch-sweep.jsonl"
 
-/** The phone preview's ride on its real GPS track, timed on the recording's clock; no route. */
 const val REPLAY_FIXTURE_PREVIEW = "watch-preview.jsonl"
 
-/**
- * Fixtures for the two surfaces the phone pushes outside the frame stream: the route the rider lanes
- * are placed on, and the forecast. Both fixtures are shared by every lane fixture — they describe the
- * ride's surroundings, not its telemetry.
- */
 private const val REPLAY_FIXTURE_ROUTE = "watch-route.json"
 private const val REPLAY_FIXTURE_WEATHER = "watch-weather.json"
 
-/**
- * Dark street-map tiles along the replayed route: the list (`{style, tiles}`) and one JPEG per tile
- * under [REPLAY_MAP_TILE_DIR] as `<z>/<x>/<y>.jpg`. They stand in for the phone's tile items.
- */
 private const val REPLAY_FIXTURE_MAP_TILES = "watch-map-tiles.json"
 private const val REPLAY_MAP_TILE_DIR = "watch-map-tiles"
 
-/**
- * The Group Ride the replayed Rider is in: a cast of other Riders covering every mark and status the
- * wrist draws. Opt-in (`bun run wear:replay ride --group`), so the not-joined layout replays too.
- */
 private const val REPLAY_FIXTURE_GROUP_RIDE = "watch-group-ride.json"
 
-/** The phone pushes the Group Ride Frame about once a second; replay keeps the same pace. */
 private const val REPLAY_GROUP_RIDE_INTERVAL_MS = 1_000L
 
-/** One recorded moment: the frame to show and the recording-relative time to show it at. */
 /** @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySample` */
 data class ReplaySample(val atMs: Long, val frame: WatchFrame)
 
-/**
- * Pure lane-fixture parser. A fixture is dev input that ships as an asset, so a malformed line is
- * skipped rather than crashing the Mirror — a partly-readable fixture still animates the gauges.
- */
 /** @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplayFixtureParser` */
 object ReplayFixtureParser {
-    /** [origin]: where the fixture's metres sit on the globe (`watch-route.json`); null leaves no map position. */
     fun parse(lines: Sequence<String>, wander: Boolean = false, origin: WatchMapPosition? = null): List<ReplaySample> {
         val recorded = lines.mapNotNull(::parseLine).toList()
         val samples = if (wander) withDetours(recorded) else recorded
@@ -94,7 +63,7 @@ object ReplayFixtureParser {
         }
     }
 
-    /** Smooth, seeded world-space detours. Rejoin every two minutes; never mutate the planned route.
+    /**
      * @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplayFixtureParser.withDetours`
      */
     private fun withDetours(samples: List<ReplaySample>): List<ReplaySample> {
@@ -138,7 +107,7 @@ object ReplayFixtureParser {
                     motorTemp = json.nullableLane("motorTemp"),
                     ctrlTemp = json.nullableLane("ctrlTemp"),
                     stale = json.optBoolean("stale", false),
-                    navBearing = json.nullableLane("navBearing"),
+                    navBearingDeg = json.nullableLane("navBearing"),
                     navDistanceM = json.nullableLane("navDistance"),
                     riderEastM = json.nullableLane("riderEast"),
                     riderNorthM = json.nullableLane("riderNorth"),
@@ -155,14 +124,8 @@ object ReplayFixtureParser {
         if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
 }
 
-/**
- * Parsers for the non-frame fixtures. Both mirror what the phone would have pushed, so replay
- * exercises the same state the real Data Layer paths feed — [WatchRouteDecoder] and the weather
- * message listener are the only other way into these two objects.
- */
 /** @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser` */
 object ReplaySceneParser {
-    /** Route points as metres east/north of the origin, the frame the rider lanes are relative to. */
     // @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseRoute`
     fun parseRoute(json: String): WatchRoute? = try {
         val points = JSONObject(json).getJSONArray("points")
@@ -179,7 +142,6 @@ object ReplaySceneParser {
         null
     }
 
-    /** The route's geographic origin: where its metres, and the rider lanes', sit on the map. */
     // @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseOrigin`
     fun parseOrigin(json: String): WatchMapPosition? = try {
         val origin = JSONObject(json).getJSONObject("origin")
@@ -188,7 +150,6 @@ object ReplaySceneParser {
         null
     }
 
-    /** The street-map tiles shipped beside the fixtures. Their style only matters to watchOS's store. */
     // @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseMapTiles`
     fun parseMapTiles(json: String): List<WatchMapTile> = try {
         val tiles = JSONObject(json).getJSONArray("tiles")
@@ -198,9 +159,6 @@ object ReplaySceneParser {
     }
 
     /**
-     * The fixture forecast, anchored to [nowMs]: the fixture carries no clock times, so the hours are
-     * laid out from the next full hour and the reading is stamped as fresh. A fixed clock time would
-     * age out mid-session and read as yesterday's weather.
      * @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseWeather`
      */
     fun parseWeather(json: String, nowMs: Long, minuteOfDay: Int): WatchWeather? = try {
@@ -232,9 +190,6 @@ object ReplaySceneParser {
     }
 
     /**
-     * Parser for [REPLAY_FIXTURE_GROUP_RIDE]. Levels are named ("warning", "critical") and missing ones
-     * read as normal; the phone classifies, so the fixture states them rather than deriving them.
-     *
      * @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplaySceneParser.parseGroupRide`
      */
     internal fun parseGroupRide(json: String): ReplayGroupRide? = try {
@@ -273,13 +228,9 @@ object ReplaySceneParser {
 }
 
 /**
- * The Group Ride fixture: each Rider sits at a base east/north offset and may swing sinusoidally
- * around it, so distances, bearings and the in-range boundary move like a real ride.
- *
  * @parity /modules/vescape-core/ios/watch/WatchReplay.swift `ReplayGroupRide`
  */
 internal data class ReplayGroupRide(val courseDeg: Double?, val spanM: Double, val riders: List<ReplayGroupRider>) {
-    /** The frame the phone would push [atMs] into replay; [courseDeg] is the ride's own when known. */
     fun frame(atMs: Long, courseDeg: Double?): GroupRideFrame = GroupRideFrame(
         courseDeg = courseDeg ?: this.courseDeg,
         spanM = spanM,
@@ -301,18 +252,8 @@ internal data class ReplayGroupRider(
     }
 }
 
-/**
- * The gate every emulator-only dev mode passes through: fixture replay, and the forced ambient
- * rendering the always-on layout is worked on with. A real watch and a release build have neither.
- */
 /** @parity /watch/watchos/FrameReplay.swift `FrameReplayer.requestedFixture` */
 object DevGate {
-    /**
-     * A dev mode is explicit and never inferred: `bun run wear:replay` asks for one, and a normal
-     * emulator launch listens to its paired phone like a real watch instead of silently replacing
-     * those frames with a fixture. Emulator detection reads [Build] rather than `ro.kernel.qemu`,
-     * which is not readable from the SDK.
-     */
     fun isEnabled(context: Context, requested: Boolean): Boolean =
         requested && isDebuggable(context) && isEmulator()
 
@@ -325,11 +266,8 @@ object DevGate {
             Build.DEVICE.startsWith("emu")
 }
 
-/**
- * Plays a lane fixture into [TelemetryState] at its recorded pace, looping forever so the wrist
- * keeps moving while the visuals are being worked on. Main-thread only, like the message listener.
- */
 /** @parity /watch/watchos/FrameReplay.swift `FrameReplayer` */
+@MainThread
 class FrameReplayer(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var samples: List<ReplaySample> = emptyList()
@@ -337,29 +275,20 @@ class FrameReplayer(private val context: Context) {
     private var loopStartedAt = 0L
     private var running = false
 
-    /** The tilt a replayed phone would be commanding: the last lock the wrist sent, or neutral. */
     private var tilt = TILT_CENTER
 
-    /** The Group Ride fed alongside the frames, when replay was asked to join one. */
     private var groupRide: ReplayGroupRide? = null
 
-    /** The replayed Rider's latest course, which the phone also puts in its Group Ride Frame. */
     private var courseDeg: Double? = null
     private var startedAt = 0L
 
     /**
-     * Stand in for the phone's Remote Tilt so the Tilt page can be felt on an emulator: a lock is
-     * echoed into every following frame, a cancel ([value] null) returns to neutral at once.
      * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.echoTilt`
      */
     fun echoTilt(value: Int?) {
         tilt = value ?: TILT_CENTER
     }
 
-    /**
-     * [group]: also play the Group Ride fixture, as if the Rider had joined one. [fromMs]: the first
-     * pass starts at that fixture time, so a preview take joins the phone mid-ride; loops start at 0.
-     */
     fun start(
         fixture: String,
         group: Boolean,
@@ -373,7 +302,7 @@ class FrameReplayer(private val context: Context) {
         val origin = routeJson?.let(ReplaySceneParser::parseOrigin)
         samples = load(fixture, wander, origin).map { sample ->
             if (navigation) sample else sample.copy(frame = sample.frame.copy(
-                navBearing = null, navDistanceM = null, riderEastM = null, riderNorthM = null,
+                navBearingDeg = null, navDistanceM = null, riderEastM = null, riderNorthM = null,
             ))
         }
         if (samples.isEmpty()) return
@@ -391,8 +320,6 @@ class FrameReplayer(private val context: Context) {
     }
 
     /**
-     * One Group Ride Frame into [GroupRideState], the path a decoded phone frame takes, then the next
-     * a second later.
      * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.startGroupRide`
      */
     private fun pushGroupRide() {
@@ -438,8 +365,6 @@ class FrameReplayer(private val context: Context) {
     }
 
     /**
-     * Route, street map and forecast, the surroundings every lane fixture rides through. The tiles
-     * enter [MapTileState] as the phone's tile items do, read from assets instead of the Data Layer.
      * @parity /watch/watchos/FrameReplay.swift `FrameReplayer.start`
      * @parity /watch/watchos/PhoneLink.swift `acceptReplayWeather`
      * @parity /watch/watchos/PhoneLink.swift `acceptReplayRoute`

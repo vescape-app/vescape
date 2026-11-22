@@ -1,13 +1,11 @@
 import Foundation
 
-/// A precise recent phone fix, in metres from the current Rider, independent of Navigation.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTrail.kt
 struct WatchTrailPoint: Equatable {
   let eastM: Double
   let northM: Double
 }
 
-/// Absolute GPS anchor for map motion, independent of the route origin and history retention.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTrail.kt `WatchMapPosition`
 struct WatchMapPosition: Equatable {
   let latitude: Double
@@ -27,8 +25,6 @@ struct WatchTrailSnapshot: Equatable {
   var position: WatchMapPosition?
 }
 
-/// Snapshot: ASCII TR, version 2, count, Float64 rider latitude/longitude (NaN if absent), then
-/// little-endian Float32 east/north pairs. Missing/unknown/malformed leaves telemetry readable.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTrail.kt `WatchTrailCodec`
 enum WatchTrailCodec {
   static let maxPoints = 120
@@ -76,7 +72,6 @@ enum WatchTrailCodec {
   }
 }
 
-/// Main map's native recent precise fixes, sampled to a bounded wrist snapshot. No watch history.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchTrailBuilder.kt `watchTrail`
 func watchTrail(rider: WatchGeoPoint?, history: [[String: Any?]]) -> [WatchTrailPoint] {
   guard let rider else { return [] }

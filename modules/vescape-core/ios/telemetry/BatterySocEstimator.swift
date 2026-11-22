@@ -1,10 +1,5 @@
 import Foundation
 
-/// Voltage → State-of-Charge estimator for the battery gauge. Interpolates a per-cell discharge
-/// curve (preset mode) or a normalized curve (manual mode), with IR-sag correction from the
-/// battery current so the SoC doesn't dip under load. Pure once `loadPresets` (or `ensureLoaded`)
-/// has run.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BatterySocEstimator.kt
 /// @platform-diff Android is a singleton `object` loaded from an Android asset; iOS is an instance
 /// (owned by the coordinator) loaded from a CocoaPods resource bundle. Curve math is identical.
@@ -37,7 +32,6 @@ internal final class BatterySocEstimator {
 
   var isLoaded: Bool { !presetById.isEmpty }
 
-  /// Load presets from the bundled `cell-presets.json` once. No-op if already loaded.
   func ensureLoaded() {
     guard presetById.isEmpty, !loadAttempted else { return }
     loadAttempted = true
@@ -92,9 +86,6 @@ internal final class BatterySocEstimator {
 
   func getCellPreset(_ id: String) -> CellPreset? { presetById[id] }
 
-  /// Estimate battery percent (0–100) from pack voltage and the board's battery config, or `nil`
-  /// when the config is missing/invalid or a preset curve isn't loaded. `config` is the normalized
-  /// Board `batteryConfig` (canonical keys — see `VescapeCoreModule.normalizeBatteryConfig`).
   func estimateBatteryPercent(
     voltageV: Double,
     config: [String: Any]?,
@@ -126,8 +117,6 @@ internal final class BatterySocEstimator {
       return nil
     }
   }
-
-  // MARK: - Curve math
 
   private func interpolateCurve(_ voltage: Double, _ curve: [SocPoint]) -> Double {
     guard let first = curve.first, let last = curve.last else { return 0.0 }
@@ -183,8 +172,6 @@ internal final class BatterySocEstimator {
     return nil
   }
 
-  /// Locate `cell-presets.json`, whether it landed as a CocoaPods resource bundle (`VescapeCoreAssets`)
-  /// or directly in the module bundle.
   private static func bundledPresetsJson() -> String? {
     let moduleBundle = Bundle(for: BatterySocEstimator.self)
     let candidates: [URL?] = [

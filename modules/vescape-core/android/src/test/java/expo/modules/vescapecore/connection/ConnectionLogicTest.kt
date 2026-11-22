@@ -66,8 +66,6 @@ class ConnectionLogicTest {
         }
     }
 
-    // --- boardReadyTimeoutMs: progressive timeout ---
-
     @Test
     fun `attempt 0 returns base timeout`() {
         assertEquals(4_000L, boardReadyTimeoutMs(0))
@@ -93,8 +91,6 @@ class ConnectionLogicTest {
         assertEquals(15_000L, boardReadyTimeoutMs(100))
     }
 
-    // --- isPollingCapable ---
-
     @Test
     fun `polling capable on a CAN transport`() {
         assertTrue(isPollingCapable(BoardTransport.Can(1)))
@@ -109,8 +105,6 @@ class ConnectionLogicTest {
     fun `not polling capable when the link has no detected transport`() {
         assertFalse(isPollingCapable(null))
     }
-
-    // --- shouldStartPollingOnReady ---
 
     @Test
     fun `start polling when no pollRunnable and capable`() {
@@ -140,16 +134,11 @@ class ConnectionLogicTest {
         )
     }
 
-    // --- boardReadyTimeoutMs edge ---
-
     @Test
     fun `negative attempt floors at base`() {
         assertEquals(BOARD_READY_TIMEOUT_BASE, boardReadyTimeoutMs(0))
-        // negative would underflow but shouldn't happen; verify base is minimum
         assertTrue(boardReadyTimeoutMs(0) >= BOARD_READY_TIMEOUT_BASE)
     }
-
-    // --- Constants sanity ---
 
     @Test
     fun `detection CAN ping timeout is 3500ms`() {

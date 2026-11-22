@@ -22,7 +22,6 @@ struct PersistedDiagnosticEvent: Codable, FetchableRecord, PersistableRecord {
   }
 }
 
-/// Local Diagnostic Event SQL. Its failure reporter must never call this store recursively.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `insertDiagnosticEvent`
 struct DiagnosticEventPersistence {
   let writer: any DatabaseWriter

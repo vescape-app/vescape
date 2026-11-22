@@ -45,7 +45,6 @@ interface Shortcut {
   route: Href
 }
 
-/** The settings a Rider reaches for often enough to deserve a place outside Advanced. */
 const SHORTCUTS: Shortcut[] = [
   {
     icon: BluetoothConnectedIcon,
@@ -65,14 +64,9 @@ const SHORTCUTS: Shortcut[] = [
 
 interface SettingsSheetProps {
   backup: BackupSlot
-  /** Called before navigating away so the host can dismiss the drawer. */
   onNavigate: () => void
 }
 
-/**
- * Contents of the Settings Drawer: who you are, what the app is doing for you right now (backup,
- * update, storage), the settings worth one tap, and one door to everything else.
- */
 export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
   const neutral = useResolvedNeutralColors()
   const secondarySurface = useResolvedSecondaryWidgetSurface()
@@ -149,7 +143,6 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
   )
 }
 
-/** The backup third of the status strip — the only cell whose value can be a live count. */
 function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => void }) {
   const accent = theme.settingsIcon.sync
 
@@ -192,7 +185,6 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
     )
   }
 
-  // Syncing: the bar carries "in progress", so the label underneath would only repeat it.
   return (
     <StripCell
       icon={ArrowsClockwiseIcon}
@@ -207,14 +199,11 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
 
 interface StorageCellProps {
   bytes: number | null
-  /** The running Maintenance Job, if any: it replaces the size until it finishes. */
   progress: MaintenanceProgress | null
-  /** A failed job: a small warning dot. Waiting for network is not one. */
   failed: boolean
   onPress?: () => void
 }
 
-/** The storage third of the status strip: the database size, or the job rewriting it. */
 export function StorageCell({ bytes, progress, failed, onPress }: StorageCellProps) {
   const accent = theme.settingsIcon.database
   const value = progress
@@ -228,7 +217,6 @@ export function StorageCell({ bytes, progress, failed, onPress }: StorageCellPro
       accent={accent}
       value={value}
       valueColor={progress ? accent : undefined}
-      // While a job runs the percentage is update progress, not storage used.
       label={progress ? 'Updating' : 'Storage'}
       dot={failed ? theme.status.warning.color : undefined}
       onPress={onPress}
@@ -249,16 +237,13 @@ interface StripCellProps {
   value: string
   label?: string
   valueColor?: ThemeColor
-  /** 0–1. Draws a bar under the value; the bar alone says the work is running. */
   progress?: number
-  /** Small badge on the glyph for a state worth noticing. */
   dot?: ThemeColor
   dim?: boolean
   onPress?: () => void
   accessibilityLabel: string
 }
 
-/** One third of the status strip: glyph, one value, one line about it. */
 function StripCell({
   icon: IconComponent,
   accent,
@@ -308,8 +293,6 @@ const styles = StyleSheet.create({
   },
   hero: {
     alignItems: 'center',
-    // The drawer opens from the top edge, so the wordmark needs room to read as a header
-    // rather than as the first row of the list.
     gap: 22,
     paddingTop: 24,
     paddingBottom: 10,
@@ -325,8 +308,6 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 999,
   },
-  // The cells carry the padding, not the strip: a divider that stops short of the card edges reads
-  // as a broken line. Same rule as the board selector's links strip.
   strip: {
     flexDirection: 'row',
     alignItems: 'stretch',

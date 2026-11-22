@@ -19,12 +19,9 @@ interface MapModeTabsProps {
   onEnterLegalLimits: () => void
 }
 
-/** The three map modes the rider switches between: Explore, Weather and Legal limits. */
 function makeWeatherModeIcon(weather: Weather | null, weatherColor: ThemeColor): Icon {
   return function WeatherModeIcon({ color, size, weight }) {
     const iconSize = typeof size === 'number' ? size : 18
-    // PillSelectorItem passes the inactive accent as `color` when this segment is not selected;
-    // honor it so weather uses the same active/inactive accent treatment as the other tabs.
     const iconColor = color ?? weatherColor
     return weather ? (
       <WeatherIcon icon={weather.icon} size={iconSize} color={iconColor} weight={weight} />
@@ -50,7 +47,6 @@ export function MapModeTabs({
   }
   const activeId = mode === 'legalLimits' ? 'legalLimits' : mode === 'weather' ? 'weather' : 'map'
 
-  // Memoised: a fresh component identity every render would remount the pill's icon.
   const WeatherModeIcon = useMemo<Icon>(
     () => makeWeatherModeIcon(weather, weatherColor),
     [weather, weatherColor],

@@ -109,10 +109,6 @@ interface ReleaseNotesDependencies {
   log(message: string): void
 }
 
-/**
- * Notes are written once per marketing version and never rewritten: a shipped version keeps the
- * copy its riders read.
- */
 export async function prepareReleaseNotes(
   marketingVersion: string,
   dependencies: ReleaseNotesDependencies = releaseNotesDependencies(),

@@ -9,9 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The wrist's Group Ride: the course it holds, the page's rows (order, names, bearings, the one
- * status slot), the nav-focus label flag and the distance label.
- *
  * @parity /modules/vescape-core/ios/watch/WatchGroupRideTests.swift
  */
 class WatchGroupRideTest {
@@ -48,7 +45,6 @@ class WatchGroupRideTest {
 
     @Test
     fun `bearing is relative to the course`() {
-        // Riding east; the other Rider is due north, so on the left.
         val row = group(rider("a", northM = 100.0), courseDeg = 90.0).roster().single()
 
         assertEquals(270.0, row.bearingDeg, 1e-9)

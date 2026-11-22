@@ -71,7 +71,6 @@ internal data class SessionConfig(
     val deviceName: String,
     val transport: BoardTransport?,
     val linkVersion: Int? = null,
-    /** Probe-confirmed smart-BMS presence. `null` = unknown (legacy link) → still polled. */
     val hasBms: Boolean? = null,
     val vescFirmwareVersion: String? = null,
     val refloatVersion: String? = null,
@@ -80,14 +79,10 @@ internal data class SessionConfig(
     val recordingEnabled: Boolean,
     val telemetryRecordingEnabled: Boolean,
     val autoReconnect: Boolean = false,
-    /** The Simulated Board this session talks to instead of the GATT client (ADR 0048). */
     val replay: ReplaySpec? = null,
 )
 
 /**
- * A Debug Recording replayed as this Board's hardware. Playback starts [warmupMs] into the
- * recording; everything before it prefills live display state (Replay Warmup).
- *
  * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `ReplaySpec`
  */
 internal data class ReplaySpec(
@@ -104,19 +99,11 @@ internal data class PendingStart(
 
 internal data class PendingStop(val onSuccess: () -> Unit)
 
-/**
- * Thin Android [Service] shell. Owns lifecycle (foreground notification, START/STOP intents) and the
- * static JS bridge, delegating all durable session state and orchestration to [BoardSessionController].
- */
 @SuppressLint("MissingPermission")
 class CoreForegroundService : Service() {
     companion object {
         @Volatile var emitEvent: ((String, Map<String, Any?>) -> Unit)? = null
 
-        /**
-         * Live state changed. The bridge builds the `onLiveState` payload when it sends, so a queued
-         * event can never carry a phase older than a `getLiveState` read that overtook it.
-         */
         @Volatile var liveStateChanged: (() -> Unit)? = null
 
         private var instance: CoreForegroundService? = null
@@ -126,17 +113,9 @@ class CoreForegroundService : Service() {
         internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
         internal var pendingGroupRideUrl: String? = null
-        /**
-         * JS asked to look around. JS asks right after starting the observe, before the service has a
-         * controller, so the request is kept here and applied when the observe starts.
-         */
         @Volatile internal var lookAroundRequested = false
 
         /**
-         * Last known activity visibility, kept at process scope because the service outlives any one
-         * activity and is often created while the app is already backgrounded (companion auto start,
-         * a boot-time reconnect). A host created then must not assume a rider is watching.
-         *
          * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `appVisible`
          */
         internal var appVisible = false
@@ -144,17 +123,10 @@ class CoreForegroundService : Service() {
         private val alertRulesGeneration = AtomicLong(0)
         private val alertRulesReloadMutex = Mutex()
 
-        // Board Warning registry writes run on a single thread so a burst of findings (e.g. a
-        // cell-spread warn then critical) commits its get-then-upsert pairs in submission order.
-        // On the multi-threaded IO pool they could reorder and let an older warn overwrite a newer
-        // critical, violating the monotonic-severity contract.
         internal val warningWriteDispatcher =
             Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "vesc-warning-writes") }
                 .asCoroutineDispatcher()
 
-        // start/stop/gps requests are dispatched twice: synchronously by the caller thread and
-        // again on the main thread via onStartCommand. Claim atomically so only one path wins,
-        // otherwise the pending promise settles twice and crashes the service.
         private val pendingLock = Any()
 
         internal fun claimPendingStart(): PendingStart? = synchronized(pendingLock) {
@@ -187,7 +159,6 @@ class CoreForegroundService : Service() {
                 onError(result.errorCode(), result.errorMessage("Board session service start skipped"))
                 return
             }
-            // The session belongs on main, the controller's thread; JS and coroutine callers are not.
             if (Looper.myLooper() == Looper.getMainLooper()) {
                 instance?.controller?.consumePendingStart()
             } else {
@@ -198,7 +169,6 @@ class CoreForegroundService : Service() {
         fun stopBoardSession(context: Context, onSuccess: () -> Unit = {}) {
             val service = instance
             if (service == null) {
-                // No service, no session: settle the promise instead of reviving it just to stop.
                 pendingStop = null
                 onSuccess()
                 return
@@ -208,7 +178,6 @@ class CoreForegroundService : Service() {
                 action = ACTION_STOP_SESSION
             }
             context.startService(intent)
-            // Teardown belongs on main, the controller's thread; JS and coroutine callers are not.
             if (Looper.myLooper() == Looper.getMainLooper()) {
                 service.controller.consumePendingStop()
             } else {
@@ -252,13 +221,6 @@ class CoreForegroundService : Service() {
         }
 
         /**
-         * Brings up every enrolled Accessory's session at process start.
-         *
-         * Deliberately separate from the Board's auto-connect: an Accessory is enrolled in its own
-         * right, so it comes up with no Board selected, with Board auto-connect off, and after a
-         * manual Board disconnect. The service is only started when something is actually enrolled
-         * — a rider with no Accessories pays nothing for this path.
-         *
          * @parity /modules/vescape-core/ios/connection/VescapeLaunchSubscriber.swift
          */
         fun autoConnectAccessories(context: Context) {
@@ -292,7 +254,6 @@ class CoreForegroundService : Service() {
             service.controller.consumePendingConfigRead()
         }
 
-        /** This Board Session's Board Config Values in bridge shape, or null when none are held. */
         fun getBoardConfigValues(): Map<String, Any?>? = instance?.controller?.boardConfigValuesMap()
 
         fun getMotorConfigValues(): Map<String, Any?>? = instance?.controller?.motorConfigValuesMap()
@@ -310,7 +271,6 @@ class CoreForegroundService : Service() {
             service.controller.readVescFaultLog(boardId, onSuccess, onError)
         }
 
-        /** The replay session's Simulated Board, or `null` when no replay is up (ADR 0048). */
         internal fun replayPlayback(): SimulatedBoard? = instance?.controller?.replayPlayback
 
         fun setRemoteTilt(value: Int): Boolean = instance?.controller?.setRemoteTilt(value) ?: false
@@ -332,27 +292,22 @@ class CoreForegroundService : Service() {
 
         fun stopBoardMove(): Boolean = instance?.controller?.stopBoardMove() ?: false
 
-        /** Wrist Board Move tick (ADR-0033). Dropped when no session is running — nothing to move. */
         fun watchMove(direction: Int) {
             instance?.controller?.watchMove(direction)
         }
 
-        /** Wrist light edit (ADR-0033). Dropped when no session is running — nothing to state. */
         internal fun watchLights(switch: WatchLightsSwitch, on: Boolean) {
             instance?.controller?.watchLights(switch, on)
         }
 
-        /** Wrist Remote Tilt lock. Dropped when no session is running — nothing to tilt. */
         fun watchTiltLock(value: Int) {
             instance?.controller?.watchTiltLock(value)
         }
 
-        /** Wrist Remote Tilt reset. Dropped when no session is running — nothing is commanded. */
         fun watchTiltCancel() {
             instance?.controller?.watchTiltCancel()
         }
 
-        /** Wrist wake level. Dropped when no service is running — nothing is pushing frames anyway. */
         internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
             instance?.controller?.watchMirrorWakeLevel(level)
         }
@@ -375,14 +330,6 @@ class CoreForegroundService : Service() {
             service.controller.consumePendingConfigWrite()
         }
 
-        /**
-         * Mirror the activity lifecycle into the GPS demand resolver.
-         *
-         * Never starts the service: a backgrounding app has nothing to arm, and a foregrounding one
-         * goes through `refreshLocationDemand` (which checks the location permission first) to get a
-         * host. Remembered while no service exists so a host created later starts with the right
-         * answer instead of defaulting to "not visible".
-         */
         fun setAppVisible(@Suppress("UNUSED_PARAMETER") context: Context, visible: Boolean) {
             appVisible = visible
             instance?.controller?.appVisible = visible
@@ -400,14 +347,6 @@ class CoreForegroundService : Service() {
             instance?.controller?.consumePendingGpsStart()
         }
 
-        /**
-         * Stopping something that is not running must not *create* the service. A start intent
-         * revives a dead service, and a revived service whose only work is a stop goes straight
-         * back to `stopSelf()` — if Android was still waiting on a `startForeground()` from an
-         * overlapping foreground start, that teardown kills the process with
-         * ForegroundServiceDidNotStartInTimeException. No instance ⇒ no GPS monitoring ⇒ nothing
-         * to stop.
-         */
         fun stopGpsMonitoring(context: Context) {
             pendingGpsStart = false
             val service = instance ?: return
@@ -530,14 +469,12 @@ class CoreForegroundService : Service() {
             instance?.controller?.legalModeEnableError(boardId)
                 ?: ("LEGAL_MODE_BOARD_NOT_CONNECTED" to "Matching active Board Session required")
 
-        /** Refresh the Group Ride presence Privacy Zone gate after a zone change (issue #144). */
         fun reloadPrivacyZones(context: Context) {
             appDataScope.launch {
                 instance?.controller?.loadPrivacyZones(context.applicationContext)
             }
         }
 
-        /** Refresh the shared Group Ride target after a direction Map Point change. */
         fun reloadGroupRideTarget(context: Context) {
             appDataScope.launch {
                 instance?.controller?.loadGroupRideTarget(context.applicationContext)
@@ -564,14 +501,12 @@ class CoreForegroundService : Service() {
 
         fun alertSoundPresets(): List<Map<String, Any>> = alertSoundMaps()
 
-        /** Snapshots include the retained history windows; `onLiveState` events do not. */
         fun currentLiveState(context: Context, includeRecent: Boolean = true): Map<String, Any?> {
             RecordingStorageFailure.initialize(context.applicationContext)
             return instance?.controller?.liveStateMap(includeRecent)
                 ?: idleState(AppDataRepository.get(context.applicationContext))
         }
 
-        /** State payload for a broad DB outage; deliberately performs no persistence read. */
         fun storageUnavailableLiveState(): Map<String, Any?> =
             liveStateWithStorageFailure(
                 instance?.controller?.liveStateMapWithoutStorage() ?: idleState(null),
@@ -580,15 +515,10 @@ class CoreForegroundService : Service() {
 
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
 
-        /**
-         * What the ground-clearance binding is doing, or an unbound state while no Board Session is
-         * up — with no Board there is no tilt channel for a sensor to hold.
-         */
         fun currentGroundClearanceTilt(): Map<String, Any?> =
             instance?.controller?.groundClearanceTiltState()
                 ?: mapOf("bound" to false, "driving" to false, "release" to null)
 
-        /** Live rider position for Navigation; null while the service is not up. */
         fun currentRiderPosition(): LocationSnapshot? = instance?.controller?.riderPosition()
 
         private fun idleState(repository: AppDataRepository?): Map<String, Any?> {
@@ -609,8 +539,6 @@ class CoreForegroundService : Service() {
                     "remoteTilt" to null,
                 ),
                 "gps" to mapOf(
-                    // A GPS start claimed before the service exists is arming, not idle: the
-                    // monitor that will report `active` is created with the service.
                     // @platform-diff Android defers GPS arming to the foreground service; iOS has
                     // no serviceless window, its monitor reports `starting` itself.
                     "phase" to if (pendingGpsStart) "starting" else "idle",
@@ -648,8 +576,6 @@ class CoreForegroundService : Service() {
         controller = BoardSessionController(this)
         instance = this
         controller.onCreate()
-        // After `onCreate`, because the setter resolves GPS demand and must not run against a
-        // half-built controller.
         controller.appVisible = appVisible
     }
 
@@ -688,9 +614,6 @@ class CoreForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        // The Accessory sessions' host is going away, so the links go with it. Keeping GATT open
-        // past the service is how a background BLE link becomes a leak Android eventually kills
-        // anyway, without the rider ever being told it stopped.
         AccessorySessionManager.stopAll()
         controller.onServiceDestroy()
         instance = null

@@ -6,8 +6,6 @@ internal struct LegalPolicySpeeds: Equatable {
   let limitSpeedKmh: Double
 }
 
-/// Bundled Legal Policy lookup used by jurisdiction resolution and Legal Mode alert synthesis.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LegalPolicyCatalog.kt
 internal final class LegalPolicyCatalog {
   private let loader: () throws -> String
@@ -84,8 +82,6 @@ internal enum LegalPolicyResolution: Equatable {
   case cancelled
 }
 
-/// Native OS reverse geocoder constrained by the bundled Legal Policy catalog.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LegalPolicyResolver.kt
 internal final class LegalPolicyResolver {
   private let catalog: LegalPolicyCatalog

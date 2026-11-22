@@ -28,7 +28,6 @@ const FRAME_INTERVAL_MS = 450
 const INITIAL_FRAME_OFFSET_SECONDS = 30 * 60
 const TIME_FONT_SIZE = 12
 
-/** Same stroke the wrist draws its timeline with: a line, never a pill. */
 const LINE_WIDTH = 2
 
 function pickFrameIndexByX(x: number, width: number, frameCount: number): number {
@@ -80,8 +79,6 @@ function createRadarScrubGesture({
     .onFinalize(() => {
       'worklet'
       gestureFrameIndex.value = -1
-      // Playback picks up from wherever the finger left it: with no transport controls, a scrub
-      // that stopped the animation for good would leave the rider on a frozen frame.
       scheduleOnRN(setScrubbing, false)
     })
 }
@@ -236,10 +233,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.6,
   },
-  // Thin line, thick target: the stroke matches the wrist's timeline, but the row stays a
-  // finger tall so a scrub does not have to be aimed at two pixels. The line rides at the top of
-  // that row rather than its middle, so the time reads as the line's label instead of the
-  // header's — the slack all falls below, where nothing else sits.
   track: {
     height: 20,
     justifyContent: 'flex-start',
@@ -249,8 +242,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     height: LINE_WIDTH,
   },
-  // Inside the guide, not beside it: as a sibling it was positioned against the track box and
-  // drew as a second line above the guide instead of over it.
   fill: {
     backgroundColor: theme.palette.sky.color,
     borderRadius: 999,

@@ -1,8 +1,3 @@
-/**
- * Pairs an Android 11+ phone for wireless debugging by QR code, like Android Studio's
- * "Pair devices using Wi-Fi". The phone scans the code, advertises itself over mDNS,
- * and adb pairs with the advertised address. Phone and computer must share a network with mDNS.
- */
 import { randomBytes } from 'node:crypto'
 import qrcode from 'qrcode-terminal'
 

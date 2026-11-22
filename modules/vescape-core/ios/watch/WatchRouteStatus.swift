@@ -1,7 +1,5 @@
 import Foundation
 
-/// Live route state, separate from telemetry so older watch builds keep decoding their frames.
-/// Compiled by both the iPhone and wrist. Version, phase, uint32 route fingerprint (LE).
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchRouteStatus.kt
 let watchRouteStatusMessageKey = "route-status"
 
@@ -39,7 +37,6 @@ enum WatchRouteStatusCodec {
     return WatchRouteStatus(phase: phase, routeId: id)
   }
 
-  /// FNV-1a of the exact transferred bytes. Zero is reserved for no route.
   static func routeId(_ data: Data) -> UInt32 {
     var hash: UInt32 = 2166136261
     for byte in data { hash = (hash ^ UInt32(byte)) &* 16777619 }

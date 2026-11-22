@@ -42,7 +42,6 @@ const CAPABILITIES: AccessoryCapability[] = [
     rangeMax: null,
     ratesHz: [],
   },
-  // An accessory ahead of the app: named by its wire slug rather than hidden.
   {
     id: 'horn',
     type: 'air_horn',
@@ -52,7 +51,6 @@ const CAPABILITIES: AccessoryCapability[] = [
     rangeMax: null,
     ratesHz: [],
   },
-  // A recognized type the app still cannot drive: the unit is not the one v1 defines.
   {
     id: 'clearance_mm',
     type: 'ground_clearance',
@@ -114,8 +112,6 @@ export function AccessoryCapabilityRowShowcase() {
           <AccessoryCapabilityRow
             key={capability.id}
             capability={capability.type === 'brake_light' ? { ...capability, enabled } : capability}
-            // Only a capability this build can configure gets a chevron. Everything else stays a
-            // flat row rather than a tap that leads somewhere empty.
             {...(navigable && capability.supported && capability.type === 'ground_clearance'
               ? { onPress: () => {} }
               : {})}
@@ -145,8 +141,6 @@ const READING_STATES: {
   { label: 'nothing in range', status: 'out_of_range', valueCm: null, measuring: true },
   { label: 'sensor error', status: 'error', valueCm: null, measuring: true },
   { label: 'waiting', status: null, valueCm: null, measuring: true },
-  // Answered once, then went quiet. Deliberately not the same blank as "waiting": the number is
-  // dropped rather than left on screen, and the rider is told why.
   { label: 'stalled', status: null, valueCm: null, measuring: true, stalled: true },
   { label: 'standby', status: null, valueCm: null, measuring: false },
 ]

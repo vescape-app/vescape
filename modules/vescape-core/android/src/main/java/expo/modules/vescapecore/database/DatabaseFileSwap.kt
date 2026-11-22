@@ -2,7 +2,6 @@ package expo.modules.vescapecore.database
 
 import java.io.File
 
-/** Installs a staged SQLite file and restores the complete former file set on any failure. */
 internal fun replaceDatabaseFiles(
   source: File,
   target: File,

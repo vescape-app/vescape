@@ -70,9 +70,6 @@ final class ManualBoardStopTests: XCTestCase {
     )
   }
 
-  /// The clear a Board Session start performs (`BoardSessionController.beginSession`, mirroring
-  /// Android's `connectSelectedBoard`): after a manual stop followed by a real reconnect, the next
-  /// launch auto-connects again instead of staying gated forever.
   func testSessionStartClearLetsTheNextLaunchAutoConnect() {
     var activeBoardId: String? = "board-1"
     let command = ManualBoardStop(
@@ -167,8 +164,6 @@ final class ManualBoardStopTests: XCTestCase {
   func testWidgetStopCancelsPendingRestoration() async {
     let scheduler = TestScheduler()
     let controller = BoardSessionController(scheduler: scheduler, makeGatt: {
-      // The unit-test runner has no bluetooth-central background entitlement. Use the real
-      // client without OS restoration registration; drive the launch/restore callbacks ourselves.
       VescGattClient(listener: $0, scheduler: $1)
     })
     let boardId = "widget-stop-restoring"

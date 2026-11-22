@@ -3,10 +3,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// Ride Track read-side behaviour (#448, ADR 0038): the track is its own stream on its own clock,
-/// so a minute can be track-only, a migrated fix must not lose the quality it was stored with, and
-/// a mixed-Board track must never let one Board's fix stand in for another's.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/HistoryGpsProjectionTest.kt
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilderTest.kt
 final class RideTrackProjectionTests: XCTestCase {
@@ -29,7 +25,6 @@ final class RideTrackProjectionTests: XCTestCase {
     )
   }
 
-  /// A board dropout is exactly when the track matters most: those minutes still own a bucket.
   func testATrackOnlyMinuteStillProducesABucket() {
     let buckets = buildTelemetryBuckets(
       [],
@@ -51,14 +46,12 @@ final class RideTrackProjectionTests: XCTestCase {
     XCTAssertEqual(bucket.lastSampleAtMs, 130_000)
   }
 
-  /// A fix without reported accuracy is unknown, not precise (migration v52 stamps legacy rows).
   func testFixesWithoutAccuracyAreImprecise() {
     XCTAssertFalse(rideTrackFixIsPrecise(accuracyCm: nil))
     XCTAssertTrue(rideTrackFixIsPrecise(accuracyCm: rideTrackPreciseAccuracyCm))
     XCTAssertFalse(rideTrackFixIsPrecise(accuracyCm: 12_000))
   }
 
-  /// A haversine step is only ever chained between two fixes of one Board.
   func testDistanceNeverChainsAcrossBoards() {
     let points = rideTrackBucketPoints([
       point(fixAtMs: 1_000, latitudeE7: 500_000_000, boardId: "board-a"),
@@ -73,7 +66,6 @@ final class RideTrackProjectionTests: XCTestCase {
     XCTAssertLessThan(step, 20_000, "board A continues its own track, not board B's")
   }
 
-  /// A poor fix is counted, kept in storage, and derives nothing.
   func testAPoorFixIsCountedButDerivesNothing() {
     let points = rideTrackBucketPoints([
       point(fixAtMs: 1_000, accuracyCm: 12_000, gpsSpeedCentiMps: 500)
@@ -85,12 +77,11 @@ final class RideTrackProjectionTests: XCTestCase {
     XCTAssertNil(points[0].latitudeE7)
   }
 
-  /// Movement is the fix's own reported speed, never a coordinate-displacement derivation.
   func testMovementComesFromTheFixesReportedSpeed() {
     let points = rideTrackBucketPoints(
       [
-        point(fixAtMs: 1_000, gpsSpeedCentiMps: 200),  // 7.2 km/h
-        point(fixAtMs: 2_000, gpsSpeedCentiMps: 50),  // 1.8 km/h
+        point(fixAtMs: 1_000, gpsSpeedCentiMps: 200),
+        point(fixAtMs: 2_000, gpsSpeedCentiMps: 50),
         point(fixAtMs: 3_000, gpsSpeedCentiMps: nil),
       ],
       movingThresholdCentiKmh: 300
@@ -102,7 +93,6 @@ final class RideTrackProjectionTests: XCTestCase {
     XCTAssertTrue(points[2].precise, "but it is still a route point")
   }
 
-  /// GPS movement widens the Moving Window through a minute with no telemetry at all.
   func testGpsMovementExtendsTheMovingWindow() {
     let buckets = buildTelemetryBuckets(
       [],

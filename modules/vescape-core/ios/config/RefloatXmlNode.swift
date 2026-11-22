@@ -4,9 +4,6 @@ struct RefloatXmlError: Error {
   let message: String
 }
 
-/// Minimal DOM built off `XMLParser` (iOS ships only the event-based parser, no `XMLDocument`). Gives
-/// the Refloat schema parser the `documentElement` / `getElementsByTagName` / `textContent` surface it
-/// needs to mirror the Android `DocumentBuilder` port without pulling in a third-party XML library.
 final class RefloatXmlNode {
   let name: String
   let attributes: [String: String]
@@ -20,14 +17,12 @@ final class RefloatXmlNode {
 
   func attribute(_ key: String) -> String? { attributes[key] }
 
-  /// Concatenation of all descendant character data, matching `org.w3c.dom.Node.textContent`.
   var textContent: String {
     var result = text
     for child in children { result += child.textContent }
     return result
   }
 
-  /// Pre-order descendants with the given tag name, matching `getElementsByTagName` document order.
   func descendants(named tag: String) -> [RefloatXmlNode] {
     var result: [RefloatXmlNode] = []
     for child in children {

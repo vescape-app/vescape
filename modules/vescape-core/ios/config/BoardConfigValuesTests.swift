@@ -1,10 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Board Config Values contract (#393): the decoded map spans the whole schema in real types, a field
-/// the bytes cannot supply is absent rather than guessed, and a cached object comes back lastKnown
-/// with its bools intact.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/BoardConfigValuesTest.kt
 final class BoardConfigValuesTests: XCTestCase {
   private func schema(_ fields: [RefloatConfigSchemaField]) -> RefloatConfigSchema {
@@ -38,7 +34,6 @@ final class BoardConfigValuesTests: XCTestCase {
     let values = RefloatConfigDecoder.decodeFieldMap(schema: schema, rawConfig: bytes)
 
     XCTAssertEqual(values["kp"] as? Double, 4.5)
-    // A bool field stays a Bool — the whole-schema map never coerces to 1.0 / 0.0.
     XCTAssertEqual(values["fault_moving_fault_disabled"] as? Bool, true)
     XCTAssertNil(values["fault_moving_fault_disabled"] as? Double)
     XCTAssertEqual(values["tiltback_duty"] as? Double, 85.0)
@@ -47,9 +42,7 @@ final class BoardConfigValuesTests: XCTestCase {
   func testTruncatedAndUnparseableFieldsAreMissingNotValues() {
     let schema = schema([
       field("present", .uint8, offset: 0),
-      // Past the end of the raw config: the `offset + byteSize` precondition drops it.
       field("truncated", .float32, offset: 1),
-      // A scaled field with no scale cannot decode; one bad field must not take the map down.
       field("unparseable", .float32Scaled, offset: 0),
     ])
 
@@ -64,7 +57,6 @@ final class BoardConfigValuesTests: XCTestCase {
     let schema = schema([field("nan", .float32, offset: 0)])
     let values = RefloatConfigDecoder.decodeFieldMap(schema: schema, rawConfig: [0x7f, 0xc0, 0x00, 0x00])
 
-    // NaN counts as missing: a rule skips an absent field, but would read a NaN as a clean evaluation.
     XCTAssertNil(values["nan"])
   }
 
@@ -104,12 +96,10 @@ final class BoardConfigValuesTests: XCTestCase {
     XCTAssertEqual(restored.freshness, .lastKnown)
     XCTAssertNil(restored.writeBase)
     XCTAssertEqual(restored.number("tiltback_duty"), 0.8)
-    // A cached bool must not come back as 1.0.
     XCTAssertEqual(restored.bool("fault_moving_fault_disabled"), true)
     XCTAssertNil(restored.number("fault_moving_fault_disabled"))
   }
 
-  /// The bridge map is the whole JS contract: decoded fields and freshness, never the write base.
   /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/BoardConfigValuesTest.kt `bridgeMapCarriesValuesAndFreshnessButNoWriteBase`
   func testBridgeMapCarriesValuesAndFreshnessButNoWriteBase() {
     let values = BoardConfigValues(
@@ -134,7 +124,6 @@ final class BoardConfigValuesTests: XCTestCase {
     let decoded = map["values"] as? [String: Any]
     XCTAssertEqual(decoded?["fault_adc1"] as? Double, 0.8)
     XCTAssertEqual(decoded?["fault_moving_fault_disabled"] as? Bool, true)
-    // Raw bytes and package signature stay native — JS never gets a write base.
     XCTAssertNil(map["writeBase"] ?? nil)
     XCTAssertNil(map["rawConfig"] ?? nil)
   }

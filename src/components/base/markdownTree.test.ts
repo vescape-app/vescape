@@ -9,7 +9,6 @@ import {
   type MarkdownInline,
 } from '@/components/base/markdownTree'
 
-/** Flatten a block tree back to plain text so structural assertions stay short. */
 function inlineText(nodes: MarkdownInline[]): string {
   return nodes
     .map((node) => {

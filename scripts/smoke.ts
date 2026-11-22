@@ -1,25 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Smoke run: walk the screens a rider actually opens, against the real native stack.
- *
- * It boots the same way the store screenshot run does — a Release build, a restored fixture
- * database, a Debug Recording replayed through the telemetry pipeline (`scripts/screenshots.ts`,
- * ADR 0024) — and then asserts instead of photographing. That shared boot is the point:
- * `EXPO_PUBLIC_E2E` reroutes board and telemetry reads to `e2eFake`, so the fake-board phone suite
- * cannot catch a native regression at all. This run can, because nothing between the recorded BLE
- * chunks and the rendered gauge is faked.
- *
- *   bun run smoke                      # picks a device, builds, runs every flow
- *   bun run smoke --no-build           # reuse the smoke build already installed
- *   bun run smoke --flow 03-history    # one flow, against the installed build
- *   bun run smoke --device R5CT        # skip the picker
- *   bun run smoke --platform ios       # the same flows on a Release simulator build
- *   bun run smoke --build-only --output .expo/smoke/app.apk
- *   bun run smoke --app .expo/smoke/app.apk --flow 03-history
- *
- * Both platforms run the same flow files through the same `CaptureDriver` the screenshot run uses:
- * a flow that needs platform-specific steps belongs in a sub-flow, not in a second flow set.
- */
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { basename, dirname, join, relative, resolve } from 'path'
@@ -40,7 +19,6 @@ import { buildAndroidFixture, buildIosFixture } from './lib/fixtureBuild.ts'
 const FLOWS_DIR = join(ROOT, 'e2e', 'flows', 'smoke')
 const BOOT_FLOW = join(ROOT, 'e2e', 'flows', 'fixture', '_boot.yaml')
 
-/** Same city ride the capture run replays, started afresh for each CI flow. */
 export const DEFAULT_REPLAY = 'replay-thor301-1hz.jsonl'
 
 export interface Args {
@@ -100,11 +78,6 @@ export function readArgs(argv: string[]): Args {
   return args
 }
 
-/**
- * A local full pass runs in filename order: `05-add-board` saves a board, which
- * sends the connection manager at real BLE hardware that is not there and takes the replay session
- * down with it. CI runs each flow on a separate device with its own fresh fixture session.
- */
 export function selectFlows(only: string | null): string[] {
   const all = readdirSync(FLOWS_DIR)
     .filter((file) => file.endsWith('.yaml') && !file.startsWith('_'))
@@ -121,8 +94,6 @@ export function selectFlows(only: string | null): string[] {
 
 async function runFlow(path: string, driver: CaptureDriver): Promise<void> {
   console.log(`› ${basename(path, '.yaml')}`)
-  // Without --device Maestro picks the first attached device itself, which silently drives whatever
-  // else is plugged in rather than the one this run prepared.
   await runSmokeMaestro(
     await maestroCommand(
       'test',
@@ -137,8 +108,6 @@ async function runFlow(path: string, driver: CaptureDriver): Promise<void> {
 }
 
 async function launchAndroidApp(deviceId: string): Promise<void> {
-  // Maestro's Android launch/permission ADB calls can block indefinitely (Maestro #3658).
-  // stageFixtures already clears the app and grants its permissions. Bound only the launch here.
   console.log('› Launching the prepared Android app…')
   const command = [
     'adb',
@@ -148,8 +117,6 @@ async function launchAndroidApp(deviceId: string): Promise<void> {
     'am',
     'start',
     '-W',
-    // Expo generates MainActivity in the configured application package. Target it explicitly:
-    // its launcher filter does not have DEFAULT, so am start cannot resolve an implicit intent.
     '-n',
     `${applicationId}/.MainActivity`,
   ]
@@ -204,7 +171,6 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
     return
   }
 
-  // Check before a cold simulator boot competes with the CLI's JVM startup.
   await deps.checkMaestro()
   const driver = await deps.createDriver(args)
 
@@ -218,12 +184,8 @@ export async function main(args: Args, deps: SmokeDependencies = dependencies): 
   await driver.requireAwakeDisplay()
   await driver.stageFixtures()
   await driver.pinLocation()
-  // iOS: Maestro launches the app after its XCTest driver is up. Launching first lets the replay
-  // load starve XCTest startup on hosted runners (driver timeouts in most CI runs).
   if (args.platform === 'android') await deps.launchAndroidApp(driver.deviceId)
 
-  // A separate Maestro process starts the iOS XCTest driver again. Keep boot and all selected
-  // flows in one session, retaining their order and failing before later flows when boot fails.
   const sessionDir = mkdtempSync(join(tmpdir(), 'vescape-smoke-'))
   const sessionFlow = join(sessionDir, 'smoke.yaml')
   try {

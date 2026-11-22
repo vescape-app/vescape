@@ -1,29 +1,21 @@
 import XCTest
 @testable import VescapeCore
 
-/// The rectangular layout is an accepted visual difference from the circular Wear OS one
-/// (docs/watchos.md); the numbers behind it are not. These run the Android replay fixtures — the
-/// same files `bun run wear:replay` feeds the Wear OS mirror — through the watchOS arithmetic and
-/// formatting, so a lane that reads 42% on one wrist cannot read 0.42 on the other.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt
 /// @parity /watch/wearos/src/test/java/app/vescape/wear/ReplayFixtureParserTest.kt
 final class WatchGaugeTests: XCTestCase {
-  /// Tests read fixtures straight off the repo tree — the convention `Package.swift` documents, and
-  /// the reason these are the Wear OS assets rather than a copy that could drift from them.
   private static let fixtures = URL(fileURLWithPath: #filePath)
-    .deletingLastPathComponent()  // watch
-    .deletingLastPathComponent()  // ios
-    .deletingLastPathComponent()  // vescape-core
-    .deletingLastPathComponent()  // modules
-    .deletingLastPathComponent()  // repo root
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
     .appendingPathComponent("watch/wearos/src/main/assets")
 
   private func load(_ fixture: String) throws -> [ReplaySample] {
     let text = try String(contentsOf: Self.fixtures.appendingPathComponent(fixture), encoding: .utf8)
     return ReplayFixtureParser.parse(text: text)
   }
-
 
   private func fixtureOrigin() throws -> WatchMapPosition {
     let json = try String(contentsOf: Self.fixtures.appendingPathComponent("watch-route.json"), encoding: .utf8)
@@ -35,7 +27,7 @@ final class WatchGaugeTests: XCTestCase {
     let origin = try fixtureOrigin()
     for wander in [false, true] {
       let samples = ReplayFixtureParser.parse(text: text, wander: wander, origin: origin)
-      let arrival = try XCTUnwrap(samples.firstIndex { $0.frame.navBearing == nil })
+      let arrival = try XCTUnwrap(samples.firstIndex { $0.frame.navBearingDeg == nil })
       XCTAssertGreaterThan(arrival, 0)
       let after = samples.dropFirst(arrival)
       XCTAssertFalse(after.isEmpty)
@@ -60,7 +52,7 @@ final class WatchGaugeTests: XCTestCase {
       let frame = detour[i].frame
       let previous = detour[i - 1].frame
       XCTAssertLessThan(hypot(frame.riderEastM! - previous.riderEastM!, frame.riderNorthM! - previous.riderNorthM!), 5)
-      XCTAssertEqual(frame.navBearing, straight[i].frame.navBearing)
+      XCTAssertEqual(frame.navBearingDeg, straight[i].frame.navBearingDeg)
       XCTAssertEqual(frame.trail.first!.eastM, -frame.riderEastM!, accuracy: 0.0001)
       XCTAssertEqual(frame.trail.first!.northM, -frame.riderNorthM!, accuracy: 0.0001)
       XCTAssertEqual(frame.trail.last!.eastM, 0)
@@ -86,8 +78,6 @@ final class WatchGaugeTests: XCTestCase {
     }
   }
 
-  // MARK: - Decoding the shared fixtures
-
   func testDecodesTheRecordedRideFixture() throws {
     let samples = try load("watch-ride.jsonl")
 
@@ -96,14 +86,11 @@ final class WatchGaugeTests: XCTestCase {
     XCTAssertEqual(try XCTUnwrap(samples[0].frame.speed), 8.3, accuracy: 0.001)
     XCTAssertEqual(try XCTUnwrap(samples[0].frame.duty), 17, accuracy: 0.001)
     XCTAssertEqual(samples[1].atMs, 500)
-    // Recorded time only ever moves forward; a replay that jumped backwards would stall the pacer.
     for (previous, next) in zip(samples, samples.dropFirst()) {
       XCTAssertLessThanOrEqual(previous.atMs, next.atMs)
     }
   }
 
-  /// The sweep fixture exists to walk every lane across its whole range, which is exactly what the
-  /// arcs have to survive: nothing may leave [0, 1] and pin an arc outside the rim.
   func testEveryLaneInTheSweepFixtureProducesADrawableFraction() throws {
     let samples = try load("watch-sweep.jsonl")
     XCTAssertFalse(samples.isEmpty)
@@ -125,12 +112,9 @@ final class WatchGaugeTests: XCTestCase {
       if battery >= 1 { sawFullBattery = true }
       if battery <= 0 { sawEmptyBattery = true }
     }
-    // Guards the guard: a fixture that never reached either end would make the clamp above vacuous.
     XCTAssertTrue(sawFullBattery)
     XCTAssertTrue(sawEmptyBattery)
   }
-
-  // MARK: - Fraction contract
 
   func testFractionsClampRatherThanRescale() {
     XCTAssertEqual(WatchGauge.speedFraction(0), 0)
@@ -138,22 +122,17 @@ final class WatchGaugeTests: XCTestCase {
     XCTAssertEqual(WatchGauge.speedFraction(120), 1)
     XCTAssertEqual(WatchGauge.dutyFraction(-20), 0)
     XCTAssertEqual(WatchGauge.dutyFraction(140), 1)
-    // A temperature below the arc floor is an empty arc, never a negative one.
     XCTAssertEqual(WatchGauge.tempFraction(-40), 0)
     XCTAssertEqual(WatchGauge.tempFraction(WatchGauge.tempMax + 10), 1)
     XCTAssertEqual(WatchGauge.tempFraction(60), 0.5, accuracy: 0.0001)
   }
 
-  /// An unreported lane parks its arc at the floor. It must not be confused with a real reading of
-  /// zero, which is what the dash in the readout is for.
   func testAnUnreportedLaneParksAtTheFloor() {
     XCTAssertEqual(WatchGauge.speedFraction(nil), 0)
     XCTAssertEqual(WatchGauge.dutyFraction(nil), 0)
     XCTAssertEqual(WatchGauge.batteryFraction(nil), 0)
     XCTAssertEqual(WatchGauge.tempFraction(nil), 0)
   }
-
-  // MARK: - Formatting contract
 
   func testFormattingMatchesTheAndroidReadouts() {
     XCTAssertEqual(WatchGauge.hero(0), "0")
@@ -162,8 +141,6 @@ final class WatchGaugeTests: XCTestCase {
     XCTAssertEqual(WatchGauge.batteryPercent(83.7), "84%")
   }
 
-  /// Java rounds HALF_UP and C's `printf` rounds half to even, so an exact half is the one input
-  /// where the two wrists would disagree if the watchOS side just called `%.0f`.
   func testExactHalvesRoundAwayFromZeroLikeAndroid() {
     XCTAssertEqual(WatchGauge.hero(18.5), "19")
     XCTAssertEqual(WatchGauge.hero(17.5), "18")
@@ -171,7 +148,6 @@ final class WatchGaugeTests: XCTestCase {
     XCTAssertEqual(WatchGauge.batteryPercent(2.5), "3%")
   }
 
-  /// A lane that arrived as an infinity is not a reading. It must not print as "inf" across a hero.
   func testANonFiniteLaneReadsAsADash() {
     XCTAssertEqual(WatchGauge.hero(.infinity), WatchGauge.dash)
     XCTAssertEqual(WatchGauge.temp(.nan), WatchGauge.dash)
@@ -183,16 +159,11 @@ final class WatchGaugeTests: XCTestCase {
     XCTAssertEqual(WatchGauge.batteryPercent(nil), WatchGauge.dash)
   }
 
-  /// Ambient keeps every lane's last reading, except when the stream itself has stopped: that is
-  /// the one case with nothing to say, and it empties every lane at once rather than showing a
-  /// frozen number in ambient's own colour.
   func testAmbientBlindEmptiesEveryReadout() {
     XCTAssertEqual(WatchGauge.hero(42, blind: true), WatchGauge.dash)
     XCTAssertEqual(WatchGauge.temp(42, blind: true), WatchGauge.dash)
     XCTAssertEqual(WatchGauge.batteryPercent(42, blind: true), WatchGauge.dash)
   }
-
-  // MARK: - Fixture parsing
 
   func testNullLanesStayNullSoTheGaugesRenderThemAsUnreported() {
     let samples = ReplayFixtureParser.parse([
@@ -219,7 +190,7 @@ final class WatchGaugeTests: XCTestCase {
     let samples = ReplayFixtureParser.parse([
       "",
       "not json",
-      #"{"t":0,"duty":17}"#,  // no speed lane
+      #"{"t":0,"duty":17}"#,
       #"{"t":1000,"speed":20,"duty":30,"battery":50,"motorTemp":40,"ctrlTemp":30}"#,
     ])
 

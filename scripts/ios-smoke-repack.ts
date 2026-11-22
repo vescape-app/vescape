@@ -27,14 +27,11 @@ function sha256(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
-/** Expo's process hook keeps all package/script execution on the repository's Bun toolchain. */
 export const spawnWithBun: SpawnProcessAsync = (command, args, options) =>
   command === 'npx'
     ? spawnAsync('bun', ['run', ...args], options)
     : spawnAsync(command, args, options)
 
-// repack-app 0.10.4's directory copier skips symlinks. Restore their original targets after its
-// JS-only update so versioned frameworks remain complete. Native files must not be replaced.
 export function preserveBundleLinks(source: string, output: string): void {
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     const from = join(source, entry.name)
@@ -69,7 +66,6 @@ function requireFingerprint(value: string | undefined): string {
 async function main() {
   const [command, hash] = process.argv.slice(2)
   const env = fixtureBuildEnv('smoke', DEFAULT_REPLAY)
-  // Expo config and autolinking load process.env in addition to the child-process environment.
   delete process.env.EXPO_PUBLIC_E2E
   delete process.env.EXPO_PUBLIC_SCREENSHOTS
   delete process.env.EXPO_PUBLIC_PREVIEW
@@ -131,8 +127,6 @@ async function main() {
     throw new Error('Repacking unexpectedly changed the native executable.')
   }
 
-  // Resource changes invalidate the outer signature. Keep the simulator's original keychain and
-  // application identifiers instead of using device distribution credentials.
   const { stdout: entitlements } = await spawnAsync('codesign', [
     '-d',
     '--entitlements',

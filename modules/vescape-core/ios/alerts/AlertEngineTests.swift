@@ -44,7 +44,6 @@ final class AlertEngineTests: XCTestCase {
     let relative = rule(controlId: "controller-temp", thresholdKind: "config-relative", configFieldId: "l_temp_fet_start", thresholdOffset: -10)
     engine.updateMotorConfigValues(["l_temp_fet_start": 90.0])
     XCTAssertEqual(engine.evaluate(rules: [relative], telemetry: telemetry(tempMosfet: 82)).first?.threshold, 80)
-    // No motor config read: the rule is dormant rather than firing at its stored placeholder.
     engine.updateMotorConfigValues([:])
     engine.resetAlertState()
     XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(tempMosfet: 82)).isEmpty)
@@ -141,8 +140,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(30, rules[0].thresholdMax)
   }
 
-  // MARK: - Basic firing
-
   func testSingleAlertFiresWhenAboveThreshold() {
     let fired = engine.evaluate(
       rules: [rule(threshold: 70.0)],
@@ -205,8 +202,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(65.0, fired[0].value, accuracy: 0.01)
   }
 
-  // MARK: - Geiger rangeDepth
-
   func testGeigerRangeDepthCalculatedCorrectly() {
     let fired = engine.evaluate(
       rules: [rule(threshold: 70.0, thresholdMax: 80.0)],
@@ -233,8 +228,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(1, fired.count)
     XCTAssertNil(fired[0].rangeDepth)
   }
-
-  // MARK: - Priority ordering
 
   func testAt66PercentOnlyCFires() {
     let rules = [
@@ -287,8 +280,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual("B", firedB[0].ruleId)
   }
 
-  // MARK: - Battery (below direction) priority
-
   func testBatteryLowerThresholdWinsWhenBothFire() {
     let rules = [
       rule(id: "high", controlId: "battery", threshold: 50.0, thresholdMax: 45.0),
@@ -302,8 +293,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(2, fired.count)
     XCTAssertEqual("low", fired[0].ruleId)
   }
-
-  // MARK: - Debounce
 
   func testLatchPreventsDuplicateFiring() {
     let rules = [rule(threshold: 60.0)]
@@ -358,8 +347,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertTrue(production.evaluateValues(rules: rules, values: ["duty": 70.0]).isEmpty)
   }
 
-  // MARK: - Speed / duty absolute
-
   func testSpeedAlertUsesAbsoluteValue() {
     let fired = engine.evaluate(
       rules: [rule(id: "spd", controlId: "speed", threshold: 20.0)],
@@ -376,8 +363,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(1, fired.count)
   }
 
-  // MARK: - Cross-control geiger wins over simple
-
   func testCrossControlGeigerWinsOverSimple() {
     let rules = [
       rule(id: "spd", controlId: "speed", threshold: 10.0),
@@ -390,8 +375,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(2, fired.count)
     XCTAssertEqual("duty", fired[0].ruleId)
   }
-
-  // MARK: - Battery hysteresis
 
   func testBatteryHysteresisFiresOnce() {
     let rules = [rule(id: "bat", controlId: "battery", threshold: 50.0)]
@@ -459,8 +442,6 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertNotNil(first[0].rangeDepth)
   }
 
-  // MARK: - Re-arm + repeat (#348)
-
   func testParkedAboveThresholdNeverAnnouncesTwice() {
     let rules = [rule(controlId: "motor-temp", threshold: 70.0)]
 
@@ -473,7 +454,6 @@ final class AlertEngineTests: XCTestCase {
     let rules = [rule(controlId: "motor-temp", threshold: 70.0)]
 
     _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 71.0))
-    // Margin is 3°C, so 68 is a wobble around the threshold, not a recovery.
     _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 68.0))
     let refired = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 71.0))
 
@@ -492,7 +472,7 @@ final class AlertEngineTests: XCTestCase {
 
   func testRepeatingRuleAnnouncesOnItsCadenceWhileStillPast() {
     var clock: Int64 = 0
-    let engine = AlertEngine(now: { clock })
+    let engine = AlertEngine(nowMs: { clock })
     let rules = [rule(controlId: "motor-temp", threshold: 95.0, repeatEverySeconds: 10)]
     let hot = telemetry(tempMotor: 96.0)
 
@@ -509,14 +489,13 @@ final class AlertEngineTests: XCTestCase {
 
   func testRepeatClockRestartsAfterRearming() {
     var clock: Int64 = 0
-    let engine = AlertEngine(now: { clock })
+    let engine = AlertEngine(nowMs: { clock })
     let rules = [rule(controlId: "motor-temp", threshold: 95.0, repeatEverySeconds: 10)]
 
     _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 96.0))
     clock += 1_000
     _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 90.0))
     clock += 1_000
-    // Re-armed, so this is a fresh crossing rather than a repeat — no waiting out the cadence.
     let refired = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 96.0))
 
     XCTAssertEqual(1, refired.count)
@@ -542,7 +521,6 @@ final class AlertEngineTests: XCTestCase {
     ]
 
     _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 96.0))
-    // Dropping back under the top rung must not hand the lower one a turn to speak.
     let onTheWayDown = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 80.0))
 
     XCTAssertTrue(onTheWayDown.isEmpty)

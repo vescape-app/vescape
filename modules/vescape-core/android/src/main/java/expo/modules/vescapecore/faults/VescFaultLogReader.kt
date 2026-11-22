@@ -2,7 +2,7 @@ package expo.modules.vescapecore.faults
 
 import java.io.ByteArrayOutputStream
 
-/** Collects one manual VESC `faults` terminal response. Nothing is persisted or parsed.
+/**
  * @parity /modules/vescape-core/ios/faults/VescFaultLogReader.swift
  */
 class VescFaultLogReader(

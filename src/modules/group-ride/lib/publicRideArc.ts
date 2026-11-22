@@ -10,7 +10,6 @@ export const PUBLIC_RIDE_ARC = {
   sectorAngle: 40,
 } as const
 
-/** Parallel, offset sides keep the gap the same width at both ends of each seam. */
 export function publicRideSector(index: number, span = 1) {
   const { cx, cy, outerRadius, innerRadius, gap } = PUBLIC_RIDE_ARC
   const start = ((PUBLIC_RIDE_ARC.startAngle + index * PUBLIC_RIDE_ARC.sectorAngle) * Math.PI) / 180
@@ -37,7 +36,6 @@ export function publicRideSector(index: number, span = 1) {
   }
 }
 
-/** Only changes at a detent; callers can keep touch-frequency work on the UI thread. */
 export function publicRideIndexAt(x: number, y: number) {
   'worklet'
   const dx = x - PUBLIC_RIDE_ARC.cx
@@ -51,7 +49,6 @@ export function publicRideIndexAt(x: number, y: number) {
   )
 }
 
-/** A small dead band prevents finger jitter at a seam from flashing adjacent sectors. */
 export function publicRideStableIndexAt(
   x: number,
   y: number,

@@ -18,11 +18,7 @@ interface HistoryControlsProps {
   loading: boolean
   tab: HistoryTab
   canRemove: boolean
-  /** Trim mode swaps tabs/star/trash for a cancel/save pair over the range being pinned. */
   trimming: boolean
-  /**
-   * Favorite tab actions. Selection stays in the shared history panel below.
-   */
   favorite?: {
     onEdit: () => void
   }
@@ -73,8 +69,6 @@ export function HistoryControls({
               onChangeText={onTrimNameChange}
               placeholder={trimNamePlaceholder}
               editable={!saving}
-              // Renaming replaces the old name far more often than it appends to it, and the
-              // inline board-name field already behaves this way.
               selectTextOnFocus
               returnKeyType="done"
               onSubmitEditing={onSaveTrim}

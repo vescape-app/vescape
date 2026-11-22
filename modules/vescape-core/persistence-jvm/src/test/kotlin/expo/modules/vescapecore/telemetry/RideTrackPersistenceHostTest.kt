@@ -11,9 +11,7 @@ import expo.modules.vescapecore.database.BoardEntity
 import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
-/** GPS-only commits use the same production atomic batch as telemetry. */
 class RideTrackPersistenceHostTest {
-  /** Ride reads and deletes use Board and time only (ADR 0041). */
   @Test fun trackReadsAndDeletesScopeToBoardAndTime(): Unit = runBlocking {
     val path = Files.createTempFile("vescape-track-scope", ".db")
     Files.deleteIfExists(path)
@@ -33,10 +31,6 @@ class RideTrackPersistenceHostTest {
     Files.deleteIfExists(path)
   }
 
-  /**
-   * The Ride Track references `boards.key` (#684): rename, re-link and tombstone update the Board in
-   * place, so the key — and every fix's owner — survives them all.
-   */
   @Test fun boardWritesKeepTheKeyTheTrackReferences(): Unit = runBlocking {
     val path = Files.createTempFile("vescape-board-key", ".db")
     Files.deleteIfExists(path)

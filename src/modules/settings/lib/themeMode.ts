@@ -36,7 +36,6 @@ export function isUsableThemeCoordinate(
   )
 }
 
-/** NOAA-style solar position calculation. Longitude is positive east of Greenwich. */
 export function solarElevationDegrees(date: Date, coordinate: ThemeCoordinate): number {
   const julianDay = date.getTime() / 86_400_000 + 2_440_587.5
   const daysSinceJ2000 = julianDay - 2_451_545
@@ -74,7 +73,6 @@ export function outdoorLightProgress(date: Date, coordinate: ThemeCoordinate): n
   return linear * linear * (3 - 2 * linear)
 }
 
-/** First moment within the next 24 hours where the `sun` mode flips theme, or null if it never does. */
 export function nextSunThemeSwitch(
   from: Date,
   coordinate: ThemeCoordinate,

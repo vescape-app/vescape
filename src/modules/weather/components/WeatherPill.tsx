@@ -6,7 +6,6 @@ interface WeatherPillProps {
   onPress: () => void
 }
 
-/** Store-bound container for the map weather pill. */
 export function WeatherPill({ expanded, onPress }: WeatherPillProps) {
   const weather = useWeatherStore((s) => s.weather)
 

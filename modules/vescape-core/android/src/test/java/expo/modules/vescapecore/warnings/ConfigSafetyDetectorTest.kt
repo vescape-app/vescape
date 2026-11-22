@@ -9,14 +9,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Config-safety rule boundaries: each rule fires with the right severity + payload, clears when the
- * setting is safe, per-cell rules skip (report nothing) when they cannot resolve their bound, and the
- * pushback voltage rules follow the firmware's per-cell (6.05+) vs pack units. Payload assertions
- * decode the JSON (its key order is serializer-dependent) rather than matching an exact string.
  * @parity /modules/vescape-core/ios/warnings/ConfigSafetyDetectorTests.swift
  */
 class ConfigSafetyDetectorTest {
-  // Pack-voltage-mode safe config (older firmware): 15s → LV 45.0 V, HV 64.5 V.
   private fun values(
     faultAdc1: Double? = 2.0,
     faultAdc2: Double? = 2.0,
@@ -40,7 +35,6 @@ class ConfigSafetyDetectorTest {
     )
   }
 
-  // Per-cell-mode safe config (VESC 6.05+): LV 3.0 V, HV 4.3 V, series-independent.
   private fun perCellValues(tiltbackLv: Double? = 3.0, tiltbackHv: Double? = 4.3) =
     values(tiltbackLv = tiltbackLv, tiltbackHv = tiltbackHv)
 
@@ -104,7 +98,6 @@ class ConfigSafetyDetectorTest {
 
   @Test
   fun lvPushbackLowFiresBelowPackMinimum() {
-    // Pack mode, 15s: safe minimum 45.0 V; 44.0 is unsafe.
     val report = ConfigSafetyDetector.evaluate(values(tiltbackLv = 44.0), seriesCount = 15, perCell = false)
     val finding = report.finding(BoardWarningKind.LV_PUSHBACK_LOW)!!
     assertEquals(BoardWarningSeverity.CRITICAL, finding.severity)
@@ -120,7 +113,6 @@ class ConfigSafetyDetectorTest {
 
   @Test
   fun hvPushbackHighFiresAbovePackMaximum() {
-    // Pack mode, 15s: safe maximum 64.5 V; 66.0 is unsafe.
     val report = ConfigSafetyDetector.evaluate(values(tiltbackHv = 66.0), seriesCount = 15, perCell = false)
     val finding = report.finding(BoardWarningKind.HV_PUSHBACK_HIGH)!!
     assertEquals(BoardWarningSeverity.WARN, finding.severity)
@@ -129,7 +121,6 @@ class ConfigSafetyDetectorTest {
 
   @Test
   fun perCellFirmwareComparesRawVoltageWithoutSeries() {
-    // Per-cell mode (6.05+): the bound is the per-cell constant directly; series count is irrelevant.
     val clean = ConfigSafetyDetector.evaluate(perCellValues(), seriesCount = null, perCell = true)
     assertTrue(clean.cleanKinds.contains(BoardWarningKind.LV_PUSHBACK_LOW))
     assertTrue(clean.cleanKinds.contains(BoardWarningKind.HV_PUSHBACK_HIGH))
@@ -147,7 +138,6 @@ class ConfigSafetyDetectorTest {
 
   @Test
   fun perCellCapableFirmwareStillAcceptsPackVoltageThresholds() {
-    // Refloat 1.2+ keeps legacy pack totals valid. It treats only values below 10 V as per-cell.
     val clean = ConfigSafetyDetector.evaluate(
       values(tiltbackLv = 57.0, tiltbackHv = 81.7),
       seriesCount = 19,
@@ -168,7 +158,6 @@ class ConfigSafetyDetectorTest {
 
   @Test
   fun perCellRulesSkippedWithoutSeriesCountInPackMode() {
-    // Pack mode, dangerous LV/HV values, but no series count — the two rules must report nothing.
     val report = ConfigSafetyDetector.evaluate(
       values(tiltbackLv = 10.0, tiltbackHv = 90.0),
       seriesCount = null,
@@ -178,19 +167,16 @@ class ConfigSafetyDetectorTest {
     assertNull(report.finding(BoardWarningKind.HV_PUSHBACK_HIGH))
     assertTrue(!report.cleanKinds.contains(BoardWarningKind.LV_PUSHBACK_LOW))
     assertTrue(!report.cleanKinds.contains(BoardWarningKind.HV_PUSHBACK_HIGH))
-    // The non-cell rules still evaluate.
     assertTrue(report.cleanKinds.contains(BoardWarningKind.DUTY_PUSHBACK_HIGH))
   }
 
   @Test
   fun voltageRulesSkippedWhenFirmwareModeUnknown() {
-    // perCell null (unparseable firmware): units are ambiguous, so LV/HV report nothing even with series.
     val report = ConfigSafetyDetector.evaluate(values(tiltbackLv = 10.0, tiltbackHv = 90.0), seriesCount = 15, perCell = null)
     assertNull(report.finding(BoardWarningKind.LV_PUSHBACK_LOW))
     assertNull(report.finding(BoardWarningKind.HV_PUSHBACK_HIGH))
     assertTrue(!report.cleanKinds.contains(BoardWarningKind.LV_PUSHBACK_LOW))
     assertTrue(!report.cleanKinds.contains(BoardWarningKind.HV_PUSHBACK_HIGH))
-    // The firmware-agnostic rules still evaluate.
     assertTrue(report.cleanKinds.contains(BoardWarningKind.DUTY_PUSHBACK_HIGH))
   }
 

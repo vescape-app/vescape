@@ -19,15 +19,12 @@ import java.io.Writer
 import java.nio.file.Files
 import java.nio.file.attribute.BasicFileAttributes
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
+import androidx.annotation.AnyThread
 
 /**
- * Lines are appended from several threads — BLE chunks arrive on the GATT callback thread, phone
- * heading comes from JS on the module thread — so every write holds [writeLock]. Without it two
- * `write()` calls interleave on the shared handle and emit a concatenated line, which breaks
- * replay of the whole recording.
- *
  * @parity /modules/vescape-core/ios/recording/SessionRecorder.swift `SessionRecorder`
  */
+@AnyThread
 internal class SessionRecorder(
     private val boardConfig: SessionConfig,
     val file: File,
@@ -54,7 +51,6 @@ internal class SessionRecorder(
                 .put("deviceId", boardConfig.deviceId)
                 .put("sessionKind", "board")
                 .put("pollIntervalMs", boardConfig.pollIntervalMs)
-                // Replies come back unwrapped from a CAN board, so a replay reads the hop from here.
                 .put("transport", BoardTransport.encode(boardConfig.transport))
                 .put("startedAt", startedAt)
         )
@@ -153,10 +149,8 @@ internal class DebugRecordingStore(private val context: Context) {
             .toList()
     }
 
-    /** Stream a stored recording's `.jsonl` content, for replay (see `ReplayRecordings`). */
     fun openStream(name: String): InputStream = resolve(name).inputStream()
 
-    /** Whether a valid recording name resolves to a stored file (no throw on absence). */
     fun exists(name: String): Boolean =
         File(name).name == name && name.endsWith(".jsonl") && File(dir, name).isFile
 

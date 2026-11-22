@@ -55,14 +55,12 @@ export interface WeatherAlertsSettingsViewProps {
   rain: WeatherAlertLevelSetting
   wind: WeatherAlertLevelSetting
   distanceUnit: DistanceUnit
-  /** Native-owned gates per level. */
   thresholds: WeatherAlertThresholds
   onRainChange: (level: WeatherAlertLevelSetting) => void
   onWindChange: (level: WeatherAlertLevelSetting) => void
   error?: string | null
 }
 
-/** Rider-set Weather Alert levels for rain and wind gusts; storms always speak. */
 export function WeatherAlertsSettingsView({
   rain,
   wind,
@@ -101,7 +99,6 @@ export function WeatherAlertsSettingsView({
   )
 }
 
-/** Dots button that opens the Weather settings sheet, bound to App Settings. */
 export function WeatherAlertsButton({ style }: { style?: StyleProp<ViewStyle> }) {
   const triggerRef = useRef<View>(null)
   const [open, setOpen] = useState(false)

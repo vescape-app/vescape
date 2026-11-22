@@ -27,20 +27,16 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import expo.modules.vescapecore.watch.RideNoticeFrameItem
 import expo.modules.vescapecore.watch.RideNoticeFrameSeverity
+import androidx.annotation.MainThread
 
 /**
- * Main-thread publication of the Ride Notice card, and the buzz for a notice the wrist has not
- * shown. The buzz is a one-shot from the intake, never derived from the card, so a recomposition or
- * an ambient exit cannot replay it.
- *
  * @parity /watch/watchos/PhoneLink.swift `rideNoticeCard`
  */
+@MainThread
 internal object RideNoticeState {
     val card = mutableStateOf<RideNoticeFrameItem?>(null)
-    /** The application's, so no activity outlives or races another over it. */
     private var vibrator: Vibrator? = null
 
-    /** Once per process; deliveries only arrive while [MainActivity] is started anyway. */
     fun attach(context: Context) {
         if (vibrator == null) vibrator = context.applicationContext.getSystemService(Vibrator::class.java)
     }
@@ -50,13 +46,9 @@ internal object RideNoticeState {
     }
 }
 
-/** Off/on pairs: two firm pulses, distinct from the single taps the controls give. */
 private val RIDE_NOTICE_BUZZ_MS = longArrayOf(0, 180, 120, 180)
 
 /**
- * Full-screen Ride Notice: severity ring, title and details. A tap anywhere hides it on the wrist
- * and returns to the gauges. No actions: the phone owns every response to a notice.
- *
  * @parity /watch/watchos/RideNoticeCard.swift `RideNoticeCard`
  */
 @Composable

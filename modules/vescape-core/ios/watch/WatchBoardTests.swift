@@ -2,9 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// The board channel's wire contract, and the compose step a wrist edit goes through: one switch
-/// named, both switches written.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/watch/WatchLightsRelayTest.kt
 final class WatchBoardTests: XCTestCase {
   func testRoundTripsBothSwitchesAndTheWriteGate() {
@@ -12,8 +9,6 @@ final class WatchBoardTests: XCTestCase {
     XCTAssertEqual(WatchBoardLights.decode(state.payload), state)
   }
 
-  /// Absence is how the wrist reads "the board has never said". A sentinel `false` would render
-  /// never-said as the fact "the lights are off".
   func testUnknownSwitchesAreOmittedRatherThanSentAsFalse() {
     let payload = WatchBoardLights(lightsControllable: true).payload
     XCTAssertNil(payload[watchBoardLightsEnabledKey])
@@ -25,7 +20,6 @@ final class WatchBoardTests: XCTestCase {
     XCTAssertTrue(decoded.lightsControllable)
   }
 
-  /// An older phone never sends the gate, and no answer must not offer a write.
   func testAnAbsentOrUnreadableChannelIsUnknownAndNotControllable() {
     for decoded in [
       WatchBoardLights.decode(context: [:]),
@@ -52,8 +46,6 @@ final class WatchBoardTests: XCTestCase {
     XCTAssertEqual(decoded.headlightsEnabled, true)
     XCTAssertTrue(decoded.known)
   }
-
-  // MARK: - The relay
 
   private final class Harness {
     var current: BoardLightsState? = BoardLightsState(enabled: false, headlightsEnabled: false)
@@ -88,7 +80,6 @@ final class WatchBoardTests: XCTestCase {
     assertWrites(harness.writes, [(true, true), (true, false)])
   }
 
-  /// Nothing is written until the board has said what both switches are; a guess is not a write.
   func testAnEditWithNoKnownLightsIsDropped() {
     let harness = Harness()
     harness.current = nil
@@ -97,7 +88,6 @@ final class WatchBoardTests: XCTestCase {
     XCTAssertEqual(harness.events, ["watch_lights_dropped"])
   }
 
-  /// Two taps before the echo: the second states the first's value, not the pre-edit one.
   func testASecondEditBeforeTheEchoKeepsTheFirst() {
     let harness = Harness()
     let relay = harness.relay()
@@ -106,7 +96,6 @@ final class WatchBoardTests: XCTestCase {
     assertWrites(harness.writes, [(true, false), (true, true)])
   }
 
-  /// A phone-side edit landing between two wrist taps wins: the wrist never reverts it.
   func testAPhoneSideChangeReplacesThePendingPair() {
     let harness = Harness()
     let relay = harness.relay()
@@ -116,8 +105,6 @@ final class WatchBoardTests: XCTestCase {
     assertWrites(harness.writes, [(true, false), (true, true)])
   }
 
-  /// A refused write is not state; the next edit composes from the phone's truth again. This is the
-  /// reconnect case too — a session that went away takes the pending pair with it.
   func testARefusedWriteLeavesNoPendingPair() {
     let harness = Harness()
     harness.accept = false
@@ -126,8 +113,6 @@ final class WatchBoardTests: XCTestCase {
     relay.accept(.headlight, on: true)
     assertWrites(harness.writes, [(true, false), (false, true)])
   }
-
-  // MARK: - The wire
 
   func testLightsCommandCarriesOneSwitchAndItsTargetState() {
     for `switch` in [WatchLightsSwitch.leds, .headlight] {
@@ -140,7 +125,6 @@ final class WatchBoardTests: XCTestCase {
     }
   }
 
-  /// bit0 = the target state, bit1 = which switch — Android's numbering, verbatim.
   func testLightsWireValuesMatchAndroid() {
     XCTAssertEqual(WatchCommandKind.lights, 3)
     XCTAssertEqual(WatchLightsSwitch.leds.rawValue, 0)
@@ -149,13 +133,11 @@ final class WatchBoardTests: XCTestCase {
     XCTAssertEqual(Array(WatchCommandCodec.encode(.lights(.headlight, false))), [3, 0b10])
   }
 
-  /// A wrist newer than this phone is dropped rather than read as a switch it is not.
   func testLightsValuesAboveTheDefinedBitsAreIgnored() {
     XCTAssertNil(WatchCommandCodec.decode(Data([WatchCommandKind.lights, 0b100])))
     XCTAssertNil(WatchCommandCodec.decode(Data([WatchCommandKind.lights])))
   }
 
-  /// Move shares this decoder but is its own contract; `WatchMoveRelayTests` owns it.
   func testMoveDecodesOnItsOwnKind() {
     XCTAssertEqual(WatchCommandCodec.decode(Data([WatchCommandKind.move, 1])), .move(1))
   }

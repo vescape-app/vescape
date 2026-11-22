@@ -2,14 +2,13 @@ package expo.modules.vescapecore.watch
 
 import expo.modules.vescapecore.runtime.Scheduler
 
-/** Active default and ambient cadence; independent of Board telemetry polling.
+/**
  * @parity /modules/vescape-core/ios/watch/WatchMirrorCoordinator.swift `WATCH_FRAME_INTERVAL_MS`
  */
 internal const val WATCH_FRAME_INTERVAL_MS = 250L
 /** @parity /modules/vescape-core/ios/watch/WatchMirrorCoordinator.swift `WATCH_FRAME_AMBIENT_INTERVAL_MS` */
 internal const val WATCH_FRAME_AMBIENT_INTERVAL_MS = 5_000L
 
-/** Delivery only. Source subscriptions and stream lifetime belong to [WatchMirrorCoordinator]. */
 internal interface WatchMirrorTransport {
     val reachable: Boolean
     val requiresWakeReport: Boolean
@@ -24,18 +23,13 @@ internal interface WatchMirrorTransport {
     fun launch()
 }
 
-/** Native navigation/weather sources outlive Board Sessions; cancel only these mirror subscriptions. */
 internal interface WatchMirrorSources {
     fun routeStatus(): WatchRouteStatus
-    /** The rider on the published Navigation route, for street-map tiles ahead; null without one. */
     fun mapRoute(): WatchMapRouteProgress?
     fun subscribe(routeChanged: () -> Unit, weatherChanged: (WatchWeather) -> Unit): () -> Unit
 }
 
 /**
- * Service-scoped wrist streams (ADR-0033/0039). Board disconnection changes the supplied snapshot,
- * never this lifetime. All mutable coordination state is confined to the supplied scheduler.
- *
  * @parity /modules/vescape-core/ios/watch/WatchMirrorCoordinator.swift
  */
 internal class WatchMirrorCoordinator(
@@ -48,7 +42,6 @@ internal class WatchMirrorCoordinator(
     private val sources: WatchMirrorSources,
     private val record: (String, Map<String, Any?>) -> Unit,
     private val onNavigatingChanged: () -> Unit = {},
-    /** Street-map tile planning and sending ([WatchMapTileSender]); null pauses it. */
     private val mapTiles: (WatchMapRider?) -> Unit = {},
 ) {
     private var running = false
@@ -58,17 +51,10 @@ internal class WatchMirrorCoordinator(
     private var wakeAtMs = 0L
     private var configuredIntervalMs = WATCH_FRAME_INTERVAL_MS
     private var autoLaunch = true
-    /** The rider's Street map setting (#554). Off pauses tile sending; tiles already on the wrist stay. */
     private var streetMapEnabled = true
     private var launchedSessionId = 0L
-    /**
-     * The wrist is taking frames while Navigation has a drawable route. Its route can only be drawn
-     * around a live rider position, so this is a GPS demand input: without it a pocketed phone with
-     * no Board and no Group Ride stops GPS and the wrist route freezes or never appears (#550).
-     */
     var navigating = false
         private set
-    // The tile plan reads the snapshot the frame is built from, so it costs no second read.
     private val tick = WatchTick(scheduler, { snapshot().also(::updateMapTiles) }, isStale, ::canPushAndTrackNavigation, { frame ->
         transport.pushFrame(frame)
         pushRouteStatus()
@@ -99,7 +85,6 @@ internal class WatchMirrorCoordinator(
         mapTiles(null)
         transport.stop()
         wakeLevel = WatchMirrorWakeLevel.ASLEEP
-        // A stopped mirror demands nothing; no edge, the caller is tearing the stream down.
         navigating = false
         applyInterval()
     }
@@ -110,7 +95,6 @@ internal class WatchMirrorCoordinator(
     private fun canPush(): Boolean = running && transport.reachable &&
         (!transport.requiresWakeReport || effectiveWakeLevel() != WatchMirrorWakeLevel.ASLEEP)
 
-    /** Evaluated every tick, which also runs while nothing is pushed, so presence and wake edges land. */
     private fun canPushAndTrackNavigation(): Boolean {
         val canPush = canPush()
         val next = canPush && sources.routeStatus().phase == WatchRoutePhase.READY
@@ -122,11 +106,6 @@ internal class WatchMirrorCoordinator(
         return canPush
     }
 
-    /**
-     * The one gate on street-map tiles: only while the rider has the street map on, only to a wrist
-     * that is awake and not in ambient, which is the only time it draws a map, and only with a GPS
-     * fix to plan around.
-     */
     private fun updateMapTiles(snapshot: WatchSnapshot) {
         val position = snapshot.mapPosition
         mapTiles(
@@ -140,7 +119,6 @@ internal class WatchMirrorCoordinator(
         wakeLevel = level
         wakeAtMs = nowMs()
         if (changed) record("watch_mirror_wake_level", mapOf("level" to level.name))
-        // Reapply even after an expired lease with the same reported level.
         applyInterval()
     }
 
@@ -162,7 +140,6 @@ internal class WatchMirrorCoordinator(
 
     fun pushBoard(board: WatchBoard) = transport.pushBoard(board)
 
-    /** A reconnect/stale recovery in the same Board Session must not wake the wrist again. */
     fun boardConnected(sessionId: Long) {
         if (!autoLaunch || !transport.reachable || sessionId == launchedSessionId) return
         launchedSessionId = sessionId

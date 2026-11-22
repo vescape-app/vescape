@@ -6,9 +6,6 @@ import expo.modules.vescapecore.database.RideTrackPoint
 import expo.modules.vescapecore.database.VescapeDao
 
 /**
- * Derived thumbnail geometry. route_preview stores JSON segments [firstFixMs,lastFixMs,polyline],
- * with signed delta-varint polyline coordinates at E7 precision. NULL means not generated yet.
- * Always simplify original fixes, never an earlier preview. Endpoints survive every simplification.
  * @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift
  */
 internal object BucketRoutePreview {
@@ -114,7 +111,7 @@ internal object BucketRoutePreview {
   }
 }
 
-/** Full minutes reuse previews; only trimmed edge minutes need original fixes for exact boundaries.
+/**
  * @parity /modules/vescape-core/ios/telemetry/BucketRoutePreview.swift `favoriteRoutePreview`
  */
 internal suspend fun VescapeDao.favoriteRoutePreview(startMs: Long, endMs: Long, boardId: String?): List<Map<String, Any>> {

@@ -139,8 +139,6 @@ export function MainScreen({
     [controller.directionPoint, detailedActiveNavigationTarget],
   )
 
-  // Grouped MainMap props are memoized so the memo'd map does not re-render on every
-  // MainScreen render just because a fresh object literal was handed to it.
   const mapHistoryProps = useMemo(
     () => ({
       active: controller.historyActive,

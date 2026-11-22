@@ -11,10 +11,6 @@ import { formatClock } from '@/helpers/time'
 import { useTimeFormat } from '@/hooks/useTimeFormat'
 import { useFriendRidesStore } from '@/modules/group-ride/store/friendRidesStore'
 
-/**
- * A rider's public rides (for Friends or the signed-in rider's own profile). The server refuses
- * non-friends, so the host renders this only for Friends or the rider themselves.
- */
 export function FriendRides({ accountId }: { accountId: string }) {
   const rides = useFriendRidesStore((s) => (s.accountId === accountId ? s.rides : null))
   const loading = useFriendRidesStore((s) => s.loading)
@@ -46,7 +42,6 @@ export function FriendRides({ accountId }: { accountId: string }) {
   )
 }
 
-/** One public ride: day, time range and length. */
 export function PublicRideRow({ ride }: { ride: FriendRide }) {
   const timeFormat = useTimeFormat()
   const startMs = Date.parse(ride.startedAt)

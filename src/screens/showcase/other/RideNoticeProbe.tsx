@@ -8,7 +8,6 @@ import { useLocationStore } from '@/modules/location/store/locationStore'
 import { useRideNoticesStore } from '@/modules/ride-notices/store/rideNoticesStore'
 
 const SEVERITIES: RideNotice['severity'][] = ['info', 'warning', 'critical']
-/** Used when there is no fix yet, so a located notice is still demoable. */
 const FALLBACK_POSITION: [number, number] = [21.0122, 52.2297]
 const TEST_TTL_MS = 10 * 60_000
 
@@ -18,7 +17,6 @@ const TITLES: Record<RideNotice['severity'], string> = {
   critical: 'Rider down',
 }
 
-/** Posts test notices through the native Ride Notice engine. */
 export function RideNoticeProbe() {
   const notices = useRideNoticesStore((s) => s.notices)
   const lastFix = useLocationStore((s) => s.liveLocationHistory.at(-1) ?? null)

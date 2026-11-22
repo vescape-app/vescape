@@ -24,10 +24,6 @@ function currentLocation(): [number, number] {
   return MAP_DEFAULTS.fallbackCoordinate
 }
 
-/**
- * Everything the Privacy Zones screen edits: which zone is selected, the camera that stands in for
- * its centre and radius, and the saves, renames and deletes that follow from them.
- */
 export function usePrivacyZoneEditor() {
   const { width: screenWidth } = useWindowDimensions()
   const circleRadiusPx = (screenWidth * CIRCLE_DIAMETER_RATIO) / 2

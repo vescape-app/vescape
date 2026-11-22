@@ -2,9 +2,6 @@ import Foundation
 
 let watchLastBatteryChannel = "lastBattery"
 
-/// Latest persisted reading. `percent` and `at` are both set or both nil (never seen); an empty
-/// payload clears the board. Nil keys are omitted because WatchConnectivity property lists cannot
-/// encode null.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchLastBattery.kt
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchLastBattery.kt
 struct WatchLastBattery: Equatable {
@@ -13,7 +10,6 @@ struct WatchLastBattery: Equatable {
   let percent: Double?
   let at: Int64?
 
-  /// The selected Board as `AppDataRepository.getBoard` returns it; nil without a live selection.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchLastBattery.kt `selected`
   static func selected(boardId: String?, board: [String: Any?]?) -> WatchLastBattery? {
     guard let boardId, let board, (board["deletedAt"] ?? nil) == nil else { return nil }
@@ -53,7 +49,6 @@ struct WatchLastBattery: Equatable {
 
   func ageLabel(now: Date) -> String? { age(now: now).map { "\($0) ago" } }
 
-  /// Entries land at the reading's age boundaries, not wall-clock hours.
   func timelineDates(now: Date) -> [Date] {
     guard let at, percent != nil else { return [now] }
     let origin = Date(timeIntervalSince1970: Double(at) / 1000)

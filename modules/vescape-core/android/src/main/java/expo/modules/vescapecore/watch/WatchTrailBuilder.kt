@@ -1,6 +1,6 @@
 package expo.modules.vescapecore.watch
 
-/** The main map's native recent precise fixes, sampled to a bounded wrist snapshot. No watch history.
+/**
  * @parity /modules/vescape-core/ios/watch/WatchTrail.swift `watchTrail`
  */
 internal fun watchTrail(rider: GeoPoint?, history: List<Map<String, Any?>>): List<WatchTrailPoint> {

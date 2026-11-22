@@ -40,6 +40,7 @@
     "wear:ride": "bun run scripts/wear.ts ride",
     "relay:reverse": "bun run scripts/relay-reverse.ts",
     "lint": "oxlint --type-aware src",
+    "comments:check": "bun run scripts/check-comments.ts",
     "format": "bun fmt",
     "format:check": "bun fmt --check",
     "clear": "bun run scripts/clear.ts",
@@ -60,6 +61,7 @@
     "test:bun": "bun test",
     "test:android": "export NODE_BINARY=$(command -v node); export PATH=$(dirname \"$NODE_BINARY\"):$PATH; cd android && ./gradlew :vescape-core:testDebugUnitTest",
     "test:ios": "bun run scripts/test-ios.ts",
+    "lint:android": "export NODE_BINARY=$(command -v node); export PATH=$(dirname \"$NODE_BINARY\"):$PATH; cd android && ./gradlew :vescape-core:lintDebug :wearos:lintDebug -Pandroid.lint.useK2Uast=false",
     "test:persistence": "bun run scripts/test-persistence.ts",
     "test:persistence:android": "./modules/vescape-core/persistence-jvm/gradlew -p modules/vescape-core/persistence-jvm test",
     "test:persistence:ios": "cd modules/vescape-core && swift run RecordingPersistenceHost",
@@ -69,8 +71,8 @@
     "release-notes:author": "bun run scripts/release-notes/author.ts",
     "release-notes:build": "bun run scripts/release-notes/generate.ts",
     "release-notes:check": "bun run scripts/release-notes/generate.ts --check",
-    "check": "bun run release-notes:check && bun run theme:android:check && bun run theme:colors:check && bun run ts && bun run lint && bun run format:check && bun run knip && bun run test",
-    "check:ci": "bun run release-notes:check && bun run theme:android:check && bun run theme:colors:check && bun run ts && bun run lint && bun run format:check && bun run knip && bun run test:ci",
+    "check": "bun run release-notes:check && bun run theme:android:check && bun run theme:colors:check && bun run comments:check && bun run ts && bun run lint && bun run format:check && bun run knip && bun run test",
+    "check:ci": "bun run release-notes:check && bun run theme:android:check && bun run theme:colors:check && bun run comments:check && bun run ts && bun run lint && bun run format:check && bun run knip && bun run test:ci",
     "knip": "knip"
   },
   "dependencies": {

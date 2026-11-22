@@ -1,12 +1,5 @@
 import Foundation
 
-/// Authenticated HTTP boundary for every Vescape backend call made from native. Feature clients
-/// describe a call; this owns the credential, the headers, the retry rule and the 401 policy, and
-/// never learns what the call means.
-///
-/// It deliberately holds no Expo or React types: long-lived native work (recording, background
-/// drains) must keep talking to the server while the JS runtime is gone.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/api/VescapeApi.kt
 final class VescapeApi {
   private let baseUrl: String
@@ -66,9 +59,6 @@ final class VescapeApi {
     )
   }
 
-  /// Resolved bearer token, empty when the call goes out anonymously, `nil` when a required
-  /// credential is missing. A credential minted against another origin belongs to another
-  /// environment, so it counts as missing rather than being sent to this one.
   private func token(for auth: AuthMode) throws -> String? {
     switch auth {
     case .bearer(let token): return token
@@ -96,7 +86,6 @@ final class VescapeApi {
     guard !query.isEmpty else { return baseUrl + path }
     var components = URLComponents()
     components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
-    // `URLComponents` leaves `+` raw, which servers read as a space; Android sends `%2B`.
     let encoded = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B") ?? ""
     return baseUrl + path + "?" + encoded
   }
@@ -135,8 +124,6 @@ final class VescapeApi {
     }
   }
 
-  /// Only idempotent calls repeat. No endpoint here takes a create key, so a repeated POST
-  /// duplicates.
   private func canRetry(_ request: ApiRequest, retried: Bool) -> Bool {
     request.method.idempotent && !retried
   }
@@ -148,7 +135,6 @@ final class VescapeApi {
   ) -> ApiResult<T> {
     switch response.status {
     case 401:
-      // An anonymous read cannot say anything about the stored credential, so it must not reject it.
       if rejectsStoredCredential {
         do { try onUnauthorized() }
         catch {
@@ -192,10 +178,6 @@ final class VescapeApi {
     return (error as? URLError)?.code == .cancelled
   }
 
-  /// Client pinned to an origin. Callers pass the baked backend origin
-  /// (`AppStatusCoordinator.serverBaseUrl`); provisioning passes the origin named by the credential
-  /// it is about to verify, because nothing is stored yet. Reads stay usable while signed out — the
-  /// credential is attached only when one exists.
   static func forOrigin(_ serverUrl: String) -> VescapeApi {
     let store = DeviceCredentialStore.shared
     return VescapeApi(

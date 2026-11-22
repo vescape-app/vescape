@@ -13,7 +13,6 @@ const androidHaptics = Object.values(Haptics.AndroidHaptics).map((type) => ({
   type,
 }))
 
-/** Every native Android haptic constant, one button each. */
 export function HapticsProbe() {
   return (
     <>

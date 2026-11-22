@@ -45,7 +45,6 @@ const OTHERS = [
   }),
 ]
 
-/** Accessories are listed flat beside the Boards: they target whichever Board is connected. */
 const ACCESSORIES: AccessorySelectorItem[] = [
   {
     accessoryId: 'clearance-1',
@@ -154,9 +153,6 @@ export function BoardSelectorSheetShowcase() {
 }
 
 const styles = StyleSheet.create({
-  // The drawer the real selector lives in: full width, so the active card's extra width over the
-  // list column reads the same here as on the map. The gap is the drawer's own, without which the
-  // showcase spaces the sections tighter than the app ever does.
   sheet: {
     alignSelf: 'stretch',
     padding: 12,

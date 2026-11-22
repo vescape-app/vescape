@@ -20,7 +20,6 @@ final class LastGpsLocationPersistenceTests: XCTestCase {
       queue.sync {}
     }
     func assertStored(_ latitude: Double, file: StaticString = #filePath, line: UInt = #line) throws {
-      // A fresh repository uses the same casts as the cold-start Navigation/Legal Policy readers.
       let settings = try AppDataRepository.forTesting(dbWriter: db).getSettings()
       XCTAssertEqual(settings["lastGpsLatitude"] as? Double, latitude, file: file, line: line)
       XCTAssertEqual(settings["lastGpsLongitude"] as? Double, -latitude, file: file, line: line)

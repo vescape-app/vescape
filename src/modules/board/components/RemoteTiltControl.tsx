@@ -8,7 +8,6 @@ import { theme } from '@/constants/theme'
 import { useRemoteTiltControl } from '@/modules/board/hooks/useRemoteTiltControl'
 import type { GroundClearanceRelease } from 'vescape-core'
 
-/** Remote tilt controller row; the pad itself opens as a focused panel. */
 export function RemoteTiltControl() {
   return (
     <ExpandingWidget
@@ -22,14 +21,6 @@ export function RemoteTiltControl() {
   )
 }
 
-/**
- * Why the ground-clearance binding is not commanding, in the rider's words.
- *
- * Native decides which of these it is and JS only names it; re-deriving any of these conditions here
- * would be a second definition of "safe to tilt" that could disagree with the one commanding the
- * board. Every reason gets a sentence — a read-only pad sitting at neutral with no explanation is
- * indistinguishable from a broken one.
- */
 const RELEASE_REASONS: Record<GroundClearanceRelease, string> = {
   'not-riding': 'Waiting for you to ride. Sensor tilt is off while parked.',
   'no-link': 'Sensor accessory not connected.',
@@ -66,8 +57,6 @@ function RemoteTiltBody() {
   return (
     <>
       <RemoteTiltPad
-        // A bound pad is not dimmed: it is showing a live commanded tilt, which is exactly when it
-        // needs to be readable.
         disabled={!canCommand && !sensorTilt.bound}
         readOnly={sensorTilt.bound}
         readOnlyLabel={sensorNote}

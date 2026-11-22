@@ -12,7 +12,6 @@ interface HistoryRideLabelProps {
   fill?: boolean
 }
 
-/** Shared ride identity hierarchy for the history selector and its session list. */
 export function HistoryRideLabel({
   title,
   subtitle,

@@ -2,8 +2,6 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import ts from 'typescript'
 
-// These fixed dark colors belong to map, chart, telemetry, or developer-only visuals. Keep the list
-// exact: another use, even in an approved file, must be reviewed.
 const fixedDarkUses: Record<string, number> = {
   'src/components/charts/LinearGaugeBar.tsx': 1,
   'src/components/charts/SparklineLayer.tsx': 1,
@@ -24,8 +22,6 @@ const fixedDarkUses: Record<string, number> = {
   'src/screens/main/map/RouteZoomFocus.tsx': 3,
 }
 
-// Mapbox's authored One Dark paint values and the satellite backdrop are deliberately
-// fixed. They are map-style data, not UI surfaces that follow the app appearance.
 const fixedMapStyleFiles = new Set([
   'src/modules/map/constants/oneDarkBaseLayers.ts',
   'src/modules/map/constants/oneDarkOverlayLayers.ts',
@@ -56,7 +52,6 @@ function isInsideStaticStyle(node: ts.Node): boolean {
   return false
 }
 
-/** Static checks for theme mistakes that TypeScript cannot detect. */
 export function checkThemeColors(source: string, filename: string): string[] {
   const file = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true)
   const problems: string[] = []
@@ -79,9 +74,6 @@ export function checkThemeColors(source: string, filename: string): string[] {
       report(node, 'define colors in theme.ts or use a reviewed fixed map-style token')
     }
 
-    // Native DynamicColorIOS / PlatformColor values in a static style can keep the
-    // previous appearance after a forced in-app switch. This exact divider pattern
-    // caused #563 to regress; compute it from useResolvedNeutralColors() in render.
     if (
       ts.isCallExpression(node) &&
       node.expression.getText(file) === 'theme.alpha' &&

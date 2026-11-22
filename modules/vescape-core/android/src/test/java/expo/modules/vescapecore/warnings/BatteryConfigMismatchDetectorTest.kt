@@ -9,10 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Battery-config-mismatch detector behavior: stable-count gating (a single odd frame never fires),
- * one warn payload carrying both counts, matching-count clean evaluation, and the no-data /
- * no-config contracts that leave a stored warning untouched. Payload assertions decode the JSON (its
- * key order is serializer-dependent) rather than matching an exact string.
  * @parity /modules/vescape-core/ios/warnings/BatteryConfigMismatchDetectorTests.swift
  */
 class BatteryConfigMismatchDetectorTest {
@@ -27,11 +23,9 @@ class BatteryConfigMismatchDetectorTest {
   @Test
   fun stableMismatchFiresOneWarnWithBothCounts() {
     val detector = BatteryConfigMismatchDetector()
-    // First two stable frames are not yet stable enough to compare.
     assertNull(detector.onFrame(18, 15))
     assertNull(detector.onFrame(18, 15))
     assertPayload(detector.onFrame(18, 15), bmsCellCount = 18, configuredSeries = 15)
-    // Already reported this mismatch — no repeat on later identical frames.
     assertNull(detector.onFrame(18, 15))
     assertFalse(detector.sessionEndClean())
   }
@@ -39,20 +33,15 @@ class BatteryConfigMismatchDetectorTest {
   @Test
   fun liveConfigChangeReReportsWithNewSeries() {
     val detector = BatteryConfigMismatchDetector()
-    // Stable 18 vs 15S fires once.
     repeat(2) { assertNull(detector.onFrame(18, 15)) }
     assertPayload(detector.onFrame(18, 15), bmsCellCount = 18, configuredSeries = 15)
-    // Config changes to 16S mid-session, BMS count unchanged — a different mismatch must re-report
-    // so the stored payload does not keep the stale series count.
     assertPayload(detector.onFrame(18, 16), bmsCellCount = 18, configuredSeries = 16)
-    // Same pair again is deduped.
     assertNull(detector.onFrame(18, 16))
   }
 
   @Test
   fun singleOddFrameDoesNotFire() {
     val detector = BatteryConfigMismatchDetector()
-    // A one-off wrong count between matching frames never reaches stability, so it never fires.
     assertNull(detector.onFrame(15, 15))
     assertNull(detector.onFrame(18, 15))
     assertNull(detector.onFrame(15, 15))
@@ -77,7 +66,6 @@ class BatteryConfigMismatchDetectorTest {
   @Test
   fun noConfiguredSeriesIsNotClean() {
     val detector = BatteryConfigMismatchDetector()
-    // Stable BMS count but no configured series to compare against — no evaluation at all.
     repeat(4) { assertNull(detector.onFrame(18, null)) }
     assertFalse(detector.sessionEndClean())
   }

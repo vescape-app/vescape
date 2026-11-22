@@ -1,19 +1,7 @@
 import Foundation
 
-/// Raw debug Session Recorder: appends one JSON object per line (`.jsonl`) capturing the Board
-/// Session's BLE traffic, GPS fixes, and session-state transitions for offline replay (ADR 0024).
-///
-/// The line format is the cross-platform parity contract — field names and `kind` values must
-/// match Android byte-for-byte so recordings replay on either platform:
-/// `{"t":<ms>,"kind":"meta"|"ble-chunk"|"location"|"session-state",...}`.
-///
-/// Lines are appended from several threads — BLE chunks arrive on the CoreBluetooth callback
-/// queue, phone heading comes from JS on the module queue — so every write holds `writeLock`.
-/// Without it two `write()` calls interleave on the shared handle and emit a concatenated line,
-/// which breaks replay of the whole recording.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/SessionRecorder.kt `SessionRecorder`
-internal final class SessionRecorder {
+internal final class SessionRecorder: @unchecked Sendable {
   private let store: DebugRecordingStore
   private let deviceName: String
   private let deviceId: String
@@ -24,8 +12,6 @@ internal final class SessionRecorder {
   private let writeLock = NSLock()
   let fileURL: URL
 
-  /// Throws when the recording file cannot be created or opened, so callers never
-  /// install a recorder that silently drops every line.
   init(
     store: DebugRecordingStore = DebugRecordingStore(),
     deviceName: String,
@@ -54,7 +40,6 @@ internal final class SessionRecorder {
       ("deviceId", deviceId),
       ("sessionKind", "board"),
       ("pollIntervalMs", pollIntervalMs),
-      // Replies come back unwrapped from a CAN board, so a replay reads the hop from here.
       ("transport", BoardTransport.encode(transport)),
       ("startedAt", startedAt),
     ])
@@ -122,8 +107,6 @@ internal final class SessionRecorder {
     }
   }
 
-  /// Serialize one recording line with stable field order. `nil` values are omitted, matching
-  /// Android's `JSONObject.put(name, null)` dropping the key.
   static func jsonLine(_ fields: [(String, Any?)]) -> String {
     let parts = fields.compactMap { key, value -> String? in
       guard let value, let encoded = encode(value) else { return nil }
@@ -143,8 +126,6 @@ internal final class SessionRecorder {
     }
   }
 
-  /// Round-trip-exact decimal for a Double, without a spurious `.0` on whole values (matches
-  /// Android's `JSONObject.numberToString`).
   private static func shortestDecimal(_ value: Double) -> String {
     if value == value.rounded(), abs(value) < 1e15 {
       return String(Int64(value))
@@ -173,9 +154,6 @@ internal final class SessionRecorder {
   }
 }
 
-/// On-device store for captured Debug Recordings: `<epochMs>-<sanitized-deviceName>.jsonl` under
-/// Documents/`vesc-recordings`, listed newest-first, exported by copy into a cache subdir.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/SessionRecorder.kt `DebugRecordingStore`
 internal final class DebugRecordingStore {
   private let directory: URL
@@ -189,8 +167,6 @@ internal final class DebugRecordingStore {
       .appendingPathComponent("vesc-recordings", isDirectory: true)
   }
 
-  /// Resolve a recording by name with the same validation as Android's store: no path traversal,
-  /// `.jsonl` only. Returns nil when invalid or missing.
   static func recordingURL(name: String) -> URL? {
     guard (name as NSString).lastPathComponent == name, name.hasSuffix(".jsonl") else { return nil }
     let url = defaultDirectory().appendingPathComponent(name)

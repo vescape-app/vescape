@@ -17,7 +17,6 @@ export interface PendingCustomZone {
   name: string
 }
 
-/** Home and Work always show, saved or not; custom zones follow, including one unsaved draft. */
 export function buildZonePills(
   zones: PrivacyZone[],
   pendingCustom?: PendingCustomZone | null,

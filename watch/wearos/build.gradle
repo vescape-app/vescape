@@ -4,8 +4,6 @@ buildscript {
     mavenCentral()
   }
   dependencies {
-    // Keep in sync with rootProject ext.kotlinVersion (Expo version catalog "kotlin"), like
-    // vescape-core pins ksp. The Compose compiler plugin is Kotlin-version-locked.
     classpath "org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:2.1.20"
   }
 }
@@ -28,10 +26,15 @@ def hasReleaseSigning = releaseSigningProperties.every {
 
 android {
   namespace 'app.vescape.wear'
+
+  lint {
+    checkOnly 'WrongThread'
+    abortOnError true
+    checkDependencies false
+  }
   compileSdk 35
 
   defaultConfig {
-    // Share the phone applicationId so a store build delivers this as the watch form factor.
     applicationId 'app.vescape'
     minSdk 30
     targetSdk 35
@@ -95,6 +98,5 @@ dependencies {
   implementation 'com.google.android.gms:play-services-wearable:18.2.0'
   debugImplementation 'androidx.wear.watchface:watchface-complications-rendering:1.2.1'
   testImplementation 'junit:junit:4.13.2'
-  // Real org.json on the JVM: the android.jar stub throws, and the replay fixture parser is JSON.
   testImplementation 'org.json:json:20240303'
 }

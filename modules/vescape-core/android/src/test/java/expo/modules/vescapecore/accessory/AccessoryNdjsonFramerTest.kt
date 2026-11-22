@@ -6,10 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The NDJSON framing contract, driven by `shared/fixtures/accessory-protocol/framing.json`. Chunks
- * arrive as bytes so the cases can split a line mid-UTF-8-character, which is exactly what a BLE
- * notification boundary does.
- *
  * @parity /modules/vescape-core/ios/accessory/AccessoryNdjsonFramerTests.swift
  */
 class AccessoryNdjsonFramerTest {
@@ -59,8 +55,6 @@ class AccessoryNdjsonFramerTest {
     @Test
     fun aPeerThatNeverSendsALineFeedCostsAFixedBuffer() {
         val framer = AccessoryNdjsonFramer()
-        // Ten times the limit, in chunks, with no LF anywhere: an unbounded accumulator would hold
-        // all of it. The framer must give up at the limit and stay terminal.
         val chunk = ByteArray(1024) { 'x'.code.toByte() }
         var failure: AccessoryFramingError? = null
         repeat(40) {

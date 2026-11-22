@@ -7,10 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The discovery handshake contract, driven by
- * `shared/fixtures/accessory-protocol/handshake.json`: the exact `hello` line discovery writes, and
- * every manifest the parser must either accept with a compatibility verdict or refuse outright.
- *
  * @parity /modules/vescape-core/ios/accessory/AccessoryProtocolTests.swift
  */
 class AccessoryProtocolTest {
@@ -128,10 +124,6 @@ class AccessoryProtocolTest {
         }
     }
 
-    /**
-     * Discovery must not be able to speak past `hello`. There is one encoder on this path and it
-     * produces one message type; anything operational would have to be added here first.
-     */
     @Test
     fun discoveryEncodesNothingButHello() {
         val line = AccessoryProtocol.encodeHello(sessionId)

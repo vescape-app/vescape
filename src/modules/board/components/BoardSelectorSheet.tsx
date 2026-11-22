@@ -24,7 +24,6 @@ import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { BoardModelPreview } from '@/modules/board/components/BoardModelPreview'
 
-/** A way into the active board's trouble, offered only while that surface is enabled. */
 export interface BoardSelectorLink {
   count: number
   onPress: () => void
@@ -32,16 +31,8 @@ export interface BoardSelectorLink {
 
 interface BoardSelectorContentProps {
   boards: Board[]
-  /**
-   * The Accessories half of the selector, supplied by the screen composing it.
-   *
-   * A plain node, not accessory data: the selector is the entry point for both domains but knows
-   * only one of them. Accessories target the connected Board rather than any Board in this list, so
-   * they sit beside the Boards section, never inside a Board's row.
-   */
   accessories?: React.ReactNode
   activeBoardId: string | null
-  /** True while the active board has a live telemetry link, so its row shows the pull rate. */
   activeBoardLive?: boolean
   warnings?: (BoardSelectorLink & { severity: BoardWarningSeverity | null }) | undefined
   faults?: BoardSelectorLink | undefined
@@ -58,13 +49,8 @@ interface BoardSelectorSheetProps extends BoardSelectorContentProps {
 }
 
 const PULL_RATE_FONT_SIZE = 11
-/** The readout draws on a Skia canvas, which needs a width of its own inside a row. */
 const PULL_RATE_WIDTH = 46
 
-/**
- * What is known about a board while it is not talking: last battery, how long ago that was, and
- * whether it is even linked. Gray throughout — none of it is live.
- */
 function StaleMeta({ board }: { board: Board }) {
   if (!board.link) return <Text style={styles.metaText}>Not linked</Text>
   const last = board.lastBattery
@@ -82,7 +68,6 @@ function StaleMeta({ board }: { board: Board }) {
   )
 }
 
-/** The active board's link state. A pull rate exists only while the board is actually connected. */
 function ActiveMeta({ board, live }: { board: Board; live: boolean }) {
   const liveColor = useResolvedColor(theme.status.success.color)
   return (
@@ -117,17 +102,11 @@ interface StripLink {
   icon: Icon
   label: string
   color: ThemeColor
-  /** Absent for a plain action like Edit, which is never "empty". */
   count?: number
   testID?: string
   onPress: () => void
 }
 
-/**
- * Warnings, VESC faults and Board config — the ways into the active board that used to hide behind the
- * pencil on the pill. A counted link with nothing behind it grays out, so color always means
- * "there is something here".
- */
 function LinksStrip({ links }: { links: StripLink[] }) {
   return (
     <View style={styles.strip}>
@@ -175,10 +154,6 @@ function BoardIcon({ board }: { board: Board }) {
   )
 }
 
-/**
- * The selector's list, without the drawer around it — one picker where the active board leads,
- * one line taller and framed, with its links attached underneath.
- */
 export function BoardSelectorContent({
   boards,
   accessories,
@@ -280,7 +255,6 @@ export function BoardSelectorContent({
                 <StaleMeta board={board} />
               </View>
             </View>
-            {/* Renaming a board should not cost a connection attempt first. */}
             <Pressable
               onPress={() => onEditBoard(board.id)}
               hitSlop={8}
@@ -292,7 +266,6 @@ export function BoardSelectorContent({
           </Pressable>
         ))}
 
-        {/* The last row in the list, only lighter — it is where a board would go, not a board. */}
         <Pressable
           style={({ pressed }) => [styles.row, styles.addRow, pressed && styles.rowPressed]}
           onPress={onAddBoard}
@@ -352,7 +325,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 10,
   },
-  // The active board uses the same appearance-aware surface as the settings drawer's cards.
   activeBlock: {
     marginBottom: 4,
     overflow: 'hidden',
@@ -364,8 +336,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     gap: 10,
   },
-  // The card breathes wider than a list row — it is the one thing in the drawer being read, not
-  // scanned.
   activeRow: {
     paddingVertical: 14,
     paddingHorizontal: 14,
@@ -410,7 +380,6 @@ const styles = StyleSheet.create({
     borderRadius: 3.5,
     borderWidth: 1.5,
   },
-  // Mono and Raleway sit on different baselines; a shared line height keeps the row on one line.
   metaBattery: {
     fontFamily: theme.mono('600'),
     color: theme.neutral.textMuted,
@@ -473,7 +442,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
   },
-  // A board row's tile, thinned down to an outline: same size and place, less weight.
   addIcon: {
     width: 32,
     height: 32,

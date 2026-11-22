@@ -1,12 +1,4 @@
-/**
- * Stretches of a ride the map cannot draw but the charts still fill.
- *
- * Read from the same fixes the map draws from: no point on the map means a gap here, by
- * construction. Only inside a stretch that was actually being recorded, though — a paused
- * recording has no fixes for a good reason, and marking that as a fault is noise.
- */
 const GPS_GAP_MIN_MS = 10_000
-/** Board samples further apart than this were not one continuous recording. */
 const RECORDING_BREAK_MS = 10_000
 
 export interface GpsGapRange {
@@ -35,7 +27,6 @@ export function toGpsGapRanges(
   return gaps
 }
 
-/** The ride broken into the stretches it was recording without a break. */
 function recordingSpans(sampleTimes: readonly number[]): GpsGapRange[] {
   const times = [...sampleTimes].sort((a, b) => a - b)
   if (times.length < 2) return []

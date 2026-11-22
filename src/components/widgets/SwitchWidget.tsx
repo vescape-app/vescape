@@ -15,14 +15,12 @@ interface SwitchWidgetProps {
   onValueChange: (value: boolean) => void
   icon?: Icon
   hint?: string
-  /** Accent for the icon and the switch's on state. */
   accent?: ThemeColor
   size?: WidgetSize
   disabled?: boolean
   accessibilityLabel?: string
 }
 
-/** A labelled switch on a widget surface — toggles a single boolean. */
 export function SwitchWidget({
   label,
   value,

@@ -20,7 +20,6 @@ async function checkVersion(): Promise<void> {
     new Response(proc.stderr).text(),
     proc.exited,
   ])
-  // A fresh install prints an analytics notice before the standalone version line.
   const versions = stdout.trim().match(/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?\r?$/gm) ?? []
   const version = versions.length === 1 ? versions[0].trim() : undefined
   if (code !== 0 || version !== MAESTRO_VERSION) {
@@ -30,7 +29,6 @@ async function checkVersion(): Promise<void> {
   }
 }
 
-/** Every repository runner checks the same pin once before invoking Maestro. */
 export async function maestroCommand(...args: string[]): Promise<string[]> {
   await (checked ??= checkVersion().catch((error) => {
     checked = undefined

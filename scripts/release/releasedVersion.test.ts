@@ -46,7 +46,6 @@ describe('released version request', () => {
 })
 
 describe('recording a released version', () => {
-  /** Each entry is built per call: a Response body can only be read once. */
   function respondWith(...responses: Array<() => Response | Error>) {
     const calls: string[] = []
     const fetchImpl = ((url: string) => {
@@ -73,7 +72,6 @@ describe('recording a released version', () => {
     expect(calls).toHaveLength(1)
   })
 
-  // The store release already happened; a transient server error must not fail the release run.
   test('retries a server error and succeeds', async () => {
     const { calls, fetchImpl } = respondWith(failing(502, 'bad gateway'), ok)
 
@@ -90,7 +88,6 @@ describe('recording a released version', () => {
     expect(calls).toHaveLength(2)
   })
 
-  // A rejected request is rejected the same way every time; retrying only delays the failure.
   test('does not retry a request the server refused', async () => {
     const { calls, fetchImpl } = respondWith(failing(401, 'unauthorized'))
 

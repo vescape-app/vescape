@@ -31,11 +31,8 @@ const GPS_TICK_MS = 1000
 const COMPASS_TICK_MS = 100
 const UI_TICK_MS = 100
 const TRACE_WINDOW_MS = 5000
-/** Retargets beyond this snap instead of animating. */
 const TELEPORT_DISTANCE_M = 50_000
-/** Comfortably past the threshold so the button always exercises the snap path. */
 const TELEPORT_JUMP_M = 100_000
-/** Below the teleport threshold: exercises the ballistic zoom-out-and-back arc. */
 const MID_JUMP_M = 3000
 const GPS_MODES: FakeGpsMode[] = ['straight', 'curvy', 'jitter']
 
@@ -53,11 +50,6 @@ const INITIAL_CAMERA: EngineCamera = {
   pitch: 0,
 }
 
-/**
- * Dev-only bench for `cameraEngine`: synthetic GPS/compass drivers push targets
- * at realistic rates while the spring constants are tuned live and the position
- * vs target traces are plotted.
- */
 export function MapPlaygroundScreen() {
   const accents = useResolvedAccentColors()
   const cameraRef = useRef<CameraRef>(null)
@@ -91,7 +83,6 @@ export function MapPlaygroundScreen() {
   })
 
   const zoomRef = useRef(zoom)
-  // Drivers read live settings without restarting their timers.
   const driversRef = useRef({ gpsMode, gpsRunning, speedKmh, compassOn, compassNoise })
   useEffect(() => {
     zoomRef.current = zoom
@@ -100,7 +91,6 @@ export function MapPlaygroundScreen() {
 
   const applyFrame = useCallback((camera: EngineCamera) => {
     cameraStateRef.current = camera
-    // TODO: switch to setCameraDirect once the extended patch lands
     cameraRef.current?.setCamera({
       centerCoordinate: camera.centerCoordinate,
       zoomLevel: camera.zoomLevel,
@@ -123,8 +113,6 @@ export function MapPlaygroundScreen() {
     }
   }, [])
 
-  // Omega is a creation-time constant, so a tuning change rebuilds the engine
-  // on top of the camera the old one left behind.
   useEffect(() => {
     const engine = createCameraEngine({
       applyFrame,
@@ -139,8 +127,6 @@ export function MapPlaygroundScreen() {
       ballistic: ballisticOn ? {} : false,
     })
     engine.reset(cameraStateRef.current)
-    // reset() parks every spring on the current camera; restore the live targets
-    // so a retune mid-flight keeps chasing them instead of stalling.
     engine.setTarget({
       center: targetRef.current.center,
       zoom: zoomRef.current,

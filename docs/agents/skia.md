@@ -12,6 +12,14 @@ For React Native conventions and why high-frequency telemetry never drives React
 
 ## What a frame costs
 
+Use Skia text for live readouts. `TextInput` `animatedProps` commits every tick through the shadow
+tree, which overflowed the GC stack on Android and raced UI-thread writes on iOS. Batch scalar
+SharedValue updates into one UI-thread worklet to avoid serializing each value separately.
+
+The telemetry chart prebuilds paths in data-space seconds and projects them with one viewport
+matrix. Time tiles limit deep-zoom transforms to visible data. Each LOD bucket retains its first,
+last and extreme points so zooming out preserves short spikes.
+
 ### Mapper count, not the work inside one
 
 The cost of a gesture frame is the number of `useDerivedValue` mappers that wake up, far more

@@ -19,7 +19,6 @@ import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /**
- * Real SQLite regressions for complete-minute paging and complete aggregation reads.
  * @parity /modules/vescape-core/ios/telemetry/RideHistoryGroupingTests.swift
  * @parity /modules/vescape-core/ios/telemetry/FavoriteStoreTests.swift
  */

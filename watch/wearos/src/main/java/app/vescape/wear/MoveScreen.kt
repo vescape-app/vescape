@@ -25,24 +25,10 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import kotlinx.coroutines.delay
 
-/** Forward is the top half, backward the bottom — the same order as the phone's Move board card. */
 private const val DIRECTION_FORWARD = 1
 private const val DIRECTION_BACKWARD = -1
 
 /**
- * Board Move from the wrist: the centre of the circle split across the middle, top half forward,
- * bottom half back. It has no ring of its own — the rim gauges stay pinned behind every page, and
- * duty and speed climbing on those arcs is the truest feedback that the board is rolling.
- * Hold to roll, release to stop — the same action as the phone's Move board card, reaching the same
- * native Board Move stream (ADR-0033), so the board behaves identically whichever the rider presses.
- *
- * A hold is a stream of ticks, not a press/release pair. Releasing sends an immediate stop, but the
- * stop the rider's safety actually rests on is the phone's dead-man: stop ticking and the board
- * stops, so a wrist that walks out of Bluetooth range mid-hold cannot leave the board rolling.
- *
- * Only enabled on a LIVE mirror. A stale or absent frame means the phone has no fresh board
- * telemetry, and a Move nobody can see the result of is not one to offer.
- *
  * @parity /watch/watchos/MoveScreen.swift `MoveScreen`
  */
 @Composable
@@ -57,16 +43,11 @@ fun MoveScreen(
     val canMove = enabled && interactionEnabled
     val haptics = LocalHapticFeedback.current
 
-    // Press state, not a raw pointer gesture: a hold that turns into a horizontal drag is a page
-    // swipe, and the interaction source cancels the press for us when the pager claims it. Owning
-    // the pointer instead would trap the rider on this page.
     val forward = remember { MutableInteractionSource() }
     val backward = remember { MutableInteractionSource() }
     val forwardPressed by forward.collectIsPressedAsState()
     val backwardPressed by backward.collectIsPressedAsState()
     val held = when {
-        // Losing the mirror ends the hold: a stream started while LIVE must not keep ticking
-        // against a phone that can no longer show what the board is doing.
         !canMove -> 0
         forwardPressed -> DIRECTION_FORWARD
         backwardPressed -> DIRECTION_BACKWARD
@@ -112,18 +93,11 @@ fun MoveScreen(
         CenterLabel(
             enabled = enabled,
             strengthPercent = settings.boardMoveStrengthPercent,
-            // Starting a Move drops a locked tilt to neutral, and it does not come back afterwards.
             clearsTilt = state.frame?.tiltControl == WatchTiltControl.MANUAL,
         )
     }
 }
 
-/**
- * Held-half feedback inside the pinned rim gauges: a dim tint on whichever half is held, and the
- * divider that says the circle splits in two. No ring of its own — the rim arcs ([FrameLayout])
- * are the only circle on screen now, and they carry the accent while the board rolls, which is
- * better feedback anyway: the rider watches duty and speed climb.
- */
 @Composable
 private fun MoveSplit(held: Int, enabled: Boolean) {
     val accent = if (enabled) SpeedColor else GuideColor
@@ -143,7 +117,6 @@ private fun MoveSplit(held: Int, enabled: Boolean) {
             )
         }
 
-        // Split in two so the divider does not strike through the label sitting on it.
         val midY = size.height / 2f
         val gap = size.width * DIVIDER_GAP_FRACTION / 2f
         drawLine(
@@ -173,7 +146,6 @@ private fun MoveHalf(
             .fillMaxWidth()
             .clickable(
                 interactionSource = interactionSource,
-                // The hold is the action; a tap that lands and lifts is a hold too short to matter.
                 indication = null,
                 enabled = enabled,
                 onClick = {},
@@ -213,7 +185,6 @@ private fun CenterLabel(enabled: Boolean, strengthPercent: Int?, clearsTilt: Boo
     }
 }
 
-/** Clears the rim arcs: the Move centre lives inside the circle the gauges draw. */
 private const val DIVIDER_STROKE_PX = 2f
 private const val HELD_TINT_ALPHA = 0.18f
 private const val DIVIDER_GAP_FRACTION = 0.5f

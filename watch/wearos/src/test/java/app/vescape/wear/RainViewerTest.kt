@@ -23,7 +23,6 @@ class RainViewerTest {
         )
 
         assertEquals("https://tilecache.rainviewer.com", meta?.host)
-        // Nowcast frames are a forecast, not an observation: the wrist animates past frames only.
         assertEquals(listOf(1757000000L, 1757000600L), meta?.frames?.map { it.timeSec })
     }
 
@@ -35,8 +34,6 @@ class RainViewerTest {
 
     @Test
     fun `frame range shrinks with latitude`() {
-        // The same image is a smaller patch of ground the further north it is taken, so the range
-        // rings must be placed per latitude rather than once.
         val warsaw = radarFaceRangeM(52.2297)
         val equator = radarFaceRangeM(0.0)
 

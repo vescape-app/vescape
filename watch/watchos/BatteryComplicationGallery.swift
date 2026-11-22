@@ -2,7 +2,6 @@
 import SwiftUI
 import WidgetKit
 
-/// Simulator visual fixture. Each card renders the production complication view.
 struct BatteryComplicationGallery: View {
   let state: String
   private var battery: WatchLastBattery? { Self.battery(for: state) }
@@ -14,8 +13,6 @@ struct BatteryComplicationGallery: View {
       percent: state == "warning" ? 15 : 78, at: now - (state == "stale" ? 7_200_000 : 0))
   }
 
-  /// Explicit simulator-only fixture for actual watch-face slots, using the production App Group.
-  /// The launch delegate skips WatchConnectivity so phone context cannot overwrite the fixture.
   static func seedRequestedFixture() -> Bool {
     guard let state = requestedFixture else { return false }
     _ = WatchBatteryDefaults.receiveLatestContext({ [watchLastBatteryChannel: battery(for: state)?.payload ?? [:]] })

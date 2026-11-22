@@ -3,9 +3,6 @@ import type { WeatherIconSlug } from 'vescape-core'
 import { theme, type ThemeColor } from '@/constants/theme'
 
 /**
- * Condition tint, keyed by the icon slug native resolves. Presentation only — native owns which WMO
- * code is which condition, this side owns what that condition looks like on the phone.
- *
  * @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `weatherColor`
  */
 export function weatherIconColor(icon: WeatherIconSlug): ThemeColor {

@@ -5,7 +5,6 @@ import { Text } from '@/components/base/Text'
 import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
 
-/** Names a zone, whether it is being added or renamed. */
 export function ZoneNameModal({
   visible,
   title,

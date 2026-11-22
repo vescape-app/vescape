@@ -1,7 +1,5 @@
 import Foundation
 
-/// One GPS fix as everything downstream sees it.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `LocationSnapshot`
 /// @parity /modules/vescape-core/src/index.ts `LocationEvent`
 internal struct TelemetryLocationCapture {
@@ -13,10 +11,7 @@ internal struct TelemetryLocationCapture {
   let altitudeM: Double?
   let timestamp: Int64
   let precise: Bool
-  /// The reliable course from `GpsCourseDeriver`, not the raw `bearingDeg`. Nil on approximate
-  /// fixes and wherever a capture is rebuilt from storage.
   var courseDeg: Double?
-  /// The fix `courseDeg` was derived from; older than `timestamp` while a course is retained.
   var courseSourceTimestamp: Int64?
 
   init(
@@ -59,21 +54,9 @@ internal struct TelemetryLocationCapture {
   }
 }
 
-/// How stale a GPS fix may be and still be stamped onto a recorded telemetry frame.
-///
-/// ADR 0034 "Recording never fabricates GPS": the trackers legitimately keep the last known fix
-/// alive for map display, but a recorded frame that repeats a dead fix invents a ride that never
-/// happened. Beyond this age the frame records no location and the route gap stays honest.
-///
-/// Both sides of the comparison are wall-clock epoch ms — `capturedAtMs` comes from the session
-/// clock, the fix timestamp from `CLLocation.timestamp`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryMapper.kt `TELEMETRY_LOCATION_MAX_AGE_MS`
 internal let telemetryLocationMaxAgeMs: Int64 = 10_000
 
-/// The fix to record on a frame captured at `capturedAtMs`, or nil when the fix is too old.
-/// A fix stamped in the future (clock skew) counts as fresh.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryMapper.kt `freshEnoughToRecord`
 internal func telemetryLocationFreshEnoughToRecord(
   _ location: TelemetryLocationCapture?,
@@ -86,7 +69,6 @@ internal func telemetryLocationFreshEnoughToRecord(
 internal struct TelemetryCapture {
   let capturedAtMs: Int64
   let elapsedRealtimeMs: Int64
-  /// Owning Board (`boards.id`) — what every telemetry table is keyed on (ADR 0028).
   let boardId: String?
   let canId: Int?
   let telemetry: RefloatTelemetry

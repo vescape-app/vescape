@@ -1,7 +1,6 @@
 import CoreText
 import SwiftUI
 
-/// App typography from the shared font assets. Keep symbols in the system font.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchTypography.kt
 enum WatchTypography {
   enum Weight: String {

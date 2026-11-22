@@ -96,7 +96,6 @@ class RideNoticeEngineTest {
         engine.dismiss(2, 1)
         assertFalse(engine.clear("b"))
         assertFalse(engine.clear("missing"))
-        // Cleared: a fresh post of the key shows again even with the old revision.
         assertEquals(PostResult.CHANGED, engine.post("b", content(), "r1", 0))
     }
 
@@ -127,7 +126,6 @@ class RideNoticeEngineTest {
         engine.post("warning", content(RideNoticeSeverity.WARNING, postedAt = 500), "r1", 0)
         engine.post("new-info", content(postedAt = 2_000), "r1", 0)
         engine.post("critical", content(RideNoticeSeverity.CRITICAL, postedAt = 100), "r1", 0)
-        // Re-posting the old notice later does not move it up.
         engine.post("old-info", content(postedAt = 1_000), "r2", 50_000)
         assertEquals(listOf("critical", "warning", "new-info", "old-info"), engine.active.map { it.key })
     }
@@ -137,7 +135,6 @@ class RideNoticeEngineTest {
         engine.post("a", content(), "r", 0)
         engine.post("b", content(), "r", 0)
         engine.clear("a")
-        // Freed id 1 is not reused straight away.
         engine.post("c", content(), "r", 0)
         assertEquals(3, engine.active.first { it.key == "c" }.id)
     }

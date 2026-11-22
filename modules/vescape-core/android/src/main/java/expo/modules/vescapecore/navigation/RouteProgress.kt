@@ -6,47 +6,18 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Where the rider is along their Navigation right now: the point on the path nearest to them, how
- * far is left along the path from there, and which way the path goes next.
- *
- * Derived, never stored. It is recomputed from the current path on every GPS Fix and it dies with the
- * Navigation it belongs to — see the glossary entry in `GLOSSARY.md`.
- *
- * Attachment is unconditional: the nearest point on the path is always taken, so a rider who loops
- * away and comes back re-attaches by itself. Only [deviationMeters] feeds automatic recalculation;
- * nothing derived from [remainingMeters] does. The accepted
- * cost is that on a path passing near itself — out-and-back, figure-eight — the projection can snap
- * between legs and [remainingMeters] can jump. Do not add a threshold to paper over it.
- *
  * @parity /modules/vescape-core/ios/navigation/RouteProgress.swift
  * @parity /modules/vescape-core/src/index.ts `RouteProgress`
  */
 data class RouteProgress(
-  /** The point on the path nearest to the rider, projected onto a segment rather than a vertex. */
   val latitude: Double,
   val longitude: Double,
-  /** The [Navigation.revision] this was projected on; the segment indexes into that path only. */
   val navigationRevision: Long,
-  /** The selected segment and the clamped fraction along it, so JS splits at this same point. */
   val segmentIndex: Int,
   val segmentFraction: Double,
-  /** Straight-line metres from the rider to the projection. */
   val deviationMeters: Double,
-  /**
-   * Metres left to the Direction Point measured **along** the path from the projection: the rest of
-   * the projected segment plus every segment after it. Not the straight line — a target 679 m away
-   * across a river is the 2 km the rider actually has to ride. Projected onto the path's end, with
-   * nothing left along it, it is the straight line from the rider to that end.
-   */
   val remainingMeters: Double,
-  /** Profile-based estimate scaled by remaining distance; null without timing or past the end. */
   val remainingDurationSeconds: Double?,
-  /**
-   * Absolute degrees clockwise from north, from the projection to an aim point a short way further
-   * along the path, or from the rider to the path's end once projected onto it. Absolute on
-   * purpose: the wrist rotates a north-up world by the GPS course, so one convention keeps the two
-   * rotations from disagreeing.
-   */
   val bearingDeg: Double,
 ) {
   fun toMap(): Map<String, Any?> = mapOf(
@@ -62,20 +33,10 @@ data class RouteProgress(
   )
 
   companion object {
-    /**
-     * How far ahead on the path the aim point sits: `2.5 s` of travel, floored so a standing rider
-     * still gets a usable direction and capped so a fast one is not aimed past the next turn.
-     */
     const val AIM_SECONDS = 2.5
     const val MIN_AIM_METERS = 15.0
     const val MAX_AIM_METERS = 60.0
 
-    /**
-     * Route Progress for a rider at [riderLatitude]/[riderLongitude] along [points], which are
-     * `(latitude, longitude)` in ridden order. Null when there is no path to attach to.
-     *
-     * [speedMps] comes from the fix and may be missing; the aim point falls back to its floor.
-     */
     fun compute(
       points: List<Pair<Double, Double>>,
       riderLatitude: Double,
@@ -87,12 +48,6 @@ data class RouteProgress(
     ): RouteProgress? {
       if (points.size < 2) return null
 
-      // Point-to-segment, not point-to-vertex: on a long straight run between sparse vertices the
-      // nearest vertex can be hundreds of metres from where the rider actually is.
-      //
-      // Distances are compared in a local flat frame — degrees with longitude squeezed by the
-      // rider's latitude — because only the *ordering* of candidates matters here. The winning
-      // projection is then measured on the great circle like everything else.
       val cosLatitude = cos(Math.toRadians(riderLatitude))
       var bestIndex = 0
       var bestFraction = 0.0
@@ -140,9 +95,6 @@ data class RouteProgress(
         routeDurationSeconds * (remainingMeters / routeDistanceMeters).coerceIn(0.0, 1.0)
       } else null
 
-      // Walk forward from the projection until the aim budget runs out. Running off the end of the
-      // path instead leaves the aim on the Direction Point, which is the right answer for the last
-      // few metres of a ride.
       val (targetLatitude, targetLongitude) = points.last()
       var aimLatitude = targetLatitude
       var aimLongitude = targetLongitude
@@ -164,10 +116,6 @@ data class RouteProgress(
         fromLongitude = nextLongitude
       }
 
-      // Projected onto the end of the path, the rider is past the Direction Point or beside it, and
-      // no path is left to measure along. What is left is the straight line back to the end, and
-      // the arrow points there: a rider who rode past the pin must not read 0 ft while it is
-      // hundreds of metres behind them (#560).
       val pastEndMeters = if (remainingMeters <= DEGENERATE_AIM_METERS) {
         GeoMath.distanceMeters(riderLatitude, riderLongitude, targetLatitude, targetLongitude)
       } else {
@@ -188,10 +136,6 @@ data class RouteProgress(
         )
       }
 
-      // A rider standing on the end of the path leaves the aim point on top of the projection, and
-      // a bearing between two identical positions is `atan2(0, 0)` — due north, which would swing
-      // the arrow away from the way they are facing exactly as they arrive. The heading of the last
-      // leg they rode is the honest answer instead.
       val aimOffsetMeters =
         GeoMath.distanceMeters(latitude, longitude, aimLatitude, aimLongitude)
       val bearingDeg = if (aimOffsetMeters > DEGENERATE_AIM_METERS) {
@@ -213,16 +157,8 @@ data class RouteProgress(
       )
     }
 
-    /**
-     * Below this two positions are the same place, and the bearing between them is numerically
-     * meaningless rather than merely imprecise.
-     */
     private const val DEGENERATE_AIM_METERS = 0.01
 
-    /**
-     * Heading of the last leg of [points] that actually goes anywhere, or null when the whole path
-     * is one repeated position. Reached only once the aim point has run out of path ahead of it.
-     */
     private fun lastLegBearingDeg(points: List<Pair<Double, Double>>): Double? {
       for (index in points.size - 1 downTo 1) {
         val (fromLatitude, fromLongitude) = points[index - 1]
@@ -236,7 +172,6 @@ data class RouteProgress(
       return null
     }
 
-    /** `max(15 m, 2.5 s x speed)`, capped at 60 m. A missing or nonsense speed takes the floor. */
     fun aimDistanceMeters(speedMps: Double?): Double {
       val speed = if (speedMps != null && speedMps.isFinite() && speedMps > 0) speedMps else 0.0
       return min(MAX_AIM_METERS, max(MIN_AIM_METERS, AIM_SECONDS * speed))

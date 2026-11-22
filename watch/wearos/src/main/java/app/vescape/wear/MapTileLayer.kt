@@ -29,28 +29,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.annotation.MainThread
 
-/** A tile that failed to read or decode waits this long before it is tried again. */
 private const val DECODE_RETRY_MS = 10_000L
 
 /**
- * Street-map tiles held on the wrist and a small decoded cache ([WatchMapTileCache]). The phone
- * decides what is held (one Data Layer item per tile); this only mirrors that set and decodes on
- * demand, off the main thread, as RGB_565 — the map is drawn dimmed under the gauges, and half the
- * memory of ARGB matters more than gradient fidelity. Main-thread state.
- *
- * Each held tile carries how to read its JPEG, so a source other than the Data Layer can seed it.
- *
  * @parity /watch/watchos/MapTileLayer.swift `MapTileStore`
  */
+@MainThread
 internal object MapTileState {
     val held = mutableStateOf<Map<WatchMapTile, () -> ByteArray?>>(emptyMap())
-    /** Bumped when a decode lands, so the layer redraws without recomposing. */
     val decodedVersion = mutableIntStateOf(0)
     private val decoded = WatchMapTileCache<ImageBitmap>()
     private val decoding = HashSet<WatchMapTile>()
     private val failedAtMs = HashMap<WatchMapTile, Long>()
-    /** The level the face draws at, held with the phone planner's hysteresis. */
     var zoom: Int? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -64,7 +56,6 @@ internal object MapTileState {
         forget(tile)
     }
 
-    /** A complete set on start: what synced while the app was stopped. */
     fun replace(tiles: Map<WatchMapTile, () -> ByteArray?>) {
         held.value = tiles
         decoded.retain(tiles.keys)
@@ -76,7 +67,6 @@ internal object MapTileState {
         failedAtMs.remove(tile)
     }
 
-    /** Lays out a frame and starts decoding what it waits on. Safe to call from a draw scope. */
     fun frame(cells: List<WatchMapTile>): WatchMapTileFrame {
         val frame = decoded.frame(cells, held.value.keys)
         val now = SystemClock.elapsedRealtime()
@@ -104,7 +94,6 @@ internal object MapTileState {
                 }.getOrNull()
             }
             decoding.remove(tile)
-            // A resend replaced the loader mid-decode: these are the old bytes. Redraw to read the new.
             if (held.value[tile] !== load) {
                 decodedVersion.intValue++
                 return@launch
@@ -120,13 +109,6 @@ internal object MapTileState {
 }
 
 /**
- * The dark street map under the trail and route, at the level [watchMapTileZoom] picks for the eased
- * span. Each cell shows its own tile, else the matching quarter of the one-zoom-out tile, else the
- * one-zoom-in tiles a zoom-out left ([WatchMapTileCache.frame]), so a zoom change never blanks the face.
- * Each tile's corners are placed as local metres from the rider's absolute position, then drawn with
- * the same span, course and position motion as the trail, so the streets stay under the line through
- * a zoom or a turn. Within 2 km the tile is flat enough to draw as one transformed image.
- *
  * @parity /watch/watchos/MapTileLayer.swift `MapTileLayer`
  */
 @Composable
@@ -140,7 +122,6 @@ internal fun MapTileLayer(mapView: WatchMapView) {
         val offset = mapView.positionOffset
         val center = WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx())
         val scale = WatchMapProjection.pixelsPerMetre(size.width, size.height, WatchMapProjection.ROUTE_EDGE_INSET.toPx(), mapView.spanM)
-        // Anything further from the rider than the face diagonal is off screen at any course.
         val reachM = hypot(size.width, size.height) / scale
         val zoom = watchMapTileZoom(mapView.spanM.toDouble(), anchor.latitude, MapTileState.zoom)
         MapTileState.zoom = zoom
@@ -160,7 +141,6 @@ internal fun MapTileLayer(mapView: WatchMapView) {
                     val top = center.y - placed.northM.toFloat() * scale
                     val width = (placed.eastM - placed.westM).toFloat() * scale
                     val height = (placed.northM - placed.southM).toFloat() * scale
-                    // Half a pixel of overlap hides the seam filtering leaves between neighbours.
                     translate(left - 0.5f, top - 0.5f) {
                         scale((width + 1f) / image.width, (height + 1f) / image.height, pivot = Offset.Zero) {
                             drawImage(image)
@@ -173,14 +153,9 @@ internal fun MapTileLayer(mapView: WatchMapView) {
 }
 
 private class PlacedTile(val tile: WatchMapTile, val westM: Double, val northM: Double, val eastM: Double, val southM: Double) {
-    /** Nearest point of the tile to the rider. */
     val distanceM: Double = hypot(0.0.coerceIn(westM, eastM), 0.0.coerceIn(southM, northM))
 }
 
-/**
- * Tile edges as metres east/north of the rider, including the camera's pending motion. Null for a
- * tile half a world away, whose edges wrap to opposite sides.
- */
 private fun placeTile(tile: WatchMapTile, anchor: WatchMapPosition, offsetEastM: Double, offsetNorthM: Double): PlacedTile? {
     val northWest = tile.northWest.offsetFrom(anchor)
     val southEast = tile.southEast.offsetFrom(anchor)

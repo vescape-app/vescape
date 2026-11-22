@@ -36,9 +36,6 @@ internal data class VescLiveStateSnapshot(
     val settings: AppSettings,
 )
 
-/**
- * Exact native remote-tilt command. Raw values avoid asymmetric percent rounding.
- */
 internal fun remoteTiltWire(
     value: Int,
     phase: RemoteTiltPhase,
@@ -49,9 +46,6 @@ internal fun remoteTiltWire(
     return buildMap {
         put("value", value)
         put("phase", phase.wireValue)
-        // Who asked for this tilt. The pad renders the same stream either way, but "the board is
-        // holding a tilt you did not command" and "the board is holding yours" are not the same
-        // sentence to read while standing on it.
         put("owner", owner.wire)
         if (decay != null) {
             put("decay", mapOf("elapsedMs" to decay.elapsedMs, "totalMs" to decay.totalMs))

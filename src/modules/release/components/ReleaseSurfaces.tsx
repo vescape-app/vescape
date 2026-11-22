@@ -14,16 +14,6 @@ import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { openExternalUrl } from '@/components/base/openExternalUrl'
 
-/**
- * The single mount point for every Release surface, presented one at a time in precedence order
- * (App Block, then Online Block, then Update Warning, then Community Message — see `selectReleaseSurface`). Sibling
- * modals would collide: iOS presents one modal at a time and drops the rest.
- *
- * Native owns the truth behind all three — resolved App Status (in-process) and acknowledged
- * message IDs (durable App Settings); this component only projects it and writes acknowledgements
- * back. It issues no Board Session or Ride Recording command, so active native work keeps running
- * underneath even while the app is blocked (PRD story 9).
- */
 export function ReleaseSurfaces() {
   const status = useAppStatusStore((state) => state.status)
   const versionNoticeDismissed = useAppStatusStore((state) => state.versionNoticeDismissed)
@@ -41,7 +31,6 @@ export function ReleaseSurfaces() {
   const { presented, exiting, finishExit } = useSequencedSurface(surface?.kind ?? null)
 
   const acknowledge = (id: string) => {
-    // Read the freshest list at call time so a rapid second dismiss can't drop the first ID.
     const current = useSettingsStore.getState().dismissedCommunityMessageIds
     void setSetting('dismissedCommunityMessageIds', acknowledgeCommunityMessage(current, id)).catch(
       () =>
@@ -57,7 +46,6 @@ export function ReleaseSurfaces() {
 
   const onCommunityAction = (action: CommunityMessageAction) => {
     if (!communityMessage) return
-    // An action acknowledges the message too — the type only drives presentation, not behavior.
     acknowledge(communityMessage.id)
     openExternalUrl(action.url, 'community_message_link')
   }
@@ -115,23 +103,13 @@ export function ReleaseSurfaces() {
   return null
 }
 
-/**
- * Present one surface at a time, handing over only once the outgoing one has finished fading: a
- * modal presenting while another is still dismissing is dropped on iOS.
- *
- * Swapping the message *within* the Community Message surface is not a handover — that component
- * crossfades its own content and stays mounted.
- */
 function useSequencedSurface(kind: ReleaseSurface['kind'] | null) {
   const [presented, setPresented] = useState(kind)
 
-  // Adjusted during render: nothing is on screen to wait for, and App Block cannot animate its own
-  // exit (it is also the one surface a rider can never leave), so both hand over immediately.
   if (presented !== kind && (presented === null || presented === 'app-block')) setPresented(kind)
 
   return {
     presented,
-    /** The presented surface is on its way out; render it closed until it reports back. */
     exiting: presented !== null && presented !== kind,
     finishExit: () => setPresented(kind),
   }

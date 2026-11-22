@@ -54,7 +54,6 @@ final class BoardMoveControllerTests: XCTestCase {
     XCTAssertEqual(move(0), sent.last)
     XCTAssertNil(controller.currentInput)
 
-    // The repeat loop is cancelled, not merely idle.
     let afterStop = sent.count
     tick()
     XCTAssertEqual(afterStop, sent.count)
@@ -67,8 +66,6 @@ final class BoardMoveControllerTests: XCTestCase {
     XCTAssertTrue(controller.hold(25))
     XCTAssertEqual(1, scheduler.pendingCount)
 
-    // The 1.3+ cadence would restart the firmware's current ramp ten times a second, so the motor
-    // pulses instead of moving. Every repeat of an RC_MOVE hold keeps the slower spacing.
     tick()
     XCTAssertEqual(700, scheduler.currentTimeMs)
     XCTAssertEqual(1, scheduler.pendingCount)

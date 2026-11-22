@@ -80,11 +80,10 @@ class TelemetryPipelineTest {
         val pipeline = buildPipeline()
         val session = BoardSession(id = 1)
         pipeline.beginSession(session, sessionConfig)
-        pipeline.setLiveHistoryLimitMinutes(1) // 60_000 ms window
+        pipeline.setLiveHistoryLimitMinutes(1)
 
         pipeline.process(telemetry(packetAt = 10_000L), session)
         pipeline.process(telemetry(packetAt = 20_000L), session)
-        // 80s later — both prior samples are >60s old, pruned
         pipeline.process(telemetry(packetAt = 90_000L), session)
 
         assertEquals(1, pipeline.recentSnapshot().size)
@@ -97,7 +96,6 @@ class TelemetryPipelineTest {
         val session = BoardSession(id = 1)
         pipeline.beginSession(session, sessionConfig)
 
-        // default movingSpeedThresholdCentiKmh = 300 (3 km/h)
         pipeline.process(telemetry(speed = 1.0, packetAt = 1_000L), session)
         pipeline.process(telemetry(speed = 10.0, packetAt = 2_000L), session)
 
@@ -123,9 +121,7 @@ class TelemetryPipelineTest {
 
         assertEquals(2, pipeline.recentSnapshot().size)
 
-        // Shrink to 1 minute at nowMs = 61_000 -> oldest = 1_000
-        // The first sample's lastPacketAt = 1_000, equal to oldest, retained.
-        scheduler.advance(30_000L) // now 91_000, oldest = 31_000
+        scheduler.advance(30_000L)
         pipeline.setLiveHistoryLimitMinutes(1)
 
         val remaining = pipeline.recentSnapshot()
@@ -184,9 +180,9 @@ class TelemetryPipelineTest {
         pipeline.process(telemetry(packetAt = 0L), session)
 
         scheduler.advance(500L)
-        pipeline.process(telemetry(packetAt = 500L), session) // re-arms
+        pipeline.process(telemetry(packetAt = 500L), session)
 
-        scheduler.advance(700L) // 500ms past second arm
+        scheduler.advance(700L)
         assertEquals(0, stale)
 
         scheduler.advance(500L)
@@ -247,7 +243,6 @@ class TelemetryPipelineTest {
         pipeline.beginSession(session, sessionConfig)
         pipeline.process(telemetry(speed = 20.0, packetAt = 1_000L), session)
 
-        // pitch is focused-only (not streamed on the center `onLiveSeries` set).
         assertTrue(LIVE_SERIES_METRICS.none { it.key == "pitch" })
         assertTrue(ALL_SERIES_METRICS.any { it.key == "pitch" })
         val focused = pipeline.focusedSeries("pitch")
@@ -261,7 +256,6 @@ class TelemetryPipelineTest {
         val session = BoardSession(id = 1)
         pipeline.beginSession(session, sessionConfig)
 
-        // Five samples 50ms apart: 200ms of coverage at 20Hz.
         for (i in 0 until 5) {
             pipeline.process(telemetry(speed = 20.0, packetAt = 1_000L + i * 50L), session)
         }
@@ -291,7 +285,6 @@ class TelemetryPipelineTest {
         val session = BoardSession(id = 1)
         pipeline.beginSession(session, sessionConfig)
 
-        // speed 1 km/h < 3 km/h threshold -> excluded from avg speed; the fast sample is not.
         pipeline.process(telemetry(speed = 1.0, packetAt = 1_000L), session)
         pipeline.process(telemetry(speed = 1.0, packetAt = 2_000L), session)
         pipeline.process(telemetry(speed = 10.0, packetAt = 3_000L), session)

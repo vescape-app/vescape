@@ -56,7 +56,7 @@ class WatchMirrorCoordinatorTest {
         val mapTiles = mutableListOf<WatchMapRider?>()
         val coordinator = WatchMirrorCoordinator(
             scheduler, { scheduler.currentTimeMs },
-            { WatchSnapshot(speed = if (board) 25.0 else null, dutyCycle = null, dutyExcluded = true, batterySoc = null, motorTemp = null, ctrlTemp = null, navBearing = 90.0, navDistanceM = 100.0, mapPosition = mapPosition, riderSpeedMps = 5.0, routeSpanM = 800.0) },
+            { WatchSnapshot(speed = if (board) 25.0 else null, dutyCycle = null, dutyExcluded = true, batterySoc = null, motorTemp = null, ctrlTemp = null, navBearingDeg = 90.0, navDistanceM = 100.0, mapPosition = mapPosition, riderSpeedMps = 5.0, routeSpanM = 800.0) },
             { false }, { GroupRideFrame(0.0, 600.0, emptyList()) }, transport, sources, { _, _ -> },
             { navigatingChanges++ }, { mapTiles += it },
         )
@@ -76,7 +76,7 @@ class WatchMirrorCoordinatorTest {
         assertEquals(2, h.transport.groups)
         assertEquals(8, h.transport.statuses)
         val lanes = ByteBuffer.wrap(h.transport.lastFrame).order(ByteOrder.LITTLE_ENDIAN)
-        assertTrue(lanes.getFloat(2).isNaN()) // Board lane clears while route distance remains live.
+        assertTrue(lanes.getFloat(2).isNaN())
         assertEquals(100f, lanes.getFloat(2 + 6 * 4), 0f)
         assertEquals(0, h.transport.lastFrame[1].toInt())
         h.coordinator.stop()
@@ -181,12 +181,11 @@ class WatchMirrorCoordinatorTest {
         assertEquals(2, h.transport.launches)
     }
 
-    /** Issue #550: the wrist route needs live fixes, so its demand must follow route and wrist edges. */
     @Test fun `navigating follows a drawable route on a receiving wrist`() {
         val h = Harness()
         h.coordinator.start()
         h.scheduler.advance(1000)
-        assertFalse(h.coordinator.navigating) // Asleep wrist: nothing to keep GPS on for.
+        assertFalse(h.coordinator.navigating)
         h.coordinator.acceptWakeLevel(WatchMirrorWakeLevel.ACTIVE)
         h.scheduler.advance(250)
         assertTrue(h.coordinator.navigating)
@@ -203,12 +202,11 @@ class WatchMirrorCoordinatorTest {
         assertEquals(4, h.navigatingChanges)
     }
 
-    /** Issue #551: tiles only reach an awake wrist that draws a map, around a GPS fix. */
     @Test fun `street map tiles follow an active wrist only`() {
         val h = Harness()
         h.coordinator.start()
         h.scheduler.advance(1000)
-        assertTrue(h.mapTiles.isNotEmpty() && h.mapTiles.all { it == null }) // Asleep.
+        assertTrue(h.mapTiles.isNotEmpty() && h.mapTiles.all { it == null })
         h.coordinator.acceptWakeLevel(WatchMirrorWakeLevel.ACTIVE)
         h.mapTiles.clear()
         h.scheduler.advance(250)
@@ -221,13 +219,12 @@ class WatchMirrorCoordinatorTest {
         h.mapPosition = null
         h.mapTiles.clear()
         h.scheduler.advance(250)
-        assertEquals(listOf<WatchMapRider?>(null), h.mapTiles) // No fix to plan around.
+        assertEquals(listOf<WatchMapRider?>(null), h.mapTiles)
         h.mapTiles.clear()
         h.coordinator.stop()
         assertEquals(listOf<WatchMapRider?>(null), h.mapTiles)
     }
 
-    /** Issue #554: the Street map setting pauses tiles to an active wrist and resumes them. */
     @Test fun `street map setting off pauses tiles and on resumes them`() {
         val h = Harness()
         h.active()
@@ -235,7 +232,7 @@ class WatchMirrorCoordinatorTest {
         h.mapTiles.clear()
         h.scheduler.advance(1000)
         assertTrue(h.mapTiles.isNotEmpty() && h.mapTiles.all { it == null })
-        assertTrue(h.transport.frames > 0) // Only the map pauses; frames keep flowing.
+        assertTrue(h.transport.frames > 0)
         h.coordinator.applySettings(WatchSettings(10, false, streetMapEnabled = true), 250, true)
         h.mapTiles.clear()
         h.scheduler.advance(250)

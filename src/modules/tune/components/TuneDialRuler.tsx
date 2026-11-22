@@ -38,7 +38,6 @@ import {
 } from '@/modules/tune/components/tuneDialPhysics'
 import { textAdvanceWidth } from '../../../helpers/skiaText'
 
-/** The scrolling ruler: tick marks, value labels, the previous-value mark and the edge glow. */
 export function TuneDialRuler({
   canvasWidth,
   translateX,

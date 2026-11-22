@@ -23,28 +23,21 @@ export interface PublicRideReadoutState {
   description: string
   rotation: number
   timed: boolean
-  /** Detent: 0 off, 1… a duration from `PUBLIC_RIDE_DURATIONS`, then always. */
   stop: number
 }
 
-/** A running timer, shown in place of its duration while the dial is at rest on it. */
 export interface PublicRideRunningTimer {
-  /** The duration it runs for: the dial shows it only while resting on this stop. */
   hours: number
-  /** Time left, for the title: `11 h 42 m`. */
   left: string
-  /** When it ends, for the description: `15:42`. */
   end: string
 }
 
-/** One readout line: plain text, then an accented value, then plain text again. */
 interface ReadoutParts {
   base: string
   value: string
   unit: string
 }
 
-/** Premeasure text on JS once; Skia paints detent changes without text-input or React commits. */
 export function PublicRideReadout({
   readout,
   description = false,
@@ -58,9 +51,7 @@ export function PublicRideReadout({
   readout: SharedValue<PublicRideReadoutState>
   description?: boolean
   running?: PublicRideRunningTimer | null
-  /** When each duration preset would end if picked now, for the description while dragging. */
   presetEnds?: readonly string[] | null
-  /** Replaces the description while the dial is at rest, e.g. `Connecting to server…`. */
   notice?: string | null
   dragging?: SharedValue<boolean>
   accent: string
@@ -99,8 +90,6 @@ export function PublicRideReadout({
   }, [font, description, height, left, end, presetEnds, notice])
   const parts = useDerivedValue<ReadoutParts>(() => {
     const state = readout.get()
-    // Released on a new stop, the dial moves before native reports the new timer: keep the
-    // preset until the timer matches, or the old timer's time flashes in between.
     const atRest = state.timed && !dragging?.get() && state.stop === runningStop
     if (!description) {
       return { base: atRest && left ? left : state.title, value: '', unit: '' }

@@ -24,7 +24,6 @@ interface RawSectionProps {
   empty?: string
 }
 
-/** Key/value card that renders any record as syntax-highlighted, exportable JSON. */
 export function RawSection({ title, data, exportName, empty }: RawSectionProps) {
   const neutral = useResolvedNeutralColors()
   const entries =

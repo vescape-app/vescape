@@ -34,16 +34,11 @@ interface EditBoardSettingsProps {
   linkSaving?: boolean
   keepMissingBatteryConfig: boolean
   batterySummary: BatterySummary
-  /** Board-scoped controls composed by the edit route (Board Top Speed + Alert Presets). */
   boardControls?: ReactNode
-  /** Active/dismissed Board Warning counts; the row renders only when the board has any warnings. */
   warningCounts: { active: number; dismissed: number }
-  /** Anchor for the warnings drawer, wrapped around the warnings row. */
   warningsAnchorRef: RefObject<View | null>
   onOpenWarnings: () => void
-  /** VESC Fault Occurrence count. The row is always offered, so an empty fault log is findable. */
   faultCount: number
-  /** Anchor for the faults drawer, wrapped around the faults row. */
   faultsAnchorRef: RefObject<View | null>
   onOpenFaults: () => void
   onOpenBattery: () => void

@@ -10,7 +10,6 @@ class RideHistoryPagingTest {
   private val gapMs = 30 * 60_000L
   private val base = 1_714_521_600_000L
 
-  /** Buckets page newest-first, so only the oldest ride in the window may still grow backwards. */
   @Test
   fun keepsTheRideBeingRecordedAndDropsTheOldestUnfinishedOne() {
     val buckets = listOf(
@@ -46,7 +45,6 @@ class RideHistoryPagingTest {
     assertEquals(base, complete.first().startAtMs)
   }
 
-  /** A minute with GPS fixes and no Telemetry Sample: the shape a board dropout leaves behind. */
   @Test
   fun gpsOnlyMinutesExtendTheMovingWindowAndTheRide() {
     val buckets = listOf(
@@ -60,12 +58,10 @@ class RideHistoryPagingTest {
     assertEquals(base, session.movingStartAtMs)
     assertEquals(base + 10 * 60_000L + 30_000L, session.movingEndAtMs)
     assertEquals(base + 10 * 60_000L + 30_000L, session.endAtMs)
-    // The track-only minute widens the window without pretending it held Telemetry Samples.
     assertEquals(2, session.sampleCount)
     assertEquals(2, session.avgSpeedSampleCount)
   }
 
-  /** Disconnect, app kill or auto close, then riding again inside the split window: one ride. */
   @Test
   fun disconnectMarkersNoLongerSplitARide() {
     val buckets = listOf(
@@ -79,7 +75,6 @@ class RideHistoryPagingTest {
     assertEquals(1, groupRideSessions(buckets, markers, gapMs).size)
   }
 
-  /** A long stop while still connected (Idle Pause writes no frames) splits on the frame gap. */
   @Test
   fun aFrameGapLongerThanTheSplitWindowStartsANewRide() {
     val buckets = listOf(
@@ -116,7 +111,6 @@ class RideHistoryPagingTest {
     assertEquals(listOf("board-1", "board-2"), groupRideSessions(buckets, emptyList(), gapMs).map { it.boardId })
   }
 
-  /** The Ride Dropout Grace tail after the last frame belongs to that ride. */
   @Test
   fun aGpsOnlyTailAttachesToThePrecedingRide() {
     val buckets = listOf(
@@ -135,14 +129,12 @@ class RideHistoryPagingTest {
       emptyList<RideSessionAggregate>(),
       groupRideSessions(listOf(trackOnlyBucket(start = base, end = base + 30_000L)), emptyList(), gapMs),
     )
-    // GPS 20 min after the last frame does not move the split baseline: frames 40 min apart split.
     val buckets = listOf(
       bucket(start = base, end = base + 10_000L),
       trackOnlyBucket(start = base + 20 * 60_000L, end = base + 20 * 60_000L + 10_000L),
       bucket(start = base + 40 * 60_000L, end = base + 40 * 60_000L + 10_000L),
     )
     assertEquals(2, groupRideSessions(buckets, emptyList(), gapMs).size)
-    // Another Board's GPS never joins this ride.
     val foreign = groupRideSessions(listOf(
       bucket(start = base, end = base + 10_000L),
       trackOnlyBucket(start = base + 60_000L, end = base + 70_000L).copy(boardId = "board-2"),

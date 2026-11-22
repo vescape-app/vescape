@@ -26,18 +26,8 @@ internal class PollingLoop(
     private var active = false
     private var current: Active? = null
 
-    /**
-     * EWMA of the interval between successive polls, in ms. The loop is response-paced, so the send
-     * cadence equals the achieved telemetry rate. 0 = not yet measured. Exposed as [measuredRateHz]
-     * so the UI can show the real pull rate the link is sustaining, distinct from the requested cap.
-     */
     private var smoothedPeriodMs = 0.0
 
-    /**
-     * Minimum spacing between requests, in ms. 0 = unlimited (pure response-paced). Held as a
-     * standalone field rather than inside [Active] so the rate cap can be changed live mid-session
-     * (see [setPollIntervalMs]). Volatile because live updates arrive off the loop's thread.
-     */
     @Volatile
     private var floorMs = 0L
 
@@ -56,8 +46,6 @@ internal class PollingLoop(
         transport: BoardTransport,
     ) {
         val pollPayload = pollPayload(transport)
-        // BMS is polled only when the probe proved one present (`hasBms == true`). The probe
-        // is authoritative: unknown (legacy `null`) or proven-absent (`false`) → never poll.
         val bmsPayload = if (sessionConfig.hasBms == true) bmsPayload(transport) else null
         stop()
         tick = 0L
@@ -69,11 +57,6 @@ internal class PollingLoop(
         sendNow()
     }
 
-    /**
-     * Live-update the rate cap for the active session, e.g. when the rider changes the telemetry
-     * rate limit mid-ride. The new floor lands on the next scheduled poll; pacing stays
-     * response-paced, so this never outruns the controller.
-     */
     fun setPollIntervalMs(intervalMs: Long) {
         floorMs = max(0L, intervalMs)
     }
@@ -86,12 +69,6 @@ internal class PollingLoop(
         current = null
     }
 
-    /**
-     * Called when a telemetry response for the active session arrives. Schedules the next poll
-     * response-paced: as soon as the previous response lands, respecting [SessionConfig.pollIntervalMs]
-     * as a minimum spacing floor. This self-clocks to the real link rate instead of firing on a fixed
-     * timer that can outrun the board and pile up requests.
-     */
     fun onResponse() {
         val ctx = current ?: return
         if (!active) return
@@ -107,7 +84,6 @@ internal class PollingLoop(
         return max(0, now - lastPollAt).toInt()
     }
 
-    /** Achieved telemetry rate in Hz (smoothed), or null before the second poll lands. */
     fun measuredRateHz(): Double? {
         if (smoothedPeriodMs <= 0.0) return null
         return 1_000.0 / smoothedPeriodMs
@@ -124,8 +100,6 @@ internal class PollingLoop(
         }
         lastPollAt = now
         sendPayloadWithRetry(ctx.payload, ctx.session)
-        // BMS values change slowly; poll them at 1/BMS_POLL_STRIDE of the telemetry rate
-        // to avoid crowding the BLE link with large cell-voltage replies.
         // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift (sendPoll BMS interleave)
         if (ctx.bmsPayload != null && tick % BMS_POLL_STRIDE == 0L) {
             sendPayloadWithRetry(ctx.bmsPayload, ctx.session)
@@ -139,8 +113,6 @@ internal class PollingLoop(
         val timeout = max(floorMs * 4, SAFETY_MIN_MS)
         safetyHandle = scheduler.postDelayedForSession(ctx.session, timeout, isCurrentSession) {
             safetyHandle = null
-            // No response within the safety window: assume the request or reply was dropped and re-poll
-            // so the loop recovers instead of stalling until the stale watchdog tears the session down.
             sendNow()
         }
     }
@@ -166,11 +138,8 @@ internal class PollingLoop(
     private companion object {
         const val SAFETY_MIN_MS = 1_000L
         const val BMS_POLL_STRIDE = 8L
-        // EWMA weight for the newest poll interval. Low enough to ride out jitter, high enough to
-        // track a real rate change (e.g. rider drops the rate cap mid-ride) within a second or two.
         const val RATE_SMOOTHING = 0.2
     }
 }
 
-/** Max poll rate in Hz → minimum request-spacing floor in ms. 0 (or less) = unlimited. */
 internal fun pollIntervalMsForHz(hz: Int): Long = if (hz <= 0) 0L else 1_000L / hz

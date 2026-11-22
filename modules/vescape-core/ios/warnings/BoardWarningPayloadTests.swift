@@ -1,8 +1,6 @@
 import XCTest
 @testable import VescapeCore
 
-/// Payload rounding parity: `BoardWarningPayload.round4` must round ties half away from zero on both
-/// platforms so the same detector input serializes to the same wire value.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/warnings/BoardWarningKindTest.kt
 final class BoardWarningPayloadTests: XCTestCase {
 

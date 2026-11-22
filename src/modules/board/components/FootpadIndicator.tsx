@@ -24,34 +24,25 @@ import { useResolvedColor } from '@/hooks/useTheme'
 import { HUD_IDLE_GLYPH_COLOR } from '@/modules/board/constants/telemetry'
 import { FOOTPAD_FALLBACK_THRESHOLD_V } from '@/modules/board/store/boardConfigValuesStore'
 
-/** Disabled zone (`fault_adc = 0`): the rail is still drawn so the pad keeps its shape, but muted. */
 const DISABLED_COLOR = theme.alpha(theme.palette.slate.textDim, 0.12)
 
-/** The seam between the zones: present enough to place the two rails, quiet enough to ignore. */
 const CENTER_COLOR = theme.alpha(theme.palette.slate.textDim, 0.1)
 const CENTER_DASH = [3, 4]
 
 const VALUE_COLOR = theme.palette.slate.textDim
 const VALUE_SIZE = 13
-/** Gutter as a multiple of the glyph size — `0.00V` plus a little air on each side. */
 const VALUE_GUTTER_CHARS = 3.6
 const VALUE_PAD = 8
 
-/** How much of the rail's own width the glow spreads to, once the zone engages. */
 const GLOW_WIDTH_FACTOR = 5
 const GLOW_OPACITY = 0.35
 
-/** How long a rail takes to catch up to a new reading: a few telemetry frames, enough to see it fill
- * rather than jump, short enough not to hide what the sensor reads. */
 const FILL_EASE = { duration: 120, easing: Easing.out(Easing.quad) }
 
-/** A real Onewheel pad is 25cm × 22cm; the drawing keeps that ratio so it reads as the same object. */
 const FOOTPAD_ASPECT = 22 / 25
 
 interface FootpadGeometry {
-  /** Closed pad area, never stroked — it only clips the glow to the inside of the pad. */
   interior: SkPath
-  /** The seam between the two zones. */
   center: SkPath
   left: SkPath
   right: SkPath
@@ -62,10 +53,6 @@ interface FootpadGeometry {
 
 type FootpadBase = Pick<FootpadGeometry, 'width' | 'height' | 'stroke'>
 
-/**
- * The pad outline in canvas coordinates: chamfered top corners, open sides, no bottom edge, and a
- * gap at top center where the two zones meet.
- */
 function railBox(g: FootpadBase) {
   const inset = g.stroke / 2
   const x0 = inset
@@ -76,13 +63,6 @@ function railBox(g: FootpadBase) {
   return { x0, x1, y0, y1, cx: g.width / 2, corner: span * 0.22, gap: span * 0.06 }
 }
 
-/**
- * One sensor zone's rail: up the side, over the top corner, in toward center.
- *
- * The direction matters, because the rail is filled by trimming it: the fill grows from the bottom
- * of the side upward and then inward, so a full rail reads as a foot covering the whole zone rather
- * than as a bar that happens to be long.
- */
 function buildRail(g: FootpadBase, side: -1 | 1): SkPath {
   const { x0, x1, y0, y1, cx, corner, gap } = railBox(g)
   const edgeX = side < 0 ? x0 : x1
@@ -116,7 +96,6 @@ function buildCenterLine(g: FootpadBase): SkPath {
 }
 
 function buildGeometry(width: number): FootpadGeometry {
-  // One hairline-ish weight at every size, like the rest of the app's line work.
   const base = { width, height: width * FOOTPAD_ASPECT, stroke: 1.5 }
   return {
     ...base,
@@ -128,30 +107,14 @@ function buildGeometry(width: number): FootpadGeometry {
 }
 
 interface ZoneDrive {
-  /** Trim end of the fill rail, `0…1`, eased toward the reading. Reaching `1` is the zone
-   * engaging. */
   end: SharedValue<number>
-  /** Glow opacity — `0` until the zone engages, so "full" is unmistakable at strip size. Off the
-   * raw reading, so the engagement itself is never late. */
   glow: SharedValue<number>
   disabled: boolean
 }
 
-/**
- * Drive one zone's rail from its live ADC reading against its own configured engagement voltage.
- * The zones can be configured differently, so neither may borrow the other's number.
- *
- * The threshold is a plain number captured into the worklets. These run on the UI thread on every
- * telemetry frame (~31Hz); reading a store inside them would put a subscription in the hot path.
- */
 function useZoneDrive(value: SharedValue<number | null>, threshold: number | null): ZoneDrive {
   'use no memo'
-  // No config yet (first connection, read not landed, no cache) falls back silently — the gap is
-  // seconds, and a loading state on an indicator this small would be worse than a slightly wrong
-  // scale.
   const engageAt = threshold ?? FOOTPAD_FALLBACK_THRESHOLD_V
-  // `fault_adc = 0` disables that zone's switch outright: it can never engage, so the rail stays
-  // empty for the whole session. The `footpad-disabled` Board Warning carries the explanation.
   const disabled = engageAt <= 0
   const target = useDerivedValue(() => {
     if (disabled) return 0
@@ -163,7 +126,6 @@ function useZoneDrive(value: SharedValue<number | null>, threshold: number | nul
   useAnimatedReaction(
     () => target.value,
     (next) => {
-      // Reanimated shared values are mutable handles by design.
       // eslint-disable-next-line react-hooks/immutability
       end.value = withTiming(next, FILL_EASE)
     },
@@ -172,7 +134,6 @@ function useZoneDrive(value: SharedValue<number | null>, threshold: number | nul
   return { end, glow, disabled }
 }
 
-/** One zone's live voltage as text, off the UI thread — a dash until the board is sending. */
 function useVoltsText(value: SharedValue<number | null>) {
   'use no memo'
   return useDerivedValue(() => {
@@ -189,7 +150,6 @@ interface FootpadZoneProps {
 }
 
 interface FootpadGlowProps extends FootpadZoneProps {
-  /** Opacity to draw at — the zone's own, or the shared one under Posi. */
   glow: SharedValue<number>
 }
 
@@ -204,9 +164,6 @@ function FootpadZone({ path, stroke, drive, fillColor }: FootpadZoneProps) {
         strokeJoin="round"
         color={drive.disabled ? DISABLED_COLOR : HUD_IDLE_GLYPH_COLOR}
       />
-      {/* Trimming is geometry per frame, which the canvas rules normally forbid — but the fill runs
-          along a curve that turns a corner, so no transform or linear clip can express it, and it
-          is two short contours rather than a chart's worth of points. */}
       <Path
         path={path}
         style="stroke"
@@ -221,10 +178,6 @@ function FootpadZone({ path, stroke, drive, fillColor }: FootpadZoneProps) {
   )
 }
 
-/**
- * The engaged zone's glow, spilling only into the pad. It is clipped to the interior so the light
- * reads as the pad lighting up under the foot, rather than as a halo around a line.
- */
 function FootpadGlow({ path, stroke, glow, fillColor }: FootpadGlowProps) {
   return (
     <Path
@@ -242,35 +195,17 @@ function FootpadGlow({ path, stroke, glow, fillColor }: FootpadGlowProps) {
 }
 
 export interface FootpadIndicatorProps {
-  /** Live ADC volts for each sensor zone, straight off the telemetry tick. */
   adc1: SharedValue<number | null>
   adc2: SharedValue<number | null>
-  /** `fault_adc1` / `fault_adc2` in volts; `null` when no board config is available, `0` disabled. */
   threshold1: number | null
   threshold2: number | null
-  /** Pad width in points; height follows the footpad's own proportions. */
   width?: number
-  /** Draw each zone's live voltage beside its rail. Only legible at detail size. */
   showValues?: boolean
-  /**
-   * `fault_is_dual_switch` — Refloat's "Treat Both Sensors as One (Posi)". The firmware reads the
-   * two sensors as one zone, so either one engaging engages the pad; both rails then glow together,
-   * which is the whole difference the rider needs to see. The rails still fill from their own ADC,
-   * because the sensors do read differently even when the board stops caring.
-   */
   posi?: boolean
   style?: ViewStyle
   testID?: string
 }
 
-/**
- * The footpad as a footpad: one Onewheel-shaped pad with a rail down each side, each rail filling
- * with its zone's ADC reading and full exactly when that zone engages.
- *
- * It replaces two dots, which suggested two independent switches placed side by side. There is one
- * pad, read by two sensors under its edges, and a rider standing badly loads one edge — the shape
- * has to show that.
- */
 export function FootpadIndicator({
   adc1,
   adc2,
@@ -285,8 +220,6 @@ export function FootpadIndicator({
   'use no memo'
   const fillColor = useResolvedColor(theme.palette.green.text)
   const geometry = useMemo(() => buildGeometry(width), [width])
-  // Zone 2 sits under the left edge of the pad and zone 1 under the right, the opposite of reading
-  // order. The pad is drawn the way the rider looks down at it, so the rails follow the hardware.
   const left = useZoneDrive(adc2, threshold2)
   const right = useZoneDrive(adc1, threshold1)
   const sharedGlow = useDerivedValue<number>(() => Math.max(left.glow.value, right.glow.value))
@@ -299,8 +232,6 @@ export function FootpadIndicator({
   return (
     <View style={style} testID={testID}>
       <Canvas style={{ width: geometry.width + gutter * 2, height: geometry.height }}>
-        {/* Clip nested inside the transform, never on it: a clip on a transformed node is evaluated
-            in the transformed space. */}
         <Group transform={[{ translateX: gutter }]}>
           <Path
             path={geometry.center}

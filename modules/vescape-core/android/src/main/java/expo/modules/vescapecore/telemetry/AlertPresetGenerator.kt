@@ -12,7 +12,6 @@ internal data class PresetInput(
   val topSpeedKmh: Double = 50.0,
   val hasBatteryConfig: Boolean = false,
   val distanceUnit: String = "km",
-  /** Base of the metric's config-relative points; read only when its spec has `match=on`. */
   val configBase: Double? = null,
 )
 
@@ -24,7 +23,7 @@ internal data class PresetDefinition(
 )
 internal data class PresetMatchDefinition(val fieldId: String, val levels: Map<String, List<PresetPoint>>)
 
-/** Typed catalog and pure expansion of a preset spec, shared by saved rows and unsaved wizard previews.
+/**
  * @parity /modules/vescape-core/ios/telemetry/AlertPresetGenerator.swift
  */
 internal object AlertPresetGenerator {
@@ -114,13 +113,8 @@ internal object AlertPresetGenerator {
     }
   }
 
-  /** True when [metric]'s definition ticks, so its spec may carry a `geiger=` option. */
   fun hasGeiger(metric: String): Boolean = definitions[metric]?.spec?.startsWith("geiger:") == true
 
-  /**
-   * The rules [spec] stands for. `off`, an unknown level (from a newer app), or a guard failure
-   * expands to none. `match=on` gives config-relative points; `geiger=` replaces the tick level.
-   */
   fun generate(metric: String, spec: AlertPresetSpec, input: PresetInput): List<GeneratedPresetRule> {
     require(metric in metrics) { "Unknown alert preset metric" }
     require(input.distanceUnit in setOf("km", "mi")) { "Invalid distance unit" }
@@ -156,7 +150,6 @@ internal object AlertPresetGenerator {
     match.levels.getValue(level).let { offsets -> offsets.mapIndexed { index, offset ->
       val relation = PresetRelation(match.fieldId, offset.threshold, offset.thresholdMax)
       val point = if (base == null) {
-        // No anchor yet: keep the relationship, but no firing threshold.
         PresetPoint(threshold = 0.0, repeatSeconds = offset.repeatSeconds)
       } else {
         PresetPoint(
@@ -169,10 +162,6 @@ internal object AlertPresetGenerator {
     } }
 
   /**
-   * Sound of a ladder's point [index] of [count]. A `voice:<key>` definition speaks each point with a
-   * severity by rank: the last (most severe) point `critical`, the first `info`, the rest `warning`;
-   * a one-point ladder is `critical`.
-   *
    * @parity /modules/vescape-core/ios/telemetry/AlertPresetGenerator.swift `pointSpec`
    */
   private fun pointSpec(spec: String, index: Int, count: Int): String {

@@ -198,17 +198,14 @@ for (const phase of ['connected', 'idle'] as const) {
   test(`preserves restored background trail across native status events while ${phase}`, () => {
     state.board.phase = phase
     const fixes = restoreTrail()
-    // Both platforms omit history even when native retains it for getLiveState().
     const event = { ...state, gps: { ...state.gps, recentLocations: [] } }
     onLiveState(event)
     expect(useLocationStore.getState().liveLocationHistory).toEqual(fixes)
 
-    // A latest fix arriving via status still extends the retained trail.
     const next = trailFix(40_000)
     onLiveState({ ...event, gps: { ...event.gps, latestFix: next, latestApproximateFix: next } })
     expect(useLocationStore.getState().liveLocationHistory).toEqual([...fixes, next])
 
-    // Losing GPS accuracy updates the puck without erasing the precise trail.
     const approximate = { ...trailFix(50_000), precise: false, accuracyM: 100 }
     onLiveState({
       ...event,
@@ -243,12 +240,10 @@ test('clears an old trail when a full native snapshot has no GPS state', () => {
 test('a new Board Session replaces the trail with the native snapshot', () => {
   restoreTrail()
   const fix = trailFix(40_000)
-  // A replay starts its own trail: native resets it and the session's status event omits history.
   state.board = { ...state.board, phase: 'connecting', connectionSeq: 1 }
   state.gps = { ...state.gps, recentLocations: [fix], latestFix: fix, latestApproximateFix: fix }
   onLiveState({ ...state, gps: { ...state.gps, recentLocations: [] } })
   expect(useLocationStore.getState().liveLocationHistory).toEqual([fix])
-  // Ending it hands the trail back the same way.
   state.board = { ...state.board, phase: 'idle', connectionSeq: 2 }
   state.gps = { ...state.gps, recentLocations: [], latestFix: null, latestApproximateFix: null }
   onLiveState(state)
@@ -299,7 +294,6 @@ test('a link coming up pulls the history native already holds', () => {
   const sample = { lastPacketAt: 39_000 } as LiveStateEvent['board']['recentTelemetry'][number]
   state.board = { ...state.board, phase: 'connecting', connectionSeq: 1 }
   onLiveState(state)
-  // Replay Warmup prefilled the window before the link reported connected.
   state.board = {
     ...state.board,
     phase: 'connected',
@@ -308,7 +302,6 @@ test('a link coming up pulls the history native already holds', () => {
   }
   onLiveState({ ...state, board: { ...state.board, recentTelemetry: [] } })
   expect(useBleStore.getState().lastTelemetryAt).toBe(40_000)
-  // Later status events within the session stay events.
   onLiveState({ ...state, board: { ...state.board, lastTelemetryAt: 41_000, recentTelemetry: [] } })
   expect(useBleStore.getState().lastTelemetryAt).toBe(41_000)
 })

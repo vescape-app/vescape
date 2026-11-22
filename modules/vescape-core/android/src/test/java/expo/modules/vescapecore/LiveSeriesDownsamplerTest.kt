@@ -70,9 +70,6 @@ class LiveSeriesDownsamplerTest {
 
     @Test
     fun `shared buckets are identical across sliding windows`() {
-        // Absolute grid (width = windowMs / buckets = 10): a sample's bucket depends
-        // only on its own ts, so a bucket fully inside two differently-offset windows
-        // must emit the exact same point(s) — no re-quantising as old rows prune.
         val buckets = 5
         val windowMs = 50L
         val older = (0L..49L).map { Row(it, (it % 7).toDouble()) }

@@ -2,22 +2,12 @@ import { ArrowsVerticalIcon, LightbulbFilamentIcon, QuestionIcon } from 'phospho
 import type { Icon } from 'phosphor-react-native'
 import type { AccessoryCapability, AccessoryCapabilityType } from 'vescape-core'
 
-/**
- * How each recognized capability type is presented. Purely rider-facing: titles, descriptions and
- * icons native never defines. The type slugs themselves come from `vescape-core`, which mirrors the
- * native enums.
- */
 interface CapabilityPresentation {
   title: string
   description: string
   icon: Icon
 }
 
-/**
- * A `Map`, not an object literal: the key is a wire string from an accessory, and an object lookup
- * would happily answer `constructor` or `toString` with something inherited from `Object.prototype`
- * — truthy, and missing every field this returns.
- */
 const PRESENTATION = new Map<AccessoryCapabilityType, CapabilityPresentation>([
   [
     'ground_clearance',
@@ -41,8 +31,6 @@ export function capabilityPresentation(capability: AccessoryCapability): Capabil
   const known = PRESENTATION.get(capability.type as AccessoryCapabilityType)
   if (known) return known
   return {
-    // An unrecognized type is named by its wire slug rather than hidden — an accessory advertising
-    // one is still usable for everything else it offers.
     title: capability.type,
     description: 'This app does not know this capability type yet.',
     icon: QuestionIcon,

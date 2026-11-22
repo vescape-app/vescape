@@ -7,7 +7,7 @@ final class WatchMirrorIntakeTests: XCTestCase {
   private let origin = WatchMapPosition(latitude: 51.13, longitude: 16.99)
   private let frame = WatchFrame(
     speed: 21, duty: 40, battery: 80, motorTemp: 30, ctrlTemp: 25,
-    navBearing: 30, navDistanceM: 150, riderEastM: 12, riderNorthM: 20, courseDeg: 90,
+    navBearingDeg: 30, navDistanceM: 150, riderEastM: 12, riderNorthM: 20, courseDeg: 90,
     trail: [WatchTrailPoint(eastM: -12, northM: -20), WatchTrailPoint(eastM: 0, northM: 0)],
     mapPosition: WatchMapPosition(latitude: 50, longitude: 20)
   )
@@ -29,13 +29,13 @@ final class WatchMirrorIntakeTests: XCTestCase {
     intake.acceptRoute(nil)
     intake.acceptRouteStatus(WatchRouteStatusCodec.encode(WatchRouteStatus(phase: .idle)))
     var withoutNavigation = frame
-    withoutNavigation.navBearing = nil
+    withoutNavigation.navBearingDeg = nil
     withoutNavigation.navDistanceM = nil
     withoutNavigation.riderEastM = nil
     withoutNavigation.riderNorthM = nil
     intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(withoutNavigation), receivedAtMs: 1_250, appliedAtMs: 1_250)
     XCTAssertNil(intake.route)
-    XCTAssertNil(intake.mirror.frame?.navBearing)
+    XCTAssertNil(intake.mirror.frame?.navBearingDeg)
     XCTAssertEqual(intake.mirror.frame?.trail, frame.trail)
     XCTAssertEqual(intake.mirror.frame?.mapPosition, frame.mapPosition)
 
@@ -71,14 +71,10 @@ final class WatchMirrorIntakeTests: XCTestCase {
     atMs += 60_000
     intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: atMs, appliedAtMs: atMs)
     intake.acceptTelemetry(WatchMirrorReplayAdapter.telemetry(frame), receivedAtMs: atMs + 250, appliedAtMs: atMs + 250)
-    // The next drop is caught at the cadence's window, not the 30 s cap.
     intake.refresh(nowMs: atMs + 250 + 751)
     XCTAssertEqual(intake.mirror.status, .disconnected)
   }
 
-  /// Regression: the watchOS simulator delivers each second's frames as one burst. A window sized
-  /// by the last gap (~0 inside a burst) dropped to the floor and blinked the mirror offline in every
-  /// pause between bursts.
   func testBurstDeliveryStaysLiveBetweenBurstsAndTheWindowShrinksBackOnceTheCadenceSteadies() {
     var intake = WatchMirrorIntake()
     for burstAtMs in stride(from: Int64(1_000), through: 3_000, by: 1_000) {
@@ -159,8 +155,6 @@ final class WatchMirrorIntakeTests: XCTestCase {
     XCTAssertNil(intake.route)
   }
 
-  /// Issue #551: the phone's tile list survives a context without one, so tiles are not dropped by
-  /// a payload this build cannot read.
   func testMapTileListIsReplacedOnlyByAReadableList() {
     var intake = WatchMirrorIntake()
     let list = WatchMapTileList(style: "a/b", tiles: [WatchMapTile(z: 15, x: 1, y: 2)])

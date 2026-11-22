@@ -15,11 +15,6 @@ import Mapbox from '@rnmapbox/maps'
 import type { MainViewState } from '@/screens/main/mainViewState'
 import { baseStyleLayerIds } from '@/screens/main/map/baseStyleLayerIds'
 
-/**
- * Resolves the requested map style into everything the map view and the `existing`
- * layer overrides need: which style source to hand Mapbox, and how the current mode
- * tints it.
- */
 export function useResolvedMapStyle({
   mapStyleKey,
   mode,
@@ -98,8 +93,6 @@ export function useResolvedMapStyle({
         : undefined
   const existingLayerIds = useMemo(() => baseStyleLayerIds(styleJSON), [styleJSON])
 
-  // Signed by the style document Mapbox actually receives. A theme change replaces the
-  // satellite backdrop, so it must wait for the new document before adopting its layers.
   const styleSignature = styleJSON
     ? isMapy
       ? 'json:blank'

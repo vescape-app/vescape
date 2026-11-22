@@ -23,7 +23,6 @@ const SIZES = { sm: 38, md: 50, lg: 54 } as const
 const ICON_SIZES = { sm: 18, md: 21, lg: 22 } as const
 const RING_STROKE = 2.5
 
-/** Determinate ring hugging the button's border, filling clockwise from the top. */
 function ProgressRing({
   dim,
   color,
@@ -33,7 +32,6 @@ function ProgressRing({
   color: ThemeColor
   progress: number
 }) {
-  // Skia needs a color string, not a native adaptive color object.
   const ringColor = useResolvedColor(color)
   const path = useMemo(() => {
     const inset = RING_STROKE / 2
@@ -63,41 +61,25 @@ function ProgressRing({
   )
 }
 
-/**
- * An alternate identity the button wears while something important is happening behind it — the
- * Social button becoming a live Group Ride, the Settings gear becoming an available update or a
- * running backup. The resting icon stays the component's own; a takeover only overrides.
- */
 export interface IconButtonTakeover {
-  /** Replaces the resting icon. Omit to keep it and only recolor. */
   icon?: Icon
-  /** Replaces the icon and border color. */
   accent?: ThemeColor
-  /** 0–1 determinate ring drawn around the button. Omit for indeterminate work. */
   progress?: number
 }
 
-/**
- * `soft` is the default control surface (tinted by `accent`), `solid` a stronger accent fill,
- * `outline` a transparent surface with an accent ring, `ghost` a bare icon with no ring.
- */
 export type IconButtonVariant = 'soft' | 'solid' | 'outline' | 'ghost'
 
 interface IconButtonProps {
   icon: Icon
   onPress: () => void
-  /** Alternate icon/accent/progress for an active background state. Null when resting. */
   takeover?: IconButtonTakeover | null
   onLongPress?: () => void
   size?: keyof typeof SIZES
   variant?: IconButtonVariant
   disabled?: boolean
   destructive?: boolean
-  /** Override the icon + border colour to signal an active state. */
   accent?: ThemeColor
-  /** Override the icon colour only, leaving the border as the plain control border. */
   iconColor?: ThemeColor
-  /** Show a small pulsing badge dot in this colour (e.g. nearby Group Rides). */
   dot?: ThemeColor
   loading?: boolean
   style?: StyleProp<ViewStyle>
@@ -112,7 +94,6 @@ function getBackground(
 ): ThemeColor {
   if (variant === 'outline' || variant === 'ghost') return theme.alpha(theme.palette.mono.black, 0)
   if (!accent) return theme.control.background
-  // A single accent has no matching palette `bg` token, so the solid fill is the accent at 0.3.
   return variant === 'solid' ? theme.alpha(accent, 0.3) : coloredSurface
 }
 
@@ -137,17 +118,11 @@ export function IconButton({
   const dim = SIZES[size]
   const iconSize = ICON_SIZES[size]
   const Icon = takeover?.icon ?? RestingIcon
-  // A takeover outranks `accent`: it is the state the Rider needs to see right now.
   const activeAccent = takeover?.accent ?? accent
-  // `destructive` puts the icon on a navy control surface, so it uses the bright red tint
-  // (readable on navy in both appearances) instead of `status.error.text`, which is a dark
-  // red meant for light surfaces.
   const resolvedIconColor = destructive
     ? theme.palette.red.light
     : (activeAccent ?? iconColor ?? theme.control.icon)
   const borderColor = destructive ? theme.palette.red.light : (activeAccent ?? theme.control.border)
-  // Colored actions (destructive, accent, takeover) wear the two-layer colored surface; a plain
-  // button keeps the navy control surface. Hook runs unconditionally; result ignored when plain.
   const coloredAccent = destructive ? theme.palette.red.light : activeAccent
   const coloredSurface = useColoredAction(coloredAccent ?? theme.control.background)
   const background = getBackground(variant, coloredAccent, coloredSurface)

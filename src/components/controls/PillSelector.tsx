@@ -53,7 +53,6 @@ interface PillSelectorProps {
   contained?: boolean
   fitContent?: boolean
   showFullLabel?: boolean
-  /** Center the selected full-label tab, clamped to the padded ends of the row. */
   centerActive?: boolean
   variant?: 'control' | 'lightTabs'
   style?: StyleProp<ViewStyle>

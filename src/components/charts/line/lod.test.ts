@@ -39,7 +39,6 @@ test('a lone spike survives at every level', () => {
     expect(found).toBe(true)
   }
   expect(pyramid.maxValue).toBe(999)
-  // The spike is preserved with its own timestamp, not the bucket's.
   const coarsest = pyramid.levels[pyramid.levels.length - 1]
   for (let i = 0; i < coarsest.count; i += 1) {
     if (coarsest.data[i * LOD_STRIDE + LOD_V_MAX] === 999) {

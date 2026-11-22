@@ -51,7 +51,6 @@ platform ??= await select('Preview platform', [
   { label: 'Both', value: 'both' as const },
 ])
 
-/** Boots the Wear emulator, then builds and installs the current watch app; returns its serial. */
 async function readyWatch(): Promise<string> {
   const findWatch = () => listAdbDevices().find((it) => it.isWatch && it.isEmulator)
   if (!findWatch()) await runOrDie(['bun', 'run', 'scripts/wear.ts', 'emulator'])
@@ -76,19 +75,12 @@ async function readyWatch(): Promise<string> {
 }
 
 const MIRROR_ACTIVITY = 'app.vescape.wear.MainActivity'
-/** Long enough for the restarted Mirror to draw its first replayed frame before footage starts. */
 const WATCH_LAUNCH_MS = 2000
 
-/**
- * Starts the wrist on `watch-preview.jsonl`, the phone's recording reduced to lanes on its real GPS
- * track, at the point the phone's replay has reached. No Data Layer: the emulators' pairing is not
- * reliable enough to film, so the wrist is fed what the phone would have sent it.
- */
 async function startWatchReplay(watch: string, phone: string): Promise<void> {
   const log = await capture(['adb', '-s', phone, 'logcat', '-d', '-s', 'VescSession:D'])
   const startedAt = [...log.matchAll(/replay playback started .*wallMs=(\d+)/g)].at(-1)?.[1]
   if (!startedAt) throw new Error(`No replay playback start in ${phone} logcat`)
-  // `wallMs` is the wall time of the recording's start: the phone prefills its warmup, then plays in real time.
   const epoch = Number(startedAt)
   await runOrDie([
     'adb',
@@ -121,7 +113,6 @@ async function film(driver: CaptureDriver): Promise<void> {
   await driver.requireAwakeDisplay()
   await driver.stageFixtures()
   await driver.pinLocation()
-  // Android takes always film the Wear emulator too, booting it when needed.
   const watch = driver.platform === 'android' ? await readyWatch() : null
   const adb = (...args: string[]) => ['adb', '-s', driver.deviceId, ...args]
   const oldTouches =
@@ -140,15 +131,12 @@ async function film(driver: CaptureDriver): Promise<void> {
   const watchRecording = watch
     ? new PreviewRecording({ platform: 'android', deviceId: watch }, outDir, 'watch')
     : null
-  // The take starts only once the wrist replays from where the phone is, never on its idle screen.
   const recording = new PreviewTake(
     watchRecording ? [phoneRecording, watchRecording] : [phoneRecording],
     watch ? () => startWatchReplay(watch, driver.deviceId) : undefined,
   )
   const watchAdb = (...args: string[]) => ['adb', '-s', watch!, ...args]
   let failure: unknown = null
-  // Maestro's JS HTTP client runs on the host. Start only after its driver, launch and fixture
-  // restore are ready; otherwise XCTest startup alone adds tens of seconds of dead footage.
   const token = crypto.randomUUID()
   const server = Bun.serve({
     hostname: '127.0.0.1',
@@ -177,11 +165,9 @@ async function film(driver: CaptureDriver): Promise<void> {
   process.on('SIGINT', cancel)
   process.on('SIGTERM', cancel)
   try {
-    // Native adaptive surfaces and the keyboard must also be dark throughout the take.
     await runOrDie(appearanceCommand(driver.platform === 'ios' ? 'dark' : 'yes'))
     await driver.setChrome(true)
     if (watch) {
-      // Out of ambient mode for the whole take.
       await runOrDie(watchAdb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'))
       await runOrDie(watchAdb('shell', 'svc', 'power', 'stayon', 'true'))
     }

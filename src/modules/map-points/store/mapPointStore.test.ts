@@ -3,7 +3,6 @@ import type { MapPoint, MapPointCategory, MapPointPatch, MapPointReaction } from
 
 const actualVescapeCore = await import('@/../modules/vescape-core/src/index')
 
-/** One server-shaped Map Point; only the fields a test cares about need overriding. */
 function serverPoint(overrides: Partial<MapPoint> & Pick<MapPoint, 'id'>): MapPoint {
   return {
     category: 'drop',
@@ -21,7 +20,6 @@ function serverPoint(overrides: Partial<MapPoint> & Pick<MapPoint, 'id'>): MapPo
   }
 }
 
-/** Native rejects with a coded error; the store turns the code into rider-facing words. */
 class ApiError extends Error {
   constructor(readonly code: string) {
     super(code)
@@ -31,7 +29,6 @@ class ApiError extends Error {
 let nearbyResult: { items: MapPoint[]; truncated: boolean } = { items: [], truncated: false }
 let nearbyError: Error | null = null
 let writeError: Error | null = null
-/** Set to hold the next read open, so a second read can be started mid-flight. */
 let releaseNearby: (() => void) | null = null
 
 const getNearbyMapPoints = mock(async (_lat: number, _lng: number, _radius: number) => {
@@ -120,7 +117,6 @@ test('a camera nudge inside the last radius does not re-read', async () => {
   expect(getNearbyMapPoints).toHaveBeenCalledTimes(1)
 })
 
-/** The new circle sits inside the one already read, so its points are already on screen. */
 test('zooming into an already-read area does not re-read', async () => {
   nearbyResult = { items: [serverPoint({ id: 'a' })], truncated: false }
   await useMapPointStore.getState().refreshNearby(52.1, 21.1, 12)
@@ -129,7 +125,6 @@ test('zooming into an already-read area does not re-read', async () => {
   expect(getNearbyMapPoints).toHaveBeenCalledTimes(1)
 })
 
-/** Unless the server said there were more than it returned — then zooming in reveals them. */
 test('zooming into a truncated area re-reads', async () => {
   nearbyResult = { items: [serverPoint({ id: 'a' })], truncated: true }
   await useMapPointStore.getState().refreshNearby(52.1, 21.1, 12)
@@ -145,7 +140,6 @@ test('panning far enough re-reads around the new centre', async () => {
   expect(getNearbyMapPoints).toHaveBeenCalledTimes(2)
 })
 
-/** Map Points are server-owned, so a failed read has nothing to fall back on. */
 test('a failed read empties the map and reports why', async () => {
   nearbyResult = { items: [serverPoint({ id: 'a' })], truncated: false }
   await useMapPointStore.getState().refreshNearby(52.1, 21.1, 14)
@@ -158,7 +152,6 @@ test('a failed read empties the map and reports why', async () => {
   expect(state.error).toBe('Could not reach the server. Map features need a connection.')
 })
 
-/** Offline, every camera idle retries and fails; a fresh [] each time re-rendered the map tree. */
 test('repeated failed reads keep the same empty set', async () => {
   nearbyError = new ApiError('MAP_POINT_UNREACHABLE')
   await useMapPointStore.getState().refreshNearby(52.1, 21.1, 14)
@@ -169,7 +162,6 @@ test('repeated failed reads keep the same empty set', async () => {
   expect(useMapPointStore.getState().mapPoints).toBe(empty)
 })
 
-/** Otherwise a rider parked on the spot would sit on an empty map until they panned far enough. */
 test('a still camera retries after a failed read', async () => {
   nearbyError = new ApiError('MAP_POINT_UNREACHABLE')
   await useMapPointStore.getState().refreshNearby(52.1, 21.1, 14)
@@ -183,10 +175,6 @@ test('a still camera retries after a failed read', async () => {
   expect(useMapPointStore.getState().error).toBeNull()
 })
 
-/**
- * The camera only idles again when the rider moves it again, so a target dropped mid-flight would
- * strand the map on the previous area.
- */
 test('a camera move during a read is served once the read settles', async () => {
   nearbyResult = { items: [serverPoint({ id: 'first' })], truncated: false }
   releaseNearby = () => {}

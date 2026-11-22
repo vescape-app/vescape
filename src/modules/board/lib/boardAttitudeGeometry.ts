@@ -1,4 +1,3 @@
-/** Orthographic XR pictogram dimensions, in model units. Centered on the wheel axle. */
 export const ATTITUDE_EXTENT = 480
 export const TIRE_RADIUS = 78
 export const TIRE_HALF_WIDTH = 43
@@ -62,11 +61,6 @@ function plane(yScale: number, yOffset = 0, xScale = 1, xOffset = 0): AttitudeMa
   return [xScale, 0, xOffset, 0, yScale, yOffset, 0, 0, 1]
 }
 
-/**
- * Roll changes plane transforms and which faces are in front. Pitch is a separate 2D rotation,
- * preserving the strip's existing clockwise-positive convention. Yaw turns the board toward
- * its nose or tail with orthographic projection.
- */
 export function boardAttitudePose(
   rollDegrees: number | null,
   railThickness = RAIL_THICKNESS,
@@ -80,7 +74,6 @@ export function boardAttitudePose(
   'worklet'
   const roll = rollDegrees != null && Number.isFinite(rollDegrees) ? rollDegrees : 0
   const angle = (roll % 360) * (Math.PI / 180)
-  // Exact edge-on poses must not leave nearly-singular slivers in the renderer.
   const rawSin = Math.sin(angle)
   const rawCos = Math.cos(angle)
   const sin = Math.abs(rawSin) < 1e-8 ? 0 : rawSin
@@ -109,7 +102,6 @@ export function boardAttitudePose(
     tread: [yawCos, yawSin, 0, 0, Math.abs(sin), 0, 0, 0, 1] as AttitudeMatrix,
     top: [yawCos, yawSin, 0, 0, -sin, -(railThickness / 2) * cos, 0, 0, 1] as AttitudeMatrix,
     bottom: [yawCos, yawSin, 0, 0, -sin, (railThickness / 2) * cos, 0, 0, 1] as AttitudeMatrix,
-    // Cap coordinates are (end bevel distance, board width). The ends are diagonal cuts.
     rightCap: [
       yawCos,
       yawSin,
@@ -132,8 +124,6 @@ export function boardAttitudePose(
       0,
       1,
     ] as AttitudeMatrix,
-    // Skia discards singular matrices. A static side-on contour takes over within
-    // a subpixel distance of 90 degrees, so the wheel and rails never disappear.
     edgeOnOpacity: Math.max(0, 1 - Math.abs(cos) / 0.03),
     topVisible: sin >= 0 ? 1 : 0,
     bottomVisible: sin < 0 ? 1 : 0,

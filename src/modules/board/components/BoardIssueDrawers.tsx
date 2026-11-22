@@ -19,10 +19,6 @@ interface BoardIssueDrawersProps {
   onCloseFaults: () => void
 }
 
-/**
- * The two trouble drawers, mounted once above every surface that can open them — the pill badges
- * and the board selector's links strip both point here rather than owning a copy.
- */
 export function BoardIssueDrawers({
   issues,
   activeBoardId,

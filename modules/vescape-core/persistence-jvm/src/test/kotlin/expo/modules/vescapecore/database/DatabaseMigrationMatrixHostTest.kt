@@ -15,12 +15,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Room migration tests that start from the committed schema exports in `android/schemas/`: each one
- * is the database exactly as Room created it fresh at that version. Versions that only ever existed
- * as an intermediate step (10, 23, 28, 30, 33–35, 37–39, 41, 44–47, 50) have no export; every
- * migration edge still runs on the way up from v3.
- */
 class DatabaseMigrationMatrixHostTest {
   private val schemas = Path.of("../android/schemas")
 
@@ -47,7 +41,6 @@ class DatabaseMigrationMatrixHostTest {
     if (it.step() && !it.isNull(0)) it.getLong(0) else null
   }
 
-  /** Runs production edges one by one on an open connection, for tests that seed between steps. */
   private fun migrate(db: SQLiteConnection, from: Int, to: Int) {
     var version = from
     while (version < to) {
@@ -86,10 +79,6 @@ class DatabaseMigrationMatrixHostTest {
       files.map { it.fileName.toString().removeSuffix(".json").toInt() }.toList()
     }.sorted()
 
-  /**
-   * Creates [start] from its export, lets [seed] write rows in that version's shape, migrates to the
-   * current version with Room validating every table, and hands the result to [check].
-   */
   private fun migrateFromExport(
     start: Int,
     reached: MutableSet<Pair<Int, Int>> = mutableSetOf(),
@@ -103,7 +92,6 @@ class DatabaseMigrationMatrixHostTest {
     return path
   }
 
-  /** The v3 rows every era test starts from: one Board, one Alert, one frame, one bucket. */
   private fun SQLiteConnection.seedV3Board() {
     exec("INSERT INTO boards VALUES ('board-era3','Era Three','kept','ble-era3',1,100,42.0,63.0)")
     exec("INSERT INTO alerts VALUES ('alert-era3','speed',21.5,NULL,1,'beep',101)")
@@ -111,7 +99,6 @@ class DatabaseMigrationMatrixHostTest {
     exec("INSERT INTO telemetry_minute_buckets VALUES (960,'ble-era3','Era Three',2,1000,1010,2400,1300,50000,1200,800,700,0,100,120,1,1,20,300)")
   }
 
-  /** An open connection on [version] exactly as Room created it, for tests that step edge by edge. */
   private fun createFromExport(version: Int, path: Path): SQLiteConnection =
     MigrationTestHelper(schemas, path, BundledSQLiteDriver(), VescapeRoomDatabase::class).createDatabase(version)
 
@@ -129,11 +116,6 @@ class DatabaseMigrationMatrixHostTest {
     assertEquals(DatabaseMigrations.all.map { it.startVersion to it.endVersion }.toSet(), reached)
   }
 
-  /**
-   * Room rewrites the current export on every build, so a file that is untracked or differs from
-   * git means the version was bumped without committing its export, or entities changed without a
-   * version bump.
-   */
   @Test fun currentSchemaExportIsCommittedAsBuilt() {
     val export = schemas.resolve("${VescapeRoomDatabase::class.qualifiedName}/$VESCAPE_DATABASE_VERSION.json").toString()
     fun git(vararg args: String) = ProcessBuilder("git", *args).inheritIO().start().waitFor()
@@ -141,7 +123,6 @@ class DatabaseMigrationMatrixHostTest {
     assertEquals("$export changed: bump VESCAPE_DATABASE_VERSION or commit the export", 0, git("diff", "--quiet", "--", export))
   }
 
-  /** A v3 phone that never updated reaches today with its Board, telemetry, and buckets intact. */
   @Test fun v3BoardTelemetryAndBucketsSurviveTheWholeUpgrade() {
     val path = migrateFromExport(3, seed = { seedV3Board() }) {
       assertEquals("Era Three", text("SELECT name FROM boards WHERE id='board-era3'"))
@@ -158,7 +139,6 @@ class DatabaseMigrationMatrixHostTest {
       assertEquals(120L, bucket("last_odometer_cm"))
       assertEquals(20L, bucket("gps_distance_cm"))
       assertEquals(null, bucket("moving_speed_sample_count"))
-      // Before v50's Alert Presets existed nothing was selected, so every metric is Off (#591).
       for (metric in listOf("speed", "duty", "motor-temp", "controller-temp", "battery")) {
         assertEquals(metric, "preset(off)", text("SELECT spec FROM alerts WHERE id='preset:$metric'"))
       }
@@ -167,7 +147,6 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
-  /** v12 replaced the single settings row with key-value settings; the old row is not carried. */
   @Test fun v4SingletonSettingsGiveWayToKeyValueSettings() {
     val path = migrateFromExport(4, seed = {
       exec("INSERT INTO app_settings (id,live_history_limit,auto_connect,auto_recording) VALUES (1,17,0,1)")
@@ -195,7 +174,6 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
-  /** Single alerts carry their beep count in the sound string (#578); the column is gone. */
   @Test fun v32AlertSoundsBecomeSpecs() {
     val path = migrateFromExport(32, seed = {
       exec("INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at,beep_count) VALUES ('board-era3','speech-era32','speed',20,1,'tts:Slow down',3200,3)")
@@ -227,7 +205,6 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
-  /** The v49 Alert Preset Board Settings and copied preset rows fold into one row per metric (#591). */
   @Test fun v49AlertPresetSettingsFoldIntoPresetRows() {
     val path = migrateFromExport(49, seed = {
       exec("INSERT INTO boards (id,name,created_at) VALUES ('board-era3','Era Three',100)")
@@ -253,7 +230,6 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
-  /** v54 rebuilds `alerts` and `tune_profiles`; every column keeps its non-default value. */
   @Test fun v53AlertAndTuneRowsKeepEveryColumnThroughTheRebuild() {
     val alert = "board_id,id,control_id,threshold,threshold_max,threshold_kind,config_field_id,threshold_offset,threshold_max_offset,enabled,spec,created_at,repeat_every_seconds"
     val tune = "id,board_id,refloat_base_version,name,icon,color,fields_json,created_at,updated_at"
@@ -268,10 +244,6 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
-  /**
-   * v55 keys the Ride Track on `boards.key` (#684). Every fix keeps its owner, an orphan
-   * `board_id` in the track or the frames becomes a tombstoned Board, and a re-run changes nothing.
-   */
   @Test fun v54RideTrackMovesToBoardKeyAndMintsOrphans() {
     val path = migrateFromExport(54, seed = {
       exec("INSERT INTO boards (id,name,created_at) VALUES ('board-b','B',200),('board-a','A',100)")
@@ -297,7 +269,6 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
-  /** v56 adds Telemetry Chunks (#687): every frame stays in the buffer, the chunk table starts empty. */
   @Test fun v55FramesStayInTheBufferBesideAnEmptyChunkTable() {
     val path = migrateFromExport(55, seed = {
       exec("INSERT INTO boards (id,name,created_at) VALUES ('board-a','A',100)")
@@ -311,7 +282,6 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
-  /** The first Android backups (v14) and the Privacy Zone era (v18–v20) the iOS host restores. */
   @Test fun exportAuthenticFirstAndroidBackupGenerationForIOSHost() {
     if (System.getenv("VESCAPE_BACKUP_PHASE") != "export-android") return
     val exchange = System.getenv("VESCAPE_BACKUP_EXCHANGE")?.let(::File) ?: return
@@ -338,10 +308,6 @@ class DatabaseMigrationMatrixHostTest {
   }
 
   /**
-   * v51 folds each live Board's own settings and old preset rows (#591): nothing leaks between
-   * Boards, a tombstone gets no preset rows, geiger falls back to the old rows, and a metric whose
-   * old preset points were all disabled becomes Off while a partly disabled ladder keeps its level.
-   * A plain Normal level is the app default and writes no row; an unset level stays an explicit Off.
    * @parity /modules/vescape-core/ios/database/DatabaseMigrationTests.swift `testPresetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints`
    */
   @Test fun presetRowsMigrationKeepsBoardsApartAndHonoursDisabledPoints() {
@@ -378,7 +344,6 @@ class DatabaseMigrationMatrixHostTest {
       )
       assertEquals(
         mapOf(
-          // Normal with no options is the app default: no row.
           "preset:duty" to "preset(off):geiger=mid,match=on",
           "preset:motor-temp" to "preset(off)",
           "preset:controller-temp" to "preset(off)",
@@ -392,9 +357,6 @@ class DatabaseMigrationMatrixHostTest {
   }
 
   /**
-   * v52 drops durable recording identity (ADR 0041): two recordings of one Board in one minute fold
-   * into one bucket, legacy fixes without accuracy keep reading as precise, and Room opens the
-   * result against the production entities.
    * @parity /modules/vescape-core/ios/database/DatabaseMigrationTests.swift `testDropRideRecordingsFoldsSharedMinutes`
    */
   @Test fun dropRideRecordingsFoldsSharedMinutes() {
@@ -454,7 +416,6 @@ class DatabaseMigrationMatrixHostTest {
     }
   }
 
-  /** The released v22 Tune Profile had no presentation columns; the upgrade adds them with defaults. */
   @Test fun authenticReleasedV22TuneShapeKeepsRowsWhenAddingPresentationColumns() {
     val path = Files.createTempFile("vescape-authentic-v22-", ".db").also(Files::delete)
     createFromExport(22, path).use { db ->

@@ -14,12 +14,9 @@ interface MapRevealGestureProps {
   onZoom: (scale: number) => void
   onZoomEnd: () => void
   onReveal: () => void
-  /** A pinch started after the drag had already committed — undo the reveal. */
   onRevealCancel: () => void
   onFinish: (revealed: boolean) => void
-  /** Off outside telemetry: the whole area then lets touches through to the map. */
   enabled: boolean
-  /** Holds the drag but keeps the face touchable, e.g. while the telemetry panel is open. */
   paused?: boolean
 }
 
@@ -28,7 +25,6 @@ interface MapRevealGestureViewProps extends MapRevealGestureProps {
 }
 
 const REVEAL_DISTANCE_DP = 120
-/** How long a finished single-finger drag waits for a pinch to claim the touch sequence. */
 const PINCH_GRACE_MS = 120
 const FADE_TIMING = { duration: 260 } as const
 const REVEAL_SPRING = {
@@ -53,11 +49,7 @@ function createMapRevealGesture({
 }: MapRevealGestureProps) {
   let completed = false
   let pinching = false
-  // Sticky for the whole touch sequence: once a second finger has been down, this was a pinch.
   let multiTouch = false
-  // The pan is single-pointer, so it finalizes the instant a second finger lands — before the
-  // pinch it belongs to has begun. Settling there would tear down the gesture (and with it the
-  // chance to undo a reveal), so the settle waits for the pinch, or for the grace window.
   let pendingSettle: { revealed: boolean } | null = null
   let settleTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -113,13 +105,9 @@ function createMapRevealGesture({
     })
     .onUpdate((event) => {
       const distance = Math.hypot(event.translationX, event.translationY)
-      // A second finger on the screen means a pinch, never a reveal — the drag may still pan the
-      // map preview, but it must not commit the mode switch.
       const shouldReveal = distance >= REVEAL_DISTANCE_DP && !multiTouch && !pinching
       const nextProgress = Math.min(1, distance / REVEAL_DISTANCE_DP)
       dragOpacity.value = nextProgress
-      // The map always tracks the finger one to one. A drag that never reaches
-      // the reveal distance is undone by the spring back to live follow.
       if (completed) {
         onPan(event.translationX, event.translationY, 1)
         return
@@ -140,8 +128,6 @@ function createMapRevealGesture({
     .onFinalize(() => {
       const wasCompleted = completed
       completed = false
-      // A pinch is running, or a second finger just landed and one is about to begin: hold the
-      // settle so the reveal can still be undone.
       if (pinching || multiTouch) {
         deferSettle(wasCompleted)
         return
@@ -154,15 +140,11 @@ function createMapRevealGesture({
     .runOnJS(true)
     .onBegin(() => {
       pinching = true
-      // The fingers of a pinch rarely land together: the first one can travel past the reveal
-      // distance before the second arrives, committing a mode switch the rider never asked for.
-      // Undo it as soon as the pinch proves the intent was a zoom.
       if (completed || pendingSettle?.revealed) onRevealCancel()
       if (settleTimer) {
         clearTimeout(settleTimer)
         settleTimer = null
       }
-      // Whatever the pan left pending is now a plain cancel, settled when the pinch ends.
       if (pendingSettle) pendingSettle = { revealed: false }
       completed = false
       multiTouch = true
@@ -206,8 +188,6 @@ export function MapRevealGesture({
   children,
 }: MapRevealGestureViewProps) {
   'use no memo'
-  // The detector only exists while a drag is possible and none is running yet, so any value left
-  // here by an earlier tree (a Fast Refresh mid-reveal) is stale and would fade the face out.
   useEffect(() => {
     progress.value = 0
     dragOpacity.value = 0
@@ -254,10 +234,6 @@ export function MapRevealGesture({
     ],
   )
 
-  // The detector wraps the telemetry face rather than sitting under it. Gesture handler only
-  // delivers a touch to the handlers on its target view and that view's ancestors, so a finger
-  // landing on a gauge is invisible to a sibling detector — the pinch it belongs to never begins
-  // and the other finger reads as a lone drag into map mode.
   return (
     <GestureDetector gesture={gesture}>
       <View pointerEvents={enabled ? 'auto' : 'none'} style={styles.hitArea}>

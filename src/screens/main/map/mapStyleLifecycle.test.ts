@@ -27,13 +27,11 @@ describe('serialized map style loading', () => {
     let state = initialMapStyleLifecycle(dark)
     state = mapStyleLifecycle(state, { type: 'request', document: light })
     state = mapStyleLifecycle(state, { type: 'request', document: streets })
-    // Until the old native load completes, neither intermediate request reaches Mapbox.
     expect(state.applied).toBe(dark)
     expect(state.phase).toBe('loading')
     state = mapStyleLifecycle(state, { type: 'loaded', generation: 0 })
     expect(state.phase).toBe('detaching')
     expect(state.applied).toBe(dark)
-    // A duplicate completion during the layer-removal commit cannot release the next style.
     expect(mapStyleLifecycle(state, { type: 'loaded', generation: 0 })).toBe(state)
     state = mapStyleLifecycle(state, { type: 'apply' })
     expect(state.applied).toBe(streets)

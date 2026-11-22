@@ -89,10 +89,7 @@ let liveSeriesSub: EventSubscription | null = null
 let focusedSeriesSub: EventSubscription | null = null
 let bmsSub: EventSubscription | null = null
 let bmsSeriesSub: EventSubscription | null = null
-// The high-res focused stream only runs while a `/control` detail chart is mounted.
-// Ref-counted per metric so native emits `onFocusedSeries` only for focused metrics.
 const focusedSeriesRefs = new Map<string, number>()
-/** Holds on extra `onLiveSeries` metrics (the telemetry panel), per metric. */
 const liveSeriesRefs = new Map<string, number>()
 let bmsSeriesStreamRefs = 0
 let scanSub: EventSubscription | null = null
@@ -122,7 +119,6 @@ function removeLiveSubscriptions(): void {
   useLiveSeriesStore.getState().clear()
 }
 
-/** Detach the focused-series bridge sub and clear its JS window; keeps the per-metric ref counts. */
 function removeFocusedSeriesStream(): void {
   focusedSeriesSub?.remove()
   focusedSeriesSub = null
@@ -176,7 +172,6 @@ function cleanupBleStoreModule(): void {
   removeScanSubscriptions()
 }
 
-/** Apply board/scan/recording state only; app bootstrap owns the combined native event. */
 export function applyBoardLiveState(state: LiveStateEvent, source: 'snapshot' | 'event'): void {
   const set = useBleStore.setState
   const isBoardConnected = state.board.phase === 'connected'
@@ -221,7 +216,6 @@ function resetLivePresentation(set: BleSet): void {
   })
 }
 
-/** Board telemetry is only displayable while native reports a live Board connection. */
 function acceptsBoardTelemetry(generation: number | null | undefined): boolean {
   const state = useBleStore.getState()
   return state.status === 'connected' && (generation == null || generation === state.connectionSeq)
@@ -272,22 +266,17 @@ function removeBmsSeriesStream(set: BleSet, preserveHolds = false): void {
 export function startBoardLiveStreams(): () => void {
   const set = useBleStore.setState
   if (!liveTickSub) {
-    // Hot path: scalar ticks drive SharedValues. Tilt reads its own native control state.
     liveTickSub = addLiveTickListener((tick) => {
       if (!acceptsBoardTelemetry(tick.generation)) return
       liveTelemetryRuntime.ingestTick(tick)
     })
   }
   if (!liveSeriesSub) {
-    // Cold path: natively-decimated min/max sparkline series (~1Hz). Tiny payload, no raw
-    // samples. Drives every center-screen sparkline with zero JS-thread projection.
     liveSeriesSub = addLiveSeriesListener((event) => {
       if (!acceptsBoardTelemetry(event.generation)) return
       useLiveSeriesStore.getState().setSeries(event.metrics, event.generation)
     })
   }
-  // The high-res `onFocusedSeries` stream attaches on demand via acquireFocusedSeries,
-  // only while a `/control` detail chart is mounted.
   if (!bmsSub) {
     bmsSub = addBmsListener((bms) => {
       set({ latestBms: bms })
@@ -296,25 +285,20 @@ export function startBoardLiveStreams(): () => void {
   return removeLiveSubscriptions
 }
 
-/** Push the current focused-metric set to native (the union of everything held). */
 function syncFocusedSeriesMetrics(): void {
   nativeSetFocusedSeriesMetrics([...focusedSeriesRefs.keys()])
 }
 
-/** Attach the `onFocusedSeries` bridge sub once; idempotent. */
 function ensureFocusedSeriesSub(): void {
   if (focusedSeriesSub) return
   focusedSeriesSub = addFocusedSeriesListener((event) => {
     if (!acceptsBoardTelemetry(event.generation)) return
-    // Drop a late event for a metric already released — it must not restore stale series.
     if (!focusedSeriesRefs.has(event.metric)) return
     useFocusedSeriesStore.getState().apply(event)
   })
 }
 
-/** Re-arm focus after a (re)connect: subscriptions were torn down but the ref counts survive. */
 function reapplyFocusedSeries(): void {
-  // Native may be a fresh session (or a fresh Android service) that never heard the extras.
   if (liveSeriesRefs.size > 0) syncLiveSeriesMetrics()
   if (focusedSeriesRefs.size === 0) return
   ensureFocusedSeriesSub()
@@ -325,10 +309,6 @@ function syncLiveSeriesMetrics(): void {
   nativeSetLiveSeriesMetrics([...liveSeriesRefs.keys()])
 }
 
-/**
- * Adds metrics to the ~1Hz `onLiveSeries` stream on top of the always-on battery set. Ref-counted
- * per metric like the focused series, and re-sent on every reconnect.
- */
 export function acquireLiveSeries(metrics: readonly string[]): void {
   let added = false
   for (const metric of metrics) {
@@ -354,11 +334,6 @@ export function releaseLiveSeries(metrics: readonly string[]): void {
   if (removed) syncLiveSeriesMetrics()
 }
 
-/**
- * Focuses one metric's high-res stream for a mounted `/control` detail chart. Ref-counted per
- * metric: the first hold on any metric attaches the `onFocusedSeries` bridge sub; each new metric
- * re-pushes the focus set so native starts emitting it (and an immediate snapshot).
- */
 export function acquireFocusedSeries(metric: string): void {
   const prev = focusedSeriesRefs.get(metric) ?? 0
   focusedSeriesRefs.set(metric, prev + 1)
@@ -366,7 +341,6 @@ export function acquireFocusedSeries(metric: string): void {
   if (prev === 0) syncFocusedSeriesMetrics()
 }
 
-/** Releases a detail chart's hold on a metric; the last hold overall detaches the bridge sub. */
 export function releaseFocusedSeries(metric: string): void {
   const prev = focusedSeriesRefs.get(metric) ?? 0
   if (prev === 0) return
@@ -380,20 +354,17 @@ export function releaseFocusedSeries(metric: string): void {
   if (focusedSeriesRefs.size === 0) {
     focusedSeriesSub?.remove()
     focusedSeriesSub = null
-    // No listener left to refresh exclusions/generation — drop them so a later
-    // focus doesn't briefly render bands from the previous session.
     useFocusedSeriesStore.getState().clear()
   }
 }
 
-/** Opens the focused Live BMS Series bridge stream for the battery detail view. */
 export function acquireBmsSeriesStream(): void {
   bmsSeriesStreamRefs += 1
   if (bmsSeriesStreamRefs > 1) return
   try {
     applyBoardLiveState(nativeGetLiveState(), 'snapshot')
   } catch {
-    // No live state yet (not connected) — focus intent still attaches for future samples.
+    // intentional-suppression: No live state yet (not connected) — focus intent still attaches for future samples.
   }
   ensureBmsSeriesStream()
 }
@@ -407,7 +378,6 @@ function ensureBmsSeriesStream(): void {
   nativeSetBmsSeriesFocused(true)
 }
 
-/** Closes the focused Live BMS Series bridge stream and clears its JS window. */
 export function releaseBmsSeriesStream(): void {
   if (bmsSeriesStreamRefs === 0) return
   bmsSeriesStreamRefs -= 1
@@ -487,7 +457,7 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
       nativeStopScan()
       get().syncNativeState()
     } catch {
-      // Native scan may already be stopped after permission or lifecycle changes.
+      // intentional-suppression: Native scan may already be stopped after permission or lifecycle changes.
     }
     removeScanSubscriptions()
   },
@@ -511,7 +481,7 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
     try {
       await nativeStopBoard()
     } catch {
-      // Native may already be stopped.
+      // intentional-suppression: Native may already be stopped.
     } finally {
       resetLivePresentation(set)
       get().syncNativeState()
@@ -561,12 +531,10 @@ bleStoreGlobal.__vescBleStoreCleanup = cleanupBleStoreModule
 const hotModule = typeof module === 'undefined' ? null : (module as unknown as HotModule)
 hotModule?.hot?.dispose?.(cleanupBleStoreModule)
 
-/** Replay transitions reset board presentation independently of phone location. */
 export function resetBoardLivePresentation(): void {
   resetLivePresentation(useBleStore.setState)
 }
 
-/** Restore held chart streams after the current native generation has been applied. */
 export function restoreBoardStreamFocus(): void {
   reapplyFocusedSeries()
   if (bmsSeriesStreamRefs > 0) ensureBmsSeriesStream()

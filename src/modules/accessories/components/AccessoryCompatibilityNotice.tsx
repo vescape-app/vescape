@@ -12,17 +12,11 @@ const TONE = {
   error: { color: theme.status.error.color, icon: XCircleIcon },
 } as const
 
-/**
- * Native's compatibility verdict, stated plainly. It is the one place a rider learns that an
- * accessory was found and understood but still cannot be used, and why — an unsupported protocol
- * version and an unrecognized capability type fail in very different ways.
- */
 export function AccessoryCompatibilityNotice({
   compatibility,
   supportedVersions,
 }: {
   compatibility: AccessoryCompatibility
-  /** Versions the accessory offered instead, shown only when no version was agreed. */
   supportedVersions?: number[]
 }) {
   const copy = compatibilityCopy(compatibility)

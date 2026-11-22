@@ -31,8 +31,6 @@ final class VescProtocolTests: XCTestCase {
   }
 
   func testBuildsBoardMoveRcMoveCommandForOlderRefloat() {
-    // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]. `time` runs the
-    // request for `time * 100` control-loop steps (~120 ms each), so it must outlive the repeat tick.
     XCTAssertEqual(
       [UInt8(COMM_CUSTOM_APP_DATA), 101, 7, 1, 60, 8, 68],
       buildBoardMoveCommand(transport: .direct, generation: .rcMove, input: 127)
@@ -48,7 +46,6 @@ final class VescProtocolTests: XCTestCase {
     XCTAssertEqual(.rcMove, BoardMoveGeneration.forBaseVersion("1.0.0"))
     XCTAssertEqual(.remote, BoardMoveGeneration.forBaseVersion("1.3.0"))
     XCTAssertEqual(.remote, BoardMoveGeneration.forBaseVersion("2.0.0"))
-    // Unknown firmware guesses the current generation rather than refusing to move.
     XCTAssertEqual(.remote, BoardMoveGeneration.forBaseVersion(nil))
     XCTAssertEqual(.remote, BoardMoveGeneration.forBaseVersion("nonsense"))
   }
@@ -69,19 +66,16 @@ final class VescProtocolTests: XCTestCase {
   }
 
   func testBuildsLightsControlCommandForBothSwitches() {
-    // mask uint32 BE = 3 (lights + headlights), value = 3 (both on).
     XCTAssertEqual(
       [UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 3],
       buildLightsControlCommand(
         transport: .direct, generation: .current, enabled: true, headlightsEnabled: true)
     )
-    // The mask still names both switches when turning them off, so the value clears both.
     XCTAssertEqual(
       [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 0],
       buildLightsControlCommand(
         transport: .can(7), generation: .current, enabled: false, headlightsEnabled: false)
     )
-    // The two switches are independent: the mask names both, the value states each one.
     XCTAssertEqual(
       [UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 1],
       buildLightsControlCommand(
@@ -95,7 +89,6 @@ final class VescProtocolTests: XCTestCase {
   }
 
   func testBuildsLegacyLightsControlCommandForRefloat11() {
-    // Refloat 1.1 and older: command 202 and a single mask byte, not the uint32 of 1.2+.
     XCTAssertEqual(
       [UInt8(COMM_CUSTOM_APP_DATA), 101, 202, 3, 3],
       buildLightsControlCommand(
@@ -109,11 +102,9 @@ final class VescProtocolTests: XCTestCase {
   }
 
   func testResolvesLightsGenerationAtTheRefloat12Boundary() {
-    // 1.2.0 is where the command moved out of the unstable 200+ range.
     XCTAssertEqual(.legacy, BoardLightsGeneration.forBaseVersion("1.1.2"))
     XCTAssertEqual(.current, BoardLightsGeneration.forBaseVersion("1.2.0"))
     XCTAssertEqual(.current, BoardLightsGeneration.forBaseVersion("2.0.0"))
-    // An unreadable version guesses current: the board ignores a command it does not know.
     XCTAssertEqual(.current, BoardLightsGeneration.forBaseVersion(nil))
   }
 
@@ -126,21 +117,16 @@ final class VescProtocolTests: XCTestCase {
       BoardLightsState(enabled: true, headlightsEnabled: false),
       parseLightsControlResponse([UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 1])
     )
-    // Both bits are read independently: headlights on, lights off.
     XCTAssertEqual(
       BoardLightsState(enabled: false, headlightsEnabled: true),
       parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 2])
     )
-    // A telemetry frame must never be mistaken for the lights echo — this interception sits in front
-    // of the telemetry parser, in both the direct and the CAN-forwarded form.
     XCTAssertNil(parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 10, 2]))
     XCTAssertNil(parseLightsControlResponse([UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 10, 2]))
-    // The legacy echo carries the same status byte under command 202.
     XCTAssertEqual(
       BoardLightsState(enabled: true, headlightsEnabled: true),
       parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 202, 3])
     )
-    // A truncated echo has no state byte to read.
     XCTAssertNil(parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 20]))
   }
 
@@ -203,19 +189,19 @@ final class VescProtocolTests: XCTestCase {
   func testParsesBmsCellVoltagesBalancingAndSoc() {
     var payload = [UInt8](repeating: 0, count: 45)
     payload[0] = UInt8(COMM_BMS_GET_VALUES)
-    putInt32(&payload, 1, 60_000_000) // v_tot 60.0V (scale 1e6)
-    putInt32(&payload, 5, 54_000_000) // v_charge 54.0V (scale 1e6)
-    putInt32(&payload, 9, 5_000_000) // i_in 5.0A (scale 1e6)
-    putInt32(&payload, 13, -2_000_000) // i_in_ic -2.0A (scale 1e6)
-    payload[25] = 3 // cell_num
-    putInt16(&payload, 26, 3650) // 3.650V
-    putInt16(&payload, 28, 3700) // 3.700V
-    putInt16(&payload, 30, 3680) // 3.680V
-    payload[32] = 0 // balancing cell 0
-    payload[33] = 1 // balancing cell 1
-    payload[34] = 0 // balancing cell 2
-    payload[35] = 0 // temp_adc_num
-    payload[44] = 216 // soc ≈ 0.847
+    putInt32(&payload, 1, 60_000_000)
+    putInt32(&payload, 5, 54_000_000)
+    putInt32(&payload, 9, 5_000_000)
+    putInt32(&payload, 13, -2_000_000)
+    payload[25] = 3
+    putInt16(&payload, 26, 3650)
+    putInt16(&payload, 28, 3700)
+    putInt16(&payload, 30, 3680)
+    payload[32] = 0
+    payload[33] = 1
+    payload[34] = 0
+    payload[35] = 0
+    payload[44] = 216
 
     let bms = parseBmsValues(payload, packetAt: 555)!
 
@@ -230,23 +216,21 @@ final class VescProtocolTests: XCTestCase {
   }
 
   func testParsesBmsTemperaturesSohAndCanId() {
-    // id + 6 float32 (25) + cell_num + 2 cells + 2 bal + temp_adc_num + 2 temps
-    // + temp_ic/hum/hum/max_cell (8) + soc + soh + can_id = 48 bytes.
     var payload = [UInt8](repeating: 0, count: 48)
     payload[0] = UInt8(COMM_BMS_GET_VALUES)
-    payload[25] = 2 // cell_num
+    payload[25] = 2
     putInt16(&payload, 26, 4100)
     putInt16(&payload, 28, 4050)
-    payload[32] = 2 // temp_adc_num
-    putInt16(&payload, 33, 2530) // temps[0] 25.30°C (scale 1e2)
-    putInt16(&payload, 35, -500) // temps[1] -5.00°C
-    putInt16(&payload, 37, 4200) // temp_ic 42.0°C
-    putInt16(&payload, 39, 2600) // temp_hum 26.0°C
-    putInt16(&payload, 41, 5500) // hum 55.0%
-    putInt16(&payload, 43, 4300) // temp_max_cell 43.0°C
-    payload[45] = 216 // soc ≈ 0.847
-    payload[46] = 240 // soh ≈ 0.941
-    payload[47] = 10 // can_id
+    payload[32] = 2
+    putInt16(&payload, 33, 2530)
+    putInt16(&payload, 35, -500)
+    putInt16(&payload, 37, 4200)
+    putInt16(&payload, 39, 2600)
+    putInt16(&payload, 41, 5500)
+    putInt16(&payload, 43, 4300)
+    payload[45] = 216
+    payload[46] = 240
+    payload[47] = 10
 
     let bms = parseBmsValues(payload, packetAt: 7)!
 
@@ -261,7 +245,6 @@ final class VescProtocolTests: XCTestCase {
   }
 
   func testParsesBmsWithoutTrailingFields() {
-    // id + 6 float32 + cell_num + 2 cells, nothing after.
     var payload = [UInt8](repeating: 0, count: 30)
     payload[0] = UInt8(COMM_BMS_GET_VALUES)
     payload[25] = 2
@@ -279,7 +262,7 @@ final class VescProtocolTests: XCTestCase {
   func testDecodesNegativeBmsCurrent() {
     var payload = [UInt8](repeating: 0, count: 30)
     payload[0] = UInt8(COMM_BMS_GET_VALUES)
-    putInt32(&payload, 9, -3_000_000) // i_in -3.0A while discharging
+    putInt32(&payload, 9, -3_000_000)
     payload[25] = 1
     putInt16(&payload, 26, 3900)
 
@@ -290,7 +273,7 @@ final class VescProtocolTests: XCTestCase {
     XCTAssertNil(parseBmsValues([UInt8(COMM_FW_VERSION)], packetAt: 1))
     var tooShort = [UInt8](repeating: 0, count: 26)
     tooShort[0] = UInt8(COMM_BMS_GET_VALUES)
-    tooShort[25] = 5 // claims 5 cells but no cell bytes follow
+    tooShort[25] = 5
     XCTAssertNil(parseBmsValues(tooShort, packetAt: 1))
   }
 

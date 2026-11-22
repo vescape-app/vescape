@@ -27,7 +27,6 @@ enum class DeviceCredentialState(val slug: String) {
 }
 
 /**
- * Keystore-backed Device Token storage.
  * @parity /modules/vescape-core/ios/auth/DeviceCredentialStore.swift
  */
 internal interface CredentialPersistence {
@@ -101,8 +100,6 @@ class DeviceCredentialStore internal constructor(
       notifyChanged()
       return
     }
-    // SharedPreferences updates its process cache before commit() reports disk failure. Restore the
-    // prior pair so readers in this process and a recreated store observe the same old state.
     val primary = IOException("Could not $operation device credential")
     if (!persistence.replace(oldCredential, oldState)) {
       throw CredentialRollbackException(primary)
@@ -114,9 +111,6 @@ class DeviceCredentialStore internal constructor(
     private val listeners = java.util.concurrent.CopyOnWriteArraySet<() -> Unit>()
 
     /**
-     * Called after every stored change (sign-in, sign-out, rejection), on the writer's thread. The
-     * public ride ends on an Account change, whoever made it.
-     *
      * @parity /modules/vescape-core/ios/auth/DeviceCredentialStore.swift `addChangeListener`
      */
     fun addChangeListener(listener: () -> Unit): () -> Unit {

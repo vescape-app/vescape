@@ -23,15 +23,11 @@ import android.os.Looper
 import android.util.Log
 import java.nio.ByteBuffer
 
-/** Wall-clock tail after the last recorded event before a non-looping replay ends the session. */
 private const val END_TAIL_MS = 250L
 
-/** GATT status reported for a dropped link: the connection supervision timeout a real drop gives. */
 private const val DROPPED_LINK_STATUS = 8
 
 /**
- * Where a [SimulatedBoard] is in its recording.
- *
  * @parity /modules/vescape-core/ios/replay/SimulatedBoard.swift `ReplayPlaybackState`
  */
 /**
@@ -47,28 +43,16 @@ internal data class ReplayPlaybackState(
 )
 
 /**
- * The board a replay session talks to in place of the GATT client (ADR 0048). It plays the
- * recording's timeline at its recorded offsets and answers the app's requests from the recording's
- * [ReplyBook] and its own state, so every session feature runs exactly as on a ride.
- *
- * It is also the session's [ReconnectBlePort]: there is no radio to scan, so a reconnect finds the
- * board at once and the link resumes where playback stopped.
- *
- * Confined to [handler]'s thread; public entry points run inline there and hop onto it from
- * anywhere else.
- *
  * @parity /modules/vescape-core/ios/replay/SimulatedBoard.swift
  */
 internal class SimulatedBoard(
     private val handler: Handler,
     private val recording: ReplayRecording,
-    /** Recorded offset playback starts at; the controller prefills everything before it. */
     warmupMs: Long,
     loop: Boolean,
     private val listener: VescGattListener,
     private val dispatchListener: ((() -> Unit) -> Unit),
     private val onLocation: (ReplayLocation) -> Unit,
-    /** The recording ran out without loop: the board powered off on purpose. */
     private val onEnded: () -> Unit,
 ) : SessionTransport, ReconnectBlePort {
     private val timeline = recording.timeline
@@ -77,7 +61,6 @@ internal class SimulatedBoard(
     @Volatile
     private var positionMs = warmupMs
 
-    /** Wall time of recorded offset 0 while the timeline runs. */
     @Volatile
     private var originMs = 0L
     private var pending: Runnable? = null
@@ -85,7 +68,6 @@ internal class SimulatedBoard(
     @Volatile
     private var linked = false
 
-    /** Bumped on every unlink; work queued for an earlier link drops itself. */
     @Volatile
     private var link = 0
 
@@ -95,14 +77,12 @@ internal class SimulatedBoard(
     @Volatile
     private var looping = loop
 
-    /** Config the board holds beyond the recording: `[sig, bytes]` per `confInd`. */
     private val heldConfig = mutableMapOf<Int, ByteArray>()
     private var lightsBits = 0
     private var lastTelemetry: ByteArray? = null
     private var lastBms: ByteArray? = null
 
     init {
-        // The board was already holding whatever the warmup span wrote and last said.
         for (event in warmup) {
             when (event) {
                 is ReplayEvent.ConfigWrite -> holdConfig(event.payload)
@@ -112,7 +92,6 @@ internal class SimulatedBoard(
         }
     }
 
-    /** The warmup span, for the controller to prefill display state from. */
     val warmup: List<ReplayEvent> get() = timeline.subList(0, warmupEnd)
 
     fun state(): ReplayPlaybackState = ReplayPlaybackState(
@@ -124,12 +103,6 @@ internal class SimulatedBoard(
         linked = linked,
     )
 
-    // region SessionTransport
-
-    /**
-     * Like a GATT client, a connect drops whatever link is up first: recovery restarts the
-     * transport on a link that is still up when telemetry stalls.
-     */
     override fun connect(deviceId: String) {
         onHandler {
             unlink()
@@ -144,16 +117,11 @@ internal class SimulatedBoard(
         return true
     }
 
-    /** Remote Tilt and Board Move: the board takes them and says nothing back. */
     override fun sendRemoteInput(payload: ByteArray, urgent: Boolean): Boolean = linked
 
     override fun clear(markIntentional: Boolean) {
         onHandler { unlink() }
     }
-
-    // endregion
-
-    // region ReconnectBlePort
 
     override fun hasScanner(): Boolean = true
 
@@ -168,10 +136,6 @@ internal class SimulatedBoard(
 
     override fun stopScan() = Unit
 
-    // endregion
-
-    // region Controls
-
     fun setPaused(value: Boolean) {
         onHandler {
             if (paused == value) return@onHandler
@@ -185,12 +149,10 @@ internal class SimulatedBoard(
         }
     }
 
-    /** Read when the end comes, so it also decides an end already scheduled. */
     fun setLoop(value: Boolean) {
         looping = value
     }
 
-    /** Lose the link the way a board out of range does; the session's reconnect brings it back. */
     fun dropLink() {
         onHandler {
             if (!linked) return@onHandler
@@ -200,8 +162,6 @@ internal class SimulatedBoard(
         }
     }
 
-    // endregion
-
     private fun establish() {
         linked = true
         Log.d(VESC_SESSION_TAG, "replay connect recording=${recording.name} positionMs=$positionMs")
@@ -209,7 +169,6 @@ internal class SimulatedBoard(
         dispatch { onGattSubscribing() }
         dispatch { onGattReady() }
         resumeTimeline()
-        // Wall time of recorded t=0; `bun run preview` starts the wrist's replay from it.
         Log.d(VESC_SESSION_TAG, "replay playback started recording=${recording.name} wallMs=$originMs")
     }
 
@@ -224,7 +183,6 @@ internal class SimulatedBoard(
         if (Looper.myLooper() == handler.looper) block() else handler.post(block)
     }
 
-    /** Runs [block] on [handler] unless the link it was queued on has gone since. */
     private fun onLink(block: () -> Unit) {
         val queuedOn = link
         handler.post { if (link == queuedOn) block() }
@@ -246,7 +204,6 @@ internal class SimulatedBoard(
         if (!paused) scheduleNext()
     }
 
-    /** Only the next event is ever queued, so an hour-long recording never floods the handler. */
     private fun scheduleNext() {
         if (cursor < timeline.size) {
             val event = timeline[cursor]
@@ -300,13 +257,11 @@ internal class SimulatedBoard(
         dispatch { onGattFrameChunk(frame) }
     }
 
-    /** The board's reply to [request], or `null` where a real board would say nothing it knows. */
     private fun answer(request: ByteArray): ByteArray? {
         val book = recording.replies
         return when (request[0].toInt() and 0xff) {
             COMM_FW_VERSION -> book.firmware
             COMM_GET_MCCONF -> book.motorConfig
-            // Polls are answered by the timeline; a paused board repeats what it last said.
             COMM_BMS_GET_VALUES -> if (paused) lastBms else null
             COMM_GET_CUSTOM_CONFIG_XML -> configXml(request)
             COMM_GET_CUSTOM_CONFIG -> config(request.getOrNull(1)?.toInt()?.and(0xff) ?: return null)
@@ -323,7 +278,6 @@ internal class SimulatedBoard(
         }
     }
 
-    /** `[92, confInd, len:i32, offset:i32]` → `[92, confInd, total:i32, offset:i32, bytes]`. */
     private fun configXml(request: ByteArray): ByteArray? {
         if (request.size < 10) return null
         val confInd = request[1].toInt() and 0xff
@@ -342,7 +296,6 @@ internal class SimulatedBoard(
             .array()
     }
 
-    /** What the board holds: its own last write, else the recording's snapshot as of now. */
     private fun config(confInd: Int): ByteArray? {
         heldConfig[confInd]?.let { held ->
             return byteArrayOf(COMM_GET_CUSTOM_CONFIG.toByte(), confInd.toByte()) + held
@@ -352,7 +305,6 @@ internal class SimulatedBoard(
         return snapshots.lastOrNull { it.t <= now }?.payload ?: snapshots.firstOrNull()?.payload
     }
 
-    /** Holds a `[95, confInd, sig, bytes]` write; returns its `confInd`. */
     private fun holdConfig(write: ByteArray): Int? {
         if (write.size < 6) return null
         val confInd = write[1].toInt() and 0xff
@@ -360,7 +312,6 @@ internal class SimulatedBoard(
         return confInd
     }
 
-    /** Applies the masked value bits and echoes the switch state under the request's command id. */
     private fun lights(command: Int, request: ByteArray): ByteArray? {
         if (request.size < 2) return null
         val mask = request[request.size - 2].toInt() and 0xff

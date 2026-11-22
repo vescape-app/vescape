@@ -2,10 +2,6 @@ import XCTest
 import GRDB
 @testable import VescapeCore
 
-/// Lifecycle tests for the Board Warning registry (automotive fault-code model): upsert preserves
-/// `firstDetectedAt`, clean-evaluation-with-data clears, no-data evaluations leave rows untouched,
-/// manual clear deletes and re-detection re-fires, and one Diagnostic Event fires per kind per Board
-/// Session. Runs against an in-memory GRDB database seeded with the app-data schema.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/warnings/BoardWarningRegistryTest.kt
 final class BoardWarningRegistryTests: XCTestCase {
   private var queue: DatabaseQueue!
@@ -90,7 +86,6 @@ final class BoardWarningRegistryTests: XCTestCase {
 
     registry.reportFinding(boardId: "board-a", kind: "cell-spread", severity: .warn, payloadJson: "{}")
     try registry.clearWarning(boardId: "board-a", kind: "cell-spread")
-    // No row (e.g. lost to a swallowed write) still re-arms the detector.
     try registry.clearWarning(boardId: "board-a", kind: "battery-config-mismatch")
     try registry.clearAllWarnings(boardId: "board-a")
 
@@ -120,7 +115,6 @@ final class BoardWarningRegistryTests: XCTestCase {
     XCTAssertEqual(breadcrumbs[0].0, "board_warning_detected")
     XCTAssertEqual(breadcrumbs[0].1["kind"] as? String, "cell-spread")
 
-    // A new session re-arms the breadcrumb for the same still-true kind.
     registry.beginSession("board-a")
     registry.reportFinding(boardId: "board-a", kind: "cell-spread", severity: .critical, payloadJson: "{}")
     XCTAssertEqual(breadcrumbs.count, 2)

@@ -1,10 +1,7 @@
 import Foundation
 
-/// Wall-clock tail after the last recorded event before a non-looping replay ends the session.
 private let endTailMs: Int64 = 250
 
-/// Where a `SimulatedBoard` is in its recording.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/SimulatedBoard.kt `ReplayPlaybackState`
 /// @parity /modules/vescape-core/src/index.ts `DebugReplayState`
 internal struct ReplayPlaybackState {
@@ -16,16 +13,6 @@ internal struct ReplayPlaybackState {
   let linked: Bool
 }
 
-/// The board a replay session talks to in place of the GATT client (ADR 0048). It plays the
-/// recording's timeline at its recorded offsets and answers the app's requests from the recording's
-/// `ReplyBook` and its own state, so every session feature runs exactly as on a ride.
-///
-/// There is no radio to scan: a reconnect finds the board at once and the link resumes where
-/// playback stopped.
-///
-/// Confined to the main queue, like the controller it serves. Listener callbacks are posted, never
-/// called inline, so the controller never re-enters itself from a transport call.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/SimulatedBoard.kt
 internal final class SimulatedBoard: SessionTransport {
   private let recording: ReplayRecording
@@ -34,22 +21,17 @@ internal final class SimulatedBoard: SessionTransport {
   private weak var listener: VescGattListener?
   private let scheduler: Scheduler
   private let onLocation: (ReplayLocation) -> Void
-  /// The recording ran out without loop: the board powered off on purpose.
   private let onEnded: () -> Void
 
   private var cursor: Int
   private var positionMs: Int64
-  /// Wall time of recorded offset 0 while the timeline runs.
   private var originMs: Int64 = 0
   private var pending: Cancellable?
   private var linked = false
-  /// Bumped on every unlink; work queued for an earlier link drops itself.
   private var link = 0
   private var paused = false
-  /// Read when the end comes, so it also decides an end already scheduled.
   private var looping: Bool
 
-  /// Config the board holds beyond the recording: `[sig, bytes]` per `confInd`.
   private var heldConfig: [Int: [UInt8]] = [:]
   private var lightsBits = 0
   private var lastTelemetry: [UInt8]?
@@ -57,7 +39,6 @@ internal final class SimulatedBoard: SessionTransport {
 
   init(
     recording: ReplayRecording,
-    /// Recorded offset playback starts at; the controller prefills everything before it.
     warmupMs: Int64,
     loop: Bool,
     listener: VescGattListener,
@@ -75,7 +56,6 @@ internal final class SimulatedBoard: SessionTransport {
     self.scheduler = scheduler
     self.onLocation = onLocation
     self.onEnded = onEnded
-    // The board was already holding whatever the warmup span wrote and last said.
     for event in warmup {
       switch event {
       case let .configWrite(_, payload): holdConfig(payload)
@@ -85,7 +65,6 @@ internal final class SimulatedBoard: SessionTransport {
     }
   }
 
-  /// The warmup span, for the controller to prefill display state from.
   var warmup: ArraySlice<ReplayEvent> { timeline[..<warmupEnd] }
 
   func state() -> ReplayPlaybackState {
@@ -99,10 +78,6 @@ internal final class SimulatedBoard: SessionTransport {
     )
   }
 
-  // MARK: - SessionTransport
-
-  /// Like a GATT client, a connect drops whatever link is up first: recovery restarts the transport
-  /// on a link that is still up when telemetry stalls.
   func connect(peripheralId: String) {
     unlink()
     relink()
@@ -127,11 +102,8 @@ internal final class SimulatedBoard: SessionTransport {
     return true
   }
 
-  /// Remote Tilt and Board Move: the board takes them and says nothing back.
   @discardableResult
   func sendRemoteInput(_ payload: [UInt8], urgent: Bool) -> Bool { linked }
-
-  // MARK: - Controls
 
   func setPaused(_ value: Bool) {
     guard paused != value else { return }
@@ -146,15 +118,12 @@ internal final class SimulatedBoard: SessionTransport {
 
   func setLoop(_ value: Bool) { looping = value }
 
-  /// Lose the link the way a board out of range does; the session's reconnect brings it back.
   func dropLink() {
     guard linked else { return }
     unlink()
     Self.log("replay link dropped recording=\(recording.name) positionMs=\(positionMs)")
     dispatch { $0.onGattDisconnected(intentional: false, message: "Replay link dropped") }
   }
-
-  // MARK: - Timeline
 
   private func relink() {
     onLink { $0.establish() }
@@ -167,7 +136,6 @@ internal final class SimulatedBoard: SessionTransport {
     dispatch { $0.onGattSubscribing() }
     dispatch { $0.onGattReady() }
     resumeTimeline()
-    // Wall time of recorded t=0; `bun run preview` starts the wrist's replay from it.
     Self.log("replay playback started recording=\(recording.name) wallMs=\(originMs)")
   }
 
@@ -178,7 +146,6 @@ internal final class SimulatedBoard: SessionTransport {
     linked = false
   }
 
-  /// Runs `block` on the scheduler unless the link it was queued on has gone since.
   private func onLink(_ block: @escaping (SimulatedBoard) -> Void) {
     let queuedOn = link
     scheduler.post { [weak self] in
@@ -198,7 +165,6 @@ internal final class SimulatedBoard: SessionTransport {
     if !paused { scheduleNext() }
   }
 
-  /// Only the next event is ever queued, so an hour-long recording never floods the main queue.
   private func scheduleNext() {
     if cursor < timeline.count {
       let event = timeline[cursor]
@@ -259,15 +225,11 @@ internal final class SimulatedBoard: SessionTransport {
     onLink { board in board.listener.map(call) }
   }
 
-  // MARK: - Answers
-
-  /// The board's reply to `request`, or `nil` where a real board would say nothing it knows.
   private func answer(_ request: [UInt8]) -> [UInt8]? {
     let book = recording.replies
     switch Int(request[0]) {
     case COMM_FW_VERSION: return book.firmware
     case COMM_GET_MCCONF: return book.motorConfig
-    // Polls are answered by the timeline; a paused board repeats what it last said.
     case COMM_BMS_GET_VALUES: return paused ? lastBms : nil
     case COMM_GET_CUSTOM_CONFIG_XML: return configXml(request)
     case COMM_GET_CUSTOM_CONFIG: return request.count > 1 ? config(Int(request[1])) : nil
@@ -285,7 +247,6 @@ internal final class SimulatedBoard: SessionTransport {
     }
   }
 
-  /// `[92, confInd, len:i32, offset:i32]` → `[92, confInd, total:i32, offset:i32, bytes]`.
   private func configXml(_ request: [UInt8]) -> [UInt8]? {
     guard request.count >= 10 else { return nil }
     let confInd = Int(request[1])
@@ -298,7 +259,6 @@ internal final class SimulatedBoard: SessionTransport {
       + Self.int32Bytes(xml.count) + Self.int32Bytes(offset) + slice
   }
 
-  /// What the board holds: its own last write, else the recording's snapshot as of now.
   private func config(_ confInd: Int) -> [UInt8]? {
     if let held = heldConfig[confInd] {
       return [UInt8(COMM_GET_CUSTOM_CONFIG), UInt8(confInd)] + held
@@ -308,7 +268,6 @@ internal final class SimulatedBoard: SessionTransport {
     return (snapshots.last { $0.t <= now } ?? snapshots.first)?.payload
   }
 
-  /// Holds a `[95, confInd, sig, bytes]` write; returns its `confInd`.
   @discardableResult
   private func holdConfig(_ write: [UInt8]) -> Int? {
     guard write.count >= 6 else { return nil }
@@ -317,7 +276,6 @@ internal final class SimulatedBoard: SessionTransport {
     return confInd
   }
 
-  /// Applies the masked value bits and echoes the switch state under the request's command id.
   private func lights(_ command: Int, _ request: [UInt8]) -> [UInt8]? {
     guard request.count >= 2 else { return nil }
     let mask = Int(request[request.count - 2])

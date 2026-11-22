@@ -1,17 +1,4 @@
 #!/usr/bin/env bun
-/**
- * `bun run android` — the dev-client build and install, with the repo's device picker in front of
- * Expo's.
- *
- * Expo's own prompt lists every attached device, watch included, and a watch is never the answer
- * here: the phone app does not run on Wear, and picking one wastes a full Gradle install before it
- * fails. The picker also behaves like every other device prompt in the repo (last pick on top,
- * taken after 3s, `--device` to skip it), which Expo's does not.
- *
- *   bun run android                  # pick, or take the only phone
- *   bun run android --device Pixel_7 # skip the picker
- *   bun run android --variant release --no-bundler   # anything else goes to expo run:android
- */
 import { listAdbDevices, pickDevice } from './lib/devices.ts'
 
 const args = process.argv.slice(2)
@@ -26,7 +13,6 @@ if (deviceFlag !== -1) {
   args.splice(deviceFlag, 2)
 }
 
-/** Cache key for the last phone picked; shared with the wear pairing flow. */
 const LAST_PHONE_KEY = 'android-device'
 
 const phone = await pickDevice({
@@ -55,10 +41,5 @@ function run(command: string[]) {
 
 run(['bun', 'run', 'native:sync', 'android'])
 run(['bun', 'run', 'relay:reverse'])
-// `--device` takes Expo's device name (the AVD for an emulator, the model for a physical device),
-// which is exactly what listAdbDevices reports as `name`.
-// Expo run:android defaults to advertising the machine's LAN address. The dev launcher persists
-// that URL, so a later reload fails when the phone cannot reach the Mac over Wi-Fi even though
-// Expo's ADB reverse for Metro is active. Keep the launch URL on the same localhost tunnel.
 process.env.REACT_NATIVE_PACKAGER_HOSTNAME = '127.0.0.1'
 run(['bunx', 'expo', 'run:android', '--device', phone.expoName, ...args])

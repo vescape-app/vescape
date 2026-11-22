@@ -11,9 +11,7 @@ import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 const DASH = [3, 3]
-/** Clearance between the seam and the times either side of it. */
 const LABEL_GAP = 4
-/** Parked off-canvas rather than unmounted, so panning never touches the tree. */
 const OFFSCREEN = -1_000
 
 interface GapMarkersCommonProps {
@@ -29,31 +27,17 @@ interface GapMarkersCommonProps {
 
 type GapMarkersVariant =
   | {
-      /** The dotted line through a plot. Drawn once per chart, in that chart's canvas. */
       variant: 'seam'
-      /** Canvas y bounds the seam spans. */
       top: number
       bottom: number
     }
   | {
-      /** The times either side of the cut. Drawn once, on the row that already reads as time. */
       variant: 'labels'
       labelBaseline: number
     }
 
 export type GapMarkersLayerProps = GapMarkersCommonProps & GapMarkersVariant
 
-/**
- * The seam left where a long pause was cut out: a dotted line, with the time the rider stopped on
- * one side of it and the time they set off again on the other.
- *
- * Without the mark the chart would quietly lie — two stretches of riding half an hour apart drawn
- * as if they were continuous. The times are what turn the seam into an explanation.
- *
- * Split across two canvases because the stack is: the seam belongs to a plot and is drawn in every
- * chart, the times belong to the time axis and are drawn once under all of them. Both read the
- * same camera, so they stay on the same x with no coordination.
- */
 export function GapMarkersLayer({ timeline, ...rest }: GapMarkersLayerProps) {
   if (timeline == null) return null
   return (
@@ -73,15 +57,12 @@ export function GapMarkersLayer({ timeline, ...rest }: GapMarkersLayerProps) {
 
 type GapMarkerProps = Omit<GapMarkersCommonProps, 'timeline'> &
   GapMarkersVariant & {
-    /** Middle of the seam in chart time. */
     chartMs: number
-    /** Real bounds of the cut, for the labels. */
     startMs: number
     endMs: number
   }
 
 function GapMarker(props: GapMarkerProps) {
-  // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
   const timeFormat = useTimeFormat()
   const neutral = useResolvedNeutralColors()

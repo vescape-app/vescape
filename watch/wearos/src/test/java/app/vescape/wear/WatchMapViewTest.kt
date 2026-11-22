@@ -27,7 +27,6 @@ class WatchMapViewTest {
         for (time in listOf(1000L, 1075L, 1150L, 1225L, 1300L)) {
             val offset = motion.offsetAt(time)
             val rendered = movingTrail(trail, offset)
-            // Route point at -20m, new rider at +10m. Both layers draw that same world point.
             assertEquals(-20.0 - (10.0 - offset.northM), rendered.first().northM, 0.0001)
             assertEquals(WatchTrailPoint(0.0, 0.0), rendered.last())
             assertEquals(true, rendered.all { it.northM <= 0 })

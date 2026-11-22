@@ -20,19 +20,14 @@ interface HistoryRideRowProps {
   details?: string
   routePoints: RoutePoint[]
   selected?: boolean
-  /** Route line color; Favorites ride under their own accent. */
   accent?: ThemeColor
   onPress: () => void
   onLongPress?: () => void
-  /** Select mode: a checkbox replaces the chevron. Undefined outside select mode. */
   checked?: boolean
   testID?: string
-  /** Ride weather beside the stats; null renders nothing. */
   weather?: RideWeather | null
 }
 
-/** One ride as a list row: route thumbnail, identity, chevron. The ride list and the History drawer
- *  share it so a ride looks the same wherever it is listed. */
 export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function HistoryRideRow(
   {
     title,
@@ -49,7 +44,6 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
   },
   ref,
 ) {
-  // Resolved in render: iOS bakes a border color once, so an adaptive token goes stale in a Modal.
   const neutral = useResolvedNeutralColors()
   return (
     <Pressable
@@ -94,7 +88,6 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
   )
 })
 
-/** Same footprint as a ride row so paging can extend the scroll area while native reads. */
 export function HistoryRideRowSkeleton() {
   const neutral = useResolvedNeutralColors()
   return (

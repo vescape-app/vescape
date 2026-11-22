@@ -4,8 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Payload rounding parity: `boardWarningRound4` must round ties half away from zero on both
- * platforms so the same detector input serializes to the same wire value.
  * @parity /modules/vescape-core/ios/warnings/BoardWarningPayloadTests.swift
  */
 class BoardWarningKindTest {

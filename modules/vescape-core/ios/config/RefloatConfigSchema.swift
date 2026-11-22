@@ -2,11 +2,6 @@ import Compression
 import CryptoKit
 import Foundation
 
-/// Refloat config XML schema: the wire config blob is a flat byte array whose layout is described by
-/// a `COMM_GET_CUSTOM_CONFIG_XML` schema. Two dialects are supported — a flat `<param .../>` list and
-/// VESC's serialized `<ConfigParams>` struct — matching Android field-for-field so both platforms
-/// decode identical snapshots (#171).
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt
 
 enum RefloatConfigValueType {
@@ -164,8 +159,6 @@ enum RefloatConfigSchemaParser {
     return nil
   }
 
-  /// Raw DEFLATE (RFC 1951) inflate with an unknown output size. The 2-byte zlib header is stripped by
-  /// the caller; Apple's `COMPRESSION_ZLIB` decodes the raw stream and ignores the adler32 trailer.
   private static func inflateRawDeflate(_ deflate: [UInt8]) -> [UInt8]? {
     guard !deflate.isEmpty else { return nil }
     var stream = compression_stream(

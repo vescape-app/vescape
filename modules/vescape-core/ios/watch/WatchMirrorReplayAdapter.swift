@@ -1,11 +1,9 @@
 import Foundation
 
-/// Fixture models enter the same byte decoder as live phone delivery.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchMirrorReplayAdapter.kt
 enum WatchMirrorReplayAdapter {
   static func telemetry(_ frame: WatchFrame) -> Data { WatchFrameBuilder.encode(frame) }
 
-  /// Fixture metres east/north of the route `origin` as a position: the inverse of `offset(from:)`.
   static func position(origin: WatchMapPosition, eastM: Double, northM: Double) -> WatchMapPosition {
     WatchMapPosition(
       latitude: origin.latitude + northM / 110_574,
@@ -13,8 +11,6 @@ enum WatchMirrorReplayAdapter {
     )
   }
 
-  /// Fixture points are offsets from the first point, which sits on `origin`. Reject a different
-  /// start instead of letting the geographic encoder silently shift the rider's frame.
   static func route(_ route: WatchRoute?, origin: WatchMapPosition) -> Data? {
     guard let route, let first = route.points.first, first.eastM == 0, first.northM == 0 else { return nil }
     return WatchRouteCodec.encode(route.points.map {

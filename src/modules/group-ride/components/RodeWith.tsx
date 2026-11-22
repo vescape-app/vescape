@@ -9,7 +9,6 @@ import { riderMapColor } from '@/modules/group-ride/lib/riderColor'
 import { useRodeWithStore } from '@/modules/group-ride/store/rodeWithStore'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 
-/** The other riders' tracks on a past ride's map, in their live colors, under `belowLayerID`. */
 export function RodeWithTracks({ belowLayerID }: { belowLayerID: string }) {
   const tracks = useRodeWithStore((s) => s.tracks)
   const hidden = useRodeWithStore((s) => s.hidden)
@@ -25,7 +24,6 @@ export function RodeWithTracks({ belowLayerID }: { belowLayerID: string }) {
   ))
 }
 
-/** Another rider's stored track, in their live color. */
 function RiderTrackLine({
   id,
   accountId,
@@ -58,7 +56,6 @@ function RiderTrackLine({
   )
 }
 
-/** Who the rider rode with, with the toggle that hides them from the map. Empty when alone. */
 export function RodeWithRow() {
   const accents = useResolvedAccentColors()
   const riders = useRodeWithStore((s) => s.riders)

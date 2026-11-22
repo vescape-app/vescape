@@ -23,14 +23,10 @@ import {
 } from '@/components/overlays/edgeDrawerDismiss'
 import { theme } from '@/constants/theme'
 
-/** How far chrome must be dragged toward the drawer's edge to close it. */
 const CHROME_DISMISS_DISTANCE = 80
-/** Release speed toward the edge (points/s) that closes from a shorter chrome drag. */
 const CHROME_DISMISS_VELOCITY = 800
 const CHROME_SETTLE_DURATION = 170
-/** Height of the touch strip around the grabber. */
 const GRAB_ZONE_HEIGHT = 40
-/** Pinned distance over which the chrome backing fades in, so resting chrome stays clear. */
 const STICKY_BACKING_FADE = 12
 
 interface ChromeLayout {
@@ -44,12 +40,6 @@ interface ChromeLayout {
   close: () => void
 }
 
-/**
- * Keeps an edge drawer's chrome on screen while long content scrolls. The leading chrome (grabber
- * and header of a bottom drawer, header of a top one) pins below the status bar; the trailing
- * chrome (sticky footer, a top drawer's grabber) pins above the bottom safe area. Dragging the
- * grabber toward the drawer's edge closes it from any scroll position.
- */
 export function useEdgeDrawerChrome({
   opensFromTop,
   scrollOffset,
@@ -64,15 +54,11 @@ export function useEdgeDrawerChrome({
   const { height } = useWindowDimensions()
   const leadingHeight = useSharedValue(0)
   const trailingHeight = useSharedValue(0)
-  // Chrome sits at fixed distances from the content ends: the dismiss area on one side, the safe
-  // edge padding on the other. A top drawer's header carries the status-bar padding itself.
   const leadingStart = opensFromTop ? 0 : height
   const leadingPin = opensFromTop ? 0 : insets.top
   const trailingEndGap = opensFromTop ? height : edgePadding
   const trailingPin = height - (opensFromTop ? insets.bottom : edgePadding)
 
-  // Pinning holds chrome over content still on screen. Past the content edge the drawer is being
-  // dismissed, and its chrome must leave with it rather than stay pinned to the screen.
   const contentOffset = useDerivedValue(() => {
     const edge = edgeDrawerRestoreOffset(dismissRange.value, height, opensFromTop)
     return opensFromTop ? Math.min(scrollOffset.value, edge) : Math.max(scrollOffset.value, edge)
@@ -118,8 +104,6 @@ export function useEdgeDrawerChrome({
         }),
     [chromeDrag, close, dismissSign, dismissTriggered, nativeScrollGesture],
   )
-  // The grabber leads a bottom drawer's chrome and trails a top drawer's. Its strip tracks where
-  // the grabber is drawn on screen, pinned or not.
   const grabZoneStyle = useAnimatedStyle(() => {
     const top = opensFromTop
       ? dismissRange.value +
@@ -132,7 +116,6 @@ export function useEdgeDrawerChrome({
     return { transform: [{ translateY: top }] }
   })
 
-  // Screen position of each chrome, for drawers that draw it over the list instead of inside it.
   const leadingTop = useDerivedValue(() => leadingStart - contentOffset.value + leadingShift.value)
   const trailingTop = useDerivedValue(
     () =>
@@ -161,10 +144,6 @@ export function useEdgeDrawerChrome({
   }
 }
 
-/**
- * Touch strip over the grabber, outside the scroll view. Chrome pinned by a transform has scrolled
- * its layout box away, and Android routes touches by layout box, so the strip carries the drag.
- */
 export function GrabZone({
   gesture,
   style,
@@ -177,10 +156,6 @@ export function GrabZone({
   )
 }
 
-/**
- * Drawer chrome that follows the scroll to stay on screen. Pinned over scrolling content it gains
- * a backing that bleeds into the safe area, so rows never show through around it.
- */
 export function StickyChrome({
   screenTop,
   shift,
@@ -193,7 +168,6 @@ export function StickyChrome({
   children,
 }: ReturnType<typeof useEdgeDrawerChrome>['leading'] & {
   background: string
-  /** Draw over the scroll view at its screen position instead of scrolling inside it. */
   overlay?: boolean
   onHeight?: (height: number) => void
   style?: StyleProp<ViewStyle>

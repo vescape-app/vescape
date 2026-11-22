@@ -35,7 +35,6 @@ beforeEach(() => {
   getSettings.mockClear()
 })
 
-/** The direction target is personal client state and never reaches the Map Point API. */
 test('the direction point round-trips through native settings', async () => {
   await useMapStore.getState().setDirectionPoint(52.5, 21.5)
   expect(setDirectionPoint).toHaveBeenCalledWith(52.5, 21.5)
@@ -49,7 +48,6 @@ test('the direction point round-trips through native settings', async () => {
   expect(useMapStore.getState().directionPoint).toBeNull()
 })
 
-/** Native owns the target, so a refused write must not leave the map showing a target it lost. */
 test('a refused write puts the previous direction point back', async () => {
   await useMapStore.getState().setDirectionPoint(52.5, 21.5)
 

@@ -12,13 +12,6 @@ const listFiles = (dir: string): string[] =>
   })
 
 describe('live readouts', () => {
-  /**
-   * Driving a non-editable `TextInput` through `animatedProps` used to be the way
-   * to update text without re-rendering React. It routes every tick through the
-   * shadow tree: Android chained `AndroidTextInputState` commits until the GC
-   * thread stack overflowed, and iOS could blank the value when a text commit
-   * raced the UI-thread prop write. `MonoValue` draws on Skia instead.
-   */
   test('no animated TextInput is used to render live values', () => {
     const violations = listFiles(srcDir)
       .filter((file) =>

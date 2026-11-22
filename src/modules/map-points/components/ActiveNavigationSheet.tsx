@@ -34,7 +34,6 @@ const COMPACT_EXITING = new Keyframe({
   100: { opacity: 0, transform: [{ translateY: -14 }] },
 }).duration(120)
 
-/** Compact proof that the accepted Navigation is still active after returning to the map. */
 export function ActiveNavigationSheet({
   target,
   bottom,
@@ -74,8 +73,6 @@ export function ActiveNavigationSheet({
         .failOffsetX([-24, 24])
         .onUpdate((event) => {
           const pull = Math.max(0, -event.translationY)
-          // Resistance starts immediately and strengthens continuously: the sheet always trails the
-          // finger, then approaches its drag limit instead of hitting a sudden rubber-band point.
           expansion.value = MAX_DRAG_EXPANSION * (1 - Math.exp(-pull / DRAG_RESISTANCE_DISTANCE))
         })
         .onEnd((event) => {

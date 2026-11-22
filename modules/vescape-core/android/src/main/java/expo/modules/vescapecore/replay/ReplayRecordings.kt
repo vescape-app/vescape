@@ -7,10 +7,6 @@ import java.io.File
 import java.io.InputStream
 
 /**
- * Resolves a replayable Debug Recording by name: the on-device store first, then the bundled
- * fixtures shipped in app assets (`assets/fixtures`, copied from `shared/fixtures/` by
- * `copy:shared`). Bundled fixtures make replay usable on a device with no captures yet.
- *
  * @parity /modules/vescape-core/ios/replay/ReplayRecordings.swift
  */
 internal object ReplayRecordings {
@@ -26,7 +22,6 @@ internal object ReplayRecordings {
         return context.assets.open("$ASSETS_DIR/$name")
     }
 
-    /** Bundled fixture names + sizes, sorted by name (assets have no timestamps). */
     fun listBundled(context: Context): List<Map<String, Any>> =
         (context.assets.list(ASSETS_DIR) ?: emptyArray())
             .filter { it.endsWith(".jsonl") }

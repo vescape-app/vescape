@@ -17,7 +17,6 @@ import expo.modules.vescapecore.database.VescapeDao
 import expo.modules.vescapecore.database.VescapeRoomDatabase
 
 /**
- * Ride weather backfill Maintenance Job (#606) through the production Room DAO and fence.
  * @parity /modules/vescape-core/persistence-macos/RideWeatherBackfillContract.swift `runRideWeatherBackfillContract`
  */
 class RideWeatherBackfillHostTest {
@@ -25,7 +24,6 @@ class RideWeatherBackfillHostTest {
   private val hour = 60 * minute
   private val day = 24 * hour
   private val board = "board-a"
-  /** 2024-03-10T00:00Z: a US DST change day, inside the historical forecast range. */
   private val base = 1_710_028_800_000L
   private val now = base + 365 * day
 
@@ -46,7 +44,6 @@ class RideWeatherBackfillHostTest {
     accuracyCm = accuracyCm, gpsSpeedCentiMps = 500, bearingCentiDeg = null, altitudeCm = null,
   )
 
-  /** A ride of [length] with frames every 10 s and, unless [gps] is false, precise fixes at [lat]. */
   private suspend fun VescapeDao.ride(start: Long, length: Long, lat: Double = 52.0, gps: Boolean = true) {
     insertFrames((start until start + length step 10_000).map(::frame))
     if (gps) insertRideTrackPoints((start until start + length step 60_000).map { fix(it, lat) })
@@ -54,7 +51,6 @@ class RideWeatherBackfillHostTest {
 
   private suspend fun VescapeDao.summarize() = assertEquals(MaintenanceJobOutcome.Completed, rebuildRideSummaries(this))
 
-  /** Open-Meteo stand-in: hourly samples for the requested UTC days, temperature from the latitude. */
   private class FakeOpenMeteo(var respond: (String) -> MaintenanceHttpResponse? = { null }) : MaintenanceHttp {
     val urls = mutableListOf<String>()
     override suspend fun get(url: String): MaintenanceHttpResponse {
@@ -89,7 +85,6 @@ class RideWeatherBackfillHostTest {
   @Test fun fillsMissingDaysThenSettlesWithoutAnotherScan(): Unit = runBlocking {
     val db = db()
     val dao = db.vescapeDao()
-    // Midnight-crossing ride: both UTC days are candidates. A no-GPS ride is never one.
     dao.ride(base + day - 30 * minute, hour)
     dao.ride(base + 3 * day + 10 * hour, 20 * minute, gps = false)
     dao.summarize()
@@ -102,10 +97,8 @@ class RideWeatherBackfillHostTest {
     assertTrue(http.urls.single().startsWith("https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=52.0000"))
     assertNotNull(dao.weather(base + day - 30 * minute, base + day - minute))
     assertNotNull(dao.weather(base + day, base + day + 29 * minute))
-    // The first day's anchor already covers the second day under the freshness rule.
     assertEquals(listOf(base + day - hour), dao.getWeatherObservationsSpanning(Long.MIN_VALUE, Long.MAX_VALUE).map { it.observedAtMs })
     assertEquals(base + 3 * day + 10 * hour + 20 * minute - 10_000, dao.watermark()?.let { it - it % 10_000 })
-    // A second launch: no history scan, no request.
     assertFalse(RideWeatherJob.hasWork(scope, AppSettings()))
     assertEquals(1, http.urls.size)
     db.close()
@@ -114,10 +107,8 @@ class RideWeatherBackfillHostTest {
   @Test fun usableEarlierWeatherIsEnoughAndLiveRowsWin(): Unit = runBlocking {
     val db = db()
     val dao = db.vescapeDao()
-    // Morning live weather covers an offline evening ride within the freshness rule.
     dao.storeWeatherObservation(WeatherObservation(base + 8 * hour, 5, 0, null, true), force = false)
     dao.ride(base + 19 * hour, 30 * minute)
-    // A ride with no usable weather, where a live row lands while the request is in flight.
     dao.ride(base + 5 * day + 12 * hour, 30 * minute)
     dao.summarize()
     val live = WeatherObservation(base + 5 * day + 12 * hour, 9, 61, 20, true)
@@ -135,7 +126,6 @@ class RideWeatherBackfillHostTest {
   @Test fun temporaryMissesHoldTheWatermarkAndPermanentMissesSettle(): Unit = runBlocking {
     val db = db()
     val dao = db.vescapeDao()
-    // Two areas (A at 52°, B at 40°) on travel days; A also before the historical forecast range.
     dao.ride(base, 30 * minute, lat = 52.0)
     dao.ride(base + 2 * day, 30 * minute, lat = 40.0)
     dao.ride(base + 30 * day, 30 * minute, lat = 52.0)
@@ -151,7 +141,6 @@ class RideWeatherBackfillHostTest {
     val first = RideWeatherJob.run(scope(dao, http), AppSettings())
     assertTrue(first is MaintenanceJobOutcome.Deferred)
     assertEquals(3, http.urls.size)
-    // A's first day filled, B failed: the watermark stops before B; A's later day was a permanent miss.
     assertEquals(base + 30 * minute - 10_000, dao.watermark())
     assertNotNull(dao.weather(base, base + 29 * minute))
     assertNull(dao.weather(base + 30 * day, base + 30 * day + 29 * minute))
@@ -163,7 +152,6 @@ class RideWeatherBackfillHostTest {
     assertEquals(2, http.urls.size)
     assertEquals(40, dao.weather(base + 2 * day, base + 2 * day + 29 * minute)?.maxTemperatureC)
     assertEquals(base + 30 * day + 30 * minute - 10_000, dao.watermark())
-    // The permanent miss stays settled: no refetch on the next trigger.
     http.urls.clear()
     assertFalse(RideWeatherJob.hasWork(scope(dao, http), AppSettings()))
     assertTrue(http.urls.isEmpty())
@@ -180,11 +168,9 @@ class RideWeatherBackfillHostTest {
     assertEquals(MaintenanceJobOutcome.Deferred(now + 600_000), RideWeatherJob.run(scope(dao, http), AppSettings()))
     assertEquals(1, http.urls.size)
     assertNull(dao.watermark())
-    // No trigger fetches before the 429 deadline.
     val early = FakeOpenMeteo()
     assertEquals(MaintenanceJobOutcome.Deferred(now + 600_000), RideWeatherJob.run(scope(dao, early), AppSettings()))
     assertTrue(early.urls.isEmpty())
-    // A transport failure is temporary too, and the backoff grows.
     val later = now + 600_001
     val offline = FakeOpenMeteo { throw IOException("offline") }
     val outcome = RideWeatherJob.run(scope(dao, offline, at = later), AppSettings()) as MaintenanceJobOutcome.Deferred
@@ -196,7 +182,6 @@ class RideWeatherBackfillHostTest {
   @Test fun multiYearHistoryUsesBoundedWindowsAndEndpoints(): Unit = runBlocking {
     val db = db()
     val dao = db.vescapeDao()
-    // 2021-12-25: archive. Then one ride every five days for 60 days from 2022-01-01.
     val first = WEATHER_HISTORICAL_FORECAST_FIRST_DAY_MS
     dao.ride(first - 7 * day + 12 * hour, 20 * minute)
     for (i in 0 until 12) dao.ride(first + i * 5 * day + 12 * hour, 20 * minute)

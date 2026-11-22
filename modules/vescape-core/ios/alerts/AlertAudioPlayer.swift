@@ -12,8 +12,6 @@ internal let alertCategorySingle = "single"
 /// @parity /modules/vescape-core/src/index.ts `AlertSoundCategory`
 internal let alertCategoryGeiger = "geiger"
 
-/// Sounds the alert form offers: the active effects pack's severities for single alerts, geiger
-/// ticks for range alerts.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `alertSoundMaps`
 /// @parity /modules/vescape-core/src/index.ts `FALLBACK_SOUNDS`
 internal func alertSoundChoices() -> [[String: Any]] {
@@ -27,13 +25,11 @@ internal func alertSoundChoices() -> [[String: Any]] {
   ].map { ["name": $0.0, "uri": $0.1, "category": $0.2] }
 }
 
-/// Slot a one-shot preview of `spec` plays: a geiger tick, or the severity sound once.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `previewSlot`
 internal func previewSlot(_ spec: String) -> String {
   isGeigerSpec(spec) ? geigerSlot(spec) : parseSlotAlertSound(spec).severity.slot
 }
 
-/// A fired sample alert used for TTS preview rendering, mirroring Android `ttsSampleAlert`.
 private func ttsSampleAlert(spec: String) -> FiredAlert {
   FiredAlert(
     ruleId: "preview",
@@ -49,19 +45,14 @@ private func ttsSampleAlert(spec: String) -> FiredAlert {
 
 private func alertNowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
-/// One running geiger loop for a rule. Sustained loops a buffer continuously; ticking re-arms a
-/// timer whose interval depends on the current `rangeDepth`.
 private final class GeigerLoop {
   let spec: String
   var rangeDepth: Double
   let sustained: Bool
   var workItem: Cancellable?
-  /// Token used to cancel the sustained re-schedule cycle. A still-registered token with the same
-  /// UUID means the completion-handler should keep looping; a changed/removed loop stops it.
   var sustainToken: UUID?
   var sustainedPlaying = false
   var sustainedNode: LeasedNode?
-  /// Clip a sustained loop plays; a different one (a pack switch) restarts it.
   var sustainedKey: String?
 
   init(spec: String, rangeDepth: Double, sustained: Bool) {
@@ -71,23 +62,14 @@ private final class GeigerLoop {
   }
 }
 
-/// A pooled player node and the lease it is out on. A lease that is no longer current means the
-/// node went back to the pool, so a late completion or stop must leave it alone.
 private struct LeasedNode {
   let node: AVAudioPlayerNode
   let lease: UUID
 }
 
-/// A sound starting this late after its request records an `alert_audio_latency` Diagnostic Event.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_AUDIO_LATENCY_REPORT_MS`
 internal let alertAudioLatencyReportMs: Int64 = 150
 
-/// Alert audio feedback via `AVAudioEngine` with pre-loaded PCM buffers (low latency) plus
-/// `AVSpeechSynthesizer` for Alert Message Templates. Mirrors Android `AlertFeedback`
-/// (SoundPool + TextToSpeech). Must own the `AVAudioSession` while a board session is live so
-/// alerts continue playing in the background (`audio` background mode) and mix with other audio
-/// (music during a ride).
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `AlertFeedback`
 /// @platform-diff iOS uses `AVAudioEngine` + `AVAudioPlayerNode` with pre-loaded `AVAudioPCMBuffer`s
 /// instead of `SoundPool`; geiger tick scheduling uses a dedicated dispatch-backed scheduler;
@@ -103,62 +85,38 @@ internal final class AlertAudioPlayer {
   private let geigerQueue: DispatchQueue
   private let scheduler: Scheduler
   private let synthesizer = AVSpeechSynthesizer()
-  /// Finishes each TTS utterance's item; the synthesizer holds its delegate weakly.
   private let speechCompletions = SpeechCompletions()
-  /// Unfinished playback items; their `PlaybackDone`s run on `geigerQueue`.
   private let playback: PlaybackTracker
   private let assetsDirectory: URL?
-  /// Decoded clip per `"<pack>/<slot>"` of every built-in effects pack.
   private var buffersBySlot: [String: AVAudioPCMBuffer] = [:]
-  /// Length of each clip in `buffersBySlot`, written once in `init` and only read afterwards.
   private var clipDurationsMs: [String: Int64] = [:]
-  /// Decoded My sound per `"my/<file>"`, loaded on first play (nil when it failed to decode). Read
-  /// from any thread, so it carries its own lock.
   private var myBuffers: [String: AVAudioPCMBuffer?] = [:]
   private let myBuffersLock = NSLock()
   var soundPack = effectsPackFallback
   private var voice = voiceMatching
   private var voiceLevel = voiceLevelDefault
-  /// Folder holding `effects-<id>/` and `voice-<id>/`; nil when the bundle is missing.
   private var packsRoot: URL?
-  /// Voice each effects pack names, read once in `init`.
   private var effectsVoices: [String: String] = [:]
-  /// Parsed voice pack manifests and decoded clips (`"<pack>/<file>"`), filled on first use from
-  /// any thread, so they carry their own lock.
   private var voiceManifests: [String: VoicePackManifest] = [:]
   private var voiceClips: [String: AVAudioPCMBuffer] = [:]
   private let voiceLock = NSLock()
   private let voicePicker = VoiceVariantPicker()
-  /// Next announcement's buffer per line (`"<pack>/<key>.<severity>"`), joined ahead. Guarded by
-  /// `voiceLock`.
   private var preparedVoice: [String: (files: [String], buffer: AVAudioPCMBuffer)] = [:]
-  /// Voice line playing now; a newer line stops it. Owned by `geigerQueue`.
   private var voiceNode: LeasedNode?
   private var geigerLoops: [String: GeigerLoop] = [:]
   private var activeOneShotNodes: [AVAudioPlayerNode] = []
-  /// Every node attached to the engine, and the format it is connected with. A sound leases one
-  /// instead of attaching its own, so a one-shot costs no graph change. Owned by `geigerQueue`.
   private var attachedNodes: [ObjectIdentifier: (node: AVAudioPlayerNode, format: AVAudioFormat)] = [:]
   private var idleNodes: [AVAudioPlayerNode] = []
   private var nodeLeases: [ObjectIdentifier: UUID] = [:]
   private static let idleNodeLimit = 8
-  /// Sounds already reported late since `wake()`, one Diagnostic Event each. Owned by `geigerQueue`.
   private var lateReported: Set<String> = []
-  /// Records a Diagnostic Event; called on `geigerQueue`.
   var onDiagnostic: (String, [String: Any?]) -> Void = { _, _ in }
   private var started = false
-  /// A `goIdle()` waiting for in-flight sound to finish. Guarded by `geigerQueue`.
   private var idleRequested = false
   private var ownsAudioSession = false
-  /// `released` is read from any thread (bridge, main, geiger queue) so it carries its own lock
-  /// rather than riding on `geigerQueue`; every other mutable field below is owned by `geigerQueue`.
   private let releasedLock = NSLock()
   private var released = false
 
-  /// `assetsDirectory` overrides the bundled `VescapeCoreAssets.bundle/alert-packs` lookup with a
-  /// folder holding `effects-<id>/pack.json`. Production passes nil; the SPM test target has no
-  /// resource bundle and points at the repo's `shared/alerts/packs` so the engine graph is exercised
-  /// for real.
   init(
     assetsDirectory: URL? = nil,
     outputVolume: Float = 1,
@@ -179,8 +137,6 @@ internal final class AlertAudioPlayer {
       started = true
       Self.log("AlertAudioPlayer: engine started (format=\(standardFormat.sampleRate)Hz ch=\(standardFormat.channelCount) common=\(standardFormat.isStandard))")
     } catch {
-      // Without the engine alerts stay silent, but the app keeps running. Sessions rarely fail
-      // to start once the session is configured; a later play call will retry start (`startIfNeeded`).
       started = false
       Self.log("AlertAudioPlayer: engine.start FAILED: \(error)")
       UnexpectedNativeError.report(operation: "alert_audio_engine_start", category: "audio_start_failed", error: error)
@@ -193,14 +149,12 @@ internal final class AlertAudioPlayer {
     release()
   }
 
-  /// True once `release()` has run. Safe to read from any thread.
   private var isReleased: Bool {
     releasedLock.lock()
     defer { releasedLock.unlock() }
     return released
   }
 
-  /// Scheduler callbacks may be virtual in tests, but audio state always belongs to this queue.
   private func onGeigerQueue(_ block: @escaping (AlertAudioPlayer) -> Void) {
     geigerQueue.async { [weak self] in
       guard let self, !self.isReleased else { return }
@@ -208,7 +162,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Flip `released` once; returns false when another caller already released.
   private func markReleased() -> Bool {
     releasedLock.lock()
     defer { releasedLock.unlock() }
@@ -221,10 +174,6 @@ internal final class AlertAudioPlayer {
     NSLog("[VescAlerts] %@", message)
   }
 
-  // MARK: - Session
-
-  /** AVAudioSession is process-global. Test and production players may overlap, so only the last
-   * owner deactivates it; stopping a UI test must never silence the live Board alert player. */
   private func acquireAudioSession() {
     Self.audioSessionLock.lock()
     let shouldConfigure = Self.audioSessionOwnerCount == 0
@@ -242,9 +191,6 @@ internal final class AlertAudioPlayer {
       )
       try session.setActive(true, options: [])
     } catch {
-      // Soft-fail: playback category is the durable truth for background alerts; if the OS rejects
-      // it (e.g. another app owns a non-mixable session), alerts degrade to silence rather than
-      // crashing the bridge.
       UnexpectedNativeError.report(operation: "alert_audio_session_configure", category: "audio_session_failed", error: error)
     }
   }
@@ -263,7 +209,6 @@ internal final class AlertAudioPlayer {
   }
 
   private func startIfNeeded() {
-    // Sound is wanted again; a pending idle must not fire behind it.
     idleRequested = false
     guard !isReleased, !started, engine.isRunning == false else { return }
     do {
@@ -276,22 +221,11 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Re-activating an already-active session is a cheap no-op, so this is safe on every play path
-  /// and is the only thing standing between an idled player and audible sound.
   private func activateSession() throws {
     try AVAudioSession.sharedInstance().setActive(true, options: [])
   }
 
-  /// Stand down between Board Sessions without tearing the player down.
-  ///
-  /// A running `AVAudioEngine` holds a render thread, and an active `.playback` session is what tells
-  /// iOS the app still needs the `audio` background mode — together they keep the process awake long
-  /// after the ride that wanted them ended. Unlike `release()` this is reversible: buffers, nodes and
-  /// the loaded sound bank all survive, so the next alert costs a session activation and an engine
-  /// start rather than a rebuild, and nothing about alert latency mid-ride changes.
-  ///
-  /// @platform-diff iOS-only. Android's `AlertEngine` plays through `SoundPool`, which is idle
-  /// between plays and holds no session or render thread, so it has nothing to stand down from.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `goIdle`
   func goIdle() {
     geigerQueue.async { [weak self] in
       guard let self, !self.isReleased else { return }
@@ -300,9 +234,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Bring the engine and session up for a Board Session, ahead of its first sound. The running
-  /// engine renders silence between sounds, which keeps the output route (and a Bluetooth link)
-  /// awake, so the first sound after a quiet stretch is not clipped. Stays up until `goIdle()`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `wake`
   func wake() {
     onGeigerQueue { owner in
@@ -311,8 +242,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Decode everything `Specs` can play before the first alert: My sounds for every rule and
-  /// slot override, and the voice pack's lines. Built-in pack slots load in `init`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `prepare`
   func prepare(Specs: [String]) {
     onGeigerQueue { owner in
@@ -328,16 +257,8 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Must run on `geigerQueue`.
-  ///
-  /// Deferred rather than abandoned when sound is still playing. A teardown normally enqueues the
-  /// disconnect one-shot *before* `goIdle`, so on the common path the node is still registered here
-  /// — dropping the request there would mean the engine never idles at all. The one-shot's
-  /// completion re-runs this once the node drains.
   private func idleIfQuietOnQueue() {
     guard idleRequested, !isReleased else { return }
-    // A geiger loop still ticking means a ride is still alerting; idling under it would cut the
-    // rider's audio off mid-session.
     guard geigerLoops.isEmpty, activeOneShotNodes.isEmpty else { return }
     idleRequested = false
     synthesizer.stopSpeaking(at: .immediate)
@@ -383,13 +304,10 @@ internal final class AlertAudioPlayer {
     clipDurationsMs = buffers.mapValues { Int64(Double($0.frameLength) / $0.format.sampleRate * 1000) }
   }
 
-  /// Key of `slot` in the active (or given) effects pack.
   private func slotKey(_ slot: String, pack: String? = nil) -> String {
     "\(effectsPackId(pack ?? soundPack))/\(slot)"
   }
 
-  /// Key `slot` plays from: My sound `my` when it still exists, else the override or pack clip of the
-  /// slot `lookupSlot` picks. A missing or undecodable My sound falls back to the pack, never silence.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/EffectsPacks.kt `slotClip`
   private func clipKey(_ slot: String, my: String? = nil, pack: String? = nil) -> String {
     if let key = my.flatMap(MySounds.file).flatMap(myBufferKey) { return key }
@@ -399,7 +317,6 @@ internal final class AlertAudioPlayer {
     return slotKey(lookupSlot(slot, hasOverride: { _ in false }, packHas: packHas), pack: pack)
   }
 
-  /// Key of the decoded My sound at `url`, decoding it on first use; nil when it cannot decode.
   private func myBufferKey(_ url: URL) -> String? {
     let key = "my/\(url.lastPathComponent)"
     myBuffersLock.lock()
@@ -433,10 +350,6 @@ internal final class AlertAudioPlayer {
     return AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
   }
 
-  /// Read `file` into a float32 buffer matching `standardFormat`. AVAudioFile reads in its native
-  /// `processingFormat` (alert wavs are int16 PCM); when that differs from the engine's float32
-  /// standard format, run an `AVAudioConverter` pass so `AVAudioPlayerNode` schedules one consistent
-  /// format.
   private func convertToStandard(
     file: AVAudioFile,
     standardFormat: AVAudioFormat
@@ -485,9 +398,6 @@ internal final class AlertAudioPlayer {
     return nil
   }
 
-  // MARK: - Settings
-
-  /// Apply the app's sound settings: effects pack, voice, and voice level. Prewarms the voice lines.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `setSoundSettings`
   func applySoundSettings(_ settings: [String: Any?]) {
     soundPack = settings["soundPack"] as? String ?? soundPack
@@ -497,14 +407,10 @@ internal final class AlertAudioPlayer {
     DispatchQueue.global(qos: .utility).async { [weak self] in self?.prewarmVoice(pack) }
   }
 
-  /// Voice pack a line speaks with: the `voice` setting, where Matching follows the effects pack.
   private func voicePack() -> String {
     voicePackId(voice, effectsVoice: effectsVoices[effectsPackId(soundPack)])
   }
 
-  // MARK: - Connection sounds
-
-  /// The Board link came up: opens the Announcement Queue's settle window, cue or not.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `boardConnected`
   func boardConnected(playCue: Bool) {
     onGeigerQueue { player in
@@ -513,7 +419,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// The live Board link was lost: whatever the Board Session still had queued is dropped, cue or not.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `boardDisconnected`
   func boardDisconnected(playCue: Bool) {
     onGeigerQueue { player in
@@ -522,8 +427,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Queue app cue `cue` on the Announcement Queue at its `appCuePriority`; `onDone` reports how it
-  /// ended, `.cancelled` when it expired or the queue was cleared first.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playAppCue`
   func playAppCue(_ cue: String, onDone: @escaping PlaybackDone = { _ in }) {
     guard appCuePriority(cue) != nil else {
@@ -533,7 +436,6 @@ internal final class AlertAudioPlayer {
     onGeigerQueue { $0.enqueueAppCue(cue, onDone: onDone) }
   }
 
-  /// Must run on `geigerQueue`.
   private func enqueueAppCue(_ cue: String, onDone: @escaping PlaybackDone) {
     guard let priority = appCuePriority(cue) else {
       onDone(.failed)
@@ -542,8 +444,6 @@ internal final class AlertAudioPlayer {
     announce(priority: priority, onDone: onDone) { [weak self] done in self?.playAppCueNow(cue, done: done) }
   }
 
-  /// Play app cue `cue` from the active effects pack; when it speaks at the current Voice level
-  /// (`appCueSpeaks`), its voice line follows once the effect has finished.
   private func playAppCueNow(_ cue: String, done: PlaybackCompletion) {
     guard let slot = appCueSlot(cue) else {
       done.finish(.failed)
@@ -556,13 +456,9 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  // MARK: - Announcement Queue
-
-  /// One Announcement Queue item: how to play it, and who hears its final outcome.
   private final class QueuedAnnouncement {
     let play: (PlaybackCompletion) -> Void
     let onDone: PlaybackDone
-    /// The current attempt; a pre-empted item gets a fresh one when it plays again.
     var attempt: PlaybackCompletion?
 
     init(play: @escaping (PlaybackCompletion) -> Void, onDone: @escaping PlaybackDone) {
@@ -571,15 +467,11 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Owned by `geigerQueue`, like everything the queue touches.
   private let announcements = AnnouncementQueue<QueuedAnnouncement>()
   private var pendingPump: Cancellable?
 
   private static func uptimeMs() -> Int64 { Int64(DispatchTime.now().uptimeNanoseconds / 1_000_000) }
 
-  /// The Announcement Queue seam every non-critical producer goes through: `play` runs once the
-  /// queue gives the item its turn and must finish the completion it is handed. Must run on
-  /// `geigerQueue`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `announce`
   private func announce(
     priority: AnnouncementPriority,
@@ -595,7 +487,6 @@ internal final class AlertAudioPlayer {
     pumpAnnouncements()
   }
 
-  /// Must run on `geigerQueue`.
   private func pumpAnnouncements() {
     pendingPump?.cancel()
     pendingPump = nil
@@ -603,7 +494,6 @@ internal final class AlertAudioPlayer {
     let now = Self.uptimeMs()
     switch announcements.next(now: now, onDrop: { $0.onDone(.cancelled) }) {
     case .play(let item):
-      // Attempts deliver on `geigerQueue`, so the queue stays confined to it.
       let attempt = track { [weak self] outcome in
         guard let self, self.announcements.playing === item else { return }
         self.announcements.finished(outcome, now: Self.uptimeMs())?.onDone(outcome)
@@ -620,22 +510,18 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Stop `item`'s attempt playing now. Cut speech reports cancelled and plays again; an effect
-  /// cannot be cut, tails out and reports completed, so it never plays twice. Must run on `geigerQueue`.
   private func stopAnnouncement(_ item: QueuedAnnouncement) {
     guard let attempt = item.attempt else { return }
     guard playback.isSpeech(attempt) else {
       attempt.finish(.completed)
       return
     }
-    // A newer generation keeps a line still waiting on its lead sound from starting.
     _ = nextSpeechGeneration()
     synthesizer.stopSpeaking(at: .immediate)
     stopVoiceOnQueue()
     attempt.finish(.cancelled)
   }
 
-  /// Must run on `geigerQueue`.
   private func clearAnnouncementsOnQueue() {
     pendingPump?.cancel()
     pendingPump = nil
@@ -645,9 +531,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Start a critical alert on `geigerQueue`, handing `start` its tracked completion. The item it
-  /// pre-empts stops before `start` claims speech, so a queued line never talks over it, and every
-  /// write to speech state stays on the queue. Geiger ticks never come through here.
   private func startCritical(
     _ onDone: @escaping PlaybackDone,
     _ start: @escaping (AlertAudioPlayer, PlaybackCompletion) -> Void
@@ -663,11 +546,8 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Wrap a critical alert's `onDone`: while it plays the Announcement Queue holds, and the item it
-  /// pre-empts stops. Must run on `geigerQueue`.
   private func critical(_ onDone: @escaping PlaybackDone) -> PlaybackDone {
     if let item = announcements.criticalStarted() { stopAnnouncement(item) }
-    // Tracked completions deliver on `geigerQueue`.
     return { [weak self] outcome in
       if let self {
         self.announcements.criticalEnded(now: Self.uptimeMs())
@@ -677,8 +557,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// A tracked item reporting to `onDone` exactly once, `.failed` past `playbackDoneTimeoutMs`.
-  /// The seam an announcement queue waits on.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `track`
   private func track(_ onDone: @escaping PlaybackDone) -> PlaybackCompletion {
     let done = playback.start(onDone)
@@ -686,15 +564,10 @@ internal final class AlertAudioPlayer {
     return done
   }
 
-  /// Settings preview of `pack`'s `slot` (or its override): the effect only, whatever the Voice level.
   func playPackSound(pack: String, slot: String) {
     play(clipKey(slot, pack: pack))
   }
 
-  // MARK: - Single
-
-  /// Play one announcement: an `alert(count):severity` rule's severity sound from the active
-  /// effects pack, `count` times, `alertBeepSpacingMs` apart.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
   func playSingle(spec: String, onDone: @escaping PlaybackDone = { _ in }) {
     startCritical(onDone) { player, done in
@@ -702,8 +575,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// `sound`'s severity slot from `pack`, or My sound `my` in its place, `sound.count` times.
-  /// `onDone` follows the last repetition.
   private func playSeverity(_ sound: SlotAlertSound, my: String? = nil, onDone: PlaybackDone? = nil) {
     guard !isReleased else {
       onDone?(.cancelled)
@@ -712,7 +583,6 @@ internal final class AlertAudioPlayer {
     let key = clipKey(sound.severity.slot, my: my)
     play(key, onDone: sound.count > 1 ? nil : onDone)
     guard sound.count > 1 else { return }
-    // A sound longer than the spacing (a pack's multi-beep severity) repeats once it ends.
     let duration = Double(clipDurationMs(key))
     let interval = duration > alertBeepSpacingMs ? duration + alertBeepSpacingMs : alertBeepSpacingMs
     for index in 1..<sound.count {
@@ -723,23 +593,16 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  // MARK: - Preview
-
-  /// Speak a TTS rule's `text` after its `severity` sound, played once; speech starts once the
-  /// sound has finished, so the two never overlap.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakAfterSeverity`
   func speakAfterSeverity(_ severity: AlertSeverity, text: String, onDone: @escaping PlaybackDone = { _ in }) {
     startCritical(onDone) { player, done in player.speakAfterSeverityOnQueue(severity, text: text, done: done) }
   }
 
-  /// Must run on `geigerQueue`.
   private func speakAfterSeverityOnQueue(_ severity: AlertSeverity, text: String, done: PlaybackCompletion) {
-    // A newer announcement supersedes speech still waiting out an older one's sound.
     pendingSpeech?.cancel()
     playback.claimSpeech(done)
     let generation = nextSpeechGeneration()
     playSeverity(SlotAlertSound(count: 1, severity: severity))
-    // Only touched on `geigerQueue`; cancelling an already-run item is a no-op.
     let delay = speechDelayMs(clipDurationMs(clipKey(severity.slot)))
     pendingSpeech = scheduler.postDelayed(delay) { [weak self] in
       guard let self, self.isCurrentSpeech(generation) else { return }
@@ -747,10 +610,7 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Owned by `geigerQueue`.
   private var pendingSpeech: Cancellable?
-  /// Bumped per spoken announcement; speech whose timer already fired checks it before starting,
-  /// so a newer announcement supersedes it even after cancellation comes too late.
   private var speechGeneration = 0
   private let speechGenerationLock = NSLock()
 
@@ -767,20 +627,13 @@ internal final class AlertAudioPlayer {
     return speechGeneration == generation
   }
 
-  /// False at Voice level `off`: preset voice rules then play their severity sound only.
   var presetVoiceEnabled: Bool { voiceLevel != "off" }
 
-  /// Speak `announcement`: `slot` (its severity sound by default) once, then the voice pack line
-  /// joined with its value into one buffer, starting once the sound has finished. A key the pack has
-  /// no line for plays the sound only. Whether to speak is the caller's (`presetVoiceEnabled`); the
-  /// voice level picks the wording.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakVoice`
   func speakVoice(_ announcement: VoiceAnnouncement, slot: String? = nil, onDone: @escaping PlaybackDone = { _ in }) {
     startCritical(onDone) { player, done in player.speakVoiceTracked(announcement, slot: slot, done: done) }
   }
 
-  /// Queue `announcement` on the Announcement Queue at advisory priority (Weather Alerts). At Voice
-  /// level `off` nothing plays: a bare severity sound would carry none of the line's information.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `speakAdvisory`
   func speakAdvisory(_ announcement: VoiceAnnouncement, onDone: @escaping PlaybackDone = { _ in }) {
     onGeigerQueue { player in
@@ -794,8 +647,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// `done` ends with the line, or with the lead sound when the pack has no line for the key.
-  /// Must run on `geigerQueue`.
   private func speakVoiceTracked(_ announcement: VoiceAnnouncement, slot: String?, done: PlaybackCompletion) {
     guard !isReleased else {
       done.finish(.cancelled)
@@ -806,7 +657,6 @@ internal final class AlertAudioPlayer {
     playback.claimSpeech(done)
     let generation = nextSpeechGeneration()
     let lead = clipKey(slot ?? announcement.severity.slot)
-    // Both sides touch it on `geigerQueue` only.
     let leadEnd = LeadEnd()
     play(lead) { outcome in
       if leadEnd.noLine { done.finish(outcome) } else { leadEnd.outcome = outcome }
@@ -823,8 +673,6 @@ internal final class AlertAudioPlayer {
         guard owner.isCurrentSpeech(generation) else { return }
         owner.synthesizer.stopSpeaking(at: .immediate)
         owner.stopVoiceOnQueue()
-        // A `goIdle()` pending or already done behind the lead sound (a disconnect, a ride end)
-        // still applies: the line restarts the engine, so stand it down again once the line ends.
         let idle = owner.idleRequested || !owner.started
         owner.voiceNode = owner.playBufferOnQueue(
           line, label: "voice/\(announcement.key ?? "")", requestedAt: DispatchTime.now()
@@ -835,7 +683,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Must run on `geigerQueue`. A finished line's node is already back in the pool and is left alone.
   private func stopVoiceOnQueue() {
     if let voiceNode { returnNode(voiceNode) }
     voiceNode = nil
@@ -850,7 +697,6 @@ internal final class AlertAudioPlayer {
     return manifest
   }
 
-  /// Decoded clip `file` of `pack`, leading padding trimmed; nil when it cannot decode.
   private func voiceClip(_ pack: String, _ file: String) -> AVAudioPCMBuffer? {
     let key = "\(pack)/\(file)"
     voiceLock.lock()
@@ -878,16 +724,12 @@ internal final class AlertAudioPlayer {
     return trimmed
   }
 
-  /// Decode every line clip of `pack` ahead of the first announcement. Value clips decode on use.
   private func prewarmVoice(_ pack: String) {
     guard let manifest = voiceManifest(pack) else { return }
     let id = voicePackIds.contains(pack) ? pack : voicePackFallback
     for line in manifest.lines.values { for file in line.files { _ = voiceClip(id, file) } }
   }
 
-  /// `announcement` joined into one buffer from `pack`, or nil when the pack has no line for its key.
-  /// The next pick joins right after on a utility queue, so its variant costs the next announcement
-  /// nothing.
   private func joinedVoice(_ spoken: VoiceAnnouncement, pack: String) -> AVAudioPCMBuffer? {
     var announcement = spoken
     announcement.wording = VoiceWording(level: voiceLevel)
@@ -926,8 +768,6 @@ internal final class AlertAudioPlayer {
     return joined
   }
 
-  /// Play a preset once for UI preview, or speak a `tts` template with a sample fired alert after
-  /// its severity sound.
   func preview(spec: String, distanceUnit: String = "km", temperatureUnit: String = "celsius") {
     guard !isReleased else { return }
     Self.log("AlertAudioPlayer.preview: \(spec)")
@@ -953,13 +793,9 @@ internal final class AlertAudioPlayer {
     play(key)
   }
 
-  // MARK: - Geiger
-
   func updateGeiger(ruleId: String, spec: String, rangeDepth: Double) {
     guard !isReleased else { return }
     geigerQueue.async { [weak self] in
-      // Re-check on the queue: `release()` can land between the check above and this block, and a
-      // loop created afterwards would re-arm its tick forever against a torn-down engine.
       guard let self, !self.isReleased else { return }
       self.updateGeigerSync(ruleId: ruleId, spec: spec, rangeDepth: rangeDepth)
     }
@@ -1023,7 +859,6 @@ internal final class AlertAudioPlayer {
     scheduleGeigerTick(loop: loop, ruleId: ruleId, slot: slot, delayMs: startDelay)
   }
 
-  /// Each tick resolves `slot` (or the loop's My sound) afresh, so a pack switch mid-loop takes effect.
   private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, slot: String, delayMs: Int) {
     loop.workItem = scheduler.postDelayed(Int64(delayMs)) { [weak self] in
       self?.onGeigerQueue { owner in
@@ -1035,7 +870,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Loop the buffer continuously until the loop is cancelled by `stopGeiger`/`stopAllGeiger`.
   private func scheduleSustainedLoop(loop: GeigerLoop, ruleId: String, clipKey: String) {
     let token = UUID()
     loop.sustainToken = token
@@ -1051,9 +885,6 @@ internal final class AlertAudioPlayer {
     loop.sustainedNode = leased
     loop.sustainedPlaying = true
     node.scheduleBuffer(buffer, at: nil, options: [], completionHandler: { [weak self] in
-      // Re-arm only if the loop is still registered and its token hasn't changed (i.e. not
-      // cancelled or replaced). Dispatch back to the geiger queue so loop state mutations stay
-      // single-threaded.
       self?.geigerQueue.async {
         guard let self else { return }
         guard
@@ -1076,7 +907,6 @@ internal final class AlertAudioPlayer {
   }
 
   private func stopSustainedPlaybackForLoop(_ loop: GeigerLoop) {
-    // Bump the token so any in-flight completion handler short-circuits instead of re-arming.
     loop.sustainToken = nil
     loop.sustainedPlaying = false
     if let leased = loop.sustainedNode {
@@ -1090,25 +920,17 @@ internal final class AlertAudioPlayer {
     return Int(max(60, min(800, 800 - Int(740 * clipped))))
   }
 
-  // MARK: - TTS
-
   private func speakTracked(_ text: String, done: PlaybackCompletion) {
     guard !isReleased else {
       done.finish(.cancelled)
       return
     }
-    // The synthesizer plays through the shared session, which an earlier `goIdle()` may have
-    // deactivated; without this the utterance is silently dropped. Cancelling a pending idle and
-    // re-activating happen on `geigerQueue` — the same queue `goIdle` runs on — so a teardown racing
-    // an alert cannot deactivate the session out from under the utterance that follows.
     let reactivate = { [self] in
       idleRequested = false
       stopVoiceOnQueue()
       // intentional-suppression: a refused activation degrades to silence, never a crash
       try? activateSession()
     }
-    // `sync` onto the current serial queue would deadlock, so run inline when already on it —
-    // the same guard `release()` uses.
     if DispatchQueue.getSpecific(key: Self.geigerQueueMarker) == ObjectIdentifier(self) {
       reactivate()
     } else {
@@ -1118,15 +940,10 @@ internal final class AlertAudioPlayer {
     utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
     utterance.preUtteranceDelay = 0
     speechCompletions.register(utterance, done)
-    // Cancels the utterance it interrupts, whose delegate reports it cancelled.
     synthesizer.stopSpeaking(at: .immediate)
     synthesizer.speak(utterance)
   }
 
-  // MARK: - Vibration / haptics
-
-  /// Haptic feedback mirroring Android `vibrate`. A range-less alert triggers a crisp waveform
-  /// pattern; a geiger alert scales one-shot intensity with `rangeDepth`.
   func vibrate(rangeDepth: Double?) {
     guard !isReleased else { return }
     #if canImport(UIKit)
@@ -1141,18 +958,11 @@ internal final class AlertAudioPlayer {
     #endif
   }
 
-  // MARK: - Release
-
   func release() {
     guard markReleased() else { return }
     playback.cancelAll()
     speechCompletions.clear()
     synthesizer.stopSpeaking(at: .immediate)
-    // Everything touching the engine graph or the node bookkeeping runs on `geigerQueue`, so a
-    // completion handler queued behind this block sees the drained state (and a node whose
-    // `engine` is already nil) instead of racing it. A queued closure strongifies `self` while it
-    // runs, so the last reference can drop on `geigerQueue` and reach here through `deinit` —
-    // `sync` onto the current serial queue would deadlock, so tear down inline in that case.
     if DispatchQueue.getSpecific(key: Self.geigerQueueMarker) == ObjectIdentifier(self) {
       releaseOnQueue()
     } else {
@@ -1161,7 +971,6 @@ internal final class AlertAudioPlayer {
     releaseAudioSession()
   }
 
-  /// Must run on `geigerQueue`.
   private func releaseOnQueue() {
     clearAnnouncementsOnQueue()
     for loop in geigerLoops.values {
@@ -1183,11 +992,6 @@ internal final class AlertAudioPlayer {
     buffersBySlot.removeAll(keepingCapacity: true)
   }
 
-  // MARK: - Low-level
-
-  /// Entry point from any thread. Hops to `geigerQueue`, the single owner of the engine graph and
-  /// of `activeOneShotNodes`.
-  /// `onDone` runs on `geigerQueue` once the buffer has played (or was stopped).
   private func play(_ clipKey: String, onDone: PlaybackDone? = nil) {
     guard !isReleased else {
       onDone?(.cancelled)
@@ -1199,7 +1003,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Must run on `geigerQueue`.
   private func playOnQueue(_ clipKey: String, requestedAt: DispatchTime = .now(), onDone: PlaybackDone? = nil) {
     guard !isReleased else {
       onDone?(.cancelled)
@@ -1232,7 +1035,6 @@ internal final class AlertAudioPlayer {
       guard let self else { return }
       self.geigerQueue.async {
         self.returnNode(leased)
-        // A teardown may have asked to idle while this was still sounding.
         self.idleIfQuietOnQueue()
         onDone?(.completed)
       }
@@ -1242,15 +1044,12 @@ internal final class AlertAudioPlayer {
     return leased
   }
 
-  /// Report `sound` once per session when it started `alertAudioLatencyReportMs` or more after
-  /// `requestedAt`. Must run on `geigerQueue`.
   private func reportLatency(_ sound: String, requestedAt: DispatchTime) {
     let latencyMs = Int64((DispatchTime.now().uptimeNanoseconds - requestedAt.uptimeNanoseconds) / 1_000_000)
     guard latencyMs >= alertAudioLatencyReportMs, lateReported.insert(sound).inserted else { return }
     onDiagnostic("alert_audio_latency", ["sound": sound, "latency_ms": latencyMs, "path": "ready"])
   }
 
-  /// An idle attached node of `format`, else a newly attached one. Must run on `geigerQueue`.
   private func leaseNode(format: AVAudioFormat) -> LeasedNode {
     let node: AVAudioPlayerNode
     if let index = idleNodes.firstIndex(where: { attachedNodes[ObjectIdentifier($0)]?.format == format }) {
@@ -1266,9 +1065,6 @@ internal final class AlertAudioPlayer {
     return LeasedNode(node: node, lease: lease)
   }
 
-  /// Stop `leased` and put it back in the pool, detaching it past `idleNodeLimit`. A lease that is
-  /// no longer current is a no-op, so a late completion never touches a node already reused.
-  /// Must run on `geigerQueue`.
   private func returnNode(_ leased: LeasedNode) {
     let id = ObjectIdentifier(leased.node)
     guard nodeLeases[id] == leased.lease else { return }
@@ -1287,10 +1083,6 @@ internal final class AlertAudioPlayer {
     }
   }
 
-  /// Detach is idempotent: `release()` and a pending completion handler can both reach the same
-  /// node, and `disconnectNodeOutput` raises an ObjC `NSException` (uncatchable from Swift, so it
-  /// aborts the process) when the node is no longer attached. `node.engine` is the attachment.
-  /// Must run on `geigerQueue`.
   private func detachPlayerNode(_ node: AVAudioPlayerNode) {
     guard node.engine != nil else {
       Self.log("AlertAudioPlayer.detachPlayerNode: already detached, skipping")
@@ -1301,14 +1093,11 @@ internal final class AlertAudioPlayer {
   }
 }
 
-/// Lead sound of a voice announcement, and whether the pack had no line to follow it.
-/// Confined to `geigerQueue`.
 private final class LeadEnd {
   var outcome: PlaybackOutcome?
   var noLine = false
 }
 
-/// Finishes each utterance's playback item from the synthesizer's callbacks.
 /// @platform-diff Android finishes utterances from `UtteranceProgressListener` by utterance id.
 private final class SpeechCompletions: NSObject, AVSpeechSynthesizerDelegate {
   private var byUtterance: [ObjectIdentifier: PlaybackCompletion] = [:]

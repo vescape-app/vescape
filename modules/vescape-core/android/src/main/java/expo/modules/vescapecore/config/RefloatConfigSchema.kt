@@ -50,8 +50,6 @@ internal object RefloatConfigSchemaParser {
         isNamespaceAware = false
         isIgnoringComments = true
       }
-      // Android's DOM provider rejects the SAX external-entity feature flags supported by the JVM.
-      // Reject DTDs above and external resolution here without relying on optional parser features.
       val builder = factory.newDocumentBuilder().apply {
         setEntityResolver { _, _ -> throw SAXException("External XML entities are forbidden") }
       }

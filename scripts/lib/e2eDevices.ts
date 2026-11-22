@@ -3,7 +3,6 @@ import { listAdbDevices, pickDevice, type AdbDevice } from './devices.ts'
 
 type Choice = { kind: 'attached'; device: AdbDevice } | { kind: 'avd'; avd: Avd }
 
-/** Resolve the entire pair before any build. The same explicit targets go to every child runner. */
 export async function e2eDevices(
   needsWatch: boolean,
   requested: string | null,

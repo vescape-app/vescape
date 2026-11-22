@@ -9,10 +9,6 @@ export interface JsonToken {
 const TOKEN_RE =
   /"(?:\\.|[^"\\])*"(\s*:)?|true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}[\],]/g
 
-/**
- * Tokenize a value's pretty-printed JSON into typed spans for syntax highlighting.
- * Pure: no React, no rendering — callers map token types to colors.
- */
 export function tokenizeJson(value: unknown, indent = 2): JsonToken[] {
   const json = JSON.stringify(value, null, indent)
   if (json === undefined) return [{ text: String(value), type: 'plain' }]

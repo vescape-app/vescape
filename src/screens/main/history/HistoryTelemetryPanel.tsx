@@ -45,7 +45,6 @@ import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import { rideMovingWindow } from '@/modules/history/lib/sessions'
 import { useHistoryStore, type TelemetrySample } from '@/modules/history/store/historyStore'
 
-/** Stable identity, so a loading ride does not rebuild the stack on every render. */
 const EMPTY_SAMPLES: TelemetrySample[] = []
 const CHART_HEIGHT_DURATION_MS = 180
 
@@ -57,9 +56,7 @@ interface HistoryTelemetryPanelProps {
   boardName: string
   navigationTitle?: string
   navigationSubtitle?: string
-  /** Full-density samples retained for recording-continuity and GPS-gap detection. */
   gpsGapSamples: TelemetrySample[]
-  /** Decimated samples used to draw the compact chart lines. */
   samples: TelemetrySample[]
   canPrevious: boolean
   canNext: boolean
@@ -80,11 +77,9 @@ interface HistoryTelemetryPanelProps {
   onToggleFavorite: () => void
   onMetricInteraction?: (metric: HistoryMetricKey) => void
   onHeightChange?: (height: number) => void
-  /** When set, the stack becomes a Favorite range trimmer and scrubbing is suspended. */
   trim?: HistoryTrimConfig
 }
 
-/** A Favorite being cut out of the ride: the seed range, and where the rider drags it to. */
 export interface HistoryTrimConfig {
   startMs: number
   endMs: number
@@ -92,10 +87,6 @@ export interface HistoryTrimConfig {
   onCommit: (startMs: number, endMs: number) => void
 }
 
-/**
- * Memoized: it rebuilds every chart series, range and path for the ride it is handed, so a render
- * of the screen around it is not a reason to do that work again.
- */
 export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
   startAtMs,
   endAtMs,
@@ -130,8 +121,6 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
   useRenderRateWarning('HistoryTelemetryPanel')
   const insets = useSafeAreaInsets()
   const router = useRouter()
-  // Speed is on by default and closable like any other line — the rider who wants the map back
-  // should not have to keep a chart they are not reading.
   const [activeCharts, setActiveCharts] = useState<Set<ChartToggleMetric>>(
     () => new Set<ChartToggleMetric>(['speed']),
   )
@@ -146,19 +135,11 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
   trimRef.current = trim
   const trimming = trim != null
 
-  // No lines while a ride is loading, whatever the store still holds. Samples and the ride they
-  // belong to have to be drawn as a pair: feeding the previous ride's samples through the new
-  // ride's bounds rebuilds every series, timeline, range and path for a result that is thrown
-  // away the moment the real samples land — which is what made switching rides crawl.
   const loadingSession = useHistoryStore((s) => s.loadingSession)
 
-  // Derived in render, not through state: an effect would run a commit late and the old ride's
-  // lines would survive the press that started the next one.
   const rideSamples = loadingSession ? EMPTY_SAMPLES : samples
   const rideGpsGapSamples = loadingSession ? EMPTY_SAMPLES : gpsGapSamples
 
-  // The lines are cleared in the same commit as the press, so the fade out is only the chrome
-  // going; the fade in is the whole stack arriving at once, once its samples have landed.
   const fade = useSharedValue(1)
   useEffect(() => {
     fade.value = withTiming(loadingSession ? 0 : 1, { duration: loadingSession ? 90 : 260 })
@@ -233,8 +214,6 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
   const titleEndMs = rideWindow?.endMs ?? endAtMs
   const bottomInset = Math.max(insets.bottom, 16) + 8
 
-  // The scrub head and the zoom window outlive this component (the map reads both), so a ride
-  // switch has to clear them — otherwise the map keeps marking a moment from the previous ride.
   useEffect(() => {
     scrubHeadMs.value = null
     zoomWindowMs.value = null
@@ -244,8 +223,6 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
     }
   }, [startAtMs])
 
-  // A ride linked with a focus (e.g. from the Top speed record): once its samples land, park the
-  // head on that moment so the chart and the map both mark it. The next touch takes it back.
   const sessionFocus = useHistoryStore((s) => s.sessionFocus)
   useEffect(() => {
     if (sessionFocus == null || visibleGpsGapSamples.length === 0) return
@@ -254,8 +231,6 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
     if (focusMs != null) scrubHeadMs.value = focusMs
   }, [sessionFocus, visibleGpsGapSamples])
 
-  // The seed range enters the canvas as a shared value, so dragging a handle never renders the
-  // panel; the trimmer hears about it through the throttled callbacks below.
   const trimStartMs = trim?.startMs
   const trimEndMs = trim?.endMs
   useEffect(() => {
@@ -263,8 +238,6 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
       trimStartMs == null || trimEndMs == null ? null : { startMs: trimStartMs, endMs: trimEndMs }
   }, [selection, trimEndMs, trimStartMs])
 
-  // Trimming a Favorite is the rider saying which part of the ride they mean, so the map follows
-  // the handles rather than the chart's own zoom: same dim, same camera fit, same settle.
   useAnimatedReaction(
     () => (trimming ? selection.value : null),
     (range) => {
@@ -273,8 +246,6 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
     [trimming],
   )
 
-  // Leaving the trimmer hands the window back to the chart's camera, which only reports on its
-  // next change — so the selection has to be cleared here or the map stays framed on it.
   useEffect(() => {
     if (!trimming) zoomWindowMs.value = null
   }, [trimming])
@@ -287,8 +258,6 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
     trimRef.current?.onCommit(range.startMs, range.endMs)
   }, [])
 
-  // Touching a chart is what says "colour the route by this": the stack keys its charts by metric,
-  // and the map reads the same hot ranges the lines do, so the two always agree.
   const handleChartTouch = useCallback(
     (key: string) => {
       if (isHistoryMetricKey(key)) onMetricInteraction?.(key)
@@ -300,8 +269,6 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
     (metric: ChartToggleMetric) => {
       const next = toggleOptionalChartMetric(activeCharts, metric)
       setActiveCharts(next)
-      // Opening a chart colours the route by it; closing one hands the colour straight to the top
-      // chart left, so the map never keeps a colour whose line is gone.
       const colourBy = next.has(metric) ? metric : topActiveChartMetric(next)
       if (colourBy != null && isHistoryMetricKey(colourBy)) onMetricInteraction?.(colourBy)
     },
@@ -338,9 +305,6 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
           onOpenCharts={() => router.push(routes.historyCharts)}
         />
       ) : null}
-      {/* Drawn whether or not the samples have landed, so the empty frames hold the panel's height
-          and a ride switch fills lines into a stack that never moved. Every metric closed means
-          the rider wants the map: the tabs below stay, to bring one back. */}
       <Animated.View style={[styles.chartViewport, chartViewportStyle, fadeStyle]}>
         {displayedCharts.size > 0 ? (
           <View style={styles.chartContent}>

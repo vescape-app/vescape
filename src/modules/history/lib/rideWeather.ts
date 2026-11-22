@@ -8,10 +8,8 @@ import {
   type DistanceUnit,
 } from '@/helpers/units'
 
-/** A ride spanning less than this many °C reads as one temperature. */
 const SINGLE_TEMPERATURE_SPREAD_C = 3
 
-/** `14` when the ride barely changed, otherwise `8–20`; spread is judged in °C. */
 export function rideTemperatureValue(weather: RideWeather, unit: TemperatureUnit): string {
   const { minTemperatureC: min, maxTemperatureC: max } = weather
   const shown = (celsius: number) => Math.round(temperatureFromC(celsius, unit))
@@ -23,7 +21,6 @@ export function formatRideTemperature(weather: RideWeather, unit: TemperatureUni
   return `${rideTemperatureValue(weather, unit)}${temperatureSymbol(unit)}`
 }
 
-/** Strongest gust in the rider's speed unit, or null when no observation carried one. */
 export function rideGustValue(weather: RideWeather, distanceUnit: DistanceUnit): number | null {
   return weather.maxGustKmh == null
     ? null

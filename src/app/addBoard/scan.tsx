@@ -39,7 +39,6 @@ export default function AddBoardScanScreen() {
   const handleSelect = (device: ScannedDevice) => {
     stopScan()
     if (boardId) {
-      // Linking an existing board: probe the chosen peripheral, then save its link.
       router.push({
         pathname: routes.editBoardLink,
         params: { boardId, bleId: device.id, bleName: device.name },

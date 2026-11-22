@@ -59,7 +59,6 @@ export interface MainHistoryOverlayProps {
   canNextFavorite: boolean
   selectPreviousFavorite: () => Promise<void>
   selectNextFavorite: () => Promise<void>
-  /** The selected Favorite while the Favorites tab is active. */
   openFavorite: Favorite | null
   selectFavorite: (favorite: Favorite) => Promise<void>
   removeOpenFavorite: () => Promise<void>
@@ -86,12 +85,10 @@ export interface MainHistoryOverlayProps {
 interface HistoryOverlayProps {
   visible: boolean
   history: MainHistoryOverlayProps
-  /** Height of the telemetry panel, so the session sheet and the map vignette sit above it. */
   panelHeight: number
   onPanelHeightChange: (height: number) => void
 }
 
-/** History mode: the replayed ride's panel, stats and controls, plus the ride list and media. */
 export function HistoryOverlay({
   visible,
   history,
@@ -100,7 +97,6 @@ export function HistoryOverlay({
 }: HistoryOverlayProps) {
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false)
   const listButtonRef = useRef<View>(null)
-  // Browsing the picker never changes the ride being displayed behind it.
   const [listTab, setListTab] = useState<HistoryTab | null>(null)
   const listFavoriteMode = (listTab ?? history.historyTab) === 'favorites'
   const closeList = () => {

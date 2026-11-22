@@ -26,7 +26,6 @@ class RemoteTiltControllerTest {
 
   private fun tilt(value: Int) = buildRemoteTiltCommand(BoardTransport.Direct, value)
 
-  /** Mirrors the controller's linear ease so expectations track the formula. */
   private fun decayValue(from: Int, steps: Int, tick: Int): Int =
     if (tick >= steps) REMOTE_TILT_CENTER
     else (from + (REMOTE_TILT_CENTER - from) * (tick.toDouble() / steps)).roundToInt()
@@ -48,12 +47,12 @@ class RemoteTiltControllerTest {
   fun rapidHoldUpdatesCoalesceToLatestWithoutFloodingWrites() {
     val controller = controller()
 
-    controller.hold(140) // first press sends immediately
-    controller.hold(160) // already streaming: swap value only, no extra write
-    controller.hold(200) // already streaming: swap value only, no extra write
+    controller.hold(140)
+    controller.hold(160)
+    controller.hold(200)
     assertEquals(1, sent.size)
 
-    scheduler.advance(100) // a single repeat tick emits just the latest value
+    scheduler.advance(100)
     assertEquals(2, sent.size)
     assertArrayEquals(tilt(200), sent[1])
   }
@@ -62,28 +61,27 @@ class RemoteTiltControllerTest {
   fun releaseEasesLinearlyToNeutralThenStops() {
     val controller = controller()
     val from = 255
-    val steps = 4 // 400ms / 100ms
+    val steps = 4
 
     assertTrue(controller.release(from, 400))
-    assertArrayEquals(tilt(from), sent[0]) // immediate from-value
+    assertArrayEquals(tilt(from), sent[0])
 
     scheduler.advance(400)
-    // ticks 1..4 emitted; mid-ramp value is interpolated, last lands on neutral.
     assertArrayEquals(tilt(decayValue(from, steps, 1)), sent[1])
     assertArrayEquals(tilt(REMOTE_TILT_CENTER), sent.last())
     assertEquals(5, sent.size)
 
     scheduler.advance(200)
-    assertEquals(5, sent.size) // stream ended; no further repeats
+    assertEquals(5, sent.size)
   }
 
   @Test
   fun holdThenReleaseEasesFromHeldValue() {
     val controller = controller()
-    controller.hold(255) // live drag streams immediately
+    controller.hold(255)
     assertEquals(1, sent.size)
 
-    controller.release(255, 400) // hands off to decay without an extra write
+    controller.release(255, 400)
     assertEquals(1, sent.size)
 
     scheduler.advance(400)
@@ -96,12 +94,12 @@ class RemoteTiltControllerTest {
     controller.hold(200)
     sent.clear()
 
-    assertTrue(controller.release(200, 50)) // < one 100ms tick
+    assertTrue(controller.release(200, 50))
     assertEquals(1, sent.size)
     assertArrayEquals(tilt(REMOTE_TILT_CENTER), sent[0])
 
     scheduler.advance(200)
-    assertEquals(1, sent.size) // no decay ticks
+    assertEquals(1, sent.size)
   }
 
   @Test
@@ -115,26 +113,21 @@ class RemoteTiltControllerTest {
     assertArrayEquals(tilt(REMOTE_TILT_CENTER), sent[0])
 
     scheduler.advance(200)
-    assertEquals(1, sent.size) // no further repeats after stop
+    assertEquals(1, sent.size)
   }
 
-  /**
-   * The regression this exists for: cancelling a big tilt used to step straight to neutral, and the
-   * board surged to correct that angle error and threw the rider forward.
-   */
   @Test
   fun cancelEasesLockedTiltBackToNeutralInsteadOfSnapping() {
     val controller = controller()
-    controller.lock(255) // full nose-up
+    controller.lock(255)
     sent.clear()
 
     assertTrue(controller.cancel())
-    assertTrue(sent.isEmpty()) // the running loop owns the ramp; no extra immediate write
+    assertTrue(sent.isEmpty())
     assertEquals(RemoteTiltPhase.Decaying, controller.phase)
     assertEquals(600L, controller.decayProgress?.totalMs)
 
     scheduler.advance(100)
-    // First ramp step is a fraction of the way back, not neutral.
     assertTrue(controller.currentValue in (REMOTE_TILT_CENTER + 1) until 255)
 
     scheduler.advance(500)
@@ -165,20 +158,18 @@ class RemoteTiltControllerTest {
     assertEquals(200, controller.currentValue)
     assertTrue(controller.isLocked)
 
-    // A live drag (hold) clears the lock but keeps reporting the held value.
     controller.hold(160)
     assertEquals(160, controller.currentValue)
     assertFalse(controller.isLocked)
 
-    // Re-lock, then release: lock clears and the value tracks the ease.
     controller.lock(255)
     assertTrue(controller.isLocked)
     controller.release(255, 400)
     assertFalse(controller.isLocked)
-    scheduler.advance(200) // mid-ease
+    scheduler.advance(200)
     assertTrue(controller.currentValue in REMOTE_TILT_CENTER until 255)
 
-    scheduler.advance(400) // ease completes
+    scheduler.advance(400)
     assertEquals(REMOTE_TILT_CENTER, controller.currentValue)
     assertFalse(controller.isLocked)
   }
@@ -210,11 +201,11 @@ class RemoteTiltControllerTest {
     sent.clear()
 
     transport = null
-    scheduler.advance(100) // repeat fires, sees no transport, stops the loop
+    scheduler.advance(100)
     assertEquals(0, sent.size)
 
     transport = BoardTransport.Direct
-    scheduler.advance(200) // loop stayed stopped; nothing resurrects it
+    scheduler.advance(200)
     assertEquals(0, sent.size)
   }
 }

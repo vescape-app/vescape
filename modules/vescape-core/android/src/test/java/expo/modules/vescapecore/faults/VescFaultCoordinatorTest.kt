@@ -8,10 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * VESC Fault Occurrence transition rules: one activation is one occurrence, repetition never
- * duplicates, a clear closes, a direct code change closes and opens, session loss decides nothing,
- * a restart mid-fault rehydrates instead of duplicating, and the collection switch stops writes
- * without touching stored evidence.
  * @parity /modules/vescape-core/ios/faults/VescFaultCoordinatorTests.swift
  */
 class VescFaultCoordinatorTest {
@@ -23,7 +19,6 @@ class VescFaultCoordinatorTest {
 
     override suspend fun getAll() = rows.values.toList()
 
-    /** Set to fail the next hydration read, mirroring a transient Room read error. */
     var openLiveFailsOnce = false
 
     override suspend fun openLive(boardId: String): VescFaultOccurrence? {
@@ -36,9 +31,7 @@ class VescFaultCoordinatorTest {
         .maxByOrNull { it.occurredAtMs }
     }
 
-    /** Set to fail every write, mirroring a dead Room database. */
     var writesFail = false
-    /** Set to fail only the next write, so one step of a two-write transition can fail alone. */
     var failNextWriteOnly = false
     var writes = 0
 
@@ -50,7 +43,6 @@ class VescFaultCoordinatorTest {
       if (writesFail) error("store write failed")
       writes += 1
       val existing = rows[occurrence.id]
-      // Lifecycle writes never rewrite `dismissed`, matching the DAO's insert-or-advance.
       rows[occurrence.id] = existing?.copy(
         lastObservedAtMs = occurrence.lastObservedAtMs,
         clearedAtMs = occurrence.clearedAtMs,
@@ -95,7 +87,6 @@ class VescFaultCoordinatorTest {
     }
 
     val fault = faults().single()
-    // Throttled writes still track the fault: last-observed advanced past the opening time.
     assertTrue(fault.lastObservedAtMs > fault.occurredAtMs)
     assertNull(fault.clearedAtMs)
   }
@@ -127,7 +118,6 @@ class VescFaultCoordinatorTest {
   fun `a gap in observations neither clears nor reactivates`() = runBlocking {
     coordinator.onActiveFault("board", 9)
     clock = 9_000
-    // Same code observed again after the session came back: still one unresolved activation.
     coordinator.onActiveFault("board", 9)
 
     val fault = faults().single()
@@ -177,7 +167,6 @@ class VescFaultCoordinatorTest {
     coordinator.onFaultCleared("board")
     assertEquals(6_000L, faults().single().clearedAtMs)
 
-    // Normal-frame heartbeats keep retrying failed clears, but never rewrite a successful clear.
     val writesAfterClear = store.writes
     repeat(5) {
       clock += 1_000
@@ -191,8 +180,6 @@ class VescFaultCoordinatorTest {
   fun `a failed close on a code change does not open the replacement`() = runBlocking {
     coordinator.onActiveFault("board", 9)
 
-    // Only the close of the old occurrence fails; the replacement must not be inserted while the
-    // old row stays open, because later heartbeats only know the replacement.
     store.failNextWriteOnly = true
     clock = 5_000
     runCatching { coordinator.onActiveFault("board", 6) }
@@ -201,7 +188,6 @@ class VescFaultCoordinatorTest {
     assertEquals(9, faults().single().code)
     assertNull(faults().single().clearedAtMs)
 
-    // The retry closes the old occurrence and opens the new one.
     clock = 6_000
     coordinator.onActiveFault("board", 6)
     val all = faults()
@@ -214,14 +200,12 @@ class VescFaultCoordinatorTest {
   fun `a failed hydration read retries instead of duplicating the open occurrence`() = runBlocking {
     coordinator.onActiveFault("board", 9)
 
-    // Restart with an existing durable open fault, but the first hydration read fails.
     val restarted = VescFaultCoordinator(store = store, now = { clock }, newId = { "id-${++ids}" })
     store.openLiveFailsOnce = true
     clock = 8_000
     restarted.onActiveFault("board", 9)
     assertEquals(1, faults().size)
 
-    // The next observation retries hydration and adopts the open occurrence instead of duplicating.
     clock = 9_000
     restarted.onActiveFault("board", 9)
     assertEquals(1, faults().size)

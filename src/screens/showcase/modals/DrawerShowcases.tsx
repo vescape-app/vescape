@@ -89,7 +89,6 @@ const LONG_CONTENT_SECTIONS = [
   },
 ] as const
 
-/** Enough repeats that the article is several screens tall on a phone, not barely one. */
 const LONG_CONTENT_PASSES = 4
 const LONG_CONTENT_ARTICLE = Array.from({ length: LONG_CONTENT_PASSES }, (_pass, passIndex) =>
   LONG_CONTENT_SECTIONS.map((section) => ({
@@ -141,7 +140,6 @@ const VIRTUALIZED_ROWS = Array.from({ length: 100 }, (_, index) => ({
   label: `Virtualized row ${index + 1}`,
 }))
 
-/** Deterministic pages for checking resize, sticky chrome, and dismissal together. */
 export function EdgeDrawerResizeShowcase({ edge }: { edge: 'top' | 'bottom' }) {
   const triggerRef = useTriggerRef()
   const [visible, setVisible] = useState(false)
@@ -268,13 +266,8 @@ function VirtualizedRowSeparator() {
 }
 
 const LATE_ROWS = VIRTUALIZED_ROWS.slice(0, 3)
-/** Each late row lands a few frames after the previous one, like History loading its rides. */
 const LATE_ROW_INTERVAL_MS = 120
 
-/**
- * A short list whose rows arrive after the drawer has taken its opening position, the way History
- * fills in. The drawer must open, and stay after a tab switch, fully opaque.
- */
 export function EdgeDrawerLateRowsShowcase() {
   const triggerRef = useTriggerRef()
   const [visible, setVisible] = useState(false)

@@ -38,7 +38,6 @@ interface Simulator {
 let deviceId = ''
 let phoneId = ''
 if (command === 'ride') {
-  // The ride needs the watch's own phone: WatchConnectivity only talks across a connected pair.
   const { pairs } = JSON.parse(run(['xcrun', 'simctl', 'list', 'pairs', '--json'], true)) as {
     pairs: Record<string, { watch: Simulator; phone: Simulator; state: string }>
   }
@@ -127,15 +126,6 @@ if (command === 'replay' || command === 'ride') {
   ])
 }
 
-/**
- * Phone side of `watchos:ride`: the dev build relaunched on Metro, then the dev-only ride link —
- * thor301 replay plus normal Navigation, whose route native pushes to the wrist like on any ride.
- *
- * The launch takes Metro's URL as an argument, which the dev launcher reads without a prompt. The
- * ride link follows at once: a link that arrives while the bundle loads is held by the dev launcher
- * and handed to the app as its initial URL, so there is no JS-ready moment to wait for — which is
- * as well, because an iOS dev build's `console.log` never reaches the simulator log to be waited on.
- */
 function startPhoneRide(bundleId: string) {
   const installed = Bun.spawnSync(['xcrun', 'simctl', 'get_app_container', phoneId, bundleId])
   if (!installed.success) {

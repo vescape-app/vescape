@@ -2,10 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// VESC Fault Occurrence transition rules: one activation is one occurrence, repetition never
-/// duplicates, a clear closes, a direct code change closes and opens, session loss decides nothing,
-/// a restart mid-fault rehydrates instead of duplicating, and the collection switch stops writes
-/// without touching stored evidence.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/faults/VescFaultCoordinatorTest.kt
 final class VescFaultCoordinatorTests: XCTestCase {
   private final class FakeStore: VescFaultStoring {
@@ -20,7 +16,6 @@ final class VescFaultCoordinatorTests: XCTestCase {
 
     func getAll() -> [VescFaultOccurrence] { all }
 
-    /// Set to fail the next hydration read, mirroring a transient GRDB read error.
     var openLiveFailsOnce = false
 
     func openLive(_ boardId: String) throws -> VescFaultOccurrence? {
@@ -33,9 +28,7 @@ final class VescFaultCoordinatorTests: XCTestCase {
         .max { $0.occurredAtMs < $1.occurredAtMs }
     }
 
-    /// Set to fail every write, mirroring a dead GRDB pool.
     var writesFail = false
-    /// Set to fail only the next write, so one step of a two-write transition can fail alone.
     var failNextWriteOnly = false
     var writes = 0
 
@@ -52,7 +45,6 @@ final class VescFaultCoordinatorTests: XCTestCase {
         rows[occurrence.id] = occurrence
         return true
       }
-      // Lifecycle writes never rewrite `dismissed`, matching the SQL upsert.
       var existing = rows[occurrence.id]!
       existing.lastObservedAtMs = occurrence.lastObservedAtMs
       existing.clearedAtMs = occurrence.clearedAtMs
@@ -114,7 +106,6 @@ final class VescFaultCoordinatorTests: XCTestCase {
 
     XCTAssertEqual(store.all.count, 1)
     let fault = store.all[0]
-    // Throttled writes still track the fault: last-observed advanced past the opening time.
     XCTAssertGreaterThan(fault.lastObservedAtMs, fault.occurredAtMs)
     XCTAssertNil(fault.clearedAtMs)
   }
@@ -145,7 +136,6 @@ final class VescFaultCoordinatorTests: XCTestCase {
     let coordinator = makeCoordinator()
     coordinator.onActiveFault(boardId: "board", code: 9)
     clock = 9_000
-    // Same code observed again after the session came back: still one unresolved activation.
     coordinator.onActiveFault(boardId: "board", code: 9)
 
     XCTAssertEqual(store.all.count, 1)
@@ -193,7 +183,6 @@ final class VescFaultCoordinatorTests: XCTestCase {
     coordinator.onFaultCleared(boardId: "board")
     XCTAssertEqual(store.all[0].clearedAtMs, 6_000)
 
-    // Normal-frame heartbeats keep retrying failed clears, but never rewrite a successful clear.
     let writesAfterClear = store.writes
     for _ in 0..<5 {
       clock += 1_000
@@ -207,8 +196,6 @@ final class VescFaultCoordinatorTests: XCTestCase {
     let coordinator = makeCoordinator()
     coordinator.onActiveFault(boardId: "board", code: 9)
 
-    // Only the close of the old occurrence fails; without the guard the replacement would be
-    // inserted anyway and the still-open old row would become unrepairable.
     store.failNextWriteOnly = true
     clock = 5_000
     coordinator.onActiveFault(boardId: "board", code: 6)
@@ -217,7 +204,6 @@ final class VescFaultCoordinatorTests: XCTestCase {
     XCTAssertEqual(store.all[0].code, 9)
     XCTAssertNil(store.all[0].clearedAtMs)
 
-    // The retry closes the old occurrence and opens the new one.
     clock = 6_000
     coordinator.onActiveFault(boardId: "board", code: 6)
     XCTAssertEqual(store.all.count, 2)
@@ -230,14 +216,12 @@ final class VescFaultCoordinatorTests: XCTestCase {
     let coordinator = makeCoordinator()
     coordinator.onActiveFault(boardId: "board", code: 9)
 
-    // Restart with an existing durable open fault, but the first hydration read fails.
     let restarted = makeCoordinator()
     store.openLiveFailsOnce = true
     clock = 8_000
     restarted.onActiveFault(boardId: "board", code: 9)
     XCTAssertEqual(store.all.count, 1)
 
-    // The next observation retries hydration and adopts the open occurrence instead of duplicating.
     clock = 9_000
     restarted.onActiveFault(boardId: "board", code: 9)
     XCTAssertEqual(store.all.count, 1)

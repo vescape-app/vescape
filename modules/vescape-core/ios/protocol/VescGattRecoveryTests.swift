@@ -2,7 +2,6 @@ import CoreBluetooth
 import XCTest
 @testable import VescapeCore
 
-/// Exercises the production transport, including scan ownership, with only CoreBluetooth replaced.
 final class VescGattRecoveryTests: XCTestCase {
   private let target = UUID(uuidString: "2AA724EF-104A-479A-A36F-004910FBD290")!
 
@@ -55,8 +54,6 @@ final class VescGattRecoveryTests: XCTestCase {
     XCTAssertEqual(fixture.peripheral.writes, [Data(VescPacketCodec.encode([1])), Data(VescPacketCodec.encode([3]))])
   }
 
-  /// #620: boards at MTU 23 drop the link on a GATT long write, so every write must fit one ATT
-  /// packet even though `.withResponse` reports 512.
   func testLargeFrameIsWrittenInChunksThatFitTheLink() {
     let fixture = ConnectedGattFixture(target: target)
     fixture.subscribe()
@@ -64,7 +61,6 @@ final class VescGattRecoveryTests: XCTestCase {
     let payload = (0..<280).map { UInt8($0 & 0xFF) }
 
     XCTAssertTrue(fixture.gatt.sendPayload(payload))
-    // Acknowledge each write until the queue stops sending.
     var acknowledged = 0
     while fixture.peripheral.writes.count > acknowledged {
       acknowledged = fixture.peripheral.writes.count
@@ -94,7 +90,6 @@ final class VescGattRecoveryTests: XCTestCase {
     let listener = RecoveryTestGattListener()
     let gatt = VescGattClient(listener: listener, centralFactory: { central })
     gatt.connect(peripheralId: target.uuidString)
-    // The connect watchdog starts a fresh attempt through connect(), not reconnect().
     gatt.connect(peripheralId: target.uuidString)
     for _ in 0..<3 {
       gatt.startReconnectScan()
@@ -129,7 +124,6 @@ final class VescGattRecoveryTests: XCTestCase {
     fixture.central.state = .poweredOff
     fixture.gatt.centralStateDidChange(.poweredOff)
     XCTAssertEqual(fixture.listener.failures, ["BLE_OFF"])
-    // The controller's failure delay is covered separately; this exercises its transport intent.
     fixture.gatt.connect(peripheralId: target.uuidString)
     fixture.scheduler.advance(1_000)
     XCTAssertEqual(fixture.central.connectCount, 1)
@@ -229,8 +223,6 @@ private final class RecoveryTestPeripheral: VescPeripheral {
   func discoverCharacteristics(_ characteristicUUIDs: [CBUUID]?, for service: CBService) {}
   func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic) {}
   func writeValue(_ data: Data, for characteristic: CBCharacteristic, type: CBCharacteristicWriteType) { writes.append(data) }
-  /// A board stuck at ATT MTU 23. CoreBluetooth reports 512 for `.withResponse` because it would
-  /// split the write into a GATT long write itself.
   func maximumWriteValueLength(for type: CBCharacteristicWriteType) -> Int {
     type == .withResponse ? 512 : 20
   }

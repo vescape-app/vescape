@@ -53,8 +53,8 @@ final class BmsSeriesRingTests: XCTestCase {
 
     XCTAssertEqual(lanes.count, BMS_SERIES_FIXED_LANES + 32)
     XCTAssertEqual(lanes[0], 1_000.0, accuracy: 0.0)
-    XCTAssertEqual(lanes[1], 1.0, accuracy: 0.0) // bit 0 -> low lane
-    XCTAssertEqual(lanes[2], 2.0, accuracy: 0.0) // bit 31 -> high lane bit 1
+    XCTAssertEqual(lanes[1], 1.0, accuracy: 0.0)
+    XCTAssertEqual(lanes[2], 2.0, accuracy: 0.0)
     XCTAssertEqual(lanes[BMS_SERIES_FIXED_LANES], 3.5, accuracy: 1e-9)
     XCTAssertEqual(lanes[BMS_SERIES_FIXED_LANES + 31], 3.81, accuracy: 1e-9)
   }

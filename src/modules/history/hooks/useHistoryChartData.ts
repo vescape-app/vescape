@@ -31,15 +31,10 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 const SPEED_CHART_HEIGHT = 48
 const METRIC_CHART_HEIGHT = 40
-/**
- * Excluded stretches sit on the floor of the plot, clear of the line they annotate; the GPS
- * dropouts of the whole ride get the row under them, at the foot of the stack.
- */
 const EXCLUSION_ROW = 1
 const GPS_GAP_ROW = 0
 const FAVORITE_WASH = theme.alpha(accentColors.dark.yellow.color, 0.12)
 
-/** Every metric of a ride, plus derived pack percent. */
 export type HistorySeries = Record<HistoryMetricKey | 'batteryPercent', ChartSeriesData>
 export type HistoryRanges = Record<HistoryMetricKey, { min: number; max: number }>
 export type HistoryRamps = Record<HistoryMetricKey, ChartColorRamp | undefined>
@@ -53,8 +48,6 @@ export function useVisibleRideSamples(
     () => [...samples].sort((a, b) => a.capturedAtMs - b.capturedAtMs),
     [samples],
   )
-  // Trim leading/trailing idle to the Moving Window (± display padding). Falls back to the full
-  // sample range on legacy rides that have no precomputed window.
   const visibleSamples = useMemo(() => {
     const window = rideMovingWindow({ movingStartAtMs, movingEndAtMs })
     if (!window) return sortedSamples
@@ -66,13 +59,6 @@ export function useVisibleRideSamples(
   return visibleSamples
 }
 
-/**
- * Every metric of a ride as parallel time/value arrays.
- *
- * Full resolution, deliberately: the chart builds its own level-of-detail pyramid and draws the
- * level that fits the zoom, so pre-decimating the ride to a few hundred points would only throw
- * away the detail a rider zooms in to find.
- */
 export function useChartSeries(
   samples: TelemetrySample[],
   activeMetrics?: ReadonlySet<ChartToggleMetric>,
@@ -80,8 +66,6 @@ export function useChartSeries(
   return useMemo(() => {
     const series = {} as HistorySeries
     for (const def of HISTORY_CHART_DEFS) series[def.key] = { ts: [], vs: [] }
-    // Pack percent is derived from voltage rather than measured, so it is not a metric of its
-    // own — but it is a line, and rides without a pack configured do not have it at all.
     series.batteryPercent = { ts: [], vs: [] }
     const activeDefs = activeMetrics
       ? HISTORY_CHART_DEFS.filter((def) => activeMetrics.has(def.key))
@@ -102,7 +86,6 @@ export function useChartSeries(
   }, [activeMetrics, samples])
 }
 
-/** Every chart-only metric of a ride — see {@link EXTRA_CHART_METRICS}. */
 export type HistoryExtraSeries = Record<ExtraChartMetric, ChartSeriesData>
 export type HistoryExtraRanges = Record<ExtraChartMetric, { min: number; max: number }>
 
@@ -139,14 +122,6 @@ function extraGpsValue(sample: HistoryGpsSample, metric: ExtraChartMetric): numb
   }
 }
 
-/**
- * The chart-only metrics of a ride, board stream and GPS log merged into one shape.
- *
- * The two sources are logged independently and at different rates, so they are read separately and
- * only meet here — the chart stack lines them up on the ride's own clock, not on a shared index.
- * Only the full-screen page calls this: the map panel never offers these metrics, and building
- * eight more series per ride under a map nobody asked to see would be wasted work.
- */
 export function useExtraChartSeries(
   samples: TelemetrySample[],
   gpsSamples: HistoryGpsSample[],
@@ -165,8 +140,6 @@ export function useExtraChartSeries(
       }
     }
 
-    // Board samples define the visible ride; GPS logged outside it would stretch the x scale past
-    // what every other chart shows.
     const startMs = samples.at(0)?.capturedAtMs ?? Number.NEGATIVE_INFINITY
     const endMs = samples.at(-1)?.capturedAtMs ?? Number.POSITIVE_INFINITY
     for (const sample of gpsSamples) {
@@ -209,13 +182,6 @@ export function useChartRanges(
   }, [activeMetrics, series])
 }
 
-/**
- * The hot-range gradient as a chart colour ramp.
- *
- * The old chart asked a `value => color` function per point and rebuilt a gradient stop for each
- * one, every frame. The two ends of the ramp say the same thing, and the chart turns them into a
- * single gradient it never has to touch again.
- */
 function toColorRamp(range: MetricColorRange | null): ChartColorRamp | undefined {
   if (!range) return undefined
   return {
@@ -248,7 +214,6 @@ export function useMetricRamps(): HistoryRamps {
   }, [accents.red.color, appearance, gradientsEnabled, hotRanges])
 }
 
-/** Free-spin stretches read as a fault; anything else excluded is merely not counted. */
 export function useChartExclusionBands() {
   const sessionExclusions = useHistoryStore((s) => s.sessionExclusions)
   const accents = useResolvedAccentColors()
@@ -269,13 +234,6 @@ export function useChartExclusionBands() {
   }, [accents.yellow.color, neutral.textSecondary, sessionExclusions])
 }
 
-/**
- * Where the phone lost its fix, marked under the speed line.
- *
- * The map has nothing to draw over these stretches while the charts stay full of board data, which
- * reads as if the ride went nowhere. A red mark says the ride is fine and the position is what is
- * missing — once, under speed, because it is a fact about the ride and not about each metric.
- */
 export function useGpsGapBands(samples: TelemetrySample[]): ChartBand[] {
   const gpsSamples = useHistoryStore((s) => s.sessionGpsSamples)
   const accents = useResolvedAccentColors()
@@ -289,17 +247,9 @@ export function useGpsGapBands(samples: TelemetrySample[]): ChartBand[] {
   }, [accents.red.color, gpsSamples, samples])
 }
 
-/**
- * How long a ride has to stand still before the chart cuts the pause out, and what the cut is
- * worth on the axis once collapsed.
- *
- * Sessions already split on a 30-minute pause, so what is left inside one ride is a coffee stop or
- * a wait at lights — minutes of flat line that squeeze the riding either side of it into a corner.
- */
 const GAP_MIN_MS = 2 * 60_000
 const GAP_WIDTH_MS = 20_000
 
-/** The ride's long pauses, or `null` when it has none — see {@link buildTimeline}. */
 export function useChartTimeline(samples: TelemetrySample[]): ChartTimeline | null {
   return useMemo(
     () =>
@@ -311,12 +261,6 @@ export function useChartTimeline(samples: TelemetrySample[]): ChartTimeline | nu
   )
 }
 
-/**
- * Favourite stretches, washed across the whole stack.
- *
- * They belong to the ride rather than to a metric, so they are not one chart's band: the rider
- * marked a piece of the ride, and every line should show it.
- */
 export function useFavoriteBands(ranges: { startMs: number; endMs: number }[]): ChartBand[] {
   return useMemo(
     () => ranges.map((range) => ({ ...range, color: FAVORITE_WASH, fill: 'plot' as const })),
@@ -330,28 +274,14 @@ interface HistoryChartStackInput {
   ramps: HistoryRamps
   exclusionBands: Record<HistoryMetricKey, ChartBand[] | undefined>
   activeMetrics: ReadonlySet<ChartToggleMetric>
-  /**
-   * Let the rider close the speed chart too. The ride panel keeps speed as the line the stack is
-   * read against; a page that is nothing but charts has no such anchor to protect.
-   */
   speedOptional?: boolean
-  /** Chart-only metrics, when the surface offers them — see {@link useExtraChartSeries}. */
   extraSeries?: HistoryExtraSeries
   extraRanges?: HistoryExtraRanges
-  /** Chart heights, so a full screen can spend the room the map panel does not have. */
   speedHeight?: number
   metricHeight?: number
-  /** Where the fix was lost — see {@link useGpsGapBands}. Speed carries it for the whole stack. */
   gpsGapBands?: ChartBand[]
 }
 
-/**
- * The ride as one chart stack: speed always, plus whichever metrics the rider has opened.
- *
- * Built as a single list because the stack is the unit of synchronisation — every chart in it
- * shares one camera, one scrub cursor and one x scale, so metrics opened later line up with the
- * speed chart by construction rather than by matching props.
- */
 export function useHistoryChartStack({
   series,
   ranges,
@@ -452,11 +382,6 @@ export function useHistoryChartStack({
   ])
 }
 
-/**
- * Battery is two readings of one thing: pack percent against a fixed 0-100 scale, and pack
- * voltage on its own axis under it. Rides with no pack configured have no percent at all, and
- * fall back to voltage as the single line.
- */
 function batteryChart(
   series: HistorySeries,
   ranges: HistoryRanges,

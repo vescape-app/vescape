@@ -1,36 +1,10 @@
-/**
- * Port Phosphor icons into both watches: Android VectorDrawables for Wear OS, and SwiftUI path
- * data for watchOS.
- *
- * Neither wrist has an icon library. Compose on Wear draws `painterResource` drawables, and SwiftUI
- * on the watch draws `Path`s — pulling in a font or an SVG runtime for a handful of glyphs would
- * cost more than the glyphs. Phosphor's source SVGs are mechanical to convert — a 256x256 viewBox,
- * no transforms, no gradients, and duotone is just a second path at `opacity="0.2"` — so this emits
- * both shapes from the one asset instead of hand-tracing paths or letting the platforms drift onto
- * different icon sets.
- *
- * Android takes the `d` attribute verbatim; VectorDrawable speaks the whole SVG path grammar.
- * SwiftUI speaks only move/line/curve/close, so the watchOS side is normalised first — see
- * `lib/svgPath.ts`. Both platforms therefore draw the same geometry from the same source file.
- *
- * Add a name to ICONS and rerun; output is committed, since a codegen step for files that change
- * once a quarter is not worth the build complexity.
- *
- *   bun run icons:port
- */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { normalizeSvgPath } from './lib/svgPath'
 
-/**
- * Phosphor weights this app draws. Duotone is the app's own look; the carets are regular, because a
- * duotone caret is a filled triangle with a ghost behind it rather than the thin mark a chevron
- * wants to be.
- */
 type Weight = 'duotone' | 'regular'
 
-/** Phosphor icon names to port, in the `kebab-case` the asset package uses. */
 const ICONS: { name: string; weight: Weight }[] = [
   { name: 'sun', weight: 'duotone' },
   { name: 'moon-stars', weight: 'duotone' },
@@ -53,7 +27,6 @@ const ASSET_ROOT = join(import.meta.dir, '../node_modules/@phosphor-icons/core/a
 const ANDROID_OUT_DIR = join(import.meta.dir, '../watch/wearos/src/main/res/drawable')
 const WATCHOS_OUT = join(import.meta.dir, '../watch/watchos/PhosphorIcons.swift')
 
-/** Phosphor's canvas. Emitted as a 24dp drawable so it lines up with Material icon sizing. */
 const VIEWPORT = 256
 const SIZE_DP = 24
 
@@ -64,27 +37,18 @@ interface SvgPath {
   opacity: number
 }
 
-/** `cloud-sun` to `ic_ph_cloud_sun`, the drawable name Compose resolves. */
 function drawableName(name: string): string {
   return `ic_ph_${name.replaceAll('-', '_')}`
 }
 
-/** `cloud-sun` to `cloudSun`, the Swift static this icon is reached by. */
 function swiftName(name: string): string {
   return name.replace(/-(.)/g, (_, char: string) => char.toUpperCase())
 }
 
-/** Where a weight's asset for `name` lives; only duotone carries a suffix on the filename. */
 function assetPath(name: string, weight: Weight): string {
   return join(ASSET_ROOT, weight, weight === 'regular' ? `${name}.svg` : `${name}-${weight}.svg`)
 }
 
-/**
- * Pull the `<path>` elements out of a Phosphor SVG. Deliberately a regex and not an XML parser:
- * these files are machine-generated with one shape per path, no nesting and no transforms, and a
- * parser dependency would outweigh the twelve lines it saves. Anything more exotic trips the
- * assertion below rather than silently emitting a wrong glyph.
- */
 function parsePaths(svg: string, name: string): SvgPath[] {
   if (/<(g|use|circle|rect|polygon|linearGradient)\b/.test(svg)) {
     throw new Error(`${name}: unsupported SVG element — this converter only handles flat <path>s`)
@@ -99,11 +63,6 @@ function parsePaths(svg: string, name: string): SvgPath[] {
   return paths
 }
 
-/**
- * A VectorDrawable of the same shapes. Every path is filled white: Compose tints the whole drawable
- * at the call site, and an SrcIn tint keeps per-path alpha, which is exactly what makes the duotone
- * back layer still read as a back layer.
- */
 function toVectorDrawable(paths: SvgPath[]): string {
   const body = paths
     .map((path) => {
@@ -123,11 +82,6 @@ ${body}
 `
 }
 
-/**
- * One Swift static per icon, each a list of layers in draw order. The layer opacity travels with
- * the path rather than being baked into a colour, so the view tints a whole glyph with one colour
- * the way Compose's `tint` does.
- */
 function toSwift(icons: { name: string; paths: SvgPath[] }[]): string {
   const body = icons
     .map(({ name, paths }) => {

@@ -7,10 +7,6 @@ import java.util.zip.Deflater
 import java.util.zip.Inflater
 
 /**
- * One reconstructed Telemetry Sample: every value column resolved, nothing sparse.
- * [values] has [TELEMETRY_CHUNK_VALUE_COLUMNS] entries in storage mask bit order
- * (`changed_mask_1` bit i = values[i]); null is a missing reading.
- *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkCodec.swift `TelemetrySample`
  */
 internal data class TelemetrySample(
@@ -21,14 +17,9 @@ internal data class TelemetrySample(
   val values: List<Long?>,
 )
 
-/** Value columns in `changed_mask_1` bit order, `speed_centi_kmh` .. `temp_motor_deci_c`. */
 internal const val TELEMETRY_CHUNK_VALUE_COLUMNS = 17
 
 /**
- * Canonical reconstruction of a stored `telemetry_frames` row (ADR 0045): masks are authoritative.
- * A keyframe clears every column first and then counts as all bits set; otherwise a set bit replaces
- * the column with the row's value, NULL included (an explicit clear), and a clear bit keeps it.
- *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkCodec.swift `reconstructTelemetryValues`
  */
 internal fun reconstructTelemetryValues(values: Array<Long?>, flags: Int, changedMask1: Int, row: Array<Long?>) {
@@ -40,27 +31,14 @@ internal fun reconstructTelemetryValues(values: Array<Long?>, flags: Int, change
 internal class TelemetryChunkFormatException(message: String) : Exception(message)
 
 /**
- * Telemetry Chunk codec v1: one Board's samples for one minute in, one blob out (ADR 0045).
- *
- * Blob = `version:u8` `count:uvarint` `baseCapturedAtMs:svarint` then raw deflate (RFC 1951) of the
- * column body. Body = one column after another, in order `captured_at_ms`, `elapsed_realtime_ms`,
- * `flags`, `can_id`, then the 17 value columns. Non-null columns (`captured_at_ms`, `elapsed_realtime_ms`,
- * `flags`) are `count` zigzag-varint deltas; nullable columns are a presence bitmap
- * (`ceil(count/8)` bytes, LSB first, bit set = present) followed by zigzag-varint deltas of the present
- * values only. Each delta is against the column's previous value (previous present value for nullable
- * columns), starting from `baseCapturedAtMs` for `captured_at_ms` and 0 for every other column.
- * Deltas use wrapping 64-bit arithmetic; a value outside its column's declared width rejects. Invariants: ADR 0045.
- *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryChunkCodec.swift `TelemetryChunkCodec`
  */
 internal object TelemetryChunkCodec {
   const val VERSION = 1
   const val MAX_SAMPLES = 65_536
   private const val DEFLATE_LEVEL = 6
-  /** Worst case per sample: 21 ten-byte varints plus one presence bit for each of 18 nullable columns. */
   private const val MAX_BODY_BYTES_PER_SAMPLE = 21 * 10 + 3
 
-  /** Declared width per value column: `odometer_cm` is 64-bit, every other column 32-bit. */
   private val VALUE_IS_LONG = BooleanArray(TELEMETRY_CHUNK_VALUE_COLUMNS) { it == 14 }
 
   fun encode(samples: List<TelemetrySample>): ByteArray {
@@ -196,7 +174,6 @@ internal object TelemetryChunkCodec {
       if (end - position < n) throw TelemetryChunkFormatException("truncated")
       position += n
     }
-    /** Unsigned LEB128, at most 10 bytes; the tenth may only carry the top bit. */
     fun varint(): Long {
       var result = 0L
       for (i in 0 until 10) {

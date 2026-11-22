@@ -55,7 +55,6 @@ describe('formatBoardLinkFacts', () => {
         bleId: 'AA:BB',
         transport: 84,
         hasBms: false,
-        // Native reports the firmware self-labeled, e.g. "FW 6.05 · ADV500".
         vescFirmwareVersion: 'FW 6.05 · ADV500',
         refloatVersion: 'Refloat 1.3.0-preview2',
         refloatBaseVersion: '1.3.0',
@@ -87,10 +86,6 @@ describe('boardNeedsLink', () => {
     expect(boardNeedsLink({ link: { bleId: 'AA', transport: 36 } })).toBe(false)
   })
 
-  // The BoardLink type promises a transport, but persisted links predate that promise: native
-  // builds SessionConfig.transport via BoardTransport.fromBridge, which decodes a missing or junk
-  // value to null and then refuses the session with NEEDS_LINK. Route those to re-linking rather
-  // than to a connect that can only time out.
   it('needs a link when the persisted link carries no detected transport', () => {
     const corrupt = { link: { bleId: 'AA' } } as unknown as Pick<Board, 'link'>
     expect(boardNeedsLink(corrupt)).toBe(true)

@@ -26,8 +26,6 @@ export function ClerkAuthScreen() {
 
   return (
     <View style={styles.container}>
-      {/* iOS: Clerk's native bar dismisses, next to its own step back. Android: the JS header
-          (src/app/_layout.tsx) does, and Clerk's dismiss stays off. */}
       <AuthView mode="signInOrUp" isDismissible={Platform.OS === 'ios'} onDismiss={leaveAuth} />
     </View>
   )

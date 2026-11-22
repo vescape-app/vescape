@@ -205,6 +205,9 @@ shared/alerts/packs/
   voice-<id>/pack.json + lines/<key>.<start|end>.<i>.m4a + values/<type>/<n>.m4a
 ```
 
+- **Kokoro helper**: `kokoro.py` patches `mlx_audio`'s `interpolate`, which sizes outputs as
+  `ceil(width / 300)` and overshoots on exact multiples (`ceil(240.00000000000003) == 241`), killing
+  Kokoro with a broadcast error; the patch snaps near-integers before the ceil.
 - **Effect slots**: required `severity.positive` (a short rising two- or three-note chime),
   `severity.info|warning|critical` (HEV/Pulse: 1/2/3 beeps; Arc: recorded effects with a reverb tail), and `geiger.soft|mid|hard`; optional `cue.on`, `cue.off`, `cue.ride.end`,
   `cue.groupRide.created|joined`, each falling back as in [Sound effects](#sound-effects). All three
@@ -264,6 +267,11 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 ## Storage note
 
 The `alerts` table schema lives in `modules/vescape-core/schema/database.json` (PK `(board_id, id)`). A preset row (`id = preset:<metric>`) uses only `board_id`, `id`, `control_id`, `spec`, and `created_at`; threshold, repeat, enabled, and config-relative columns are ignored because the preset definition owns them.
+
+A config-relative `thresholdRule` crosses the bridge without a null `thresholdMaxOffset`
+(`bridgeableAlertRule` in `modules/vescape-core/src/index.ts`): Expo's untyped-object converter
+rejects `null` inside a nested object (`Value is null, expected an Object`). Native reads every
+offset optionally, so an omitted key is the same value; top-level nulls are fine.
 
 ## Control IDs & implicit direction
 
@@ -340,6 +348,8 @@ delay:
 - A sound that still has to wait on a load queues and plays once ready; speech after it is timed
   from the sound's actual start, so a short sound never overlaps it.
 - iOS sounds lease a player node from a pool of attached nodes instead of attaching one per sound.
+  Test and live players share the process-wide `AVAudioSession`. Only the last owner deactivates it
+  so stopping a test leaves live alerts audible.
 - A sound starting 150 ms or more after its request (`ALERT_AUDIO_LATENCY_REPORT_MS`) records one
   `alert_audio_latency` Diagnostic Event (`sound`, `latency_ms`, `path`) per sound per session.
 
@@ -358,6 +368,8 @@ voice-pack clips, priority, expiry, or pre-emption, so native owns the queue.
   waiting at its expiry is dropped, never played late.
 - **One at a time:** the next item starts once the current one reports its `PlaybackOutcome`
   (effect, then voice line at Full).
+  `PlaybackCompletion` fails an item on timeout so a missing sound or TTS callback cannot stall the
+  queue. A long effect may overlap the start of its following voice line within the speech delay bounds.
 - **Settle window:** a connect opens a 4 s window (`ANNOUNCEMENT_SETTLE_MS`). Connection items play
   in it; everything else waits until it ends and the connect cue has finished.
 - **Pre-emption:** a single-threshold alert's severity sound or spoken line (`playSingle`,

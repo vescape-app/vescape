@@ -15,41 +15,20 @@ import { useResolvedColor } from '@/hooks/useTheme'
 
 export type MonoValueAlign = 'left' | 'center' | 'right'
 
-/** Line box around a glyph size, matching the ~1.3 leading RN applies by default. */
 export const TEXT_LINE_RATIO = 1.3
 
 export interface MonoTextProps {
-  /** Live text driven off the UI thread. Updates never re-render React. */
   text: DerivedValue<string>
   size: number
   weight?: MonoWeight
-  /** Static color, or a shared value for colors that ramp with the value. */
   color?: ThemeColor | DerivedValue<string>
   align?: MonoValueAlign
-  /** Left edge of the layout box, in canvas coordinates. */
   x?: number
-  /** Top edge of the layout box, in canvas coordinates. */
   y?: number
-  /** Box the text aligns inside. A shared value when the box is measured. */
   width: number | DerivedValue<number>
-  /** Box the glyphs are vertically centered in. */
   height: number
 }
 
-/**
- * Live readout as a Skia node, for drawing into a canvas that already exists.
- *
- * Readouts used to be non-editable `TextInput`s written through `animatedProps`
- * (the classic Reanimated trick). That routes every tick through the shadow
- * tree: on Android the chained `AndroidTextInputState` commits overflowed the
- * GC thread stack, and on iOS a text commit racing the UI-thread prop write
- * could blank the value mid-ride. Skia draws bypass the shadow tree entirely,
- * so a tick is a repaint and nothing else.
- *
- * Prefer this over `MonoValue` whenever the surrounding component already owns
- * a canvas: every canvas is a separate native surface, and a screen full of
- * one-readout canvases costs far more than one canvas full of readouts.
- */
 export function MonoText({
   text,
   size,
@@ -62,16 +41,11 @@ export function MonoText({
   height,
 }: MonoTextProps) {
   const font = useSkiaMonoFont(weight, size)
-  // A derived colour is already resolved for the active appearance; a static token still needs the
-  // adaptive lookup. Both hooks run every render so the hook order stays stable.
-  // Adaptive tokens are native color objects, not strings, so the split is on "is it a shared
-  // value" — a `typeof === 'string'` test sends them to Skia raw, which crashes on paint.
   const staticColor = useResolvedColor(
     isSharedValue<string>(color) ? theme.neutral.textPrimary : (color as ThemeColor),
   )
   const rendererColor = isSharedValue<string>(color) ? color : staticColor
 
-  // Vertically center the glyph box: ascent is negative, descent positive.
   const baseline = useMemo(() => {
     if (!font) return 0
     const { ascent, descent } = font.getMetrics()
@@ -90,31 +64,20 @@ export function MonoText({
 }
 
 export interface MonoReadoutProps {
-  /** The number, aligned in its box. */
   text: DerivedValue<string>
-  /** Set smaller after the number on its baseline; empty to leave it out. */
   unit: DerivedValue<string>
   size: number
   unitSize: number
   weight?: MonoWeight
   color?: ThemeColor | DerivedValue<string>
-  /** Right keeps the unit still as the digits change; left keeps the number's start still. */
   align?: 'left' | 'right'
-  /** Left edge of the number's box, in canvas coordinates. */
   x: number
-  /** Top edge of the number's line box. */
   y: number
-  /** Room the number aligns in. Right-aligned, the unit starts past it; left-aligned, the unit
-   * follows the digits and can run past it. */
   width: number
 }
 
 const UNIT_GAP = 1
 
-/**
- * A live number with its unit small after it on the same baseline, the way the battery bar sets
- * its `%`.
- */
 export function MonoReadout({
   text,
   unit,
@@ -133,7 +96,6 @@ export function MonoReadout({
     isSharedValue<string>(color) ? theme.neutral.textPrimary : (color as ThemeColor),
   )
   const unitColor = isSharedValue<string>(color) ? color : staticColor
-  // The value's own baseline, as MonoText centres its glyphs in the line box.
   const baseline = useMemo(() => {
     if (!valueFont) return 0
     const { ascent, descent } = valueFont.getMetrics()
@@ -166,23 +128,13 @@ export function MonoReadout({
 }
 
 export interface MonoValueProps extends Omit<MonoTextProps, 'x' | 'y' | 'width' | 'height'> {
-  /** Fixed canvas width. Omit to stretch and measure the box on layout. */
   width?: number
-  /** Canvas height. Defaults to a line box derived from `size`. */
   height?: number
   style?: StyleProp<ViewStyle>
 }
 
-/**
- * Standalone live readout: a `MonoText` with a canvas of its own.
- *
- * Use it for a readout that sits on plain views. If the parent already draws on
- * Skia, place a `MonoText` in that canvas instead of mounting another surface.
- */
 export function MonoValue({ size, width, height, style, ...textProps }: MonoValueProps) {
   const lineHeight = height ?? Math.ceil(size * TEXT_LINE_RATIO)
-  // `onLayout` is unsupported on Fabric canvases; `onSize` reports the measured
-  // box straight into a shared value, so alignment stays off the JS thread.
   const canvasSize = useSharedValue({ width: width ?? 0, height: lineHeight })
   const measuredWidth = useDerivedValue(() => canvasSize.value.width)
 

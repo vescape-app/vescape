@@ -2,16 +2,6 @@ import XCTest
 
 @testable import VescapeCore
 
-/// The ground-clearance contract, driven by `shared/fixtures/accessory-protocol/session.json`: what
-/// a sample decodes to, what the declared range does to it, which samples are accepted, and what a
-/// saved calibration turns a distance into.
-///
-/// The property most of these cases exist to defend is one sentence: **a missing measurement is
-/// never a distance.** Every way a reading can fail to be one — no value, a null value, a textual
-/// value, a status from a newer firmware, a number outside the declared window — has a case here,
-/// and all of them end at `error` or `outOfRange` with no value attached. None of them ends at the
-/// top of the range, which is the reading that would tell a board it is safe to tilt.
-///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/accessory/GroundClearanceTest.kt
 final class GroundClearanceTests: XCTestCase {
   func testDisablingPreservesCalibrationButStopsPreviewAndReleasesTheBinding() {
@@ -87,8 +77,6 @@ final class GroundClearanceTests: XCTestCase {
       ).withinDeclaredRange(rangeMin: min, rangeMax: max)
 
       XCTAssertEqual(reading.status.rawValue, entry["resolvedStatus"] as? String, name)
-      // The whole point: a number the hardware no longer promises loses its value rather than being
-      // squeezed to the nearest limit.
       XCTAssertEqual(reading.valueCm, (entry["resolvedValueCm"] as? NSNumber)?.doubleValue, name)
     }
   }
@@ -122,9 +110,6 @@ final class GroundClearanceTests: XCTestCase {
   }
 
   func testAFreshSessionKeepsNothingFromTheOldOne() {
-    // Sequence numbers restart with the next hello. Without the reset the new session's first
-    // samples would be refused as duplicates and the screen would sit on a distance measured before
-    // the accessory rebooted.
     let tracker = AccessoryReadingTracker()
     let ok = AccessoryReading(
       capabilityId: "clearance", seq: 40, sampleTimeMs: 9_000, status: .ok, valueCm: 12)
@@ -146,7 +131,6 @@ final class GroundClearanceTests: XCTestCase {
           rateHz: try XCTUnwrap((entry["rateHz"] as? NSNumber)?.doubleValue, name)),
         (entry["staleAfterMs"] as? NSNumber)?.int64Value, name)
     }
-    // An unacknowledged rate is not a reason to widen the window; the floor still applies.
     XCTAssertEqual(GroundClearance.staleAfterMs(rateHz: 0), GroundClearance.missingStreamFloorMs)
     XCTAssertEqual(GroundClearance.staleAfterMs(rateHz: .nan), GroundClearance.missingStreamFloorMs)
   }
@@ -200,15 +184,12 @@ final class GroundClearanceTests: XCTestCase {
 
     runtime.previewOpen = false
     runtime.riding = true
-    // Riding an uncalibrated sensor measures nothing: there is no binding to consume the samples, so
-    // the accessory would burn power producing them for nobody.
     XCTAssertFalse(runtime.measurementDemanded, "riding without a calibration has no consumer")
 
     runtime.calibration = GroundClearanceCalibration(
       nearCm: 5, farCm: 20, direction: "nose", strengthPercent: 60)
     XCTAssertTrue(runtime.measurementDemanded)
 
-    // A firmware that narrowed its range invalidates the saved numbers, and with them the demand.
     runtime.rangeMin = 8
     XCTAssertFalse(runtime.measurementDemanded, "a calibration that no longer fits drives nothing")
   }
@@ -227,7 +208,6 @@ final class GroundClearanceTests: XCTestCase {
 
     runtime.calibration = GroundClearanceCalibration(
       nearCm: 5, farCm: 20, direction: "nose", strengthPercent: 100)
-    // Calibrated, connected, riding — and no sample has ever arrived. That is stale, not zero.
     XCTAssertEqual(runtime.input(nowMs: 1_000, linkConnected: true), .release(reason: .stale))
 
     runtime.tracker.accept(
@@ -236,7 +216,6 @@ final class GroundClearanceTests: XCTestCase {
       receivedAtMs: 1_000)
     XCTAssertEqual(
       runtime.input(nowMs: 1_100, linkConnected: true), .drive(tiltInput: 0.5, valueCm: 12.5))
-    // Past the missing-stream window the same sample is no longer evidence of anything.
     XCTAssertEqual(runtime.input(nowMs: 1_400, linkConnected: true), .release(reason: .stale))
 
     runtime.tracker.accept(
@@ -253,8 +232,6 @@ final class GroundClearanceTests: XCTestCase {
   }
 
   func testANonOkReadingCannotHoldAValue() {
-    // The type refuses the pairing that would make a status and a number disagree, which is what
-    // lets every consumer treat "has a value" as "is a measurement".
     let reading = AccessoryReading(
       capabilityId: "clearance", seq: 1, sampleTimeMs: 100, status: .outOfRange, valueCm: 12)
     XCTAssertNil(reading.valueCm)

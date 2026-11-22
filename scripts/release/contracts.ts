@@ -108,7 +108,6 @@ export interface ProductionManifest {
   githubRelease: 'released' | 'already-released' | 'skipped' | 'failed'
 }
 
-/** Older builds may lack storage-test metadata, but remain valid promotion candidates. */
 export type HistoricalReleaseManifest = Omit<ReleaseManifest, 'storageContracts'>
 
 export function parseReleaseManifest(value: unknown): ReleaseManifest {

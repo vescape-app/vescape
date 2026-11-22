@@ -28,13 +28,6 @@ import androidx.compose.ui.unit.sp
 import expo.modules.vescapecore.watch.GroupRideFrameRider
 
 /**
- * Every other Rider who fits on the nav map, as a dot in their colour, over the route and under the
- * gauges. The Rider's own ring is a separate layer above these marks. In nav focus each live dot
- * gets its distance label, which carries any flag. Riders beyond the map are [GroupRideEdgeLayer]'s.
- *
- * Read in the draw scope: frames and nav-focus drags repaint without recomposing. The caller skips
- * this in ambient, where the group is hidden.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `GroupRideLayer`
  */
 @Composable
@@ -59,16 +52,11 @@ internal fun GroupRideLayer(
             drawCircle(GROUP_OUTLINE_COLOR, radius = mark.sizePx + outline, center = center, alpha = markAlpha)
             drawCircle(Color(mark.rider.colorArgb), radius = mark.sizePx, center = center, alpha = markAlpha)
         }
-        // Labels over every dot, so a neighbour's dot never cuts one.
         labels.draw(this, map, marks, WatchGroupRideMarkKind.Dot, focus)
     }
 }
 
 /**
- * Every Rider beyond the nav map, as a triangle in their colour on the face edge, apex inward. Drawn
- * over the rim arcs, so the caller layers it above the gauges. A triangle is always the Rider's own
- * colour; a flag shows only in its nav-focus label. Skipped in ambient like the dots.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `GroupRideEdgeLayer`
  */
 @Composable
@@ -91,12 +79,6 @@ internal fun GroupRideEdgeLayer(group: WatchGroupRide, mapView: WatchMapView, na
 }
 
 /**
- * Nav-focus distance labels, measured, placed and drawn in the draw scope. Grey distance, then a
- * flag: a thermometer when the Rider runs hot, else their battery % when it is low, each in its
- * level's colour. Stale Riders get none; their distance is as old as their place. Both layers place
- * every label against every mark ([placeLabels]) and each draws its own kind's, so a dot's label and
- * a triangle's never collide.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `drawGroupRideLabels`
  */
 private class GroupRideLabels(private val measurer: TextMeasurer) {
@@ -150,10 +132,6 @@ private fun rememberGroupRideLabels(): GroupRideLabels {
 }
 
 /**
- * Thermometer in [box] at [origin]: a round bulb the full box width, under an outlined stem half as
- * wide, its lower part filled. The bulb against the narrow stem is what reads as a
- * thermometer at label size rather than a pill.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `drawThermometer`
  */
 internal fun DrawScope.drawThermometer(color: Color, origin: Offset, box: Size) = translate(origin.x, origin.y) {
@@ -176,10 +154,6 @@ internal fun DrawScope.drawThermometer(color: Color, origin: Offset, box: Size) 
     drawRect(color, Offset(cx - stemWidth / 2f, mercuryTop), Size(stemWidth, stemBottom - mercuryTop))
 }
 
-/**
- * The Group Ride's heading-up map on this canvas: the nav route's own projection, at the zoom and
- * course the route is drawn with this frame. Read in the draw scope, so an easing only repaints.
- */
 internal fun DrawScope.watchMapProjection(mapView: WatchMapView) =
     WatchMapProjection(
         size.width,
@@ -191,8 +165,6 @@ internal fun DrawScope.watchMapProjection(mapView: WatchMapView) =
     )
 
 /**
- * Mark sizes on this canvas; dots grow towards the nav-focus page, where the map is the page.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `groupRideMarkSizes`
  */
 internal fun DrawScope.groupRideMarkSizes(navFocus: Float) = WatchGroupRideMarkSizes(
@@ -204,8 +176,6 @@ internal fun DrawScope.groupRideMarkSizes(navFocus: Float) = WatchGroupRideMarkS
 )
 
 /**
- * Base centred on the edge, apex inward, thin dark outline under the fill so it reads over the arcs.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `triangle`
  */
 private fun DrawScope.drawEdgeTriangle(mark: WatchGroupRideMark, outline: Float, color: Color) {
@@ -221,10 +191,6 @@ private fun DrawScope.drawEdgeTriangle(mark: WatchGroupRideMark, outline: Float,
 }
 
 /**
- * A stale Rider's opacity, read in the draw scope. It pulses on the frame clock only while [group]
- * has a stale Rider; the caller is not composed in ambient, so ambient never animates. Both layers
- * take their phase from the same frame time, so a stale dot and a stale triangle pulse together.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `GroupRideCanvas`
  */
 @Composable
@@ -240,8 +206,6 @@ private fun rememberStalePulse(group: WatchGroupRide): () -> Float {
 }
 
 /**
- * Opacity [GROUP_STALE_MAX_ALPHA] → [GROUP_STALE_MIN_ALPHA] and back, [GROUP_STALE_PULSE_MS] each way.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `staleOpacity`
  */
 private fun staleAlpha(frameMs: Long): Float {
@@ -251,17 +215,12 @@ private fun staleAlpha(frameMs: Long): Float {
 }
 
 /**
- * Dots stay this far inside the face edge, clear of the rim arcs.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `GROUP_IN_RANGE_MARGIN`
  */
 private val GROUP_IN_RANGE_MARGIN = 38.dp
 private val GROUP_DOT_R = 3.dp
-/** On the nav-focus page, where the map is the page. */
 private val GROUP_FOCUS_DOT_R = 4.5.dp
 /**
- * Triangle bases sit in the outermost pixels, over the rim arcs.
- *
  * @parity /watch/watchos/GroupRideLayer.swift `GROUP_EDGE_INSET`
  */
 private val GROUP_EDGE_INSET = 1.dp
@@ -269,24 +228,17 @@ private val GROUP_TRIANGLE_MIN = 7.dp
 private val GROUP_TRIANGLE_MAX = 12.dp
 private val GROUP_OUTLINE = 0.75.dp
 private val GROUP_LABEL_FONT = 9.sp
-/** Label clear of its dot or triangle apex. */
 private val GROUP_LABEL_GAP = 3.dp
-/** Between the distance and its flag. */
 private val GROUP_LABEL_FLAG_GAP = 3.dp
-/** Labels are not drawn at all until nav focus is under way. */
 private const val LABEL_MIN_FOCUS = 0.01f
-/** Up to 32 Riders, two strings each, at the frame rate a nav-focus drag runs. */
 private const val GROUP_LABEL_CACHE = 64
-/** A label's thermometer box as shares of its line height. */
 private const val THERMOMETER_ASPECT = 0.45f
 private const val THERMOMETER_HEIGHT = 1f
-/** Stem width as a share of the bulb's; mercury as a share of the stem's height. */
 private const val THERMOMETER_STEM = 0.5f
 private const val THERMOMETER_FILL = 0.5f
 private val THERMOMETER_STROKE = 0.8.dp
 
 private val GROUP_OUTLINE_COLOR = Color(0xE6000000)
-/** A Rider the phone has not heard from for a while: last known place, faded and pulsing. */
 private const val GROUP_STALE_MAX_ALPHA = 0.7f
 private const val GROUP_STALE_MIN_ALPHA = 0.2f
 private const val GROUP_STALE_PULSE_MS = 700L

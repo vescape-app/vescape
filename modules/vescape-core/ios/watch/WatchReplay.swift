@@ -1,6 +1,5 @@
 import Foundation
 
-/// Parsers for the non-frame fixtures, shared with Wear OS.
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser`
 enum ReplaySceneParser {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseRoute`
@@ -14,7 +13,6 @@ enum ReplaySceneParser {
     })
   }
 
-  /// The route's geographic origin: where its metres, and the rider lanes', sit on the map.
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseOrigin`
   static func parseOrigin(json: String) -> WatchMapPosition? {
     // intentional-suppression: a fixture without an origin replays with no map position.
@@ -24,7 +22,6 @@ enum ReplaySceneParser {
     return WatchMapPosition(latitude: origin.latitude, longitude: origin.longitude)
   }
 
-  /// The street-map tiles shipped beside the fixtures, in the shape the phone's list takes.
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseMapTiles`
   static func parseMapTiles(json: String) -> WatchMapTileList? {
     // intentional-suppression: malformed replay fixtures return nil; the replay driver logs the failure.
@@ -47,7 +44,6 @@ enum ReplaySceneParser {
     }
   }
 
-  /// Forecast times are anchored once when replay starts.
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseWeather`
   static func parseWeather(json: String, nowMs: Int64, minuteOfDay: Int) -> WatchWeather? {
     // intentional-suppression: malformed replay fixtures return nil; the replay driver logs the failure.
@@ -71,9 +67,6 @@ enum ReplaySceneParser {
     )
   }
 
-  /// Group Ride fixture (`watch-group-ride.json`). Levels are named ("warning", "critical") and a
-  /// missing one reads as normal; the phone classifies, so the fixture states them.
-  ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySceneParser.parseGroupRide`
   static func parseGroupRide(json: String) -> ReplayGroupRide? {
     // intentional-suppression: malformed replay fixtures return nil; the replay driver logs the failure.
@@ -152,16 +145,12 @@ enum ReplaySceneParser {
   }
 }
 
-/// The Group Ride fixture: each Rider sits at a base east/north offset and may swing sinusoidally
-/// around it, so distances, bearings and the in-range boundary move like a real ride.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplayGroupRide`
 struct ReplayGroupRide: Equatable {
   let courseDeg: Double?
   let spanM: Double
   let riders: [ReplayGroupRider]
 
-  /// The frame the phone would push `elapsedMs` into replay; `courseDeg` is the ride's own when known.
   func frame(atMs elapsedMs: Int64, courseDeg: Double?) -> GroupRideFrame {
     GroupRideFrame(
       courseDeg: courseDeg ?? self.courseDeg, spanM: spanM,
@@ -187,30 +176,14 @@ struct ReplayGroupRider: Equatable {
   }
 }
 
-/// One recorded moment: the frame to show and the recording-relative time to show it at.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplaySample`
 struct ReplaySample: Equatable {
   let atMs: Int64
   let frame: WatchFrame
 }
 
-/// Pure lane-fixture parser for the JSONL recordings in `watch/wearos/src/main/assets/`, generated
-/// on the host by `scripts/generate-watch-fixtures.ts` from a Debug Recording.
-///
-/// The fixtures are the shared artefact between the two wrists: the same bytes feed the Wear OS
-/// replay and these tests, so "the watchOS gauges read the same as the Android ones" is checked
-/// against recorded rider data rather than against a hand-written frame that agrees with whatever
-/// the code currently does.
-///
-/// A fixture is dev input, so a malformed line is skipped rather than fatal — a partly-readable
-/// fixture still animates the gauges. The driver that plays them is wrist-only
-/// (`watch/watchos/FrameReplay.swift`); this half is the part with a right answer, so it is the
-/// half that is tested — the same split Android makes.
-///
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplayFixtureParser`
 enum ReplayFixtureParser {
-  /// `origin`: where the fixture's metres sit on the globe (`watch-route.json`); nil leaves no map position.
   static func parse<S: Sequence>(
     _ lines: S, wander: Bool = false, origin: WatchMapPosition? = nil
   ) -> [ReplaySample] where S.Element == String {
@@ -235,7 +208,6 @@ enum ReplayFixtureParser {
     parse(text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init), wander: wander, origin: origin)
   }
 
-  /// Smooth, seeded world-space detours. Rejoin every two minutes; never mutate the planned route.
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameReplay.kt `ReplayFixtureParser.withDetours`
   private static func withDetours(_ samples: [ReplaySample]) -> [ReplaySample] {
     func target(_ node: Int64, _ axis: Int64) -> Double {
@@ -271,7 +243,6 @@ enum ReplayFixtureParser {
       // intentional-suppression: an unparseable fixture line is a skipped sample, not a failure
       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let atMs = (json["t"] as? NSNumber)?.int64Value,
-      // Speed is the one required lane: a line without it is not a frame, it is a truncated write.
       let speed = lane(json, "speed")
     else { return nil }
 
@@ -284,7 +255,7 @@ enum ReplayFixtureParser {
         motorTemp: lane(json, "motorTemp"),
         ctrlTemp: lane(json, "ctrlTemp"),
         stale: json["stale"] as? Bool ?? false,
-        navBearing: lane(json, "navBearing"),
+        navBearingDeg: lane(json, "navBearing"),
         navDistanceM: lane(json, "navDistance"),
         riderEastM: lane(json, "riderEast"),
         riderNorthM: lane(json, "riderNorth"),
@@ -294,7 +265,6 @@ enum ReplayFixtureParser {
     )
   }
 
-  /// An absent lane and an explicit `null` are the same thing: unreported. Both render as a dash.
   private static func lane(_ json: [String: Any], _ key: String) -> Double? {
     guard let number = json[key] as? NSNumber else { return nil }
     let value = number.doubleValue

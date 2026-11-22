@@ -28,17 +28,6 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 
 /**
- * Forecast page above the gauges. Current conditions are the hero; every hour sent by the phone is
- * available in a horizontal strip, matching the phone forecast without fighting the vertical page
- * gesture back to telemetry.
- *
- * Structure is carried by hairlines rather than boxes: a rule that fades out at both ends separates
- * the hero from the strip without butting into the round bezel, and sun times close the page under
- * it. Everything is a 1 dp [GuideColor] stroke or a tinted glyph — no fills, per `docs/design.md`.
- *
- * Read-only, like every wrist surface: the phone owns the forecast and there is no way to ask it for
- * a fresher one from here (ADR-0019 keeps the mirror one-way for data).
- *
  * @parity /watch/watchos/WeatherScreen.swift
  */
 @Composable
@@ -63,9 +52,6 @@ fun WeatherScreen() {
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
-            // The rim arcs own the outside of the circle, so the page lives inside them. The inset is
-            // per-child rather than on the column: the hourly strip carries it as content padding so
-            // its ends still scroll out to the bezel instead of stopping short of it.
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = CURRENT_TOP_PADDING, bottom = PAGE_INSET),
@@ -110,7 +96,6 @@ fun WeatherScreen() {
                     )
                 }
             }
-            // Flexible gaps yield space to the forecast and sun time on smaller watches.
             Spacer(modifier = Modifier.weight(1f))
             FadingRule(modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_INSET + RULE_INSET))
             Spacer(modifier = Modifier.weight(1f))
@@ -121,8 +106,6 @@ fun WeatherScreen() {
             ) {
                 items(forecast.hourly, key = { it.minuteOfDay }) { hour -> HourColumn(hour) }
             }
-            // Only the sun event still ahead: both at once needed a divider and ran the full width of
-            // the circle, and the one already behind the rider is not what they are planning around.
             val nextSunEvent = nextSunEvent(forecast.sunriseMinuteOfDay, forecast.sunsetMinuteOfDay)
             if (nextSunEvent != null) {
                 Spacer(modifier = Modifier.weight(1f))
@@ -133,11 +116,6 @@ fun WeatherScreen() {
     }
 }
 
-/**
- * That the radar page exists. A page above the top page of the axis is the one thing on the wrist a
- * rider has no reason to guess at, so it is signposted — dim and glyph-only, since it is a hint
- * about a gesture rather than a control.
- */
 @Composable
 private fun RadarHint(modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -156,7 +134,6 @@ private fun RadarHint(modifier: Modifier = Modifier) {
     }
 }
 
-/** One forecast hour: time, glyph, temperature, and chance of rain. */
 @Composable
 private fun HourColumn(hour: WatchWeatherHour) {
     Column(
@@ -191,13 +168,8 @@ private fun HourColumn(hour: WatchWeatherHour) {
     }
 }
 
-/** Which sun event the rider still has ahead of them today, and when. */
 private data class SunEvent(val minuteOfDay: Int, val rising: Boolean)
 
-/**
- * The next sun event from now: sunrise while the sun is still down, sunset once it is up, and
- * tomorrow's sunrise after dark. Null when the phone sent neither time.
- */
 @Composable
 private fun nextSunEvent(sunriseMinuteOfDay: Int?, sunsetMinuteOfDay: Int?): SunEvent? {
     val nowMinuteOfDay = currentMinuteOfDay()
@@ -212,9 +184,6 @@ private fun nextSunEvent(sunriseMinuteOfDay: Int?, sunsetMinuteOfDay: Int?): Sun
 }
 
 /**
- * Sunrise or sunset, mirroring the phone's expanded weather pill: a sun glyph with a caret for the
- * direction, amber going up and violet going down.
- *
  * @parity /src/modules/weather/components/WeatherPillView.tsx `sunTimes`
  */
 @Composable
@@ -242,7 +211,6 @@ private fun SunTime(minuteOfDay: Int, rising: Boolean) {
     }
 }
 
-/** A 1 dp rule that fades to nothing at both ends, so it never butts into the round bezel. */
 @Composable
 private fun FadingRule(modifier: Modifier = Modifier) {
     Box(
@@ -256,13 +224,8 @@ private fun FadingRule(modifier: Modifier = Modifier) {
     )
 }
 
-/** Horizontal and bottom margin into the inner circle, clear of the pinned rim arcs. */
 private val PAGE_INSET = GAUGE_INNER_INSET + 8.dp
 
-/**
- * The strip sits at the widest part of the circle, where the arcs cut furthest in, so its resting
- * ends need more room than the rest of the page. Content padding, so it still scrolls to the bezel.
- */
 private val STRIP_INSET = PAGE_INSET + 12.dp
 
 private val RADAR_HINT_TOP_PADDING = 8.dp

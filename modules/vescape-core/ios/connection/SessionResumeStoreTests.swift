@@ -32,14 +32,12 @@ final class SessionResumeStoreTests: XCTestCase {
     )
   }
 
-  /// The marker outlives the process, so a second store instance (the next launch) must read it.
   func testMarkerSurvivesANewStoreInstance() {
     SessionResumeStore(defaults: defaults)
       .save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: false)
     XCTAssertEqual(SessionResumeStore(defaults: defaults).pending?.appBoardId, "board-1")
   }
 
-  /// Recording is toggled mid-session, so the flag is refreshed in place.
   func testRecordingIsRefreshedInPlace() {
     let store = SessionResumeStore(defaults: defaults)
     store.save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: false)
@@ -50,7 +48,6 @@ final class SessionResumeStoreTests: XCTestCase {
     XCTAssertEqual(store.pending?.recordingActive, false)
   }
 
-  /// Recording can be toggled with no session on: that must not conjure a marker.
   func testRecordingFlagWithoutMarkerIsANoop() {
     let store = SessionResumeStore(defaults: defaults)
     store.setRecording(active: true)
@@ -64,7 +61,6 @@ final class SessionResumeStoreTests: XCTestCase {
     XCTAssertNil(store.pending)
   }
 
-  /// A half-written marker must not eagerly spin up BLE for a board that cannot be resolved.
   func testMarkerWithoutBleIdIsIgnored() {
     defaults.set(["appBoardId": "board-1", "recordingActive": true], forKey: "vescape.session.resume")
     XCTAssertNil(SessionResumeStore(defaults: defaults).pending)

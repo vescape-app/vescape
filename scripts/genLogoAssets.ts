@@ -1,7 +1,3 @@
-/**
- * One-off generator: rasterizes the brand SVGs into the PNG assets that native
- * config (icon, adaptive icon, splash, favicon) requires. Run with `bun run`.
- */
 import sharp from 'sharp'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -15,7 +11,6 @@ const DARK = '#111827'
 const signet = readFileSync(join(logoDir, 'vescape-sygnet.svg'), 'utf8')
 const text = readFileSync(join(logoDir, 'Vescape-text.svg'), 'utf8')
 
-// Monochrome signet: keep the mark, force white fill, and drop gradient defs.
 const signetMono = signet
   .replace(/fill="url\(#[^)]*\)"/, 'fill="#FFFFFF"')
   .replace(/<defs>[\s\S]*?<\/defs>/, '')
@@ -26,7 +21,6 @@ const render = (src: string, size: number) =>
   sharp(svg(src)).resize(size, size, { fit: 'contain', background: '#00000000' }).png()
 
 async function main() {
-  // iOS / store icon — opaque dark background.
   const iconInner = 820
   const iconPad = (1024 - iconInner) / 2
   await render(signet, iconInner)
@@ -40,8 +34,6 @@ async function main() {
     .flatten({ background: DARK })
     .toFile(join(out, 'icon.png'))
 
-  // Android adaptive icon layers. The launcher crops the foreground to a
-  // center safe zone, so render the mark smaller and pad it to 512.
   const fgInner = 280
   const fgPad = (512 - fgInner) / 2
   await render(signet, fgInner)
@@ -64,10 +56,8 @@ async function main() {
     })
     .toFile(join(out, 'androidIconMonochrome.png'))
 
-  // Web favicon.
   await render(signet, 48).toFile(join(out, 'favicon.png'))
 
-  // Splash + in-app loader use the horizontal wordmark.
   await sharp(svg(text))
     .resize({ width: 1200, fit: 'contain', background: '#00000000' })
     .png()

@@ -18,7 +18,6 @@ const ROW_HEIGHT = 48
 const NO_COUNTRY: Country = { code: '', name: 'No country' }
 const ROWS = [NO_COUNTRY, ...COUNTRIES]
 
-/** Optional Rider Profile nationality: the flag and name, picked from an alphabetical list. */
 export function CountryPicker({
   value,
   onChange,

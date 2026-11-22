@@ -10,11 +10,6 @@ const destination = process.env.IOS_TEST_DESTINATION ?? DEFAULT_DESTINATION
 const resultBundle = `/tmp/vesc-ios-tests-${Date.now()}.xcresult`
 
 const CACHE_FILE = join(ROOT, '.expo', 'test-ios', 'sources.json')
-// SwiftPM memoizes evaluated manifests keyed on `Package.swift`'s *contents*. Ours globs `ios/`
-// rather than listing files, so adding a test leaves the manifest text identical and the memo keeps
-// serving the old source list — the new test silently never runs. Drop the memo whenever the file
-// list moves. That is the same "sorted path list" signal Pods go stale on, so the fingerprint is
-// shared with `native-sync`.
 const MANIFEST_CACHE = join(homedir(), 'Library', 'Caches', 'org.swift.swiftpm', 'manifests')
 
 function readSourceCache(): Fingerprint | null {

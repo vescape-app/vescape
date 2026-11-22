@@ -1,15 +1,7 @@
 import { isValidElement } from 'react'
 
-/** Deeper than any marker's content; past it, values count as changed. */
 const MAX_DEPTH = 16
 
-/**
- * Whether two renders of an in-map marker's content draw the same, as far as their element trees
- * tell: same element types, keys and props, compared by value. Functions compare equal: press
- * handlers and `Pressable`'s style function are recreated on every render without changing what
- * is drawn. State inside the content's own components is invisible here; those changes refresh
- * through `useInMapMarkerRefresh` and touches.
- */
 export function sameLook(a: unknown, b: unknown, depth = 0): boolean {
   if (Object.is(a, b)) return true
   if (typeof a === 'function' && typeof b === 'function') return true

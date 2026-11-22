@@ -13,32 +13,19 @@ import android.os.Build
 import android.os.Handler
 import android.util.Log
 import java.util.UUID
+import androidx.annotation.BinderThread
 
 private const val TAG = "VescapeAccessory"
 private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 private const val REQUESTED_MTU = 517
 
-/** ATT overhead on a write: the negotiated MTU minus the opcode and handle. */
 private const val ATT_WRITE_OVERHEAD = 3
 
-/** Conservative default until the peer answers `onMtuChanged`. */
 private const val DEFAULT_MTU = 23
 
-/** Connect, discover and subscribe must all land before the handshake is even sent. */
 private const val CONNECT_TIMEOUT_MS = 10_000L
 
 /**
- * One Accessory discovery handshake: connect, subscribe, write `hello`, read the manifest back,
- * disconnect. Nothing else is ever written on the link.
- *
- * That single-write shape is the guarantee behind "no control activates from discovery": the class
- * has no path that can emit `configure` or `state`, so inspecting an Accessory cannot start a
- * measurement or change a light. The operational session is a separate concern built on top of the
- * same protocol in later slices.
- *
- * Short-lived by design — it is torn down the moment it has an answer, so discovery never holds a
- * connection an Accessory's real session would have to fight for.
- *
  * @parity /modules/vescape-core/ios/accessory/AccessoryGattHandshake.swift
  */
 @SuppressLint("MissingPermission")
@@ -110,9 +97,8 @@ internal class AccessoryGattHandshake(
     }
 
     private val callback = object : BluetoothGattCallback() {
+        @BinderThread
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            // Posted before anything is read: every field this class keeps lives on the main looper,
-            // and GATT callbacks arrive on a binder thread.
             handler.post {
                 if (g !== gatt) {
                     try { g.close() } catch (e: Exception) { Log.w(TAG, "stale close: ${e.message}") }
@@ -126,6 +112,7 @@ internal class AccessoryGattHandshake(
             }
         }
 
+        @BinderThread
         override fun onMtuChanged(g: BluetoothGatt, negotiated: Int, status: Int) {
             handler.post {
                 if (g !== gatt) return@post
@@ -134,6 +121,7 @@ internal class AccessoryGattHandshake(
             }
         }
 
+        @BinderThread
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
             handler.post {
                 if (g !== gatt) return@post
@@ -160,6 +148,7 @@ internal class AccessoryGattHandshake(
             }
         }
 
+        @BinderThread
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             handler.post {
                 if (g !== gatt) return@post
@@ -167,6 +156,7 @@ internal class AccessoryGattHandshake(
             }
         }
 
+        @BinderThread
         override fun onCharacteristicWrite(
             g: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -183,10 +173,12 @@ internal class AccessoryGattHandshake(
         }
 
         @Suppress("DEPRECATION")
+        @BinderThread
         override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             deliver(g, characteristic.uuid, characteristic.value ?: return)
         }
 
+        @BinderThread
         override fun onCharacteristicChanged(
             g: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
@@ -196,7 +188,6 @@ internal class AccessoryGattHandshake(
         }
     }
 
-    /** Subscribed and ready: write the one line discovery is allowed to send. */
     private fun sendHello() {
         if (pendingChunks.isNotEmpty() || writeInFlight) return
         val payload = (AccessoryProtocol.encodeHello(sessionId) + "\n").toByteArray(Charsets.UTF_8)
@@ -207,12 +198,10 @@ internal class AccessoryGattHandshake(
             pendingChunks.addLast(payload.copyOfRange(offset, end))
             offset = end
         }
-        // The clock starts at the request, not at connect: a slow connect has its own budget.
         arm(AccessoryProtocol.HANDSHAKE_TIMEOUT_MS, "timeout")
         drain()
     }
 
-    /** One outstanding GATT write at a time; the chunks of one line stay in order. */
     private fun drain() {
         if (writeInFlight) return
         val target = gatt ?: return
@@ -246,8 +235,6 @@ internal class AccessoryGattHandshake(
                     is ManifestResult.Ok ->
                         return@post finish(AccessoryHandshakeOutcome.Ok(parsed.manifest))
                     is ManifestResult.Failed -> {
-                        // A message from another session is noise on a shared characteristic, not a
-                        // protocol violation: keep waiting for the manifest this hello asked for.
                         if (parsed.error != AccessoryHandshakeError.SESSION_MISMATCH) {
                             return@post finish(AccessoryHandshakeOutcome.Failed(parsed.error.wire))
                         }
@@ -259,7 +246,6 @@ internal class AccessoryGattHandshake(
     }
 }
 
-/** What one handshake produced, ready to cross the bridge. */
 internal sealed class AccessoryHandshakeOutcome {
     abstract val advertisedName: String?
 

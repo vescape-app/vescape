@@ -71,7 +71,6 @@ interface HistorySessionSheetProps {
   onSelectSession: (session: HistorySession) => void
   onSelectTab: (tab: 'history' | 'favorites') => void
   onLoadMore: () => void
-  /** Adds Details to each day heading, opening that day's stats and rides. */
   onOpenDay?: (day: RideDay) => void
 }
 
@@ -108,7 +107,6 @@ export function HistorySessionSheet({
         : countRideHistory(filter),
     [favoriteMode, listedSessions],
   )
-  // Native filters the ride pages; favorites are all loaded, so they filter here by their ride.
   const sessions = useMemo(() => {
     if (!favoriteMode || !filtered) return listedSessions
     const filter = toRideHistoryFilter(filterSelection)
@@ -136,7 +134,6 @@ export function HistorySessionSheet({
     exit: exitSelect,
     toggle: toggleSelect,
   } = useRideSelectStore.getState()
-  // Ride ids under each date heading, keyed by the heading's first ride.
   const longPressedRef = useRef(false)
   const dayIds = useMemo(() => {
     const days = new Map<string, string[]>()
@@ -231,7 +228,6 @@ export function HistorySessionSheet({
             weather={session.weather}
             checked={selectActive ? isRideSelected(select, session.id) : undefined}
             onPress={() => {
-              // The release after a long-press can still land as a press on the re-rendered row.
               if (longPressedRef.current) longPressedRef.current = false
               else if (selectActive) toggleSelect([session.id])
               else onSelectSession(session)

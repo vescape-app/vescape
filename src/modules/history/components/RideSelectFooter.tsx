@@ -19,7 +19,6 @@ interface RideSelectFooterProps {
   noun: { one: string; other: string }
   format: RideExportFormat
   onFormat: (format: RideExportFormat) => void
-  /** Export progress while native writes the zip; null when idle. */
   progress: RideExportProgressEvent | null
   error: string | null
   onExport: () => void
@@ -27,7 +26,6 @@ interface RideSelectFooterProps {
   onDelete: () => Promise<void>
 }
 
-/** Select mode's pinned action bar: export format, Delete with an inline confirm, Export. */
 export function RideSelectFooter({
   count,
   noun,

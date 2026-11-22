@@ -7,7 +7,6 @@ import { useResolvedControlColors } from '@/hooks/useTheme'
 
 interface StepperProps {
   value: number
-  /** Presentation only; stepping and bounds keep the full numeric precision. */
   formatValue?: (value: number) => string
   unit?: string
   min?: number

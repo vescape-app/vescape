@@ -54,17 +54,10 @@ private struct ConfigWriteContext {
   var refloatVersion: String?
 }
 
-/// iOS peer of Android `ConfigRWController`: pauses polling, reads the Refloat XML schema + config
-/// bytes over BLE, then either decodes a snapshot (read) or patches the profile fields, writes them
-/// back via `COMM_SET_CUSTOM_CONFIG`, and verifies the readback (write). Resumes polling on finish.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt
 internal final class ConfigRWController {
   private let scheduler: Scheduler
   private var state: ConfigRWState = .idle
-  /// Every consumer waiting on the current read. A read started in the background (post-trust config
-  /// acquisition) is joined by a later caller instead of rejecting it with `CONFIG_REQUEST_IN_FLIGHT`
-  /// — one board read serves them all.
   private var readCallbacks: [PendingConfigRead] = []
   private var writeCallbacks: PendingConfigWrite?
   private var timeoutGeneration: Int64 = 0
@@ -78,7 +71,6 @@ internal final class ConfigRWController {
     return true
   }
 
-  /// Whether the in-flight operation is a read (joinable) rather than a write (not).
   private var isReadInFlight: Bool {
     switch state {
     case .readCollectingXml, .readAwaitingConfig: return true
@@ -96,7 +88,6 @@ internal final class ConfigRWController {
         onError(RefloatConfigErrorCode.CONFIG_REQUEST_IN_FLIGHT.rawValue, "Config operation already in flight")
         return
       }
-      // Join the read already on the wire; it completes for every waiter at once.
       readCallbacks.append(PendingConfigRead(onSuccess: onSuccess, onError: onError))
       return
     }
@@ -187,10 +178,6 @@ internal final class ConfigRWController {
       fwVersion: connection.fwVersion,
       refloatVersion: connection.refloatVersion
     )
-    // A board takes one connection at a time, so while this session holds the link the config can
-    // only have changed through our own writes — the session's `fresh` bytes are still the board's
-    // bytes and back the write directly. `lastKnown` values carry no write base by construction,
-    // so a cache-restored session falls through to the read (ADR 0035).
     if let writeBase = connection.boardConfigValues?.writeBase {
       sendWrite(ctx, writeBase.schema, writeBase.rawConfig, writeBase.packageSignature, .sendingWrite, connection)
       return
@@ -266,7 +253,6 @@ internal final class ConfigRWController {
       case .failure(let message):
         fail(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, rawConfig: nil, connection: connection)
       case .success(let chunk):
-        // A delayed reply to a retried request must not append the same bytes twice.
         guard chunk.offset == xmlBytes.count else { return }
         ctx.xmlRetried = false
         let merged = xmlBytes + chunk.chunk
@@ -392,9 +378,6 @@ internal final class ConfigRWController {
     }
   }
 
-  /// Patch the write base bytes with the profile fields and send `COMM_SET_CUSTOM_CONFIG`. The base
-  /// is either the bytes just read or the session's retained fresh bytes; either way the whole blob
-  /// is patched in place, so fields outside the curated tune groups survive untouched.
   private func sendWrite(
     _ ctx: ConfigWriteContext,
     _ schema: RefloatConfigSchema,
@@ -457,8 +440,6 @@ internal final class ConfigRWController {
     }
   }
 
-  /// Build the session's Board Config Values off the bytes just read: the whole-schema decoded map
-  /// plus the retained raw bytes, package signature, and schema that a later write patches.
   private func boardConfigValues(
     _ schema: RefloatConfigSchema,
     _ configBytes: RefloatConfigBytes,
@@ -553,8 +534,6 @@ internal final class ConfigRWController {
     pending?.onError(code.rawValue, message)
   }
 
-  /// Route a transport-level failure (timeout, GATT write failure, session drop) to the read or
-  /// write failure handler for the current state, mirroring Android's FSM per-state phase tagging.
   private func abort(
     code: RefloatConfigErrorCode,
     message: String,
@@ -659,13 +638,9 @@ internal struct ConfigRWConnection {
   let appBoardId: String?
   let transport: BoardTransport
   let fwVersion: String?
-  /// Refloat version the trusted Board Link observed. Seeds the write context so a push that skips
-  /// the pre-read still returns a snapshot Tune Compatibility can read.
   let refloatVersion: String?
   let refloatBaseVersion: String?
   let linkIntegrity: LinkIntegrity
-  /// The session's held Board Config Values. A `fresh` object carries the write base a tune push
-  /// patches, which is what lets the push skip the pre-read entirely (ADR 0035).
   let boardConfigValues: BoardConfigValues?
   let isPollingActive: () -> Bool
   let stopPolling: () -> Void
@@ -673,8 +648,6 @@ internal struct ConfigRWConnection {
   let sendPayload: ([UInt8]) -> Bool
   let captureDiagnostic: (String, [String: Any?]) -> Void
   let loadProfile: (String) throws -> [String: Any?]?
-  /// Hand the freshly decoded Board Config Values to the session controller, which holds them as the
-  /// session's config truth, caches them, and runs warning evaluation.
   let onBoardConfigValues: (BoardConfigValues, BoardConfigOperationOrigin) -> Void
 }
 

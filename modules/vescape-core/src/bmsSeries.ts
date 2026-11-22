@@ -34,8 +34,6 @@ function float64Lanes(columns: ArrayBuffer | Uint8Array): Float64Array {
 }
 
 /**
- * Decode Live BMS Series columnar buffer from native into public domain frames.
- *
  * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `encodeBmsSeriesColumns`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt `encodeBmsSeriesColumns`
  */

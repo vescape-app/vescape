@@ -15,10 +15,6 @@ import { accountGateCopy, type AccountGateReason } from '@/screens/main/map/acco
 import { navigationActionColors } from '@/screens/main/map/navigationActionColors'
 import type { MapModeOverlayProps } from '@/screens/main/map/mapModeOverlayTypes'
 
-/**
- * Explore mode. Owns the map's write-side state — what is selected, what is being edited, whether
- * the add menu is placing a feature — and the sign-in gate those writes, search and navigation go through.
- */
 export function MapModeOverlay({
   visible,
   mapRef,
@@ -43,16 +39,12 @@ export function MapModeOverlay({
   onRemoveMapPoint,
 }: MapModeOverlayProps) {
   const router = useRouter()
-  // The server authorizes Map Point writes and the map proxy on the Device Token, so that is what
-  // gates the UI.
   const accountReady = useDeviceAccountReady()
   const riderColor = useSelectedBoardRailColor()
   const [signInReason, setSignInReason] = useState<AccountGateReason | null>(null)
   const [editingMapPointId, setEditingMapPointId] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
-  // Native owns whether a path exists; this only decides what the sheet says about it. Read here
-  // rather than drilled from the screen, because the sheet is its only consumer.
   const navigationStatus = useMapStore((s) => s.navigation?.status ?? null)
   const navigationProfile = useMapStore((s) => s.navigation?.profile ?? null)
   const navigationDistanceMeters = useMapStore((s) => s.navigation?.distanceMeters ?? 0)
@@ -129,8 +121,6 @@ export function MapModeOverlay({
     return () => cancelAnimationFrame(frame)
   }, [visible])
 
-  // A long press on the map is a request to place a feature there: centre it, then open the add
-  // menu on that spot.
   useEffect(() => {
     if (!visible || !longPressMapTarget) return
     const frame = requestAnimationFrame(() => {

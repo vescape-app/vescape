@@ -14,17 +14,6 @@ import {
   useThemeStore,
 } from '@/hooks/useTheme'
 
-/**
- * Which kind of ways the path may follow, switched inline while looking at it. Deliberately not a
- * settings screen entry: the rider decides a path went the wrong kind of way and fixes it there.
- *
- * It shows the profile that produced the drawn path, not the one stored for next time — a switch
- * whose recompute found nothing leaves the old path, and this snaps back with it.
- *
- * `open` lays every profile out at once. On the path view that is the right shape: the rider is
- * already deciding which ways the path may follow, and making them tap once to reveal the choices
- * and again to pick one puts a shrug in the middle of a decision they have already made.
- */
 export function NavigationProfileSelector({
   activeProfile,
   size = 'md',
@@ -33,7 +22,6 @@ export function NavigationProfileSelector({
 }: {
   activeProfile: NavigationProfile
   size?: ExpandableCircleMenuSize
-  /** Show all profiles side by side instead of collapsing to the active one. */
   open?: boolean
   onSelect: (profile: NavigationProfile) => void
 }) {
@@ -97,10 +85,6 @@ export function NavigationProfileSelector({
   )
 }
 
-/**
- * Rider-facing names for the profiles. They say what the path follows rather than how the rider
- * travels: an EUC is none of walking, cycling or driving, but the ways are exactly the difference.
- */
 const NAVIGATION_PROFILE_OPTIONS: {
   key: NavigationProfile
   label: string

@@ -22,12 +22,6 @@ export interface MapCameraSnapshot {
 export type MapCameraMode =
   | { kind: 'liveFollow' }
   | { kind: 'manualBrowse' }
-  /**
-   * The reveal gesture is driving the camera itself. `returnTo` is the mode a cancelled drag goes
-   * back to; the drag only owns the camera while this mode is live, so anything that claims the
-   * camera mid-drag (entering the weather view, framing a route) simply replaces it and the
-   * gesture's own ending becomes a no-op.
-   */
   | { kind: 'previewPan'; returnTo: MapCameraMode }
   | {
       kind: 'rideHistory'
@@ -35,7 +29,6 @@ export type MapCameraMode =
       phase: 'preview' | 'route' | 'manualInspect'
     }
 
-/** True when both modes are the same logical camera mode (value equality). */
 export function mapCameraModesEqual(a: MapCameraMode, b: MapCameraMode): boolean {
   if (a === b) return true
   if (a.kind !== b.kind) return false
@@ -64,12 +57,7 @@ export type MapCameraIntent =
     }
   | { type: 'BrowseManually'; historySelectionKey?: string | null }
   | { type: 'BeginPreviewPan' }
-  /** The drag ended on the map: the rider keeps the viewport they dragged to. */
   | { type: 'EndPreviewPan' }
-  /**
-   * The drag was abandoned. `liveCamera` is where the rider is now, `anchorCamera` where the drag
-   * started; which one restores the view depends on the mode the drag interrupted.
-   */
   | {
       type: 'CancelPreviewPan'
       liveCamera: MapCameraSnapshot | null
@@ -121,7 +109,6 @@ export type MapCameraIntent =
       camera: MapCameraSnapshot
     }
   | {
-      /** Frame a whole line of coordinates — today the Navigation path the rider is confirming. */
       type: 'FitRoute'
       camera: MapCameraSnapshot
     }
@@ -131,10 +118,6 @@ export interface MapCameraEffect {
 }
 
 /**
- * Zoom at which the outer radar range ring just fits across the narrow side of the screen. The
- * radar answers "what is heading for me", so the framing is the rings, not the rider's street —
- * but framed no wider than that, or the rider is looking at other countries.
- *
  * @parity /src/modules/weather/components/RadarRangeRings.tsx `RANGE_RING_KM`
  */
 export function zoomForRadarView(
@@ -147,10 +130,8 @@ export function zoomForRadarView(
   return zoomForMetersPerPixel(spanM / fitPx, latitude)
 }
 
-/** The outer ring the view is framed around, matching the rings drawn on the map. */
 const RADAR_VIEW_RADIUS_M = 100_000
 
-/** Breathing room around that ring, so it never touches the screen edge. */
 const RADAR_VIEW_PADDING = 0.12
 const RADAR_VIEW_FALLBACK_ZOOM = 7
 
@@ -198,16 +179,10 @@ function buildLiveFollowCamera({
   }
 }
 
-/**
- * The reveal drag's own lifecycle. Split out of the main reducer because the three intents share
- * one question — does the drag still own the camera? — and nothing else in the reducer asks it.
- */
 function reduceBrowseManuallyIntent(
   state: MapCameraControllerState,
   intent: Extract<MapCameraIntent, { type: 'BrowseManually' }>,
 ): { state: MapCameraControllerState; effect: MapCameraEffect | null } {
-  // A drag in progress is already manual control, and it owns the camera. Letting the generic
-  // intent overwrite it would hand the drag's ending back the ownership it just lost.
   if (state.mode.kind === 'previewPan') return { state, effect: null }
   const mode: MapCameraMode =
     intent.historySelectionKey != null
@@ -253,8 +228,6 @@ function reducePreviewPanIntent(
 
   if (state.mode.kind !== 'previewPan') return { state, effect: null }
   const returnTo = state.mode.returnTo
-  // Live follow only restores when there is a fix behind it; without one the follow camera is a
-  // fallback guess, a whole continent's worth of zoom out. Stay on the drag's own anchor.
   const camera =
     returnTo.kind === 'liveFollow'
       ? (intent.liveCamera ?? intent.anchorCamera)
@@ -382,7 +355,6 @@ export function reduceMapCameraIntent(
           centerCoordinate: intent.fallbackCenterCoordinate,
           zoomLevel,
           heading: 0,
-          // Explicit: native keeps the last padding when omitted, so the follow tilt offset leaked in.
           padding: getPaddingForProfile({ profile: 'weather', zoom: zoomLevel }),
           pitch: getPitchForProfileZoom({
             profile: MAP_CAMERA_PROFILES.weather,

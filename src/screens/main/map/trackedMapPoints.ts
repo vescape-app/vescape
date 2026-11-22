@@ -25,8 +25,6 @@ import {
   type TrackedMapPoint,
 } from '@/screens/main/map/offscreenMapIndicators'
 
-// Filled dot matching the rider's map marker, so the edge indicator reads as that rider.
-// Module scope keeps the reference stable for the indicator identity check.
 const RiderDotIcon: Icon = ({ color }) =>
   createElement(View, { style: { width: 16, height: 16, borderRadius: 8, backgroundColor: color } })
 
@@ -117,7 +115,6 @@ export function buildActiveNavigationPoint({
   )
 }
 
-/** Peers themselves, tinted by Rider id so pin and edge indicator share one color. */
 export function buildRiderPoints(
   riders: RosterRider[],
   accents?: ResolvedAccentColors,
@@ -139,7 +136,6 @@ export function buildRiderPoints(
   })
 }
 
-/** Peers' shared targets, the same tint as their rider pin. */
 export function buildRiderTargetPoints(
   riders: RosterRider[],
   accents?: ResolvedAccentColors,

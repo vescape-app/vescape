@@ -1,6 +1,5 @@
 import Foundation
 
-/// Native-owned monthly uploads. Failed months remain eligible on the next lifecycle trigger.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderStatsSender.kt
 actor RiderStatsSender {
   static let shared = RiderStatsSender()
@@ -70,7 +69,6 @@ actor RiderStatsSender {
       for month in months { available.insert(String(format: "%04d-%02d", month["year"]!, month["month"]!)) }
     }
     let months = policy.months(now: Date(), foreground: foreground, rideMonths: rideMonths, backfill: backfill ? available : nil)
-    // Pin this run to its credential so an account change cannot upload A's payload as B.
     let api = VescapeApi(
       baseUrl: origin,
       appVersion: AppStatusCoordinator.installedMarketingVersion(),
@@ -140,7 +138,6 @@ final class RiderStatsUploadPolicy {
   }
 }
 
-/// Server UploadMonthStatsSchema bounds, applied only at the upload boundary.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/riderprofiles/RiderStatsSender.kt `normalizedRiderStats`
 func normalizedRiderStats(_ stats: [String: Any?]) -> [String: Any] {
   Dictionary(uniqueKeysWithValues: RiderStatsSender.fields.map { field in

@@ -24,7 +24,7 @@ class ReplayFixtureParserTest {
             val frame = detour[i].frame
             val previous = detour[i - 1].frame
             assertTrue(kotlin.math.hypot(frame.riderEastM!! - previous.riderEastM!!, frame.riderNorthM!! - previous.riderNorthM!!) < 5)
-            assertEquals(straight[i].frame.navBearing, frame.navBearing)
+            assertEquals(straight[i].frame.navBearingDeg, frame.navBearingDeg)
             assertEquals(-frame.riderEastM, frame.trail.first().eastM, 0.0001)
             assertEquals(-frame.riderNorthM, frame.trail.first().northM, 0.0001)
             assertEquals(0.0, frame.trail.last().eastM, 0.0001)
@@ -79,7 +79,7 @@ class ReplayFixtureParserTest {
             sequenceOf(
                 "",
                 "not json",
-                """{"t":0,"duty":17}""", // no speed lane
+                """{"t":0,"duty":17}""",
                 """{"t":1000,"speed":20,"duty":30,"battery":50,"motorTemp":40,"ctrlTemp":30}""",
             ),
         )
@@ -96,7 +96,7 @@ class ReplayFixtureParserTest {
         val fixture = asset("watch-ride.jsonl")
         for (wander in listOf(false, true)) {
             val samples = fixture.useLines { ReplayFixtureParser.parse(it, wander = wander, origin = origin) }
-            val arrival = samples.indexOfFirst { it.frame.navBearing == null }
+            val arrival = samples.indexOfFirst { it.frame.navBearingDeg == null }
             assertTrue(arrival > 0)
             val after = samples.drop(arrival)
             assertTrue(after.isNotEmpty())

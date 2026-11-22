@@ -132,7 +132,6 @@ describe('fractional dial endpoints', () => {
     return Array.from({ length: layout.totalSteps + 1 }, (_, index) => {
       const value = tuneDialStepValue(index, layout.totalSteps, min, max, step, decimals)
       const offset = tuneDialValueToOffset(value, min, max, step, layout.totalSteps, layout.stepPx)
-      // Ruler positions, drag snapping, throwing and external values share this index.
       expect(offset).toBeCloseTo(index * layout.stepPx, 8)
       expect(Math.round(offset / layout.stepPx)).toBe(index)
       return value

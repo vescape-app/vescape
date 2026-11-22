@@ -2,11 +2,6 @@ import XCTest
 import GRDB
 @testable import VescapeCore
 
-/// Board tombstones (ADR 0027): deleting a Board stamps `boards.deleted_at` instead of removing the
-/// row, so Ride History outlives the Board that produced it. Configuration still goes; telemetry and
-/// Tune Profiles never did and still do not.
-///
-/// Runs the real migrator and the real repository against an in-memory database.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/BoardTombstoneTest.kt
 final class BoardTombstoneTests: XCTestCase {
   private var queue: DatabaseQueue!
@@ -44,8 +39,6 @@ final class BoardTombstoneTests: XCTestCase {
     }
   }
 
-  // MARK: Migration
-
   func testMigrationAddsNullableDeletedAtLeavingExistingRowsAlive() throws {
     let columns = try queue.read { db in try db.columns(in: "boards") }
     let deletedAt = columns.first { $0.name == "deleted_at" }
@@ -57,13 +50,9 @@ final class BoardTombstoneTests: XCTestCase {
     XCTAssertNil(try self.deletedAt("board-1"), "a fresh Board must start alive")
   }
 
-  /// Re-running the whole migrator over a migrated database has to be a no-op, not a duplicate
-  /// column error.
   func testMigrationIsANoOpOnReRun() throws {
     XCTAssertNoThrow(try VescapeDatabase.migrator.migrate(queue))
   }
-
-  // MARK: Delete
 
   func testDeleteKeepsTheRowAndStampsDeletedAt() throws {
     try seedBoard()
@@ -100,7 +89,6 @@ final class BoardTombstoneTests: XCTestCase {
     XCTAssertEqual(try rowCount("alerts", boardId: "board-1"), 0, "alert rules survived")
   }
 
-  /// The reason the tombstone exists: history is what the delete must not take with it.
   func testDeleteLeavesTelemetryAndTuneProfilesUntouched() throws {
     try seedBoard()
     try queue.write { db in
@@ -117,10 +105,6 @@ final class BoardTombstoneTests: XCTestCase {
     XCTAssertEqual(try rowCount("tune_profiles", boardId: "board-1"), 1, "tune profiles were deleted")
   }
 
-  // MARK: Reads
-
-  /// The proven transport lives in a `board_settings` row, as on Android (#612): it reads back into
-  /// the link, and clearing the link removes the row.
   func testBoardLinkTransportRoundTripsThroughBoardSettings() throws {
     try seedBoard()
     let stored = try queue.read { db in

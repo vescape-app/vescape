@@ -104,7 +104,6 @@ function SparklineShowcase() {
   const [colorKey, setColorKey] = useState<keyof typeof colors>('speed')
   const [noSamples, setNoSamples] = useState(false)
   const generated = useMemo(() => generateSparklineData(120, 42, 2, 11), [])
-  // Empty series is the disconnected case: the max badge hides itself, the row keeps its height.
   const points = noSamples ? [] : generated
 
   return (
@@ -205,10 +204,8 @@ function AnimatedSingleGaugeShowcase() {
 
 const SHOWCASE_SPEED_MAX = 50
 const SHOWCASE_DUTY_MAX = 100
-/** `ride` follows the ramp like a real window peak; the rest pin it at a share of full scale. */
 const PEAK_MODES = ['ride', 'off', '20%', '39%', '40%', '70%', '100%', '120%']
 
-/** Peak for the showcase ramp: the sweep's running max, or pinned at a share of full scale. */
 function useShowcasePeak(value: SharedValue<number | null>, max: number, mode: string) {
   const peak = useSharedValue<number | null>(null)
   useEffect(() => {
@@ -218,7 +215,6 @@ function useShowcasePeak(value: SharedValue<number | null>, max: number, mode: s
     () => value.value,
     (v) => {
       if (mode !== 'ride' || v == null) return
-      // Each sweep starts fresh, as if the old peak had rolled out of the live window.
       if (v < max * 0.02) peak.value = null
       else if (peak.value == null || v > peak.value) peak.value = v
     },
@@ -315,8 +311,6 @@ function LinearGaugeShowcase() {
         aux={empty ? undefined : mode === 'stale old' ? `${voltageText} · 2h ago` : voltageText}
         charging={charging}
         alerts={[
-          // One of each rule flavor: one-shot (tick only), geiger and repeating (both band the
-          // rest of the scale, since both keep making noise above where their marks stop).
           { id: 'one-shot', threshold: 20, thresholdMax: null },
           { id: 'geiger', threshold: 40, thresholdMax: 60 },
           { id: 'repeating', threshold: 90, thresholdMax: null, repeats: true },
@@ -327,7 +321,6 @@ function LinearGaugeShowcase() {
   )
 }
 
-/** The overlay a detail chart wears until its focused series lands. */
 function ChartLoadingOverlayShowcase() {
   const [loading, setLoading] = useState(true)
   const data = useMemo(

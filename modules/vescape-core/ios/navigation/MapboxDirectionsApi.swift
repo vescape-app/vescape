@@ -1,13 +1,6 @@
 import Foundation
 import os
 
-/// The app's only Directions call. It fetches one way-following geometry between two coordinates
-/// through the server's Mapbox Directions proxy (`GET /api/maps/directions/:profile/:coordinates`,
-/// body verbatim from Mapbox) and returns the decoded points; it holds no state and decides nothing
-/// about when a Navigation exists — that is `NavigationController`'s job.
-///
-/// The proxy needs a Device Token, so a signed-out rider gets `.failed`.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/MapboxDirectionsApi.kt
 final class MapboxDirectionsApi: DirectionsRoutes {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/MapboxDirectionsApi.kt `PATH`
@@ -20,12 +13,6 @@ final class MapboxDirectionsApi: DirectionsRoutes {
     self.api = api
   }
 
-  /// Points of the first returned route, or which way this failed. No credential, a transport
-  /// error, a rate limit, an unconfigured or unreachable upstream and any other non-2xx are all
-  /// `.failed` — the question never got a real answer. A 2xx carrying no route is `.noPath`: Mapbox
-  /// answered, and the answer is that nothing leads there.
-  ///
-  /// Nothing is retried here beyond the API boundary's own rule; retrying is the rider's call.
   func route(
     fromLatitude: Double,
     fromLongitude: Double,
@@ -33,8 +20,6 @@ final class MapboxDirectionsApi: DirectionsRoutes {
     toLongitude: Double,
     profile: String
   ) async -> DirectionsResult {
-    // Mapbox takes coordinates as `longitude,latitude` — the opposite order from `setDirectionPoint`.
-    // Fixed 6 decimals: `\(Double)` writes small values as `1e-05`, which the server rejects.
     let coordinates = [fromLongitude, fromLatitude, toLongitude, toLatitude]
       .map { String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), $0) }
     let path = "\(Self.path)/\(profile)/\(coordinates[0]),\(coordinates[1]);\(coordinates[2]),\(coordinates[3])"
@@ -61,8 +46,6 @@ final class MapboxDirectionsApi: DirectionsRoutes {
 
     let points = Polyline6.decode(geometry)
     guard !points.isEmpty else { return .noPath }
-    // Mapbox reports both for the route it returned; they are the only length and time the app
-    // ever shows, so nothing here recomputes them from the geometry.
     return .path(
       points: points,
       distanceMeters: (route["distance"] as? NSNumber)?.doubleValue ?? 0,

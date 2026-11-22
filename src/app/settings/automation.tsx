@@ -28,7 +28,6 @@ import {
   hasBackgroundLocation,
 } from '@/modules/settings/hooks/usePermissions'
 
-/** Backing out of the system device chooser is normal — only real failures get an alert. */
 const alertCompanionError = (error: unknown, fallback: string) => {
   const message = companionErrorMessage(error, fallback)
   if (message) Alert.alert('Auto start app', message)
@@ -100,10 +99,7 @@ export default function AutomationSettingsScreen() {
     }
   }
 
-  /** Runs the permission gate, then hands the board to native (which opens the Android chooser). */
   const continueEnable = async (boardId: string) => {
-    // Hands-off auto-start records GPS only with "Allow all the time": the OS starts the service
-    // from the background and withholds while-in-use location. Explain why before any grant attempt.
     if (await hasBackgroundLocation()) {
       void enableCompanion(boardId)
     } else {
@@ -113,8 +109,6 @@ export default function AutomationSettingsScreen() {
   }
 
   const onAddCompanionBoard = async (boardId: string) => {
-    // Android can only pair with a board it can scan, so native drops a live session first. Say so
-    // up front — an unannounced disconnect mid-ride reads like a bug.
     if (boardId === connectedBoardId) {
       setPendingBoardId(boardId)
       setDisconnectPrompt(true)
@@ -137,11 +131,9 @@ export default function AutomationSettingsScreen() {
 
   const onBgLocationConfirm = async () => {
     setBgLocationPrompt(false)
-    // Android 10 grants inline; Android 11+ removed the dialog, so fall back to Settings.
     if ((await ensureBackgroundLocation()) && pendingBoardId) {
       void enableCompanion(pendingBoardId)
     } else {
-      // Grant happens outside the app, so this attempt is over — the rider taps Enable again.
       setPendingBoardId(null)
       Linking.openSettings()
     }

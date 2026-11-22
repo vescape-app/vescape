@@ -1,6 +1,5 @@
 import { onOff, type ConfigRow } from '@/modules/board/lib/boardConfigReadout'
 
-/** Preserve fields from newer schemas too, without guessing their units or meaning. */
 export function remainingConfigRows(
   values: Record<string, number | boolean | undefined> | undefined,
   coveredIds: ReadonlySet<string>,

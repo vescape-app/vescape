@@ -2,16 +2,9 @@ import Foundation
 import GRDB
 
 enum VescFaultStoreError: Error {
-  /// The shared GRDB pool is not open, so the read could not be attempted at all.
   case unavailable
 }
 
-/// DB-backed storage for VESC Fault Occurrences. Unlike Board Warnings this **is** a time series —
-/// the same code activating twice is two rows, keyed by a native-minted id, never by (board, code).
-/// Lifecycle rules live on `VescFaultCoordinator`; this struct is pure CRUD.
-///
-/// Fault rows are deliberately absent from Board deletion: the evidence outlives the Board record.
-///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 struct VescFaultStore: VescFaultStoring {
   private struct Record: Codable, FetchableRecord, PersistableRecord {
@@ -43,8 +36,6 @@ struct VescFaultStore: VescFaultStoring {
             lastObservedAtMs: lastObservedAt, clearedAtMs: clearedAt, dismissed: dismissed)
     }
   }
-  /// Resolves the shared GRDB writer at call time so it always sees the current pool (swapped on
-  /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
 
   static let shared = VescFaultStore { VescapeDatabase.pool }
@@ -53,21 +44,14 @@ struct VescFaultStore: VescFaultStoring {
     self.resolveWriter = resolveWriter
   }
 
-  /// Test seam: bind to an explicit writer (e.g. an in-memory `DatabaseQueue`).
   init(dbWriter: DatabaseWriter) {
     self.resolveWriter = { dbWriter }
   }
 
-  // MARK: - Schema
-
-  /// Create the VESC Fault Occurrence table. Called from the app-data `DatabaseMigrator` and reused
-  /// by tests so the schema stays single-source.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `VescFaultOccurrenceEntity`
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createVescFaults(db)
   }
-
-  // MARK: - Reads
 
   func getForBoard(_ boardId: String) throws -> [VescFaultOccurrence] {
     try writer().read { db in
@@ -83,16 +67,12 @@ struct VescFaultStore: VescFaultStoring {
     }
   }
 
-  /// Unlike the list reads this one propagates failure: the coordinator must not treat an
-  /// unreadable database as proof that no fault is open, or a restart would duplicate it.
   func openLive(_ boardId: String) throws -> VescFaultOccurrence? {
     try writer().read { db in
       try Record.filter(Column("board_id") == boardId && Column("cleared_at") == nil)
         .order(Column("occurred_at").desc, Column.rowID.desc).fetchOne(db)?.occurrence
     }
   }
-
-  // MARK: - Writes
 
   @discardableResult func upsert(_ occurrence: VescFaultOccurrence) throws -> Bool {
     try writer().write { db in

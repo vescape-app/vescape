@@ -5,10 +5,6 @@ import type { useCameraIntentCommands } from '@/screens/main/map/useCameraIntent
 import type { useCameraPreviewGestures } from '@/screens/main/map/useCameraPreviewGestures'
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 
-/**
- * The map's imperative API. Every method reads the latest closures through a ref, so the handle
- * itself is created once and callers never hold a stale camera.
- */
 export function useMainMapImperativeHandle(
   ref: React.Ref<MainMapHandle>,
   latest: {

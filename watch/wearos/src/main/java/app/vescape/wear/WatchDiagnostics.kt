@@ -3,6 +3,7 @@ package app.vescape.wear
 import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
+import androidx.annotation.MainThread
 
 private const val TAG = "VescMirror"
 /** @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `maxEvents` */
@@ -15,20 +16,13 @@ data class DiagnosticCounters(
     val framesDecoded: Long = 0,
     val decodeFailures: Long = 0,
     val unknownPathMessages: Long = 0,
-    /** [SystemClock.elapsedRealtime] of the last decoded frame. */
     val lastFrameAtMs: Long? = null,
 )
 
 /**
- * Watch-local diagnostics for the frame path (main thread only). The wrist has no adb in the field,
- * so this is the observable half of "why is the Mirror dark": counters plus a small ring of events,
- * rendered by [DiagnosticsScreen] on the pager page right of the gauges. Splits "frames never
- * arrived" (phone-side problem) from "frames arrived but failed to decode" (build mismatch).
- * Events also go to logcat (`VescMirror`) for wired debug sessions. In-memory only — resets with
- * the process, which matches its job of explaining the incident currently on screen.
- *
  * @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `WatchDiagnosticsLog`
  */
+@MainThread
 object WatchDiagnostics {
     val counters = mutableStateOf(DiagnosticCounters())
     val events = mutableStateOf(listOf<DiagnosticEvent>())
@@ -50,8 +44,6 @@ object WatchDiagnostics {
     fun recordDecodeFailure(bytes: ByteArray) {
         val c = counters.value
         counters.value = c.copy(decodeFailures = c.decodeFailures + 1)
-        // Event once per failure streak, not per frame — frames flow at ~2 Hz. The first byte is
-        // the sender's field count (ADR-0018), which names a phone/watch build mismatch.
         if (!inDecodeFailStreak) {
             inDecodeFailStreak = true
             event("decode fail ${bytes.size}B v${bytes.firstOrNull()?.toInt() ?: -1}", warn = true)
@@ -86,7 +78,6 @@ object WatchDiagnostics {
     }
 
     /**
-     * Emulator replay is a dev path, so its state is worth naming.
      * @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `recordReplay`
      */
     fun recordReplay(fixture: String, sampleCount: Int) {
@@ -98,8 +89,6 @@ object WatchDiagnostics {
     }
 
     /**
-     * Radar is the one thing the wrist fetches itself, so its failures are not the phone's and must
-     * not read like a dead link.
      * @parity /modules/vescape-core/ios/watch/WatchDiagnostics.swift `recordRadarFailure`
      */
     fun recordRadarFailure() {

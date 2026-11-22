@@ -13,18 +13,9 @@ interface RangeStatsBarProps {
   session: HistorySession
   samples: TelemetrySample[]
   gpsSamples: HistoryGpsSample[]
-  /** Trimming makes the drag the range; otherwise the chart's zoom window is. */
   trimming: boolean
 }
 
-/**
- * Ride stats for the stretch the rider is looking at: the range being trimmed, or the window the
- * chart is zoomed into. Falls back to the ride's own stats when neither is narrowed.
- *
- * Both ranges are read here rather than passed down so a drag frame or a settled pinch re-renders
- * only this bar. Summarising is one pass over the ride's samples — cheap per event, not something
- * to run per frame of a pinch, which is why the zoom arrives already settled.
- */
 export function RangeStatsBar({ session, samples, gpsSamples, trimming }: RangeStatsBarProps) {
   const trimRange = useMainScreenStore((s) => s.trimRange)
   const zoomRange = useSettledZoomWindow()
@@ -47,7 +38,6 @@ export function RangeStatsBar({ session, samples, gpsSamples, trimming }: RangeS
       endAtMs: range.endMs,
       movingStartAtMs: range.startMs,
       movingEndAtMs: range.endMs,
-      // Weather is folded natively for the whole ride; it does not describe a narrower stretch.
       weather: null,
       ...stats,
     }

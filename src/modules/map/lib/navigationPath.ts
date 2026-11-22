@@ -2,7 +2,6 @@ import type { Navigation, RouteProgress } from 'vescape-core'
 
 type Coordinate = [number, number]
 
-/** Rendering and framing share native's selected segment, including at crossings. */
 function splitNavigationPath(navigation: Navigation | null, progress: RouteProgress | null) {
   if (!navigation || navigation.status !== 'ready' || navigation.coordinates.length < 2) return null
   const coordinates = navigation.coordinates
@@ -29,7 +28,6 @@ function splitNavigationPath(navigation: Navigation | null, progress: RouteProgr
   }
 }
 
-/** Split at native's selected segment. Never search again: crossings must use the same leg. */
 export function navigationPathShape(
   navigation: Navigation | null,
   progress: RouteProgress | null,
@@ -53,7 +51,6 @@ export function navigationPathShape(
   }
 }
 
-/** Frame the part still ahead; at the endpoint, focus the destination rather than the old path. */
 export function navigationCameraPath(
   navigation: Navigation | null,
   progress: RouteProgress | null,

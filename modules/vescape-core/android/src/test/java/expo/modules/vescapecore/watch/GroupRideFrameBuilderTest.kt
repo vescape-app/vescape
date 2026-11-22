@@ -7,8 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Shared test vector: the same ids must land in the same palette slots on every platform.
- *
  * @parity /src/modules/group-ride/lib/riderColor.test.ts `RIDER_COLOR_VECTOR`
  * @parity /modules/vescape-core/ios/watch/GroupRideFrameBuilderTests.swift `riderColorVector`
  */
@@ -119,7 +117,6 @@ class GroupRideFrameBuilderTest {
         val near = rider("rider-7", GeoPoint(52.001, 21.0))
         val far = rider("rider-1", GeoPoint(52.002, 21.0))
         val before = build(listOf(rider("me"), far, near))
-        // They swap places and one goes stale: nobody's colour moves.
         val after = build(listOf(near.copy(position = GeoPoint(52.003, 21.0), stale = true), far))
 
         val expected = mapOf("rider-7" to GROUP_RIDE_RIDER_COLORS[3], "rider-1" to GROUP_RIDE_RIDER_COLORS[2])

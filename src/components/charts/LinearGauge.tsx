@@ -32,25 +32,16 @@ function useBarWidth() {
   return { width, onLayout }
 }
 
-// Charging particles: tiny dots drifting left → right along the line, absorbed
-// at the fill head. Uniform size; wide speed spread + stratified phases keep
-// the stream desynced instead of clumping into one group. Count scales with
-// travel span so long bars don't look sparse and short ones don't crowd.
 interface LinearGaugeProps {
-  /** Current value, or null when unknown. */
   value: number | null
   min?: number
   max: number
-  /** Stroke + value-text color (caller-resolved, e.g. low-battery warning). */
   color: ThemeColor
   unit: string
   decimals?: number
   alerts?: DualGaugeAlert[]
-  /** Secondary readout shown muted on the left (e.g. pack voltage). */
   aux?: ReactNode
-  /** Shown when value is null. */
   hint?: string
-  /** Animates particles flowing into the fill head while true. */
   charging?: boolean
   compact?: boolean
   transparent?: boolean
@@ -83,8 +74,6 @@ export function LinearGauge({
   const valueText =
     value == null ? DASH : decimals === 0 ? Math.round(value).toString() : value.toFixed(decimals)
 
-  // The value rides just left of the head, its top half the bar height above the line.
-  // Below 20% there's no room on the left, so it flips to the right of the head.
   const headX = width * fraction
   const valueSlot = getLinearGaugeValueSlot({ width, headX, compact, gap: VALUE_GAP })
   const valueSlotTop = height - LINE_THICK - height * BAND_RATIO
@@ -147,7 +136,6 @@ export function LinearGauge({
   )
 }
 
-/** The footer line under a gauge, shared by gauges set on the same line. */
 export const GAUGE_FOOTER_TEXT = {
   color: theme.neutral.textMuted,
   fontSize: 10,
@@ -179,7 +167,6 @@ const styles = StyleSheet.create({
     width: '100%',
     position: 'relative',
   },
-  // Sits in [0, head − gap], right-aligned, so the value ends just left of the fill head.
   valueSlot: {
     position: 'absolute',
     left: 0,

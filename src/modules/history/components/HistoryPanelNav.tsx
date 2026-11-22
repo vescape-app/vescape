@@ -37,7 +37,6 @@ interface HistoryPanelNavProps {
   onOpenMediaDrawer: () => void
   onToggleFavorite: () => void
   onOpenShareInfo: () => void
-  /** Ride mode only: the full-screen charts page. A Favorite is about its route and media. */
   onOpenCharts: () => void
 }
 
