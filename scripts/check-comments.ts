@@ -1,11 +1,10 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
-import { basename, extname, relative, resolve } from 'node:path'
+import { extname, relative, resolve } from 'node:path'
 import ts from 'typescript'
-import { Parser as YamlParser } from 'yaml'
 
 export interface CommentToken {
-  kind: 'line' | 'block' | 'xml' | 'hash'
+  kind: 'line' | 'block' | 'hash'
   start: number
   end: number
   line: number
@@ -22,21 +21,15 @@ export interface CommentViolation {
 const JS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'])
 const JS_ONLY_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs'])
 const NATIVE_EXTENSIONS = new Set(['.swift', '.kt', '.kts', '.gradle'])
-const XML_EXTENSIONS = new Set(['.xml', '.plist', '.svg'])
-const YAML_EXTENSIONS = new Set(['.yml', '.yaml'])
 const PYTHON_EXTENSIONS = new Set(['.py'])
-const RUBY_EXTENSIONS = new Set(['.rb', '.podspec'])
-const RUBY_BASENAMES = new Set(['Gemfile', 'Fastfile', 'Matchfile'])
+const RUBY_EXTENSIONS = new Set(['.rb'])
 
 const EXCLUDED_EXACT_PATHS = new Set([
   'src/modules/release/generated/releaseNotes.ts',
   'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/McconfLayouts.kt',
   'modules/vescape-core/ios/config/McconfLayouts.swift',
   'watch/watchos/PhosphorIcons.swift',
-  'modules/vescape-core/android/src/main/assets/refloat-settings.xml',
 ])
-
-const EXCLUDED_PATH_PATTERNS = [/^watch\/wearos\/src\/main\/res\/drawable\/ic_ph_[^/]+\.xml$/]
 
 const PARAGRAPH_TAG_START =
   /^(?:@platform-diff\s+\S|@legacy-float\s+\S|TODO\((?:iOS|ios|Android|android|watchOS|Wear OS) parity\):\s*\S)/
@@ -46,9 +39,6 @@ const CODE_DIRECTIVE_LINE =
 
 const HASH_DIRECTIVE_LINE =
   /^(?:@parity\s+\/\S|@platform-diff\s+\S|intentional-suppression:\s*\S|@legacy-float\s+\S|frozen_string_literal:\s*(?:true|false)|(?:-\*-\s*)?coding[:=]\s*[-\w.]+|rubocop:(?:disable|enable)|type:\s*ignore|noqa\b|SPDX-License-Identifier:\s*\S|Copyright\s+(?:\(c\)|©)\s+\S)/i
-
-const XML_DIRECTIVE_LINE =
-  /^(?:@parity\s+\/\S|@platform-diff\s+\S|intentional-suppression:\s*\S|@legacy-float\s+\S|noinspection(?:\s|:|$))/
 
 const JS_TYPE_ANNOTATION_LINE = /^@type(?:def)?\s*\{/
 
@@ -75,14 +65,7 @@ const RUBY_RIPPER_SCRIPT = [
 
 export function isExcludedPath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, '/').replace(/^\.\//, '')
-  if (EXCLUDED_EXACT_PATHS.has(normalized)) return true
-  return EXCLUDED_PATH_PATTERNS.some((pattern) => pattern.test(normalized))
-}
-
-function isRubyPath(filePath: string): boolean {
-  return (
-    RUBY_EXTENSIONS.has(extname(filePath).toLowerCase()) || RUBY_BASENAMES.has(basename(filePath))
-  )
+  return EXCLUDED_EXACT_PATHS.has(normalized)
 }
 
 export function isSupportedPath(filePath: string): boolean {
@@ -90,10 +73,8 @@ export function isSupportedPath(filePath: string): boolean {
   return (
     JS_EXTENSIONS.has(ext) ||
     NATIVE_EXTENSIONS.has(ext) ||
-    XML_EXTENSIONS.has(ext) ||
-    YAML_EXTENSIONS.has(ext) ||
     PYTHON_EXTENSIONS.has(ext) ||
-    isRubyPath(filePath)
+    RUBY_EXTENSIONS.has(ext)
   )
 }
 
@@ -433,107 +414,18 @@ export function scanRubyComments(text: string): CommentToken[] {
   return tokensFromExternalLexer(text, entries)
 }
 
-export function scanYamlComments(text: string): CommentToken[] {
-  const lineStarts = buildLineStarts(text)
-  const tokens: CommentToken[] = []
-  const walk = (node: unknown) => {
-    if (!node || typeof node !== 'object') return
-    if (Array.isArray(node)) {
-      for (const item of node) walk(item)
-      return
-    }
-    const record = node as Record<string, unknown>
-    if (
-      record.type === 'comment' &&
-      typeof record.offset === 'number' &&
-      typeof record.source === 'string'
-    ) {
-      const start = record.offset
-      const raw = record.source
-      const line = lineNumberAt(lineStarts, start)
-      tokens.push({
-        kind: 'hash',
-        start,
-        end: start + raw.length,
-        line,
-        text: raw,
-        wholeLine: isWholeLineComment(text, lineStarts, line, start),
-      })
-      return
-    }
-    for (const value of Object.values(record)) {
-      if (value && typeof value === 'object') walk(value)
-    }
-  }
-  for (const doc of new YamlParser().parse(text)) {
-    walk(doc)
-  }
-  tokens.sort((a, b) => a.start - b.start)
-  return tokens
-}
-
-export function scanXmlComments(text: string): CommentToken[] {
-  const lineStarts = buildLineStarts(text)
-  const tokens: CommentToken[] = []
-  let i = 0
-  const n = text.length
-
-  while (i < n) {
-    if (text.startsWith('<![CDATA[', i)) {
-      const end = text.indexOf(']]>', i + 9)
-      i = end < 0 ? n : end + 3
-      continue
-    }
-    if (text.startsWith('<!--', i)) {
-      const start = i
-      const end = text.indexOf('-->', i + 4)
-      const stop = end < 0 ? n : end + 3
-      const line = lineNumberAt(lineStarts, start)
-      tokens.push({
-        kind: 'xml',
-        start,
-        end: stop,
-        line,
-        text: text.slice(start, stop),
-        wholeLine: isWholeLineComment(text, lineStarts, line, start),
-      })
-      i = stop
-      continue
-    }
-    if (text[i] === '<') {
-      i++
-      while (i < n && text[i] !== '>') {
-        if (text[i] === '"' || text[i] === "'") {
-          const q = text[i++]
-          while (i < n && text[i] !== q) i++
-          if (i < n) i++
-        } else {
-          i++
-        }
-      }
-      if (i < n) i++
-      continue
-    }
-    i++
-  }
-
-  return tokens
-}
-
 function stripCommentSyntax(line: string, kind: CommentToken['kind']): string {
   let s = line.trim()
   if (kind === 'line') {
     s = s.replace(/^\/\/\/?/, '').trim()
   } else if (kind === 'hash') {
     s = s.replace(/^#/, '').trim()
-  } else if (kind === 'block') {
+  } else {
     s = s
       .replace(/^\/\*\*?/, '')
       .replace(/\*\/$/, '')
       .trim()
     s = s.replace(/^\*/, '').trim()
-  } else {
-    s = s.replace(/^<!--/, '').replace(/-->$/, '').trim()
   }
   return s
 }
@@ -548,24 +440,14 @@ function isAllowedCommentLine(
   if (cleaned === '') {
     return { allowed: allowEmpty, nextInContinuation: false, matchedDirective: false }
   }
-  const directivePattern =
-    kind === 'xml'
-      ? XML_DIRECTIVE_LINE
-      : kind === 'hash'
-        ? HASH_DIRECTIVE_LINE
-        : CODE_DIRECTIVE_LINE
+  const directivePattern = kind === 'hash' ? HASH_DIRECTIVE_LINE : CODE_DIRECTIVE_LINE
   if (directivePattern.test(cleaned)) {
     const startsParagraph =
       PARAGRAPH_TAG_START.test(cleaned) ||
       (kind === 'hash' && /^Copyright\s+(?:\(c\)|©)\s+\S/i.test(cleaned))
     return { allowed: true, nextInContinuation: startsParagraph, matchedDirective: true }
   }
-  if (
-    allowJsTypeAnnotation &&
-    kind !== 'xml' &&
-    kind !== 'hash' &&
-    JS_TYPE_ANNOTATION_LINE.test(cleaned)
-  ) {
+  if (allowJsTypeAnnotation && kind !== 'hash' && JS_TYPE_ANNOTATION_LINE.test(cleaned)) {
     return { allowed: true, nextInContinuation: false, matchedDirective: true }
   }
   if (inContinuation && !cleaned.startsWith('@')) {
@@ -583,13 +465,9 @@ export function checkCommentsInSource(filePath: string, text: string): CommentVi
     ? scanJsComments(filePath, text)
     : NATIVE_EXTENSIONS.has(ext)
       ? scanNativeComments(filePath, text)
-      : XML_EXTENSIONS.has(ext)
-        ? scanXmlComments(text)
-        : YAML_EXTENSIONS.has(ext)
-          ? scanYamlComments(text)
-          : PYTHON_EXTENSIONS.has(ext)
-            ? scanPythonComments(text)
-            : scanRubyComments(text)
+      : PYTHON_EXTENSIONS.has(ext)
+        ? scanPythonComments(text)
+        : scanRubyComments(text)
 
   const violations: CommentViolation[] = []
 

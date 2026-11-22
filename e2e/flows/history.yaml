@@ -8,14 +8,17 @@ appId: ${APP_ID}
 
 - runFlow: fixture/_history.yaml
 
+# The drawer opens on riding totals and the ride list; the newest ride has to be opened for its stats.
 - tapOn:
     id: history-latest-ride
 
 - assertVisible: Distance
 - assertVisible: Top Speed
 - assertVisible: '1.5'
+# Stat values and their units are separate Text nodes, so the unit cannot share the selector.
 - assertVisible: '25'
 
+# Expand the stats panel to verify secondary stats are computed too.
 - tapOn:
     id: history-stats-bar
 - assertVisible: Avg Speed
@@ -23,6 +26,8 @@ appId: ${APP_ID}
 - assertVisible: Ctrl Max
 - assertVisible: Motor Max
 
+# Toggle optional charts on and off. The chart headings are drawn on the Skia canvas and never
+# reach the view hierarchy, so each chart is asserted through its tab's selected state.
 - tapOn:
     id: history-metric-tab-battery
 - extendedWaitUntil:
@@ -38,6 +43,7 @@ appId: ${APP_ID}
       selected: true
     timeout: 20000
 
+# Switch to the older ride with the prev button.
 - tapOn:
     id: history-previous-ride
 - extendedWaitUntil:
@@ -45,6 +51,7 @@ appId: ${APP_ID}
     timeout: 20000
 - assertVisible: '20'
 
+# Charts should still be enabled on the older ride.
 - assertVisible:
     id: history-metric-tab-battery
     selected: true
@@ -52,13 +59,16 @@ appId: ${APP_ID}
     id: history-metric-tab-duty
     selected: true
 
+# Switch back to the newest ride with the next button.
 - tapOn:
     id: history-next-ride
 - extendedWaitUntil:
     visible: '1.5'
     timeout: 20000
+# Stat values and their units are separate Text nodes, so the unit cannot share the selector.
 - assertVisible: '25'
 
+# Open the ride list sheet and verify it renders.
 - tapOn:
     id: history-ride-list-button
 - extendedWaitUntil:
@@ -66,6 +76,7 @@ appId: ${APP_ID}
       id: history-session-sheet
     timeout: 20000
 
+# Close the sheet by tapping the backdrop.
 - tapOn:
     id: history-session-sheet-backdrop
 - extendedWaitUntil:
@@ -73,6 +84,7 @@ appId: ${APP_ID}
       id: history-session-sheet-backdrop
     timeout: 10000
 
+# Favorites is a filtered History tab: newest Favorite opens immediately and keeps the same nav.
 - tapOn:
     id: history-favorite-ride
 - assertVisible:
@@ -85,6 +97,7 @@ appId: ${APP_ID}
 - inputText: Evening ride
 - tapOn:
     id: trim-save
+# Saving opens the new Favorite immediately.
 - extendedWaitUntil:
     visible:
       id: favorite-edit

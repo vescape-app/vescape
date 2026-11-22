@@ -2,7 +2,9 @@
   <uses-feature android:name="android.hardware.type.watch"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
+  <!-- A new Ride Notice buzzes the wrist. -->
   <uses-permission android:name="android.permission.VIBRATE"/>
+  <!-- Radar imagery is the one thing the wrist fetches itself; everything else comes from the phone. -->
   <uses-permission android:name="android.permission.INTERNET"/>
 
   <application
@@ -14,6 +16,7 @@
     android:theme="@style/Theme.Vescape.Splash">
 
     <uses-library android:name="com.google.android.wearable" android:required="true"/>
+    <!-- Depends on the phone for telemetry, so it is not a standalone watch app. -->
     <meta-data android:name="com.google.android.wearable.standalone" android:value="false"/>
 
     <service android:name=".BatteryComplicationService" android:exported="true"
@@ -37,6 +40,8 @@
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
+      <!-- Phone-initiated launch on board connect: RemoteActivityHelper requires VIEW + BROWSABLE
+           with a data URI. Must match WATCH_MIRROR_URI in the phone-side WatchMirrorLauncher. -->
       <intent-filter>
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>

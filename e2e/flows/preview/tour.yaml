@@ -1,3 +1,4 @@
+# One continuous take. Recorder callbacks omit setup/XCTest startup from the footage.
 appId: ${APP_ID}
 ---
 - runFlow: _boot.yaml
@@ -10,6 +11,7 @@ appId: ${APP_ID}
     env:
       ACTION: dwell
       MS: 5000
+# Live telemetry drawer, pulled up from the strip, then closed on the scrim above the sheet.
 - tapOn:
     id: telemetry-panel-handle
     waitToSettleTimeoutMs: 0

@@ -1,3 +1,4 @@
+# Hero panel: connected home with the live replay driving the gauges and the strip.
 appId: ${APP_ID}
 ---
 - runFlow: ../fixture/_home.yaml

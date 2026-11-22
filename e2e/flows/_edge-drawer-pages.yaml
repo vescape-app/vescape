@@ -2,6 +2,8 @@ appId: ${APP_ID}
 ---
 - assertVisible: Virtualized row 1
 - assertVisible: Close controls
+# Runtime references avoid device/theme-specific golden images. Compare the
+# whole modal so a moved header, clipped footer, or changed opacity fails.
 - takeScreenshot:
     path: drawer-${EDGE}-open
     cropOn:

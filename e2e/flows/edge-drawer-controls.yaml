@@ -1,3 +1,4 @@
+# The runner prepares the current workspace's development build and Metro.
 appId: ${APP_ID}
 ---
 - runFlow: _launch.yaml
@@ -11,6 +12,7 @@ appId: ${APP_ID}
     env:
       EDGE: bottom
 
+# A small, slow content pull must spring back to the same height and opacity.
 - swipe:
     start: 50%, 45%
     end: 50%, 50%
@@ -23,6 +25,8 @@ appId: ${APP_ID}
     thresholdPercentage: 99
     label: Small content pull restores the bottom drawer
 
+# Scroll away from the boundary, then fling back. This gesture must stop at the
+# content start; only a fresh pull from that boundary may dismiss the drawer.
 - swipe:
     start: 50%, 80%
     end: 50%, 35%
@@ -47,6 +51,8 @@ appId: ${APP_ID}
     timeout: 5000
 - assertVisible: Open bottom controls
 
+# Reopening must reset the dismissal animation. The pinned grabber also closes
+# a drawer whose list has scrolled well away from the content boundary.
 - tapOn: Open bottom controls
 - assertVisible: Virtualized row 1
 - swipe:
@@ -57,6 +63,7 @@ appId: ${APP_ID}
 - swipe:
     from:
       id: edge-drawer-controls-grabber
+      # Avoid the dev-client tools badge over the center of the status bar.
       point: 20%, 75%
     direction: DOWN
     duration: 700
@@ -94,6 +101,8 @@ appId: ${APP_ID}
       id: edge-drawer-controls
     timeout: 5000
 
+# Controlled close, Android Back, and the exposed backdrop must all unmount,
+# and each must leave the trigger usable for the next opening.
 - tapOn: Open top controls
 - tapOn: Close controls
 - extendedWaitUntil:

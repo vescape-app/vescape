@@ -90,6 +90,10 @@ everything else belongs in the commit message. Only machine-meaningful lines sta
 excluded by explicit path in `scripts/check-comments.ts`. Shell scripts have no reliable comment
 lexer there and are not scanned; keep them free of comments by hand.
 
+The rule covers code: TS/JS, Swift, Kotlin, Gradle, Python and Ruby scripts. Config files (YAML
+workflows and Maestro flows, XML manifests and resources, plists, `.gitignore`, env files, fastlane,
+podspec) are not scanned and may keep comments that explain what the format cannot express.
+
 ## Parity
 
 `@parity` links code that must stay in sync across implementations. It is a navigation contract: a tag is a

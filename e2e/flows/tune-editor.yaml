@@ -1,3 +1,4 @@
+# Run against a dev client attached to the current workspace Metro. Preserves app data.
 appId: ${APP_ID}
 ---
 - tapOn:

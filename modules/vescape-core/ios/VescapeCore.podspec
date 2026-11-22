@@ -10,14 +10,24 @@ Pod::Spec.new do |s|
   s.license        = 'MIT'
   s.author         = 'vescape'
   s.homepage       = 'https://github.com/vescape'
+  # 17.0 matches the app deployment target required by Clerk's native iOS SDK. The Board Session
+  # Live Activity driven from this pod needs 16.1+, so the app's floor also needs no availability
+  # gating in its ActivityKit code.
   s.platform       = :ios, '17.0'
   s.swift_version  = '5.9'
   s.source         = { :git => '' }
 
   s.dependency 'ExpoModulesCore'
+  # Single on-device database (mirrors Android Room). App data + telemetry live in one GRDB file.
+  # 6.24.1 is the newest GRDB published to CocoaPods trunk; the 6.25–6.29 tags are SPM-only. The
+  # SPM test target in `../Package.swift` therefore pins 6.29.3, the first 6.x that compiles under
+  # SPM on current Xcode. Same major, same DatabaseMigrator semantics — see the note there.
   s.dependency 'GRDB.swift', '~> 6.24.1'
+  # Match @sentry/react-native 7.11.0. Recording persistence reports directly from native when JS
+  # or the application database is unavailable.
   s.dependency 'Sentry/HybridSDK', '8.58.0'
 
+  # Swift/Objective-C compatibility
   s.static_framework = true
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
@@ -27,6 +37,16 @@ Pod::Spec.new do |s|
   s.source_files = "**/*.{h,m,mm,swift}"
   s.exclude_files = "**/*Tests.swift"
 
+  # Bundle the canonical cell-preset SoC curves so the iOS BatterySocEstimator can estimate battery
+  # percent. `cell-presets.json` is a symlink to the single shared source (../../../shared/data);
+  # CocoaPods only copies resources under the pod root, and following the symlink keeps one source
+  # of truth instead of a committed per-platform copy.
+  # `fixtures/` holds bundled replay recordings for the dev-mode Replay UI (#230) and the screenshot
+  # capture run. Unlike `cell-presets.json` it is a generated copy (`bun run copy:shared`), not a
+  # symlink: CocoaPods resolves a symlinked file under the pod root but does not expand a glob
+  # through a symlinked directory, so `fixtures/*.jsonl` silently matched nothing.
+  # `alert-packs/` is a generated copy of the built-in effects packs (`bun run copy:shared`), bundled
+  # as a folder so every `<pack>/pack.json` keeps its slot file names.
   s.resource_bundles = {
     'VescapeCoreAssets' => [
       'cell-presets.json', 'alert-preset-definitions.json',

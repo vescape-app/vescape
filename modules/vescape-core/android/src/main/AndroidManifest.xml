@@ -4,6 +4,11 @@
   <uses-permission android:name="android.permission.BLUETOOTH_SCAN"/>
   <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <!--
+    Required for the companion auto-start path: when the board is detected nearby the OS starts the
+    foreground service from the background, and Android withholds while-in-use location/camera/mic
+    from a background-started FGS. Only "Allow all the time" lets hands-off rides record GPS.
+  -->
   <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS"/>
@@ -13,6 +18,7 @@
   <uses-permission android:name="android.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE"/>
   <uses-permission android:name="android.permission.REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
+  <!-- Maintenance Jobs that need the network wait for it instead of failing. -->
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <uses-feature android:name="android.software.companion_device_setup" android:required="false"/>
 
@@ -29,6 +35,8 @@
         <action android:name="android.companion.CompanionDeviceService"/>
       </intent-filter>
     </service>
+    <!-- Wrist -> phone commands (ADR-0033). Manifest-declared so a wrist press reaches the Board
+         Session with no phone UI running. The path filter keeps every other Wear message out. -->
     <service
       android:name=".watch.WatchCommandListenerService"
       android:exported="true">

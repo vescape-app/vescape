@@ -136,6 +136,8 @@ def manage_production_artifact(label, code, source_track, target_track)
     "active"
   when "promote"
     if current
+      # Every promotion goes straight to 100%, so the only production state this repository
+      # can have produced is a completed one. Anything else was changed in the Play Console.
       UI.user_error!("#{label} production release is #{current[:playStatus]}, not completed") unless current[:playStatus] == "completed"
       "already-production"
     else
@@ -231,6 +233,7 @@ platform :android do
     )
   end
 
+
   desc "Validate exact open-tested artifacts before production work"
   lane :validate_production_candidate do
     require_release_env(
@@ -291,6 +294,9 @@ platform :ios do
 
   desc "Build a signed IPA, ship to TestFlight testers, and stage an App Store draft"
   lane :release do
+    # Create an unlocked keychain with a known password so match can import
+    # the distribution cert. setup_ci alone doesn't pass the password to match,
+    # causing SecItemCopyMatching failures on GitHub Actions runners.
     keychain_name     = "vescape-build"
     keychain_password = SecureRandom.hex(32)
     create_keychain(
@@ -302,6 +308,9 @@ platform :ios do
       lock_when_sleeps: false
     )
 
+    # Authenticate with App Store Connect via API key (no Apple ID password needed).
+    # The .p8 file is decoded to RUNNER_TEMP by the workflow and its path exported as
+    # ASC_KEY_PATH; KEY_ID and ISSUER_ID come from secrets.
     api_key = app_store_connect_api_key(
       key_id:        ENV["ASC_KEY_ID"],
       issuer_id:     ENV["ASC_ISSUER_ID"],
@@ -309,6 +318,8 @@ platform :ios do
       in_house:      false
     )
 
+    # Pull the distribution certificate + provisioning profiles from the private
+    # certs repo. The workflow sets CI=true so match runs in read-only mode.
     match(
       type:              "appstore",
       api_key:           api_key,
@@ -317,11 +328,18 @@ platform :ios do
       keychain_password: keychain_password
     )
 
+    # Wire the profiles match installed into the Xcode project so both the
+    # archive and export phases can find them. expo prebuild generates manual
+    # signing but leaves PROVISIONING_PROFILE_SPECIFIER empty — set it here.
     profiles = lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING]
 
+    # CI runs match read-only, so a missing profile is not created — it silently yields a nil
+    # profile_name and an unsigned target. Fail here instead of at export.
     [
       { target: "vescape",      bundle: "app.vescape" },
       { target: "RideActivity", bundle: "app.vescape.widget" },
+      # The watchOS Mirror is embedded in the phone IPA and must be signed with its own
+      # profile; an unsigned embedded watch app fails export, not archive.
       { target: "VescapeWatch", bundle: "app.vescape.watchkitapp" },
       { target: "WatchBattery", bundle: "app.vescape.watchkitapp.battery" }
     ].each do |t|
@@ -336,6 +354,8 @@ platform :ios do
       )
     end
 
+    # Build a signed IPA from the expo-prebuilt workspace.
+    # CFBundleVersion is set to VERSION_CODE (github run_number).
     build_app(
       workspace:      "ios/vescape.xcworkspace",
       scheme:         "vescape",
@@ -346,10 +366,15 @@ platform :ios do
       xcargs:         "CURRENT_PROJECT_VERSION=#{ENV["VERSION_CODE"]} MARKETING_VERSION=#{ENV["APP_VERSION"]}"
     )
 
+    # External distribution requires "What to Test" notes. Reuse the canonical
+    # rider-facing release note for this version; TestFlight caps them at 4000 chars.
     notes_path = File.join(__dir__, "..", "release-notes", "#{ENV["APP_VERSION"]}.md")
     UI.user_error!("Missing release note #{notes_path}") unless File.exist?(notes_path)
     changelog = File.read(notes_path).strip[0, 4000]
 
+    # Upload to TestFlight, wait for Apple to finish processing, then
+    # distribute to internal testers and the external 'External Testers' group.
+    # Waiting adds ~10-20 min but is required for external distribution.
     upload_to_testflight(
       api_key:             api_key,
       changelog:           changelog,
@@ -358,14 +383,19 @@ platform :ios do
       notify_external_testers: true
     )
 
+    # Step 2: Create an App Store draft at the same version so you can review
+    # and manually submit for review in App Store Connect — mirrors the Android
+    # production-draft step in the Play Console.
     upload_to_app_store(
       api_key:              api_key,
       submit_for_review:    false,
+      # precheck can't inspect in-app purchases with an ASC API key, and there is
+      # nothing to pre-check when we only stage a draft instead of submitting.
       run_precheck_before_submit: false,
       automatic_release:    false,
       skip_metadata:        true,
       skip_screenshots:     true,
-      skip_binary_upload:   true
+      skip_binary_upload:   true   # reuse the build already uploaded via TestFlight
     )
   end
 end

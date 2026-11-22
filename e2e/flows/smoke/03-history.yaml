@@ -1,7 +1,15 @@
+# Ride History off the restored fixture database.
+#
+# The rides here were written by a real board and restored by native `restoreDatabase` — Room on
+# Android, GRDB on iOS — so this covers the durable read path, the sample decode and the chart
+# derivations in one pass. It asserts structure (the metric tabs, the stats a ride computes) rather
+# than specific distances, because the fixture is regenerated from real backups and its numbers move.
 appId: ${APP_ID}
 ---
 - runFlow: ../fixture/_history.yaml
 
+# History opens on the overview drawer. Open its newest restored ride, then wait on the metric tabs
+# rather than the map: the row only appears once the ride's samples are loaded.
 - extendedWaitUntil:
     visible:
       id: history-latest-ride
@@ -19,6 +27,8 @@ appId: ${APP_ID}
 - assertVisible:
     id: history-stat-topSpeed
 
+# Expanding the stats panel is what computes the secondary stats — a ride that loads but cannot
+# derive them fails here and nowhere earlier.
 - tapOn:
     id: history-stats-bar
     waitToSettleTimeoutMs: 1000
@@ -31,6 +41,9 @@ appId: ${APP_ID}
 - assertVisible:
     id: history-stat-motorTemp
 
+# Optional charts: each tab re-derives a trace from the same samples. The chart's own title is
+# drawn into the Skia canvas and never reaches the view hierarchy, so the row wrapper is the only
+# thing a flow can assert — and it only mounts for a metric whose trace derived.
 - tapOn:
     id: history-metric-tab-duty
     waitToSettleTimeoutMs: 1000
@@ -53,6 +66,8 @@ appId: ${APP_ID}
       id: chart-row-tempController
     timeout: 30000
 
+# The ride list is the only way to reach an older ride, and it reads a different query than the
+# detail screen does.
 - tapOn:
     id: history-ride-list-button
     waitToSettleTimeoutMs: 1000
@@ -60,12 +75,23 @@ appId: ${APP_ID}
     visible:
       id: history-session-sheet
     timeout: 10000
+# The dismiss area is a window-high spacer scrolled mostly off screen, so the centre of its element
+# is not on screen: iOS resolves that tap into the status bar. Tap the exposed strip above the
+# sheet's header instead.
 - tapOn:
     point: 50%,15%
+# Wait for the sheet to be *gone*, not just tapped. It slides out over several frames, and while any
+# of it is still on screen it covers the header — so `history-back` is not visible, every branch in
+# `_home.yaml` skips, and the run dies on `battery-bar` with History still underneath. Asserting the
+# sheet's absence is the only thing that makes the handover deterministic.
 - extendedWaitUntil:
     notVisible:
       id: history-session-sheet
     timeout: 15000
+# And then wait for the header to come back before handing over. Every branch in `_home.yaml` is an
+# instantaneous `when: visible:` probe — nothing there waits — so a `history-back` that is one frame
+# from mounting reads as absent, every branch skips, and the run dies on `battery-bar` with History
+# still on screen. The caller owes the helper a settled screen.
 - extendedWaitUntil:
     visible:
       id: history-back

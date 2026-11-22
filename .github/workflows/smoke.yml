@@ -1,3 +1,4 @@
+# Build each platform once, then run each flow with an isolated fixture session.
 name: Smoke
 
 on:
@@ -29,6 +30,7 @@ on:
         default: both
         options: [both, android, ios]
 
+# Finish the active run and keep the latest pending run. Jobs within a run execute in parallel.
 concurrency:
   group: smoke-${{ github.ref }}
   cancel-in-progress: false
@@ -115,6 +117,7 @@ jobs:
   build-ios:
     name: Build iOS smoke app
     needs: plan
+    # Hosted macOS XCTest startup is too flaky to gate pushes; run iOS by manual dispatch.
     if: github.event_name == 'workflow_dispatch' && inputs.platform != 'android'
     runs-on: macos-26
     timeout-minutes: 60
@@ -136,6 +139,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Fingerprint native smoke inputs
         id: native-fingerprint
+        # If fingerprinting cannot establish compatibility, use a full build without caching it.
         continue-on-error: true
         run: bun run scripts/ios-smoke-repack.ts fingerprint
       - name: Restore matching native app
@@ -144,10 +148,12 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: .expo/smoke/ios-native-base
+          # Exact matches only. A different native fingerprint must compile again.
           key: ios-smoke-native-v1-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ steps.native-fingerprint.outputs.hash }}
       - name: Repack current JavaScript and assets
         id: repack
         if: steps.native-app.outputs.cache-hit == 'true'
+        # A cache or repack failure must still allow a verified full build.
         continue-on-error: true
         env:
           NATIVE_FINGERPRINT: ${{ steps.native-fingerprint.outputs.hash }}
@@ -169,6 +175,7 @@ jobs:
       - name: Build without a simulator
         if: steps.native-app.outputs.cache-hit != 'true' || steps.repack.outcome == 'failure'
         run: |
+          # Never merge a full build into a partially repacked bundle.
           rm -rf .expo/smoke/vescape.app
           bun run smoke --platform ios --build-only --output .expo/smoke/vescape.app
       - name: Record native app provenance
@@ -182,6 +189,7 @@ jobs:
         with:
           path: .expo/smoke/ios-native-base
           key: ${{ steps.native-app.outputs.cache-primary-key }}
+      # A tar archive preserves the executable permissions and symlinks inside the app bundle.
       - name: Package simulator app
         run: tar -czf "$RUNNER_TEMP/smoke-ios.tar.gz" -C .expo/smoke vescape.app
       - uses: actions/upload-artifact@v4
@@ -244,6 +252,7 @@ jobs:
           profile: pixel_6
           cores: 4
           ram-size: 4096M
+          # Keep the Pixel 6 layout in dp while reducing software-rendered pixels by 56%.
           pre-emulator-launch-script: >-
             sed -i
             -e 's/^hw.lcd.width=.*/hw.lcd.width=720/'
@@ -279,6 +288,7 @@ jobs:
         flow: ${{ fromJSON(needs.plan.outputs.flows) }}
     steps:
       - name: Start simulator boot
+        # First boot on a fresh image can sit in Data Migration for minutes; overlap it with setup.
         run: nohup xcrun simctl boot 'iPhone 17' > /dev/null 2>&1 &
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -298,9 +308,11 @@ jobs:
           PATH="$HOME/.maestro/bin:$PATH" bun run maestro:setup
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - name: Run isolated flow
+        # Include fresh simulator startup and Maestro's XCTest shutdown, not just assertions.
         timeout-minutes: 30
         env:
           SMOKE_FLOW: ${{ matrix.flow }}
+          # A fresh hosted simulator can take over two minutes to start XCTest.
           MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
         run: >-
           bun run smoke --platform ios --app .expo/smoke/vescape.app

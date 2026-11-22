@@ -166,37 +166,8 @@ describe('check-comments: Kotlin, Swift & Gradle', () => {
   })
 })
 
-describe('check-comments: XML, hash scripts & exclusions', () => {
-  test('flags authored XML comments including empty and directive-mentioning prose, while ignoring CDATA and attrs', () => {
-    const xml = [
-      '<resources>',
-      '  <string name="a">foo <!-- ordinary xml comment --></string>',
-      '  <!-- ordinary prose mentioning @parity or eslint-disable -->',
-      '  <!-- -->',
-      '  <string name="b"><![CDATA[<!-- inside cdata -->]]></string>',
-      '  <item attr="<!-- inside attr -->" />',
-      '</resources>',
-    ].join('\n')
-    expect(
-      checkCommentsInSource('watch/wearos/src/main/res/values/wear.xml', xml).map((v) => v.line),
-    ).toEqual([2, 3, 4])
-  })
-
-  test('scans plist and svg with the XML scanner', () => {
-    expect(
-      checkCommentsInSource(
-        'targets/ride-activity/Info.plist',
-        '<plist><!-- prose --></plist>',
-      ).map((v) => v.line),
-    ).toEqual([1])
-    expect(
-      checkCommentsInSource('assets/logo/vescape-sygnet.svg', '<svg><!-- prose --></svg>').map(
-        (v) => v.line,
-      ),
-    ).toEqual([1])
-  })
-
-  test('scans Python via stdlib tokenize and Ruby/podspec via Ripper without regex or string FPs', () => {
+describe('check-comments: hash scripts & exclusions', () => {
+  test('scans Python via stdlib tokenize and Ruby via Ripper without regex or string FPs', () => {
     const rb = [
       '# Copyright (c) Meta Platforms, Inc. and affiliates.',
       '#',
@@ -220,24 +191,6 @@ describe('check-comments: XML, hash scripts & exclusions', () => {
     ])
   })
 
-  test('scans YAML via real CST parser while preserving block scalars and quoted strings', () => {
-    const yml = [
-      '# top comment',
-      'name: CI',
-      'run: |',
-      '  # comment inside literal block scalar',
-      '  echo "ok"',
-      'folded: >',
-      '  # text inside folded scalar',
-      'quoted: "# not a comment"',
-      'plain: foo#bar',
-      'key: value # inline comment',
-    ].join('\n')
-    expect(checkCommentsInSource('.github/workflows/ci.yml', yml).map((v) => v.line)).toEqual([
-      1, 10,
-    ])
-  })
-
   test('excludes generated and third-party files by explicit provenance only', () => {
     expect(isExcludedPath('src/modules/release/generated/releaseNotes.ts')).toBe(true)
     expect(
@@ -245,8 +198,6 @@ describe('check-comments: XML, hash scripts & exclusions', () => {
         'modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/McconfLayouts.kt',
       ),
     ).toBe(true)
-    expect(isExcludedPath('watch/wearos/src/main/res/drawable/ic_ph_sun.xml')).toBe(true)
-    expect(isExcludedPath('watch/wearos/src/main/res/values/wear.xml')).toBe(false)
     expect(isExcludedPath('src/app/_layout.tsx')).toBe(false)
   })
 })

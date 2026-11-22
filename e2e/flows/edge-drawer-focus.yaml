@@ -29,6 +29,7 @@ appId: ${APP_ID}
     notVisible: Focused list expanded
     timeout: 5000
 
+# FlatList must bring a row outside its initial render window onto the screen.
 - scrollUntilVisible:
     element: Open at row 80
     direction: UP
@@ -45,6 +46,8 @@ appId: ${APP_ID}
 - assertVisible: Virtualized row 1
 - back
 
+# Rows arrive after the opening position was chosen. Emptying and refilling the
+# list must return to the same rendered height and opacity, with working tabs.
 - scrollUntilVisible:
     element: Open short list
     direction: DOWN
@@ -52,6 +55,7 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: Virtualized row 3
     timeout: 5000
+# This static preview can settle fully; no live telemetry keeps it animating.
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot:
