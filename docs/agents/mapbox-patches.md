@@ -87,10 +87,6 @@ The layer sits on top of the style. A layer the app adds later without `aboveLay
 covers the puck or a marker. A positioned layer that still lands above is caught the next time the
 puck moves or a marker changes, when `RNMBXPuck` moves its layer back to the top.
 
-The layer is persistent, so Mapbox keeps it across style reloads; it is added on first use and
-removed once neither the puck nor a marker is left. It assumes Mercator: under globe projection
-(zoom below about 5) the coin and markers are misplaced.
-
 ## Files changed inside `@rnmapbox/maps`
 
 The patch updates all layers required by the package:
