@@ -195,6 +195,8 @@ let clearedBoardConfig = try boardConfigStore.load(boardId: configBoardId, reflo
 let clearedMotorConfig = try motorConfigStore.loadLatest(boardId: configBoardId)
 try require(clearedBoardConfig == nil, "Board config clear")
 try require(clearedMotorConfig == nil, "Motor config clear")
+var invalidIgnoredCount = 0
+BoardConfigStore.onInvalidIgnoredFields = { _ in invalidIgnoredCount += 1 }
 try motorConfigStore.saveFresh(
   MotorConfigValues(
     boardId: configBoardId,
@@ -217,18 +219,46 @@ try motorConfigStore.saveFresh(
 )
 try require(try boardConfigStore.loadNotice(boardId: configBoardId) == nil, "volatile FOC offsets created notice")
 try require(try motorConfigStore.loadLatest(boardId: configBoardId)?.number("foc_offsets_current[0]") == 2010.67, "volatile FOC offset baseline not updated")
+try remainingQueue!.write { db in
+  let legacy = BoardConfigChangeNotice(
+    boardId: configBoardId,
+    detectedAtMs: 8150,
+    diffs: [
+      BoardConfigChangeDiff(fieldId: "foc_offsets_current[0]", label: "foc_offsets_current[0]", unit: nil, oldValue: .number(2010.43), newValue: .number(2010.67)),
+      BoardConfigChangeDiff(fieldId: "ki", label: "ki", unit: nil, oldValue: .number(2.0), newValue: .number(3.0)),
+    ]
+  )
+  try ConfigNoticeRecord(boardId: configBoardId, detectedAt: 8150, diffsJson: legacy.diffsJson()).save(db)
+}
+try require(try boardConfigStore.loadNotice(boardId: configBoardId)?.diffs.map(\.fieldId) == ["ki"], "legacy notice did not filter volatile FOC offsets")
+try boardConfigStore.dismissNotice(boardId: configBoardId)
 try boardConfigStore.saveFresh(BoardConfigValues(boardId: configBoardId, refloatBaseVersion: configBase, capturedAtMs: 8200, freshness: .fresh, values: ["kp": 1.0, "ki": 2.0], writeBase: nil))
 try remainingQueue!.write { db in
-  try PersistedBoardSetting(boardId: configBoardId, key: BoardConfigChangeNotice.ignoredFieldsSettingKey, valueJson: "[\"kp\"]", updatedAt: 8250).save(db)
+  try PersistedBoardSetting(boardId: configBoardId, key: BoardConfigChangeNotice.ignoredFieldsSettingKey, valueJson: "not-json", updatedAt: 8220).save(db)
 }
+try boardConfigStore.saveFresh(BoardConfigValues(boardId: configBoardId, refloatBaseVersion: configBase, capturedAtMs: 8230, freshness: .fresh, values: ["kp": 1.0, "ki": 2.0], writeBase: nil))
+try require(invalidIgnoredCount > 0, "invalid ignored fields setting was not reported")
+try boardConfigStore.clearIgnoredFields(boardId: configBoardId)
+_ = try boardConfigStore.setFieldIgnored(boardId: configBoardId, fieldId: "kp", ignored: true)
 try boardConfigStore.saveFresh(BoardConfigValues(boardId: configBoardId, refloatBaseVersion: configBase, capturedAtMs: 8300, freshness: .fresh, values: ["kp": 5.0, "ki": 3.0], writeBase: nil))
 try require(try boardConfigStore.loadNotice(boardId: configBoardId)?.diffs.map(\.fieldId) == ["ki"], "ignored board config field created notice")
 try require(try boardConfigStore.load(boardId: configBoardId, refloatBaseVersion: configBase)?.number("kp") == 5.0, "ignored board config baseline not updated")
-let prunedResult = try remainingQueue!.write { db in
-  try BoardConfigChangeNotice.pruneNotice(db, boardId: configBoardId, ignoredFields: ["ki"])
-}
-try require(prunedResult.changed && prunedResult.notice == nil, "pruneNotice did not clear last diff")
+let prunedResult = try boardConfigStore.setFieldIgnored(boardId: configBoardId, fieldId: "ki", ignored: true)
+try require(prunedResult.changed && prunedResult.notice == nil, "setFieldIgnored did not clear last diff")
 try require(try boardConfigStore.loadNotice(boardId: configBoardId) == nil, "pruned notice still present")
+try remainingQueue!.write { db in
+  try ConfigNoticeRecord(boardId: configBoardId, detectedAt: 8400, diffsJson: "not-json").save(db)
+}
+do {
+  _ = try boardConfigStore.setFieldIgnored(boardId: configBoardId, fieldId: "kd", ignored: true)
+  throw Failure(description: "corrupt notice did not roll back setFieldIgnored")
+} catch is DecodingError {}
+let afterRollback = try remainingQueue!.read { db in
+  try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: configBoardId)
+}
+try require(afterRollback == ["kp", "ki"], "failed notice prune leaked ignored field write")
+try boardConfigStore.clearIgnoredFields(boardId: configBoardId)
+BoardConfigStore.onInvalidIgnoredFields = nil
 try remainingQueue!.close()
 try FileManager.default.removeItem(at: remainingURL)
 

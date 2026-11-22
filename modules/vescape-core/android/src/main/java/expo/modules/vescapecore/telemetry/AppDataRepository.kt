@@ -221,13 +221,6 @@ class AppDataRepository private constructor(private val context: Context) {
     val (settings, deletedKeys) = board.toBoardSettingEntities(boardId)
     val alerts = initialAlerts?.let { initialAlertRows(boardId, it) }.orEmpty()
     boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys, alerts)
-    val ignoredFields = normalizeStringList(board[BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY]).orEmpty()
-    if (ignoredFields.isNotEmpty()) {
-      val (changed, pruned) = ConfigPersistence(dao).pruneNotice(boardId, ignoredFields.toSet())
-      if (changed) {
-        CoreForegroundService.emitEvent?.invoke("onBoardConfigChangeNotice", mapOf("notice" to pruned?.toMap()))
-      }
-    }
     notifyDataChanged(AppDataScope.BOARDS)
     notifyDataChanged(AppDataScope.ALERTS)
   }
@@ -303,19 +296,36 @@ class AppDataRepository private constructor(private val context: Context) {
     }
   }
 
+  private fun configPersistence() = ConfigPersistence(dao) { error ->
+    RecordingStorageFailure.reportRead("board_config_ignored_fields_read", error)
+  }
+
   internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
     val boardId = values.boardId ?: return@withContext null
     val base = values.refloatBaseVersion ?: return@withContext null
-    ConfigPersistence(dao).saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.writeBase?.schema)
+    configPersistence().saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.writeBase?.schema)
   }
 
   internal suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
-    dao.getBoardConfigChangeNotice(boardId)?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+    configPersistence().loadNotice(boardId)
   }
 
   suspend fun dismissBoardConfigChangeNotice(boardId: String) = withContext(Dispatchers.IO) {
     dao.deleteBoardConfigChangeNotice(boardId)
     CoreForegroundService.emitEvent?.invoke("onBoardConfigChangeNotice", mapOf("notice" to null))
+  }
+
+  suspend fun setBoardConfigChangeFieldIgnored(boardId: String, fieldId: String, ignored: Boolean) = withContext(Dispatchers.IO) {
+    val (changed, pruned) = configPersistence().setFieldIgnored(boardId, fieldId, ignored)
+    if (changed) {
+      CoreForegroundService.emitEvent?.invoke("onBoardConfigChangeNotice", mapOf("notice" to pruned?.toMap()))
+    }
+    notifyDataChanged(AppDataScope.BOARDS)
+  }
+
+  suspend fun clearIgnoredBoardConfigChangeFields(boardId: String) = withContext(Dispatchers.IO) {
+    configPersistence().clearIgnoredFields(boardId)
+    notifyDataChanged(AppDataScope.BOARDS)
   }
 
   /**
@@ -340,7 +350,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveFreshMotorConfigValues(values: MotorConfigValues): BoardConfigChangeNotice? =
     withContext(Dispatchers.IO) {
       val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext null
-      ConfigPersistence(dao).saveFreshMotor(boardId, values.signature, values.firmware, values.values, values.capturedAtMs)
+      configPersistence().saveFreshMotor(boardId, values.signature, values.firmware, values.values, values.capturedAtMs)
     }
 
   /**

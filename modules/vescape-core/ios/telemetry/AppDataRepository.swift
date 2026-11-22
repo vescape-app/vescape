@@ -99,14 +99,6 @@ final class AppDataRepository {
       deletedKeys: deletedKeys,
       alerts: try initialAlerts.map { try Self.initialAlertRows(boardId: id, $0, now: updatedAt) } ?? []
     )
-    if let ignored = ignoredConfigChangeFields, !ignored.isEmpty, let writer {
-      let pruned = try writer.write { db in
-        try BoardConfigChangeNotice.pruneNotice(db, boardId: id, ignoredFields: Set(ignored))
-      }
-      if pruned.changed {
-        BoardConfigStore.onNoticeChanged?(pruned.notice)
-      }
-    }
     notifyDataChanged(.boards)
     notifyDataChanged(.alerts)
   }

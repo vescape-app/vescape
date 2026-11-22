@@ -51,7 +51,7 @@ struct MotorConfigStore {
           capturedAtMs: 0,
           valuesJson: oldRow.valuesJson
         )
-        let ignored = try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: boardId)
+        let ignored = Set(try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: boardId, onInvalid: BoardConfigStore.onInvalidIgnoredFields))
           .union(BoardConfigChangeNotice.volatileMotorFields)
         let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: nil, ignoredFields: ignored)
         if !diffs.isEmpty {
@@ -63,7 +63,10 @@ struct MotorConfigStore {
           let existingDiffsJson: String? = existing?["diffs_json"]
           let previous = try existingDiffsJson
             .map { try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: 0, diffsJson: $0).diffs } ?? []
-          let merged = BoardConfigChangeNotice.mergeDiffs(previous: previous, incoming: diffs)
+          let merged = BoardConfigChangeNotice.mergeDiffs(
+            previous: BoardConfigChangeNotice.filterDiffs(previous, excludedFields: ignored),
+            incoming: diffs
+          )
           let built = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: values.capturedAtMs, diffs: merged)
           notice = built
           try ConfigNoticeRecord(boardId: boardId, detectedAt: values.capturedAtMs, diffsJson: built.diffsJson()).save(db)

@@ -90,10 +90,16 @@ class BoardConfigChangeNoticeTest {
 
   @Test
   fun decodeIgnoredFieldsFiltersEmptyAndNonStringEntries() {
+    var invalidCount = 0
     assertEquals(
-      setOf("l_current_max", "kp"),
-      BoardConfigChangeNotice.decodeIgnoredFields("""["l_current_max", "", 42, "kp", "l_current_max"]"""),
+      listOf("l_current_max", "kp"),
+      BoardConfigChangeNotice.decodeIgnoredFields("""["l_current_max", "", 42, "kp", "l_current_max"]""") { invalidCount++ },
     )
-    assertEquals(emptySet<String>(), BoardConfigChangeNotice.decodeIgnoredFields(null))
+    assertEquals(0, invalidCount)
+    assertEquals(emptyList<String>(), BoardConfigChangeNotice.decodeIgnoredFields(null) { invalidCount++ })
+    assertEquals(0, invalidCount)
+    assertEquals(emptyList<String>(), BoardConfigChangeNotice.decodeIgnoredFields("{}") { invalidCount++ })
+    assertEquals(emptyList<String>(), BoardConfigChangeNotice.decodeIgnoredFields("not json") { invalidCount++ })
+    assertEquals(2, invalidCount)
   }
 }

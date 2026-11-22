@@ -68,13 +68,27 @@ internal data class BoardConfigChangeNotice(val boardId: String, val detectedAtM
       }
     }
 
-    fun decodeIgnoredFields(json: String?): Set<String> {
-      if (json.isNullOrBlank()) return emptySet()
-      val array = JSONArray(json)
-      return buildSet {
+    fun filterDiffs(
+      diffs: List<BoardConfigChangeDiff>,
+      excludedFields: Set<String>,
+    ): List<BoardConfigChangeDiff> = diffs.filterNot { it.fieldId in excludedFields }
+
+    /**
+     * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `decodeIgnoredFields`
+     */
+    fun decodeIgnoredFields(json: String?, onInvalid: (Throwable) -> Unit = {}): List<String> {
+      if (json.isNullOrBlank()) return emptyList()
+      val array = try {
+        JSONArray(json)
+      } catch (error: Throwable) {
+        onInvalid(error)
+        return emptyList()
+      }
+      val seen = HashSet<String>()
+      return buildList {
         for (i in 0 until array.length()) {
           val item = array.opt(i) as? String
-          if (!item.isNullOrEmpty()) add(item)
+          if (!item.isNullOrEmpty() && seen.add(item)) add(item)
         }
       }
     }

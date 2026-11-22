@@ -1242,16 +1242,24 @@ interface VescapeDao {
   suspend fun deleteBoardConfigChangeNotice(boardId: String)
 
   @Transaction
-  suspend fun updateBoardConfigChangeNotice(
+  suspend fun setIgnoredConfigChangeField(
     boardId: String,
-    transform: (BoardConfigChangeNoticeEntity?) -> Pair<Boolean, BoardConfigChangeNoticeEntity?>,
+    now: Long,
+    transform: (String?, BoardConfigChangeNoticeEntity?) -> Triple<String?, Boolean, BoardConfigChangeNoticeEntity?>,
   ): Pair<Boolean, BoardConfigChangeNoticeEntity?> {
-    val (changed, updated) = transform(getBoardConfigChangeNotice(boardId))
-    if (changed) {
-      if (updated == null) deleteBoardConfigChangeNotice(boardId)
-      else upsertBoardConfigChangeNotice(updated)
+    val currentJson = getBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson
+    val existingNotice = getBoardConfigChangeNotice(boardId)
+    val (nextJson, noticeChanged, updatedNotice) = transform(currentJson, existingNotice)
+    if (nextJson == null) {
+      deleteBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)
+    } else {
+      upsertBoardSetting(BoardSettingEntity(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY, nextJson, now))
     }
-    return changed to updated
+    if (noticeChanged) {
+      if (updatedNotice == null) deleteBoardConfigChangeNotice(boardId)
+      else upsertBoardConfigChangeNotice(updatedNotice)
+    }
+    return noticeChanged to updatedNotice
   }
 
   @Transaction

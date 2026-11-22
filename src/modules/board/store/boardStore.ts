@@ -1,9 +1,11 @@
 import { dequal } from 'dequal'
 import { create } from 'zustand'
 import {
+  clearIgnoredBoardConfigChangeFields,
   deleteBoard as nativeDeleteBoard,
   getBoards,
   getSettings,
+  setBoardConfigChangeFieldIgnored,
   setSelectedBoard as nativeSetSelectedBoard,
   type BatteryConfig,
   type Board,
@@ -131,20 +133,15 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
   },
 
   async setConfigChangeFieldIgnored(boardId, fieldId, ignored) {
-    const board = get().boards.find((b) => b.id === boardId)
-    if (!board) return
-    const current = board.ignoredConfigChangeFields ?? []
-    if (ignored === current.includes(fieldId)) return
-    const ignoredConfigChangeFields = ignored
-      ? [...current, fieldId]
-      : current.filter((id) => id !== fieldId)
-    await get().updateBoard({ ...board, ignoredConfigChangeFields })
+    await setBoardConfigChangeFieldIgnored(boardId, fieldId, ignored)
+    const boards = await getBoards()
+    set((state) => ({ boards: mergeBoards(state.boards, boards) }))
   },
 
   async clearIgnoredConfigChangeFields(boardId) {
-    const board = get().boards.find((b) => b.id === boardId)
-    if (!board || (board.ignoredConfigChangeFields?.length ?? 0) === 0) return
-    await get().updateBoard({ ...board, ignoredConfigChangeFields: [] })
+    await clearIgnoredBoardConfigChangeFields(boardId)
+    const boards = await getBoards()
+    set((state) => ({ boards: mergeBoards(state.boards, boards) }))
   },
 
   async removeBoard(id) {

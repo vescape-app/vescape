@@ -2,13 +2,17 @@ package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
 import expo.modules.vescapecore.config.RefloatConfigSchema
+import org.json.JSONArray
 import org.json.JSONObject
 import expo.modules.vescapecore.database.BoardConfigChangeNoticeEntity
 import expo.modules.vescapecore.database.BoardConfigValuesEntity
 import expo.modules.vescapecore.database.MotorConfigValuesEntity
 import expo.modules.vescapecore.database.VescapeDao
 
-internal class ConfigPersistence(private val dao: VescapeDao) {
+internal class ConfigPersistence(
+  private val dao: VescapeDao,
+  private val onInvalidIgnoredFields: (Throwable) -> Unit = {},
+) {
   suspend fun saveFreshBoard(
     boardId: String,
     base: String,
@@ -18,13 +22,17 @@ internal class ConfigPersistence(private val dao: VescapeDao) {
   ): BoardConfigChangeNotice? {
     val row = dao.replaceBaselineAndNotice(BoardConfigValuesEntity(boardId, base, JSONObject(values).toString(), capturedAt)) { old, existing, ignoredJson ->
       val oldValues = old?.let { decodeBoardValues(it.valuesJson) } ?: return@replaceBaselineAndNotice null
-      val ignored = BoardConfigChangeNotice.decodeIgnoredFields(ignoredJson)
+      val ignored = BoardConfigChangeNotice.decodeIgnoredFields(ignoredJson, onInvalidIgnoredFields).toSet()
       val incoming = BoardConfigChangeNotice.diff(oldValues, values, schema, ignored)
       if (incoming.isEmpty()) return@replaceBaselineAndNotice null
       val previous = existing?.let {
         BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson).diffs
       }.orEmpty()
-      val merged = BoardConfigChangeNotice.mergeDiffs(previous, incoming)
+      val excluded = ignored + BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS
+      val merged = BoardConfigChangeNotice.mergeDiffs(
+        BoardConfigChangeNotice.filterDiffs(previous, excluded),
+        incoming,
+      )
       BoardConfigChangeNoticeEntity(boardId, capturedAt, BoardConfigChangeNotice(boardId, capturedAt, merged).diffsJson())
     }
     return row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
@@ -39,32 +47,72 @@ internal class ConfigPersistence(private val dao: VescapeDao) {
   ): BoardConfigChangeNotice? {
     val entity = MotorConfigValuesEntity(boardId, signature, firmware, JSONObject(values as Map<*, *>).toString(), capturedAt)
     val row = dao.replaceMotorBaselineAndNotice(entity) { old, existing, ignoredJson ->
-      if (old == null || old.mcconfSignature != signature) return@replaceMotorBaselineAndNotice existing
-      val ignored = BoardConfigChangeNotice.decodeIgnoredFields(ignoredJson) + BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS
+      if (old == null || old.mcconfSignature != signature) return@replaceMotorBaselineAndNotice null
+      val ignored = BoardConfigChangeNotice.decodeIgnoredFields(ignoredJson, onInvalidIgnoredFields).toSet() +
+        BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS
       val incoming = BoardConfigChangeNotice.diff(decodeMotorValues(old.valuesJson), values, null, ignored)
-      if (incoming.isEmpty()) return@replaceMotorBaselineAndNotice existing
+      if (incoming.isEmpty()) return@replaceMotorBaselineAndNotice null
       val previous = existing?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson).diffs }.orEmpty()
-      val merged = BoardConfigChangeNotice.mergeDiffs(previous, incoming)
+      val merged = BoardConfigChangeNotice.mergeDiffs(
+        BoardConfigChangeNotice.filterDiffs(previous, ignored),
+        incoming,
+      )
       BoardConfigChangeNoticeEntity(boardId, capturedAt, BoardConfigChangeNotice(boardId, capturedAt, merged).diffsJson())
     }
     return row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
   }
 
-  suspend fun pruneNotice(boardId: String, ignoredFields: Set<String>): Pair<Boolean, BoardConfigChangeNotice?> {
-    if (ignoredFields.isEmpty()) return false to null
-    val (changed, updated) = dao.updateBoardConfigChangeNotice(boardId) { existing ->
-      if (existing == null) return@updateBoardConfigChangeNotice false to null
-      val current = BoardConfigChangeNotice.from(existing.boardId, existing.detectedAt, existing.diffsJson)
-      val remaining = current.diffs.filterNot { it.fieldId in ignoredFields }
-      if (remaining.size == current.diffs.size) return@updateBoardConfigChangeNotice false to existing
-      if (remaining.isEmpty()) return@updateBoardConfigChangeNotice true to null
-      true to BoardConfigChangeNoticeEntity(
-        boardId = current.boardId,
-        detectedAt = current.detectedAtMs,
-        diffsJson = BoardConfigChangeNotice(current.boardId, current.detectedAtMs, remaining).diffsJson(),
+  suspend fun loadNotice(boardId: String): BoardConfigChangeNotice? {
+    val row = dao.getBoardConfigChangeNotice(boardId) ?: return null
+    val loaded = BoardConfigChangeNotice.from(row.boardId, row.detectedAt, row.diffsJson)
+    val ignoredJson = dao.getBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson
+    val excluded = BoardConfigChangeNotice.decodeIgnoredFields(ignoredJson, onInvalidIgnoredFields).toSet() +
+      BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS
+    val filtered = BoardConfigChangeNotice.filterDiffs(loaded.diffs, excluded)
+    if (filtered.isEmpty()) return null
+    return loaded.copy(diffs = filtered)
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `setFieldIgnored`
+   */
+  suspend fun setFieldIgnored(
+    boardId: String,
+    fieldId: String,
+    ignored: Boolean,
+    now: Long = System.currentTimeMillis(),
+  ): Pair<Boolean, BoardConfigChangeNotice?> {
+    if (boardId.isBlank() || fieldId.isBlank()) return false to null
+    val (changed, updated) = dao.setIgnoredConfigChangeField(boardId, now) { currentJson, existingNotice ->
+      val current = BoardConfigChangeNotice.decodeIgnoredFields(currentJson, onInvalidIgnoredFields).toMutableList()
+      if (ignored) {
+        if (fieldId !in current) current.add(fieldId)
+      } else {
+        current.removeAll { it == fieldId }
+      }
+      val nextJson = if (current.isEmpty()) null else JSONArray(current).toString()
+      if (!ignored || existingNotice == null) return@setIgnoredConfigChangeField Triple(nextJson, false, existingNotice)
+      val loaded = BoardConfigChangeNotice.from(existingNotice.boardId, existingNotice.detectedAt, existingNotice.diffsJson)
+      val excluded = current.toSet() + BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS
+      val remaining = BoardConfigChangeNotice.filterDiffs(loaded.diffs, excluded)
+      if (remaining.size == loaded.diffs.size) return@setIgnoredConfigChangeField Triple(nextJson, false, existingNotice)
+      if (remaining.isEmpty()) return@setIgnoredConfigChangeField Triple(nextJson, true, null)
+      val nextNotice = BoardConfigChangeNoticeEntity(
+        boardId = loaded.boardId,
+        detectedAt = loaded.detectedAtMs,
+        diffsJson = BoardConfigChangeNotice(loaded.boardId, loaded.detectedAtMs, remaining).diffsJson(),
       )
+      Triple(nextJson, true, nextNotice)
     }
     return changed to updated?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `clearIgnoredFields`
+   */
+  suspend fun clearIgnoredFields(boardId: String) {
+    if (boardId.isBlank()) return
+    dao.deleteBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)
   }
 
   private fun decodeBoardValues(json: String): Map<String, Any> = JSONObject(json).keys().asSequence().mapNotNull { key ->

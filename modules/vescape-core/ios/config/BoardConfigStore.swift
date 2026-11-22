@@ -78,23 +78,45 @@ struct BoardConfigChangeNotice {
     }
   }
 
-  static func loadIgnoredFields(_ db: Database, boardId: String) throws -> Set<String> {
-    guard
-      let json = try String.fetchOne(
-        db,
-        sql: "SELECT value_json FROM board_settings WHERE board_id = ? AND key = ?",
-        arguments: [boardId, ignoredFieldsSettingKey]
-      ),
-      let data = json.data(using: .utf8)
-    else { return [] }
-    guard let raw = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? [Any] else { return [] }
-    return Set(raw.compactMap { $0 as? String }.filter { !$0.isEmpty })
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `decodeIgnoredFields`
+  static func decodeIgnoredFields(_ json: String?, onInvalid: ((Error) -> Void)? = nil) -> [String] {
+    guard let json, !json.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+    guard let data = json.data(using: .utf8) else {
+      onInvalid?(DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Ignored fields setting is not UTF-8")))
+      return []
+    }
+    let decoded: Any
+    do {
+      decoded = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+    } catch {
+      onInvalid?(error)
+      return []
+    }
+    guard let raw = decoded as? [Any] else {
+      onInvalid?(DecodingError.typeMismatch([String].self, .init(codingPath: [], debugDescription: "Ignored fields setting is not a JSON array")))
+      return []
+    }
+    var seen = Set<String>()
+    return raw.compactMap { $0 as? String }.filter { !$0.isEmpty && seen.insert($0).inserted }
+  }
+
+  static func loadIgnoredFields(_ db: Database, boardId: String, onInvalid: ((Error) -> Void)? = nil) throws -> [String] {
+    let json = try String.fetchOne(
+      db,
+      sql: "SELECT value_json FROM board_settings WHERE board_id = ? AND key = ?",
+      arguments: [boardId, ignoredFieldsSettingKey]
+    )
+    return decodeIgnoredFields(json, onInvalid: onInvalid)
+  }
+
+  static func filterDiffs(_ diffs: [BoardConfigChangeDiff], excludedFields: Set<String>) -> [BoardConfigChangeDiff] {
+    diffs.filter { !excludedFields.contains($0.fieldId) }
   }
 
   static func pruneNotice(_ db: Database, boardId: String, ignoredFields: Set<String>) throws -> (changed: Bool, notice: BoardConfigChangeNotice?) {
     guard !ignoredFields.isEmpty, let row = try ConfigNoticeRecord.fetchOne(db, key: boardId) else { return (false, nil) }
     let current = try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: row.detectedAt, diffsJson: row.diffsJson)
-    let remaining = current.diffs.filter { !ignoredFields.contains($0.fieldId) }
+    let remaining = filterDiffs(current.diffs, excludedFields: ignoredFields)
     guard remaining.count != current.diffs.count else { return (false, current) }
     if remaining.isEmpty {
       _ = try ConfigNoticeRecord.deleteOne(db, key: boardId)
@@ -109,6 +131,7 @@ struct BoardConfigChangeNotice {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getBoardConfigValues`
 struct BoardConfigStore {
   static var onNoticeChanged: ((BoardConfigChangeNotice?) -> Void)?
+  static var onInvalidIgnoredFields: ((Error) -> Void)?
   private let resolveWriter: () -> DatabaseWriter?
 
   static let shared = BoardConfigStore { VescapeDatabase.pool }
@@ -188,14 +211,18 @@ struct BoardConfigStore {
       let oldRow = try Row.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id = ? AND refloat_base_version = ?", arguments: [boardId, base])
       if let oldJson: String = oldRow?["values_json"] {
         let old = try BoardConfigValues.lastKnown(boardId: boardId, refloatBaseVersion: base, capturedAtMs: 0, valuesJson: oldJson)
-        let ignored = try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: boardId)
+        let ignored = Set(try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: boardId, onInvalid: Self.onInvalidIgnoredFields))
         let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: values.writeBase?.schema, ignoredFields: ignored)
         if !diffs.isEmpty {
           let existing = try ConfigNoticeRecord.fetchOne(db, key: boardId)
           let previous = try existing.map {
             try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: $0.detectedAt, diffsJson: $0.diffsJson).diffs
           } ?? []
-          let merged = BoardConfigChangeNotice.mergeDiffs(previous: previous, incoming: diffs)
+          let excluded = ignored.union(BoardConfigChangeNotice.volatileMotorFields)
+          let merged = BoardConfigChangeNotice.mergeDiffs(
+            previous: BoardConfigChangeNotice.filterDiffs(previous, excludedFields: excluded),
+            incoming: diffs
+          )
           notice = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: values.capturedAtMs, diffs: merged)
           try ConfigNoticeRecord(boardId: boardId, detectedAt: values.capturedAtMs, diffsJson: notice!.diffsJson()).save(db)
         }
@@ -208,8 +235,62 @@ struct BoardConfigStore {
 
   func loadNotice(boardId: String) throws -> BoardConfigChangeNotice? {
     guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
-    guard let row = try writer.read({ db in try ConfigNoticeRecord.fetchOne(db, key: boardId) }) else { return nil }
-    return try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: row.detectedAt, diffsJson: row.diffsJson)
+    return try writer.read { db in
+      guard let row = try ConfigNoticeRecord.fetchOne(db, key: boardId) else { return nil }
+      let loaded = try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: row.detectedAt, diffsJson: row.diffsJson)
+      let ignored = Set(try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: boardId, onInvalid: Self.onInvalidIgnoredFields))
+      let filtered = BoardConfigChangeNotice.filterDiffs(loaded.diffs, excludedFields: ignored.union(BoardConfigChangeNotice.volatileMotorFields))
+      guard !filtered.isEmpty else { return nil }
+      return BoardConfigChangeNotice(boardId: loaded.boardId, detectedAtMs: loaded.detectedAtMs, diffs: filtered)
+    }
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `setFieldIgnored`
+  func setFieldIgnored(boardId: String, fieldId: String, ignored: Bool) throws -> (changed: Bool, notice: BoardConfigChangeNotice?) {
+    guard !boardId.isEmpty, !fieldId.isEmpty else { return (false, nil) }
+    guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    let result: (changed: Bool, notice: BoardConfigChangeNotice?) = try writer.write { db in
+      var current = try BoardConfigChangeNotice.loadIgnoredFields(db, boardId: boardId, onInvalid: Self.onInvalidIgnoredFields)
+      if ignored {
+        if !current.contains(fieldId) { current.append(fieldId) }
+      } else {
+        current.removeAll { $0 == fieldId }
+      }
+      if current.isEmpty {
+        try db.execute(
+          sql: "DELETE FROM board_settings WHERE board_id = ? AND key = ?",
+          arguments: [boardId, BoardConfigChangeNotice.ignoredFieldsSettingKey]
+        )
+      } else {
+        let data = try JSONSerialization.data(withJSONObject: current, options: [])
+        let json = String(decoding: data, as: UTF8.self)
+        try db.execute(
+          sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)",
+          arguments: [boardId, BoardConfigChangeNotice.ignoredFieldsSettingKey, json, now]
+        )
+      }
+      guard ignored else { return (false, nil) }
+      return try BoardConfigChangeNotice.pruneNotice(
+        db,
+        boardId: boardId,
+        ignoredFields: Set(current).union(BoardConfigChangeNotice.volatileMotorFields)
+      )
+    }
+    if result.changed { Self.onNoticeChanged?(result.notice) }
+    return result
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `clearIgnoredFields`
+  func clearIgnoredFields(boardId: String) throws {
+    guard !boardId.isEmpty else { return }
+    guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    try writer.write { db in
+      try db.execute(
+        sql: "DELETE FROM board_settings WHERE board_id = ? AND key = ?",
+        arguments: [boardId, BoardConfigChangeNotice.ignoredFieldsSettingKey]
+      )
+    }
   }
 
   func dismissNotice(boardId: String) throws {

@@ -80,4 +80,18 @@ final class BoardConfigChangeNoticeTests: XCTestCase {
     )
     XCTAssertEqual(diffs.map(\.fieldId), ["foc_offsets_cal_on_boot", "l_temp_fet_start"])
   }
+
+  func testDecodeIgnoredFieldsHandlesInvalidShapeMalformedJsonAndDuplicates() {
+    var invalidCount = 0
+    XCTAssertEqual(
+      BoardConfigChangeNotice.decodeIgnoredFields("[\"l_current_max\", \"\", 42, \"kp\", \"l_current_max\"]") { _ in invalidCount += 1 },
+      ["l_current_max", "kp"]
+    )
+    XCTAssertEqual(invalidCount, 0)
+    XCTAssertEqual(BoardConfigChangeNotice.decodeIgnoredFields(nil) { _ in invalidCount += 1 }, [])
+    XCTAssertEqual(invalidCount, 0)
+    XCTAssertEqual(BoardConfigChangeNotice.decodeIgnoredFields("{}") { _ in invalidCount += 1 }, [])
+    XCTAssertEqual(BoardConfigChangeNotice.decodeIgnoredFields("not json") { _ in invalidCount += 1 }, [])
+    XCTAssertEqual(invalidCount, 2)
+  }
 }

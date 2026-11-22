@@ -975,6 +975,24 @@ class VescapeCoreModule : Module() {
       try { AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
       catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_notice_dismiss", "write_failed", error); throw error }
     }
+    /**
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBoardConfigChangeFieldIgnored`
+     * @parity /modules/vescape-core/src/index.ts `setBoardConfigChangeFieldIgnored`
+     */
+    AsyncFunction("setBoardConfigChangeFieldIgnored") Coroutine { boardId: String, fieldId: String, ignored: Boolean ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).setBoardConfigChangeFieldIgnored(boardId, fieldId, ignored) }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_ignored_field_write", "write_failed", error); throw error }
+    }
+    /**
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `clearIgnoredBoardConfigChangeFields`
+     * @parity /modules/vescape-core/src/index.ts `clearIgnoredBoardConfigChangeFields`
+     */
+    AsyncFunction("clearIgnoredBoardConfigChangeFields") Coroutine { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).clearIgnoredBoardConfigChangeFields(boardId) }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_ignored_fields_clear", "write_failed", error); throw error }
+    }
     AsyncFunction("clearBoardWarning") Coroutine { boardId: String, kind: String ->
       RecordingStorageFailure.requireAvailable()
       try { BoardWarningRegistry.get(context).clearWarning(boardId, kind) }

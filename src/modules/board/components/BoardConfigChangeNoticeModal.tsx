@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { View, StyleSheet } from 'react-native'
 import { EyeSlashIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
@@ -6,6 +6,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { FadeCardModal } from '@/components/modals/FadeCardModal'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useBoardConfigChangeNoticeStore } from '@/modules/board/store/boardConfigChangeNoticeStore'
 
@@ -16,11 +17,17 @@ function value(v: number | boolean | null, unit: string | null): string {
 }
 export function BoardConfigChangeNoticeModal() {
   const [ignoreError, setIgnoreError] = useState<string | null>(null)
+  const neutral = useResolvedNeutralColors()
   const notice = useBoardConfigChangeNoticeStore((s) => s.notice)
   const dismiss = useBoardConfigChangeNoticeStore((s) => s.dismiss)
   const board = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
   const setConfigChangeFieldIgnored = useBoardStore((s) => s.setConfigChangeFieldIgnored)
   const visible = !!notice && notice.boardId === board?.id
+
+  useEffect(() => {
+    setIgnoreError(null)
+  }, [notice?.detectedAtMs, visible])
+
   return (
     <FadeCardModal
       visible={visible}
@@ -42,7 +49,7 @@ export function BoardConfigChangeNoticeModal() {
     >
       <Text style={styles.intro}>{board?.name ?? 'Board'} was changed outside Vescape.</Text>
       {notice?.diffs.map((diff) => (
-        <View key={diff.fieldId} style={styles.row}>
+        <View key={diff.fieldId} style={[styles.row, { borderBottomColor: neutral.border }]}>
           <View style={styles.rowText}>
             <Text style={styles.label}>{diff.label}</Text>
             <Text style={styles.change}>
@@ -77,7 +84,6 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 9,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.neutral.border,
   },
   rowText: { flex: 1 },
   label: { color: theme.neutral.textPrimary, fontWeight: '700' },

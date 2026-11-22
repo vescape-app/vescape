@@ -3,6 +3,7 @@ package expo.modules.vescapecore.telemetry
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import androidx.sqlite.execSQL
+import expo.modules.vescapecore.config.BoardConfigChangeDiff
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import java.nio.file.Files
@@ -255,7 +256,8 @@ class RecordingPersistenceHostTest {
     assertEquals(null, db.vescapeDao().getBoardConfigValues(boardId, base))
     assertEquals(null, db.vescapeDao().getLatestMotorConfigValues(boardId))
     assertEquals(null, db.vescapeDao().getBoardConfigChangeNotice(boardId))
-    val ignorePersistence = ConfigPersistence(db.vescapeDao())
+    var invalidIgnoredCount = 0
+    val ignorePersistence = ConfigPersistence(db.vescapeDao()) { invalidIgnoredCount++ }
     ignorePersistence.saveFreshMotor(
       boardId,
       config.getLong("signature"),
@@ -263,25 +265,75 @@ class RecordingPersistenceHostTest {
       mapOf("foc_offsets_current[0]" to 2010.43, "foc_offsets_voltage[0]" to -0.0062, "l_current_max" to 160.0),
       8000,
     )
-    ignorePersistence.saveFreshMotor(
-      boardId,
-      config.getLong("signature"),
-      config.getString("firmware"),
-      mapOf("foc_offsets_current[0]" to 2010.67, "foc_offsets_voltage[0]" to -0.0061, "l_current_max" to 160.0),
-      8100,
+    assertEquals(
+      null,
+      ignorePersistence.saveFreshMotor(
+        boardId,
+        config.getLong("signature"),
+        config.getString("firmware"),
+        mapOf("foc_offsets_current[0]" to 2010.67, "foc_offsets_voltage[0]" to -0.0061, "l_current_max" to 160.0),
+        8100,
+      ),
     )
-    assertEquals(null, db.vescapeDao().getBoardConfigChangeNotice(boardId))
+    assertEquals(null, ignorePersistence.loadNotice(boardId))
     assertEquals(2010.67, JSONObject(db.vescapeDao().getLatestMotorConfigValues(boardId)!!.valuesJson).getDouble("foc_offsets_current[0]"), 0.0001)
+    db.vescapeDao().upsertBoardConfigChangeNotice(
+      BoardConfigChangeNoticeEntity(
+        boardId,
+        8150,
+        BoardConfigChangeNotice(
+          boardId,
+          8150,
+          listOf(
+            BoardConfigChangeDiff("foc_offsets_current[0]", "foc_offsets_current[0]", null, 2010.43, 2010.67),
+            BoardConfigChangeDiff("ki", "ki", null, 2.0, 3.0),
+          ),
+        ).diffsJson(),
+      ),
+    )
+    assertEquals(listOf("ki"), ignorePersistence.loadNotice(boardId)?.diffs?.map { it.fieldId })
+    assertEquals(
+      null,
+      ignorePersistence.saveFreshMotor(
+        boardId,
+        config.getLong("signature"),
+        config.getString("firmware"),
+        mapOf("foc_offsets_current[0]" to 2010.91, "foc_offsets_voltage[0]" to -0.006, "l_current_max" to 160.0),
+        8175,
+      ),
+    )
+    db.vescapeDao().deleteBoardConfigChangeNotice(boardId)
     ignorePersistence.saveFreshBoard(boardId, base, mapOf("kp" to 1.0, "ki" to 2.0), 8200, null)
-    db.vescapeDao().upsertBoardSetting(BoardSettingEntity(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY, """["kp"]""", 8250))
+    db.vescapeDao().upsertBoardSetting(BoardSettingEntity(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY, "not-json", 8220))
+    ignorePersistence.saveFreshBoard(boardId, base, mapOf("kp" to 1.0, "ki" to 2.0), 8230, null)
+    assertTrue(invalidIgnoredCount > 0)
+    db.vescapeDao().deleteBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)
+    ignorePersistence.setFieldIgnored(boardId, "kp", true, now = 8250)
     ignorePersistence.saveFreshBoard(boardId, base, mapOf("kp" to 5.0, "ki" to 3.0), 8300, null)
-    assertEquals(listOf("ki"), BoardConfigChangeNotice.from(boardId, 8300, db.vescapeDao().getBoardConfigChangeNotice(boardId)!!.diffsJson).diffs.map { it.fieldId })
+    assertEquals(listOf("ki"), ignorePersistence.loadNotice(boardId)?.diffs?.map { it.fieldId })
     assertEquals(5.0, JSONObject(db.vescapeDao().getBoardConfigValues(boardId, base)!!.valuesJson).getDouble("kp"), 0.0)
-    val (prunedChanged, prunedNotice) = ignorePersistence.pruneNotice(boardId, setOf("ki"))
+    val (prunedChanged, prunedNotice) = ignorePersistence.setFieldIgnored(boardId, "ki", true, now = 8350)
     assertTrue(prunedChanged)
     assertEquals(null, prunedNotice)
     assertEquals(null, db.vescapeDao().getBoardConfigChangeNotice(boardId))
-    db.vescapeDao().deleteBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)
+    assertEquals(
+      listOf("kp", "ki"),
+      BoardConfigChangeNotice.decodeIgnoredFields(
+        db.vescapeDao().getBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson,
+      ),
+    )
+    db.vescapeDao().upsertBoardConfigChangeNotice(BoardConfigChangeNoticeEntity(boardId, 8400, "not-json"))
+    var pruneRollbackFailed = false
+    try { ignorePersistence.setFieldIgnored(boardId, "kd", true, now = 8450) } catch (_: Exception) { pruneRollbackFailed = true }
+    assertTrue(pruneRollbackFailed)
+    assertEquals(
+      listOf("kp", "ki"),
+      BoardConfigChangeNotice.decodeIgnoredFields(
+        db.vescapeDao().getBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson,
+      ),
+    )
+    ignorePersistence.clearIgnoredFields(boardId)
+    assertEquals(null, db.vescapeDao().getBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY))
     db.vescapeDao().clearBoardConfigState(boardId)
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
