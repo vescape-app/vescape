@@ -1,5 +1,4 @@
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
 import { basename, extname, relative, resolve } from 'node:path'
 import ts from 'typescript'
@@ -18,11 +17,7 @@ export interface CommentViolation {
   file: string
   line: number
   snippet: string
-  comment: string
 }
-
-const BASELINE_PATH = 'scripts/comment-baseline.json'
-type CommentBaseline = Record<string, number>
 
 const JS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'])
 const JS_ONLY_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs'])
@@ -634,7 +629,6 @@ export function checkCommentsInSource(filePath: string, text: string): CommentVi
           file: filePath,
           line: token.line,
           snippet: token.text.trim().slice(0, 100),
-          comment: token.text,
         })
       }
       continue
@@ -671,14 +665,12 @@ export function checkCommentsInSource(filePath: string, text: string): CommentVi
         file: filePath,
         line: firstDisallowedLine.line,
         snippet: firstDisallowedLine.raw.slice(0, 100),
-        comment: token.text,
       })
     } else if (!hasDirective) {
       violations.push({
         file: filePath,
         line: token.line,
         snippet: token.text.trim().slice(0, 100),
-        comment: token.text,
       })
     }
   }
@@ -753,111 +745,20 @@ function runCommentLint(fileArgs: string[], cwd = process.cwd()): CommentViolati
   return violations
 }
 
-function commentKey(violation: CommentViolation): string {
-  const hash = createHash('sha256').update(violation.comment).digest('hex')
-  return `${violation.file.replace(/^\.\//, '')}:${hash}`
-}
-
-function commentInventory(violations: CommentViolation[]): CommentBaseline {
-  const counts: CommentBaseline = {}
-  for (const violation of violations) {
-    const key = commentKey(violation)
-    counts[key] = (counts[key] ?? 0) + 1
-  }
-  return Object.fromEntries(
-    Object.entries(counts).sort(([left], [right]) => left.localeCompare(right)),
-  )
-}
-
-export function applyCommentBaseline(violations: CommentViolation[], baseline: CommentBaseline) {
-  const remaining = { ...baseline }
-  const newViolations = violations.filter((violation) => {
-    const key = commentKey(violation)
-    if (!remaining[key]) return true
-    if (--remaining[key] === 0) delete remaining[key]
-    return false
-  })
-  return { newViolations, remaining }
-}
-
-function readCommentBaseline(ref?: string): CommentBaseline {
-  if (ref && !execFileSync('git', ['ls-tree', ref, '--', BASELINE_PATH], { encoding: 'utf8' })) {
-    return {}
-  }
-  const source =
-    ref === undefined
-      ? readFileSync(BASELINE_PATH, 'utf8')
-      : execFileSync('git', ['show', `${ref}:${BASELINE_PATH}`], { encoding: 'utf8' })
-  const baseline: unknown = JSON.parse(source)
-  if (
-    !baseline ||
-    typeof baseline !== 'object' ||
-    Array.isArray(baseline) ||
-    Object.entries(baseline).some(
-      ([key, count]) =>
-        !/^.+:[a-f0-9]{64}$/.test(key) ||
-        typeof count !== 'number' ||
-        !Number.isSafeInteger(count) ||
-        count < 1,
-    )
-  ) {
-    throw new Error(`Invalid comment baseline in ${BASELINE_PATH}`)
-  }
-  return baseline as CommentBaseline
-}
-
 if (import.meta.main) {
   const args = process.argv.slice(2)
   const staged = args.includes('--staged')
   const files = args
-    .filter((arg) => !['--staged', '--inventory', '--list'].includes(arg))
+    .filter((arg) => arg !== '--staged')
     .map((file) => relative(process.cwd(), resolve(file)))
   const violations = staged ? runStagedCommentLint() : runCommentLint(files)
-  if (args.includes('--inventory')) {
-    console.log(JSON.stringify(commentInventory(violations), null, 2))
-    process.exit(0)
-  }
-  if (args.includes('--list')) {
-    for (const v of violations) console.log(`${v.file}:${v.line}: ${v.snippet}`)
-    process.exit(0)
-  }
-
-  const baseline = readCommentBaseline(staged ? '' : undefined)
-  const { newViolations, remaining } = applyCommentBaseline(violations, baseline)
-  for (const v of newViolations) {
+  for (const v of violations) {
     console.error(`${v.file}:${v.line}: disallowed comment: ${v.snippet}`)
   }
-  let staleFiles = [
-    ...new Set(Object.keys(remaining).map((key) => key.slice(0, key.lastIndexOf(':')))),
-  ]
-  if (staleFiles.length > 0 && (staged || files.length > 0)) {
-    const scope = new Set(
-      staged
-        ? execFileSync('git', ['diff', '--cached', '--no-renames', '--name-only', '-z'], {
-            encoding: 'utf8',
-          }).split('\0')
-        : files,
-    )
-    staleFiles = staleFiles.filter((file) => scope.has(file))
-  }
-  if (staleFiles.length > 0) {
+  if (violations.length > 0) {
     console.error(
-      `Removed comments still appear in ${BASELINE_PATH} for ${staleFiles.join(', ')}. Compare with --inventory and prune their entries.`,
+      `\nFound ${violations.length} disallowed comment(s). Preserve valid tool directives and contract metadata. Document architectural decisions in docs/adr/.`,
     )
     process.exitCode = 1
-  }
-  if (newViolations.length > 0) {
-    console.error(
-      `\nFound ${newViolations.length} new disallowed comment(s). Preserve valid tool directives and contract metadata. Document architectural decisions in docs/adr/.`,
-    )
-    process.exitCode = 1
-  }
-  const baseRef = process.env.COMMENT_BASELINE_REF
-  if (baseRef) {
-    const baseBaseline = readCommentBaseline(baseRef)
-    if (Object.entries(baseline).some(([key, count]) => count > (baseBaseline[key] ?? 0))) {
-      console.error(`${BASELINE_PATH} can only shrink relative to the PR base.`)
-      process.exitCode = 1
-    }
   }
 }

@@ -1,76 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { execFileSync, spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import {
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  applyCommentBaseline,
-  checkCommentsInSource,
-  isExcludedPath,
-  runStagedCommentLint,
-} from './check-comments'
-
-test('ratchets exact comments by file and multiplicity across line shifts', () => {
-  const file = 'src/demo.ts'
-  const legacy = '// grandfathered comment'
-  const key = `${file}:${createHash('sha256').update(legacy).digest('hex')}`
-  const baseline = { [key]: 1 }
-  const shifted = checkCommentsInSource(
-    file,
-    `export const value = 1\n${legacy}\n${legacy}\n// new prose`,
-  )
-  const moved = checkCommentsInSource('src/other.ts', legacy)
-  const result = applyCommentBaseline([...shifted, ...moved], baseline)
-
-  expect(result.newViolations.map(({ file, line }) => `${file}:${line}`)).toEqual([
-    `${file}:3`,
-    `${file}:4`,
-    'src/other.ts:1',
-  ])
-  expect(result.remaining).toEqual({})
-  expect(applyCommentBaseline([], baseline).remaining).toEqual(baseline)
-})
-
-test('lists grandfathered comments and checks baseline pruning within the selected scope', () => {
-  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'comment-lint-baseline-')))
-  try {
-    const lint = (...args: string[]) =>
-      spawnSync(process.execPath, [join(import.meta.dir, 'check-comments.ts'), ...args], {
-        cwd,
-        encoding: 'utf8',
-        env: { ...process.env, COMMENT_BASELINE_REF: '' },
-      })
-    execFileSync('git', ['init', '-q'], { cwd })
-    mkdirSync(join(cwd, 'scripts'))
-    const file = join(cwd, 'legacy.ts')
-    writeFileSync(file, '// legacy prose\nexport const value = 1\n')
-    writeFileSync(join(cwd, 'clean.ts'), 'export const clean = 1\n')
-    const inventory = lint('--inventory', file)
-    expect(inventory.status).toBe(0)
-    writeFileSync(join(cwd, 'scripts/comment-baseline.json'), inventory.stdout)
-    expect(lint(file).status).toBe(0)
-    expect(lint('--list', file).stdout).toContain('legacy.ts:1: // legacy prose')
-
-    writeFileSync(file, 'export const value = 1\n')
-    expect(lint('clean.ts').status).toBe(0)
-    expect(lint(file).stderr).toContain('for legacy.ts')
-    execFileSync('git', ['add', '.'], { cwd })
-    const staged = lint('--staged')
-    expect(staged.status).toBe(1)
-    expect(staged.stderr).toContain('for legacy.ts')
-  } finally {
-    rmSync(cwd, { recursive: true, force: true })
-  }
-})
+import { checkCommentsInSource, isExcludedPath, runStagedCommentLint } from './check-comments'
 
 describe('check-comments: TS/TSX/JS', () => {
   test('flags ordinary single-line, block, JSDoc, TODO, and JSX comments', () => {
