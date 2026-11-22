@@ -39,8 +39,10 @@ pre-commit:
       glob: '*.{ts,tsx}'
       run: bun run test:bun
     test-android:
-      glob: '*.{kt,kts}'
-      run: bun run test:android && bun run lint:android
+      glob: '*.{kt,kts,gradle}'
+      run: >-
+        if printf '%s\n' {staged_files} | grep -q '^watch/wearos/'; then bun x expo prebuild --platform android --no-install; fi
+        && bun run test:android && bun run lint:android
     test-ios:
       glob: '*.swift'
       run: bun run test:ios
