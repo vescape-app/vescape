@@ -131,6 +131,14 @@ internal final class GroupRideObserver: NSObject {
       return
     }
     if serverUrl != nil && serverUrl != url { publicRide.discardMissed() }
+    cancelReconnect()
+    if let previous = webSocket {
+      webSocket = nil
+      previous.close()
+      stopHeartbeat()
+      stopPing()
+      publicRide.linkLost()
+    }
     stopped = false
     serverUrl = url
     reconnectAttempt = 0

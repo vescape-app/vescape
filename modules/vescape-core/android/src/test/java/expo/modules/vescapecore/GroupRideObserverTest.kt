@@ -299,6 +299,21 @@ class GroupRideObserverTest {
     }
 
     @Test
+    fun `starting on another server closes the old link`() {
+        val h = RelayHarness()
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        val old = h.links.last()
+
+        h.observer.start("wss://other.example.com/ws/group-rides")
+        h.flush()
+
+        assertTrue(old.closed)
+        assertEquals(2, h.links.size)
+        h.observer.stop()
+    }
+
+    @Test
     fun `a lost link retries within seconds and at once on a new network or foreground`() {
         val h = RelayHarness()
         h.observer.start("wss://example.com/ws/group-rides")

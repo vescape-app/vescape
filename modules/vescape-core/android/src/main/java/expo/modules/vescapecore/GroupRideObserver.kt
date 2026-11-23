@@ -128,6 +128,13 @@ internal class GroupRideObserver(
             return
         }
         if (serverUrl != null && serverUrl != url) publicRide.discardMissed()
+        handler.removeCallbacks(reconnectRunnable)
+        webSocket?.let { previous ->
+            webSocket = null
+            previous.close(NORMAL_CLOSURE, "server changed")
+            stopHeartbeat()
+            publicRide.linkLost()
+        }
         stopped = false
         serverUrl = url
         reconnectAttempt = 0

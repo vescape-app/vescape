@@ -252,6 +252,19 @@ final class GroupRideObserverTests: XCTestCase {
     h.observer.stop()
   }
 
+  func testStartingOnAnotherServerClosesTheOldLink() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    let old = h.links.last!
+
+    h.observer.start("wss://other.example.com/ws/group-rides")
+
+    XCTAssertTrue(old.closed)
+    XCTAssertEqual(h.links.count, 2)
+    h.observer.stop()
+  }
+
   func testALostLinkRetriesWithinSecondsAndAtOnceOnANewNetworkOrForeground() {
     let h = RelayHarness()
     h.observer.start("wss://example.com/ws/group-rides")
