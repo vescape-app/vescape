@@ -12,7 +12,7 @@ type WeatherStatSize = 'sm' | 'md'
 
 interface WeatherStatProps {
   icon: WeatherIconSlug
-  temperature: number
+  temperatureC: number
   precipProbability?: number | null
   size?: WeatherStatSize
   iconColor?: ThemeColor
@@ -25,7 +25,7 @@ const SIZES: Record<WeatherStatSize, { icon: number; temp: number; drop: number 
 
 export function WeatherStat({
   icon,
-  temperature,
+  temperatureC,
   precipProbability,
   size = 'sm',
   iconColor = theme.neutral.textSecondary,
@@ -33,7 +33,7 @@ export function WeatherStat({
   const { temperatureUnit } = useUserPreferences()
   const dims = SIZES[size]
   const tempColor = size === 'md' ? theme.neutral.textPrimary : theme.neutral.textSecondary
-  const displayTemp = Math.round(temperatureFromC(temperature, temperatureUnit))
+  const displayTemp = Math.round(temperatureFromC(temperatureC, temperatureUnit))
 
   return (
     <View style={styles.row}>

@@ -13,7 +13,7 @@ import { weatherIconColor } from '@/modules/weather/lib/weather'
 
 interface WeatherPillProps {
   icon: WeatherIconSlug
-  temperature: number
+  temperatureC: number
   label: string
   precipProbability?: number | null
   sunriseMinuteOfDay?: number | null
@@ -24,7 +24,7 @@ interface WeatherPillProps {
 
 export function WeatherPill({
   icon,
-  temperature,
+  temperatureC,
   label,
   precipProbability,
   sunriseMinuteOfDay,
@@ -34,7 +34,7 @@ export function WeatherPill({
 }: WeatherPillProps) {
   const { timeFormat, temperatureUnit } = useUserPreferences()
   const iconColor = weatherIconColor(icon)
-  const displayTemp = Math.round(temperatureFromC(temperature, temperatureUnit))
+  const displayTemp = Math.round(temperatureFromC(temperatureC, temperatureUnit))
 
   if (expanded) {
     return (
@@ -78,7 +78,7 @@ export function WeatherPill({
     <Pressable style={styles.pill} onPress={onPress} android_ripple={interaction.rippleBorderless}>
       <WeatherStat
         icon={icon}
-        temperature={temperature}
+        temperatureC={temperatureC}
         precipProbability={precipProbability}
         size="md"
         iconColor={iconColor}
