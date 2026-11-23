@@ -52,11 +52,25 @@ internal enum BoardLightsGeneration {
   case current
 
   static func forBaseVersion(_ baseVersion: String?) -> BoardLightsGeneration {
-    let parts = baseVersion?.split(separator: ".") ?? []
-    guard let major = parts.first.flatMap({ Int($0) }) else { return .current }
-    let minor = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
-    return (major > 1 || (major == 1 && minor >= 2)) ? .current : .legacy
+    refloatVersionAtLeast(baseVersion, 1, 2, 0) == false ? .legacy : .current
   }
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `lightsCommandChangesBoardConfig`
+internal func lightsCommandChangesBoardConfig(_ baseVersion: String?) -> Bool {
+  refloatVersionAtLeast(baseVersion, 1, 2, 2) == false
+}
+
+private func refloatVersionAtLeast(_ baseVersion: String?, _ major: Int, _ minor: Int, _ patch: Int) -> Bool? {
+  let parts = baseVersion?.split(separator: ".") ?? []
+  guard let actualMajor = parts.first.flatMap({ Int($0) }) else { return nil }
+  let actual = [
+    actualMajor,
+    parts.count > 1 ? Int(parts[1]) ?? 0 : 0,
+    parts.count > 2 ? Int(parts[2]) ?? 0 : 0,
+  ]
+  guard let diff = zip(actual, [major, minor, patch]).first(where: { $0 != $1 }) else { return true }
+  return diff.0 > diff.1
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildLightsControlCommand`

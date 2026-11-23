@@ -58,8 +58,18 @@ internal data class BoardConfigValues(
       is Double -> RefloatConfigValueType.INT8
       else -> return null
     }
-    return copy(values = values + (field.id to encodeFlag(type, enabled)))
+    val value = encodeFlag(type, enabled)
+    val base = writeBase?.takeIf { schemaType != null }?.let {
+      it.copy(rawConfig = RefloatConfigEncoder.encode(it.schema, it.rawConfig, mapOf(field.id to value)))
+    } ?: writeBase
+    return copy(values = values + (field.id to value), writeBase = base)
   }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `withLights`
+   */
+  fun withLights(enabled: Boolean, headlightsEnabled: Boolean): BoardConfigValues? =
+    withFlag(BoardConfigFlagField.LEDS_ON, enabled)?.withFlag(BoardConfigFlagField.HEADLIGHTS_ON, headlightsEnabled)
 
   /**
    * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `toBridgeMap`

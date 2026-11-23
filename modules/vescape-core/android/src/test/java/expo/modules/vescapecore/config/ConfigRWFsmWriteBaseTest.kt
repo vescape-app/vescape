@@ -158,6 +158,35 @@ class ConfigRWFsmWriteBaseTest {
         assertFalse(effects.contains(ConfigRWEffect.DemoteWriteBase))
     }
 
+    @Test
+    fun profileWriteAfterALightsEchoKeepsTheNewLightBits() {
+        val lightsSchema = RefloatConfigSchema(
+            hash = "test",
+            fields = schema.fields + listOf(
+                RefloatConfigSchemaField("leds.on", RefloatConfigValueType.BOOL, "leds.on", null, null, null, 8),
+                RefloatConfigSchemaField("leds.headlights_on", RefloatConfigValueType.BOOL, "leds.headlights_on", null, null, null, 9),
+            ),
+        )
+        val raw = rawConfig + byteArrayOf(0, 0)
+        val fresh = BoardConfigValues(
+            boardId = "board-1",
+            refloatBaseVersion = "1.2.1",
+            capturedAtMs = 1,
+            freshness = BoardConfigFreshness.FRESH,
+            values = RefloatConfigDecoder.decodeFieldMap(lightsSchema, raw),
+            writeBase = BoardConfigWriteBase(lightsSchema, raw, 0xDEADBEEF),
+        )
+        val echoed = requireNotNull(fresh.withLights(enabled = true, headlightsEnabled = true))
+
+        val (_, effects) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(echoed.writeBase))
+
+        val frame = effects.frame(COMM_SET_CUSTOM_CONFIG)!!
+        val written = RefloatConfigDecoder.decodeFieldMap(lightsSchema, frame.copyOfRange(frame.size - raw.size, frame.size))
+        assertEquals(7.0, written["tuned"])
+        assertEquals(true, written["leds.on"])
+        assertEquals(true, written["leds.headlights_on"])
+    }
+
     private fun writeBase() = BoardConfigWriteBase(schema, rawConfig, 0xDEADBEEF)
 
     private fun List<ConfigRWEffect>.failureCode() =

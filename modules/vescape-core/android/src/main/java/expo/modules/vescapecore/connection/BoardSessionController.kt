@@ -29,6 +29,8 @@ import expo.modules.vescapecore.protocol.COMM_PRINT
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.buildFaultsTerminalCommand
 import expo.modules.vescapecore.protocol.buildLightsControlCommand
+import expo.modules.vescapecore.protocol.lightsCommandChangesBoardConfig
+import expo.modules.vescapecore.config.RefloatConfigEncodeException
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
@@ -2373,14 +2375,20 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private fun onBoardLightsEcho(lights: BoardLightsState) {
         boardLights = lights
         publishBoardLights()
-        if (lightsGeneration() != BoardLightsGeneration.Legacy) return
+        if (!lightsCommandChangesBoardConfig(boardConfig?.refloatBaseVersion)) return
         val values = boardConfigValues ?: return
-        val boardId = values.boardId ?: return
-        val baseVersion = values.refloatBaseVersion ?: return
-        val rebased = values
-            .withFlag(BoardConfigFlagField.LEDS_ON, lights.enabled)
-            ?.withFlag(BoardConfigFlagField.HEADLIGHTS_ON, lights.headlightsEnabled)
-            ?: return
+        val rebased = try {
+            values.withLights(lights.enabled, lights.headlightsEnabled)
+        } catch (e: RefloatConfigEncodeException) {
+            captureDiagnostic(
+                "board_lights_write_base_patch_failed",
+                diagnosticProperties(boardConfig, "config_rw") + mapOf("code" to e.code.name, "message" to e.message),
+            )
+            values.demotedToProvisional().withLights(lights.enabled, lights.headlightsEnabled)
+        } ?: return
+        boardConfigValues = rebased
+        val boardId = rebased.boardId ?: return
+        val baseVersion = rebased.refloatBaseVersion ?: return
         val patch = rebased.values.filterKeys {
             it == BoardConfigFlagField.LEDS_ON.id || it == BoardConfigFlagField.HEADLIGHTS_ON.id
         }

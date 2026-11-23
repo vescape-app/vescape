@@ -97,6 +97,12 @@ class VescProtocolTest {
   }
 
   @Test
+  fun lightsCommandChangesBoardConfigUpToRefloat121() {
+    for (version in listOf("1.1.2", "1.2.0", "1.2.1")) assertTrue(version, lightsCommandChangesBoardConfig(version))
+    for (version in listOf("1.2.2", "1.2.3", "1.3.0", "2.0", null)) assertFalse("$version", lightsCommandChangesBoardConfig(version))
+  }
+
+  @Test
   fun parsesLightsControlEcho() {
     assertEquals(
       BoardLightsState(enabled = true, headlightsEnabled = true),

@@ -63,13 +63,27 @@ internal enum class BoardLightsGeneration {
     Current;
 
     companion object {
-        fun forBaseVersion(baseVersion: String?): BoardLightsGeneration {
-            val parts = baseVersion?.split('.') ?: return Current
-            val major = parts.getOrNull(0)?.toIntOrNull() ?: return Current
-            val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
-            return if (major > 1 || (major == 1 && minor >= 2)) Current else Legacy
-        }
+        fun forBaseVersion(baseVersion: String?): BoardLightsGeneration =
+            if (refloatVersionAtLeast(baseVersion, 1, 2, 0) == false) Legacy else Current
     }
+}
+
+/**
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `lightsCommandChangesBoardConfig`
+ */
+internal fun lightsCommandChangesBoardConfig(baseVersion: String?): Boolean =
+    refloatVersionAtLeast(baseVersion, 1, 2, 2) == false
+
+private fun refloatVersionAtLeast(baseVersion: String?, major: Int, minor: Int, patch: Int): Boolean? {
+    val parts = baseVersion?.split('.') ?: return null
+    val actual = listOf(
+        parts.getOrNull(0)?.toIntOrNull() ?: return null,
+        parts.getOrNull(1)?.toIntOrNull() ?: 0,
+        parts.getOrNull(2)?.toIntOrNull() ?: 0,
+    )
+    val wanted = listOf(major, minor, patch)
+    val diff = actual.zip(wanted).firstOrNull { (a, w) -> a != w } ?: return true
+    return diff.first > diff.second
 }
 
 /**

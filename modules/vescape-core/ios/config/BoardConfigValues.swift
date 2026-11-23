@@ -45,7 +45,7 @@ struct BoardConfigValues {
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `withFlag`
-  func withFlag(_ field: BoardConfigFlagField, _ enabled: Bool) -> BoardConfigValues? {
+  func withFlag(_ field: BoardConfigFlagField, _ enabled: Bool) throws -> BoardConfigValues? {
     let schemaType = writeBase?.schema.fields.first { $0.id == field.id }?.type
     let type: RefloatConfigValueType
     if let schemaType {
@@ -57,9 +57,31 @@ struct BoardConfigValues {
     } else {
       return nil
     }
+    let value = encodeFlag(type, enabled)
     var next = values
-    next[field.id] = encodeFlag(type, enabled)
-    return withValues(next)
+    next[field.id] = value
+    var base = writeBase
+    if let writeBase, schemaType != nil {
+      base = BoardConfigWriteBase(
+        schema: writeBase.schema,
+        rawConfig: try RefloatConfigEncoder.encode(
+          schema: writeBase.schema, rawConfig: writeBase.rawConfig, fields: [field.id: value]),
+        packageSignature: writeBase.packageSignature
+      )
+    }
+    return BoardConfigValues(
+      boardId: boardId,
+      refloatBaseVersion: refloatBaseVersion,
+      capturedAtMs: capturedAtMs,
+      freshness: freshness,
+      values: next,
+      writeBase: base
+    )
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `withLights`
+  func withLights(enabled: Bool, headlightsEnabled: Bool) throws -> BoardConfigValues? {
+    try withFlag(.ledsOn, enabled)?.withFlag(.headlightsOn, headlightsEnabled)
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `toBridgeMap`

@@ -64,7 +64,7 @@ final class BoardConfigFieldsTests: XCTestCase {
 
       for field in BoardConfigFlagField.allCases {
         let rebased = try XCTUnwrap(
-          values.withFlag(field, false),
+          try values.withFlag(field, false),
           "Refloat \(version) cannot rebase \(field.id)"
         )
         let rebasedValue = try XCTUnwrap(rebased.values[field.id])
@@ -97,7 +97,36 @@ final class BoardConfigFieldsTests: XCTestCase {
       writeBase: BoardConfigWriteBase(schema: schema, rawConfig: rawConfig, packageSignature: 0)
     )
     XCTAssertEqual(values.flag(.ledsOn), false)
-    XCTAssertEqual(values.withFlag(.ledsOn, true)?.flag(.ledsOn), true)
+    XCTAssertEqual(try values.withFlag(.ledsOn, true)?.flag(.ledsOn), true)
+  }
+
+  func testWithLightsPatchesTheWriteBaseBytesInEverySupportedRefloatVersion() throws {
+    for version in versions {
+      let schema = try schema(version)
+      let rawConfig = [UInt8](
+        repeating: 0,
+        count: schema.fields.map { $0.offset + $0.type.byteSize }.max() ?? 0
+      )
+      let values = BoardConfigValues(
+        boardId: "board",
+        refloatBaseVersion: version,
+        capturedAtMs: 0,
+        freshness: .fresh,
+        values: RefloatConfigDecoder.decodeFieldMap(schema: schema, rawConfig: rawConfig),
+        writeBase: BoardConfigWriteBase(schema: schema, rawConfig: rawConfig, packageSignature: 0)
+      )
+
+      let lit = try XCTUnwrap(try values.withLights(enabled: true, headlightsEnabled: true))
+      let reread = RefloatConfigDecoder.decodeFieldMap(schema: schema, rawConfig: try XCTUnwrap(lit.writeBase).rawConfig)
+
+      for field in BoardConfigFlagField.allCases {
+        XCTAssertEqual(lit.withValues(reread).flag(field), true, "Refloat \(version) write base keeps \(field.id) off")
+      }
+      XCTAssertTrue(
+        BoardConfigChangeNotice.diff(old: lit.values, new: reread, schema: schema).isEmpty,
+        "Refloat \(version) decoded values disagree with the patched write base"
+      )
+    }
   }
 
   func testEveryNumberFieldDecodesAsAFiniteNumberInEverySupportedRefloatVersion() throws {
@@ -133,6 +162,6 @@ final class BoardConfigFieldsTests: XCTestCase {
       values: [:],
       writeBase: nil
     )
-    XCTAssertNil(values.withFlag(.ledsOn, true))
+    XCTAssertNil(try values.withFlag(.ledsOn, true))
   }
 }

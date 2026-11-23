@@ -81,6 +81,33 @@ class BoardConfigFieldsTest {
   }
 
   @Test
+  fun withLightsPatchesTheWriteBaseBytesInEverySupportedRefloatVersion() {
+    for (version in versions()) {
+      val schema = schema(version)
+      val rawConfig = ByteArray(schema.fields.maxOf { it.offset + it.type.byteSize })
+      val values = BoardConfigValues(
+        boardId = "board",
+        refloatBaseVersion = version,
+        capturedAtMs = 0,
+        freshness = BoardConfigFreshness.FRESH,
+        values = RefloatConfigDecoder.decodeFieldMap(schema, rawConfig),
+        writeBase = BoardConfigWriteBase(schema, rawConfig, 0),
+      )
+
+      val lit = requireNotNull(values.withLights(enabled = true, headlightsEnabled = true))
+      val reread = RefloatConfigDecoder.decodeFieldMap(schema, requireNotNull(lit.writeBase).rawConfig)
+
+      for (field in BoardConfigFlagField.entries) {
+        assertEquals("Refloat $version write base keeps ${field.id} off", true, lit.copy(values = reread).flag(field))
+      }
+      assertTrue(
+        "Refloat $version decoded values disagree with the patched write base",
+        BoardConfigChangeNotice.diff(lit.values, reread, schema).isEmpty(),
+      )
+    }
+  }
+
+  @Test
   fun flagReadsTheNumericRepresentationRefloatActuallyUses() {
     val schema = schema("1.1.x")
     val rawConfig = ByteArray(schema.fields.maxOf { it.offset + it.type.byteSize })

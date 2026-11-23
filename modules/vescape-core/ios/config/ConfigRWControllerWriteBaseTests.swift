@@ -231,6 +231,42 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertEqual(demotions, 0)
   }
 
+  func testProfileWriteAfterALightsEchoKeepsTheNewLightBits() throws {
+    let sent = SentFrames()
+    let lightsSchema = RefloatConfigSchema(
+      hash: "test",
+      fields: schema().fields + [
+        RefloatConfigSchemaField(id: "leds.on", type: .bool, label: "leds.on", unit: nil, min: nil, max: nil, offset: 8, scale: nil),
+        RefloatConfigSchemaField(
+          id: "leds.headlights_on", type: .bool, label: "leds.headlights_on", unit: nil, min: nil, max: nil, offset: 9, scale: nil),
+      ]
+    )
+    let raw: [UInt8] = [0x3F, 0x80, 0x00, 0x00, 0x42, 0x28, 0x00, 0x00, 0x00, 0x00]
+    let fresh = BoardConfigValues(
+      boardId: "board-1",
+      refloatBaseVersion: "1.2.1",
+      capturedAtMs: 1,
+      freshness: .fresh,
+      values: RefloatConfigDecoder.decodeFieldMap(schema: lightsSchema, rawConfig: raw),
+      writeBase: BoardConfigWriteBase(schema: lightsSchema, rawConfig: raw, packageSignature: 0xDEAD_BEEF)
+    )
+    let echoed = try XCTUnwrap(try fresh.withLights(enabled: true, headlightsEnabled: true))
+
+    ConfigRWController().consumeWrite(
+      profileId: "profile-1",
+      fieldIds: ["tuned"],
+      connection: connection(echoed, sent),
+      onSuccess: { _ in },
+      onError: { code, message in XCTFail("write should not fail: \(code) \(message)") }
+    )
+
+    let setFrame = try XCTUnwrap(sent.frames.first { command($0) == COMM_SET_CUSTOM_CONFIG })
+    let written = RefloatConfigDecoder.decodeFieldMap(schema: lightsSchema, rawConfig: Array(setFrame.suffix(raw.count)))
+    XCTAssertEqual(written["tuned"] as? Double, 7.0)
+    XCTAssertEqual(written["leds.on"] as? Bool, true)
+    XCTAssertEqual(written["leds.headlights_on"] as? Bool, true)
+  }
+
   private func schema() -> RefloatConfigSchema {
     RefloatConfigSchema(
       hash: "test",

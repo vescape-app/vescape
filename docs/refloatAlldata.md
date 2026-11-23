@@ -199,12 +199,15 @@ enum itself marks as _"commands above 200 are unstable and can change protocol a
 gets no reply at all — indistinguishable from a dead link. Verified on hardware: a 1.1 board ignores
 id 20 completely and answers id 202 immediately.
 
-|                    | Refloat ≤ 1.1                                       | Refloat ≥ 1.2                        |
-| ------------------ | --------------------------------------------------- | ------------------------------------ |
-| Command id         | `202`                                               | `20`                                 |
-| `mask`             | one byte                                            | `uint32` big-endian                  |
-| Minimum arg length | 2                                                   | 5                                    |
-| What it writes     | the stored config (`leds.on`, `leds.headlights_on`) | a runtime override, config untouched |
+|                    | Refloat ≤ 1.1                                       | Refloat 1.2.0 – 1.2.1                               | Refloat ≥ 1.2.2                      |
+| ------------------ | --------------------------------------------------- | --------------------------------------------------- | ------------------------------------ |
+| Command id         | `202`                                               | `20`                                                | `20`                                 |
+| `mask`             | one byte                                            | `uint32` big-endian                                 | `uint32` big-endian                  |
+| Minimum arg length | 2                                                   | 5                                                   | 5                                    |
+| What it writes     | the stored config (`leds.on`, `leds.headlights_on`) | the stored config (`leds.on`, `leds.headlights_on`) | a runtime override, config untouched |
+
+The wire format changed in 1.2.0 but the storage only in 1.2.2, when `lights_control_request`
+moved from assigning `float_conf.leds` to `leds_set_enabled` / `leds_set_headlights_enabled`.
 
 Request: `[CUSTOM_APP_DATA=0x24] [101] [id] [mask] [value]`. `mask` names which switches to apply —
 bit 0 the lights as a whole, bit 1 the headlights — and `value` carries their new state in the same
@@ -218,13 +221,15 @@ even read. On ≤1.1 the single mask byte just has to be non-zero.
 Both generations answer with `[101] [id] [headlights_enabled << 1 | enabled]`, the status after the
 write, under their own command id.
 
-**Where the state lives differs, and it matters for clients.** On 1.2+ nothing is persisted, but the
+**Where the state lives differs, and it matters for clients.** On 1.2.2+ nothing is persisted, but the
 write is sticky for the rest of the power cycle: firmware flags the runtime value as overriding the
 configured one, and from then on stops re-applying the configured lights setting, so a later config
-write of that setting appears to do nothing until reboot. On ≤1.1 there is no runtime layer at all —
+write of that setting appears to do nothing until reboot. Up to 1.2.1 there is no runtime layer —
 the command assigns the config fields directly, which means the lights survive as long as that config
 does, a config read reports them faithfully, and a client's own change-detection will see its own
-write as an external config edit unless it rebases its baseline.
+write as an external config edit unless it rebases its baseline. Vescape patches the echoed bits into
+both its last-known values and its fresh write base, so a later tune push cannot restore the old
+lights.
 
 A board with its LEDs configured off still accepts the command and echoes back `enabled` — the flag
 flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a client knows not to

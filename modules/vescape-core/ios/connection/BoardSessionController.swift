@@ -627,12 +627,25 @@ internal final class BoardSessionController: VescGattListener {
   private func onBoardLightsEcho(_ lights: BoardLightsState) {
     boardLights = lights
     publishBoardLights()
-    guard lightsGeneration() == .legacy, let values = boardConfigValues else { return }
-    guard
-      let boardId = values.boardId, let baseVersion = values.refloatBaseVersion,
-      let rebased = values.withFlag(.ledsOn, lights.enabled)?
-        .withFlag(.headlightsOn, lights.headlightsEnabled)
-    else { return }
+    guard lightsCommandChangesBoardConfig(config?.refloatBaseVersion), let values = boardConfigValues else { return }
+    let patched: BoardConfigValues?
+    do {
+      patched = try values.withLights(enabled: lights.enabled, headlightsEnabled: lights.headlightsEnabled)
+    } catch {
+      let encodeError = error as? RefloatConfigEncodeException
+      recordConnectionDiagnostic(
+        "board_lights_write_base_patch_failed",
+        operation: "config_rw",
+        message: encodeError?.message ?? String(describing: error),
+        extra: ["code": encodeError?.code.rawValue]
+      )
+      // intentional-suppression: provisional values carry no write base, so the encoder is never reached
+      patched = try? values.demotedToProvisional().withLights(
+        enabled: lights.enabled, headlightsEnabled: lights.headlightsEnabled)
+    }
+    guard let rebased = patched else { return }
+    boardConfigValues = rebased
+    guard let boardId = rebased.boardId, let baseVersion = rebased.refloatBaseVersion else { return }
     let patch = rebased.values.filter {
       $0.key == BoardConfigFlagField.ledsOn.id || $0.key == BoardConfigFlagField.headlightsOn.id
     }

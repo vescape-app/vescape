@@ -71,7 +71,7 @@ internal data class RefloatConfigSnapshot(
   )
 }
 
-// @parity /modules/vescape-core/ios/config/RefloatConfigModels.swift
+// @parity /modules/vescape-core/ios/config/RefloatConfigErrorCode.swift
 // @parity /modules/vescape-core/src/index.ts `RefloatConfigErrorCode`
 internal enum class RefloatConfigErrorCode {
   BOARD_NOT_CONNECTED,

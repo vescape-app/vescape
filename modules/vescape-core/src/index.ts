@@ -1167,7 +1167,7 @@ export interface RefloatConfigGroup {
 
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigModels.kt `RefloatConfigErrorCode`
- * @parity /modules/vescape-core/ios/config/RefloatConfigModels.swift `RefloatConfigErrorCode`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigErrorCode.swift
  */
 export type RefloatConfigErrorCode =
   | 'BOARD_NOT_CONNECTED'

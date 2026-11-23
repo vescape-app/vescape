@@ -108,6 +108,13 @@ final class VescProtocolTests: XCTestCase {
     XCTAssertEqual(.current, BoardLightsGeneration.forBaseVersion(nil))
   }
 
+  func testLightsCommandChangesBoardConfigUpToRefloat121() {
+    for version in ["1.1.2", "1.2.0", "1.2.1"] { XCTAssertTrue(lightsCommandChangesBoardConfig(version), version) }
+    for version in ["1.2.2", "1.2.3", "1.3.0", "2.0", nil] {
+      XCTAssertFalse(lightsCommandChangesBoardConfig(version), String(describing: version))
+    }
+  }
+
   func testParsesLightsControlEcho() {
     XCTAssertEqual(
       BoardLightsState(enabled: true, headlightsEnabled: true),
