@@ -30,9 +30,10 @@ struct NavRoute: View {
             .stroke(
               color.opacity(ROUTE_ALPHA + (ROUTE_FOCUS_ALPHA - ROUTE_ALPHA) * focus),
               style: StrokeStyle(
-                lineWidth: ROUTE_WIDTH + (ROUTE_FOCUS_WIDTH - ROUTE_WIDTH) * focus,
+                lineWidth: ROUTE_WIDTH,
                 lineCap: .round,
-                lineJoin: .round
+                lineJoin: .round,
+                dash: [0.1, 4.3]
               )
             )
             .clipShape(Rim.path(in: geometry.size, inset: Rim.inset))
@@ -53,7 +54,7 @@ extension GraphicsContext {
       )
     )
     fill(circle, with: .color(.black))
-    stroke(circle, with: .color(color), lineWidth: ROUTE_WIDTH)
+    stroke(circle, with: .color(color), lineWidth: RIDER_RING_WIDTH)
   }
 }
 
@@ -85,8 +86,8 @@ private struct RouteShape: Shape {
   }
 }
 
-private let ROUTE_WIDTH: CGFloat = 2
-private let ROUTE_FOCUS_WIDTH: CGFloat = 3.5
+private let ROUTE_WIDTH: CGFloat = 2.5
 private let ROUTE_ALPHA = 0.55
 private let ROUTE_FOCUS_ALPHA = 0.85
 private let RIDER_DOT_RADIUS: CGFloat = 4
+private let RIDER_RING_WIDTH: CGFloat = 2

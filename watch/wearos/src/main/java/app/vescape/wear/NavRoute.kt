@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -86,9 +87,8 @@ private fun routePath(route: WatchRoute, rider: Offset, center: Offset, scale: F
     )
 
 private fun DrawScope.drawRoute(path: Path, color: Color, focus: Float) {
-    val width = ROUTE_W.toPx() + (ROUTE_FOCUS_W - ROUTE_W).toPx() * focus
     val alpha = ROUTE_ALPHA + (ROUTE_FOCUS_ALPHA - ROUTE_ALPHA) * focus
-    drawPath(path, color.copy(alpha = alpha), style = routeStroke(width))
+    drawPath(path, color.copy(alpha = alpha), style = routeStroke())
 }
 
 private fun polyline(points: List<Offset>): Path = Path().apply {
@@ -96,16 +96,20 @@ private fun polyline(points: List<Offset>): Path = Path().apply {
     for (index in 1 until points.size) lineTo(points[index].x, points[index].y)
 }
 
-private fun routeStroke(width: Float) = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private fun DrawScope.routeStroke() = Stroke(
+    width = ROUTE_W.toPx(),
+    cap = StrokeCap.Round,
+    join = StrokeJoin.Round,
+    pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.1.dp.toPx(), 4.3.dp.toPx())),
+)
 
 private val GUIDE_HALF_WIDTH = 1.dp
-private val ROUTE_W = 2.dp
+private val ROUTE_W = 2.5.dp
 
-private val ROUTE_FOCUS_W = 3.5.dp
 private const val ROUTE_ALPHA = 0.55f
 private const val ROUTE_FOCUS_ALPHA = 0.85f
 private val RIDER_DOT_R = 4.dp
-private val RIDER_RING_W = ROUTE_W
+private val RIDER_RING_W = 2.dp
 
 internal fun DrawScope.mapFaceClip(isRound: Boolean): Path {
     val faceCenter = Offset(size.width / 2f, size.height / 2f)
