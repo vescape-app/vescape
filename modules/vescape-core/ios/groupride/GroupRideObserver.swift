@@ -40,6 +40,7 @@ internal final class GroupRideObserver: NSObject {
   private var missedRetryWork: Cancellable?
   private var ridersFlushWork: Cancellable?
   private let deviceCredential: () -> DeviceCredential?
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `watchNetwork`
   private let watchNetwork: (@escaping () -> Void) -> () -> Void
   private let lastKnownLocation: () -> (lat: Double, lng: Double)?
   private var expiryWork: Cancellable?
@@ -109,7 +110,13 @@ internal final class GroupRideObserver: NSObject {
           scheduler.postDelayed(delay) { [weak self] in self?.publicRide.flushRiders() }
         }
       },
-      onPublicRideDemandChanged: onPublicRideDemandChanged,
+      onPublicRideDemandChanged: { [weak self] in
+        onPublicRideDemandChanged()
+        scheduler.post { [weak self] in
+          guard let self, self.publicRide.needsLink else { return }
+          self.retryNow(restartPending: false)
+        }
+      },
       onPins: { [weak self] signals, hazards, relayNow in
         self?.onPublicPins(signals, hazards: hazards, relayNow: relayNow)
       },
@@ -131,14 +138,6 @@ internal final class GroupRideObserver: NSObject {
       return
     }
     if serverUrl != nil && serverUrl != url { publicRide.discardMissed() }
-    cancelReconnect()
-    if let previous = webSocket {
-      webSocket = nil
-      previous.close()
-      stopHeartbeat()
-      stopPing()
-      publicRide.linkLost()
-    }
     stopped = false
     serverUrl = url
     reconnectAttempt = 0
@@ -208,15 +207,20 @@ internal final class GroupRideObserver: NSObject {
   }
 
   private func retryNow(restartPending: Bool) {
-    guard !stopped, !online.onlineBlocked, !linkOpen else { return }
-    let pending = webSocket
-    if pending != nil && !restartPending { return }
-    cancelReconnect()
-    stopPing()
-    webSocket = nil
-    pending?.close()
+    guard !stopped, !online.onlineBlocked, lastConnection != "blocked", !linkOpen else { return }
+    if webSocket != nil && !restartPending { return }
     reconnectAttempt = 0
     connect()
+  }
+
+  private func dropSocket() {
+    cancelReconnect()
+    stopPing()
+    guard let previous = webSocket else { return }
+    webSocket = nil
+    previous.close()
+    stopHeartbeat()
+    publicRide.linkLost()
   }
 
   private func onOnlineChanged() {
@@ -360,6 +364,7 @@ internal final class GroupRideObserver: NSObject {
 
   private func connect() {
     guard let url = serverUrl, !stopped else { return }
+    dropSocket()
     if online.onlineBlocked {
       emitConnection("blocked")
       return
@@ -379,7 +384,11 @@ internal final class GroupRideObserver: NSObject {
     webSocket = task
     task.open()
     receive(on: task)
-    schedulePing()
+    pingWork = scheduler.postDelayed(Int64(Self.connectTimeoutSeconds * 1000)) { [weak self] in
+      guard let self, self.isCurrentSocket(task), self.lastConnection != "connected" else { return }
+      NSLog("[GroupRide] relay handshake timed out; reconnecting")
+      self.dropDeadLink(task)
+    }
   }
 
   private func receive(on task: GroupRideSocket) {
@@ -402,6 +411,8 @@ internal final class GroupRideObserver: NSObject {
     onMain { [self] in
       guard isCurrentSocket(task) else { return }
       reconnectAttempt = 0
+      stopPing()
+      schedulePing()
       emitConnection("connected")
     }
   }
@@ -425,8 +436,10 @@ internal final class GroupRideObserver: NSObject {
     stopHeartbeat()
     publicRide.linkLost()
     emitConnection("disconnected")
-    let delay = Self.reconnectDelaysSeconds[min(reconnectAttempt, Self.reconnectDelaysSeconds.count - 1)]
+    let delays = publicRide.needsLink ? Self.sharingReconnectDelaysSeconds : Self.idleReconnectDelaysSeconds
+    let delay = delays[min(reconnectAttempt, delays.count - 1)]
     reconnectAttempt += 1
+    cancelReconnect()
     reconnectWork = scheduler.postDelayed(Int64(delay * 1000)) { [weak self] in self?.connect() }
   }
 
@@ -582,13 +595,14 @@ internal final class GroupRideObserver: NSObject {
 
   private func schedulePing() {
     pingWork = scheduler.postDelayed(Int64(Self.pingIntervalSeconds * 1000)) { [weak self] in
-      guard let self, !self.stopped, let ws = self.webSocket else { return }
+      guard let self, let ws = self.webSocket, self.isCurrentSocket(ws) else { return }
       if self.awaitingPong {
         NSLog("[GroupRide] relay missed a pong; reconnecting")
         self.dropDeadLink(ws)
         return
       }
       self.awaitingPong = true
+      self.schedulePing()
       ws.ping { [weak self] error in
         self?.onMain { [weak self] in
           guard let self, self.isCurrentSocket(ws) else { return }
@@ -599,11 +613,11 @@ internal final class GroupRideObserver: NSObject {
           }
         }
       }
-      self.schedulePing()
     }
   }
 
   private func dropDeadLink(_ ws: GroupRideSocket) {
+    webSocket = nil
     ws.close()
     scheduleReconnect()
   }
@@ -619,8 +633,10 @@ internal final class GroupRideObserver: NSObject {
   }
 
   private static let pingIntervalSeconds: TimeInterval = 5
+  private static let connectTimeoutSeconds: TimeInterval = 5
   private static let heartbeatIntervalSeconds: TimeInterval = 3
-  private static let reconnectDelaysSeconds: [TimeInterval] = [0.5, 1, 2, 3]
+  private static let sharingReconnectDelaysSeconds: [TimeInterval] = [0.5, 1, 2, 3]
+  private static let idleReconnectDelaysSeconds: [TimeInterval] = [1, 2, 5, 10, 30]
 }
 
 extension GroupRideObserver: URLSessionWebSocketDelegate {

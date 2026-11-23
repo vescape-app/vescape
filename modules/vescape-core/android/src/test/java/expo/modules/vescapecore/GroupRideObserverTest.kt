@@ -316,6 +316,8 @@ class GroupRideObserverTest {
     @Test
     fun `a lost link retries within seconds and at once on a new network or foreground`() {
         val h = RelayHarness()
+        h.observer.loadPublicRide(PublicRideSwitch(true, null), "acc")
+        h.observer.setBoardConnected(true)
         h.observer.start("wss://example.com/ws/group-rides")
         h.ready()
         repeat(6) {
@@ -330,7 +332,7 @@ class GroupRideObserverTest {
         h.newNetwork!!.invoke()
         h.flush()
         assertEquals(waiting + 1, h.links.size)
-        h.clock.advance(5_000)
+        h.clock.advance(4_000)
         assertEquals(waiting + 1, h.links.size)
 
         val pending = h.links.last()
@@ -355,5 +357,60 @@ class GroupRideObserverTest {
 
         h.observer.stop()
         assertNull(h.newNetwork)
+    }
+
+    @Test
+    fun `an idle observer backs off while a sharing one keeps retrying fast`() {
+        val h = RelayHarness()
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        repeat(4) {
+            h.drop()
+            h.clock.advance(10_000)
+        }
+        val idle = h.links.size
+        h.drop()
+        h.clock.advance(3_000)
+        assertEquals(idle, h.links.size)
+
+        h.observer.loadPublicRide(PublicRideSwitch(true, null), "acc")
+        h.observer.setBoardConnected(true)
+        h.flush()
+        assertEquals(idle + 1, h.links.size)
+        h.observer.stop()
+    }
+
+    @Test
+    fun `an app status refresh during backoff opens exactly one link`() {
+        val h = RelayHarness()
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        h.drop()
+        val waiting = h.links.size
+
+        h.onlineChanged!!.invoke()
+        h.flush()
+        h.clock.advance(30_000)
+
+        assertEquals(waiting + 1, h.links.size)
+        h.observer.stop()
+    }
+
+    @Test
+    fun `a blocked relay is not retried by a new network or foreground`() {
+        val h = RelayHarness()
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        h.blocked = true
+        h.onlineChanged!!.invoke()
+        h.flush()
+        val count = h.links.size
+
+        h.newNetwork!!.invoke()
+        h.observer.resync()
+        h.flush()
+
+        assertEquals(count, h.links.size)
+        h.observer.stop()
     }
 }

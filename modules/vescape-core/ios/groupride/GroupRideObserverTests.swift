@@ -267,6 +267,8 @@ final class GroupRideObserverTests: XCTestCase {
 
   func testALostLinkRetriesWithinSecondsAndAtOnceOnANewNetworkOrForeground() {
     let h = RelayHarness()
+    h.observer.loadPublicRide(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+    h.observer.setBoardConnected(true)
     h.observer.start("wss://example.com/ws/group-rides")
     h.ready()
     for _ in 0..<6 {
@@ -280,7 +282,7 @@ final class GroupRideObserverTests: XCTestCase {
     let waiting = h.links.count
     h.newNetwork!()
     XCTAssertEqual(h.links.count, waiting + 1)
-    h.clock.advance(5_000)
+    h.clock.advance(4_000)
     XCTAssertEqual(h.links.count, waiting + 1)
 
     let pending = h.links.last!
@@ -303,6 +305,64 @@ final class GroupRideObserverTests: XCTestCase {
     XCTAssertNil(h.newNetwork)
   }
 
+  func testAnIdleObserverBacksOffWhileASharingOneKeepsRetryingFast() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    h.drop()
+    let idle = h.links.count
+    h.clock.advance(500)
+    XCTAssertEqual(h.links.count, idle)
+
+    h.observer.loadPublicRide(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+    h.observer.setBoardConnected(true)
+    h.clock.advance(0)
+    XCTAssertEqual(h.links.count, idle + 1)
+    h.observer.stop()
+  }
+
+  func testAnAppStatusRefreshDuringBackoffOpensExactlyOneLink() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    h.drop()
+    let waiting = h.links.count
+
+    h.gate.changed?()
+    h.clock.advance(4_000)
+
+    XCTAssertEqual(h.links.count, waiting + 1)
+    h.observer.stop()
+  }
+
+  func testABlockedRelayIsNotRetriedByANewNetworkOrForeground() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    h.gate.onlineBlocked = true
+    h.gate.changed?()
+    let count = h.links.count
+
+    h.newNetwork!()
+    h.observer.resync()
+
+    XCTAssertEqual(h.links.count, count)
+    h.observer.stop()
+  }
+
+  func testAHandshakeThatNeverCompletesIsDroppedAndRetried() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    let hung = h.links.last!
+
+    h.clock.advance(5_000)
+    XCTAssertTrue(hung.closed)
+    h.clock.advance(1_000)
+
+    XCTAssertEqual(h.links.count, 2)
+    h.observer.stop()
+  }
+
   func testARelayThatStopsAnsweringPingsIsDroppedAndRetried() {
     let h = RelayHarness()
     h.observer.start("wss://example.com/ws/group-rides")
@@ -313,7 +373,7 @@ final class GroupRideObserverTests: XCTestCase {
     h.clock.advance(10_000)
 
     XCTAssertTrue(h.links[count - 1].closed)
-    h.clock.advance(500)
+    h.clock.advance(1_000)
     XCTAssertEqual(h.links.count, count + 1)
     h.observer.stop()
   }

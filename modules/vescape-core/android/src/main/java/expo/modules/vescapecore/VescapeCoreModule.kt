@@ -1665,7 +1665,7 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.startGroupRideObserve(context.applicationContext, serverUrl)
     }
     Function("stopGroupRideObserve") {
-      CoreForegroundService.stopGroupRideObserve(context.applicationContext)
+      CoreForegroundService.stopGroupRideObserve()
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `dismissRideNotice`
     Function("getRideNotices") { RideNotices.current.map { it.toMap() } }

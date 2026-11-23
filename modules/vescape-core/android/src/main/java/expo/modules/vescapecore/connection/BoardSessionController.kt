@@ -996,7 +996,6 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `stopGroupRideObserve` */
     fun stopGroupRideObserve() {
-        CoreForegroundService.pendingGroupRideUrl = null
         jsObserving = false
         if (groupRideObserver.publicRideNeedsLink) return
         groupRideObserver.stop()

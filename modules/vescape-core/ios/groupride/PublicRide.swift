@@ -108,7 +108,6 @@ internal final class PublicRide {
     if switchState != stored { persist(switchState) }
     armTimer()
     reconcile()
-    emitDemand()
     emitStatus(force: true)
   }
 

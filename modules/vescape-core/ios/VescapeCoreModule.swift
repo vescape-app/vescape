@@ -389,11 +389,11 @@ public class VescapeCoreModule: Module {
 
     Function("startGroupRideObserve") { (serverUrl: String) in
       self.coordinator.startGroupRideObserve(serverUrl)
-    }
+    }.runOnQueue(.main)
 
     Function("stopGroupRideObserve") {
       self.coordinator.stopGroupRideObserve()
-    }
+    }.runOnQueue(.main)
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `dismissRideNotice`
     Function("getRideNotices") { () -> [[String: Any?]] in

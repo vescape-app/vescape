@@ -58,7 +58,6 @@ internal const val ACTION_DISCONNECT_FROM_NOTIFICATION = "expo.modules.vescapeco
 internal const val ACTION_START_GPS_MONITORING = "expo.modules.vescapecore.ACTION_START_GPS_MONITORING"
 private const val ACTION_STOP_GPS_MONITORING = "expo.modules.vescapecore.ACTION_STOP_GPS_MONITORING"
 internal const val ACTION_START_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_START_GROUP_RIDE_OBSERVE"
-private const val ACTION_STOP_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_STOP_GROUP_RIDE_OBSERVE"
 internal const val ACTION_AUTO_CONNECT_SELECTED_BOARD = "expo.modules.vescapecore.ACTION_AUTO_CONNECT_SELECTED_BOARD"
 internal const val ACTION_AUTO_CONNECT_ACCESSORIES = "expo.modules.vescapecore.ACTION_AUTO_CONNECT_ACCESSORIES"
 internal const val ACTION_COMPANION_DEVICE_APPEARED = "expo.modules.vescapecore.ACTION_COMPANION_DEVICE_APPEARED"
@@ -116,7 +115,7 @@ class CoreForegroundService : Service() {
         internal var pendingConfigRead: PendingConfigRead? = null
         internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
-        internal var pendingGroupRideUrl: String? = null
+        @Volatile internal var pendingGroupRideUrl: String? = null
         @Volatile internal var lookAroundRequested = false
 
         /**
@@ -366,13 +365,8 @@ class CoreForegroundService : Service() {
             onMain { instance?.controller?.consumePendingGroupRideObserve() }
         }
 
-        fun stopGroupRideObserve(context: Context) {
+        fun stopGroupRideObserve() {
             pendingGroupRideUrl = null
-            instance ?: return
-            val intent = Intent(context, CoreForegroundService::class.java).apply {
-                action = ACTION_STOP_GROUP_RIDE_OBSERVE
-            }
-            context.startService(intent)
             onMain { instance?.controller?.stopGroupRideObserve() }
         }
 
@@ -594,7 +588,6 @@ class CoreForegroundService : Service() {
             ACTION_START_GPS_MONITORING -> controller.consumePendingGpsStart()
             ACTION_STOP_GPS_MONITORING -> controller.stopGpsMonitoring()
             ACTION_START_GROUP_RIDE_OBSERVE -> controller.consumePendingGroupRideObserve()
-            ACTION_STOP_GROUP_RIDE_OBSERVE -> controller.stopGroupRideObserve()
             ACTION_AUTO_CONNECT_SELECTED_BOARD -> {
                 controller.promoteConnectedDeviceForeground()
                 controller.autoConnectSelectedBoard()

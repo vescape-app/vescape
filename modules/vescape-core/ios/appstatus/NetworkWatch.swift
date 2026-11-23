@@ -12,7 +12,10 @@ func watchNetwork(_ onNewNetwork: @escaping () -> Void) -> () -> Void {
     if isNew { onNewNetwork() }
   }
   monitor.start(queue: DispatchQueue(label: "app.vescape.network-watch"))
-  return { monitor.cancel() }
+  return {
+    monitor.pathUpdateHandler = nil
+    monitor.cancel()
+  }
 }
 
 private final class SeenNetwork {
