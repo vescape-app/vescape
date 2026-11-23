@@ -1,5 +1,11 @@
 import definitions from '@/../modules/vescape-core/shared/alert-preset-definitions.json'
-import { formatSpeedValue, speedUnit, type DistanceUnit } from '@/helpers/units'
+import {
+  formatSpeedValue,
+  speedUnit,
+  temperatureFromC,
+  type DistanceUnit,
+  type TemperatureUnit,
+} from '@/helpers/units'
 import type { AlertRule, AlertTestRule, AlertPresetLevel, AlertPresetMetric } from 'vescape-core'
 import {
   GEIGER_LEVELS,
@@ -32,15 +38,24 @@ const ALERT_PRESET_UNIT: Record<AlertPresetMetric, string> = {
   'controller-temp': '°',
 }
 
+function isTempPresetMetric(metric: AlertPresetMetric): boolean {
+  return metric === 'motor-temp' || metric === 'controller-temp'
+}
+
 export function formatAlertPresetSummary(
   metric: AlertPresetMetric,
   specs: AlertRulePresentation[],
   distanceUnit: DistanceUnit = 'km',
+  temperatureUnit: TemperatureUnit = 'celsius',
 ): string | null {
   if (specs.length === 0) return null
   const unit = metric === 'speed' ? ` ${speedUnit(distanceUnit)}` : ALERT_PRESET_UNIT[metric]
   const number = (value: number) =>
-    metric === 'speed' ? formatSpeedValue(value, distanceUnit, 1) : Math.round(value)
+    metric === 'speed'
+      ? formatSpeedValue(value, distanceUnit, 1)
+      : isTempPresetMetric(metric)
+        ? Math.round(temperatureFromC(value, temperatureUnit))
+        : Math.round(value)
   return specs
     .map((spec) => {
       if (spec.thresholdMax != null) {
@@ -61,11 +76,16 @@ export function describeAlertRules(
   metric: AlertPresetMetric,
   specs: readonly AlertRulePresentation[],
   distanceUnit: DistanceUnit = 'km',
+  temperatureUnit: TemperatureUnit = 'celsius',
 ): string | null {
   if (specs.length === 0) return null
   const unit = metric === 'speed' ? ` ${speedUnit(distanceUnit)}` : ALERT_PRESET_UNIT[metric]
   const number = (value: number) =>
-    metric === 'speed' ? formatSpeedValue(value, distanceUnit, 1) : Math.round(value)
+    metric === 'speed'
+      ? formatSpeedValue(value, distanceUnit, 1)
+      : isTempPresetMetric(metric)
+        ? Math.round(temperatureFromC(value, temperatureUnit))
+        : Math.round(value)
   const value = (threshold: number) => `${number(threshold)}${unit}`
 
   const range = specs.find((spec) => spec.thresholdMax != null)

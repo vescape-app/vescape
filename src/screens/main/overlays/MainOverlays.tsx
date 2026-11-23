@@ -148,7 +148,7 @@ export function MainOverlays({
       {weather && (mode === 'telemetry' || mode === 'map') ? (
         <WeatherSidePill
           icon={weather.icon}
-          temperature={weather.temperatureC}
+          temperatureC={weather.temperatureC}
           precipProbability={weather.precipitationProbability}
           onPress={map.enterWeather}
         />

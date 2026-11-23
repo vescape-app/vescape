@@ -6,6 +6,8 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { theme, type ThemeColor } from '@/constants/theme'
+import { temperatureFromC } from '@/helpers/units'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 import { useWeatherStore } from '@/modules/weather/store/weatherStore'
@@ -39,6 +41,7 @@ export function MapModeTabs({
   onEnterLegalLimits,
 }: MapModeTabsProps) {
   const weather = useWeatherStore((s) => s.weather)
+  const { temperatureUnit } = useUserPreferences()
   const weatherColor = weather ? weatherIconColor(weather.icon) : theme.palette.sky.color
   const weatherSelection = {
     bg: theme.alpha(weatherColor, 0.12),
@@ -84,7 +87,7 @@ export function MapModeTabs({
           hint={
             weather ? (
               <Text style={[styles.mapModeBadgeText, { color: weatherColor }]}>
-                {weather.temperatureC}°
+                {Math.round(temperatureFromC(weather.temperatureC, temperatureUnit))}°
               </Text>
             ) : null
           }

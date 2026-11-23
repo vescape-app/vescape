@@ -11,6 +11,7 @@ enum WatchSettingsKey {
   static let streetMapEnabled = "streetMapEnabled"
   static let mapGaugesPercent = "mapGaugesPercent"
   static let distanceUnit = "distanceUnit"
+  static let temperatureUnit = "temperatureUnit"
   static let timeFormat = "timeFormat"
   static let tiltRatePercent = "tiltRatePercent"
 }
@@ -31,6 +32,7 @@ let watchSourceSettingKeys: Set<String> = [
   "wearStreetMapEnabled",
   "wearMapGaugesPercent",
   "distanceUnit",
+  "temperatureUnit",
   "timeFormat",
   "wearTiltRatePercent",
   "wearPushRateHz",
@@ -45,6 +47,7 @@ struct WatchSettings: Equatable {
   var streetMapEnabled: Bool = true
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
   var distanceUnit: String = "km"
+  var temperatureUnit: String = "celsius"
   var timeFormat: String = "24h"
   var tiltRatePercent: Int = watchDefaultTiltRatePercent
 
@@ -60,6 +63,7 @@ struct WatchSettings: Equatable {
       WatchSettingsKey.streetMapEnabled: streetMapEnabled,
       WatchSettingsKey.mapGaugesPercent: mapGaugesPercent,
       WatchSettingsKey.distanceUnit: distanceUnit,
+      WatchSettingsKey.temperatureUnit: temperatureUnit,
       WatchSettingsKey.timeFormat: timeFormat,
       WatchSettingsKey.tiltRatePercent: tiltRatePercent,
     ]
@@ -79,6 +83,7 @@ struct WatchSettings: Equatable {
       streetMapEnabled: payload[WatchSettingsKey.streetMapEnabled] as? Bool ?? wristDefaults.streetMapEnabled,
       mapGaugesPercent: WatchMapGauges.percent(payload[WatchSettingsKey.mapGaugesPercent]) ?? wristDefaults.mapGaugesPercent,
       distanceUnit: payload[WatchSettingsKey.distanceUnit] as? String == "mi" ? "mi" : "km",
+      temperatureUnit: payload[WatchSettingsKey.temperatureUnit] as? String == "fahrenheit" ? "fahrenheit" : "celsius",
       timeFormat: payload[WatchSettingsKey.timeFormat] as? String == "12h" ? "12h" : "24h",
       tiltRatePercent: (payload[WatchSettingsKey.tiltRatePercent] as? NSNumber)
         .map { min(100, max(1, $0.intValue)) } ?? watchDefaultTiltRatePercent

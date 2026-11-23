@@ -9,6 +9,8 @@ object UnitPresentation {
     fun speedFromKmh(kmh: Double, distanceUnit: String): Double =
         if (distanceUnit == "mi") kmh * 1000.0 / METERS_PER_MILE else kmh
     fun speedUnit(distanceUnit: String): String = if (distanceUnit == "mi") "mph" else "km/h"
+    fun temperatureFromC(celsius: Double, temperatureUnit: String): Double =
+        if (temperatureUnit == "fahrenheit") celsius * 9.0 / 5.0 + 32.0 else celsius
     fun formatSpokenSpeed(kmh: Double, distanceUnit: String): String =
         String.format(java.util.Locale.US, "%.0f", speedFromKmh(kmh, distanceUnit))
     fun distance(meters: Double, distanceUnit: String): String {

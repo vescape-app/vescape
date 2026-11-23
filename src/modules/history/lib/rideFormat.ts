@@ -1,4 +1,4 @@
-import { formatClock, type TimeFormat } from '@/helpers/time'
+import { formatClock, formatDateRange, type DateFormat, type TimeFormat } from '@/helpers/time'
 import { formatRideDistanceMeters, type DistanceUnit } from '@/helpers/units'
 
 export function formatRideTime(
@@ -10,28 +10,22 @@ export function formatRideTime(
   return `${formatClock(startMs, false, timeFormat)} – ${live ? 'now' : formatClock(endMs, false, timeFormat)}`
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-export function formatRideDate(startMs: number, endMs: number): string {
-  const s = new Date(startMs)
-  const e = new Date(endMs)
-  const sameDay =
-    s.getFullYear() === e.getFullYear() &&
-    s.getMonth() === e.getMonth() &&
-    s.getDate() === e.getDate()
-  if (sameDay) {
-    return `${s.getDate()} ${MONTHS[s.getMonth()]} ${s.getFullYear()}`
-  }
-  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
-    return `${s.getDate()}–${e.getDate()} ${MONTHS[s.getMonth()]} ${s.getFullYear()}`
-  }
-  return `${s.getDate()} ${MONTHS[s.getMonth()]} – ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`
+export function formatRideDate(
+  startMs: number,
+  endMs: number,
+  dateFormat: DateFormat = 'dmy',
+): string {
+  return formatDateRange(startMs, endMs, dateFormat)
 }
 
-export function formatRideMeta(startAtMs: number, endAtMs: number, boardName: string): string {
-  return boardName
-    ? `${formatRideDate(startAtMs, endAtMs)} · ${boardName}`
-    : formatRideDate(startAtMs, endAtMs)
+export function formatRideMeta(
+  startAtMs: number,
+  endAtMs: number,
+  boardName: string,
+  dateFormat: DateFormat = 'dmy',
+): string {
+  const date = formatRideDate(startAtMs, endAtMs, dateFormat)
+  return boardName ? `${date} · ${boardName}` : date
 }
 
 export function formatRideListDetails(

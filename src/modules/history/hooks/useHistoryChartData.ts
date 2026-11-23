@@ -1,4 +1,4 @@
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useMemo } from 'react'
 
 import { computeAutoRangeFromValues, toExcludedRanges } from '@/components/charts/chartMath'
@@ -295,9 +295,9 @@ export function useHistoryChartStack({
   metricHeight = METRIC_CHART_HEIGHT,
   gpsGapBands,
 }: HistoryChartStackInput): ChartSpec[] {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit, temperatureUnit } = useUserPreferences()
   return useMemo(() => {
-    const speedPresentation = historyChartPresentation('speed', distanceUnit)
+    const speedPresentation = historyChartPresentation('speed', distanceUnit, temperatureUnit)
     const speed: ChartSpec = {
       key: 'speed',
       label: SPEED_CHART_DEF.label,
@@ -317,51 +317,57 @@ export function useHistoryChartStack({
     }
 
     const optional = OPTIONAL_CHART_METRICS.filter((def) => activeMetrics.has(def.key)).map(
-      (def) =>
-        def.key === 'battery'
-          ? batteryChart(series, ranges, ramps, metricHeight)
-          : ({
+      (def) => {
+        if (def.key === 'battery') return batteryChart(series, ranges, ramps, metricHeight)
+        const presentation = historyChartPresentation(def.key, distanceUnit, temperatureUnit)
+        return {
+          key: def.key,
+          label: def.label,
+          height: metricHeight,
+          series: [
+            {
+              key: def.key,
+              data: series[def.key],
+              color: def.color,
+              ramp: ramps[def.key],
+              ...presentation,
+              decimals: def.decimals,
+            },
+          ],
+          left: {
+            range: ranges[def.key],
+            displayScale: presentation.displayScale,
+            displayOffset: presentation.displayOffset,
+          },
+          bands: exclusionBands[def.key],
+        } satisfies ChartSpec
+      },
+    )
+
+    const extra =
+      extraSeries && extraRanges
+        ? EXTRA_CHART_METRICS.filter((def) => activeMetrics.has(def.key)).map((def) => {
+            const presentation = historyChartPresentation(def.key, distanceUnit, temperatureUnit)
+            return {
               key: def.key,
               label: def.label,
               height: metricHeight,
               series: [
                 {
                   key: def.key,
-                  data: series[def.key],
+                  data: extraSeries[def.key],
                   color: def.color,
-                  ramp: ramps[def.key],
-                  unit: def.unit,
+                  ...presentation,
                   decimals: def.decimals,
                 },
               ],
-              left: { range: ranges[def.key] },
-              bands: exclusionBands[def.key],
-            } satisfies ChartSpec),
-    )
-
-    const extra =
-      extraSeries && extraRanges
-        ? EXTRA_CHART_METRICS.filter((def) => activeMetrics.has(def.key)).map(
-            (def) =>
-              ({
-                key: def.key,
-                label: def.label,
-                height: metricHeight,
-                series: [
-                  {
-                    key: def.key,
-                    data: extraSeries[def.key],
-                    color: def.color,
-                    ...historyChartPresentation(def.key, distanceUnit),
-                    decimals: def.decimals,
-                  },
-                ],
-                left: {
-                  range: extraRanges[def.key],
-                  displayScale: historyChartPresentation(def.key, distanceUnit).displayScale,
-                },
-              }) satisfies ChartSpec,
-          )
+              left: {
+                range: extraRanges[def.key],
+                displayScale: presentation.displayScale,
+                displayOffset: presentation.displayOffset,
+              },
+            } satisfies ChartSpec
+          })
         : []
 
     const showSpeed = !speedOptional || activeMetrics.has('speed')
@@ -379,6 +385,7 @@ export function useHistoryChartStack({
     speedHeight,
     speedOptional,
     distanceUnit,
+    temperatureUnit,
   ])
 }
 

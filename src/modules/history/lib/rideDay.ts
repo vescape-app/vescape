@@ -1,5 +1,6 @@
 import type { RideDay } from 'vescape-core'
 
+import type { DateFormat } from '@/helpers/time'
 import { formatRideDate } from '@/modules/history/lib/rideFormat'
 
 export function rideDayOf(atMs: number): RideDay {
@@ -14,7 +15,7 @@ export function rideDayBounds({ year, month, day }: RideDay): { startMs: number;
   }
 }
 
-export function formatRideDay(day: RideDay): string {
+export function formatRideDay(day: RideDay, dateFormat: DateFormat = 'dmy'): string {
   const { startMs } = rideDayBounds(day)
-  return formatRideDate(startMs, startMs)
+  return formatRideDate(startMs, startMs, dateFormat)
 }

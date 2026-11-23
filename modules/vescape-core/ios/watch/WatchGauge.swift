@@ -30,8 +30,8 @@ enum WatchGauge {
     whole(value, blind: blind)
   }
 
-  static func temp(_ value: Double?, blind: Bool = false) -> String {
-    whole(value, blind: blind, suffix: "°")
+  static func temp(_ value: Double?, blind: Bool = false, temperatureUnit: String = "celsius") -> String {
+    whole(value.map { UnitPresentation.temperatureFromC($0, temperatureUnit) }, blind: blind, suffix: "°")
   }
 
   static func batteryPercent(_ value: Double?, blind: Bool = false) -> String {

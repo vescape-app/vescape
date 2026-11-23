@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useFormat } from '@/hooks/useFormat'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   BatteryChargingVerticalIcon,
   BatteryPlusVerticalIcon,
@@ -39,7 +39,7 @@ export function useProfileStatItems(
   keys?: ProfileStatKey[],
   onOpenRecordRide?: OpenRecordRide,
 ): ProfileStatItem[] {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const { formatSpeedWithUnit } = useFormat()
   const items = useMemo<ProfileStatItem[]>(
     () => [

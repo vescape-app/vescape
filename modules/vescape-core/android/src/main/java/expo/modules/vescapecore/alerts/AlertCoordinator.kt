@@ -98,7 +98,7 @@ internal class AlertCoordinator(
                     return@let
                 }
                 val tts = parseTtsAlertSound(alert.spec) ?: return@let
-                val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, distanceUnit)
+                val text = renderAlertMessageTemplate(tts.text, alert, batteryPercent, onDiagnostic, distanceUnit, temperatureUnit)
                 if (text.isNotEmpty()) feedback().speakAfterSeverity(tts.severity, text)
             }
             for (alert in single) {

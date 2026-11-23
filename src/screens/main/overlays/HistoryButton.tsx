@@ -6,7 +6,7 @@ import {
   IconButtonExtensionStat,
 } from '@/components/controls/IconButtonExtension'
 import { rideDistanceFromMeters } from '@/helpers/units'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useTodayStats } from '@/modules/profile/hooks/useTodayStats'
 
 interface HistoryButtonProps {
@@ -15,7 +15,7 @@ interface HistoryButtonProps {
 
 export function HistoryButton({ onPress }: HistoryButtonProps) {
   const today = useTodayStats()
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const distance = rideDistanceFromMeters(today.distanceM ?? 0, distanceUnit).toFixed(1)
   const minutes = today.rideTimeMs / 60_000
   const [time, timeUnit] =

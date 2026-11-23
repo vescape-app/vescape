@@ -17,6 +17,7 @@ const BASE: AppSettings = {
   distanceUnit: 'km',
   temperatureUnit: 'celsius',
   timeFormat: '24h',
+  dateFormat: 'dmy',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
@@ -241,6 +242,7 @@ test('master auto-start switch is independent from configured boards', async () 
 for (const [key, initial, selected] of [
   ['distanceUnit', 'km', 'mi'],
   ['timeFormat', '24h', '12h'],
+  ['dateFormat', 'dmy', 'mdy'],
 ] as const) {
   test(`${key} publishes only after native save and survives a reload`, async () => {
     const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')

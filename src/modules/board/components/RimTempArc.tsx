@@ -12,6 +12,8 @@ import { MonoReadout, MonoText } from '@/components/base/MonoValue'
 import { GAUGE_FOOTER_TEXT } from '@/components/charts/LinearGauge'
 import { interaction, theme, type AlphaLevel } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
+import { temperatureFromC, temperatureSymbol } from '@/helpers/units'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   useResolvedAccentColors,
   useResolvedColor,
@@ -77,32 +79,40 @@ export function RimTempArc({
   const color = useResolvedColor(metric.color)
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
+  const { temperatureUnit } = useUserPreferences()
   const scale = radius / UNIT
 
   const step = 10 ** -metric.decimals
-  const shown = useSharedValue<number | null>(null)
+  const shownC = useSharedValue<number | null>(null)
+  const shownDisplay = useSharedValue<number | null>(null)
   useAnimatedReaction(
     () => {
       const v = value.value
-      return v != null && Number.isFinite(v) ? Math.round(v / step) * step : null
+      if (v == null || !Number.isFinite(v)) return null
+      return Math.round(temperatureFromC(v, temperatureUnit) / step) * step
     },
     (next) => {
-      shown.value = next
+      shownDisplay.value = next
+      shownC.value = next == null ? null : value.value
     },
+    [step, temperatureUnit],
   )
 
   const valuePath = useDerivedValue(() =>
-    svgPath(arcPath(arc, normalizeFraction(shown.value ?? min, min, max))),
+    svgPath(arcPath(arc, normalizeFraction(shownC.value ?? min, min, max))),
   )
   const wedge = useDerivedValue(() =>
-    svgPath(wedgePath(arc, normalizeFraction(shown.value ?? min, min, max))),
+    svgPath(wedgePath(arc, normalizeFraction(shownC.value ?? min, min, max))),
   )
   const arcColor = useDerivedValue(() =>
-    gaugeRampColor(shown.value, color, hotRange, accents.red.color),
+    gaugeRampColor(shownC.value, color, hotRange, accents.red.color),
   )
-  const valueText = useDerivedValue(() => shown.value?.toFixed(metric.decimals) ?? '')
-  const unitText = useDerivedValue(() => (shown.value == null ? '' : metric.unit))
-  const emptyText = useDerivedValue<string>(() => (shown.value == null ? DASH : ''))
+  const unitLabel = temperatureSymbol(temperatureUnit)
+  const valueText = useDerivedValue(() =>
+    shownDisplay.value == null ? '' : shownDisplay.value.toFixed(metric.decimals),
+  )
+  const unitText = useDerivedValue<string>(() => (shownDisplay.value == null ? '' : unitLabel))
+  const emptyText = useDerivedValue<string>(() => (shownDisplay.value == null ? DASH : ''))
 
   const valueCenterX = isLeft ? radius * (1 - VALUE_X) : radius * VALUE_X
   const valueX = valueCenterX + VALUE_END_OFFSET - VALUE_BOX_W

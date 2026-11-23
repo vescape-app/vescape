@@ -6,7 +6,9 @@ import type { MapPoint } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
+import { formatDate } from '@/helpers/time'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { MapPointMediaPreview } from '@/modules/map-points/components/MapPointMediaPreview'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
 import {
@@ -156,9 +158,10 @@ export function MapTargetReadHeader({
   target: MapSelection
   onSignInForDetails?: () => void
 }) {
+  const { dateFormat } = useUserPreferences()
   if (target.type === 'mapPoint') {
     const title = getMapTargetDisplayTitle(target)
-    const created = new Date(target.point.createdAt).toLocaleDateString()
+    const created = formatDate(target.point.createdAt, dateFormat)
     return (
       <>
         <Text style={mapSheetStyles.mapTargetTitle} numberOfLines={1}>

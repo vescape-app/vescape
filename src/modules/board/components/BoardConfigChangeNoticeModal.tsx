@@ -7,12 +7,21 @@ import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { FadeCardModal } from '@/components/modals/FadeCardModal'
 import { theme } from '@/constants/theme'
+import { temperatureFromC, temperatureSymbol, type TemperatureUnit } from '@/helpers/units'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useBoardConfigChangeNoticeStore } from '@/modules/board/store/boardConfigChangeNoticeStore'
 
-function value(v: number | boolean | null, unit: string | null): string {
+function value(
+  v: number | boolean | null,
+  unit: string | null,
+  temperatureUnit: TemperatureUnit,
+): string {
   if (v === null) return 'Removed'
+  if (typeof v === 'number' && unit === '°C') {
+    return `${Math.round(temperatureFromC(v, temperatureUnit))} ${temperatureSymbol(temperatureUnit)}`
+  }
   const text = typeof v === 'boolean' ? (v ? 'On' : 'Off') : String(v)
   return unit && typeof v === 'number' ? `${text} ${unit}` : text
 }
@@ -37,6 +46,7 @@ export function BoardConfigChangeNoticeModalView({
   onToggleIgnoreField,
 }: BoardConfigChangeNoticeModalViewProps) {
   const neutral = useResolvedNeutralColors()
+  const { temperatureUnit } = useUserPreferences()
   return (
     <FadeCardModal
       visible={visible}
@@ -53,7 +63,8 @@ export function BoardConfigChangeNoticeModalView({
             <View style={[styles.rowText, ignored && styles.rowTextIgnored]}>
               <Text style={styles.label}>{diff.label}</Text>
               <Text style={styles.change}>
-                {value(diff.oldValue, diff.unit)} → {value(diff.newValue, diff.unit)}
+                {value(diff.oldValue, diff.unit, temperatureUnit)} →{' '}
+                {value(diff.newValue, diff.unit, temperatureUnit)}
               </Text>
               {ignored ? <Text style={styles.ignoredNote}>Will be ignored next time</Text> : null}
             </View>

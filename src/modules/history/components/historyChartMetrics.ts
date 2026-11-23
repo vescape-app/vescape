@@ -3,7 +3,11 @@ import {
   lengthUnit,
   speedFromKmh,
   speedUnit,
+  temperatureDisplayOffset,
+  temperatureDisplayScale,
+  temperatureSymbol,
   type DistanceUnit,
+  type TemperatureUnit,
 } from '@/helpers/units'
 import type { AutoRangeOptions } from '@/components/charts/chartMath'
 import { theme, type ThemeColor } from '@/constants/theme'
@@ -270,14 +274,23 @@ export function toggleOptionalChartMetric<T extends ChartToggleMetric>(
 export function historyChartPresentation(
   key: ChartToggleMetric,
   distanceUnit: DistanceUnit,
+  temperatureUnit: TemperatureUnit = 'celsius',
 ): {
   unit: string | undefined
   displayScale: number
+  displayOffset?: number
 } {
   if (key === 'speed')
     return { unit: speedUnit(distanceUnit), displayScale: speedFromKmh(1, distanceUnit) }
   if (key === 'altitude' || key === 'gpsAccuracy') {
     return { unit: lengthUnit(distanceUnit), displayScale: lengthFromMeters(1, distanceUnit) }
+  }
+  if (key === 'tempMotor' || key === 'tempController') {
+    return {
+      unit: temperatureSymbol(temperatureUnit),
+      displayScale: temperatureDisplayScale(temperatureUnit),
+      displayOffset: temperatureDisplayOffset(temperatureUnit),
+    }
   }
   const definition = [...OPTIONAL_CHART_METRICS, ...EXTRA_CHART_METRICS].find(
     (def) => def.key === key,

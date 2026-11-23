@@ -1,5 +1,12 @@
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
-import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
+import {
+  speedFromKmh,
+  speedInputToKmh,
+  speedUnit,
+  temperatureFromC,
+  temperatureInputToC,
+  temperatureSymbol,
+} from '@/helpers/units'
 import { useCallback, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import {
@@ -68,6 +75,38 @@ function messageSpec(
     : formatVoiceAlertSound(severity)
 }
 
+function buildAlertDialAdapter(
+  controlId: AlertFormSheetProps['controlId'],
+  dialConfig: { min: number; max: number; unit: string },
+  distanceUnit: 'km' | 'mi',
+  temperatureUnit: 'celsius' | 'fahrenheit',
+) {
+  if (controlId === 'speed') {
+    return {
+      dialUnit: speedUnit(distanceUnit),
+      displayDecimals: 1,
+      toDisplay: (value: number) => speedFromKmh(value, distanceUnit),
+      toCanonical: (next: number, current: number) =>
+        speedInputToKmh(next, current, distanceUnit, dialConfig.min, dialConfig.max),
+    }
+  }
+  if (controlId === 'motor-temp' || controlId === 'controller-temp') {
+    return {
+      dialUnit: temperatureSymbol(temperatureUnit),
+      displayDecimals: undefined,
+      toDisplay: (value: number) => temperatureFromC(value, temperatureUnit),
+      toCanonical: (next: number, current: number) =>
+        temperatureInputToC(next, current, temperatureUnit, dialConfig.min, dialConfig.max),
+    }
+  }
+  return {
+    dialUnit: dialConfig.unit,
+    displayDecimals: undefined,
+    toDisplay: (value: number) => value,
+    toCanonical: (next: number) => next,
+  }
+}
+
 export function AlertFormSheet({
   visible,
   triggerRef,
@@ -79,13 +118,17 @@ export function AlertFormSheet({
   onClose,
   onSave,
 }: AlertFormSheetProps) {
-  const distanceUnit = useDistanceUnit()
-  const isSpeed = controlId === 'speed'
-  const toDisplay = (value: number) => (isSpeed ? speedFromKmh(value, distanceUnit) : value)
+  const { distanceUnit, temperatureUnit } = useUserPreferences()
   const isEditing = editRule != null
   const dialConfig = useMemo(
     () => getAlertDialConfig(controlId, batteryConfig),
     [controlId, batteryConfig],
+  )
+  const { dialUnit, displayDecimals, toDisplay, toCanonical } = buildAlertDialAdapter(
+    controlId,
+    dialConfig,
+    distanceUnit,
+    temperatureUnit,
   )
 
   const singlePresets = useMemo(() => getPresetsForCategory('single'), [])
@@ -121,6 +164,7 @@ export function AlertFormSheet({
           controlId,
           batteryConfig,
           distanceUnit,
+          temperatureUnit,
         )
     setTab(defaults.tab)
     setThreshold(defaults.threshold)
@@ -196,23 +240,17 @@ export function AlertFormSheet({
         <View style={styles.cardField}>
           <Text style={styles.fieldLabel}>THRESHOLD</Text>
           <TuneDial
-            key={distanceUnit}
+            key={`${distanceUnit}-${temperatureUnit}`}
             value={toDisplay(threshold)}
             previousValue={editRule ? toDisplay(editRule.threshold) : undefined}
             min={toDisplay(dialConfig.min)}
             max={toDisplay(dialConfig.max)}
             step={dialConfig.step}
-            unit={isSpeed ? speedUnit(distanceUnit) : dialConfig.unit}
-            displayDecimals={isSpeed ? 1 : undefined}
+            unit={dialUnit}
+            displayDecimals={displayDecimals}
             indicatorGlow={tab === 'geiger' ? 'right' : undefined}
             valueChangeMode="commit"
-            onValueChange={(next) =>
-              setThreshold(
-                isSpeed
-                  ? speedInputToKmh(next, threshold, distanceUnit, dialConfig.min, dialConfig.max)
-                  : next,
-              )
-            }
+            onValueChange={(next) => setThreshold(toCanonical(next, threshold))}
           />
         </View>
 
@@ -220,7 +258,7 @@ export function AlertFormSheet({
           <View style={styles.cardField}>
             <Text style={styles.fieldLabel}>THRESHOLD MAX</Text>
             <TuneDial
-              key={distanceUnit}
+              key={`${distanceUnit}-${temperatureUnit}`}
               value={toDisplay(thresholdMax)}
               previousValue={
                 editRule?.thresholdMax != null ? toDisplay(editRule.thresholdMax) : undefined
@@ -228,23 +266,11 @@ export function AlertFormSheet({
               min={toDisplay(dialConfig.min)}
               max={toDisplay(dialConfig.max)}
               step={dialConfig.step}
-              unit={isSpeed ? speedUnit(distanceUnit) : dialConfig.unit}
-              displayDecimals={isSpeed ? 1 : undefined}
+              unit={dialUnit}
+              displayDecimals={displayDecimals}
               indicatorGlow="left"
               valueChangeMode="commit"
-              onValueChange={(next) =>
-                setThresholdMax(
-                  isSpeed
-                    ? speedInputToKmh(
-                        next,
-                        thresholdMax,
-                        distanceUnit,
-                        dialConfig.min,
-                        dialConfig.max,
-                      )
-                    : next,
-                )
-              }
+              onValueChange={(next) => setThresholdMax(toCanonical(next, thresholdMax))}
             />
           </View>
         )}

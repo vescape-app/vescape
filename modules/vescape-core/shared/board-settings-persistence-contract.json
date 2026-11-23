@@ -32,5 +32,10 @@
     "default": "24h",
     "selected": "12h",
     "invalid": ["system", "24", "", true, 12]
+  },
+  "dateFormat": {
+    "default": "dmy",
+    "selected": "mdy",
+    "invalid": ["system", "us", "DMY", "", true, 1]
   }
 }

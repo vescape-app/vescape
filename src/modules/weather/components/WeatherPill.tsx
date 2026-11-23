@@ -14,7 +14,7 @@ export function WeatherPill({ expanded, onPress }: WeatherPillProps) {
   return (
     <WeatherPillView
       icon={weather.icon}
-      temperature={weather.temperatureC}
+      temperatureC={weather.temperatureC}
       label={weather.label}
       precipProbability={weather.precipitationProbability}
       sunriseMinuteOfDay={weather.sunriseMinuteOfDay}

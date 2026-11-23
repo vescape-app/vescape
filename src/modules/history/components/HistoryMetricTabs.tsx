@@ -2,6 +2,8 @@ import { Pressable, StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { temperatureSymbol } from '@/helpers/units'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   OPTIONAL_CHART_METRICS,
   type ChartTabMetricDef,
@@ -21,6 +23,8 @@ export function HistoryMetricTabs({
   metrics = OPTIONAL_CHART_METRICS,
   columns,
 }: HistoryMetricTabsProps) {
+  const { temperatureUnit } = useUserPreferences()
+  const tempUnit = temperatureSymbol(temperatureUnit)
   const perRow = columns ?? metrics.length
   const wrapped = perRow < metrics.length
   return (
@@ -29,6 +33,12 @@ export function HistoryMetricTabs({
         const active = activeCharts.has(metric.key)
         const lastInRow = index % perRow === perRow - 1
         const firstRow = index < perRow
+        const tabLabel =
+          metric.key === 'tempMotor'
+            ? `Motor ${tempUnit}`
+            : metric.key === 'tempController'
+              ? `Ctrl ${tempUnit}`
+              : metric.tabLabel
         return (
           <Pressable
             key={metric.key}
@@ -50,13 +60,13 @@ export function HistoryMetricTabs({
                 { backgroundColor: active ? metric.color : theme.control.textMuted },
               ]}
             />
-            {metric.tabLabel ? (
+            {tabLabel ? (
               <Text
                 style={[styles.metricTabText, active && styles.metricTabTextActive]}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {metric.tabLabel}
+                {tabLabel}
               </Text>
             ) : metric.multilineLabel ? (
               <View style={styles.metricTabTextStack}>

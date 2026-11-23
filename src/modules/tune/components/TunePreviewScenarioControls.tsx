@@ -13,7 +13,7 @@ import {
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   lengthFromMeters,
   lengthInputToMeters,
@@ -74,7 +74,7 @@ export function TunePreviewScenarioControls({
   speedKmh,
   groundToBoardAngleDegrees,
 }: TunePreviewScenarioControlsProps) {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const { formatSpeedWithUnit } = useFormat()
   const { options, formatHillHeight, formatHillSpacing } = useTunePreviewFormat()
   const [movementPreset, setMovementPreset] = useState<MovementPresetId>('manual')

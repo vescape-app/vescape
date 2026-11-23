@@ -1,6 +1,6 @@
 import type { PublicRideStatus } from 'vescape-core'
 
-import { formatClock, type TimeFormat } from '@/helpers/time'
+import { formatClock, formatShortDate, type DateFormat, type TimeFormat } from '@/helpers/time'
 
 export const PUBLIC_RIDE_DURATIONS = [1, 2, 3, 4, 6, 8, 10, 12, 24, 48, 72, 96, 120, 144, 168]
 
@@ -41,10 +41,14 @@ export function publicRideTimeLeft(until: number | null, now: number): string | 
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const DAY_MS = 86_400_000
 
-export function publicRideEndLabel(until: number, now: number, format: TimeFormat): string {
+export function publicRideEndLabel(
+  until: number,
+  now: number,
+  format: TimeFormat,
+  dateFormat: DateFormat = 'dmy',
+): string {
   const clock = formatClock(until, false, format)
   const end = new Date(until)
   const days = Math.round(
@@ -53,11 +57,15 @@ export function publicRideEndLabel(until: number, now: number, format: TimeForma
   if (days <= 0) return clock
   if (days === 1) return `tomorrow ${clock}`
   if (days < 7) return `${WEEKDAYS[end.getDay()]} ${clock}`
-  return `${end.getDate()} ${MONTHS[end.getMonth()]} ${clock}`
+  return `${formatShortDate(end, dateFormat)} ${clock}`
 }
 
-export function publicRidePresetEnds(now: number, format: TimeFormat): string[] {
+export function publicRidePresetEnds(
+  now: number,
+  format: TimeFormat,
+  dateFormat: DateFormat = 'dmy',
+): string[] {
   return PUBLIC_RIDE_DURATIONS.map((hours) =>
-    publicRideEndLabel(now + hours * HOUR_MS, now, format),
+    publicRideEndLabel(now + hours * HOUR_MS, now, format, dateFormat),
   )
 }

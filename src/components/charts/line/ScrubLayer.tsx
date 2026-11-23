@@ -2,7 +2,7 @@ import { Circle, Group, Rect, RoundedRect, Text } from '@shopify/react-native-sk
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { formatClock } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { projectX, projectY, viewportFor } from '@/components/charts/line/projection'
 import { sampleAtSec } from '@/components/charts/line/seriesPaths'
 import type { ScrubTarget } from '@/components/charts/line/scrubTargets'
@@ -75,7 +75,7 @@ export function useScrubReadout({
   glyphWidth,
 }: ScrubReadoutOptions): SharedValue<StackReadout> {
   'use no memo'
-  const timeFormat = useTimeFormat()
+  const { timeFormat } = useUserPreferences()
   return useDerivedValue<StackReadout>(() => {
     const timeMs = scrubTimeMs.value
     if (timeMs == null) return EMPTY_READOUT
@@ -108,7 +108,7 @@ export function useScrubReadout({
         }
 
         const decimals = target.decimals ?? 1
-        const displayValue = sample.value * (target.displayScale ?? 1)
+        const displayValue = sample.value * (target.displayScale ?? 1) + (target.displayOffset ?? 0)
         const formatted =
           decimals === 0 ? Math.round(displayValue).toString() : displayValue.toFixed(decimals)
         const unit = target.unit ? ` ${target.unit}` : ''

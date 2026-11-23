@@ -10,6 +10,7 @@ export interface ScrubTarget {
   unit?: string
   decimals?: number
   displayScale?: number
+  displayOffset?: number
   range: ChartYRange
 }
 
@@ -21,6 +22,7 @@ export function toScrubTargets(chart: PreparedChart, appearance: ResolvedTheme):
     unit: series.unit,
     decimals: series.decimals,
     displayScale: series.displayScale,
+    displayOffset: series.displayOffset,
     range: (series.axis === 'right' ? chart.right : chart.left)?.range ?? chart.left.range,
   }))
 }

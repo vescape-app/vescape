@@ -171,11 +171,26 @@ internal func renderAlertMessageTemplate(
   alert: FiredAlert,
   batteryPercent: Double?,
   onDiagnostic: DiagnosticSink? = nil,
-  distanceUnit: String = "km"
+  distanceUnit: String = "km",
+  temperatureUnit: String = "celsius"
 ) -> String {
   let isBattery = alert.controlId == "battery"
+  let isTemp = alert.controlId == "motor-temp" || alert.controlId == "controller-temp"
   func format(_ value: Double) -> String {
-    alert.controlId == "speed" ? UnitPresentation.formatSpokenSpeed(value, distanceUnit) : formatAlertValue(value, alert.controlId)
+    if alert.controlId == "speed" {
+      return UnitPresentation.formatSpokenSpeed(value, distanceUnit)
+    }
+    if isTemp {
+      return String(format: "%.0f", UnitPresentation.temperatureFromC(value, temperatureUnit))
+    }
+    return formatAlertValue(value, alert.controlId)
+  }
+  let unit = if alert.controlId == "speed" {
+    UnitPresentation.speedUnit(distanceUnit)
+  } else if isTemp {
+    temperatureUnit == "fahrenheit" ? "°F" : "°C"
+  } else {
+    alertControlUnit(alert.controlId)
   }
   var text = template
   text = text.replacingOccurrences(
@@ -186,7 +201,7 @@ internal func renderAlertMessageTemplate(
     of: "{threshold}",
     with: format(alert.threshold)
   )
-  text = text.replacingOccurrences(of: "{unit}", with: alert.controlId == "speed" ? UnitPresentation.speedUnit(distanceUnit) : alertControlUnit(alert.controlId))
+  text = text.replacingOccurrences(of: "{unit}", with: unit)
   if isBattery {
     text = text.replacingOccurrences(
       of: "{voltage}",

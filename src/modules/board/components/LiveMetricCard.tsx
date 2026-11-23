@@ -177,7 +177,7 @@ function lineExtremes({ points, metric }: LiveMetricLine): { min: string; max: s
     max = Math.max(max, point.value)
   }
   const format = (value: number) =>
-    `${(value * metric.displayScale).toFixed(metric.decimals)}${metric.unit}`
+    `${(value * metric.displayScale + metric.displayOffset).toFixed(metric.decimals)}${metric.unit}`
   return { min: format(min), max: format(max) }
 }
 
@@ -189,10 +189,10 @@ interface LineReadoutProps {
 
 function LineReadout({ line, x, width }: LineReadoutProps) {
   const { value, metric } = line
-  const { decimals, displayScale, unit } = metric
+  const { decimals, displayScale, displayOffset, unit } = metric
   const text = useDerivedValue(() => {
     const v = value.value
-    return v == null ? DASH : (v * displayScale).toFixed(decimals)
+    return v == null ? DASH : (v * displayScale + displayOffset).toFixed(decimals)
   })
   const unitText = useDerivedValue(() => (text.value === DASH ? '' : unit))
   return (

@@ -1,5 +1,8 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.telemetry.UnitPresentation
+import kotlin.math.roundToInt
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,7 +68,7 @@ internal fun WeatherReadout(muted: Boolean, onClick: (() -> Unit)?, modifier: Mo
                 modifier = Modifier.size(READOUT_ICON_SIZE),
             )
             DegreeTemp(
-                value = forecast.temperatureC,
+                value = UnitPresentation.temperatureFromC(forecast.temperatureC.toDouble(), SettingsState.settings.value.temperatureUnit).roundToInt(),
                 style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(fontSize = READOUT_FONT_SIZE)),
                 color = textColor,
                 modifier = Modifier.padding(start = 3.dp),

@@ -7,12 +7,13 @@ import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { interaction, theme } from '@/constants/theme'
 import { formatTimeOfDay } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { temperatureFromC } from '@/helpers/units'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 
 interface WeatherPillProps {
   icon: WeatherIconSlug
-  temperature: number
+  temperatureC: number
   label: string
   precipProbability?: number | null
   sunriseMinuteOfDay?: number | null
@@ -23,7 +24,7 @@ interface WeatherPillProps {
 
 export function WeatherPill({
   icon,
-  temperature,
+  temperatureC,
   label,
   precipProbability,
   sunriseMinuteOfDay,
@@ -31,8 +32,9 @@ export function WeatherPill({
   expanded,
   onPress,
 }: WeatherPillProps) {
-  const timeFormat = useTimeFormat()
+  const { timeFormat, temperatureUnit } = useUserPreferences()
   const iconColor = weatherIconColor(icon)
+  const displayTemp = Math.round(temperatureFromC(temperatureC, temperatureUnit))
 
   if (expanded) {
     return (
@@ -40,7 +42,7 @@ export function WeatherPill({
         <WeatherIcon icon={icon} size={28} color={iconColor} weight="duotone" />
         <View style={styles.expandedDetails}>
           <View style={styles.expandedText}>
-            <Text style={styles.expandedTemp}>{temperature}°</Text>
+            <Text style={styles.expandedTemp}>{displayTemp}°</Text>
             <Text style={styles.expandedLabel}>{label}</Text>
           </View>
           {sunriseMinuteOfDay != null && sunsetMinuteOfDay != null && (
@@ -76,7 +78,7 @@ export function WeatherPill({
     <Pressable style={styles.pill} onPress={onPress} android_ripple={interaction.rippleBorderless}>
       <WeatherStat
         icon={icon}
-        temperature={temperature}
+        temperatureC={temperatureC}
         precipProbability={precipProbability}
         size="md"
         iconColor={iconColor}

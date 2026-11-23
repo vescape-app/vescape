@@ -73,4 +73,7 @@ test('chart axes and scrubs share selected speed and fixed length units', () => 
   expect(historyChartPresentation('tempMotor', 'mi')).toEqual(
     historyChartPresentation('tempMotor', 'km'),
   )
+  const tempF = historyChartPresentation('tempMotor', 'km', 'fahrenheit')
+  expect(tempF).toEqual({ unit: '°F', displayScale: 1.8, displayOffset: 32 })
+  expect(80 * tempF.displayScale + (tempF.displayOffset ?? 0)).toBeCloseTo(176)
 })

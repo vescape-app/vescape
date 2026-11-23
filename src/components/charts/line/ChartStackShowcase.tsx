@@ -1,4 +1,4 @@
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -105,7 +105,7 @@ function generateBands(count: number, stepMs: number): ChartBand[] {
 }
 
 export function ChartStackShowcase() {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const [size, setSize] = useState<SizeKey>('tiny')
   const [selectable, setSelectable] = useState(false)
   const [showDuty, setShowDuty] = useState(true)

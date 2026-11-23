@@ -1,9 +1,14 @@
 import {
   formatSpeedValue,
+  formatTemperatureValue,
   speedFromKmh,
   speedToKmh,
   speedUnit,
+  temperatureFromC,
+  temperatureSymbol,
+  temperatureToC,
   type DistanceUnit,
+  type TemperatureUnit,
 } from '@/helpers/units'
 import {
   ALERT_BEEP_COUNT_DEFAULT,
@@ -66,6 +71,10 @@ export function getMessagePlaceholders(
   return base
 }
 
+function isTemperatureControl(controlId: string): boolean {
+  return controlId === 'motor-temp' || controlId === 'controller-temp'
+}
+
 export function renderPreviewTemplate(
   template: string,
   threshold: number,
@@ -74,10 +83,21 @@ export function renderPreviewTemplate(
   controlId: string,
   batteryConfig: DerivedBatteryConfig | null,
   distanceUnit: DistanceUnit = 'km',
+  temperatureUnit: TemperatureUnit = 'celsius',
 ): string {
+  const isTemp = isTemperatureControl(controlId)
   const formatted =
-    controlId === 'speed' ? formatSpeedValue(threshold, distanceUnit) : dialConfig.format(threshold)
-  const displayUnit = controlId === 'speed' ? speedUnit(distanceUnit) : unit
+    controlId === 'speed'
+      ? formatSpeedValue(threshold, distanceUnit)
+      : isTemp
+        ? formatTemperatureValue(threshold, temperatureUnit)
+        : dialConfig.format(threshold)
+  const displayUnit =
+    controlId === 'speed'
+      ? speedUnit(distanceUnit)
+      : isTemp
+        ? temperatureSymbol(temperatureUnit)
+        : unit
   let result = template
     .replace(/\{value\}/g, formatted)
     .replace(/\{threshold\}/g, formatted)
@@ -155,6 +175,7 @@ export function getNewFormDefaults(
   controlId: string,
   batteryConfig: DerivedBatteryConfig | null,
   distanceUnit: DistanceUnit = 'km',
+  temperatureUnit: TemperatureUnit = 'celsius',
 ) {
   const snap = (v: number) => {
     if (controlId === 'speed' && distanceUnit === 'mi') {
@@ -166,6 +187,16 @@ export function getNewFormDefaults(
         ),
       )
       return speedToKmh(mph, distanceUnit)
+    }
+    if (isTemperatureControl(controlId) && temperatureUnit === 'fahrenheit') {
+      const f = Math.min(
+        Math.floor(temperatureFromC(dialConfig.max, temperatureUnit)),
+        Math.max(
+          Math.ceil(temperatureFromC(dialConfig.min, temperatureUnit)),
+          Math.round(temperatureFromC(v, temperatureUnit)),
+        ),
+      )
+      return temperatureToC(f, temperatureUnit)
     }
     return Math.min(
       dialConfig.max,

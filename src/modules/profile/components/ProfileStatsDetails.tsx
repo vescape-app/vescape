@@ -14,7 +14,7 @@ import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSu
 import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 import { rideDistanceFromMeters, rideDistanceUnit } from '@/helpers/units'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 import {
@@ -165,7 +165,7 @@ function MonthlyDistanceChart({
 }) {
   const { sky } = useResolvedAccentColors()
   const { border } = useResolvedNeutralColors()
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const unit = rideDistanceUnit(distanceUnit)
   const scroll = useRef<ScrollView>(null)
   const positioned = useRef(false)

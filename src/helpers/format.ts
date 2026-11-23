@@ -20,10 +20,6 @@ export function fmtVoltageRange(min: number, max: number): string {
   return `${fmtVoltage(min)}–${fmtVoltage(max)} V`
 }
 
-export function fmtTempC(celsius: number): string {
-  return `${Math.round(celsius)}°`
-}
-
 export function fmtPercent(fraction: number): string {
   return `${Math.round(fraction * 100)}%`
 }

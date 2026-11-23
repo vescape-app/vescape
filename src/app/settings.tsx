@@ -30,6 +30,7 @@ import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
 import { DASH, formatBytes } from '@/helpers/format'
 import { speedUnit, temperatureSymbol } from '@/helpers/units'
+import { dateFormatLabel } from '@/helpers/time'
 import { IconButton } from '@/components/base/IconButton'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
@@ -48,6 +49,7 @@ const appVersion = Constants.expoConfig?.version ?? DASH
 export default function SettingsScreen() {
   const distanceUnit = useSettingsStore((state) => state.distanceUnit)
   const timeFormat = useSettingsStore((state) => state.timeFormat)
+  const dateFormat = useSettingsStore((state) => state.dateFormat)
   const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
   const db = useSettingsDatabaseOps()
   const navigation = useNavigation()
@@ -134,7 +136,7 @@ export default function SettingsScreen() {
             icon={GaugeIcon}
             iconColor={theme.palette.amber.color}
             label="Units"
-            hint={`${speedUnit(distanceUnit)} · ${temperatureSymbol(temperatureUnit)} · ${timeFormat}`}
+            hint={`${speedUnit(distanceUnit)} · ${temperatureSymbol(temperatureUnit)} · ${timeFormat} · ${dateFormatLabel(dateFormat)}`}
             onPress={() => router.push(routes.settingsUnits)}
           />
           <SettingsRow

@@ -10,7 +10,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { theme } from '@/constants/theme'
 
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { LiveMetricCard } from '@/modules/board/components/LiveMetricCard'
 import {
   presentTelemetryMetric,
@@ -147,7 +147,7 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
   useLiveSeriesMetrics(SERIES_KEYS)
   const series = useLiveSeriesGroup(SERIES_KEYS)
   const windowMs = useLiveWindowMs()
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit, temperatureUnit } = useUserPreferences()
   const configuredMinutes = useSettingsStore((s) => s.liveHistoryLimit)
   const rateHz = useRoundedPacketRate()
   let spanMs = 0
@@ -159,10 +159,10 @@ export function LiveTelemetryList({ headerStart }: LiveTelemetryListProps) {
       CARDS.map((card) =>
         card.lines.map((line) => ({
           ...line,
-          metric: presentTelemetryMetric(line.metric, distanceUnit),
+          metric: presentTelemetryMetric(line.metric, distanceUnit, temperatureUnit),
         })),
       ),
-    [distanceUnit],
+    [distanceUnit, temperatureUnit],
   )
 
   return (

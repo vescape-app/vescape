@@ -10,7 +10,7 @@ import { Placeholder } from '@/components/base/Placeholder'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import {
   publicRideChoice,
@@ -69,8 +69,11 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   ) : null
   const statusAt = useGroupRideStore((s) => s.publicRideAt)
   const nowMs = Math.max(useMinuteNow(true, status.until), statusAt)
-  const timeFormat = useTimeFormat()
-  const presetEnds = useMemo(() => publicRidePresetEnds(nowMs, timeFormat), [nowMs, timeFormat])
+  const { timeFormat, dateFormat } = useUserPreferences()
+  const presetEnds = useMemo(
+    () => publicRidePresetEnds(nowMs, timeFormat, dateFormat),
+    [dateFormat, nowMs, timeFormat],
+  )
 
   if (connection === 'blocked') {
     return (
@@ -122,7 +125,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
       ? {
           hours: choice.hours,
           left: timeLeft,
-          end: publicRideEndLabel(status.until, nowMs, timeFormat),
+          end: publicRideEndLabel(status.until, nowMs, timeFormat, dateFormat),
         }
       : null
 

@@ -109,7 +109,7 @@ internal final class AlertCoordinator {
             )
           )
         } else if let tts = parseTtsAlertSound(alert.spec) {
-          let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, distanceUnit: distanceUnit)
+          let text = renderAlertMessageTemplate(tts.text, alert: alert, batteryPercent: batteryPercent, onDiagnostic: onDiagnostic, distanceUnit: distanceUnit, temperatureUnit: temperatureUnit)
           if !text.isEmpty { player.speakAfterSeverity(tts.severity, text: text) }
         }
       }

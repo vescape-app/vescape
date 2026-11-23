@@ -141,13 +141,13 @@ export default function WeatherPage() {
           <View style={styles.statPreview}>
             <WeatherStat
               icon={icon}
-              temperature={21}
+              temperatureC={21}
               precipProbability={precipProbability}
               size="sm"
             />
             <WeatherStat
               icon={icon}
-              temperature={21}
+              temperatureC={21}
               precipProbability={precipProbability}
               size="md"
               iconColor={iconColor}
@@ -162,7 +162,7 @@ export default function WeatherPage() {
           <View style={styles.pillPreview}>
             <WeatherPill
               icon={icon}
-              temperature={21}
+              temperatureC={21}
               label={LABELS[icon]}
               precipProbability={precipProbability}
               sunriseMinuteOfDay={MOCK_SUNRISE_MINUTE}

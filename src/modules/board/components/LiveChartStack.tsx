@@ -1,4 +1,4 @@
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { presentLiveChart } from '@/modules/board/components/metricDetailData'
 import { use, useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -20,7 +20,7 @@ interface LiveChartStackProps {
 }
 
 export function LiveChartStack({ charts, scrubTimeMs }: LiveChartStackProps) {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit, temperatureUnit } = useUserPreferences()
   const alerts = use(MetricDetailAlertContext)
   const ready = useDeferredMount(FOCUS_DEFER_MS)
   const connected = useBleStore((s) => s.status === 'connected')
@@ -34,13 +34,13 @@ export function LiveChartStack({ charts, scrubTimeMs }: LiveChartStackProps) {
   const specs = useMemo(
     () =>
       charts.map(({ controlId, ...chart }) => {
-        const presented = presentLiveChart(chart, distanceUnit)
+        const presented = presentLiveChart(chart, distanceUnit, temperatureUnit)
         const spec = labelled ? presented : { ...presented, label: undefined }
         return alerts && controlId === alerts.controlId
           ? { ...spec, thresholds: alerts.thresholds }
           : spec
       }),
-    [alerts, charts, labelled, distanceUnit],
+    [alerts, charts, labelled, distanceUnit, temperatureUnit],
   )
 
   return (

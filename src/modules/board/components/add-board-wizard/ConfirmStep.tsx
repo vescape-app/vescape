@@ -1,4 +1,4 @@
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { draftAlertPreview } from '@/modules/alerts/lib/draftAlertPreview'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
@@ -24,7 +24,7 @@ import { formatBmsSuffix, formatBoardTransport } from '@/modules/board/lib/board
 
 export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
   const { formatSummary } = useAlertPresetFormat()
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const { alertSummaries, previewErrors } = useMemo(() => {
     const errors: string[] = []
     const summaries = ALERT_PRESET_METRICS.map((metric) => {

@@ -1,3 +1,4 @@
+import type { DateFormat } from '@/helpers/time'
 import { formatRideDate } from '@/modules/history/lib/rideFormat'
 import { rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
 
@@ -6,7 +7,7 @@ export function historyListRows<
     HistorySession,
     'startAtMs' | 'endAtMs' | 'movingStartAtMs' | 'movingEndAtMs' | 'distanceM'
   >,
->(sessions: T[]) {
+>(sessions: T[], dateFormat: DateFormat = 'dmy') {
   let previousDate: string | null = null
   let day: HistoryListDay | null = null
   return sessions.map((session) => {
@@ -14,7 +15,7 @@ export function historyListRows<
       startMs: session.startAtMs,
       endMs: session.endAtMs,
     }
-    const date = formatRideDate(window.startMs, window.startMs)
+    const date = formatRideDate(window.startMs, window.startMs, dateFormat)
     const dateHeader = date !== previousDate ? date : null
     previousDate = date
     if (dateHeader) day = { rides: 0, durationMs: 0, distanceM: null }

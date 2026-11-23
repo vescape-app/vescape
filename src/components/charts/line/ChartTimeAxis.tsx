@@ -3,7 +3,7 @@ import { Canvas, Text } from '@shopify/react-native-skia'
 import { useDerivedValue } from 'react-native-reanimated'
 
 import { formatClock } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { formatRelative } from '@/components/charts/line/chartFormat'
 import {
   AXIS_WIDTH,
@@ -26,7 +26,7 @@ export interface ChartTimeAxisProps {
 
 export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
   'use no memo'
-  const timeFormat = useTimeFormat()
+  const { timeFormat } = useUserPreferences()
   const neutral = useResolvedNeutralColors()
   const {
     camera,

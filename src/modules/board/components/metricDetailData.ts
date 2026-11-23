@@ -1,4 +1,12 @@
-import { speedFromKmh, speedUnit, type DistanceUnit } from '@/helpers/units'
+import {
+  speedFromKmh,
+  speedUnit,
+  temperatureDisplayOffset,
+  temperatureDisplayScale,
+  temperatureSymbol,
+  type DistanceUnit,
+  type TemperatureUnit,
+} from '@/helpers/units'
 import type { ExcludedRange } from '@/components/charts/chartMath'
 import type {
   ChartBand,
@@ -107,20 +115,53 @@ export function toLiveChart({
   }
 }
 
-export function presentLiveChart(chart: ChartSpec, distanceUnit: DistanceUnit): ChartSpec {
-  const speed = chart.series.some((series) => series.unit === 'km/h' && series.axis !== 'right')
-  const rightSpeed = chart.series.some(
-    (series) => series.unit === 'km/h' && series.axis === 'right',
-  )
-  const scale = speedFromKmh(1, distanceUnit)
+export function presentLiveChart(
+  chart: ChartSpec,
+  distanceUnit: DistanceUnit,
+  temperatureUnit: TemperatureUnit = 'celsius',
+): ChartSpec {
+  const axisPresentation = (axis: 'left' | 'right') => {
+    const onAxis = (series: ChartSpec['series'][number]) =>
+      axis === 'right' ? series.axis === 'right' : series.axis !== 'right'
+    if (chart.series.some((series) => series.unit === 'km/h' && onAxis(series))) {
+      return { displayScale: speedFromKmh(1, distanceUnit), displayOffset: 0 }
+    }
+    if (chart.series.some((series) => series.unit === '°C' && onAxis(series))) {
+      return {
+        displayScale: temperatureDisplayScale(temperatureUnit),
+        displayOffset: temperatureDisplayOffset(temperatureUnit),
+      }
+    }
+    return null
+  }
+  const leftPresentation = axisPresentation('left')
+  const rightPresentation = chart.right ? axisPresentation('right') : null
+  const speedScale = speedFromKmh(1, distanceUnit)
+  const tempScale = temperatureDisplayScale(temperatureUnit)
+  const tempOffset = temperatureDisplayOffset(temperatureUnit)
   return {
     ...chart,
-    left: speed ? { ...chart.left, displayScale: scale } : chart.left,
-    right: rightSpeed && chart.right ? { ...chart.right, displayScale: scale } : chart.right,
-    series: chart.series.map((series) =>
-      series.unit === 'km/h'
-        ? { ...series, displayScale: scale, unit: speedUnit(distanceUnit) }
-        : series,
-    ),
+    left: leftPresentation ? { ...chart.left, ...leftPresentation } : chart.left,
+    right:
+      rightPresentation && chart.right ? { ...chart.right, ...rightPresentation } : chart.right,
+    series: chart.series.map((series) => {
+      if (series.unit === 'km/h') {
+        return {
+          ...series,
+          displayScale: speedScale,
+          displayOffset: 0,
+          unit: speedUnit(distanceUnit),
+        }
+      }
+      if (series.unit === '°C') {
+        return {
+          ...series,
+          displayScale: tempScale,
+          displayOffset: tempOffset,
+          unit: temperatureSymbol(temperatureUnit),
+        }
+      }
+      return series
+    }),
   }
 }

@@ -1,4 +1,4 @@
-import { DistanceUnitContext } from '@/hooks/useDistanceUnit'
+import { UserPreferencesContext, useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DistanceUnit } from '@/helpers/units'
 import { StyleSheet, View } from 'react-native'
 import { useMemo, useState } from 'react'
@@ -180,8 +180,11 @@ export function TunePreviewShowcase() {
     }
   }
 
+  const preferences = useUserPreferences()
+  const previewPreferences = { ...preferences, distanceUnit }
+
   return (
-    <DistanceUnitContext value={distanceUnit}>
+    <UserPreferencesContext value={previewPreferences}>
       <ShowcaseCard
         name="Tune Preview"
         controls={
@@ -226,7 +229,7 @@ export function TunePreviewShowcase() {
           groundToBoardAngleDegrees={groundToBoardAngleDegrees}
         />
       </ShowcaseCard>
-    </DistanceUnitContext>
+    </UserPreferencesContext>
   )
 }
 

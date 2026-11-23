@@ -1,6 +1,11 @@
 import type { BoardConfigFieldId } from 'vescape-core'
+import { temperatureFromC, temperatureSymbol, type TemperatureUnit } from '@/helpers/units'
 
 export type BoardConfigValue = number | boolean | undefined
+
+export interface ConfigFormatOptions {
+  temperatureUnit?: TemperatureUnit
+}
 
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/McconfLayouts.kt
@@ -27,7 +32,7 @@ export type MotorConfigFieldId =
 export interface ConfigRow<Id extends string> {
   id: Id
   label: string
-  format: (value: BoardConfigValue) => string
+  format: (value: BoardConfigValue, options?: ConfigFormatOptions) => string
   description?: string
   when?: string
   recommended?: 'on' | 'off'
@@ -58,6 +63,17 @@ export function unit(suffix: string, decimals = 1): (value: BoardConfigValue) =>
   const separator = suffix.startsWith('°') && suffix.length === 1 ? '' : ' '
   return (value) =>
     typeof value === 'number' ? `${value.toFixed(decimals)}${separator}${suffix}` : MISSING
+}
+
+export function temperature(
+  decimals = 0,
+): (value: BoardConfigValue, options?: ConfigFormatOptions) => string {
+  return (value, options) => {
+    if (typeof value !== 'number') return MISSING
+    const temperatureUnit = options?.temperatureUnit ?? 'celsius'
+    const display = temperatureFromC(value, temperatureUnit)
+    return `${display.toFixed(decimals)} ${temperatureSymbol(temperatureUnit)}`
+  }
 }
 
 export function percent(value: BoardConfigValue): string {

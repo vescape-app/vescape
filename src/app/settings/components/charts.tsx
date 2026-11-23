@@ -1,8 +1,14 @@
-import { TimeFormatContext, useTimeFormat } from '@/hooks/useTimeFormat'
+import { UserPreferencesContext, useUserPreferences } from '@/hooks/useUserPreferences'
 import type { TimeFormat } from '@/helpers/time'
 import { PageScrollView } from '@/components/base/PageScrollView'
-import { DistanceUnitContext, useDistanceUnit } from '@/hooks/useDistanceUnit'
-import { speedFromKmh, speedUnit, type DistanceUnit } from '@/helpers/units'
+import {
+  speedFromKmh,
+  speedUnit,
+  temperatureDisplayOffset,
+  temperatureDisplayScale,
+  temperatureSymbol,
+  type DistanceUnit,
+} from '@/helpers/units'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -132,12 +138,13 @@ function SparklineShowcase() {
 }
 
 function AnimatedSingleGaugeShowcase() {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit, temperatureUnit } = useUserPreferences()
   const [metricKey, setMetricKey] = useState<'speed' | 'duty' | 'motorTemp' | 'controllerTemp'>(
     'speed',
   )
   const value = useSharedValue<number | null>(34)
   const metric = telemetry[metricKey]
+  const isTemp = metricKey === 'motorTemp' || metricKey === 'controllerTemp'
   const hotMetricKey: HistoryMetricKey =
     metricKey === 'motorTemp'
       ? 'tempMotor'
@@ -176,12 +183,25 @@ function AnimatedSingleGaugeShowcase() {
       }
     >
       <SingleGauge
-        displayScale={metricKey === 'speed' ? speedFromKmh(1, distanceUnit) : 1}
+        displayScale={
+          metricKey === 'speed'
+            ? speedFromKmh(1, distanceUnit)
+            : isTemp
+              ? temperatureDisplayScale(temperatureUnit)
+              : 1
+        }
+        displayOffset={isTemp ? temperatureDisplayOffset(temperatureUnit) : 0}
         value={value}
         min={metric.chartRange.min}
         max={metric.chartRange.max}
         color={metric.color}
-        unit={metricKey === 'speed' ? speedUnit(distanceUnit) : metric.unit}
+        unit={
+          metricKey === 'speed'
+            ? speedUnit(distanceUnit)
+            : isTemp
+              ? temperatureSymbol(temperatureUnit)
+              : metric.unit
+        }
         decimals={metric.decimals}
         label={metric.label.toUpperCase()}
         hotRange={hotRange}
@@ -438,45 +458,44 @@ function BmsCellVoltagesShowcase() {
 }
 
 export default function ChartsPage() {
-  const currentTimeFormat = useTimeFormat()
-  const [timeFormat, setTimeFormat] = useState<TimeFormat>(currentTimeFormat)
+  const preferences = useUserPreferences()
+  const [timeFormat, setTimeFormat] = useState<TimeFormat>(preferences.timeFormat)
   const [distanceUnit, setUnits] = useState<DistanceUnit>('km')
+  const pagePreferences = { ...preferences, timeFormat, distanceUnit }
   return (
-    <TimeFormatContext value={timeFormat}>
-      <DistanceUnitContext value={distanceUnit}>
-        <SafeAreaView style={styles.container} edges={[]}>
-          <PageScrollView contentContainerStyle={styles.content}>
-            <IconHero
-              icon={ChartLineUpIcon}
-              description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
-            />
-            <ChipRow
-              label="time format"
-              options={['24h', '12h']}
-              selected={timeFormat}
-              onSelect={(value) => setTimeFormat(value as TimeFormat)}
-            />
-            <ChartStackShowcase />
-            <SparklineShowcase />
-            <LinearGaugeShowcase />
-            <ChipRow
-              label="units"
-              options={['km', 'mi']}
-              selected={distanceUnit}
-              onSelect={(value) => setUnits(value as DistanceUnit)}
-            />
-            <AnimatedSingleGaugeShowcase />
-            <AnimatedDualGaugeShowcase />
-            <ChartLoadingOverlayShowcase />
-            <ShowcaseCard name="ChartGestureHint">
-              <ChartGestureHint />
-              <ChartGestureHint compact />
-            </ShowcaseCard>
-            <BmsCellVoltagesShowcase />
-          </PageScrollView>
-        </SafeAreaView>
-      </DistanceUnitContext>
-    </TimeFormatContext>
+    <UserPreferencesContext value={pagePreferences}>
+      <SafeAreaView style={styles.container} edges={[]}>
+        <PageScrollView contentContainerStyle={styles.content}>
+          <IconHero
+            icon={ChartLineUpIcon}
+            description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
+          />
+          <ChipRow
+            label="time format"
+            options={['24h', '12h']}
+            selected={timeFormat}
+            onSelect={(value) => setTimeFormat(value as TimeFormat)}
+          />
+          <ChartStackShowcase />
+          <SparklineShowcase />
+          <LinearGaugeShowcase />
+          <ChipRow
+            label="units"
+            options={['km', 'mi']}
+            selected={distanceUnit}
+            onSelect={(value) => setUnits(value as DistanceUnit)}
+          />
+          <AnimatedSingleGaugeShowcase />
+          <AnimatedDualGaugeShowcase />
+          <ChartLoadingOverlayShowcase />
+          <ShowcaseCard name="ChartGestureHint">
+            <ChartGestureHint />
+            <ChartGestureHint compact />
+          </ShowcaseCard>
+          <BmsCellVoltagesShowcase />
+        </PageScrollView>
+      </SafeAreaView>
+    </UserPreferencesContext>
   )
 }
 
