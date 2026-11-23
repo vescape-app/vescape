@@ -1,4 +1,5 @@
 import type { DateFormat, TimeFormat } from 'vescape-core'
+import { DASH } from '@/helpers/format'
 
 export type { DateFormat, TimeFormat }
 
@@ -55,6 +56,7 @@ export function formatClock(
 
 export function formatDate(input: number | string | Date, format: DateFormat = 'dmy'): string {
   const date = input instanceof Date ? input : new Date(input)
+  if (!Number.isFinite(date.getTime())) return DASH
   const day = date.getDate()
   const month = date.getMonth()
   const year = date.getFullYear()
@@ -65,6 +67,7 @@ export function formatDate(input: number | string | Date, format: DateFormat = '
 
 export function formatShortDate(input: number | string | Date, format: DateFormat = 'dmy'): string {
   const date = input instanceof Date ? input : new Date(input)
+  if (!Number.isFinite(date.getTime())) return DASH
   const day = date.getDate()
   const month = date.getMonth()
   if (format === 'mdy') return `${SHORT_MONTHS[month]} ${day}`
@@ -79,10 +82,11 @@ export function formatDateRange(
 ): string {
   const s = new Date(startMs)
   const e = new Date(endMs)
+  if (!Number.isFinite(s.getTime()) || !Number.isFinite(e.getTime())) return DASH
   const sameYear = s.getFullYear() === e.getFullYear()
   const sameMonth = sameYear && s.getMonth() === e.getMonth()
   if (sameMonth && s.getDate() === e.getDate()) return formatDate(s, format)
-  if (format === 'ymd') return `${formatDate(s, 'ymd')} – ${formatDate(e, 'ymd')}`
+  if (!sameYear || format === 'ymd') return `${formatDate(s, format)} – ${formatDate(e, format)}`
   if (sameMonth) {
     return format === 'mdy'
       ? `${SHORT_MONTHS[s.getMonth()]} ${s.getDate()}–${e.getDate()}, ${s.getFullYear()}`
@@ -98,5 +102,6 @@ export function formatDateTime(
   timeFormat: TimeFormat = '24h',
   dateFormat: DateFormat = 'dmy',
 ): string {
+  if (!Number.isFinite(new Date(timeMs).getTime())) return DASH
   return `${formatDate(timeMs, dateFormat)} ${formatClock(timeMs, true, timeFormat)}`
 }

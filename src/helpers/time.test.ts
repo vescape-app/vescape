@@ -56,5 +56,16 @@ describe('date presentation', () => {
     expect(formatDateRange(mar28, apr2, 'dmy')).toBe('28 Mar – 2 Apr 2026')
     expect(formatDateRange(mar28, apr2, 'mdy')).toBe('Mar 28 – Apr 2, 2026')
     expect(formatDateRange(mar28, apr2, 'ymd')).toBe('2026-03-28 – 2026-04-02')
+
+    const dec31 = new Date(2025, 11, 31).getTime()
+    const jan1 = new Date(2026, 0, 1).getTime()
+    expect(formatDateRange(dec31, jan1, 'dmy')).toBe('31 Dec 2025 – 1 Jan 2026')
+    expect(formatDateRange(dec31, jan1, 'mdy')).toBe('Dec 31, 2025 – Jan 1, 2026')
+    expect(formatDateRange(dec31, jan1, 'ymd')).toBe('2025-12-31 – 2026-01-01')
+
+    expect(formatDate(Number.NaN, 'dmy')).toBe('—')
+    expect(formatShortDate('not-a-date', 'mdy')).toBe('—')
+    expect(formatDateRange(Number.NaN, jan1, 'dmy')).toBe('—')
+    expect(formatDateTime(Number.NaN, '24h', 'ymd')).toBe('—')
   })
 })

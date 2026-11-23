@@ -782,7 +782,8 @@ internal final class AlertAudioPlayer {
         tts.text,
         alert: ttsSampleAlert(spec: spec),
         batteryPercent: 42.0,
-        distanceUnit: distanceUnit
+        distanceUnit: distanceUnit,
+        temperatureUnit: temperatureUnit
       )
       Self.log("AlertAudioPlayer.preview TTS text='\(text)'")
       if !text.isEmpty { speakAfterSeverity(tts.severity, text: text) }
