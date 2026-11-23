@@ -7,6 +7,7 @@ import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { interaction, theme } from '@/constants/theme'
 import { formatTimeOfDay } from '@/helpers/time'
+import { temperatureFromC } from '@/helpers/units'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 
@@ -31,8 +32,9 @@ export function WeatherPill({
   expanded,
   onPress,
 }: WeatherPillProps) {
-  const { timeFormat } = useUserPreferences()
+  const { timeFormat, temperatureUnit } = useUserPreferences()
   const iconColor = weatherIconColor(icon)
+  const displayTemp = Math.round(temperatureFromC(temperature, temperatureUnit))
 
   if (expanded) {
     return (
@@ -40,7 +42,7 @@ export function WeatherPill({
         <WeatherIcon icon={icon} size={28} color={iconColor} weight="duotone" />
         <View style={styles.expandedDetails}>
           <View style={styles.expandedText}>
-            <Text style={styles.expandedTemp}>{temperature}°</Text>
+            <Text style={styles.expandedTemp}>{displayTemp}°</Text>
             <Text style={styles.expandedLabel}>{label}</Text>
           </View>
           {sunriseMinuteOfDay != null && sunsetMinuteOfDay != null && (

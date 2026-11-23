@@ -5,11 +5,13 @@ import { Text } from '@/components/base/Text'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { theme } from '@/constants/theme'
 import { formatTimeOfDay } from '@/helpers/time'
+import { temperatureFromC } from '@/helpers/units'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 
 function HourItem({ item }: { item: WeatherHour }) {
-  const { timeFormat } = useUserPreferences()
+  const { timeFormat, temperatureUnit } = useUserPreferences()
+  const displayTemp = Math.round(temperatureFromC(item.temperatureC, temperatureUnit))
   return (
     <View style={styles.item}>
       <Text style={styles.hour}>{formatTimeOfDay(item.minuteOfDay, timeFormat)}</Text>
@@ -19,7 +21,7 @@ function HourItem({ item }: { item: WeatherHour }) {
         color={weatherIconColor(item.icon)}
         weight="duotone"
       />
-      <Text style={styles.temp}>{item.temperatureC}°</Text>
+      <Text style={styles.temp}>{displayTemp}°</Text>
       {item.precipitationProbability > 0 && (
         <Text style={styles.precip}>{item.precipitationProbability}%</Text>
       )}
