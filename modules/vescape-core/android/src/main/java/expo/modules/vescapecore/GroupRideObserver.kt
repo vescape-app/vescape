@@ -119,7 +119,7 @@ internal class GroupRideObserver(
 
     fun start(url: String) {
         if (!stopped && url == serverUrl) {
-            resync()
+            resyncNow()
             return
         }
         if (serverUrl != null && serverUrl != url) publicRide.discardMissed()
@@ -145,7 +145,31 @@ internal class GroupRideObserver(
         emitConnection("idle")
     }
 
-    private fun resync() {
+    /** @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `resync` */
+    fun resync() {
+        handler.post {
+            if (!stopped) resyncNow()
+        }
+    }
+
+    /** @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `replayEvent` */
+    fun replayEvent(name: String) {
+        handler.post {
+            if (stopped) return@post
+            when (name) {
+                "onGroupRideConnection" -> emitConnection(lastConnection)
+                "onGroupRideSignalAvailability" -> {
+                    lastSignalAvailability = null
+                    refreshSignalAvailability()
+                }
+                "onPublicRideStatus" -> publicRide.emitCurrentStatus()
+                "onPublicRiders" -> publicRide.emitCurrentRiders()
+                "onPublicPins" -> publicRide.emitCurrentPins()
+            }
+        }
+    }
+
+    private fun resyncNow() {
         emitConnection(lastConnection)
         lastSignalAvailability = null
         refreshSignalAvailability()

@@ -81,6 +81,7 @@ class GroupRideObserverTest {
         var token: String? = "token"
         val links = mutableListOf<Link>()
         val demand = mutableListOf<Boolean>()
+        val events = mutableListOf<Pair<String, Map<String, Any?>>>()
         val observer: GroupRideObserver
 
         class Link(val request: Request, val listener: WebSocketListener) {
@@ -109,7 +110,7 @@ class GroupRideObserverTest {
             doAnswer { call -> tasks.remove(call.getArgument<Runnable>(0))?.forEach { it.cancel() }; null }.`when`(handler).removeCallbacks(any(Runnable::class.java))
             observer = GroupRideObserver(
                 handler = handler,
-                emit = { _, _ -> },
+                emit = { name, body -> events += name to body },
                 online = object : OnlineCapability {
                     override val onlineBlocked get() = blocked
                     override val appVersion = "1.0.0"
@@ -208,6 +209,68 @@ class GroupRideObserverTest {
         assertTrue(h.links.last().frames.isEmpty())
         assertFalse(h.observer.publicRideNeedsLink)
         h.observer.stop()
+    }
+
+    @Test
+    fun `replayEvent and resync emit current state only while active`() {
+        val h = RelayHarness()
+        h.observer.replayEvent("onGroupRideConnection")
+        h.observer.replayEvent("onPublicRideStatus")
+        h.observer.resync()
+        h.flush()
+        assertTrue(h.events.isEmpty())
+
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        h.events.clear()
+
+        h.observer.replayEvent("onGroupRideConnection")
+        h.flush()
+        assertEquals(listOf("onGroupRideConnection"), h.events.map { it.first })
+        assertEquals("connected", h.events.single().second["state"])
+
+        h.events.clear()
+        h.observer.replayEvent("onPublicRideStatus")
+        h.flush()
+        assertEquals(listOf("onPublicRideStatus"), h.events.map { it.first })
+        assertEquals(true, h.events.single().second["supported"])
+
+        h.events.clear()
+        h.observer.replayEvent("onGroupRideSignalAvailability")
+        h.flush()
+        assertEquals(listOf("onGroupRideSignalAvailability"), h.events.map { it.first })
+
+        h.events.clear()
+        h.observer.replayEvent("onPublicRiders")
+        h.flush()
+        assertEquals(listOf("onPublicRiders"), h.events.map { it.first })
+
+        h.events.clear()
+        h.observer.replayEvent("onPublicPins")
+        h.flush()
+        assertEquals(listOf("onPublicPins"), h.events.map { it.first })
+
+        h.events.clear()
+        h.observer.resync()
+        h.flush()
+        assertEquals(
+            setOf(
+                "onGroupRideConnection",
+                "onGroupRideSignalAvailability",
+                "onPublicRideStatus",
+                "onPublicRiders",
+                "onPublicPins",
+            ),
+            h.events.map { it.first }.toSet(),
+        )
+        assertEquals(true, h.events.last { it.first == "onPublicRideStatus" }.second["supported"])
+
+        h.observer.stop()
+        h.events.clear()
+        h.observer.replayEvent("onPublicRideStatus")
+        h.observer.resync()
+        h.flush()
+        assertTrue(h.events.isEmpty())
     }
 
 }

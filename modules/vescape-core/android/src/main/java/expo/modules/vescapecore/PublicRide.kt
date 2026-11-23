@@ -268,10 +268,16 @@ internal class PublicRide(
             return GroupRideRoster(ownRiderId = accountId, riders = rows)
         }
 
+    fun emitCurrentStatus() = emitStatus(force = true)
+
+    fun emitCurrentRiders() = emitRiders()
+
+    fun emitCurrentPins() = emitPins()
+
     fun resync() {
-        emitStatus(force = true)
-        emitRiders()
-        emitPins()
+        emitCurrentStatus()
+        emitCurrentRiders()
+        emitCurrentPins()
     }
 
     fun handle(type: String, json: JSONObject): Boolean {

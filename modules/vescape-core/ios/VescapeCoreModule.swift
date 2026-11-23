@@ -92,17 +92,32 @@ public class VescapeCoreModule: Module {
     }
     OnStopObserving("onMaintenanceState") { self.observedEvents.remove("onMaintenanceState") }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onGroupRideConnection`
-    OnStartObserving("onGroupRideConnection") { self.observedEvents.insert("onGroupRideConnection") }
+    OnStartObserving("onGroupRideConnection") {
+      self.observedEvents.insert("onGroupRideConnection")
+      self.coordinator.replayGroupRideEvent("onGroupRideConnection")
+    }
     OnStopObserving("onGroupRideConnection") { self.observedEvents.remove("onGroupRideConnection") }
     OnStartObserving("onGroupRideError") { self.observedEvents.insert("onGroupRideError") }
     OnStopObserving("onGroupRideError") { self.observedEvents.remove("onGroupRideError") }
-    OnStartObserving("onGroupRideSignalAvailability") { self.observedEvents.insert("onGroupRideSignalAvailability") }
+    OnStartObserving("onGroupRideSignalAvailability") {
+      self.observedEvents.insert("onGroupRideSignalAvailability")
+      self.coordinator.replayGroupRideEvent("onGroupRideSignalAvailability")
+    }
     OnStopObserving("onGroupRideSignalAvailability") { self.observedEvents.remove("onGroupRideSignalAvailability") }
-    OnStartObserving("onPublicRideStatus") { self.observedEvents.insert("onPublicRideStatus") }
+    OnStartObserving("onPublicRideStatus") {
+      self.observedEvents.insert("onPublicRideStatus")
+      self.coordinator.replayGroupRideEvent("onPublicRideStatus")
+    }
     OnStopObserving("onPublicRideStatus") { self.observedEvents.remove("onPublicRideStatus") }
-    OnStartObserving("onPublicRiders") { self.observedEvents.insert("onPublicRiders") }
+    OnStartObserving("onPublicRiders") {
+      self.observedEvents.insert("onPublicRiders")
+      self.coordinator.replayGroupRideEvent("onPublicRiders")
+    }
     OnStopObserving("onPublicRiders") { self.observedEvents.remove("onPublicRiders") }
-    OnStartObserving("onPublicPins") { self.observedEvents.insert("onPublicPins") }
+    OnStartObserving("onPublicPins") {
+      self.observedEvents.insert("onPublicPins")
+      self.coordinator.replayGroupRideEvent("onPublicPins")
+    }
     OnStopObserving("onPublicPins") { self.observedEvents.remove("onPublicPins") }
     OnStartObserving("onBoardWarnings") {
       self.observedEvents.insert("onBoardWarnings")
@@ -239,6 +254,7 @@ public class VescapeCoreModule: Module {
       self.emitMaintenanceState(MaintenanceRunner.shared.snapshot())
       self.emitRideNotices(RideNotices.shared.current)
       RideNotices.shared.expireNow()
+      self.coordinator.resyncGroupRide()
     }
     OnAppEntersBackground {
       self.frontendActive = false

@@ -85,8 +85,9 @@ final class GroupRideObserverTests: XCTestCase {
     var token: String? = "token"
     var links: [Link] = []
     var demand: [Bool] = []
+    var events: [(String, [String: Any?])] = []
     lazy var observer: GroupRideObserver = GroupRideObserver(
-      emit: { _, _ in }, online: gate, scheduler: clock,
+      emit: { [unowned self] name, body in self.events.append((name, body)) }, online: gate, scheduler: clock,
       deviceCredential: { [unowned self] in
         guard let account = self.account, let token = self.token else { return nil }
         return DeviceCredential(serverUrl: "https://example.com", token: token, accountId: account)
@@ -173,6 +174,59 @@ final class GroupRideObserverTests: XCTestCase {
     XCTAssertTrue(h.links.last!.frames.isEmpty)
     XCTAssertFalse(h.observer.publicRideNeedsLink)
     h.observer.stop()
+  }
+
+  func testReplayEventAndResyncEmitCurrentStateOnlyWhileActive() {
+    let h = RelayHarness()
+    h.observer.replayEvent("onGroupRideConnection")
+    h.observer.replayEvent("onPublicRideStatus")
+    h.observer.resync()
+    XCTAssertTrue(h.events.isEmpty)
+
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    h.events.removeAll()
+
+    h.observer.replayEvent("onGroupRideConnection")
+    XCTAssertEqual(h.events.map(\.0), ["onGroupRideConnection"])
+    XCTAssertEqual(h.events.first?.1["state"] as? String, "connected")
+
+    h.events.removeAll()
+    h.observer.replayEvent("onPublicRideStatus")
+    XCTAssertEqual(h.events.map(\.0), ["onPublicRideStatus"])
+    XCTAssertEqual(h.events.first?.1["supported"] as? Bool, true)
+
+    h.events.removeAll()
+    h.observer.replayEvent("onGroupRideSignalAvailability")
+    XCTAssertEqual(h.events.map(\.0), ["onGroupRideSignalAvailability"])
+
+    h.events.removeAll()
+    h.observer.replayEvent("onPublicRiders")
+    XCTAssertEqual(h.events.map(\.0), ["onPublicRiders"])
+
+    h.events.removeAll()
+    h.observer.replayEvent("onPublicPins")
+    XCTAssertEqual(h.events.map(\.0), ["onPublicPins"])
+
+    h.events.removeAll()
+    h.observer.resync()
+    XCTAssertEqual(
+      Set(h.events.map(\.0)),
+      [
+        "onGroupRideConnection",
+        "onGroupRideSignalAvailability",
+        "onPublicRideStatus",
+        "onPublicRiders",
+        "onPublicPins",
+      ]
+    )
+    XCTAssertEqual(h.events.last { $0.0 == "onPublicRideStatus" }?.1["supported"] as? Bool, true)
+
+    h.observer.stop()
+    h.events.removeAll()
+    h.observer.replayEvent("onPublicRideStatus")
+    h.observer.resync()
+    XCTAssertTrue(h.events.isEmpty)
   }
 
 }

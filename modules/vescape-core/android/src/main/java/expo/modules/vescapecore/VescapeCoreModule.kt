@@ -321,15 +321,30 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onMaintenanceState") { stopObserving("onMaintenanceState") }
     OnStartObserving("onBoardProbeProgress") { startObserving("onBoardProbeProgress") }
     OnStopObserving("onBoardProbeProgress") { stopObserving("onBoardProbeProgress") }
-    OnStartObserving("onGroupRideConnection") { startObserving("onGroupRideConnection") }
+    OnStartObserving("onGroupRideConnection") {
+      startObserving("onGroupRideConnection")
+      CoreForegroundService.replayGroupRideEvent("onGroupRideConnection")
+    }
     OnStopObserving("onGroupRideConnection") { stopObserving("onGroupRideConnection") }
-    OnStartObserving("onGroupRideSignalAvailability") { startObserving("onGroupRideSignalAvailability") }
+    OnStartObserving("onGroupRideSignalAvailability") {
+      startObserving("onGroupRideSignalAvailability")
+      CoreForegroundService.replayGroupRideEvent("onGroupRideSignalAvailability")
+    }
     OnStopObserving("onGroupRideSignalAvailability") { stopObserving("onGroupRideSignalAvailability") }
-    OnStartObserving("onPublicRideStatus") { startObserving("onPublicRideStatus") }
+    OnStartObserving("onPublicRideStatus") {
+      startObserving("onPublicRideStatus")
+      CoreForegroundService.replayGroupRideEvent("onPublicRideStatus")
+    }
     OnStopObserving("onPublicRideStatus") { stopObserving("onPublicRideStatus") }
-    OnStartObserving("onPublicRiders") { startObserving("onPublicRiders") }
+    OnStartObserving("onPublicRiders") {
+      startObserving("onPublicRiders")
+      CoreForegroundService.replayGroupRideEvent("onPublicRiders")
+    }
     OnStopObserving("onPublicRiders") { stopObserving("onPublicRiders") }
-    OnStartObserving("onPublicPins") { startObserving("onPublicPins") }
+    OnStartObserving("onPublicPins") {
+      startObserving("onPublicPins")
+      CoreForegroundService.replayGroupRideEvent("onPublicPins")
+    }
     OnStopObserving("onPublicPins") { stopObserving("onPublicPins") }
     OnStartObserving("onBoardWarnings") {
       startObserving("onBoardWarnings")
@@ -432,6 +447,7 @@ class VescapeCoreModule : Module() {
       emitMaintenanceState(MaintenanceRunner.snapshot())
       emitRideNotices(RideNotices.current)
       RideNotices.expireNow()
+      CoreForegroundService.resyncGroupRide()
     }
     OnActivityEntersBackground {
       frontendActive = false

@@ -1001,6 +1001,16 @@ internal class BoardSessionController(private val service: CoreForegroundService
         stopIfIdle()
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `resyncGroupRide` */
+    fun resyncGroupRide() {
+        groupRideObserver.resync()
+    }
+
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `replayGroupRideEvent` */
+    fun replayGroupRideEvent(name: String) {
+        groupRideObserver.replayEvent(name)
+    }
+
     fun sendGroupRideSignal(kind: String) {
         groupRideObserver.sendSignal(kind)
     }

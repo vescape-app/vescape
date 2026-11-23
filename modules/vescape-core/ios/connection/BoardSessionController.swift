@@ -827,6 +827,16 @@ internal final class BoardSessionController: VescGattListener {
     groupRideObserver.stop()
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `resyncGroupRide`
+  func resyncGroupRide() {
+    groupRideObserver.resync()
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `replayGroupRideEvent`
+  func replayGroupRideEvent(_ name: String) {
+    groupRideObserver.replayEvent(name)
+  }
+
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadPublicRide`
   private func loadPublicRide() {
     // intentional-suppression: an unreadable credential reads as signed out, which keeps the switch off

@@ -367,7 +367,11 @@ class CoreForegroundService : Service() {
                 result.logIfSkipped("Group Ride observe service start skipped")
                 return
             }
-            instance?.controller?.consumePendingGroupRideObserve()
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                instance?.controller?.consumePendingGroupRideObserve()
+            } else {
+                Handler(Looper.getMainLooper()).post { instance?.controller?.consumePendingGroupRideObserve() }
+            }
         }
 
         fun stopGroupRideObserve(context: Context) {
@@ -377,7 +381,27 @@ class CoreForegroundService : Service() {
                 action = ACTION_STOP_GROUP_RIDE_OBSERVE
             }
             context.startService(intent)
-            service.controller.stopGroupRideObserve()
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                service.controller.stopGroupRideObserve()
+            } else {
+                Handler(Looper.getMainLooper()).post { instance?.controller?.stopGroupRideObserve() }
+            }
+        }
+
+        fun resyncGroupRide() {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                instance?.controller?.resyncGroupRide()
+            } else {
+                Handler(Looper.getMainLooper()).post { instance?.controller?.resyncGroupRide() }
+            }
+        }
+
+        fun replayGroupRideEvent(name: String) {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                instance?.controller?.replayGroupRideEvent(name)
+            } else {
+                Handler(Looper.getMainLooper()).post { instance?.controller?.replayGroupRideEvent(name) }
+            }
         }
 
         fun sendGroupRideSignal(kind: String) {

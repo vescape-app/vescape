@@ -271,10 +271,22 @@ internal final class PublicRide {
     return GroupRideRoster(ownRiderId: accountId, riders: rows)
   }
 
-  func resync() {
+  func emitCurrentStatus() {
     emitStatus(force: true)
+  }
+
+  func emitCurrentRiders() {
     emitRiders()
+  }
+
+  func emitCurrentPins() {
     emitPins()
+  }
+
+  func resync() {
+    emitCurrentStatus()
+    emitCurrentRiders()
+    emitCurrentPins()
   }
 
   @discardableResult

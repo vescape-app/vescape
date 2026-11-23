@@ -121,7 +121,7 @@ internal final class GroupRideObserver: NSObject {
 
   func start(_ url: String) {
     if !stopped && url == serverUrl {
-      resync()
+      resyncNow()
       return
     }
     if serverUrl != nil && serverUrl != url { publicRide.discardMissed() }
@@ -149,7 +149,37 @@ internal final class GroupRideObserver: NSObject {
     emitConnection("idle")
   }
 
-  private func resync() {
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `resync`
+  func resync() {
+    onMain { [self] in
+      guard !stopped else { return }
+      resyncNow()
+    }
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `replayEvent`
+  func replayEvent(_ name: String) {
+    onMain { [self] in
+      guard !stopped else { return }
+      switch name {
+      case "onGroupRideConnection":
+        emitConnection(lastConnection)
+      case "onGroupRideSignalAvailability":
+        lastSignalAvailability = nil
+        refreshSignalAvailability()
+      case "onPublicRideStatus":
+        publicRide.emitCurrentStatus()
+      case "onPublicRiders":
+        publicRide.emitCurrentRiders()
+      case "onPublicPins":
+        publicRide.emitCurrentPins()
+      default:
+        break
+      }
+    }
+  }
+
+  private func resyncNow() {
     emitConnection(lastConnection)
     lastSignalAvailability = nil
     refreshSignalAvailability()
