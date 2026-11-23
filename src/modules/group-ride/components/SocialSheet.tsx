@@ -1,12 +1,7 @@
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import {
-  ArrowClockwiseIcon,
-  CaretRightIcon,
-  UserCircleGearIcon,
-  WarningIcon,
-} from 'phosphor-react-native'
+import { CaretRightIcon, UserCircleGearIcon, WarningIcon } from 'phosphor-react-native'
 import type { PublicRideStatus } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
@@ -60,8 +55,6 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   const signedIn = useDeviceAccountReady()
   const hasNick = useRiderProfileStore((s) => s.profile?.nick != null)
   const profileLoaded = useRiderProfileStore((s) => s.loaded)
-  const profileFailed = useRiderProfileStore((s) => !s.loaded && s.error != null)
-  const loadProfile = useRiderProfileStore((s) => s.load)
   const settings = signedIn ? (
     <IconButton
       icon={UserCircleGearIcon}
@@ -107,21 +100,12 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         router.push(routes.account)
       }}
     />
-  ) : profileFailed ? (
-    <Button
-      label="Load your rider profile"
-      size="lg"
-      variant="success"
-      icon={ArrowClockwiseIcon}
-      iconPosition="right"
-      onPress={() => void loadProfile()}
-    />
   ) : null
   const ready = signedIn && hasNick && status.supported
   const hint = !signedIn
     ? null
     : !hasNick
-      ? !profileLoaded && !profileFailed
+      ? !profileLoaded
         ? 'Loading your rider profile…'
         : null
       : !status.supported
