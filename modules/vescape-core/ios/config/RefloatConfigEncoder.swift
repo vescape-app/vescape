@@ -51,18 +51,18 @@ enum RefloatConfigEncoder {
   }
 
   private static func writeFloat32Auto(_ bytes: inout [UInt8], _ offset: Int, _ value: Double) {
-    if value == 0.0 {
-      putUInt32(&bytes, offset, 0)
-      return
+    var number = Float(value)
+    if abs(number) < 1.5e-38 { number = 0 }
+    let (significand, frexpExponent) = frexp(number)
+    let significandAbs = abs(significand)
+    var exponent = frexpExponent
+    var significandBits: UInt32 = 0
+    if significandAbs >= 0.5 {
+      significandBits = UInt32((significandAbs - 0.5) * 2 * 8_388_608)
+      exponent += 126
     }
-    let neg = value < 0.0
-    let absVal = abs(value)
-    let e = Int((log(absVal) / log(2.0)).rounded(.down)) + 126
-    let eRaw = min(max(e, 0), 255)
-    let sig = absVal / pow(2.0, Double(eRaw - 126)) - 0.5
-    let sigI = min(max(Int(roundHalfUp(sig * 8_388_608.0 * 2.0)), 0), 0x7fffff)
-    var raw = (UInt32(eRaw) << 23) | UInt32(sigI)
-    if neg { raw |= (UInt32(1) << 31) }
+    var raw = (UInt32(truncatingIfNeeded: exponent & 0xff) << 23) | (significandBits & 0x7fffff)
+    if number < 0 { raw |= (UInt32(1) << 31) }
     putUInt32(&bytes, offset, raw)
   }
 

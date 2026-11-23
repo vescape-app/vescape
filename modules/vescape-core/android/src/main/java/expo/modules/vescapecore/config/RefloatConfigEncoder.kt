@@ -3,8 +3,6 @@ package expo.modules.vescapecore.config
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
-import kotlin.math.floor
-import kotlin.math.ln
 import kotlin.math.roundToInt
 
 internal class RefloatConfigEncodeException(message: String) : Exception(message)
@@ -50,18 +48,19 @@ internal object RefloatConfigEncoder {
   }
 
   private fun writeFloat32Auto(bytes: ByteArray, offset: Int, value: Double) {
-    if (value == 0.0) {
-      ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.BIG_ENDIAN).putInt(0)
-      return
+    var number = value.toFloat()
+    if (abs(number) < 1.5e-38f) number = 0f
+    val frexpExponent = if (number == 0f) 0 else Math.getExponent(number) + 1
+    val significand = if (number == 0f) 0f else Math.scalb(number, -frexpExponent)
+    val significandAbs = abs(significand)
+    var exponent = frexpExponent
+    var significandBits = 0
+    if (significandAbs >= 0.5f) {
+      significandBits = ((significandAbs - 0.5f) * 2f * 8388608f).toInt()
+      exponent += 126
     }
-    val neg = value < 0.0
-    val absVal = abs(value)
-    val e = floor(ln(absVal) / ln(2.0)).toInt() + 126
-    val eRaw = e.coerceIn(0, 255)
-    val sig = absVal / Math.pow(2.0, (eRaw - 126).toDouble()) - 0.5
-    val sigI = (sig * 8388608.0 * 2.0).roundToInt().coerceIn(0, 0x7fffff)
-    var raw = (eRaw shl 23) or sigI
-    if (neg) raw = raw or (1 shl 31)
+    var raw = ((exponent and 0xff) shl 23) or (significandBits and 0x7fffff)
+    if (significand < 0f) raw = raw or (1 shl 31)
     ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.BIG_ENDIAN).putInt(raw)
   }
 

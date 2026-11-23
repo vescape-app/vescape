@@ -68,12 +68,28 @@ final class RefloatConfigEncoderTests: XCTestCase {
 
   func testFloat32AutoRoundTrip() throws {
     let schema = RefloatConfigSchema(hash: "t", fields: [field("v", .float32Auto, offset: 0)])
-    for value in [0.0, 1.0, -1.0, 0.5, 100.0, -500.0, 12345.678, 0.001] {
-      var raw: [UInt8] = [0, 0, 0, 0]
-      writeFloat32AutoHelper(&raw, 0, value)
+    for value: Float in [0.0, 1.0, -1.0, 0.5, 3.0, 100.0, -500.0, 12345.678, 0.001] {
+      let raw = float32Bytes(value)
       let decoded = decodeAllFields(schema, raw)
       let reEncoded = try RefloatConfigEncoder.encode(schema: schema, rawConfig: raw, fields: decoded)
       XCTAssertEqual(raw, reEncoded, "FLOAT32_AUTO round-trip for \(value)")
+    }
+  }
+
+  func testFloat32AutoMatchesVescByteVectors() throws {
+    let schema = RefloatConfigSchema(hash: "t", fields: [field("v", .float32Auto, offset: 0)])
+    let vectors: [(Double, UInt32)] = [
+      (0.0, 0x0000_0000),
+      (0.5, 0x3F00_0000),
+      (1.0, 0x3F80_0000),
+      (3.0, 0x4040_0000),
+      (30.0, 0x41F0_0000),
+      (100.0, 0x42C8_0000),
+      (-2.5, 0xC020_0000),
+    ]
+    for (value, expected) in vectors {
+      let encoded = try RefloatConfigEncoder.encode(schema: schema, rawConfig: [0, 0, 0, 0], fields: ["v": value])
+      XCTAssertEqual(expected, readUInt32(encoded, 0), "FLOAT32_AUTO bytes for \(value)")
     }
   }
 
@@ -182,7 +198,7 @@ final class RefloatConfigEncoderTests: XCTestCase {
     var buf: [UInt8] = []
     buf += float32Bytes(26.5)
     buf += int32Bytes(1500)
-    buf += [0, 0, 0, 0]
+    buf += uint32Bytes(0x4040_0000)
     buf += int16Bytes(325)
     buf += int32Bytes(-42)
     buf += int32Bytes(Int32(bitPattern: 0x8000_0001))
@@ -196,30 +212,9 @@ final class RefloatConfigEncoderTests: XCTestCase {
   }
 
   private func decodeAllFields(_ schema: RefloatConfigSchema, _ raw: [UInt8]) -> [String: Any] {
-    guard let snapshot = try? RefloatConfigDecoder.decode(
-      schema: schema, rawConfig: raw, boardId: nil, canId: 0, capturedAt: 0, fwVersion: nil
-    ) else { return [:] }
-    var fields: [String: Any] = [:]
-    for group in snapshot.groups {
-      for f in group.fields { fields[f.id] = f.value }
-    }
+    let fields = RefloatConfigDecoder.decodeFieldMap(schema: schema, rawConfig: raw)
+    XCTAssertEqual(Set(schema.fields.map(\.id)), Set(fields.keys), "Every schema field must decode")
     return fields
-  }
-
-  private func writeFloat32AutoHelper(_ bytes: inout [UInt8], _ offset: Int, _ value: Double) {
-    if value == 0.0 {
-      putUInt32(&bytes, offset, 0)
-      return
-    }
-    let neg = value < 0.0
-    let absVal = abs(value)
-    let e = Int((log(absVal) / log(2.0)).rounded(.down)) + 126
-    let eRaw = min(max(e, 0), 255)
-    let sig = absVal / pow(2.0, Double(eRaw - 126)) - 0.5
-    let sigI = min(max(Int((sig * 8_388_608.0 * 2.0).rounded(.towardZero)), 0), 0x7fffff)
-    var raw = (UInt32(eRaw) << 23) | UInt32(sigI)
-    if neg { raw |= (UInt32(1) << 31) }
-    putUInt32(&bytes, offset, raw)
   }
 
   private func float32Bytes(_ v: Float) -> [UInt8] { uint32Bytes(v.bitPattern) }
@@ -230,12 +225,6 @@ final class RefloatConfigEncoderTests: XCTestCase {
   private func int16Bytes(_ v: Int16) -> [UInt8] {
     let u = UInt16(bitPattern: v)
     return [UInt8((u >> 8) & 0xff), UInt8(u & 0xff)]
-  }
-  private func putUInt32(_ bytes: inout [UInt8], _ offset: Int, _ v: UInt32) {
-    bytes[offset] = UInt8((v >> 24) & 0xff)
-    bytes[offset + 1] = UInt8((v >> 16) & 0xff)
-    bytes[offset + 2] = UInt8((v >> 8) & 0xff)
-    bytes[offset + 3] = UInt8(v & 0xff)
   }
   private func readUInt32(_ bytes: [UInt8], _ offset: Int) -> UInt32 {
     (UInt32(bytes[offset]) << 24) | (UInt32(bytes[offset + 1]) << 16)

@@ -6,7 +6,6 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.abs
 
 class RefloatConfigEncoderTest {
 
@@ -41,7 +40,7 @@ class RefloatConfigEncoderTest {
     val buf = ByteBuffer.allocate(totalSize).order(ByteOrder.BIG_ENDIAN)
     buf.putFloat(26.5f)
     buf.putInt(1500)
-    buf.putInt(0)
+    buf.putInt(0x40400000)
     buf.putShort(325)
     buf.putInt(-42)
     buf.putInt(0x80000001.toInt())
@@ -134,12 +133,31 @@ class RefloatConfigEncoderTest {
     val schema = RefloatConfigSchema("t", listOf(
       RefloatConfigSchemaField("v", RefloatConfigValueType.FLOAT32_AUTO, "v", null, null, null, 0),
     ))
-    for (value in listOf(0.0, 1.0, -1.0, 0.5, 100.0, -500.0, 12345.678, 0.001)) {
-      val raw = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).array()
-      writeFloat32AutoHelper(raw, 0, value)
+    for (value in listOf(0.0f, 1.0f, -1.0f, 0.5f, 3.0f, 100.0f, -500.0f, 12345.678f, 0.001f)) {
+      val raw = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putFloat(value).array()
       val decoded = decodeAllFields(schema, raw)
       val reEncoded = RefloatConfigEncoder.encode(schema, raw, decoded)
       assertArrayEquals("FLOAT32_AUTO round-trip for $value", raw, reEncoded)
+    }
+  }
+
+  @Test
+  fun float32AutoMatchesVescByteVectors() {
+    val schema = RefloatConfigSchema("t", listOf(
+      RefloatConfigSchemaField("v", RefloatConfigValueType.FLOAT32_AUTO, "v", null, null, null, 0),
+    ))
+    val vectors = listOf(
+      0.0 to 0x00000000,
+      0.5 to 0x3F000000,
+      1.0 to 0x3F800000,
+      3.0 to 0x40400000,
+      30.0 to 0x41F00000,
+      100.0 to 0x42C80000,
+      -2.5 to 0xC0200000.toInt(),
+    )
+    for ((value, expected) in vectors) {
+      val encoded = RefloatConfigEncoder.encode(schema, ByteArray(4), mapOf("v" to value))
+      assertEquals("FLOAT32_AUTO bytes for $value", expected, ByteBuffer.wrap(encoded).order(ByteOrder.BIG_ENDIAN).int)
     }
   }
 
@@ -235,29 +253,8 @@ class RefloatConfigEncoderTest {
   }
 
   private fun decodeAllFields(schema: RefloatConfigSchema, raw: ByteArray): Map<String, Any> {
-    val snapshot = RefloatConfigDecoder.decode(schema, raw, null, 0, 0L, null)
-    val fields = mutableMapOf<String, Any>()
-    for (group in snapshot.groups) {
-      for (field in group.fields) {
-        fields[field.id] = field.value
-      }
-    }
+    val fields = RefloatConfigDecoder.decodeFieldMap(schema, raw)
+    assertEquals("Every schema field must decode", schema.fields.map { it.id }.toSet(), fields.keys)
     return fields
-  }
-
-  private fun writeFloat32AutoHelper(bytes: ByteArray, offset: Int, value: Double) {
-    if (value == 0.0) {
-      ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.BIG_ENDIAN).putInt(0)
-      return
-    }
-    val neg = value < 0.0
-    val absVal = abs(value)
-    val e = kotlin.math.floor(kotlin.math.ln(absVal) / kotlin.math.ln(2.0)).toInt() + 126
-    val eRaw = e.coerceIn(0, 255)
-    val sig = absVal / Math.pow(2.0, (eRaw - 126).toDouble()) - 0.5
-    val sigI = (sig * 8388608.0 * 2.0).toInt().coerceIn(0, 0x7fffff)
-    var raw = (eRaw shl 23) or sigI
-    if (neg) raw = raw or (1 shl 31)
-    ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.BIG_ENDIAN).putInt(raw)
   }
 }
