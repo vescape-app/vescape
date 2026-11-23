@@ -73,13 +73,15 @@ internal class VescGattClient(
     override fun sendPayload(payload: ByteArray): Boolean {
         if (gatt == null || txChar == null) return false
         writeQueue.enqueueNormal(VescPacketCodec.encode(payload))
-        return drainWriteQueue()
+        drainWriteQueue()
+        return true
     }
 
     override fun sendRemoteInput(payload: ByteArray, urgent: Boolean): Boolean {
         if (gatt == null || txChar == null) return false
         writeQueue.replaceRemoteInput(VescPacketCodec.encode(payload), urgent)
-        return drainWriteQueue()
+        drainWriteQueue()
+        return true
     }
 
     override fun clear(markIntentional: Boolean) {
@@ -242,10 +244,10 @@ internal class VescGattClient(
         }
     }
 
-    private fun drainWriteQueue(): Boolean {
-        val g = gatt ?: return false
-        val tx = txChar ?: return false
-        val write = writeQueue.startNext() ?: return true
+    private fun drainWriteQueue() {
+        val g = gatt ?: return
+        val tx = txChar ?: return
+        val write = writeQueue.startNext() ?: return
         val bytes = write.bytes
         writeRetry?.let { handler.removeCallbacks(it) }
         writeRetry = null
@@ -269,10 +271,9 @@ internal class VescGattClient(
             val retry = Runnable { drainWriteQueue() }
             writeRetry = retry
             handler.postDelayed(retry, 25L)
-            return false
+            return
         }
         recorder()?.recordChunk("tx", bytes)
-        return ok
     }
 
     private fun writeCccd(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor) {

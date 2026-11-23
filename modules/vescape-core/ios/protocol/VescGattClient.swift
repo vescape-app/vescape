@@ -217,29 +217,30 @@ internal final class VescGattClient: NSObject, SessionTransport {
   func sendPayload(_ payload: [UInt8]) -> Bool {
     guard linkUp, peripheral != nil, txChar != nil else { return false }
     writeQueue.enqueueNormal(VescPacketCodec.encode(payload))
-    return drainWriteQueue()
+    drainWriteQueue()
+    return true
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `sendRemoteInput`
   func sendRemoteInput(_ payload: [UInt8], urgent: Bool) -> Bool {
     guard linkUp, peripheral != nil, txChar != nil else { return false }
     writeQueue.replaceRemoteInput(VescPacketCodec.encode(payload), urgent: urgent)
-    return drainWriteQueue()
+    drainWriteQueue()
+    return true
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `drainWriteQueue`
-  @discardableResult
-  private func drainWriteQueue() -> Bool {
-    guard linkUp, let peripheral, let txChar else { return false }
+  private func drainWriteQueue() {
+    guard linkUp, let peripheral, let txChar else { return }
     writeQueue.setChunkLimit(peripheral.maximumWriteValueLength(for: .withoutResponse))
     while true {
       if writeType == .withoutResponse, !peripheral.canSendWriteWithoutResponse {
-        return true
+        return
       }
-      guard let write = writeQueue.startNext() else { return true }
+      guard let write = writeQueue.startNext() else { return }
       peripheral.writeValue(Data(write.bytes), for: txChar, type: writeType)
       recorder?()?.recordChunk(direction: "tx", bytes: write.bytes)
-      if writeType == .withResponse { return true }
+      if writeType == .withResponse { return }
       writeQueue.completeInFlight()
     }
   }
