@@ -13,11 +13,13 @@ export class DeviceProvisioningSuspendedError extends Error {
 }
 
 let provisioning: Promise<void> | null = null
+let installing: Promise<unknown> | null = null
 let suspended = false
+let generation = 0
 
 export function startDeviceProvisioning(steps: DeviceProvisioningSteps): Promise<void> | null {
   if (suspended || provisioning !== null) return null
-  const run = provision(steps).finally(() => {
+  const run = provision(steps, generation).finally(() => {
     if (provisioning === run) provisioning = null
   })
   provisioning = run
@@ -26,7 +28,9 @@ export function startDeviceProvisioning(steps: DeviceProvisioningSteps): Promise
 
 export async function suspendDeviceProvisioning(): Promise<void> {
   suspended = true
-  await Promise.allSettled([provisioning])
+  generation++
+  provisioning = null
+  await Promise.allSettled([installing])
 }
 
 export function resumeDeviceProvisioning(): void {
@@ -37,11 +41,20 @@ export function isDeviceProvisioningSuspended(): boolean {
   return suspended
 }
 
-async function provision({ getToken, exchange, install }: DeviceProvisioningSteps): Promise<void> {
+async function provision(
+  { getToken, exchange, install }: DeviceProvisioningSteps,
+  startedIn: number,
+): Promise<void> {
   const clerkToken = await getToken()
-  if (suspended) throw new DeviceProvisioningSuspendedError()
+  if (startedIn !== generation) throw new DeviceProvisioningSuspendedError()
   if (!clerkToken) throw new Error('Clerk session token is unavailable')
   const body = await exchange(clerkToken)
-  if (suspended) throw new DeviceProvisioningSuspendedError()
-  await install(body)
+  if (startedIn !== generation) throw new DeviceProvisioningSuspendedError()
+  const run = install(body)
+  installing = run
+  try {
+    await run
+  } finally {
+    if (installing === run) installing = null
+  }
 }

@@ -15,6 +15,7 @@ import { exchangeDeviceToken } from '@/modules/profile/lib/deviceAuth'
 import {
   DeviceProvisioningSuspendedError,
   isDeviceProvisioningSuspended,
+  resumeDeviceProvisioning,
   startDeviceProvisioning,
   type DeviceProvisioningSteps,
 } from '@/modules/profile/lib/deviceProvisioning'
@@ -29,6 +30,7 @@ export function DeviceAuthSync() {
   const { session } = useSession()
   const retryRequestId = useDeviceAuthStore((state) => state.retryRequestId)
   const setStatus = useDeviceAuthStore((state) => state.setStatus)
+  const retry = useDeviceAuthStore((state) => state.retry)
 
   const tryProvision = useCallback(() => {
     if (!isLoaded || !isSignedIn || !session || isDeviceProvisioningSuspended()) return
@@ -58,13 +60,18 @@ export function DeviceAuthSync() {
       .then(() => setStatus('ready'))
       .catch((error: unknown) => {
         attemptedSessionIds.delete(session.id)
-        if (error instanceof DeviceProvisioningSuspendedError) setStatus('idle')
-        else setStatus('failed', visibleError(error))
+        if (!(error instanceof DeviceProvisioningSuspendedError)) {
+          setStatus('failed', visibleError(error))
+        } else if (!isDeviceProvisioningSuspended()) {
+          retry()
+        }
       })
-  }, [getToken, isLoaded, isSignedIn, session, setStatus, signOut])
+  }, [getToken, isLoaded, isSignedIn, retry, session, setStatus, signOut])
 
   useEffect(() => {
-    if (isLoaded && !isSignedIn) setStatus('idle')
+    if (!isLoaded || isSignedIn) return
+    resumeDeviceProvisioning()
+    setStatus('idle')
   }, [isLoaded, isSignedIn, setStatus])
 
   useEffect(() => {

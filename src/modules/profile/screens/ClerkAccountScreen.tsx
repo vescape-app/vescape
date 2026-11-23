@@ -23,7 +23,7 @@ import { clearDeviceCredential, revokeDeviceCredential } from 'vescape-core'
 
 const DELETE_ACCOUNT_MESSAGE = [
   'Permanently deleted: your Vescape account and sign-in email, your rider profile (your nick becomes available again), friends, stored public rides and your part of crew rides, monthly ride stats, cloud backups, and all map points and reactions you added to the map.',
-  'Not affected: data on this phone. Boards, ride history, favorites, tune profiles, alert rules, privacy zones, and app settings stay here.',
+  'Not affected: data on this phone. Boards, ride history, favorites with their photos and videos, tune profiles, alert rules, privacy zones, and app settings stay here.',
 ].join('\n\n')
 
 export function ClerkAccountScreen() {
@@ -37,6 +37,9 @@ export function ClerkAccountScreen() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deletionAccepted, setDeletionAccepted] = useState(false)
+  const deviceAuthStatus = useDeviceAuthStore((s) => s.status)
+  const deviceAuthError = useDeviceAuthStore((s) => s.error)
   const retryDeviceAuth = useDeviceAuthStore((s) => s.retry)
   const profileLoaded = useRiderProfileStore((s) => s.loaded)
   const hasNick = useRiderProfileStore((s) => s.profile != null)
@@ -65,9 +68,26 @@ export function ClerkAccountScreen() {
     }
   }, [signOut])
 
+  const finishAccountDeletion = useCallback(async () => {
+    try {
+      clearDeviceCredential()
+      useRiderProfileStore.getState().clear()
+      await signOut()
+    } catch {
+      setDeleting(false)
+      setDeleteError(
+        'Your account was deleted, but this phone could not finish signing out. Try again.',
+      )
+    }
+  }, [signOut])
+
   const handleDeleteAccount = useCallback(async () => {
     setDeleting(true)
     setDeleteError(null)
+    if (deletionAccepted) {
+      await finishAccountDeletion()
+      return
+    }
     await suspendDeviceProvisioning()
     try {
       const clerkToken = await getToken()
@@ -80,20 +100,9 @@ export function ClerkAccountScreen() {
       setDeleteError('Could not delete your account. Check your connection and try again.')
       return
     }
-    try {
-      clearDeviceCredential()
-    } catch {
-      // intentional-suppression: the server already revoked every Device Token, so a stale local one is rejected on next use
-    }
-    useRiderProfileStore.getState().clear()
-    try {
-      await signOut()
-    } catch {
-      router.replace(routes.profileStats)
-    } finally {
-      resumeDeviceProvisioning()
-    }
-  }, [getToken, retryDeviceAuth, router, signOut])
+    setDeletionAccepted(true)
+    await finishAccountDeletion()
+  }, [deletionAccepted, finishAccountDeletion, getToken, retryDeviceAuth])
 
   if (!isLoaded || !isSignedIn) return null
 
@@ -119,6 +128,14 @@ export function ClerkAccountScreen() {
           Signing out and deleting your account need internet so the server can revoke this phone’s
           native credential first.
         </Text>
+      )}
+      {deviceAuthStatus === 'failed' && (
+        <>
+          <Text style={styles.error}>
+            Account not connected on this phone{deviceAuthError ? `: ${deviceAuthError}` : '.'}
+          </Text>
+          <Button label="Retry connection" variant="secondary" onPress={retryDeviceAuth} />
+        </>
       )}
       {error && <Text style={styles.error}>{error}</Text>}
       <View style={styles.actions}>
@@ -153,7 +170,7 @@ export function ClerkAccountScreen() {
         visible={confirmDelete}
         title="Delete your Vescape account?"
         message={DELETE_ACCOUNT_MESSAGE}
-        confirmLabel="Delete account"
+        confirmLabel={deletionAccepted ? 'Finish signing out' : 'Delete account'}
         destructive
         loading={deleting}
         error={deleteError}

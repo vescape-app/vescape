@@ -28,14 +28,13 @@ describe('Device Token provisioning during account deletion', () => {
     const { exchange, finish } = deferredExchange()
     const install = mock(async (_body: DeviceTokenExchange) => undefined)
     const run = startDeviceProvisioning({ getToken: async () => 'clerk-token', exchange, install })
-    await Promise.resolve()
+    while (exchange.mock.calls.length === 0) await Promise.resolve()
 
-    const suspended = suspendDeviceProvisioning()
+    await suspendDeviceProvisioning()
+    resumeDeviceProvisioning()
     finish()
 
     await expect(run).rejects.toBeInstanceOf(DeviceProvisioningSuspendedError)
-    await suspended
-    expect(exchange).toHaveBeenCalledTimes(1)
     expect(install).not.toHaveBeenCalled()
   })
 

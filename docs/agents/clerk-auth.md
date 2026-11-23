@@ -57,14 +57,17 @@ suspend DeviceAuthSync -> DELETE /api/account (Clerk token) -> native clear -> r
 ```
 
 `ClerkAccountScreen` runs it. Suspending `DeviceAuthSync`
-(`src/modules/profile/lib/deviceProvisioning.ts`) blocks new exchanges, drops the Device Token of an
-exchange still in flight, and waits for a native install already running, so nothing reinstalls a
-credential after the local clear. `200` (deleted) and `202` (queued for background Clerk deletion)
-both count as accepted; anything else resumes provisioning and lets the rider retry. The local
-clear uses `clearDeviceCredential`, not revoke: the server already revoked every Device Token. The
-credential change listeners stop Public Ride sharing and Rider Month Stats sending on both
-platforms, and native requests that require a Device Token stop. Clerk
-sign-out errors after acceptance are tolerated because the Clerk session may already be gone.
+(`src/modules/profile/lib/deviceProvisioning.ts`) blocks new exchanges, invalidates any exchange
+still in flight so its Device Token is never installed, and waits only for a native install already
+running, so nothing reinstalls a credential after the local clear. `200` (deleted) and `202`
+(queued for background Clerk deletion) both count as accepted; anything else resumes provisioning
+and lets the rider retry. The local clear uses `clearDeviceCredential`, not revoke: the server
+already revoked every Device Token. The credential change listeners stop Public Ride sharing and
+Rider Month Stats sending on both platforms, and native requests that require a Device Token stop.
+If the local clear or Clerk sign-out fails after acceptance, the screen keeps provisioning suspended
+and retries only the local clean-up, never the server request. Provisioning resumes when Clerk
+reports signed out. A failed Device Token exchange still routes the account pill to the account
+screen, so Online-Blocked builds keep Sign out and Delete account reachable.
 `DELETE /api/account` is exempt from Online Block so outdated builds can still delete accounts.
 Deleting a Vescape Account never touches local phone data.
 
