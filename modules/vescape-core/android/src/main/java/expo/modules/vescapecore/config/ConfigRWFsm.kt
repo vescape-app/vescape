@@ -11,6 +11,18 @@ internal object ConfigRWFsm {
     fun apply(
         state: ConfigRWState,
         event: ConfigRWEvent,
+    ): Pair<ConfigRWState, List<ConfigRWEffect>> {
+        val (next, effects) = reduce(state, event)
+        val uncertain = state.setConfigSent() && effects.any { it is ConfigRWEffect.EmitWriteFailure }
+        return next to if (uncertain) listOf(ConfigRWEffect.DemoteWriteBase) + effects else effects
+    }
+
+    private fun ConfigRWState.setConfigSent() =
+        this is ConfigRWState.WriteAwaitingSetAck || this is ConfigRWState.WriteVerifying
+
+    private fun reduce(
+        state: ConfigRWState,
+        event: ConfigRWEvent,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> = when (event) {
         is ConfigRWEvent.StartRead -> onStartRead(state, event)
         is ConfigRWEvent.StartWrite -> onStartWrite(state, event)
@@ -551,8 +563,8 @@ internal object ConfigRWFsm {
         capturedAtMs: Long,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
         val rawConfigFromBoard = configFromBoard.config
-        when (val verification = RefloatConfigWriteVerifier.verifyExactBytes(
-            state.patchedConfig, rawConfigFromBoard,
+        when (val verification = RefloatConfigWriteVerifier.verify(
+            state.schema, state.patchedConfig, rawConfigFromBoard,
         )) {
             is RefloatConfigWriteVerification.Failure -> return writeFailure(
                 state.ctx,

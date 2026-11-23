@@ -2809,7 +2809,8 @@ internal final class BoardSessionController: VescGattListener {
         do { return try TuneProfileStore.shared.getTuneProfile(profileId) }
         catch { RecordingStorageFailure.reportRead(operation: "board_tune_profile_read", error: error); throw error }
       },
-      onBoardConfigValues: { [weak self] values, origin in self?.onBoardConfigValues(values, origin: origin) }
+      onBoardConfigValues: { [weak self] values, origin in self?.onBoardConfigValues(values, origin: origin) },
+      demoteWriteBase: { [weak self] in self?.boardConfigValues = self?.boardConfigValues?.demotedToProvisional() }
     )
   }
 
@@ -2829,7 +2830,8 @@ internal final class BoardSessionController: VescGattListener {
       sendPayload: { _ in false },
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in nil },
-      onBoardConfigValues: { _, _ in }
+      onBoardConfigValues: { _, _ in },
+      demoteWriteBase: { [weak self] in self?.boardConfigValues = self?.boardConfigValues?.demotedToProvisional() }
     )
   }
 

@@ -130,6 +130,61 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertNil(selectProfileFields(["kp": NSNull()], ["kp"]))
   }
 
+  func testVerifyMismatchDemotesTheWriteBase() {
+    let sent = SentFrames()
+    let controller = ConfigRWController()
+    var demotions = 0
+    var errors: [String] = []
+    let values = fresh()
+    let conn = connection(values, sent, demoteWriteBase: { demotions += 1 })
+
+    controller.consumeWrite(
+      profileId: "profile-1",
+      fieldIds: ["tuned"],
+      connection: conn,
+      onSuccess: { _ in XCTFail("write should not succeed") },
+      onError: { code, _ in errors.append(code) }
+    )
+    _ = controller.onPayload([UInt8(COMM_SET_CUSTOM_CONFIG), 0], connection: conn)
+    XCTAssertEqual(demotions, 0)
+    _ = controller.onPayload([UInt8(COMM_GET_CUSTOM_CONFIG), 0, 0xDE, 0xAD, 0xBE, 0xEF] + values.writeBase!.rawConfig, connection: conn)
+
+    XCTAssertEqual(errors, [RefloatConfigErrorCode.CONFIG_VERIFY_FAILED.rawValue])
+    XCTAssertEqual(demotions, 1)
+  }
+
+  func testLinkLossAfterSetDemotesTheWriteBase() {
+    let sent = SentFrames()
+    let controller = ConfigRWController()
+    var demotions = 0
+    let conn = connection(fresh(), sent, demoteWriteBase: { demotions += 1 })
+
+    controller.consumeWrite(profileId: "profile-1", fieldIds: ["tuned"], connection: conn, onSuccess: { _ in }, onError: { _, _ in })
+    controller.onSessionTerminated("Board connection lost", connection: conn)
+
+    XCTAssertEqual(demotions, 1)
+  }
+
+  func testFailureBeforeSetKeepsTheWriteBase() {
+    let sent = SentFrames()
+    var demotions = 0
+    var errors: [String] = []
+
+    ConfigRWController().consumeWrite(
+      profileId: "profile-1",
+      fieldIds: ["tuned"],
+      connection: connection(fresh(), sent, loadProfile: { _ in
+        ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": ["tuned": Double.nan] as [String: Any]]
+      }, demoteWriteBase: { demotions += 1 }),
+      onSuccess: { _ in XCTFail("write should not succeed") },
+      onError: { code, _ in errors.append(code) }
+    )
+
+    XCTAssertEqual(errors, [RefloatConfigErrorCode.CONFIG_VALUE_INVALID.rawValue])
+    XCTAssertEqual(demotions, 0)
+    XCTAssertFalse(sent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+  }
+
   private func schema() -> RefloatConfigSchema {
     RefloatConfigSchema(
       hash: "test",
@@ -162,7 +217,8 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     _ values: BoardConfigValues?,
     _ sent: SentFrames,
     linkIntegrity: LinkIntegrity = .trusted,
-    loadProfile: ((String) throws -> [String: Any?]?)? = nil
+    loadProfile: ((String) throws -> [String: Any?]?)? = nil,
+    demoteWriteBase: @escaping () -> Void = {}
   ) -> ConfigRWConnection {
     ConfigRWConnection(
       phase: .connected,
@@ -181,7 +237,8 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
       loadProfile: loadProfile ?? { _ in
         ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": ["tuned": 7.0] as [String: Any]]
       },
-      onBoardConfigValues: { _, _ in }
+      onBoardConfigValues: { _, _ in },
+      demoteWriteBase: demoteWriteBase
     )
   }
 }

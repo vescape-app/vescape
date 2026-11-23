@@ -99,7 +99,8 @@ final class ConfigRWControllerLinkIntegrityTests: XCTestCase {
         self.loadedProfile = true
         return profileVersion.map { ["boardId": "board-1", "refloatBaseVersion": $0, "fields": ["kp": 20]] }
       },
-      onBoardConfigValues: { _, _ in }
+      onBoardConfigValues: { _, _ in },
+      demoteWriteBase: {}
     )
   }
 }

@@ -420,7 +420,7 @@ internal final class ConfigRWController {
     _ boardConfig: RefloatConfigBytes,
     _ connection: ConfigRWConnection
   ) {
-    switch RefloatConfigWriteVerifier.verifyExactBytes(expected: patched, actual: boardConfig.config) {
+    switch RefloatConfigWriteVerifier.verify(schema: schema, written: patched, readBack: boardConfig.config) {
     case .failure(let message):
       failWrite(code: .CONFIG_VERIFY_FAILED, message: message, phase: .verifying, rawConfig: original, connection: connection)
       return
@@ -522,6 +522,7 @@ internal final class ConfigRWController {
     writeCallbacks = nil
     let resume = resumePolling ?? currentResumePolling
     let opId = currentOpId
+    if setConfigSent { connection.demoteWriteBase() }
     state = .idle
     cancelTimeout()
     if resume { connection.startPolling() }
@@ -558,6 +559,13 @@ internal final class ConfigRWController {
       failWrite(code: code, message: message, phase: .sendingWrite, rawConfig: original, resumePolling: resumePolling, connection: connection)
     case .writeVerifying(_, _, let original, _):
       failWrite(code: code, message: message, phase: .verifying, rawConfig: original, resumePolling: resumePolling, connection: connection)
+    }
+  }
+
+  private var setConfigSent: Bool {
+    switch state {
+    case .writeAwaitingSetAck, .writeVerifying: return true
+    default: return false
     }
   }
 
@@ -654,6 +662,7 @@ internal struct ConfigRWConnection {
   let captureDiagnostic: (String, [String: Any?]) -> Void
   let loadProfile: (String) throws -> [String: Any?]?
   let onBoardConfigValues: (BoardConfigValues, BoardConfigOperationOrigin) -> Void
+  let demoteWriteBase: () -> Void
 }
 
 internal enum BoardConfigOperationOrigin { case freshRead, vescapeWrite }

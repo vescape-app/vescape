@@ -10,6 +10,8 @@ internal sealed class ConfigRWEffect {
 
     object CancelTimeout : ConfigRWEffect()
 
+    object DemoteWriteBase : ConfigRWEffect()
+
     data class EmitReadComplete(
         val snapshot: RefloatConfigSnapshot,
         val resumePolling: Boolean,

@@ -22,7 +22,8 @@ enum ConfigReplayHarness {
       sendPayload: { _ in true },
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in nil },
-      onBoardConfigValues: { values, _ in capture.value = values }
+      onBoardConfigValues: { values, _ in capture.value = values },
+      demoteWriteBase: {}
     )
     controller.consumeRead(connection: connection, onSuccess: { _ in }, onError: { _, _ in })
 

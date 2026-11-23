@@ -230,6 +230,18 @@ before the range check. `BOOL` fields accept a boolean or exactly `0`/`1`. Tune 
 `src/modules/tune/lib/fields.ts` stay inside each field's wire limit, and manual entry rejects
 values outside it.
 
+#### Read-back verify and uncertain outcomes
+
+After the SET ack the app reads the config back and compares it byte for byte with what it
+wrote. The one expected difference is `meta.is_default`: Refloat clears it on a config write, so
+when the schema has that field the verifier expects `0` there.
+
+Once SET has been sent, any failure (verify mismatch, timeout, GATT failure, or a lost link while
+waiting for the ack or the read-back) leaves the board state unknown. The app then demotes the
+in-memory Board Config Values to last known and drops the write base, so the next push does a
+fresh schema and config read instead of patching bytes that may no longer match the board.
+Failures before SET (invalid values, read failures) keep the write base.
+
 ### Refloat Runtime Commands
 
 Refloat also exposes package-specific tune commands over

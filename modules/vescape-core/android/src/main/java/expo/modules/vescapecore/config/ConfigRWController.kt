@@ -47,6 +47,7 @@ internal interface ConfigRWControllerPort {
     fun diagnosticProperties(config: SessionConfig?, category: String): Map<String, Any?>
     fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray)
     fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin)
+    fun demoteWriteBase()
 }
 
 // @parity /modules/vescape-core/ios/config/ConfigRWController.swift
@@ -183,6 +184,7 @@ internal class ConfigRWController(
         is ConfigRWEffect.EmitWriteComplete -> completeWrite(effect)
         is ConfigRWEffect.EmitWriteFailure -> failWrite(effect)
         is ConfigRWEffect.DumpDebugBytes -> port.dumpDebugBytes(effect.xmlBytes, effect.configBytes)
+        ConfigRWEffect.DemoteWriteBase -> port.demoteWriteBase()
         }
         return true
     }

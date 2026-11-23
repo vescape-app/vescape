@@ -7,18 +7,26 @@ internal sealed class RefloatConfigWriteVerification {
 
 // @parity /modules/vescape-core/ios/config/RefloatConfigWriteVerifier.swift
 internal object RefloatConfigWriteVerifier {
-  fun verifyExactBytes(expected: ByteArray, actual: ByteArray): RefloatConfigWriteVerification {
-    if (expected.contentEquals(actual)) return RefloatConfigWriteVerification.Success
+  private const val META_IS_DEFAULT = "meta.is_default"
 
-    if (expected.size != actual.size) {
+  fun verify(schema: RefloatConfigSchema, written: ByteArray, readBack: ByteArray): RefloatConfigWriteVerification {
+    val expected = expectedReadBack(schema, written)
+    if (expected.contentEquals(readBack)) return RefloatConfigWriteVerification.Success
+
+    if (expected.size != readBack.size) {
       return RefloatConfigWriteVerification.Failure(
-        "Verification failed: expected ${expected.size} bytes, read back ${actual.size} bytes",
+        "Verification failed: expected ${expected.size} bytes, read back ${readBack.size} bytes",
       )
     }
 
-    val firstMismatch = expected.indices.first { expected[it] != actual[it] }
+    val firstMismatch = expected.indices.first { expected[it] != readBack[it] }
     return RefloatConfigWriteVerification.Failure(
       "Verification failed: first byte mismatch at offset $firstMismatch",
     )
   }
+
+  private fun expectedReadBack(schema: RefloatConfigSchema, written: ByteArray): ByteArray =
+    if (schema.fields.any { it.id == META_IS_DEFAULT }) {
+      runCatching { RefloatConfigEncoder.encode(schema, written, mapOf(META_IS_DEFAULT to 0)) }.getOrDefault(written)
+    } else written
 }

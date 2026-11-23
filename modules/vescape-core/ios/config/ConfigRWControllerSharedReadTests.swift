@@ -71,7 +71,8 @@ final class ConfigRWControllerSharedReadTests: XCTestCase {
       sendPayload: { _ in true },
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": ["kp": 20.0] as [String: Any]] },
-      onBoardConfigValues: { _, _ in }
+      onBoardConfigValues: { _, _ in },
+      demoteWriteBase: {}
     )
   }
 }

@@ -100,14 +100,60 @@ class ConfigRWFsmWriteBaseTest {
         assertEquals(null, lastKnown.writeBase)
     }
 
+    @Test
+    fun verifyMismatchDemotesTheWriteBase() {
+        val (awaitingAck, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(writeBase()))
+        val (verifying, _) = ConfigRWFsm.apply(
+            awaitingAck,
+            ConfigRWEvent.SetConfigResponseReceived(byteArrayOf(COMM_SET_CUSTOM_CONFIG.toByte(), 0)),
+        )
+        val unchangedReadBack = byteArrayOf(COMM_GET_CUSTOM_CONFIG.toByte(), 0, 0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte()) + rawConfig
+        val (state, effects) = ConfigRWFsm.apply(verifying, ConfigRWEvent.ConfigBytesPayloadReceived(unchangedReadBack, 2))
+
+        assertEquals(ConfigRWState.Idle, state)
+        assertEquals(RefloatConfigErrorCode.CONFIG_VERIFY_FAILED, effects.failureCode())
+        assertTrue(effects.contains(ConfigRWEffect.DemoteWriteBase))
+    }
+
+    @Test
+    fun timeoutAfterSetDemotesTheWriteBase() {
+        val (awaitingAck, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(writeBase()))
+        val (_, effects) = ConfigRWFsm.apply(awaitingAck, ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT))
+
+        assertEquals(RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT, effects.failureCode())
+        assertTrue(effects.contains(ConfigRWEffect.DemoteWriteBase))
+    }
+
+    @Test
+    fun failureBeforeSetKeepsTheWriteBase() {
+        val (_, rejected) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(writeBase(), mapOf("tuned" to Double.NaN)),
+        )
+        val (reading, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(null))
+        val (_, timedOut) = ConfigRWFsm.apply(reading, ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT))
+
+        assertEquals(RefloatConfigErrorCode.CONFIG_VALUE_INVALID, rejected.failureCode())
+        assertFalse(rejected.contains(ConfigRWEffect.DemoteWriteBase))
+        assertFalse(rejected.sends(COMM_SET_CUSTOM_CONFIG))
+        assertEquals(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT, timedOut.failureCode())
+        assertFalse(timedOut.contains(ConfigRWEffect.DemoteWriteBase))
+    }
+
     private fun writeBase() = BoardConfigWriteBase(schema, rawConfig, 0xDEADBEEF)
 
-    private fun startWrite(writeBase: BoardConfigWriteBase?) = ConfigRWEvent.StartWrite(
+    private fun List<ConfigRWEffect>.failureCode() =
+        filterIsInstance<ConfigRWEffect.EmitWriteFailure>().single().code
+
+    private fun startWrite(
+        writeBase: BoardConfigWriteBase?,
+        profileFields: Map<String, Any> = mapOf("tuned" to 7.0),
+    ) = ConfigRWEvent.StartWrite(
         opId = "op-1",
         canId = null,
         transport = BoardTransport.Direct,
         wasPolling = false,
-        profileFields = mapOf("tuned" to 7.0),
+        profileFields = profileFields,
         appBoardId = "board-1",
         fwVersion = "FW 6.05",
         refloatBaseVersion = "3.0.7",

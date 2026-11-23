@@ -435,6 +435,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
                     this@BoardSessionController.dumpRefloatConfigDebug(xmlBytes, configBytes)
                 override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) =
                     this@BoardSessionController.onBoardConfigValues(values, origin)
+                override fun demoteWriteBase() {
+                    boardConfigValues = boardConfigValues?.demotedToProvisional()
+                }
             },
         )
     }

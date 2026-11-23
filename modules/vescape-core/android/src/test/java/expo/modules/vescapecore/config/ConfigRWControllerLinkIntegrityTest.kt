@@ -52,6 +52,7 @@ class ConfigRWControllerLinkIntegrityTest {
             override fun diagnosticProperties(config: SessionConfig?, category: String) = emptyMap<String, Any?>()
             override fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray) = Unit
             override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) = Unit
+            override fun demoteWriteBase() = Unit
         },
     )
 
