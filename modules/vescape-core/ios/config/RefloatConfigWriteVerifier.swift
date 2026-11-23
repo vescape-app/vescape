@@ -10,7 +10,12 @@ enum RefloatConfigWriteVerifier {
   private static let metaIsDefault = "meta.is_default"
 
   static func verify(schema: RefloatConfigSchema, written: [UInt8], readBack: [UInt8]) -> RefloatConfigWriteVerification {
-    let expected = expectedReadBack(schema, written)
+    let expected: [UInt8]
+    do {
+      expected = try expectedReadBack(schema, written)
+    } catch {
+      return .failure("Verification failed: \((error as? RefloatConfigEncodeException)?.message ?? String(describing: error))")
+    }
     if expected == readBack { return .success }
 
     if expected.count != readBack.count {
@@ -23,8 +28,8 @@ enum RefloatConfigWriteVerifier {
     return .failure("Verification failed: first byte mismatch at offset \(firstMismatch)")
   }
 
-  private static func expectedReadBack(_ schema: RefloatConfigSchema, _ written: [UInt8]) -> [UInt8] {
+  private static func expectedReadBack(_ schema: RefloatConfigSchema, _ written: [UInt8]) throws -> [UInt8] {
     guard schema.fields.contains(where: { $0.id == metaIsDefault }) else { return written }
-    return (try? RefloatConfigEncoder.encode(schema: schema, rawConfig: written, fields: [metaIsDefault: 0])) ?? written
+    return try RefloatConfigEncoder.encode(schema: schema, rawConfig: written, fields: [metaIsDefault: 0])
   }
 }

@@ -10,7 +10,11 @@ internal object RefloatConfigWriteVerifier {
   private const val META_IS_DEFAULT = "meta.is_default"
 
   fun verify(schema: RefloatConfigSchema, written: ByteArray, readBack: ByteArray): RefloatConfigWriteVerification {
-    val expected = expectedReadBack(schema, written)
+    val expected = try {
+      expectedReadBack(schema, written)
+    } catch (e: RefloatConfigEncodeException) {
+      return RefloatConfigWriteVerification.Failure("Verification failed: ${e.message}")
+    }
     if (expected.contentEquals(readBack)) return RefloatConfigWriteVerification.Success
 
     if (expected.size != readBack.size) {
@@ -27,6 +31,6 @@ internal object RefloatConfigWriteVerifier {
 
   private fun expectedReadBack(schema: RefloatConfigSchema, written: ByteArray): ByteArray =
     if (schema.fields.any { it.id == META_IS_DEFAULT }) {
-      runCatching { RefloatConfigEncoder.encode(schema, written, mapOf(META_IS_DEFAULT to 0)) }.getOrDefault(written)
+      RefloatConfigEncoder.encode(schema, written, mapOf(META_IS_DEFAULT to 0))
     } else written
 }
