@@ -3,12 +3,11 @@ import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { CalendarBlankIcon, ClockIcon, GaugeIcon, ThermometerIcon } from 'phosphor-react-native'
 
-import { RadioIndicator } from '@/components/controls/RadioIndicator'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
+import { Select, type SelectOption } from '@/components/forms/Select'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { theme } from '@/constants/theme'
 import { formatDate, type DateFormat, type TimeFormat } from '@/helpers/time'
 import type { TemperatureUnit, DistanceUnit } from '@/helpers/units'
@@ -16,14 +15,9 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 const EXAMPLE_DATE = new Date(2026, 2, 28)
 
-const DATE_FORMAT_OPTIONS: readonly { value: DateFormat; hint: string }[] = [
-  { value: 'dmy', hint: 'Day Month Year · UK & Europe' },
-  { value: 'mdy', hint: 'Month Day, Year · US' },
-  { value: 'dmy-slash', hint: 'DD/MM/YYYY · UK & Europe' },
-  { value: 'mdy-slash', hint: 'MM/DD/YYYY · US' },
-  { value: 'dmy-dot', hint: 'DD.MM.YYYY · Central Europe' },
-  { value: 'ymd', hint: 'YYYY-MM-DD · ISO' },
-]
+const DATE_FORMAT_OPTIONS: SelectOption<DateFormat>[] = (
+  ['dmy', 'mdy', 'dmy-slash', 'mdy-slash', 'dmy-dot', 'ymd'] as const
+).map((value) => ({ value, label: formatDate(EXAMPLE_DATE, value) }))
 
 export default function UnitsSettingsScreen() {
   const distanceUnit = useSettingsStore((state) => state.distanceUnit)
@@ -91,27 +85,20 @@ export default function UnitsSettingsScreen() {
               />
             }
           />
-        </SettingsCard>
-
-        <SettingsSectionTitle>Date format</SettingsSectionTitle>
-        <SettingsCard>
-          {DATE_FORMAT_OPTIONS.map((option) => (
-            <SettingsRow
-              key={option.value}
-              icon={CalendarBlankIcon}
-              iconColor={theme.palette.purple.color}
-              label={formatDate(EXAMPLE_DATE, option.value)}
-              hint={option.hint}
-              onPress={() => void set('dateFormat', option.value)}
-              right={
-                <RadioIndicator
-                  selected={dateFormat === option.value}
-                  accent={theme.palette.purple.color}
-                  size="lg"
-                />
-              }
-            />
-          ))}
+          <SettingsRow
+            icon={CalendarBlankIcon}
+            iconColor={theme.palette.purple.color}
+            label="Date format"
+            right={
+              <Select<DateFormat>
+                options={DATE_FORMAT_OPTIONS}
+                value={dateFormat}
+                onChange={(value) => void set('dateFormat', value)}
+                style={styles.dateSelect}
+                testID="date-format-select"
+              />
+            }
+          />
         </SettingsCard>
       </PageScrollView>
     </SafeAreaView>
@@ -126,5 +113,8 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 8,
+  },
+  dateSelect: {
+    width: 150,
   },
 })
