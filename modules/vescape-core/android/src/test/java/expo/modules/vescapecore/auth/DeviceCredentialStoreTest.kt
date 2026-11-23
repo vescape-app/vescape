@@ -48,7 +48,7 @@ class DeviceCredentialStoreTest {
 
     assertEquals(old, store.read())
     assertEquals(old, DeviceCredentialStore(persistence, codec).read())
-    assertEquals(DeviceCredentialState.READY, store.state(store.read()))
+    assertEquals(DeviceCredentialState.READY, store.state(store.read(), old.serverUrl))
   }
 
   @Test fun `failed delete restores credential and ready state`() {
@@ -60,7 +60,7 @@ class DeviceCredentialStoreTest {
     assertThrows(IOException::class.java) { store.reject() }
 
     assertEquals(old, store.read())
-    assertEquals(DeviceCredentialState.READY, store.state(store.read()))
+    assertEquals(DeviceCredentialState.READY, store.state(store.read(), old.serverUrl))
   }
 
   @Test fun `failed expiry update preserves old credential`() {
@@ -81,5 +81,13 @@ class DeviceCredentialStoreTest {
 
     val error = assertThrows(CredentialRollbackException::class.java) { store.clear() }
     assertTrue(error.cause?.message!!.contains("clear"))
+  }
+
+  @Test fun `a credential from another server is not ready`() {
+    val store = DeviceCredentialStore(MemoryPersistence(), codec)
+    store.write(old)
+
+    assertEquals(DeviceCredentialState.UNAVAILABLE, store.state(store.read(), "https://new.example"))
+    assertEquals(DeviceCredentialState.READY, store.state(store.read(), "https://old.example/"))
   }
 }

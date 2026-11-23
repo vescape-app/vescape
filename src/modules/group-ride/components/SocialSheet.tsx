@@ -1,7 +1,12 @@
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { CaretRightIcon, UserCircleGearIcon, WarningIcon } from 'phosphor-react-native'
+import {
+  ArrowClockwiseIcon,
+  CaretRightIcon,
+  UserCircleGearIcon,
+  WarningIcon,
+} from 'phosphor-react-native'
 import type { PublicRideStatus } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
@@ -55,7 +60,8 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   const signedIn = useDeviceAccountReady()
   const hasNick = useRiderProfileStore((s) => s.profile?.nick != null)
   const profileLoaded = useRiderProfileStore((s) => s.loaded)
-  const profileError = useRiderProfileStore((s) => s.error)
+  const profileFailed = useRiderProfileStore((s) => !s.loaded && s.error != null)
+  const loadProfile = useRiderProfileStore((s) => s.load)
   const settings = signedIn ? (
     <IconButton
       icon={UserCircleGearIcon}
@@ -101,12 +107,21 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         router.push(routes.account)
       }}
     />
+  ) : profileFailed ? (
+    <Button
+      label="Load your rider profile"
+      size="lg"
+      variant="success"
+      icon={ArrowClockwiseIcon}
+      iconPosition="right"
+      onPress={() => void loadProfile()}
+    />
   ) : null
   const ready = signedIn && hasNick && status.supported
   const hint = !signedIn
     ? null
     : !hasNick
-      ? !profileLoaded && !profileError
+      ? !profileLoaded && !profileFailed
         ? 'Loading your rider profile…'
         : null
       : !status.supported
@@ -147,7 +162,6 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         <PublicRideManualAction activation={status.activation} onChange={setManualSharing} />
       ) : null}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
-      {profileError ? <Text style={styles.errorText}>{profileError}</Text> : null}
     </View>
   )
 }
@@ -168,9 +182,5 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: 12,
-  },
-  errorText: {
-    color: theme.status.error.text,
-    fontSize: 12,
   },
 })
