@@ -24,11 +24,23 @@ export function usePhoneHeading({
   const appActive = useAppActive()
   const subscribed = active && appActive
   const headingDegRef = useRef<number | null>(null)
+  const followCameraRef = useRef(followCamera)
+
+  useEffect(() => {
+    followCameraRef.current = followCamera
+  })
 
   const reportHeading = useEffectEvent((headingDeg: number) => {
     onHeadingChange(headingDeg)
-    if (followCamera) onFollowHeading(headingDeg)
+    if (followCameraRef.current) onFollowHeading(headingDeg)
   })
+  const followLatestHeading = useEffectEvent(() => {
+    if (headingDegRef.current != null) onFollowHeading(headingDegRef.current)
+  })
+  useEffect(() => {
+    if (followCamera) followLatestHeading()
+  }, [followCamera])
+
   const reportIdle = useEffectEvent(() => {
     onHeadingChange(null)
     onStatusChange('idle')
