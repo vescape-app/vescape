@@ -1,5 +1,8 @@
 package app.vescape.wear
 
+import expo.modules.vescapecore.telemetry.UnitPresentation
+import kotlin.math.roundToInt
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,7 +69,7 @@ fun WeatherScreen() {
                     modifier = Modifier.size(HERO_ICON_SIZE),
                 )
                 DegreeTemp(
-                    value = forecast.temperatureC,
+                    value = UnitPresentation.temperatureFromC(forecast.temperatureC.toDouble(), SettingsState.settings.value.temperatureUnit).roundToInt(),
                     style = WatchTypography.mono(MaterialTheme.typography.display3),
                     color = PrimaryText,
                     modifier = Modifier.padding(start = 8.dp),
@@ -152,7 +155,7 @@ private fun HourColumn(hour: WatchWeatherHour) {
             modifier = Modifier.size(HOUR_ICON_SIZE),
         )
         DegreeTemp(
-            value = hour.temperatureC,
+            value = UnitPresentation.temperatureFromC(hour.temperatureC.toDouble(), SettingsState.settings.value.temperatureUnit).roundToInt(),
             style = WatchTypography.mono(MaterialTheme.typography.caption2),
             color = SecondaryText,
         )

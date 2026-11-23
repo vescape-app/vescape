@@ -1,13 +1,17 @@
 import { useCallback } from 'react'
 import { DASH } from '@/helpers/format'
 import { rideDistanceFromMeters, rideDistanceUnit } from '@/helpers/units'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   buildHistoryMarkerMessage,
   type SelectedHistoryMarker,
 } from '@/modules/history/lib/historyMapMarkerInfo'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
-import { formatRideTime, formatRideListDetails } from '@/modules/history/lib/rideFormat'
+import {
+  formatRideDate,
+  formatRideListDetails,
+  formatRideMeta,
+  formatRideTime,
+} from '@/modules/history/lib/rideFormat'
 
 interface HistoryDistance {
   value: string
@@ -15,12 +19,20 @@ interface HistoryDistance {
 }
 
 export function useRideFormat() {
-  const distanceUnit = useDistanceUnit()
-  const timeFormat = useTimeFormat()
+  const { distanceUnit, timeFormat, dateFormat } = useUserPreferences()
   const formatTime = useCallback(
     (startMs: number, endMs: number, live = false) =>
       formatRideTime(startMs, endMs, live, timeFormat),
     [timeFormat],
+  )
+  const formatDate = useCallback(
+    (startMs: number, endMs: number) => formatRideDate(startMs, endMs, dateFormat),
+    [dateFormat],
+  )
+  const formatMeta = useCallback(
+    (startAtMs: number, endAtMs: number, boardName: string) =>
+      formatRideMeta(startAtMs, endAtMs, boardName, dateFormat),
+    [dateFormat],
   )
   const formatRideDetails = useCallback(
     (durationMs: number, distanceM: number | null) =>
@@ -43,11 +55,13 @@ export function useRideFormat() {
   )
   const formatHistoryMarker = useCallback(
     (selection: SelectedHistoryMarker) =>
-      buildHistoryMarkerMessage(selection, distanceUnit, timeFormat),
-    [distanceUnit, timeFormat],
+      buildHistoryMarkerMessage(selection, distanceUnit, timeFormat, dateFormat),
+    [dateFormat, distanceUnit, timeFormat],
   )
   return {
     formatRideTime: formatTime,
+    formatRideDate: formatDate,
+    formatRideMeta: formatMeta,
     formatRideDetails,
     formatHistoryDistance,
     formatHistoryMarker,

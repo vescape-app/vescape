@@ -1,6 +1,6 @@
 import { PageScrollView } from '@/components/base/PageScrollView'
 import { useFormat } from '@/hooks/useFormat'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
 import { StyleSheet } from 'react-native'
@@ -24,7 +24,7 @@ const MIN_RIDE_SPLIT_GAP_MINUTES = 1
 const MAX_RIDE_SPLIT_GAP_MINUTES = 240
 
 export default function HistorySettingsScreen() {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const { formatSpeedWithUnit } = useFormat()
   const { rideSplitGapMinutes, movingSpeedThresholdKmh, socEstimateWindowSeconds, set } =
     useSettingsStore(

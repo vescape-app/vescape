@@ -1,15 +1,21 @@
-import { erpm, percent, unit, type MotorConfigRow } from '@/modules/board/lib/boardConfigReadout'
+import {
+  erpm,
+  percent,
+  temperature,
+  unit,
+  type MotorConfigRow,
+} from '@/modules/board/lib/boardConfigReadout'
 
-const celsius = unit('°C', 0)
+const temp = temperature(0)
 
 export const CONTROLLER_TEMP_CONFIG_ROWS: MotorConfigRow[] = [
-  { id: 'l_temp_fet_start', label: 'Power limiting starts at', format: celsius },
-  { id: 'l_temp_fet_end', label: 'Power fully cut at', format: celsius },
+  { id: 'l_temp_fet_start', label: 'Power limiting starts at', format: temp },
+  { id: 'l_temp_fet_end', label: 'Power fully cut at', format: temp },
 ]
 
 export const MOTOR_TEMP_CONFIG_ROWS: MotorConfigRow[] = [
-  { id: 'l_temp_motor_start', label: 'Power limiting starts at', format: celsius },
-  { id: 'l_temp_motor_end', label: 'Power fully cut at', format: celsius },
+  { id: 'l_temp_motor_start', label: 'Power limiting starts at', format: temp },
+  { id: 'l_temp_motor_end', label: 'Power fully cut at', format: temp },
 ]
 
 const amps = unit('A', 0)

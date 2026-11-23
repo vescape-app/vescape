@@ -5,11 +5,11 @@ import { Text } from '@/components/base/Text'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { theme } from '@/constants/theme'
 import { formatTimeOfDay } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 
 function HourItem({ item }: { item: WeatherHour }) {
-  const timeFormat = useTimeFormat()
+  const { timeFormat } = useUserPreferences()
   return (
     <View style={styles.item}>
       <Text style={styles.hour}>{formatTimeOfDay(item.minuteOfDay, timeFormat)}</Text>

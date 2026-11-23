@@ -5,7 +5,9 @@ import DateTimePicker from '@expo/ui/community/datetime-picker'
 import { Text } from '@/components/base/Text'
 import { inputBase } from '@/components/forms/Input'
 import { theme, type ThemeColor } from '@/constants/theme'
+import { formatDate } from '@/helpers/time'
 import { useResolvedColor, useResolvedControlColors } from '@/hooks/useTheme'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 
 interface DateFieldProps {
   label: string
@@ -16,9 +18,6 @@ interface DateFieldProps {
   accent?: ThemeColor
   testID?: string
 }
-
-const formatDate = (date: Date) =>
-  date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 
 export function DateField({
   label,
@@ -31,7 +30,9 @@ export function DateField({
 }: DateFieldProps) {
   const control = useResolvedControlColors()
   const accentColor = useResolvedColor(accent)
+  const { dateFormat } = useUserPreferences()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const formattedValue = formatDate(value, dateFormat)
 
   return (
     <View style={styles.row} testID={testID}>
@@ -50,14 +51,14 @@ export function DateField({
         <>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`${label} ${formatDate(value)}`}
+            accessibilityLabel={`${label} ${formattedValue}`}
             onPress={() => setDialogOpen(true)}
             style={[
               styles.field,
               { backgroundColor: control.background, borderColor: control.border },
             ]}
           >
-            <Text style={[styles.value, { color: control.text }]}>{formatDate(value)}</Text>
+            <Text style={[styles.value, { color: control.text }]}>{formattedValue}</Text>
           </Pressable>
           {dialogOpen ? (
             <DateTimePicker

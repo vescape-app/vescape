@@ -1,7 +1,6 @@
 import '@/bootstrap/accountCacheSync'
 import * as Sentry from '@sentry/react-native'
-import { TimeFormatContext } from '@/hooks/useTimeFormat'
-import { DistanceUnitContext } from '@/hooks/useDistanceUnit'
+import { UserPreferencesContext } from '@/hooks/useUserPreferences'
 import { ClerkProvider } from '@clerk/expo'
 import { tokenCache } from '@clerk/expo/token-cache'
 import { resourceCache } from '@clerk/expo/resource-cache'
@@ -9,7 +8,7 @@ import { useFonts } from 'expo-font'
 import { Stack } from 'expo-router/js-stack'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Platform, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { configureReanimatedLogger } from 'react-native-reanimated'
@@ -75,7 +74,13 @@ function RootLayout() {
 
 function RootContent() {
   const timeFormat = useSettingsStore((s) => s.timeFormat)
+  const dateFormat = useSettingsStore((s) => s.dateFormat)
   const distanceUnit = useSettingsStore((state) => state.distanceUnit)
+  const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
+  const userPreferences = useMemo(
+    () => ({ distanceUnit, temperatureUnit, timeFormat, dateFormat }),
+    [distanceUnit, temperatureUnit, timeFormat, dateFormat],
+  )
   const insets = useSafeAreaInsets()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const resolvedNeutral = neutralColors[resolvedTheme]
@@ -149,194 +154,171 @@ function RootContent() {
       tokenCache={tokenCache}
       __experimental_resourceCache={resourceCache}
     >
-      <TimeFormatContext value={timeFormat}>
-        <DistanceUnitContext value={distanceUnit}>
-          {e2eDeviceAccount ? <E2eDeviceAuthSync account={e2eDeviceAccount} /> : <DeviceAuthSync />}
-          <RiderProfileSync />
-          <FriendsSync />
-          <BoardConfigChangeNoticeModal />
-          <DiagnosticErrorBoundary>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <ThemeController>
-                <Stack
-                  screenOptions={{
-                    headerStyle: { backgroundColor: resolvedNeutral.bg },
-                    headerTintColor: resolvedNeutral.textPrimary,
-                    headerTitleStyle: { fontFamily: theme.font('600'), fontSize: 14 },
-                    headerTitleAlign: 'center',
-                    headerShadowVisible: false,
-                    headerLeft: () => <HeaderBackButton />,
-                    headerLeftContainerStyle: { paddingLeft: 10 },
-                    headerRightContainerStyle: { paddingRight: 10 },
-                    cardStyle: { backgroundColor: resolvedNeutral.bg },
-                  }}
-                >
-                  <Stack.Screen name={stackScreens.home} options={{ headerShown: false }} />
-                  <Stack.Screen
-                    name={stackScreens.profileStats}
-                    options={{ title: 'Profile stats' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.riderProfile}
-                    options={{
-                      title: 'Rider profile',
-                      headerLeft: () => <HeaderBackButton fallback={routes.home} />,
-                    }}
-                  />
-                  <Stack.Screen name={stackScreens.rideDay} options={{ title: 'Day' }} />
-                  <Stack.Screen
-                    name={stackScreens.signIn}
-                    options={{ title: 'Sign in', headerShown: Platform.OS !== 'ios' }}
-                  />
-                  <Stack.Screen name={stackScreens.account} options={{ headerShown: false }} />
-                  <Stack.Screen name={stackScreens.settings} options={{ title: 'Settings' }} />
-                  <Stack.Screen name={stackScreens.settingsDev} options={{ title: 'Dev' }} />
-                  <Stack.Screen
-                    name={stackScreens.settingsDebugRecordings}
-                    options={{ title: 'Debug recordings' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.settingsComponents}
-                    options={{ title: 'Components' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.settingsComponentsTheme}
-                    options={{ title: 'Theme foundations' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.settingsNavigationDiagnostic}
-                    options={{ title: 'Navigation diagnostics' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.settingsDiagnosticEvents}
-                    options={{ title: 'Event log' }}
-                  />
-                  <Stack.Screen name={stackScreens.settingsOther} options={{ title: 'Other' }} />
-                  <Stack.Screen
-                    name={stackScreens.settingsAlertSounds}
-                    options={{ title: 'Alert sounds' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.settingsRawSettings}
-                    options={{ title: 'Raw settings' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.settingsPrivacyZones}
-                    options={{ title: 'Privacy Zones' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.settingsAutomation}
-                    options={{ title: 'Automation' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.settingsDiagnostics}
-                    options={{ title: 'Diagnostics' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.settingsLiveTelemetry}
-                    options={{ title: 'Live telemetry' }}
-                  />
-                  <Stack.Screen name={stackScreens.settingsSounds} options={{ title: 'Sounds' }} />
-                  <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
-                  <Stack.Screen name={stackScreens.settingsUnits} options={{ title: 'Units' }} />
-                  <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
-                  <Stack.Screen
-                    name={stackScreens.settingsHistory}
-                    options={{ title: 'History' }}
-                  />
-                  <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
-                  <Stack.Screen
-                    name={stackScreens.settingsDatabase}
-                    options={{ title: 'Database' }}
-                  />
-                  <Stack.Screen name={stackScreens.settingsAbout} options={{ title: 'About us' }} />
-                  <Stack.Screen
-                    name={stackScreens.settingsReleaseNotes}
-                    options={{ title: 'Release notes' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.devMapPlayground}
-                    options={{ title: 'Camera playground' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.devRailGeneratorPrototype}
-                    options={{ title: 'Rail generator prototype' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.historyCharts}
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.controlBatteryRaw}
-                    options={{ title: 'Raw BMS' }}
-                  />
-                  <Stack.Screen name={stackScreens.tune} options={{ title: 'Tune' }} />
-                  <Stack.Screen
-                    name={stackScreens.tuneHistory}
-                    options={{ title: 'Tune History' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.addBoardScan}
-                    options={{ title: 'Pair Board' }}
-                  />
-                  <Stack.Screen name={stackScreens.addBoard} options={{ title: 'Add Board' }} />
-                  <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />
-                  <Stack.Screen
-                    name={stackScreens.editBoardLink}
-                    options={{ title: 'Board Link' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.editBoardConfig}
-                    options={{ title: 'Config Read' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.boardConfig}
-                    options={{ title: 'Board Config' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.boardConfigRaw}
-                    options={{ title: 'Raw Board Config' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.accessories}
-                    options={{ title: 'Accessories' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.accessoryScan}
-                    options={{ title: 'Add Accessory' }}
-                  />
-                  <Stack.Screen name={stackScreens.accessory} options={{ title: 'Accessory' }} />
-                  <Stack.Screen
-                    name={stackScreens.accessoryBrakeLight}
-                    options={{ title: 'Brake light' }}
-                  />
-                  <Stack.Screen
-                    name={stackScreens.accessoryGroundClearance}
-                    options={{ title: 'Ground clearance' }}
-                  />
-                </Stack>
-              </ThemeController>
-              <ReleaseSurfaces />
-              <AppStorageFailureBanner top={insets.top + 8} />
-              <View
-                pointerEvents="box-none"
-                style={{
-                  position: 'absolute',
-                  top: Math.max(2, insets.top - 6) - 8,
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  zIndex: 100,
-                  alignItems: 'center',
+      <UserPreferencesContext value={userPreferences}>
+        {e2eDeviceAccount ? <E2eDeviceAuthSync account={e2eDeviceAccount} /> : <DeviceAuthSync />}
+        <RiderProfileSync />
+        <FriendsSync />
+        <BoardConfigChangeNoticeModal />
+        <DiagnosticErrorBoundary>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <ThemeController>
+              <Stack
+                screenOptions={{
+                  headerStyle: { backgroundColor: resolvedNeutral.bg },
+                  headerTintColor: resolvedNeutral.textPrimary,
+                  headerTitleStyle: { fontFamily: theme.font('600'), fontSize: 14 },
+                  headerTitleAlign: 'center',
+                  headerShadowVisible: false,
+                  headerLeft: () => <HeaderBackButton />,
+                  headerLeftContainerStyle: { paddingLeft: 10 },
+                  headerRightContainerStyle: { paddingRight: 10 },
+                  cardStyle: { backgroundColor: resolvedNeutral.bg },
                 }}
               >
-                <DevBadge />
-              </View>
-              <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
-            </GestureHandlerRootView>
-          </DiagnosticErrorBoundary>
-        </DistanceUnitContext>
-      </TimeFormatContext>
+                <Stack.Screen name={stackScreens.home} options={{ headerShown: false }} />
+                <Stack.Screen
+                  name={stackScreens.profileStats}
+                  options={{ title: 'Profile stats' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.riderProfile}
+                  options={{
+                    title: 'Rider profile',
+                    headerLeft: () => <HeaderBackButton fallback={routes.home} />,
+                  }}
+                />
+                <Stack.Screen name={stackScreens.rideDay} options={{ title: 'Day' }} />
+                <Stack.Screen
+                  name={stackScreens.signIn}
+                  options={{ title: 'Sign in', headerShown: Platform.OS !== 'ios' }}
+                />
+                <Stack.Screen name={stackScreens.account} options={{ headerShown: false }} />
+                <Stack.Screen name={stackScreens.settings} options={{ title: 'Settings' }} />
+                <Stack.Screen name={stackScreens.settingsDev} options={{ title: 'Dev' }} />
+                <Stack.Screen
+                  name={stackScreens.settingsDebugRecordings}
+                  options={{ title: 'Debug recordings' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsComponents}
+                  options={{ title: 'Components' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsComponentsTheme}
+                  options={{ title: 'Theme foundations' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsNavigationDiagnostic}
+                  options={{ title: 'Navigation diagnostics' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsDiagnosticEvents}
+                  options={{ title: 'Event log' }}
+                />
+                <Stack.Screen name={stackScreens.settingsOther} options={{ title: 'Other' }} />
+                <Stack.Screen
+                  name={stackScreens.settingsAlertSounds}
+                  options={{ title: 'Alert sounds' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsRawSettings}
+                  options={{ title: 'Raw settings' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsPrivacyZones}
+                  options={{ title: 'Privacy Zones' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsAutomation}
+                  options={{ title: 'Automation' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsDiagnostics}
+                  options={{ title: 'Diagnostics' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.settingsLiveTelemetry}
+                  options={{ title: 'Live telemetry' }}
+                />
+                <Stack.Screen name={stackScreens.settingsSounds} options={{ title: 'Sounds' }} />
+                <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
+                <Stack.Screen name={stackScreens.settingsUnits} options={{ title: 'Units' }} />
+                <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
+                <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
+                <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
+                <Stack.Screen
+                  name={stackScreens.settingsDatabase}
+                  options={{ title: 'Database' }}
+                />
+                <Stack.Screen name={stackScreens.settingsAbout} options={{ title: 'About us' }} />
+                <Stack.Screen
+                  name={stackScreens.settingsReleaseNotes}
+                  options={{ title: 'Release notes' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.devMapPlayground}
+                  options={{ title: 'Camera playground' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.devRailGeneratorPrototype}
+                  options={{ title: 'Rail generator prototype' }}
+                />
+                <Stack.Screen name={stackScreens.historyCharts} options={{ headerShown: false }} />
+                <Stack.Screen
+                  name={stackScreens.controlBatteryRaw}
+                  options={{ title: 'Raw BMS' }}
+                />
+                <Stack.Screen name={stackScreens.tune} options={{ title: 'Tune' }} />
+                <Stack.Screen name={stackScreens.tuneHistory} options={{ title: 'Tune History' }} />
+                <Stack.Screen name={stackScreens.addBoardScan} options={{ title: 'Pair Board' }} />
+                <Stack.Screen name={stackScreens.addBoard} options={{ title: 'Add Board' }} />
+                <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />
+                <Stack.Screen name={stackScreens.editBoardLink} options={{ title: 'Board Link' }} />
+                <Stack.Screen
+                  name={stackScreens.editBoardConfig}
+                  options={{ title: 'Config Read' }}
+                />
+                <Stack.Screen name={stackScreens.boardConfig} options={{ title: 'Board Config' }} />
+                <Stack.Screen
+                  name={stackScreens.boardConfigRaw}
+                  options={{ title: 'Raw Board Config' }}
+                />
+                <Stack.Screen name={stackScreens.accessories} options={{ title: 'Accessories' }} />
+                <Stack.Screen
+                  name={stackScreens.accessoryScan}
+                  options={{ title: 'Add Accessory' }}
+                />
+                <Stack.Screen name={stackScreens.accessory} options={{ title: 'Accessory' }} />
+                <Stack.Screen
+                  name={stackScreens.accessoryBrakeLight}
+                  options={{ title: 'Brake light' }}
+                />
+                <Stack.Screen
+                  name={stackScreens.accessoryGroundClearance}
+                  options={{ title: 'Ground clearance' }}
+                />
+              </Stack>
+            </ThemeController>
+            <ReleaseSurfaces />
+            <AppStorageFailureBanner top={insets.top + 8} />
+            <View
+              pointerEvents="box-none"
+              style={{
+                position: 'absolute',
+                top: Math.max(2, insets.top - 6) - 8,
+                bottom: 0,
+                left: 0,
+                right: 0,
+                zIndex: 100,
+                alignItems: 'center',
+              }}
+            >
+              <DevBadge />
+            </View>
+            <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+          </GestureHandlerRootView>
+        </DiagnosticErrorBoundary>
+      </UserPreferencesContext>
     </ClerkProvider>
   )
 }

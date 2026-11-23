@@ -7,6 +7,7 @@ import { PageScrollView } from '@/components/base/PageScrollView'
 import { Placeholder } from '@/components/base/Placeholder'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { theme } from '@/constants/theme'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
 import { isLiveRide, rideMovingWindow } from '@/modules/history/lib/sessions'
@@ -37,6 +38,7 @@ export function RideDayScreen() {
 function RideDayContent({ day }: { day: RideDay }) {
   const stats = useDayStats(day)
   const rides = useRideDaySessions(day)
+  const { dateFormat } = useUserPreferences()
   const { formatRideDetails, formatRideTime } = useRideFormat()
   const items = useProfileStatItems(stats.value, undefined, openRecordRide)
 
@@ -46,7 +48,7 @@ function RideDayContent({ day }: { day: RideDay }) {
       contentContainerStyle={styles.content}
       testID="ride-day-screen"
     >
-      <Stack.Screen options={{ title: formatRideDay(day) }} />
+      <Stack.Screen options={{ title: formatRideDay(day, dateFormat) }} />
       {stats.loading ? (
         <ActivityIndicator size="small" color={theme.palette.sky.color} style={styles.loading} />
       ) : stats.error ? (

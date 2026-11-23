@@ -1,5 +1,5 @@
 import { formatClock, formatDateTime } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -106,7 +106,7 @@ interface EventItemProps {
 }
 
 function EventItem({ event, expanded, onToggle }: EventItemProps) {
-  const timeFormat = useTimeFormat()
+  const { timeFormat, dateFormat } = useUserPreferences()
   const time = formatClock(event.occurredAtMs, true, timeFormat)
   const meta = [event.operation, event.phase].filter(Boolean).join(' · ')
   const dotColor = getEventColor(event.eventName)
@@ -130,7 +130,7 @@ function EventItem({ event, expanded, onToggle }: EventItemProps) {
         <View style={styles.eventExpanded}>
           <Text style={styles.fieldLabel}>timestamp</Text>
           <Text style={styles.fieldValue} selectable>
-            {formatDateTime(event.occurredAtMs, timeFormat)}
+            {formatDateTime(event.occurredAtMs, timeFormat, dateFormat)}
           </Text>
           {event.boardId ? (
             <>

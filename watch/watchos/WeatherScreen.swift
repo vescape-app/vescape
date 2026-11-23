@@ -5,6 +5,11 @@ struct WeatherScreen: View {
   let forecast: WatchWeather?
   var everReceived: Bool = false
   var timeFormat: String = "24h"
+  var temperatureUnit: String = "celsius"
+
+  private func displayTemp(_ celsius: Int) -> String {
+    "\(Int(UnitPresentation.temperatureFromC(Double(celsius), temperatureUnit).rounded(.toNearestOrAwayFromZero)))"
+  }
 
   @ViewBuilder
   var body: some View {
@@ -21,7 +26,7 @@ struct WeatherScreen: View {
         WeatherGlyph(slug: forecast.icon, size: HERO_ICON_SIZE, color: nil)
           .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
         DegreeNumber(
-          value: "\(forecast.temperatureC)",
+          value: displayTemp(forecast.temperatureC),
           size: HERO_FONT_SIZE,
           color: Palette.primaryText
         )
@@ -83,7 +88,7 @@ struct WeatherScreen: View {
               .monospacedDigit()
             WeatherGlyph(slug: hour.icon, size: HOUR_ICON_SIZE, color: nil)
             DegreeNumber(
-              value: "\(hour.temperatureC)",
+              value: displayTemp(hour.temperatureC),
               size: 12,
               color: Palette.secondaryText
             )

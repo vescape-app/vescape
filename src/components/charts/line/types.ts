@@ -43,6 +43,7 @@ export interface ChartBand extends ChartTimeRange {
 
 export interface ChartSeriesSpec {
   displayScale?: number
+  displayOffset?: number
   key: string
   data: ChartSeriesData
   color: ThemeColor
@@ -55,6 +56,7 @@ export interface ChartSeriesSpec {
 
 export interface ChartAxisSpec {
   displayScale?: number
+  displayOffset?: number
   range: ChartYRange
 }
 

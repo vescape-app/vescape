@@ -1381,6 +1381,11 @@ export type TemperatureUnit = 'celsius' | 'fahrenheit'
  * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validTimeFormat`
  */
 export type TimeFormat = '24h' | '12h'
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validDateFormat`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validDateFormat`
+ */
+export type DateFormat = 'dmy' | 'mdy' | 'ymd'
 export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
 
 /**
@@ -1401,6 +1406,7 @@ export interface AppSettings {
   distanceUnit: DistanceUnit
   temperatureUnit: TemperatureUnit
   timeFormat: TimeFormat
+  dateFormat: DateFormat
   themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   satelliteOverlayEnabled: boolean

@@ -22,3 +22,10 @@ internal func validTimeFormat(_ value: Any?) -> String? {
   guard let format = value as? String, format == "24h" || format == "12h" else { return nil }
   return format
 }
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validDateFormat`
+/// @parity /modules/vescape-core/src/index.ts `DateFormat`
+internal func validDateFormat(_ value: Any?) -> String? {
+  guard let format = value as? String, format == "dmy" || format == "mdy" || format == "ymd" else { return nil }
+  return format
+}

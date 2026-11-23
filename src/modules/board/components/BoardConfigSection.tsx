@@ -5,6 +5,7 @@ import { Placeholder } from '@/components/base/Placeholder'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   useBoardConfigFields,
   useBoardConfigValuesStore,
@@ -37,6 +38,7 @@ export function BoardConfigSection({
 }) {
   const refloat = useBoardConfigFields(boardId)
   const refloatError = useBoardConfigValuesStore((state) => state.error)
+  const { temperatureUnit } = useUserPreferences()
   const values = override === undefined ? refloat : override
   const resolvedError = error ?? (override === undefined ? refloatError : null)
 
@@ -70,7 +72,7 @@ export function BoardConfigSection({
                   <Text style={[styles.label, showDescriptions && styles.describedLabel]}>
                     {row.label}
                   </Text>
-                  <Text style={styles.value}>{row.format(value)}</Text>
+                  <Text style={styles.value}>{row.format(value, { temperatureUnit })}</Text>
                 </View>
                 {note ? (
                   <Text style={description ? styles.description : styles.note}>

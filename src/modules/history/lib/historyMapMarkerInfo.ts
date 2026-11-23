@@ -1,4 +1,4 @@
-import { formatDateTime, type TimeFormat } from '@/helpers/time'
+import { formatDateTime, type DateFormat, type TimeFormat } from '@/helpers/time'
 import { formatLengthMeters, type DistanceUnit } from '@/helpers/units'
 import {
   ClockCountdownIcon,
@@ -64,13 +64,14 @@ export function buildHistoryMarkerMessage(
   selection: SelectedHistoryMarker,
   distanceUnit: DistanceUnit,
   timeFormat: TimeFormat = '24h',
+  dateFormat: DateFormat = 'dmy',
 ): string {
   const { marker, gps } = selection
   const lines = [
     `Type: ${marker.type}`,
     `Meaning: ${HISTORY_MARKER_LABELS[marker.type]}`,
-    `Marker time: ${formatDateTime(marker.occurredAtMs, timeFormat)}`,
-    `Nearest GPS time: ${formatDateTime(gps.capturedAtMs, timeFormat)}`,
+    `Marker time: ${formatDateTime(marker.occurredAtMs, timeFormat, dateFormat)}`,
+    `Nearest GPS time: ${formatDateTime(gps.capturedAtMs, timeFormat, dateFormat)}`,
     `Time offset: ${formatDuration(Math.abs(gps.capturedAtMs - marker.occurredAtMs))}`,
     `Coordinate: ${gps.latitude.toFixed(7)}, ${gps.longitude.toFixed(7)}`,
   ]

@@ -1,5 +1,5 @@
 import { formatClock } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { TargetIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LayoutChangeEvent } from 'react-native'
@@ -84,7 +84,7 @@ function createRadarScrubGesture({
 }
 
 export function WeatherRadarTimeline() {
-  const timeFormat = useTimeFormat()
+  const { timeFormat } = useUserPreferences()
   const neutral = useResolvedNeutralColors()
   const frames = useRainViewerRadarStore((state) => state.frames)
   const fetchRadar = useRainViewerRadarStore((state) => state.fetch)

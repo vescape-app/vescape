@@ -12,6 +12,8 @@ import { MonoReadout, MonoText } from '@/components/base/MonoValue'
 import { GAUGE_FOOTER_TEXT } from '@/components/charts/LinearGauge'
 import { interaction, theme, type AlphaLevel } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
+import { temperatureFromC, temperatureSymbol } from '@/helpers/units'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   useResolvedAccentColors,
   useResolvedColor,
@@ -77,6 +79,7 @@ export function RimTempArc({
   const color = useResolvedColor(metric.color)
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
+  const { temperatureUnit } = useUserPreferences()
   const scale = radius / UNIT
 
   const step = 10 ** -metric.decimals
@@ -100,8 +103,13 @@ export function RimTempArc({
   const arcColor = useDerivedValue(() =>
     gaugeRampColor(shown.value, color, hotRange, accents.red.color),
   )
-  const valueText = useDerivedValue(() => shown.value?.toFixed(metric.decimals) ?? '')
-  const unitText = useDerivedValue(() => (shown.value == null ? '' : metric.unit))
+  const unitLabel = temperatureSymbol(temperatureUnit)
+  const valueText = useDerivedValue(() =>
+    shown.value == null
+      ? ''
+      : temperatureFromC(shown.value, temperatureUnit).toFixed(metric.decimals),
+  )
+  const unitText = useDerivedValue<string>(() => (shown.value == null ? '' : unitLabel))
   const emptyText = useDerivedValue<string>(() => (shown.value == null ? DASH : ''))
 
   const valueCenterX = isLeft ? radius * (1 - VALUE_X) : radius * VALUE_X

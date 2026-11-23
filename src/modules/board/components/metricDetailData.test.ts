@@ -53,4 +53,23 @@ test('unit presentation preserves samples, thresholds, ranges, and chart identit
   expect(presentTelemetryMetric(telemetry.speed, 'mi').formatWithUnit(-16.09344)).toBe('10 mph')
   expect(telemetry.speed.unit).toBe('km/h')
   expect(presentLiveChart(canonical, 'km').series[0].data).toBe(data)
+
+  const tempData = { ts: [1000, 2000], vs: [20, 80] }
+  const tempCanonical = toLiveChart({
+    key: 'motorTemp',
+    metric: telemetry.motorTemp,
+    data: tempData,
+    range: { min: 0, max: 100 },
+    thresholds: [80],
+  })
+  const fahrenheit = presentLiveChart(tempCanonical, 'km', 'fahrenheit')
+  expect(fahrenheit.series[0].unit).toBe('°F')
+  expect(fahrenheit.left.displayScale).toBe(1.8)
+  expect(fahrenheit.left.displayOffset).toBe(32)
+  expect(
+    tempData.vs[1] * fahrenheit.series[0].displayScale! + fahrenheit.series[0].displayOffset!,
+  ).toBeCloseTo(176)
+  expect(presentTelemetryMetric(telemetry.motorTemp, 'km', 'fahrenheit').formatWithUnit(80)).toBe(
+    '176 °F',
+  )
 })

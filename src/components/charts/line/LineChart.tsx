@@ -172,6 +172,7 @@ export function LineChart({ chart, width, index }: LineChartProps) {
           plot={plot}
           range={chart.left.range}
           displayScale={chart.left.displayScale}
+          displayOffset={chart.left.displayOffset}
           side="left"
         />
       )}
@@ -181,6 +182,7 @@ export function LineChart({ chart, width, index }: LineChartProps) {
           plot={plot}
           range={chart.right.range}
           displayScale={chart.right.displayScale}
+          displayOffset={chart.right.displayOffset}
           side="right"
         />
       )}
@@ -224,10 +226,18 @@ interface AxisTicksProps {
   plot: ChartPlotBox
   range: ChartYRange
   displayScale?: number
+  displayOffset?: number
   side: 'left' | 'right'
 }
 
-function AxisTicks({ font, plot, range, side, displayScale = 1 }: AxisTicksProps) {
+function AxisTicks({
+  font,
+  plot,
+  range,
+  side,
+  displayScale = 1,
+  displayOffset = 0,
+}: AxisTicksProps) {
   const neutral = useResolvedNeutralColors()
   const ticks = useMemo(() => {
     const values = [range.max, (range.min + range.max) / 2, range.min]
@@ -237,12 +247,12 @@ function AxisTicks({ font, plot, range, side, displayScale = 1 }: AxisTicksProps
       plot.y + plot.height,
     ]
     return values.map((value, index) => {
-      const text = formatAxisNumber(value * displayScale)
+      const text = formatAxisNumber(value * displayScale + displayOffset)
       const x =
         side === 'left' ? plot.x - 4 - textAdvanceWidth(font, text) : plot.x + plot.width + 4
       return { text, x, y: baselines[index] }
     })
-  }, [font, plot, range, side, displayScale])
+  }, [font, plot, range, side, displayScale, displayOffset])
 
   return (
     <>

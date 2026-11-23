@@ -1,5 +1,5 @@
 import { formatDateTime } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { PageScrollView } from '@/components/base/PageScrollView'
@@ -20,7 +20,7 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useDebugRecordings } from '@/modules/history/hooks/useDebugRecordings'
 
 export function DebugRecordingsScreen() {
-  const timeFormat = useTimeFormat()
+  const { timeFormat, dateFormat } = useUserPreferences()
   const debug = useDebugRecordings()
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const replayBoardName = useBoardStore(
@@ -102,7 +102,7 @@ export function DebugRecordingsScreen() {
                 icon={RecordIcon}
                 iconColor={theme.palette.sky.color}
                 label={recording.name}
-                hint={`device · ${formatDateTime(recording.createdAt, timeFormat)} · ${formatBytes(recording.sizeBytes)}`}
+                hint={`device · ${formatDateTime(recording.createdAt, timeFormat, dateFormat)} · ${formatBytes(recording.sizeBytes)}`}
                 right={
                   <View style={styles.rowActions}>
                     {replayButton(recording.name)}

@@ -1,6 +1,13 @@
 import { PageScrollView } from '@/components/base/PageScrollView'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
-import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
+import {
+  speedFromKmh,
+  speedInputToKmh,
+  speedUnit,
+  temperatureFromC,
+  temperatureInputToC,
+  temperatureSymbol,
+} from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
 import { View, StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -37,7 +44,7 @@ const HOT_RANGE_METRICS: {
 ]
 
 export default function GraphsSettingsScreen() {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit, temperatureUnit } = useUserPreferences()
   const { historyMetricGradientsEnabled, historyMetricHotRanges, set } = useSettingsStore(
     useShallow((s) => ({
       historyMetricGradientsEnabled: s.historyMetricGradientsEnabled,
@@ -85,9 +92,25 @@ export default function GraphsSettingsScreen() {
             const range = historyMetricHotRanges[metric.key] ?? fallback
 
             const isSpeed = metric.key === 'speed'
-            const display = (value: number) => (isSpeed ? speedFromKmh(value, distanceUnit) : value)
-            const unit = isSpeed ? speedUnit(distanceUnit) : metric.unit
+            const isTemp = metric.key === 'tempMotor' || metric.key === 'tempController'
+            const display = (value: number) =>
+              isSpeed
+                ? speedFromKmh(value, distanceUnit)
+                : isTemp
+                  ? temperatureFromC(value, temperatureUnit)
+                  : value
+            const unit = isSpeed
+              ? speedUnit(distanceUnit)
+              : isTemp
+                ? temperatureSymbol(temperatureUnit)
+                : metric.unit
             const formatValue = (value: number) => String(Number(value.toFixed(1)))
+            const toCanonical = (nextValue: number, current: number) =>
+              isSpeed
+                ? speedInputToKmh(nextValue, current, distanceUnit, metric.min, metric.max)
+                : isTemp
+                  ? temperatureInputToC(nextValue, current, temperatureUnit, metric.min, metric.max)
+                  : Math.min(metric.max, Math.max(metric.min, nextValue))
 
             return (
               <View key={metric.key} style={styles.hotRangeRow}>
@@ -103,20 +126,12 @@ export default function GraphsSettingsScreen() {
                   <Stepper
                     value={display(range.start)}
                     formatValue={formatValue}
-                    step={isSpeed ? stepDelta : 1}
+                    step={isSpeed || isTemp ? stepDelta : 1}
                     unit={unit}
                     min={display(metric.min)}
                     max={display(metric.max)}
                     onChange={(nextValue) => {
-                      const clampedValue = isSpeed
-                        ? speedInputToKmh(
-                            nextValue,
-                            range.start,
-                            distanceUnit,
-                            metric.min,
-                            metric.max,
-                          )
-                        : Math.min(metric.max, Math.max(metric.min, nextValue))
+                      const clampedValue = toCanonical(nextValue, range.start)
                       if (clampedValue !== range.start) {
                         setHotRangeValue(metric.key, 'start', clampedValue)
                       }
@@ -128,20 +143,12 @@ export default function GraphsSettingsScreen() {
                   <Stepper
                     value={display(range.end)}
                     formatValue={formatValue}
-                    step={isSpeed ? stepDelta : 1}
+                    step={isSpeed || isTemp ? stepDelta : 1}
                     unit={unit}
                     min={display(metric.min)}
                     max={display(metric.max)}
                     onChange={(nextValue) => {
-                      const clampedValue = isSpeed
-                        ? speedInputToKmh(
-                            nextValue,
-                            range.end,
-                            distanceUnit,
-                            metric.min,
-                            metric.max,
-                          )
-                        : Math.min(metric.max, Math.max(metric.min, nextValue))
+                      const clampedValue = toCanonical(nextValue, range.end)
                       if (clampedValue !== range.end) {
                         setHotRangeValue(metric.key, 'end', clampedValue)
                       }

@@ -40,3 +40,10 @@ internal fun validTemperatureUnit(value: Any?): String? =
  */
 internal fun validTimeFormat(value: Any?): String? =
   (value as? String)?.takeIf { it == "24h" || it == "12h" }
+
+/**
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validDateFormat`
+ * @parity /modules/vescape-core/src/index.ts `DateFormat`
+ */
+internal fun validDateFormat(value: Any?): String? =
+  (value as? String)?.takeIf { it == "dmy" || it == "mdy" || it == "ymd" }

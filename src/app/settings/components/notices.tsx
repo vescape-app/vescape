@@ -7,7 +7,7 @@ import { PageScrollView } from '@/components/base/PageScrollView'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'
-import { DistanceUnitContext } from '@/hooks/useDistanceUnit'
+import { UserPreferencesContext, useUserPreferences } from '@/hooks/useUserPreferences'
 import { RIDER_SIGNAL_KIND_INFO } from '@/modules/group-ride/constants/riderSignalKinds'
 import { RideNoticeCard } from '@/modules/ride-notices/components/RideNoticeCard'
 import { riderSignalNoticeLook } from '@/screens/main/overlays/RideNoticeOverlay'
@@ -40,10 +40,13 @@ export default function NoticesShowcase() {
     expiresAt: null,
   }
 
+  const preferences = useUserPreferences()
+  const previewPreferences = { ...preferences, distanceUnit }
+
   return (
     <SafeAreaView style={styles.container} edges={[]}>
       <PageScrollView contentContainerStyle={styles.content}>
-        <DistanceUnitContext value={distanceUnit}>
+        <UserPreferencesContext value={previewPreferences}>
           <ShowcaseCard
             name="RideNoticeCard"
             controls={
@@ -87,7 +90,7 @@ export default function NoticesShowcase() {
               />
             )}
           </ShowcaseCard>
-        </DistanceUnitContext>
+        </UserPreferencesContext>
       </PageScrollView>
     </SafeAreaView>
   )

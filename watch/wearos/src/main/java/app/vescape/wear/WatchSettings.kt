@@ -24,6 +24,7 @@ const val SETTING_STREET_MAP = "streetMapEnabled"
 const val SETTING_MAP_GAUGES = "mapGaugesPercent"
 
 const val SETTING_DISTANCE_UNIT = "distanceUnit"
+const val SETTING_TEMPERATURE_UNIT = "temperatureUnit"
 const val SETTING_TIME_FORMAT = "timeFormat"
 
 const val SETTING_TILT_RATE = "tiltRatePercent"
@@ -32,6 +33,7 @@ const val DEFAULT_TILT_RATE_PERCENT = 20
 
 data class WatchSettings(
     val distanceUnit: String = "km",
+    val temperatureUnit: String = "celsius",
     val timeFormat: String = "24h",
     val navArrowEnabled: Boolean = false,
     val boardMoveStrengthPercent: Int? = null,
@@ -52,6 +54,7 @@ data class WatchSettings(
             mapGaugesPercent = WatchMapGauges.percent(payload[SETTING_MAP_GAUGES]) ?: WatchMapGauges.DEFAULT_PERCENT,
             boardMoveStrengthPercent = payload[SETTING_BOARD_MOVE_STRENGTH] as? Int,
             distanceUnit = if (payload[SETTING_DISTANCE_UNIT] == "mi") "mi" else "km",
+            temperatureUnit = if (payload[SETTING_TEMPERATURE_UNIT] == "fahrenheit") "fahrenheit" else "celsius",
             timeFormat = if (payload[SETTING_TIME_FORMAT] == "12h") "12h" else "24h",
             tiltRatePercent = (payload[SETTING_TILT_RATE] as? Int)?.coerceIn(1, 100) ?: DEFAULT_TILT_RATE_PERCENT,
         )

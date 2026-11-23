@@ -2,7 +2,7 @@ import { resolvedAlertRules } from '@/modules/alerts/lib/resolvedAlertRules'
 import { parseGeigerAlertSound } from '@/modules/alerts/lib/alertSoundString'
 import { toTestRule } from '@/modules/alerts/lib/alertTest'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useEffect, useMemo, useState } from 'react'
 import {
   cancelAnimation,
@@ -142,7 +142,7 @@ const SHOWCASE_CONFIG_BASES_OFF = {
 }
 
 export function AlertPresetControlShowcase() {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const [metric, setMetric] = useState<AlertPresetMetric>('speed')
   const [level, setLevel] = useState<AlertPresetLevel>('normal')
   const [live, setLive] = useState(false)

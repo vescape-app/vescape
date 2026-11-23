@@ -59,4 +59,6 @@ test('the end time names the day only once it is not today', () => {
   expect(publicRideEndLabel(at(19, 8), now, '24h')).toBe('tomorrow 08:42')
   expect(publicRideEndLabel(at(20, 15), now, '24h')).toBe('Fri 15:42')
   expect(publicRideEndLabel(at(25, 9), now, '24h')).toBe('25 Nov 09:42')
+  expect(publicRideEndLabel(at(25, 9), now, '12h', 'mdy')).toBe('Nov 25 9:42 AM')
+  expect(publicRideEndLabel(at(25, 9), now, '24h', 'ymd')).toBe('11-25 09:42')
 })

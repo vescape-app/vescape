@@ -26,6 +26,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { HistoryFilterPanel } from '@/modules/history/components/HistoryFilterPanel'
 import { HistoryTabs } from '@/modules/history/components/HistoryTabs'
 import { HistoryRideRow, HistoryRideRowSkeleton } from '@/modules/history/components/HistoryRideRow'
@@ -89,6 +90,7 @@ export function HistorySessionSheet({
   onSelectTab,
   onOpenDay,
 }: HistorySessionSheetProps) {
+  const { dateFormat } = useUserPreferences()
   const { formatRideDetails, formatRideTime } = useRideFormat()
   const { fontScale } = useWindowDimensions()
   const dateHeaderHeight = 24 + 38 * fontScale
@@ -118,7 +120,7 @@ export function HistorySessionSheet({
   )
 
   const openDay = favoriteMode ? undefined : onOpenDay
-  const rows = useMemo(() => historyListRows(sessions), [sessions])
+  const rows = useMemo(() => historyListRows(sessions, dateFormat), [dateFormat, sessions])
   const noun = favoriteMode ? FAVORITE_NOUN : RIDE_NOUN
 
   const selectMode = useRideSelectMode({

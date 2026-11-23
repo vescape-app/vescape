@@ -6,7 +6,12 @@ import SwiftUI
 struct WeatherReadout: View {
   let forecast: WatchWeather?
   var ambient: AmbientMode = .off
+  var temperatureUnit: String = "celsius"
   var onTap: (() -> Void)?
+
+  private func displayTemp(_ celsius: Int) -> Int {
+    Int(UnitPresentation.temperatureFromC(Double(celsius), temperatureUnit).rounded(.toNearestOrAwayFromZero))
+  }
 
   var body: some View {
     if let forecast {
@@ -19,10 +24,11 @@ struct WeatherReadout: View {
     let textColor = ambient.skeleton(Palette.secondaryText)
     let rainColor = ambient.active ? Palette.dimText : Palette.weather("cloud-rain")
 
+    let shownTemp = displayTemp(forecast.temperatureC)
     return VStack(alignment: .trailing, spacing: 1) {
       HStack(spacing: 0) {
         WeatherGlyph(slug: forecast.icon, size: ICON_SIZE, color: iconColor)
-        DegreeNumber(value: "\(forecast.temperatureC)", size: FONT_SIZE, color: textColor, extraGap: 2)
+        DegreeNumber(value: "\(shownTemp)", size: FONT_SIZE, color: textColor, extraGap: 2)
       }
       if forecast.precipitationProbability > 0 {
         HStack(spacing: 1) {
@@ -39,7 +45,7 @@ struct WeatherReadout: View {
     .modifier(OptionalTap(action: onTap))
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(forecast.label)
-    .accessibilityValue("\(forecast.temperatureC) degrees")
+    .accessibilityValue("\(shownTemp) degrees")
   }
 }
 

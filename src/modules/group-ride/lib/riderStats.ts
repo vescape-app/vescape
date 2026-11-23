@@ -1,5 +1,10 @@
-import { fmtPercent, fmtTempC } from '@/helpers/format'
-import { formatSpeedValue, type DistanceUnit } from '@/helpers/units'
+import { fmtPercent } from '@/helpers/format'
+import {
+  formatSpeedValue,
+  formatTemperatureValue,
+  type DistanceUnit,
+  type TemperatureUnit,
+} from '@/helpers/units'
 import {
   batteryLevel,
   tempLevel,
@@ -27,7 +32,11 @@ interface RiderStats {
 
 const NORMAL_STAT: RiderStat = { level: 'normal' }
 
-export function riderStats(p: RiderReadings | null, distanceUnit: DistanceUnit): RiderStats {
+export function riderStats(
+  p: RiderReadings | null,
+  distanceUnit: DistanceUnit,
+  temperatureUnit: TemperatureUnit = 'celsius',
+): RiderStats {
   if (!p)
     return {
       speed: NORMAL_STAT,
@@ -46,11 +55,15 @@ export function riderStats(p: RiderReadings | null, distanceUnit: DistanceUnit):
       level: batteryLevel(p.soc),
     },
     motor: {
-      value: p.motorTemp != null ? fmtTempC(p.motorTemp) : undefined,
+      value:
+        p.motorTemp != null
+          ? `${formatTemperatureValue(p.motorTemp, temperatureUnit)}°`
+          : undefined,
       level: tempLevel(p.motorTemp),
     },
     ctrl: {
-      value: p.ctrlTemp != null ? fmtTempC(p.ctrlTemp) : undefined,
+      value:
+        p.ctrlTemp != null ? `${formatTemperatureValue(p.ctrlTemp, temperatureUnit)}°` : undefined,
       level: tempLevel(p.ctrlTemp),
     },
     phone: {

@@ -48,6 +48,7 @@ const appVersion = Constants.expoConfig?.version ?? DASH
 export default function SettingsScreen() {
   const distanceUnit = useSettingsStore((state) => state.distanceUnit)
   const timeFormat = useSettingsStore((state) => state.timeFormat)
+  const dateFormat = useSettingsStore((state) => state.dateFormat)
   const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
   const db = useSettingsDatabaseOps()
   const navigation = useNavigation()
@@ -134,7 +135,7 @@ export default function SettingsScreen() {
             icon={GaugeIcon}
             iconColor={theme.palette.amber.color}
             label="Units"
-            hint={`${speedUnit(distanceUnit)} · ${temperatureSymbol(temperatureUnit)} · ${timeFormat}`}
+            hint={`${speedUnit(distanceUnit)} · ${temperatureSymbol(temperatureUnit)} · ${timeFormat} · ${dateFormat.toUpperCase()}`}
             onPress={() => router.push(routes.settingsUnits)}
           />
           <SettingsRow

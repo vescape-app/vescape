@@ -73,6 +73,17 @@ final class WatchSettingsTests: XCTestCase {
     XCTAssertEqual(WatchSettings.decode(WatchSettings(distanceUnit: "km").payload).distanceUnit, "km")
   }
 
+  func testTemperatureUnitDefaultsAndRoundTripsAfterRestart() {
+    XCTAssertTrue(watchSourceSettingKeys.contains("temperatureUnit"))
+    for invalid: Any in ["kelvin", 1, true, NSNull()] {
+      XCTAssertEqual(WatchSettings.decode([WatchSettingsKey.temperatureUnit: invalid]).temperatureUnit, "celsius")
+    }
+    XCTAssertEqual(WatchSettings.decode([:]).temperatureUnit, "celsius")
+    let fahrenheit = WatchSettings(temperatureUnit: "fahrenheit")
+    XCTAssertEqual(WatchSettings.decode(fahrenheit.payload), fahrenheit)
+    XCTAssertEqual(WatchSettings.decode(context: [watchSettingsChannel: fahrenheit.payload]), fahrenheit)
+  }
+
   func testMissingKeysFallBackToTheWristDefaults() {
     let decoded = WatchSettings.decode([:])
     XCTAssertNil(decoded.boardMoveStrengthPercent)

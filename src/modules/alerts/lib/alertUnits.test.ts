@@ -90,4 +90,23 @@ test('native snapshot descriptions and wizard summaries follow display units', (
   expect(describeAlertRules('speed', rules, 'mi')).toContain('28 mph')
   expect(formatAlertPresetSummary('speed', rules, 'mi')).toBe('22–28 mph')
   expect(formatAlertPresetSummary('speed', rules, 'km')).toBe('35.4–45.1 km/h')
+  const tempRules = [
+    { threshold: 80, thresholdMax: null, repeatEverySeconds: null },
+    { threshold: 90, thresholdMax: null, repeatEverySeconds: 10 },
+  ]
+  expect(formatAlertPresetSummary('motor-temp', tempRules, 'km', 'fahrenheit')).toBe('176°, 194°↻')
+  expect(describeAlertRules('motor-temp', tempRules, 'km', 'fahrenheit')).toContain('176° and 194°')
+  const tempConfig = getAlertDialConfig('motor-temp', null)
+  expect(
+    renderPreviewTemplate(
+      'Motor {value} {unit}',
+      80,
+      '°C',
+      tempConfig,
+      'motor-temp',
+      null,
+      'km',
+      'fahrenheit',
+    ),
+  ).toBe('Motor 176 °F')
 })

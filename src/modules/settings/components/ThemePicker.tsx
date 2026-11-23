@@ -7,7 +7,7 @@ import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelect
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { formatClock } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { THEME_OPTIONS } from '@/modules/settings/lib/themeOptions'
 import { useSunThemeClock } from '@/modules/settings/hooks/useSunThemeClock'
 import {
@@ -30,7 +30,7 @@ function upcomingSunSwitches(
 }
 
 export function ThemePicker() {
-  const timeFormat = useTimeFormat()
+  const { timeFormat } = useUserPreferences()
   const mode = useSettingsStore((s) => s.themeMode)
   const setSetting = useSettingsStore((s) => s.set)
   const [headerWidth, setHeaderWidth] = useState(0)

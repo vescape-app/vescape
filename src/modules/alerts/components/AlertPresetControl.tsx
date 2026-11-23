@@ -1,6 +1,13 @@
 import { useFormat } from '@/hooks/useFormat'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
-import { speedFromKmh, speedUnit } from '@/helpers/units'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
+import {
+  speedFromKmh,
+  speedUnit,
+  temperatureDisplayOffset,
+  temperatureDisplayScale,
+  temperatureFromC,
+  temperatureSymbol,
+} from '@/helpers/units'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { SpeakerHighIcon, StopIcon, CheckIcon } from 'phosphor-react-native'
@@ -127,9 +134,10 @@ export function AlertPresetControl({
   presetRules,
   controlsHeader,
 }: AlertPresetControlProps) {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit, temperatureUnit } = useUserPreferences()
   const { formatSpeedWithUnit } = useFormat()
   const { describeRules } = useAlertPresetFormat()
+  const isTemp = metric === 'motor-temp' || metric === 'controller-temp'
   const gauge = useMemo(
     () =>
       metric === 'speed'
@@ -138,8 +146,15 @@ export function AlertPresetControl({
             unit: speedUnit(distanceUnit),
             formatMarker: (value: number) => formatSpeedWithUnit(value, 1),
           }
-        : PRESET_GAUGE[metric],
-    [metric, distanceUnit, formatSpeedWithUnit],
+        : isTemp
+          ? {
+              ...PRESET_GAUGE[metric],
+              unit: temperatureSymbol(temperatureUnit),
+              formatMarker: (value: number) =>
+                `${round(temperatureFromC(value, temperatureUnit))}°`,
+            }
+          : PRESET_GAUGE[metric],
+    [metric, distanceUnit, temperatureUnit, isTemp, formatSpeedWithUnit],
   )
   const max =
     metric === 'speed' && boardTopSpeedKmh && boardTopSpeedKmh > 0
@@ -180,7 +195,14 @@ export function AlertPresetControl({
   return (
     <View style={styles.container}>
       <SingleGauge
-        displayScale={metric === 'speed' ? speedFromKmh(1, distanceUnit) : 1}
+        displayScale={
+          metric === 'speed'
+            ? speedFromKmh(1, distanceUnit)
+            : isTemp
+              ? temperatureDisplayScale(temperatureUnit)
+              : 1
+        }
+        displayOffset={isTemp ? temperatureDisplayOffset(temperatureUnit) : 0}
         value={gaugeValue ?? placeholder}
         min={gauge.min}
         max={max}
@@ -211,6 +233,7 @@ export function AlertPresetControl({
           metric={metric}
           checked={matchBoardConfig?.[metric] === true}
           configBases={configBases}
+          formatValue={gauge.formatMarker}
           onChange={onMatchBoardConfigChange}
         />
       ) : null}
@@ -237,11 +260,13 @@ function BoardConfigMatchControl({
   metric,
   checked,
   configBases,
+  formatValue,
   onChange,
 }: {
   metric: AlertPresetMetric
   checked: boolean
   configBases?: BoardConfigBases
+  formatValue: (value: number) => string
   onChange?: (enabled: boolean) => void
 }) {
   const fieldId = ALERT_PRESET_CONFIG_FIELDS[metric]
@@ -250,7 +275,7 @@ function BoardConfigMatchControl({
       ? { status: 'missing' as const }
       : configRelativeBase(fieldId, configBases ?? {})
   const subject = MATCH_SUBJECT[metric] ?? 'configuration'
-  const format = PRESET_GAUGE[metric].formatMarker
+  const format = formatValue
   const available = base.status === 'resolved'
   const interactive = available || checked
   let note: string | null = null

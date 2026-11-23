@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import {
   renderPreviewTemplate,
@@ -7,7 +7,7 @@ import {
 } from '@/modules/alerts/lib/alertFormDefaults'
 
 export function useAlertMessageFormat() {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit, temperatureUnit } = useUserPreferences()
   return useCallback(
     (
       template: string,
@@ -25,7 +25,8 @@ export function useAlertMessageFormat() {
         controlId,
         batteryConfig,
         distanceUnit,
+        temperatureUnit,
       ),
-    [distanceUnit],
+    [distanceUnit, temperatureUnit],
   )
 }

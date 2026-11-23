@@ -435,6 +435,7 @@ class AppDataRepository private constructor(private val context: Context) {
       distanceUnit = req("distanceUnit", "km", ::validDistanceUnit),
       temperatureUnit = req("temperatureUnit", "celsius", ::validTemperatureUnit),
       timeFormat = req("timeFormat", "24h", ::validTimeFormat),
+      dateFormat = req("dateFormat", "dmy", ::validDateFormat),
       themeMode = req("themeMode", "system", ::validThemeMode),
       mapStyleKey = req("mapStyleKey", "onedark", ::validMapStyleKey),
       satelliteOverlayEnabled = req("satelliteOverlayEnabled", true) { it as? Boolean },
@@ -526,6 +527,8 @@ class AppDataRepository private constructor(private val context: Context) {
       "temperatureUnit" -> validTemperatureUnit(value) ?: return@withContext
       "timeFormat" -> if (value == null || value == JSONObject.NULL) "24h"
         else requireNotNull(validTimeFormat(value)) { "Invalid timeFormat" }
+      "dateFormat" -> if (value == null || value == JSONObject.NULL) "dmy"
+        else requireNotNull(validDateFormat(value)) { "Invalid dateFormat" }
       "themeMode" -> validThemeMode(value) ?: return@withContext
       "mapStyleKey" ->
         validMapStyleKey(value) ?: return@withContext
@@ -602,6 +605,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "distanceUnit" -> d.distanceUnit
         "temperatureUnit" -> d.temperatureUnit
         "timeFormat" -> d.timeFormat
+        "dateFormat" -> d.dateFormat
         "themeMode" -> d.themeMode
         "mapStyleKey" -> d.mapStyleKey
         "satelliteOverlayEnabled" -> d.satelliteOverlayEnabled
@@ -962,6 +966,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "distanceUnit" to distanceUnit,
   "temperatureUnit" to temperatureUnit,
   "timeFormat" to timeFormat,
+  "dateFormat" to dateFormat,
   "themeMode" to themeMode,
   "mapStyleKey" to mapStyleKey,
   "satelliteOverlayEnabled" to satelliteOverlayEnabled,

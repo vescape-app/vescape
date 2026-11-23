@@ -7,7 +7,7 @@ import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { interaction, theme } from '@/constants/theme'
 import { formatTimeOfDay } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { weatherIconColor } from '@/modules/weather/lib/weather'
 
 interface WeatherPillProps {
@@ -31,7 +31,7 @@ export function WeatherPill({
   expanded,
   onPress,
 }: WeatherPillProps) {
-  const timeFormat = useTimeFormat()
+  const { timeFormat } = useUserPreferences()
   const iconColor = weatherIconColor(icon)
 
   if (expanded) {

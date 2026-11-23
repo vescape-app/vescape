@@ -1,4 +1,12 @@
-import { speedFromKmh, speedUnit, type DistanceUnit } from '@/helpers/units'
+import {
+  speedFromKmh,
+  speedUnit,
+  temperatureDisplayOffset,
+  temperatureDisplayScale,
+  temperatureSymbol,
+  type DistanceUnit,
+  type TemperatureUnit,
+} from '@/helpers/units'
 import { theme, type ThemeColor } from '@/constants/theme'
 
 interface TelemetryChartRange {
@@ -189,16 +197,37 @@ export const telemetryByControlId = Object.fromEntries(
     .map((metric) => [metric.controlId, metric]),
 ) as Record<string, TelemetryMetricConfig>
 
-export function presentTelemetryMetric(metric: TelemetryMetricConfig, distanceUnit: DistanceUnit) {
-  if (metric.unit !== 'km/h') return { ...metric, displayScale: 1 }
-  const displayScale = speedFromKmh(1, distanceUnit)
-  const unit = speedUnit(distanceUnit)
-  const format = (value: number) => metric.format(value * displayScale)
-  return {
-    ...metric,
-    unit,
-    displayScale,
-    format,
-    formatWithUnit: (value: number) => `${format(value)} ${unit}`,
+export function presentTelemetryMetric(
+  metric: TelemetryMetricConfig,
+  distanceUnit: DistanceUnit,
+  temperatureUnit: TemperatureUnit = 'celsius',
+) {
+  if (metric.unit === 'km/h') {
+    const displayScale = speedFromKmh(1, distanceUnit)
+    const unit = speedUnit(distanceUnit)
+    const format = (value: number) => metric.format(value * displayScale)
+    return {
+      ...metric,
+      unit,
+      displayScale,
+      displayOffset: 0,
+      format,
+      formatWithUnit: (value: number) => `${format(value)} ${unit}`,
+    }
   }
+  if (metric.unit === '°C') {
+    const displayScale = temperatureDisplayScale(temperatureUnit)
+    const displayOffset = temperatureDisplayOffset(temperatureUnit)
+    const unit = temperatureSymbol(temperatureUnit)
+    const format = (value: number) => metric.format(value * displayScale + displayOffset)
+    return {
+      ...metric,
+      unit,
+      displayScale,
+      displayOffset,
+      format,
+      formatWithUnit: (value: number) => `${format(value)} ${unit}`,
+    }
+  }
+  return { ...metric, displayScale: 1, displayOffset: 0 }
 }
