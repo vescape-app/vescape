@@ -235,6 +235,22 @@ _Avoid_: Copied VESC threshold, synced alert value
 A one-time acknowledgement of field-level differences found when fresh **Board Config Values** disagree with the **Last Known Board Config Values** for the same **Board** and **Tune Compatibility**.
 _Avoid_: Board Warning, config warning, config change history
 
+**Board Config Schema**:
+The Refloat package's own description of its config fields: ids, types, wire encoding, ranges, enum names and grouping. It is read from the **Board** and identified by its content.
+_Avoid_: Field list, tune groups, config XML
+
+**Field Overlay**:
+Vescape's own layer over a **Board Config Schema** field: label, order, usual range, placement, risk and an optional hard limit. It never adds a field the schema lacks.
+_Avoid_: Field definitions, tune field list, field allowlist
+
+**Config Changeset**:
+Only the fields being changed, as field id and new value, applied on top of fresh **Board Config Values**. Every other field keeps the **Board**'s own bytes.
+_Avoid_: Profile push, full config write, config patch
+
+**Board Config Revision**:
+One distinct verified Refloat config state of a **Board** in its append-only config history, kept with its **Board Config Schema** and its source: a Vescape write, an external change, a revert or an import.
+_Avoid_: Tune History Entry, config backup, change log, config snapshot
+
 **Tune Snapshot**:
 A read-only view of the board's current Refloat tuning configuration decoded from the board's schema and binary config.
 _Avoid_: Tune cache, settings dump
@@ -246,10 +262,6 @@ _Avoid_: Tune preset, config file, settings backup
 **Tune Compatibility**:
 The Refloat major/minor version scope in which a Tune Profile is allowed to be used. Patch versions and suffixes do not split it: `1.2`, `1.2.7`, and `1.2.7-postfix` share Tune Compatibility.
 _Avoid_: Tune migration, tune schema version, firmware conversion
-
-**Tune History Entry**:
-An immutable snapshot of a Tune Profile's field values captured immediately before an explicit save, enabling rollback to any prior state.
-_Avoid_: Sync log, change event, audit trail
 
 **Tune Preview**:
 A comparative read-only visualization of board-angle response derived from a Tune Profile, synthetic rider-load and terrain inputs, and an idealized board model without motor-power, traction, or nosedive limits.
@@ -501,8 +513,11 @@ _Avoid_: Hazard signal, warning, POI, map point
 - **Last Known Board Config Values** are scoped per **Board** and **Tune Compatibility**, kept while a **Board Link** is outdated, and cleared everywhere when link integrity is mismatched.
 - A **VESC-Relative Alert Rule** resolves from **Last Known Board Config Values** immediately when a **Board Session** starts and follows fresh values automatically when they arrive; it never materializes the referenced config number into the rule.
 - The first **VESC-Relative Alert Rule** is opt-in Duty feedback based on `tiltback_duty`; matching is off by default, and the selected Safe, Normal, or Minimal level determines its lead below the VESC threshold.
-- A fresh read differing from **Last Known Board Config Values** creates or replaces that Board's pending **Board Config Change Notice** unless Vescape made the change itself; every changed field is included except boot-calibrated FOC offsets (`foc_offsets_current[0..2]`, `foc_offsets_voltage[0..2]`, `foc_offsets_voltage_undriven[0..2]`) and fields ignored per **Board**, and no history is retained.
+- A fresh read differing from **Last Known Board Config Values** creates or replaces that Board's pending **Board Config Change Notice** unless Vescape made the change itself; every changed field is included except boot-calibrated FOC offsets (`foc_offsets_current[0..2]`, `foc_offsets_voltage[0..2]`, `foc_offsets_voltage_undriven[0..2]`) and fields ignored per **Board**. The new state is also recorded as a **Board Config Revision**, which ignores nothing but the FOC offsets.
 - Only the active **Board** presents its pending **Board Config Change Notice**; dismissing its modal by any route removes the notice.
+- A **Config Changeset** is validated whole against the **Board Config Schema**, what the wire can carry, and **Field Overlay** hard limits; one invalid field rejects all of it.
+- A **Board Config Revision** records only a state read back from the **Board**; a revert writes a new **Config Changeset** and adds a revision instead of editing history.
+- A **Board**'s tune fields are its **Board Config Schema**'s Tune, Tune Modifiers and ATR groups; a **Tune Profile** reaches the board as a **Config Changeset**.
 - A **Board Firmware Identity** may be rediscovered during a **Board Session**; any mismatch creates a **Stale Board Link**.
 - A **Stale Board Link** does not end a working **Board Session**, but only telemetry remains trusted until a fresh **Board Probe** replaces the link.
 - A **Stale Board Link** is latched for the current **Board Session** and is not persisted across app restarts.
@@ -552,7 +567,6 @@ _Avoid_: Hazard signal, warning, POI, map point
 - **Tune Compatibility** ignores Refloat patch versions, suffixes, or fork labels, while **Board Firmware Identity** keeps the exact reported version for link integrity.
 - The first **Tune Profile** for a **Tune Compatibility** is created only after an explicit rider action.
 - Offline tune editing may use the saved **Board Link** to choose the active **Tune Compatibility**, but board tune reads and writes require trusted link integrity.
-- A **Tune History Entry** captures the previous state of a **Tune Profile** before each explicit save.
 - A **Tune Preview** derives an idealized board-angle response from one **Tune Profile** and never predicts whether the **Board** can physically achieve it.
 - A **Pitch Input** adds pitch error over time without directly commanding speed or motor power.
 - A **Posi Sensor** setting belongs to a **Tune Profile** when the board firmware exposes that Refloat field.
