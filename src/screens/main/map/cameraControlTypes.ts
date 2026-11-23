@@ -33,7 +33,7 @@ export interface UseCameraControlsParams {
   mapViewport: RouteCameraViewport
   mapOrientationMode: MapOrientationMode
   heading: {
-    phoneReady: boolean
+    isPhoneReady: () => boolean
     getFollowDeg: () => number
     resetOnRecenter: boolean
   }
