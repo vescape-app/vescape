@@ -53,6 +53,7 @@ import expo.modules.vescapecore.PublicRideSwitch
 import expo.modules.vescapecore.auth.DeviceCredentialStore
 import expo.modules.vescapecore.RiderSignalContext
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
+import expo.modules.vescapecore.appstatus.watchNetwork
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
 import expo.modules.vescapecore.telemetry.ProcessedTelemetry
 import expo.modules.vescapecore.protocol.LocationSnapshot
@@ -473,6 +474,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 val longitude = lastAppliedSettings.lastGpsLongitude
                 if (latitude != null && longitude != null) latitude to longitude else null
             },
+            watchNetwork = { onNewNetwork -> watchNetwork(service.applicationContext, onNewNetwork) },
         )
     }
 

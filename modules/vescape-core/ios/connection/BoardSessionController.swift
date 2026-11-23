@@ -238,7 +238,8 @@ internal final class BoardSessionController: VescGattListener {
             let lng = settings["lastGpsLongitude"] as? Double
       else { return nil }
       return (lat: lat, lng: lng)
-    }
+    },
+    watchNetwork: watchNetwork(_:)
   )
 
   private var jsObserving = false

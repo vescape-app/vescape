@@ -43,7 +43,10 @@ internal class GroupRideObserver(
     persistPublicRide: (PublicRideSwitch) -> Unit = {},
     private val lastKnownLocation: () -> Pair<Double, Double>? = { null },
     now: () -> Long = System::currentTimeMillis,
+    /** @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `watchNetwork` */
+    private val watchNetwork: (onAvailable: () -> Unit) -> (() -> Unit) = { { } },
     private val sockets: WebSocket.Factory = OkHttpClient.Builder()
+        .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .pingInterval(PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
         .build(),
 ) {
@@ -59,6 +62,7 @@ internal class GroupRideObserver(
     private var lastSignalAvailability: Map<String, Any?>? = null
     private var lastConnection = "idle"
     private var onlineUnsub: (() -> Unit)? = null
+    private var networkUnsub: (() -> Unit)? = null
     private val reconnectRunnable = Runnable { connect() }
     private val missedRetryRunnable = Runnable {
         webSocket?.close(NORMAL_CLOSURE, "missed positions retry")
@@ -120,6 +124,7 @@ internal class GroupRideObserver(
     fun start(url: String) {
         if (!stopped && url == serverUrl) {
             resyncNow()
+            retryNow(restartPending = false)
             return
         }
         if (serverUrl != null && serverUrl != url) publicRide.discardMissed()
@@ -128,6 +133,8 @@ internal class GroupRideObserver(
         reconnectAttempt = 0
         onlineUnsub?.invoke()
         onlineUnsub = online.addListener(::onOnlineChanged)
+        networkUnsub?.invoke()
+        networkUnsub = watchNetwork { handler.post { retryNow(restartPending = true) } }
         connect()
         publicRide.resync()
     }
@@ -137,6 +144,8 @@ internal class GroupRideObserver(
         handler.removeCallbacks(reconnectRunnable)
         onlineUnsub?.invoke()
         onlineUnsub = null
+        networkUnsub?.invoke()
+        networkUnsub = null
         webSocket?.close(NORMAL_CLOSURE, "client stop")
         webSocket = null
         lastSignalAvailability = null
@@ -148,7 +157,9 @@ internal class GroupRideObserver(
     /** @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `resync` */
     fun resync() {
         handler.post {
-            if (!stopped) resyncNow()
+            if (stopped) return@post
+            resyncNow()
+            retryNow(restartPending = false)
         }
     }
 
@@ -174,6 +185,17 @@ internal class GroupRideObserver(
         lastSignalAvailability = null
         refreshSignalAvailability()
         publicRide.resync()
+    }
+
+    private fun retryNow(restartPending: Boolean) {
+        if (stopped || online.onlineBlocked || linkOpen) return
+        val pending = webSocket
+        if (pending != null && !restartPending) return
+        handler.removeCallbacks(reconnectRunnable)
+        webSocket = null
+        pending?.cancel()
+        reconnectAttempt = 0
+        connect()
     }
 
     private fun onOnlineChanged() {
@@ -469,9 +491,10 @@ internal class GroupRideObserver(
     companion object {
         private const val TAG = "GroupRideObserver"
         private const val NORMAL_CLOSURE = 1000
-        private const val PING_INTERVAL_SECONDS = 20L
+        private const val PING_INTERVAL_SECONDS = 5L
+        private const val CONNECT_TIMEOUT_SECONDS = 5L
         private const val HEARTBEAT_INTERVAL_MS = 3_000L
-        private val RECONNECT_DELAYS_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 30_000)
+        private val RECONNECT_DELAYS_MS = longArrayOf(500, 1_000, 2_000, 3_000)
 
         /**
          * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `presenceMap`

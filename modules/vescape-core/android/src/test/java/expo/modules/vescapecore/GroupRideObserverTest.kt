@@ -77,6 +77,7 @@ class GroupRideObserverTest {
         private val tasks = mutableMapOf<Runnable, MutableList<Cancellable>>()
         var blocked = false
         var onlineChanged: (() -> Unit)? = null
+        var newNetwork: (() -> Unit)? = null
         var account: String? = "acc"
         var token: String? = "token"
         val links = mutableListOf<Link>()
@@ -123,6 +124,10 @@ class GroupRideObserverTest {
                 deviceCredential = { account?.let { id -> token?.let { DeviceCredential("https://example.com", it, id, null) } } },
                 onPublicRideDemandChanged = { demand += observerNeedsLink() },
                 now = { clock.currentTimeMs },
+                watchNetwork = { onNewNetwork ->
+                    newNetwork = onNewNetwork
+                    { newNetwork = null }
+                },
                 sockets = WebSocket.Factory { request, listener -> Link(request, listener).also { links += it }.socket },
             )
         }
@@ -131,6 +136,10 @@ class GroupRideObserverTest {
         fun ready(link: Link = links.last(), features: String = "\"public-ride\",\"missed-positions\"") {
             link.open()
             link.message("""{"type":"snapshot","features":[$features]}""")
+            flush()
+        }
+        fun drop(link: Link = links.last()) {
+            link.listener.onClosed(link.socket, 1000, "lost")
             flush()
         }
         fun offlineBuffer() {
@@ -273,4 +282,63 @@ class GroupRideObserverTest {
         assertTrue(h.events.isEmpty())
     }
 
+    @Test
+    fun `a stored switch loaded after the relay snapshot still goes public`() {
+        val h = RelayHarness()
+        h.observer.setBoardConnected(true)
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        assertTrue(h.links.last().frames.isEmpty())
+
+        h.observer.loadPublicRide(PublicRideSwitch(true, null), "acc")
+        h.flush()
+
+        assertEquals(listOf("public-on"), h.links.last().types())
+        assertEquals(true, h.demand.last())
+        h.observer.stop()
+    }
+
+    @Test
+    fun `a lost link retries within seconds and at once on a new network or foreground`() {
+        val h = RelayHarness()
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        repeat(6) {
+            val count = h.links.size
+            h.drop()
+            h.clock.advance(3_000)
+            assertEquals(count + 1, h.links.size)
+        }
+
+        h.drop()
+        val waiting = h.links.size
+        h.newNetwork!!.invoke()
+        h.flush()
+        assertEquals(waiting + 1, h.links.size)
+        h.clock.advance(5_000)
+        assertEquals(waiting + 1, h.links.size)
+
+        val pending = h.links.last()
+        h.newNetwork!!.invoke()
+        h.flush()
+        assertTrue(pending.closed)
+        assertEquals(waiting + 2, h.links.size)
+
+        h.drop()
+        h.observer.resync()
+        h.flush()
+        assertEquals(waiting + 3, h.links.size)
+        h.observer.resync()
+        h.flush()
+        assertEquals(waiting + 3, h.links.size)
+
+        h.ready()
+        h.newNetwork!!.invoke()
+        h.observer.resync()
+        h.flush()
+        assertEquals(waiting + 3, h.links.size)
+
+        h.observer.stop()
+        assertNull(h.newNetwork)
+    }
 }

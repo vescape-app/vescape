@@ -102,6 +102,8 @@ internal class PublicRide(
         switch = if (account == null || !stored.activeAt(now())) PublicRideSwitch.OFF else stored
         if (switch != stored) persist(switch)
         armTimer()
+        reconcile()
+        emitDemand()
         emitStatus(force = true)
     }
 

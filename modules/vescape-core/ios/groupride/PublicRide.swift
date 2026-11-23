@@ -107,6 +107,8 @@ internal final class PublicRide {
     switchState = account == nil || !stored.active(at: now()) ? .off : stored
     if switchState != stored { persist(switchState) }
     armTimer()
+    reconcile()
+    emitDemand()
     emitStatus(force: true)
   }
 
