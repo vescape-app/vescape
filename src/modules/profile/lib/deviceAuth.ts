@@ -44,3 +44,29 @@ function isExchangeResponse(value: unknown): value is DeviceTokenExchange {
   const record = value as Record<string, unknown>
   return typeof record.accountId === 'string' && typeof record.deviceToken === 'string'
 }
+
+type AccountDeletionOutcome = 'deleted' | 'queued'
+
+interface DeleteAccountOptions {
+  serverUrl: string
+  clerkToken: string
+  fetcher?: Fetcher
+}
+
+export async function deleteAccount({
+  serverUrl,
+  clerkToken,
+  fetcher = fetch,
+}: DeleteAccountOptions): Promise<AccountDeletionOutcome> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30_000)
+  const response = await fetcher(`${serverUrl.replace(/\/+$/, '')}/api/account`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${clerkToken}` },
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout))
+
+  if (response.status === 200) return 'deleted'
+  if (response.status === 202) return 'queued'
+  throw new Error(`Account deletion failed (${response.status})`)
+}

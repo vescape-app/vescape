@@ -50,15 +50,23 @@ native revoke -> native clear -> Clerk sign-out
 If revocation fails, the app stays signed in and retains the credential so it can retry. Never clear
 Clerk first: that would strand a live Device Token the client can no longer revoke.
 
-Account deletion ordering (planned in `#715`) differs because the server owns revocation and erasure:
+Account deletion ordering differs because the server owns revocation and erasure:
 
 ```text
-suppress DeviceAuthSync -> DELETE /api/account (Clerk token) -> native clear -> reset Rider Profile -> Clerk sign-out
+suspend DeviceAuthSync -> DELETE /api/account (Clerk token) -> native clear -> reset Rider Profile -> Clerk sign-out
 ```
 
-Suppressing `DeviceAuthSync` first prevents an in-flight token exchange from reinstalling a Device
-Token while deletion runs. `DELETE /api/account` is exempt from Online Block so outdated builds can
-still delete accounts. Deleting a Vescape Account never touches local phone data.
+`ClerkAccountScreen` runs it. Suspending `DeviceAuthSync`
+(`src/modules/profile/lib/deviceProvisioning.ts`) blocks new exchanges, drops the Device Token of an
+exchange still in flight, and waits for a native install already running, so nothing reinstalls a
+credential after the local clear. `200` (deleted) and `202` (queued for background Clerk deletion)
+both count as accepted; anything else resumes provisioning and lets the rider retry. The local
+clear uses `clearDeviceCredential`, not revoke: the server already revoked every Device Token. The
+credential change listeners stop Public Ride sharing and Rider Month Stats sending on both
+platforms, and native requests that require a Device Token stop. Clerk
+sign-out errors after acceptance are tolerated because the Clerk session may already be gone.
+`DELETE /api/account` is exempt from Online Block so outdated builds can still delete accounts.
+Deleting a Vescape Account never touches local phone data.
 
 Do not fix Clerk integration in generated `android/` or `ios/` folders. Plugin or dependency changes
 require a fresh native sync/build through `bun run android`.

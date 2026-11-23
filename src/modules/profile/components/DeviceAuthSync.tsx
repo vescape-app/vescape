@@ -12,9 +12,14 @@ import {
 
 import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
 import { exchangeDeviceToken } from '@/modules/profile/lib/deviceAuth'
+import {
+  DeviceProvisioningSuspendedError,
+  isDeviceProvisioningSuspended,
+  startDeviceProvisioning,
+  type DeviceProvisioningSteps,
+} from '@/modules/profile/lib/deviceProvisioning'
 import { readDeviceCredential } from '@/modules/profile/lib/readDeviceCredential'
 
-let provisioning: Promise<void> | null = null
 const attemptedSessionIds = new Set<string>()
 
 export function DeviceAuthSync() {
@@ -26,7 +31,7 @@ export function DeviceAuthSync() {
   const setStatus = useDeviceAuthStore((state) => state.setStatus)
 
   const tryProvision = useCallback(() => {
-    if (!isLoaded || !isSignedIn || !session) return
+    if (!isLoaded || !isSignedIn || !session || isDeviceProvisioningSuspended()) return
     const credential = readDeviceCredential(getDeviceCredentialState)
     if (!credential.status) {
       setStatus('failed', credential.error)
@@ -43,18 +48,18 @@ export function DeviceAuthSync() {
       void signOut()
       return
     }
-    if (provisioning !== null || attemptedSessionIds.has(session.id)) return
+    if (attemptedSessionIds.has(session.id)) return
 
+    const run = startDeviceProvisioning(provisioningSteps(getToken))
+    if (run === null) return
     attemptedSessionIds.add(session.id)
     setStatus('provisioning')
-    provisioning = provision(getToken)
+    run
       .then(() => setStatus('ready'))
       .catch((error: unknown) => {
         attemptedSessionIds.delete(session.id)
-        setStatus('failed', visibleError(error))
-      })
-      .finally(() => {
-        provisioning = null
+        if (error instanceof DeviceProvisioningSuspendedError) setStatus('idle')
+        else setStatus('failed', visibleError(error))
       })
   }, [getToken, isLoaded, isSignedIn, session, setStatus, signOut])
 
@@ -69,6 +74,7 @@ export function DeviceAuthSync() {
   useEffect(() => {
     if (!isSignedIn) return
     const subscription = addAppStatusListener(() => {
+      if (isDeviceProvisioningSuspended()) return
       const credential = readDeviceCredential(getDeviceCredentialState)
       if (!credential.status) {
         setStatus('failed', credential.error)
@@ -90,13 +96,16 @@ export function DeviceAuthSync() {
   return null
 }
 
-async function provision(getToken: () => Promise<string | null>): Promise<void> {
-  const clerkToken = await getToken()
-  if (!clerkToken) throw new Error('Clerk session token is unavailable')
-  const appVersion = Constants.expoConfig?.version
-  if (!appVersion) throw new Error('Installed app version is unavailable')
-  const body = await exchangeDeviceToken({ serverUrl: SERVER_URL, clerkToken, appVersion })
-  await provisionDeviceCredential(SERVER_URL, body.deviceToken, body.accountId)
+function provisioningSteps(getToken: () => Promise<string | null>): DeviceProvisioningSteps {
+  return {
+    getToken,
+    exchange: (clerkToken) => {
+      const appVersion = Constants.expoConfig?.version
+      if (!appVersion) throw new Error('Installed app version is unavailable')
+      return exchangeDeviceToken({ serverUrl: SERVER_URL, clerkToken, appVersion })
+    },
+    install: (body) => provisionDeviceCredential(SERVER_URL, body.deviceToken, body.accountId),
+  }
 }
 
 function visibleError(error: unknown): string {
