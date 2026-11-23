@@ -2810,7 +2810,10 @@ internal final class BoardSessionController: VescGattListener {
         catch { RecordingStorageFailure.reportRead(operation: "board_tune_profile_read", error: error); throw error }
       },
       onBoardConfigValues: { [weak self] values, origin in self?.onBoardConfigValues(values, origin: origin) },
-      demoteWriteBase: { [weak self] in self?.boardConfigValues = self?.boardConfigValues?.demotedToProvisional() }
+      demoteWriteBase: { [weak self] in self?.boardConfigValues = self?.boardConfigValues?.demotedToProvisional() },
+      rideState: { [weak self] in
+        self?.latestTelemetry.map { BoardRideState(state: $0.state, switchState: $0.switchState, receivedAtMs: $0.lastPacketAt) }
+      }
     )
   }
 
@@ -2831,7 +2834,8 @@ internal final class BoardSessionController: VescGattListener {
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in nil },
       onBoardConfigValues: { _, _ in },
-      demoteWriteBase: { [weak self] in self?.boardConfigValues = self?.boardConfigValues?.demotedToProvisional() }
+      demoteWriteBase: { [weak self] in self?.boardConfigValues = self?.boardConfigValues?.demotedToProvisional() },
+      rideState: { nil }
     )
   }
 

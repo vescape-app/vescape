@@ -14,6 +14,7 @@ import org.junit.Test
 class ConfigRWControllerLinkIntegrityTest {
     private val scheduler = TestScheduler()
     private var linkIntegrity = LinkIntegrity.Trusted
+    private var rideState: BoardRideState? = null
     private var stoppedPolling = false
     private var sentPayload = false
     private val errors = mutableListOf<Pair<String, String>>()
@@ -39,6 +40,7 @@ class ConfigRWControllerLinkIntegrityTest {
                 transport = BoardTransport.Direct,
                 fwVersion = "FW 6.05",
                 linkIntegrity = linkIntegrity,
+                rideState = rideState,
             )
 
             override fun isPollingActive() = true
@@ -100,5 +102,30 @@ class ConfigRWControllerLinkIntegrityTest {
         assertEquals(listOf(RefloatConfigErrorCode.LINK_NOT_TRUSTED.name to "Trusted board link required before pushing config"), errors)
         assertFalse(stoppedPolling)
         assertFalse(sentPayload)
+    }
+
+    @Test
+    fun writeFailsClosedWhenBoardIsNotIdle() {
+        val now = System.currentTimeMillis()
+        val blocked = listOf(
+            BoardRideState(state = 1, switchState = 0, receivedAtMs = now),
+            BoardRideState(state = 0, switchState = 0x08, receivedAtMs = now),
+            BoardRideState(state = 0, switchState = 0, receivedAtMs = now - 5_000),
+            null,
+        )
+        for (sample in blocked) {
+            errors.clear()
+            rideState = sample
+            controller().consumeWrite(PendingConfigWrite(
+                profileId = "profile-1",
+                fieldIds = listOf("kp"),
+                onSuccess = { error("write should not succeed") },
+                onError = { code, message -> errors.add(code to message) },
+            ))
+
+            assertEquals("$sample", listOf(RefloatConfigErrorCode.BOARD_NOT_IDLE.name), errors.map { it.first })
+            assertFalse(stoppedPolling)
+            assertFalse(sentPayload)
+        }
     }
 }

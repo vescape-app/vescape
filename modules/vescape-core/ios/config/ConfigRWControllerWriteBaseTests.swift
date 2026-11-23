@@ -185,6 +185,52 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertFalse(sent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
   }
 
+  func testBoardThatIsNotIdleRejectsWriteBeforeAnyFrame() {
+    let blocked: [BoardRideState] = [
+      BoardRideState(state: 1, switchState: 0, receivedAtMs: wallNowMs()),
+      BoardRideState(state: 3, switchState: 0, receivedAtMs: wallNowMs()),
+      BoardRideState(state: 0, switchState: 0x08, receivedAtMs: wallNowMs()),
+      BoardRideState(state: 0, switchState: 0, receivedAtMs: wallNowMs() - 5_000),
+    ]
+    for rideState in blocked {
+      let sent = SentFrames()
+      var errors: [String] = []
+      ConfigRWController().consumeWrite(
+        profileId: "profile-1",
+        fieldIds: ["tuned"],
+        connection: connection(fresh(), sent, rideState: { rideState }),
+        onSuccess: { _ in XCTFail("write should not succeed") },
+        onError: { code, _ in errors.append(code) }
+      )
+      XCTAssertEqual(errors, [RefloatConfigErrorCode.BOARD_NOT_IDLE.rawValue], "\(rideState)")
+      XCTAssertTrue(sent.frames.isEmpty)
+    }
+  }
+
+  func testRecheckBeforeSetBlocksWhenTheBoardEngages() {
+    let sent = SentFrames()
+    var errors: [String] = []
+    var demotions = 0
+    var checks = 0
+    let conn = connection(fresh(), sent, demoteWriteBase: { demotions += 1 }, rideState: {
+      checks += 1
+      return BoardRideState(state: checks == 1 ? 0 : 1, switchState: 0, receivedAtMs: wallNowMs())
+    })
+
+    ConfigRWController().consumeWrite(
+      profileId: "profile-1",
+      fieldIds: ["tuned"],
+      connection: conn,
+      onSuccess: { _ in XCTFail("write should not succeed") },
+      onError: { code, _ in errors.append(code) }
+    )
+
+    XCTAssertEqual(checks, 2)
+    XCTAssertEqual(errors, [RefloatConfigErrorCode.BOARD_NOT_IDLE.rawValue])
+    XCTAssertFalse(sent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+    XCTAssertEqual(demotions, 0)
+  }
+
   private func schema() -> RefloatConfigSchema {
     RefloatConfigSchema(
       hash: "test",
@@ -218,7 +264,8 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     _ sent: SentFrames,
     linkIntegrity: LinkIntegrity = .trusted,
     loadProfile: ((String) throws -> [String: Any?]?)? = nil,
-    demoteWriteBase: @escaping () -> Void = {}
+    demoteWriteBase: @escaping () -> Void = {},
+    rideState: @escaping () -> BoardRideState? = { BoardRideState(state: 0, switchState: 0, receivedAtMs: wallNowMs()) }
   ) -> ConfigRWConnection {
     ConfigRWConnection(
       phase: .connected,
@@ -238,7 +285,8 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
         ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": ["tuned": 7.0] as [String: Any]]
       },
       onBoardConfigValues: { _, _ in },
-      demoteWriteBase: demoteWriteBase
+      demoteWriteBase: demoteWriteBase,
+      rideState: rideState
     )
   }
 }
@@ -248,3 +296,5 @@ private enum ProfileReadFailure: Error { case failed }
 private final class SentFrames {
   var frames: [[UInt8]] = []
 }
+
+private func wallNowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }

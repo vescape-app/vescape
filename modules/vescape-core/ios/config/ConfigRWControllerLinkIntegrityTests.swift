@@ -100,7 +100,8 @@ final class ConfigRWControllerLinkIntegrityTests: XCTestCase {
         return profileVersion.map { ["boardId": "board-1", "refloatBaseVersion": $0, "fields": ["kp": 20]] }
       },
       onBoardConfigValues: { _, _ in },
-      demoteWriteBase: {}
+      demoteWriteBase: {},
+      rideState: { BoardRideState(state: 0, switchState: 0, receivedAtMs: Int64(Date().timeIntervalSince1970 * 1000)) }
     )
   }
 }

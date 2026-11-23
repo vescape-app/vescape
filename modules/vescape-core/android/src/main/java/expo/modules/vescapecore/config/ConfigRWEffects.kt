@@ -1,7 +1,10 @@
 package expo.modules.vescapecore.config
 
 internal sealed class ConfigRWEffect {
-    data class SendFrame(val payload: ByteArray) : ConfigRWEffect()
+    data class SendFrame(
+        val payload: ByteArray,
+        val requiresIdleBoard: Boolean = false,
+    ) : ConfigRWEffect()
 
     data class ScheduleTimeout(
         val code: RefloatConfigErrorCode,

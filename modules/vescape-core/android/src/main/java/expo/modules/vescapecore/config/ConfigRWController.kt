@@ -35,6 +35,7 @@ internal data class ConfigConnectionSnapshot(
     val fwVersion: String?,
     val linkIntegrity: LinkIntegrity,
     val boardConfigValues: BoardConfigValues? = null,
+    val rideState: BoardRideState? = null,
 )
 
 internal interface ConfigRWControllerPort {
@@ -60,6 +61,7 @@ internal class ConfigRWController(
     private var state: ConfigRWState = ConfigRWState.Idle
     private val readCallbacks = mutableListOf<PendingConfigRead>()
     private var writeCallbacks: PendingConfigWrite? = null
+    private var writeStartedAtMs = 0L
     private var timeoutHandle: Cancellable? = null
 
     val isInFlight: Boolean get() = state !is ConfigRWState.Idle
@@ -100,6 +102,7 @@ internal class ConfigRWController(
         if (!initial.connected()) return pending.notConnected()
         if (!initial.trusted()) return pending.linkNotTrusted()
         if (initial.transport == null) return pending.noCanId("push")
+        idleBlockReason(initial, System.currentTimeMillis())?.let { return pending.notIdle(it) }
         appDataScope.launch {
             val profile = try { repository().getTuneProfile(pending.profileId) } catch (error: Exception) {
                 RecordingStorageFailure.reportRead("board_tune_profile_read", error)
@@ -136,8 +139,11 @@ internal class ConfigRWController(
                 if (profileRefloatBaseVersion.isNullOrBlank() || connectedRefloatBaseVersion.isNullOrBlank() || profileRefloatBaseVersion != tuneCompatibilityVersion(connectedRefloatBaseVersion)) {
                     return@post pending.onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.name, "Tune profile does not match the connected board Refloat Tune Compatibility")
                 }
+                val startedAtMs = System.currentTimeMillis()
+                idleBlockReason(connection, startedAtMs)?.let { return@post pending.notIdle(it) }
                 val wasPolling = port.isPollingActive()
                 port.stopPolling()
+                writeStartedAtMs = startedAtMs
                 writeCallbacks = pending
                 dispatch(
                     ConfigRWEvent.StartWrite(
@@ -169,6 +175,12 @@ internal class ConfigRWController(
     private fun interpret(effect: ConfigRWEffect): Boolean {
         when (effect) {
         is ConfigRWEffect.SendFrame -> {
+            if (effect.requiresIdleBoard) {
+                idleBlockReason(port.connection(), writeStartedAtMs)?.let {
+                    dispatch(ConfigRWEvent.SetConfigBlocked(it))
+                    return false
+                }
+            }
             if (!port.sendPayload(effect.payload)) {
                 dispatch(ConfigRWEvent.GattWriteFailed("Board GATT is not writable"))
                 return false
@@ -217,6 +229,9 @@ internal class ConfigRWController(
         port.captureDiagnostic("profile_push_failed", port.diagnosticProperties(port.connection().config, "profile_push") + mapOf("operation_id" to effect.opId, "message" to effect.message, "error_code" to effect.code.name, "phase" to effect.phase.name, "firmware" to port.connection().fwVersion) + DiagnosticReporter.configBlobProperties(effect.rawConfig))
         callbacks?.onError?.invoke(effect.code.name, effect.message)
     }
+    private fun idleBlockReason(connection: ConfigConnectionSnapshot, referenceMs: Long) =
+        BoardIdleGate.blockReason(connection.rideState, BoardIdleGate.freshSinceMs(referenceMs))
+    private fun PendingConfigWrite.notIdle(reason: String) = onError(RefloatConfigErrorCode.BOARD_NOT_IDLE.name, reason)
     private fun ConfigConnectionSnapshot.canIdOrNull() = (transport as? BoardTransport.Can)?.canId
 
     private fun ConfigConnectionSnapshot.connected() = config != null && phase == BoardPhase.Connected

@@ -41,5 +41,7 @@ internal sealed class ConfigRWEvent {
 
     data class GattWriteFailed(val message: String) : ConfigRWEvent()
 
+    data class SetConfigBlocked(val message: String) : ConfigRWEvent()
+
     data class SessionTerminated(val reason: String) : ConfigRWEvent()
 }

@@ -72,7 +72,8 @@ final class ConfigRWControllerSharedReadTests: XCTestCase {
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": ["kp": 20.0] as [String: Any]] },
       onBoardConfigValues: { _, _ in },
-      demoteWriteBase: {}
+      demoteWriteBase: {},
+      rideState: { BoardRideState(state: 0, switchState: 0, receivedAtMs: Int64(Date().timeIntervalSince1970 * 1000)) }
     )
   }
 }

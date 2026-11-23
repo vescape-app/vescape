@@ -23,7 +23,8 @@ enum ConfigReplayHarness {
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in nil },
       onBoardConfigValues: { values, _ in capture.value = values },
-      demoteWriteBase: {}
+      demoteWriteBase: {},
+      rideState: { BoardRideState(state: 0, switchState: 0, receivedAtMs: Int64(Date().timeIntervalSince1970 * 1000)) }
     )
     controller.consumeRead(connection: connection, onSuccess: { _ in }, onError: { _, _ in })
 

@@ -60,6 +60,7 @@ internal final class ConfigRWController {
   private var state: ConfigRWState = .idle
   private var readCallbacks: [PendingConfigRead] = []
   private var writeCallbacks: PendingConfigWrite?
+  private var writeStartedAtMs: Int64 = 0
   private var timeoutGeneration: Int64 = 0
 
   init(scheduler: Scheduler = MainQueueScheduler()) {
@@ -145,6 +146,11 @@ internal final class ConfigRWController {
       )
       return
     }
+    let startedAtMs = nowMs()
+    if let reason = idleBlockReason(connection, startedAtMs) {
+      onError(RefloatConfigErrorCode.BOARD_NOT_IDLE.rawValue, reason)
+      return
+    }
     let loadedProfile: [String: Any?]?
     do { loadedProfile = try connection.loadProfile(profileId) }
     catch {
@@ -172,6 +178,7 @@ internal final class ConfigRWController {
     }
     let wasPolling = connection.isPollingActive()
     connection.stopPolling()
+    writeStartedAtMs = startedAtMs
     writeCallbacks = PendingConfigWrite(onSuccess: onSuccess, onError: onError)
     let ctx = ConfigWriteContext(
       opId: UUID().uuidString.lowercased(),
@@ -393,6 +400,10 @@ internal final class ConfigRWController {
   ) {
     do {
       let patched = try RefloatConfigEncoder.encode(schema: schema, rawConfig: rawConfig, fields: ctx.profileFields)
+      if let reason = idleBlockReason(connection, writeStartedAtMs) {
+        failWrite(code: .BOARD_NOT_IDLE, message: reason, phase: .sendingWrite, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
+        return
+      }
       state = .writeAwaitingSetAck(ctx, schema, rawConfig, patched)
       cancelTimeout()
       scheduleTimeout(.CONFIG_WRITE_TIMEOUT, CONFIG_WRITE_TIMEOUT_MS, connection)
@@ -562,6 +573,10 @@ internal final class ConfigRWController {
     }
   }
 
+  private func idleBlockReason(_ connection: ConfigRWConnection, _ referenceMs: Int64) -> String? {
+    BoardIdleGate.blockReason(connection.rideState(), freshSinceMs: BoardIdleGate.freshSinceMs(referenceMs))
+  }
+
   private var setConfigSent: Bool {
     switch state {
     case .writeAwaitingSetAck, .writeVerifying: return true
@@ -663,6 +678,7 @@ internal struct ConfigRWConnection {
   let loadProfile: (String) throws -> [String: Any?]?
   let onBoardConfigValues: (BoardConfigValues, BoardConfigOperationOrigin) -> Void
   let demoteWriteBase: () -> Void
+  let rideState: () -> BoardRideState?
 }
 
 internal enum BoardConfigOperationOrigin { case freshRead, vescapeWrite }

@@ -32,6 +32,7 @@ import expo.modules.vescapecore.protocol.buildLightsControlCommand
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
+import expo.modules.vescapecore.config.BoardRideState
 import expo.modules.vescapecore.config.ConfigRWControllerPort
 import expo.modules.vescapecore.config.BoardConfigFlagField
 import expo.modules.vescapecore.config.BoardConfigOperationOrigin
@@ -422,6 +423,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                         fwVersionString,
                         boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
                         boardConfigValues,
+                        telemetry?.let { BoardRideState(it.state, it.switchState, it.lastPacketAt) },
                     )
                 override fun isPollingActive() = pollingLoop.isActive
                 override fun stopPolling() = this@BoardSessionController.stopPolling()

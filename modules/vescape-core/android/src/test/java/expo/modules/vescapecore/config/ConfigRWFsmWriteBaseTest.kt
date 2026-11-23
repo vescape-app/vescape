@@ -140,6 +140,24 @@ class ConfigRWFsmWriteBaseTest {
         assertFalse(timedOut.contains(ConfigRWEffect.DemoteWriteBase))
     }
 
+    @Test
+    fun setFrameAsksForTheIdleRecheck() {
+        val (_, effects) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(writeBase()))
+
+        val set = effects.filterIsInstance<ConfigRWEffect.SendFrame>().single { it.payload[0].toInt() and 0xFF == COMM_SET_CUSTOM_CONFIG }
+        assertTrue(set.requiresIdleBoard)
+    }
+
+    @Test
+    fun blockedSetFailsWithoutDemotingTheWriteBase() {
+        val (awaitingAck, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(writeBase()))
+        val (state, effects) = ConfigRWFsm.apply(awaitingAck, ConfigRWEvent.SetConfigBlocked("Board is engaged (state 1)"))
+
+        assertEquals(ConfigRWState.Idle, state)
+        assertEquals(RefloatConfigErrorCode.BOARD_NOT_IDLE, effects.failureCode())
+        assertFalse(effects.contains(ConfigRWEffect.DemoteWriteBase))
+    }
+
     private fun writeBase() = BoardConfigWriteBase(schema, rawConfig, 0xDEADBEEF)
 
     private fun List<ConfigRWEffect>.failureCode() =

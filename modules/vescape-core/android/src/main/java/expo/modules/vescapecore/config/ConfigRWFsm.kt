@@ -13,7 +13,9 @@ internal object ConfigRWFsm {
         event: ConfigRWEvent,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
         val (next, effects) = reduce(state, event)
-        val uncertain = state.setConfigSent() && effects.any { it is ConfigRWEffect.EmitWriteFailure }
+        val uncertain = state.setConfigSent() &&
+            event !is ConfigRWEvent.SetConfigBlocked &&
+            effects.any { it is ConfigRWEffect.EmitWriteFailure }
         return next to if (uncertain) listOf(ConfigRWEffect.DemoteWriteBase) + effects else effects
     }
 
@@ -32,6 +34,7 @@ internal object ConfigRWFsm {
         is ConfigRWEvent.SetConfigResponseReceived -> onSetAck(state, event)
         is ConfigRWEvent.Timeout -> onTimeout(state, event)
         is ConfigRWEvent.GattWriteFailed -> onGattFailed(state, event)
+        is ConfigRWEvent.SetConfigBlocked -> onSetConfigBlocked(state, event)
         is ConfigRWEvent.SessionTerminated -> onSessionTerminated(state, event)
     }
 
@@ -378,6 +381,17 @@ internal object ConfigRWFsm {
         ConfigRWState.Idle -> state to emptyList()
     }
 
+    private fun onSetConfigBlocked(
+        state: ConfigRWState,
+        event: ConfigRWEvent.SetConfigBlocked,
+    ): Pair<ConfigRWState, List<ConfigRWEffect>> {
+        if (state !is ConfigRWState.WriteAwaitingSetAck) return state to emptyList()
+        return writeFailure(
+            state.ctx, RefloatConfigErrorCode.BOARD_NOT_IDLE, event.message,
+            phase = ConfigWritePhaseTag.SENDING_WRITE, rawConfig = state.originalConfig,
+        )
+    }
+
     private fun onSessionTerminated(
         state: ConfigRWState,
         event: ConfigRWEvent.SessionTerminated,
@@ -541,6 +555,7 @@ internal object ConfigRWFsm {
                     packageSignature,
                     patched,
                 ),
+                requiresIdleBoard = true,
             ),
         )
     } catch (e: RefloatConfigEncodeException) {

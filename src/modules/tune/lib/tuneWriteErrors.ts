@@ -3,6 +3,8 @@ import { errorMessage } from '@/helpers/error'
 
 const MESSAGES: Partial<Record<RefloatConfigErrorCode, string>> = {
   CONFIG_VALUE_INVALID: 'The board cannot store one of these values. Nothing was written.',
+  BOARD_NOT_IDLE:
+    'Tunes are only sent while the board is idle. Step off, leave handtest, wait for live data, and try again.',
 }
 
 export function tuneWriteErrorMessage(error: unknown): string {

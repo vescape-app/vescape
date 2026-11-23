@@ -230,6 +230,20 @@ before the range check. `BOOL` fields accept a boolean or exactly `0`/`1`. Tune 
 `src/modules/tune/lib/fields.ts` stay inside each field's wire limit, and manual entry rejects
 values outside it.
 
+#### Idle board gate
+
+A push is refused with `BOARD_NOT_IDLE` unless the latest Refloat telemetry is fresh (received
+within `TELEMETRY_STALE_MS`, 4 s) and shows the board idle: the state is not RUNNING, TILTBACK or
+WHEELSLIP (`isRefloatEngaged`), and handtest (bit `0x08` of the ALLDATA switch-state byte) is off.
+UPSIDEDOWN and FLYWHEEL do not count as engaged. The gate runs when the push starts and again
+right before `COMM_SET_CUSTOM_CONFIG` is sent.
+
+Known limitation: polling is paused for the whole config operation (and iOS swallows
+`COMM_CUSTOM_APP_DATA` while one is in flight), so no new telemetry usually arrives between the two
+checks. The pre-SET check therefore judges the latest sample against the operation start time
+minus the stale window rather than against "now". It catches samples that do arrive mid-operation,
+but it cannot see an engagement that starts during a schema/config read.
+
 #### Read-back verify and uncertain outcomes
 
 After the SET ack the app reads the config back and compares it byte for byte with what it
