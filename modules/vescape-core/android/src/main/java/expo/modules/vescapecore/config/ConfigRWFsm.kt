@@ -533,7 +533,7 @@ internal object ConfigRWFsm {
         )
     } catch (e: RefloatConfigEncodeException) {
         writeFailure(
-            ctx, RefloatConfigErrorCode.CONFIG_ENCODE_FAILED,
+            ctx, e.code,
             e.message ?: "Encode failed",
             phase = failPhase, rawConfig = rawConfig,
         )

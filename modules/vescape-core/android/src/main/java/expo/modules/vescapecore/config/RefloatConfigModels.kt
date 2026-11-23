@@ -72,6 +72,7 @@ internal data class RefloatConfigSnapshot(
 }
 
 // @parity /modules/vescape-core/ios/config/RefloatConfigModels.swift
+// @parity /modules/vescape-core/src/index.ts `RefloatConfigErrorCode`
 internal enum class RefloatConfigErrorCode {
   BOARD_NOT_CONNECTED,
   LINK_NOT_TRUSTED,
@@ -88,6 +89,7 @@ internal enum class RefloatConfigErrorCode {
   UNSUPPORTED_SCHEMA,
   CONFIG_DECODE_FAILED,
   CONFIG_ENCODE_FAILED,
+  CONFIG_VALUE_INVALID,
   PROFILE_NOT_FOUND,
   PROFILE_BOARD_MISMATCH,
   UNSUPPORTED_PLATFORM,

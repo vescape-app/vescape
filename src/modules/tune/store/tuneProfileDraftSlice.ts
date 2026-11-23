@@ -5,6 +5,7 @@ import {
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
+import { tuneWriteErrorMessage } from '@/modules/tune/lib/tuneWriteErrors'
 import {
   canRunFirmwareCommand,
   firmwareCommandBlockedMessage,
@@ -174,10 +175,7 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
       get().setBoardSnapshot(snapshot)
       set({ syncing: false })
     } catch (error) {
-      set({
-        syncing: false,
-        error: errorMessage(error, 'Unable to sync tune profile to the board.'),
-      })
+      set({ syncing: false, error: tuneWriteErrorMessage(error) })
       throw error
     }
   },

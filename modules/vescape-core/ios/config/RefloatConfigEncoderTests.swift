@@ -39,11 +39,85 @@ final class RefloatConfigEncoderTests: XCTestCase {
     XCTAssertEqual(raw, result, "Empty field map = no changes")
   }
 
-  func testUnknownFieldsInMapAreSkipped() throws {
+  func testUnknownFieldRejectsWholeWrite() {
     let schema = allTypeSchema()
     let raw = buildRawConfig(schema)
-    let result = try RefloatConfigEncoder.encode(schema: schema, rawConfig: raw, fields: ["nonexistent_field": 42.0])
-    XCTAssertEqual(raw, result, "Unknown fields should not change anything")
+    assertInvalid(schema, raw, ["u8": 7.0, "nonexistent_field": 42.0])
+  }
+
+  func testValuesOutsideWireRangeAreRejected() throws {
+    let schema = allTypeSchema()
+    let raw = buildRawConfig(schema)
+    let outOfRange: [(String, Double)] = [
+      ("f16_scaled", 327.68),
+      ("f16_scaled", -327.69),
+      ("f32_scaled", 2_147_483.648),
+      ("i32", 2_147_483_648),
+      ("u32", -1),
+      ("u32", 4_294_967_296),
+      ("i16", -32769),
+      ("u16", 65536),
+      ("i8", 128),
+      ("u8", 256),
+      ("u8", -1),
+      ("f32", 1e39),
+      ("f32_auto", -1e39),
+    ]
+    for (fieldId, value) in outOfRange {
+      assertInvalid(schema, raw, [fieldId: value])
+    }
+    let edges = try RefloatConfigEncoder.encode(
+      schema: schema,
+      rawConfig: raw,
+      fields: ["f16_scaled": -327.68, "u8": 255.0, "u32": 4_294_967_295.0, "i8": -128.0]
+    )
+    let decoded = decodeAllFields(schema, edges)
+    XCTAssertEqual(decoded["f16_scaled"] as? Double ?? 0, -327.68, accuracy: 1e-9)
+    XCTAssertEqual(decoded["u8"] as? Double, 255)
+    XCTAssertEqual(decoded["u32"] as? Double, 4_294_967_295)
+    XCTAssertEqual(decoded["i8"] as? Double, -128)
+  }
+
+  func testNonFiniteValuesAreRejected() {
+    let schema = allTypeSchema()
+    let raw = buildRawConfig(schema)
+    for fieldId in ["f32", "f32_auto", "f32_scaled", "f16_scaled", "u8"] {
+      for value in [Double.nan, Double.infinity, -Double.infinity] {
+        assertInvalid(schema, raw, [fieldId: value])
+      }
+    }
+  }
+
+  func testWrongValueTypesAreRejected() {
+    let schema = allTypeSchema()
+    let raw = buildRawConfig(schema)
+    assertInvalid(schema, raw, ["u8": true])
+    assertInvalid(schema, raw, ["u8": NSNumber(value: true)])
+    assertInvalid(schema, raw, ["f32": "1.0"])
+    assertInvalid(schema, raw, ["bool_true": 2.0])
+    assertInvalid(schema, raw, ["bool_true": "yes"])
+  }
+
+  func testBoolAcceptsBooleansAndZeroOrOne() throws {
+    let schema = allTypeSchema()
+    let raw = buildRawConfig(schema)
+    let encoded = try RefloatConfigEncoder.encode(
+      schema: schema,
+      rawConfig: raw,
+      fields: ["bool_true": false, "bool_false": 1]
+    )
+    let decoded = decodeAllFields(schema, encoded)
+    XCTAssertEqual(decoded["bool_true"] as? Bool, false)
+    XCTAssertEqual(decoded["bool_false"] as? Bool, true)
+  }
+
+  func testIntegersRoundHalfUp() throws {
+    let schema = allTypeSchema()
+    let raw = buildRawConfig(schema)
+    let encoded = try RefloatConfigEncoder.encode(schema: schema, rawConfig: raw, fields: ["u8": 7.5, "i16": -2.5])
+    let decoded = decodeAllFields(schema, encoded)
+    XCTAssertEqual(decoded["u8"] as? Double, 8)
+    XCTAssertEqual(decoded["i16"] as? Double, -2)
   }
 
   func testFloat32RoundTrip() throws {
@@ -209,6 +283,12 @@ final class RefloatConfigEncoderTests: XCTestCase {
     buf += [1]
     buf += [0]
     return buf
+  }
+
+  private func assertInvalid(_ schema: RefloatConfigSchema, _ raw: [UInt8], _ fields: [String: Any], file: StaticString = #filePath, line: UInt = #line) {
+    XCTAssertThrowsError(try RefloatConfigEncoder.encode(schema: schema, rawConfig: raw, fields: fields), "\(fields)", file: file, line: line) { error in
+      XCTAssertEqual((error as? RefloatConfigEncodeException)?.code, .CONFIG_VALUE_INVALID, file: file, line: line)
+    }
   }
 
   private func decodeAllFields(_ schema: RefloatConfigSchema, _ raw: [UInt8]) -> [String: Any] {

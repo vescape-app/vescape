@@ -111,6 +111,7 @@ struct RefloatConfigSnapshot {
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigModels.kt
+/// @parity /modules/vescape-core/src/index.ts `RefloatConfigErrorCode`
 enum RefloatConfigErrorCode: String {
   case BOARD_NOT_CONNECTED
   case LINK_NOT_TRUSTED
@@ -127,6 +128,7 @@ enum RefloatConfigErrorCode: String {
   case UNSUPPORTED_SCHEMA
   case CONFIG_DECODE_FAILED
   case CONFIG_ENCODE_FAILED
+  case CONFIG_VALUE_INVALID
   case PROFILE_NOT_FOUND
   case PROFILE_BOARD_MISMATCH
   case UNSUPPORTED_PLATFORM

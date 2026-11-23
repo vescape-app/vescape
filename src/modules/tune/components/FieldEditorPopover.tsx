@@ -31,6 +31,7 @@ export interface FieldEditorTarget {
   max: number
   step: number
   manualDecimals?: number
+  limit?: { min: number; max: number } | null
   unit: string | null
   help: string
   icon?: Icon
@@ -67,12 +68,12 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
   const [draftValue, setDraftValue] = useState(target.value)
   const [mode, setMode] = useState<'ruler' | 'manual'>('ruler')
   const [manualText, setManualText] = useState(String(target.value))
-  const manual = parseManualTuneValue(manualText, target.manualDecimals ?? 3)
+  const manual = parseManualTuneValue(manualText, target.manualDecimals ?? 3, target.limit)
   const manualError = mode === 'manual' ? manual.error : null
   const outsideRange = draftValue < target.min || draftValue > target.max
   const changeManualText = (text: string) => {
     setManualText(text)
-    const parsed = parseManualTuneValue(text, target.manualDecimals ?? 3)
+    const parsed = parseManualTuneValue(text, target.manualDecimals ?? 3, target.limit)
     if (parsed.error === null) setDraftValue(parsed.value)
   }
   const toggleMode = () => {

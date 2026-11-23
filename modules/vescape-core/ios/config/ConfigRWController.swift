@@ -401,7 +401,7 @@ internal final class ConfigRWController {
         )
       )
     } catch let error as RefloatConfigEncodeException {
-      failWrite(code: .CONFIG_ENCODE_FAILED, message: error.message, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
+      failWrite(code: error.code, message: error.message, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     } catch {
       failWrite(code: .CONFIG_WRITE_FAILED, message: error.localizedDescription, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     }

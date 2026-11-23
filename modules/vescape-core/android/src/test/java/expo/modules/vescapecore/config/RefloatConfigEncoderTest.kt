@@ -5,6 +5,7 @@ import java.nio.ByteOrder
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class RefloatConfigEncoderTest {
@@ -95,11 +96,89 @@ class RefloatConfigEncoderTest {
   }
 
   @Test
-  fun unknownFieldsInMapAreSkipped() {
+  fun unknownFieldRejectsWholeWrite() {
     val schema = allTypeSchema()
     val raw = buildRawConfig(schema)
-    val result = RefloatConfigEncoder.encode(schema, raw, mapOf("nonexistent_field" to 42.0))
-    assertArrayEquals("Unknown fields should not change anything", raw, result)
+    assertInvalid(schema, raw, mapOf("u8" to 7.0, "nonexistent_field" to 42.0))
+  }
+
+  @Test
+  fun valuesOutsideWireRangeAreRejected() {
+    val schema = allTypeSchema()
+    val raw = buildRawConfig(schema)
+    val outOfRange = listOf(
+      "f16_scaled" to 327.68,
+      "f16_scaled" to -327.69,
+      "f32_scaled" to 2147483.648,
+      "i32" to 2147483648.0,
+      "u32" to -1.0,
+      "u32" to 4294967296.0,
+      "i16" to -32769.0,
+      "u16" to 65536.0,
+      "i8" to 128.0,
+      "u8" to 256.0,
+      "u8" to -1.0,
+      "f32" to 1e39,
+      "f32_auto" to -1e39,
+    )
+    for ((fieldId, value) in outOfRange) {
+      assertInvalid(schema, raw, mapOf(fieldId to value))
+    }
+    val edges = RefloatConfigEncoder.encode(
+      schema,
+      raw,
+      mapOf("f16_scaled" to -327.68, "u8" to 255.0, "u32" to 4294967295.0, "i8" to -128.0),
+    )
+    val decoded = RefloatConfigDecoder.decodeFieldMap(schema, edges)
+    assertEquals(-327.68, decoded["f16_scaled"] as Double, 1e-9)
+    assertEquals(255.0, decoded["u8"])
+    assertEquals(4294967295.0, decoded["u32"])
+    assertEquals(-128.0, decoded["i8"])
+  }
+
+  @Test
+  fun nonFiniteValuesAreRejected() {
+    val schema = allTypeSchema()
+    val raw = buildRawConfig(schema)
+    for (fieldId in listOf("f32", "f32_auto", "f32_scaled", "f16_scaled", "u8")) {
+      for (value in listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
+        assertInvalid(schema, raw, mapOf(fieldId to value))
+      }
+    }
+  }
+
+  @Test
+  fun wrongValueTypesAreRejected() {
+    val schema = allTypeSchema()
+    val raw = buildRawConfig(schema)
+    assertInvalid(schema, raw, mapOf("u8" to true))
+    assertInvalid(schema, raw, mapOf("f32" to "1.0"))
+    assertInvalid(schema, raw, mapOf("bool_true" to 2.0))
+    assertInvalid(schema, raw, mapOf("bool_true" to "yes"))
+  }
+
+  @Test
+  fun boolAcceptsBooleansAndZeroOrOne() {
+    val schema = allTypeSchema()
+    val raw = buildRawConfig(schema)
+    val encoded = RefloatConfigEncoder.encode(
+      schema,
+      raw,
+      mapOf("bool_true" to false, "bool_false" to 1),
+    )
+    val decoded = RefloatConfigDecoder.decodeFieldMap(schema, encoded)
+    assertEquals(false, decoded["bool_true"])
+    assertEquals(true, decoded["bool_false"])
+  }
+
+  @Test
+  fun integersRoundHalfUp() {
+    val schema = allTypeSchema()
+    val raw = buildRawConfig(schema)
+    val encoded = RefloatConfigEncoder.encode(schema, raw, mapOf("u8" to 7.5, "i16" to -2.5))
+    val decoded = RefloatConfigDecoder.decodeFieldMap(schema, encoded)
+    assertEquals(8.0, decoded["u8"])
+    assertEquals(-2.0, decoded["i16"])
   }
 
   @Test
@@ -249,6 +328,15 @@ class RefloatConfigEncoderTest {
       if (i !in modifiedOffsets) {
         assertEquals("Untouched byte at offset $i", raw[i], result[i])
       }
+    }
+  }
+
+  private fun assertInvalid(schema: RefloatConfigSchema, raw: ByteArray, fields: Map<String, Any>) {
+    try {
+      RefloatConfigEncoder.encode(schema, raw, fields)
+      fail("Expected CONFIG_VALUE_INVALID for $fields")
+    } catch (e: RefloatConfigEncodeException) {
+      assertEquals(RefloatConfigErrorCode.CONFIG_VALUE_INVALID, e.code)
     }
   }
 

@@ -1,8 +1,12 @@
 import Foundation
 
 struct RefloatConfigEncodeException: Error {
+  let code: RefloatConfigErrorCode
   let message: String
-  init(_ message: String) { self.message = message }
+  init(_ code: RefloatConfigErrorCode, _ message: String) {
+    self.code = code
+    self.message = message
+  }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigEncoder.kt
@@ -12,47 +16,101 @@ enum RefloatConfigEncoder {
     rawConfig: [UInt8],
     fields: [String: Any]
   ) throws -> [UInt8] {
-    var result = rawConfig
     let byId = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
-    for (fieldId, value) in fields {
-      guard let field = byId[fieldId] else { continue }
-      try writeValue(&result, field, value)
+    let writes: [(RefloatConfigSchemaField, UInt64)] = try fields.map { fieldId, value in
+      guard let field = byId[fieldId] else { throw invalid("unknown field \(fieldId)") }
+      return (field, try wireBits(field, value))
     }
+    var result = rawConfig
+    for (field, bits) in writes { put(&result, field, bits) }
     return result
   }
 
-  private static func writeValue(_ bytes: inout [UInt8], _ field: RefloatConfigSchemaField, _ value: Any) throws {
+  private static func wireBits(_ field: RefloatConfigSchemaField, _ value: Any) throws -> UInt64 {
     switch field.type {
     case .float32:
-      putUInt32(&bytes, field.offset, Float(try toDouble(value)).bitPattern)
-    case .float32Scaled:
-      let scale = try requireScale(field)
-      putUInt32(&bytes, field.offset, UInt32(bitPattern: int32Saturating(roundHalfUp(try toDouble(value) * scale))))
+      return UInt64(try floatValue(field, value).bitPattern)
     case .float32Auto:
-      writeFloat32Auto(&bytes, field.offset, try toDouble(value))
+      return UInt64(float32AutoBits(try floatValue(field, value)))
+    case .float32Scaled:
+      return try integer(field, try number(field, value) * requireScale(field), Int64(Int32.min), Int64(Int32.max))
     case .float16Scaled:
-      let scale = try requireScale(field)
-      putUInt16(&bytes, field.offset, UInt16(truncatingIfNeeded: int32Saturating(roundHalfUp(try toDouble(value) * scale))))
+      return try integer(field, try number(field, value) * requireScale(field), Int64(Int16.min), Int64(Int16.max))
     case .int32:
-      putUInt32(&bytes, field.offset, UInt32(bitPattern: int32Saturating(try toDouble(value).rounded(.towardZero))))
+      return try integer(field, try number(field, value), Int64(Int32.min), Int64(Int32.max))
     case .uint32:
-      putUInt32(&bytes, field.offset, UInt32(truncatingIfNeeded: int64Saturating(try toDouble(value).rounded(.towardZero))))
+      return try integer(field, try number(field, value), 0, Int64(UInt32.max))
     case .int16:
-      putUInt16(&bytes, field.offset, UInt16(truncatingIfNeeded: int32Saturating(try toDouble(value).rounded(.towardZero))))
+      return try integer(field, try number(field, value), Int64(Int16.min), Int64(Int16.max))
     case .uint16:
-      putUInt16(&bytes, field.offset, UInt16(truncatingIfNeeded: int32Saturating(try toDouble(value).rounded(.towardZero))))
+      return try integer(field, try number(field, value), 0, Int64(UInt16.max))
     case .int8:
-      bytes[field.offset] = UInt8(truncatingIfNeeded: int32Saturating(try toDouble(value).rounded(.towardZero)))
+      return try integer(field, try number(field, value), Int64(Int8.min), Int64(Int8.max))
     case .uint8:
-      bytes[field.offset] = UInt8(truncatingIfNeeded: int32Saturating(try toDouble(value).rounded(.towardZero)))
+      return try integer(field, try number(field, value), 0, Int64(UInt8.max))
     case .bool:
-      bytes[field.offset] = try toBool(value) ? 1 : 0
+      return try bool(field, value) ? 1 : 0
     }
   }
 
-  private static func writeFloat32Auto(_ bytes: inout [UInt8], _ offset: Int, _ value: Double) {
-    var number = Float(value)
-    if abs(number) < 1.5e-38 { number = 0 }
+  private static func put(_ bytes: inout [UInt8], _ field: RefloatConfigSchemaField, _ bits: UInt64) {
+    let size: Int
+    switch field.type {
+    case .float32, .float32Auto, .float32Scaled, .int32, .uint32: size = 4
+    case .float16Scaled, .int16, .uint16: size = 2
+    case .int8, .uint8, .bool: size = 1
+    }
+    for i in 0..<size {
+      bytes[field.offset + i] = UInt8(truncatingIfNeeded: bits >> UInt64(8 * (size - 1 - i)))
+    }
+  }
+
+  private enum Input {
+    case number(Double)
+    case bool(Bool)
+  }
+
+  private static func input(_ value: Any) -> Input? {
+    guard let number = value as? NSNumber else { return nil }
+    if CFGetTypeID(number) == CFBooleanGetTypeID() { return .bool(number.boolValue) }
+    return .number(number.doubleValue)
+  }
+
+  private static func number(_ field: RefloatConfigSchemaField, _ value: Any) throws -> Double {
+    guard case let .number(number) = input(value) else {
+      throw invalid("\(field.id) expects a number, got \(value)")
+    }
+    guard number.isFinite else { throw invalid("\(field.id) is not finite") }
+    return number
+  }
+
+  private static func floatValue(_ field: RefloatConfigSchemaField, _ value: Any) throws -> Float {
+    let number = try number(field, value)
+    guard abs(number) <= Double(Float.greatestFiniteMagnitude) else {
+      throw invalid("\(field.id) = \(number) does not fit a float")
+    }
+    return Float(number)
+  }
+
+  private static func integer(_ field: RefloatConfigSchemaField, _ value: Double, _ min: Int64, _ max: Int64) throws -> UInt64 {
+    let rounded = (value + 0.5).rounded(.down)
+    guard rounded.isFinite, rounded >= Double(min), rounded <= Double(max) else {
+      throw invalid("\(field.id) = \(value) does not fit \(min)...\(max) on the wire")
+    }
+    return UInt64(bitPattern: Int64(rounded))
+  }
+
+  private static func bool(_ field: RefloatConfigSchemaField, _ value: Any) throws -> Bool {
+    switch input(value) {
+    case let .bool(flag): return flag
+    case .number(0): return false
+    case .number(1): return true
+    default: throw invalid("\(field.id) expects a boolean, got \(value)")
+    }
+  }
+
+  private static func float32AutoBits(_ value: Float) -> UInt32 {
+    let number: Float = abs(value) < 1.5e-38 ? 0 : value
     let (significand, frexpExponent) = frexp(number)
     let significandAbs = abs(significand)
     var exponent = frexpExponent
@@ -63,63 +121,17 @@ enum RefloatConfigEncoder {
     }
     var raw = (UInt32(truncatingIfNeeded: exponent & 0xff) << 23) | (significandBits & 0x7fffff)
     if number < 0 { raw |= (UInt32(1) << 31) }
-    putUInt32(&bytes, offset, raw)
+    return raw
   }
 
   private static func requireScale(_ field: RefloatConfigSchemaField) throws -> Double {
     guard let scale = field.scale else {
-      throw RefloatConfigEncodeException("CONFIG_ENCODE_FAILED: missing scale for \(field.id)")
+      throw RefloatConfigEncodeException(.CONFIG_ENCODE_FAILED, "missing scale for \(field.id)")
     }
     return scale
   }
 
-  private static func toDouble(_ value: Any) throws -> Double {
-    switch value {
-    case let v as Double: return v
-    case let v as Float: return Double(v)
-    case let v as Int: return Double(v)
-    case let v as Int64: return Double(v)
-    case let v as Bool: return v ? 1.0 : 0.0
-    case let v as NSNumber: return v.doubleValue
-    default:
-      throw RefloatConfigEncodeException("CONFIG_ENCODE_FAILED: cannot convert \(value) to Double")
-    }
-  }
-
-  private static func toBool(_ value: Any) throws -> Bool {
-    switch value {
-    case let v as Bool: return v
-    case let v as Int: return v != 0
-    case let v as Double: return v != 0.0
-    case let v as NSNumber: return v.intValue != 0
-    default:
-      throw RefloatConfigEncodeException("CONFIG_ENCODE_FAILED: cannot convert \(value) to Boolean")
-    }
-  }
-
-  private static func roundHalfUp(_ value: Double) -> Double { (value + 0.5).rounded(.down) }
-
-  private static func int32Saturating(_ value: Double) -> Int32 {
-    if value >= Double(Int32.max) { return Int32.max }
-    if value <= Double(Int32.min) { return Int32.min }
-    return Int32(value)
-  }
-
-  private static func int64Saturating(_ value: Double) -> Int64 {
-    if value >= Double(Int64.max) { return Int64.max }
-    if value <= Double(Int64.min) { return Int64.min }
-    return Int64(value)
-  }
-
-  private static func putUInt32(_ bytes: inout [UInt8], _ offset: Int, _ value: UInt32) {
-    bytes[offset] = UInt8((value >> 24) & 0xff)
-    bytes[offset + 1] = UInt8((value >> 16) & 0xff)
-    bytes[offset + 2] = UInt8((value >> 8) & 0xff)
-    bytes[offset + 3] = UInt8(value & 0xff)
-  }
-
-  private static func putUInt16(_ bytes: inout [UInt8], _ offset: Int, _ value: UInt16) {
-    bytes[offset] = UInt8((value >> 8) & 0xff)
-    bytes[offset + 1] = UInt8(value & 0xff)
+  private static func invalid(_ message: String) -> RefloatConfigEncodeException {
+    RefloatConfigEncodeException(.CONFIG_VALUE_INVALID, message)
   }
 }

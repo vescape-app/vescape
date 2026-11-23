@@ -1165,6 +1165,31 @@ export interface RefloatConfigGroup {
   fields: RefloatConfigField[]
 }
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigModels.kt `RefloatConfigErrorCode`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigModels.swift `RefloatConfigErrorCode`
+ */
+export type RefloatConfigErrorCode =
+  | 'BOARD_NOT_CONNECTED'
+  | 'LINK_NOT_TRUSTED'
+  | 'CAN_ID_UNAVAILABLE'
+  | 'GATT_NOT_WRITABLE'
+  | 'CONFIG_REQUEST_IN_FLIGHT'
+  | 'CONFIG_SCHEMA_TIMEOUT'
+  | 'CONFIG_READ_TIMEOUT'
+  | 'CONFIG_READ_FAILED'
+  | 'CONFIG_WRITE_TIMEOUT'
+  | 'CONFIG_WRITE_FAILED'
+  | 'CONFIG_VERIFY_FAILED'
+  | 'UNEXPECTED_CONFIG_RESPONSE'
+  | 'UNSUPPORTED_SCHEMA'
+  | 'CONFIG_DECODE_FAILED'
+  | 'CONFIG_ENCODE_FAILED'
+  | 'CONFIG_VALUE_INVALID'
+  | 'PROFILE_NOT_FOUND'
+  | 'PROFILE_BOARD_MISMATCH'
+  | 'UNSUPPORTED_PLATFORM'
+
 export interface RefloatConfigSnapshot {
   capturedAt: number
   boardId: string | null

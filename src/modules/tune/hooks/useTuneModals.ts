@@ -7,7 +7,12 @@ import type { FieldEditorTarget } from '@/modules/tune/components/FieldEditorPop
 import { basicSliderColor, basicSliderIcon } from '@/modules/tune/components/basicSliderIcons'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
-import { APP_TUNE_FIELD_BY_ID, formatTuneValue, tuneDisplayScale } from '@/modules/tune/lib/fields'
+import {
+  APP_TUNE_FIELD_BY_ID,
+  formatTuneValue,
+  tuneDisplayScale,
+  tuneWireLimit,
+} from '@/modules/tune/lib/fields'
 import {
   BASIC_SLIDER_BY_ID,
   basicSliderChanges,
@@ -82,6 +87,7 @@ export function useTuneModals(
         return
       }
       const scale = tuneDisplayScale(field.id)
+      const limit = tuneWireLimit(field.id)
       setEditorKind({ kind: 'field', fieldId: field.id })
       setEditor({
         triggerRef: ref as React.RefObject<View | null>,
@@ -92,6 +98,7 @@ export function useTuneModals(
         max: field.max! * scale,
         step: fieldStep(field) * scale,
         manualDecimals: APP_TUNE_FIELD_BY_ID.get(field.id)?.manualDecimals ?? 3,
+        limit: limit && { min: limit.min * scale, max: limit.max * scale },
         unit: field.unit,
         help: fieldHelp(field),
         color,

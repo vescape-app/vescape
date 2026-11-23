@@ -19,3 +19,12 @@ test('manual values outside the ruler range are preserved for warning-only confi
   expect(parseManualTuneValue('6', 1)).toEqual({ value: 6, error: null })
   expect(parseManualTuneValue('-1', 1)).toEqual({ value: -1, error: null })
 })
+
+test('rejects values the board cannot store', () => {
+  const limit = { min: -0.32768, max: 0.32767 }
+  expect(parseManualTuneValue('0.327', 3, limit)).toEqual({ value: 0.327, error: null })
+  expect(parseManualTuneValue('0.35', 3, limit).error).toBe(
+    'The board can only store -0.32768 to 0.32767.',
+  )
+  expect(parseManualTuneValue('-0.4', 3, limit).error).not.toBeNull()
+})
