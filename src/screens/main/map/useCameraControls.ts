@@ -48,7 +48,7 @@ export function useCameraControls({
   onHeadingChange,
   onPerspectiveChange,
 }: UseCameraControlsParams) {
-  const { getFollowDeg, phoneReady, resetOnRecenter } = heading
+  const { getFollowDeg, isPhoneReady, resetOnRecenter } = heading
   const {
     active: historyActive,
     preview: historyPreview,
@@ -199,7 +199,7 @@ export function useCameraControls({
     const baseZoomLevel = followZoomLevelRef.current ?? gpsCamera.zoomLevel
     const manualFollowZoom = followZoomLevelRef.current != null
     const effectiveOrientationMode =
-      mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode
+      mapOrientationMode === 'phoneHeading' && !isPhoneReady() ? 'freeRotate' : mapOrientationMode
     const effect = reduceMapCameraIntent(controllerStateRef.current, {
       type: 'FollowLive',
       gpsCamera: { ...gpsCamera, zoomLevel: baseZoomLevel },
@@ -220,7 +220,7 @@ export function useCameraControls({
     gpsCamera,
     getFollowDeg,
     mapOrientationMode,
-    phoneReady,
+    isPhoneReady,
     perspectiveEnabled,
     resetOnRecenter,
     viewportHeight,
@@ -229,7 +229,9 @@ export function useCameraControls({
   const getFollowFrameForZoom = useCallback(
     (zoom: number): { pitch: number; padding: CameraPadding } => {
       const profile = getMapCameraProfileForOrientationMode(
-        mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode,
+        mapOrientationMode === 'phoneHeading' && !isPhoneReady()
+          ? 'freeRotate'
+          : mapOrientationMode,
       )
       return {
         pitch: getPitchForProfileZoom({
@@ -241,7 +243,7 @@ export function useCameraControls({
         padding: getPaddingForProfile({ profile, viewportHeight, zoom }),
       }
     },
-    [mapOrientationMode, perspectiveEnabled, phoneReady, viewportHeight],
+    [isPhoneReady, mapOrientationMode, perspectiveEnabled, viewportHeight],
   )
 
   const applyLiveFollowCamera = useCallback(() => {

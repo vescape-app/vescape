@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 
 import { useAppActive } from '@/hooks/useAppActive'
 import { deviceMotionPhoneHeadingAdapter } from '@/modules/map/lib/deviceMotionPhoneHeadingAdapter'
@@ -10,35 +10,27 @@ import {
 
 export function usePhoneHeading({
   active,
-  followCamera,
-  onFollowHeading,
   onHeadingChange,
   onStatusChange,
 }: {
   active: boolean
-  followCamera: boolean
-  onFollowHeading: (headingDeg: number) => void
   onHeadingChange: (headingDeg: number | null) => void
   onStatusChange: (status: PhoneHeadingStatus | 'idle') => void
 }) {
   const appActive = useAppActive()
   const subscribed = active && appActive
   const headingDegRef = useRef<number | null>(null)
+  const callbacksRef = useRef({ onHeadingChange, onStatusChange })
 
-  const reportHeading = useEffectEvent((headingDeg: number) => {
-    onHeadingChange(headingDeg)
-    if (followCamera) onFollowHeading(headingDeg)
+  useLayoutEffect(() => {
+    callbacksRef.current = { onHeadingChange, onStatusChange }
   })
-  const reportIdle = useEffectEvent(() => {
-    onHeadingChange(null)
-    onStatusChange('idle')
-  })
-  const reportStatus = useEffectEvent((status: PhoneHeadingStatus) => onStatusChange(status))
 
   useEffect(() => {
     if (!subscribed) {
       headingDegRef.current = null
-      reportIdle()
+      callbacksRef.current.onHeadingChange(null)
+      callbacksRef.current.onStatusChange('idle')
       return
     }
 
@@ -50,14 +42,14 @@ export function usePhoneHeading({
       const headingDeg = deadBandPhoneHeading(headingDegRef.current, rawHeadingDeg)
       if (headingDeg === headingDegRef.current) return
       headingDegRef.current = headingDeg
-      reportHeading(headingDeg)
+      callbacksRef.current.onHeadingChange(headingDeg)
     }).then((subscription) => {
       if (disposed) {
         subscription.remove()
         return
       }
       remove = subscription.remove
-      reportStatus(subscription.status)
+      callbacksRef.current.onStatusChange(subscription.status)
     })
 
     return () => {

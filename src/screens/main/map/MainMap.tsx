@@ -262,6 +262,10 @@ export const MainMap = memo(
             : 0,
       [directionBearingDeg, gpsHeadingMode, mapPose, phoneHeadingMode],
     )
+    const isPhoneHeadingReady = useCallback(
+      () => phoneHeadingStatus === 'ready' || phoneHeadingDegRef.current != null,
+      [phoneHeadingStatus],
+    )
 
     const {
       cameraRef,
@@ -286,7 +290,7 @@ export const MainMap = memo(
       mapViewport: cameraViewport,
       mapOrientationMode,
       heading: {
-        phoneReady: phoneHeadingStatus === 'ready',
+        isPhoneReady: isPhoneHeadingReady,
         getFollowDeg: getFollowHeadingDeg,
         resetOnRecenter: mapOrientationMode !== 'freeRotate',
       },
@@ -337,11 +341,20 @@ export const MainMap = memo(
         syncPuckBearing(headingDeg)
         onPhoneHeadingChange(headingDeg)
 
-        if (headingDeg == null || !phoneHeadingMode || !followGps) return
+        if (
+          headingDeg == null ||
+          !phoneHeadingMode ||
+          historyActive ||
+          controllerStateRef.current.mode.kind !== 'liveFollow'
+        )
+          return
         scheduleOffscreenMapIndicatorRefresh()
+        engine.setTarget({ heading: headingDeg })
       },
       [
-        followGps,
+        controllerStateRef,
+        engine,
+        historyActive,
         onPhoneHeadingChange,
         phoneHeadingMode,
         scheduleOffscreenMapIndicatorRefresh,
@@ -350,8 +363,6 @@ export const MainMap = memo(
     )
     usePhoneHeading({
       active: !historyActive && phoneHeadingMode,
-      followCamera: phoneHeadingMode && followGps,
-      onFollowHeading: (headingDeg) => engine.setTarget({ heading: headingDeg }),
       onHeadingChange: handlePhoneHeadingChange,
       onStatusChange: setPhoneHeadingStatus,
     })
