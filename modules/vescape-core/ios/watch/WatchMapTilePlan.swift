@@ -71,7 +71,7 @@ enum WatchMapTilePlan {
 
   static func ring(_ rider: WatchMapRider, zoom: Int, lookahead: Bool = true) -> [WatchMapTile] {
     let n = 1 << zoom
-    let (riderX, riderY) = tileCoordinates(rider.position, n: n)
+    let (riderX, riderY) = WatchMapTile.coordinates(rider.position, n: n)
     let tileM = tileMetres(latitude: rider.position.latitude, zoom: zoom)
     let spanM = WatchMapProjection.clampedSpanM(rider.spanM)
     let aheadM = !lookahead || rider.courseDeg == nil ? 0 : max(spanM / 2, (rider.speedMps ?? 0) * lookaheadS)
@@ -99,11 +99,11 @@ enum WatchMapTilePlan {
         if seen.insert(tile).inserted { found.append(tile) }
       }
     }
-    var (x, y) = tileCoordinates(start, n: n)
+    var (x, y) = WatchMapTile.coordinates(start, n: n)
     visit(x, y)
     for index in (segment + 1)..<points.count {
       guard found.count < limit else { break }
-      let (nextX, nextY) = tileCoordinates(points[index], n: n)
+      let (nextX, nextY) = WatchMapTile.coordinates(points[index], n: n)
       let size = Double(n)
       let raw = (nextX - x).truncatingRemainder(dividingBy: size)
       let dx = (raw + size + size / 2).truncatingRemainder(dividingBy: size) - size / 2
@@ -166,25 +166,22 @@ enum WatchMapTilePlan {
     return Array((fresh + older).prefix(cap))
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTilePlan.kt `watchMapTileNeeded`
   static func needed(_ rider: WatchMapRider, zoom: Int) -> [WatchMapTile] {
     func levels(_ lookahead: Bool) -> [WatchMapTile] {
       (zoom > 0 ? ring(rider, zoom: zoom - 1, lookahead: lookahead) : []) + ring(rider, zoom: zoom, lookahead: lookahead)
     }
+    let (radarX, radarY) = WatchMapTile.coordinates(rider.position, n: 1 << WatchMapTile.radarZoom)
+    let radar = tiles(within: 1, of: (radarX, radarY), zoom: WatchMapTile.radarZoom) { column, row in
+      hypot(Double(column) + 0.5 - radarX, Double(row) + 0.5 - radarY)
+    }
     var seen = Set<WatchMapTile>()
-    return (levels(false) + levels(true)).filter { seen.insert($0).inserted }
+    return (levels(false) + radar + levels(true)).filter { seen.insert($0).inserted }
   }
 
   static func tile(at position: WatchMapPosition, zoom: Int) -> WatchMapTile {
-    let (x, y) = tileCoordinates(position, n: 1 << zoom)
+    let (x, y) = WatchMapTile.coordinates(position, n: 1 << zoom)
     return WatchMapTile(z: zoom, x: Int(floor(x)), y: Int(floor(y)))
-  }
-
-  private static func tileCoordinates(_ position: WatchMapPosition, n: Int) -> (Double, Double) {
-    let latitude = WatchMapTile.clampedLatitude(position.latitude) * .pi / 180
-    let x = (position.longitude + 180) / 360 * Double(n)
-    let y = (1 - log(tan(latitude) + 1 / cos(latitude)) / .pi) / 2 * Double(n)
-    let limit = Double(n) - 1e-9
-    return (min(max(x, 0), limit), min(max(y, 0), limit))
   }
 
   private static func tileMetres(latitude: Double, zoom: Int) -> Double {
@@ -193,7 +190,7 @@ enum WatchMapTilePlan {
 
   private static func riderDelta(_ tile: WatchMapTile, _ rider: WatchMapRider) -> (Double, Double) {
     let n = Double(1 << tile.z)
-    let (x, y) = tileCoordinates(rider.position, n: 1 << tile.z)
+    let (x, y) = WatchMapTile.coordinates(rider.position, n: 1 << tile.z)
     let raw = (Double(tile.x) + 0.5 - x).truncatingRemainder(dividingBy: n)
     let dx = (raw + n + n / 2).truncatingRemainder(dividingBy: n) - n / 2
     return (dx, Double(tile.y) + 0.5 - y)

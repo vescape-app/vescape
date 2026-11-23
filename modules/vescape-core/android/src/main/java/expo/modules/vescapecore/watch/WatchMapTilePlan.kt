@@ -1,16 +1,13 @@
 package expo.modules.vescapecore.watch
 
 import expo.modules.vescapecore.geo.GeoMath
-import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.hypot
-import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.sin
-import kotlin.math.tan
 
 /**
  * @parity /modules/vescape-core/ios/watch/WatchMapTilePlan.swift
@@ -156,10 +153,15 @@ internal fun retainWatchMapTiles(
     return (fresh + older).take(cap)
 }
 
+// @parity /modules/vescape-core/ios/watch/WatchMapTilePlan.swift `needed`
 internal fun watchMapTileNeeded(rider: WatchMapRider, zoom: Int): List<WatchMapTile> {
     fun levels(lookahead: Boolean) =
         (if (zoom > 0) watchMapTileRing(rider, zoom - 1, lookahead) else emptyList()) + watchMapTileRing(rider, zoom, lookahead)
-    return (levels(lookahead = false) + levels(lookahead = true)).distinct()
+    val (radarX, radarY) = tileCoordinates(rider.position, 1 shl WATCH_RADAR_TILE_ZOOM)
+    val radar = tilesWithin(radarX, radarY, 1.0, WATCH_RADAR_TILE_ZOOM) { column, row ->
+        hypot(column + 0.5 - radarX, row + 0.5 - radarY)
+    }
+    return (levels(lookahead = false) + radar + levels(lookahead = true)).distinct()
 }
 
 internal class WatchMapTilePlanner(private val cap: Int = WATCH_MAP_TILE_CAP) {
@@ -200,13 +202,6 @@ internal class WatchMapTilePlanner(private val cap: Int = WATCH_MAP_TILE_CAP) {
         )
         return true
     }
-}
-
-private fun tileCoordinates(position: WatchMapPosition, n: Int): Pair<Double, Double> {
-    val latitude = Math.toRadians(position.latitude.coerceIn(-WATCH_MAP_MAX_MERCATOR_LATITUDE, WATCH_MAP_MAX_MERCATOR_LATITUDE))
-    val x = (position.longitude + 180.0) / 360.0 * n
-    val y = (1 - ln(tan(latitude) + 1 / cos(latitude)) / PI) / 2 * n
-    return x.coerceIn(0.0, n.toDouble().minus(1e-9)) to y.coerceIn(0.0, n.toDouble().minus(1e-9))
 }
 
 private fun tileMetres(latitude: Double, zoom: Int): Double =

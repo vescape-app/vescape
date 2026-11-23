@@ -6,6 +6,18 @@ struct WatchMapTile: Hashable {
   let x: Int
   let y: Int
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `WATCH_RADAR_TILE_ZOOM`
+  static let radarZoom = 6
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/watch/WatchMapTile.kt `tileCoordinates`
+  static func coordinates(_ position: WatchMapPosition, n: Int) -> (Double, Double) {
+    let latitude = clampedLatitude(position.latitude) * .pi / 180
+    let x = (position.longitude + 180) / 360 * Double(n)
+    let y = (1 - log(tan(latitude) + 1 / cos(latitude)) / .pi) / 2 * Double(n)
+    let limit = Double(n) - 1e-9
+    return (min(max(x, 0), limit), min(max(y, 0), limit))
+  }
+
   var key: String { "\(z)/\(x)/\(y)" }
 
   var northWest: WatchMapPosition { corner(x, y) }

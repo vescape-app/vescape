@@ -7,7 +7,7 @@ enum RainViewer {
 
   static let imagePx = 256
 
-  static let zoom = 6
+  static let zoom = WatchMapTile.radarZoom
 
   static let colorScheme = 2
   static let options = "1_1"

@@ -169,7 +169,8 @@ struct MirrorScreen: View {
         forecast: freshWeather,
         onFetchFailed: { link.recordRadarFailure() },
         distanceUnit: link.settings.distanceUnit,
-        timeFormat: link.settings.timeFormat
+        timeFormat: link.settings.timeFormat,
+        streetMapEnabled: link.settings.streetMapEnabled
       )
     case .weather:
       WeatherScreen(

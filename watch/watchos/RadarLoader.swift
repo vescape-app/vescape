@@ -10,7 +10,7 @@ final class RadarStore: ObservableObject {
   @Published private(set) var failed = false
 
   private var fetchedAtMs: Int64 = 0
-  private var centre: RadarCentre?
+  @Published private(set) var centre: RadarCentre?
 
   private static let timeout: TimeInterval = 10
 
@@ -42,13 +42,15 @@ final class RadarStore: ObservableObject {
       let live = Set(meta.frames.map(\.timeSec))
       images = images.filter { live.contains($0.key) }
     }
-    centre = radarRoundedCentre(latitude: latitude, longitude: longitude)
+    let centre = radarRoundedCentre(latitude: latitude, longitude: longitude)
+    if centre != self.centre { images = [:] }
+    self.centre = centre
     fetchedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
 
     for frame in meta.frames {
       if Task.isCancelled { return }
       if images[frame.timeSec] != nil { continue }
-      let url = RainViewer.frameURL(host: meta.host, frame: frame, latitude: latitude, longitude: longitude)
+      let url = RainViewer.frameURL(host: meta.host, frame: frame, latitude: centre.latitude, longitude: centre.longitude)
       guard let data = await fetch(url), let image = UIImage(data: data) else { continue }
       images[frame.timeSec] = image
     }

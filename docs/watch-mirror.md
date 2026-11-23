@@ -251,6 +251,9 @@ A dark raster street map sits under the trail and route whenever the wrist is aw
 has a GPS fix, with or without Navigation or a Group Ride. The phone owns every decision; the wrist
 never reports what it holds.
 
+Rain radar uses regional tiles from the same stream. The watch draws them north-up in the radar
+image's projection and falls back to the radar overlay alone where map tiles are unavailable.
+
 **Zoom** (`watchMapTileZoom` / `WatchMapTile.zoom`, shared with both wrists): the span the wrist draws (`routeSpanM`
 clamped by `WatchMapSpan` / `WatchMapProjection.clampedSpanM`, 600 m while the phone map is
 unmounted) on a 480 px reference face, at the lowest zoom whose 512 px tile is drawn at most 1.3×
@@ -367,6 +370,9 @@ Settings → Watch → **Route line on telemetry screen**, on by default, travel
 `telemetryRouteEnabled`. Off, the telemetry screen draws no route line; it fades in with nav focus on
 the map page (`routeAlpha`, like the trail's `trailAlpha`). The nav chevron and distance readout stay,
 since they are gauges rather than a map layer, and the phone keeps pushing `/route` either way.
+Both wrists use the phone's remaining Route Progress distance to split the dotted line along the
+received route. Passed dots draw at 20% of the upcoming dots' opacity, as on the phone map.
+The split is approximate on the wrist because it uses the projected, potentially simplified route.
 
 Preview the receiving state with `bun run wear:replay ride --route-loading`. This is an emulator
 fixture using the live rendering state, not a measurement of Bluetooth transfer latency.
