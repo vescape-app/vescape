@@ -25,7 +25,7 @@ The integration is owned by these durable files:
 - `app.config.ts` enables the Clerk and SecureStore Expo plugins.
 - `src/app/_layout.tsx` creates `ClerkProvider` with the publishable key and Clerk token cache.
 - `src/modules/profile/screens/ClerkAuthScreen.tsx` renders the native `AuthView`.
-- `src/modules/profile/screens/ClerkAccountScreen.tsx` owns revoke-before-clear sign-out.
+- `src/modules/profile/screens/ClerkAccountScreen.tsx` owns sign-out and account deletion teardown.
 - `src/modules/profile/components/DeviceAuthSync.tsx` exchanges the active Clerk session once and
   provisions native Device Token storage.
 - `src/modules/profile/components/AccountWidget.tsx` exposes sign-in and account management in the
@@ -41,33 +41,42 @@ revoked tokens. A `401` from a native request using `AuthMode.Required` with the
 the same without retrying; optional-auth requests and explicit bearer provisioning calls do not
 reject the stored credential.
 
+Both teardowns turn off every Account feature on the phone before anything leaves Clerk or the
+server: the Device Token is gone locally before Clerk sign-out and before the account deletion
+request. Both run in `ClerkAccountScreen` through `src/modules/profile/lib/accountTeardown.ts`.
+Suspending `DeviceAuthSync` (`src/modules/profile/lib/deviceProvisioning.ts`) blocks new exchanges,
+invalidates any exchange still in flight so its Device Token is never installed, and waits only for
+a native install already running, so nothing reinstalls a credential after the local clear. Clearing
+the credential fires the credential change listeners, which stop Public Ride sharing and Rider Month
+Stats sending on both platforms; native requests that require a Device Token stop. Resuming
+provisioning forgets which Clerk sessions already exchanged, so the same session can exchange a
+fresh Device Token and the features come back.
+
 Sign-out ordering is security-sensitive:
 
 ```text
-native revoke -> native clear -> Clerk sign-out
+suspend DeviceAuthSync -> native revoke (server revoke, then native clear) -> Clerk sign-out
 ```
 
-If revocation fails, the app stays signed in and retains the credential so it can retry. Never clear
-Clerk first: that would strand a live Device Token the client can no longer revoke.
+If revocation or Clerk sign-out fails, the app resumes provisioning and the rider can retry. A failed
+revocation retains the credential. Never clear Clerk first: that would strand a live Device Token the
+client can no longer revoke.
 
-Account deletion ordering differs because the server owns revocation and erasure:
+Account deletion ordering:
 
 ```text
-suspend DeviceAuthSync -> DELETE /api/account (Clerk token) -> native clear -> reset Rider Profile -> Clerk sign-out
+suspend DeviceAuthSync -> native clear -> DELETE /api/account (Clerk token) -> reset Rider Profile -> Clerk sign-out
 ```
 
-`ClerkAccountScreen` runs it. Suspending `DeviceAuthSync`
-(`src/modules/profile/lib/deviceProvisioning.ts`) blocks new exchanges, invalidates any exchange
-still in flight so its Device Token is never installed, and waits only for a native install already
-running, so nothing reinstalls a credential after the local clear. `200` (deleted) and `202`
-(queued for background Clerk deletion) both count as accepted; anything else resumes provisioning
-and lets the rider retry. The local clear uses `clearDeviceCredential`, not revoke: the server
-already revoked every Device Token. The credential change listeners stop Public Ride sharing and
-Rider Month Stats sending on both platforms, and native requests that require a Device Token stop.
-If the local clear or Clerk sign-out fails after acceptance, the screen keeps provisioning suspended
-and retries only the local clean-up, never the server request. Provisioning resumes when Clerk
-reports signed out. A failed Device Token exchange still routes the account pill to the account
-screen, so Online-Blocked builds keep Sign out and Delete account reachable.
+The local clear uses `clearDeviceCredential`, not revoke: the server revokes every Device Token as
+part of the deletion. If the local clear fails, the request is never sent; provisioning resumes and
+the rider can retry. `200` (deleted) and `202` (queued for background Clerk deletion) both count as
+accepted; anything else resumes provisioning, so `DeviceAuthSync` exchanges a fresh Device Token,
+and lets the rider retry. If Clerk sign-out fails after acceptance, the screen keeps provisioning
+suspended and offers **Finish signing out**, which retries only the local clean-up, never the server
+request. Provisioning resumes when Clerk reports signed out. A failed Device Token exchange still
+routes the account pill to the account screen, so Online-Blocked builds keep Sign out and Delete
+account reachable.
 `DELETE /api/account` is exempt from Online Block so outdated builds can still delete accounts.
 Deleting a Vescape Account never touches local phone data.
 

@@ -27,7 +27,11 @@ describe('Device Token provisioning during account deletion', () => {
   test('an exchange in flight when deletion starts never installs its Device Token', async () => {
     const { exchange, finish } = deferredExchange()
     const install = mock(async (_body: DeviceTokenExchange) => undefined)
-    const run = startDeviceProvisioning({ getToken: async () => 'clerk-token', exchange, install })
+    const run = startDeviceProvisioning('session-1', {
+      getToken: async () => 'clerk-token',
+      exchange,
+      install,
+    })
     while (exchange.mock.calls.length === 0) await Promise.resolve()
 
     await suspendDeviceProvisioning()
@@ -50,7 +54,7 @@ describe('Device Token provisioning during account deletion', () => {
           }
         }),
     )
-    const run = startDeviceProvisioning({
+    const run = startDeviceProvisioning('session-1', {
       getToken: async () => 'clerk-token',
       exchange: async () => issued,
       install,
@@ -75,11 +79,25 @@ describe('Device Token provisioning during account deletion', () => {
     const getToken = mock(async () => 'clerk-token')
     const install = mock(async (_body: DeviceTokenExchange) => undefined)
 
-    expect(startDeviceProvisioning({ getToken, exchange: async () => issued, install })).toBeNull()
+    expect(
+      startDeviceProvisioning('session-1', { getToken, exchange: async () => issued, install }),
+    ).toBeNull()
     expect(getToken).not.toHaveBeenCalled()
 
     resumeDeviceProvisioning()
-    await startDeviceProvisioning({ getToken, exchange: async () => issued, install })
+    await startDeviceProvisioning('session-1', { getToken, exchange: async () => issued, install })
     expect(install).toHaveBeenCalledWith(issued)
+  })
+
+  test('resuming lets the same Clerk session exchange a fresh Device Token after teardown aborts', async () => {
+    const install = mock(async (_body: DeviceTokenExchange) => undefined)
+    const steps = { getToken: async () => 'clerk-token', exchange: async () => issued, install }
+    await startDeviceProvisioning('session-1', steps)
+    expect(startDeviceProvisioning('session-1', steps)).toBeNull()
+
+    await suspendDeviceProvisioning()
+    resumeDeviceProvisioning()
+    await startDeviceProvisioning('session-1', steps)
+    expect(install).toHaveBeenCalledTimes(2)
   })
 })

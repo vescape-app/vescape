@@ -12,10 +12,7 @@ import { theme } from '@/constants/theme'
 import { SERVER_URL } from '@/config/server'
 import { RiderNickForm } from '@/modules/profile/components/RiderNickForm'
 import { deleteAccount } from '@/modules/profile/lib/deviceAuth'
-import {
-  resumeDeviceProvisioning,
-  suspendDeviceProvisioning,
-} from '@/modules/profile/lib/deviceProvisioning'
+import { stopAccountAndDelete, stopAccountAndSignOut } from '@/modules/profile/lib/accountTeardown'
 import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
@@ -59,18 +56,17 @@ export function ClerkAccountScreen() {
     setSigningOut(true)
     setError(null)
     try {
-      await revokeDeviceCredential()
-      await signOut()
+      await stopAccountAndSignOut({ revokeCredential: revokeDeviceCredential, signOut })
     } catch {
+      retryDeviceAuth()
       setError('Could not sign out. Check your connection and try again.')
     } finally {
       setSigningOut(false)
     }
-  }, [signOut])
+  }, [retryDeviceAuth, signOut])
 
   const finishAccountDeletion = useCallback(async () => {
     try {
-      clearDeviceCredential()
       useRiderProfileStore.getState().clear()
       await signOut()
     } catch {
@@ -88,16 +84,22 @@ export function ClerkAccountScreen() {
       await finishAccountDeletion()
       return
     }
-    await suspendDeviceProvisioning()
-    try {
-      const clerkToken = await getToken()
-      if (!clerkToken) throw new Error('Clerk session token is unavailable')
-      await deleteAccount({ serverUrl: SERVER_URL, clerkToken })
-    } catch {
-      resumeDeviceProvisioning()
+    const result = await stopAccountAndDelete({
+      clearCredential: clearDeviceCredential,
+      deleteAccount: async () => {
+        const clerkToken = await getToken()
+        if (!clerkToken) throw new Error('Clerk session token is unavailable')
+        await deleteAccount({ serverUrl: SERVER_URL, clerkToken })
+      },
+    })
+    if (result !== 'accepted') {
       retryDeviceAuth()
       setDeleting(false)
-      setDeleteError('Could not delete your account. Check your connection and try again.')
+      setDeleteError(
+        result === 'credential-clear-failed'
+          ? 'Could not turn off account features on this phone. Try again.'
+          : 'Could not delete your account. Check your connection and try again.',
+      )
       return
     }
     setDeletionAccepted(true)

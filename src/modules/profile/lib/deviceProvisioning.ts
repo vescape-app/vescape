@@ -16,12 +16,22 @@ let provisioning: Promise<void> | null = null
 let installing: Promise<unknown> | null = null
 let suspended = false
 let generation = 0
+const attemptedSessionIds = new Set<string>()
 
-export function startDeviceProvisioning(steps: DeviceProvisioningSteps): Promise<void> | null {
-  if (suspended || provisioning !== null) return null
-  const run = provision(steps, generation).finally(() => {
-    if (provisioning === run) provisioning = null
-  })
+export function startDeviceProvisioning(
+  sessionId: string,
+  steps: DeviceProvisioningSteps,
+): Promise<void> | null {
+  if (suspended || provisioning !== null || attemptedSessionIds.has(sessionId)) return null
+  attemptedSessionIds.add(sessionId)
+  const run = provision(steps, generation)
+    .catch((error: unknown) => {
+      attemptedSessionIds.delete(sessionId)
+      throw error
+    })
+    .finally(() => {
+      if (provisioning === run) provisioning = null
+    })
   provisioning = run
   return run
 }
@@ -35,6 +45,7 @@ export async function suspendDeviceProvisioning(): Promise<void> {
 
 export function resumeDeviceProvisioning(): void {
   suspended = false
+  attemptedSessionIds.clear()
 }
 
 export function isDeviceProvisioningSuspended(): boolean {

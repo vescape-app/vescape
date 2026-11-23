@@ -21,8 +21,6 @@ import {
 } from '@/modules/profile/lib/deviceProvisioning'
 import { readDeviceCredential } from '@/modules/profile/lib/readDeviceCredential'
 
-const attemptedSessionIds = new Set<string>()
-
 export function DeviceAuthSync() {
   const { getToken, isLoaded, isSignedIn, signOut } = useAuth({
     treatPendingAsSignedOut: false,
@@ -50,16 +48,12 @@ export function DeviceAuthSync() {
       void signOut()
       return
     }
-    if (attemptedSessionIds.has(session.id)) return
-
-    const run = startDeviceProvisioning(provisioningSteps(getToken))
+    const run = startDeviceProvisioning(session.id, provisioningSteps(getToken))
     if (run === null) return
-    attemptedSessionIds.add(session.id)
     setStatus('provisioning')
     run
       .then(() => setStatus('ready'))
       .catch((error: unknown) => {
-        attemptedSessionIds.delete(session.id)
         if (!(error instanceof DeviceProvisioningSuspendedError)) {
           setStatus('failed', visibleError(error))
         } else if (!isDeviceProvisioningSuspended()) {
