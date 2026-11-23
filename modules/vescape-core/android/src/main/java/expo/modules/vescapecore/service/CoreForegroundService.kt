@@ -107,6 +107,10 @@ class CoreForegroundService : Service() {
         @Volatile var liveStateChanged: (() -> Unit)? = null
 
         private var instance: CoreForegroundService? = null
+
+        private fun onMain(block: () -> Unit) {
+            if (Looper.myLooper() == Looper.getMainLooper()) block() else Handler(Looper.getMainLooper()).post(block)
+        }
         internal var pendingStart: PendingStart? = null
         internal var pendingStop: PendingStop? = null
         internal var pendingConfigRead: PendingConfigRead? = null
@@ -159,11 +163,7 @@ class CoreForegroundService : Service() {
                 onError(result.errorCode(), result.errorMessage("Board session service start skipped"))
                 return
             }
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                instance?.controller?.consumePendingStart()
-            } else {
-                Handler(Looper.getMainLooper()).post { instance?.controller?.consumePendingStart() }
-            }
+            onMain { instance?.controller?.consumePendingStart() }
         }
 
         fun stopBoardSession(context: Context, onSuccess: () -> Unit = {}) {
@@ -178,11 +178,7 @@ class CoreForegroundService : Service() {
                 action = ACTION_STOP_SESSION
             }
             context.startService(intent)
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                service.controller.consumePendingStop()
-            } else {
-                Handler(Looper.getMainLooper()).post { instance?.controller?.consumePendingStop() }
-            }
+            onMain { instance?.controller?.consumePendingStop() }
         }
 
         fun exitApp(context: Context) {
@@ -367,41 +363,25 @@ class CoreForegroundService : Service() {
                 result.logIfSkipped("Group Ride observe service start skipped")
                 return
             }
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                instance?.controller?.consumePendingGroupRideObserve()
-            } else {
-                Handler(Looper.getMainLooper()).post { instance?.controller?.consumePendingGroupRideObserve() }
-            }
+            onMain { instance?.controller?.consumePendingGroupRideObserve() }
         }
 
         fun stopGroupRideObserve(context: Context) {
             pendingGroupRideUrl = null
-            val service = instance ?: return
+            instance ?: return
             val intent = Intent(context, CoreForegroundService::class.java).apply {
                 action = ACTION_STOP_GROUP_RIDE_OBSERVE
             }
             context.startService(intent)
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                service.controller.stopGroupRideObserve()
-            } else {
-                Handler(Looper.getMainLooper()).post { instance?.controller?.stopGroupRideObserve() }
-            }
+            onMain { instance?.controller?.stopGroupRideObserve() }
         }
 
         fun resyncGroupRide() {
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                instance?.controller?.resyncGroupRide()
-            } else {
-                Handler(Looper.getMainLooper()).post { instance?.controller?.resyncGroupRide() }
-            }
+            instance?.controller?.resyncGroupRide()
         }
 
         fun replayGroupRideEvent(name: String) {
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                instance?.controller?.replayGroupRideEvent(name)
-            } else {
-                Handler(Looper.getMainLooper()).post { instance?.controller?.replayGroupRideEvent(name) }
-            }
+            instance?.controller?.replayGroupRideEvent(name)
         }
 
         fun sendGroupRideSignal(kind: String) {
