@@ -50,7 +50,9 @@ a native install already running, so nothing reinstalls a credential after the l
 the credential fires the credential change listeners, which stop Public Ride sharing and Rider Month
 Stats sending on both platforms; native requests that require a Device Token stop. Resuming
 provisioning forgets which Clerk sessions already exchanged, so the same session can exchange a
-fresh Device Token and the features come back.
+fresh Device Token and the features come back; Public Ride sharing stays off until the rider turns
+it on again, because credential loss resets it on both platforms. An exchange abandoned by a
+teardown settles as suspended and never touches the state of the exchange that replaced it.
 
 Sign-out ordering is security-sensitive:
 

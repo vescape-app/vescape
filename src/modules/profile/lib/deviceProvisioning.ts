@@ -24,8 +24,10 @@ export function startDeviceProvisioning(
 ): Promise<void> | null {
   if (suspended || provisioning !== null || attemptedSessionIds.has(sessionId)) return null
   attemptedSessionIds.add(sessionId)
-  const run = provision(steps, generation)
+  const startedIn = generation
+  const run = provision(steps, startedIn)
     .catch((error: unknown) => {
+      if (startedIn !== generation) throw new DeviceProvisioningSuspendedError()
       attemptedSessionIds.delete(sessionId)
       throw error
     })

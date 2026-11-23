@@ -100,4 +100,30 @@ describe('Device Token provisioning during account deletion', () => {
     await startDeviceProvisioning('session-1', steps)
     expect(install).toHaveBeenCalledTimes(2)
   })
+
+  test('an exchange abandoned by a teardown cannot undo the retry that replaced it', async () => {
+    let failStale: () => void = () => undefined
+    const staleExchange = mock(
+      () =>
+        new Promise<DeviceTokenExchange>((_resolve, reject) => {
+          failStale = () => reject(new Error('network'))
+        }),
+    )
+    const install = mock(async (_body: DeviceTokenExchange) => undefined)
+    const stale = startDeviceProvisioning('session-1', {
+      getToken: async () => 'clerk-token',
+      exchange: staleExchange,
+      install,
+    })
+    while (staleExchange.mock.calls.length === 0) await Promise.resolve()
+
+    await suspendDeviceProvisioning()
+    resumeDeviceProvisioning()
+    const steps = { getToken: async () => 'clerk-token', exchange: async () => issued, install }
+    await startDeviceProvisioning('session-1', steps)
+    failStale()
+
+    await expect(stale).rejects.toBeInstanceOf(DeviceProvisioningSuspendedError)
+    expect(startDeviceProvisioning('session-1', steps)).toBeNull()
+  })
 })
