@@ -50,6 +50,16 @@ native revoke -> native clear -> Clerk sign-out
 If revocation fails, the app stays signed in and retains the credential so it can retry. Never clear
 Clerk first: that would strand a live Device Token the client can no longer revoke.
 
+Account deletion ordering (planned in `#715`) differs because the server owns revocation and erasure:
+
+```text
+suppress DeviceAuthSync -> DELETE /api/account (Clerk token) -> native clear -> reset Rider Profile -> Clerk sign-out
+```
+
+Suppressing `DeviceAuthSync` first prevents an in-flight token exchange from reinstalling a Device
+Token while deletion runs. `DELETE /api/account` is exempt from Online Block so outdated builds can
+still delete accounts. Deleting a Vescape Account never touches local phone data.
+
 Do not fix Clerk integration in generated `android/` or `ios/` folders. Plugin or dependency changes
 require a fresh native sync/build through `bun run android`.
 
