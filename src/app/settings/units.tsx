@@ -3,16 +3,27 @@ import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { CalendarBlankIcon, ClockIcon, GaugeIcon, ThermometerIcon } from 'phosphor-react-native'
 
+import { RadioIndicator } from '@/components/controls/RadioIndicator'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { theme } from '@/constants/theme'
 import { formatDate, type DateFormat, type TimeFormat } from '@/helpers/time'
 import type { TemperatureUnit, DistanceUnit } from '@/helpers/units'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 const EXAMPLE_DATE = new Date(2026, 2, 28)
+
+const DATE_FORMAT_OPTIONS: readonly { value: DateFormat; hint: string }[] = [
+  { value: 'dmy', hint: 'Day Month Year · UK & Europe' },
+  { value: 'mdy', hint: 'Month Day, Year · US' },
+  { value: 'dmy-slash', hint: 'DD/MM/YYYY · UK & Europe' },
+  { value: 'mdy-slash', hint: 'MM/DD/YYYY · US' },
+  { value: 'dmy-dot', hint: 'DD.MM.YYYY · Central Europe' },
+  { value: 'ymd', hint: 'YYYY-MM-DD · ISO' },
+]
 
 export default function UnitsSettingsScreen() {
   const distanceUnit = useSettingsStore((state) => state.distanceUnit)
@@ -80,24 +91,27 @@ export default function UnitsSettingsScreen() {
               />
             }
           />
-          <SettingsRow
-            icon={CalendarBlankIcon}
-            iconColor={theme.palette.purple.color}
-            label="Date format"
-            hint={formatDate(EXAMPLE_DATE, dateFormat)}
-            right={
-              <SegmentedToggle<DateFormat>
-                options={[
-                  { label: 'DMY', value: 'dmy' },
-                  { label: 'MDY', value: 'mdy' },
-                  { label: 'YMD', value: 'ymd' },
-                ]}
-                value={dateFormat}
-                onChange={(value) => void set('dateFormat', value)}
-                testID="date-format-toggle"
-              />
-            }
-          />
+        </SettingsCard>
+
+        <SettingsSectionTitle>Date format</SettingsSectionTitle>
+        <SettingsCard>
+          {DATE_FORMAT_OPTIONS.map((option) => (
+            <SettingsRow
+              key={option.value}
+              icon={CalendarBlankIcon}
+              iconColor={theme.palette.purple.color}
+              label={formatDate(EXAMPLE_DATE, option.value)}
+              hint={option.hint}
+              onPress={() => void set('dateFormat', option.value)}
+              right={
+                <RadioIndicator
+                  selected={dateFormat === option.value}
+                  accent={theme.palette.purple.color}
+                  size="lg"
+                />
+              }
+            />
+          ))}
         </SettingsCard>
       </PageScrollView>
     </SafeAreaView>

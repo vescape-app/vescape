@@ -36,22 +36,31 @@ describe('clock presentation', () => {
 })
 
 describe('date presentation', () => {
-  test('formats single dates, short dates, and ranges in dmy, mdy, and ymd', () => {
+  test('formats single dates, short dates, and ranges across all supported formats', () => {
     const mar28 = new Date(2026, 2, 28).getTime()
     const mar30 = new Date(2026, 2, 30).getTime()
     const apr2 = new Date(2026, 3, 2).getTime()
 
     expect(formatDate(mar28, 'dmy')).toBe('28 Mar 2026')
     expect(formatDate(mar28, 'mdy')).toBe('Mar 28, 2026')
+    expect(formatDate(mar28, 'dmy-slash')).toBe('28/03/2026')
+    expect(formatDate(mar28, 'mdy-slash')).toBe('03/28/2026')
+    expect(formatDate(mar28, 'dmy-dot')).toBe('28.03.2026')
     expect(formatDate(mar28, 'ymd')).toBe('2026-03-28')
 
     expect(formatShortDate(mar28, 'dmy')).toBe('28 Mar')
     expect(formatShortDate(mar28, 'mdy')).toBe('Mar 28')
+    expect(formatShortDate(mar28, 'dmy-slash')).toBe('28/03')
+    expect(formatShortDate(mar28, 'mdy-slash')).toBe('03/28')
+    expect(formatShortDate(mar28, 'dmy-dot')).toBe('28.03')
     expect(formatShortDate(mar28, 'ymd')).toBe('03-28')
 
     expect(formatDateRange(mar28, mar28, 'mdy')).toBe('Mar 28, 2026')
     expect(formatDateRange(mar28, mar30, 'dmy')).toBe('28–30 Mar 2026')
     expect(formatDateRange(mar28, mar30, 'mdy')).toBe('Mar 28–30, 2026')
+    expect(formatDateRange(mar28, mar30, 'dmy-slash')).toBe('28/03/2026 – 30/03/2026')
+    expect(formatDateRange(mar28, mar30, 'mdy-slash')).toBe('03/28/2026 – 03/30/2026')
+    expect(formatDateRange(mar28, mar30, 'dmy-dot')).toBe('28.03.2026 – 30.03.2026')
     expect(formatDateRange(mar28, mar30, 'ymd')).toBe('2026-03-28 – 2026-03-30')
     expect(formatDateRange(mar28, apr2, 'dmy')).toBe('28 Mar – 2 Apr 2026')
     expect(formatDateRange(mar28, apr2, 'mdy')).toBe('Mar 28 – Apr 2, 2026')

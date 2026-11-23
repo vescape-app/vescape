@@ -1385,7 +1385,7 @@ export type TimeFormat = '24h' | '12h'
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validDateFormat`
  * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validDateFormat`
  */
-export type DateFormat = 'dmy' | 'mdy' | 'ymd'
+export type DateFormat = 'dmy' | 'mdy' | 'dmy-slash' | 'mdy-slash' | 'dmy-dot' | 'ymd'
 export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
 
 /**

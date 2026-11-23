@@ -23,9 +23,11 @@ internal func validTimeFormat(_ value: Any?) -> String? {
   return format
 }
 
+private let validDateFormats: Set<String> = ["dmy", "mdy", "dmy-slash", "mdy-slash", "dmy-dot", "ymd"]
+
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validDateFormat`
 /// @parity /modules/vescape-core/src/index.ts `DateFormat`
 internal func validDateFormat(_ value: Any?) -> String? {
-  guard let format = value as? String, format == "dmy" || format == "mdy" || format == "ymd" else { return nil }
+  guard let format = value as? String, validDateFormats.contains(format) else { return nil }
   return format
 }

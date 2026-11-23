@@ -54,15 +54,39 @@ export function formatClock(
   )
 }
 
+const DATE_FORMAT_LABELS: Record<DateFormat, string> = {
+  dmy: 'DD Mon',
+  mdy: 'Mon DD',
+  'dmy-slash': 'DD/MM',
+  'mdy-slash': 'MM/DD',
+  'dmy-dot': 'DD.MM',
+  ymd: 'ISO',
+}
+
+export function dateFormatLabel(format: DateFormat): string {
+  return DATE_FORMAT_LABELS[format]
+}
+
 export function formatDate(input: number | string | Date, format: DateFormat = 'dmy'): string {
   const date = input instanceof Date ? input : new Date(input)
   if (!Number.isFinite(date.getTime())) return DASH
   const day = date.getDate()
   const month = date.getMonth()
   const year = date.getFullYear()
-  if (format === 'mdy') return `${SHORT_MONTHS[month]} ${day}, ${year}`
-  if (format === 'ymd') return `${year}-${pad(month + 1)}-${pad(day)}`
-  return `${day} ${SHORT_MONTHS[month]} ${year}`
+  switch (format) {
+    case 'mdy':
+      return `${SHORT_MONTHS[month]} ${day}, ${year}`
+    case 'dmy-slash':
+      return `${pad(day)}/${pad(month + 1)}/${year}`
+    case 'mdy-slash':
+      return `${pad(month + 1)}/${pad(day)}/${year}`
+    case 'dmy-dot':
+      return `${pad(day)}.${pad(month + 1)}.${year}`
+    case 'ymd':
+      return `${year}-${pad(month + 1)}-${pad(day)}`
+    case 'dmy':
+      return `${day} ${SHORT_MONTHS[month]} ${year}`
+  }
 }
 
 export function formatShortDate(input: number | string | Date, format: DateFormat = 'dmy'): string {
@@ -70,9 +94,20 @@ export function formatShortDate(input: number | string | Date, format: DateForma
   if (!Number.isFinite(date.getTime())) return DASH
   const day = date.getDate()
   const month = date.getMonth()
-  if (format === 'mdy') return `${SHORT_MONTHS[month]} ${day}`
-  if (format === 'ymd') return `${pad(month + 1)}-${pad(day)}`
-  return `${day} ${SHORT_MONTHS[month]}`
+  switch (format) {
+    case 'mdy':
+      return `${SHORT_MONTHS[month]} ${day}`
+    case 'dmy-slash':
+      return `${pad(day)}/${pad(month + 1)}`
+    case 'mdy-slash':
+      return `${pad(month + 1)}/${pad(day)}`
+    case 'dmy-dot':
+      return `${pad(day)}.${pad(month + 1)}`
+    case 'ymd':
+      return `${pad(month + 1)}-${pad(day)}`
+    case 'dmy':
+      return `${day} ${SHORT_MONTHS[month]}`
+  }
 }
 
 export function formatDateRange(
@@ -86,7 +121,9 @@ export function formatDateRange(
   const sameYear = s.getFullYear() === e.getFullYear()
   const sameMonth = sameYear && s.getMonth() === e.getMonth()
   if (sameMonth && s.getDate() === e.getDate()) return formatDate(s, format)
-  if (!sameYear || format === 'ymd') return `${formatDate(s, format)} – ${formatDate(e, format)}`
+  if (!sameYear || (format !== 'dmy' && format !== 'mdy')) {
+    return `${formatDate(s, format)} – ${formatDate(e, format)}`
+  }
   if (sameMonth) {
     return format === 'mdy'
       ? `${SHORT_MONTHS[s.getMonth()]} ${s.getDate()}–${e.getDate()}, ${s.getFullYear()}`
