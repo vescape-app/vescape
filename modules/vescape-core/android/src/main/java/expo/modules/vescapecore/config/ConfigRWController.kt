@@ -23,6 +23,7 @@ internal data class PendingConfigRead(
 
 internal data class PendingConfigWrite(
     val profileId: String,
+    val fieldIds: List<String>,
     val onSuccess: (Map<String, Any?>) -> Unit,
     val onError: (String, String) -> Unit,
 )
@@ -110,7 +111,14 @@ internal class ConfigRWController(
                 }
                 return@launch
             }
-            @Suppress("UNCHECKED_CAST") val fields = (profile["fields"] as? Map<String, Any>) ?: emptyMap()
+            @Suppress("UNCHECKED_CAST") val storedFields = (profile["fields"] as? Map<String, Any>) ?: emptyMap()
+            val fields = selectProfileFields(storedFields, pending.fieldIds)
+            if (fields == null) {
+                scheduler.post {
+                    pending.onError(RefloatConfigErrorCode.CONFIG_VALUE_INVALID.name, "Push must name fields stored in the tune profile")
+                }
+                return@launch
+            }
             scheduler.post {
                 if (isInFlight) return@post pending.inFlight()
                 val connection = port.connection()
@@ -222,3 +230,9 @@ internal class ConfigRWController(
 }
 
 internal enum class BoardConfigOperationOrigin { FRESH_READ, VESCAPE_WRITE }
+
+// @parity /modules/vescape-core/ios/config/ConfigRWController.swift `selectProfileFields`
+internal fun selectProfileFields(storedFields: Map<String, Any>, fieldIds: List<String>): Map<String, Any>? {
+    if (fieldIds.isEmpty()) return null
+    return fieldIds.associateWith { storedFields[it] ?: return null }
+}

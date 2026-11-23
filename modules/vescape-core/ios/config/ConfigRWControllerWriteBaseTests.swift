@@ -8,6 +8,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     var failureCode: String?
     ConfigRWController().consumeWrite(
       profileId: "profile-1",
+      fieldIds: ["tuned"],
       connection: connection(fresh(), sent, loadProfile: { _ in throw ProfileReadFailure.failed }),
       onSuccess: { _ in XCTFail("write should not succeed") },
       onError: { code, _ in failureCode = code }
@@ -23,6 +24,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
 
     controller.consumeWrite(
       profileId: "profile-1",
+      fieldIds: ["tuned"],
       connection: connection(fresh(), sent),
       onSuccess: { _ in },
       onError: { code, message in XCTFail("write should not fail: \(code) \(message)") }
@@ -40,6 +42,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
 
     controller.consumeWrite(
       profileId: "profile-1",
+      fieldIds: ["tuned"],
       connection: connection(values, sent),
       onSuccess: { _ in },
       onError: { code, message in XCTFail("write should not fail: \(code) \(message)") }
@@ -68,6 +71,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
 
     controller.consumeWrite(
       profileId: "profile-1",
+      fieldIds: ["tuned"],
       connection: connection(lastKnown, sent),
       onSuccess: { _ in },
       onError: { _, _ in }
@@ -83,6 +87,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
 
     controller.consumeWrite(
       profileId: "profile-1",
+      fieldIds: ["tuned"],
       connection: connection(nil, sent),
       onSuccess: { _ in },
       onError: { _, _ in }
@@ -99,6 +104,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
 
     controller.consumeWrite(
       profileId: "profile-1",
+      fieldIds: ["tuned"],
       connection: connection(fresh(), sent, linkIntegrity: .outdated),
       onSuccess: { _ in XCTFail("write should not succeed") },
       onError: { code, _ in errors.append(code) }
@@ -114,6 +120,14 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertEqual(demoted.freshness, .lastKnown)
     XCTAssertNil(demoted.writeBase)
     XCTAssertEqual(demoted.number("untouched"), 42.0)
+  }
+
+  func testPushSelectsOnlyNamedStoredFields() {
+    let stored: [String: Any] = ["kp": 20.0, "ki": 0.01, "kp2": 1.2]
+    XCTAssertEqual(selectProfileFields(stored, ["kp"])?.keys.sorted(), ["kp"])
+    XCTAssertNil(selectProfileFields(stored, []))
+    XCTAssertNil(selectProfileFields(stored, ["kp", "missing"]))
+    XCTAssertNil(selectProfileFields(["kp": NSNull()], ["kp"]))
   }
 
   private func schema() -> RefloatConfigSchema {

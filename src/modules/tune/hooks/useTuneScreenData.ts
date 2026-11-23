@@ -267,7 +267,7 @@ export function useTuneScreenData() {
         hasDirtyFields,
         hasBoardDiff,
         dirtyCount: Object.keys(dirtyFields).length,
-        diffCount: boardDiff.length,
+        diffCount: boardDiff.filter(({ fieldId }) => !(fieldId in dirtyFields)).length,
         loadingConfig: firmwareCommandsTrusted && boardSnapshotStatus === 'loading',
         configError:
           firmwareCommandBlockReason ?? (firmwareCommandsTrusted ? boardSnapshotError : null),

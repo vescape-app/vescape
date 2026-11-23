@@ -91,6 +91,7 @@ class ConfigRWControllerLinkIntegrityTest {
         linkIntegrity = integrity
         controller().consumeWrite(PendingConfigWrite(
             profileId = "profile-1",
+            fieldIds = listOf("kp"),
             onSuccess = { error("write should not succeed") },
             onError = { code, message -> errors.add(code to message) },
         ))

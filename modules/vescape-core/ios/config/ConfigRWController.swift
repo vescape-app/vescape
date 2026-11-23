@@ -125,6 +125,7 @@ internal final class ConfigRWController {
 
   func consumeWrite(
     profileId: String,
+    fieldIds: [String],
     connection: ConfigRWConnection,
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
@@ -164,7 +165,11 @@ internal final class ConfigRWController {
       onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not match the connected board Refloat Tune Compatibility")
       return
     }
-    let fields = ((profile["fields"] ?? nil) as? [String: Any]) ?? [:]
+    let storedFields = ((profile["fields"] ?? nil) as? [String: Any]) ?? [:]
+    guard let fields = selectProfileFields(storedFields, fieldIds) else {
+      onError(RefloatConfigErrorCode.CONFIG_VALUE_INVALID.rawValue, "Push must name fields stored in the tune profile")
+      return
+    }
     let wasPolling = connection.isPollingActive()
     connection.stopPolling()
     writeCallbacks = PendingConfigWrite(onSuccess: onSuccess, onError: onError)
@@ -660,4 +665,15 @@ private extension BoardTransport {
     case .can(let canId): return canId
     }
   }
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt `selectProfileFields`
+func selectProfileFields(_ storedFields: [String: Any], _ fieldIds: [String]) -> [String: Any]? {
+  if fieldIds.isEmpty { return nil }
+  var selected: [String: Any] = [:]
+  for fieldId in fieldIds {
+    guard let value = storedFields[fieldId], !(value is NSNull) else { return nil }
+    selected[fieldId] = value
+  }
+  return selected
 }

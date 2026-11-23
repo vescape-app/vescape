@@ -240,7 +240,7 @@ A read-only view of the board's current Refloat tuning configuration decoded fro
 _Avoid_: Tune cache, settings dump
 
 **Tune Profile**:
-A user-authored, persisted set of all Refloat tune field values stored in semantic (human-meaningful) units, scoped to a Board.
+A user-authored, persisted set of all Refloat tune field values stored in semantic (human-meaningful) units, scoped to a Board. It reaches the board field by field: Save & sync writes only the fields edited in that save, and sending a saved Tune Profile writes only the fields that differ from the board.
 _Avoid_: Tune preset, config file, settings backup
 
 **Tune Compatibility**:

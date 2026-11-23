@@ -59,6 +59,7 @@ export function TuneScreen() {
   const acceptAllBoardValues = useTuneProfileStore((s) => s.acceptAllBoardValues)
   const discardAllEdits = useTuneProfileStore((s) => s.discardAllEdits)
   const saveActiveProfile = useTuneProfileStore((s) => s.saveActiveProfile)
+  const saveAndSyncActiveProfile = useTuneProfileStore((s) => s.saveAndSyncActiveProfile)
   const syncToBoard = useTuneProfileStore((s) => s.syncToBoard)
 
   const modals = useTuneModals(activeProfile, basicSliders, draftFields, allBoards, selectedBoardId)
@@ -116,10 +117,7 @@ export function TuneScreen() {
   const handleSaveAndSync = () => {
     if (!firmwareCommandsTrusted) return
     // intentional-suppression: Tune store error is rendered by the active screen or modal
-    void (async () => {
-      await saveActiveProfile()
-      await syncToBoard()
-    })().catch(() => undefined)
+    void saveAndSyncActiveProfile().catch(() => undefined)
   }
 
   const handleSync = () => {

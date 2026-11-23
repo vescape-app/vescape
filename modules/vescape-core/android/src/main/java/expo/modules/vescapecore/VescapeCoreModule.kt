@@ -1080,11 +1080,12 @@ class VescapeCoreModule : Module() {
     AsyncFunction("stopBoardMove") {
       CoreForegroundService.stopBoardMove()
     }
-    AsyncFunction("pushProfileToBoard") { profileId: String, promise: Promise ->
+    AsyncFunction("pushProfileToBoard") { profileId: String, fieldIds: List<String>, promise: Promise ->
       RecordingStorageFailure.requireAvailable()
       CoreForegroundService.pushProfileToBoard(
         context.applicationContext,
         profileId,
+        fieldIds,
         onSuccess = { snapshot -> promise.resolve(snapshot) },
         onError = { code, message -> promise.reject(code, message, null) },
       )

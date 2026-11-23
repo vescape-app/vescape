@@ -199,7 +199,10 @@ export function TuneSyncBar({
           accentColor: theme.palette.sky.color,
           accentTextColor: theme.neutral.surfaceDeep,
           text: `${s.dirtyCount} unsaved field${s.dirtyCount === 1 ? '' : 's'}`,
-          detail: null,
+          detail:
+            s.diffCount > 0
+              ? `${s.diffCount} other field${s.diffCount === 1 ? ' differs' : 's differ'} from board, not sent`
+              : null,
           icon: <ArrowsClockwiseIcon size={16} color={theme.palette.sky.color} weight="bold" />,
           actions: [
             {

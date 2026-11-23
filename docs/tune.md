@@ -210,6 +210,26 @@ not independent key/value pairs. Unknown fields must be preserved exactly. A
 write implementation should never create a config from only the visible tune
 fields.
 
+#### Which fields a push writes
+
+`pushProfileToBoard(profileId, fieldIds)` patches only the named fields, with values read from the
+stored Tune Profile, into the fresh write base (or a fresh read). The rest of the struct is kept
+byte for byte. A push that names no fields, or a field the stored profile lacks, fails with
+`CONFIG_VALUE_INVALID`.
+
+- **Save & sync** writes only the fields the rider edited in that save. Saved fields that already
+  differed from the board (board drift) are left alone. The sync bar shows them next to the
+  unsaved count ("N other fields differ from board, not sent").
+- **Send to board** applies the whole saved profile. It writes every profile field that differs
+  from the last board snapshot, and it skips the native call when there are none.
+
+The encoder checks every field before it writes any byte and rejects the whole write with
+`CONFIG_VALUE_INVALID` for an id not in the schema, a non-number for a numeric field, a non-finite
+value, or a value the wire type and scale cannot hold. Integer and scaled values round half up
+before the range check. `BOOL` fields accept a boolean or exactly `0`/`1`. Tune field ranges in
+`src/modules/tune/lib/fields.ts` stay inside each field's wire limit, and manual entry rejects
+values outside it.
+
 ### Refloat Runtime Commands
 
 Refloat also exposes package-specific tune commands over

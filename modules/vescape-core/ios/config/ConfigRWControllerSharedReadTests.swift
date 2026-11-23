@@ -43,6 +43,7 @@ final class ConfigRWControllerSharedReadTests: XCTestCase {
 
     controller.consumeWrite(
       profileId: "profile-1",
+      fieldIds: ["kp"],
       connection: connection(),
       onSuccess: { _ in },
       onError: { code, _ in errors.append(code) }
@@ -69,7 +70,7 @@ final class ConfigRWControllerSharedReadTests: XCTestCase {
       startPolling: {},
       sendPayload: { _ in true },
       captureDiagnostic: { _, _ in },
-      loadProfile: { _ in ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": [String: Any]()] },
+      loadProfile: { _ in ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": ["kp": 20.0] as [String: Any]] },
       onBoardConfigValues: { _, _ in }
     )
   }

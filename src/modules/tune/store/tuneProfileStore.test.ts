@@ -532,19 +532,41 @@ test('ignores stale profile loads when board selection changes', async () => {
   expect(useTuneProfileStore.getState().profiles).toEqual([otherBoardProfile])
 })
 
-test('syncToBoard updates tune snapshot store with pushed board snapshot', async () => {
+test('syncToBoard pushes only the profile fields that differ from the board', async () => {
   const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
 
   await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setBoardSnapshot(boardSnapshot)
   await useTuneProfileStore.getState().syncToBoard()
 
-  expect(pushProfileToBoard).toHaveBeenCalledWith('profile-1')
+  expect(pushProfileToBoard).toHaveBeenCalledWith('profile-1', ['kp'])
   expect(useTuneSnapshotStore.getState().status).toBe('ready')
   expect(useTuneSnapshotStore.getState().snapshot).toEqual(boardSnapshot)
   expect(useTuneProfileStore.getState().boardDiff).toEqual([
     { fieldId: 'kp', profileValue: 20, boardValue: 24 },
   ])
+})
+
+test('syncToBoard skips the native push when the board already matches', async () => {
+  const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
+
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  await useTuneProfileStore.getState().syncToBoard()
+
+  expect(pushProfileToBoard).not.toHaveBeenCalled()
+})
+
+test('Save & sync writes only the fields edited in this save, not board drift', async () => {
+  const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
+
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setBoardSnapshot(boardSnapshot)
+  useTuneProfileStore.getState().setDraftField('atr_strength_up', 1.5)
+  await useTuneProfileStore.getState().saveAndSyncActiveProfile()
+
+  expect(saveProfile).toHaveBeenCalledWith('profile-1', { kp: 20, atr_strength_up: 1.5 })
+  expect(pushProfileToBoard).toHaveBeenCalledWith('profile-1', ['atr_strength_up'])
 })
 
 test('falls back to legacy native profile calls when the dev client has the old bridge', async () => {
@@ -592,6 +614,7 @@ test('syncToBoard blocks native push when link is outdated', async () => {
   useBleStore.setState({ linkIntegrity: 'outdated' })
 
   await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setBoardSnapshot(boardSnapshot)
   await useTuneProfileStore.getState().syncToBoard()
 
   expect(pushProfileToBoard).not.toHaveBeenCalled()

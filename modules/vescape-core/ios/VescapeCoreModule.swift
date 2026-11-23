@@ -1220,10 +1220,11 @@ public class VescapeCoreModule: Module {
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
-    AsyncFunction("pushProfileToBoard") { (profileId: String, promise: Promise) in
+    AsyncFunction("pushProfileToBoard") { (profileId: String, fieldIds: [String], promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       self.coordinator.pushProfileToBoard(
         profileId: profileId,
+        fieldIds: fieldIds,
         onSuccess: { snapshot in promise.resolve(snapshot) },
         onError: { code, message in promise.reject(code, message) }
       )

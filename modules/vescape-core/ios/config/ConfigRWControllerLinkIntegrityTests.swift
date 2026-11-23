@@ -36,7 +36,7 @@ final class ConfigRWControllerLinkIntegrityTests: XCTestCase {
       sentPayload = false
       let controller = ConfigRWController()
       var errors: [String] = []
-      controller.consumeWrite(profileId: "profile-1", connection: connection(.trusted, profileVersion: version),
+      controller.consumeWrite(profileId: "profile-1", fieldIds: ["kp"], connection: connection(.trusted, profileVersion: version),
         onSuccess: { _ in }, onError: { code, _ in errors.append(code) })
       let compatible = version == "3.0" || version == "3.0.1-postfix"
       XCTAssertEqual(errors, compatible ? [] : [RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue])
@@ -67,6 +67,7 @@ final class ConfigRWControllerLinkIntegrityTests: XCTestCase {
 
     controller.consumeWrite(
       profileId: "profile-1",
+      fieldIds: ["kp"],
       connection: connection(linkIntegrity),
       onSuccess: { _ in XCTFail("write should not succeed") },
       onError: { code, message in errors.append((code, message)) }

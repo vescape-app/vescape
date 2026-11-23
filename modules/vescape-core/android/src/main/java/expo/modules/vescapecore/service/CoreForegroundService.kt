@@ -315,6 +315,7 @@ class CoreForegroundService : Service() {
         fun pushProfileToBoard(
             context: Context,
             profileId: String,
+            fieldIds: List<String>,
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
         ) {
@@ -326,7 +327,7 @@ class CoreForegroundService : Service() {
                 )
                 return
             }
-            pendingConfigWrite = PendingConfigWrite(profileId, onSuccess, onError)
+            pendingConfigWrite = PendingConfigWrite(profileId, fieldIds, onSuccess, onError)
             service.controller.consumePendingConfigWrite()
         }
 

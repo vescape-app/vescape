@@ -35,6 +35,7 @@ type TuneProfileDraftSlice = Pick<
   | 'acceptAllBoardValues'
   | 'discardAllEdits'
   | 'saveActiveProfile'
+  | 'saveAndSyncActiveProfile'
   | 'syncToBoard'
 >
 
@@ -43,126 +44,9 @@ type SliceFactory = (
   get: StoreApi<TuneProfileStore>['getState'],
 ) => TuneProfileDraftSlice
 
-export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
-  setDraftField(fieldId, value) {
-    set((state) => {
-      if (!state.activeProfile) return state
-      const savedValue = state.activeProfile.fields[fieldId]
-      const draftFields = sameFieldValue(value, savedValue)
-        ? omitKey(state.draftFields, fieldId)
-        : { ...state.draftFields, [fieldId]: value }
-      return {
-        draftFields,
-        hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
-      }
-    })
-  },
-
-  setBoardSnapshot(snapshot) {
-    const boardFields = fieldsFromSnapshot(snapshot)
-    set((state) => {
-      const diff = boardDiff(state.activeProfile, boardFields)
-      return {
-        boardFields,
-        refloatBaseVersion: snapshot?.refloatBaseVersion ?? state.refloatBaseVersion,
-        boardDiff: diff,
-        hasBoardDiff: diff.length > 0,
-      }
-    })
-  },
-
-  getDirtyFields() {
-    const state = get()
-    return dirtyFields(state.activeProfile, state.draftFields)
-  },
-
-  revertField(fieldId) {
-    set((state) => {
-      const draftFields = omitKey(state.draftFields, fieldId)
-      return {
-        draftFields,
-        hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
-      }
-    })
-  },
-
-  acceptBoardField(fieldId) {
-    set((state) => {
-      if (
-        !state.activeProfile ||
-        !Object.prototype.hasOwnProperty.call(state.boardFields, fieldId)
-      ) {
-        return state
-      }
-      const draftFields = nextDraftWithField(
-        state.activeProfile,
-        state.draftFields,
-        fieldId,
-        state.boardFields[fieldId],
-      )
-      return {
-        draftFields,
-        hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
-      }
-    })
-  },
-
-  acceptAllBoardValues() {
-    set((state) => {
-      const profile = state.activeProfile
-      if (!profile) return state
-      const draftFields = state.boardDiff.reduce(
-        (next, { fieldId, boardValue }) => nextDraftWithField(profile, next, fieldId, boardValue),
-        { ...state.draftFields },
-      )
-      return {
-        draftFields,
-        hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
-      }
-    })
-  },
-
-  discardAllEdits() {
-    set({ draftFields: {}, hasDirtyFields: false })
-  },
-
-  async saveActiveProfile() {
-    const profile = get().activeProfile
-    if (!profile) return null
-    const dirty = get().getDirtyFields()
-    if (Object.keys(dirty).length === 0) return profile
-    set({ saving: true, error: null })
-    try {
-      const saved = await nativeSaveProfile(profile.id, { ...profile.fields, ...dirty })
-      set((state) => {
-        if (state.activeProfile?.id !== profile.id) return { saving: false }
-        const remainingDraft = Object.fromEntries(
-          Object.entries(state.draftFields).filter(
-            ([fieldId, value]) => !(fieldId in dirty) || dirty[fieldId] !== value,
-          ),
-        )
-        const diff = boardDiff(saved, state.boardFields)
-        return {
-          profiles: state.profiles.map((item) => (item.id === saved.id ? saved : item)),
-          activeProfile: saved,
-          draftFields: remainingDraft,
-          hasDirtyFields: Object.keys(dirtyFields(saved, remainingDraft)).length > 0,
-          boardDiff: diff,
-          hasBoardDiff: diff.length > 0,
-          saving: false,
-          error: null,
-        }
-      })
-      return saved
-    } catch (error) {
-      set({ saving: false, error: errorMessage(error, 'Unable to save tune profile.') })
-      throw error
-    }
-  },
-
-  async syncToBoard() {
-    const profile = get().activeProfile
-    if (!profile) return
+export const createTuneProfileDraftSlice: SliceFactory = (set, get) => {
+  async function pushFieldsToBoard(profileId: string, fieldIds: string[]) {
+    if (fieldIds.length === 0) return
     const linkIntegrity = useBleStore.getState().linkIntegrity
     if (!canRunFirmwareCommand(linkIntegrity)) {
       set({ syncing: false, error: firmwareCommandBlockedMessage(linkIntegrity) })
@@ -170,7 +54,7 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
     }
     set({ syncing: true, error: null })
     try {
-      const snapshot = await nativePushProfileToBoard(profile.id)
+      const snapshot = await nativePushProfileToBoard(profileId, fieldIds)
       useTuneSnapshotStore.getState().setSnapshot(snapshot)
       get().setBoardSnapshot(snapshot)
       set({ syncing: false })
@@ -178,5 +62,139 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
       set({ syncing: false, error: tuneWriteErrorMessage(error) })
       throw error
     }
-  },
-})
+  }
+
+  return {
+    setDraftField(fieldId, value) {
+      set((state) => {
+        if (!state.activeProfile) return state
+        const savedValue = state.activeProfile.fields[fieldId]
+        const draftFields = sameFieldValue(value, savedValue)
+          ? omitKey(state.draftFields, fieldId)
+          : { ...state.draftFields, [fieldId]: value }
+        return {
+          draftFields,
+          hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
+        }
+      })
+    },
+
+    setBoardSnapshot(snapshot) {
+      const boardFields = fieldsFromSnapshot(snapshot)
+      set((state) => {
+        const diff = boardDiff(state.activeProfile, boardFields)
+        return {
+          boardFields,
+          refloatBaseVersion: snapshot?.refloatBaseVersion ?? state.refloatBaseVersion,
+          boardDiff: diff,
+          hasBoardDiff: diff.length > 0,
+        }
+      })
+    },
+
+    getDirtyFields() {
+      const state = get()
+      return dirtyFields(state.activeProfile, state.draftFields)
+    },
+
+    revertField(fieldId) {
+      set((state) => {
+        const draftFields = omitKey(state.draftFields, fieldId)
+        return {
+          draftFields,
+          hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
+        }
+      })
+    },
+
+    acceptBoardField(fieldId) {
+      set((state) => {
+        if (
+          !state.activeProfile ||
+          !Object.prototype.hasOwnProperty.call(state.boardFields, fieldId)
+        ) {
+          return state
+        }
+        const draftFields = nextDraftWithField(
+          state.activeProfile,
+          state.draftFields,
+          fieldId,
+          state.boardFields[fieldId],
+        )
+        return {
+          draftFields,
+          hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
+        }
+      })
+    },
+
+    acceptAllBoardValues() {
+      set((state) => {
+        const profile = state.activeProfile
+        if (!profile) return state
+        const draftFields = state.boardDiff.reduce(
+          (next, { fieldId, boardValue }) => nextDraftWithField(profile, next, fieldId, boardValue),
+          { ...state.draftFields },
+        )
+        return {
+          draftFields,
+          hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
+        }
+      })
+    },
+
+    discardAllEdits() {
+      set({ draftFields: {}, hasDirtyFields: false })
+    },
+
+    async saveActiveProfile() {
+      const profile = get().activeProfile
+      if (!profile) return null
+      const dirty = get().getDirtyFields()
+      if (Object.keys(dirty).length === 0) return profile
+      set({ saving: true, error: null })
+      try {
+        const saved = await nativeSaveProfile(profile.id, { ...profile.fields, ...dirty })
+        set((state) => {
+          if (state.activeProfile?.id !== profile.id) return { saving: false }
+          const remainingDraft = Object.fromEntries(
+            Object.entries(state.draftFields).filter(
+              ([fieldId, value]) => !(fieldId in dirty) || dirty[fieldId] !== value,
+            ),
+          )
+          const diff = boardDiff(saved, state.boardFields)
+          return {
+            profiles: state.profiles.map((item) => (item.id === saved.id ? saved : item)),
+            activeProfile: saved,
+            draftFields: remainingDraft,
+            hasDirtyFields: Object.keys(dirtyFields(saved, remainingDraft)).length > 0,
+            boardDiff: diff,
+            hasBoardDiff: diff.length > 0,
+            saving: false,
+            error: null,
+          }
+        })
+        return saved
+      } catch (error) {
+        set({ saving: false, error: errorMessage(error, 'Unable to save tune profile.') })
+        throw error
+      }
+    },
+
+    async saveAndSyncActiveProfile() {
+      const dirtyFieldIds = Object.keys(get().getDirtyFields())
+      const saved = await get().saveActiveProfile()
+      if (!saved) return
+      await pushFieldsToBoard(saved.id, dirtyFieldIds)
+    },
+
+    async syncToBoard() {
+      const profile = get().activeProfile
+      if (!profile) return
+      await pushFieldsToBoard(
+        profile.id,
+        get().boardDiff.map(({ fieldId }) => fieldId),
+      )
+    },
+  }
+}

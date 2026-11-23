@@ -2522,7 +2522,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     profileId: string,
     fields: Record<string, TuneProfileFieldValue>,
   ): Promise<TuneProfile>
-  pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
+  pushProfileToBoard(profileId: string, fieldIds: string[]): Promise<RefloatConfigSnapshot>
   getProfileStatsSnapshot(options: ProfileStatsSnapshotOptions): Promise<ProfileStatsSnapshot>
   getDayStats(day: RideDay): Promise<ProfileStats>
   getRecentRideStats(sinceMs: number): Promise<ProfileStats>
@@ -3621,8 +3621,15 @@ export async function saveProfile(
   return native.saveProfile(profileId, fields)
 }
 
-export async function pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot> {
-  return native.pushProfileToBoard(profileId)
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `pushProfileToBoard`
+ */
+export async function pushProfileToBoard(
+  profileId: string,
+  fieldIds: string[],
+): Promise<RefloatConfigSnapshot> {
+  return native.pushProfileToBoard(profileId, fieldIds)
 }
 
 export async function getProfileStatsSnapshot(

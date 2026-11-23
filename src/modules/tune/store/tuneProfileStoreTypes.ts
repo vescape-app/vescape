@@ -59,6 +59,7 @@ export interface TuneProfileActions {
   acceptAllBoardValues: () => void
   discardAllEdits: () => void
   saveActiveProfile: () => Promise<TuneProfile | null>
+  saveAndSyncActiveProfile: () => Promise<void>
   syncToBoard: () => Promise<void>
   clear: () => void
 }
