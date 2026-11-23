@@ -44,13 +44,13 @@ export function ClerkAccountScreen() {
 
   const leaveAccount = useCallback(() => {
     if (router.canGoBack()) router.back()
-    else router.replace(routes.profileStats)
+    else router.replace(routes.home)
   }, [router])
 
   useEffect(() => {
     if (!isLoaded || isSignedIn) return
-    router.replace(routes.profileStats)
-  }, [isLoaded, isSignedIn, router])
+    leaveAccount()
+  }, [isLoaded, isSignedIn, leaveAccount])
 
   const handleSignOut = useCallback(async () => {
     setSigningOut(true)
