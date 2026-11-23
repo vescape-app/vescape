@@ -603,6 +603,7 @@ _Avoid_: Hazard signal, warning, POI, map point
 - A **Public Ride** is an **Online Capability**; a **Board Session**, **Ride Recording**, **Ride History**, and tuning are not.
 - A **Diagnostic Event** may describe failures around a **Board**, **Live State**, **Telemetry Sample**, **Ride Recording**, or **Tune Profile** workflow.
 - A **Vescape Account** is independent of a **Rider** and may enable optional online services such as backup, sync, or paid entitlements, but is not required to use local Boards, Ride Recording, Ride History, or tuning.
+- Deleting a **Vescape Account** permanently removes server-owned account data — including Clerk identity, **Rider Profile** (freeing the nick), Friends, **Rider Month Stats**, cloud backups, stored **Public Rides**, **Crew Ride** participation (recomputing affected Crew Rides for surviving riders), and authored **Map Points** and **Map Point Reactions** — while leaving phone-owned local data untouched.
 - A **Rider Presence** belongs to one **Rider** during a **Public Ride**, derives location from a **GPS Fix** and optional speed, **Battery SoC Estimate** and temperatures from a live **Board Session**, and is not produced while the Rider is inside a **Privacy Zone**.
 
 ## Example Dialogue
