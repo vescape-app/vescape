@@ -545,15 +545,27 @@ export function downloadHistoricalManifest(runId: number): Promise<HistoricalRel
   return downloadReleaseManifest(runId, parseHistoricalReleaseManifest)
 }
 
-async function downloadReleaseManifest<T>(runId: number, parse: (value: unknown) => T): Promise<T> {
-  const directory = await mkdtemp(join(tmpdir(), 'vescape-release-'))
+function downloadReleaseManifest<T>(runId: number, parse: (value: unknown) => T): Promise<T> {
+  return downloadWorkflowArtifact(runId, 'release-manifest', 'Release manifest', parse)
+}
+
+async function downloadWorkflowArtifact<T>(
+  runId: number,
+  name: string,
+  label: string,
+  parse: (value: unknown) => T,
+): Promise<T> {
+  const directory = await mkdtemp(join(tmpdir(), `vescape-${name}-`))
   try {
-    await checkedGh(
-      ['run', 'download', String(runId), '--name', 'release-manifest', '--dir', directory],
-      'Cannot download release manifest',
-    )
-    const contents = await readFile(join(directory, 'release-manifest.json'), 'utf8')
-    return parseWorkflowArtifact(contents, 'Release manifest', parse)
+    const result = await gh(['run', 'download', String(runId), '--name', name, '--dir', directory])
+    if (result.exitCode !== 0) {
+      const detail = result.stderr || result.stdout
+      if (detail.includes('no valid artifacts found'))
+        throw new InvalidWorkflowArtifactError(`${label} of run ${runId} has expired`)
+      throw new Error(`Cannot download ${label.toLowerCase()}: ${detail}`)
+    }
+    const contents = await readFile(join(directory, `${name}.json`), 'utf8')
+    return parseWorkflowArtifact(contents, label, parse)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -813,32 +825,22 @@ export async function listPrereleaseTags(repo: string, limit = 20): Promise<stri
     .map((release) => release.tagName)
 }
 
-export async function downloadPromotionManifest(runId: number): Promise<PromotionManifest> {
-  const directory = await mkdtemp(join(tmpdir(), 'vescape-promotion-'))
-  try {
-    await checkedGh(
-      ['run', 'download', String(runId), '--name', 'promotion-manifest', '--dir', directory],
-      'Cannot download promotion manifest',
-    )
-    const contents = await readFile(join(directory, 'promotion-manifest.json'), 'utf8')
-    return parseWorkflowArtifact(contents, 'Promotion manifest', parsePromotionManifest)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
+export function downloadPromotionManifest(runId: number): Promise<PromotionManifest> {
+  return downloadWorkflowArtifact(
+    runId,
+    'promotion-manifest',
+    'Promotion manifest',
+    parsePromotionManifest,
+  )
 }
 
-export async function downloadProductionManifest(runId: number): Promise<ProductionManifest> {
-  const directory = await mkdtemp(join(tmpdir(), 'vescape-production-'))
-  try {
-    await checkedGh(
-      ['run', 'download', String(runId), '--name', 'production-manifest', '--dir', directory],
-      'Cannot download production manifest',
-    )
-    const contents = await readFile(join(directory, 'production-manifest.json'), 'utf8')
-    return parseWorkflowArtifact(contents, 'Production manifest', parseProductionManifest)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
+export function downloadProductionManifest(runId: number): Promise<ProductionManifest> {
+  return downloadWorkflowArtifact(
+    runId,
+    'production-manifest',
+    'Production manifest',
+    parseProductionManifest,
+  )
 }
 
 export async function retryFailedJobs(runId: number): Promise<void> {
