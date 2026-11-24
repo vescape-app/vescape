@@ -97,10 +97,10 @@ final class DeviceCredentialStore {
     listeners.values.forEach { $0() }
   }
 
-  func state(credential: DeviceCredential?) -> DeviceCredentialState {
+  func state(credential: DeviceCredential?, serverUrl: String) -> DeviceCredentialState {
     lock.lock()
     defer { lock.unlock() }
-    if credential != nil { return .ready }
+    if let credential, trimmedOrigin(credential.serverUrl) == trimmedOrigin(serverUrl) { return .ready }
     let stored = DeviceCredentialState(
       rawValue: storage.state ?? ""
     ) ?? .unavailable
@@ -159,4 +159,10 @@ private final class KeychainDeviceCredentialStorage: DeviceCredentialStorage {
       kSecAttrAccount as String: account,
     ]
   }
+}
+
+private func trimmedOrigin(_ url: String) -> String {
+  var origin = url
+  while origin.hasSuffix("/") { origin.removeLast() }
+  return origin
 }

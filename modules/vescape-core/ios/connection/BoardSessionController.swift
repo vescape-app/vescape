@@ -238,7 +238,8 @@ internal final class BoardSessionController: VescGattListener {
             let lng = settings["lastGpsLongitude"] as? Double
       else { return nil }
       return (lat: lat, lng: lng)
-    }
+    },
+    watchNetwork: watchNetwork(_:)
   )
 
   private var jsObserving = false
@@ -825,6 +826,16 @@ internal final class BoardSessionController: VescGattListener {
     jsObserving = false
     if groupRideObserver.publicRideNeedsLink { return }
     groupRideObserver.stop()
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `resyncGroupRide`
+  func resyncGroupRide() {
+    groupRideObserver.resync()
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `replayGroupRideEvent`
+  func replayGroupRideEvent(_ name: String) {
+    groupRideObserver.replayEvent(name)
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadPublicRide`
