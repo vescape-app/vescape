@@ -11,6 +11,10 @@ const allRefloat = Object.fromEntries(
       tab.groups.filter((group) => group.source === 'refloat').flatMap((group) => group.rows),
     ).map((row) => row.id),
     ...Object.keys(REFLOAT_FIELD_OVERLAY),
+    'leds.front.brightness',
+    'leds.rear.brightness',
+    'leds.front.mode',
+    'hardware.leds.pin',
   ].map((id) => [id, 0]),
 )
 const allMotor = Object.fromEntries(

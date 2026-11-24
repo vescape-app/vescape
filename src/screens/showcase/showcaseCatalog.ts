@@ -245,6 +245,8 @@ export const SHOWCASE_GROUPS: readonly ShowcaseGroup[] = [
           item('RimTempArc', ['temperature', 'motor', 'mosfet']),
           item('LiveMetricCard', ['telemetry', 'speed', 'duty']),
           item('BoardConfigSection', ['config', 'refloat', 'motor']),
+          item('BoardConfigFieldEditor', ['config', 'editor', 'refloat', 'settings']),
+          item('BoardConfigReviewModal', ['config', 'review', 'changeset', 'revert', 'import']),
           item('BoardPill', ['chip', 'status']),
           item('BoardSelectorSheet', ['switch board', 'picker']),
           item('BoardConfigChangeNoticeModal', ['diff', 'config changed']),

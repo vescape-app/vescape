@@ -44,6 +44,7 @@ export interface ResolvedBoardConfigField {
   step: number | null
   manualDecimals: number | null
   displayScale: number
+  editAsPercentage: boolean
   enumNames: string[]
   type: BoardConfigValueType
   description: string | null
@@ -103,6 +104,10 @@ export function getFieldDisplayScale(
 ): number {
   const overlayScale = overlayMap[fieldId]?.displayScale
   if (overlayScale != null && Number.isFinite(overlayScale) && overlayScale > 0) return overlayScale
+  if (schemaField?.editAsPercentage) {
+    const scale = schemaField.editorScale
+    return scale != null && Number.isFinite(scale) && scale !== 1 && scale > 0 ? scale : 100
+  }
   if (
     schemaField?.editorScale != null &&
     Number.isFinite(schemaField.editorScale) &&
@@ -110,7 +115,6 @@ export function getFieldDisplayScale(
   ) {
     return schemaField.editorScale
   }
-  if (schemaField?.editAsPercentage) return 100
   return 1
 }
 
@@ -233,18 +237,24 @@ export function resolveBoardConfigField(
   const displayScale = getFieldDisplayScale(schemaField.id, schemaField, overlayLookup)
   const soft = resolveSoftBounds(schemaField, entry, hard)
   const risk = entry?.risk ?? null
+  const unit = schemaField.unit?.trim() || (schemaField.editAsPercentage ? '%' : null)
+  const defaultDecimals =
+    schemaField.editAsPercentage && displayScale === 100 && schemaField.editorDecimals != null
+      ? Math.max(0, schemaField.editorDecimals - 2)
+      : schemaField.editorDecimals
   return {
     id: schemaField.id,
     label: entry?.label || schemaField.label || schemaField.id,
     value,
-    unit: schemaField.unit ?? null,
+    unit,
     min: soft.min,
     max: soft.max,
     hardMin: hard?.min ?? null,
     hardMax: hard?.max ?? null,
     step: resolveRawStep(schemaField, entry, displayScale, soft),
-    manualDecimals: entry?.manualDecimals ?? schemaField.editorDecimals ?? null,
+    manualDecimals: entry?.manualDecimals ?? defaultDecimals ?? null,
     displayScale,
+    editAsPercentage: schemaField.editAsPercentage,
     enumNames: schemaField.enumNames,
     type: schemaField.type,
     description: entry?.description ?? schemaField.description ?? null,
@@ -372,6 +382,7 @@ function buildFallbackField(
     step: entry?.step ?? null,
     manualDecimals: entry?.manualDecimals ?? null,
     displayScale: entry?.displayScale ?? 1,
+    editAsPercentage: false,
     enumNames: [],
     type: typeof value === 'boolean' ? 'bool' : 'float32',
     description: entry?.description ?? null,

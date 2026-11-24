@@ -358,11 +358,64 @@
     },
     "fault_delay_switch_half": {
       "label": "One zone off, cutoff after",
+      "risk": "risky",
       "description": "How long one zone can stop sensing your foot before the board switches off. Applies at low speed, with Posi off."
     },
     "fault_delay_switch_full": {
       "label": "Both zones off, cutoff after",
+      "risk": "risky",
       "description": "How long both zones can stop sensing your foot before the board can switch off."
+    },
+    "fault_delay_pitch": {
+      "label": "Pitch cutoff after",
+      "risk": "risky"
+    },
+    "fault_delay_roll": {
+      "label": "Roll cutoff after",
+      "risk": "risky"
+    },
+    "fault_adc1": {
+      "label": "Zone 1 engages at",
+      "risk": "risky"
+    },
+    "fault_adc2": {
+      "label": "Zone 2 engages at",
+      "risk": "risky"
+    },
+    "fault_adc_half_erpm": {
+      "label": "One zone off is a fault below",
+      "risk": "risky"
+    },
+    "disabled": {
+      "label": "Disable Refloat",
+      "risk": "risky"
+    },
+    "inputtilt_remote_type": {
+      "label": "Remote input",
+      "risk": "risky"
+    },
+    "hertz": {
+      "risk": "risky"
+    },
+    "tiltback_hv": {
+      "label": "High voltage pushback at",
+      "risk": "risky"
+    },
+    "tiltback_lv": {
+      "label": "Low voltage pushback at",
+      "risk": "risky"
+    },
+    "hardware.swap_footpad_adcs": {
+      "label": "Swap footpad zones",
+      "risk": "risky"
+    },
+    "is_footbeep_enabled": {
+      "label": "Beep on sensor fault",
+      "risk": "risky"
+    },
+    "is_beeper_enabled": {
+      "label": "External buzzer (servo/PPM)",
+      "risk": "risky"
     },
     "fault_moving_fault_disabled": {
       "label": "Moving faults disabled",
