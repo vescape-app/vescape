@@ -2059,7 +2059,7 @@ internal final class BoardSessionController: VescGattListener {
   private func handleLinkIntegrityRefloat(_ payload: [UInt8]) -> Bool {
     guard let session, let config else { return false }
     let version: String
-    switch RefloatConfigProtocol.parseGetInfoResponse(payload) {
+    switch RefloatConfigProtocol.parseGetInfoResponse(payload, transport: config.transport) {
     case .success(let info): version = info.version
     case .failure: return false
     }

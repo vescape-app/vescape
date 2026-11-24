@@ -32,7 +32,7 @@ class ConfigRWControllerLinkIntegrityTest {
     private fun controller() = ConfigRWController(
         scheduler = scheduler,
         appDataScope = CoroutineScope(Dispatchers.Unconfined),
-        repository = { error("repository should not be used") },
+        loadProfile = { error("loadProfile should not be used") },
         port = object : ConfigRWControllerPort {
             override fun connection() = ConfigConnectionSnapshot(
                 config = config,

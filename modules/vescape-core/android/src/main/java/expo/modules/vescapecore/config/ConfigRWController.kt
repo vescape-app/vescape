@@ -8,11 +8,15 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.isPollingCapable
 import expo.modules.vescapecore.diagnostics.newOperationId
+import expo.modules.vescapecore.protocol.COMM_CUSTOM_APP_DATA
+import expo.modules.vescapecore.protocol.COMM_FORWARD_CAN
+import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
+import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
+import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.LinkIntegrity
 import expo.modules.vescapecore.runtime.Scheduler
 import expo.modules.vescapecore.telemetry.tuneCompatibilityVersion
-import expo.modules.vescapecore.telemetry.AppDataRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -55,7 +59,7 @@ internal interface ConfigRWControllerPort {
 internal class ConfigRWController(
     private val scheduler: Scheduler,
     private val appDataScope: CoroutineScope,
-    private val repository: () -> AppDataRepository,
+    private val loadProfile: suspend (String) -> Map<String, Any?>?,
     private val port: ConfigRWControllerPort,
 ) {
     private var state: ConfigRWState = ConfigRWState.Idle
@@ -104,7 +108,7 @@ internal class ConfigRWController(
         if (initial.transport == null) return pending.noCanId("push")
         idleBlockReason(initial, System.currentTimeMillis())?.let { return pending.notIdle(it) }
         appDataScope.launch {
-            val profile = try { repository().getTuneProfile(pending.profileId) } catch (error: Exception) {
+            val profile = try { loadProfile(pending.profileId) } catch (error: Exception) {
                 RecordingStorageFailure.reportRead("board_tune_profile_read", error)
                 scheduler.post { pending.onError(RefloatConfigErrorCode.CONFIG_READ_FAILED.name, "Tune profile could not be loaded") }
                 return@launch
@@ -163,8 +167,43 @@ internal class ConfigRWController(
         }
     }
 
-    fun onPayload(event: ConfigRWEvent) = dispatch(event)
+    fun onPayload(payload: ByteArray, capturedAtMs: Long = System.currentTimeMillis()): Boolean {
+        val transport = ConfigRWFsm.transportOf(state) ?: return false
+        if (!RefloatConfigProtocol.matchesTransport(payload, transport)) return false
+        val cmd = payloadCommand(payload) ?: return false
+        return when (cmd) {
+            COMM_CUSTOM_APP_DATA -> {
+                if (RefloatConfigProtocol.parseGetInfoResponse(payload, transport) is RefloatConfigProtocolResult.Success) {
+                    dispatch(ConfigRWEvent.InfoPayloadReceived(payload))
+                    true
+                } else {
+                    false
+                }
+            }
+            COMM_GET_CUSTOM_CONFIG_XML -> {
+                dispatch(ConfigRWEvent.XmlPayloadReceived(payload))
+                true
+            }
+            COMM_GET_CUSTOM_CONFIG -> {
+                dispatch(ConfigRWEvent.ConfigBytesPayloadReceived(payload, capturedAtMs))
+                true
+            }
+            COMM_SET_CUSTOM_CONFIG -> {
+                dispatch(ConfigRWEvent.SetConfigResponseReceived(payload))
+                true
+            }
+            else -> false
+        }
+    }
+
     fun onSessionTerminated(message: String) { if (isInFlight) dispatch(ConfigRWEvent.SessionTerminated(message)) }
+
+    private fun payloadCommand(payload: ByteArray): Int? {
+        if (payload.isEmpty()) return null
+        val first = payload[0].toInt() and 0xff
+        if (first == COMM_FORWARD_CAN && payload.size >= 3) return payload[2].toInt() and 0xff
+        return first
+    }
 
     private fun dispatch(event: ConfigRWEvent) {
         val (next, effects) = ConfigRWFsm.apply(state, event)

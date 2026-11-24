@@ -114,7 +114,9 @@ internal object ConfigRWFsm {
         state: ConfigRWState,
         event: ConfigRWEvent.InfoPayloadReceived,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
-        val info = when (val parsed = RefloatConfigProtocol.parseGetInfoResponse(event.payload)) {
+        val transport = transportOf(state) ?: return state to emptyList()
+        if (!RefloatConfigProtocol.matchesTransport(event.payload, transport)) return state to emptyList()
+        val info = when (val parsed = RefloatConfigProtocol.parseGetInfoResponse(event.payload, transport)) {
             is RefloatConfigProtocolResult.Success -> parsed.value.version
             is RefloatConfigProtocolResult.Failure -> null
         }
@@ -136,7 +138,8 @@ internal object ConfigRWFsm {
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
       return when (state) {
         is ConfigRWState.ReadCollectingXml -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload)) {
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) return state to emptyList()
+            when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload, transport = state.ctx.transport)) {
                 is RefloatConfigProtocolResult.Failure -> readFailure(
                     state.ctx,
                     RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
@@ -181,7 +184,8 @@ internal object ConfigRWFsm {
         }
 
         is ConfigRWState.WriteCollectingXml -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload)) {
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) return state to emptyList()
+            when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload, transport = state.ctx.transport)) {
                 is RefloatConfigProtocolResult.Failure -> writeFailure(
                     state.ctx,
                     RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
@@ -191,6 +195,7 @@ internal object ConfigRWFsm {
                 )
                 is RefloatConfigProtocolResult.Success -> {
                     val chunk = parsed.value
+                    if (chunk.offset != state.nextOffset) return state to emptyList()
                     val merged = ByteArray(state.xmlBytes.size + chunk.chunk.size)
                     state.xmlBytes.copyInto(merged)
                     chunk.chunk.copyInto(merged, state.xmlBytes.size)
@@ -235,53 +240,65 @@ internal object ConfigRWFsm {
         event: ConfigRWEvent.ConfigBytesPayloadReceived,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> = when (state) {
         is ConfigRWState.ReadAwaitingConfig -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload)) {
-                is RefloatConfigProtocolResult.Failure -> readFailure(
-                    state.ctx,
-                    RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
-                    parsed.message,
-                    rawConfig = null,
-                )
-                is RefloatConfigProtocolResult.Success -> decodeAndCompleteRead(
-                    state.ctx,
-                    state.xmlBytes,
-                    parsed.value,
-                    event.capturedAtMs,
-                )
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) {
+                state to emptyList()
+            } else {
+                when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload, transport = state.ctx.transport)) {
+                    is RefloatConfigProtocolResult.Failure -> readFailure(
+                        state.ctx,
+                        RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
+                        parsed.message,
+                        rawConfig = null,
+                    )
+                    is RefloatConfigProtocolResult.Success -> decodeAndCompleteRead(
+                        state.ctx,
+                        state.xmlBytes,
+                        parsed.value,
+                        event.capturedAtMs,
+                    )
+                }
             }
         }
 
         is ConfigRWState.WriteAwaitingConfig -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload)) {
-                is RefloatConfigProtocolResult.Failure -> writeFailure(
-                    state.ctx,
-                    RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
-                    parsed.message,
-                    phase = ConfigWritePhaseTag.READING_CONFIG,
-                    rawConfig = null,
-                )
-                is RefloatConfigProtocolResult.Success -> encodeAndSendWrite(
-                    state.ctx,
-                    state.xmlBytes,
-                    parsed.value,
-                )
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) {
+                state to emptyList()
+            } else {
+                when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload, transport = state.ctx.transport)) {
+                    is RefloatConfigProtocolResult.Failure -> writeFailure(
+                        state.ctx,
+                        RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
+                        parsed.message,
+                        phase = ConfigWritePhaseTag.READING_CONFIG,
+                        rawConfig = null,
+                    )
+                    is RefloatConfigProtocolResult.Success -> encodeAndSendWrite(
+                        state.ctx,
+                        state.xmlBytes,
+                        parsed.value,
+                    )
+                }
             }
         }
 
         is ConfigRWState.WriteVerifying -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload)) {
-                is RefloatConfigProtocolResult.Failure -> writeFailure(
-                    state.ctx,
-                    RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
-                    parsed.message,
-                    phase = ConfigWritePhaseTag.VERIFYING,
-                    rawConfig = state.originalConfig,
-                )
-                is RefloatConfigProtocolResult.Success -> verifyAndCompleteWrite(
-                    state,
-                    parsed.value,
-                    event.capturedAtMs,
-                )
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) {
+                state to emptyList()
+            } else {
+                when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload, transport = state.ctx.transport)) {
+                    is RefloatConfigProtocolResult.Failure -> writeFailure(
+                        state.ctx,
+                        RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
+                        parsed.message,
+                        phase = ConfigWritePhaseTag.VERIFYING,
+                        rawConfig = state.originalConfig,
+                    )
+                    is RefloatConfigProtocolResult.Success -> verifyAndCompleteWrite(
+                        state,
+                        parsed.value,
+                        event.capturedAtMs,
+                    )
+                }
             }
         }
 
@@ -293,7 +310,8 @@ internal object ConfigRWFsm {
         event: ConfigRWEvent.SetConfigResponseReceived,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
         if (state !is ConfigRWState.WriteAwaitingSetAck) return state to emptyList()
-        return when (val parsed = RefloatConfigProtocol.parseSetCustomConfigResponse(event.payload)) {
+        if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) return state to emptyList()
+        return when (val parsed = RefloatConfigProtocol.parseSetCustomConfigResponse(event.payload, transport = state.ctx.transport)) {
             is RefloatConfigProtocolResult.Failure -> writeFailure(
                 state.ctx,
                 RefloatConfigErrorCode.CONFIG_WRITE_FAILED,
@@ -330,8 +348,13 @@ internal object ConfigRWFsm {
                 )
             } else readFailure(state.ctx, event.code, "$message at XML offset ${state.nextOffset}", rawConfig = null)
             is ConfigRWState.ReadAwaitingConfig -> readFailure(state.ctx, event.code, message, rawConfig = null)
-            is ConfigRWState.WriteCollectingXml -> writeFailure(
-                state.ctx, event.code, message,
+            is ConfigRWState.WriteCollectingXml -> if (!state.retried) {
+                state.copy(retried = true) to listOf(
+                    ConfigRWEffect.ScheduleTimeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS),
+                    ConfigRWEffect.SendFrame(buildXmlRequest(state.ctx.transport, state.expectedXmlLength, state.nextOffset)),
+                )
+            } else writeFailure(
+                state.ctx, event.code, "$message at XML offset ${state.nextOffset}",
                 phase = ConfigWritePhaseTag.READING_SCHEMA, rawConfig = null,
             )
             is ConfigRWState.WriteAwaitingConfig -> writeFailure(
@@ -704,6 +727,16 @@ internal object ConfigRWFsm {
         is ConfigRWState.ReadCollectingXml -> state.ctx
         is ConfigRWState.ReadAwaitingConfig -> state.ctx
         else -> null
+    }
+
+    internal fun transportOf(state: ConfigRWState): BoardTransport? = when (state) {
+        is ConfigRWState.ReadCollectingXml -> state.ctx.transport
+        is ConfigRWState.ReadAwaitingConfig -> state.ctx.transport
+        is ConfigRWState.WriteCollectingXml -> state.ctx.transport
+        is ConfigRWState.WriteAwaitingConfig -> state.ctx.transport
+        is ConfigRWState.WriteAwaitingSetAck -> state.ctx.transport
+        is ConfigRWState.WriteVerifying -> state.ctx.transport
+        ConfigRWState.Idle -> null
     }
 
     private fun buildXmlRequest(transport: BoardTransport, expected: Int?, nextOffset: Int): ByteArray {

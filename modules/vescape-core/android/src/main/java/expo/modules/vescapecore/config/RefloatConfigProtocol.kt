@@ -44,15 +44,40 @@ internal object RefloatConfigProtocol {
       ?.takeIf { it.isNotEmpty() }
       ?.let { baseVersionPattern.find(it)?.groupValues?.get(1) }
 
-  private fun commandOffset(payload: ByteArray, expectedCommand: Int): RefloatConfigProtocolResult<Int> {
+  fun matchesTransport(payload: ByteArray, transport: BoardTransport): Boolean {
+    if (payload.isEmpty()) return false
+    if ((payload[0].toInt() and 0xff) != COMM_FORWARD_CAN) return true
+    if (payload.size < 2) return false
+    return when (transport) {
+      BoardTransport.Direct -> false
+      is BoardTransport.Can -> (payload[1].toInt() and 0xff) == transport.canId
+    }
+  }
+
+  private fun commandOffset(
+    payload: ByteArray,
+    expectedCommand: Int,
+    transport: BoardTransport? = null,
+  ): RefloatConfigProtocolResult<Int> {
     if (payload.isEmpty()) {
       return RefloatConfigProtocolResult.Failure("Empty Refloat config response")
     }
     val cmd = payload[0].toInt() and 0xff
     if (cmd == expectedCommand) return RefloatConfigProtocolResult.Success(0)
     if (cmd == COMM_FORWARD_CAN) {
+      if (transport == BoardTransport.Direct) {
+        return RefloatConfigProtocolResult.Failure("Unexpected forwarded Refloat config response on direct transport")
+      }
       if (payload.size < 3) {
         return RefloatConfigProtocolResult.Failure("Short forwarded Refloat config response")
+      }
+      if (transport is BoardTransport.Can) {
+        val responseCanId = payload[1].toInt() and 0xff
+        if (responseCanId != transport.canId) {
+          return RefloatConfigProtocolResult.Failure(
+            "Unexpected forwarded CAN id $responseCanId, expected ${transport.canId}",
+          )
+        }
       }
       val forwarded = payload[2].toInt() and 0xff
       if (forwarded == expectedCommand) return RefloatConfigProtocolResult.Success(2)
@@ -65,7 +90,11 @@ internal object RefloatConfigProtocol {
     )
   }
 
-  private fun appCommandOffset(payload: ByteArray, expectedCommand: Int): RefloatConfigProtocolResult<Int> {
+  private fun appCommandOffset(
+    payload: ByteArray,
+    expectedCommand: Int,
+    transport: BoardTransport? = null,
+  ): RefloatConfigProtocolResult<Int> {
     if (payload.size < 3) {
       return RefloatConfigProtocolResult.Failure("Short Refloat app response")
     }
@@ -82,8 +111,19 @@ internal object RefloatConfigProtocol {
       )
     }
     if (cmd == COMM_FORWARD_CAN) {
+      if (transport == BoardTransport.Direct) {
+        return RefloatConfigProtocolResult.Failure("Unexpected forwarded Refloat app response on direct transport")
+      }
       if (payload.size < 5) {
         return RefloatConfigProtocolResult.Failure("Short forwarded Refloat app response")
+      }
+      if (transport is BoardTransport.Can) {
+        val responseCanId = payload[1].toInt() and 0xff
+        if (responseCanId != transport.canId) {
+          return RefloatConfigProtocolResult.Failure(
+            "Unexpected forwarded CAN id $responseCanId, expected ${transport.canId}",
+          )
+        }
       }
       val forwarded = payload[2].toInt() and 0xff
       val magic = payload[3].toInt() and 0xff
@@ -145,8 +185,9 @@ internal object RefloatConfigProtocol {
   fun parseCustomConfigXmlResponse(
     payload: ByteArray,
     expectedConfInd: Int = 0,
+    transport: BoardTransport? = null,
   ): RefloatConfigProtocolResult<RefloatConfigXmlChunk> {
-    val cmdOffset = when (val result = commandOffset(payload, COMM_GET_CUSTOM_CONFIG_XML)) {
+    val cmdOffset = when (val result = commandOffset(payload, COMM_GET_CUSTOM_CONFIG_XML, transport)) {
       is RefloatConfigProtocolResult.Success -> result.value
       is RefloatConfigProtocolResult.Failure -> return result
     }
@@ -198,8 +239,9 @@ internal object RefloatConfigProtocol {
   fun parseSetCustomConfigResponse(
     payload: ByteArray,
     expectedConfInd: Int = 0,
+    transport: BoardTransport? = null,
   ): RefloatConfigProtocolResult<Int> {
-    val offset = when (val result = commandOffset(payload, COMM_SET_CUSTOM_CONFIG)) {
+    val offset = when (val result = commandOffset(payload, COMM_SET_CUSTOM_CONFIG, transport)) {
       is RefloatConfigProtocolResult.Success -> result.value
       is RefloatConfigProtocolResult.Failure -> return result
     }
@@ -216,8 +258,9 @@ internal object RefloatConfigProtocol {
   fun parseCustomConfigResponse(
     payload: ByteArray,
     expectedConfInd: Int = 0,
+    transport: BoardTransport? = null,
   ): RefloatConfigProtocolResult<RefloatConfigBytes> {
-    val offset = when (val result = commandOffset(payload, COMM_GET_CUSTOM_CONFIG)) {
+    val offset = when (val result = commandOffset(payload, COMM_GET_CUSTOM_CONFIG, transport)) {
       is RefloatConfigProtocolResult.Success -> result.value
       is RefloatConfigProtocolResult.Failure -> return result
     }
@@ -242,8 +285,11 @@ internal object RefloatConfigProtocol {
     )
   }
 
-  fun parseGetInfoResponse(payload: ByteArray): RefloatConfigProtocolResult<RefloatPackageInfo> {
-    val offset = when (val result = appCommandOffset(payload, REFLOAT_GET_INFO)) {
+  fun parseGetInfoResponse(
+    payload: ByteArray,
+    transport: BoardTransport? = null,
+  ): RefloatConfigProtocolResult<RefloatPackageInfo> {
+    val offset = when (val result = appCommandOffset(payload, REFLOAT_GET_INFO, transport)) {
       is RefloatConfigProtocolResult.Success -> result.value
       is RefloatConfigProtocolResult.Failure -> return result
     }

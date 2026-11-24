@@ -131,7 +131,8 @@ class ConfigRWFsmWriteBaseTest {
             startWrite(writeBase(), mapOf("tuned" to Double.NaN)),
         )
         val (reading, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(null))
-        val (_, timedOut) = ConfigRWFsm.apply(reading, ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT))
+        val (retried, _) = ConfigRWFsm.apply(reading, ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT))
+        val (_, timedOut) = ConfigRWFsm.apply(retried, ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT))
 
         assertEquals(RefloatConfigErrorCode.CONFIG_VALUE_INVALID, rejected.failureCode())
         assertFalse(rejected.contains(ConfigRWEffect.DemoteWriteBase))

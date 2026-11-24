@@ -157,7 +157,6 @@ import java.io.File
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.launch
 import expo.modules.kotlin.jni.NativeArrayBuffer
-import expo.modules.vescapecore.config.ConfigRWEvent
 import expo.modules.vescapecore.diagnostics.DiagnosticContext
 import expo.modules.vescapecore.diagnostics.DiagnosticsRecorder
 import expo.modules.vescapecore.notification.NotificationPresenter
@@ -416,7 +415,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         ConfigRWController(
             scheduler,
             CoreForegroundService.appDataScope,
-            { AppDataRepository.get(service.applicationContext) },
+            { AppDataRepository.get(service.applicationContext).getTuneProfile(it) },
             object : ConfigRWControllerPort {
                 override fun connection() =
                     ConfigConnectionSnapshot(
@@ -1428,11 +1427,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         when (payload[0].toInt() and 0xff) {
             COMM_FW_VERSION -> handleFwVersionPayload(payload)
             COMM_BMS_GET_VALUES -> handleBmsPayload(payload)
-            COMM_GET_CUSTOM_CONFIG_XML -> configController.onPayload(ConfigRWEvent.XmlPayloadReceived(payload))
-            COMM_GET_CUSTOM_CONFIG -> configController.onPayload(
-                ConfigRWEvent.ConfigBytesPayloadReceived(payload, System.currentTimeMillis()),
-            )
-            COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+            COMM_GET_CUSTOM_CONFIG_XML,
+            COMM_GET_CUSTOM_CONFIG,
+            COMM_SET_CUSTOM_CONFIG,
+            -> configController.onPayload(payload, System.currentTimeMillis())
             COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(1, payload.size))
             COMM_PRINT -> handlePrintPayload(payload.copyOfRange(1, payload.size))
             COMM_FORWARD_CAN -> {
@@ -1441,11 +1439,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
                         COMM_BMS_GET_VALUES -> handleBmsPayload(payload.copyOfRange(2, payload.size))
                         COMM_FW_VERSION -> handleFwVersionPayload(payload.copyOfRange(2, payload.size))
                         COMM_CUSTOM_APP_DATA -> handleCustomAppPayload(payload)
-                        COMM_GET_CUSTOM_CONFIG_XML -> configController.onPayload(ConfigRWEvent.XmlPayloadReceived(payload))
-                        COMM_GET_CUSTOM_CONFIG -> configController.onPayload(
-                            ConfigRWEvent.ConfigBytesPayloadReceived(payload, System.currentTimeMillis()),
-                        )
-                        COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+                        COMM_GET_CUSTOM_CONFIG_XML,
+                        COMM_GET_CUSTOM_CONFIG,
+                        COMM_SET_CUSTOM_CONFIG,
+                        -> configController.onPayload(payload, System.currentTimeMillis())
                         COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(3, payload.size))
                         COMM_PRINT -> handlePrintPayload(payload.copyOfRange(3, payload.size))
                     }
@@ -1456,12 +1453,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
     }
 
     private fun handleCustomAppPayload(payload: ByteArray) {
-        if (payload.size >= 3 &&
+        if ((payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA &&
+            payload.size >= 3 &&
             (payload[1].toInt() and 0xff) == REFLOAT_MAGIC &&
             (payload[2].toInt() and 0xff) == REFLOAT_GET_INFO
         ) {
             handleLinkIntegrityRefloat(payload)
-            configController.onPayload(ConfigRWEvent.InfoPayloadReceived(payload))
+            configController.onPayload(payload, System.currentTimeMillis())
             return
         }
         if (payload.size >= 5 &&
@@ -1471,7 +1469,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             (payload[4].toInt() and 0xff) == REFLOAT_GET_INFO
         ) {
             handleLinkIntegrityRefloat(payload)
-            configController.onPayload(ConfigRWEvent.InfoPayloadReceived(payload))
+            configController.onPayload(payload, System.currentTimeMillis())
             return
         }
         parseLightsControlResponse(payload)?.let { lights ->
@@ -1976,7 +1974,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private fun handleLinkIntegrityRefloat(payload: ByteArray) {
         val session = boardSession ?: return
         val config = boardConfig ?: return
-        val version = when (val result = RefloatConfigProtocol.parseGetInfoResponse(payload)) {
+        val version = when (val result = RefloatConfigProtocol.parseGetInfoResponse(payload, currentBoardTransport())) {
             is RefloatConfigProtocolResult.Success -> result.value.version
             is RefloatConfigProtocolResult.Failure -> return
         }

@@ -123,6 +123,73 @@ final class RefloatConfigProtocolTests: XCTestCase {
     XCTAssertEqual("Unexpected Refloat set config index 1", message)
   }
 
+  func testMatchesTransportAllowsUnwrappedRepliesAndFiltersWrappedCanId() {
+    let unwrapped: [UInt8] = [UInt8(COMM_GET_CUSTOM_CONFIG), 0]
+    let wrappedCan7: [UInt8] = [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_GET_CUSTOM_CONFIG), 0]
+    let wrappedCan9: [UInt8] = [UInt8(COMM_FORWARD_CAN), 9, UInt8(COMM_GET_CUSTOM_CONFIG), 0]
+
+    XCTAssertTrue(RefloatConfigProtocol.matchesTransport(unwrapped, transport: .direct))
+    XCTAssertTrue(RefloatConfigProtocol.matchesTransport(unwrapped, transport: .can(7)))
+    XCTAssertFalse(RefloatConfigProtocol.matchesTransport(wrappedCan7, transport: .direct))
+    XCTAssertTrue(RefloatConfigProtocol.matchesTransport(wrappedCan7, transport: .can(7)))
+    XCTAssertFalse(RefloatConfigProtocol.matchesTransport(wrappedCan9, transport: .can(7)))
+    XCTAssertFalse(RefloatConfigProtocol.matchesTransport([], transport: .direct))
+    XCTAssertFalse(RefloatConfigProtocol.matchesTransport([UInt8(COMM_FORWARD_CAN)], transport: .can(7)))
+  }
+
+  func testParsesUnwrappedConfigRepliesOnCanTransport() throws {
+    let xmlPayload: [UInt8] = [UInt8(COMM_GET_CUSTOM_CONFIG_XML), 0, 0, 0, 0, 4, 0, 0, 0, 0, 116, 101, 115, 116]
+    let cfgPayload: [UInt8] = [UInt8(COMM_GET_CUSTOM_CONFIG), 0, 1, 2, 3, 4, 9]
+    let ackPayload: [UInt8] = [UInt8(COMM_SET_CUSTOM_CONFIG)]
+    let infoPayload: [UInt8] = [UInt8(COMM_CUSTOM_APP_DATA), UInt8(REFLOAT_MAGIC), UInt8(REFLOAT_GET_INFO), 12, 1, 0]
+
+    XCTAssertEqual(4, try success(RefloatConfigProtocol.parseCustomConfigXmlResponse(xmlPayload, transport: .can(7))).totalLength)
+    XCTAssertEqual(1, try success(RefloatConfigProtocol.parseCustomConfigResponse(cfgPayload, transport: .can(7))).config.count)
+    XCTAssertEqual(0, try success(RefloatConfigProtocol.parseSetCustomConfigResponse(ackPayload, transport: .can(7))))
+    XCTAssertEqual("Float/Refloat 1.2", try success(RefloatConfigProtocol.parseGetInfoResponse(infoPayload, transport: .can(7))).version)
+  }
+
+  func testRejectsWrappedRepliesForWrongCanIdOrDirectTransport() throws {
+    let wrappedXml: [UInt8] = [UInt8(COMM_FORWARD_CAN), 9, UInt8(COMM_GET_CUSTOM_CONFIG_XML), 0, 0, 0, 0, 4, 0, 0, 0, 0, 116, 101, 115, 116]
+    let wrappedCfg: [UInt8] = [UInt8(COMM_FORWARD_CAN), 9, UInt8(COMM_GET_CUSTOM_CONFIG), 0, 1, 2, 3, 4, 9]
+    let wrappedAck: [UInt8] = [UInt8(COMM_FORWARD_CAN), 9, UInt8(COMM_SET_CUSTOM_CONFIG)]
+    let wrappedInfo: [UInt8] = [UInt8(COMM_FORWARD_CAN), 9, UInt8(COMM_CUSTOM_APP_DATA), UInt8(REFLOAT_MAGIC), UInt8(REFLOAT_GET_INFO), 12, 1, 0]
+
+    XCTAssertEqual(
+      "Unexpected forwarded CAN id 9, expected 7",
+      try failure(RefloatConfigProtocol.parseCustomConfigXmlResponse(wrappedXml, transport: .can(7)))
+    )
+    XCTAssertEqual(
+      "Unexpected forwarded CAN id 9, expected 7",
+      try failure(RefloatConfigProtocol.parseCustomConfigResponse(wrappedCfg, transport: .can(7)))
+    )
+    XCTAssertEqual(
+      "Unexpected forwarded CAN id 9, expected 7",
+      try failure(RefloatConfigProtocol.parseSetCustomConfigResponse(wrappedAck, transport: .can(7)))
+    )
+    XCTAssertEqual(
+      "Unexpected forwarded CAN id 9, expected 7",
+      try failure(RefloatConfigProtocol.parseGetInfoResponse(wrappedInfo, transport: .can(7)))
+    )
+
+    XCTAssertEqual(
+      "Unexpected forwarded Refloat config response on direct transport",
+      try failure(RefloatConfigProtocol.parseCustomConfigXmlResponse(wrappedXml, transport: .direct))
+    )
+    XCTAssertEqual(
+      "Unexpected forwarded Refloat config response on direct transport",
+      try failure(RefloatConfigProtocol.parseCustomConfigResponse(wrappedCfg, transport: .direct))
+    )
+    XCTAssertEqual(
+      "Unexpected forwarded Refloat config response on direct transport",
+      try failure(RefloatConfigProtocol.parseSetCustomConfigResponse(wrappedAck, transport: .direct))
+    )
+    XCTAssertEqual(
+      "Unexpected forwarded Refloat app response on direct transport",
+      try failure(RefloatConfigProtocol.parseGetInfoResponse(wrappedInfo, transport: .direct))
+    )
+  }
+
   private func success<T>(_ result: RefloatConfigProtocolResult<T>) throws -> T {
     switch result {
     case .success(let value): return value

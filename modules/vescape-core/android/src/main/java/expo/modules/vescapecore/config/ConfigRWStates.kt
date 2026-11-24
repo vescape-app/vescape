@@ -46,6 +46,7 @@ internal sealed class ConfigRWState {
         val xmlBytes: ByteArray,
         val expectedXmlLength: Int?,
         val nextOffset: Int,
+        val retried: Boolean = false,
     ) : ConfigRWState()
 
     data class WriteAwaitingConfig(

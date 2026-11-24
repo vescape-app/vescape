@@ -80,12 +80,23 @@ enum RefloatConfigProtocol {
     return transport.frame(frame)
   }
 
+  static func matchesTransport(_ payload: [UInt8], transport: BoardTransport) -> Bool {
+    guard let first = payload.first else { return false }
+    if Int(first) != COMM_FORWARD_CAN { return true }
+    guard payload.count >= 2 else { return false }
+    switch transport {
+    case .direct: return false
+    case .can(let canId): return Int(payload[1]) == canId
+    }
+  }
+
   static func parseSetCustomConfigResponse(
     _ payload: [UInt8],
-    expectedConfInd: Int = 0
+    expectedConfInd: Int = 0,
+    transport: BoardTransport? = nil
   ) -> RefloatConfigProtocolResult<Int> {
     let offset: Int
-    switch commandOffset(payload, expectedCommand: COMM_SET_CUSTOM_CONFIG) {
+    switch commandOffset(payload, expectedCommand: COMM_SET_CUSTOM_CONFIG, transport: transport) {
     case .success(let value): offset = value
     case .failure(let message): return .failure(message)
     }
@@ -101,10 +112,11 @@ enum RefloatConfigProtocol {
 
   static func parseCustomConfigXmlResponse(
     _ payload: [UInt8],
-    expectedConfInd: Int = 0
+    expectedConfInd: Int = 0,
+    transport: BoardTransport? = nil
   ) -> RefloatConfigProtocolResult<RefloatConfigXmlChunk> {
     let cmdOffset: Int
-    switch commandOffset(payload, expectedCommand: COMM_GET_CUSTOM_CONFIG_XML) {
+    switch commandOffset(payload, expectedCommand: COMM_GET_CUSTOM_CONFIG_XML, transport: transport) {
     case .success(let value): cmdOffset = value
     case .failure(let message): return .failure(message)
     }
@@ -132,10 +144,11 @@ enum RefloatConfigProtocol {
 
   static func parseCustomConfigResponse(
     _ payload: [UInt8],
-    expectedConfInd: Int = 0
+    expectedConfInd: Int = 0,
+    transport: BoardTransport? = nil
   ) -> RefloatConfigProtocolResult<RefloatConfigBytes> {
     let offset: Int
-    switch commandOffset(payload, expectedCommand: COMM_GET_CUSTOM_CONFIG) {
+    switch commandOffset(payload, expectedCommand: COMM_GET_CUSTOM_CONFIG, transport: transport) {
     case .success(let value): offset = value
     case .failure(let message): return .failure(message)
     }
@@ -155,9 +168,12 @@ enum RefloatConfigProtocol {
     )
   }
 
-  static func parseGetInfoResponse(_ payload: [UInt8]) -> RefloatConfigProtocolResult<RefloatPackageInfo> {
+  static func parseGetInfoResponse(
+    _ payload: [UInt8],
+    transport: BoardTransport? = nil
+  ) -> RefloatConfigProtocolResult<RefloatPackageInfo> {
     let offset: Int
-    switch appCommandOffset(payload, expectedCommand: REFLOAT_GET_INFO) {
+    switch appCommandOffset(payload, expectedCommand: REFLOAT_GET_INFO, transport: transport) {
     case .success(let value): offset = value
     case .failure(let message): return .failure(message)
     }
@@ -169,13 +185,23 @@ enum RefloatConfigProtocol {
 
   private static func commandOffset(
     _ payload: [UInt8],
-    expectedCommand: Int
+    expectedCommand: Int,
+    transport: BoardTransport? = nil
   ) -> RefloatConfigProtocolResult<Int> {
     guard !payload.isEmpty else { return .failure("Empty Refloat config response") }
     let cmd = Int(payload[0])
     if cmd == expectedCommand { return .success(0) }
     if cmd == COMM_FORWARD_CAN {
+      if case .direct = transport {
+        return .failure("Unexpected forwarded Refloat config response on direct transport")
+      }
       if payload.count < 3 { return .failure("Short forwarded Refloat config response") }
+      if case .can(let expectedCanId) = transport {
+        let responseCanId = Int(payload[1])
+        if responseCanId != expectedCanId {
+          return .failure("Unexpected forwarded CAN id \(responseCanId), expected \(expectedCanId)")
+        }
+      }
       let forwarded = Int(payload[2])
       if forwarded == expectedCommand { return .success(2) }
       return .failure("Unexpected forwarded Refloat config command \(forwarded), expected \(expectedCommand)")
@@ -185,7 +211,8 @@ enum RefloatConfigProtocol {
 
   private static func appCommandOffset(
     _ payload: [UInt8],
-    expectedCommand: Int
+    expectedCommand: Int,
+    transport: BoardTransport? = nil
   ) -> RefloatConfigProtocolResult<Int> {
     if payload.count < 3 { return .failure("Short Refloat app response") }
     let cmd = Int(payload[0])
@@ -197,7 +224,16 @@ enum RefloatConfigProtocol {
       return .failure("Unexpected Refloat app command \(appCommand), expected \(expectedCommand)")
     }
     if cmd == COMM_FORWARD_CAN {
+      if case .direct = transport {
+        return .failure("Unexpected forwarded Refloat app response on direct transport")
+      }
       if payload.count < 5 { return .failure("Short forwarded Refloat app response") }
+      if case .can(let expectedCanId) = transport {
+        let responseCanId = Int(payload[1])
+        if responseCanId != expectedCanId {
+          return .failure("Unexpected forwarded CAN id \(responseCanId), expected \(expectedCanId)")
+        }
+      }
       let forwarded = Int(payload[2])
       let magic = Int(payload[3])
       let appCommand = Int(payload[4])

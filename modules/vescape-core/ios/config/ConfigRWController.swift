@@ -52,6 +52,7 @@ private struct ConfigWriteContext {
   let appBoardId: String?
   let fwVersion: String?
   var refloatVersion: String?
+  var xmlRetried = false
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt
@@ -201,22 +202,22 @@ internal final class ConfigRWController {
   }
 
   func onPayload(_ payload: [UInt8], connection: ConfigRWConnection) -> Bool {
-    guard isInFlight else { return false }
+    guard let transport = currentTransport else { return false }
+    guard RefloatConfigProtocol.matchesTransport(payload, transport: transport) else { return false }
     let cmd = payloadCommand(payload)
     if cmd == COMM_CUSTOM_APP_DATA {
-      applyInfo(payload)
-      return true
+      return applyInfo(payload, transport: transport)
     }
     if cmd == COMM_GET_CUSTOM_CONFIG_XML {
-      applyXml(payload, connection)
+      applyXml(payload, transport: transport, connection: connection)
       return true
     }
     if cmd == COMM_GET_CUSTOM_CONFIG {
-      applyConfig(payload, connection)
+      applyConfig(payload, transport: transport, connection: connection)
       return true
     }
     if cmd == COMM_SET_CUSTOM_CONFIG {
-      applySetAck(payload, connection)
+      applySetAck(payload, transport: transport, connection: connection)
       return true
     }
     return false
@@ -227,13 +228,12 @@ internal final class ConfigRWController {
     abort(code: .BOARD_NOT_CONNECTED, message: message, resumePolling: false, connection: connection)
   }
 
-  private func applyInfo(_ payload: [UInt8]) {
-    let version: String?
-    switch RefloatConfigProtocol.parseGetInfoResponse(payload) {
+  private func applyInfo(_ payload: [UInt8], transport: BoardTransport) -> Bool {
+    let version: String
+    switch RefloatConfigProtocol.parseGetInfoResponse(payload, transport: transport) {
     case .success(let info): version = info.version
-    case .failure: version = nil
+    case .failure: return false
     }
-    guard let version else { return }
     switch state {
     case .readCollectingXml(var ctx, let xmlBytes, let expected):
       ctx.refloatVersion = version
@@ -254,14 +254,15 @@ internal final class ConfigRWController {
       ctx.refloatVersion = version
       state = .writeVerifying(ctx, schema, original, patched)
     case .idle:
-      break
+      return false
     }
+    return true
   }
 
-  private func applyXml(_ payload: [UInt8], _ connection: ConfigRWConnection) {
+  private func applyXml(_ payload: [UInt8], transport: BoardTransport, connection: ConfigRWConnection) {
     switch state {
     case .readCollectingXml(var ctx, let xmlBytes, _):
-      switch RefloatConfigProtocol.parseCustomConfigXmlResponse(payload) {
+      switch RefloatConfigProtocol.parseCustomConfigXmlResponse(payload, transport: transport) {
       case .failure(let message):
         fail(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, rawConfig: nil, connection: connection)
       case .success(let chunk):
@@ -281,11 +282,13 @@ internal final class ConfigRWController {
           _ = send(connection, buildXmlRequest(ctx.transport, expected: chunk.totalLength, nextOffset: nextOffset))
         }
       }
-    case .writeCollectingXml(let ctx, let xmlBytes, _):
-      switch RefloatConfigProtocol.parseCustomConfigXmlResponse(payload) {
+    case .writeCollectingXml(var ctx, let xmlBytes, _):
+      switch RefloatConfigProtocol.parseCustomConfigXmlResponse(payload, transport: transport) {
       case .failure(let message):
         failWrite(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, phase: .readingSchema, rawConfig: nil, connection: connection)
       case .success(let chunk):
+        guard chunk.offset == xmlBytes.count else { return }
+        ctx.xmlRetried = false
         let merged = xmlBytes + chunk.chunk
         let nextOffset = chunk.offset + chunk.chunk.count
         if nextOffset >= chunk.totalLength {
@@ -305,24 +308,24 @@ internal final class ConfigRWController {
     }
   }
 
-  private func applyConfig(_ payload: [UInt8], _ connection: ConfigRWConnection) {
+  private func applyConfig(_ payload: [UInt8], transport: BoardTransport, connection: ConfigRWConnection) {
     switch state {
     case .readAwaitingConfig(let ctx, let xmlBytes):
-      switch RefloatConfigProtocol.parseCustomConfigResponse(payload) {
+      switch RefloatConfigProtocol.parseCustomConfigResponse(payload, transport: transport) {
       case .failure(let message):
         fail(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, rawConfig: nil, connection: connection)
       case .success(let configBytes):
         decodeAndCompleteRead(ctx, xmlBytes, configBytes, connection)
       }
     case .writeAwaitingConfig(let ctx, let xmlBytes):
-      switch RefloatConfigProtocol.parseCustomConfigResponse(payload) {
+      switch RefloatConfigProtocol.parseCustomConfigResponse(payload, transport: transport) {
       case .failure(let message):
         failWrite(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, phase: .readingConfig, rawConfig: nil, connection: connection)
       case .success(let configBytes):
         encodeAndSendWrite(ctx, xmlBytes, configBytes, connection)
       }
     case .writeVerifying(let ctx, let schema, let original, let patched):
-      switch RefloatConfigProtocol.parseCustomConfigResponse(payload) {
+      switch RefloatConfigProtocol.parseCustomConfigResponse(payload, transport: transport) {
       case .failure(let message):
         failWrite(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, phase: .verifying, rawConfig: original, connection: connection)
       case .success(let configBytes):
@@ -333,9 +336,9 @@ internal final class ConfigRWController {
     }
   }
 
-  private func applySetAck(_ payload: [UInt8], _ connection: ConfigRWConnection) {
+  private func applySetAck(_ payload: [UInt8], transport: BoardTransport, connection: ConfigRWConnection) {
     guard case .writeAwaitingSetAck(let ctx, let schema, let original, let patched) = state else { return }
-    switch RefloatConfigProtocol.parseSetCustomConfigResponse(payload) {
+    switch RefloatConfigProtocol.parseSetCustomConfigResponse(payload, transport: transport) {
     case .failure(let message):
       failWrite(code: .CONFIG_WRITE_FAILED, message: message, phase: .sendingWrite, rawConfig: original, connection: connection)
     case .success:
@@ -610,6 +613,19 @@ internal final class ConfigRWController {
     }
   }
 
+  private var currentTransport: BoardTransport? {
+    switch state {
+    case .readCollectingXml(let ctx, _, _), .readAwaitingConfig(let ctx, _):
+      return ctx.transport
+    case .writeCollectingXml(let ctx, _, _), .writeAwaitingConfig(let ctx, _):
+      return ctx.transport
+    case .writeAwaitingSetAck(let ctx, _, _, _), .writeVerifying(let ctx, _, _, _):
+      return ctx.transport
+    case .idle:
+      return nil
+    }
+  }
+
   private func send(_ connection: ConfigRWConnection, _ payload: [UInt8]) -> Bool {
     if !connection.sendPayload(payload) {
       abort(code: .GATT_NOT_WRITABLE, message: "Board GATT is not writable", resumePolling: nil, connection: connection)
@@ -627,11 +643,36 @@ internal final class ConfigRWController {
     let generation = timeoutGeneration
     scheduler.postDelayed(timeoutMs) { [weak self] in
       guard let self, self.timeoutGeneration == generation, self.isInFlight else { return }
-      if case .readCollectingXml(var ctx, let bytes, let expected) = self.state, !ctx.xmlRetried {
-        ctx.xmlRetried = true
-        self.state = .readCollectingXml(ctx, bytes, expected)
-        self.scheduleTimeout(.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS, connection)
-        _ = self.send(connection, self.buildXmlRequest(ctx.transport, expected: expected, nextOffset: bytes.count))
+      if case .readCollectingXml(var ctx, let bytes, let expected) = self.state {
+        if !ctx.xmlRetried {
+          ctx.xmlRetried = true
+          self.state = .readCollectingXml(ctx, bytes, expected)
+          self.scheduleTimeout(.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS, connection)
+          _ = self.send(connection, self.buildXmlRequest(ctx.transport, expected: expected, nextOffset: bytes.count))
+          return
+        }
+        self.abort(
+          code: code,
+          message: "Timed out reading Refloat config at XML offset \(bytes.count)",
+          resumePolling: nil,
+          connection: connection
+        )
+        return
+      }
+      if case .writeCollectingXml(var ctx, let bytes, let expected) = self.state {
+        if !ctx.xmlRetried {
+          ctx.xmlRetried = true
+          self.state = .writeCollectingXml(ctx, bytes, expected)
+          self.scheduleTimeout(.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS, connection)
+          _ = self.send(connection, self.buildXmlRequest(ctx.transport, expected: expected, nextOffset: bytes.count))
+          return
+        }
+        self.abort(
+          code: code,
+          message: "Timed out reading Refloat config at XML offset \(bytes.count)",
+          resumePolling: nil,
+          connection: connection
+        )
         return
       }
       self.abort(code: code, message: "Timed out reading Refloat config", resumePolling: nil, connection: connection)
