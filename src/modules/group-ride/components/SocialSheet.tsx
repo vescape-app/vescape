@@ -36,11 +36,11 @@ export function SocialSheet(props: SocialRiderPanelProps) {
 }
 
 const ENDED: Record<NonNullable<PublicRideStatus['reason']>, string> = {
-  replaced: 'Turned off: you went public on another phone.',
-  'end-time': 'Your public ride time is up.',
-  'away-expired': 'You were offline too long. Back on when you reconnect.',
-  'signed-out': 'Turned off: you signed out.',
-  refused: 'The server turned it off. Check your nick and sign-in.',
+  replaced: 'Another phone took over',
+  'end-time': 'Your public ride time is up',
+  'away-expired': 'Off until you reconnect',
+  'signed-out': 'Off: you signed out',
+  refused: 'The server turned it off',
 }
 
 function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
@@ -54,6 +54,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   const signedIn = useDeviceAccountReady()
   const hasNick = useRiderProfileStore((s) => s.profile?.nick != null)
   const profileLoaded = useRiderProfileStore((s) => s.loaded)
+  const profileError = useRiderProfileStore((s) => s.error)
   const settings = signedIn ? (
     <IconButton
       icon={UserCircleGearIcon}
@@ -105,11 +106,13 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
     ? null
     : !hasNick
       ? !profileLoaded
-        ? 'Loading your rider profile…'
+        ? profileError
+          ? 'Can’t load profile, retrying…'
+          : 'Loading your rider profile…'
         : null
       : !status.supported
         ? connection === 'connected'
-          ? 'Public ride is not available on the server yet.'
+          ? 'Not available on this server yet'
           : 'Connecting to server…'
         : status.activation === 'off' && status.reason
           ? ENDED[status.reason]
