@@ -3,7 +3,6 @@ import { StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { CaretRightIcon, UserCircleGearIcon, WarningIcon } from 'phosphor-react-native'
 import type { PublicRideStatus } from 'vescape-core'
-import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
@@ -137,6 +136,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         activation={status.activation}
         live={status.live}
         boardConnected={boardConnected}
+        notice={hint}
         headerAction={settings}
         overlayAction={setupAction}
         disabled={!ready}
@@ -145,7 +145,6 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
       {ready && (status.activation === 'waiting' || status.activation === 'phone') ? (
         <PublicRideManualAction activation={status.activation} onChange={setManualSharing} />
       ) : null}
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>
   )
 }
@@ -159,11 +158,6 @@ const styles = StyleSheet.create({
   },
   publicRide: { gap: 10 },
   blockedAction: { alignSelf: 'flex-end' },
-  hint: {
-    color: theme.neutral.textPrimary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
   list: {
     gap: 12,
   },

@@ -189,6 +189,7 @@ export function PublicRideSelector({
   activation,
   live,
   boardConnected,
+  notice,
   headerAction,
   overlayAction,
   disabled: controlDisabled = false,
@@ -200,6 +201,7 @@ export function PublicRideSelector({
   activation: PublicRideStatus['activation']
   live: boolean
   boardConnected: boolean
+  notice?: string | null
   headerAction?: ReactNode
   overlayAction?: ReactNode
   disabled?: boolean
@@ -529,7 +531,7 @@ export function PublicRideSelector({
             description
             running={running}
             presetEnds={presetEnds}
-            notice={connecting ? 'Connecting to server…' : null}
+            notice={notice ?? (connecting ? 'Connecting to server…' : null)}
             dragging={dragging}
             accent={accent}
             muted={neutral.textPrimary}
@@ -557,11 +559,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 17, fontWeight: '700' },
   intro: { fontSize: 11, lineHeight: 16, maxWidth: 210 },
-  arc: {
-    width: '100%',
-    maxWidth: 340,
-    alignSelf: 'center',
-  },
+  arc: { width: '100%', maxWidth: 340, alignSelf: 'center' },
   wave: { position: 'absolute', borderRadius: 999, borderWidth: 1.5 },
   choice: {
     position: 'absolute',

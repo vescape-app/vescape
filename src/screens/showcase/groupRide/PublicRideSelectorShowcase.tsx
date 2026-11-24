@@ -22,6 +22,7 @@ export function PublicRideSelectorShowcase() {
   const [manualSharing, setManualSharing] = useState(false)
   const [settings, setSettings] = useState(true)
   const [setup, setSetup] = useState(false)
+  const [notice, setNotice] = useState(false)
   const [disabled, setDisabled] = useState(false)
   const [running, setRunning] = useState(true)
   const [presetEnds] = useState(() => publicRidePresetEnds(Date.now(), '24h'))
@@ -53,6 +54,7 @@ export function PublicRideSelectorShowcase() {
           <ToggleRow label="relay confirmed" value={relayConfirmed} onToggle={setRelayConfirmed} />
           <ToggleRow label="sign-in required" value={setup} onToggle={setSetup} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
+          <ToggleRow label="notice" value={notice} onToggle={setNotice} />
           <ToggleRow label="timer running" value={running} onToggle={setRunning} />
         </>
       }
@@ -62,6 +64,7 @@ export function PublicRideSelectorShowcase() {
         activation={activation}
         live={live}
         boardConnected={boardConnected}
+        notice={notice ? 'Loading your rider profile…' : null}
         running={
           running && value.mode === 'hours'
             ? {
