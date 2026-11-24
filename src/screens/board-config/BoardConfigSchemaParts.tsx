@@ -38,7 +38,7 @@ export function BoardConfigReadInfo({
       <Text style={styles.readTime}>{summary}</Text>
       {showOfflineHint ? (
         <View style={styles.offlineHintRow}>
-          <InfoIcon size={13} color={theme.palette.sky.color} weight="fill" />
+          <InfoIcon size={13} color={theme.palette.orange.color} weight="fill" />
           <Text style={styles.offlineHint}>Connect to board to edit config</Text>
         </View>
       ) : null}
@@ -263,5 +263,5 @@ const styles = StyleSheet.create({
   readInfo: { alignItems: 'center', gap: 6 },
   readTime: { color: theme.neutral.textMuted, fontSize: 12, textAlign: 'center' },
   offlineHintRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  offlineHint: { color: theme.neutral.textSecondary, fontSize: 12, fontWeight: '500' },
+  offlineHint: { color: theme.palette.orange.text, fontSize: 12, fontWeight: '500' },
 })
