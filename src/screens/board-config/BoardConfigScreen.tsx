@@ -431,7 +431,11 @@ export default function BoardConfigScreen() {
             iconSize={48}
             description="Your board's Refloat config and motor limits, grouped by topic."
           >
-            <BoardConfigReadInfo refloatReadTime={refloatReadTime} motorReadTime={motorReadTime} />
+            <BoardConfigReadInfo
+              refloatReadTime={refloatReadTime}
+              motorReadTime={motorReadTime}
+              showOfflineHint={refloat !== null && !canEdit}
+            />
           </IconHero>
         </View>
 
@@ -444,8 +448,6 @@ export default function BoardConfigScreen() {
         />
 
         <BoardConfigStatusBanners
-          hasRefloat={refloat !== null}
-          canEdit={canEdit}
           xmlError={xmlTransfer.xmlError}
           xmlNotice={xmlTransfer.xmlNotice}
         />

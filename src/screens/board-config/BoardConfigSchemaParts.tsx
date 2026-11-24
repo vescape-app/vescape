@@ -1,4 +1,5 @@
 import { StyleSheet, View } from 'react-native'
+import { InfoIcon } from 'phosphor-react-native'
 
 import { Banner } from '@/components/base/Banner'
 import { Button } from '@/components/base/Button'
@@ -19,9 +20,11 @@ import type { ResolvedBoardConfigField } from '@/modules/board/lib/refloatFieldO
 export function BoardConfigReadInfo({
   refloatReadTime,
   motorReadTime,
+  showOfflineHint = false,
 }: {
   refloatReadTime: string | null
   motorReadTime: string | null
+  showOfflineHint?: boolean
 }) {
   const summary =
     refloatReadTime && refloatReadTime === motorReadTime
@@ -30,28 +33,29 @@ export function BoardConfigReadInfo({
           refloatReadTime ? `Refloat ${refloatReadTime}` : 'No Refloat config',
           motorReadTime ? `Motor ${motorReadTime}` : 'No motor config',
         ].join(' · ')
-  return <Text style={styles.readTime}>{summary}</Text>
+  return (
+    <View style={styles.readInfo}>
+      <Text style={styles.readTime}>{summary}</Text>
+      {showOfflineHint ? (
+        <View style={styles.offlineHintRow}>
+          <InfoIcon size={13} color={theme.palette.sky.color} weight="fill" />
+          <Text style={styles.offlineHint}>Connect to board to edit config</Text>
+        </View>
+      ) : null}
+    </View>
+  )
 }
 
 export function BoardConfigStatusBanners({
-  hasRefloat,
-  canEdit,
   xmlError,
   xmlNotice,
 }: {
-  hasRefloat: boolean
-  canEdit: boolean
   xmlError: string | null
   xmlNotice: string | null
 }) {
+  if (!xmlError && !xmlNotice) return null
   return (
     <>
-      {hasRefloat && !canEdit ? (
-        <Banner
-          variant="info"
-          message="Showing last known config. Connect this board to edit settings."
-        />
-      ) : null}
       {xmlError ? <Banner variant="error" message={xmlError} /> : null}
       {xmlNotice ? <Banner variant="info" message={xmlNotice} /> : null}
     </>
@@ -256,5 +260,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  readInfo: { alignItems: 'center', gap: 6 },
   readTime: { color: theme.neutral.textMuted, fontSize: 12, textAlign: 'center' },
+  offlineHintRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  offlineHint: { color: theme.neutral.textSecondary, fontSize: 12, fontWeight: '500' },
 })
