@@ -30,6 +30,9 @@ export interface RefloatFieldOverlayEntry {
   hidden?: boolean
   risk?: RefloatFieldRisk
   description?: string
+  when?: string
+  recommended?: 'on' | 'off'
+  riskReason?: string
 }
 
 export interface ResolvedBoardConfigField {
@@ -48,6 +51,9 @@ export interface ResolvedBoardConfigField {
   enumNames: string[]
   type: BoardConfigValueType
   description: string | null
+  when: string | null
+  recommended: 'on' | 'off' | null
+  riskReason: string | null
   placement: RefloatFieldPlacement
   hidden: boolean
   risk: RefloatFieldRisk | null
@@ -226,6 +232,23 @@ function resolveRawStep(
   return isScaledDisplayStep ? xmlStep / displayScale : xmlStep
 }
 
+function resolveOverlayMeta(
+  entry: RefloatFieldOverlayEntry | undefined,
+  fallbackDescription: string | null = null,
+) {
+  const risk = entry?.risk ?? null
+  return {
+    description: entry?.description ?? fallbackDescription,
+    when: entry?.when ?? null,
+    recommended: entry?.recommended ?? null,
+    riskReason: entry?.riskReason ?? null,
+    placement: entry?.placement ?? ('primary' as const),
+    hidden: entry?.hidden ?? false,
+    risk,
+    editable: risk !== 'internal',
+  }
+}
+
 export function resolveBoardConfigField(
   schemaField: BoardConfigSchemaField,
   value: number | boolean | string,
@@ -236,7 +259,6 @@ export function resolveBoardConfigField(
   const overlayLookup = entry ? { [schemaField.id]: entry } : REFLOAT_FIELD_OVERLAY
   const displayScale = getFieldDisplayScale(schemaField.id, schemaField, overlayLookup)
   const soft = resolveSoftBounds(schemaField, entry, hard)
-  const risk = entry?.risk ?? null
   const unit = schemaField.unit?.trim() || (schemaField.editAsPercentage ? '%' : null)
   const defaultDecimals =
     schemaField.editAsPercentage && displayScale === 100 && schemaField.editorDecimals != null
@@ -257,11 +279,7 @@ export function resolveBoardConfigField(
     editAsPercentage: schemaField.editAsPercentage,
     enumNames: schemaField.enumNames,
     type: schemaField.type,
-    description: entry?.description ?? schemaField.description ?? null,
-    placement: entry?.placement ?? 'primary',
-    hidden: entry?.hidden ?? false,
-    risk,
-    editable: risk !== 'internal',
+    ...resolveOverlayMeta(entry, schemaField.description ?? null),
   }
 }
 
@@ -369,7 +387,6 @@ function buildFallbackField(
   value: number | boolean | string,
   entry: RefloatFieldOverlayEntry | undefined,
 ): ResolvedBoardConfigField {
-  const risk = entry?.risk ?? null
   return {
     id,
     label: entry?.label || id,
@@ -385,11 +402,8 @@ function buildFallbackField(
     editAsPercentage: false,
     enumNames: [],
     type: typeof value === 'boolean' ? 'bool' : 'float32',
-    description: entry?.description ?? null,
-    placement: entry?.placement ?? 'primary',
+    ...resolveOverlayMeta(entry),
     hidden: false,
-    risk,
-    editable: risk !== 'internal',
   }
 }
 

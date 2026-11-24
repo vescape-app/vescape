@@ -428,3 +428,49 @@ export function buildBoardConfigReviewEntries({
     }
   })
 }
+
+export interface BoardConfigFieldInfo {
+  title: string
+  message: string
+  variant: 'info' | 'warning'
+}
+
+function defaultRiskReason(fieldId: string): string {
+  if (fieldId.startsWith('fault_adc')) {
+    return 'Affects footpad sensor detection. Wrong values can cause cutouts while riding or keep the board running after you step off.'
+  }
+  if (fieldId.startsWith('fault_delay_')) {
+    return 'Controls how quickly the board cuts power during a fault or bail. Double-check the timing before riding.'
+  }
+  return 'Affects cutoffs, hardware specs, or board safety. Double-check the value before writing.'
+}
+
+export function buildBoardConfigFieldInfo(
+  field: Pick<
+    ResolvedBoardConfigField,
+    'id' | 'label' | 'description' | 'when' | 'recommended' | 'risk' | 'riskReason'
+  >,
+  refloatBaseVersion?: string | null,
+): BoardConfigFieldInfo | null {
+  const parts: string[] = []
+  const description = field.description?.trim()
+  if (description) parts.push(description)
+  if (field.recommended) {
+    parts.push(`Recommended: ${field.recommended === 'on' ? 'On' : 'Off'}.`)
+  }
+  const when = field.when?.trim()
+  if (when) parts.push(`When to use: ${when}`)
+  if (field.risk === 'risky') {
+    parts.push(`Safety-sensitive: ${field.riskReason?.trim() || defaultRiskReason(field.id)}`)
+  } else if (field.risk === 'internal') {
+    parts.push('Internal Refloat metadata managed by the firmware. Read-only.')
+  }
+  const rebootNote = getBoardConfigRebootNote(field.id, refloatBaseVersion)
+  if (rebootNote) parts.push(rebootNote)
+  if (parts.length === 0) return null
+  return {
+    title: field.label,
+    message: parts.join('\n\n'),
+    variant: field.risk === 'risky' ? 'warning' : 'info',
+  }
+}

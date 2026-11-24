@@ -10,7 +10,6 @@ import {
   WrenchIcon,
 } from 'phosphor-react-native'
 
-import { Banner } from '@/components/base/Banner'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { PageScrollView } from '@/components/base/PageScrollView'
@@ -35,6 +34,7 @@ import {
   searchSchemaBoardConfig,
   type BoardConfigSchemaTab,
 } from '@/modules/board/lib/boardConfigSchemaGroups'
+import type { ResolvedBoardConfigField } from '@/modules/board/lib/refloatFieldOverlay'
 import { searchBoardConfig } from '@/modules/board/lib/searchBoardConfig'
 import { splitConfigGroups } from '@/modules/board/lib/splitConfigGroups'
 import {
@@ -49,8 +49,12 @@ import {
 import { routes } from '@/navigation/routes'
 import { boardConfigTabs } from '@/screens/board-config/boardConfigGroups'
 import {
+  BoardConfigFieldInfoModal,
   BoardConfigPendingBar,
+  BoardConfigReadInfo,
   BoardConfigSchemaSectionCard,
+  BoardConfigSchemaTabBody,
+  BoardConfigStatusBanners,
 } from '@/screens/board-config/BoardConfigSchemaParts'
 import {
   applyReviewedBoardConfigChangeset,
@@ -114,54 +118,13 @@ function resolveEmptySearchMessage(hasAnyConfig: boolean, query: string): string
     : 'No saved config to search. Connect this board to read it.'
 }
 
-function BoardConfigReadInfo({
-  refloatReadTime,
-  motorReadTime,
-}: {
-  refloatReadTime: string | null
-  motorReadTime: string | null
-}) {
-  return (
-    <View style={styles.readInfo}>
-      {refloatReadTime && refloatReadTime === motorReadTime ? (
-        <Text style={styles.readTime}>{`Config read ${refloatReadTime}`}</Text>
-      ) : (
-        <>
-          <Text style={styles.readTime}>
-            {refloatReadTime ? `Refloat read ${refloatReadTime}` : 'No Refloat config read yet'}
-          </Text>
-          <Text style={styles.readTime}>
-            {motorReadTime ? `Motor config read ${motorReadTime}` : 'No motor config read yet'}
-          </Text>
-        </>
-      )}
-    </View>
-  )
-}
-
-function BoardConfigStatusBanners({
-  hasRefloat,
-  canEdit,
-  xmlError,
-  xmlNotice,
-}: {
-  hasRefloat: boolean
-  canEdit: boolean
-  xmlError: string | null
-  xmlNotice: string | null
-}) {
-  return (
-    <>
-      {hasRefloat && !canEdit ? (
-        <Banner
-          variant="info"
-          message="Showing last known config. Connect this board to edit settings."
-        />
-      ) : null}
-      {xmlError ? <Banner variant="error" message={xmlError} /> : null}
-      {xmlNotice ? <Banner variant="info" message={xmlNotice} /> : null}
-    </>
-  )
+function hasBoardConfigStatusBanner(
+  hasRefloat: boolean,
+  canEdit: boolean,
+  xmlError: string | null,
+  xmlNotice: string | null,
+): boolean {
+  return (hasRefloat && !canEdit) || Boolean(xmlError) || Boolean(xmlNotice)
 }
 
 export default function BoardConfigScreen() {
@@ -178,6 +141,7 @@ export default function BoardConfigScreen() {
   const [reviewOpen, setReviewOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
+  const [infoField, setInfoField] = useState<ResolvedBoardConfigField | null>(null)
   const optionsAnchorRef = useRef<View>(null)
 
   const board = useBoardStore((state) => state.boards.find((item) => item.id === boardId))
@@ -407,32 +371,28 @@ export default function BoardConfigScreen() {
   const riskyPendingCount = reviewEntries.filter((entry) => entry.risk === 'risky').length
   const emptySearchMessage = resolveEmptySearchMessage(Boolean(refloat || motor), query)
 
+  const hasStatusBanner = hasBoardConfigStatusBanner(
+    refloat !== null,
+    canEdit,
+    xmlTransfer.xmlError,
+    xmlTransfer.xmlNotice,
+  )
+
   const renderActiveTabBody = () => {
     if (activeSchemaTab) {
       if (activeSchemaTab.kind === 'motor') {
         return renderMotorGroupsWithCollapse(activeSchemaTab.groups, activeSchemaTab.id)
       }
       return (
-        <View key={activeSchemaTab.id} style={styles.schemaSections}>
-          {activeSchemaTab.readOnly ? (
-            <Banner
-              variant="info"
-              message="Internal metadata fields are read-only and cannot be edited."
-            />
-          ) : null}
-          {activeSchemaTab.sections.map((section) => (
-            <BoardConfigSchemaSectionCard
-              key={section.id}
-              section={section}
-              pendingChanges={pendingChanges}
-              refloatBaseVersion={refloat?.refloatBaseVersion}
-              disabled={!canEdit}
-              showDescription={false}
-              onFieldChange={handleFieldChange}
-              onResetField={handleResetField}
-            />
-          ))}
-        </View>
+        <BoardConfigSchemaTabBody
+          tab={activeSchemaTab}
+          pendingChanges={pendingChanges}
+          refloatBaseVersion={refloat?.refloatBaseVersion}
+          disabled={!canEdit}
+          onFieldChange={handleFieldChange}
+          onResetField={handleResetField}
+          onFieldInfoPress={setInfoField}
+        />
       )
     }
     if (activeFallbackTab) {
@@ -457,6 +417,7 @@ export default function BoardConfigScreen() {
             showDescription
             onFieldChange={handleFieldChange}
             onResetField={handleResetField}
+            onFieldInfoPress={setInfoField}
           />
         ) : result.rows ? (
           renderReadOnlyGroup({
@@ -498,11 +459,7 @@ export default function BoardConfigScreen() {
           onChangeText={setQuery}
           accessibilityLabel="Search board config"
           testID="board-config-search"
-          style={[
-            styles.search,
-            !((refloat !== null && !canEdit) || xmlTransfer.xmlError || xmlTransfer.xmlNotice) &&
-              styles.searchTight,
-          ]}
+          style={[styles.search, !hasStatusBanner && styles.searchTight]}
         />
 
         {searching ? (
@@ -561,6 +518,12 @@ export default function BoardConfigScreen() {
         onCancel={handleCancelReview}
       />
 
+      <BoardConfigFieldInfoModal
+        field={infoField}
+        refloatBaseVersion={refloat?.refloatBaseVersion}
+        onDismiss={() => setInfoField(null)}
+      />
+
       <EdgeDrawer
         visible={optionsOpen}
         triggerRef={optionsAnchorRef}
@@ -587,7 +550,6 @@ const styles = StyleSheet.create({
   contentWithBar: { paddingBottom: 112 },
   tabs: { backgroundColor: theme.neutral.bg, paddingVertical: 8 },
   groups: { gap: 28 },
-  schemaSections: { gap: 18 },
   search: {
     justifyContent: 'center',
     alignSelf: 'center',
@@ -597,6 +559,4 @@ const styles = StyleSheet.create({
     marginTop: -24,
   },
   noResults: { color: theme.neutral.textSecondary, fontSize: 14, textAlign: 'center' },
-  readInfo: { gap: 4, alignItems: 'center' },
-  readTime: { color: theme.neutral.textSecondary, fontSize: 12, textAlign: 'center' },
 })

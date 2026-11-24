@@ -354,78 +354,104 @@
     "fault_is_dual_switch": {
       "label": "Both zones as one (Posi)",
       "risk": "risky",
-      "description": "Either zone can keep the board on, so heel-lift dismount won't work. A stuck sensor can keep it running after you step off."
+      "description": "Either zone can keep the board on, so heel-lift dismount won't work. A stuck sensor can keep it running after you step off.",
+      "when": "You're doing lots of tricks and need one-zone riding. For tricky starts, try Simple start first.",
+      "riskReason": "Disables heel-lift dismount and lets a single stuck footpad zone keep the motor engaged after you step off."
     },
     "fault_delay_switch_half": {
       "label": "One zone off, cutoff after",
       "risk": "risky",
-      "description": "How long one zone can stop sensing your foot before the board switches off. Applies at low speed, with Posi off."
+      "description": "How long one zone can stop sensing your foot before the board switches off. Applies at low speed, with Posi off.",
+      "riskReason": "Controls how quickly the board disengages when one footpad zone lifts at low speed. Too short can cut out unexpectedly; too long delays heel-lift dismount."
     },
     "fault_delay_switch_full": {
       "label": "Both zones off, cutoff after",
       "risk": "risky",
-      "description": "How long both zones can stop sensing your foot before the board can switch off."
+      "description": "How long both zones can stop sensing your foot before the board can switch off.",
+      "riskReason": "Controls how long the board stays powered after both footpad zones stop sensing your foot. Too short can cut out over bumps; too long lets the board ghost after a bail."
     },
     "fault_delay_pitch": {
       "label": "Pitch cutoff after",
-      "risk": "risky"
+      "risk": "risky",
+      "description": "How long the board can stay past the pitch cutoff angle before shutting off.",
+      "riskReason": "Controls how quickly power cuts when the nose or tail pitches past the safety angle. Too short can cut out on steep drops; too long keeps the wheel spinning during a crash."
     },
     "fault_delay_roll": {
       "label": "Roll cutoff after",
-      "risk": "risky"
+      "risk": "risky",
+      "description": "How long the board can stay rolled past the roll cutoff angle before shutting off.",
+      "riskReason": "Controls how quickly power cuts when the board tips sideways. Too short can cut out on hard carves; too long keeps the wheel spinning after a side bail."
     },
     "fault_adc1": {
       "label": "Zone 1 engages at",
-      "risk": "risky"
+      "risk": "risky",
+      "description": "Voltage threshold for footpad sensor zone 1 to count as pressed.",
+      "riskReason": "A wrong threshold can either fail to detect your foot while riding or keep the sensor falsely triggered after you step off."
     },
     "fault_adc2": {
       "label": "Zone 2 engages at",
-      "risk": "risky"
+      "risk": "risky",
+      "description": "Voltage threshold for footpad sensor zone 2 to count as pressed.",
+      "riskReason": "A wrong threshold can either fail to detect your foot while riding or keep the sensor falsely triggered after you step off."
     },
     "fault_adc_half_erpm": {
       "label": "One zone off is a fault below",
-      "risk": "risky"
+      "risk": "risky",
+      "description": "Speed (ERPM) below which lifting one footpad zone can disengage the board.",
+      "riskReason": "Setting this too high can let a momentary heel lift cut power at riding speed."
     },
     "disabled": {
       "label": "Disable Refloat",
-      "risk": "risky"
+      "risk": "risky",
+      "riskReason": "Completely disables self-balancing until re-enabled."
     },
     "inputtilt_remote_type": {
       "label": "Remote input",
-      "risk": "risky"
+      "risk": "risky",
+      "riskReason": "Changes how an external remote controls nose tilt; misconfiguration can cause unexpected tilt inputs."
     },
     "hertz": {
-      "risk": "risky"
+      "risk": "risky",
+      "riskReason": "Changes the main balance control loop frequency. Only change this if you know your controller supports it."
     },
     "tiltback_hv": {
       "label": "High voltage pushback at",
-      "risk": "risky"
+      "risk": "risky",
+      "riskReason": "Sets when the board warns you of battery overvoltage during regen braking. Too high risks damaging the battery or cutting out."
     },
     "tiltback_lv": {
       "label": "Low voltage pushback at",
-      "risk": "risky"
+      "risk": "risky",
+      "riskReason": "Sets when the board warns you of low battery voltage. Too low risks over-discharging the pack or sudden cutout."
     },
     "hardware.swap_footpad_adcs": {
       "label": "Swap footpad zones",
-      "risk": "risky"
+      "risk": "risky",
+      "riskReason": "Swaps which hardware ADC pin maps to footpad zone 1 and zone 2."
     },
     "is_footbeep_enabled": {
       "label": "Beep on sensor fault",
-      "risk": "risky"
+      "risk": "risky",
+      "riskReason": "Disabling removes the audible warning when a footpad sensor zone drops out."
     },
     "is_beeper_enabled": {
       "label": "External buzzer (servo/PPM)",
-      "risk": "risky"
+      "risk": "risky",
+      "riskReason": "Controls the external hardware beeper output on the servo/PPM pin."
     },
     "fault_moving_fault_disabled": {
       "label": "Moving faults disabled",
       "risk": "risky",
-      "description": "Stops the footpad from switching the board off while riding forward fast enough and fairly level. It can keep going after you step off."
+      "recommended": "on",
+      "when": "Your footpad sometimes stops detecting you even though you're still standing on it, especially during hard riding.",
+      "description": "Stops the footpad from switching the board off while riding forward fast enough and fairly level. It can keep going after you step off.",
+      "riskReason": "Prevents footpad sensor cutoffs while rolling forward, which can allow the board to keep going (ghost) if you step off at speed."
     },
     "fault_darkride_enabled": {
       "label": "Darkride",
       "risk": "risky",
-      "description": "Allows riding upside down without footpad sensors."
+      "description": "Allows riding upside down without footpad sensors.",
+      "riskReason": "Allows the board to stay engaged upside down without footpad sensor confirmation."
     },
     "enable_quickstop": {
       "label": "Quickstop",
@@ -433,20 +459,28 @@
     },
     "startup_simplestart_enabled": {
       "label": "Simple start",
+      "recommended": "on",
+      "when": "Most rides. Less of that awkward shuffle trying to get the board to wake up.",
       "description": "Lets you start with just one footpad zone pressed. Heel-lift dismount still works."
     },
     "startup_pushstart_enabled": {
       "label": "Push start",
+      "recommended": "on",
+      "when": "Most rides, especially when starting on a steep slope.",
       "description": "Lets you hop onto a rolling board even if the nose isn't level yet. Needs a little speed to engage."
     },
     "startup_dirtylandings_enabled": {
       "label": "Dirty landings",
+      "recommended": "on",
+      "when": "You like hopping curbs, jumping around or taking drops.",
       "description": "Briefly gives you more room to land with the nose tilted after a hop. Doesn't apply after a heel-lift dismount."
     },
     "fault_reversestop_enabled": {
       "label": "Reverse stop",
       "risk": "risky",
-      "description": "Lets you dismount by rolling back a little. The board tilts, then switches off. Makes balancing in place harder."
+      "when": "Usually off, unless you like rolling back to stop. A footpad that stays engaged with nobody on it needs fixing.",
+      "description": "Lets you dismount by rolling back a little. The board tilts, then switches off. Makes balancing in place harder.",
+      "riskReason": "Cuts power when rolling backwards past the threshold, which can catch you off guard when balancing in place or riding switch."
     }
   }
 }

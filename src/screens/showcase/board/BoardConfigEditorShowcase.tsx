@@ -4,10 +4,12 @@ import { StyleSheet, View } from 'react-native'
 import { Button } from '@/components/base/Button'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
+import { InfoModal } from '@/components/modals/InfoModal'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { BoardConfigFieldEditor } from '@/modules/board/components/BoardConfigFieldEditor'
 import { BoardConfigReviewModal } from '@/modules/board/components/BoardConfigReviewModal'
 import {
+  buildBoardConfigFieldInfo,
   buildBoardConfigReviewEntries,
   type BoardConfigReviewSource,
   type BoardConfigSkippedField,
@@ -31,6 +33,9 @@ const DEMO_FIELDS: ResolvedBoardConfigField[] = [
     enumNames: [],
     type: 'bool',
     description: 'Lets you start with just one footpad zone pressed.',
+    when: 'Most rides. Less of that awkward shuffle trying to get the board to wake up.',
+    recommended: 'on',
+    riskReason: null,
     placement: 'primary',
     hidden: false,
     risk: null,
@@ -52,6 +57,9 @@ const DEMO_FIELDS: ResolvedBoardConfigField[] = [
     enumNames: ['Solid', 'Fade', 'Pulse', 'Rainbow'],
     type: 'uint8',
     description: 'Animation pattern from the XML enum names.',
+    when: null,
+    recommended: null,
+    riskReason: null,
     placement: 'primary',
     hidden: false,
     risk: null,
@@ -73,6 +81,9 @@ const DEMO_FIELDS: ResolvedBoardConfigField[] = [
     enumNames: [],
     type: 'float16_scaled',
     description: 'Duty threshold where pushback begins.',
+    when: null,
+    recommended: null,
+    riskReason: null,
     placement: 'primary',
     hidden: false,
     risk: null,
@@ -94,6 +105,10 @@ const DEMO_FIELDS: ResolvedBoardConfigField[] = [
     enumNames: [],
     type: 'float16_scaled',
     description: 'Footpad sensor engagement voltage.',
+    when: null,
+    recommended: null,
+    riskReason:
+      'A wrong threshold can either fail to detect your foot while riding or keep the sensor falsely triggered after you step off.',
     placement: 'primary',
     hidden: false,
     risk: 'risky',
@@ -115,6 +130,9 @@ const DEMO_FIELDS: ResolvedBoardConfigField[] = [
     enumNames: ['Off', 'Internal', 'External', 'Internal & External'],
     type: 'uint8',
     description: 'Hardware LED driver mode.',
+    when: null,
+    recommended: null,
+    riskReason: null,
     placement: 'primary',
     hidden: false,
     risk: null,
@@ -136,6 +154,9 @@ const DEMO_FIELDS: ResolvedBoardConfigField[] = [
     enumNames: [],
     type: 'bool',
     description: 'Internal Refloat metadata flag.',
+    when: null,
+    recommended: null,
+    riskReason: null,
     placement: 'primary',
     hidden: false,
     risk: 'internal',
@@ -168,10 +189,16 @@ export function BoardConfigEditorShowcase() {
   })
   const [showDescriptions, setShowDescriptions] = useState(true)
   const [disabled, setDisabled] = useState(false)
+  const [infoField, setInfoField] = useState<ResolvedBoardConfigField | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [source, setSource] = useState<BoardConfigReviewSource>('app')
   const [simulateError, setSimulateError] = useState(false)
   const [showSkipped, setShowSkipped] = useState(false)
+
+  const activeFieldInfo = useMemo(
+    () => (infoField ? buildBoardConfigFieldInfo(infoField, '1.3.0') : null),
+    [infoField],
+  )
 
   const pendingChanges = useMemo(() => {
     const next: Record<string, number | boolean> = {}
@@ -229,9 +256,17 @@ export function BoardConfigEditorShowcase() {
               onReset={(fieldId) =>
                 setValues((prev) => ({ ...prev, [fieldId]: BASE_VALUES[fieldId]! }))
               }
+              onInfoPress={setInfoField}
             />
           ))}
         </SettingsCard>
+        <InfoModal
+          visible={activeFieldInfo !== null}
+          title={activeFieldInfo?.title ?? ''}
+          message={activeFieldInfo?.message ?? ''}
+          variant={activeFieldInfo?.variant ?? 'info'}
+          onDismiss={() => setInfoField(null)}
+        />
       </ShowcaseCard>
 
       <ShowcaseCard

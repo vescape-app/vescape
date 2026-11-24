@@ -5,6 +5,7 @@ import {
   LockSimpleIcon,
   MinusIcon,
   PlusIcon,
+  QuestionIcon,
   WarningIcon,
 } from 'phosphor-react-native'
 
@@ -18,6 +19,7 @@ import { useResolvedControlColors, useResolvedNeutralColors } from '@/hooks/useT
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   boardConfigDisplayUnit,
+  buildBoardConfigFieldInfo,
   decimalsForField,
   formatBoardConfigFieldValue,
   formatNumericDisplay,
@@ -38,6 +40,7 @@ export interface BoardConfigFieldEditorProps {
   showDescription?: boolean
   onChange?: (fieldId: string, nextValue: number | boolean) => void
   onReset?: (fieldId: string) => void
+  onInfoPress?: (field: ResolvedBoardConfigField) => void
 }
 
 export function BoardConfigFieldEditor({
@@ -49,6 +52,7 @@ export function BoardConfigFieldEditor({
   showDescription = false,
   onChange,
   onReset,
+  onInfoPress,
 }: BoardConfigFieldEditorProps) {
   const neutral = useResolvedNeutralColors()
   const control = useResolvedControlColors()
@@ -57,6 +61,7 @@ export function BoardConfigFieldEditor({
   const isReadOnlyField = editorKind === 'readonly'
   const isNonInteractive = isReadOnlyField || disabled
   const rebootNote = getBoardConfigRebootNote(field.id, refloatBaseVersion)
+  const canShowInfo = Boolean(onInfoPress && buildBoardConfigFieldInfo(field, refloatBaseVersion))
   const decimals = decimalsForField(field)
   const numericValue = typeof value === 'number' && Number.isFinite(value) ? value : 0
   const displayValue = toBoardConfigDisplayValue(field, numericValue, temperatureUnit)
@@ -210,6 +215,18 @@ export function BoardConfigFieldEditor({
     )
   }
 
+  const renderLabelHeader = () => (
+    <>
+      {isModified ? <View style={styles.modifiedDot} /> : null}
+      <Text style={styles.label}>{field.label}</Text>
+      {field.risk === 'risky' ? (
+        <WarningIcon size={14} color={theme.status.warning.color} weight="duotone" />
+      ) : canShowInfo ? (
+        <QuestionIcon size={14} color={theme.neutral.textMuted} weight="bold" />
+      ) : null}
+    </>
+  )
+
   return (
     <View
       style={[
@@ -222,15 +239,33 @@ export function BoardConfigFieldEditor({
     >
       <View style={styles.mainRow}>
         <View style={styles.labelBlock}>
-          <View style={styles.labelLine}>
-            {isModified ? <View style={styles.modifiedDot} /> : null}
-            <Text style={styles.label}>{field.label}</Text>
-            {field.risk === 'risky' ? (
-              <WarningIcon size={14} color={theme.status.warning.color} weight="duotone" />
-            ) : null}
-          </View>
+          {canShowInfo ? (
+            <Pressable
+              style={styles.labelLine}
+              hitSlop={8}
+              onPress={() => onInfoPress?.(field)}
+              accessibilityRole="button"
+              accessibilityLabel={`About ${field.label}`}
+              testID={`board-config-info-${field.id}`}
+            >
+              {renderLabelHeader()}
+            </Pressable>
+          ) : (
+            <View style={styles.labelLine}>{renderLabelHeader()}</View>
+          )}
           {showDescription && field.description ? (
-            <Text style={styles.description}>{field.description}</Text>
+            <Text style={styles.description}>
+              {field.description}
+              {field.recommended ? (
+                <Text style={styles.recommended}>{` (recommended ${field.recommended})`}</Text>
+              ) : null}
+            </Text>
+          ) : null}
+          {showDescription && field.when ? (
+            <Text style={styles.when}>
+              <Text style={styles.whenLead}>When: </Text>
+              {field.when}
+            </Text>
           ) : null}
           {rebootNote && isModified ? <Text style={styles.rebootNote}>{rebootNote}</Text> : null}
         </View>
@@ -291,6 +326,20 @@ const styles = StyleSheet.create({
     color: theme.neutral.textMuted,
     fontSize: 12,
     lineHeight: 17,
+  },
+  recommended: {
+    color: theme.neutral.textSecondary,
+    fontWeight: '600',
+  },
+  when: {
+    color: theme.neutral.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  whenLead: {
+    color: theme.neutral.textSecondary,
+    fontWeight: '600',
   },
   rebootNote: {
     color: theme.palette.sky.text,

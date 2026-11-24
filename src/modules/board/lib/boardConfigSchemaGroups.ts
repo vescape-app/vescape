@@ -59,6 +59,34 @@ export interface SchemaBoardConfigSearchResult {
 
 const TUNE_SUBGROUP_SET = new Set<string>(TUNE_SUBGROUP_NAMES)
 
+const COMMON_TAB_SECTIONS: ReadonlyArray<{
+  id: string
+  title: string
+  fieldIds: readonly string[]
+}> = [
+  {
+    id: 'quick:footpad-and-dismount',
+    title: 'Footpad and dismount',
+    fieldIds: [
+      'fault_is_dual_switch',
+      'enable_quickstop',
+      'fault_moving_fault_disabled',
+      'fault_delay_switch_half',
+      'fault_delay_switch_full',
+    ],
+  },
+  {
+    id: 'quick:startup',
+    title: 'Startup',
+    fieldIds: [
+      'startup_simplestart_enabled',
+      'startup_pushstart_enabled',
+      'startup_dirtylandings_enabled',
+      'fault_reversestop_enabled',
+    ],
+  },
+]
+
 const MOTOR_CURATED_GROUPS: BoardConfigGroup[] = [
   { title: 'Motor current limits', source: 'motor', rows: MOTOR_CURRENT_MOTOR_CONFIG_ROWS },
   { title: 'Battery current limits', source: 'motor', rows: BATTERY_CURRENT_MOTOR_CONFIG_ROWS },
@@ -130,6 +158,35 @@ export function buildMotorConfigTab(
     kind: 'motor',
     groups,
   }
+}
+
+function buildCommonTab(
+  schema: BoardConfigSchema,
+  schemaFieldById: ReadonlyMap<string, BoardConfigSchemaField>,
+  refloatValues: Record<string, number | boolean | undefined>,
+  overlayMap: Readonly<Record<string, RefloatFieldOverlayEntry>>,
+): BoardConfigSchemaRefloatTab | null {
+  const sections: BoardConfigSchemaSection[] = []
+  for (const spec of COMMON_TAB_SECTIONS) {
+    const fields: ResolvedBoardConfigField[] = []
+    for (const fieldId of spec.fieldIds) {
+      const schemaField = schemaFieldById.get(fieldId)
+      if (!schemaField) continue
+      const rawValue = refloatValues[schemaField.id]
+      const value = isDisplayableValue(rawValue)
+        ? rawValue
+        : isDisplayableValue(schemaField.defaultValue)
+          ? schemaField.defaultValue
+          : null
+      if (value === null) continue
+      fields.push(resolveWithContext(schemaField, value, schema, overlayMap, false))
+    }
+    if (fields.length > 0) {
+      sections.push({ id: spec.id, title: spec.title, fields })
+    }
+  }
+  if (sections.length === 0) return null
+  return { id: 'quick', label: 'Common', kind: 'schema', readOnly: false, sections }
 }
 
 export function deriveBoardConfigTabsFromSchema(
@@ -220,7 +277,12 @@ export function deriveBoardConfigTabsFromSchema(
     )
   }
 
-  const tabs: BoardConfigSchemaTab[] = [...generalTabs, ...tuneTabs]
+  const commonTab = buildCommonTab(schema, schemaFieldById, refloatValues, overlayMap)
+  const tabs: BoardConfigSchemaTab[] = [
+    ...(commonTab ? [commonTab] : []),
+    ...generalTabs,
+    ...tuneTabs,
+  ]
 
   if (ungroupedFields.length > 0) {
     tabs.push({

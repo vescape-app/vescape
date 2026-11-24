@@ -152,7 +152,17 @@ describe('boardConfigSchemaGroups', () => {
       const tabs = deriveBoardConfigTabsFromSchema(schema, refloatValues, motorValues)
       const tabLabels = tabs.map((tab) => tab.label)
 
+      expect(tabs[0]?.id).toBe('quick')
+      expect(tabs[0]?.label).toBe('Common')
+      if (tabs[0]?.kind === 'schema') {
+        expect(tabs[0].sections.map((section) => section.title)).toEqual([
+          'Footpad and dismount',
+          'Startup',
+        ])
+      }
+
       for (const expected of [
+        'Common',
         'Startup',
         'Stop',
         'Pushback Alerts',
