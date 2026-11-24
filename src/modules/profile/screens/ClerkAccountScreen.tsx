@@ -2,7 +2,7 @@ import { useAuth, useUser } from '@clerk/expo'
 import { useNetworkState } from 'expo-network'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Platform, Pressable, StyleSheet, View } from 'react-native'
 import { ArrowLeftIcon, UserCircleIcon, WifiSlashIcon } from 'phosphor-react-native'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 
@@ -16,7 +16,11 @@ import { stopAccountAndDelete, stopAccountAndSignOut } from '@/modules/profile/l
 import { useDeviceAuthStore } from '@/modules/profile/store/deviceAuthStore'
 import { useRiderProfileStore } from '@/modules/profile/store/riderProfileStore'
 import { routes } from '@/navigation/routes'
-import { clearDeviceCredential, revokeDeviceCredential } from 'vescape-core'
+import {
+  clearDeviceCredential,
+  requestAppleAuthorizationCode,
+  revokeDeviceCredential,
+} from 'vescape-core'
 
 const DELETE_ACCOUNT_MESSAGE = [
   'Permanently deleted: your Vescape account and sign-in email, your rider profile (your nick becomes available again), friends, stored public rides and your part of crew rides, monthly ride stats, cloud backups, and all map points and reactions you added to the map.',
@@ -84,12 +88,34 @@ export function ClerkAccountScreen() {
       await finishAccountDeletion()
       return
     }
+    let appleAuthorizationCode: string | undefined
+    const hasAppleAccount =
+      Platform.OS === 'ios' &&
+      (user?.externalAccounts?.some(
+        (account) =>
+          String(account.provider) === 'apple' || String(account.provider) === 'oauth_apple',
+      ) ??
+        false)
+    if (hasAppleAccount) {
+      try {
+        const code = await requestAppleAuthorizationCode()
+        if (code === null) {
+          setDeleting(false)
+          return
+        }
+        appleAuthorizationCode = code
+      } catch {
+        setDeleting(false)
+        setDeleteError('Could not verify your Apple account. Try again.')
+        return
+      }
+    }
     const result = await stopAccountAndDelete({
       clearCredential: clearDeviceCredential,
       deleteAccount: async () => {
         const clerkToken = await getToken()
         if (!clerkToken) throw new Error('Clerk session token is unavailable')
-        await deleteAccount({ serverUrl: SERVER_URL, clerkToken })
+        await deleteAccount({ serverUrl: SERVER_URL, clerkToken, appleAuthorizationCode })
       },
     })
     if (result !== 'accepted') {
@@ -104,7 +130,7 @@ export function ClerkAccountScreen() {
     }
     setDeletionAccepted(true)
     await finishAccountDeletion()
-  }, [deletionAccepted, finishAccountDeletion, getToken, retryDeviceAuth])
+  }, [deletionAccepted, finishAccountDeletion, getToken, retryDeviceAuth, user?.externalAccounts])
 
   if (!isLoaded || !isSignedIn) return null
 

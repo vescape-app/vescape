@@ -610,6 +610,11 @@ public class VescapeCoreModule: Module {
     Function("clearDeviceCredential") {
       try NativeAuthCoordinator.shared.clear()
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `requestAppleAuthorizationCode`
+    // @parity /modules/vescape-core/src/index.ts `requestAppleAuthorizationCode`
+    AsyncFunction("requestAppleAuthorizationCode") { () async throws -> String? in
+      try await AppleAuthReauthenticator.shared.requestAuthorizationCode()
+    }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `openAppUpdate`
     // @platform-diff iOS uses the stable iOS download route.

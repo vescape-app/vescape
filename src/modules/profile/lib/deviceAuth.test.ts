@@ -48,6 +48,21 @@ describe('Vescape Account deletion request', () => {
     expect(requests[0]?.headers.get('Authorization')).toBe('Bearer clerk-token')
   })
 
+  test('sends appleAuthorizationCode when provided for iOS Sign in with Apple revocation', async () => {
+    const { requests, fetcher } = respondWith(200)
+
+    const outcome = await deleteAccount({
+      serverUrl: 'http://localhost:3000/',
+      clerkToken: 'clerk-token',
+      appleAuthorizationCode: 'apple-code-123',
+      fetcher,
+    })
+
+    expect(outcome).toBe('deleted')
+    expect(requests[0]?.headers.get('Content-Type')).toBe('application/json')
+    expect(await requests[0]?.json()).toEqual({ appleAuthorizationCode: 'apple-code-123' })
+  })
+
   test('treats 202 as accepted while the server finishes deletion in the background', async () => {
     const { fetcher } = respondWith(202)
 

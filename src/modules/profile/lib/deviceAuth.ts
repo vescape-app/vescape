@@ -50,19 +50,28 @@ type AccountDeletionOutcome = 'deleted' | 'queued'
 interface DeleteAccountOptions {
   serverUrl: string
   clerkToken: string
+  appleAuthorizationCode?: string
   fetcher?: Fetcher
 }
 
 export async function deleteAccount({
   serverUrl,
   clerkToken,
+  appleAuthorizationCode,
   fetcher = fetch,
 }: DeleteAccountOptions): Promise<AccountDeletionOutcome> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 30_000)
+  const headers: Record<string, string> = { Authorization: `Bearer ${clerkToken}` }
+  let body: string | undefined
+  if (appleAuthorizationCode) {
+    headers['Content-Type'] = 'application/json'
+    body = JSON.stringify({ appleAuthorizationCode })
+  }
   const response = await fetcher(`${serverUrl.replace(/\/+$/, '')}/api/account`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${clerkToken}` },
+    headers,
+    ...(body === undefined ? {} : { body }),
     signal: controller.signal,
   }).finally(() => clearTimeout(timeout))
 

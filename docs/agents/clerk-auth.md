@@ -67,8 +67,10 @@ client can no longer revoke.
 Account deletion ordering:
 
 ```text
-suspend DeviceAuthSync -> native clear -> DELETE /api/account (Clerk token) -> reset Rider Profile -> Clerk sign-out
+(iOS Sign in with Apple only: requestAppleAuthorizationCode) -> suspend DeviceAuthSync -> native clear -> DELETE /api/account (Clerk token + optional appleAuthorizationCode) -> reset Rider Profile -> Clerk sign-out
 ```
+
+When an iOS rider has a connected Apple account, the app prompts native Sign in with Apple once before clearing credentials to obtain a fresh single-use `authorizationCode` (cancelling aborts deletion cleanly). `vescape-server` exchanges and revokes it against Apple's `/auth/token` and `/auth/revoke` endpoints (App Store Guideline 5.1.1(v)) before fencing and deleting the Account.
 
 The local clear uses `clearDeviceCredential`, not revoke: the server revokes every Device Token as
 part of the deletion. If the local clear fails, the request is never sent; provisioning resumes and

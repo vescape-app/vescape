@@ -673,6 +673,10 @@ class VescapeCoreModule : Module() {
     Function("clearDeviceCredential") {
       NativeAuthCoordinator.get(context).clear()
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `requestAppleAuthorizationCode`
+    // @platform-diff Sign in with Apple token revocation is iOS-only.
+    // @parity /modules/vescape-core/src/index.ts `requestAppleAuthorizationCode`
+    AsyncFunction("requestAppleAuthorizationCode") { null as String? }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `openAppUpdate`
     // @platform-diff Android uses the stable Android download route.
     // @parity /modules/vescape-core/src/index.ts `openAppUpdate`
