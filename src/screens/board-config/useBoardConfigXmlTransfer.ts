@@ -3,40 +3,58 @@ import * as DocumentPicker from 'expo-document-picker'
 import { File, Paths } from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 import {
+  applyBoardConfigChangeset,
   exportBoardConfigXml,
   planBoardConfigXmlImport,
   type BoardConfigSchema,
+  type BoardConfigValues,
   type BoardConfigXmlImportPlan,
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
 import type { TemperatureUnit } from '@/helpers/units'
 import { buildBoardConfigReviewEntries } from '@/modules/board/lib/boardConfigChangeset'
+import {
+  buildExportXmlFilename,
+  validateBoardConfigImportSchema,
+} from '@/screens/board-config/boardConfigXmlHelpers'
 
-export function buildExportXmlFilename(boardName: string | undefined): string {
-  const slug = (boardName ?? 'board')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-  return `${slug || 'board'}-refloat-config.xml`
-}
+export { resolveReviewModalState } from '@/screens/board-config/boardConfigXmlHelpers'
 
-export function resolveReviewModalState<TEntry>(params: {
-  reviewOpen: boolean
-  hasImportPlan: boolean
+export async function applyReviewedBoardConfigChangeset(params: {
+  boardId: string | undefined
   canEdit: boolean
-  applyError: string | null
-  reviewEntries: TEntry[]
-  importReviewEntries: TEntry[]
-}) {
-  const visible = params.reviewOpen || params.hasImportPlan
-  return {
-    visible,
-    source: params.hasImportPlan ? ('import' as const) : ('app' as const),
-    entries: params.hasImportPlan ? params.importReviewEntries : params.reviewEntries,
-    error:
-      params.applyError ??
-      (!params.canEdit && visible ? 'Board disconnected. Reconnect to apply changes.' : null),
+  importPlan: BoardConfigXmlImportPlan | null
+  pendingChanges: Record<string, number | boolean>
+  currentSchemaHash: string | null | undefined
+}): Promise<
+  | { kind: 'noop' }
+  | { kind: 'error'; message: string }
+  | { kind: 'applied'; isImport: boolean; updated: BoardConfigValues }
+> {
+  const { importPlan } = params
+  const targetChanges = importPlan !== null ? importPlan.changes : params.pendingChanges
+  if (!params.boardId || Object.keys(targetChanges).length === 0) {
+    return { kind: 'noop' }
+  }
+  if (!params.canEdit) {
+    return { kind: 'error', message: 'Board disconnected. Reconnect to apply changes.' }
+  }
+  if (importPlan !== null) {
+    const schemaError = validateBoardConfigImportSchema(importPlan, params.currentSchemaHash)
+    if (schemaError) return { kind: 'error', message: schemaError }
+  }
+  try {
+    const updated =
+      importPlan !== null
+        ? await applyBoardConfigChangeset(params.boardId, targetChanges, 'import')
+        : await applyBoardConfigChangeset(params.boardId, targetChanges)
+    return { kind: 'applied', isImport: importPlan !== null, updated }
+  } catch (err) {
+    return {
+      kind: 'error',
+      message: errorMessage(err, 'Board configuration could not be written.'),
+    }
   }
 }
 
@@ -142,7 +160,7 @@ export function useBoardConfigXmlTransfer({
     importReviewEntries,
     xmlNotice,
     xmlError,
-    xmlBusy,
+    canTransferXml: canEdit && !xmlBusy,
     setXmlNotice,
     clearImportPlan,
     handleExportXml,

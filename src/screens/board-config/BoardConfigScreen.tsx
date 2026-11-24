@@ -9,7 +9,6 @@ import {
   GearSixIcon,
   WrenchIcon,
 } from 'phosphor-react-native'
-import { applyBoardConfigChangeset } from 'vescape-core'
 
 import { Banner } from '@/components/base/Banner'
 import { Button } from '@/components/base/Button'
@@ -21,7 +20,6 @@ import { SearchInput } from '@/components/forms/SearchInput'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
-import { errorMessage } from '@/helpers/error'
 import { fmtTimeAgo } from '@/helpers/format'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { BoardConfigOptionsSheet } from '@/modules/board/components/BoardConfigOptionsSheet'
@@ -55,6 +53,7 @@ import {
   BoardConfigSchemaSectionCard,
 } from '@/screens/board-config/BoardConfigSchemaParts'
 import {
+  applyReviewedBoardConfigChangeset,
   resolveReviewModalState,
   useBoardConfigXmlTransfer,
 } from '@/screens/board-config/useBoardConfigXmlTransfer'
@@ -127,17 +126,19 @@ function BoardConfigReadInfo({
 }
 
 function BoardConfigStatusBanners({
-  showOfflineBanner,
+  hasSchema,
+  canEdit,
   xmlError,
   xmlNotice,
 }: {
-  showOfflineBanner: boolean
+  hasSchema: boolean
+  canEdit: boolean
   xmlError: string | null
   xmlNotice: string | null
 }) {
   return (
     <>
-      {showOfflineBanner ? (
+      {hasSchema && !canEdit ? (
         <Banner
           variant="info"
           message="Showing last known config. Connect this board to edit settings."
@@ -280,17 +281,7 @@ export default function BoardConfigScreen() {
   const closeOptions = useCallback(() => setOptionsOpen(false), [])
   const resetApplyError = useCallback(() => setApplyError(null), [])
 
-  const {
-    importPlan,
-    importReviewEntries,
-    xmlNotice,
-    xmlError,
-    xmlBusy,
-    setXmlNotice,
-    clearImportPlan,
-    handleExportXml,
-    handleImportXml,
-  } = useBoardConfigXmlTransfer({
+  const xmlTransfer = useBoardConfigXmlTransfer({
     boardId,
     boardName: board?.name,
     canEdit,
@@ -303,33 +294,30 @@ export default function BoardConfigScreen() {
   })
 
   const handleConfirmApply = useCallback(async () => {
-    const isImport = importPlan !== null
-    const targetChanges = isImport ? importPlan.changes : pendingChanges
-    if (!boardId || Object.keys(targetChanges).length === 0) return
-    if (!canEdit) {
-      setApplyError('Board disconnected. Reconnect to apply changes.')
-      return
-    }
     setSaving(true)
     setApplyError(null)
-    try {
-      const updated = isImport
-        ? await applyBoardConfigChangeset(boardId, targetChanges, 'import')
-        : await applyBoardConfigChangeset(boardId, targetChanges)
-      useBoardConfigValuesStore.getState().replace(updated)
-      setPendingChanges({})
-      if (isImport) {
-        clearImportPlan()
-        setXmlNotice('Config imported and written to board.')
-      } else {
-        setReviewOpen(false)
-      }
-    } catch (err) {
-      setApplyError(errorMessage(err, 'Board configuration could not be written.'))
-    } finally {
-      setSaving(false)
+    const outcome = await applyReviewedBoardConfigChangeset({
+      boardId,
+      canEdit,
+      importPlan: xmlTransfer.importPlan,
+      pendingChanges,
+      currentSchemaHash: refloat?.schemaHash,
+    })
+    setSaving(false)
+    if (outcome.kind === 'error') {
+      setApplyError(outcome.message)
+      return
     }
-  }, [boardId, canEdit, clearImportPlan, importPlan, pendingChanges, setXmlNotice])
+    if (outcome.kind !== 'applied') return
+    useBoardConfigValuesStore.getState().replace(outcome.updated)
+    if (outcome.isImport) {
+      xmlTransfer.clearImportPlan()
+      xmlTransfer.setXmlNotice('Config imported and written to board.')
+    } else {
+      setPendingChanges({})
+      setReviewOpen(false)
+    }
+  }, [boardId, canEdit, pendingChanges, refloat?.schemaHash, xmlTransfer])
 
   const renderReadOnlyGroup = (group: BoardConfigGroup) => (
     <BoardConfigSection
@@ -378,17 +366,17 @@ export default function BoardConfigScreen() {
 
   const reviewModal = resolveReviewModalState({
     reviewOpen,
-    hasImportPlan: importPlan !== null,
+    hasImportPlan: xmlTransfer.importPlan !== null,
     canEdit,
     applyError,
     reviewEntries,
-    importReviewEntries,
+    importReviewEntries: xmlTransfer.importReviewEntries,
   })
   const handleCancelReview = useCallback(() => {
     if (saving) return
-    if (importPlan !== null) clearImportPlan()
+    if (xmlTransfer.importPlan !== null) xmlTransfer.clearImportPlan()
     else setReviewOpen(false)
-  }, [clearImportPlan, importPlan, saving])
+  }, [saving, xmlTransfer])
 
   const handleOpenRawConfig = useCallback(() => {
     setOptionsOpen(false)
@@ -483,9 +471,10 @@ export default function BoardConfigScreen() {
         </IconHero>
 
         <BoardConfigStatusBanners
-          showOfflineBanner={Boolean(schema && !canEdit)}
-          xmlError={xmlError}
-          xmlNotice={xmlNotice}
+          hasSchema={schema !== null}
+          canEdit={canEdit}
+          xmlError={xmlTransfer.xmlError}
+          xmlNotice={xmlTransfer.xmlNotice}
         />
 
         <SearchInput
@@ -544,9 +533,9 @@ export default function BoardConfigScreen() {
         source={reviewModal.source}
         boardName={board?.name}
         entries={reviewModal.entries}
-        skippedFields={importPlan?.skippedFields}
+        skippedFields={xmlTransfer.importPlan?.skippedFields}
         saving={saving}
-        confirmDisabled={!canEdit}
+        confirmDisabled={reviewModal.confirmDisabled}
         error={reviewModal.error}
         onConfirm={handleConfirmApply}
         onCancel={handleCancelReview}
@@ -562,10 +551,10 @@ export default function BoardConfigScreen() {
         <BoardConfigOptionsSheet
           boardId={boardId}
           fieldLabels={fieldLabels}
-          canTransferXml={canEdit && !xmlBusy}
+          canTransferXml={xmlTransfer.canTransferXml}
           onOpenRawConfig={handleOpenRawConfig}
-          onExportXml={() => void handleExportXml()}
-          onImportXml={() => void handleImportXml()}
+          onExportXml={() => void xmlTransfer.handleExportXml()}
+          onImportXml={() => void xmlTransfer.handleImportXml()}
         />
       </EdgeDrawer>
     </View>

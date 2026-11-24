@@ -1143,7 +1143,17 @@ class VescapeCoreModule : Module() {
           "Connect to this board to export its config",
           null,
         )
-      BoardConfigXmlCodec.exportXml(writeBase.schema, writeBase.rawConfig)
+      try {
+        BoardConfigXmlCodec.exportXml(writeBase.schema, writeBase.rawConfig)
+      } catch (error: RefloatConfigEncodeException) {
+        throw CodedException(error.code.name, error.message, error)
+      } catch (error: Throwable) {
+        throw CodedException(
+          RefloatConfigErrorCode.CONFIG_ENCODE_FAILED.name,
+          error.message ?: "Board configuration XML could not be exported",
+          error,
+        )
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigXmlImport`
     // @parity /modules/vescape-core/src/index.ts `planBoardConfigXmlImport`

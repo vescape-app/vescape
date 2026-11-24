@@ -131,6 +131,13 @@ export function BoardConfigReviewModal({
           />
         ) : null}
 
+        {entries.length === 0 && skippedFields.length > 0 ? (
+          <Banner
+            variant="info"
+            message="No writable changes found. Every differing field in this source was skipped."
+          />
+        ) : null}
+
         {error ? <Banner variant="error" title="Write failed" message={error} /> : null}
 
         <View style={styles.list}>
