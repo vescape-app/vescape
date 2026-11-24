@@ -192,7 +192,14 @@ internal final class BoardSessionController: VescGattListener {
   }()
 
   func recordingFailure() -> RecordingStorageFailureKind? { RecordingStorageFailure.value() }
-  private lazy var configController = ConfigRWController(scheduler: scheduler)
+  private lazy var legacyLightsConfigGate = LegacyLightsConfigGate(scheduler: scheduler) { [weak self] in
+    self?.onLegacyLightsEchoTimeout()
+  }
+  private lazy var configController = ConfigRWController(
+    scheduler: scheduler,
+    profileExecutor: { DispatchQueue.global(qos: .userInitiated).async(execute: $0) },
+    completeOnSession: { [weak self] block in self?.scheduler.post(block) }
+  )
   private lazy var locationTracker = LocationTracker(
     recentWindowMs: { [weak self] in Int64(max(1, self?.config?.liveHistoryLimitMinutes ?? 5)) * 60_000 },
     recordLocation: { [weak self] in self?.recordingCoordinator.recordLocation($0) },
@@ -470,7 +477,7 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt `consumeRead`
-  func getRefloatConfigSnapshot(
+  func refreshBoardConfigValues(
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -488,10 +495,36 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/service/CoreForegroundService.kt `applyBoardConfigChangeset`
+  func applyBoardConfigChangeset(
+    boardId: String,
+    changes: [String: Any],
+    source: BoardConfigRevisionSource = .app,
+    expectedSchemaHash: String? = nil,
+    onSuccess: @escaping ([String: Any?]) -> Void,
+    onError: @escaping (String, String) -> Void
+  ) {
+    guard let config else {
+      onError(
+        RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
+        "Board must be connected before pushing config"
+      )
+      return
+    }
+    configController.consumeChangeset(
+      boardId: boardId,
+      changes: changes,
+      source: source,
+      expectedSchemaHash: expectedSchemaHash,
+      connection: configConnection(config),
+      onSuccess: onSuccess,
+      onError: onError
+    )
+  }
+
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt `consumeWrite`
   func pushProfileToBoard(
     profileId: String,
-    fieldIds: [String],
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -504,7 +537,6 @@ internal final class BoardSessionController: VescGattListener {
     }
     configController.consumeWrite(
       profileId: profileId,
-      fieldIds: fieldIds,
       connection: configConnection(config),
       onSuccess: onSuccess,
       onError: onError
@@ -626,9 +658,12 @@ internal final class BoardSessionController: VescGattListener {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onBoardLightsEcho`
   private func onBoardLightsEcho(_ lights: BoardLightsState) {
+    legacyLightsConfigGate.onLightsEchoReceived()
     boardLights = lights
     publishBoardLights()
-    guard lightsCommandChangesBoardConfig(config?.refloatBaseVersion), let values = boardConfigValues else { return }
+    guard lightsCommandChangesBoardConfig(config?.refloatBaseVersion), !configController.isWriteInFlight,
+      let values = boardConfigValues
+    else { return }
     let patched: BoardConfigValues?
     do {
       patched = try values.withLights(enabled: lights.enabled, headlightsEnabled: lights.headlightsEnabled)
@@ -670,9 +705,13 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setBoardLights`
   func setBoardLights(enabled: Bool, headlightsEnabled: Bool) -> Bool {
     guard firmwareCommandsTrusted(), let config else { return false }
+    guard legacyLightsConfigGate.canSendLights(
+      refloatBaseVersion: config.refloatBaseVersion,
+      configWriteInFlight: configController.isWriteInFlight
+    ) else { return false }
     let transport = config.transport ?? .direct
     let generation = BoardLightsGeneration.forBaseVersion(config.refloatBaseVersion)
-    return sendPayloadWithRetry(
+    let sent = sendPayloadWithRetry(
       buildLightsControlCommand(
         transport: transport,
         generation: generation,
@@ -680,6 +719,17 @@ internal final class BoardSessionController: VescGattListener {
         headlightsEnabled: headlightsEnabled
       ),
       session: session
+    )
+    if sent { legacyLightsConfigGate.onLightsCommandSent(refloatBaseVersion: config.refloatBaseVersion) }
+    return sent
+  }
+
+  private func onLegacyLightsEchoTimeout() {
+    boardConfigValues = boardConfigValues?.demotedToProvisional()
+    recordConnectionDiagnostic(
+      "board_lights_echo_timeout",
+      operation: "config_rw",
+      message: "Lights echo timed out"
     )
   }
 
@@ -1270,6 +1320,7 @@ internal final class BoardSessionController: VescGattListener {
     session?.invalidate()
     stopPolling()
     stopReconnect()
+    legacyLightsConfigGate.reset()
     configController.onSessionTerminated("Board session replaced", connection: fallbackConfigRWConnection())
     reassembler.reset()
 
@@ -1425,6 +1476,7 @@ internal final class BoardSessionController: VescGattListener {
     )
     stopPolling()
     stopReconnect()
+    legacyLightsConfigGate.reset()
     configController.onSessionTerminated(error ?? "Board session ended", connection: fallbackConfigRWConnection())
     alertCoordinator.stopAllGeiger()
     alertAudioPlayer.goIdle()
@@ -1602,6 +1654,7 @@ internal final class BoardSessionController: VescGattListener {
     connectTimeout?.cancel()
     connectTimeout = nil
     stopPolling()
+    legacyLightsConfigGate.reset()
     configController.onSessionTerminated("Board connection lost", connection: fallbackConfigRWConnection())
     resetIdlePause()
     reassembler.reset()
@@ -1776,7 +1829,7 @@ internal final class BoardSessionController: VescGattListener {
     guard !payload.isEmpty else { return }
     switch Int(payload[0]) {
     case COMM_CUSTOM_APP_DATA:
-      if let lights = parseLightsControlResponse(payload) {
+      if let lights = parseLightsControlResponse(payload, transport: config?.transport) {
         onBoardLightsEcho(lights)
         return
       }
@@ -1786,7 +1839,7 @@ internal final class BoardSessionController: VescGattListener {
     case COMM_BMS_GET_VALUES:
       handleBms(payload)
     case COMM_FORWARD_CAN where payload.count >= 5 && Int(payload[2]) == COMM_CUSTOM_APP_DATA:
-      if let lights = parseLightsControlResponse(payload) {
+      if let lights = parseLightsControlResponse(payload, transport: config?.transport) {
         onBoardLightsEcho(lights)
       }
     case COMM_FORWARD_CAN where payload.count >= 3 && Int(payload[2]) == COMM_BMS_GET_VALUES:
@@ -1828,6 +1881,12 @@ internal final class BoardSessionController: VescGattListener {
     }
     onRefloatNormalFrame()
     emitTelemetry(telemetry)
+    if let config {
+      configController.onRideState(
+        BoardRideState(state: telemetry.state, switchState: telemetry.switchState, receivedAtMs: telemetry.lastPacketAt),
+        connection: configConnection(config)
+      )
+    }
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `handleBmsPayload`
@@ -1901,8 +1960,12 @@ internal final class BoardSessionController: VescGattListener {
     syncBoardLightsFromConfig(values)
     alertCoordinator.updateBoardConfigValues(values.values)
     do {
-      if origin == .freshRead { try BoardConfigStore.shared.saveFresh(values) }
-      else { try BoardConfigStore.shared.save(values) }
+      switch origin {
+      case .freshRead:
+        try BoardConfigStore.shared.saveFresh(values)
+      case .vescapeWrite(let source, let tuneProfileId):
+        try BoardConfigStore.shared.saveWrite(values, source: source, tuneProfileId: tuneProfileId)
+      }
     } catch { RecordingStorageFailure.report(operation: "board_config_save", category: "write_failed", error: error) }
     evaluateConfigSafety(values)
   }
@@ -2059,7 +2122,7 @@ internal final class BoardSessionController: VescGattListener {
   private func handleLinkIntegrityRefloat(_ payload: [UInt8]) -> Bool {
     guard let session, let config else { return false }
     let version: String
-    switch RefloatConfigProtocol.parseGetInfoResponse(payload) {
+    switch RefloatConfigProtocol.parseGetInfoResponse(payload, transport: config.transport) {
     case .success(let info): version = info.version
     case .failure: return false
     }
@@ -2117,6 +2180,11 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardConfigValuesMap`
   func boardConfigValuesMap() -> [String: Any?]? {
     boardConfigValues?.toBridgeMap()
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `currentBoardConfigValues`
+  func currentBoardConfigValues() -> BoardConfigValues? {
+    boardConfigValues
   }
   private var vescLiveFirmware: String?
 
@@ -2821,7 +2889,7 @@ internal final class BoardSessionController: VescGattListener {
       refloatVersion: config.refloatVersion,
       refloatBaseVersion: config.refloatBaseVersion,
       linkIntegrity: linkIntegrity,
-      boardConfigValues: boardConfigValues,
+      boardConfigValues: legacyLightsConfigGate.isEchoPending ? boardConfigValues?.demotedToProvisional() : boardConfigValues,
       isPollingActive: { [weak self] in self?.polling ?? false },
       stopPolling: { [weak self] in self?.stopPolling() },
       startPolling: { [weak self] in self?.restartPollingForConfigRead() },
@@ -2837,7 +2905,17 @@ internal final class BoardSessionController: VescGattListener {
       demoteWriteBase: { [weak self] in self?.boardConfigValues = self?.boardConfigValues?.demotedToProvisional() },
       rideState: { [weak self] in
         self?.latestTelemetry.map { BoardRideState(state: $0.state, switchState: $0.switchState, receivedAtMs: $0.lastPacketAt) }
-      }
+      },
+      isSessionActive: { [weak self] in
+        self?.phase == .connected && self?.session?.isActive == true && self?.config != nil
+      },
+      liveLinkIntegrity: { [weak self] in self?.linkIntegrity ?? .unknown },
+      liveBoardConfigValues: { [weak self] in
+        guard let self else { return nil }
+        return self.legacyLightsConfigGate.isEchoPending ? self.boardConfigValues?.demotedToProvisional() : self.boardConfigValues
+      },
+      sendTaggedPayload: { [weak self] payload, tag in self?.transport.sendPayload(payload, tag: tag) ?? false },
+      cancelQueuedPayloads: { [weak self] tag in self?.transport.cancelQueuedPayloads(tag: tag) }
     )
   }
 
@@ -2859,7 +2937,8 @@ internal final class BoardSessionController: VescGattListener {
       loadProfile: { _ in nil },
       onBoardConfigValues: { _, _ in },
       demoteWriteBase: { [weak self] in self?.boardConfigValues = self?.boardConfigValues?.demotedToProvisional() },
-      rideState: { nil }
+      rideState: { nil },
+      cancelQueuedPayloads: { [weak self] tag in self?.transport.cancelQueuedPayloads(tag: tag) }
     )
   }
 

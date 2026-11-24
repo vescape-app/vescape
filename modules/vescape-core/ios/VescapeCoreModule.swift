@@ -241,6 +241,9 @@ public class VescapeCoreModule: Module {
       BoardConfigStore.onInvalidIgnoredFields = { error in
         RecordingStorageFailure.reportRead(operation: "board_config_ignored_fields_read", error: error)
       }
+      BoardConfigStore.onInvalidSchemaXml = { error in
+        RecordingStorageFailure.reportRead(operation: "board_config_schema_parse", error: error)
+      }
       MaintenanceRunner.shared.onChange = { [weak self] state in self?.emitMaintenanceState(state) }
       MaintenanceRunner.shared.start()
     }
@@ -999,13 +1002,20 @@ public class VescapeCoreModule: Module {
     /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
     AsyncFunction("getBoardConfigValues") { (promise: Promise) in
       promise.resolve(self.coordinator.boardConfigValuesMap())
-    }
+    }.runOnQueue(.main)
     /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownBoardConfigValues`
     /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
     AsyncFunction("getLastKnownBoardConfigValues") { (boardId: String, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do { promise.resolve(try BoardConfigStore.shared.loadLatest(boardId: boardId)?.toBridgeMap()) }
       catch { RecordingStorageFailure.reportRead(operation: "board_config_latest_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read cached Board Config", cause: error) }
+    }
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigSchema`
+    /// @parity /modules/vescape-core/src/index.ts `BoardConfigSchema`
+    AsyncFunction("getBoardConfigSchema") { (schemaHash: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try BoardConfigStore.shared.loadSchema(schemaHash: schemaHash)?.toBridgeMap()) }
+      catch { RecordingStorageFailure.reportRead(operation: "board_config_schema_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read cached Board Config Schema", cause: error) }
     }
     /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
     /// @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
@@ -1110,12 +1120,14 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    AsyncFunction("getRefloatConfigSnapshot") { (promise: Promise) in
-      self.coordinator.getRefloatConfigSnapshot(
-        onSuccess: { snapshot in promise.resolve(snapshot) },
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshBoardConfigValues`
+    // @parity /modules/vescape-core/src/index.ts `refreshBoardConfigValues`
+    AsyncFunction("refreshBoardConfigValues") { (promise: Promise) in
+      self.coordinator.refreshBoardConfigValues(
+        onSuccess: { values in promise.resolve(values) },
         onError: { code, message in promise.reject(code, message) }
       )
-    }
+    }.runOnQueue(.main)
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setRemoteTilt`
     // @parity /modules/vescape-core/src/index.ts `setRemoteTilt`
@@ -1143,7 +1155,7 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("setBoardLights") { (enabled: Bool, headlightsEnabled: Bool) -> Bool in
       self.coordinator.setBoardLights(enabled: enabled, headlightsEnabled: headlightsEnabled)
-    }
+    }.runOnQueue(.main)
 
     AsyncFunction("startBoardMove") { (input: Int) -> Bool in
       self.coordinator.startBoardMove(input: input)
@@ -1196,21 +1208,96 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    AsyncFunction("getProfileHistory") { (profileId: String, promise: Promise) in
-      try RecordingStorageFailure.requireAvailable()
-      do { promise.resolve(try TuneProfileStore.shared.getProfileHistory(profileId)) }
-      catch { RecordingStorageFailure.reportRead(operation: "tune_history_read", error: error); promise.reject(TuneProfileStore.errorCode, error.localizedDescription) }
-    }
-
-    AsyncFunction("rollbackProfile") { (profileId: String, historyEntryId: Double, promise: Promise) in
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigRevisions`
+    // @parity /modules/vescape-core/src/index.ts `getBoardConfigRevisions`
+    AsyncFunction("getBoardConfigRevisions") { (boardId: String, limit: Int?, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
-        promise.resolve(
-          try TuneProfileStore.shared.rollbackProfile(profileId: profileId, historyEntryId: Int64(historyEntryId))
+        let revisions = try BoardConfigStore.shared.loadRevisions(
+          boardId: boardId,
+          limit: limit ?? BoardConfigStore.defaultRevisionsLimit
         )
+        promise.resolve(revisions.map { $0.toBridgeMap() })
       } catch {
-        reportTunePersistenceWrite(operation: "tune_profile_rollback", error: error)
-        promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
+        RecordingStorageFailure.reportRead(operation: "board_config_revisions_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read Board Config Revisions", cause: error)
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `planBoardConfigRevert`
+    // @parity /modules/vescape-core/src/index.ts `planBoardConfigRevert`
+    AsyncFunction("planBoardConfigRevert") { (boardId: String, revisionId: Double, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      DispatchQueue.main.async {
+        let current = self.coordinator.currentBoardConfigValues()
+        DispatchQueue.global(qos: .userInitiated).async {
+          do {
+            let plan = try BoardConfigStore.shared.planRevert(
+              boardId: boardId,
+              current: current,
+              revisionId: Int64(revisionId)
+            )
+            promise.resolve(plan.toBridgeMap())
+          } catch let error as RefloatConfigEncodeException {
+            promise.reject(error.code.rawValue, error.message)
+          } catch {
+            RecordingStorageFailure.reportRead(operation: "board_config_revert_plan", error: error)
+            promise.reject("APP_STORAGE_READ_FAILED", error.localizedDescription)
+          }
+        }
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportBoardConfigXml`
+    // @parity /modules/vescape-core/src/index.ts `exportBoardConfigXml`
+    AsyncFunction("exportBoardConfigXml") { (boardId: String, promise: Promise) in
+      DispatchQueue.main.async {
+        guard let current = self.coordinator.currentBoardConfigValues(),
+              current.freshness == .fresh,
+              current.boardId == boardId,
+              let writeBase = current.writeBase else {
+          promise.reject(
+            RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
+            "Connect to this board to export its config"
+          )
+          return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+          let xml = BoardConfigXmlCodec.exportXml(schema: writeBase.schema, rawConfig: writeBase.rawConfig)
+          promise.resolve(xml)
+        }
+      }
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `planBoardConfigXmlImport`
+    // @parity /modules/vescape-core/src/index.ts `planBoardConfigXmlImport`
+    AsyncFunction("planBoardConfigXmlImport") { (boardId: String, xml: String, promise: Promise) in
+      DispatchQueue.main.async {
+        guard let current = self.coordinator.currentBoardConfigValues(),
+              current.freshness == .fresh,
+              current.boardId == boardId,
+              let writeBase = current.writeBase else {
+          promise.reject(
+            RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
+            "Connect to this board to import a config"
+          )
+          return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+          do {
+            let plan = try BoardConfigXmlCodec.planImport(
+              boardId: boardId,
+              currentSchema: writeBase.schema,
+              currentRawConfig: writeBase.rawConfig,
+              xml: xml
+            )
+            promise.resolve(plan.toBridgeMap())
+          } catch let error as RefloatConfigEncodeException {
+            promise.reject(error.code.rawValue, error.message)
+          } catch {
+            promise.reject(RefloatConfigErrorCode.INVALID_CONFIG_XML.rawValue, error.localizedDescription)
+          }
+        }
       }
     }
 
@@ -1240,16 +1327,42 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
-    AsyncFunction("pushProfileToBoard") { (profileId: String, fieldIds: [String], promise: Promise) in
-      try RecordingStorageFailure.requireAvailable()
-      self.coordinator.pushProfileToBoard(
-        profileId: profileId,
-        fieldIds: fieldIds,
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyBoardConfigChangeset`
+    // @parity /modules/vescape-core/src/index.ts `applyBoardConfigChangeset`
+    AsyncFunction("applyBoardConfigChangeset") { (boardId: String, changes: [String: Any], source: String?, expectedSchemaHash: String?, promise: Promise) in
+      let resolvedSource: BoardConfigRevisionSource
+      if let source {
+        switch source {
+        case BoardConfigRevisionSource.app.rawValue: resolvedSource = .app
+        case BoardConfigRevisionSource.revert.rawValue: resolvedSource = .revert
+        case BoardConfigRevisionSource.import.rawValue: resolvedSource = .import
+        default:
+          promise.reject(RefloatConfigErrorCode.CONFIG_VALUE_INVALID.rawValue, "Invalid revision source: \(source)")
+          return
+        }
+      } else {
+        resolvedSource = .app
+      }
+      self.coordinator.applyBoardConfigChangeset(
+        boardId: boardId,
+        changes: changes,
+        source: resolvedSource,
+        expectedSchemaHash: expectedSchemaHash,
         onSuccess: { snapshot in promise.resolve(snapshot) },
         onError: { code, message in promise.reject(code, message) }
       )
-    }
+    }.runOnQueue(.main)
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
+    // @parity /modules/vescape-core/src/index.ts `pushProfileToBoard`
+    AsyncFunction("pushProfileToBoard") { (profileId: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      self.coordinator.pushProfileToBoard(
+        profileId: profileId,
+        onSuccess: { snapshot in promise.resolve(snapshot) },
+        onError: { code, message in promise.reject(code, message) }
+      )
+    }.runOnQueue(.main)
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getProfileStatsSnapshot`
     AsyncFunction("getProfileStatsSnapshot") { (options: [String: Any], promise: Promise) in

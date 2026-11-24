@@ -1,59 +1,12 @@
-import type { RefloatConfigField, RefloatConfigGroup, TuneProfileFieldValue } from 'vescape-core'
+import type { TuneProfileFieldValue } from 'vescape-core'
 
-import { APP_TUNE_FIELD_BY_ID, formatTuneValue } from '@/modules/tune/lib/fields'
+import {
+  getFieldOverlay,
+  type ResolvedBoardConfigField,
+  type ResolvedBoardConfigGroup,
+} from '@/modules/board/lib/refloatFieldOverlay'
+import { formatTuneValue } from '@/modules/tune/lib/fields'
 import { isDisplayableFieldValue } from '@/modules/tune/lib/fieldValues'
-
-const FIELD_INFO: Record<string, string> = {
-  kp: 'Main proportional angle response. Higher values make the board respond more strongly to nose angle error.',
-  kp2: 'Responds to angular velocity. This acts like damping and is especially noticeable during fast or aggressive nose-angle changes.',
-  kp_brake: 'Multiplier for angle response while braking.',
-  kp2_brake: 'Multiplier for rate response while braking.',
-  ki: 'Integral angle correction. This helps remove sustained angle error over time.',
-  ki_limit: 'Limits how much authority the integral correction can build up.',
-  mahony_kp:
-    'Pitch-axis Mahony filter accelerometer correction. Higher values feel looser and linger more; lower values feel snappier.',
-  mahony_kp_roll:
-    'Roll-axis Mahony filter correction. Lower roll correction can help the nose hold up in turns and make tight carves feel stiffer.',
-  atr_strength_up:
-    'Nose lift applied from adaptive torque response during uphill or acceleration load.',
-  atr_strength_down:
-    'Nose lowering applied from adaptive torque response during downhill or braking load.',
-  atr_threshold_up: 'Angle threshold before uphill ATR behavior starts.',
-  atr_threshold_down: 'Angle threshold before downhill ATR behavior starts.',
-  atr_speed_boost: 'Boosts ATR response as speed increases.',
-  atr_angle_limit: 'Maximum angle ATR tiltback is allowed to apply.',
-  atr_on_speed: 'Maximum speed where ATR tiltback can be applied.',
-  atr_off_speed: 'Maximum speed where ATR tiltback can be released.',
-  atr_response_boost: 'Boost factor for tiltback response.',
-  atr_transition_boost: 'Boost factor around ATR response transitions.',
-  atr_filter: 'Current filter frequency used by ATR.',
-  atr_amps_accel_ratio: 'Ratio used by acceleration-side ATR behavior.',
-  atr_amps_decel_ratio: 'Ratio used by deceleration-side ATR behavior.',
-  torquetilt_strength:
-    'Nose lift based on positive output current. The basic Nose stiffness control writes this value.',
-  torquetilt_strength_regen:
-    'Nose lowering based on negative regen current. The basic Tail stiffness control writes this value.',
-  torquetilt_start_current: 'Current threshold before torque tiltback starts.',
-  torquetilt_angle_limit: 'Maximum angle torque tiltback is allowed to apply.',
-  torquetilt_on_speed: 'Maximum speed where torque tiltback can be applied.',
-  torquetilt_off_speed: 'Maximum speed where torque tiltback can be released.',
-  turntilt_strength:
-    'Turn tiltback strength. The basic Carve tilt control writes this directly. Tune Preview does not show it because Carve Tilt requires a turn scenario.',
-  turntilt_angle_limit: 'Maximum turn tiltback angle.',
-  turntilt_start_angle: 'Turn aggregate threshold before turn tiltback response starts.',
-  turntilt_start_erpm: 'ERPM threshold before turn tiltback response starts.',
-  turntilt_speed: 'Maximum speed where turn tiltback can be applied.',
-  turntilt_erpm_boost: 'Speed-based boost percentage for turn tiltback.',
-  turntilt_erpm_boost_end: 'ERPM where turn tiltback speed boost reaches its maximum.',
-  turntilt_yaw_aggregate: 'Target accumulated yaw or turn value for turn tiltback.',
-  braketilt_strength: 'Brake tilt strength. The basic Brake tilt control writes this directly.',
-  braketilt_lingering: 'Controls how brake tilt lingers or releases after braking.',
-  tiltback_constant: 'Constant nose angle offset.',
-  tiltback_constant_erpm: 'Forward speed threshold where Constant Tiltback begins.',
-  tiltback_variable: 'Variable tiltback amount per ERPM.',
-  tiltback_variable_max: 'Maximum variable tiltback target.',
-  tiltback_variable_erpm: 'Forward speed threshold where Variable Tiltback begins.',
-}
 
 export interface BasicSliderItem {
   id: string
@@ -108,9 +61,13 @@ function nearEqual(a: number, b: number): boolean {
   return Math.abs(a - b) <= EPSILON
 }
 
-export function fieldStep(field: RefloatConfigField): number {
-  const explicitStep = APP_TUNE_FIELD_BY_ID.get(field.id)?.step
-  if (explicitStep != null) return explicitStep
+export function fieldStep(
+  field: Pick<ResolvedBoardConfigField, 'id' | 'min' | 'max' | 'step'> & { value?: unknown },
+): number {
+  const explicitStep = field.step ?? getFieldOverlay(field.id)?.step
+  if (explicitStep != null && Number.isFinite(explicitStep) && explicitStep > 0) {
+    return explicitStep
+  }
   const range = (field.max ?? 1) - (field.min ?? 0)
   if (range <= 1) return 0.01
   if (range <= 5) return 0.05
@@ -134,8 +91,10 @@ export function formatProfileValue(value: TuneProfileFieldValue | undefined): st
   return isDisplayableFieldValue(value) ? formatTuneValue(value) : 'Missing'
 }
 
-export function isEditableNumberField(field: RefloatConfigField): boolean {
+export function isEditableNumberField(field: ResolvedBoardConfigField): boolean {
   return (
+    field.editable &&
+    field.enumNames.length === 0 &&
     typeof field.value === 'number' &&
     Number.isFinite(field.value) &&
     field.min != null &&
@@ -146,8 +105,15 @@ export function isEditableNumberField(field: RefloatConfigField): boolean {
   )
 }
 
-export function fieldHelp(field: RefloatConfigField): string {
-  return FIELD_INFO[field.id] ?? 'Read-only field decoded from the board custom config schema.'
+export function fieldHelp(
+  field: Pick<ResolvedBoardConfigField, 'id' | 'description' | 'enumNames'>,
+): string {
+  const description = field.description?.trim() || getFieldOverlay(field.id)?.description?.trim()
+  if (description) return description
+  if (field.enumNames.length > 0) {
+    return `Options: ${field.enumNames.join(', ')}.`
+  }
+  return 'Field decoded from the board custom config schema.'
 }
 
 const BASIC_SLIDERS: BasicSliderDefinition[] = [
@@ -297,7 +263,7 @@ export function basicSliderChanges(
 export const BASIC_SLIDER_BY_ID = new Map(BASIC_SLIDERS.map((s) => [s.id, s]))
 
 export function basicSlidersFromGroups(
-  groups: RefloatConfigGroup[],
+  groups: ResolvedBoardConfigGroup[],
   overrideFields?: Map<string, number | null>,
 ): BasicSliderItem[] {
   const fieldMap = overrideFields ?? new Map<string, number | null>()
@@ -336,25 +302,28 @@ export interface LinkedFieldPreview {
   computeValue: (sliderVal: number) => number
 }
 
-export function getLinkedFieldPreviews(def: BasicSliderDefinition): LinkedFieldPreview[] {
+export function getLinkedFieldPreviews(
+  def: BasicSliderDefinition,
+  resolvedFieldsById?: ReadonlyMap<string, ResolvedBoardConfigField>,
+): LinkedFieldPreview[] {
   return def.linkedFields.map((fieldId) => {
-    const appField = APP_TUNE_FIELD_BY_ID.get(fieldId)
+    const resolved = resolvedFieldsById?.get(fieldId)
+    const overlay = getFieldOverlay(fieldId)
+    const min = resolved?.min ?? overlay?.softRange?.min ?? 0
+    const max = resolved?.max ?? overlay?.softRange?.max ?? 100
+    const step = fieldStep({
+      id: fieldId,
+      min,
+      max,
+      step: resolved?.step ?? overlay?.step ?? null,
+    })
     return {
       id: fieldId,
-      label: appField?.label ?? fieldId,
-      unit: appField?.unit ?? null,
-      min: appField?.min ?? 0,
-      max: appField?.max ?? 100,
-      step: appField
-        ? fieldStep({
-            id: appField.id,
-            label: appField.label,
-            value: def.computeFieldValues(def.min)[fieldId],
-            min: appField.min,
-            max: appField.max,
-            unit: appField.unit,
-          })
-        : 0.1,
+      label: resolved?.label ?? overlay?.label ?? fieldId,
+      unit: resolved?.unit ?? null,
+      min,
+      max,
+      step,
       computeValue: (sliderVal: number) => def.computeFieldValues(sliderVal)[fieldId],
     }
   })

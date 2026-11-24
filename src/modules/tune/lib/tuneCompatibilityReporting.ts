@@ -1,11 +1,12 @@
 import * as Sentry from '@sentry/react-native'
-import type { RefloatConfigSnapshot } from 'vescape-core'
+import type { BoardConfigValues } from 'vescape-core'
 
 import type { TuneCompatibilityIssue } from '@/modules/tune/lib/tuneCompatibility'
 
 export function reportTuneCompatibilityIssue(
   issue: TuneCompatibilityIssue,
-  snapshot: RefloatConfigSnapshot,
+  boardConfig: BoardConfigValues,
+  details?: { fwVersion?: string | null; refloatVersion?: string | null },
 ) {
   Sentry.captureMessage('Tune compatibility unavailable', {
     level: 'warning',
@@ -14,10 +15,9 @@ export function reportTuneCompatibilityIssue(
       reason: issue.reason,
     },
     extra: {
-      firmwareVersion: snapshot.fwVersion,
-      refloatVersion: snapshot.refloatVersion ?? null,
-      canId: snapshot.canId,
-      schemaHash: snapshot.schemaHash,
+      firmwareVersion: details?.fwVersion ?? null,
+      refloatVersion: details?.refloatVersion ?? boardConfig.refloatBaseVersion ?? null,
+      schemaHash: boardConfig.schemaHash ?? null,
     },
   })
 }

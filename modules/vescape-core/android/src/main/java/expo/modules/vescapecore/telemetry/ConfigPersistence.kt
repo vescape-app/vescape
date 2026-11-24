@@ -1,17 +1,60 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.config.BoardConfigChangeDiff
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
+import expo.modules.vescapecore.config.BoardConfigFreshness
+import expo.modules.vescapecore.config.BoardConfigRevertPlan
+import expo.modules.vescapecore.config.BoardConfigRevertPlanner
+import expo.modules.vescapecore.config.BoardConfigRevisionSource
+import expo.modules.vescapecore.config.BoardConfigValues
+import expo.modules.vescapecore.config.RefloatConfigEncodeException
+import expo.modules.vescapecore.config.RefloatConfigErrorCode
+import expo.modules.vescapecore.config.RefloatConfigFieldDecoder
 import expo.modules.vescapecore.config.RefloatConfigSchema
+import expo.modules.vescapecore.config.RefloatConfigSchemaParser
+import expo.modules.vescapecore.config.RefloatFieldOverlay
 import org.json.JSONArray
 import org.json.JSONObject
 import expo.modules.vescapecore.database.BoardConfigChangeNoticeEntity
+import expo.modules.vescapecore.database.BoardConfigRevisionEntity
+import expo.modules.vescapecore.database.BoardConfigSchemaEntity
 import expo.modules.vescapecore.database.BoardConfigValuesEntity
 import expo.modules.vescapecore.database.MotorConfigValuesEntity
 import expo.modules.vescapecore.database.VescapeDao
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevision`
+ * @parity /modules/vescape-core/src/index.ts `BoardConfigRevision`
+ */
+internal data class BoardConfigRevision(
+  val id: Long,
+  val boardId: String,
+  val refloatVersion: String,
+  val schemaHash: String,
+  val packageSignature: Long,
+  val source: BoardConfigRevisionSource,
+  val changes: List<BoardConfigChangeDiff>,
+  val tuneProfileId: String?,
+  val createdAtMs: Long,
+) {
+  fun toBridgeMap(): Map<String, Any?> = mapOf(
+    "id" to id,
+    "boardId" to boardId,
+    "refloatVersion" to refloatVersion,
+    "schemaHash" to schemaHash,
+    "packageSignature" to packageSignature,
+    "source" to source.wire,
+    "changes" to changes.map { it.toMap() },
+    "tuneProfileId" to tuneProfileId,
+    "createdAtMs" to createdAtMs,
+  )
+}
 
 internal class ConfigPersistence(
   private val dao: VescapeDao,
   private val onInvalidIgnoredFields: (Throwable) -> Unit = {},
+  private val onInvalidSchemaXml: (Throwable) -> Unit = {},
 ) {
   suspend fun saveFreshBoard(
     boardId: String,
@@ -19,23 +62,228 @@ internal class ConfigPersistence(
     values: Map<String, Any>,
     capturedAt: Long,
     schema: RefloatConfigSchema?,
+    refloatVersion: String? = null,
+    rawConfig: ByteArray? = null,
+    packageSignature: Long? = null,
   ): BoardConfigChangeNotice? {
-    val row = dao.replaceBaselineAndNotice(BoardConfigValuesEntity(boardId, base, JSONObject(values).toString(), capturedAt)) { old, existing, ignoredJson ->
-      val oldValues = old?.let { decodeBoardValues(it.valuesJson) } ?: return@replaceBaselineAndNotice null
-      val ignored = BoardConfigChangeNotice.decodeIgnoredFields(ignoredJson, onInvalidIgnoredFields).toSet()
-      val incoming = BoardConfigChangeNotice.diff(oldValues, values, schema, ignored)
-      if (incoming.isEmpty()) return@replaceBaselineAndNotice null
-      val previous = existing?.let {
-        BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson).diffs
-      }.orEmpty()
-      val excluded = ignored + BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS
-      val merged = BoardConfigChangeNotice.mergeDiffs(
-        BoardConfigChangeNotice.filterDiffs(previous, excluded),
-        incoming,
-      )
-      BoardConfigChangeNoticeEntity(boardId, capturedAt, BoardConfigChangeNotice(boardId, capturedAt, merged).diffsJson())
+    val schemaEntity = schema?.takeIf { it.hash.isNotBlank() && it.rawXml.isNotBlank() }?.let {
+      BoardConfigSchemaEntity(schemaHash = it.hash, rawXml = it.rawXml, createdAt = capturedAt)
     }
+    val row = dao.replaceBaselineAndNotice(
+      BoardConfigValuesEntity(boardId, base, JSONObject(values).toString(), capturedAt, schema?.hash?.takeIf { it.isNotBlank() }),
+      schemaEntity,
+      buildNotice = { old, existing, ignoredJson ->
+        val oldValues = old?.let { decodeBoardValues(it.valuesJson) } ?: return@replaceBaselineAndNotice null
+        val ignored = BoardConfigChangeNotice.decodeIgnoredFields(ignoredJson, onInvalidIgnoredFields).toSet()
+        val incoming = BoardConfigChangeNotice.diff(oldValues, values, schema, ignored)
+        if (incoming.isEmpty()) return@replaceBaselineAndNotice null
+        val previous = existing?.let {
+          BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson).diffs
+        }.orEmpty()
+        val excluded = ignored + BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS
+        val merged = BoardConfigChangeNotice.mergeDiffs(
+          BoardConfigChangeNotice.filterDiffs(previous, excluded),
+          incoming,
+        )
+        BoardConfigChangeNoticeEntity(boardId, capturedAt, BoardConfigChangeNotice(boardId, capturedAt, merged).diffsJson())
+      },
+      buildRevision = { latest ->
+        buildRevisionEntity(
+          latest = latest,
+          boardId = boardId,
+          refloatVersion = refloatVersion?.takeIf { it.isNotBlank() } ?: base,
+          schema = schema,
+          rawConfig = rawConfig,
+          packageSignature = packageSignature,
+          values = values,
+          source = BoardConfigRevisionSource.EXTERNAL,
+          tuneProfileId = null,
+          createdAt = capturedAt,
+        )
+      },
+    )
     return row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `saveWrite`
+   */
+  suspend fun saveBoardWrite(
+    boardId: String,
+    base: String,
+    values: Map<String, Any>,
+    capturedAt: Long,
+    schema: RefloatConfigSchema?,
+    refloatVersion: String? = null,
+    rawConfig: ByteArray? = null,
+    packageSignature: Long? = null,
+    source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
+    tuneProfileId: String? = null,
+  ) {
+    val schemaEntity = schema?.takeIf { it.hash.isNotBlank() && it.rawXml.isNotBlank() }?.let {
+      BoardConfigSchemaEntity(schemaHash = it.hash, rawXml = it.rawXml, createdAt = capturedAt)
+    }
+    dao.saveBoardConfigWrite(
+      BoardConfigValuesEntity(boardId, base, JSONObject(values).toString(), capturedAt, schema?.hash?.takeIf { it.isNotBlank() }),
+      schemaEntity,
+    ) { latest ->
+      buildRevisionEntity(
+        latest = latest,
+        boardId = boardId,
+        refloatVersion = refloatVersion?.takeIf { it.isNotBlank() } ?: base,
+        schema = schema,
+        rawConfig = rawConfig,
+        packageSignature = packageSignature,
+        values = values,
+        source = source,
+        tuneProfileId = tuneProfileId,
+        createdAt = capturedAt,
+      )
+    }
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `loadRevisions`
+   */
+  suspend fun loadRevisions(boardId: String, limit: Int = DEFAULT_REVISIONS_LIMIT): List<BoardConfigRevision> {
+    if (boardId.isBlank() || limit <= 0) return emptyList()
+    return dao.getBoardConfigRevisionSummaries(boardId, limit).map { row ->
+      val changes = try {
+        BoardConfigChangeNotice.from(row.boardId, row.createdAt, row.changesJson).diffs
+      } catch (err: Throwable) {
+        // intentional-suppression: one malformed changes_json row must not hide the remaining history
+        android.util.Log.w("ConfigPersistence", "Malformed changes_json on revision ${row.id}: ${err.message}")
+        emptyList()
+      }
+      BoardConfigRevision(
+        id = row.id,
+        boardId = row.boardId,
+        refloatVersion = row.refloatVersion,
+        schemaHash = row.schemaHash,
+        packageSignature = row.packageSignature,
+        source = BoardConfigRevisionSource.fromWire(row.source),
+        changes = changes,
+        tuneProfileId = row.tuneProfileId,
+        createdAtMs = row.createdAt,
+      )
+    }
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `planRevert`
+   */
+  suspend fun planRevert(
+    boardId: String,
+    current: BoardConfigValues?,
+    revisionId: Long,
+    overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
+  ): BoardConfigRevertPlan {
+    val writeBase = current?.takeIf {
+      it.freshness == BoardConfigFreshness.FRESH && it.boardId == boardId
+    }?.writeBase
+      ?: throw RefloatConfigEncodeException(
+        RefloatConfigErrorCode.BOARD_NOT_CONNECTED,
+        "Connect to this board to plan a config revert",
+      )
+    val revision = dao.getBoardConfigRevision(revisionId)
+      ?.takeIf { it.boardId == boardId }
+      ?: throw RefloatConfigEncodeException(
+        RefloatConfigErrorCode.REVISION_NOT_FOUND,
+        "Config revision not found",
+      )
+    val targetSchema = if (revision.schemaHash == writeBase.schema.hash) {
+      writeBase.schema
+    } else {
+      loadSchema(revision.schemaHash)
+        ?: throw RefloatConfigEncodeException(
+          RefloatConfigErrorCode.SCHEMA_NOT_FOUND,
+          "Schema for revision $revisionId is unavailable",
+        )
+    }
+    return BoardConfigRevertPlanner.plan(
+      boardId = boardId,
+      currentSchema = writeBase.schema,
+      currentRawConfig = writeBase.rawConfig,
+      targetRevisionId = revision.id,
+      targetCreatedAtMs = revision.createdAt,
+      targetRefloatVersion = revision.refloatVersion,
+      targetSchema = targetSchema,
+      targetRawConfig = revision.rawConfig,
+      overlay = overlay,
+    )
+  }
+
+  private suspend fun buildRevisionEntity(
+    latest: BoardConfigRevisionEntity?,
+    boardId: String,
+    refloatVersion: String,
+    schema: RefloatConfigSchema?,
+    rawConfig: ByteArray?,
+    packageSignature: Long?,
+    values: Map<String, Any>,
+    source: BoardConfigRevisionSource,
+    tuneProfileId: String?,
+    createdAt: Long,
+  ): BoardConfigRevisionEntity? {
+    val validSchema = schema?.takeIf { it.hash.isNotBlank() && it.rawXml.isNotBlank() } ?: return null
+    val bytes = rawConfig ?: return null
+    val signature = packageSignature ?: return null
+    if (latest == null) {
+      return BoardConfigRevisionEntity(
+        boardId = boardId,
+        refloatVersion = refloatVersion,
+        schemaHash = validSchema.hash,
+        packageSignature = signature,
+        rawConfig = bytes,
+        source = source.wire,
+        changesJson = "[]",
+        tuneProfileId = tuneProfileId,
+        createdAt = createdAt,
+      )
+    }
+    if (latest.schemaHash == validSchema.hash &&
+      latest.packageSignature == signature &&
+      normalizeRevisionRawBytes(validSchema, latest.rawConfig)
+        .contentEquals(normalizeRevisionRawBytes(validSchema, bytes))
+    ) {
+      return null
+    }
+    val previousSchema = if (latest.schemaHash == validSchema.hash) validSchema else loadSchema(latest.schemaHash)
+    val diffs = if (previousSchema != null) {
+      val previousValues = RefloatConfigFieldDecoder.decodeFieldMap(previousSchema, latest.rawConfig)
+      val ignoredFields = BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS +
+        internalFieldIds(validSchema) +
+        internalFieldIds(previousSchema)
+      BoardConfigChangeNotice.diff(
+        previousValues,
+        values,
+        validSchema,
+        ignoredFields,
+      )
+    } else {
+      emptyList()
+    }
+    val changesJson = BoardConfigChangeNotice(boardId, createdAt, diffs).diffsJson()
+    return BoardConfigRevisionEntity(
+      boardId = boardId,
+      refloatVersion = refloatVersion,
+      schemaHash = validSchema.hash,
+      packageSignature = signature,
+      rawConfig = bytes,
+      source = source.wire,
+      changesJson = changesJson,
+      tuneProfileId = tuneProfileId,
+      createdAt = createdAt,
+    )
+  }
+
+  private fun normalizeRevisionRawBytes(schema: RefloatConfigSchema, rawConfig: ByteArray): ByteArray {
+    val metaField = schema.fields.firstOrNull { it.id == "meta.is_default" } ?: return rawConfig
+    val end = metaField.offset + metaField.type.byteSize
+    if (metaField.offset < 0 || rawConfig.size < end) return rawConfig
+    val normalized = rawConfig.copyOf()
+    for (i in metaField.offset until end) normalized[i] = 0
+    return normalized
   }
 
   suspend fun saveFreshMotor(
@@ -100,6 +348,45 @@ internal class ConfigPersistence(
   suspend fun clearIgnoredFields(boardId: String) {
     if (boardId.isBlank()) return
     dao.deleteBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `loadSchema`
+   */
+  suspend fun loadSchema(schemaHash: String): RefloatConfigSchema? {
+    if (schemaHash.isBlank()) return null
+    parsedSchemaCache[schemaHash]?.let { return it }
+    val row = dao.getBoardConfigSchema(schemaHash) ?: return null
+    val parsed = try {
+      RefloatConfigSchemaParser.parse(row.rawXml.toByteArray(Charsets.UTF_8))
+    } catch (error: Throwable) {
+      onInvalidSchemaXml(error)
+      return null
+    }
+    parsedSchemaCache[schemaHash] = parsed
+    return parsed
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `saveSchema`
+   */
+  suspend fun saveSchema(schema: RefloatConfigSchema, createdAt: Long) {
+    if (schema.hash.isBlank() || schema.rawXml.isBlank()) return
+    dao.insertBoardConfigSchemaIfAbsent(
+      BoardConfigSchemaEntity(schemaHash = schema.hash, rawXml = schema.rawXml, createdAt = createdAt),
+    )
+  }
+
+  private fun internalFieldIds(schema: RefloatConfigSchema): Set<String> =
+    schema.fields
+      .asSequence()
+      .map { it.id }
+      .filter { it.startsWith("meta.") || RefloatFieldOverlay.shared.isInternal(it) }
+      .toSet()
+
+  companion object {
+    const val DEFAULT_REVISIONS_LIMIT = BOARD_CONFIG_REVISION_RETENTION_PER_BOARD
+    private val parsedSchemaCache = ConcurrentHashMap<String, RefloatConfigSchema>()
   }
 
   private fun decodeBoardValues(json: String): Map<String, Any> = JSONObject(json).keys().asSequence().mapNotNull { key ->

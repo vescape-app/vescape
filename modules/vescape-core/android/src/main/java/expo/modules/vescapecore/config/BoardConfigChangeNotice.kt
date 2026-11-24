@@ -6,6 +6,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevisionSource`
+ * @parity /modules/vescape-core/src/index.ts `BoardConfigRevisionSource`
+ */
+internal enum class BoardConfigRevisionSource(val wire: String) {
+  APP("app"),
+  EXTERNAL("external"),
+  REVERT("revert"),
+  IMPORT("import");
+
+  companion object {
+    fun fromWire(value: String): BoardConfigRevisionSource =
+      entries.firstOrNull { it.wire == value } ?: APP
+  }
+}
+
+/**
  * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigChangeDiff`
  * @parity /modules/vescape-core/src/index.ts `BoardConfigChangeDiff`
  */
@@ -40,6 +56,19 @@ internal data class BoardConfigChangeNotice(val boardId: String, val detectedAtM
 
     private const val NUMBER_TOLERANCE = 1e-6
 
+    private fun normalizeForField(value: Any?, field: RefloatConfigSchemaField?): Any? {
+      if (field?.type != RefloatConfigValueType.BOOL) return value
+      return when (value) {
+        is Boolean -> value
+        is Double -> when (value) {
+          0.0 -> false
+          1.0 -> true
+          else -> value
+        }
+        else -> value
+      }
+    }
+
     private fun changed(a: Any?, b: Any?): Boolean {
       if (a is Double && b is Double) return abs(a - b) > NUMBER_TOLERANCE * max(1.0, max(abs(a), abs(b)))
       return a?.javaClass != b?.javaClass || a != b
@@ -63,8 +92,10 @@ internal data class BoardConfigChangeNotice(val boardId: String, val detectedAtM
       val metadata = schema?.fields?.associateBy { it.id }.orEmpty()
       return (old.keys + new.keys).sorted().mapNotNull { id ->
         if (id in ignoredFields) return@mapNotNull null
-        val a = old[id]; val b = new[id]
-        if (!changed(a, b)) null else BoardConfigChangeDiff(id, metadata[id]?.label ?: id, metadata[id]?.unit, a, b)
+        val field = metadata[id]
+        val a = normalizeForField(old[id], field)
+        val b = normalizeForField(new[id], field)
+        if (!changed(a, b)) null else BoardConfigChangeDiff(id, field?.label ?: id, field?.unit, a, b)
       }
     }
 

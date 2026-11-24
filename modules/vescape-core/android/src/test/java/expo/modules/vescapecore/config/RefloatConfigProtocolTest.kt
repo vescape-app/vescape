@@ -11,6 +11,7 @@ import expo.modules.vescapecore.protocol.REFLOAT_MAGIC
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -416,6 +417,88 @@ class RefloatConfigProtocolTest {
       offset = 0,
     )
     assertEquals(12, payload.size)
+  }
+
+  @Test
+  fun matchesTransportAllowsUnwrappedRepliesAndFiltersWrappedCanId() {
+    val unwrapped = byteArrayOf(COMM_GET_CUSTOM_CONFIG.toByte(), 0)
+    val wrappedCan7 = byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_GET_CUSTOM_CONFIG.toByte(), 0)
+    val wrappedCan9 = byteArrayOf(COMM_FORWARD_CAN.toByte(), 9, COMM_GET_CUSTOM_CONFIG.toByte(), 0)
+
+    assertTrue(RefloatConfigProtocol.matchesTransport(unwrapped, BoardTransport.Direct))
+    assertTrue(RefloatConfigProtocol.matchesTransport(unwrapped, BoardTransport.Can(7)))
+    assertFalse(RefloatConfigProtocol.matchesTransport(wrappedCan7, BoardTransport.Direct))
+    assertTrue(RefloatConfigProtocol.matchesTransport(wrappedCan7, BoardTransport.Can(7)))
+    assertFalse(RefloatConfigProtocol.matchesTransport(wrappedCan9, BoardTransport.Can(7)))
+    assertFalse(RefloatConfigProtocol.matchesTransport(byteArrayOf(), BoardTransport.Direct))
+    assertFalse(RefloatConfigProtocol.matchesTransport(byteArrayOf(COMM_FORWARD_CAN.toByte()), BoardTransport.Can(7)))
+  }
+
+  @Test
+  fun parsesUnwrappedConfigRepliesOnCanTransport() {
+    val xmlPayload = byteArrayOf(
+      COMM_GET_CUSTOM_CONFIG_XML.toByte(), 0,
+      0, 0, 0, 4,
+      0, 0, 0, 0,
+      't'.code.toByte(), 'e'.code.toByte(), 's'.code.toByte(), 't'.code.toByte(),
+    )
+    val cfgPayload = byteArrayOf(COMM_GET_CUSTOM_CONFIG.toByte(), 0, 1, 2, 3, 4, 9)
+    val ackPayload = byteArrayOf(COMM_SET_CUSTOM_CONFIG.toByte())
+    val infoPayload = byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), REFLOAT_MAGIC.toByte(), REFLOAT_GET_INFO.toByte(), 12, 1, 0)
+
+    assertEquals(4, RefloatConfigProtocol.parseCustomConfigXmlResponse(xmlPayload, transport = BoardTransport.Can(7)).success().totalLength)
+    assertEquals(1, RefloatConfigProtocol.parseCustomConfigResponse(cfgPayload, transport = BoardTransport.Can(7)).success().config.size)
+    assertEquals(0, RefloatConfigProtocol.parseSetCustomConfigResponse(ackPayload, transport = BoardTransport.Can(7)).success())
+    assertEquals("Float/Refloat 1.2", RefloatConfigProtocol.parseGetInfoResponse(infoPayload, transport = BoardTransport.Can(7)).success().version)
+  }
+
+  @Test
+  fun rejectsWrappedRepliesForWrongCanIdOrDirectTransport() {
+    val wrappedXml = byteArrayOf(
+      COMM_FORWARD_CAN.toByte(), 9, COMM_GET_CUSTOM_CONFIG_XML.toByte(), 0,
+      0, 0, 0, 4,
+      0, 0, 0, 0,
+      't'.code.toByte(), 'e'.code.toByte(), 's'.code.toByte(), 't'.code.toByte(),
+    )
+    val wrappedCfg = byteArrayOf(COMM_FORWARD_CAN.toByte(), 9, COMM_GET_CUSTOM_CONFIG.toByte(), 0, 1, 2, 3, 4, 9)
+    val wrappedAck = byteArrayOf(COMM_FORWARD_CAN.toByte(), 9, COMM_SET_CUSTOM_CONFIG.toByte())
+    val wrappedInfo = byteArrayOf(
+      COMM_FORWARD_CAN.toByte(), 9, COMM_CUSTOM_APP_DATA.toByte(), REFLOAT_MAGIC.toByte(), REFLOAT_GET_INFO.toByte(), 12, 1, 0,
+    )
+
+    assertEquals(
+      "Unexpected forwarded CAN id 9, expected 7",
+      RefloatConfigProtocol.parseCustomConfigXmlResponse(wrappedXml, transport = BoardTransport.Can(7)).failure().message,
+    )
+    assertEquals(
+      "Unexpected forwarded CAN id 9, expected 7",
+      RefloatConfigProtocol.parseCustomConfigResponse(wrappedCfg, transport = BoardTransport.Can(7)).failure().message,
+    )
+    assertEquals(
+      "Unexpected forwarded CAN id 9, expected 7",
+      RefloatConfigProtocol.parseSetCustomConfigResponse(wrappedAck, transport = BoardTransport.Can(7)).failure().message,
+    )
+    assertEquals(
+      "Unexpected forwarded CAN id 9, expected 7",
+      RefloatConfigProtocol.parseGetInfoResponse(wrappedInfo, transport = BoardTransport.Can(7)).failure().message,
+    )
+
+    assertEquals(
+      "Unexpected forwarded Refloat config response on direct transport",
+      RefloatConfigProtocol.parseCustomConfigXmlResponse(wrappedXml, transport = BoardTransport.Direct).failure().message,
+    )
+    assertEquals(
+      "Unexpected forwarded Refloat config response on direct transport",
+      RefloatConfigProtocol.parseCustomConfigResponse(wrappedCfg, transport = BoardTransport.Direct).failure().message,
+    )
+    assertEquals(
+      "Unexpected forwarded Refloat config response on direct transport",
+      RefloatConfigProtocol.parseSetCustomConfigResponse(wrappedAck, transport = BoardTransport.Direct).failure().message,
+    )
+    assertEquals(
+      "Unexpected forwarded Refloat app response on direct transport",
+      RefloatConfigProtocol.parseGetInfoResponse(wrappedInfo, transport = BoardTransport.Direct).failure().message,
+    )
   }
 
   private fun <T> RefloatConfigProtocolResult<T>.success(): T {

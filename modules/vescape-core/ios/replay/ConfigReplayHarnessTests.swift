@@ -27,7 +27,7 @@ final class ConfigReplayHarnessTests: XCTestCase {
     XCTAssertEqual(try XCTUnwrap(values.number("tiltback_lv")), 62.0, accuracy: 1e-9)
     XCTAssertEqual(try XCTUnwrap(values.number("tiltback_hv")), 86.0, accuracy: 1e-9)
     XCTAssertEqual(try XCTUnwrap(values.number("tiltback_duty")), 1.0, accuracy: 1e-9)
-    XCTAssertNil(values.bool("fault_moving_fault_disabled"))
+    XCTAssertEqual(values.bool("fault_moving_fault_disabled"), true)
     XCTAssertEqual(values.freshness, .fresh)
     XCTAssertNotNil(values.writeBase)
     XCTAssertGreaterThan(values.values.count, 6)
@@ -39,5 +39,23 @@ final class ConfigReplayHarnessTests: XCTestCase {
     XCTAssertTrue(report.findings.contains { $0.kind == .dutyPushbackHigh })
     XCTAssertTrue(report.cleanKinds.contains(.footpadDisabled))
     XCTAssertTrue(report.cleanKinds.contains(.lvPushbackLow))
+  }
+
+  func testReplayRoutesTelemetryAndLightsDuringInFlightConfigRead() throws {
+    let lightsEcho: [UInt8] = [
+      UInt8(COMM_CUSTOM_APP_DATA),
+      UInt8(REFLOAT_MAGIC),
+      UInt8(REFLOAT_LIGHTS_CONTROL),
+      3,
+    ]
+    let result = ConfigReplayHarness.replayRouting(jsonl, injectedDuringInFlight: [lightsEcho])
+
+    XCTAssertNotNil(result.values)
+    XCTAssertGreaterThan(
+      result.telemetryCountDuringInFlight,
+      0,
+      "recorded telemetry must still reach its handler while config read is in flight"
+    )
+    XCTAssertEqual(result.lightsDuringInFlight, [BoardLightsState(enabled: true, headlightsEnabled: true)])
   }
 }

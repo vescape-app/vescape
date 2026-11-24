@@ -19,7 +19,7 @@ let testSupportSources: Set<String> = [
 ]
 
 let bundledResources: Set<String> = [
-  "cell-presets.json", "alert-preset-definitions.json"
+  "cell-presets.json", "alert-preset-definitions.json", "refloat-field-overlay.json"
 ]
 
 struct SourceTree {

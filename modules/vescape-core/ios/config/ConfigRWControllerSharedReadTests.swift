@@ -43,7 +43,6 @@ final class ConfigRWControllerSharedReadTests: XCTestCase {
 
     controller.consumeWrite(
       profileId: "profile-1",
-      fieldIds: ["kp"],
       connection: connection(),
       onSuccess: { _ in },
       onError: { code, _ in errors.append(code) }

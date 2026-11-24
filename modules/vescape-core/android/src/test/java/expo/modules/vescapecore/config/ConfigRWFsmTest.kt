@@ -84,10 +84,10 @@ class ConfigRWFsmTest {
         )
         assertSame(ConfigRWState.Idle, afterConfig)
         val complete = configEffects.filterIsInstance<ConfigRWEffect.EmitReadComplete>().single()
-        assertEquals(12345L, complete.snapshot.capturedAt)
+        assertEquals(12345L, complete.boardConfigValues.capturedAtMs)
         assertTrue(complete.resumePolling)
-        assertEquals(4, complete.snapshot.rawConfigLength)
-        assertEquals("Float/Refloat 1.2", complete.snapshot.refloatVersion)
+        assertEquals(4, complete.boardConfigValues.writeBase?.rawConfig?.size)
+        assertEquals("3.0", complete.boardConfigValues.refloatBaseVersion)
     }
 
     @Test
@@ -113,8 +113,17 @@ class ConfigRWFsmTest {
                 capturedAtMs = 1L,
             ),
         )
-        assertTrue(afterConfig is ConfigRWState.WriteAwaitingSetAck)
-        val sentFrame = configEffects.filterIsInstance<ConfigRWEffect.SendFrame>().single()
+        assertTrue(afterConfig is ConfigRWState.WriteAwaitingIdle)
+        val freshEmit = configEffects.filterIsInstance<ConfigRWEffect.EmitBoardConfigValues>().single()
+        assertEquals(BoardConfigOperationOrigin.FreshRead, freshEmit.origin)
+        assertEquals(12.5, freshEmit.boardConfigValues.number("kp"))
+
+        val (afterIdle, idleEffects) = ConfigRWFsm.apply(
+            afterConfig,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 10L), nowMs = 10L),
+        )
+        assertTrue(afterIdle is ConfigRWState.WriteAwaitingSetAck)
+        val sentFrame = idleEffects.filterIsInstance<ConfigRWEffect.SendFrame>().single()
         assertTrue(
             "set custom config frame expected",
             sentFrame.payload.size >= 4 &&
@@ -124,12 +133,12 @@ class ConfigRWFsmTest {
         assertEquals(0x34, sentFrame.payload[5].toInt() and 0xff)
         assertEquals(0x56, sentFrame.payload[6].toInt() and 0xff)
         assertEquals(0x78, sentFrame.payload[7].toInt() and 0xff)
-        val patchedConfig = (afterConfig as ConfigRWState.WriteAwaitingSetAck).patchedConfig
+        val patchedConfig = (afterIdle as ConfigRWState.WriteAwaitingSetAck).patchedConfig
         val patchedKp = ByteBuffer.wrap(patchedConfig).order(ByteOrder.BIG_ENDIAN).float
         assertEquals(33.0f, patchedKp, 0.001f)
 
         val (afterAck, ackEffects) = ConfigRWFsm.apply(
-            afterConfig,
+            afterIdle,
             ConfigRWEvent.SetConfigResponseReceived(buildSetAckPayload()),
         )
         assertTrue(afterAck is ConfigRWState.WriteVerifying)
@@ -144,7 +153,7 @@ class ConfigRWFsmTest {
         )
         assertSame(ConfigRWState.Idle, afterVerify)
         val complete = verifyEffects.filterIsInstance<ConfigRWEffect.EmitWriteComplete>().single()
-        assertEquals(999L, complete.snapshot.capturedAt)
+        assertEquals(999L, complete.boardConfigValues.capturedAtMs)
     }
 
     @Test
@@ -211,6 +220,10 @@ class ConfigRWFsmTest {
             state,
             ConfigRWEvent.ConfigBytesPayloadReceived(buildConfigBytesPayload(configBytes), 0L),
         ).first
+        state = ConfigRWFsm.apply(
+            state,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 1L), nowMs = 1L),
+        ).first
         val (next, effects) = ConfigRWFsm.apply(
             state,
             ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT),
@@ -233,6 +246,10 @@ class ConfigRWFsmTest {
         state = ConfigRWFsm.apply(
             state,
             ConfigRWEvent.ConfigBytesPayloadReceived(buildConfigBytesPayload(configBytes), 0L),
+        ).first
+        state = ConfigRWFsm.apply(
+            state,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 1L), nowMs = 1L),
         ).first
 
         val bogus = byteArrayOf(
@@ -344,6 +361,10 @@ class ConfigRWFsmTest {
             state,
             ConfigRWEvent.ConfigBytesPayloadReceived(buildConfigBytesPayload(configBytes), 0L),
         ).first
+        state = ConfigRWFsm.apply(
+            state,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 1L), nowMs = 1L),
+        ).first
         state = ConfigRWFsm.apply(state, ConfigRWEvent.SetConfigResponseReceived(buildSetAckPayload())).first
 
         val tampered = ByteBuffer.allocate(4)
@@ -358,6 +379,96 @@ class ConfigRWFsmTest {
         val failure = effects.filterIsInstance<ConfigRWEffect.EmitWriteFailure>().single()
         assertEquals(RefloatConfigErrorCode.CONFIG_VERIFY_FAILED, failure.code)
         assertEquals(ConfigWritePhaseTag.VERIFYING, failure.phase)
+    }
+
+    @Test
+    fun `write ignores duplicate and out-of-order XML chunks and retries once on timeout`() {
+        var state = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(canId, wasPolling = true)).first
+        val firstChunk = ConfigRWEvent.XmlPayloadReceived(
+            buildXmlChunkPayload(schemaXml.size, 0, schemaXml.copyOfRange(0, 10)),
+        )
+        state = ConfigRWFsm.apply(state, firstChunk).first
+
+        val (afterDup, dupEffects) = ConfigRWFsm.apply(state, firstChunk)
+        assertSame(state, afterDup)
+        assertTrue(dupEffects.isEmpty())
+
+        val outOfOrder = ConfigRWEvent.XmlPayloadReceived(
+            buildXmlChunkPayload(schemaXml.size, 20, schemaXml.copyOfRange(20, schemaXml.size)),
+        )
+        val (afterOutOfOrder, outOfOrderEffects) = ConfigRWFsm.apply(state, outOfOrder)
+        assertSame(state, afterOutOfOrder)
+        assertTrue(outOfOrderEffects.isEmpty())
+
+        val (afterRetry, retryEffects) = ConfigRWFsm.apply(
+            state,
+            ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT),
+        )
+        assertTrue(afterRetry is ConfigRWState.WriteCollectingXml)
+        assertEquals(1, retryEffects.filterIsInstance<ConfigRWEffect.SendFrame>().size)
+
+        val (recovered, _) = ConfigRWFsm.apply(
+            afterRetry,
+            ConfigRWEvent.XmlPayloadReceived(
+                buildXmlChunkPayload(schemaXml.size, 10, schemaXml.copyOfRange(10, schemaXml.size)),
+            ),
+        )
+        assertTrue(recovered is ConfigRWState.WriteAwaitingConfig)
+        assertArrayEquals(schemaXml, (recovered as ConfigRWState.WriteAwaitingConfig).xmlBytes)
+    }
+
+    @Test
+    fun `write schema timeout retries once then returns CONFIG_SCHEMA_TIMEOUT`() {
+        val (state, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(canId, wasPolling = true))
+        val (retry, retryEffects) = ConfigRWFsm.apply(
+            state,
+            ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT),
+        )
+        assertTrue(retry is ConfigRWState.WriteCollectingXml)
+        assertEquals(1, retryEffects.filterIsInstance<ConfigRWEffect.SendFrame>().size)
+
+        val (next, effects) = ConfigRWFsm.apply(
+            retry,
+            ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT),
+        )
+        assertSame(ConfigRWState.Idle, next)
+        val failure = effects.filterIsInstance<ConfigRWEffect.EmitWriteFailure>().single()
+        assertEquals(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT, failure.code)
+        assertEquals(ConfigWritePhaseTag.READING_SCHEMA, failure.phase)
+        assertTrue(failure.resumePolling)
+    }
+
+    @Test
+    fun `wrapped reply from another CAN id is ignored while unwrapped reply on CAN succeeds`() {
+        val (state, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startRead(canId, wasPolling = false))
+        val wrongCanXml = buildXmlChunkPayloadForCan(9, schemaXml.size, 0, schemaXml)
+        val (afterWrong, wrongEffects) = ConfigRWFsm.apply(state, ConfigRWEvent.XmlPayloadReceived(wrongCanXml))
+        assertSame(state, afterWrong)
+        assertTrue(wrongEffects.isEmpty())
+
+        val unwrappedXml = buildUnwrappedXmlChunkPayload(schemaXml.size, 0, schemaXml)
+        val (afterUnwrapped, _) = ConfigRWFsm.apply(afterWrong, ConfigRWEvent.XmlPayloadReceived(unwrappedXml))
+        assertTrue(afterUnwrapped is ConfigRWState.ReadAwaitingConfig)
+    }
+
+    @Test
+    fun `wrapped reply on direct transport is ignored`() {
+        val directRead = ConfigRWEvent.StartRead(
+            opId = opId,
+            canId = null,
+            transport = BoardTransport.Direct,
+            wasPolling = false,
+            appBoardId = "board-1",
+            fwVersion = "fw-test",
+            refloatBaseVersion = "3.0",
+        )
+        val (state, _) = ConfigRWFsm.apply(ConfigRWState.Idle, directRead)
+        val (afterWrapped, effects) = ConfigRWFsm.apply(
+            state,
+            ConfigRWEvent.XmlPayloadReceived(buildXmlChunkPayload(schemaXml.size, 0, schemaXml)),
+        )
+        assertSame(state, afterWrapped)
+        assertTrue(effects.isEmpty())
     }
 
     private fun startRead(canId: Int?, wasPolling: Boolean): ConfigRWEvent.StartRead =
@@ -377,7 +488,7 @@ class ConfigRWFsmTest {
             canId = canId,
             transport = BoardTransport.Can(canId ?: 0),
             wasPolling = wasPolling,
-            profileFields = profileFields,
+            intent = ConfigWriteIntent.Profile("profile-1", profileFields),
             appBoardId = "board-1",
             fwVersion = "fw-test",
             refloatBaseVersion = "3.0",
@@ -400,6 +511,35 @@ class ConfigRWFsmTest {
             effects.any { it is ConfigRWEffect.SendFrame },
         )
     }
+
+    private fun buildXmlChunkPayloadForCan(
+        replyCanId: Int,
+        totalLength: Int,
+        offset: Int,
+        chunk: ByteArray,
+    ): ByteArray = ByteBuffer.allocate(12 + chunk.size)
+        .order(ByteOrder.BIG_ENDIAN)
+        .put(COMM_FORWARD_CAN.toByte())
+        .put(replyCanId.toByte())
+        .put(COMM_GET_CUSTOM_CONFIG_XML.toByte())
+        .put(0.toByte())
+        .putInt(totalLength)
+        .putInt(offset)
+        .put(chunk)
+        .array()
+
+    private fun buildUnwrappedXmlChunkPayload(
+        totalLength: Int,
+        offset: Int,
+        chunk: ByteArray,
+    ): ByteArray = ByteBuffer.allocate(10 + chunk.size)
+        .order(ByteOrder.BIG_ENDIAN)
+        .put(COMM_GET_CUSTOM_CONFIG_XML.toByte())
+        .put(0.toByte())
+        .putInt(totalLength)
+        .putInt(offset)
+        .put(chunk)
+        .array()
 
     private fun buildXmlChunkPayload(totalLength: Int, offset: Int, chunk: ByteArray): ByteArray =
         buildXmlChunkPayloadWithConfInd(0, totalLength, offset, chunk)

@@ -33,7 +33,7 @@ func runAlertPresetContract() throws {
     try queue.write { db in
       if let refloat = item["refloat"] {
         let json = String(decoding: try JSONSerialization.data(withJSONObject: refloat), as: UTF8.self)
-        try db.execute(sql: "INSERT INTO board_config_values VALUES (?, 'test', ?, 1)", arguments: [name, json])
+        try db.execute(sql: "INSERT INTO board_config_values (board_id, refloat_base_version, values_json, captured_at) VALUES (?, 'test', ?, 1)", arguments: [name, json])
       }
       if let motor = item["motor"] {
         let json = String(decoding: try JSONSerialization.data(withJSONObject: motor), as: UTF8.self)
@@ -233,7 +233,7 @@ func runAlertPresetBoardLifecycleContract() throws {
   try queue.write { db in
     try rider("board").save(db)
     try presetRow("board", "duty", "preset(normal):match=on").save(db)
-    try db.execute(sql: "INSERT INTO board_config_values VALUES ('board', 'test', 'not json', 1)")
+    try db.execute(sql: "INSERT INTO board_config_values (board_id, refloat_base_version, values_json, captured_at) VALUES ('board', 'test', 'not json', 1)")
   }
   var failures = 0
   let isolated = try expanded("board") { _ in failures += 1 }

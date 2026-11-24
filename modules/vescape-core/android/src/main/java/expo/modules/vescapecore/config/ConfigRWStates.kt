@@ -13,12 +13,26 @@ internal data class ReadContext(
     val refloatVersion: String? = null,
 )
 
+// @parity /modules/vescape-core/ios/config/ConfigRWController.swift `ConfigWriteIntent`
+internal sealed class ConfigWriteIntent {
+    data class Changeset(
+        val changes: Map<String, Any?>,
+        val source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
+        val expectedSchemaHash: String? = null,
+    ) : ConfigWriteIntent()
+
+    data class Profile(
+        val profileId: String,
+        val fields: Map<String, Any?>,
+    ) : ConfigWriteIntent()
+}
+
 internal data class WriteContext(
     val opId: String,
     val canId: Int?,
     val transport: BoardTransport,
     val wasPolling: Boolean,
-    val profileFields: Map<String, Any>,
+    val intent: ConfigWriteIntent,
     val appBoardId: String?,
     val fwVersion: String?,
     val refloatBaseVersion: String? = null,
@@ -46,6 +60,7 @@ internal sealed class ConfigRWState {
         val xmlBytes: ByteArray,
         val expectedXmlLength: Int?,
         val nextOffset: Int,
+        val retried: Boolean = false,
     ) : ConfigRWState()
 
     data class WriteAwaitingConfig(
@@ -53,11 +68,21 @@ internal sealed class ConfigRWState {
         val xmlBytes: ByteArray,
     ) : ConfigRWState()
 
+    data class WriteAwaitingIdle(
+        val ctx: WriteContext,
+        val schema: RefloatConfigSchema,
+        val originalConfig: ByteArray,
+        val patchedConfig: ByteArray,
+        val expectedPackageSignature: Long,
+        val minRideStateAtMs: Long,
+    ) : ConfigRWState()
+
     data class WriteAwaitingSetAck(
         val ctx: WriteContext,
         val schema: RefloatConfigSchema,
         val originalConfig: ByteArray,
         val patchedConfig: ByteArray,
+        val expectedPackageSignature: Long,
     ) : ConfigRWState()
 
     data class WriteVerifying(
@@ -65,6 +90,7 @@ internal sealed class ConfigRWState {
         val schema: RefloatConfigSchema,
         val originalConfig: ByteArray,
         val patchedConfig: ByteArray,
+        val expectedPackageSignature: Long,
     ) : ConfigRWState()
 }
 
@@ -78,6 +104,7 @@ internal enum class ConfigWritePhaseTag {
         fun of(state: ConfigRWState): ConfigWritePhaseTag = when (state) {
             is ConfigRWState.WriteCollectingXml -> READING_SCHEMA
             is ConfigRWState.WriteAwaitingConfig -> READING_CONFIG
+            is ConfigRWState.WriteAwaitingIdle -> SENDING_WRITE
             is ConfigRWState.WriteAwaitingSetAck -> SENDING_WRITE
             is ConfigRWState.WriteVerifying -> VERIFYING
             else -> READING_SCHEMA

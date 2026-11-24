@@ -356,6 +356,33 @@ class VescProtocolTest {
   }
 
   @Test
+  fun lightsEchoFilteredByExpectedTransportAndCanId() {
+    val unwrapped = byteArrayOf(
+      COMM_CUSTOM_APP_DATA.toByte(),
+      REFLOAT_MAGIC.toByte(),
+      REFLOAT_LIGHTS_CONTROL.toByte(),
+      3,
+    )
+    val wrappedCan7 = byteArrayOf(COMM_FORWARD_CAN.toByte(), 7) + unwrapped
+    val wrappedCan9 = byteArrayOf(COMM_FORWARD_CAN.toByte(), 9) + unwrapped
+
+    assertEquals(
+      BoardLightsState(enabled = true, headlightsEnabled = true),
+      parseLightsControlResponse(unwrapped, transport = BoardTransport.Direct),
+    )
+    assertNull(parseLightsControlResponse(wrappedCan7, transport = BoardTransport.Direct))
+    assertEquals(
+      BoardLightsState(enabled = true, headlightsEnabled = true),
+      parseLightsControlResponse(wrappedCan7, transport = BoardTransport.Can(7)),
+    )
+    assertNull(parseLightsControlResponse(wrappedCan9, transport = BoardTransport.Can(7)))
+    assertEquals(
+      BoardLightsState(enabled = true, headlightsEnabled = true),
+      parseLightsControlResponse(unwrapped, transport = BoardTransport.Can(7)),
+    )
+  }
+
+  @Test
   fun rejectsNonBmsOrTruncatedPayloads() {
     assertNull(parseBmsValues(byteArrayOf(COMM_FW_VERSION.toByte()), 1L))
     val tooShort = ByteArray(26)

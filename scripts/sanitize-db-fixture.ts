@@ -113,7 +113,6 @@ const TIMESTAMP_COLUMNS: Record<string, string[]> = {
   boards: ['created_at'],
   board_settings: ['updated_at'],
   tune_profiles: ['created_at', 'updated_at'],
-  tune_history_entries: ['created_at'],
   alerts: ['created_at'],
   app_settings: ['updated_at'],
 }
@@ -193,7 +192,6 @@ function sanitize(dbPath: string, rides: number): void {
     .all()
     .map((row) => row.id)
   tuneIds.slice(FIXTURE_TUNE_NAMES.length).forEach((id) => {
-    db.exec('DELETE FROM tune_history_entries WHERE profile_id = ?', [id])
     db.exec('DELETE FROM tune_profiles WHERE id = ?', [id])
   })
   tuneIds.slice(0, FIXTURE_TUNE_NAMES.length).forEach((id, index) => {

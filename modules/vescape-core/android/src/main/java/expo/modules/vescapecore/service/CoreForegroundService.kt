@@ -8,6 +8,8 @@ import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.replay.ReplayRecording
 import expo.modules.vescapecore.replay.SimulatedBoard
 import expo.modules.vescapecore.notification.NotificationController
+import expo.modules.vescapecore.config.BoardConfigRevisionSource
+import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.config.PendingConfigWrite
 import expo.modules.vescapecore.config.RefloatConfigErrorCode
@@ -105,6 +107,7 @@ class CoreForegroundService : Service() {
 
         @Volatile var liveStateChanged: (() -> Unit)? = null
 
+        @Volatile
         private var instance: CoreForegroundService? = null
 
         private fun onMain(block: () -> Unit) {
@@ -112,8 +115,6 @@ class CoreForegroundService : Service() {
         }
         internal var pendingStart: PendingStart? = null
         internal var pendingStop: PendingStop? = null
-        internal var pendingConfigRead: PendingConfigRead? = null
-        internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
         @Volatile internal var pendingGroupRideUrl: String? = null
         @Volatile internal var lookAroundRequested = false
@@ -123,6 +124,9 @@ class CoreForegroundService : Service() {
          */
         internal var appVisible = false
         internal val appDataScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        internal val configPersistenceDispatcher = Dispatchers.IO.limitedParallelism(1)
         private val alertRulesGeneration = AtomicLong(0)
         private val alertRulesReloadMutex = Mutex()
 
@@ -233,23 +237,26 @@ class CoreForegroundService : Service() {
             }
         }
 
-        fun getRefloatConfigSnapshot(
+        fun refreshBoardConfigValues(
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
         ) {
-            val service = instance
-            if (service == null) {
-                onError(
-                    RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
-                    "Board must be connected before reading Refloat config",
-                )
-                return
+            onMain {
+                val service = instance
+                if (service == null) {
+                    onError(
+                        RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+                        "Board must be connected before reading Refloat config",
+                    )
+                    return@onMain
+                }
+                service.controller.consumeConfigRead(PendingConfigRead(onSuccess, onError))
             }
-            pendingConfigRead = PendingConfigRead(onSuccess, onError)
-            service.controller.consumePendingConfigRead()
         }
 
         fun getBoardConfigValues(): Map<String, Any?>? = instance?.controller?.boardConfigValuesMap()
+
+        internal fun currentBoardConfigValues(): BoardConfigValues? = instance?.controller?.currentBoardConfigValues()
 
         fun getMotorConfigValues(): Map<String, Any?>? = instance?.controller?.motorConfigValuesMap()
 
@@ -307,23 +314,45 @@ class CoreForegroundService : Service() {
             instance?.controller?.watchMirrorWakeLevel(level)
         }
 
+        internal fun applyBoardConfigChangeset(
+            boardId: String,
+            changes: Map<String, Any?>,
+            onSuccess: (Map<String, Any?>) -> Unit,
+            onError: (String, String) -> Unit,
+            source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
+            expectedSchemaHash: String? = null,
+        ) {
+            onMain {
+                val service = instance
+                if (service == null) {
+                    onError(
+                        RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+                        "Board must be connected before pushing config",
+                    )
+                    return@onMain
+                }
+                service.controller.consumeConfigWrite(
+                    PendingConfigWrite.Changeset(boardId, changes, onSuccess, onError, source, expectedSchemaHash),
+                )
+            }
+        }
+
         fun pushProfileToBoard(
-            context: Context,
             profileId: String,
-            fieldIds: List<String>,
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
         ) {
-            val service = instance
-            if (service == null) {
-                onError(
-                    RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
-                    "Board must be connected before pushing config",
-                )
-                return
+            onMain {
+                val service = instance
+                if (service == null) {
+                    onError(
+                        RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+                        "Board must be connected before pushing config",
+                    )
+                    return@onMain
+                }
+                service.controller.consumeConfigWrite(PendingConfigWrite.Profile(profileId, onSuccess, onError))
             }
-            pendingConfigWrite = PendingConfigWrite(profileId, fieldIds, onSuccess, onError)
-            service.controller.consumePendingConfigWrite()
         }
 
         fun setAppVisible(@Suppress("UNUSED_PARAMETER") context: Context, visible: Boolean) {

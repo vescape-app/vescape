@@ -23,7 +23,7 @@ class BoardConfigFieldsTest {
     return RefloatConfigSchemaParser.parse(file.readBytes())
   }
 
-  private fun versions() = listOf("1.0.0", "1.1.x", "1.2.x", "1.3.0-beta1")
+  private fun versions() = listOf("1.0.0", "1.1.x", "1.2.x", "1.2.1", "1.3.0-beta1", "1.3.0")
 
   @Test
   fun everyFlagFieldExistsInEverySupportedRefloatVersion() {

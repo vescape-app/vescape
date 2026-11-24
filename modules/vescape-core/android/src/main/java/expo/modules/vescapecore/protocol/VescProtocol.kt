@@ -122,10 +122,17 @@ internal fun buildLightsControlCommand(
 /**
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `parseLightsControlResponse`
  */
-internal fun parseLightsControlResponse(payload: ByteArray): BoardLightsState? {
+internal fun parseLightsControlResponse(
+    payload: ByteArray,
+    transport: BoardTransport? = null,
+): BoardLightsState? {
     val body = when {
         payload.size >= 4 && (payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA -> payload
-        payload.size >= 6 && (payload[0].toInt() and 0xff) == COMM_FORWARD_CAN -> payload.copyOfRange(2, payload.size)
+        payload.size >= 6 && (payload[0].toInt() and 0xff) == COMM_FORWARD_CAN -> {
+            if (transport == BoardTransport.Direct) return null
+            if (transport is BoardTransport.Can && (payload[1].toInt() and 0xff) != transport.canId) return null
+            payload.copyOfRange(2, payload.size)
+        }
         else -> return null
     }
     if (body.size < 4) return null

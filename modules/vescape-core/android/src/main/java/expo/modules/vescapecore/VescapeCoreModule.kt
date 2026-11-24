@@ -14,6 +14,12 @@ import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
+import expo.modules.vescapecore.config.BoardConfigFreshness
+import expo.modules.vescapecore.config.BoardConfigRevisionSource
+import expo.modules.vescapecore.config.BoardConfigXmlCodec
+import expo.modules.vescapecore.config.RefloatConfigEncodeException
+import expo.modules.vescapecore.config.RefloatConfigErrorCode
+import expo.modules.vescapecore.telemetry.ConfigPersistence
 import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
 import expo.modules.vescapecore.accessory.AccessoryDiscovery
@@ -951,68 +957,7 @@ class VescapeCoreModule : Module() {
         )
       }
     }
-    /**
-     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
-     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
-     */
-    AsyncFunction("getBoardConfigValues") {
-      CoreForegroundService.getBoardConfigValues()
-    }
-    /**
-     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
-     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
-     */
-    AsyncFunction("getMotorConfigValues") {
-      CoreForegroundService.getMotorConfigValues()
-    }
-
-    /**
-     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownMotorConfigValues`
-     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
-     */
-    AsyncFunction("getLastKnownMotorConfigValues") Coroutine { boardId: String ->
-      RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context).getLatestMotorConfigValues(boardId)?.toBridgeMap() }
-      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("motor_config_latest_read", error); throw error }
-    }
-
-    /**
-     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownBoardConfigValues`
-     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
-     */
-    AsyncFunction("getLastKnownBoardConfigValues") Coroutine { boardId: String ->
-      RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context).getLatestBoardConfigValues(boardId)?.toBridgeMap() }
-      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("board_config_latest_read", error); throw error }
-    }
-    AsyncFunction("getBoardConfigChangeNotice") Coroutine { boardId: String ->
-      RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context).getBoardConfigChangeNotice(boardId)?.toMap() }
-      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("board_config_notice_read", error); throw error }
-    }
-    AsyncFunction("dismissBoardConfigChangeNotice") Coroutine { boardId: String ->
-      RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
-      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_notice_dismiss", "write_failed", error); throw error }
-    }
-    /**
-     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBoardConfigChangeFieldIgnored`
-     * @parity /modules/vescape-core/src/index.ts `setBoardConfigChangeFieldIgnored`
-     */
-    AsyncFunction("setBoardConfigChangeFieldIgnored") Coroutine { boardId: String, fieldId: String, ignored: Boolean ->
-      RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context).setBoardConfigChangeFieldIgnored(boardId, fieldId, ignored) }
-      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_ignored_field_write", "write_failed", error); throw error }
-    }
-    /**
-     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `clearIgnoredBoardConfigChangeFields`
-     * @parity /modules/vescape-core/src/index.ts `clearIgnoredBoardConfigChangeFields`
-     */
-    AsyncFunction("clearIgnoredBoardConfigChangeFields") Coroutine { boardId: String ->
-      RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context).clearIgnoredBoardConfigChangeFields(boardId) }
-      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_ignored_fields_clear", "write_failed", error); throw error }
-    }
+    registerBoardConfig()
     AsyncFunction("clearBoardWarning") Coroutine { boardId: String, kind: String ->
       RecordingStorageFailure.requireAvailable()
       try { BoardWarningRegistry.get(context).clearWarning(boardId, kind) }
@@ -1065,12 +1010,14 @@ class VescapeCoreModule : Module() {
       }
       WatchLastBatteryPusher.push(context)
     }
-    AsyncFunction("getRefloatConfigSnapshot") { promise: Promise ->
-      CoreForegroundService.getRefloatConfigSnapshot(
-        onSuccess = { snapshot -> promise.resolve(snapshot) },
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshBoardConfigValues`
+    // @parity /modules/vescape-core/src/index.ts `refreshBoardConfigValues`
+    AsyncFunction("refreshBoardConfigValues") { promise: Promise ->
+      CoreForegroundService.refreshBoardConfigValues(
+        onSuccess = { values -> promise.resolve(values) },
         onError = { code, message -> promise.reject(code, message, null) },
       )
-    }
+    }.runOnQueue(Queues.MAIN)
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setRemoteTilt`
     // @parity /modules/vescape-core/src/index.ts `setRemoteTilt`
     AsyncFunction("setRemoteTilt") { value: Int ->
@@ -1093,23 +1040,45 @@ class VescapeCoreModule : Module() {
     }.runOnQueue(Queues.MAIN)
     AsyncFunction("setBoardLights") { enabled: Boolean, headlightsEnabled: Boolean ->
       CoreForegroundService.setBoardLights(enabled, headlightsEnabled)
-    }
+    }.runOnQueue(Queues.MAIN)
     AsyncFunction("startBoardMove") { input: Int ->
       CoreForegroundService.startBoardMove(input)
     }
     AsyncFunction("stopBoardMove") {
       CoreForegroundService.stopBoardMove()
     }
-    AsyncFunction("pushProfileToBoard") { profileId: String, fieldIds: List<String>, promise: Promise ->
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyBoardConfigChangeset`
+    // @parity /modules/vescape-core/src/index.ts `applyBoardConfigChangeset`
+    AsyncFunction("applyBoardConfigChangeset") { boardId: String, changes: Map<String, Any?>, source: String?, expectedSchemaHash: String?, promise: Promise ->
+      val resolvedSource = when (source) {
+        null -> BoardConfigRevisionSource.APP
+        BoardConfigRevisionSource.APP.wire -> BoardConfigRevisionSource.APP
+        BoardConfigRevisionSource.REVERT.wire -> BoardConfigRevisionSource.REVERT
+        BoardConfigRevisionSource.IMPORT.wire -> BoardConfigRevisionSource.IMPORT
+        else -> {
+          promise.reject(RefloatConfigErrorCode.CONFIG_VALUE_INVALID.name, "Invalid revision source: $source", null)
+          return@AsyncFunction
+        }
+      }
+      CoreForegroundService.applyBoardConfigChangeset(
+        boardId,
+        changes,
+        onSuccess = { snapshot -> promise.resolve(snapshot) },
+        onError = { code, message -> promise.reject(code, message, null) },
+        source = resolvedSource,
+        expectedSchemaHash = expectedSchemaHash,
+      )
+    }.runOnQueue(Queues.MAIN)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `pushProfileToBoard`
+    // @parity /modules/vescape-core/src/index.ts `pushProfileToBoard`
+    AsyncFunction("pushProfileToBoard") { profileId: String, promise: Promise ->
       RecordingStorageFailure.requireAvailable()
       CoreForegroundService.pushProfileToBoard(
-        context.applicationContext,
         profileId,
-        fieldIds,
         onSuccess = { snapshot -> promise.resolve(snapshot) },
         onError = { code, message -> promise.reject(code, message, null) },
       )
-    }
+    }.runOnQueue(Queues.MAIN)
     AsyncFunction("getTuneProfiles") Coroutine { boardId: String, refloatBaseVersion: String? ->
       RecordingStorageFailure.requireAvailable()
       try { AppDataRepository.get(context.applicationContext).getTuneProfiles(boardId, refloatBaseVersion) }
@@ -1140,17 +1109,91 @@ class VescapeCoreModule : Module() {
       catch (error: CancellationException) { throw error }
       catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_delete", "write_failed", error); throw error }
     }
-    AsyncFunction("getProfileHistory") Coroutine { profileId: String ->
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigRevisions`
+    // @parity /modules/vescape-core/src/index.ts `getBoardConfigRevisions`
+    AsyncFunction("getBoardConfigRevisions") Coroutine { boardId: String, limit: Int? ->
       RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context.applicationContext).getProfileHistory(profileId) }
+      try {
+        AppDataRepository.get(context.applicationContext)
+          .getBoardConfigRevisions(boardId, limit ?: ConfigPersistence.DEFAULT_REVISIONS_LIMIT)
+      }
       catch (error: CancellationException) { throw error }
-      catch (error: Throwable) { RecordingStorageFailure.reportRead("tune_history_read", error); throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.reportRead("board_config_revisions_read", error)
+        throw CodedException("APP_STORAGE_READ_FAILED", "Could not read Board Config Revisions", error)
+      }
     }
-    AsyncFunction("rollbackProfile") Coroutine { profileId: String, historyEntryId: Double ->
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigRevert`
+    // @parity /modules/vescape-core/src/index.ts `planBoardConfigRevert`
+    AsyncFunction("planBoardConfigRevert") Coroutine { boardId: String, revisionId: Double ->
       RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context.applicationContext).rollbackProfile(profileId, historyEntryId.toLong()) }
+      val current = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+        CoreForegroundService.currentBoardConfigValues()
+      }
+      try {
+        AppDataRepository.get(context.applicationContext)
+          .planBoardConfigRevert(boardId, current, revisionId.toLong())
+      }
       catch (error: CancellationException) { throw error }
-      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_rollback", "write_failed", error); throw error }
+      catch (error: RefloatConfigEncodeException) { throw CodedException(error.code.name, error.message, error) }
+      catch (error: Throwable) {
+        RecordingStorageFailure.reportRead("board_config_revert_plan", error)
+        throw CodedException("APP_STORAGE_READ_FAILED", error.message ?: "Could not plan board config revert", error)
+      }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportBoardConfigXml`
+    // @parity /modules/vescape-core/src/index.ts `exportBoardConfigXml`
+    AsyncFunction("exportBoardConfigXml") Coroutine { boardId: String ->
+      val current = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+        CoreForegroundService.currentBoardConfigValues()
+      }
+      val writeBase = current?.takeIf {
+        it.freshness == BoardConfigFreshness.FRESH && it.boardId == boardId
+      }?.writeBase
+        ?: throw CodedException(
+          RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+          "Connect to this board to export its config",
+          null,
+        )
+      try {
+        BoardConfigXmlCodec.exportXml(writeBase.schema, writeBase.rawConfig)
+      } catch (error: RefloatConfigEncodeException) {
+        throw CodedException(error.code.name, error.message, error)
+      } catch (error: Throwable) {
+        throw CodedException(
+          RefloatConfigErrorCode.CONFIG_ENCODE_FAILED.name,
+          error.message ?: "Board configuration XML could not be exported",
+          error,
+        )
+      }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigXmlImport`
+    // @parity /modules/vescape-core/src/index.ts `planBoardConfigXmlImport`
+    AsyncFunction("planBoardConfigXmlImport") Coroutine { boardId: String, xml: String ->
+      val current = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+        CoreForegroundService.currentBoardConfigValues()
+      }
+      val writeBase = current?.takeIf {
+        it.freshness == BoardConfigFreshness.FRESH && it.boardId == boardId
+      }?.writeBase
+        ?: throw CodedException(
+          RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+          "Connect to this board to import a config",
+          null,
+        )
+      try {
+        BoardConfigXmlCodec.planImport(boardId, writeBase.schema, writeBase.rawConfig, xml).toBridgeMap()
+      } catch (error: RefloatConfigEncodeException) {
+        throw CodedException(error.code.name, error.message, error)
+      } catch (error: CancellationException) {
+        throw error
+      } catch (error: Throwable) {
+        throw CodedException(
+          RefloatConfigErrorCode.INVALID_CONFIG_XML.name,
+          error.message ?: "Board configuration XML could not be parsed",
+          error,
+        )
+      }
     }
     AsyncFunction("copyProfileToBoard") Coroutine { profileId: String, targetBoardId: String, newName: String ->
       RecordingStorageFailure.requireAvailable()
@@ -1527,6 +1570,80 @@ class VescapeCoreModule : Module() {
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
+    }
+  }
+
+  private fun ModuleDefinitionBuilder.registerBoardConfig() {
+    /**
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+     */
+    AsyncFunction("getBoardConfigValues") {
+      CoreForegroundService.getBoardConfigValues()
+    }.runOnQueue(Queues.MAIN)
+    /**
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+     */
+    AsyncFunction("getMotorConfigValues") {
+      CoreForegroundService.getMotorConfigValues()
+    }
+
+    /**
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownMotorConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+     */
+    AsyncFunction("getLastKnownMotorConfigValues") Coroutine { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).getLatestMotorConfigValues(boardId)?.toBridgeMap() }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("motor_config_latest_read", error); throw error }
+    }
+
+    /**
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownBoardConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+     */
+    AsyncFunction("getLastKnownBoardConfigValues") Coroutine { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).getLatestBoardConfigValues(boardId)?.toBridgeMap() }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("board_config_latest_read", error); throw error }
+    }
+    /**
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigSchema`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigSchema`
+     */
+    AsyncFunction("getBoardConfigSchema") Coroutine { schemaHash: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).getBoardConfigSchema(schemaHash)?.toBridgeMap() }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("board_config_schema_read", error); throw error }
+    }
+    AsyncFunction("getBoardConfigChangeNotice") Coroutine { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).getBoardConfigChangeNotice(boardId)?.toMap() }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.reportRead("board_config_notice_read", error); throw error }
+    }
+    AsyncFunction("dismissBoardConfigChangeNotice") Coroutine { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_notice_dismiss", "write_failed", error); throw error }
+    }
+    /**
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBoardConfigChangeFieldIgnored`
+     * @parity /modules/vescape-core/src/index.ts `setBoardConfigChangeFieldIgnored`
+     */
+    AsyncFunction("setBoardConfigChangeFieldIgnored") Coroutine { boardId: String, fieldId: String, ignored: Boolean ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).setBoardConfigChangeFieldIgnored(boardId, fieldId, ignored) }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_ignored_field_write", "write_failed", error); throw error }
+    }
+    /**
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `clearIgnoredBoardConfigChangeFields`
+     * @parity /modules/vescape-core/src/index.ts `clearIgnoredBoardConfigChangeFields`
+     */
+    AsyncFunction("clearIgnoredBoardConfigChangeFields") Coroutine { boardId: String ->
+      RecordingStorageFailure.requireAvailable()
+      try { AppDataRepository.get(context).clearIgnoredBoardConfigChangeFields(boardId) }
+      catch (error: Throwable) { if (error is kotlinx.coroutines.CancellationException) throw error; RecordingStorageFailure.report("board_config_ignored_fields_clear", "write_failed", error); throw error }
     }
   }
 

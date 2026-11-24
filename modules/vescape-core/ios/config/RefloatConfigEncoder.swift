@@ -9,59 +9,351 @@ struct RefloatConfigEncodeException: Error {
   }
 }
 
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigEncoder.kt `FieldNumericRange`
+struct FieldNumericRange: Equatable {
+  let min: Double
+  let max: Double
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigEncoder.kt `EncodedChangeset`
+struct EncodedChangeset {
+  let rawConfig: [UInt8]
+  let changedFieldIds: Set<String>
+}
+
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigEncoder.kt
 enum RefloatConfigEncoder {
   static func encode(
     schema: RefloatConfigSchema,
     rawConfig: [UInt8],
-    fields: [String: Any]
+    fields: [String: Any],
+    overlay: RefloatFieldOverlay = .shared,
+    allowInternal: Bool = false
   ) throws -> [UInt8] {
-    let byId = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
-    let writes: [(RefloatConfigSchemaField, UInt64)] = try fields.map { fieldId, value in
-      guard let field = byId[fieldId] else { throw invalid("unknown field \(fieldId)") }
-      return (field, try wireBits(field, value))
-    }
-    var result = rawConfig
-    for (field, bits) in writes { put(&result, field, bits) }
-    return result
+    try encodeChangeset(
+      schema: schema,
+      rawConfig: rawConfig,
+      changes: fields,
+      overlay: overlay,
+      allowInternal: allowInternal
+    ).rawConfig
   }
 
-  private static func wireBits(_ field: RefloatConfigSchemaField, _ value: Any) throws -> UInt64 {
+  static func encodeChangeset(
+    schema: RefloatConfigSchema,
+    rawConfig: [UInt8],
+    changes: [String: Any],
+    overlay: RefloatFieldOverlay = .shared,
+    allowInternal: Bool = false
+  ) throws -> EncodedChangeset {
+    let byId = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
+    let internalSchemaIds = allowInternal ? Set<String>() : collectInternalSchemaFieldIds(schema)
+    let validated: [(RefloatConfigSchemaField, [UInt8])] = try changes.map { fieldId, value in
+      guard let field = byId[fieldId] else { throw invalid("unknown field \(fieldId)") }
+      if !allowInternal && isInternalField(field.id, internalSchemaIds: internalSchemaIds, overlay: overlay) {
+        throw invalid("\(field.id) is internal and cannot be edited")
+      }
+      if value is NSNull { throw invalid("\(field.id) cannot be null") }
+      let size = field.type.byteSize
+      if field.offset < 0 || rawConfig.count < field.offset + size {
+        throw RefloatConfigEncodeException(
+          .CONFIG_ENCODE_FAILED,
+          "config length \(rawConfig.count) < \(field.offset + size) for \(field.id)"
+        )
+      }
+      let bytes = try encodeAndVerifyField(field, value, overlay: overlay)
+      return (field, bytes)
+    }
+
+    let effectiveWrites = validated.filter { field, encodedBytes in
+      !matchesExistingBytes(rawConfig, offset: field.offset, encodedBytes: encodedBytes)
+    }
+
+    if effectiveWrites.isEmpty {
+      return EncodedChangeset(rawConfig: rawConfig, changedFieldIds: [])
+    }
+
+    var allowedOffsets = Set<Int>()
+    for (field, encodedBytes) in effectiveWrites {
+      for i in 0..<encodedBytes.count {
+        let offset = field.offset + i
+        if !allowedOffsets.insert(offset).inserted {
+          throw RefloatConfigEncodeException(
+            .CONFIG_ENCODE_FAILED,
+            "overlapping field byte range at offset \(offset) for \(field.id)"
+          )
+        }
+      }
+    }
+
+    var result = rawConfig
+    for (field, encodedBytes) in effectiveWrites {
+      for i in 0..<encodedBytes.count {
+        result[field.offset + i] = encodedBytes[i]
+      }
+    }
+
+    try assertOnlyAllowedBytesChanged(base: rawConfig, patched: result, allowedOffsets: allowedOffsets)
+    return EncodedChangeset(
+      rawConfig: result,
+      changedFieldIds: Set(effectiveWrites.map { $0.0.id })
+    )
+  }
+
+  static func effectiveRange(
+    _ field: RefloatConfigSchemaField,
+    overlay: RefloatFieldOverlay = .shared
+  ) throws -> FieldNumericRange? {
+    if field.type == .bool { return nil }
+    let wireMin: Double
+    let wireMax: Double
+    switch field.type {
+    case .float32, .float32Auto:
+      wireMin = -Double(Float.greatestFiniteMagnitude)
+      wireMax = Double(Float.greatestFiniteMagnitude)
+    case .float32Scaled:
+      let scale = try requireScale(field)
+      wireMin = Double(Int32.min) / scale
+      wireMax = Double(Int32.max) / scale
+    case .float16Scaled:
+      let scale = try requireScale(field)
+      wireMin = Double(Int16.min) / scale
+      wireMax = Double(Int16.max) / scale
+    case .int32:
+      wireMin = Double(Int32.min)
+      wireMax = Double(Int32.max)
+    case .uint32:
+      wireMin = 0
+      wireMax = Double(UInt32.max)
+    case .int16:
+      wireMin = Double(Int16.min)
+      wireMax = Double(Int16.max)
+    case .uint16:
+      wireMin = 0
+      wireMax = Double(UInt16.max)
+    case .int8:
+      wireMin = Double(Int8.min)
+      wireMax = Double(Int8.max)
+    case .uint8:
+      wireMin = 0
+      wireMax = Double(UInt8.max)
+    case .bool:
+      return nil
+    }
+    var minVal = field.min.flatMap { $0.isFinite ? max(wireMin, $0) : nil } ?? wireMin
+    var maxVal = field.max.flatMap { $0.isFinite ? min(wireMax, $0) : nil } ?? wireMax
+    if let overlayEntry = overlay.entry(field.id) {
+      if let hardMin = overlayEntry.hardMin, hardMin.isFinite { minVal = max(minVal, hardMin) }
+      if let hardMax = overlayEntry.hardMax, hardMax.isFinite { maxVal = min(maxVal, hardMax) }
+    }
+    return FieldNumericRange(min: minVal, max: maxVal)
+  }
+
+  static func collectInternalSchemaFieldIds(_ schema: RefloatConfigSchema) -> Set<String> {
+    var ids = Set<String>()
+    for group in schema.groups {
+      let groupInternal = group.name.caseInsensitiveCompare("internal") == .orderedSame
+      for subgroup in group.subgroups {
+        if !groupInternal && subgroup.name.caseInsensitiveCompare("meta") != .orderedSame { continue }
+        for item in subgroup.items {
+          if case let .field(fieldId) = item { ids.insert(fieldId) }
+        }
+      }
+    }
+    return ids
+  }
+
+  static func isInternalField(
+    _ fieldId: String,
+    internalSchemaIds: Set<String>,
+    overlay: RefloatFieldOverlay = .shared
+  ) -> Bool {
+    overlay.isInternal(fieldId) || fieldId.hasPrefix("meta.") || internalSchemaIds.contains(fieldId)
+  }
+
+  static func isInternalField(
+    _ fieldId: String,
+    schema: RefloatConfigSchema,
+    overlay: RefloatFieldOverlay = .shared
+  ) -> Bool {
+    isInternalField(fieldId, internalSchemaIds: collectInternalSchemaFieldIds(schema), overlay: overlay)
+  }
+
+  static func encodeFieldBytes(
+    _ field: RefloatConfigSchemaField,
+    _ value: Any,
+    overlay: RefloatFieldOverlay = .shared,
+    allowInternal: Bool = false
+  ) throws -> [UInt8] {
+    if !allowInternal && (overlay.isInternal(field.id) || field.id.hasPrefix("meta.")) {
+      throw invalid("\(field.id) is internal and cannot be edited")
+    }
+    return try encodeAndVerifyField(field, value, overlay: overlay)
+  }
+
+  private static func encodeAndVerifyField(
+    _ field: RefloatConfigSchemaField,
+    _ value: Any,
+    overlay: RefloatFieldOverlay
+  ) throws -> [UInt8] {
+    let bits = try validateAndEncode(field, value, overlay: overlay)
+    let bytes = toBytes(size: field.type.byteSize, bits: bits)
+    let decoded = try decodeWireBytes(field, bytes)
+    let roundTripBits = try encodeWireBits(field, decoded)
+    if roundTripBits != bits {
+      throw invalid("\(field.id) = \(value) failed wire round-trip")
+    }
+    if field.type == .float16Scaled || field.type == .float32Scaled {
+      let scaleFloat = Float(try requireScale(field))
+      let rawInt: Int64 = field.type == .float16Scaled
+        ? Int64(Int16(bitPattern: UInt16(truncatingIfNeeded: bits)))
+        : Int64(Int32(bitPattern: UInt32(truncatingIfNeeded: bits)))
+      let firmwareFloat = Float(rawInt) / scaleFloat
+      let reserialized = firmwareFloat * scaleFloat
+      let reserializedDouble = Double(reserialized)
+      let inRange = reserialized.isFinite
+        && reserializedDouble >= Double(Int32.min)
+        && reserializedDouble <= Double(Int32.max)
+      if !inRange || Int64(reserialized) != rawInt {
+        throw invalid("\(field.id) = \(value) does not survive firmware float32 round-trip")
+      }
+    }
+    return bytes
+  }
+
+  private static func decodeWireBytes(_ field: RefloatConfigSchemaField, _ bytes: [UInt8]) throws -> Any {
+    var raw: UInt64 = 0
+    for b in bytes { raw = (raw << 8) | UInt64(b) }
     switch field.type {
     case .float32:
-      return UInt64(try floatValue(field, value).bitPattern)
-    case .float32Auto:
-      return UInt64(float32AutoBits(try floatValue(field, value)))
+      return Double(Float(bitPattern: UInt32(truncatingIfNeeded: raw)))
     case .float32Scaled:
-      return try integer(field, try number(field, value) * requireScale(field), Int64(Int32.min), Int64(Int32.max))
+      return Double(Int32(bitPattern: UInt32(truncatingIfNeeded: raw))) / (try requireScale(field))
+    case .float32Auto:
+      return decodeFloat32Auto(UInt32(truncatingIfNeeded: raw))
     case .float16Scaled:
-      return try integer(field, try number(field, value) * requireScale(field), Int64(Int16.min), Int64(Int16.max))
+      return Double(Int16(bitPattern: UInt16(truncatingIfNeeded: raw))) / (try requireScale(field))
     case .int32:
-      return try integer(field, try number(field, value), Int64(Int32.min), Int64(Int32.max))
+      return Double(Int32(bitPattern: UInt32(truncatingIfNeeded: raw)))
     case .uint32:
-      return try integer(field, try number(field, value), 0, Int64(UInt32.max))
+      return Double(UInt32(truncatingIfNeeded: raw))
     case .int16:
-      return try integer(field, try number(field, value), Int64(Int16.min), Int64(Int16.max))
+      return Double(Int16(bitPattern: UInt16(truncatingIfNeeded: raw)))
     case .uint16:
-      return try integer(field, try number(field, value), 0, Int64(UInt16.max))
+      return Double(UInt16(truncatingIfNeeded: raw))
     case .int8:
-      return try integer(field, try number(field, value), Int64(Int8.min), Int64(Int8.max))
+      return Double(Int8(bitPattern: UInt8(truncatingIfNeeded: raw)))
     case .uint8:
-      return try integer(field, try number(field, value), 0, Int64(UInt8.max))
+      return Double(UInt8(truncatingIfNeeded: raw))
+    case .bool:
+      return UInt8(truncatingIfNeeded: raw) != 0
+    }
+  }
+
+  private static func decodeFloat32Auto(_ raw: UInt32) -> Double {
+    let eRaw = (raw >> 23) & 0xff
+    let sigI = raw & 0x7fffff
+    let neg = (raw >> 31) != 0
+    if eRaw == 0 && sigI == 0 { return 0.0 }
+    let sig = Double(sigI) / (8_388_608.0 * 2.0) + 0.5
+    let result = ldexp(sig, Int(eRaw) - 126)
+    return neg ? -result : result
+  }
+
+  static func isEnumField(_ field: RefloatConfigSchemaField) -> Bool {
+    field.xmlType == 4 || (field.xmlType == nil && !field.enumNames.isEmpty)
+  }
+
+  private static func isIntegerType(_ type: RefloatConfigValueType) -> Bool {
+    switch type {
+    case .int32, .uint32, .int16, .uint16, .int8, .uint8: return true
+    default: return false
+    }
+  }
+
+  private static func validateAndEncode(
+    _ field: RefloatConfigSchemaField,
+    _ value: Any,
+    overlay: RefloatFieldOverlay
+  ) throws -> UInt64 {
+    if field.type == .bool {
+      return try bool(field, value) ? 1 : 0
+    }
+    let n = try number(field, value)
+    if isIntegerType(field.type) && n.rounded(.down) != n {
+      throw invalid("\(field.id) expects an integer, got \(n)")
+    }
+    if isEnumField(field) && !field.enumNames.isEmpty {
+      if n < 0 || n >= Double(field.enumNames.count) {
+        throw invalid("\(field.id) = \(n) is outside enum range 0...\(field.enumNames.count - 1)")
+      }
+    }
+    if let range = try effectiveRange(field, overlay: overlay), n < range.min || n > range.max {
+      throw invalid("\(field.id) = \(n) is outside effective range \(range.min)...\(range.max)")
+    }
+    return try encodeWireBits(field, n)
+  }
+
+  private static func encodeWireBits(_ field: RefloatConfigSchemaField, _ value: Any) throws -> UInt64 {
+    if field.type == .bool {
+      return try bool(field, value) ? 1 : 0
+    }
+    let n = try number(field, value)
+    switch field.type {
+    case .float32:
+      return UInt64(try floatValue(field, n).bitPattern)
+    case .float32Auto:
+      return UInt64(float32AutoBits(try floatValue(field, n)))
+    case .float32Scaled:
+      return try scaledInteger(field, n * requireScale(field), Int64(Int32.min), Int64(Int32.max))
+    case .float16Scaled:
+      return try scaledInteger(field, n * requireScale(field), Int64(Int16.min), Int64(Int16.max))
+    case .int32:
+      return try exactInteger(field, n, Int64(Int32.min), Int64(Int32.max))
+    case .uint32:
+      return try exactInteger(field, n, 0, Int64(UInt32.max))
+    case .int16:
+      return try exactInteger(field, n, Int64(Int16.min), Int64(Int16.max))
+    case .uint16:
+      return try exactInteger(field, n, 0, Int64(UInt16.max))
+    case .int8:
+      return try exactInteger(field, n, Int64(Int8.min), Int64(Int8.max))
+    case .uint8:
+      return try exactInteger(field, n, 0, Int64(UInt8.max))
     case .bool:
       return try bool(field, value) ? 1 : 0
     }
   }
 
-  private static func put(_ bytes: inout [UInt8], _ field: RefloatConfigSchemaField, _ bits: UInt64) {
-    let size: Int
-    switch field.type {
-    case .float32, .float32Auto, .float32Scaled, .int32, .uint32: size = 4
-    case .float16Scaled, .int16, .uint16: size = 2
-    case .int8, .uint8, .bool: size = 1
+  private static func toBytes(size: Int, bits: UInt64) -> [UInt8] {
+    (0..<size).map { i in UInt8(truncatingIfNeeded: bits >> UInt64(8 * (size - 1 - i))) }
+  }
+
+  private static func matchesExistingBytes(_ rawConfig: [UInt8], offset: Int, encodedBytes: [UInt8]) -> Bool {
+    for i in 0..<encodedBytes.count {
+      if rawConfig[offset + i] != encodedBytes[i] { return false }
     }
-    for i in 0..<size {
-      bytes[field.offset + i] = UInt8(truncatingIfNeeded: bits >> UInt64(8 * (size - 1 - i)))
+    return true
+  }
+
+  private static func assertOnlyAllowedBytesChanged(
+    base: [UInt8],
+    patched: [UInt8],
+    allowedOffsets: Set<Int>
+  ) throws {
+    if base.count != patched.count {
+      throw RefloatConfigEncodeException(
+        .CONFIG_ENCODE_FAILED,
+        "patched config size \(patched.count) != base size \(base.count)"
+      )
+    }
+    for i in base.indices {
+      if !allowedOffsets.contains(i) && base[i] != patched[i] {
+        throw RefloatConfigEncodeException(
+          .CONFIG_ENCODE_FAILED,
+          "unexpected byte mutation at offset \(i)"
+        )
+      }
     }
   }
 
@@ -84,15 +376,21 @@ enum RefloatConfigEncoder {
     return number
   }
 
-  private static func floatValue(_ field: RefloatConfigSchemaField, _ value: Any) throws -> Float {
-    let number = try number(field, value)
+  private static func floatValue(_ field: RefloatConfigSchemaField, _ number: Double) throws -> Float {
     guard abs(number) <= Double(Float.greatestFiniteMagnitude) else {
       throw invalid("\(field.id) = \(number) does not fit a float")
     }
     return Float(number)
   }
 
-  private static func integer(_ field: RefloatConfigSchemaField, _ value: Double, _ min: Int64, _ max: Int64) throws -> UInt64 {
+  private static func exactInteger(_ field: RefloatConfigSchemaField, _ value: Double, _ min: Int64, _ max: Int64) throws -> UInt64 {
+    guard value.isFinite, value.rounded(.down) == value, value >= Double(min), value <= Double(max) else {
+      throw invalid("\(field.id) = \(value) does not fit \(min)...\(max) on the wire")
+    }
+    return UInt64(bitPattern: Int64(value))
+  }
+
+  private static func scaledInteger(_ field: RefloatConfigSchemaField, _ value: Double, _ min: Int64, _ max: Int64) throws -> UInt64 {
     let rounded = (value + 0.5).rounded(.down)
     guard rounded.isFinite, rounded >= Double(min), rounded <= Double(max) else {
       throw invalid("\(field.id) = \(value) does not fit \(min)...\(max) on the wire")
@@ -127,6 +425,9 @@ enum RefloatConfigEncoder {
   private static func requireScale(_ field: RefloatConfigSchemaField) throws -> Double {
     guard let scale = field.scale else {
       throw RefloatConfigEncodeException(.CONFIG_ENCODE_FAILED, "missing scale for \(field.id)")
+    }
+    guard scale.isFinite, scale > 0 else {
+      throw RefloatConfigEncodeException(.CONFIG_ENCODE_FAILED, "invalid scale \(scale) for \(field.id)")
     }
     return scale
   }

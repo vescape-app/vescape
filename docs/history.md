@@ -171,10 +171,12 @@ or database replacement retries them and any later leftovers. The job clears the
 marker, and Restore and Clear all clear its completion state.
 
 **Cleanup** (`cleanup`) runs last, once per launch and database generation, including after
-Restore or Clear all. Its ordered cleanup steps currently retain 30 days of Diagnostic Events,
-deleting in fenced batches of 5,000 and rechecking for a possibly recording ride before each batch.
-Recording defers the job until ride closure. A failed step reports its error and allows later steps
-to run; the job stays failed without a completion fingerprint.
+Restore or Clear all. Its ordered cleanup steps currently retain 30 days of Diagnostic Events
+(deleting in fenced batches of 5,000 and rechecking for a possibly recording ride before each batch)
+and retain the newest 200 Board Config Revisions per Board while removing Board Config Schemas no
+revision or Last Known Board Config Values row references. Recording defers the job until ride
+closure. A failed step reports its error and allows later steps to run; the job stays failed without
+a completion fingerprint.
 
 **Ride summaries** follows Telemetry storage. Its inputs are the Metric Sanitizer settings. It rebuilds
 minute buckets, exclusion ranges and route previews oldest first, one transaction per owned chunk:

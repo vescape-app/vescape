@@ -201,6 +201,33 @@ class DatabaseMigrationMatrixHostTest {
       exec("INSERT INTO board_config_values VALUES ('board-era3','2.0','{\"motor_current_max\":55.5}',3300)")
     }) {
       assertEquals("{\"motor_current_max\":55.5}", text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))
+      assertEquals("", text("SELECT IFNULL(schema_hash,'') FROM board_config_values WHERE board_id='board-era3'"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  @Test fun v56BoardConfigValuesUpgradeWithNullableSchemaHashAndSchemaTable() {
+    val path = migrateFromExport(56, seed = {
+      exec("INSERT INTO board_config_values (board_id,refloat_base_version,values_json,captured_at) VALUES ('board-v56','1.2','{\"leds.on\":1.0}',5600)")
+    }) {
+      assertEquals("{\"leds.on\":1.0}", text("SELECT values_json FROM board_config_values WHERE board_id='board-v56'"))
+      assertEquals("", text("SELECT IFNULL(schema_hash,'') FROM board_config_values WHERE board_id='board-v56'"))
+      exec("INSERT INTO board_config_schemas (schema_hash,raw_xml,created_at) VALUES ('hash-v56','<ConfigParams/>',5601)")
+      assertEquals("<ConfigParams/>", text("SELECT raw_xml FROM board_config_schemas WHERE schema_hash='hash-v56'"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  @Test fun v57DropsTuneHistoryAndCreatesBoardConfigRevisions() {
+    val path = migrateFromExport(57, seed = {
+      exec("INSERT INTO tune_profiles (id,board_id,refloat_base_version,name,icon,color,fields_json,created_at,updated_at) VALUES ('prof-57','board-57','1.3','Trail','sliders-horizontal','purple','{\"kp\":20}',5700,5700)")
+      exec("INSERT INTO tune_history_entries (profile_id,fields_json,created_at) VALUES ('prof-57','{\"kp\":19}',5701)")
+      exec("INSERT INTO board_config_schemas (schema_hash,raw_xml,created_at) VALUES ('hash-57','<ConfigParams/>',5702)")
+    }) {
+      assertEquals(0L, long("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tune_history_entries'"))
+      assertEquals("Trail", text("SELECT name FROM tune_profiles WHERE id='prof-57'"))
+      exec("INSERT INTO board_config_revisions (board_id,refloat_version,schema_hash,package_signature,raw_config,source,changes_json,tune_profile_id,created_at) VALUES ('board-57','1.3.0','hash-57',1234,X'0102','app','[]','prof-57',5703)")
+      assertEquals("app", text("SELECT source FROM board_config_revisions WHERE board_id='board-57'"))
     }
     Files.deleteIfExists(path)
   }

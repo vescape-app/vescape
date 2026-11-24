@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import {
-  getRefloatConfigSnapshot as nativeGetRefloatConfigSnapshot,
-  type RefloatConfigSnapshot,
+  refreshBoardConfigValues as nativeRefreshBoardConfigValues,
+  type BoardConfigValues,
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
@@ -11,26 +11,27 @@ import {
 } from '@/modules/board/lib/boardLinkIntegrity'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardConfigValuesStore } from '@/modules/board/store/boardConfigValuesStore'
+import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 
 type TuneSnapshotStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 interface TuneSnapshotState {
   status: TuneSnapshotStatus
-  snapshot: RefloatConfigSnapshot | null
+  boardConfig: BoardConfigValues | null
   error: string | null
 }
 
 interface TuneSnapshotActions {
-  read: () => Promise<RefloatConfigSnapshot | null>
-  setSnapshot: (snapshot: RefloatConfigSnapshot | null) => void
+  read: () => Promise<BoardConfigValues | null>
+  setBoardConfig: (boardConfig: BoardConfigValues | null) => void
   clear: () => void
 }
-let readInFlight: Promise<RefloatConfigSnapshot | null> | null = null
+let readInFlight: Promise<BoardConfigValues | null> | null = null
 let generation = 0
 
 export const useTuneSnapshotStore = create<TuneSnapshotState & TuneSnapshotActions>((set) => ({
   status: 'idle',
-  snapshot: null,
+  boardConfig: null,
   error: null,
 
   read() {
@@ -38,32 +39,29 @@ export const useTuneSnapshotStore = create<TuneSnapshotState & TuneSnapshotActio
     const linkIntegrity = useBleStore.getState().linkIntegrity
     if (!canRunFirmwareCommand(linkIntegrity)) {
       const message = firmwareCommandBlockedMessage(linkIntegrity)
-      set({ status: 'error', snapshot: null, error: message })
+      set({ status: 'error', boardConfig: null, error: message })
       return Promise.resolve(null)
     }
 
     const readGeneration = ++generation
     set({ status: 'loading', error: null })
-    readInFlight = nativeGetRefloatConfigSnapshot()
-      .then((snapshot) => {
+    readInFlight = nativeRefreshBoardConfigValues()
+      .then((boardConfig) => {
         if (readGeneration === generation) {
-          set((state) => ({
+          useBoardConfigValuesStore.getState().replace(boardConfig)
+          set({
             status: 'ready',
-            snapshot:
-              state.snapshot?.boardId === snapshot.boardId &&
-              state.snapshot?.rawConfigHash === snapshot.rawConfigHash
-                ? state.snapshot
-                : snapshot,
+            boardConfig,
             error: null,
-          }))
+          })
         }
-        return snapshot
+        return boardConfig
       })
       .catch((error: unknown) => {
         if (readGeneration === generation) {
           set({
             status: 'error',
-            snapshot: null,
+            boardConfig: null,
             error: errorMessage(error, 'Unable to read Refloat config.'),
           })
         }
@@ -78,12 +76,12 @@ export const useTuneSnapshotStore = create<TuneSnapshotState & TuneSnapshotActio
     return readInFlight
   },
 
-  setSnapshot(snapshot) {
+  setBoardConfig(boardConfig) {
     generation += 1
     readInFlight = null
     set({
-      status: snapshot ? 'ready' : 'idle',
-      snapshot,
+      status: boardConfig ? 'ready' : 'idle',
+      boardConfig,
       error: null,
     })
   },
@@ -91,12 +89,17 @@ export const useTuneSnapshotStore = create<TuneSnapshotState & TuneSnapshotActio
   clear() {
     generation += 1
     readInFlight = null
-    set({ status: 'idle', snapshot: null, error: null })
+    set({ status: 'idle', boardConfig: null, error: null })
   },
 }))
 
 export function startTuneSnapshotSessionSync(): () => void {
   return useBoardConfigValuesStore.subscribe((state, previous) => {
     if (previous.values && !state.values) useTuneSnapshotStore.getState().clear()
+    const prevSchema = previous.values?.schema ?? previous.lastKnown?.schema ?? null
+    const nextSchema = state.values?.schema ?? state.lastKnown?.schema ?? null
+    if (prevSchema !== nextSchema) {
+      useTuneProfileStore.getState().recomputeForSchema()
+    }
   })
 }

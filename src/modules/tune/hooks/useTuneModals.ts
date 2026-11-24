@@ -1,18 +1,14 @@
 import type { ThemeColor } from '@/constants/theme'
 import { useCallback, useMemo, useState } from 'react'
 import type { View } from 'react-native'
-import type { RefloatConfigField, TuneProfile, TuneProfileFieldValue } from 'vescape-core'
+import type { TuneProfile, TuneProfileFieldValue } from 'vescape-core'
 
 import type { FieldEditorTarget } from '@/modules/tune/components/FieldEditorPopover'
 import { basicSliderColor, basicSliderIcon } from '@/modules/tune/components/basicSliderIcons'
 import type { Board } from '@/modules/board/store/boardStore'
+import type { ResolvedBoardConfigField } from '@/modules/board/lib/refloatFieldOverlay'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
-import {
-  APP_TUNE_FIELD_BY_ID,
-  formatTuneValue,
-  tuneDisplayScale,
-  tuneWireLimit,
-} from '@/modules/tune/lib/fields'
+import { formatTuneValue, tuneDisplayScale } from '@/modules/tune/lib/fields'
 import {
   BASIC_SLIDER_BY_ID,
   basicSliderChanges,
@@ -29,7 +25,8 @@ import {
 } from '@/modules/tune/lib/profileMetadata'
 
 type InfoModalState = { title: string; message: string } | null
-type EditorKind = { kind: 'field'; fieldId: string } | { kind: 'basic'; sliderId: string }
+type EditorKind =
+  { kind: 'field'; fieldId: string; displayScale: number } | { kind: 'basic'; sliderId: string }
 
 export function useTuneModals(
   activeProfile: TuneProfile | null,
@@ -37,6 +34,7 @@ export function useTuneModals(
   draftFields: Record<string, TuneProfileFieldValue>,
   allBoards: Board[],
   selectedBoardId: string | null,
+  resolvedFieldsById?: ReadonlyMap<string, ResolvedBoardConfigField>,
 ) {
   const setDraftField = useTuneProfileStore((s) => s.setDraftField)
   const storeCreateProfile = useTuneProfileStore((s) => s.createProfile)
@@ -58,8 +56,8 @@ export function useTuneModals(
     setInfoModal({ title, message })
   }, [])
 
-  const showFieldInfo = useCallback((field: RefloatConfigField) => {
-    const scale = tuneDisplayScale(field.id)
+  const showFieldInfo = useCallback((field: ResolvedBoardConfigField) => {
+    const scale = field.displayScale
     const limits =
       field.min != null || field.max != null
         ? `\n\nRange: ${field.min != null ? formatTuneValue(field.min * scale) : DASH} to ${
@@ -67,14 +65,15 @@ export function useTuneModals(
           }${field.unit ? ` ${field.unit}` : ''}`
         : ''
     const units = field.unit ? `\nUnit: ${field.unit}` : ''
+    const enums = field.enumNames.length > 0 ? `\nOptions: ${field.enumNames.join(', ')}` : ''
     setInfoModal({
       title: field.label,
-      message: `${fieldHelp(field)}${units}${limits}\nField ID: ${field.id}`,
+      message: `${fieldHelp(field)}${units}${limits}${enums}\nField ID: ${field.id}`,
     })
   }, [])
 
   const openFieldEditor = useCallback(
-    (field: RefloatConfigField, ref: { current: View | null }, color?: ThemeColor) => {
+    (field: ResolvedBoardConfigField, ref: { current: View | null }, color?: ThemeColor) => {
       if (!activeProfile) {
         showFieldInfo(field)
         return
@@ -86,9 +85,12 @@ export function useTuneModals(
         )
         return
       }
-      const scale = tuneDisplayScale(field.id)
-      const limit = tuneWireLimit(field.id)
-      setEditorKind({ kind: 'field', fieldId: field.id })
+      const scale = field.displayScale
+      const limit =
+        field.hardMin != null && field.hardMax != null
+          ? { min: field.hardMin * scale, max: field.hardMax * scale }
+          : null
+      setEditorKind({ kind: 'field', fieldId: field.id, displayScale: scale })
       setEditor({
         triggerRef: ref as React.RefObject<View | null>,
         label: field.label,
@@ -97,8 +99,8 @@ export function useTuneModals(
         min: field.min! * scale,
         max: field.max! * scale,
         step: fieldStep(field) * scale,
-        manualDecimals: APP_TUNE_FIELD_BY_ID.get(field.id)?.manualDecimals ?? 3,
-        limit: limit && { min: limit.min * scale, max: limit.max * scale },
+        manualDecimals: field.manualDecimals ?? 3,
+        limit,
         unit: field.unit,
         help: fieldHelp(field),
         color,
@@ -127,20 +129,21 @@ export function useTuneModals(
         help: `${item.info}\n\nSource: ${item.source}`,
         icon: basicSliderIcon(item.id),
         color: basicSliderColor(item.id),
-        linkedFields: getLinkedFieldPreviews(def).map((field) => {
+        linkedFields: getLinkedFieldPreviews(def, resolvedFieldsById).map((field) => {
           const value = draftFields[field.id] ?? activeProfile.fields[field.id]
           return { ...field, currentValue: typeof value === 'number' ? value : undefined }
         }),
       })
     },
-    [activeProfile, basicSliders, draftFields],
+    [activeProfile, basicSliders, draftFields, resolvedFieldsById],
   )
 
   const handleEditorApply = useCallback(
     (value: number, linkedFieldValues?: Record<string, number>) => {
       if (!editorKind || !editor) return
       if (editorKind.kind === 'field') {
-        setDraftField(editorKind.fieldId, value / tuneDisplayScale(editorKind.fieldId))
+        const scale = editorKind.displayScale || tuneDisplayScale(editorKind.fieldId)
+        setDraftField(editorKind.fieldId, value / scale)
       } else {
         const def = BASIC_SLIDER_BY_ID.get(editorKind.sliderId)
         if (def) {

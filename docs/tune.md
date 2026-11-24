@@ -495,3 +495,30 @@ the nearest segment; custom values are clamped to that range. Missing or non-fin
 show an unavailable dash, distinct from a valid zero. These summarize configured strengths,
 not measured handling or a simulated ride rating. Unsaved editor changes do not change the
 saved profile summary.
+
+## Config Revisions, Tuning Sessions, and Revert
+
+Every verified distinct board configuration state is appended to `board_config_revisions` with its
+raw bytes, schema hash, package signature, diff against the previous revision, and `source`
+(`app`, `external`, `revert`, or `import`).
+
+In the config history UI (`src/screens/board-config/BoardConfigHistoryScreen.tsx`), consecutive `app` revisions for the same
+board that contain field changes and are separated by at most `TUNING_SESSION_GAP_MS`
+(**10 minutes**, `600_000 ms`, defined in `src/modules/board/lib/boardConfigRevisions.ts`) are
+grouped into a single **tuning session**. A session shows its net field changes, can be expanded
+to inspect or revert individual revisions, and offers a one-tap revert targeting the revision
+immediately preceding the session so the pre-session state is restored in a single write.
+
+Revert changesets are planned natively (`BoardConfigRevertPlanner` on Android and iOS) from the
+connected board's fresh `BoardConfigValues` write base to the target revision decoded with its
+stored schema:
+
+- **Same schema hash:** every differing non-internal serialized field is included so applying the
+  changeset yields config bytes identical to the target revision (Internal/Meta fields excepted).
+- **Different schema hash:** fields are matched by canonical field id; fields present only in the
+  target schema or failing current schema, wire, or overlay hard-limit validation are skipped and
+  listed on the review modal.
+- **Internal/Meta fields** (`meta.*`, `Internal` group / `Meta` subgroup, overlay
+  `risk: "internal"`) are never included in a revert changeset.
+- Reverts are reviewed in `BoardConfigReviewModal` (`source="revert"`) and applied through
+  `applyBoardConfigChangeset(boardId, changes, 'revert')`, which records a `revert` revision.

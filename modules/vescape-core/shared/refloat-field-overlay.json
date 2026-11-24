@@ -1,0 +1,466 @@
+{
+  "version": 1,
+  "fields": {
+    "meta.is_default": {
+      "hidden": true,
+      "risk": "internal"
+    },
+    "kp": {
+      "label": "Angle P",
+      "order": 10,
+      "softRange": { "min": 0, "max": 40 },
+      "manualDecimals": 1,
+      "placement": "primary",
+      "description": "Main proportional angle response. Higher values make the board respond more strongly to nose angle error."
+    },
+    "kp2": {
+      "label": "Rate P",
+      "order": 20,
+      "softRange": { "min": 0, "max": 3 },
+      "manualDecimals": 2,
+      "placement": "primary",
+      "description": "Responds to angular velocity. This acts like damping and is especially noticeable during fast or aggressive nose-angle changes."
+    },
+    "ki": {
+      "label": "Angle I",
+      "order": 30,
+      "softRange": { "min": 0, "max": 0.327 },
+      "step": 0.001,
+      "manualDecimals": 3,
+      "placement": "advanced",
+      "description": "Integral angle correction. This helps remove sustained angle error over time."
+    },
+    "ki_limit": {
+      "label": "I Term Limit",
+      "order": 40,
+      "softRange": { "min": 0, "max": 100 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Limits how much authority the integral correction can build up."
+    },
+    "mahony_kp": {
+      "label": "Pitch KP",
+      "order": 50,
+      "softRange": { "min": 0.2, "max": 3 },
+      "manualDecimals": 2,
+      "placement": "advanced",
+      "description": "Pitch-axis Mahony filter accelerometer correction. Higher values feel looser and linger more; lower values feel snappier."
+    },
+    "mahony_kp_roll": {
+      "label": "Roll KP",
+      "order": 60,
+      "softRange": { "min": 0, "max": 3 },
+      "manualDecimals": 2,
+      "placement": "advanced",
+      "description": "Roll-axis Mahony filter correction. Lower roll correction can help the nose hold up in turns and make tight carves feel stiffer."
+    },
+    "kp_brake": {
+      "label": "Angle P (Braking)",
+      "order": 70,
+      "softRange": { "min": 0.2, "max": 3 },
+      "manualDecimals": 2,
+      "placement": "advanced",
+      "description": "Multiplier for angle response while braking."
+    },
+    "kp2_brake": {
+      "label": "Rate P (Braking)",
+      "order": 80,
+      "softRange": { "min": 0, "max": 3 },
+      "manualDecimals": 2,
+      "placement": "advanced",
+      "description": "Multiplier for rate response while braking."
+    },
+    "atr_strength_up": {
+      "label": "ATR Uphill Strength",
+      "order": 10,
+      "softRange": { "min": 0, "max": 2 },
+      "manualDecimals": 1,
+      "placement": "primary",
+      "description": "Nose lift applied from adaptive torque response during uphill or acceleration load."
+    },
+    "atr_strength_down": {
+      "label": "ATR Downhill Strength",
+      "order": 20,
+      "softRange": { "min": 0, "max": 2 },
+      "manualDecimals": 1,
+      "placement": "primary",
+      "description": "Nose lowering applied from adaptive torque response during downhill or braking load."
+    },
+    "atr_threshold_up": {
+      "label": "Threshold Angle Up",
+      "order": 30,
+      "softRange": { "min": 0, "max": 5 },
+      "step": 0.5,
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Angle threshold before uphill ATR behavior starts."
+    },
+    "atr_threshold_down": {
+      "label": "Threshold Angle Down",
+      "order": 40,
+      "softRange": { "min": 0, "max": 5 },
+      "step": 0.5,
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Angle threshold before downhill ATR behavior starts."
+    },
+    "atr_speed_boost": {
+      "label": "Speed Boost",
+      "order": 50,
+      "softRange": { "min": -1, "max": 1 },
+      "step": 0.01,
+      "manualDecimals": 0,
+      "displayScale": 100,
+      "placement": "advanced",
+      "description": "Boosts ATR response as speed increases."
+    },
+    "atr_angle_limit": {
+      "label": "Tiltback Angle Limit",
+      "order": 60,
+      "softRange": { "min": 0, "max": 20 },
+      "manualDecimals": 1,
+      "placement": "primary",
+      "description": "Maximum angle ATR tiltback is allowed to apply."
+    },
+    "atr_on_speed": {
+      "label": "Max Tiltback Speed",
+      "order": 70,
+      "softRange": { "min": 0, "max": 100 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Maximum speed where ATR tiltback can be applied."
+    },
+    "atr_off_speed": {
+      "label": "Max Tiltback Release Speed",
+      "order": 80,
+      "softRange": { "min": 0, "max": 100 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Maximum speed where ATR tiltback can be released."
+    },
+    "atr_response_boost": {
+      "label": "Tiltback Response Boost",
+      "order": 90,
+      "softRange": { "min": 1, "max": 2 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Boost factor for tiltback response."
+    },
+    "atr_transition_boost": {
+      "label": "Tiltback Transition Boost",
+      "order": 100,
+      "softRange": { "min": 1, "max": 5 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Boost factor around ATR response transitions."
+    },
+    "atr.transition_boost": {
+      "label": "Tiltback Transition Boost",
+      "softRange": { "min": 1, "max": 4 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Boost factor around ATR response transitions."
+    },
+    "atr_filter": {
+      "label": "Current Filter",
+      "softRange": { "min": 0, "max": 20 },
+      "manualDecimals": 0,
+      "placement": "advanced",
+      "description": "Current filter frequency used by ATR."
+    },
+    "atr_amps_accel_ratio": {
+      "label": "Amps to Acceleration Ratio",
+      "softRange": { "min": 5, "max": 20 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Ratio used by acceleration-side ATR behavior."
+    },
+    "atr_amps_decel_ratio": {
+      "label": "Amps to Deceleration Ratio",
+      "softRange": { "min": 4, "max": 20 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Ratio used by deceleration-side ATR behavior."
+    },
+    "turntilt_strength": {
+      "label": "Strength",
+      "order": 10,
+      "softRange": { "min": 0, "max": 15 },
+      "manualDecimals": 1,
+      "placement": "primary",
+      "description": "Turn tiltback strength. The basic Carve tilt control writes this directly. Tune Preview does not show it because Carve Tilt requires a turn scenario."
+    },
+    "turntilt_angle_limit": {
+      "label": "Tiltback Angle Limit",
+      "order": 20,
+      "softRange": { "min": 0, "max": 20 },
+      "manualDecimals": 1,
+      "placement": "primary",
+      "description": "Maximum turn tiltback angle."
+    },
+    "turntilt_start_angle": {
+      "label": "Turn Aggregate Threshold",
+      "order": 80,
+      "softRange": { "min": 0, "max": 45 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Turn aggregate threshold before turn tiltback response starts."
+    },
+    "turntilt_start_erpm": {
+      "label": "ERPM Threshold",
+      "order": 30,
+      "softRange": { "min": 100, "max": 30000 },
+      "manualDecimals": 0,
+      "placement": "advanced",
+      "description": "ERPM threshold before turn tiltback response starts."
+    },
+    "turntilt_speed": {
+      "label": "Max Tiltback Speed",
+      "order": 40,
+      "softRange": { "min": 0, "max": 100 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Maximum speed where turn tiltback can be applied."
+    },
+    "turntilt_erpm_boost": {
+      "label": "Speed Boost %",
+      "order": 50,
+      "softRange": { "min": 0, "max": 10000 },
+      "step": 5,
+      "manualDecimals": 0,
+      "placement": "advanced",
+      "description": "Speed-based boost percentage for turn tiltback."
+    },
+    "turntilt_erpm_boost_end": {
+      "label": "Speed Boost Max ERPM",
+      "order": 60,
+      "softRange": { "min": 100, "max": 30000 },
+      "manualDecimals": 0,
+      "placement": "advanced",
+      "description": "ERPM where turn tiltback speed boost reaches its maximum."
+    },
+    "turntilt_yaw_aggregate": {
+      "label": "Turn Aggregate Target",
+      "order": 70,
+      "softRange": { "min": 50, "max": 180 },
+      "manualDecimals": 0,
+      "placement": "advanced",
+      "description": "Target accumulated yaw or turn value for turn tiltback."
+    },
+    "torquetilt_strength": {
+      "label": "Strength",
+      "order": 10,
+      "softRange": { "min": 0, "max": 1 },
+      "manualDecimals": 2,
+      "placement": "primary",
+      "description": "Nose lift based on positive output current. The basic Nose stiffness control writes this value."
+    },
+    "torquetilt_strength_regen": {
+      "label": "Strength (Regen)",
+      "order": 20,
+      "softRange": { "min": 0, "max": 1 },
+      "manualDecimals": 2,
+      "placement": "primary",
+      "description": "Nose lowering based on negative regen current. The basic Tail stiffness control writes this value."
+    },
+    "torquetilt_start_current": {
+      "label": "Start Current Threshold",
+      "order": 30,
+      "softRange": { "min": 0, "max": 100 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Current threshold before torque tiltback starts."
+    },
+    "torquetilt_angle_limit": {
+      "label": "Tiltback Angle Limit",
+      "order": 40,
+      "softRange": { "min": 0, "max": 30 },
+      "manualDecimals": 1,
+      "placement": "primary",
+      "description": "Maximum angle torque tiltback is allowed to apply."
+    },
+    "torquetilt_on_speed": {
+      "label": "Max Tiltback Speed",
+      "order": 50,
+      "softRange": { "min": 0, "max": 100 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Maximum speed where torque tiltback can be applied."
+    },
+    "torquetilt_off_speed": {
+      "label": "Max Tiltback Release Speed",
+      "order": 60,
+      "softRange": { "min": 0, "max": 100 },
+      "manualDecimals": 1,
+      "placement": "advanced",
+      "description": "Maximum speed where torque tiltback can be released."
+    },
+    "braketilt_strength": {
+      "label": "Brake Tilt Strength",
+      "order": 10,
+      "softRange": { "min": 0, "max": 20 },
+      "manualDecimals": 0,
+      "placement": "primary",
+      "description": "Brake tilt strength. The basic Brake tilt control writes this directly."
+    },
+    "braketilt_lingering": {
+      "label": "Brake Tilt Lingering",
+      "order": 20,
+      "softRange": { "min": 1, "max": 5 },
+      "manualDecimals": 0,
+      "placement": "primary",
+      "description": "Controls how brake tilt lingers or releases after braking."
+    },
+    "tiltback_constant": {
+      "label": "Constant Tiltback",
+      "order": 10,
+      "softRange": { "min": -10, "max": 10 },
+      "manualDecimals": 1,
+      "placement": "primary",
+      "description": "Constant nose angle offset."
+    },
+    "tiltback_constant_erpm": {
+      "label": "Constant Tiltback ERPM",
+      "order": 20,
+      "softRange": { "min": 200, "max": 65535 },
+      "manualDecimals": 0,
+      "placement": "advanced",
+      "description": "Forward speed threshold where Constant Tiltback begins."
+    },
+    "tiltback_variable_max": {
+      "label": "Variable Tiltback Target",
+      "order": 30,
+      "softRange": { "min": -10, "max": 10 },
+      "manualDecimals": 2,
+      "placement": "primary",
+      "description": "Maximum variable tiltback target."
+    },
+    "tiltback_variable": {
+      "label": "Variable Tiltback Rate",
+      "order": 40,
+      "softRange": { "min": 0, "max": 5 },
+      "manualDecimals": 2,
+      "placement": "primary",
+      "description": "Variable tiltback amount per ERPM."
+    },
+    "tiltback_variable_erpm": {
+      "label": "Variable Tiltback Start ERPM",
+      "order": 50,
+      "softRange": { "min": 0, "max": 65535 },
+      "manualDecimals": 0,
+      "placement": "advanced",
+      "description": "Forward speed threshold where Variable Tiltback begins."
+    },
+    "fault_is_dual_switch": {
+      "label": "Both zones as one (Posi)",
+      "description": "Either zone can keep the board on, so heel-lift dismount won't work. A stuck sensor can keep it running after you step off.",
+      "when": "You're doing lots of tricks and need one-zone riding. For tricky starts, try Simple start first."
+    },
+    "fault_delay_switch_half": {
+      "label": "One zone off, cutoff after",
+      "description": "How long one zone can stop sensing your foot before the board switches off. Applies at low speed, with Posi off."
+    },
+    "fault_delay_switch_full": {
+      "label": "Both zones off, cutoff after",
+      "description": "How long both zones can stop sensing your foot before the board can switch off."
+    },
+    "fault_delay_pitch": {
+      "label": "Pitch cutoff after",
+      "description": "How long the board can stay past the pitch cutoff angle before shutting off."
+    },
+    "fault_delay_roll": {
+      "label": "Roll cutoff after",
+      "description": "How long the board can stay rolled past the roll cutoff angle before shutting off."
+    },
+    "fault_adc1": {
+      "label": "Zone 1 engages at",
+      "risk": "risky",
+      "description": "Voltage threshold for footpad sensor zone 1 to count as pressed.",
+      "riskReason": "A wrong threshold can either fail to detect your foot while riding or keep the sensor falsely triggered after you step off."
+    },
+    "fault_adc2": {
+      "label": "Zone 2 engages at",
+      "risk": "risky",
+      "description": "Voltage threshold for footpad sensor zone 2 to count as pressed.",
+      "riskReason": "A wrong threshold can either fail to detect your foot while riding or keep the sensor falsely triggered after you step off."
+    },
+    "fault_adc_half_erpm": {
+      "label": "One zone off is a fault below",
+      "description": "Speed (ERPM) below which lifting one footpad zone can disengage the board."
+    },
+    "disabled": {
+      "label": "Disable Refloat",
+      "risk": "risky",
+      "riskReason": "Completely disables self-balancing until re-enabled."
+    },
+    "inputtilt_remote_type": {
+      "label": "Remote input",
+      "risk": "risky",
+      "riskReason": "Changes how an external remote controls nose tilt; misconfiguration can cause unexpected tilt inputs."
+    },
+    "hertz": {
+      "risk": "risky",
+      "riskReason": "Changes the main balance control loop frequency. Only change this if you know your controller supports it."
+    },
+    "tiltback_hv": {
+      "label": "High voltage pushback at",
+      "risk": "risky",
+      "riskReason": "Sets when the board warns you of battery overvoltage during regen braking. Too high risks damaging the battery or cutting out."
+    },
+    "tiltback_lv": {
+      "label": "Low voltage pushback at",
+      "risk": "risky",
+      "riskReason": "Sets when the board warns you of low battery voltage. Too low risks over-discharging the pack or sudden cutout."
+    },
+    "hardware.swap_footpad_adcs": {
+      "label": "Swap footpad zones",
+      "risk": "risky",
+      "riskReason": "Swaps which hardware ADC pin maps to footpad zone 1 and zone 2."
+    },
+    "is_footbeep_enabled": {
+      "label": "Beep on sensor fault",
+      "description": "Plays an audible warning when a footpad sensor zone drops out."
+    },
+    "is_beeper_enabled": {
+      "label": "External buzzer (servo/PPM)",
+      "description": "Controls the external hardware beeper output on the servo/PPM pin."
+    },
+    "fault_moving_fault_disabled": {
+      "label": "Moving faults disabled",
+      "recommended": "on",
+      "when": "Your footpad sometimes stops detecting you even though you're still standing on it, especially during hard riding.",
+      "description": "Stops the footpad from switching the board off while riding forward fast enough and fairly level. It can keep going after you step off."
+    },
+    "fault_darkride_enabled": {
+      "label": "Darkride",
+      "description": "Allows riding upside down without footpad sensors."
+    },
+    "enable_quickstop": {
+      "label": "Quickstop",
+      "description": "Lets you brake hard and lift your front foot as the wheel stops, with the nose tilted up."
+    },
+    "startup_simplestart_enabled": {
+      "label": "Simple start",
+      "recommended": "on",
+      "when": "Most rides. Less of that awkward shuffle trying to get the board to wake up.",
+      "description": "Lets you start with just one footpad zone pressed. Heel-lift dismount still works."
+    },
+    "startup_pushstart_enabled": {
+      "label": "Push start",
+      "recommended": "on",
+      "when": "Most rides, especially when starting on a steep slope.",
+      "description": "Lets you hop onto a rolling board even if the nose isn't level yet. Needs a little speed to engage."
+    },
+    "startup_dirtylandings_enabled": {
+      "label": "Dirty landings",
+      "recommended": "on",
+      "when": "You like hopping curbs, jumping around or taking drops.",
+      "description": "Briefly gives you more room to land with the nose tilted after a hop. Doesn't apply after a heel-lift dismount."
+    },
+    "fault_reversestop_enabled": {
+      "label": "Reverse stop",
+      "when": "Usually off, unless you like rolling back to stop. A footpad that stays engaged with nobody on it needs fixing.",
+      "description": "Lets you dismount by rolling back a little. The board tilts, then switches off. Makes balancing in place harder."
+    }
+  }
+}

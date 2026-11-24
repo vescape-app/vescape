@@ -7,8 +7,9 @@ import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_SETTINGS
 import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.config.MotorConfigValues
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
+import expo.modules.vescapecore.config.BoardConfigRevisionSource
+import expo.modules.vescapecore.config.RefloatConfigSchema
 import expo.modules.vescapecore.recording.RecordingStorageFailure
-import expo.modules.vescapecore.config.RefloatConfigSnapshot
 
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 
@@ -40,7 +41,6 @@ import expo.modules.vescapecore.database.BoardConfigValuesEntity
 import expo.modules.vescapecore.database.BoardEntity
 import expo.modules.vescapecore.database.BoardSettingEntity
 import expo.modules.vescapecore.database.PrivacyZoneEntity
-import expo.modules.vescapecore.database.TuneHistoryEntryEntity
 import expo.modules.vescapecore.database.TuneProfileEntity
 import expo.modules.vescapecore.database.VescapeDatabase
 
@@ -242,11 +242,14 @@ class AppDataRepository private constructor(private val context: Context) {
     withContext(Dispatchers.IO) {
       if (boardId.isBlank() || refloatBaseVersion.isBlank()) return@withContext null
       val row = dao.getBoardConfigValues(boardId, refloatBaseVersion) ?: return@withContext null
+      val schema = row.schemaHash?.let { configPersistence().loadSchema(it) }
       BoardConfigValues.lastKnown(
         boardId = boardId,
         refloatBaseVersion = refloatBaseVersion,
         capturedAtMs = row.capturedAt,
         valuesJson = row.valuesJson,
+        schemaHash = row.schemaHash,
+        schema = schema,
       )
     }
 
@@ -257,28 +260,69 @@ class AppDataRepository private constructor(private val context: Context) {
     withContext(Dispatchers.IO) {
       if (boardId.isBlank()) return@withContext null
       val row = dao.getLatestBoardConfigValues(boardId) ?: return@withContext null
+      val schema = row.schemaHash?.let { configPersistence().loadSchema(it) }
       BoardConfigValues.lastKnown(
         boardId = boardId,
         refloatBaseVersion = row.refloatBaseVersion,
         capturedAtMs = row.capturedAt,
         valuesJson = row.valuesJson,
+        schemaHash = row.schemaHash,
+        schema = schema,
       )
     }
 
   /**
-   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `save`
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `loadSchema`
    */
-  internal suspend fun saveBoardConfigValues(values: BoardConfigValues): Unit = withContext(Dispatchers.IO) {
+  internal suspend fun getBoardConfigSchema(schemaHash: String): RefloatConfigSchema? =
+    withContext(Dispatchers.IO) {
+      configPersistence().loadSchema(schemaHash)
+    }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `saveWrite`
+   */
+  internal suspend fun saveBoardConfigValues(
+    values: BoardConfigValues,
+    source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
+    tuneProfileId: String? = null,
+  ): Unit = withContext(Dispatchers.IO) {
     val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext
     val refloatBaseVersion = values.refloatBaseVersion?.takeIf { it.isNotBlank() } ?: return@withContext
-    dao.upsertBoardConfigValues(
-      BoardConfigValuesEntity(
-        boardId = boardId,
-        refloatBaseVersion = refloatBaseVersion,
-        valuesJson = values.valuesJson(),
-        capturedAt = values.capturedAtMs,
-      ),
+    val schema = values.schema ?: values.writeBase?.schema
+    configPersistence().saveBoardWrite(
+      boardId = boardId,
+      base = refloatBaseVersion,
+      values = values.values,
+      capturedAt = values.capturedAtMs,
+      schema = schema,
+      refloatVersion = values.refloatVersion,
+      rawConfig = values.writeBase?.rawConfig,
+      packageSignature = values.writeBase?.packageSignature,
+      source = source,
+      tuneProfileId = tuneProfileId,
     )
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `loadRevisions`
+   */
+  internal suspend fun getBoardConfigRevisions(
+    boardId: String,
+    limit: Int = ConfigPersistence.DEFAULT_REVISIONS_LIMIT,
+  ): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
+    configPersistence().loadRevisions(boardId, limit).map { it.toBridgeMap() }
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `planRevert`
+   */
+  internal suspend fun planBoardConfigRevert(
+    boardId: String,
+    current: BoardConfigValues?,
+    revisionId: Long,
+  ): Map<String, Any?> = withContext(Dispatchers.IO) {
+    configPersistence().planRevert(boardId, current, revisionId).toBridgeMap()
   }
 
   /**
@@ -291,19 +335,34 @@ class AppDataRepository private constructor(private val context: Context) {
   ): Unit = withContext(Dispatchers.IO) {
     if (boardId.isBlank() || refloatBaseVersion.isBlank() || patch.isEmpty()) return@withContext
     dao.patchBoardConfigValues(boardId, refloatBaseVersion) { row ->
-      val stored = BoardConfigValues.lastKnown(boardId, refloatBaseVersion, row.capturedAt, row.valuesJson)
+      val stored = BoardConfigValues.lastKnown(boardId, refloatBaseVersion, row.capturedAt, row.valuesJson, row.schemaHash)
       row.copy(valuesJson = stored.copy(values = stored.values + patch).valuesJson())
     }
   }
 
-  private fun configPersistence() = ConfigPersistence(dao) { error ->
-    RecordingStorageFailure.reportRead("board_config_ignored_fields_read", error)
-  }
+  private fun configPersistence() = ConfigPersistence(
+    dao = dao,
+    onInvalidIgnoredFields = { error ->
+      RecordingStorageFailure.reportRead("board_config_ignored_fields_read", error)
+    },
+    onInvalidSchemaXml = { error ->
+      RecordingStorageFailure.reportRead("board_config_schema_parse", error)
+    },
+  )
 
   internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
     val boardId = values.boardId ?: return@withContext null
     val base = values.refloatBaseVersion ?: return@withContext null
-    configPersistence().saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.writeBase?.schema)
+    configPersistence().saveFreshBoard(
+      boardId = boardId,
+      base = base,
+      values = values.values,
+      capturedAt = values.capturedAtMs,
+      schema = values.schema ?: values.writeBase?.schema,
+      refloatVersion = values.refloatVersion,
+      rawConfig = values.writeBase?.rawConfig,
+      packageSignature = values.writeBase?.packageSignature,
+    )
   }
 
   internal suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
@@ -774,15 +833,6 @@ class AppDataRepository private constructor(private val context: Context) {
     dao.deleteTuneProfileSafe(profileId)
   }
 
-  suspend fun getProfileHistory(profileId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    tuneAlerts.history(profileId).map { it.toMap() }
-  }
-
-  suspend fun rollbackProfile(profileId: String, historyEntryId: Long): Map<String, Any?> =
-    withContext(Dispatchers.IO) {
-      dao.rollbackTuneProfile(profileId, historyEntryId).toMap()
-    }
-
   suspend fun copyProfileToBoard(profileId: String, targetBoardId: String, newName: String): Map<String, Any?> =
     withContext(Dispatchers.IO) {
       val source = dao.getTuneProfile(profileId)
@@ -1058,23 +1108,6 @@ fun TuneProfileEntity.toMap(): Map<String, Any?> = mapOf(
 
 internal fun validRefloatBaseVersion(value: String?): String? =
   tuneCompatibilityVersion(value)
-
-fun TuneHistoryEntryEntity.toMap(): Map<String, Any?> = mapOf(
-  "id" to id,
-  "profileId" to profileId,
-  "fields" to fieldsJson.toJsonMap(),
-  "createdAt" to createdAt,
-)
-
-private fun RefloatConfigSnapshot.fieldsJson(): String {
-  val json = JSONObject()
-  groups.forEach { group ->
-    group.fields.forEach { field ->
-      json.put(field.id, field.value)
-    }
-  }
-  return json.toString()
-}
 
 private fun Map<String, Any?>.toJsonObject(): JSONObject {
   val json = JSONObject()

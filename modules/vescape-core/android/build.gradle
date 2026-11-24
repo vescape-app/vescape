@@ -36,7 +36,7 @@ android {
   sourceSets.test.resources.srcDir "../shared"
   sourceSets.main.resources {
     srcDirs "../shared", "../../../shared/data"
-    include "alert-preset-definitions.json", "cell-presets.json"
+    include "alert-preset-definitions.json", "cell-presets.json", "refloat-field-overlay.json"
   }
 
   buildTypes {

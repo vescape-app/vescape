@@ -64,6 +64,35 @@ internal const val DIAGNOSTIC_EVENT_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
 /** @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DIAGNOSTIC_EVENT_PRUNE_BATCH` */
 internal const val DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
 
+/** @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `BOARD_CONFIG_REVISION_RETENTION_PER_BOARD` */
+internal const val BOARD_CONFIG_REVISION_RETENTION_PER_BOARD = 200
+
+/** @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `BoardConfigRevisionPruneResult` */
+internal data class BoardConfigRevisionPruneResult(
+  val deletedRevisions: Int,
+  val deletedSchemas: Int,
+  val yielded: Boolean,
+)
+
+/**
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `pruneBoardConfigRevisions`
+ */
+internal suspend fun pruneBoardConfigRevisions(
+  scope: MaintenanceJobScope,
+  gapMs: Long,
+  retainPerBoard: Int = BOARD_CONFIG_REVISION_RETENTION_PER_BOARD,
+): BoardConfigRevisionPruneResult {
+  val deleted = scope.chunk { dao ->
+    if (dao.activeRideStartMs(scope.nowMs(), gapMs) != null) null
+    else {
+      val revisions = dao.pruneExcessBoardConfigRevisions(retainPerBoard)
+      val schemas = dao.deleteUnreferencedBoardConfigSchemas()
+      revisions to schemas
+    }
+  } ?: return BoardConfigRevisionPruneResult(0, 0, true)
+  return BoardConfigRevisionPruneResult(deleted.first, deleted.second, false)
+}
+
 /** @parity /modules/vescape-core/ios/telemetry/TelemetryMaintenancePersistence.swift `DiagnosticEventPruneResult` */
 internal data class DiagnosticEventPruneResult(val deleted: Int, val yielded: Boolean)
 

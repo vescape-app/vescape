@@ -31,7 +31,7 @@ export function TuneScreen() {
     basicSliders,
     boardConnected,
     boardDiffByField,
-    boardSnapshot,
+    boardConfig,
     boardSnapshotStatus,
     boardsLoaded,
     dirtyFields,
@@ -45,8 +45,10 @@ export function TuneScreen() {
     profileFields,
     profileState,
     profiles,
+    resolvedFieldsById,
     retryBoardSnapshot,
     schemaMismatchFields,
+    selectedBoard,
     selectedBoardId,
     syncBarState,
     tuneCompatibilityIssue,
@@ -60,23 +62,37 @@ export function TuneScreen() {
   const discardAllEdits = useTuneProfileStore((s) => s.discardAllEdits)
   const saveActiveProfile = useTuneProfileStore((s) => s.saveActiveProfile)
   const saveAndSyncActiveProfile = useTuneProfileStore((s) => s.saveAndSyncActiveProfile)
+  const retryPendingBoardSync = useTuneProfileStore((s) => s.retryPendingBoardSync)
+  const discardPendingBoardSync = useTuneProfileStore((s) => s.discardPendingBoardSync)
   const syncToBoard = useTuneProfileStore((s) => s.syncToBoard)
 
-  const modals = useTuneModals(activeProfile, basicSliders, draftFields, allBoards, selectedBoardId)
+  const modals = useTuneModals(
+    activeProfile,
+    basicSliders,
+    draftFields,
+    allBoards,
+    selectedBoardId,
+    resolvedFieldsById,
+  )
 
   useEffect(() => {
-    if (!tuneCompatibilityIssue || !boardSnapshot) return
-    const reportKey = [selectedBoardId, boardSnapshot.refloatVersion, boardSnapshot.fwVersion].join(
-      ':',
-    )
+    if (!tuneCompatibilityIssue || !boardConfig) return
+    const refloatVersion = selectedBoard?.link?.refloatVersion ?? null
+    const reportKey = [selectedBoardId, refloatVersion].join(':')
     if (reportedCompatibilityIssue.current === reportKey) return
     reportedCompatibilityIssue.current = reportKey
-    reportTuneCompatibilityIssue(tuneCompatibilityIssue, boardSnapshot)
-  }, [boardSnapshot, selectedBoardId, tuneCompatibilityIssue])
+    reportTuneCompatibilityIssue(tuneCompatibilityIssue, boardConfig, {
+      refloatVersion,
+    })
+  }, [boardConfig, selectedBoard?.link?.refloatVersion, selectedBoardId, tuneCompatibilityIssue])
 
   const openHistory = useCallback(() => {
-    router.push(routes.tuneHistory)
-  }, [router])
+    router.push(
+      selectedBoardId
+        ? { pathname: routes.boardConfigHistory, params: { boardId: selectedBoardId } }
+        : routes.boardConfigHistory,
+    )
+  }, [router, selectedBoardId])
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -120,6 +136,12 @@ export function TuneScreen() {
     void saveAndSyncActiveProfile().catch(() => undefined)
   }
 
+  const handleRetryPendingSync = () => {
+    if (!firmwareCommandsTrusted) return
+    // intentional-suppression: Tune store error is rendered by the active screen or modal
+    void retryPendingBoardSync().catch(() => undefined)
+  }
+
   const handleSync = () => {
     if (!firmwareCommandsTrusted) return
     // intentional-suppression: Tune store error is rendered by the active screen or modal
@@ -135,7 +157,7 @@ export function TuneScreen() {
         boardsLoaded={boardsLoaded}
         selectedBoardId={selectedBoardId}
         profileState={profileState}
-        boardSnapshot={boardSnapshot}
+        boardConfig={boardConfig}
         firmwareCommandsTrusted={firmwareCommandsTrusted}
         firmwareCommandBlockReason={firmwareCommandBlockReason}
         loadOnline={loadOnline}
@@ -264,6 +286,8 @@ export function TuneScreen() {
           state={syncBarState}
           onSave={handleSave}
           onSaveAndSync={handleSaveAndSync}
+          onRetryPendingSync={handleRetryPendingSync}
+          onDiscardPendingSync={discardPendingBoardSync}
           onSync={handleSync}
           onUpdateTune={acceptAllBoardValues}
           onDiscard={discardAllEdits}

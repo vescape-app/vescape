@@ -22,6 +22,7 @@ interface SelectProps<T extends string = string> {
   value: T
   onChange: (value: T) => void
   placeholder?: string
+  disabled?: boolean
   style?: View['props']['style']
   testID?: string
 }
@@ -31,6 +32,7 @@ export function Select<T extends string = string>({
   value,
   onChange,
   placeholder = 'Select…',
+  disabled = false,
   style,
   testID,
 }: SelectProps<T>) {
@@ -52,16 +54,20 @@ export function Select<T extends string = string>({
     <>
       <Pressable
         ref={triggerRef}
+        disabled={disabled}
         style={[
           styles.trigger,
           {
             backgroundColor: control.background,
             borderColor: control.border,
           },
+          disabled && styles.triggerDisabled,
           style,
         ]}
         testID={testID}
-        onPress={() => setOpen(true)}
+        onPress={() => {
+          if (!disabled) setOpen(true)
+        }}
       >
         <Text
           style={[styles.triggerText, { color: selectedOption ? control.text : control.textMuted }]}
@@ -72,7 +78,7 @@ export function Select<T extends string = string>({
       </Pressable>
 
       <Dropdown
-        visible={open}
+        visible={open && !disabled}
         triggerRef={triggerRef}
         onClose={() => setOpen(false)}
         maxHeight={MAX_DROPDOWN_HEIGHT}
@@ -97,6 +103,9 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 0,
     height: 42,
+  },
+  triggerDisabled: {
+    opacity: 0.45,
   },
   triggerText: {
     color: theme.neutral.textPrimary,

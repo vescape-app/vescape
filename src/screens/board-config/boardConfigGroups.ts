@@ -1,6 +1,7 @@
 import { BOARD_CONFIG_TABS, type BoardConfigGroup } from '@/modules/board/constants/boardConfigTabs'
 import { remainingConfigRows } from '@/modules/board/lib/remainingConfigRows'
-import { APP_TUNE_GROUPS, formatTuneValue, tuneDisplayValue } from '@/modules/tune/lib/fields'
+import { getFieldOverlay } from '@/modules/board/lib/refloatFieldOverlay'
+import { formatTuneValue, tuneDisplayValue } from '@/modules/tune/lib/fields'
 import {
   BOOST_DETAIL_ROWS,
   TUNE_RESPONSE_ROWS,
@@ -12,23 +13,108 @@ const refloatRows = new Map(
     .filter((group) => group.source === 'refloat')
     .flatMap((group) => group.rows.map((row) => [row.id, row] as const)),
 )
-const tunePrimaryIds: Record<string, string[]> = {
-  general: ['kp', 'kp2'],
-  atr: ['atr_strength_up', 'atr_strength_down', 'atr_angle_limit'],
-  turn_tiltback: ['turntilt_strength', 'turntilt_angle_limit'],
-  torque_tiltback: ['torquetilt_strength', 'torquetilt_strength_regen', 'torquetilt_angle_limit'],
-  brake: ['braketilt_strength', 'braketilt_lingering'],
-  tiltback: ['tiltback_constant', 'tiltback_variable', 'tiltback_variable_max'],
-}
-const tuneGroups: BoardConfigGroup[] = APP_TUNE_GROUPS.map((group) => ({
+
+const TUNE_BROWSE_GROUPS: {
+  id: string
+  title: string
+  primaryIds: string[]
+  fields: { id: string; unit: string | null }[]
+}[] = [
+  {
+    id: 'general',
+    title: 'General',
+    primaryIds: ['kp', 'kp2'],
+    fields: [
+      { id: 'kp', unit: null },
+      { id: 'kp2', unit: null },
+      { id: 'kp_brake', unit: 'x' },
+      { id: 'kp2_brake', unit: 'x' },
+      { id: 'ki', unit: null },
+      { id: 'ki_limit', unit: 'A' },
+      { id: 'mahony_kp', unit: null },
+      { id: 'mahony_kp_roll', unit: null },
+    ],
+  },
+  {
+    id: 'atr',
+    title: 'ATR',
+    primaryIds: ['atr_strength_up', 'atr_strength_down', 'atr_angle_limit'],
+    fields: [
+      { id: 'atr_strength_up', unit: null },
+      { id: 'atr_strength_down', unit: null },
+      { id: 'atr_threshold_up', unit: 'deg' },
+      { id: 'atr_threshold_down', unit: 'deg' },
+      { id: 'atr_speed_boost', unit: '%' },
+      { id: 'atr_angle_limit', unit: 'deg' },
+      { id: 'atr_on_speed', unit: 'deg/s' },
+      { id: 'atr_off_speed', unit: 'deg/s' },
+      { id: 'atr_response_boost', unit: 'x' },
+      { id: 'atr_transition_boost', unit: 'x' },
+      { id: 'atr_filter', unit: 'Hz' },
+      { id: 'atr_amps_accel_ratio', unit: null },
+      { id: 'atr_amps_decel_ratio', unit: null },
+    ],
+  },
+  {
+    id: 'turn_tiltback',
+    title: 'Turn tiltback',
+    primaryIds: ['turntilt_strength', 'turntilt_angle_limit'],
+    fields: [
+      { id: 'turntilt_strength', unit: null },
+      { id: 'turntilt_angle_limit', unit: 'deg' },
+      { id: 'turntilt_start_angle', unit: 'deg' },
+      { id: 'turntilt_start_erpm', unit: 'ERPM' },
+      { id: 'turntilt_speed', unit: 'deg/s' },
+      { id: 'turntilt_erpm_boost', unit: '%' },
+      { id: 'turntilt_erpm_boost_end', unit: 'ERPM' },
+      { id: 'turntilt_yaw_aggregate', unit: 'deg' },
+    ],
+  },
+  {
+    id: 'torque_tiltback',
+    title: 'Torque tiltback',
+    primaryIds: ['torquetilt_strength', 'torquetilt_strength_regen', 'torquetilt_angle_limit'],
+    fields: [
+      { id: 'torquetilt_strength', unit: 'deg/A' },
+      { id: 'torquetilt_strength_regen', unit: 'deg/A' },
+      { id: 'torquetilt_start_current', unit: 'A' },
+      { id: 'torquetilt_angle_limit', unit: 'deg' },
+      { id: 'torquetilt_on_speed', unit: 'deg/s' },
+      { id: 'torquetilt_off_speed', unit: 'deg/s' },
+    ],
+  },
+  {
+    id: 'brake',
+    title: 'Brake',
+    primaryIds: ['braketilt_strength', 'braketilt_lingering'],
+    fields: [
+      { id: 'braketilt_strength', unit: null },
+      { id: 'braketilt_lingering', unit: null },
+    ],
+  },
+  {
+    id: 'tiltback',
+    title: 'Tiltback',
+    primaryIds: ['tiltback_constant', 'tiltback_variable', 'tiltback_variable_max'],
+    fields: [
+      { id: 'tiltback_constant', unit: 'deg' },
+      { id: 'tiltback_constant_erpm', unit: 'ERPM' },
+      { id: 'tiltback_variable', unit: 'deg/1000 ERPM' },
+      { id: 'tiltback_variable_max', unit: 'deg' },
+      { id: 'tiltback_variable_erpm', unit: 'ERPM' },
+    ],
+  },
+]
+
+const tuneGroups: BoardConfigGroup[] = TUNE_BROWSE_GROUPS.map((group) => ({
   title: group.title,
   source: 'refloat',
-  primaryIds: tunePrimaryIds[group.id],
+  primaryIds: group.primaryIds,
   rows: group.fields.map(
     (field) =>
       refloatRows.get(field.id) ?? {
         id: field.id,
-        label: field.label,
+        label: getFieldOverlay(field.id)?.label ?? field.id,
         format: (value) =>
           value == null
             ? '—'

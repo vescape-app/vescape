@@ -315,6 +315,109 @@
       "foreignKeys": [],
       "indexes": {}
     },
+    "board_config_revisions": {
+      "columns": {
+        "board_id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "changes_json": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "id": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "INTEGER"
+        },
+        "package_signature": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "raw_config": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "BLOB"
+        },
+        "refloat_version": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "schema_hash": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "source": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "tune_profile_id": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [
+        "schema_hash -> board_config_schemas.schema_hash on delete NO ACTION on update NO ACTION"
+      ],
+      "indexes": {
+        "index_board_config_revisions_board_id_created_at": {
+          "columns": ["board_id", "created_at"],
+          "unique": false,
+          "where": null
+        },
+        "index_board_config_revisions_schema_hash": {
+          "columns": ["schema_hash"],
+          "unique": false,
+          "where": null
+        }
+      }
+    },
+    "board_config_schemas": {
+      "columns": {
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "raw_xml": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "schema_hash": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    },
     "board_config_values": {
       "columns": {
         "board_id": {
@@ -333,6 +436,12 @@
           "default": null,
           "notNull": true,
           "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "schema_hash": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
           "type": "TEXT"
         },
         "values_json": {
@@ -1417,47 +1526,6 @@
       "indexes": {
         "index_telemetry_minute_buckets_bucket_start_ms": {
           "columns": ["bucket_start_ms"],
-          "unique": false,
-          "where": null
-        }
-      }
-    },
-    "tune_history_entries": {
-      "columns": {
-        "created_at": {
-          "default": null,
-          "notNull": true,
-          "primaryKey": 0,
-          "type": "INTEGER"
-        },
-        "fields_json": {
-          "default": null,
-          "notNull": true,
-          "primaryKey": 0,
-          "type": "TEXT"
-        },
-        "id": {
-          "default": null,
-          "notNull": true,
-          "primaryKey": 1,
-          "type": "INTEGER"
-        },
-        "profile_id": {
-          "default": null,
-          "notNull": true,
-          "primaryKey": 0,
-          "type": "TEXT"
-        }
-      },
-      "foreignKeys": [],
-      "indexes": {
-        "index_tune_history_entries_created_at": {
-          "columns": ["created_at"],
-          "unique": false,
-          "where": null
-        },
-        "index_tune_history_entries_profile_id": {
-          "columns": ["profile_id"],
           "unique": false,
           "where": null
         }

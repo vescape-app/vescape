@@ -48,4 +48,21 @@ class RefloatConfigWriteVerifierTest {
       RefloatConfigWriteVerifier.verify(withMeta, written, written),
     )
   }
+
+  @Test
+  fun disabledStaysStrictlyVerified() {
+    val withDisabled = RefloatConfigSchema(
+      "disabled",
+      listOf(
+        RefloatConfigSchemaField("disabled", RefloatConfigValueType.BOOL, "Disabled", null, null, null, 0),
+        RefloatConfigSchemaField("meta.is_default", RefloatConfigValueType.BOOL, "Default", null, null, null, 1),
+      ),
+    )
+    val written = byteArrayOf(1, 1)
+    assertTrue(RefloatConfigWriteVerifier.verify(withDisabled, written, byteArrayOf(1, 0)) is RefloatConfigWriteVerification.Success)
+    assertEquals(
+      RefloatConfigWriteVerification.Failure("Verification failed: first byte mismatch at offset 0"),
+      RefloatConfigWriteVerifier.verify(withDisabled, written, byteArrayOf(0, 0)),
+    )
+  }
 }

@@ -172,13 +172,59 @@ class RefloatConfigEncoderTest {
   }
 
   @Test
-  fun integersRoundHalfUp() {
+  fun fractionalValuesRejectedForIntegerFieldsWhileScaledFloatsRoundHalfUp() {
     val schema = allTypeSchema()
     val raw = buildRawConfig(schema)
-    val encoded = RefloatConfigEncoder.encode(schema, raw, mapOf("u8" to 7.5, "i16" to -2.5))
-    val decoded = RefloatConfigDecoder.decodeFieldMap(schema, encoded)
-    assertEquals(8.0, decoded["u8"])
-    assertEquals(-2.0, decoded["i16"])
+    for (fieldId in listOf("u8", "i8", "u16", "i16", "u32", "i32")) {
+      assertInvalid(schema, raw, mapOf(fieldId to 7.5))
+      assertInvalid(schema, raw, mapOf(fieldId to 2.7))
+    }
+    val scaled = RefloatConfigEncoder.encode(schema, raw, mapOf("f16_scaled" to 1.235, "f32_scaled" to -2.5005))
+    val decoded = RefloatConfigDecoder.decodeFieldMap(schema, scaled)
+    assertEquals(1.24, decoded["f16_scaled"] as Double, 1e-9)
+    assertEquals(-2.5, decoded["f32_scaled"] as Double, 1e-9)
+  }
+
+  @Test
+  fun overlappingFieldsAreRejectedWhileAdjacentFieldsSucceed() {
+    val overlapping = RefloatConfigSchema(
+      hash = "overlap",
+      fields = listOf(
+        RefloatConfigSchemaField("a", RefloatConfigValueType.UINT16, "a", null, null, null, 0),
+        RefloatConfigSchemaField("b", RefloatConfigValueType.UINT16, "b", null, null, null, 1),
+      ),
+    )
+    try {
+      RefloatConfigEncoder.encodeChangeset(overlapping, ByteArray(4), mapOf("a" to 10.0, "b" to 20.0))
+      fail("Expected CONFIG_ENCODE_FAILED for overlapping fields")
+    } catch (e: RefloatConfigEncodeException) {
+      assertEquals(RefloatConfigErrorCode.CONFIG_ENCODE_FAILED, e.code)
+    }
+
+    val adjacent = RefloatConfigSchema(
+      hash = "adjacent",
+      fields = listOf(
+        RefloatConfigSchemaField("a", RefloatConfigValueType.UINT16, "a", null, null, null, 0),
+        RefloatConfigSchemaField("b", RefloatConfigValueType.UINT16, "b", null, null, null, 2),
+      ),
+    )
+    val encoded = RefloatConfigEncoder.encodeChangeset(adjacent, ByteArray(4), mapOf("a" to 0x1234.toDouble(), "b" to 0x5678.toDouble()))
+    assertArrayEquals(byteArrayOf(0x12, 0x34, 0x56, 0x78), encoded.rawConfig)
+    assertEquals(setOf("a", "b"), encoded.changedFieldIds)
+  }
+
+  @Test
+  fun offGridSchemaMaxRoundTripsWithoutFalseRangeRejection() {
+    val schema = RefloatConfigSchema(
+      hash = "offgrid",
+      fields = listOf(
+        RefloatConfigSchemaField("v", RefloatConfigValueType.FLOAT16_SCALED, "v", null, 0.0, 0.3505, 0, 1000.0),
+      ),
+    )
+    val encoded = RefloatConfigEncoder.encodeChangeset(schema, ByteArray(2), mapOf("v" to 0.3505))
+    assertEquals(setOf("v"), encoded.changedFieldIds)
+    assertArrayEquals(byteArrayOf(0x01, 0x5F), encoded.rawConfig)
+    assertInvalid(schema, ByteArray(2), mapOf("v" to 0.3506))
   }
 
   @Test
@@ -199,7 +245,7 @@ class RefloatConfigEncoderTest {
     val schema = RefloatConfigSchema("t", listOf(
       RefloatConfigSchemaField("v", RefloatConfigValueType.FLOAT32_SCALED, "v", null, null, null, 0, 1000.0),
     ))
-    for (rawInt in listOf(0, 1, -1, 1500, -2500, Int.MAX_VALUE, Int.MIN_VALUE)) {
+    for (rawInt in listOf(0, 1, -1, 1500, -2500, 16_777_216, Int.MIN_VALUE)) {
       val raw = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(rawInt).array()
       val decoded = decodeAllFields(schema, raw)
       val reEncoded = RefloatConfigEncoder.encode(schema, raw, decoded)
@@ -331,7 +377,213 @@ class RefloatConfigEncoderTest {
     }
   }
 
-  private fun assertInvalid(schema: RefloatConfigSchema, raw: ByteArray, fields: Map<String, Any>) {
+  @Test
+  fun float32AutoIndependentByteVectors() {
+    val schema = RefloatConfigSchema("t", listOf(
+      RefloatConfigSchemaField("v", RefloatConfigValueType.FLOAT32_AUTO, "v", null, null, null, 0),
+    ))
+    val vectors = listOf(
+      0.0 to byteArrayOf(0x00, 0x00, 0x00, 0x00),
+      1e-40 to byteArrayOf(0x00, 0x00, 0x00, 0x00),
+      0.25 to byteArrayOf(0x3E, 0x80.toByte(), 0x00, 0x00),
+      0.5 to byteArrayOf(0x3F, 0x00, 0x00, 0x00),
+      1.0 to byteArrayOf(0x3F, 0x80.toByte(), 0x00, 0x00),
+      -1.0 to byteArrayOf(0xBF.toByte(), 0x80.toByte(), 0x00, 0x00),
+      3.0 to byteArrayOf(0x40, 0x40, 0x00, 0x00),
+      -2.5 to byteArrayOf(0xC0.toByte(), 0x20, 0x00, 0x00),
+      30.0 to byteArrayOf(0x41, 0xF0.toByte(), 0x00, 0x00),
+      100.0 to byteArrayOf(0x42, 0xC8.toByte(), 0x00, 0x00),
+    )
+    for ((value, expected) in vectors) {
+      val encoded = RefloatConfigEncoder.encode(schema, ByteArray(4), mapOf("v" to value))
+      assertArrayEquals("FLOAT32_AUTO vector for $value", expected, encoded)
+    }
+  }
+
+  @Test
+  fun float16ScaledIndependentEdgeByteVectors() {
+    val scale100 = RefloatConfigSchema("t", listOf(
+      RefloatConfigSchemaField("v", RefloatConfigValueType.FLOAT16_SCALED, "v", null, null, null, 0, 100.0),
+    ))
+    val scale100Vectors = listOf(
+      0.0 to byteArrayOf(0x00, 0x00),
+      1.23 to byteArrayOf(0x00, 0x7B),
+      -0.01 to byteArrayOf(0xFF.toByte(), 0xFF.toByte()),
+      327.67 to byteArrayOf(0x7F, 0xFF.toByte()),
+      -327.68 to byteArrayOf(0x80.toByte(), 0x00),
+    )
+    for ((value, expected) in scale100Vectors) {
+      assertArrayEquals(
+        "FLOAT16_SCALED(100) vector for $value",
+        expected,
+        RefloatConfigEncoder.encode(scale100, ByteArray(2), mapOf("v" to value)),
+      )
+    }
+
+    val kiSchema = RefloatConfigSchema("t", listOf(
+      RefloatConfigSchemaField("ki", RefloatConfigValueType.FLOAT16_SCALED, "ki", null, 0.0, 0.5, 0, 100_000.0),
+    ))
+    val kiVectors = listOf(
+      0.0 to byteArrayOf(0x00, 0x00),
+      0.001 to byteArrayOf(0x00, 0x64),
+      0.32767 to byteArrayOf(0x7F, 0xFF.toByte()),
+    )
+    for ((value, expected) in kiVectors) {
+      assertArrayEquals(
+        "FLOAT16_SCALED(100000) vector for $value",
+        expected,
+        RefloatConfigEncoder.encode(kiSchema, ByteArray(2), mapOf("ki" to value)),
+      )
+    }
+  }
+
+  @Test
+  fun effectiveRangeRejectsSchemaAndWireOverflows() {
+    val schema = RefloatConfigSchema(
+      hash = "refloat-edges",
+      fields = listOf(
+        RefloatConfigSchemaField("ki", RefloatConfigValueType.FLOAT16_SCALED, "Angle I", null, 0.0, 0.5, 0, 100_000.0),
+        RefloatConfigSchemaField("turntilt_start_erpm", RefloatConfigValueType.UINT16, "ERPM Threshold", null, 100.0, 100_000.0, 2),
+        RefloatConfigSchemaField("turntilt_yaw_aggregate", RefloatConfigValueType.UINT8, "Turn Aggregate Target", null, 50.0, 360.0, 4),
+        RefloatConfigSchemaField(
+          id = "inputtilt_remote_type",
+          type = RefloatConfigValueType.UINT8,
+          label = "Remote Type",
+          unit = null,
+          min = null,
+          max = null,
+          offset = 5,
+          xmlType = 4,
+          enumNames = listOf("None", "UART", "PPM"),
+        ),
+      ),
+    )
+    val raw = ByteArray(6)
+
+    assertInvalid(schema, raw, mapOf("ki" to 0.35))
+    assertInvalid(schema, raw, mapOf("ki" to -0.001))
+    assertInvalid(schema, raw, mapOf("turntilt_start_erpm" to 100_000.0))
+    assertInvalid(schema, raw, mapOf("turntilt_start_erpm" to 99.0))
+    assertInvalid(schema, raw, mapOf("turntilt_yaw_aggregate" to 360.0))
+    assertInvalid(schema, raw, mapOf("turntilt_yaw_aggregate" to 49.0))
+    assertInvalid(schema, raw, mapOf("inputtilt_remote_type" to -1.0))
+    assertInvalid(schema, raw, mapOf("inputtilt_remote_type" to 3.0))
+    assertInvalid(schema, raw, mapOf("inputtilt_remote_type" to 1.5))
+    assertInvalid(schema, raw, mapOf("ki" to null))
+
+    val valid = RefloatConfigEncoder.encodeChangeset(
+      schema,
+      raw,
+      mapOf(
+        "ki" to 0.32767,
+        "turntilt_start_erpm" to 65_535.0,
+        "turntilt_yaw_aggregate" to 255.0,
+        "inputtilt_remote_type" to 2.0,
+      ),
+    )
+    assertEquals(setOf("ki", "turntilt_start_erpm", "turntilt_yaw_aggregate", "inputtilt_remote_type"), valid.changedFieldIds)
+  }
+
+  @Test
+  fun encodeChangesetDropsWirePrecisionNoOps() {
+    val schema = RefloatConfigSchema(
+      hash = "noop",
+      fields = listOf(
+        RefloatConfigSchemaField("kp", RefloatConfigValueType.FLOAT16_SCALED, "kp", null, 0.0, 50.0, 0, 10.0),
+        RefloatConfigSchemaField("ki", RefloatConfigValueType.FLOAT16_SCALED, "ki", null, 0.0, 0.5, 2, 100_000.0),
+      ),
+    )
+    val raw = byteArrayOf(0x00, 0xC8.toByte(), 0x00, 0x64)
+
+    val noOp = RefloatConfigEncoder.encodeChangeset(schema, raw, mapOf("kp" to 20.04, "ki" to 0.001))
+    assertTrue(noOp.changedFieldIds.isEmpty())
+    assertArrayEquals(raw, noOp.rawConfig)
+
+    val partial = RefloatConfigEncoder.encodeChangeset(schema, raw, mapOf("kp" to 20.0, "ki" to 0.002))
+    assertEquals(setOf("ki"), partial.changedFieldIds)
+    assertArrayEquals(raw.copyOfRange(0, 2), partial.rawConfig.copyOfRange(0, 2))
+    assertArrayEquals(byteArrayOf(0x00, 0xC8.toByte()), partial.rawConfig.copyOfRange(2, 4))
+  }
+
+  @Test
+  fun rejectsInternalSchemaAndMetaFieldsUnlessExplicitlyAllowed() {
+    val schema = RefloatConfigSchema(
+      hash = "internal-test",
+      fields = listOf(
+        RefloatConfigSchemaField("kp", RefloatConfigValueType.FLOAT32, "Angle P", null, 0.0, 100.0, 0),
+        RefloatConfigSchemaField("meta.is_default", RefloatConfigValueType.BOOL, "Is Default", null, null, null, 4),
+        RefloatConfigSchemaField("group_internal", RefloatConfigValueType.UINT8, "Group Internal", null, 0.0, 255.0, 5),
+        RefloatConfigSchemaField("subgroup_meta", RefloatConfigValueType.UINT8, "Subgroup Meta", null, 0.0, 255.0, 6),
+        RefloatConfigSchemaField("overlay_internal", RefloatConfigValueType.UINT8, "Overlay Internal", null, 0.0, 255.0, 7),
+      ),
+      groups = listOf(
+        RefloatConfigSchemaGroup(
+          name = "Internal",
+          subgroups = listOf(
+            RefloatConfigSchemaSubgroup("Flags", listOf(RefloatConfigSchemaGroupItem.Field("group_internal"))),
+          ),
+        ),
+        RefloatConfigSchemaGroup(
+          name = "General",
+          subgroups = listOf(
+            RefloatConfigSchemaSubgroup("Meta", listOf(RefloatConfigSchemaGroupItem.Field("subgroup_meta"))),
+          ),
+        ),
+      ),
+    )
+    val overlay = RefloatFieldOverlay(
+      mapOf("overlay_internal" to RefloatFieldOverlayEntry(risk = RefloatFieldRisk.INTERNAL)),
+    )
+    val raw = ByteArray(8)
+
+    for (change in listOf<Map<String, Any?>>(
+      mapOf("meta.is_default" to false),
+      mapOf("group_internal" to 1.0),
+      mapOf("subgroup_meta" to 2.0),
+      mapOf("overlay_internal" to 3.0),
+    )) {
+      try {
+        RefloatConfigEncoder.encodeChangeset(schema, raw, change, overlay)
+        fail("Expected CONFIG_VALUE_INVALID for $change")
+      } catch (e: RefloatConfigEncodeException) {
+        assertEquals(RefloatConfigErrorCode.CONFIG_VALUE_INVALID, e.code)
+      }
+    }
+
+    val allowed = RefloatConfigEncoder.encodeChangeset(
+      schema,
+      raw,
+      mapOf("meta.is_default" to true, "group_internal" to 1.0, "subgroup_meta" to 2.0),
+      overlay,
+      allowInternal = true,
+    )
+    assertEquals(setOf("meta.is_default", "group_internal", "subgroup_meta"), allowed.changedFieldIds)
+  }
+
+  @Test
+  fun rejectsScaledValuesThatTruncateUnderFirmwareFloat32RoundTrip() {
+    val schema = RefloatConfigSchema(
+      hash = "adc-float32",
+      fields = listOf(
+        RefloatConfigSchemaField("fault_adc1", RefloatConfigValueType.FLOAT16_SCALED, "ADC1", null, 0.0, 5.0, 0, 1000.0),
+        RefloatConfigSchemaField("scaled32", RefloatConfigValueType.FLOAT32_SCALED, "Scaled32", null, -5.0, 5.0, 2, 1000.0),
+      ),
+    )
+    val raw = ByteArray(6)
+
+    assertInvalid(schema, raw, mapOf("fault_adc1" to 0.251))
+    assertInvalid(schema, raw, mapOf("scaled32" to 0.251))
+    assertInvalid(schema, raw, mapOf("scaled32" to -0.251))
+
+    val stable = RefloatConfigEncoder.encodeChangeset(
+      schema,
+      raw,
+      mapOf("fault_adc1" to 0.250, "scaled32" to 0.252),
+    )
+    assertEquals(setOf("fault_adc1", "scaled32"), stable.changedFieldIds)
+  }
+
+  private fun assertInvalid(schema: RefloatConfigSchema, raw: ByteArray, fields: Map<String, Any?>) {
     try {
       RefloatConfigEncoder.encode(schema, raw, fields)
       fail("Expected CONFIG_VALUE_INVALID for $fields")

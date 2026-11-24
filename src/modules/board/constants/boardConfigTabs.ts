@@ -20,9 +20,6 @@ import {
   BMS_ROWS,
   HAPTIC_MAIN_ROWS,
   HAPTIC_DETAIL_ROWS,
-  LED_MAIN_ROWS,
-  LED_DETAIL_ROWS,
-  LED_HARDWARE_ROWS,
   REMOTE_ROWS,
   START_STOP_EXTRA_ROWS,
   SPEED_EXTRA_ROWS,
@@ -70,20 +67,6 @@ export const BOARD_CONFIG_TABS: { id: string; label: string; groups: BoardConfig
           ].includes(row.id),
         ),
       },
-      {
-        title: 'Lights',
-        source: 'refloat',
-        rows: LED_MAIN_ROWS.filter((row) =>
-          [
-            'leds.front.brightness',
-            'leds.rear.brightness',
-            'leds.headlights.brightness',
-            'leds.taillights.brightness',
-            'leds.front.mode',
-            'leds.rear.mode',
-          ].includes(row.id),
-        ),
-      },
     ],
   },
   {
@@ -104,16 +87,7 @@ export const BOARD_CONFIG_TABS: { id: string; label: string; groups: BoardConfig
   {
     id: 'leds',
     label: 'LEDs',
-    groups: [
-      { title: 'Lights', source: 'refloat', rows: LED_MAIN_ROWS },
-      {
-        title: 'Patterns and status lights',
-        source: 'refloat',
-        rows: LED_DETAIL_ROWS,
-        advanced: true,
-      },
-      { title: 'LED wiring', source: 'refloat', rows: LED_HARDWARE_ROWS, advanced: true },
-    ],
+    groups: [],
   },
   {
     id: 'haptic',

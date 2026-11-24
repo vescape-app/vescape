@@ -16,7 +16,11 @@ internal object ConfigRWFsm {
         val uncertain = state.setConfigSent() &&
             event !is ConfigRWEvent.SetConfigBlocked &&
             effects.any { it is ConfigRWEffect.EmitWriteFailure }
-        return next to if (uncertain) listOf(ConfigRWEffect.DemoteWriteBase) + effects else effects
+        if (!uncertain) return next to effects
+        val annotated = effects.map { effect ->
+            if (effect is ConfigRWEffect.EmitWriteFailure) effect.copy(demotedWriteBase = true) else effect
+        }
+        return next to (listOf(ConfigRWEffect.DemoteWriteBase) + annotated)
     }
 
     private fun ConfigRWState.setConfigSent() =
@@ -31,6 +35,7 @@ internal object ConfigRWFsm {
         is ConfigRWEvent.InfoPayloadReceived -> onInfo(state, event)
         is ConfigRWEvent.XmlPayloadReceived -> onXml(state, event)
         is ConfigRWEvent.ConfigBytesPayloadReceived -> onConfigBytes(state, event)
+        is ConfigRWEvent.RideStateReceived -> onRideState(state, event)
         is ConfigRWEvent.SetConfigResponseReceived -> onSetAck(state, event)
         is ConfigRWEvent.Timeout -> onTimeout(state, event)
         is ConfigRWEvent.GattWriteFailed -> onGattFailed(state, event)
@@ -78,7 +83,7 @@ internal object ConfigRWFsm {
             canId = event.canId,
             transport = event.transport,
             wasPolling = event.wasPolling,
-            profileFields = event.profileFields,
+            intent = event.intent,
             appBoardId = event.appBoardId,
             fwVersion = event.fwVersion,
             refloatBaseVersion = event.refloatBaseVersion,
@@ -89,8 +94,9 @@ internal object ConfigRWFsm {
             return sendWrite(
                 ctx = ctx,
                 schema = writeBase.schema,
-                rawConfig = writeBase.rawConfig,
-                packageSignature = writeBase.packageSignature,
+                configBytes = RefloatConfigBytes(0, writeBase.packageSignature, writeBase.rawConfig),
+                capturedAtMs = event.startedAtMs,
+                fromFreshRead = false,
                 failPhase = ConfigWritePhaseTag.SENDING_WRITE,
             )
         }
@@ -114,7 +120,9 @@ internal object ConfigRWFsm {
         state: ConfigRWState,
         event: ConfigRWEvent.InfoPayloadReceived,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
-        val info = when (val parsed = RefloatConfigProtocol.parseGetInfoResponse(event.payload)) {
+        val transport = transportOf(state) ?: return state to emptyList()
+        if (!RefloatConfigProtocol.matchesTransport(event.payload, transport)) return state to emptyList()
+        val info = when (val parsed = RefloatConfigProtocol.parseGetInfoResponse(event.payload, transport)) {
             is RefloatConfigProtocolResult.Success -> parsed.value.version
             is RefloatConfigProtocolResult.Failure -> null
         }
@@ -124,6 +132,7 @@ internal object ConfigRWFsm {
             is ConfigRWState.ReadAwaitingConfig -> state.copy(ctx = state.ctx.copy(refloatVersion = info)) to emptyList()
             is ConfigRWState.WriteCollectingXml -> state.copy(ctx = state.ctx.copy(refloatVersion = info)) to emptyList()
             is ConfigRWState.WriteAwaitingConfig -> state.copy(ctx = state.ctx.copy(refloatVersion = info)) to emptyList()
+            is ConfigRWState.WriteAwaitingIdle -> state.copy(ctx = state.ctx.copy(refloatVersion = info)) to emptyList()
             is ConfigRWState.WriteAwaitingSetAck -> state.copy(ctx = state.ctx.copy(refloatVersion = info)) to emptyList()
             is ConfigRWState.WriteVerifying -> state.copy(ctx = state.ctx.copy(refloatVersion = info)) to emptyList()
             ConfigRWState.Idle -> state to emptyList()
@@ -136,7 +145,8 @@ internal object ConfigRWFsm {
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
       return when (state) {
         is ConfigRWState.ReadCollectingXml -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload)) {
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) return state to emptyList()
+            when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload, transport = state.ctx.transport)) {
                 is RefloatConfigProtocolResult.Failure -> readFailure(
                     state.ctx,
                     RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
@@ -181,7 +191,8 @@ internal object ConfigRWFsm {
         }
 
         is ConfigRWState.WriteCollectingXml -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload)) {
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) return state to emptyList()
+            when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload, transport = state.ctx.transport)) {
                 is RefloatConfigProtocolResult.Failure -> writeFailure(
                     state.ctx,
                     RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
@@ -191,6 +202,7 @@ internal object ConfigRWFsm {
                 )
                 is RefloatConfigProtocolResult.Success -> {
                     val chunk = parsed.value
+                    if (chunk.offset != state.nextOffset) return state to emptyList()
                     val merged = ByteArray(state.xmlBytes.size + chunk.chunk.size)
                     state.xmlBytes.copyInto(merged)
                     chunk.chunk.copyInto(merged, state.xmlBytes.size)
@@ -235,57 +247,112 @@ internal object ConfigRWFsm {
         event: ConfigRWEvent.ConfigBytesPayloadReceived,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> = when (state) {
         is ConfigRWState.ReadAwaitingConfig -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload)) {
-                is RefloatConfigProtocolResult.Failure -> readFailure(
-                    state.ctx,
-                    RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
-                    parsed.message,
-                    rawConfig = null,
-                )
-                is RefloatConfigProtocolResult.Success -> decodeAndCompleteRead(
-                    state.ctx,
-                    state.xmlBytes,
-                    parsed.value,
-                    event.capturedAtMs,
-                )
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) {
+                state to emptyList()
+            } else {
+                when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload, transport = state.ctx.transport)) {
+                    is RefloatConfigProtocolResult.Failure -> readFailure(
+                        state.ctx,
+                        RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
+                        parsed.message,
+                        rawConfig = null,
+                    )
+                    is RefloatConfigProtocolResult.Success -> decodeAndCompleteRead(
+                        state.ctx,
+                        state.xmlBytes,
+                        parsed.value,
+                        event.capturedAtMs,
+                    )
+                }
             }
         }
 
         is ConfigRWState.WriteAwaitingConfig -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload)) {
-                is RefloatConfigProtocolResult.Failure -> writeFailure(
-                    state.ctx,
-                    RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
-                    parsed.message,
-                    phase = ConfigWritePhaseTag.READING_CONFIG,
-                    rawConfig = null,
-                )
-                is RefloatConfigProtocolResult.Success -> encodeAndSendWrite(
-                    state.ctx,
-                    state.xmlBytes,
-                    parsed.value,
-                )
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) {
+                state to emptyList()
+            } else {
+                when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload, transport = state.ctx.transport)) {
+                    is RefloatConfigProtocolResult.Failure -> writeFailure(
+                        state.ctx,
+                        RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
+                        parsed.message,
+                        phase = ConfigWritePhaseTag.READING_CONFIG,
+                        rawConfig = null,
+                    )
+                    is RefloatConfigProtocolResult.Success -> encodeAndSendWrite(
+                        state.ctx,
+                        state.xmlBytes,
+                        parsed.value,
+                        event.capturedAtMs,
+                    )
+                }
             }
         }
 
         is ConfigRWState.WriteVerifying -> {
-            when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload)) {
-                is RefloatConfigProtocolResult.Failure -> writeFailure(
-                    state.ctx,
-                    RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
-                    parsed.message,
-                    phase = ConfigWritePhaseTag.VERIFYING,
-                    rawConfig = state.originalConfig,
-                )
-                is RefloatConfigProtocolResult.Success -> verifyAndCompleteWrite(
-                    state,
-                    parsed.value,
-                    event.capturedAtMs,
-                )
+            if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) {
+                state to emptyList()
+            } else {
+                when (val parsed = RefloatConfigProtocol.parseCustomConfigResponse(event.payload, transport = state.ctx.transport)) {
+                    is RefloatConfigProtocolResult.Failure -> writeFailure(
+                        state.ctx,
+                        RefloatConfigErrorCode.UNEXPECTED_CONFIG_RESPONSE,
+                        parsed.message,
+                        phase = ConfigWritePhaseTag.VERIFYING,
+                        rawConfig = state.originalConfig,
+                    )
+                    is RefloatConfigProtocolResult.Success -> verifyAndCompleteWrite(
+                        state,
+                        parsed.value,
+                        event.capturedAtMs,
+                    )
+                }
             }
         }
 
         else -> state to emptyList()
+    }
+
+    private fun onRideState(
+        state: ConfigRWState,
+        event: ConfigRWEvent.RideStateReceived,
+    ): Pair<ConfigRWState, List<ConfigRWEffect>> {
+        if (state !is ConfigRWState.WriteAwaitingIdle) return state to emptyList()
+        if (event.rideState.receivedAtMs < state.minRideStateAtMs) return state to emptyList()
+        val freshSinceMs = maxOf(state.minRideStateAtMs, BoardIdleGate.freshSinceMs(event.nowMs))
+        BoardIdleGate.blockReason(event.rideState, freshSinceMs)?.let { reason ->
+            return writeFailure(
+                state.ctx,
+                RefloatConfigErrorCode.BOARD_NOT_IDLE,
+                reason,
+                phase = ConfigWritePhaseTag.SENDING_WRITE,
+                rawConfig = state.originalConfig,
+            )
+        }
+        return ConfigRWState.WriteAwaitingSetAck(
+            ctx = state.ctx,
+            schema = state.schema,
+            originalConfig = state.originalConfig,
+            patchedConfig = state.patchedConfig,
+            expectedPackageSignature = state.expectedPackageSignature,
+        ) to listOf(
+            ConfigRWEffect.CancelTimeout,
+            ConfigRWEffect.ScheduleTimeout(
+                RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT,
+                CONFIG_WRITE_TIMEOUT_MS,
+            ),
+            ConfigRWEffect.SendFrame(
+                RefloatConfigProtocol.buildSetCustomConfig(
+                    state.ctx.transport,
+                    0,
+                    state.expectedPackageSignature,
+                    state.patchedConfig,
+                ),
+                requiresIdleBoard = true,
+                minRideStateAtMs = state.minRideStateAtMs,
+                frameTag = setFrameTag(state.ctx.opId),
+            ),
+        )
     }
 
     private fun onSetAck(
@@ -293,7 +360,8 @@ internal object ConfigRWFsm {
         event: ConfigRWEvent.SetConfigResponseReceived,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
         if (state !is ConfigRWState.WriteAwaitingSetAck) return state to emptyList()
-        return when (val parsed = RefloatConfigProtocol.parseSetCustomConfigResponse(event.payload)) {
+        if (!RefloatConfigProtocol.matchesTransport(event.payload, state.ctx.transport)) return state to emptyList()
+        return when (val parsed = RefloatConfigProtocol.parseSetCustomConfigResponse(event.payload, transport = state.ctx.transport)) {
             is RefloatConfigProtocolResult.Failure -> writeFailure(
                 state.ctx,
                 RefloatConfigErrorCode.CONFIG_WRITE_FAILED,
@@ -306,6 +374,7 @@ internal object ConfigRWFsm {
                 schema = state.schema,
                 originalConfig = state.originalConfig,
                 patchedConfig = state.patchedConfig,
+                expectedPackageSignature = state.expectedPackageSignature,
             ) to listOf(
                 ConfigRWEffect.CancelTimeout,
                 ConfigRWEffect.ScheduleTimeout(
@@ -330,13 +399,22 @@ internal object ConfigRWFsm {
                 )
             } else readFailure(state.ctx, event.code, "$message at XML offset ${state.nextOffset}", rawConfig = null)
             is ConfigRWState.ReadAwaitingConfig -> readFailure(state.ctx, event.code, message, rawConfig = null)
-            is ConfigRWState.WriteCollectingXml -> writeFailure(
-                state.ctx, event.code, message,
+            is ConfigRWState.WriteCollectingXml -> if (!state.retried) {
+                state.copy(retried = true) to listOf(
+                    ConfigRWEffect.ScheduleTimeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS),
+                    ConfigRWEffect.SendFrame(buildXmlRequest(state.ctx.transport, state.expectedXmlLength, state.nextOffset)),
+                )
+            } else writeFailure(
+                state.ctx, event.code, "$message at XML offset ${state.nextOffset}",
                 phase = ConfigWritePhaseTag.READING_SCHEMA, rawConfig = null,
             )
             is ConfigRWState.WriteAwaitingConfig -> writeFailure(
                 state.ctx, event.code, message,
                 phase = ConfigWritePhaseTag.READING_CONFIG, rawConfig = null,
+            )
+            is ConfigRWState.WriteAwaitingIdle -> writeFailure(
+                state.ctx, RefloatConfigErrorCode.BOARD_NOT_IDLE, "No fresh telemetry shows the board idle",
+                phase = ConfigWritePhaseTag.SENDING_WRITE, rawConfig = state.originalConfig,
             )
             is ConfigRWState.WriteAwaitingSetAck -> writeFailure(
                 state.ctx, event.code, message,
@@ -370,6 +448,10 @@ internal object ConfigRWFsm {
             state.ctx, RefloatConfigErrorCode.GATT_NOT_WRITABLE, event.message,
             phase = ConfigWritePhaseTag.READING_CONFIG, rawConfig = null,
         )
+        is ConfigRWState.WriteAwaitingIdle -> writeFailure(
+            state.ctx, RefloatConfigErrorCode.GATT_NOT_WRITABLE, event.message,
+            phase = ConfigWritePhaseTag.SENDING_WRITE, rawConfig = state.originalConfig,
+        )
         is ConfigRWState.WriteAwaitingSetAck -> writeFailure(
             state.ctx, RefloatConfigErrorCode.GATT_NOT_WRITABLE, event.message,
             phase = ConfigWritePhaseTag.SENDING_WRITE, rawConfig = state.originalConfig,
@@ -387,7 +469,7 @@ internal object ConfigRWFsm {
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
         if (state !is ConfigRWState.WriteAwaitingSetAck) return state to emptyList()
         return writeFailure(
-            state.ctx, RefloatConfigErrorCode.BOARD_NOT_IDLE, event.message,
+            state.ctx, event.code, event.message,
             phase = ConfigWritePhaseTag.SENDING_WRITE, rawConfig = state.originalConfig,
         )
     }
@@ -409,6 +491,10 @@ internal object ConfigRWFsm {
                 state.ctx, code, event.reason,
                 phase = ConfigWritePhaseTag.READING_CONFIG, rawConfig = null,
             )
+            is ConfigRWState.WriteAwaitingIdle -> writeTerminated(
+                state.ctx, code, event.reason,
+                phase = ConfigWritePhaseTag.SENDING_WRITE, rawConfig = state.originalConfig,
+            )
             is ConfigRWState.WriteAwaitingSetAck -> writeTerminated(
                 state.ctx, code, event.reason,
                 phase = ConfigWritePhaseTag.SENDING_WRITE, rawConfig = state.originalConfig,
@@ -421,25 +507,6 @@ internal object ConfigRWFsm {
         }
     }
 
-    private fun decodeBoardConfig(
-        schema: RefloatConfigSchema,
-        configBytes: RefloatConfigBytes,
-        boardId: String?,
-        refloatBaseVersion: String?,
-        capturedAtMs: Long,
-    ): BoardConfigValues? =
-        try {
-            RefloatConfigDecoder.decodeBoardConfigValues(
-                schema = schema,
-                configBytes = configBytes,
-                boardId = boardId,
-                refloatBaseVersion = refloatBaseVersion,
-                capturedAt = capturedAtMs,
-            )
-        } catch (e: Exception) {
-            null
-        }
-
     private fun decodeAndCompleteRead(
         ctx: ReadContext,
         xmlBytes: ByteArray,
@@ -449,21 +516,19 @@ internal object ConfigRWFsm {
         val rawConfig = configBytes.config
         return try {
             val schema = RefloatConfigSchemaParser.parse(xmlBytes)
-            val snapshot = RefloatConfigDecoder.decode(
+            val boardConfigValues = RefloatConfigDecoder.decodeBoardConfigValues(
                 schema = schema,
-                rawConfig = rawConfig,
+                configBytes = configBytes,
                 boardId = ctx.appBoardId,
-                canId = ctx.canId,
+                refloatBaseVersion = ctx.refloatBaseVersion ?: RefloatConfigProtocol.normalizeBaseVersion(ctx.refloatVersion),
                 capturedAt = capturedAtMs,
-                fwVersion = ctx.fwVersion,
                 refloatVersion = ctx.refloatVersion,
             )
             ConfigRWState.Idle to listOf(
                 ConfigRWEffect.CancelTimeout,
                 ConfigRWEffect.EmitReadComplete(
-                    snapshot,
-                    ctx.wasPolling,
-                    decodeBoardConfig(schema, configBytes, ctx.appBoardId, ctx.refloatBaseVersion, capturedAtMs),
+                    boardConfigValues = boardConfigValues,
+                    resumePolling = ctx.wasPolling,
                 ),
             )
         } catch (e: RefloatConfigSchemaException) {
@@ -509,6 +574,7 @@ internal object ConfigRWFsm {
         ctx: WriteContext,
         xmlBytes: ByteArray,
         configBytes: RefloatConfigBytes,
+        capturedAtMs: Long,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
         val rawConfig = configBytes.config
         return try {
@@ -516,8 +582,9 @@ internal object ConfigRWFsm {
             sendWrite(
                 ctx = ctx,
                 schema = schema,
-                rawConfig = rawConfig,
-                packageSignature = configBytes.packageSignature,
+                configBytes = configBytes,
+                capturedAtMs = capturedAtMs,
+                fromFreshRead = true,
                 failPhase = ConfigWritePhaseTag.READING_CONFIG,
             )
         } catch (e: RefloatConfigSchemaException) {
@@ -532,51 +599,147 @@ internal object ConfigRWFsm {
     private fun sendWrite(
         ctx: WriteContext,
         schema: RefloatConfigSchema,
-        rawConfig: ByteArray,
-        packageSignature: Long,
+        configBytes: RefloatConfigBytes,
+        capturedAtMs: Long,
+        fromFreshRead: Boolean,
         failPhase: ConfigWritePhaseTag,
-    ): Pair<ConfigRWState, List<ConfigRWEffect>> = try {
-        val patched = RefloatConfigEncoder.encode(schema, rawConfig, ctx.profileFields)
-        ConfigRWState.WriteAwaitingSetAck(
-            ctx = ctx,
-            schema = schema,
-            originalConfig = rawConfig,
-            patchedConfig = patched,
-        ) to listOf(
-            ConfigRWEffect.CancelTimeout,
-            ConfigRWEffect.ScheduleTimeout(
-                RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT,
-                CONFIG_WRITE_TIMEOUT_MS,
-            ),
-            ConfigRWEffect.SendFrame(
-                RefloatConfigProtocol.buildSetCustomConfig(
-                    ctx.transport,
-                    0,
-                    packageSignature,
-                    patched,
+    ): Pair<ConfigRWState, List<ConfigRWEffect>> {
+        val rawConfig = configBytes.config
+        val expectedSchemaHash = (ctx.intent as? ConfigWriteIntent.Changeset)
+            ?.expectedSchemaHash
+            ?.takeIf { it.isNotBlank() }
+        if (expectedSchemaHash != null && schema.hash != expectedSchemaHash) {
+            return writeFailure(
+                ctx,
+                RefloatConfigErrorCode.CONFIG_SCHEMA_MISMATCH,
+                "Board config schema changed (expected $expectedSchemaHash, got ${schema.hash})",
+                phase = failPhase,
+                rawConfig = rawConfig,
+            )
+        }
+        return try {
+            val freshValues = if (fromFreshRead) {
+                RefloatConfigDecoder.decodeBoardConfigValues(
+                    schema = schema,
+                    configBytes = configBytes,
+                    boardId = ctx.appBoardId,
+                    refloatBaseVersion = ctx.refloatBaseVersion,
+                    capturedAt = capturedAtMs,
+                    refloatVersion = ctx.refloatVersion,
+                )
+            } else null
+            val changes = resolveChanges(ctx.intent, schema)
+            val encoded = RefloatConfigEncoder.encodeChangeset(schema, rawConfig, changes)
+            if (encoded.changedFieldIds.isEmpty()) {
+                val values = freshValues ?: RefloatConfigDecoder.decodeBoardConfigValues(
+                    schema = schema,
+                    configBytes = configBytes,
+                    boardId = ctx.appBoardId,
+                    refloatBaseVersion = ctx.refloatBaseVersion,
+                    capturedAt = capturedAtMs,
+                    refloatVersion = ctx.refloatVersion,
+                )
+                return ConfigRWState.Idle to listOf(
+                    ConfigRWEffect.CancelTimeout,
+                    ConfigRWEffect.EmitWriteComplete(
+                        boardConfigValues = values,
+                        resumePolling = ctx.wasPolling,
+                        origin = BoardConfigOperationOrigin.FreshRead,
+                        emitBoardConfigValues = fromFreshRead,
+                    ),
+                )
+            }
+            if (fromFreshRead) {
+                return ConfigRWState.WriteAwaitingIdle(
+                    ctx = ctx,
+                    schema = schema,
+                    originalConfig = rawConfig,
+                    patchedConfig = encoded.rawConfig,
+                    expectedPackageSignature = configBytes.packageSignature,
+                    minRideStateAtMs = capturedAtMs,
+                ) to listOf(
+                    ConfigRWEffect.EmitBoardConfigValues(
+                        boardConfigValues = freshValues!!,
+                        origin = BoardConfigOperationOrigin.FreshRead,
+                    ),
+                    ConfigRWEffect.CancelTimeout,
+                    ConfigRWEffect.ScheduleTimeout(
+                        RefloatConfigErrorCode.BOARD_NOT_IDLE,
+                        CONFIG_READ_TIMEOUT_MS,
+                    ),
+                    ConfigRWEffect.SendFrame(RefloatConfigProtocol.buildGetAllData(ctx.transport)),
+                )
+            }
+            ConfigRWState.WriteAwaitingSetAck(
+                ctx = ctx,
+                schema = schema,
+                originalConfig = rawConfig,
+                patchedConfig = encoded.rawConfig,
+                expectedPackageSignature = configBytes.packageSignature,
+            ) to listOf(
+                ConfigRWEffect.CancelTimeout,
+                ConfigRWEffect.ScheduleTimeout(
+                    RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT,
+                    CONFIG_WRITE_TIMEOUT_MS,
                 ),
-                requiresIdleBoard = true,
-            ),
-        )
-    } catch (e: RefloatConfigEncodeException) {
-        writeFailure(
-            ctx, e.code,
-            e.message ?: "Encode failed",
-            phase = failPhase, rawConfig = rawConfig,
-        )
-    } catch (e: Exception) {
-        writeFailure(
-            ctx, RefloatConfigErrorCode.CONFIG_WRITE_FAILED,
-            e.message ?: "Write failed",
-            phase = failPhase, rawConfig = rawConfig,
-        )
+                ConfigRWEffect.SendFrame(
+                    RefloatConfigProtocol.buildSetCustomConfig(
+                        ctx.transport,
+                        0,
+                        configBytes.packageSignature,
+                        encoded.rawConfig,
+                    ),
+                    requiresIdleBoard = true,
+                    frameTag = setFrameTag(ctx.opId),
+                ),
+            )
+        } catch (e: RefloatConfigEncodeException) {
+            writeFailure(
+                ctx, e.code,
+                e.message ?: "Encode failed",
+                phase = failPhase, rawConfig = rawConfig,
+            )
+        } catch (e: RefloatConfigDecodeException) {
+            writeFailure(
+                ctx, RefloatConfigErrorCode.CONFIG_DECODE_FAILED,
+                e.message ?: "Decode failed",
+                phase = failPhase, rawConfig = rawConfig,
+            )
+        } catch (e: Exception) {
+            writeFailure(
+                ctx, RefloatConfigErrorCode.CONFIG_WRITE_FAILED,
+                e.message ?: "Write failed",
+                phase = failPhase, rawConfig = rawConfig,
+            )
+        }
     }
+
+    private fun resolveChanges(intent: ConfigWriteIntent, schema: RefloatConfigSchema): Map<String, Any?> =
+        when (intent) {
+            is ConfigWriteIntent.Changeset -> intent.changes
+            is ConfigWriteIntent.Profile -> {
+                val schemaIds = schema.fields.mapTo(HashSet()) { it.id }
+                val internalSchemaIds = RefloatConfigEncoder.collectInternalSchemaFieldIds(schema)
+                intent.fields.filterKeys { fieldId ->
+                    fieldId in schemaIds && !RefloatConfigEncoder.isInternalField(fieldId, internalSchemaIds)
+                }
+            }
+        }
 
     private fun verifyAndCompleteWrite(
         state: ConfigRWState.WriteVerifying,
         configFromBoard: RefloatConfigBytes,
         capturedAtMs: Long,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
+        if (configFromBoard.packageSignature != state.expectedPackageSignature) {
+            return writeFailure(
+                state.ctx,
+                RefloatConfigErrorCode.CONFIG_VERIFY_FAILED,
+                "Verification failed: package signature mismatch (expected ${state.expectedPackageSignature}, got ${configFromBoard.packageSignature})",
+                phase = ConfigWritePhaseTag.VERIFYING,
+                rawConfig = state.originalConfig,
+            )
+        }
         val rawConfigFromBoard = configFromBoard.config
         when (val verification = RefloatConfigWriteVerifier.verify(
             state.schema, state.patchedConfig, rawConfigFromBoard,
@@ -591,27 +754,27 @@ internal object ConfigRWFsm {
             is RefloatConfigWriteVerification.Success -> Unit
         }
         return try {
-            val snapshot = RefloatConfigDecoder.decode(
+            val values = RefloatConfigDecoder.decodeBoardConfigValues(
                 schema = state.schema,
-                rawConfig = rawConfigFromBoard,
+                configBytes = configFromBoard,
                 boardId = state.ctx.appBoardId,
-                canId = state.ctx.canId,
+                refloatBaseVersion = state.ctx.refloatBaseVersion,
                 capturedAt = capturedAtMs,
-                fwVersion = state.ctx.fwVersion,
                 refloatVersion = state.ctx.refloatVersion,
             )
+            val origin = when (val intent = state.ctx.intent) {
+                is ConfigWriteIntent.Changeset -> BoardConfigOperationOrigin.VescapeWrite(source = intent.source)
+                is ConfigWriteIntent.Profile -> BoardConfigOperationOrigin.VescapeWrite(
+                    source = BoardConfigRevisionSource.APP,
+                    tuneProfileId = intent.profileId,
+                )
+            }
             ConfigRWState.Idle to listOf(
                 ConfigRWEffect.CancelTimeout,
                 ConfigRWEffect.EmitWriteComplete(
-                    snapshot,
-                    state.ctx.wasPolling,
-                    decodeBoardConfig(
-                        state.schema,
-                        configFromBoard,
-                        state.ctx.appBoardId,
-                        state.ctx.refloatBaseVersion,
-                        capturedAtMs,
-                    ),
+                    boardConfigValues = values,
+                    resumePolling = state.ctx.wasPolling,
+                    origin = origin,
                 ),
             )
         } catch (e: RefloatConfigDecodeException) {
@@ -705,6 +868,19 @@ internal object ConfigRWFsm {
         is ConfigRWState.ReadAwaitingConfig -> state.ctx
         else -> null
     }
+
+    internal fun transportOf(state: ConfigRWState): BoardTransport? = when (state) {
+        is ConfigRWState.ReadCollectingXml -> state.ctx.transport
+        is ConfigRWState.ReadAwaitingConfig -> state.ctx.transport
+        is ConfigRWState.WriteCollectingXml -> state.ctx.transport
+        is ConfigRWState.WriteAwaitingConfig -> state.ctx.transport
+        is ConfigRWState.WriteAwaitingIdle -> state.ctx.transport
+        is ConfigRWState.WriteAwaitingSetAck -> state.ctx.transport
+        is ConfigRWState.WriteVerifying -> state.ctx.transport
+        ConfigRWState.Idle -> null
+    }
+
+    internal fun setFrameTag(opId: String): String = "config-set:$opId"
 
     private fun buildXmlRequest(transport: BoardTransport, expected: Int?, nextOffset: Int): ByteArray {
         val length = (

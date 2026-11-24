@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { getSyncBarState } from '@/modules/tune/lib/syncBarState'
+import { formatDriftSummary, getSyncBarState } from '@/modules/tune/lib/syncBarState'
 
 test('allows saving dirty profile edits while board config is still loading', () => {
   expect(
@@ -17,7 +17,13 @@ test('allows saving dirty profile edits while board config is still loading', ()
       saving: false,
       syncing: false,
     }),
-  ).toEqual({ variant: 'save_later', dirtyCount: 2, diffCount: 0, configError: null })
+  ).toEqual({
+    variant: 'save_later',
+    dirtyCount: 2,
+    diffCount: 0,
+    diffLabels: [],
+    configError: null,
+  })
 })
 
 test('shows board config loading when there are no local edits', () => {
@@ -35,7 +41,13 @@ test('shows board config loading when there are no local edits', () => {
       saving: false,
       syncing: false,
     }),
-  ).toEqual({ variant: 'loading_config', dirtyCount: 0, diffCount: 0, configError: null })
+  ).toEqual({
+    variant: 'loading_config',
+    dirtyCount: 0,
+    diffCount: 0,
+    diffLabels: [],
+    configError: null,
+  })
 })
 
 test('does not claim board is up to date when board config read failed', () => {
@@ -57,6 +69,7 @@ test('does not claim board is up to date when board config read failed', () => {
     variant: 'config_error',
     dirtyCount: 0,
     diffCount: 0,
+    diffLabels: [],
     configError: 'Timed out reading Refloat config',
   })
 })
@@ -80,6 +93,7 @@ test('allows local save but not save and sync when board config read failed', ()
     variant: 'save_later',
     dirtyCount: 1,
     diffCount: 0,
+    diffLabels: [],
     configError: 'Timed out reading Refloat config',
   })
 })
@@ -99,7 +113,13 @@ test('only offers save and sync after real board snapshot is ready', () => {
       saving: false,
       syncing: false,
     }),
-  ).toEqual({ variant: 'save_and_sync', dirtyCount: 1, diffCount: 0, configError: null })
+  ).toEqual({
+    variant: 'save_and_sync',
+    dirtyCount: 1,
+    diffCount: 0,
+    diffLabels: [],
+    configError: null,
+  })
 })
 
 test('only claims board is up to date after real board snapshot is ready', () => {
@@ -117,5 +137,67 @@ test('only claims board is up to date after real board snapshot is ready', () =>
       saving: false,
       syncing: false,
     }),
-  ).toEqual({ variant: 'up_to_date', dirtyCount: 0, diffCount: 0, configError: null })
+  ).toEqual({
+    variant: 'up_to_date',
+    dirtyCount: 0,
+    diffCount: 0,
+    diffLabels: [],
+    configError: null,
+  })
+})
+
+test('lists drifting field labels when offering sync with board', () => {
+  const state = getSyncBarState({
+    hasProfile: true,
+    bleStatus: 'connected',
+    hasDirtyFields: false,
+    hasBoardDiff: true,
+    dirtyCount: 0,
+    diffCount: 2,
+    diffLabels: ['Angle P', 'Angle I'],
+    loadingConfig: false,
+    configError: null,
+    boardSnapshotReady: true,
+    saving: false,
+    syncing: false,
+  })
+  expect(state).toEqual({
+    variant: 'sync_with_board',
+    dirtyCount: 0,
+    diffCount: 2,
+    diffLabels: ['Angle P', 'Angle I'],
+    configError: null,
+  })
+  expect(formatDriftSummary(state!.diffLabels)).toBe('Angle P, Angle I')
+  expect(formatDriftSummary(['Angle P', 'Rate P', 'Angle I', 'Pitch KP'])).toBe(
+    'Angle P, Rate P, Angle I +1 more',
+  )
+  expect(formatDriftSummary([])).toBeNull()
+})
+
+test('offers retry_sync when a failed Save & sync changeset is preserved', () => {
+  expect(
+    getSyncBarState({
+      hasProfile: true,
+      bleStatus: 'connected',
+      hasDirtyFields: false,
+      hasBoardDiff: true,
+      dirtyCount: 0,
+      diffCount: 2,
+      diffLabels: ['Angle P', 'ATR Strength Up'],
+      pendingSyncCount: 1,
+      loadingConfig: false,
+      configError: null,
+      boardSnapshotReady: true,
+      saving: false,
+      syncing: false,
+    }),
+  ).toEqual({
+    variant: 'retry_sync',
+    dirtyCount: 0,
+    diffCount: 2,
+    diffLabels: ['Angle P', 'ATR Strength Up'],
+    pendingSyncCount: 1,
+    configError: null,
+  })
 })

@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { ArrowCounterClockwiseIcon, BracketsCurlyIcon, EyeSlashIcon } from 'phosphor-react-native'
+import {
+  ArrowCounterClockwiseIcon,
+  BracketsCurlyIcon,
+  DownloadSimpleIcon,
+  EyeSlashIcon,
+  UploadSimpleIcon,
+} from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
@@ -16,7 +22,10 @@ interface BoardConfigOptionsSheetViewProps {
   ignoredFields: string[]
   fieldLabels: Record<string, string>
   error?: string | null
+  canTransferXml?: boolean
   onOpenRawConfig: () => void
+  onExportXml?: () => void
+  onImportXml?: () => void
   onRestoreField: (fieldId: string) => void
   onRestoreAll: () => void
 }
@@ -25,7 +34,10 @@ export function BoardConfigOptionsSheetView({
   ignoredFields,
   fieldLabels,
   error,
+  canTransferXml = false,
   onOpenRawConfig,
+  onExportXml,
+  onImportXml,
   onRestoreField,
   onRestoreAll,
 }: BoardConfigOptionsSheetViewProps) {
@@ -39,6 +51,32 @@ export function BoardConfigOptionsSheetView({
           hint="Inspect decoded Refloat and MCCONF values"
           onPress={onOpenRawConfig}
         />
+        {onExportXml ? (
+          <SettingsRow
+            icon={UploadSimpleIcon}
+            iconColor={theme.palette.sky.color}
+            label="Export VESC XML"
+            hint={
+              canTransferXml
+                ? 'Share current config in VESC Tool XML format'
+                : 'Connect this board to export config'
+            }
+            onPress={canTransferXml ? onExportXml : undefined}
+          />
+        ) : null}
+        {onImportXml ? (
+          <SettingsRow
+            icon={DownloadSimpleIcon}
+            iconColor={theme.palette.sky.color}
+            label="Import VESC XML"
+            hint={
+              canTransferXml
+                ? 'Load settings from a VESC Tool XML file'
+                : 'Connect this board to import config'
+            }
+            onPress={canTransferXml ? onImportXml : undefined}
+          />
+        ) : null}
       </SettingsCard>
 
       <SettingsSectionTitle>Ignored change notices</SettingsSectionTitle>
@@ -94,13 +132,19 @@ export function BoardConfigOptionsSheetView({
 interface BoardConfigOptionsSheetProps {
   boardId: string
   fieldLabels: Record<string, string>
+  canTransferXml?: boolean
   onOpenRawConfig: () => void
+  onExportXml?: () => void
+  onImportXml?: () => void
 }
 
 export function BoardConfigOptionsSheet({
   boardId,
   fieldLabels,
+  canTransferXml,
   onOpenRawConfig,
+  onExportXml,
+  onImportXml,
 }: BoardConfigOptionsSheetProps) {
   const [mutationError, setMutationError] = useState<string | null>(null)
   const ignoredFields = useBoardStore(
@@ -114,7 +158,10 @@ export function BoardConfigOptionsSheet({
       ignoredFields={ignoredFields}
       fieldLabels={fieldLabels}
       error={mutationError}
+      canTransferXml={canTransferXml}
       onOpenRawConfig={onOpenRawConfig}
+      onExportXml={onExportXml}
+      onImportXml={onImportXml}
       onRestoreField={(fieldId) => {
         setMutationError(null)
         void setConfigChangeFieldIgnored(boardId, fieldId, false).catch(() => {

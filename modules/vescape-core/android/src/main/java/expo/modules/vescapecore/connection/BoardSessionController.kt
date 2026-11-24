@@ -36,6 +36,8 @@ import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
 import expo.modules.vescapecore.config.BoardRideState
 import expo.modules.vescapecore.config.ConfigRWControllerPort
+import expo.modules.vescapecore.config.LegacyLightsConfigGate
+import expo.modules.vescapecore.config.PendingConfigWrite
 import expo.modules.vescapecore.config.BoardConfigFlagField
 import expo.modules.vescapecore.config.BoardConfigOperationOrigin
 import expo.modules.vescapecore.service.CoreForegroundService
@@ -157,7 +159,6 @@ import java.io.File
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.launch
 import expo.modules.kotlin.jni.NativeArrayBuffer
-import expo.modules.vescapecore.config.ConfigRWEvent
 import expo.modules.vescapecore.diagnostics.DiagnosticContext
 import expo.modules.vescapecore.diagnostics.DiagnosticsRecorder
 import expo.modules.vescapecore.notification.NotificationPresenter
@@ -188,6 +189,7 @@ import expo.modules.vescapecore.telemetry.TelemetryPipeline
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.toMetricSanitizerConfig
 import androidx.annotation.AnyThread
+import androidx.annotation.MainThread
 
 private const val CHANNEL_ID = "vesc_monitoring_v5"
 private const val NOTIFICATION_ID = 1001
@@ -412,11 +414,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
             telemetryPipeline,
         )
     }
+    private val legacyLightsConfigGate by lazy {
+        LegacyLightsConfigGate(scheduler, onEchoTimeout = ::onLegacyLightsEchoTimeout)
+    }
     private val configController by lazy {
         ConfigRWController(
             scheduler,
             CoreForegroundService.appDataScope,
-            { AppDataRepository.get(service.applicationContext) },
+            { AppDataRepository.get(service.applicationContext).getTuneProfile(it) },
             object : ConfigRWControllerPort {
                 override fun connection() =
                     ConfigConnectionSnapshot(
@@ -425,13 +430,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
                         currentBoardTransport(),
                         fwVersionString,
                         boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
-                        boardConfigValues,
+                        if (legacyLightsConfigGate.isEchoPending) boardConfigValues?.demotedToProvisional() else boardConfigValues,
                         telemetry?.let { BoardRideState(it.state, it.switchState, it.lastPacketAt) },
                     )
                 override fun isPollingActive() = pollingLoop.isActive
                 override fun stopPolling() = this@BoardSessionController.stopPolling()
                 override fun startPolling() = this@BoardSessionController.startPolling()
                 override fun sendPayload(payload: ByteArray) = this@BoardSessionController.sendPayload(payload)
+                override fun sendPayload(payload: ByteArray, tag: String?) = this@BoardSessionController.sendPayload(payload, tag)
+                override fun cancelQueuedPayloads(tag: String) = transport.cancelQueuedPayloads(tag)
                 override fun captureDiagnostic(name: String, properties: Map<String, Any?>) =
                     this@BoardSessionController.captureDiagnostic(name, properties)
                 override fun diagnosticProperties(config: SessionConfig?, category: String) =
@@ -439,7 +446,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 override fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray) =
                     this@BoardSessionController.dumpRefloatConfigDebug(xmlBytes, configBytes)
                 override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) =
-                    this@BoardSessionController.onBoardConfigValues(values, origin)
+                    this@BoardSessionController.onBoardConfigValues(values, origin, null)
+                override fun onBoardConfigValues(
+                    values: BoardConfigValues,
+                    origin: BoardConfigOperationOrigin,
+                    onPersisted: () -> Unit,
+                ) = this@BoardSessionController.onBoardConfigValues(values, origin, onPersisted)
                 override fun demoteWriteBase() {
                     boardConfigValues = boardConfigValues?.demotedToProvisional()
                 }
@@ -576,6 +588,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             bmsSeriesRing.clear()
             telemetryPipeline.clearLiveTelemetry()
             boardConfigValues = boardConfigValues?.demotedToProvisional()
+            legacyLightsConfigGate.reset()
             boardLights = null
             publishBoardLights()
             boardConfigReadScheduled = false
@@ -963,15 +976,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
         }
     }
 
-    fun consumePendingConfigRead() {
-        val pending = CoreForegroundService.pendingConfigRead ?: return
-        CoreForegroundService.pendingConfigRead = null
+    @MainThread
+    fun consumeConfigRead(pending: PendingConfigRead) {
         configController.consumeRead(pending)
     }
 
-    fun consumePendingConfigWrite() {
-        val pending = CoreForegroundService.pendingConfigWrite ?: return
-        CoreForegroundService.pendingConfigWrite = null
+    @MainThread
+    fun consumeConfigWrite(pending: PendingConfigWrite) {
         configController.consumeWrite(pending)
     }
 
@@ -1428,11 +1439,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         when (payload[0].toInt() and 0xff) {
             COMM_FW_VERSION -> handleFwVersionPayload(payload)
             COMM_BMS_GET_VALUES -> handleBmsPayload(payload)
-            COMM_GET_CUSTOM_CONFIG_XML -> configController.onPayload(ConfigRWEvent.XmlPayloadReceived(payload))
-            COMM_GET_CUSTOM_CONFIG -> configController.onPayload(
-                ConfigRWEvent.ConfigBytesPayloadReceived(payload, System.currentTimeMillis()),
-            )
-            COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+            COMM_GET_CUSTOM_CONFIG_XML,
+            COMM_GET_CUSTOM_CONFIG,
+            COMM_SET_CUSTOM_CONFIG,
+            -> configController.onPayload(payload, System.currentTimeMillis())
             COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(1, payload.size))
             COMM_PRINT -> handlePrintPayload(payload.copyOfRange(1, payload.size))
             COMM_FORWARD_CAN -> {
@@ -1441,11 +1451,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
                         COMM_BMS_GET_VALUES -> handleBmsPayload(payload.copyOfRange(2, payload.size))
                         COMM_FW_VERSION -> handleFwVersionPayload(payload.copyOfRange(2, payload.size))
                         COMM_CUSTOM_APP_DATA -> handleCustomAppPayload(payload)
-                        COMM_GET_CUSTOM_CONFIG_XML -> configController.onPayload(ConfigRWEvent.XmlPayloadReceived(payload))
-                        COMM_GET_CUSTOM_CONFIG -> configController.onPayload(
-                            ConfigRWEvent.ConfigBytesPayloadReceived(payload, System.currentTimeMillis()),
-                        )
-                        COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+                        COMM_GET_CUSTOM_CONFIG_XML,
+                        COMM_GET_CUSTOM_CONFIG,
+                        COMM_SET_CUSTOM_CONFIG,
+                        -> configController.onPayload(payload, System.currentTimeMillis())
                         COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(3, payload.size))
                         COMM_PRINT -> handlePrintPayload(payload.copyOfRange(3, payload.size))
                     }
@@ -1456,12 +1465,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
     }
 
     private fun handleCustomAppPayload(payload: ByteArray) {
-        if (payload.size >= 3 &&
+        if ((payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA &&
+            payload.size >= 3 &&
             (payload[1].toInt() and 0xff) == REFLOAT_MAGIC &&
             (payload[2].toInt() and 0xff) == REFLOAT_GET_INFO
         ) {
             handleLinkIntegrityRefloat(payload)
-            configController.onPayload(ConfigRWEvent.InfoPayloadReceived(payload))
+            configController.onPayload(payload, System.currentTimeMillis())
             return
         }
         if (payload.size >= 5 &&
@@ -1471,10 +1481,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
             (payload[4].toInt() and 0xff) == REFLOAT_GET_INFO
         ) {
             handleLinkIntegrityRefloat(payload)
-            configController.onPayload(ConfigRWEvent.InfoPayloadReceived(payload))
+            configController.onPayload(payload, System.currentTimeMillis())
             return
         }
-        parseLightsControlResponse(payload)?.let { lights ->
+        parseLightsControlResponse(payload, transport = currentBoardTransport())?.let { lights ->
             onBoardLightsEcho(lights)
             return
         }
@@ -1506,6 +1516,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             markBoardReady()
             startLinkIntegrityProbe(sessionToken)
             telemetry = parsed
+            configController.onRideState(BoardRideState(parsed.state, parsed.switchState, parsed.lastPacketAt))
             val batteryPct = BatterySocEstimator.estimateBatteryPercent(
                 parsed.batteryVoltage,
                 batteryConfigCache,
@@ -1752,20 +1763,36 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /**
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onBoardConfigValues`
      */
-    private fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) {
-        if (values.boardId != boardConfig?.appBoardId) return
-        if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
+    private fun onBoardConfigValues(
+        values: BoardConfigValues,
+        origin: BoardConfigOperationOrigin,
+        onPersisted: (() -> Unit)? = null,
+    ) {
+        if (values.boardId != boardConfig?.appBoardId || lastEmittedLinkIntegrity != LinkIntegrity.Trusted) {
+            onPersisted?.invoke()
+            return
+        }
         boardConfigValues = values
         syncBoardLightsFromConfig(values)
         alertCoordinator.updateBoardConfigValues(values.values)
         val repo = AppDataRepository.get(service.applicationContext)
-        CoreForegroundService.appDataScope.launch {
+        CoreForegroundService.appDataScope.launch(CoreForegroundService.configPersistenceDispatcher) {
             try {
-                if (origin == BoardConfigOperationOrigin.FRESH_READ) {
-                    repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
-                } else repo.saveBoardConfigValues(values)
+                when (origin) {
+                    BoardConfigOperationOrigin.FreshRead -> {
+                        repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
+                    }
+                    is BoardConfigOperationOrigin.VescapeWrite -> {
+                        repo.saveBoardConfigValues(values, origin.source, origin.tuneProfileId)
+                    }
+                }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Throwable) { RecordingStorageFailure.report("board_config_save", "write_failed", e) }
+            finally {
+                if (onPersisted != null) {
+                    scheduler.post { onPersisted() }
+                }
+            }
         }
         evaluateConfigSafety(values)
     }
@@ -1778,7 +1805,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val refloatBaseVersion = config.refloatBaseVersion ?: return
         val repo = AppDataRepository.get(service.applicationContext)
         val session = boardSession
-        CoreForegroundService.appDataScope.launch {
+        CoreForegroundService.appDataScope.launch(CoreForegroundService.configPersistenceDispatcher) {
             val restored = try { repo.getBoardConfigValues(boardId, refloatBaseVersion) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Throwable) { RecordingStorageFailure.reportRead("board_config_restore", e); return@launch }
@@ -1823,11 +1850,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
      */
     private fun clearBoardConfigValues() {
         boardConfigValues = null
+        legacyLightsConfigGate.reset()
         motorConfigValues = null
         alertCoordinator.updateBoardConfigValues(emptyMap())
         val boardId = boardConfig?.appBoardId ?: return
         val repo = AppDataRepository.get(service.applicationContext)
-        CoreForegroundService.appDataScope.launch { repo.clearBoardConfigValues(boardId) }
+        CoreForegroundService.appDataScope.launch(CoreForegroundService.configPersistenceDispatcher) {
+            repo.clearBoardConfigValues(boardId)
+        }
     }
 
     /**
@@ -1976,7 +2006,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private fun handleLinkIntegrityRefloat(payload: ByteArray) {
         val session = boardSession ?: return
         val config = boardConfig ?: return
-        val version = when (val result = RefloatConfigProtocol.parseGetInfoResponse(payload)) {
+        val version = when (val result = RefloatConfigProtocol.parseGetInfoResponse(payload, currentBoardTransport())) {
             is RefloatConfigProtocolResult.Success -> result.value.version
             is RefloatConfigProtocolResult.Failure -> return
         }
@@ -2022,6 +2052,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /**
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardConfigValues`
      */
+    @Volatile
     private var boardConfigValues: BoardConfigValues? = null
         set(value) {
             field = value
@@ -2032,6 +2063,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardConfigValuesMap`
      */
     internal fun boardConfigValuesMap(): Map<String, Any?>? = boardConfigValues?.toBridgeMap()
+
+    /**
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `currentBoardConfigValues`
+     */
+    internal fun currentBoardConfigValues(): BoardConfigValues? = boardConfigValues
 
     private fun updateLinkIntegrity(next: LinkIntegrity) {
         if (next == lastEmittedLinkIntegrity) return
@@ -2282,9 +2318,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         }
     }
 
-    private fun sendPayload(payload: ByteArray): Boolean {
+    private fun sendPayload(payload: ByteArray, tag: String? = null): Boolean {
         lastSentCommand = payload.getOrNull(0)?.toInt()?.and(0xff)
-        return transport.sendPayload(payload)
+        return transport.sendPayload(payload, tag)
     }
 
     private fun firmwareCommandsTrusted(): Boolean =
@@ -2372,11 +2408,24 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /**
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setBoardLights`
      */
+    @MainThread
     fun setBoardLights(enabled: Boolean, headlightsEnabled: Boolean): Boolean {
         if (!firmwareCommandsTrusted()) return false
+        val baseVersion = boardConfig?.refloatBaseVersion
+        if (!legacyLightsConfigGate.canSendLights(baseVersion, configController.isWriteInFlight)) return false
         val transport = currentBoardTransport() ?: return false
-        return sendPayloadWithRetry(
+        val sent = sendPayloadWithRetry(
             buildLightsControlCommand(transport, lightsGeneration(), enabled, headlightsEnabled),
+        )
+        if (sent) legacyLightsConfigGate.onLightsCommandSent(baseVersion)
+        return sent
+    }
+
+    private fun onLegacyLightsEchoTimeout() {
+        boardConfigValues = boardConfigValues?.demotedToProvisional()
+        captureDiagnostic(
+            "board_lights_echo_timeout",
+            diagnosticProperties(boardConfig, "config_rw"),
         )
     }
 
@@ -2384,9 +2433,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
         BoardLightsGeneration.forBaseVersion(boardConfig?.refloatBaseVersion)
 
     private fun onBoardLightsEcho(lights: BoardLightsState) {
+        legacyLightsConfigGate.onLightsEchoReceived()
         boardLights = lights
         publishBoardLights()
         if (!lightsCommandChangesBoardConfig(boardConfig?.refloatBaseVersion)) return
+        if (configController.isWriteInFlight) return
         val values = boardConfigValues ?: return
         val rebased = try {
             values.withLights(lights.enabled, lights.headlightsEnabled)
@@ -2404,7 +2455,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
             it == BoardConfigFlagField.LEDS_ON.id || it == BoardConfigFlagField.HEADLIGHTS_ON.id
         }
         val repo = AppDataRepository.get(service.applicationContext)
-        CoreForegroundService.appDataScope.launch { repo.patchBoardConfigValues(boardId, baseVersion, patch) }
+        CoreForegroundService.appDataScope.launch(CoreForegroundService.configPersistenceDispatcher) {
+            repo.patchBoardConfigValues(boardId, baseVersion, patch)
+        }
     }
 
     private fun syncBoardLightsFromConfig(values: BoardConfigValues) {
@@ -2509,6 +2562,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         fwVersionString = null
         telemetry = null
         boardConfigValues = null
+        legacyLightsConfigGate.reset()
         motorConfigValues = null
         motorConfigRequested = false
         boardLights = null

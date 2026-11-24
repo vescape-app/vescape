@@ -31,6 +31,12 @@ internal object RefloatConfigWriteVerifier {
 
   private fun expectedReadBack(schema: RefloatConfigSchema, written: ByteArray): ByteArray =
     if (schema.fields.any { it.id == META_IS_DEFAULT }) {
-      RefloatConfigEncoder.encode(schema, written, mapOf(META_IS_DEFAULT to 0))
+      RefloatConfigEncoder.encode(
+        schema,
+        written,
+        mapOf(META_IS_DEFAULT to 0),
+        overlay = RefloatFieldOverlay.empty,
+        allowInternal = true,
+      )
     } else written
 }

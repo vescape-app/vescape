@@ -1,8 +1,9 @@
 import XCTest
 @testable import VescapeCore
 
+/// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/RefloatConfigDecoderTest.kt
 final class RefloatConfigDecoderTests: XCTestCase {
-  func testDecodesAllowlistedValuesIntoGroups() throws {
+  func testDecodesBoardConfigValuesWithSchemaAndWriteBase() throws {
     let schema = RefloatConfigSchema(
       hash: "schema-hash",
       fields: [
@@ -13,22 +14,22 @@ final class RefloatConfigDecoderTests: XCTestCase {
     )
     let bytes = float32Bytes(26.0) + float32Bytes(0.9) + int32Bytes(123)
 
-    let snapshot = try RefloatConfigDecoder.decode(
+    let values = try RefloatConfigDecoder.decodeBoardConfigValues(
       schema: schema,
-      rawConfig: bytes,
+      configBytes: RefloatConfigBytes(confInd: 0, packageSignature: 0x1234, config: bytes),
       boardId: "board-1",
-      canId: 7,
-      capturedAt: 100,
-      fwVersion: nil
+      refloatBaseVersion: "1.3",
+      capturedAt: 100
     )
 
-    XCTAssertEqual("schema-hash", snapshot.schemaHash)
-    XCTAssertEqual(12, snapshot.rawConfigLength)
-    let angleP = try XCTUnwrap(snapshot.groups.first?.fields[0].value as? Double)
-    let rateP = try XCTUnwrap(snapshot.groups.first?.fields[1].value as? Double)
+    XCTAssertEqual("schema-hash", values.schemaHash)
+    XCTAssertEqual(12, values.writeBase?.rawConfig.count)
+    let angleP = try XCTUnwrap(values.values["kp"] as? Double)
+    let rateP = try XCTUnwrap(values.values["kp2"] as? Double)
+    let unused = try XCTUnwrap(values.values["unused"] as? Double)
     XCTAssertEqual(26.0, angleP, accuracy: 0.001)
     XCTAssertEqual(0.9, rateP, accuracy: 0.001)
-    XCTAssertFalse(snapshot.rawConfigHash.isEmpty)
+    XCTAssertEqual(123.0, unused, accuracy: 0.001)
   }
 
   func testRejectsTruncatedConfig() {
@@ -40,37 +41,14 @@ final class RefloatConfigDecoderTests: XCTestCase {
     )
 
     XCTAssertThrowsError(
-      try RefloatConfigDecoder.decode(
+      try RefloatConfigDecoder.decodeBoardConfigValues(
         schema: schema,
-        rawConfig: [1, 2],
+        configBytes: RefloatConfigBytes(confInd: 0, packageSignature: 0, config: [1, 2]),
         boardId: nil,
-        canId: 7,
-        capturedAt: 100,
-        fwVersion: nil
+        refloatBaseVersion: nil,
+        capturedAt: 100
       )
     )
-  }
-
-  func testDecodesWithNullCanIdForDirectConnection() throws {
-    let schema = RefloatConfigSchema(
-      hash: "schema-hash",
-      fields: [
-        RefloatConfigSchemaField(id: "kp", type: .float32, label: "Angle P", unit: nil, min: 0, max: 100, offset: 0),
-      ]
-    )
-
-    let snapshot = try RefloatConfigDecoder.decode(
-      schema: schema,
-      rawConfig: float32Bytes(26.0),
-      boardId: "board-1",
-      canId: nil,
-      capturedAt: 100,
-      fwVersion: nil
-    )
-
-    XCTAssertNil(snapshot.canId)
-    XCTAssertEqual("schema-hash", snapshot.schemaHash)
-    XCTAssertEqual(4, snapshot.rawConfigLength)
   }
 
   private func float32Bytes(_ value: Float) -> [UInt8] {

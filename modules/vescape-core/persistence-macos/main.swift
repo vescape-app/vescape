@@ -946,7 +946,6 @@ let storedTuneVersions = tuneCompatibilityFixture["storedVersions"] as! [String]
 try tuneQueue!.write { db in
   for (index, version) in storedTuneVersions.enumerated() {
     try db.execute(sql: "INSERT INTO tune_profiles (id,board_id,refloat_base_version,name,fields_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?)", arguments: ["compat-\(index)", "compat-board", version, "Retained tune", "{\"kp\":27}", index, index])
-    try db.execute(sql: "INSERT INTO tune_history_entries (profile_id,fields_json,created_at) VALUES (?,?,?)", arguments: ["compat-\(index)", "{\"kp\":26}", index])
   }
 }
 _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 2])
@@ -970,13 +969,9 @@ for index in 0...2 { try tuneStore.deleteProfile(profileId: "compat-\(index)") }
 var lastCompatibleDeleteFailed = false
 do { try tuneStore.deleteProfile(profileId: "compat-3") } catch { lastCompatibleDeleteFailed = true }
 try require(lastCompatibleDeleteFailed, "last major/minor profile protected")
-let retainedTuneHistory = try tuneStore.getProfileHistory("compat-3")
-try require(retainedTuneHistory.count == 1, "retained profile history preserved")
 let reopenedTune = try tuneStore.getTuneProfile(tuneId)
-let reopenedTuneHistory = try tuneStore.getProfileHistory(tuneId)
 try require(reopenedTune?["boardId"] as? String == tuneAlertBoardId, "Tune Profile ownership/reopen")
 try require((reopenedTune?["fields"] as? [String: Any])?["kp"] as? Int == 2, "Tune Profile values/reopen")
-try require(reopenedTuneHistory.count == int(tuneAlertExpected["historyCount"]), "Tune History/reopen")
 let reopenedAlerts = try alertPersistence.rules(boardId: tuneAlertBoardId, reportPresetFailure: unexpectedPresetFailure).filter { !AlertPresetPersistence.isPresetId($0.id) }
 try require(reopenedAlerts.count == int(tuneAlertExpected["alertCount"]), "Alert count/reopen")
 try require(reopenedAlerts.first?.id == alertValues["id"] as? String, "Alert identity/reopen")
@@ -987,8 +982,6 @@ try tuneQueue!.write { db in
   try db.execute(sql: "CREATE TRIGGER fail_tune_update BEFORE UPDATE ON tune_profiles BEGIN SELECT RAISE(FAIL, 'late Tune failure'); END")
 }
 do { _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 3]); throw Failure(description: "failed Tune save reported success") } catch is DatabaseError {}
-let historyAfterFailedSave = try tuneStore.getProfileHistory(tuneId)
-try require(historyAfterFailedSave.count == int(tuneAlertExpected["historyCount"]), "failed Tune save retained history row")
 try tuneQueue!.write { db in
   try db.execute(sql: "DROP TRIGGER fail_tune_update")
   try db.execute(sql: "UPDATE tune_profiles SET fields_json = 'not-json' WHERE id = ?", arguments: [tuneId])
@@ -1049,7 +1042,7 @@ for start in migrationIdentifiers {
     }
     let hasConfig = try db.tableExists("board_config_values")
     if hasConfig {
-      try db.execute(sql: "INSERT INTO board_config_values VALUES ('matrix-board','2.0','{\"motor_current_max\":55.5}',107)")
+      try db.execute(sql: "INSERT INTO board_config_values (board_id, refloat_base_version, values_json, captured_at) VALUES ('matrix-board','2.0','{\"motor_current_max\":55.5}',107)")
     }
     return (hasTune, hasFavorite, hasConfig)
   }
@@ -1189,12 +1182,23 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     let tune = try String.fetchOne(db, sql: "SELECT name FROM tune_profiles WHERE id='cross-tune'")
     let favorite = try String.fetchOne(db, sql: "SELECT name FROM favorites WHERE id='cross-favorite'")
     let config = try String.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id='cross-board'")
+    let configSchemaHash = try String.fetchOne(db, sql: "SELECT schema_hash FROM board_config_values WHERE board_id='cross-board'")
+    let configSchemaXml = try String.fetchOne(db, sql: "SELECT raw_xml FROM board_config_schemas WHERE schema_hash='cross-schema-hash'")
+    let configRevision = try Row.fetchOne(db, sql: "SELECT refloat_version, schema_hash, package_signature, raw_config, source, tune_profile_id FROM board_config_revisions WHERE board_id='cross-board'")
     let speed = try Int.fetchOne(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames WHERE captured_at_ms=1000")
     try require(board == "Cross Board", "Android archive lost Board on iOS")
     try require(setting == "\"durable\"", "Android archive lost Board setting on iOS")
     try require(tune == "Cross Tune", "Android archive lost Tune Profile on iOS")
     try require(favorite == "Cross Favorite", "Android archive lost Favorite on iOS")
     try require(config == "{\"motor_current_max\":55.5}", "Android archive lost config on iOS")
+    try require(configSchemaHash == "cross-schema-hash", "Android archive lost board_config_values.schema_hash on iOS")
+    try require(configSchemaXml == "<ConfigParams><Params><kp><type>1</type><vTx>8</vTx><vTxDoubleScale>1000</vTxDoubleScale></kp></Params><SerOrder><ser>kp</ser></SerOrder></ConfigParams>", "Android archive lost board_config_schemas on iOS")
+    try require(configRevision?["refloat_version"] as String? == "2.0.0", "Android archive lost board_config_revisions on iOS")
+    try require(configRevision?["schema_hash"] as String? == "cross-schema-hash", "Android archive lost revision schema_hash on iOS")
+    try require(configRevision?["package_signature"] as Int64? == 42, "Android archive lost revision signature on iOS")
+    try require(configRevision?["raw_config"] as Data? == Data([1, 2, 3]), "Android archive lost revision raw_config on iOS")
+    try require(configRevision?["source"] as String? == "app", "Android archive lost revision source on iOS")
+    try require(configRevision?["tune_profile_id"] as String? == "cross-tune", "Android archive lost revision tune_profile_id on iOS")
     try require(speed == 2468, "Android archive lost Ride Recording on iOS")
     try requireCrossChunkSpeeds(db, "Android archive")
     let track = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "cross-board")
@@ -1278,7 +1282,9 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try db.execute(sql: "INSERT INTO app_settings VALUES ('cross-setting','\"ios\"',102)")
     try db.execute(sql: "INSERT INTO tune_profiles (id,board_id,name,icon,color,fields_json,created_at,updated_at,refloat_base_version) VALUES ('cross-tune','cross-board','Cross Tune','gauge','orange','{\"kp\":2}',103,104,'2.0')")
     try db.execute(sql: "INSERT INTO favorites (id,board_id,name,start_ms,end_ms,created_at,updated_at,sample_count,gps_point_count,distance_cm,moving_duration_ms,avg_speed_centi_kmh,max_speed_centi_kmh,battery_used_wh_milli) VALUES ('cross-favorite','cross-board','Cross Favorite',900,1100,105,106,1,0,200,100,2400,2468,2)")
-    try db.execute(sql: "INSERT INTO board_config_values VALUES ('cross-board','2.0','{\"motor_current_max\":55.5}',107)")
+    try db.execute(sql: "INSERT INTO board_config_schemas (schema_hash,raw_xml,created_at) VALUES ('cross-schema-hash','<ConfigParams><Params><kp><type>1</type><vTx>8</vTx><vTxDoubleScale>1000</vTxDoubleScale></kp></Params><SerOrder><ser>kp</ser></SerOrder></ConfigParams>',106)")
+    try db.execute(sql: "INSERT INTO board_config_values (board_id,refloat_base_version,values_json,captured_at,schema_hash) VALUES ('cross-board','2.0','{\"motor_current_max\":55.5}',107,'cross-schema-hash')")
+    try db.execute(sql: "INSERT INTO board_config_revisions (board_id,refloat_version,schema_hash,package_signature,raw_config,source,changes_json,tune_profile_id,created_at) VALUES ('cross-board','2.0.0','cross-schema-hash',42,?,'app','[]','cross-tune',108)", arguments: [Data([1, 2, 3])])
     try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'cross-board',1,1,0,2468)")
     try db.execute(sql: "INSERT INTO vesc_fault_occurrences VALUES ('cross-fault','cross-board',7,1000,1001,NULL,0)")
     try db.execute(sql: "INSERT INTO vesc_fault_captures VALUES ('cross-fault','cross-board',900,1000,1)")
@@ -1584,8 +1590,252 @@ try runMaintenanceJobsContract()
 try runRideWeatherBackfillContract()
 try runTelemetryChunkCodecContract()
 try runTelemetryChunkContract()
+try runBoardConfigSchemaContract()
 
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
+
+/// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/BoardConfigSchemaPersistenceHostTest.kt
+func runBoardConfigSchemaContract() throws {
+  let xml = """
+    <ConfigParams>
+      <Params>
+        <kp>
+          <type>1</type>
+          <vTx>7</vTx>
+          <vTxDoubleScale>10</vTxDoubleScale>
+          <longName>Angle P</longName>
+          <valDouble>20</valDouble>
+        </kp>
+        <leds.on>
+          <type>5</type>
+          <longName>LEDs On</longName>
+          <valInt>1</valInt>
+        </leds.on>
+      </Params>
+      <SerOrder>
+        <ser>kp</ser>
+        <ser>leds.on</ser>
+      </SerOrder>
+      <Grouping>
+        <group>
+          <groupName>General</groupName>
+          <subgroup>
+            <subgroupName>Tune</subgroupName>
+            <subgroupParams>
+              <param>::sep::PID</param>
+              <param>kp</param>
+              <param>leds.on</param>
+            </subgroupParams>
+          </subgroup>
+        </group>
+      </Grouping>
+    </ConfigParams>
+    """
+  let schema = try RefloatConfigSchemaParser.parse(Array(xml.utf8))
+  let url = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-schema-contract-\(UUID()).db")
+  defer { try? FileManager.default.removeItem(at: url) }
+
+  var queue = try DatabaseQueue(path: url.path)
+  try VescapeDatabase.migrator.migrate(queue)
+  let store = BoardConfigStore(dbWriter: queue)
+
+  try queue.write { db in
+    try db.execute(
+      sql: "INSERT INTO board_config_values (board_id, refloat_base_version, values_json, captured_at) VALUES ('board-a', '1.3', '{\"kp\":20.0,\"leds.on\":1.0}', 1000)"
+    )
+  }
+  let legacyLoaded = try store.loadLatest(boardId: "board-a")
+  try require(legacyLoaded?.schemaHash == nil && legacyLoaded?.schema == nil, "legacy row without schema_hash loads nil schema")
+
+  let freshA = BoardConfigValues(
+    boardId: "board-a",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 2000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "leds.on": true],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: [0, 0, 1], packageSignature: 1)
+  )
+  try store.saveFresh(freshA)
+  try require(try store.loadNotice(boardId: "board-a") == nil, "upgrade from 1.0 to true on BOOL field must not raise Change Notice")
+
+  let freshB = BoardConfigValues(
+    boardId: "board-b",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 3000,
+    freshness: .fresh,
+    values: ["kp": 22.0, "leds.on": false],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: [0, 0, 0], packageSignature: 1)
+  )
+  try store.saveFresh(freshB)
+
+  let schemaCount = try queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM board_config_schemas") }
+  let createdAt = try queue.read { db in try Int64.fetchOne(db, sql: "SELECT created_at FROM board_config_schemas WHERE schema_hash = ?", arguments: [schema.hash]) }
+  try require(schemaCount == 1, "second board with same XML reuses schema row")
+  try require(createdAt == 2000, "existing schema row keeps original created_at")
+  try queue.close()
+
+  queue = try DatabaseQueue(path: url.path)
+  let reopenedStore = BoardConfigStore(dbWriter: queue)
+  let loadedB = try reopenedStore.loadLatest(boardId: "board-b")
+  try require(loadedB?.schemaHash == schema.hash, "last-known values carry schema_hash after reopen")
+  try require(loadedB?.schema == schema, "last-known values carry parsed schema after reopen")
+  try require(try reopenedStore.loadSchema(schemaHash: schema.hash) == schema, "loadSchema returns parsed schema")
+
+  var corruptSchemaErrors = 0
+  let previousSchemaErrorHandler = BoardConfigStore.onInvalidSchemaXml
+  BoardConfigStore.onInvalidSchemaXml = { _ in corruptSchemaErrors += 1 }
+  defer { BoardConfigStore.onInvalidSchemaXml = previousSchemaErrorHandler }
+  try queue.write { db in
+    try db.execute(
+      sql: "INSERT INTO board_config_schemas (schema_hash, raw_xml, created_at) VALUES ('corrupt-hash', '<not-xml', 4000)"
+    )
+  }
+  try require(try reopenedStore.loadSchema(schemaHash: "corrupt-hash") == nil, "corrupt stored XML returns nil")
+  try require(corruptSchemaErrors == 1, "corrupt stored XML reports via onInvalidSchemaXml")
+
+  func rawBytes(_ kp: Double, _ ledsOn: Bool) -> [UInt8] {
+    let scaled = Int(kp * 10.0)
+    return [UInt8((scaled >> 8) & 0xff), UInt8(scaled & 0xff), ledsOn ? 1 : 0]
+  }
+  let revSeed = BoardConfigValues(
+    boardId: "board-rev",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 5000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "leds.on": true],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: rawBytes(20.0, true), packageSignature: 99),
+    refloatVersion: "1.3.0"
+  )
+  try reopenedStore.saveFresh(revSeed)
+  let afterSeed = try reopenedStore.loadRevisions(boardId: "board-rev")
+  try require(afterSeed.count == 1 && afterSeed[0].source == .external && afterSeed[0].changes.isEmpty && afterSeed[0].refloatVersion == "1.3.0", "first read seeds baseline revision")
+
+  try reopenedStore.saveFresh(revSeed)
+  try require(try reopenedStore.loadRevisions(boardId: "board-rev").count == 1, "identical read appends no revision")
+
+  let revWrite = BoardConfigValues(
+    boardId: "board-rev",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 6000,
+    freshness: .fresh,
+    values: ["kp": 25.0, "leds.on": true],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: rawBytes(25.0, true), packageSignature: 99),
+    refloatVersion: "1.3.0"
+  )
+  try reopenedStore.saveWrite(revWrite, source: .app, tuneProfileId: "profile-trail")
+  try reopenedStore.saveWrite(revWrite, source: .app, tuneProfileId: "profile-trail")
+  let afterWrite = try reopenedStore.loadRevisions(boardId: "board-rev")
+  try require(afterWrite.count == 2 && afterWrite[0].source == .app && afterWrite[0].tuneProfileId == "profile-trail", "verified write appends one app revision")
+  try require(afterWrite[0].changes.map(\.fieldId) == ["kp"], "app revision records only changed fields")
+
+  try reopenedStore.setFieldIgnored(boardId: "board-rev", fieldId: "leds.on", ignored: true)
+  let revIgnoredExternal = BoardConfigValues(
+    boardId: "board-rev",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 7000,
+    freshness: .fresh,
+    values: ["kp": 25.0, "leds.on": false],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: rawBytes(25.0, false), packageSignature: 99),
+    refloatVersion: "1.3.0"
+  )
+  try reopenedStore.saveFresh(revIgnoredExternal)
+  try require(try reopenedStore.loadNotice(boardId: "board-rev") == nil, "ignored field suppresses change notice")
+  let afterIgnored = try reopenedStore.loadRevisions(boardId: "board-rev")
+  try require(afterIgnored.count == 3 && afterIgnored[0].source == .external && afterIgnored[0].changes.map(\.fieldId) == ["leds.on"], "ignored field still records external revision")
+
+  try reopenedStore.clear(boardId: "board-rev")
+  try require(try reopenedStore.loadLatest(boardId: "board-rev") == nil, "clear removes last-known board config")
+  try require(try reopenedStore.loadRevisions(boardId: "board-rev").count == 3, "link integrity clear preserves board config revisions")
+
+  let metaXml = """
+    <ConfigParams>
+      <Params>
+        <kp>
+          <type>1</type>
+          <vTx>8</vTx>
+          <longName>Angle P</longName>
+          <valDouble>20</valDouble>
+        </kp>
+        <meta.is_default>
+          <type>5</type>
+          <longName>Is Default</longName>
+          <valInt>0</valInt>
+        </meta.is_default>
+      </Params>
+      <SerOrder>
+        <ser>kp</ser>
+        <ser>meta.is_default</ser>
+      </SerOrder>
+      <Grouping />
+    </ConfigParams>
+    """
+  let metaSchema = try RefloatConfigSchemaParser.parse(Array(metaXml.utf8))
+  func metaBytes(_ kp: Float, _ isDefault: Bool) -> [UInt8] {
+    let bits = kp.bitPattern
+    return [
+      UInt8((bits >> 24) & 0xff),
+      UInt8((bits >> 16) & 0xff),
+      UInt8((bits >> 8) & 0xff),
+      UInt8(bits & 0xff),
+      isDefault ? 1 : 0,
+    ]
+  }
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 8000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "meta.is_default": true],
+    writeBase: BoardConfigWriteBase(schema: metaSchema, rawConfig: metaBytes(20.0, true), packageSignature: 10),
+    refloatVersion: "1.3.0"
+  ))
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 9000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "meta.is_default": false],
+    writeBase: BoardConfigWriteBase(schema: metaSchema, rawConfig: metaBytes(20.0, false), packageSignature: 10),
+    refloatVersion: "1.3.0"
+  ))
+  try require(try reopenedStore.loadRevisions(boardId: "board-dedup").count == 1, "only meta.is_default changed must deduplicate")
+
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 10_000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "meta.is_default": false],
+    writeBase: BoardConfigWriteBase(schema: metaSchema, rawConfig: metaBytes(20.0, false), packageSignature: 11),
+    refloatVersion: "1.3.0"
+  ))
+  try require(try reopenedStore.loadRevisions(boardId: "board-dedup").count == 2, "package signature change must record revision")
+
+  let tinyFloat = Float(bitPattern: Float(20.0).bitPattern + 1)
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 11_000,
+    freshness: .fresh,
+    values: ["kp": Double(tinyFloat), "meta.is_default": false],
+    writeBase: BoardConfigWriteBase(schema: metaSchema, rawConfig: metaBytes(tinyFloat, false), packageSignature: 11),
+    refloatVersion: "1.3.0"
+  ))
+  try require(try reopenedStore.loadRevisions(boardId: "board-dedup").count == 3, "sub-1e-6 wire change must record revision")
+
+  let metaSchemaV2 = try RefloatConfigSchemaParser.parse(Array(metaXml.replacingOccurrences(of: "Angle P", with: "Angle P v2").utf8))
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 12_000,
+    freshness: .fresh,
+    values: ["kp": Double(tinyFloat), "meta.is_default": false],
+    writeBase: BoardConfigWriteBase(schema: metaSchemaV2, rawConfig: metaBytes(tinyFloat, false), packageSignature: 11),
+    refloatVersion: "1.3.1"
+  ))
+  try require(try reopenedStore.loadRevisions(boardId: "board-dedup").count == 4, "schema hash change must record revision")
+  try queue.close()
+}
 
 private extension String {
   mutating func replace(_ target: String, with replacement: String, maxReplacements: Int) {

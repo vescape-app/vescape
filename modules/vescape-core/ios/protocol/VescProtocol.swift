@@ -107,11 +107,16 @@ internal func buildLightsControlCommand(
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `parseLightsControlResponse`
-internal func parseLightsControlResponse(_ payload: [UInt8]) -> BoardLightsState? {
+internal func parseLightsControlResponse(
+  _ payload: [UInt8],
+  transport: BoardTransport? = nil
+) -> BoardLightsState? {
   let body: [UInt8]
   if payload.count >= 4, Int(payload[0]) == COMM_CUSTOM_APP_DATA {
     body = payload
   } else if payload.count >= 6, Int(payload[0]) == COMM_FORWARD_CAN {
+    if case .direct = transport { return nil }
+    if case .can(let canId) = transport, Int(payload[1]) != canId { return nil }
     body = Array(payload[2...])
   } else {
     return nil

@@ -188,5 +188,35 @@ func runMaintenanceJobsContract() throws {
     try require(try remaining().count == 3, "deferred prune deletes nothing")
     try require(try pruneDiagnosticEvents(scope(), gapMs: 30_000, batch: 2).deleted == 1, "prune deletes the rest in batches")
     try require(try remaining() == [boundary, now - 1], "the boundary event and newer stay")
+
+    let revQueue = try freshQueue()
+    let revFence = DatabaseReplacementFence()
+    let revScope = MaintenanceJobScope(writer: { revQueue }, fence: revFence, ticket: revFence.ticket(), nowMs: { now })
+    try revQueue.write { db in
+      try db.execute(sql: "INSERT INTO board_config_schemas (schema_hash, raw_xml, created_at) VALUES ('schema-old', '<ConfigParams/>', 1)")
+      try db.execute(sql: "INSERT INTO board_config_schemas (schema_hash, raw_xml, created_at) VALUES ('schema-kept', '<ConfigParams/>', 2)")
+      try db.execute(sql: "INSERT INTO board_config_schemas (schema_hash, raw_xml, created_at) VALUES ('schema-last-known', '<ConfigParams/>', 3)")
+      try db.execute(sql: "INSERT INTO board_config_values (board_id, refloat_base_version, values_json, captured_at, schema_hash) VALUES ('board-a', '1.3', '{}', 10, 'schema-last-known')")
+      for i in 1...4 {
+        let hash = i <= 2 ? "schema-old" : "schema-kept"
+        try db.execute(
+          sql: "INSERT INTO board_config_revisions (board_id, refloat_version, schema_hash, package_signature, raw_config, source, changes_json, created_at) VALUES ('board-a', '1.3.0', ?, 1, ?, 'app', '[]', ?)",
+          arguments: [hash, Data([UInt8(i)]), Int64(i * 100)]
+        )
+      }
+      try db.execute(
+        sql: "INSERT INTO board_config_revisions (board_id, refloat_version, schema_hash, package_signature, raw_config, source, changes_json, created_at) VALUES ('board-b', '1.3.0', 'schema-kept', 1, ?, 'external', '[]', 500)",
+        arguments: [Data([9])]
+      )
+    }
+    let pruned = try pruneBoardConfigRevisions(revScope, gapMs: 30 * minute, retainPerBoard: 2)
+    try require(pruned.deletedRevisions == 2 && pruned.deletedSchemas == 1 && !pruned.yielded, "prunes old revisions and unreferenced schemas")
+    try revQueue.read { db in
+      let boardATimes = try Int64.fetchAll(db, sql: "SELECT created_at FROM board_config_revisions WHERE board_id = 'board-a' ORDER BY created_at DESC")
+      try require(boardATimes == [400, 300], "keeps newest revisions per board")
+      try require(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM board_config_revisions WHERE board_id = 'board-b'") == 1, "keeps other board revisions")
+      let schemas = try String.fetchAll(db, sql: "SELECT schema_hash FROM board_config_schemas ORDER BY schema_hash")
+      try require(schemas == ["schema-kept", "schema-last-known"], "deletes only unreferenced schemas")
+    }
   }
 }

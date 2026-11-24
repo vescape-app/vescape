@@ -259,4 +259,55 @@ class MaintenanceJobsHostTest {
     assertEquals(listOf(boundary, now - 1), remaining())
     db.close()
   }
+
+  @Test fun cleanupPrunesOldBoardConfigRevisionsAndUnreferencedSchemas(): Unit = runBlocking {
+    val db = db()
+    val dao = db.vescapeDao()
+    val fence = DatabaseReplacementFence()
+    val now = 100 * 24 * hour
+    fun scope() = MaintenanceJobScope({ dao }, fence, fence.ticket(), { now })
+
+    dao.insertBoardConfigSchemaIfAbsent(expo.modules.vescapecore.database.BoardConfigSchemaEntity("schema-old", "<ConfigParams/>", 1))
+    dao.insertBoardConfigSchemaIfAbsent(expo.modules.vescapecore.database.BoardConfigSchemaEntity("schema-kept", "<ConfigParams/>", 2))
+    dao.insertBoardConfigSchemaIfAbsent(expo.modules.vescapecore.database.BoardConfigSchemaEntity("schema-last-known", "<ConfigParams/>", 3))
+    dao.upsertBoardConfigValues(expo.modules.vescapecore.database.BoardConfigValuesEntity("board-a", "1.3", "{}", 10, "schema-last-known"))
+    for (i in 1..4) {
+      val hash = if (i <= 2) "schema-old" else "schema-kept"
+      dao.insertBoardConfigRevision(
+        expo.modules.vescapecore.database.BoardConfigRevisionEntity(
+          boardId = "board-a",
+          refloatVersion = "1.3.0",
+          schemaHash = hash,
+          packageSignature = 1L,
+          rawConfig = byteArrayOf(i.toByte()),
+          source = "app",
+          changesJson = "[]",
+          createdAt = i.toLong() * 100,
+        ),
+      )
+    }
+    dao.insertBoardConfigRevision(
+      expo.modules.vescapecore.database.BoardConfigRevisionEntity(
+        boardId = "board-b",
+        refloatVersion = "1.3.0",
+        schemaHash = "schema-kept",
+        packageSignature = 1L,
+        rawConfig = byteArrayOf(9),
+        source = "external",
+        changesJson = "[]",
+        createdAt = 500L,
+      ),
+    )
+
+    val result = pruneBoardConfigRevisions(scope(), gapMs = 30 * minute, retainPerBoard = 2)
+    assertEquals(2, result.deletedRevisions)
+    assertEquals(1, result.deletedSchemas)
+    assertEquals(false, result.yielded)
+    assertEquals(listOf(400L, 300L), dao.getBoardConfigRevisions("board-a", 10).map { it.createdAt })
+    assertEquals(1, dao.getBoardConfigRevisions("board-b", 10).size)
+    assertEquals(null, dao.getBoardConfigSchema("schema-old"))
+    assertEquals("<ConfigParams/>", dao.getBoardConfigSchema("schema-kept")?.rawXml)
+    assertEquals("<ConfigParams/>", dao.getBoardConfigSchema("schema-last-known")?.rawXml)
+    db.close()
+  }
 }

@@ -21,6 +21,31 @@ struct BoardConfigValues {
   let freshness: BoardConfigFreshness
   let values: [String: Any]
   let writeBase: BoardConfigWriteBase?
+  let schemaHash: String?
+  let schema: RefloatConfigSchema?
+  let refloatVersion: String?
+
+  init(
+    boardId: String?,
+    refloatBaseVersion: String?,
+    capturedAtMs: Int64,
+    freshness: BoardConfigFreshness,
+    values: [String: Any],
+    writeBase: BoardConfigWriteBase?,
+    schemaHash: String? = nil,
+    schema: RefloatConfigSchema? = nil,
+    refloatVersion: String? = nil
+  ) {
+    self.boardId = boardId
+    self.refloatBaseVersion = refloatBaseVersion
+    self.capturedAtMs = capturedAtMs
+    self.freshness = freshness
+    self.values = values
+    self.writeBase = writeBase
+    self.schemaHash = schemaHash ?? writeBase?.schema.hash
+    self.schema = schema ?? writeBase?.schema
+    self.refloatVersion = refloatVersion
+  }
 
   func number(_ id: String) -> Double? {
     guard let value = values[id], !(value is Bool) else { return nil }
@@ -75,7 +100,9 @@ struct BoardConfigValues {
       capturedAtMs: capturedAtMs,
       freshness: freshness,
       values: next,
-      writeBase: base
+      writeBase: base,
+      schemaHash: schemaHash,
+      schema: schema
     )
   }
 
@@ -93,6 +120,8 @@ struct BoardConfigValues {
       "capturedAtMs": capturedAtMs,
       "freshness": freshness.rawValue,
       "values": values,
+      "schemaHash": schemaHash,
+      "schema": schema?.toBridgeMap(),
     ]
   }
 
@@ -116,7 +145,9 @@ struct BoardConfigValues {
       capturedAtMs: capturedAtMs,
       freshness: .lastKnown,
       values: values,
-      writeBase: nil
+      writeBase: nil,
+      schemaHash: schemaHash,
+      schema: schema
     )
   }
 
@@ -128,7 +159,9 @@ struct BoardConfigValues {
       capturedAtMs: capturedAtMs,
       freshness: freshness,
       values: values,
-      writeBase: writeBase
+      writeBase: writeBase,
+      schemaHash: schemaHash,
+      schema: schema
     )
   }
 
@@ -136,7 +169,9 @@ struct BoardConfigValues {
     boardId: String?,
     refloatBaseVersion: String?,
     capturedAtMs: Int64,
-    valuesJson: String
+    valuesJson: String,
+    schemaHash: String? = nil,
+    schema: RefloatConfigSchema? = nil
   ) throws -> BoardConfigValues {
     BoardConfigValues(
       boardId: boardId,
@@ -144,7 +179,9 @@ struct BoardConfigValues {
       capturedAtMs: capturedAtMs,
       freshness: .lastKnown,
       values: try decodeValuesJson(valuesJson),
-      writeBase: nil
+      writeBase: nil,
+      schemaHash: schemaHash,
+      schema: schema
     )
   }
 

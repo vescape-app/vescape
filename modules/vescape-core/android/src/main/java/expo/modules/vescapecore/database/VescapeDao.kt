@@ -928,9 +928,6 @@ interface VescapeDao {
   @Query("DELETE FROM tune_profiles WHERE id = :id")
   suspend fun deleteTuneProfile(id: String)
 
-  @Query("DELETE FROM tune_history_entries WHERE profile_id = :profileId")
-  suspend fun deleteTuneHistoryForProfile(profileId: String)
-
   @Query("UPDATE tune_profiles SET name = :name, icon = :icon, color = :color, updated_at = :updatedAt WHERE id = :profileId")
   suspend fun updateProfileMetadata(
     profileId: String,
@@ -939,9 +936,6 @@ interface VescapeDao {
     color: String,
     updatedAt: Long,
   ): Int
-
-  @Query("SELECT * FROM tune_history_entries WHERE id = :id LIMIT 1")
-  suspend fun getTuneHistoryEntry(id: Long): TuneHistoryEntryEntity?
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertTuneProfile(profile: TuneProfileEntity)
@@ -952,32 +946,18 @@ interface VescapeDao {
   suspend fun countTuneProfilesForBoard(boardId: String, refloatBaseVersion: String): Int =
     getTuneProfilesByBoard(boardId, refloatBaseVersion).size
 
-  @Insert
-  suspend fun insertTuneHistoryEntry(entry: TuneHistoryEntryEntity): Long
-
   @Transaction
-  suspend fun createTuneProfile(profile: TuneProfileEntity, historyEntry: TuneHistoryEntryEntity): TuneProfileEntity {
+  suspend fun createTuneProfile(profile: TuneProfileEntity): TuneProfileEntity {
     upsertTuneProfile(profile)
-    insertTuneHistoryEntry(historyEntry)
     return getTuneProfile(profile.id) ?: throw IllegalStateException("Tune Profile disappeared during save: ${profile.id}")
   }
-
-  @Query("SELECT * FROM tune_history_entries WHERE profile_id = :profileId ORDER BY created_at DESC, id DESC")
-  suspend fun getTuneHistoryEntries(profileId: String): List<TuneHistoryEntryEntity>
 
   @Query("UPDATE tune_profiles SET fields_json = :fieldsJson, updated_at = :updatedAt WHERE id = :profileId")
   suspend fun updateProfileFields(profileId: String, fieldsJson: String, updatedAt: Long): Int
 
   @Transaction
   suspend fun saveTuneProfile(profileId: String, fieldsJson: String, updatedAt: Long): TuneProfileEntity {
-    val current = getTuneProfile(profileId) ?: throw IllegalArgumentException("Tune Profile not found: $profileId")
-    insertTuneHistoryEntry(
-      TuneHistoryEntryEntity(
-        profileId = current.id,
-        fieldsJson = current.fieldsJson,
-        createdAt = updatedAt,
-      ),
-    )
+    getTuneProfile(profileId) ?: throw IllegalArgumentException("Tune Profile not found: $profileId")
     updateProfileFields(profileId, fieldsJson, updatedAt)
     return getTuneProfile(profileId) ?: throw IllegalStateException("Tune Profile disappeared during save: $profileId")
   }
@@ -988,36 +968,14 @@ interface VescapeDao {
     if (countTuneProfilesForBoard(profile.boardId, profile.refloatBaseVersion) <= 1) {
       throw IllegalStateException("Cannot delete the last profile for a board")
     }
-    deleteTuneHistoryForProfile(profileId)
     deleteTuneProfile(profileId)
   }
 
   @Transaction
-  suspend fun rollbackTuneProfile(profileId: String, historyEntryId: Long): TuneProfileEntity {
-    val profile = getTuneProfile(profileId) ?: throw IllegalArgumentException("Tune Profile not found: $profileId")
-    val entry = getTuneHistoryEntry(historyEntryId) ?: throw IllegalArgumentException("History entry not found: $historyEntryId")
-    if (entry.profileId != profileId) throw IllegalArgumentException("History entry does not belong to this profile")
-    val now = System.currentTimeMillis()
-    insertTuneHistoryEntry(
-      TuneHistoryEntryEntity(
-        profileId = profile.id,
-        fieldsJson = profile.fieldsJson,
-        createdAt = now,
-      ),
-    )
-    updateProfileFields(profileId, entry.fieldsJson, now)
-    return getTuneProfile(profileId) ?: throw IllegalStateException("Tune Profile disappeared during rollback: $profileId")
-  }
-
-  @Transaction
-  suspend fun insertTuneProfileIfBoardHasNone(
-    profile: TuneProfileEntity,
-    historyEntry: TuneHistoryEntryEntity,
-  ): TuneProfileEntity? {
+  suspend fun insertTuneProfileIfBoardHasNone(profile: TuneProfileEntity): TuneProfileEntity? {
     if (countTuneProfilesForBoard(profile.boardId, profile.refloatBaseVersion) > 0) return null
     val inserted = insertTuneProfile(profile)
     if (inserted == -1L) return null
-    insertTuneHistoryEntry(historyEntry)
     return profile
   }
 
@@ -1211,6 +1169,89 @@ interface VescapeDao {
   @Query("DELETE FROM board_config_values WHERE board_id = :boardId")
   suspend fun deleteBoardConfigValues(boardId: String)
 
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertBoardConfigSchemaIfAbsent(schema: BoardConfigSchemaEntity)
+
+  @Query("SELECT * FROM board_config_schemas WHERE schema_hash = :schemaHash LIMIT 1")
+  suspend fun getBoardConfigSchema(schemaHash: String): BoardConfigSchemaEntity?
+
+  @Query("SELECT COUNT(*) FROM board_config_schemas")
+  suspend fun countBoardConfigSchemas(): Int
+
+  @Insert
+  suspend fun insertBoardConfigRevision(revision: BoardConfigRevisionEntity): Long
+
+  @Query(
+    """
+    SELECT id, board_id, refloat_version, schema_hash, package_signature, source, changes_json, tune_profile_id, created_at
+    FROM board_config_revisions
+    WHERE board_id = :boardId
+    ORDER BY created_at DESC, id DESC
+    LIMIT :limit
+    """,
+  )
+  suspend fun getBoardConfigRevisionSummaries(boardId: String, limit: Int): List<BoardConfigRevisionSummaryRow>
+
+  @Query("SELECT * FROM board_config_revisions WHERE board_id = :boardId ORDER BY created_at DESC, id DESC LIMIT :limit")
+  suspend fun getBoardConfigRevisions(boardId: String, limit: Int): List<BoardConfigRevisionEntity>
+
+  @Query("SELECT * FROM board_config_revisions WHERE board_id = :boardId ORDER BY created_at DESC, id DESC LIMIT 1")
+  suspend fun getLatestBoardConfigRevision(boardId: String): BoardConfigRevisionEntity?
+
+  @Query("SELECT * FROM board_config_revisions WHERE id = :id LIMIT 1")
+  suspend fun getBoardConfigRevision(id: Long): BoardConfigRevisionEntity?
+
+  @Query("SELECT COUNT(*) FROM board_config_revisions WHERE board_id = :boardId")
+  suspend fun countBoardConfigRevisions(boardId: String): Int
+
+  @Query(
+    """
+    DELETE FROM board_config_revisions
+    WHERE id IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY board_id ORDER BY created_at DESC, id DESC) AS rn
+        FROM board_config_revisions
+      )
+      WHERE rn > :retainPerBoard
+    )
+    """,
+  )
+  suspend fun pruneExcessBoardConfigRevisions(retainPerBoard: Int): Int
+
+  @Query(
+    """
+    DELETE FROM board_config_schemas
+    WHERE NOT EXISTS (
+      SELECT 1 FROM board_config_revisions r WHERE r.schema_hash = board_config_schemas.schema_hash
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM board_config_values v WHERE v.schema_hash = board_config_schemas.schema_hash
+    )
+    """,
+  )
+  suspend fun deleteUnreferencedBoardConfigSchemas(): Int
+
+  @Transaction
+  suspend fun upsertBoardConfigValuesWithSchema(
+    values: BoardConfigValuesEntity,
+    schema: BoardConfigSchemaEntity?,
+  ) {
+    if (schema != null) insertBoardConfigSchemaIfAbsent(schema)
+    upsertBoardConfigValues(values)
+  }
+
+  @Transaction
+  suspend fun saveBoardConfigWrite(
+    values: BoardConfigValuesEntity,
+    schema: BoardConfigSchemaEntity?,
+    buildRevision: suspend (BoardConfigRevisionEntity?) -> BoardConfigRevisionEntity?,
+  ) {
+    if (schema != null) insertBoardConfigSchemaIfAbsent(schema)
+    upsertBoardConfigValues(values)
+    val latest = getLatestBoardConfigRevision(values.boardId)
+    buildRevision(latest)?.let { insertBoardConfigRevision(it) }
+  }
+
   @Query("SELECT * FROM motor_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
   suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValuesEntity?
 
@@ -1266,12 +1307,17 @@ interface VescapeDao {
   @Transaction
   suspend fun replaceBaselineAndNotice(
     values: BoardConfigValuesEntity,
+    schema: BoardConfigSchemaEntity? = null,
     buildNotice: (BoardConfigValuesEntity?, BoardConfigChangeNoticeEntity?, String?) -> BoardConfigChangeNoticeEntity?,
+    buildRevision: suspend (BoardConfigRevisionEntity?) -> BoardConfigRevisionEntity? = { null },
   ): BoardConfigChangeNoticeEntity? {
+    if (schema != null) insertBoardConfigSchemaIfAbsent(schema)
     val ignoredJson = getBoardSetting(values.boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson
     val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion), getBoardConfigChangeNotice(values.boardId), ignoredJson)
     if (notice != null) upsertBoardConfigChangeNotice(notice)
     upsertBoardConfigValues(values)
+    val latest = getLatestBoardConfigRevision(values.boardId)
+    buildRevision(latest)?.let { insertBoardConfigRevision(it) }
     return notice
   }
 

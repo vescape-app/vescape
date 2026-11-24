@@ -233,6 +233,16 @@ private let CLEANUP_STEPS: [(MaintenanceJobScope, Int64) throws -> MaintenanceJo
     if result.deleted > 0 { scope.diagnostic("diagnostic_prune", ["deleted": result.deleted]) }
     return result.yielded ? .deferred(retryAtMs: scope.nowMs() + gapMs) : .completed
   },
+  { scope, gapMs in
+    let result = try pruneBoardConfigRevisions(scope, gapMs: gapMs)
+    if result.deletedRevisions > 0 || result.deletedSchemas > 0 {
+      scope.diagnostic(
+        "board_config_revision_prune",
+        ["deleted_revisions": result.deletedRevisions, "deleted_schemas": result.deletedSchemas]
+      )
+    }
+    return result.yielded ? .deferred(retryAtMs: scope.nowMs() + gapMs) : .completed
+  },
 ]
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MaintenanceJobs.kt `CleanupJob`

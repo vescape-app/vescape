@@ -4,6 +4,8 @@ internal sealed class ConfigRWEffect {
     data class SendFrame(
         val payload: ByteArray,
         val requiresIdleBoard: Boolean = false,
+        val minRideStateAtMs: Long? = null,
+        val frameTag: String? = null,
     ) : ConfigRWEffect()
 
     data class ScheduleTimeout(
@@ -15,10 +17,14 @@ internal sealed class ConfigRWEffect {
 
     object DemoteWriteBase : ConfigRWEffect()
 
+    data class EmitBoardConfigValues(
+        val boardConfigValues: BoardConfigValues,
+        val origin: BoardConfigOperationOrigin,
+    ) : ConfigRWEffect()
+
     data class EmitReadComplete(
-        val snapshot: RefloatConfigSnapshot,
+        val boardConfigValues: BoardConfigValues,
         val resumePolling: Boolean,
-        val boardConfigValues: BoardConfigValues?,
     ) : ConfigRWEffect()
 
     data class EmitReadFailure(
@@ -30,9 +36,10 @@ internal sealed class ConfigRWEffect {
     ) : ConfigRWEffect()
 
     data class EmitWriteComplete(
-        val snapshot: RefloatConfigSnapshot,
+        val boardConfigValues: BoardConfigValues,
         val resumePolling: Boolean,
-        val boardConfigValues: BoardConfigValues?,
+        val origin: BoardConfigOperationOrigin = BoardConfigOperationOrigin.VescapeWrite(),
+        val emitBoardConfigValues: Boolean = true,
     ) : ConfigRWEffect()
 
     data class EmitWriteFailure(
@@ -42,6 +49,7 @@ internal sealed class ConfigRWEffect {
         val resumePolling: Boolean,
         val phase: ConfigWritePhaseTag,
         val rawConfig: ByteArray?,
+        val demotedWriteBase: Boolean = false,
     ) : ConfigRWEffect()
 
     data class DumpDebugBytes(

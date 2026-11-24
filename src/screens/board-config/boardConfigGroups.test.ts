@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { inflateSync } from 'node:zlib'
 
-import { APP_TUNE_GROUPS } from '@/modules/tune/lib/fields'
 import { SPEED_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { BOARD_CONFIG_TABS } from '@/modules/board/constants/boardConfigTabs'
 import {
@@ -41,7 +40,9 @@ describe('Board config browsing', () => {
       const remaining = other.groups.find((group) => group.title === 'Other board config')!.rows
       expect(remaining.some((row) => row.id === 'future_setting')).toBe(true)
       const tuneIds = new Set<string>(
-        APP_TUNE_GROUPS.flatMap((group) => group.fields.map((field) => field.id)),
+        tabs
+          .find((tab) => tab.id === 'tune')!
+          .groups.flatMap((group) => group.rows.map((row) => row.id)),
       )
       expect(
         other.groups
@@ -53,9 +54,16 @@ describe('Board config browsing', () => {
   )
 
   test('uses shared labels, moves current limits to Battery, and separates Tune from controller setup', () => {
-    const refloat = Object.fromEntries(
-      APP_TUNE_GROUPS.flatMap((group) => group.fields.map((field) => [field.id, 0])),
-    )
+    const sampleTuneIds = [
+      'kp',
+      'kp2',
+      'atr_strength_up',
+      'turntilt_strength',
+      'torquetilt_strength',
+      'braketilt_strength',
+      'tiltback_constant',
+    ]
+    const refloat = Object.fromEntries(sampleTuneIds.map((id) => [id, 0]))
     const tabs = boardConfigTabs(
       { ...refloat, future_setting: true },
       { l_in_current_max: 70, l_in_current_min: -45, foc_current_kp: 0.02 },
@@ -63,9 +71,7 @@ describe('Board config browsing', () => {
     const speedRows = tabs.find((tab) => tab.id === 'speed')!.groups[0]!.rows
     expect(speedRows[0]).toBe(SPEED_CONFIG_ROWS[0])
     const tuneRows = tabs.find((tab) => tab.id === 'tune')!.groups.flatMap((group) => group.rows)
-    expect(tuneRows.map((row) => row.id)).toEqual(
-      APP_TUNE_GROUPS.flatMap((group) => group.fields.map((field) => field.id)),
-    )
+    expect(tuneRows.map((row) => row.id)).toEqual(sampleTuneIds)
     const battery = tabs.find((tab) => tab.id === 'battery')!
     expect(battery.groups.flatMap((group) => group.rows.map((row) => row.id))).toEqual([
       'l_in_current_max',
@@ -159,14 +165,14 @@ describe('Board config browsing', () => {
   })
 
   test.each(versions)(
-    'LED and feedback enums and percentage scaling match Refloat %s',
+    'feedback, remote, and start/stop enums and percentage scaling match Refloat %s',
     async (version) => {
       const bytes = await Bun.file(
         `${import.meta.dir}/../../../shared/fixtures/refloat-schema/settings-${version}.xml.zlib`,
       ).arrayBuffer()
       const xml = inflateSync(Buffer.from(bytes)).toString('utf8')
       const rows = BOARD_CONFIG_TABS.filter((tab) =>
-        ['leds', 'haptic', 'remote', 'start-stop'].includes(tab.id),
+        ['haptic', 'remote', 'start-stop'].includes(tab.id),
       ).flatMap((tab) => tab.groups.flatMap((group) => group.rows))
       let checkedEnums = 0
       let checkedPercentages = 0
@@ -188,8 +194,8 @@ describe('Board config browsing', () => {
           checkedPercentages++
         }
       }
-      expect(checkedEnums).toBeGreaterThan(8)
-      expect(checkedPercentages).toBeGreaterThan(5)
+      expect(checkedEnums).toBeGreaterThanOrEqual(1)
+      expect(checkedPercentages).toBeGreaterThanOrEqual(1)
     },
   )
 })

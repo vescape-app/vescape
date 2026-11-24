@@ -1,22 +1,19 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
 
-import type { BoardConfigValues, MotorConfigValues, RefloatConfigSnapshot } from 'vescape-core'
+import type { BoardConfigSchema, BoardConfigValues, MotorConfigValues } from 'vescape-core'
 
 const actualVescapeCore = await import('@/../modules/vescape-core/src/index')
 
-const snapshot: RefloatConfigSnapshot = {
-  capturedAt: 1000,
+const boardConfig: BoardConfigValues = {
+  capturedAtMs: 1000,
   boardId: 'board-1',
-  canId: 1,
+  refloatBaseVersion: '1.3.0',
+  freshness: 'fresh',
+  values: { kp: 20 },
   schemaHash: 'schema',
-  rawConfigHash: 'raw',
-  rawConfigLength: 8,
-  fwVersion: 'FW 6.05',
-  missingFieldIds: [],
-  groups: [],
 }
 
-const getRefloatConfigSnapshot = mock(async () => snapshot)
+const refreshBoardConfigValues = mock(async () => boardConfig)
 const getLastKnownBoardConfigValues = mock(
   async (_boardId: string) => null as BoardConfigValues | null,
 )
@@ -26,7 +23,7 @@ const getLastKnownMotorConfigValues = mock(
 
 const vescBleMock = {
   ...actualVescapeCore,
-  getRefloatConfigSnapshot,
+  refreshBoardConfigValues,
   getLastKnownBoardConfigValues,
   getLastKnownMotorConfigValues,
 }
@@ -35,16 +32,18 @@ mock.module('vescape-core', () => vescBleMock)
 mock.module('../../modules/vescape-core/src/index', () => vescBleMock)
 
 beforeEach(async () => {
-  getRefloatConfigSnapshot.mockClear()
-  getRefloatConfigSnapshot.mockImplementation(async () => snapshot)
+  refreshBoardConfigValues.mockClear()
+  refreshBoardConfigValues.mockImplementation(async () => boardConfig)
   getLastKnownBoardConfigValues.mockReset()
   getLastKnownBoardConfigValues.mockImplementation(async () => null)
   getLastKnownMotorConfigValues.mockReset()
   getLastKnownMotorConfigValues.mockImplementation(async () => null)
   const { useBleStore } = await import('@/modules/board/store/bleStore')
+  const { useBoardConfigValuesStore } = await import('@/modules/board/store/boardConfigValuesStore')
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
   useBleStore.setState({ linkIntegrity: 'trusted' })
-  useTuneSnapshotStore.setState({ status: 'idle', snapshot: null, error: null })
+  useBoardConfigValuesStore.setState({ values: null, lastKnown: null, error: null })
+  useTuneSnapshotStore.setState({ status: 'idle', boardConfig: null, error: null })
   useTuneSnapshotStore.getState().clear()
 })
 
@@ -99,12 +98,12 @@ test('last-known config mirrors ignore an older board read after a board switch'
   expect(useMotorConfigValuesStore.getState()).toMatchObject({ lastKnown: motorB, error: null })
 })
 
-test('joins concurrent board snapshot reads', async () => {
+test('joins concurrent board config reads', async () => {
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
-  let resolveRead: ((snapshot: RefloatConfigSnapshot) => void) | undefined
-  getRefloatConfigSnapshot.mockImplementation(
+  let resolveRead: ((config: BoardConfigValues) => void) | undefined
+  refreshBoardConfigValues.mockImplementation(
     () =>
-      new Promise<RefloatConfigSnapshot>((resolve) => {
+      new Promise<BoardConfigValues>((resolve) => {
         resolveRead = resolve
       }),
   )
@@ -112,46 +111,46 @@ test('joins concurrent board snapshot reads', async () => {
   const first = useTuneSnapshotStore.getState().read()
   const second = useTuneSnapshotStore.getState().read()
 
-  expect(getRefloatConfigSnapshot).toHaveBeenCalledTimes(1)
+  expect(refreshBoardConfigValues).toHaveBeenCalledTimes(1)
   expect(useTuneSnapshotStore.getState().status).toBe('loading')
 
-  resolveRead?.(snapshot)
+  resolveRead?.(boardConfig)
   await Promise.all([first, second])
 
   expect(useTuneSnapshotStore.getState().status).toBe('ready')
-  expect(useTuneSnapshotStore.getState().snapshot).toEqual(snapshot)
+  expect(useTuneSnapshotStore.getState().boardConfig).toEqual(boardConfig)
 })
 
-test('stores read errors without keeping stale board snapshots', async () => {
+test('stores read errors without keeping stale board configs', async () => {
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
   await useTuneSnapshotStore.getState().read()
-  getRefloatConfigSnapshot.mockImplementation(async () => {
+  refreshBoardConfigValues.mockImplementation(async () => {
     throw new Error('Timed out reading Refloat config')
   })
 
   await useTuneSnapshotStore.getState().read()
 
   expect(useTuneSnapshotStore.getState().status).toBe('error')
-  expect(useTuneSnapshotStore.getState().snapshot).toBeNull()
+  expect(useTuneSnapshotStore.getState().boardConfig).toBeNull()
   expect(useTuneSnapshotStore.getState().error).toBe('Timed out reading Refloat config')
 })
 
 test('clear invalidates an in-flight read and permits a fresh read', async () => {
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
-  const staleSnapshot = { ...snapshot, capturedAt: 1000, canId: 1 }
-  const freshSnapshot = { ...snapshot, capturedAt: 2000, canId: 2 }
-  let resolveStale: ((snapshot: RefloatConfigSnapshot) => void) | undefined
-  let resolveFresh: ((snapshot: RefloatConfigSnapshot) => void) | undefined
-  getRefloatConfigSnapshot
+  const staleConfig = { ...boardConfig, capturedAtMs: 1000 }
+  const freshConfig = { ...boardConfig, capturedAtMs: 2000 }
+  let resolveStale: ((config: BoardConfigValues) => void) | undefined
+  let resolveFresh: ((config: BoardConfigValues) => void) | undefined
+  refreshBoardConfigValues
     .mockImplementationOnce(
       () =>
-        new Promise<RefloatConfigSnapshot>((resolve) => {
+        new Promise<BoardConfigValues>((resolve) => {
           resolveStale = resolve
         }),
     )
     .mockImplementationOnce(
       () =>
-        new Promise<RefloatConfigSnapshot>((resolve) => {
+        new Promise<BoardConfigValues>((resolve) => {
           resolveFresh = resolve
         }),
     )
@@ -160,27 +159,27 @@ test('clear invalidates an in-flight read and permits a fresh read', async () =>
   useTuneSnapshotStore.getState().clear()
   const freshRead = useTuneSnapshotStore.getState().read()
 
-  expect(getRefloatConfigSnapshot).toHaveBeenCalledTimes(2)
+  expect(refreshBoardConfigValues).toHaveBeenCalledTimes(2)
 
-  resolveStale?.(staleSnapshot)
+  resolveStale?.(staleConfig)
   await staleRead
   expect(useTuneSnapshotStore.getState().status).toBe('loading')
   expect(useTuneSnapshotStore.getState().read()).toBe(freshRead)
 
-  resolveFresh?.(freshSnapshot)
+  resolveFresh?.(freshConfig)
   await freshRead
 
   expect(useTuneSnapshotStore.getState().status).toBe('ready')
-  expect(useTuneSnapshotStore.getState().snapshot).toEqual(freshSnapshot)
+  expect(useTuneSnapshotStore.getState().boardConfig).toEqual(freshConfig)
 })
 
-test('setSnapshot stores a pushed board snapshot', async () => {
+test('setBoardConfig stores a pushed board config', async () => {
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
 
-  useTuneSnapshotStore.getState().setSnapshot(snapshot)
+  useTuneSnapshotStore.getState().setBoardConfig(boardConfig)
 
   expect(useTuneSnapshotStore.getState().status).toBe('ready')
-  expect(useTuneSnapshotStore.getState().snapshot).toEqual(snapshot)
+  expect(useTuneSnapshotStore.getState().boardConfig).toEqual(boardConfig)
   expect(useTuneSnapshotStore.getState().error).toBeNull()
 })
 
@@ -188,68 +187,101 @@ test.each([
   ['checking', 'Checking trusted board link.'],
   ['outdated', 'Re-link board before firmware commands.'],
   ['mismatched', 'Connected board does not match saved link.'],
-] as const)('blocks board snapshot reads while link is %s', async (linkIntegrity, message) => {
+] as const)('blocks board config reads while link is %s', async (linkIntegrity, message) => {
   const { useBleStore } = await import('@/modules/board/store/bleStore')
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
   useBleStore.setState({ linkIntegrity })
 
   await useTuneSnapshotStore.getState().read()
 
-  expect(getRefloatConfigSnapshot).not.toHaveBeenCalled()
+  expect(refreshBoardConfigValues).not.toHaveBeenCalled()
   expect(useTuneSnapshotStore.getState().status).toBe('error')
   expect(useTuneSnapshotStore.getState().error).toBe(message)
 })
 
-test('keeps the displayed snapshot while a re-read is in flight', async () => {
+test('keeps the displayed config while a re-read is in flight', async () => {
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
   await useTuneSnapshotStore.getState().read()
-  getRefloatConfigSnapshot.mockImplementation(() => new Promise<RefloatConfigSnapshot>(() => {}))
+  refreshBoardConfigValues.mockImplementation(() => new Promise<BoardConfigValues>(() => {}))
 
   void useTuneSnapshotStore.getState().read()
 
   expect(useTuneSnapshotStore.getState().status).toBe('loading')
-  expect(useTuneSnapshotStore.getState().snapshot).toEqual(snapshot)
+  expect(useTuneSnapshotStore.getState().boardConfig).toEqual(boardConfig)
 })
 
-test('a matching raw config hash leaves the displayed snapshot untouched', async () => {
-  const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
-  await useTuneSnapshotStore.getState().read()
-  const displayed = useTuneSnapshotStore.getState().snapshot
-  getRefloatConfigSnapshot.mockImplementation(async () => ({ ...snapshot, capturedAt: 2000 }))
-
-  await useTuneSnapshotStore.getState().read()
-
-  expect(useTuneSnapshotStore.getState().snapshot).toBe(displayed)
-})
-
-test('a differing raw config hash replaces the displayed snapshot', async () => {
-  const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
-  await useTuneSnapshotStore.getState().read()
-  const fresh = { ...snapshot, rawConfigHash: 'raw-2' }
-  getRefloatConfigSnapshot.mockImplementation(async () => fresh)
-
-  await useTuneSnapshotStore.getState().read()
-
-  expect(useTuneSnapshotStore.getState().snapshot).toEqual(fresh)
-})
-
-test('drops the snapshot when the Board Session ends', async () => {
+test('drops the board config when the Board Session ends', async () => {
   const { useBoardConfigValuesStore } = await import('@/modules/board/store/boardConfigValuesStore')
   const { startTuneSnapshotSessionSync, useTuneSnapshotStore } =
     await import('@/modules/tune/store/tuneSnapshotStore')
   const stop = startTuneSnapshotSessionSync()
-  useBoardConfigValuesStore.getState().replace({
-    boardId: 'board-1',
-    refloatBaseVersion: '1.3.0',
-    capturedAtMs: 1000,
-    freshness: 'fresh',
-    values: { kp: 12 },
-  })
+  useBoardConfigValuesStore.getState().replace(boardConfig)
   await useTuneSnapshotStore.getState().read()
 
   useBoardConfigValuesStore.getState().replace(null)
 
   expect(useTuneSnapshotStore.getState().status).toBe('idle')
-  expect(useTuneSnapshotStore.getState().snapshot).toBeNull()
+  expect(useTuneSnapshotStore.getState().boardConfig).toBeNull()
+  stop()
+})
+
+test('recomputes tune profile board drift when BoardConfigValues.schema arrives', async () => {
+  const { useBoardConfigValuesStore } = await import('@/modules/board/store/boardConfigValuesStore')
+  const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
+  const { startTuneSnapshotSessionSync } = await import('@/modules/tune/store/tuneSnapshotStore')
+  const stop = startTuneSnapshotSessionSync()
+
+  useTuneProfileStore.setState({
+    activeProfile: {
+      id: 'p1',
+      boardId: 'board-1',
+      refloatBaseVersion: '1.3.0',
+      name: 'Main',
+      icon: 'faders',
+      color: 'sky',
+      fields: { kp: 20.04 },
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    boardFields: { kp: 20.0 },
+    boardDiff: [{ fieldId: 'kp', profileValue: 20.04, boardValue: 20.0 }],
+    hasBoardDiff: true,
+    draftFields: {},
+    hasDirtyFields: false,
+  })
+
+  const schema: BoardConfigSchema = {
+    hash: 's1',
+    fields: [
+      {
+        id: 'kp',
+        type: 'float16_scaled',
+        xmlType: 1,
+        vTx: 7,
+        label: 'Angle P',
+        unit: null,
+        min: 0,
+        max: 40,
+        offset: 0,
+        scale: 10,
+        step: 1,
+        editorDecimals: 1,
+        editorScale: null,
+        editAsPercentage: false,
+        enumNames: [],
+        defaultValue: 20,
+        transmittable: true,
+        showDisplay: false,
+        cDefine: null,
+        description: null,
+      },
+    ],
+    groups: [],
+  }
+
+  useBoardConfigValuesStore.getState().replace({ ...boardConfig, schemaHash: 's1', schema })
+
+  expect(useTuneProfileStore.getState().boardDiff).toEqual([])
+  expect(useTuneProfileStore.getState().hasBoardDiff).toBe(false)
   stop()
 })

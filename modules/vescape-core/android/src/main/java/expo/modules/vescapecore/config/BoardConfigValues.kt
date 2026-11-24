@@ -29,6 +29,9 @@ internal data class BoardConfigValues(
   val freshness: BoardConfigFreshness,
   val values: Map<String, Any>,
   val writeBase: BoardConfigWriteBase?,
+  val schemaHash: String? = writeBase?.schema?.hash,
+  val schema: RefloatConfigSchema? = writeBase?.schema,
+  val refloatVersion: String? = null,
 ) {
   fun number(id: String): Double? = (values[id] as? Double)?.takeIf { it.isFinite() }
 
@@ -88,6 +91,8 @@ internal data class BoardConfigValues(
     "capturedAtMs" to capturedAtMs,
     "freshness" to freshness.wire,
     "values" to values,
+    "schemaHash" to schemaHash,
+    "schema" to schema?.toBridgeMap(),
   )
 
   fun valuesJson(): String = JSONObject(values).toString()
@@ -98,6 +103,8 @@ internal data class BoardConfigValues(
       refloatBaseVersion: String?,
       capturedAtMs: Long,
       valuesJson: String,
+      schemaHash: String? = null,
+      schema: RefloatConfigSchema? = null,
     ): BoardConfigValues = BoardConfigValues(
       boardId = boardId,
       refloatBaseVersion = refloatBaseVersion,
@@ -105,6 +112,8 @@ internal data class BoardConfigValues(
       freshness = BoardConfigFreshness.LAST_KNOWN,
       values = decodeValuesJson(valuesJson),
       writeBase = null,
+      schemaHash = schemaHash,
+      schema = schema,
     )
 
     private fun decodeValuesJson(json: String): Map<String, Any> {

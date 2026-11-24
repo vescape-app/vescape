@@ -39,6 +39,8 @@ internal interface VescGattListener {
 internal interface SessionTransport {
     fun connect(deviceId: String)
     fun sendPayload(payload: ByteArray): Boolean
+    fun sendPayload(payload: ByteArray, tag: String?): Boolean = sendPayload(payload)
+    fun cancelQueuedPayloads(tag: String) {}
     fun sendRemoteInput(payload: ByteArray, urgent: Boolean = false): Boolean
     fun clear(markIntentional: Boolean = true)
 }
@@ -70,11 +72,17 @@ internal class VescGattClient(
         gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
 
-    override fun sendPayload(payload: ByteArray): Boolean {
+    override fun sendPayload(payload: ByteArray): Boolean = sendPayload(payload, tag = null)
+
+    override fun sendPayload(payload: ByteArray, tag: String?): Boolean {
         if (gatt == null || txChar == null) return false
-        writeQueue.enqueueNormal(VescPacketCodec.encode(payload))
+        writeQueue.enqueueNormal(VescPacketCodec.encode(payload), tag = tag)
         drainWriteQueue()
         return true
+    }
+
+    override fun cancelQueuedPayloads(tag: String) {
+        writeQueue.dropNormal(tag)
     }
 
     override fun sendRemoteInput(payload: ByteArray, urgent: Boolean): Boolean {

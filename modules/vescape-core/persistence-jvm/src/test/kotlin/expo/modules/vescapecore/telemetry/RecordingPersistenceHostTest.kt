@@ -257,7 +257,7 @@ class RecordingPersistenceHostTest {
     assertEquals(null, db.vescapeDao().getLatestMotorConfigValues(boardId))
     assertEquals(null, db.vescapeDao().getBoardConfigChangeNotice(boardId))
     var invalidIgnoredCount = 0
-    val ignorePersistence = ConfigPersistence(db.vescapeDao()) { invalidIgnoredCount++ }
+    val ignorePersistence = ConfigPersistence(db.vescapeDao(), onInvalidIgnoredFields = { invalidIgnoredCount++ })
     ignorePersistence.saveFreshMotor(
       boardId,
       config.getLong("signature"),
@@ -396,8 +396,6 @@ class RecordingPersistenceHostTest {
     var lastDeleteFailed = false
     try { dao.deleteTuneProfileSafe("compat-3") } catch (_: IllegalStateException) { lastDeleteFailed = true }
     assertTrue(lastDeleteFailed)
-    assertEquals(1, persistence.history("compat-3").size)
-    assertEquals(expected.getInt("historyCount"), dao.getTuneHistoryEntries(profile.id).size)
     val riderRule = persistence.alertRules(boardId) { throw it }.single { !AlertPresetPersistence.isPresetId(it.id) }
     assertEquals(alertValues.getString("id"), riderRule.id)
     assertEquals(expected.getBoolean("alertEnabled"), riderRule.enabled)
@@ -412,7 +410,6 @@ class RecordingPersistenceHostTest {
     try { persistence.saveProfile(profile.id, profileValues.getString("failedFieldsJson"), 3) } catch (_: Exception) { failed = true }
     assertTrue(failed)
     assertEquals(profileValues.getString("updatedFieldsJson"), dao.getTuneProfile(profile.id)?.fieldsJson)
-    assertEquals(expected.getInt("historyCount"), dao.getTuneHistoryEntries(profile.id).size)
     db.close()
     connection = BundledSQLiteDriver().open(path.toString())
     connection.execSQL("DROP TRIGGER fail_tune_update")

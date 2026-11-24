@@ -1,14 +1,15 @@
-import type {
-  RefloatConfigSnapshot,
-  TuneHistoryEntry,
-  TuneProfile,
-  TuneProfileFieldValue,
-} from 'vescape-core'
+import type { BoardConfigValues, TuneProfile, TuneProfileFieldValue } from 'vescape-core'
 
 export interface TuneProfileBoardDiff {
   fieldId: string
   profileValue: TuneProfileFieldValue | undefined
   boardValue: TuneProfileFieldValue
+}
+
+export interface PendingTuneBoardChangeset {
+  profileId: string
+  boardId: string
+  changes: Record<string, TuneProfileFieldValue>
 }
 
 export interface TuneProfileState {
@@ -18,6 +19,7 @@ export interface TuneProfileState {
   refloatBaseVersion: string | null
   draftFields: Record<string, TuneProfileFieldValue>
   hasDirtyFields: boolean
+  pendingBoardChangeset: PendingTuneBoardChangeset | null
   boardFields: Record<string, TuneProfileFieldValue>
   boardDiff: TuneProfileBoardDiff[]
   hasBoardDiff: boolean
@@ -44,15 +46,14 @@ export interface TuneProfileActions {
     color: string,
   ) => Promise<TuneProfile | null>
   deleteProfile: (profileId: string) => Promise<void>
-  loadHistory: (profileId: string) => Promise<TuneHistoryEntry[]>
-  rollbackToHistory: (historyEntryId: number) => Promise<TuneProfile | null>
   copyProfileToBoard: (
     profileId: string,
     targetBoardId: string,
     newName: string,
   ) => Promise<TuneProfile | null>
   setDraftField: (fieldId: string, value: TuneProfileFieldValue) => void
-  setBoardSnapshot: (snapshot: RefloatConfigSnapshot | null) => void
+  setBoardConfig: (boardConfig: BoardConfigValues | null) => void
+  recomputeForSchema: () => void
   getDirtyFields: () => Record<string, TuneProfileFieldValue>
   revertField: (fieldId: string) => void
   acceptBoardField: (fieldId: string) => void
@@ -60,6 +61,8 @@ export interface TuneProfileActions {
   discardAllEdits: () => void
   saveActiveProfile: () => Promise<TuneProfile | null>
   saveAndSyncActiveProfile: () => Promise<void>
+  retryPendingBoardSync: () => Promise<void>
+  discardPendingBoardSync: () => void
   syncToBoard: () => Promise<void>
   clear: () => void
 }
@@ -73,6 +76,7 @@ export const INITIAL_TUNE_PROFILE_STATE: TuneProfileState = {
   refloatBaseVersion: null,
   draftFields: {},
   hasDirtyFields: false,
+  pendingBoardChangeset: null,
   boardFields: {},
   boardDiff: [],
   hasBoardDiff: false,

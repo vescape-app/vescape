@@ -1150,21 +1150,6 @@ export interface ImportFavoriteMediaOptions {
   mediaKind: 'photo' | 'video'
 }
 
-export interface RefloatConfigField {
-  id: string
-  label: string
-  value: number | boolean | string
-  unit: string | null
-  min: number | null
-  max: number | null
-}
-
-export interface RefloatConfigGroup {
-  id: string
-  title: string
-  fields: RefloatConfigField[]
-}
-
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigModels.kt `RefloatConfigErrorCode`
  * @parity /modules/vescape-core/ios/config/RefloatConfigErrorCode.swift
@@ -1183,27 +1168,17 @@ export type RefloatConfigErrorCode =
   | 'CONFIG_VERIFY_FAILED'
   | 'UNEXPECTED_CONFIG_RESPONSE'
   | 'UNSUPPORTED_SCHEMA'
+  | 'CONFIG_SCHEMA_MISMATCH'
   | 'CONFIG_DECODE_FAILED'
   | 'CONFIG_ENCODE_FAILED'
   | 'CONFIG_VALUE_INVALID'
   | 'BOARD_NOT_IDLE'
   | 'PROFILE_NOT_FOUND'
   | 'PROFILE_BOARD_MISMATCH'
+  | 'REVISION_NOT_FOUND'
+  | 'SCHEMA_NOT_FOUND'
+  | 'INVALID_CONFIG_XML'
   | 'UNSUPPORTED_PLATFORM'
-
-export interface RefloatConfigSnapshot {
-  capturedAt: number
-  boardId: string | null
-  canId: number
-  schemaHash: string
-  rawConfigHash: string
-  rawConfigLength: number
-  groups: RefloatConfigGroup[]
-  missingFieldIds: string[]
-  fwVersion: string | null
-  refloatVersion?: string | null
-  refloatBaseVersion?: string | null
-}
 
 export type TuneProfileFieldValue = number | boolean | string | null
 
@@ -1219,11 +1194,64 @@ export interface TuneProfile {
   updatedAt: number
 }
 
-export interface TuneHistoryEntry {
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `BoardConfigRevisionSource`
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevisionSource`
+ */
+export type BoardConfigRevisionSource = 'app' | 'external' | 'revert' | 'import'
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `BoardConfigRevision`
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevision`
+ */
+export interface BoardConfigRevision {
   id: number
-  profileId: string
-  fields: Record<string, TuneProfileFieldValue>
-  createdAt: number
+  boardId: string
+  refloatVersion: string
+  schemaHash: string
+  packageSignature: number
+  source: BoardConfigRevisionSource
+  changes: BoardConfigChangeDiff[]
+  tuneProfileId: string | null
+  createdAtMs: number
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigRevertPlanner.kt `BoardConfigRevertSkippedField`
+ * @parity /modules/vescape-core/ios/config/BoardConfigRevertPlanner.swift `BoardConfigRevertSkippedField`
+ */
+export interface BoardConfigRevertSkippedField {
+  fieldId: string
+  label: string
+  reason: string
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigRevertPlanner.kt `BoardConfigRevertPlan`
+ * @parity /modules/vescape-core/ios/config/BoardConfigRevertPlanner.swift `BoardConfigRevertPlan`
+ */
+export interface BoardConfigRevertPlan {
+  boardId: string
+  targetRevisionId: number
+  targetCreatedAtMs: number
+  targetRefloatVersion: string
+  targetSchemaHash: string
+  currentSchemaHash: string
+  sameSchema: boolean
+  changes: Record<string, number | boolean>
+  skippedFields: BoardConfigRevertSkippedField[]
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigXmlCodec.kt `BoardConfigXmlImportPlan`
+ * @parity /modules/vescape-core/ios/config/BoardConfigXmlCodec.swift `BoardConfigXmlImportPlan`
+ */
+export interface BoardConfigXmlImportPlan {
+  boardId: string
+  configVersion: number | null
+  currentSchemaHash: string
+  changes: Record<string, number | boolean>
+  skippedFields: BoardConfigRevertSkippedField[]
 }
 
 export interface ProfileStats {
@@ -1971,12 +1999,93 @@ export type BoardConfigFieldValues = {
   [K in BoardConfigFieldId]?: number | boolean
 } & Record<string, number | boolean | undefined>
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigValueType`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigValueType`
+ */
+export type BoardConfigValueType =
+  | 'float32'
+  | 'float32_scaled'
+  | 'float32_auto'
+  | 'float16_scaled'
+  | 'int32'
+  | 'uint32'
+  | 'int16'
+  | 'uint16'
+  | 'int8'
+  | 'uint8'
+  | 'bool'
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchemaField`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchemaField`
+ */
+export interface BoardConfigSchemaField {
+  id: string
+  type: BoardConfigValueType
+  xmlType: number | null
+  vTx: number | null
+  label: string
+  unit: string | null
+  min: number | null
+  max: number | null
+  offset: number
+  scale: number | null
+  step: number | null
+  editorDecimals: number | null
+  editorScale: number | null
+  editAsPercentage: boolean
+  enumNames: string[]
+  defaultValue: number | boolean | string | null
+  transmittable: boolean
+  showDisplay: boolean
+  cDefine: string | null
+  description: string | null
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchemaGroupItem`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchemaGroupItem`
+ */
+export type BoardConfigSchemaGroupItem =
+  { kind: 'separator'; title: string } | { kind: 'field'; fieldId: string }
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchemaSubgroup`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchemaSubgroup`
+ */
+export interface BoardConfigSchemaSubgroup {
+  name: string
+  items: BoardConfigSchemaGroupItem[]
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchemaGroup`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchemaGroup`
+ */
+export interface BoardConfigSchemaGroup {
+  name: string
+  subgroups: BoardConfigSchemaSubgroup[]
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchema`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchema`
+ */
+export interface BoardConfigSchema {
+  hash: string
+  fields: BoardConfigSchemaField[]
+  groups: BoardConfigSchemaGroup[]
+}
+
 export interface BoardConfigValues {
   boardId: string | null
   refloatBaseVersion: string | null
   capturedAtMs: number
   freshness: BoardConfigFreshness
   values: BoardConfigFieldValues
+  schemaHash?: string | null
+  schema?: BoardConfigSchema | null
 }
 
 /**
@@ -2486,6 +2595,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   readVescFaultLog(boardId: string): Promise<string>
   getBoardConfigValues(): Promise<BoardConfigValues | null>
   getLastKnownBoardConfigValues(boardId: string): Promise<BoardConfigValues | null>
+  getBoardConfigSchema(schemaHash: string): Promise<BoardConfigSchema | null>
   getMotorConfigValues(): Promise<MotorConfigValues | null>
   getLastKnownMotorConfigValues(boardId: string): Promise<MotorConfigValues | null>
   getBoardConfigChangeNotice(boardId: string): Promise<BoardConfigChangeNotice | null>
@@ -2499,7 +2609,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getDatabaseSizeBytes(): Promise<number>
   backupDatabase(): Promise<DatabaseBackupResult>
   restoreDatabase(uri: string): Promise<void>
-  getRefloatConfigSnapshot(): Promise<RefloatConfigSnapshot>
+  refreshBoardConfigValues(): Promise<BoardConfigValues>
   setRemoteTilt(value: number): Promise<boolean>
   lockRemoteTilt(value: number): Promise<boolean>
   releaseRemoteTilt(value: number, durationMs: number): Promise<boolean>
@@ -2519,8 +2629,10 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<TuneProfile>
   renameProfile(profileId: string, name: string, icon: string, color: string): Promise<TuneProfile>
   deleteProfile(profileId: string): Promise<void>
-  getProfileHistory(profileId: string): Promise<TuneHistoryEntry[]>
-  rollbackProfile(profileId: string, historyEntryId: number): Promise<TuneProfile>
+  getBoardConfigRevisions(boardId: string, limit?: number | null): Promise<BoardConfigRevision[]>
+  planBoardConfigRevert(boardId: string, revisionId: number): Promise<BoardConfigRevertPlan>
+  exportBoardConfigXml(boardId: string): Promise<string>
+  planBoardConfigXmlImport(boardId: string, xml: string): Promise<BoardConfigXmlImportPlan>
   copyProfileToBoard(
     profileId: string,
     targetBoardId: string,
@@ -2530,7 +2642,13 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     profileId: string,
     fields: Record<string, TuneProfileFieldValue>,
   ): Promise<TuneProfile>
-  pushProfileToBoard(profileId: string, fieldIds: string[]): Promise<RefloatConfigSnapshot>
+  applyBoardConfigChangeset(
+    boardId: string,
+    changes: Record<string, TuneProfileFieldValue>,
+    source?: Exclude<BoardConfigRevisionSource, 'external'> | null,
+    expectedSchemaHash?: string | null,
+  ): Promise<BoardConfigValues>
+  pushProfileToBoard(profileId: string): Promise<BoardConfigValues>
   getProfileStatsSnapshot(options: ProfileStatsSnapshotOptions): Promise<ProfileStatsSnapshot>
   getDayStats(day: RideDay): Promise<ProfileStats>
   getRecentRideStats(sinceMs: number): Promise<ProfileStats>
@@ -3421,6 +3539,14 @@ export async function getLastKnownBoardConfigValues(
 }
 
 /**
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigSchema`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigSchema`
+ */
+export async function getBoardConfigSchema(schemaHash: string): Promise<BoardConfigSchema | null> {
+  return native.getBoardConfigSchema(schemaHash)
+}
+
+/**
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
  */
@@ -3514,8 +3640,10 @@ export async function restoreDatabase(uri: string): Promise<void> {
   return native.restoreDatabase(uri)
 }
 
-export async function getRefloatConfigSnapshot(): Promise<RefloatConfigSnapshot> {
-  return native.getRefloatConfigSnapshot()
+// @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshBoardConfigValues`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshBoardConfigValues`
+export async function refreshBoardConfigValues(): Promise<BoardConfigValues> {
+  return native.refreshBoardConfigValues()
 }
 
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setRemoteTilt`
@@ -3612,15 +3740,45 @@ export async function deleteProfile(profileId: string): Promise<void> {
   return native.deleteProfile(profileId)
 }
 
-export async function getProfileHistory(profileId: string): Promise<TuneHistoryEntry[]> {
-  return native.getProfileHistory(profileId)
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigRevisions`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigRevisions`
+ */
+export async function getBoardConfigRevisions(
+  boardId: string,
+  limit?: number,
+): Promise<BoardConfigRevision[]> {
+  return native.getBoardConfigRevisions(boardId, limit ?? null)
 }
 
-export async function rollbackProfile(
-  profileId: string,
-  historyEntryId: number,
-): Promise<TuneProfile> {
-  return native.rollbackProfile(profileId, historyEntryId)
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `planBoardConfigRevert`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigRevert`
+ */
+export async function planBoardConfigRevert(
+  boardId: string,
+  revisionId: number,
+): Promise<BoardConfigRevertPlan> {
+  return native.planBoardConfigRevert(boardId, revisionId)
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportBoardConfigXml`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportBoardConfigXml`
+ */
+export async function exportBoardConfigXml(boardId: string): Promise<string> {
+  return native.exportBoardConfigXml(boardId)
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `planBoardConfigXmlImport`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigXmlImport`
+ */
+export async function planBoardConfigXmlImport(
+  boardId: string,
+  xml: string,
+): Promise<BoardConfigXmlImportPlan> {
+  return native.planBoardConfigXmlImport(boardId, xml)
 }
 
 export async function copyProfileToBoard(
@@ -3639,14 +3797,29 @@ export async function saveProfile(
 }
 
 /**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyBoardConfigChangeset`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyBoardConfigChangeset`
+ */
+export async function applyBoardConfigChangeset(
+  boardId: string,
+  changes: Record<string, TuneProfileFieldValue>,
+  source?: Exclude<BoardConfigRevisionSource, 'external'>,
+  expectedSchemaHash?: string | null,
+): Promise<BoardConfigValues> {
+  return native.applyBoardConfigChangeset(
+    boardId,
+    changes,
+    source ?? null,
+    expectedSchemaHash ?? null,
+  )
+}
+
+/**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `pushProfileToBoard`
  */
-export async function pushProfileToBoard(
-  profileId: string,
-  fieldIds: string[],
-): Promise<RefloatConfigSnapshot> {
-  return native.pushProfileToBoard(profileId, fieldIds)
+export async function pushProfileToBoard(profileId: string): Promise<BoardConfigValues> {
+  return native.pushProfileToBoard(profileId)
 }
 
 export async function getProfileStatsSnapshot(

@@ -284,6 +284,32 @@ final class VescProtocolTests: XCTestCase {
     XCTAssertNil(parseBmsValues(tooShort, packetAt: 1))
   }
 
+  func testLightsEchoFilteredByExpectedTransportAndCanId() {
+    let unwrapped: [UInt8] = [
+      UInt8(COMM_CUSTOM_APP_DATA),
+      UInt8(REFLOAT_MAGIC),
+      UInt8(REFLOAT_LIGHTS_CONTROL),
+      3,
+    ]
+    let wrappedCan7: [UInt8] = [UInt8(COMM_FORWARD_CAN), 7] + unwrapped
+    let wrappedCan9: [UInt8] = [UInt8(COMM_FORWARD_CAN), 9] + unwrapped
+
+    XCTAssertEqual(
+      BoardLightsState(enabled: true, headlightsEnabled: true),
+      parseLightsControlResponse(unwrapped, transport: .direct)
+    )
+    XCTAssertNil(parseLightsControlResponse(wrappedCan7, transport: .direct))
+    XCTAssertEqual(
+      BoardLightsState(enabled: true, headlightsEnabled: true),
+      parseLightsControlResponse(wrappedCan7, transport: .can(7))
+    )
+    XCTAssertNil(parseLightsControlResponse(wrappedCan9, transport: .can(7)))
+    XCTAssertEqual(
+      BoardLightsState(enabled: true, headlightsEnabled: true),
+      parseLightsControlResponse(unwrapped, transport: .can(7))
+    )
+  }
+
   private func putInt16(_ bytes: inout [UInt8], _ offset: Int, _ value: Int) {
     let raw = UInt16(bitPattern: Int16(value))
     bytes[offset] = UInt8((raw >> 8) & 0xff)

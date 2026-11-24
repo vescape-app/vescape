@@ -1,0 +1,136 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import * as DocumentPicker from 'expo-document-picker'
+import { File, Paths } from 'expo-file-system'
+import * as Sharing from 'expo-sharing'
+import {
+  exportBoardConfigXml,
+  planBoardConfigXmlImport,
+  type BoardConfigSchema,
+  type BoardConfigXmlImportPlan,
+} from 'vescape-core'
+
+import { errorMessage } from '@/helpers/error'
+import type { TemperatureUnit } from '@/helpers/units'
+import { buildBoardConfigReviewEntries } from '@/modules/board/lib/boardConfigChangeset'
+import { buildExportXmlFilename } from '@/screens/board-config/boardConfigXmlHelpers'
+
+export {
+  applyReviewedBoardConfigChangeset,
+  resolveReviewModalState,
+} from '@/screens/board-config/boardConfigXmlHelpers'
+
+interface UseBoardConfigXmlTransferOptions {
+  boardId: string | undefined
+  boardName: string | undefined
+  canEdit: boolean
+  currentValues: Readonly<Record<string, number | boolean | undefined>> | undefined
+  schema: BoardConfigSchema | null
+  schemaHash: string | null | undefined
+  refloatBaseVersion: string | null | undefined
+  temperatureUnit: TemperatureUnit
+  onCloseOptions: () => void
+  onResetApplyError: () => void
+}
+
+export function useBoardConfigXmlTransfer({
+  boardId,
+  boardName,
+  canEdit,
+  currentValues,
+  schema,
+  schemaHash,
+  refloatBaseVersion,
+  temperatureUnit,
+  onCloseOptions,
+  onResetApplyError,
+}: UseBoardConfigXmlTransferOptions) {
+  const [importPlan, setImportPlan] = useState<BoardConfigXmlImportPlan | null>(null)
+  const [xmlNotice, setXmlNotice] = useState<string | null>(null)
+  const [xmlError, setXmlError] = useState<string | null>(null)
+  const [xmlBusy, setXmlBusy] = useState(false)
+
+  useEffect(() => {
+    setImportPlan(null)
+  }, [boardId, schemaHash])
+
+  const importReviewEntries = useMemo(
+    () =>
+      currentValues && importPlan
+        ? buildBoardConfigReviewEntries({
+            changes: importPlan.changes,
+            currentValues,
+            schema,
+            refloatBaseVersion,
+            temperatureUnit,
+          })
+        : [],
+    [currentValues, importPlan, refloatBaseVersion, schema, temperatureUnit],
+  )
+
+  const handleExportXml = useCallback(async () => {
+    if (!boardId || !canEdit || xmlBusy) return
+    onCloseOptions()
+    setXmlBusy(true)
+    setXmlError(null)
+    setXmlNotice(null)
+    try {
+      const xml = await exportBoardConfigXml(boardId)
+      const file = new File(Paths.cache, buildExportXmlFilename(boardName))
+      file.write(xml)
+      await Sharing.shareAsync(file.uri, {
+        mimeType: 'application/xml',
+        dialogTitle: 'Export VESC XML config',
+        UTI: 'public.xml',
+      })
+    } catch (err) {
+      setXmlError(errorMessage(err, 'Board configuration XML could not be exported.'))
+    } finally {
+      setXmlBusy(false)
+    }
+  }, [boardId, boardName, canEdit, onCloseOptions, xmlBusy])
+
+  const handleImportXml = useCallback(async () => {
+    if (!boardId || !canEdit || xmlBusy) return
+    onCloseOptions()
+    setXmlBusy(true)
+    setXmlError(null)
+    setXmlNotice(null)
+    onResetApplyError()
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/xml', 'text/xml', '*/*'],
+        copyToCacheDirectory: true,
+      })
+      if (result.canceled) return
+      const asset = result.assets[0]
+      if (!asset?.uri) throw new Error('No XML file selected.')
+      const xml = await new File(asset.uri).text()
+      const plan = await planBoardConfigXmlImport(boardId, xml)
+      if (Object.keys(plan.changes).length === 0 && plan.skippedFields.length === 0) {
+        setXmlNotice('Board already matches this XML config.')
+        return
+      }
+      setImportPlan(plan)
+    } catch (err) {
+      setXmlError(errorMessage(err, 'Board configuration XML could not be imported.'))
+    } finally {
+      setXmlBusy(false)
+    }
+  }, [boardId, canEdit, onCloseOptions, onResetApplyError, xmlBusy])
+
+  const clearImportPlan = useCallback(() => {
+    setImportPlan(null)
+  }, [])
+
+  return {
+    importPlan,
+    importReviewEntries,
+    xmlNotice,
+    xmlError,
+    canTransferXml: canEdit && !xmlBusy,
+    setXmlNotice,
+    clearImportPlan,
+    handleExportXml,
+    handleImportXml,
+  }
+}

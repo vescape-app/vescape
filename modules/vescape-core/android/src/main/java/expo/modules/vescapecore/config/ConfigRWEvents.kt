@@ -18,12 +18,13 @@ internal sealed class ConfigRWEvent {
         val canId: Int?,
         val transport: BoardTransport,
         val wasPolling: Boolean,
-        val profileFields: Map<String, Any>,
+        val intent: ConfigWriteIntent,
         val appBoardId: String?,
         val fwVersion: String?,
         val refloatBaseVersion: String?,
         val refloatVersion: String?,
         val writeBase: BoardConfigWriteBase?,
+        val startedAtMs: Long = System.currentTimeMillis(),
     ) : ConfigRWEvent()
 
     data class XmlPayloadReceived(val payload: ByteArray) : ConfigRWEvent()
@@ -35,13 +36,21 @@ internal sealed class ConfigRWEvent {
         val capturedAtMs: Long,
     ) : ConfigRWEvent()
 
+    data class RideStateReceived(
+        val rideState: BoardRideState,
+        val nowMs: Long,
+    ) : ConfigRWEvent()
+
     data class SetConfigResponseReceived(val payload: ByteArray) : ConfigRWEvent()
 
     data class Timeout(val code: RefloatConfigErrorCode) : ConfigRWEvent()
 
     data class GattWriteFailed(val message: String) : ConfigRWEvent()
 
-    data class SetConfigBlocked(val message: String) : ConfigRWEvent()
+    data class SetConfigBlocked(
+        val message: String,
+        val code: RefloatConfigErrorCode = RefloatConfigErrorCode.BOARD_NOT_IDLE,
+    ) : ConfigRWEvent()
 
     data class SessionTerminated(val reason: String) : ConfigRWEvent()
 }

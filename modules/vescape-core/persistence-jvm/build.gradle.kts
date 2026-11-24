@@ -22,7 +22,15 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/alerts/SoundSampleQueue.kt",
       "expo/modules/vescapecore/warnings/BoardWarningSeverity.kt",
       "expo/modules/vescapecore/config/BoardConfigChangeNotice.kt",
+      "expo/modules/vescapecore/config/BoardConfigFields.kt",
+      "expo/modules/vescapecore/config/BoardConfigRevertPlanner.kt",
+      "expo/modules/vescapecore/config/BoardConfigValues.kt",
+      "expo/modules/vescapecore/config/RefloatConfigEncoder.kt",
+      "expo/modules/vescapecore/config/RefloatConfigModels.kt",
       "expo/modules/vescapecore/config/RefloatConfigSchema.kt",
+      "expo/modules/vescapecore/config/RefloatConfigFieldDecoder.kt",
+      "expo/modules/vescapecore/config/RefloatFieldOverlay.kt",
+      "expo/modules/vescapecore/protocol/VescNumeric.kt",
       "expo/modules/vescapecore/database/DatabaseEntities.kt",
       "expo/modules/vescapecore/weather/WeatherAlertDefaults.kt",
       "expo/modules/vescapecore/navigation/RerouteDistance.kt",
@@ -86,4 +94,4 @@ tasks.withType<Test>().configureEach {
   outputs.cacheIf { false }
 }
 
-sourceSets.main { resources { srcDirs("../shared", "../../../shared/data"); include("alert-preset-definitions.json", "cell-presets.json") } }
+sourceSets.main { resources { srcDirs("../shared", "../../../shared/data"); include("alert-preset-definitions.json", "cell-presets.json", "refloat-field-overlay.json") } }

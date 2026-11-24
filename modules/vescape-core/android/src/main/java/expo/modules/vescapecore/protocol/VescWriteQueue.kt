@@ -13,7 +13,8 @@ internal class VescWriteQueue {
         data class RemoteInput(override val bytes: ByteArray) : Write
     }
 
-    private val normal = ArrayDeque<ByteArray>()
+    private data class NormalEntry(val bytes: ByteArray, val tag: String? = null)
+    private val normal = ArrayDeque<NormalEntry>()
     private data class RemoteInput(val bytes: ByteArray, val urgent: Boolean)
 
     private var pendingRemoteInput: RemoteInput? = null
@@ -21,6 +22,7 @@ internal class VescWriteQueue {
     private var preferRemoteInput = false
 
     private var frame: Write? = null
+    private var frameTag: String? = null
     private var frameOffset = 0
     private var inFlightOffset = 0
     private var chunkLimit = DEFAULT_CHUNK_LIMIT
@@ -31,8 +33,28 @@ internal class VescWriteQueue {
     }
 
     @Synchronized
-    fun enqueueNormal(bytes: ByteArray) {
-        normal.addLast(bytes)
+    fun enqueueNormal(bytes: ByteArray, tag: String? = null) {
+        normal.addLast(NormalEntry(bytes, tag))
+    }
+
+    @Synchronized
+    fun dropNormal(tag: String): Int {
+        var dropped = 0
+        val iterator = normal.iterator()
+        while (iterator.hasNext()) {
+            if (iterator.next().tag == tag) {
+                iterator.remove()
+                dropped++
+            }
+        }
+        if (frameTag == tag) {
+            frame = null
+            frameTag = null
+            frameOffset = 0
+            inFlightOffset = 0
+            dropped++
+        }
+        return dropped
     }
 
     @Synchronized
@@ -65,11 +87,13 @@ internal class VescWriteQueue {
         val next = if (remoteInput != null && (remoteInput.urgent || normal.isEmpty() || preferRemoteInput)) {
             pendingRemoteInput = null
             preferRemoteInput = false
+            frameTag = null
             Write.RemoteInput(remoteInput.bytes)
         } else {
-            val bytes = normal.removeFirstOrNull() ?: return null
+            val entry = normal.removeFirstOrNull() ?: return null
             preferRemoteInput = true
-            Write.Normal(bytes)
+            frameTag = entry.tag
+            Write.Normal(entry.bytes)
         }
         frame = next
         frameOffset = 0
@@ -80,7 +104,10 @@ internal class VescWriteQueue {
     fun completeInFlight(failed: Boolean = false): Write? {
         val completed = inFlight
         inFlight = null
-        if (failed || frameOffset >= (frame?.bytes?.size ?: 0)) frame = null
+        if (failed || frameOffset >= (frame?.bytes?.size ?: 0)) {
+            frame = null
+            frameTag = null
+        }
         return completed
     }
 
@@ -88,18 +115,19 @@ internal class VescWriteQueue {
     fun retryInFlight() {
         if (inFlight == null) return
         inFlight = null
+        val refused = frame ?: return
         if (inFlightOffset > 0) {
             frameOffset = inFlightOffset
             return
         }
-        when (val refused = frame) {
-            is Write.Normal -> normal.addFirst(refused.bytes)
+        when (refused) {
+            is Write.Normal -> normal.addFirst(NormalEntry(refused.bytes, frameTag))
             is Write.RemoteInput -> if (pendingRemoteInput == null) {
                 pendingRemoteInput = RemoteInput(refused.bytes, urgent = false)
             }
-            null -> Unit
         }
         frame = null
+        frameTag = null
     }
 
     @Synchronized
@@ -109,6 +137,7 @@ internal class VescWriteQueue {
         inFlight = null
         preferRemoteInput = false
         frame = null
+        frameTag = null
         frameOffset = 0
         inFlightOffset = 0
         chunkLimit = DEFAULT_CHUNK_LIMIT

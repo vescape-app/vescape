@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { searchBoardConfig } from '@/modules/board/lib/searchBoardConfig'
-import { APP_TUNE_GROUPS } from '@/modules/tune/lib/fields'
+import { REFLOAT_FIELD_OVERLAY } from '@/modules/board/lib/refloatFieldOverlay'
 import { BOARD_CONFIG_TABS } from '@/modules/board/constants/boardConfigTabs'
 import { boardConfigTabs } from './boardConfigGroups'
 
@@ -10,7 +10,11 @@ const allRefloat = Object.fromEntries(
     ...BOARD_CONFIG_TABS.flatMap((tab) =>
       tab.groups.filter((group) => group.source === 'refloat').flatMap((group) => group.rows),
     ).map((row) => row.id),
-    ...APP_TUNE_GROUPS.flatMap((group) => group.fields.map((field) => field.id)),
+    ...Object.keys(REFLOAT_FIELD_OVERLAY),
+    'leds.front.brightness',
+    'leds.rear.brightness',
+    'leds.front.mode',
+    'hardware.leds.pin',
   ].map((id) => [id, 0]),
 )
 const allMotor = Object.fromEntries(

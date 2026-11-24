@@ -31,6 +31,7 @@ import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
 import { BoardSelectorSheetShowcase } from '@/screens/showcase/board/BoardSelectorSheetShowcase'
 import { BoardAttitudeIndicatorShowcase } from '@/screens/showcase/board/BoardAttitudeIndicatorShowcase'
 import { BoardConfigChangeNoticeShowcase } from '@/screens/showcase/board/BoardConfigChangeNoticeShowcase'
+import { BoardConfigEditorShowcase } from '@/screens/showcase/board/BoardConfigEditorShowcase'
 import { ImuAttitudeDialShowcase } from '@/screens/showcase/board/ImuAttitudeDialShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { GpsStatusPillShowcase } from '@/screens/showcase/board/GpsStatusPillShowcase'
@@ -428,6 +429,7 @@ const CONFIG_SECTION_VALUES = {
 
 function BoardConfigSectionShowcase() {
   const [state, setState] = useState('fresh')
+  const [variant, setVariant] = useState<'plain' | 'card'>('plain')
   const [showFreshness, setShowFreshness] = useState(true)
   const [showDescriptions, setShowDescriptions] = useState(true)
 
@@ -436,6 +438,12 @@ function BoardConfigSectionShowcase() {
       name="BoardConfigSection"
       controls={
         <>
+          <ChipRow
+            label="variant"
+            options={['plain', 'card']}
+            selected={variant}
+            onSelect={(next) => setVariant(next as 'plain' | 'card')}
+          />
           <ChipRow
             label="state"
             options={['fresh', 'last known', 'empty']}
@@ -452,6 +460,7 @@ function BoardConfigSectionShowcase() {
       }
     >
       <BoardConfigSection
+        variant={variant}
         showFreshness={showFreshness}
         title="Motor config"
         rows={MOTOR_TEMP_CONFIG_ROWS}
@@ -463,6 +472,7 @@ function BoardConfigSectionShowcase() {
         empty="No motor config read from this board yet. Connect it to read its cutoffs."
       />
       <BoardConfigSection
+        variant={variant}
         title="Footpad and dismount"
         showDescriptions={showDescriptions}
         showFreshness={false}
@@ -475,6 +485,7 @@ function BoardConfigSectionShowcase() {
         }}
       />
       <BoardConfigSection
+        variant={variant}
         title="Startup"
         showDescriptions={showDescriptions}
         showFreshness={false}
@@ -513,6 +524,7 @@ export default function BoardComponentsPage() {
         <RimTempArcShowcase />
         <LiveMetricCardShowcase />
         <BoardConfigChangeNoticeShowcase />
+        <BoardConfigEditorShowcase />
         <BoardConfigSectionShowcase />
       </PageScrollView>
     </SafeAreaView>

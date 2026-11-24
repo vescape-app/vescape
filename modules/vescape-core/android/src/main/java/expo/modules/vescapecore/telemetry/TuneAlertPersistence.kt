@@ -3,15 +3,11 @@ package expo.modules.vescapecore.telemetry
 import expo.modules.vescapecore.alerts.AlertPresetSpec
 import org.json.JSONObject
 import expo.modules.vescapecore.database.AlertRuleEntity
-import expo.modules.vescapecore.database.TuneHistoryEntryEntity
 import expo.modules.vescapecore.database.TuneProfileEntity
 import expo.modules.vescapecore.database.VescapeDao
 
 internal class TuneAlertPersistence(private val dao: VescapeDao) {
-  suspend fun createProfile(profile: TuneProfileEntity): TuneProfileEntity = dao.createTuneProfile(
-    profile,
-    TuneHistoryEntryEntity(profileId = profile.id, fieldsJson = profile.fieldsJson, createdAt = profile.createdAt),
-  )
+  suspend fun createProfile(profile: TuneProfileEntity): TuneProfileEntity = dao.createTuneProfile(profile)
 
   suspend fun saveProfile(profileId: String, fieldsJson: String, updatedAt: Long): TuneProfileEntity =
     dao.saveTuneProfile(profileId, fieldsJson, updatedAt)
@@ -19,9 +15,6 @@ internal class TuneAlertPersistence(private val dao: VescapeDao) {
   suspend fun profile(id: String): TuneProfileEntity? = dao.getTuneProfile(id)?.also { JSONObject(it.fieldsJson) }
   suspend fun profiles(boardId: String, compatibility: String): List<TuneProfileEntity> =
     dao.getTuneProfilesByBoard(boardId, compatibility).also { profiles -> profiles.forEach { JSONObject(it.fieldsJson) } }
-  suspend fun history(profileId: String): List<TuneHistoryEntryEntity> = dao.getTuneHistoryEntries(profileId).also { entries ->
-    entries.forEach { JSONObject(it.fieldsJson) }
-  }
 
   suspend fun saveAlert(rule: AlertRuleEntity) = dao.upsertAlertRule(riderRule(rule))
   suspend fun alertRules(boardId: String, reportPresetFailure: (Throwable) -> Unit): List<AlertRuleEntity> =

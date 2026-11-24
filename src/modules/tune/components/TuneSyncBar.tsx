@@ -12,13 +12,15 @@ import {
   WarningCircleIcon,
 } from 'phosphor-react-native'
 
-import type { SyncBarState } from '@/modules/tune/lib/syncBarState'
+import { formatDriftSummary, type SyncBarState } from '@/modules/tune/lib/syncBarState'
 import { theme } from '@/constants/theme'
 
 interface TuneSyncBarProps {
   state: SyncBarState | null
   onSave: () => void
   onSaveAndSync: () => void
+  onRetryPendingSync?: () => void
+  onDiscardPendingSync?: () => void
   onSync: () => void
   onUpdateTune: () => void
   onDiscard: () => void
@@ -30,6 +32,8 @@ export function TuneSyncBar({
   state,
   onSave,
   onSaveAndSync,
+  onRetryPendingSync,
+  onDiscardPendingSync,
   onSync,
   onUpdateTune,
   onDiscard,
@@ -225,6 +229,40 @@ export function TuneSyncBar({
             },
           ],
         }
+      case 'retry_sync': {
+        const count = s.pendingSyncCount ?? 1
+        return {
+          borderColor: theme.status.warning.border,
+          textColor: theme.status.warning.text,
+          accentColor: theme.status.warning.color,
+          accentTextColor: theme.neutral.surfaceDeep,
+          text: `${count} change${count === 1 ? '' : 's'} not sent to board`,
+          detail: 'Saved to profile · retry without overwriting other settings',
+          icon: <WarningCircleIcon size={16} color={theme.status.warning.color} weight="bold" />,
+          actions: [
+            {
+              label: 'Discard',
+              primary: false,
+              icon: (
+                <ArrowCounterClockwiseIcon
+                  size={12}
+                  color={theme.neutral.textSecondary}
+                  weight="bold"
+                />
+              ),
+              onPress: onDiscardPendingSync ?? onDiscard,
+            },
+            {
+              label: 'Retry sync',
+              primary: true,
+              icon: (
+                <ArrowsClockwiseIcon size={12} color={theme.neutral.surfaceDeep} weight="bold" />
+              ),
+              onPress: onRetryPendingSync ?? onSaveAndSync,
+            },
+          ],
+        }
+      }
       case 'sync_with_board':
         return {
           borderColor: theme.palette.sky.border,
@@ -232,7 +270,7 @@ export function TuneSyncBar({
           accentColor: theme.palette.sky.color,
           accentTextColor: theme.neutral.surfaceDeep,
           text: `${s.diffCount} field${s.diffCount === 1 ? '' : 's'} differ from board`,
-          detail: null,
+          detail: formatDriftSummary(s.diffLabels),
           icon: <ArrowsClockwiseIcon size={16} color={theme.palette.sky.color} weight="bold" />,
           actions: [
             {
