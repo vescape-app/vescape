@@ -4,7 +4,7 @@ import PackagePlugin
 @main
 struct SharedResourcesPlugin: BuildToolPlugin {
   func createBuildCommands(context: PluginContext, target: Target) throws -> [Command] {
-    ["alert-preset-definitions.json", "cell-presets.json"].map { name in
+    ["alert-preset-definitions.json", "cell-presets.json", "refloat-field-overlay.json"].map { name in
       let link = context.package.directory.appending("ios").appending(name)
       let source = Path(URL(fileURLWithPath: link.string).resolvingSymlinksInPath().path)
       let output = context.pluginWorkDirectory.appending(name)

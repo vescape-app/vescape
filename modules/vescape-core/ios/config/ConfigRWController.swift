@@ -425,16 +425,14 @@ internal final class ConfigRWController {
   ) {
     do {
       let schema = try RefloatConfigSchemaParser.parse(xmlBytes)
-      let snapshot = try RefloatConfigDecoder.decode(
-        schema: schema,
-        rawConfig: configBytes.config,
-        boardId: ctx.appBoardId,
-        canId: ctx.canId,
-        capturedAt: nowMs(),
-        fwVersion: ctx.fwVersion,
-        refloatVersion: ctx.refloatVersion
+      let values = try boardConfigValues(
+        schema,
+        configBytes,
+        ctx.appBoardId,
+        connection,
+        refloatBaseVersion: connection.refloatBaseVersion ?? RefloatConfigProtocol.normalizeBaseVersion(ctx.refloatVersion)
       )
-      complete(snapshot, boardConfigValues(schema, configBytes, ctx.appBoardId, connection), connection)
+      complete(values, connection)
     } catch let error as RefloatConfigSchemaException {
       fail(code: .UNSUPPORTED_SCHEMA, message: error.message, rawConfig: configBytes.config, connection: connection)
     } catch let error as RefloatConfigDecodeException {
@@ -475,17 +473,14 @@ internal final class ConfigRWController {
       let changes = resolveChanges(ctx.intent, schema: schema)
       let encoded = try RefloatConfigEncoder.encodeChangeset(schema: schema, rawConfig: rawConfig, changes: changes)
       if encoded.changedFieldIds.isEmpty {
-        let snapshot = try RefloatConfigDecoder.decode(
-          schema: schema,
-          rawConfig: rawConfig,
-          boardId: ctx.appBoardId,
-          canId: ctx.canId,
-          capturedAt: capturedAtMs,
-          fwVersion: ctx.fwVersion,
-          refloatVersion: ctx.refloatVersion
+        let values = try boardConfigValues(schema, configBytes, ctx.appBoardId, connection, capturedAtMs: capturedAtMs)
+        completeWrite(
+          values,
+          origin: .freshRead,
+          emitBoardConfigValues: fromFreshRead,
+          resumePolling: ctx.wasPolling,
+          connection
         )
-        let freshValues = fromFreshRead ? boardConfigValues(schema, configBytes, ctx.appBoardId, connection) : nil
-        completeWrite(snapshot, freshValues, origin: .freshRead, resumePolling: ctx.wasPolling, connection)
         return
       }
       if let reason = idleBlockReason(connection, writeStartedAtMs) {
@@ -539,16 +534,8 @@ internal final class ConfigRWController {
       break
     }
     do {
-      let snapshot = try RefloatConfigDecoder.decode(
-        schema: schema,
-        rawConfig: boardConfig.config,
-        boardId: ctx.appBoardId,
-        canId: ctx.canId,
-        capturedAt: nowMs(),
-        fwVersion: ctx.fwVersion,
-        refloatVersion: ctx.refloatVersion
-      )
-      completeWrite(snapshot, boardConfigValues(schema, boardConfig, ctx.appBoardId, connection), connection)
+      let values = try boardConfigValues(schema, boardConfig, ctx.appBoardId, connection)
+      completeWrite(values, connection)
     } catch let error as RefloatConfigDecodeException {
       failWrite(code: .CONFIG_VERIFY_FAILED, message: error.message, phase: .verifying, rawConfig: original, connection: connection)
     } catch {
@@ -560,18 +547,20 @@ internal final class ConfigRWController {
     _ schema: RefloatConfigSchema,
     _ configBytes: RefloatConfigBytes,
     _ boardId: String?,
-    _ connection: ConfigRWConnection
-  ) -> BoardConfigValues {
-    RefloatConfigDecoder.decodeBoardConfigValues(
+    _ connection: ConfigRWConnection,
+    capturedAtMs: Int64? = nil,
+    refloatBaseVersion: String? = nil
+  ) throws -> BoardConfigValues {
+    try RefloatConfigDecoder.decodeBoardConfigValues(
       schema: schema,
       configBytes: configBytes,
       boardId: boardId,
-      refloatBaseVersion: connection.refloatBaseVersion,
-      capturedAt: nowMs()
+      refloatBaseVersion: refloatBaseVersion ?? connection.refloatBaseVersion,
+      capturedAt: capturedAtMs ?? nowMs()
     )
   }
 
-  private func complete(_ snapshot: RefloatConfigSnapshot, _ values: BoardConfigValues, _ connection: ConfigRWConnection) {
+  private func complete(_ values: BoardConfigValues, _ connection: ConfigRWConnection) {
     let pending = readCallbacks
     readCallbacks = []
     let resume = currentResumePolling
@@ -579,14 +568,14 @@ internal final class ConfigRWController {
     cancelTimeout()
     if resume { connection.startPolling() }
     connection.onBoardConfigValues(values, .freshRead)
-    let map = snapshot.toMap()
+    let map = values.toBridgeMap()
     for callbacks in pending { callbacks.onSuccess(map) }
   }
 
   private func completeWrite(
-    _ snapshot: RefloatConfigSnapshot,
-    _ values: BoardConfigValues?,
+    _ values: BoardConfigValues,
     origin: BoardConfigOperationOrigin = .vescapeWrite,
+    emitBoardConfigValues: Bool = true,
     resumePolling: Bool? = nil,
     _ connection: ConfigRWConnection
   ) {
@@ -596,8 +585,8 @@ internal final class ConfigRWController {
     state = .idle
     cancelTimeout()
     if resume { connection.startPolling() }
-    if let values { connection.onBoardConfigValues(values, origin) }
-    pending?.onSuccess(snapshot.toMap())
+    if emitBoardConfigValues { connection.onBoardConfigValues(values, origin) }
+    pending?.onSuccess(values.toBridgeMap())
   }
 
   private func fail(

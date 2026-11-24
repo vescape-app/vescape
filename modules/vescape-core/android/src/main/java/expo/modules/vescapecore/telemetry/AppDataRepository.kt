@@ -9,7 +9,6 @@ import expo.modules.vescapecore.config.MotorConfigValues
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
 import expo.modules.vescapecore.config.RefloatConfigSchema
 import expo.modules.vescapecore.recording.RecordingStorageFailure
-import expo.modules.vescapecore.config.RefloatConfigSnapshot
 
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 
@@ -1096,16 +1095,6 @@ fun TuneHistoryEntryEntity.toMap(): Map<String, Any?> = mapOf(
   "fields" to fieldsJson.toJsonMap(),
   "createdAt" to createdAt,
 )
-
-private fun RefloatConfigSnapshot.fieldsJson(): String {
-  val json = JSONObject()
-  groups.forEach { group ->
-    group.fields.forEach { field ->
-      json.put(field.id, field.value)
-    }
-  }
-  return json.toString()
-}
 
 private fun Map<String, Any?>.toJsonObject(): JSONObject {
   val json = JSONObject()

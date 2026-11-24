@@ -26,19 +26,24 @@ enum RefloatConfigEncoder {
   static func encode(
     schema: RefloatConfigSchema,
     rawConfig: [UInt8],
-    fields: [String: Any]
+    fields: [String: Any],
+    overlay: RefloatFieldOverlay = .shared
   ) throws -> [UInt8] {
-    try encodeChangeset(schema: schema, rawConfig: rawConfig, changes: fields).rawConfig
+    try encodeChangeset(schema: schema, rawConfig: rawConfig, changes: fields, overlay: overlay).rawConfig
   }
 
   static func encodeChangeset(
     schema: RefloatConfigSchema,
     rawConfig: [UInt8],
-    changes: [String: Any]
+    changes: [String: Any],
+    overlay: RefloatFieldOverlay = .shared
   ) throws -> EncodedChangeset {
     let byId = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
     let validated: [(RefloatConfigSchemaField, [UInt8])] = try changes.map { fieldId, value in
       guard let field = byId[fieldId] else { throw invalid("unknown field \(fieldId)") }
+      if overlay.isInternal(field.id) {
+        throw invalid("\(field.id) is internal and cannot be edited")
+      }
       if value is NSNull { throw invalid("\(field.id) cannot be null") }
       let size = field.type.byteSize
       if field.offset < 0 || rawConfig.count < field.offset + size {
@@ -47,7 +52,7 @@ enum RefloatConfigEncoder {
           "config length \(rawConfig.count) < \(field.offset + size) for \(field.id)"
         )
       }
-      let bytes = try encodeAndVerifyField(field, value)
+      let bytes = try encodeAndVerifyField(field, value, overlay: overlay)
       return (field, bytes)
     }
 
@@ -86,7 +91,10 @@ enum RefloatConfigEncoder {
     )
   }
 
-  static func effectiveRange(_ field: RefloatConfigSchemaField) throws -> FieldNumericRange? {
+  static func effectiveRange(
+    _ field: RefloatConfigSchemaField,
+    overlay: RefloatFieldOverlay = .shared
+  ) throws -> FieldNumericRange? {
     if field.type == .bool { return nil }
     let wireMin: Double
     let wireMax: Double
@@ -123,13 +131,21 @@ enum RefloatConfigEncoder {
     case .bool:
       return nil
     }
-    let minVal = field.min.flatMap { $0.isFinite ? max(wireMin, $0) : nil } ?? wireMin
-    let maxVal = field.max.flatMap { $0.isFinite ? min(wireMax, $0) : nil } ?? wireMax
+    var minVal = field.min.flatMap { $0.isFinite ? max(wireMin, $0) : nil } ?? wireMin
+    var maxVal = field.max.flatMap { $0.isFinite ? min(wireMax, $0) : nil } ?? wireMax
+    if let overlayEntry = overlay.entry(field.id) {
+      if let hardMin = overlayEntry.hardMin, hardMin.isFinite { minVal = max(minVal, hardMin) }
+      if let hardMax = overlayEntry.hardMax, hardMax.isFinite { maxVal = min(maxVal, hardMax) }
+    }
     return FieldNumericRange(min: minVal, max: maxVal)
   }
 
-  private static func encodeAndVerifyField(_ field: RefloatConfigSchemaField, _ value: Any) throws -> [UInt8] {
-    let bits = try validateAndEncode(field, value)
+  private static func encodeAndVerifyField(
+    _ field: RefloatConfigSchemaField,
+    _ value: Any,
+    overlay: RefloatFieldOverlay
+  ) throws -> [UInt8] {
+    let bits = try validateAndEncode(field, value, overlay: overlay)
     let bytes = toBytes(size: field.type.byteSize, bits: bits)
     let decoded = try decodeWireBytes(field, bytes)
     let roundTripBits = try encodeWireBits(field, decoded)
@@ -189,7 +205,11 @@ enum RefloatConfigEncoder {
     }
   }
 
-  private static func validateAndEncode(_ field: RefloatConfigSchemaField, _ value: Any) throws -> UInt64 {
+  private static func validateAndEncode(
+    _ field: RefloatConfigSchemaField,
+    _ value: Any,
+    overlay: RefloatFieldOverlay
+  ) throws -> UInt64 {
     if field.type == .bool {
       return try bool(field, value) ? 1 : 0
     }
@@ -202,7 +222,7 @@ enum RefloatConfigEncoder {
         throw invalid("\(field.id) = \(n) is outside enum range 0...\(field.enumNames.count - 1)")
       }
     }
-    if let range = try effectiveRange(field), n < range.min || n > range.max {
+    if let range = try effectiveRange(field, overlay: overlay), n < range.min || n > range.max {
       throw invalid("\(field.id) = \(n) is outside effective range \(range.min)...\(range.max)")
     }
     return try encodeWireBits(field, n)

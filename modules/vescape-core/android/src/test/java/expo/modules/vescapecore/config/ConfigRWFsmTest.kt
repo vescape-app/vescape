@@ -84,10 +84,10 @@ class ConfigRWFsmTest {
         )
         assertSame(ConfigRWState.Idle, afterConfig)
         val complete = configEffects.filterIsInstance<ConfigRWEffect.EmitReadComplete>().single()
-        assertEquals(12345L, complete.snapshot.capturedAt)
+        assertEquals(12345L, complete.boardConfigValues.capturedAtMs)
         assertTrue(complete.resumePolling)
-        assertEquals(4, complete.snapshot.rawConfigLength)
-        assertEquals("Float/Refloat 1.2", complete.snapshot.refloatVersion)
+        assertEquals(4, complete.boardConfigValues.writeBase?.rawConfig?.size)
+        assertEquals("3.0", complete.boardConfigValues.refloatBaseVersion)
     }
 
     @Test
@@ -144,7 +144,7 @@ class ConfigRWFsmTest {
         )
         assertSame(ConfigRWState.Idle, afterVerify)
         val complete = verifyEffects.filterIsInstance<ConfigRWEffect.EmitWriteComplete>().single()
-        assertEquals(999L, complete.snapshot.capturedAt)
+        assertEquals(999L, complete.boardConfigValues.capturedAtMs)
     }
 
     @Test

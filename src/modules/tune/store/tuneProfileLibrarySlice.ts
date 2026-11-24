@@ -94,10 +94,11 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
         currentActive && isCompatibleProfile(currentActive, boardId, refloatBaseVersion)
           ? (profiles.find((profile) => profile.id === currentActive.id) ?? profiles[0] ?? null)
           : (profiles[0] ?? null)
+      const storeValues = useBoardConfigValuesStore.getState()
       const diff = boardDiff(
         activeProfile,
         get().boardFields,
-        schemaFieldMap(useBoardConfigValuesStore.getState().values?.schema),
+        schemaFieldMap(storeValues.values?.schema ?? storeValues.lastKnown?.schema),
       )
       set({
         profiles,

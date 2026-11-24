@@ -450,25 +450,6 @@ internal object ConfigRWFsm {
         }
     }
 
-    private fun decodeBoardConfig(
-        schema: RefloatConfigSchema,
-        configBytes: RefloatConfigBytes,
-        boardId: String?,
-        refloatBaseVersion: String?,
-        capturedAtMs: Long,
-    ): BoardConfigValues? =
-        try {
-            RefloatConfigDecoder.decodeBoardConfigValues(
-                schema = schema,
-                configBytes = configBytes,
-                boardId = boardId,
-                refloatBaseVersion = refloatBaseVersion,
-                capturedAt = capturedAtMs,
-            )
-        } catch (e: Exception) {
-            null
-        }
-
     private fun decodeAndCompleteRead(
         ctx: ReadContext,
         xmlBytes: ByteArray,
@@ -478,21 +459,18 @@ internal object ConfigRWFsm {
         val rawConfig = configBytes.config
         return try {
             val schema = RefloatConfigSchemaParser.parse(xmlBytes)
-            val snapshot = RefloatConfigDecoder.decode(
+            val boardConfigValues = RefloatConfigDecoder.decodeBoardConfigValues(
                 schema = schema,
-                rawConfig = rawConfig,
+                configBytes = configBytes,
                 boardId = ctx.appBoardId,
-                canId = ctx.canId,
+                refloatBaseVersion = ctx.refloatBaseVersion ?: RefloatConfigProtocol.normalizeBaseVersion(ctx.refloatVersion),
                 capturedAt = capturedAtMs,
-                fwVersion = ctx.fwVersion,
-                refloatVersion = ctx.refloatVersion,
             )
             ConfigRWState.Idle to listOf(
                 ConfigRWEffect.CancelTimeout,
                 ConfigRWEffect.EmitReadComplete(
-                    snapshot,
-                    ctx.wasPolling,
-                    decodeBoardConfig(schema, configBytes, ctx.appBoardId, ctx.refloatBaseVersion, capturedAtMs),
+                    boardConfigValues = boardConfigValues,
+                    resumePolling = ctx.wasPolling,
                 ),
             )
         } catch (e: RefloatConfigSchemaException) {
@@ -573,25 +551,20 @@ internal object ConfigRWFsm {
             val changes = resolveChanges(ctx.intent, schema)
             val encoded = RefloatConfigEncoder.encodeChangeset(schema, rawConfig, changes)
             if (encoded.changedFieldIds.isEmpty()) {
-                val snapshot = RefloatConfigDecoder.decode(
+                val values = RefloatConfigDecoder.decodeBoardConfigValues(
                     schema = schema,
-                    rawConfig = rawConfig,
+                    configBytes = configBytes,
                     boardId = ctx.appBoardId,
-                    canId = ctx.canId,
+                    refloatBaseVersion = ctx.refloatBaseVersion,
                     capturedAt = capturedAtMs,
-                    fwVersion = ctx.fwVersion,
-                    refloatVersion = ctx.refloatVersion,
                 )
-                val freshValues = if (fromFreshRead) {
-                    decodeBoardConfig(schema, configBytes, ctx.appBoardId, ctx.refloatBaseVersion, capturedAtMs)
-                } else null
                 return ConfigRWState.Idle to listOf(
                     ConfigRWEffect.CancelTimeout,
                     ConfigRWEffect.EmitWriteComplete(
-                        snapshot = snapshot,
+                        boardConfigValues = values,
                         resumePolling = ctx.wasPolling,
-                        boardConfigValues = freshValues,
                         origin = BoardConfigOperationOrigin.FRESH_READ,
+                        emitBoardConfigValues = fromFreshRead,
                     ),
                 )
             }
@@ -665,27 +638,18 @@ internal object ConfigRWFsm {
             is RefloatConfigWriteVerification.Success -> Unit
         }
         return try {
-            val snapshot = RefloatConfigDecoder.decode(
+            val values = RefloatConfigDecoder.decodeBoardConfigValues(
                 schema = state.schema,
-                rawConfig = rawConfigFromBoard,
+                configBytes = configFromBoard,
                 boardId = state.ctx.appBoardId,
-                canId = state.ctx.canId,
+                refloatBaseVersion = state.ctx.refloatBaseVersion,
                 capturedAt = capturedAtMs,
-                fwVersion = state.ctx.fwVersion,
-                refloatVersion = state.ctx.refloatVersion,
             )
             ConfigRWState.Idle to listOf(
                 ConfigRWEffect.CancelTimeout,
                 ConfigRWEffect.EmitWriteComplete(
-                    snapshot,
-                    state.ctx.wasPolling,
-                    decodeBoardConfig(
-                        state.schema,
-                        configFromBoard,
-                        state.ctx.appBoardId,
-                        state.ctx.refloatBaseVersion,
-                        capturedAtMs,
-                    ),
+                    boardConfigValues = values,
+                    resumePolling = state.ctx.wasPolling,
                 ),
             )
         } catch (e: RefloatConfigDecodeException) {

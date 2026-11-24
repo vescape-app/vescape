@@ -1120,9 +1120,11 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    AsyncFunction("getRefloatConfigSnapshot") { (promise: Promise) in
-      self.coordinator.getRefloatConfigSnapshot(
-        onSuccess: { snapshot in promise.resolve(snapshot) },
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshBoardConfigValues`
+    // @parity /modules/vescape-core/src/index.ts `refreshBoardConfigValues`
+    AsyncFunction("refreshBoardConfigValues") { (promise: Promise) in
+      self.coordinator.refreshBoardConfigValues(
+        onSuccess: { values in promise.resolve(values) },
         onError: { code, message in promise.reject(code, message) }
       )
     }

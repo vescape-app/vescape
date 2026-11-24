@@ -1,35 +1,25 @@
-import type { BoardConfigValues, RefloatConfigGroup, TuneProfileFieldValue } from 'vescape-core'
+import type { BoardConfigSchema, BoardConfigValues, TuneProfileFieldValue } from 'vescape-core'
 
-import { APP_TUNE_GROUPS } from '@/modules/tune/lib/fields'
-import { isDisplayableFieldValue } from '@/modules/tune/lib/fieldValues'
+import {
+  deriveFallbackGroupsFromValues,
+  deriveTuneGroupsFromSchema,
+  type ResolvedBoardConfigGroup,
+} from '@/modules/board/lib/refloatFieldOverlay'
 
 export interface TuneBoardValues {
-  groups: RefloatConfigGroup[]
+  groups: ResolvedBoardConfigGroup[]
   refloatBaseVersion?: string | null
 }
 
 export function groupsFromFieldValues(
   fields: Record<string, TuneProfileFieldValue | undefined> | null,
-): RefloatConfigGroup[] {
+  schema?: BoardConfigSchema | null,
+): ResolvedBoardConfigGroup[] {
   if (!fields) return []
-  return APP_TUNE_GROUPS.map((group) => ({
-    id: group.id,
-    title: group.title,
-    fields: group.fields.flatMap((field) => {
-      const value = fields[field.id]
-      if (!isDisplayableFieldValue(value)) return []
-      return [
-        {
-          id: field.id,
-          label: field.label,
-          value,
-          unit: field.unit,
-          min: field.min,
-          max: field.max,
-        },
-      ]
-    }),
-  })).filter((group) => group.fields.length > 0)
+  if (schema && schema.groups.length > 0) {
+    return deriveTuneGroupsFromSchema(schema, fields)
+  }
+  return deriveFallbackGroupsFromValues(fields)
 }
 
 export function boardConfigPrefill(
@@ -38,7 +28,7 @@ export function boardConfigPrefill(
 ): TuneBoardValues | null {
   if (!values || !selectedBoardId) return null
   if (values.boardId != null && values.boardId !== selectedBoardId) return null
-  const groups = groupsFromFieldValues(values.values)
+  const groups = groupsFromFieldValues(values.values, values.schema)
   if (groups.length === 0) return null
   return { groups, refloatBaseVersion: values.refloatBaseVersion }
 }

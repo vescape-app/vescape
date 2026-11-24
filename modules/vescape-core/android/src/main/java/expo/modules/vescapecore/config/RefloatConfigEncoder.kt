@@ -26,16 +26,21 @@ internal object RefloatConfigEncoder {
     schema: RefloatConfigSchema,
     rawConfig: ByteArray,
     fields: Map<String, Any?>,
-  ): ByteArray = encodeChangeset(schema, rawConfig, fields).rawConfig
+    overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
+  ): ByteArray = encodeChangeset(schema, rawConfig, fields, overlay).rawConfig
 
   fun encodeChangeset(
     schema: RefloatConfigSchema,
     rawConfig: ByteArray,
     changes: Map<String, Any?>,
+    overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
   ): EncodedChangeset {
     val byId = schema.fields.associateBy { it.id }
     val validated = changes.map { (fieldId, value) ->
       val field = byId[fieldId] ?: throw invalid("unknown field $fieldId")
+      if (overlay.isInternal(field.id)) {
+        throw invalid("${field.id} is internal and cannot be edited")
+      }
       if (value == null) throw invalid("${field.id} cannot be null")
       val size = field.type.byteSize
       if (field.offset < 0 || rawConfig.size < field.offset + size) {
@@ -44,7 +49,7 @@ internal object RefloatConfigEncoder {
           "config length ${rawConfig.size} < ${field.offset + size} for ${field.id}",
         )
       }
-      val bytes = encodeAndVerifyField(field, value)
+      val bytes = encodeAndVerifyField(field, value, overlay)
       field to bytes
     }
 
@@ -80,7 +85,10 @@ internal object RefloatConfigEncoder {
     )
   }
 
-  internal fun effectiveRange(field: RefloatConfigSchemaField): FieldNumericRange? {
+  internal fun effectiveRange(
+    field: RefloatConfigSchemaField,
+    overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
+  ): FieldNumericRange? {
     if (field.type == RefloatConfigValueType.BOOL) return null
     val (wireMin, wireMax) = when (field.type) {
       RefloatConfigValueType.FLOAT32,
@@ -102,13 +110,20 @@ internal object RefloatConfigEncoder {
       RefloatConfigValueType.UINT8 -> 0.0 to 255.0
       RefloatConfigValueType.BOOL -> return null
     }
-    val min = field.min?.takeIf { it.isFinite() }?.let { maxOf(wireMin, it) } ?: wireMin
-    val max = field.max?.takeIf { it.isFinite() }?.let { minOf(wireMax, it) } ?: wireMax
+    var min = field.min?.takeIf { it.isFinite() }?.let { maxOf(wireMin, it) } ?: wireMin
+    var max = field.max?.takeIf { it.isFinite() }?.let { minOf(wireMax, it) } ?: wireMax
+    val overlayEntry = overlay.entry(field.id)
+    overlayEntry?.hardMin?.takeIf { it.isFinite() }?.let { min = maxOf(min, it) }
+    overlayEntry?.hardMax?.takeIf { it.isFinite() }?.let { max = minOf(max, it) }
     return FieldNumericRange(min = min, max = max)
   }
 
-  private fun encodeAndVerifyField(field: RefloatConfigSchemaField, value: Any): ByteArray {
-    val bits = validateAndEncode(field, value)
+  private fun encodeAndVerifyField(
+    field: RefloatConfigSchemaField,
+    value: Any,
+    overlay: RefloatFieldOverlay,
+  ): ByteArray {
+    val bits = validateAndEncode(field, value, overlay)
     val bytes = toBytes(field.type.byteSize, bits)
     val decoded = decodeWireBytes(field, bytes)
     val roundTripBits = encodeWireBits(field, decoded)
@@ -159,7 +174,11 @@ internal object RefloatConfigEncoder {
     else -> false
   }
 
-  private fun validateAndEncode(field: RefloatConfigSchemaField, value: Any): Long {
+  private fun validateAndEncode(
+    field: RefloatConfigSchemaField,
+    value: Any,
+    overlay: RefloatFieldOverlay,
+  ): Long {
     if (field.type == RefloatConfigValueType.BOOL) {
       return if (bool(field, value)) 1L else 0L
     }
@@ -172,7 +191,7 @@ internal object RefloatConfigEncoder {
         throw invalid("${field.id} = $n is outside enum range 0..${field.enumNames.size - 1}")
       }
     }
-    val range = effectiveRange(field)
+    val range = effectiveRange(field, overlay)
     if (range != null && (n < range.min || n > range.max)) {
       throw invalid("${field.id} = $n is outside effective range ${range.min}..${range.max}")
     }

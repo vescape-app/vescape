@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 struct RefloatConfigDecodeException: Error {
@@ -8,58 +7,6 @@ struct RefloatConfigDecodeException: Error {
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigDecoder.kt
 enum RefloatConfigDecoder {
-  static func decode(
-    schema: RefloatConfigSchema,
-    rawConfig: [UInt8],
-    boardId: String?,
-    canId: Int?,
-    capturedAt: Int64,
-    fwVersion: String?,
-    refloatVersion: String? = nil
-  ) throws -> RefloatConfigSnapshot {
-    let byId = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
-    let requiredLength = schema.fields.map { $0.offset + $0.type.byteSize }.max() ?? 0
-    if rawConfig.count < requiredLength {
-      throw RefloatConfigDecodeException("CONFIG_DECODE_FAILED: config length \(rawConfig.count) < \(requiredLength)")
-    }
-
-    var missing: [String] = []
-    var groups: [RefloatConfigGroup] = []
-    for groupDef in REFLOAT_TUNE_GROUPS {
-      var fields: [RefloatConfigField] = []
-      for fieldDef in groupDef.fields {
-        guard let schemaField = byId[fieldDef.id] else {
-          missing.append(fieldDef.id)
-          continue
-        }
-        fields.append(
-          RefloatConfigField(
-            id: fieldDef.id,
-            label: schemaField.label.isEmpty ? fieldDef.label : schemaField.label,
-            value: try readValue(rawConfig, schemaField),
-            unit: schemaField.unit ?? fieldDef.unitFallback,
-            min: schemaField.min,
-            max: schemaField.max
-          )
-        )
-      }
-      if !fields.isEmpty { groups.append(RefloatConfigGroup(id: groupDef.id, title: groupDef.title, fields: fields)) }
-    }
-
-    return RefloatConfigSnapshot(
-      capturedAt: capturedAt,
-      boardId: boardId,
-      canId: canId,
-      schemaHash: schema.hash,
-      rawConfigHash: sha256(rawConfig),
-      rawConfigLength: rawConfig.count,
-      groups: groups,
-      missingFieldIds: missing,
-      fwVersion: fwVersion,
-      refloatVersion: refloatVersion
-    )
-  }
-
   static func decodeFieldMap(schema: RefloatConfigSchema, rawConfig: [UInt8]) -> [String: Any] {
     var values: [String: Any] = [:]
     for field in schema.fields {
@@ -81,8 +28,14 @@ enum RefloatConfigDecoder {
     boardId: String?,
     refloatBaseVersion: String?,
     capturedAt: Int64
-  ) -> BoardConfigValues {
-    BoardConfigValues(
+  ) throws -> BoardConfigValues {
+    let requiredLength = schema.fields.map { $0.offset + $0.type.byteSize }.max() ?? 0
+    if configBytes.config.count < requiredLength {
+      throw RefloatConfigDecodeException(
+        "CONFIG_DECODE_FAILED: config length \(configBytes.config.count) < \(requiredLength)"
+      )
+    }
+    return BoardConfigValues(
       boardId: boardId,
       refloatBaseVersion: refloatBaseVersion,
       capturedAtMs: capturedAt,
@@ -130,9 +83,5 @@ enum RefloatConfigDecoder {
       throw RefloatConfigDecodeException("CONFIG_DECODE_FAILED: missing scale for \(field.id)")
     }
     return scale
-  }
-
-  private static func sha256(_ bytes: [UInt8]) -> String {
-    SHA256.hash(data: Data(bytes)).map { String(format: "%02x", $0) }.joined()
   }
 }

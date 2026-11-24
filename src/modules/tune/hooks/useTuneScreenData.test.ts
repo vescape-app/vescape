@@ -1,63 +1,59 @@
 import { expect, mock, test } from 'bun:test'
 
-import type { RefloatConfigSnapshot } from 'vescape-core'
+import type { BoardConfigValues } from 'vescape-core'
 
 import { refreshBoardSnapshotAndProfiles } from '@/modules/tune/hooks/useTuneScreenData'
 
-const snapshot: RefloatConfigSnapshot = {
-  capturedAt: 1000,
+const boardConfig: BoardConfigValues = {
+  capturedAtMs: 1000,
   boardId: 'board-1',
-  canId: 1,
-  schemaHash: 'schema',
-  rawConfigHash: 'raw',
-  rawConfigLength: 8,
-  fwVersion: 'FW 6.05',
   refloatBaseVersion: '1.3.0',
-  missingFieldIds: [],
-  groups: [],
+  freshness: 'fresh',
+  values: {},
+  schemaHash: 'schema',
 }
 
-test('reloads compatible profiles after board snapshot read', async () => {
-  const readBoardSnapshot = mock(async () => snapshot)
-  const loadProfiles = mock(async (_boardId: string, _snapshot: RefloatConfigSnapshot | null) => [])
+test('reloads compatible profiles after board config read', async () => {
+  const readBoardConfig = mock(async () => boardConfig)
+  const loadProfiles = mock(async (_boardId: string, _config: BoardConfigValues | null) => [])
 
   await refreshBoardSnapshotAndProfiles({
     boardConnected: true,
     selectedBoardId: 'board-1',
-    readBoardSnapshot,
+    readBoardConfig,
     loadProfiles,
   })
 
-  expect(readBoardSnapshot).toHaveBeenCalledTimes(1)
-  expect(loadProfiles).toHaveBeenCalledWith('board-1', snapshot)
+  expect(readBoardConfig).toHaveBeenCalledTimes(1)
+  expect(loadProfiles).toHaveBeenCalledWith('board-1', boardConfig)
 })
 
-test('does not reload profiles when the snapshot belongs to another board', async () => {
-  const readBoardSnapshot = mock(async () => ({ ...snapshot, boardId: 'board-2' }))
+test('does not reload profiles when the config belongs to another board', async () => {
+  const readBoardConfig = mock(async () => ({ ...boardConfig, boardId: 'board-2' }))
   const loadProfiles = mock(async (_boardId: string) => [])
 
   await refreshBoardSnapshotAndProfiles({
     boardConnected: true,
     selectedBoardId: 'board-1',
-    readBoardSnapshot,
+    readBoardConfig,
     loadProfiles,
   })
 
   expect(loadProfiles).not.toHaveBeenCalled()
 })
 
-test('does not read board snapshot until firmware commands are trusted', async () => {
-  const readBoardSnapshot = mock(async () => snapshot)
-  const loadProfiles = mock(async (_boardId: string, _snapshot: RefloatConfigSnapshot | null) => [])
+test('does not read board config until firmware commands are trusted', async () => {
+  const readBoardConfig = mock(async () => boardConfig)
+  const loadProfiles = mock(async (_boardId: string, _config: BoardConfigValues | null) => [])
 
   await refreshBoardSnapshotAndProfiles({
     boardConnected: true,
     firmwareCommandsTrusted: false,
     selectedBoardId: 'board-1',
-    readBoardSnapshot,
+    readBoardConfig,
     loadProfiles,
   })
 
-  expect(readBoardSnapshot).not.toHaveBeenCalled()
+  expect(readBoardConfig).not.toHaveBeenCalled()
   expect(loadProfiles).not.toHaveBeenCalled()
 })

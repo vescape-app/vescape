@@ -10,7 +10,8 @@ import type { TuneHistoryEntry, TuneProfileFieldValue } from 'vescape-core'
 
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { Button } from '@/components/base/Button'
-import { APP_TUNE_FIELD_BY_ID, formatTuneValue } from '@/modules/tune/lib/fields'
+import { getFieldLabel } from '@/modules/board/lib/refloatFieldOverlay'
+import { formatTuneValue } from '@/modules/tune/lib/fields'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
@@ -33,7 +34,7 @@ function diffHistoryEntries(
     const ov = older.fields[key]
     if (nv === ov) continue
     if (typeof nv === 'number' && typeof ov === 'number' && Object.is(nv, ov)) continue
-    const label = APP_TUNE_FIELD_BY_ID.get(key)?.label ?? key
+    const label = getFieldLabel(key)
     diffs.push({
       fieldId: key,
       label,

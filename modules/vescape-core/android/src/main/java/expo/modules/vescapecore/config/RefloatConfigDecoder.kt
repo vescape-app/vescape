@@ -3,60 +3,11 @@ package expo.modules.vescapecore.config
 import expo.modules.vescapecore.protocol.VescNumeric
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.security.MessageDigest
 
 // @parity /modules/vescape-core/ios/config/RefloatConfigDecoder.swift
 internal class RefloatConfigDecodeException(message: String) : Exception(message)
 
 internal object RefloatConfigDecoder {
-  fun decode(
-    schema: RefloatConfigSchema,
-    rawConfig: ByteArray,
-    boardId: String?,
-    canId: Int?,
-    capturedAt: Long,
-    fwVersion: String?,
-    refloatVersion: String? = null,
-  ): RefloatConfigSnapshot {
-    val byId = schema.fields.associateBy { it.id }
-    val requiredLength = schema.fields.maxOfOrNull { it.offset + it.type.byteSize } ?: 0
-    if (rawConfig.size < requiredLength) {
-      throw RefloatConfigDecodeException("CONFIG_DECODE_FAILED: config length ${rawConfig.size} < $requiredLength")
-    }
-
-    val missing = mutableListOf<String>()
-    val groups = REFLOAT_TUNE_GROUPS.mapNotNull { groupDef ->
-      val fields = groupDef.fields.mapNotNull { fieldDef ->
-        val schemaField = byId[fieldDef.id] ?: run {
-          missing.add(fieldDef.id)
-          return@mapNotNull null
-        }
-        RefloatConfigField(
-          id = fieldDef.id,
-          label = schemaField.label.ifBlank { fieldDef.label },
-          value = readValue(rawConfig, schemaField),
-          unit = schemaField.unit ?: fieldDef.unitFallback,
-          min = schemaField.min,
-          max = schemaField.max,
-        )
-      }
-      if (fields.isEmpty()) null else RefloatConfigGroup(groupDef.id, groupDef.title, fields)
-    }
-
-    return RefloatConfigSnapshot(
-      capturedAt = capturedAt,
-      boardId = boardId,
-      canId = canId,
-      schemaHash = schema.hash,
-      rawConfigHash = sha256(rawConfig),
-      rawConfigLength = rawConfig.size,
-      groups = groups,
-      missingFieldIds = missing,
-      fwVersion = fwVersion,
-      refloatVersion = refloatVersion,
-    )
-  }
-
   fun decodeFieldMap(schema: RefloatConfigSchema, rawConfig: ByteArray): Map<String, Any> {
     val values = mutableMapOf<String, Any>()
     for (field in schema.fields) {
@@ -80,18 +31,26 @@ internal object RefloatConfigDecoder {
     boardId: String?,
     refloatBaseVersion: String?,
     capturedAt: Long,
-  ): BoardConfigValues = BoardConfigValues(
-    boardId = boardId,
-    refloatBaseVersion = refloatBaseVersion,
-    capturedAtMs = capturedAt,
-    freshness = BoardConfigFreshness.FRESH,
-    values = decodeFieldMap(schema, configBytes.config),
-    writeBase = BoardConfigWriteBase(
-      schema = schema,
-      rawConfig = configBytes.config,
-      packageSignature = configBytes.packageSignature,
-    ),
-  )
+  ): BoardConfigValues {
+    val requiredLength = schema.fields.maxOfOrNull { it.offset + it.type.byteSize } ?: 0
+    if (configBytes.config.size < requiredLength) {
+      throw RefloatConfigDecodeException(
+        "CONFIG_DECODE_FAILED: config length ${configBytes.config.size} < $requiredLength",
+      )
+    }
+    return BoardConfigValues(
+      boardId = boardId,
+      refloatBaseVersion = refloatBaseVersion,
+      capturedAtMs = capturedAt,
+      freshness = BoardConfigFreshness.FRESH,
+      values = decodeFieldMap(schema, configBytes.config),
+      writeBase = BoardConfigWriteBase(
+        schema = schema,
+        rawConfig = configBytes.config,
+        packageSignature = configBytes.packageSignature,
+      ),
+    )
+  }
 
   private fun readValue(bytes: ByteArray, field: RefloatConfigSchemaField): Any {
     val view = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
@@ -113,10 +72,5 @@ internal object RefloatConfigDecoder {
 
   private fun requireScale(field: RefloatConfigSchemaField): Double {
     return field.scale ?: throw RefloatConfigDecodeException("CONFIG_DECODE_FAILED: missing scale for ${field.id}")
-  }
-
-  private fun sha256(bytes: ByteArray): String {
-    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
-    return digest.joinToString("") { "%02x".format(it) }
   }
 }

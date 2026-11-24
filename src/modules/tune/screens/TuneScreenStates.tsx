@@ -19,7 +19,7 @@ export function TuneScreenStates({
   boardsLoaded,
   selectedBoardId,
   profileState,
-  boardSnapshot,
+  boardConfig,
   firmwareCommandsTrusted,
   firmwareCommandBlockReason,
   loadOnline,
@@ -30,7 +30,7 @@ export function TuneScreenStates({
   boardsLoaded: TuneScreenData['boardsLoaded']
   selectedBoardId: TuneScreenData['selectedBoardId']
   profileState: TuneScreenData['profileState']
-  boardSnapshot: TuneScreenData['boardSnapshot']
+  boardConfig: TuneScreenData['boardConfig']
   firmwareCommandsTrusted: TuneScreenData['firmwareCommandsTrusted']
   firmwareCommandBlockReason: TuneScreenData['firmwareCommandBlockReason']
   loadOnline: TuneScreenData['loadOnline']
@@ -64,7 +64,7 @@ export function TuneScreenStates({
               'Connect to your board to read its current configuration and create your first Tune Profile'
             }
             action={
-              boardSnapshot?.refloatBaseVersion && firmwareCommandsTrusted ? (
+              boardConfig?.refloatBaseVersion && firmwareCommandsTrusted ? (
                 <Button
                   label="Create first profile"
                   icon={FadersIcon}

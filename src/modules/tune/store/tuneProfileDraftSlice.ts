@@ -3,7 +3,7 @@ import {
   applyBoardConfigChangeset as nativeApplyBoardConfigChangeset,
   pushProfileToBoard as nativePushProfileToBoard,
   saveProfile as nativeSaveProfile,
-  type RefloatConfigSnapshot,
+  type BoardConfigValues,
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
@@ -18,7 +18,7 @@ import {
   boardDiff,
   sameFieldValue,
   dirtyFields,
-  fieldsFromSnapshot,
+  fieldsFromBoardConfig,
   nextDraftWithField,
   schemaFieldMap,
 } from '@/modules/tune/store/tuneProfileHelpers'
@@ -32,7 +32,8 @@ import { omitKey } from '@/helpers/records'
 type TuneProfileDraftSlice = Pick<
   TuneProfileActions,
   | 'setDraftField'
-  | 'setBoardSnapshot'
+  | 'setBoardConfig'
+  | 'recomputeForSchema'
   | 'getDirtyFields'
   | 'revertField'
   | 'acceptBoardField'
@@ -49,11 +50,14 @@ type SliceFactory = (
 ) => TuneProfileDraftSlice
 
 export const createTuneProfileDraftSlice: SliceFactory = (set, get) => {
-  function activeSchemaFields() {
-    return schemaFieldMap(useBoardConfigValuesStore.getState().values?.schema)
+  function activeSchemaFields(boardConfig?: BoardConfigValues | null) {
+    const storeState = useBoardConfigValuesStore.getState()
+    const schema =
+      boardConfig?.schema ?? storeState.values?.schema ?? storeState.lastKnown?.schema ?? null
+    return schemaFieldMap(schema)
   }
 
-  async function runBoardWrite(write: () => Promise<RefloatConfigSnapshot>) {
+  async function runBoardWrite(write: () => Promise<BoardConfigValues>) {
     const linkIntegrity = useBleStore.getState().linkIntegrity
     if (!canRunFirmwareCommand(linkIntegrity)) {
       set({ syncing: false, error: firmwareCommandBlockedMessage(linkIntegrity) })
@@ -61,9 +65,10 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => {
     }
     set({ syncing: true, error: null })
     try {
-      const snapshot = await write()
-      useTuneSnapshotStore.getState().setSnapshot(snapshot)
-      get().setBoardSnapshot(snapshot)
+      const boardConfig = await write()
+      useBoardConfigValuesStore.getState().replace(boardConfig)
+      useTuneSnapshotStore.getState().setBoardConfig(boardConfig)
+      get().setBoardConfig(boardConfig)
       set({ syncing: false })
     } catch (error) {
       set({ syncing: false, error: tuneWriteErrorMessage(error) })
@@ -88,16 +93,33 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => {
       })
     },
 
-    setBoardSnapshot(snapshot) {
-      const boardFields = fieldsFromSnapshot(snapshot)
-      const schemaFields = activeSchemaFields()
+    setBoardConfig(boardConfig) {
+      const boardFields = fieldsFromBoardConfig(boardConfig)
+      const schemaFields = activeSchemaFields(boardConfig)
       set((state) => {
         const diff = boardDiff(state.activeProfile, boardFields, schemaFields)
         return {
           boardFields,
-          refloatBaseVersion: snapshot?.refloatBaseVersion ?? state.refloatBaseVersion,
+          refloatBaseVersion: boardConfig?.refloatBaseVersion ?? state.refloatBaseVersion,
           boardDiff: diff,
           hasBoardDiff: diff.length > 0,
+          hasDirtyFields:
+            Object.keys(dirtyFields(state.activeProfile, state.draftFields, schemaFields)).length >
+            0,
+        }
+      })
+    },
+
+    recomputeForSchema() {
+      const schemaFields = activeSchemaFields()
+      set((state) => {
+        const diff = boardDiff(state.activeProfile, state.boardFields, schemaFields)
+        return {
+          boardDiff: diff,
+          hasBoardDiff: diff.length > 0,
+          hasDirtyFields:
+            Object.keys(dirtyFields(state.activeProfile, state.draftFields, schemaFields)).length >
+            0,
         }
       })
     },

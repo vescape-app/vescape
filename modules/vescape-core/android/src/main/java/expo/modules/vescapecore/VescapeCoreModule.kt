@@ -1004,9 +1004,11 @@ class VescapeCoreModule : Module() {
       }
       WatchLastBatteryPusher.push(context)
     }
-    AsyncFunction("getRefloatConfigSnapshot") { promise: Promise ->
-      CoreForegroundService.getRefloatConfigSnapshot(
-        onSuccess = { snapshot -> promise.resolve(snapshot) },
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshBoardConfigValues`
+    // @parity /modules/vescape-core/src/index.ts `refreshBoardConfigValues`
+    AsyncFunction("refreshBoardConfigValues") { promise: Promise ->
+      CoreForegroundService.refreshBoardConfigValues(
+        onSuccess = { values -> promise.resolve(values) },
         onError = { code, message -> promise.reject(code, message, null) },
       )
     }

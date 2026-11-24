@@ -49,7 +49,7 @@ Pod::Spec.new do |s|
   # as a folder so every `<pack>/pack.json` keeps its slot file names.
   s.resource_bundles = {
     'VescapeCoreAssets' => [
-      'cell-presets.json', 'alert-preset-definitions.json',
+      'cell-presets.json', 'alert-preset-definitions.json', 'refloat-field-overlay.json',
       'legal-policies.json',
       'alert-packs',
       'fixtures/*.jsonl'

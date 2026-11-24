@@ -233,7 +233,7 @@ class CoreForegroundService : Service() {
             }
         }
 
-        fun getRefloatConfigSnapshot(
+        fun refreshBoardConfigValues(
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
         ) {

@@ -470,7 +470,7 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt `consumeRead`
-  func getRefloatConfigSnapshot(
+  func refreshBoardConfigValues(
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
   ) {

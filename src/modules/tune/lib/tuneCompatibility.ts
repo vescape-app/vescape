@@ -1,4 +1,4 @@
-import type { RefloatConfigSnapshot } from 'vescape-core'
+import type { BoardConfigValues } from 'vescape-core'
 
 export interface TuneCompatibilityIssue {
   message: string
@@ -6,12 +6,13 @@ export interface TuneCompatibilityIssue {
 }
 
 export function getTuneCompatibilityIssue(
-  snapshot: RefloatConfigSnapshot | null,
+  boardConfig: BoardConfigValues | null,
   compatibility: string | null,
+  reportedRefloatVersion?: string | null,
 ): TuneCompatibilityIssue | null {
-  if (!snapshot || compatibility) return null
+  if (!boardConfig || compatibility) return null
 
-  const reportedVersion = snapshot.refloatVersion?.trim()
+  const reportedVersion = reportedRefloatVersion?.trim()
   if (reportedVersion) {
     return {
       reason: 'unsupported-version',

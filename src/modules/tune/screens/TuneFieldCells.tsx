@@ -1,8 +1,9 @@
 import { useRef } from 'react'
 import type { View } from 'react-native'
-import type { RefloatConfigField, TuneProfileFieldValue } from 'vescape-core'
+import type { TuneProfileFieldValue } from 'vescape-core'
 
 import { theme, type ThemeColor } from '@/constants/theme'
+import type { ResolvedBoardConfigField } from '@/modules/board/lib/refloatFieldOverlay'
 import { BasicSliderCell } from '@/modules/tune/components/BasicSliderCell'
 import { basicSliderColor, basicSliderIcon } from '@/modules/tune/components/basicSliderIcons'
 import { TuneConfigCell } from '@/modules/tune/components/TuneConfigCell'
@@ -37,13 +38,17 @@ export function BasicSliderItemCell({
 }
 
 export interface TuneFieldCellProps {
-  field: RefloatConfigField
+  field: ResolvedBoardConfigField
   savedValue: TuneProfileFieldValue | undefined
   boardValue: TuneProfileFieldValue | undefined
   profileValue: TuneProfileFieldValue | undefined
   dirty: boolean
   boardChanged: boolean
-  onPress: (field: RefloatConfigField, ref: { current: View | null }, color: ThemeColor) => void
+  onPress: (
+    field: ResolvedBoardConfigField,
+    ref: { current: View | null },
+    color: ThemeColor,
+  ) => void
   onRevert: () => void
   onAcceptBoard: () => void
 }

@@ -2,17 +2,18 @@ import { forwardRef } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ArrowCounterClockwiseIcon, CheckIcon } from 'phosphor-react-native'
-import type { RefloatConfigField, TuneProfileFieldValue } from 'vescape-core'
+import type { TuneProfileFieldValue } from 'vescape-core'
 
+import type { ResolvedBoardConfigField } from '@/modules/board/lib/refloatFieldOverlay'
 import { isDisplayableFieldValue } from '@/modules/tune/lib/fieldValues'
 import { formatProfileValue } from '@/modules/tune/lib/sliderDefinitions'
-import { formatTuneValue, tuneDisplayValue } from '@/modules/tune/lib/fields'
+import { formatTuneFieldValue, formatTuneValue, tuneDisplayValue } from '@/modules/tune/lib/fields'
 import { TuneTileFill } from '@/modules/tune/components/TuneTileFill'
 import { theme, type ThemeColor } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface TuneConfigCellProps {
-  field: RefloatConfigField
+  field: ResolvedBoardConfigField
   savedValue: TuneProfileFieldValue | undefined
   boardValue: TuneProfileFieldValue | undefined
   profileValue: TuneProfileFieldValue | undefined
@@ -96,11 +97,11 @@ export const TuneConfigCell = forwardRef<View, TuneConfigCellProps>(function Tun
           adjustsFontSizeToFit
           selectable
         >
-          {formatTuneValue(tuneDisplayValue(field.id, field.value))}
+          {formatTuneFieldValue(field)}
         </Text>
         {dirty && isDisplayableFieldValue(savedValue) ? (
           <Text style={[styles.cellOldValue, styles.cellTextWithActions]} numberOfLines={1}>
-            was {formatTuneValue(tuneDisplayValue(field.id, savedValue))}
+            was {formatTuneValue(tuneDisplayValue(field.id, savedValue, field.displayScale))}
           </Text>
         ) : null}
         {boardChanged ? (
@@ -110,13 +111,15 @@ export const TuneConfigCell = forwardRef<View, TuneConfigCellProps>(function Tun
           >
             profile{' '}
             {formatProfileValue(
-              profileValue == null ? profileValue : tuneDisplayValue(field.id, profileValue),
+              profileValue == null
+                ? profileValue
+                : tuneDisplayValue(field.id, profileValue, field.displayScale),
             )}
           </Text>
         ) : null}
         {canAcceptBoard ? (
           <Text style={[styles.cellBoardValue, styles.cellTextWithActions]} numberOfLines={1}>
-            board {formatTuneValue(tuneDisplayValue(field.id, boardValue))}
+            board {formatTuneValue(tuneDisplayValue(field.id, boardValue, field.displayScale))}
           </Text>
         ) : null}
       </Pressable>

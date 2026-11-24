@@ -60,9 +60,9 @@ final class BoardConfigValuesTests: XCTestCase {
     XCTAssertNil(values["nan"])
   }
 
-  func testFreshValuesRetainWriteBase() {
+  func testFreshValuesRetainWriteBase() throws {
     let schema = schema([field("kp", .float32, offset: 0)])
-    let values = RefloatConfigDecoder.decodeBoardConfigValues(
+    let values = try RefloatConfigDecoder.decodeBoardConfigValues(
       schema: schema,
       configBytes: RefloatConfigBytes(confInd: 0, packageSignature: 0xdead_beef, config: [0, 0, 0, 0]),
       boardId: "board-1",

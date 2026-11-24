@@ -295,8 +295,8 @@ internal class ConfigRWController(
     private fun completeRead(effect: ConfigRWEffect.EmitReadComplete) {
         val callbacks = readCallbacks.toList().also { readCallbacks.clear() }
         resumePolling(effect.resumePolling)
-        effect.boardConfigValues?.let { port.onBoardConfigValues(it, BoardConfigOperationOrigin.FRESH_READ) }
-        val map = effect.snapshot.toMap()
+        port.onBoardConfigValues(effect.boardConfigValues, BoardConfigOperationOrigin.FRESH_READ)
+        val map = effect.boardConfigValues.toBridgeMap()
         for (pending in callbacks) pending.onSuccess(map)
     }
     private fun failRead(effect: ConfigRWEffect.EmitReadFailure) {
@@ -307,8 +307,10 @@ internal class ConfigRWController(
     }
     private fun completeWrite(effect: ConfigRWEffect.EmitWriteComplete) {
         val callbacks = writeCallbacks.also { writeCallbacks = null }; resumePolling(effect.resumePolling)
-        effect.boardConfigValues?.let { port.onBoardConfigValues(it, effect.origin) }
-        callbacks?.onSuccess?.invoke(effect.snapshot.toMap())
+        if (effect.emitBoardConfigValues) {
+            port.onBoardConfigValues(effect.boardConfigValues, effect.origin)
+        }
+        callbacks?.onSuccess?.invoke(effect.boardConfigValues.toBridgeMap())
     }
     private fun failWrite(effect: ConfigRWEffect.EmitWriteFailure) {
         val callbacks = writeCallbacks.also { writeCallbacks = null }; resumePolling(effect.resumePolling)

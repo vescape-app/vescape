@@ -1150,21 +1150,6 @@ export interface ImportFavoriteMediaOptions {
   mediaKind: 'photo' | 'video'
 }
 
-export interface RefloatConfigField {
-  id: string
-  label: string
-  value: number | boolean | string
-  unit: string | null
-  min: number | null
-  max: number | null
-}
-
-export interface RefloatConfigGroup {
-  id: string
-  title: string
-  fields: RefloatConfigField[]
-}
-
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigModels.kt `RefloatConfigErrorCode`
  * @parity /modules/vescape-core/ios/config/RefloatConfigErrorCode.swift
@@ -1190,20 +1175,6 @@ export type RefloatConfigErrorCode =
   | 'PROFILE_NOT_FOUND'
   | 'PROFILE_BOARD_MISMATCH'
   | 'UNSUPPORTED_PLATFORM'
-
-export interface RefloatConfigSnapshot {
-  capturedAt: number
-  boardId: string | null
-  canId: number
-  schemaHash: string
-  rawConfigHash: string
-  rawConfigLength: number
-  groups: RefloatConfigGroup[]
-  missingFieldIds: string[]
-  fwVersion: string | null
-  refloatVersion?: string | null
-  refloatBaseVersion?: string | null
-}
 
 export type TuneProfileFieldValue = number | boolean | string | null
 
@@ -2581,7 +2552,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getDatabaseSizeBytes(): Promise<number>
   backupDatabase(): Promise<DatabaseBackupResult>
   restoreDatabase(uri: string): Promise<void>
-  getRefloatConfigSnapshot(): Promise<RefloatConfigSnapshot>
+  refreshBoardConfigValues(): Promise<BoardConfigValues>
   setRemoteTilt(value: number): Promise<boolean>
   lockRemoteTilt(value: number): Promise<boolean>
   releaseRemoteTilt(value: number, durationMs: number): Promise<boolean>
@@ -2615,8 +2586,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   applyBoardConfigChangeset(
     boardId: string,
     changes: Record<string, TuneProfileFieldValue>,
-  ): Promise<RefloatConfigSnapshot>
-  pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
+  ): Promise<BoardConfigValues>
+  pushProfileToBoard(profileId: string): Promise<BoardConfigValues>
   getProfileStatsSnapshot(options: ProfileStatsSnapshotOptions): Promise<ProfileStatsSnapshot>
   getDayStats(day: RideDay): Promise<ProfileStats>
   getRecentRideStats(sinceMs: number): Promise<ProfileStats>
@@ -3608,8 +3579,10 @@ export async function restoreDatabase(uri: string): Promise<void> {
   return native.restoreDatabase(uri)
 }
 
-export async function getRefloatConfigSnapshot(): Promise<RefloatConfigSnapshot> {
-  return native.getRefloatConfigSnapshot()
+// @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshBoardConfigValues`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshBoardConfigValues`
+export async function refreshBoardConfigValues(): Promise<BoardConfigValues> {
+  return native.refreshBoardConfigValues()
 }
 
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setRemoteTilt`
@@ -3739,7 +3712,7 @@ export async function saveProfile(
 export async function applyBoardConfigChangeset(
   boardId: string,
   changes: Record<string, TuneProfileFieldValue>,
-): Promise<RefloatConfigSnapshot> {
+): Promise<BoardConfigValues> {
   return native.applyBoardConfigChangeset(boardId, changes)
 }
 
@@ -3747,7 +3720,7 @@ export async function applyBoardConfigChangeset(
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `pushProfileToBoard`
  */
-export async function pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot> {
+export async function pushProfileToBoard(profileId: string): Promise<BoardConfigValues> {
   return native.pushProfileToBoard(profileId)
 }
 

@@ -86,4 +86,4 @@ tasks.withType<Test>().configureEach {
   outputs.cacheIf { false }
 }
 
-sourceSets.main { resources { srcDirs("../shared", "../../../shared/data"); include("alert-preset-definitions.json", "cell-presets.json") } }
+sourceSets.main { resources { srcDirs("../shared", "../../../shared/data"); include("alert-preset-definitions.json", "cell-presets.json", "refloat-field-overlay.json") } }

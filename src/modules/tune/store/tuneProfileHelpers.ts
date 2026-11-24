@@ -1,16 +1,16 @@
 import { tuneCompatibilityVersion } from '@/modules/tune/lib/tuneCompatibility'
+import { tuneFieldIdsFromSchema } from '@/modules/board/lib/refloatFieldOverlay'
 import {
   createProfile as nativeCreateProfile,
   renameProfile as nativeRenameProfile,
   type BoardConfigSchema,
   type BoardConfigSchemaField,
-  type RefloatConfigSnapshot,
+  type BoardConfigValues,
   type TuneProfile,
   type TuneProfileFieldValue,
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
-import { APP_TUNE_FIELD_BY_ID } from '@/modules/tune/lib/fields'
 import {
   DEFAULT_TUNE_PROFILE_COLOR,
   DEFAULT_TUNE_PROFILE_ICON,
@@ -85,12 +85,7 @@ export function sameFieldValue(
     return false
   }
   if (schemaField) return sameSchemaNumber(schemaField, a, b)
-  const wire = APP_TUNE_FIELD_BY_ID.get(fieldId)?.wire
-  if (!wire) return Math.fround(a) === Math.fround(b)
-  if (wire.kind === 'float16') {
-    return Math.floor(a * wire.scale + 0.5) === Math.floor(b * wire.scale + 0.5)
-  }
-  return Math.floor(a + 0.5) === Math.floor(b + 0.5)
+  return Math.fround(a) === Math.fround(b)
 }
 
 export function dirtyFields(
@@ -106,15 +101,18 @@ export function dirtyFields(
   )
 }
 
-export function fieldsFromSnapshot(
-  snapshot: RefloatConfigSnapshot | null,
+export function fieldsFromBoardConfig(
+  boardConfig: BoardConfigValues | null,
 ): Record<string, TuneProfileFieldValue> {
-  if (!snapshot) return {}
-  return Object.fromEntries(
-    snapshot.groups.flatMap((group) =>
-      group.fields.map((field) => [field.id, field.value as TuneProfileFieldValue]),
-    ),
-  )
+  if (!boardConfig) return {}
+  const tuneIds = tuneFieldIdsFromSchema(boardConfig.schema)
+  const result: Record<string, TuneProfileFieldValue> = {}
+  for (const [fieldId, value] of Object.entries(boardConfig.values)) {
+    if (value === undefined) continue
+    if (tuneIds.size > 0 && !tuneIds.has(fieldId)) continue
+    result[fieldId] = value
+  }
+  return result
 }
 
 export function boardDiff(

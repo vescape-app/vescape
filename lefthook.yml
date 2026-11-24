@@ -14,7 +14,9 @@ pre-commit:
       run: bun run scripts/check-bun.ts
     format:
       glob: '*.{ts,tsx,json,md,yml,yaml}'
-      run: bun fmt {staged_files}
+      run: >-
+        set --; for f in {staged_files}; do [ -L "$f" ] || set -- "$@" "$f"; done;
+        [ $# -eq 0 ] || bun fmt "$@"
       stage_fixed: true
     skills-check:
       glob: '{.agents,.claude}/skills/**'

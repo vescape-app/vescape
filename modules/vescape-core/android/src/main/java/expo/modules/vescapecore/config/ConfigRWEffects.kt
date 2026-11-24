@@ -16,9 +16,8 @@ internal sealed class ConfigRWEffect {
     object DemoteWriteBase : ConfigRWEffect()
 
     data class EmitReadComplete(
-        val snapshot: RefloatConfigSnapshot,
+        val boardConfigValues: BoardConfigValues,
         val resumePolling: Boolean,
-        val boardConfigValues: BoardConfigValues?,
     ) : ConfigRWEffect()
 
     data class EmitReadFailure(
@@ -30,10 +29,10 @@ internal sealed class ConfigRWEffect {
     ) : ConfigRWEffect()
 
     data class EmitWriteComplete(
-        val snapshot: RefloatConfigSnapshot,
+        val boardConfigValues: BoardConfigValues,
         val resumePolling: Boolean,
-        val boardConfigValues: BoardConfigValues?,
         val origin: BoardConfigOperationOrigin = BoardConfigOperationOrigin.VESCAPE_WRITE,
+        val emitBoardConfigValues: Boolean = true,
     ) : ConfigRWEffect()
 
     data class EmitWriteFailure(

@@ -1,5 +1,5 @@
 import type {
-  RefloatConfigSnapshot,
+  BoardConfigValues,
   TuneHistoryEntry,
   TuneProfile,
   TuneProfileFieldValue,
@@ -52,7 +52,8 @@ export interface TuneProfileActions {
     newName: string,
   ) => Promise<TuneProfile | null>
   setDraftField: (fieldId: string, value: TuneProfileFieldValue) => void
-  setBoardSnapshot: (snapshot: RefloatConfigSnapshot | null) => void
+  setBoardConfig: (boardConfig: BoardConfigValues | null) => void
+  recomputeForSchema: () => void
   getDirtyFields: () => Record<string, TuneProfileFieldValue>
   revertField: (fieldId: string) => void
   acceptBoardField: (fieldId: string) => void
