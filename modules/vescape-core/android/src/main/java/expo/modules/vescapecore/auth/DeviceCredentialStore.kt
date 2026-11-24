@@ -86,8 +86,8 @@ class DeviceCredentialStore internal constructor(
     replace(null, DeviceCredentialState.UNAVAILABLE, "clear")
   }
 
-  fun state(credential: DeviceCredential?): DeviceCredentialState = synchronized(STORAGE_LOCK) {
-    if (credential != null) DeviceCredentialState.READY
+  fun state(credential: DeviceCredential?, serverUrl: String): DeviceCredentialState = synchronized(STORAGE_LOCK) {
+    if (credential?.serverUrl?.trimEnd('/') == serverUrl.trimEnd('/')) DeviceCredentialState.READY
     else DeviceCredentialState.entries.firstOrNull {
       it.slug == persistence.state()
     }?.takeIf { it != DeviceCredentialState.READY } ?: DeviceCredentialState.UNAVAILABLE

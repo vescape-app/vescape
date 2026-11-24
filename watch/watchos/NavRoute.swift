@@ -17,24 +17,25 @@ struct NavRoute: View {
     GeometryReader { geometry in
       ZStack {
         if let route, let east = frame.riderEastM, let north = frame.riderNorthM {
+          let sections = splitRoute(route.points, remainingM: frame.navDistanceM)
           TimelineView(.animation(paused: !mapMoving)) { timeline in
             let at = mapMoving ? timeline.date : .distantFuture
             let offset = mapView.motion.offset(at: at)
-            RouteShape(
-              route: route,
-              eastM: east - offset.eastM,
-              northM: north - offset.northM,
-              courseDeg: mapView.courseDeg(at: at),
-              spanM: mapView.spanM(at: at)
-            )
-            .stroke(
-              color.opacity(ROUTE_ALPHA + (ROUTE_FOCUS_ALPHA - ROUTE_ALPHA) * focus),
-              style: StrokeStyle(
-                lineWidth: ROUTE_WIDTH + (ROUTE_FOCUS_WIDTH - ROUTE_WIDTH) * focus,
-                lineCap: .round,
-                lineJoin: .round
-              )
-            )
+            let alpha = ROUTE_ALPHA + (ROUTE_FOCUS_ALPHA - ROUTE_ALPHA) * focus
+            Canvas { context, size in
+              func path(_ points: [WatchRoutePoint]) -> Path {
+                RouteShape(
+                  points: points,
+                  eastM: east - offset.eastM,
+                  northM: north - offset.northM,
+                  courseDeg: mapView.courseDeg(at: at),
+                  spanM: mapView.spanM(at: at)
+                ).path(in: CGRect(origin: .zero, size: size))
+              }
+              let stroke = StrokeStyle(lineWidth: ROUTE_WIDTH, lineCap: .round, lineJoin: .round, dash: [0.1, 4.3])
+              context.stroke(path(sections.passed), with: .color(color.opacity(alpha * PASSED_ALPHA)), style: stroke)
+              context.stroke(path(sections.remaining), with: .color(color.opacity(alpha)), style: stroke)
+            }
             .clipShape(Rim.path(in: geometry.size, inset: Rim.inset))
           }
         }
@@ -53,24 +54,47 @@ extension GraphicsContext {
       )
     )
     fill(circle, with: .color(.black))
-    stroke(circle, with: .color(color), lineWidth: ROUTE_WIDTH)
+    stroke(circle, with: .color(color), lineWidth: RIDER_RING_WIDTH)
   }
 }
 
+/// @parity /watch/wearos/src/main/java/app/vescape/wear/NavRoute.kt `splitRoute`
+private func splitRoute(
+  _ points: [WatchRoutePoint], remainingM: Double?
+) -> (passed: [WatchRoutePoint], remaining: [WatchRoutePoint]) {
+  guard let remainingM, remainingM.isFinite else { return ([], points) }
+  guard remainingM > 0 else { return (points, []) }
+  var distanceM = remainingM
+  for index in points.indices.dropFirst().reversed() {
+    let from = points[index - 1]
+    let to = points[index]
+    let eastM = to.eastM - from.eastM
+    let northM = to.northM - from.northM
+    let lengthM = hypot(eastM, northM)
+    if distanceM < lengthM {
+      let fraction = 1 - distanceM / lengthM
+      let split = WatchRoutePoint(eastM: from.eastM + eastM * fraction, northM: from.northM + northM * fraction)
+      return (Array(points[..<index]) + [split], [split] + Array(points[index...]))
+    }
+    distanceM -= lengthM
+  }
+  return ([], points)
+}
+
 private struct RouteShape: Shape {
-  let route: WatchRoute
+  let points: [WatchRoutePoint]
   let eastM: Double
   let northM: Double
   let courseDeg: Double
   let spanM: Double
 
   func path(in rect: CGRect) -> Path {
-    guard route.points.count > 1, spanM > 0 else { return Path() }
+    guard points.count > 1, spanM > 0 else { return Path() }
     let centre = WatchMapProjection.riderPoint(in: rect.size)
     let scale = WatchMapProjection.pointsPerMetre(size: rect.size, spanM: spanM)
 
     var path = Path()
-    for (index, point) in route.points.enumerated() {
+    for (index, point) in points.enumerated() {
       let screen = CGPoint(
         x: centre.x + (point.eastM - eastM) * scale,
         y: centre.y - (point.northM - northM) * scale
@@ -85,8 +109,9 @@ private struct RouteShape: Shape {
   }
 }
 
-private let ROUTE_WIDTH: CGFloat = 2
-private let ROUTE_FOCUS_WIDTH: CGFloat = 3.5
+private let ROUTE_WIDTH: CGFloat = 2.5
 private let ROUTE_ALPHA = 0.55
 private let ROUTE_FOCUS_ALPHA = 0.85
+private let PASSED_ALPHA = 0.2
 private let RIDER_DOT_RADIUS: CGFloat = 4
+private let RIDER_RING_WIDTH: CGFloat = 2

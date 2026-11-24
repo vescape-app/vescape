@@ -3,14 +3,13 @@ import { StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { CaretRightIcon, UserCircleGearIcon, WarningIcon } from 'phosphor-react-native'
 import type { PublicRideStatus } from 'vescape-core'
-import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import {
   publicRideChoice,
@@ -37,11 +36,11 @@ export function SocialSheet(props: SocialRiderPanelProps) {
 }
 
 const ENDED: Record<NonNullable<PublicRideStatus['reason']>, string> = {
-  replaced: 'Turned off: you went public on another phone.',
-  'end-time': 'Your public ride time is up.',
-  'away-expired': 'You were offline too long. Back on when you reconnect.',
-  'signed-out': 'Turned off: you signed out.',
-  refused: 'The server turned it off. Check your nick and sign-in.',
+  replaced: 'Another phone took over',
+  'end-time': 'Your public ride time is up',
+  'away-expired': 'Off until you reconnect',
+  'signed-out': 'Off: you signed out',
+  refused: 'The server turned it off',
 }
 
 function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
@@ -69,8 +68,11 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   ) : null
   const statusAt = useGroupRideStore((s) => s.publicRideAt)
   const nowMs = Math.max(useMinuteNow(true, status.until), statusAt)
-  const timeFormat = useTimeFormat()
-  const presetEnds = useMemo(() => publicRidePresetEnds(nowMs, timeFormat), [nowMs, timeFormat])
+  const { timeFormat, dateFormat } = useUserPreferences()
+  const presetEnds = useMemo(
+    () => publicRidePresetEnds(nowMs, timeFormat, dateFormat),
+    [dateFormat, nowMs, timeFormat],
+  )
 
   if (connection === 'blocked') {
     return (
@@ -103,12 +105,14 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
   const hint = !signedIn
     ? null
     : !hasNick
-      ? !profileLoaded && !profileError
-        ? 'Loading your rider profile…'
+      ? !profileLoaded
+        ? profileError
+          ? 'Can’t load profile, retrying…'
+          : 'Loading your rider profile…'
         : null
       : !status.supported
         ? connection === 'connected'
-          ? 'Public ride is not available on the server yet.'
+          ? 'Not available on this server yet'
           : 'Connecting to server…'
         : status.activation === 'off' && status.reason
           ? ENDED[status.reason]
@@ -122,7 +126,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
       ? {
           hours: choice.hours,
           left: timeLeft,
-          end: publicRideEndLabel(status.until, nowMs, timeFormat),
+          end: publicRideEndLabel(status.until, nowMs, timeFormat, dateFormat),
         }
       : null
 
@@ -135,6 +139,7 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
         activation={status.activation}
         live={status.live}
         boardConnected={boardConnected}
+        notice={hint}
         headerAction={settings}
         overlayAction={setupAction}
         disabled={!ready}
@@ -143,8 +148,6 @@ function PublicRideWidget({ onNavigate }: { onNavigate?: () => void }) {
       {ready && (status.activation === 'waiting' || status.activation === 'phone') ? (
         <PublicRideManualAction activation={status.activation} onChange={setManualSharing} />
       ) : null}
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
-      {profileError ? <Text style={styles.errorText}>{profileError}</Text> : null}
     </View>
   )
 }
@@ -158,16 +161,7 @@ const styles = StyleSheet.create({
   },
   publicRide: { gap: 10 },
   blockedAction: { alignSelf: 'flex-end' },
-  hint: {
-    color: theme.neutral.textPrimary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
   list: {
     gap: 12,
-  },
-  errorText: {
-    color: theme.status.error.text,
-    fontSize: 12,
   },
 })

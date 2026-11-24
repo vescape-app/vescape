@@ -8,6 +8,9 @@ internal enum UnitPresentation {
     distanceUnit == "mi" ? kmh * 1000 / metersPerMile : kmh
   }
   static func speedUnit(_ distanceUnit: String) -> String { distanceUnit == "mi" ? "mph" : "km/h" }
+  static func temperatureFromC(_ celsius: Double, _ temperatureUnit: String) -> Double {
+    temperatureUnit == "fahrenheit" ? celsius * 9 / 5 + 32 : celsius
+  }
   static func formatSpokenSpeed(_ kmh: Double, _ distanceUnit: String) -> String {
     let value = speedFromKmh(kmh, distanceUnit).rounded(.toNearestOrAwayFromZero)
     return String(format: "%.0f", locale: Locale(identifier: "en_US_POSIX"), value)

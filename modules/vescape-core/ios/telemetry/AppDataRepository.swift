@@ -509,6 +509,11 @@ final class AppDataRepository {
         throw CocoaError(.coderInvalidValue)
       }
       value = format
+    } else if key == "dateFormat" {
+      guard let format = validDateFormat(rawValue) else {
+        throw CocoaError(.coderInvalidValue)
+      }
+      value = format
     } else if key == "temperatureUnit" {
       guard let unit = validTemperatureUnit(rawValue) else { return }
       value = unit
@@ -597,6 +602,7 @@ final class AppDataRepository {
     "distanceUnit": "km",
     "temperatureUnit": "celsius",
     "timeFormat": "24h",
+    "dateFormat": "dmy",
     "themeMode": "system",
     "satelliteOverlayEnabled": true,
     "satelliteImageryOpacity": 0.2,
@@ -683,6 +689,7 @@ final class AppDataRepository {
     normalized["distanceUnit"] = validDistanceUnit(settings["distanceUnit"]) ?? "km"
     normalized["temperatureUnit"] = validTemperatureUnit(settings["temperatureUnit"]) ?? "celsius"
     normalized["timeFormat"] = validTimeFormat(settings["timeFormat"]) ?? "24h"
+    normalized["dateFormat"] = validDateFormat(settings["dateFormat"]) ?? "dmy"
     normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["audioSource"] = audioSource(settings["audioSource"]) ?? "alarm"
     normalized["voice"] = voice(settings["voice"]) ?? voiceMatching

@@ -38,6 +38,7 @@ struct MirrorScreen: View {
             WeatherReadout(
               forecast: freshWeather,
               ambient: ambient,
+              temperatureUnit: link.settings.temperatureUnit,
               onTap: interactionEnabled(.gauges) ? { withAnimation { vertical = .weather } } : nil
             )
             .frame(maxWidth: .infinity)
@@ -168,10 +169,16 @@ struct MirrorScreen: View {
         forecast: freshWeather,
         onFetchFailed: { link.recordRadarFailure() },
         distanceUnit: link.settings.distanceUnit,
-        timeFormat: link.settings.timeFormat
+        timeFormat: link.settings.timeFormat,
+        streetMapEnabled: link.settings.streetMapEnabled
       )
     case .weather:
-      WeatherScreen(forecast: freshWeather, everReceived: link.weather != nil, timeFormat: link.settings.timeFormat)
+      WeatherScreen(
+        forecast: freshWeather,
+        everReceived: link.weather != nil,
+        timeFormat: link.settings.timeFormat,
+        temperatureUnit: link.settings.temperatureUnit
+      )
     case .gauges:
       controls
     case .nav:
@@ -294,7 +301,8 @@ struct MirrorScreen: View {
       telemetryRouteEnabled: link.settings.telemetryRouteEnabled,
       streetMapEnabled: link.settings.streetMapEnabled,
       mapGaugesPercent: link.settings.mapGaugesPercent,
-      distanceUnit: link.settings.distanceUnit
+      distanceUnit: link.settings.distanceUnit,
+      temperatureUnit: link.settings.temperatureUnit
     )
   }
 

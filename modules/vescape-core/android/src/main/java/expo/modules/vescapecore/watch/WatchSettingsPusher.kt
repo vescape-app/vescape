@@ -36,6 +36,7 @@ internal class WatchSettingsPusher(
                             dataMap.putBoolean(WATCH_SETTING_STREET_MAP, settings.streetMapEnabled)
                             dataMap.putInt(WATCH_SETTING_MAP_GAUGES, settings.mapGaugesPercent)
                             dataMap.putString(WATCH_SETTING_DISTANCE_UNIT, settings.distanceUnit)
+                            dataMap.putString(WATCH_SETTING_TEMPERATURE_UNIT, settings.temperatureUnit)
                             dataMap.putString(WATCH_SETTING_TIME_FORMAT, settings.timeFormat)
                             dataMap.putInt(WATCH_SETTING_TILT_RATE, settings.tiltRatePercent)
                         }.asPutDataRequest().setUrgent()

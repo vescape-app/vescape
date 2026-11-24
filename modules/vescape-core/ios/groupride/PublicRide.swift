@@ -107,6 +107,7 @@ internal final class PublicRide {
     switchState = account == nil || !stored.active(at: now()) ? .off : stored
     if switchState != stored { persist(switchState) }
     armTimer()
+    reconcile()
     emitStatus(force: true)
   }
 
@@ -271,10 +272,22 @@ internal final class PublicRide {
     return GroupRideRoster(ownRiderId: accountId, riders: rows)
   }
 
-  func resync() {
+  func emitCurrentStatus() {
     emitStatus(force: true)
+  }
+
+  func emitCurrentRiders() {
     emitRiders()
+  }
+
+  func emitCurrentPins() {
     emitPins()
+  }
+
+  func resync() {
+    emitCurrentStatus()
+    emitCurrentRiders()
+    emitCurrentPins()
   }
 
   @discardableResult

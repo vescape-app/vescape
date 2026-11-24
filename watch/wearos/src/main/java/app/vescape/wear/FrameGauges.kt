@@ -94,8 +94,9 @@ internal fun FrameLayout(
         },
         readouts = {
             if (showReadouts) {
-                CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
-                CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
+                val temperatureUnit = SettingsState.settings.value.temperatureUnit
+                CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2, temp(frame.motorTemp, ambientBlind, temperatureUnit), "MOTOR", motorColor, readoutFocus)
+                CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2, temp(frame.ctrlTemp, ambientBlind, temperatureUnit), "CTRL", ctrlColor, readoutFocus)
             }
 
             Column(
@@ -235,8 +236,8 @@ private fun LargeGaugeValue(modifier: Modifier, label: String, value: String, un
 
 private fun format(value: Double, decimals: Int): String = String.format("%.${decimals}f", value)
 
-private fun temp(value: Double?, blind: Boolean = false): String =
-    if (blind) DASH else value?.let { "${format(it, 0)}°" } ?: DASH
+private fun temp(value: Double?, blind: Boolean = false, temperatureUnit: String = "celsius"): String =
+    if (blind) DASH else value?.let { "${format(UnitPresentation.temperatureFromC(it, temperatureUnit), 0)}°" } ?: DASH
 
 private fun heroValue(value: Double?, blind: Boolean): String =
     if (blind) DASH else value?.let { format(it, 0) } ?: DASH

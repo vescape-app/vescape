@@ -176,7 +176,7 @@ A globally shared, Account-authored map-visible location that is independent fro
 _Avoid_: Marker, GPS point, telemetry marker, direction point
 
 **Direction Point**:
-One rider's private navigation target on the map, stored on the phone only. It is not a Map Point: it is never shared as a place, has no category, author or reactions, and Group Ride presence reads it natively.
+One rider's private navigation target on the map, stored on the phone only. It is not a Map Point: it is never shared as a place, has no category, author or reactions, and Public Ride presence reads it natively.
 _Avoid_: Direction map point, navigation Map Point, destination marker
 
 **Navigation**:
@@ -336,7 +336,7 @@ A bundled audio asset used for alert feedback, belonging to exactly one category
 _Avoid_: Alert Preset (now the rider's intensity concept), sound effect, ringtone, tone
 
 **Announcement Queue**:
-The native, phone-only line every non-critical cue and voice line waits in — connection cues, ride end, Group Ride cues, **Weather Alert** lines, later battery lines. Plays one item at a time by priority (connection › advisory › social), drops items that waited past their expiry, holds non-connection items for a settle window after connect, and yields to telemetry **Alert Rule** sounds and speech, resuming after a quiet gap. **Geiger Alert Rule** ticks never hold it.
+The native, phone-only line every non-critical cue and voice line waits in — connection cues, ride end, Public Ride cues, **Weather Alert** lines, later battery lines. Plays one item at a time by priority (connection › advisory › social), drops items that waited past their expiry, holds non-connection items for a settle window after connect, and yields to telemetry **Alert Rule** sounds and speech, resuming after a quiet gap. **Geiger Alert Rule** ticks never hold it.
 _Avoid_: audio queue, sound queue, TTS queue
 
 **Weather Alert**:
@@ -359,12 +359,12 @@ _Avoid_: TTS, voice preset, sound pack
 The name of what an announcement says (`battery`, `motorTemp`, `controllerTemp`), resolved by the **Voice Pack** to its most specific line: `<key>.<severity>`, else the generic `<key>`, else the severity sound only.
 _Avoid_: message text, template
 
-**Voice Level**:
+**Voice Detail**:
 The app-wide amount of speech for preset alerts and app sounds: Off, Minimal, Standard, or Full. It sets which events speak and how much each says, from the shortest wording (Minimal) to varied lines with occasional endings (Full). Custom **Alert Rules** always speak, in its wording.
-_Avoid_: verbosity, voice volume
+_Avoid_: voice level, verbosity, voice volume
 
 **Watch Mirror**:
-The app on the rider's wrist that mirrors phone-owned live state and provides rider controls. Navigation and Group Ride can remain live without a Board Session. The wrist sends rider commands and reports its own awake state. Implemented by the **Wear OS Mirror** on Android and the **watchOS Mirror** on Apple Watch.
+The app on the rider's wrist that mirrors phone-owned live state and provides rider controls. Navigation and Public Ride can remain live without a Board Session. The wrist sends rider commands and reports its own awake state. Implemented by the **Wear OS Mirror** on Android and the **watchOS Mirror** on Apple Watch.
 _Avoid_: Wear Mirror (bakes in Google's Wear OS brand; use for the Android impl only), watch app, companion (Companion names the CompanionDeviceManager board-presence association, not the watch)
 
 **Watch Frame**:
@@ -617,6 +617,7 @@ _Avoid_: Hazard signal, warning, POI, map point
 - A **Public Ride** is an **Online Capability**; a **Board Session**, **Ride Recording**, **Ride History**, and tuning are not.
 - A **Diagnostic Event** may describe failures around a **Board**, **Live State**, **Telemetry Sample**, **Ride Recording**, or **Tune Profile** workflow.
 - A **Vescape Account** is independent of a **Rider** and may enable optional online services such as backup, sync, or paid entitlements, but is not required to use local Boards, Ride Recording, Ride History, or tuning.
+- Deleting a **Vescape Account** permanently removes server-owned account data — including Clerk identity, **Rider Profile** (freeing the nick), Friends, **Rider Month Stats**, cloud backups, stored **Public Rides**, **Crew Ride** participation (recomputing affected Crew Rides for surviving riders), and authored **Map Points** and **Map Point Reactions** — while leaving phone-owned local data untouched.
 - A **Rider Presence** belongs to one **Rider** during a **Public Ride**, derives location from a **GPS Fix** and optional speed, **Battery SoC Estimate** and temperatures from a live **Board Session**, and is not produced while the Rider is inside a **Privacy Zone**.
 
 ## Example Dialogue
@@ -634,7 +635,7 @@ _Avoid_: Hazard signal, warning, POI, map point
 > **Domain expert:** "No. A Vescape Account is optional; local board and ride features remain available offline."
 
 > **Dev:** "If an Online Block applies to this app version, does the rider lose access to their Board?"
-> **Domain expert:** "No. Only Online Capabilities such as Group Ride are unavailable; local Board and ride capabilities remain available. An exceptional App Block may hide normal app UI, but it still does not end already-running Board work."
+> **Domain expert:** "No. Only Online Capabilities such as Public Ride are unavailable; local Board and ride capabilities remain available. An exceptional App Block may hide normal app UI, but it still does not end already-running Board work."
 
 > **Dev:** "If a VESC fault occurs while Ride Recording is disabled, should it disappear with Ride History?"
 > **Domain expert:** "No. A VESC Fault Occurrence belongs to the Board and remains available independently of ride recording and history."

@@ -4,7 +4,9 @@ import kotlin.math.PI
 import kotlin.math.atan
 import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.ln
 import kotlin.math.log2
+import kotlin.math.tan
 import kotlin.math.sinh
 
 /**
@@ -80,6 +82,17 @@ data class WatchMapTile(val z: Int, val x: Int, val y: Int) {
             return split.dropLast(3).joinToString("/") to tile
         }
     }
+}
+
+// @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `radarZoom`
+internal const val WATCH_RADAR_TILE_ZOOM = 6
+
+// @parity /modules/vescape-core/ios/watch/WatchMapTile.swift `coordinates`
+internal fun tileCoordinates(position: WatchMapPosition, n: Int): Pair<Double, Double> {
+    val latitude = Math.toRadians(position.latitude.coerceIn(-WATCH_MAP_MAX_MERCATOR_LATITUDE, WATCH_MAP_MAX_MERCATOR_LATITUDE))
+    val x = (position.longitude + 180.0) / 360.0 * n
+    val y = (1 - ln(tan(latitude) + 1 / cos(latitude)) / PI) / 2 * n
+    return x.coerceIn(0.0, n.toDouble().minus(1e-9)) to y.coerceIn(0.0, n.toDouble().minus(1e-9))
 }
 
 internal const val WATCH_MAP_REFERENCE_WIDTH_PX = 480.0

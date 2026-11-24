@@ -29,8 +29,13 @@
           "lines/battery.warning.full.start.0.m4a",
           "lines/battery.warning.full.start.1.m4a"
         ],
-        "end": ["lines/battery.warning.full.end.0.m4a"],
-        "endChance": 0.2
+        "end": [
+          "lines/battery.warning.full.end.0.m4a",
+          "lines/battery.warning.full.end.1.m4a",
+          "lines/battery.warning.full.end.2.m4a",
+          "lines/battery.warning.full.end.3.m4a"
+        ],
+        "endChance": 0.35
       }
     },
     "battery.critical": {
@@ -40,8 +45,13 @@
           "lines/battery.critical.full.start.0.m4a",
           "lines/battery.critical.full.start.1.m4a"
         ],
-        "end": ["lines/battery.critical.full.end.0.m4a", "lines/battery.critical.full.end.1.m4a"],
-        "endChance": 0.2
+        "end": [
+          "lines/battery.critical.full.end.0.m4a",
+          "lines/battery.critical.full.end.1.m4a",
+          "lines/battery.critical.full.end.2.m4a",
+          "lines/battery.critical.full.end.3.m4a"
+        ],
+        "endChance": 0.35
       }
     },
     "motorTemp": {
@@ -58,8 +68,12 @@
           "lines/motorTemp.warning.full.start.0.m4a",
           "lines/motorTemp.warning.full.start.1.m4a"
         ],
-        "end": ["lines/motorTemp.warning.full.end.0.m4a"],
-        "endChance": 0.2
+        "end": [
+          "lines/motorTemp.warning.full.end.0.m4a",
+          "lines/motorTemp.warning.full.end.1.m4a",
+          "lines/motorTemp.warning.full.end.2.m4a"
+        ],
+        "endChance": 0.35
       }
     },
     "motorTemp.critical": {
@@ -71,9 +85,12 @@
         ],
         "end": [
           "lines/motorTemp.critical.full.end.0.m4a",
-          "lines/motorTemp.critical.full.end.1.m4a"
+          "lines/motorTemp.critical.full.end.1.m4a",
+          "lines/motorTemp.critical.full.end.2.m4a",
+          "lines/motorTemp.critical.full.end.3.m4a",
+          "lines/motorTemp.critical.full.end.4.m4a"
         ],
-        "endChance": 0.2
+        "endChance": 0.35
       }
     },
     "controllerTemp": {
@@ -90,8 +107,12 @@
           "lines/controllerTemp.warning.full.start.0.m4a",
           "lines/controllerTemp.warning.full.start.1.m4a"
         ],
-        "end": ["lines/controllerTemp.warning.full.end.0.m4a"],
-        "endChance": 0.2
+        "end": [
+          "lines/controllerTemp.warning.full.end.0.m4a",
+          "lines/controllerTemp.warning.full.end.1.m4a",
+          "lines/controllerTemp.warning.full.end.2.m4a"
+        ],
+        "endChance": 0.35
       }
     },
     "controllerTemp.critical": {
@@ -103,9 +124,12 @@
         ],
         "end": [
           "lines/controllerTemp.critical.full.end.0.m4a",
-          "lines/controllerTemp.critical.full.end.1.m4a"
+          "lines/controllerTemp.critical.full.end.1.m4a",
+          "lines/controllerTemp.critical.full.end.2.m4a",
+          "lines/controllerTemp.critical.full.end.3.m4a",
+          "lines/controllerTemp.critical.full.end.4.m4a"
         ],
-        "endChance": 0.2
+        "endChance": 0.35
       }
     },
     "boardConnection.connected": {
@@ -114,8 +138,12 @@
         "start": [
           "lines/boardConnection.connected.full.start.0.m4a",
           "lines/boardConnection.connected.full.start.1.m4a",
-          "lines/boardConnection.connected.full.start.2.m4a"
-        ]
+          "lines/boardConnection.connected.full.start.2.m4a",
+          "lines/boardConnection.connected.full.start.3.m4a",
+          "lines/boardConnection.connected.full.start.4.m4a"
+        ],
+        "rare": ["lines/boardConnection.connected.full.rare.0.m4a"],
+        "rareChance": 0.01
       }
     },
     "boardConnection.lost": {
@@ -130,7 +158,11 @@
     "system.error": {
       "start": ["lines/system.error.start.0.m4a"],
       "full": {
-        "start": ["lines/system.error.full.start.0.m4a", "lines/system.error.full.start.1.m4a"]
+        "start": [
+          "lines/system.error.full.start.0.m4a",
+          "lines/system.error.full.start.1.m4a",
+          "lines/system.error.full.start.2.m4a"
+        ]
       }
     },
     "groupRide.created": {
@@ -297,7 +329,8 @@
       "full": {
         "start": [
           "lines/groupRide.hazard.water.full.start.0.m4a",
-          "lines/groupRide.hazard.water.full.start.1.m4a"
+          "lines/groupRide.hazard.water.full.start.1.m4a",
+          "lines/groupRide.hazard.water.full.start.2.m4a"
         ]
       }
     },
@@ -306,7 +339,8 @@
       "full": {
         "start": [
           "lines/groupRide.hazard.terrain.full.start.0.m4a",
-          "lines/groupRide.hazard.terrain.full.start.1.m4a"
+          "lines/groupRide.hazard.terrain.full.start.1.m4a",
+          "lines/groupRide.hazard.terrain.full.start.2.m4a"
         ]
       }
     },
@@ -324,7 +358,8 @@
       "full": {
         "start": [
           "lines/groupRide.hazard.police.full.start.0.m4a",
-          "lines/groupRide.hazard.police.full.start.1.m4a"
+          "lines/groupRide.hazard.police.full.start.1.m4a",
+          "lines/groupRide.hazard.police.full.start.2.m4a"
         ]
       }
     },
@@ -352,7 +387,11 @@
       "minimal": ["lines/weather.storm.minimal.0.m4a"],
       "full": {
         "start": ["lines/weather.storm.full.start.0.m4a", "lines/weather.storm.full.start.1.m4a"],
-        "end": ["lines/weather.storm.full.end.0.m4a", "lines/weather.storm.full.end.1.m4a"],
+        "end": [
+          "lines/weather.storm.full.end.0.m4a",
+          "lines/weather.storm.full.end.1.m4a",
+          "lines/weather.storm.full.end.2.m4a"
+        ],
         "endChance": 0.5
       }
     },
@@ -364,7 +403,7 @@
           "lines/weather.storm.now.full.start.0.m4a",
           "lines/weather.storm.now.full.start.1.m4a"
         ],
-        "end": ["lines/weather.storm.now.full.end.0.m4a"],
+        "end": ["lines/weather.storm.now.full.end.0.m4a", "lines/weather.storm.now.full.end.1.m4a"],
         "endChance": 0.7
       }
     },
@@ -373,8 +412,12 @@
       "minimal": ["lines/weather.wind.minimal.0.m4a"],
       "full": {
         "start": ["lines/weather.wind.full.start.0.m4a", "lines/weather.wind.full.start.1.m4a"],
-        "end": ["lines/weather.wind.full.end.0.m4a", "lines/weather.wind.full.end.1.m4a"],
-        "endChance": 0.3
+        "end": [
+          "lines/weather.wind.full.end.0.m4a",
+          "lines/weather.wind.full.end.1.m4a",
+          "lines/weather.wind.full.end.2.m4a"
+        ],
+        "endChance": 0.35
       }
     },
     "weather.wind.now": {
@@ -385,7 +428,7 @@
           "lines/weather.wind.now.full.start.0.m4a",
           "lines/weather.wind.now.full.start.1.m4a"
         ],
-        "end": ["lines/weather.wind.now.full.end.0.m4a"],
+        "end": ["lines/weather.wind.now.full.end.0.m4a", "lines/weather.wind.now.full.end.1.m4a"],
         "endChance": 0.5
       }
     },
@@ -394,8 +437,12 @@
       "minimal": ["lines/weather.rain.minimal.0.m4a"],
       "full": {
         "start": ["lines/weather.rain.full.start.0.m4a", "lines/weather.rain.full.start.1.m4a"],
-        "end": ["lines/weather.rain.full.end.0.m4a", "lines/weather.rain.full.end.1.m4a"],
-        "endChance": 0.3
+        "end": [
+          "lines/weather.rain.full.end.0.m4a",
+          "lines/weather.rain.full.end.1.m4a",
+          "lines/weather.rain.full.end.2.m4a"
+        ],
+        "endChance": 0.4
       }
     },
     "weather.rain.now": {
@@ -406,8 +453,15 @@
           "lines/weather.rain.now.full.start.0.m4a",
           "lines/weather.rain.now.full.start.1.m4a"
         ],
-        "end": ["lines/weather.rain.now.full.end.0.m4a"],
+        "end": ["lines/weather.rain.now.full.end.0.m4a", "lines/weather.rain.now.full.end.1.m4a"],
         "endChance": 0.5
+      }
+    },
+    "voice.intro": {
+      "start": ["lines/voice.intro.start.0.m4a"],
+      "minimal": ["lines/voice.intro.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/voice.intro.full.start.0.m4a"]
       }
     }
   },
@@ -976,11 +1030,16 @@
     "lines/battery.warning.full.start.0.m4a": "6955d10d28926f69",
     "lines/battery.warning.full.start.1.m4a": "b61f8cde0c0ee773",
     "lines/battery.warning.full.end.0.m4a": "41e195ade97102f8",
+    "lines/battery.warning.full.end.1.m4a": "602c1e22fe52f7f0",
+    "lines/battery.warning.full.end.2.m4a": "f70489a88b505eba",
+    "lines/battery.warning.full.end.3.m4a": "c0fc3a3aa6ecae1e",
     "lines/battery.warning.start.0.m4a": "6955d10d28926f69",
     "lines/battery.critical.full.start.0.m4a": "c54aea1bc04e7180",
     "lines/battery.critical.full.start.1.m4a": "7cad699cb1b7a291",
     "lines/battery.critical.full.end.0.m4a": "374ef7d42c0910e9",
-    "lines/battery.critical.full.end.1.m4a": "13bcaa60f60b6a07",
+    "lines/battery.critical.full.end.1.m4a": "9c5bb2cd66ce422c",
+    "lines/battery.critical.full.end.2.m4a": "f34143b181d956c4",
+    "lines/battery.critical.full.end.3.m4a": "a4ba523cf2adb1a2",
     "lines/battery.critical.start.0.m4a": "c54aea1bc04e7180",
     "lines/motorTemp.full.start.0.m4a": "ffc79fa454666fca",
     "lines/motorTemp.full.start.1.m4a": "a3f6476a8a4800be",
@@ -989,11 +1048,16 @@
     "lines/motorTemp.warning.full.start.0.m4a": "f828612d79eaabbb",
     "lines/motorTemp.warning.full.start.1.m4a": "3619b168546258c1",
     "lines/motorTemp.warning.full.end.0.m4a": "9d8d8b7a9607e271",
+    "lines/motorTemp.warning.full.end.1.m4a": "2f3d726dd3cf86e5",
+    "lines/motorTemp.warning.full.end.2.m4a": "324ecaaf415720ee",
     "lines/motorTemp.warning.start.0.m4a": "f828612d79eaabbb",
     "lines/motorTemp.critical.full.start.0.m4a": "cf99f953783f1d04",
     "lines/motorTemp.critical.full.start.1.m4a": "44b43a3d036822af",
     "lines/motorTemp.critical.full.end.0.m4a": "9d8d8b7a9607e271",
     "lines/motorTemp.critical.full.end.1.m4a": "fbb8889256777557",
+    "lines/motorTemp.critical.full.end.2.m4a": "702cb6b7ce794eb3",
+    "lines/motorTemp.critical.full.end.3.m4a": "d1d77b39949a5468",
+    "lines/motorTemp.critical.full.end.4.m4a": "ba7ed5362a858cd2",
     "lines/motorTemp.critical.start.0.m4a": "cf99f953783f1d04",
     "lines/controllerTemp.full.start.0.m4a": "0cb2c1c79c880da1",
     "lines/controllerTemp.full.start.1.m4a": "65f8b14fd111138f",
@@ -1002,25 +1066,34 @@
     "lines/controllerTemp.warning.full.start.0.m4a": "f3f84690f14c27cb",
     "lines/controllerTemp.warning.full.start.1.m4a": "16e53612b42d3758",
     "lines/controllerTemp.warning.full.end.0.m4a": "9d8d8b7a9607e271",
+    "lines/controllerTemp.warning.full.end.1.m4a": "2f3d726dd3cf86e5",
+    "lines/controllerTemp.warning.full.end.2.m4a": "324ecaaf415720ee",
     "lines/controllerTemp.warning.start.0.m4a": "f3f84690f14c27cb",
     "lines/controllerTemp.critical.full.start.0.m4a": "5319c3fdbca6ce62",
     "lines/controllerTemp.critical.full.start.1.m4a": "869bac0f43e1af56",
     "lines/controllerTemp.critical.full.end.0.m4a": "9d8d8b7a9607e271",
     "lines/controllerTemp.critical.full.end.1.m4a": "fbb8889256777557",
+    "lines/controllerTemp.critical.full.end.2.m4a": "702cb6b7ce794eb3",
+    "lines/controllerTemp.critical.full.end.3.m4a": "d1d77b39949a5468",
+    "lines/controllerTemp.critical.full.end.4.m4a": "ba7ed5362a858cd2",
     "lines/controllerTemp.critical.start.0.m4a": "869bac0f43e1af56",
     "lines/boardConnection.connected.full.start.0.m4a": "125e8031055fcda5",
-    "lines/boardConnection.connected.full.start.1.m4a": "49466a07e7aad77e",
-    "lines/boardConnection.connected.full.start.2.m4a": "a0110858f27f78c7",
+    "lines/boardConnection.connected.full.start.1.m4a": "ac64e7b9621476c2",
+    "lines/boardConnection.connected.full.start.2.m4a": "ec2339b9504f190f",
+    "lines/boardConnection.connected.full.start.3.m4a": "ad8f6a588a5f6cf5",
+    "lines/boardConnection.connected.full.start.4.m4a": "a0110858f27f78c7",
+    "lines/boardConnection.connected.full.rare.0.m4a": "1f2bfaefb14cd800",
     "lines/boardConnection.connected.start.0.m4a": "aa2af535c2cdba1d",
     "lines/boardConnection.lost.full.start.0.m4a": "cfd02643cad4af26",
     "lines/boardConnection.lost.full.start.1.m4a": "42db012603687785",
     "lines/boardConnection.lost.start.0.m4a": "cfd02643cad4af26",
     "lines/system.error.full.start.0.m4a": "e471094b69014ce2",
     "lines/system.error.full.start.1.m4a": "caf45d9c1de713a1",
+    "lines/system.error.full.start.2.m4a": "f7b0b9ab8b360649",
     "lines/system.error.start.0.m4a": "50e4661a3e306875",
-    "lines/groupRide.created.full.start.0.m4a": "130be18c8834b7b5",
+    "lines/groupRide.created.full.start.0.m4a": "0fa6e3066fdc1bdb",
     "lines/groupRide.created.full.start.1.m4a": "f0a288aa5893058b",
-    "lines/groupRide.created.start.0.m4a": "a96ea10562d5b616",
+    "lines/groupRide.created.start.0.m4a": "2cd2ae266687b84c",
     "lines/groupRide.joined.full.start.0.m4a": "b6286a11cec450d5",
     "lines/groupRide.joined.full.start.1.m4a": "b005724f5e87e72e",
     "lines/groupRide.joined.start.0.m4a": "b6286a11cec450d5",
@@ -1074,15 +1147,18 @@
     "lines/groupRide.signal.cleared.start.0.m4a": "2ef9ae7ad811d018",
     "lines/groupRide.hazard.water.full.start.0.m4a": "7e6be5be6f978b1a",
     "lines/groupRide.hazard.water.full.start.1.m4a": "8fe2ff7f8ca1cbbd",
+    "lines/groupRide.hazard.water.full.start.2.m4a": "1705d3e31efe110d",
     "lines/groupRide.hazard.water.start.0.m4a": "fe8044065e26ef04",
     "lines/groupRide.hazard.terrain.full.start.0.m4a": "9d9d111c4bb84aab",
     "lines/groupRide.hazard.terrain.full.start.1.m4a": "a95188f219a96d9d",
+    "lines/groupRide.hazard.terrain.full.start.2.m4a": "e6f3bd2bb8753d86",
     "lines/groupRide.hazard.terrain.start.0.m4a": "b516f771a0f0dc2c",
     "lines/groupRide.hazard.obstacle.full.start.0.m4a": "44a353e5409f68ea",
     "lines/groupRide.hazard.obstacle.full.start.1.m4a": "8295e70f2b2da67e",
     "lines/groupRide.hazard.obstacle.start.0.m4a": "3c687f838f20b9ce",
     "lines/groupRide.hazard.police.full.start.0.m4a": "ad2bd7c5bcda7374",
     "lines/groupRide.hazard.police.full.start.1.m4a": "bb5f2b8f3662ef18",
+    "lines/groupRide.hazard.police.full.start.2.m4a": "5ba58b2f0237fda2",
     "lines/groupRide.hazard.police.start.0.m4a": "5ed061d012a43465",
     "lines/groupRide.hazard.sent.full.start.0.m4a": "f0decae0a857da92",
     "lines/groupRide.hazard.sent.full.start.1.m4a": "f5584e5ba04aaa41",
@@ -1095,35 +1171,44 @@
     "lines/weather.storm.full.start.1.m4a": "c6543b4ffa30dee7",
     "lines/weather.storm.full.end.0.m4a": "80a81baadd0e2278",
     "lines/weather.storm.full.end.1.m4a": "3f237d9515ec0937",
+    "lines/weather.storm.full.end.2.m4a": "ec127e5f19c729f4",
     "lines/weather.storm.start.0.m4a": "d7e749e8b72e7cde",
     "lines/weather.storm.minimal.0.m4a": "bd36c0ab756f2674",
     "lines/weather.storm.now.full.start.0.m4a": "24147a041262829d",
     "lines/weather.storm.now.full.start.1.m4a": "298037c6368e2a0a",
     "lines/weather.storm.now.full.end.0.m4a": "5feadd2d8ea0f941",
+    "lines/weather.storm.now.full.end.1.m4a": "ec127e5f19c729f4",
     "lines/weather.storm.now.start.0.m4a": "24147a041262829d",
     "lines/weather.storm.now.minimal.0.m4a": "73bcde7b1f7fb343",
     "lines/weather.wind.full.start.0.m4a": "49a6d13f0e4cf9e5",
     "lines/weather.wind.full.start.1.m4a": "bca1bfce36e24955",
     "lines/weather.wind.full.end.0.m4a": "7c284d0f2d731783",
     "lines/weather.wind.full.end.1.m4a": "6f82824ac6af7269",
+    "lines/weather.wind.full.end.2.m4a": "db40061abc9174f1",
     "lines/weather.wind.start.0.m4a": "49a6d13f0e4cf9e5",
     "lines/weather.wind.minimal.0.m4a": "48935436ec678bf5",
     "lines/weather.wind.now.full.start.0.m4a": "b7607b144a10a8ec",
     "lines/weather.wind.now.full.start.1.m4a": "0c8da9a7f88497ff",
     "lines/weather.wind.now.full.end.0.m4a": "7c284d0f2d731783",
+    "lines/weather.wind.now.full.end.1.m4a": "db40061abc9174f1",
     "lines/weather.wind.now.start.0.m4a": "b7607b144a10a8ec",
     "lines/weather.wind.now.minimal.0.m4a": "1f2476607ff3b267",
     "lines/weather.rain.full.start.0.m4a": "70ea769271efc052",
     "lines/weather.rain.full.start.1.m4a": "9265d12117de8709",
     "lines/weather.rain.full.end.0.m4a": "80a81baadd0e2278",
     "lines/weather.rain.full.end.1.m4a": "1bc4fda5d282d8d3",
+    "lines/weather.rain.full.end.2.m4a": "a26ee2d66ad7a1e4",
     "lines/weather.rain.start.0.m4a": "70ea769271efc052",
     "lines/weather.rain.minimal.0.m4a": "9423893bd3cb9c31",
     "lines/weather.rain.now.full.start.0.m4a": "661eeaa5697187ac",
     "lines/weather.rain.now.full.start.1.m4a": "e0058337be625000",
     "lines/weather.rain.now.full.end.0.m4a": "80a81baadd0e2278",
+    "lines/weather.rain.now.full.end.1.m4a": "a26ee2d66ad7a1e4",
     "lines/weather.rain.now.start.0.m4a": "661eeaa5697187ac",
     "lines/weather.rain.now.minimal.0.m4a": "76512beb8f650bf1",
+    "lines/voice.intro.full.start.0.m4a": "78d0996abe12c5d6",
+    "lines/voice.intro.start.0.m4a": "06003970130dcb42",
+    "lines/voice.intro.minimal.0.m4a": "e7fc81a200a9ffdb",
     "values/percent/0.m4a": "dd1593367b892565",
     "values/percent/1.m4a": "028027f6aff09387",
     "values/percent/2.m4a": "e8c0a49ceaf129fd",

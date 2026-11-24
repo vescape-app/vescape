@@ -11,6 +11,11 @@ import {
   formatDistanceMeters,
   formatRideDistanceMeters,
   formatLengthMeters,
+  temperatureFromC,
+  temperatureToC,
+  temperatureInputToC,
+  formatTemperatureValue,
+  formatTemperatureC,
 } from './units'
 
 test('board km/h and GPS m/s describe the same speed in either system', () => {
@@ -51,4 +56,17 @@ test('speed display precision rounds after conversion and suppresses trailing ze
   expect(formatSpeedValue(40.2336, 'mi', 1)).toBe('25')
   expect(formatSpeedValue(0, 'mi', 1)).toBe('0')
   expect(formatSpeedValue(-40, 'mi', 1)).toBe('-24.9')
+})
+
+test('temperature conversion round-trips, formats, and clamps canonical Celsius bounds', () => {
+  expect(temperatureFromC(0, 'fahrenheit')).toBe(32)
+  expect(temperatureFromC(100, 'fahrenheit')).toBe(212)
+  expect(temperatureToC(temperatureFromC(65, 'fahrenheit'), 'fahrenheit')).toBeCloseTo(65)
+  expect(formatTemperatureValue(80, 'celsius')).toBe('80')
+  expect(formatTemperatureValue(80, 'fahrenheit')).toBe('176')
+  expect(formatTemperatureC(80, 'fahrenheit')).toBe('176 °F')
+  expect(temperatureInputToC(temperatureFromC(62.5, 'fahrenheit'), 62.5, 'fahrenheit')).toBe(62.5)
+  expect(temperatureInputToC(176, 60, 'fahrenheit', 0, 140)).toBeCloseTo(80)
+  expect(temperatureInputToC(0, 60, 'fahrenheit', 0, 140)).toBe(0)
+  expect(temperatureInputToC(400, 60, 'fahrenheit', 0, 140)).toBe(140)
 })

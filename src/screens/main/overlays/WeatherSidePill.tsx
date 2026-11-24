@@ -5,7 +5,9 @@ import type { WeatherIconSlug } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { temperatureFromC } from '@/helpers/units'
 import { useResolvedColor } from '@/hooks/useTheme'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 
 const PILL_WIDTH = 38
@@ -96,18 +98,20 @@ function RainWaterFill({ probability }: { probability: number }) {
 
 export function WeatherSidePill({
   icon,
-  temperature,
+  temperatureC,
   precipProbability,
   onPress,
 }: {
   icon: WeatherIconSlug
-  temperature: number
+  temperatureC: number
   precipProbability: number | null
   onPress?: () => void
 }) {
+  const { temperatureUnit } = useUserPreferences()
+  const displayTemp = Math.round(temperatureFromC(temperatureC, temperatureUnit))
   return (
     <Pressable
-      accessibilityLabel={`Weather, ${temperature} degrees`}
+      accessibilityLabel={`Weather, ${displayTemp} degrees`}
       onPress={onPress}
       style={styles.pill}
     >
@@ -117,7 +121,7 @@ export function WeatherSidePill({
       {icon === 'cloud-snow' ? <Snowfall /> : null}
       <View pointerEvents="none" style={styles.content}>
         <WeatherIcon icon={icon} size={18} color={theme.control.textMuted} weight="duotone" />
-        <Text style={styles.temperature}>{temperature}°</Text>
+        <Text style={styles.temperature}>{displayTemp}°</Text>
         {precipProbability != null && precipProbability > 0 ? (
           <View style={styles.precipitation}>
             <Text style={styles.precipitationText}>{precipProbability}%</Text>

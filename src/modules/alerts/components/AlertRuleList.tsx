@@ -136,11 +136,14 @@ function AlertRuleRow({
   onToggle: () => void
   onDelete: () => void
 }) {
-  const { formatSpeedWithUnit } = useFormat()
+  const { formatSpeedWithUnit, formatTemperatureWithUnit } = useFormat()
+  const isTemp = rule.controlId === 'motor-temp' || rule.controlId === 'controller-temp'
   const format = (value: number) =>
     rule.controlId === 'speed'
       ? formatSpeedWithUnit(value, 1)
-      : formatAlertValue(value, batteryConfig, unit)
+      : isTemp
+        ? formatTemperatureWithUnit(value)
+        : formatAlertValue(value, batteryConfig, unit)
   const isGeiger = rule.thresholdMax != null
   const tts = parseTtsAlertSound(rule.spec)
   const voice = parseVoiceAlertSound(rule.spec)

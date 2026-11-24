@@ -1,4 +1,4 @@
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { speedFromKmh, speedUnit } from '@/helpers/units'
 import { useMemo, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
@@ -288,7 +288,7 @@ export function GaugePair({
   onPressSpeed,
   onPressDuty,
 }: GaugePairProps) {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const telemetryColors = useResolvedTelemetryColors()
   const { size, onLayout } = useCanvasSize()
   const cellWidth = Math.max(0, (size.w - ARC_GAP) / 2)

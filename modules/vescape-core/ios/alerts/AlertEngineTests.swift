@@ -575,6 +575,15 @@ final class AlertTemplateTests: XCTestCase {
     XCTAssertEqual(40.0, sample.threshold)
   }
 
+  func testTemperatureUnitsConvertPlaceholders() {
+    let sample = alert(controlId: "motor-temp", value: 90.0, threshold: 80.0)
+    let template = "Motor {value} {unit} over {threshold} {unit}"
+    XCTAssertEqual("Motor 194 °F over 176 °F",
+      renderAlertMessageTemplate(template, alert: sample, batteryPercent: nil, temperatureUnit: "fahrenheit"))
+    XCTAssertEqual("Motor 90 °C over 80 °C",
+      renderAlertMessageTemplate(template, alert: sample, batteryPercent: nil, temperatureUnit: "celsius"))
+  }
+
   func testBasicPlaceholdersRendered() {
     let result = renderAlertMessageTemplate(
       "{value} {unit} over {threshold} {unit}",

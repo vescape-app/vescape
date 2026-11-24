@@ -10,6 +10,8 @@ describe('Group Ride speed presentation', () => {
     expect(riderStats(presence, 'mi').speed.value).toBe('22')
     expect(riderStats(presence, 'mi').speed.value).toBe(formatSpeedValue(36, 'mi'))
     expect(riderStats(presence, 'km').soc.value).toBe('50%')
+    expect(riderStats(presence, 'km', 'celsius').motor.value).toBe('45°')
+    expect(riderStats(presence, 'km', 'fahrenheit').motor.value).toBe('113°')
     expect(presence.speed).toBe(10)
   })
 

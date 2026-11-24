@@ -77,10 +77,12 @@ class GroupRideObserverTest {
         private val tasks = mutableMapOf<Runnable, MutableList<Cancellable>>()
         var blocked = false
         var onlineChanged: (() -> Unit)? = null
+        var newNetwork: (() -> Unit)? = null
         var account: String? = "acc"
         var token: String? = "token"
         val links = mutableListOf<Link>()
         val demand = mutableListOf<Boolean>()
+        val events = mutableListOf<Pair<String, Map<String, Any?>>>()
         val observer: GroupRideObserver
 
         class Link(val request: Request, val listener: WebSocketListener) {
@@ -109,7 +111,7 @@ class GroupRideObserverTest {
             doAnswer { call -> tasks.remove(call.getArgument<Runnable>(0))?.forEach { it.cancel() }; null }.`when`(handler).removeCallbacks(any(Runnable::class.java))
             observer = GroupRideObserver(
                 handler = handler,
-                emit = { _, _ -> },
+                emit = { name, body -> events += name to body },
                 online = object : OnlineCapability {
                     override val onlineBlocked get() = blocked
                     override val appVersion = "1.0.0"
@@ -122,6 +124,10 @@ class GroupRideObserverTest {
                 deviceCredential = { account?.let { id -> token?.let { DeviceCredential("https://example.com", it, id, null) } } },
                 onPublicRideDemandChanged = { demand += observerNeedsLink() },
                 now = { clock.currentTimeMs },
+                watchNetwork = { onNewNetwork ->
+                    newNetwork = onNewNetwork
+                    { newNetwork = null }
+                },
                 sockets = WebSocket.Factory { request, listener -> Link(request, listener).also { links += it }.socket },
             )
         }
@@ -130,6 +136,10 @@ class GroupRideObserverTest {
         fun ready(link: Link = links.last(), features: String = "\"public-ride\",\"missed-positions\"") {
             link.open()
             link.message("""{"type":"snapshot","features":[$features]}""")
+            flush()
+        }
+        fun drop(link: Link = links.last()) {
+            link.listener.onClosed(link.socket, 1000, "lost")
             flush()
         }
         fun offlineBuffer() {
@@ -210,4 +220,197 @@ class GroupRideObserverTest {
         h.observer.stop()
     }
 
+    @Test
+    fun `replayEvent and resync emit current state only while active`() {
+        val h = RelayHarness()
+        h.observer.replayEvent("onGroupRideConnection")
+        h.observer.replayEvent("onPublicRideStatus")
+        h.observer.resync()
+        h.flush()
+        assertTrue(h.events.isEmpty())
+
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        h.events.clear()
+
+        h.observer.replayEvent("onGroupRideConnection")
+        h.flush()
+        assertEquals(listOf("onGroupRideConnection"), h.events.map { it.first })
+        assertEquals("connected", h.events.single().second["state"])
+
+        h.events.clear()
+        h.observer.replayEvent("onPublicRideStatus")
+        h.flush()
+        assertEquals(listOf("onPublicRideStatus"), h.events.map { it.first })
+        assertEquals(true, h.events.single().second["supported"])
+
+        h.events.clear()
+        h.observer.replayEvent("onGroupRideSignalAvailability")
+        h.flush()
+        assertEquals(listOf("onGroupRideSignalAvailability"), h.events.map { it.first })
+
+        h.events.clear()
+        h.observer.replayEvent("onPublicRiders")
+        h.flush()
+        assertEquals(listOf("onPublicRiders"), h.events.map { it.first })
+
+        h.events.clear()
+        h.observer.replayEvent("onPublicPins")
+        h.flush()
+        assertEquals(listOf("onPublicPins"), h.events.map { it.first })
+
+        h.events.clear()
+        h.observer.resync()
+        h.flush()
+        assertEquals(
+            setOf(
+                "onGroupRideConnection",
+                "onGroupRideSignalAvailability",
+                "onPublicRideStatus",
+                "onPublicRiders",
+                "onPublicPins",
+            ),
+            h.events.map { it.first }.toSet(),
+        )
+        assertEquals(true, h.events.last { it.first == "onPublicRideStatus" }.second["supported"])
+
+        h.observer.stop()
+        h.events.clear()
+        h.observer.replayEvent("onPublicRideStatus")
+        h.observer.resync()
+        h.flush()
+        assertTrue(h.events.isEmpty())
+    }
+
+    @Test
+    fun `a stored switch loaded after the relay snapshot still goes public`() {
+        val h = RelayHarness()
+        h.observer.setBoardConnected(true)
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        assertTrue(h.links.last().frames.isEmpty())
+
+        h.observer.loadPublicRide(PublicRideSwitch(true, null), "acc")
+        h.flush()
+
+        assertEquals(listOf("public-on"), h.links.last().types())
+        assertEquals(true, h.demand.last())
+        h.observer.stop()
+    }
+
+    @Test
+    fun `starting on another server closes the old link`() {
+        val h = RelayHarness()
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        val old = h.links.last()
+
+        h.observer.start("wss://other.example.com/ws/group-rides")
+        h.flush()
+
+        assertTrue(old.closed)
+        assertEquals(2, h.links.size)
+        h.observer.stop()
+    }
+
+    @Test
+    fun `a lost link retries within seconds and at once on a new network or foreground`() {
+        val h = RelayHarness()
+        h.observer.loadPublicRide(PublicRideSwitch(true, null), "acc")
+        h.observer.setBoardConnected(true)
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        repeat(6) {
+            val count = h.links.size
+            h.drop()
+            h.clock.advance(3_000)
+            assertEquals(count + 1, h.links.size)
+        }
+
+        h.drop()
+        val waiting = h.links.size
+        h.newNetwork!!.invoke()
+        h.flush()
+        assertEquals(waiting + 1, h.links.size)
+        h.clock.advance(4_000)
+        assertEquals(waiting + 1, h.links.size)
+
+        val pending = h.links.last()
+        h.newNetwork!!.invoke()
+        h.flush()
+        assertTrue(pending.closed)
+        assertEquals(waiting + 2, h.links.size)
+
+        h.drop()
+        h.observer.resync()
+        h.flush()
+        assertEquals(waiting + 3, h.links.size)
+        h.observer.resync()
+        h.flush()
+        assertEquals(waiting + 3, h.links.size)
+
+        h.ready()
+        h.newNetwork!!.invoke()
+        h.observer.resync()
+        h.flush()
+        assertEquals(waiting + 3, h.links.size)
+
+        h.observer.stop()
+        assertNull(h.newNetwork)
+    }
+
+    @Test
+    fun `an idle observer backs off while a sharing one keeps retrying fast`() {
+        val h = RelayHarness()
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        repeat(4) {
+            h.drop()
+            h.clock.advance(10_000)
+        }
+        val idle = h.links.size
+        h.drop()
+        h.clock.advance(3_000)
+        assertEquals(idle, h.links.size)
+
+        h.observer.loadPublicRide(PublicRideSwitch(true, null), "acc")
+        h.observer.setBoardConnected(true)
+        h.flush()
+        assertEquals(idle + 1, h.links.size)
+        h.observer.stop()
+    }
+
+    @Test
+    fun `an app status refresh during backoff opens exactly one link`() {
+        val h = RelayHarness()
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        h.drop()
+        val waiting = h.links.size
+
+        h.onlineChanged!!.invoke()
+        h.flush()
+        h.clock.advance(30_000)
+
+        assertEquals(waiting + 1, h.links.size)
+        h.observer.stop()
+    }
+
+    @Test
+    fun `a blocked relay is not retried by a new network or foreground`() {
+        val h = RelayHarness()
+        h.observer.start("wss://example.com/ws/group-rides")
+        h.ready()
+        h.blocked = true
+        h.onlineChanged!!.invoke()
+        h.flush()
+        val count = h.links.size
+
+        h.newNetwork!!.invoke()
+        h.observer.resync()
+        h.flush()
+
+        assertEquals(count, h.links.size)
+        h.observer.stop()
+    }
 }

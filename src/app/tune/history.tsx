@@ -1,5 +1,5 @@
 import { formatDateTime } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useCallback, useEffect, useState } from 'react'
 import { FlatList, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -47,7 +47,7 @@ function diffHistoryEntries(
 }
 
 export default function TuneHistoryScreen() {
-  const timeFormat = useTimeFormat()
+  const { timeFormat, dateFormat } = useUserPreferences()
   const router = useRouter()
   const activeProfile = useTuneProfileStore((s) => s.activeProfile)
   const loadHistory = useTuneProfileStore((s) => s.loadHistory)
@@ -88,7 +88,9 @@ export default function TuneHistoryScreen() {
             return (
               <View style={styles.entry}>
                 <View style={styles.entryInfo}>
-                  <Text style={styles.entryDate}>{formatDateTime(item.createdAt, timeFormat)}</Text>
+                  <Text style={styles.entryDate}>
+                    {formatDateTime(item.createdAt, timeFormat, dateFormat)}
+                  </Text>
                   {diffs.length > 0 ? (
                     <View style={styles.diffs}>
                       {diffs.map((d) => (

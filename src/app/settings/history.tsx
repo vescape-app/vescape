@@ -1,6 +1,6 @@
 import { PageScrollView } from '@/components/base/PageScrollView'
 import { useFormat } from '@/hooks/useFormat'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
 import { StyleSheet } from 'react-native'
@@ -24,7 +24,7 @@ const MIN_RIDE_SPLIT_GAP_MINUTES = 1
 const MAX_RIDE_SPLIT_GAP_MINUTES = 240
 
 export default function HistorySettingsScreen() {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const { formatSpeedWithUnit } = useFormat()
   const { rideSplitGapMinutes, movingSpeedThresholdKmh, socEstimateWindowSeconds, set } =
     useSettingsStore(
@@ -47,6 +47,7 @@ export default function HistorySettingsScreen() {
 
         <SettingsCard>
           <SettingsRow
+            focusId="split-rides-after"
             icon={PathIcon}
             label="Split rides after"
             hint={`A stop longer than this starts a new ride. Disconnects and app restarts in between do not.\nDefault: ${DEFAULT_RIDE_SPLIT_GAP_MINUTES} min.`}
@@ -77,6 +78,7 @@ export default function HistorySettingsScreen() {
 
         <SettingsCard>
           <SettingsRow
+            focusId="moving-speed-threshold"
             icon={GaugeIcon}
             label="Moving speed threshold"
             hint={`Speeds below this are ignored for avg speed.\nDefault: ${formatSpeedWithUnit(3, distanceUnit === 'mi' ? 1 : 0)}.`}
@@ -104,6 +106,7 @@ export default function HistorySettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="battery-smoothing"
             icon={WaveformIcon}
             label="Battery smoothing"
             hint="Median window steadies battery % for display and alerts. 0 = off"

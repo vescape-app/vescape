@@ -6,6 +6,7 @@ import { makeCircleFeature, offsetCoordinate } from '@/helpers/mapGeometry'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 /**
+ * @parity /watch/watchos/RadarScreen.swift `RANGE_RING_KM`
  * @parity /watch/wearos/src/main/java/app/vescape/wear/RadarScreen.kt `RANGE_RING_KM`
  */
 const RANGE_RING_KM = [50, 100]

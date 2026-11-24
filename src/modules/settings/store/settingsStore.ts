@@ -33,6 +33,7 @@ const DEFAULTS: AppSettings = {
   distanceUnit: 'km',
   temperatureUnit: 'celsius',
   timeFormat: '24h',
+  dateFormat: 'dmy',
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,

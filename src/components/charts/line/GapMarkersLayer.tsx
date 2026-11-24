@@ -2,7 +2,7 @@ import { DashPathEffect, Group, Line, Text, vec } from '@shopify/react-native-sk
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { formatClock } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { projectX, viewportFor } from '@/components/charts/line/projection'
 import type { ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartCamera } from '@/components/charts/line/types'
@@ -64,7 +64,7 @@ type GapMarkerProps = Omit<GapMarkersCommonProps, 'timeline'> &
 
 function GapMarker(props: GapMarkerProps) {
   'use no memo'
-  const timeFormat = useTimeFormat()
+  const { timeFormat } = useUserPreferences()
   const neutral = useResolvedNeutralColors()
   const {
     chartMs,

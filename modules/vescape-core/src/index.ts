@@ -1381,6 +1381,11 @@ export type TemperatureUnit = 'celsius' | 'fahrenheit'
  * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validTimeFormat`
  */
 export type TimeFormat = '24h' | '12h'
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/PersistenceDefaults.kt `validDateFormat`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceDefaults.swift `validDateFormat`
+ */
+export type DateFormat = 'dmy' | 'mdy' | 'dmy-slash' | 'mdy-slash' | 'dmy-dot' | 'ymd'
 export type WeatherAlertLevel = 'sensitive' | 'normal' | 'extreme'
 
 /**
@@ -1401,6 +1406,7 @@ export interface AppSettings {
   distanceUnit: DistanceUnit
   temperatureUnit: TemperatureUnit
   timeFormat: TimeFormat
+  dateFormat: DateFormat
   themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   satelliteOverlayEnabled: boolean
@@ -2416,6 +2422,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getDeviceCredentialState(): DeviceCredentialStatus
   revokeDeviceCredential(): Promise<void>
   clearDeviceCredential(): void
+  requestAppleAuthorizationCode(): Promise<string | null>
   openAppUpdate(): void
   getRemoteTiltState(): Promise<RemoteTiltState | null>
   getGroundClearanceTilt(): Promise<GroundClearanceTiltState>
@@ -3069,6 +3076,15 @@ export async function revokeDeviceCredential(): Promise<void> {
 
 export function clearDeviceCredential(): void {
   native.clearDeviceCredential()
+}
+
+/**
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `requestAppleAuthorizationCode`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `requestAppleAuthorizationCode`
+ */
+export async function requestAppleAuthorizationCode(): Promise<string | null> {
+  if (E2E_ENABLED) return null
+  return native.requestAppleAuthorizationCode()
 }
 
 /**

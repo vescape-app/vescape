@@ -1,4 +1,4 @@
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { speedFromKmh, speedInputToKmh, speedUnit } from '@/helpers/units'
 import { stepDelta } from '@/helpers/numberStep'
 import { SpeedometerIcon } from 'phosphor-react-native'
@@ -18,7 +18,7 @@ export function BoardTopSpeedCard({
   value: number
   onChange: (kmh: number) => void
 }) {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const setTopSpeed = (next: number) => {
     const clamped = speedInputToKmh(
       next,

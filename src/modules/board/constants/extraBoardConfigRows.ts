@@ -1,4 +1,10 @@
-import { onOff, percent, unit, type ConfigRow } from '@/modules/board/lib/boardConfigReadout'
+import {
+  onOff,
+  percent,
+  temperature,
+  unit,
+  type ConfigRow,
+} from '@/modules/board/lib/boardConfigReadout'
 
 const choice = (labels: string[]) => (value: number | boolean | undefined) =>
   typeof value === 'number' ? (labels[value] ?? `Unknown (${value})`) : '—'
@@ -227,7 +233,7 @@ export const BMS_ROWS = [
   row('bms.cell_lv_threshold', 'Cell low voltage threshold', unit('V', 2)),
   row('bms.cell_hv_threshold', 'Cell high voltage threshold', unit('V', 2)),
   row('bms.cell_balance_threshold', 'Cell balance threshold', unit('V', 2)),
-  row('bms.cell_ht_threshold', 'Cell high temperature threshold', unit('°C', 0)),
-  row('bms.cell_lt_threshold', 'Cell low temperature threshold', unit('°C', 0)),
-  row('bms.bms_ht_threshold', 'BMS high temperature threshold', unit('°C', 0)),
+  row('bms.cell_ht_threshold', 'Cell high temperature threshold', temperature(0)),
+  row('bms.cell_lt_threshold', 'Cell low temperature threshold', temperature(0)),
+  row('bms.bms_ht_threshold', 'BMS high temperature threshold', temperature(0)),
 ]

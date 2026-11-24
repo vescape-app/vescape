@@ -19,6 +19,7 @@ struct FrameLayout: View {
   var streetMapEnabled: Bool = true
   var mapGaugesPercent: Int = WatchMapGauges.defaultPercent
   var distanceUnit: String = "km"
+  var temperatureUnit: String = "celsius"
 
   private var focus: Double { max(navFocus, awayFocus) }
 
@@ -147,13 +148,13 @@ struct FrameLayout: View {
       let labelY = lineTop + TEMP_LABEL_LENGTH / 2
 
       temperatureReadout(
-        "MOTOR", value: WatchGauge.temp(frame.motorTemp, blind: blind),
+        "MOTOR", value: WatchGauge.temp(frame.motorTemp, blind: blind, temperatureUnit: temperatureUnit),
         color: ambient.lane(frame.motorTemp, muted: muted, Palette.motorTemp),
         valuePosition: CGPoint(x: metrics.rect.minX + valueInset, y: valueY),
         labelPosition: CGPoint(x: metrics.rect.minX + 6, y: labelY), rotation: 90
       )
       temperatureReadout(
-        "CTRL", value: WatchGauge.temp(frame.ctrlTemp, blind: blind),
+        "CTRL", value: WatchGauge.temp(frame.ctrlTemp, blind: blind, temperatureUnit: temperatureUnit),
         color: ambient.lane(frame.ctrlTemp, muted: muted, Palette.ctrlTemp),
         valuePosition: CGPoint(x: metrics.rect.maxX - valueInset, y: valueY),
         labelPosition: CGPoint(x: metrics.rect.maxX - 6, y: labelY), rotation: -90

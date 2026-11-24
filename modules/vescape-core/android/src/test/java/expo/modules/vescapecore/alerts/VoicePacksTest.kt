@@ -96,6 +96,25 @@ class VoicePacksTest {
     }
 
     @Test
+    fun aRareLinePlaysOnlyAtItsChance() {
+        val rareManifest = VoicePackManifest.parse(JSONObject("""
+            {
+              "lines": {
+                "boardConnection.connected": {
+                  "start": ["c.0"],
+                  "full": { "start": ["cf.0"], "rare": ["cr.0"], "rareChance": 0.01 }
+                }
+              }
+            }
+        """.trimIndent()))
+        val picks = ArrayDeque(listOf(0, 0, 1, 0, 99, 0))
+        val picker = VoiceVariantPicker { picks.removeFirst() }
+        val connected = VoiceAnnouncement(AlertSeverity.INFO, "boardConnection.connected", wording = VoiceWording.FULL)
+        assertEquals(listOf("cr.0"), picker.clips(rareManifest, connected))
+        assertEquals(listOf("cf.0"), picker.clips(rareManifest, connected))
+    }
+
+    @Test
     fun neverRepeatsTheSameStartTwiceInARow() {
         val picker = VoiceVariantPicker { 0 }
         val critical = battery(AlertSeverity.CRITICAL, VoiceWording.FULL, null)

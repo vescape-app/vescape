@@ -9,7 +9,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native'
-import { ArrowClockwiseIcon, CaretRightIcon, UserCircleIcon } from 'phosphor-react-native'
+import { WarningCircleIcon, CaretRightIcon, UserCircleIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme, type ThemeColor } from '@/constants/theme'
@@ -27,7 +27,6 @@ export function AccountPill({ onNavigate, signInSize }: AccountPillProps) {
   const router = useRouter()
   const { isLoaded, isSignedIn, user } = useUser()
   const deviceAuthStatus = useDeviceAuthStore((s) => s.status)
-  const retryDeviceAuth = useDeviceAuthStore((s) => s.retry)
   const nick = useRiderProfileStore((s) => s.profile?.nick ?? null)
 
   const navigate = (route: typeof routes.signIn | typeof routes.account) => {
@@ -50,10 +49,10 @@ export function AccountPill({ onNavigate, signInSize }: AccountPillProps) {
 
   if (deviceAuthStatus === 'failed') {
     return (
-      <Pill tone={theme.status.error.color} onPress={retryDeviceAuth}>
-        <ArrowClockwiseIcon size={18} color={theme.status.error.text} weight="bold" />
+      <Pill tone={theme.status.error.color} onPress={() => navigate(routes.account)}>
+        <WarningCircleIcon size={18} color={theme.status.error.text} weight="bold" />
         <Text style={[styles.label, { color: theme.status.error.text }]}>
-          Account not connected — retry
+          Account not connected
         </Text>
       </Pill>
     )

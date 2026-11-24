@@ -81,6 +81,7 @@ export function AutoStartCard({
       <SettingsSectionTitle>Wake up</SettingsSectionTitle>
       <SettingsCard separatorInset={0}>
         <SettingsRow
+          focusId="auto-start"
           icon={RocketLaunchIcon}
           iconColor={
             !enabled
@@ -129,6 +130,7 @@ export function AutoStartCard({
 
         {enabled ? (
           <SettingsRow
+            focusId="auto-start-cooldown"
             icon={ClockCountdownIcon}
             iconColor={theme.palette.orange.color}
             label="Don’t restart for"

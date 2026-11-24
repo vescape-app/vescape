@@ -7,8 +7,8 @@ import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
-import { formatClock } from '@/helpers/time'
-import { useTimeFormat } from '@/hooks/useTimeFormat'
+import { formatClock, formatDate } from '@/helpers/time'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useFriendRidesStore } from '@/modules/group-ride/store/friendRidesStore'
 
 export function FriendRides({ accountId }: { accountId: string }) {
@@ -43,11 +43,11 @@ export function FriendRides({ accountId }: { accountId: string }) {
 }
 
 export function PublicRideRow({ ride }: { ride: FriendRide }) {
-  const timeFormat = useTimeFormat()
+  const { timeFormat, dateFormat } = useUserPreferences()
   const startMs = Date.parse(ride.startedAt)
   const endMs = Date.parse(ride.endedAt)
   const minutes = Math.max(1, Math.round((endMs - startMs) / 60_000))
-  const day = new Date(startMs).toLocaleDateString()
+  const day = formatDate(startMs, dateFormat)
   const time = `${formatClock(startMs, false, timeFormat)}–${formatClock(endMs, false, timeFormat)}`
   return (
     <View style={styles.row} accessible accessibilityLabel={`Ride ${day} ${time}, ${minutes} min`}>

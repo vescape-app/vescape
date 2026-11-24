@@ -200,7 +200,7 @@ final class WatchMapTilePlanTests: XCTestCase {
     let nudged = WatchMapPosition(latitude: wroclaw.latitude, longitude: wroclaw.longitude + 0.00001)
     XCTAssertFalse(planner.update(rider(nudged, courseDeg: 90)))
     XCTAssertTrue(planner.update(rider(courseDeg: 90, spanM: 300)))
-    XCTAssertEqual(Set(planner.wanted.map(\.tile.z)), [15, 16])
+    XCTAssertEqual(Set(planner.wanted.map(\.tile.z)), [WatchMapTile.radarZoom, 15, 16])
     let moved = WatchMapTilePlanner()
     _ = moved.update(rider())
     let before = Set(moved.wanted.map(\.tile))

@@ -11,7 +11,9 @@ final class NativeAuthCoordinator {
   func stateMap() throws -> [String: Any?] {
     let credential = try store.read()
     return [
-      "state": store.state(credential: credential).rawValue,
+      "state": store.state(
+        credential: credential, serverUrl: AppStatusCoordinator.serverBaseUrl
+      ).rawValue,
       "accountId": credential?.accountId,
       "expiresAt": credential?.expiresAt,
     ]

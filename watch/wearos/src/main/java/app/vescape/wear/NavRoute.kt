@@ -10,12 +10,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
+import kotlin.math.hypot
 
 /**
  * @parity /watch/watchos/NavRoute.swift `NavRoute`
@@ -29,6 +31,7 @@ internal fun NavRoute(frame: WatchFrame, route: WatchRoute?, mapView: WatchMapVi
     if (route != null && east != null && north != null) {
         RouteLayer(
             route = route,
+            remainingM = frame.navDistanceM,
             riderEastM = east.toFloat(),
             riderNorthM = north.toFloat(),
             mapView = mapView,
@@ -54,6 +57,7 @@ internal fun DrawScope.drawRiderDot(center: Offset, color: Color) {
 @Composable
 private fun RouteLayer(
     route: WatchRoute,
+    remainingM: Double?,
     riderEastM: Float,
     riderNorthM: Float,
     mapView: WatchMapView,
@@ -61,23 +65,52 @@ private fun RouteLayer(
     navFocus: () -> Float,
 ) {
     val isRound = LocalConfiguration.current.isScreenRound
+    val (passed, remaining) = splitRoute(route.points, remainingM)
     Canvas(modifier = Modifier.fillMaxSize()) {
         val focus = navFocus().coerceIn(0f, 1f)
         val center = WatchMapProjection.riderPoint(size.width, size.height, WatchMapProjection.RIDER_DROP.toPx())
         val scale = WatchMapProjection.pixelsPerMetre(size.width, size.height, WatchMapProjection.ROUTE_EDGE_INSET.toPx(), mapView.spanM)
         val offset = mapView.positionOffset
-        val path = routePath(route, Offset(riderEastM - offset.eastM.toFloat(), riderNorthM - offset.northM.toFloat()), center, scale)
+        val rider = Offset(riderEastM - offset.eastM.toFloat(), riderNorthM - offset.northM.toFloat())
+        val alpha = ROUTE_ALPHA + (ROUTE_FOCUS_ALPHA - ROUTE_ALPHA) * focus
+        val stroke = routeStroke()
         clipPath(mapFaceClip(isRound)) {
             rotate(degrees = -mapView.courseDeg, pivot = center) {
-                drawRoute(path, color, focus)
+                if (passed.size > 1) {
+                    drawPath(routePath(passed, rider, center, scale), color.copy(alpha = alpha * PASSED_ALPHA), style = stroke)
+                }
+                if (remaining.size > 1) {
+                    drawPath(routePath(remaining, rider, center, scale), color.copy(alpha = alpha), style = stroke)
+                }
             }
         }
     }
 }
 
-private fun routePath(route: WatchRoute, rider: Offset, center: Offset, scale: Float): Path =
+// @parity /watch/watchos/NavRoute.swift `splitRoute`
+private fun splitRoute(points: List<RoutePoint>, remainingM: Double?): Pair<List<RoutePoint>, List<RoutePoint>> {
+    if (remainingM == null || !remainingM.isFinite()) return emptyList<RoutePoint>() to points
+    if (remainingM <= 0) return points to emptyList()
+    var distanceM = remainingM
+    for (index in points.lastIndex downTo 1) {
+        val from = points[index - 1]
+        val to = points[index]
+        val eastM = to.eastM - from.eastM
+        val northM = to.northM - from.northM
+        val lengthM = hypot(eastM.toDouble(), northM.toDouble())
+        if (distanceM < lengthM) {
+            val fraction = (1 - distanceM / lengthM).toFloat()
+            val split = RoutePoint(from.eastM + eastM * fraction, from.northM + northM * fraction)
+            return (points.subList(0, index) + split) to (listOf(split) + points.subList(index, points.size))
+        }
+        distanceM -= lengthM
+    }
+    return emptyList<RoutePoint>() to points
+}
+
+private fun routePath(points: List<RoutePoint>, rider: Offset, center: Offset, scale: Float): Path =
     polyline(
-        route.points.map { point ->
+        points.map { point ->
             Offset(
                 center.x + (point.eastM - rider.x) * scale,
                 center.y - (point.northM - rider.y) * scale,
@@ -85,27 +118,26 @@ private fun routePath(route: WatchRoute, rider: Offset, center: Offset, scale: F
         },
     )
 
-private fun DrawScope.drawRoute(path: Path, color: Color, focus: Float) {
-    val width = ROUTE_W.toPx() + (ROUTE_FOCUS_W - ROUTE_W).toPx() * focus
-    val alpha = ROUTE_ALPHA + (ROUTE_FOCUS_ALPHA - ROUTE_ALPHA) * focus
-    drawPath(path, color.copy(alpha = alpha), style = routeStroke(width))
-}
-
 private fun polyline(points: List<Offset>): Path = Path().apply {
     moveTo(points[0].x, points[0].y)
     for (index in 1 until points.size) lineTo(points[index].x, points[index].y)
 }
 
-private fun routeStroke(width: Float) = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private fun DrawScope.routeStroke() = Stroke(
+    width = ROUTE_W.toPx(),
+    cap = StrokeCap.Round,
+    join = StrokeJoin.Round,
+    pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.1.dp.toPx(), 4.3.dp.toPx())),
+)
 
 private val GUIDE_HALF_WIDTH = 1.dp
-private val ROUTE_W = 2.dp
+private val ROUTE_W = 2.5.dp
 
-private val ROUTE_FOCUS_W = 3.5.dp
 private const val ROUTE_ALPHA = 0.55f
 private const val ROUTE_FOCUS_ALPHA = 0.85f
+private const val PASSED_ALPHA = 0.2f
 private val RIDER_DOT_R = 4.dp
-private val RIDER_RING_W = ROUTE_W
+private val RIDER_RING_W = 2.dp
 
 internal fun DrawScope.mapFaceClip(isRound: Boolean): Path {
     val faceCenter = Offset(size.width / 2f, size.height / 2f)

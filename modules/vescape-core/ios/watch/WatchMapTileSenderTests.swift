@@ -110,8 +110,8 @@ final class WatchMapTileSenderTests: XCTestCase {
     tick(sender, rider)
     await settle { transport.inFlight == WatchMapTileSender.maxSendsInFlight }
     XCTAssertEqual(Set(transport.sends), Set(ring.filter { $0 != ring[1] }.prefix(WatchMapTileSender.maxSendsInFlight)))
-    transport.finishAll(true)
-    await settle { transport.sends.count == ring.count - 1 }
+    await finishEverySend(transport)
+    XCTAssertEqual(transport.sends.count, ring.count - 1)
     XCTAssertEqual(Set(transport.sends), Set(ring).subtracting([ring[1]]))
   }
 
@@ -126,7 +126,11 @@ final class WatchMapTileSenderTests: XCTestCase {
     tick(sender, onRoute)
     await finishEverySend(transport)
     let sent = transport.sends
-    XCTAssertEqual(Set(sent.prefix(ring.count)), Set(ring))
+    let batchSize = WatchMapTileSender.maxSendsInFlight
+    let fullRingBatchCount = ring.count / batchSize * batchSize
+    XCTAssertEqual(Array(transport.holds[0].wanted.prefix(ring.count)), ring)
+    XCTAssertEqual(Set(sent.prefix(fullRingBatchCount)), Set(ring.prefix(fullRingBatchCount)))
+    XCTAssertTrue(Set(ring).isSubset(of: Set(sent)))
     XCTAssertGreaterThan(sent.count, ring.count)
     XCTAssertEqual(sent.count, Set(sent).count)
   }

@@ -114,9 +114,53 @@ export function lengthInputToMeters(
 }
 
 export function temperatureFromC(celsius: number, unit: TemperatureUnit): number {
+  'worklet'
   return unit === 'fahrenheit' ? (celsius * 9) / 5 + 32 : celsius
 }
 
+export function temperatureToC(value: number, unit: TemperatureUnit): number {
+  'worklet'
+  return unit === 'fahrenheit' ? ((value - 32) * 5) / 9 : value
+}
+
 export function temperatureSymbol(unit: TemperatureUnit): '°C' | '°F' {
+  'worklet'
   return unit === 'fahrenheit' ? '°F' : '°C'
+}
+
+export function temperatureDisplayScale(unit: TemperatureUnit): number {
+  'worklet'
+  return unit === 'fahrenheit' ? 9 / 5 : 1
+}
+
+export function temperatureDisplayOffset(unit: TemperatureUnit): number {
+  'worklet'
+  return unit === 'fahrenheit' ? 32 : 0
+}
+
+export function formatTemperatureValue(
+  celsius: number,
+  unit: TemperatureUnit,
+  precision = 0,
+): string {
+  'worklet'
+  return String(Number(temperatureFromC(celsius, unit).toFixed(precision)))
+}
+
+export function formatTemperatureC(celsius: number, unit: TemperatureUnit, decimals = 0): string {
+  'worklet'
+  return `${formatTemperatureValue(celsius, unit, decimals)} ${temperatureSymbol(unit)}`
+}
+
+export function temperatureInputToC(
+  nextDisplay: number,
+  currentC: number,
+  unit: TemperatureUnit,
+  minC = -Infinity,
+  maxC = Infinity,
+): number {
+  if (nextDisplay === temperatureFromC(currentC, unit)) return currentC
+  if (nextDisplay <= temperatureFromC(minC, unit)) return minC
+  if (nextDisplay >= temperatureFromC(maxC, unit)) return maxC
+  return temperatureToC(nextDisplay, unit)
 }

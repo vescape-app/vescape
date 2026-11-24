@@ -9,7 +9,7 @@ import { theme, type ThemeColor } from '@/constants/theme'
 import { fmtTimeAgo } from '@/helpers/format'
 import { distanceMeters } from '@/helpers/mapGeometry'
 import { formatDistanceMeters } from '@/helpers/units'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
 
 const SEVERITY = {
@@ -50,7 +50,7 @@ export function RideNoticeCard({
   style,
 }: RideNoticeCardProps) {
   const now = useMinuteNow()
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const severity = SEVERITY[notice.severity]
   const tone = look?.tone ?? severity.tone
   const target = notice.location

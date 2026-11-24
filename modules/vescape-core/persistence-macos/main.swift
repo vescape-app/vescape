@@ -734,6 +734,13 @@ for invalid in clockFixture["invalid"] as! [Any] {
   try require(validTimeFormat(invalid) == nil, "invalid time format accepted")
 }
 try boardPersistence.saveSetting(.init(key: "timeFormat", valueJson: "\"\(validTimeFormat(clockFixture["selected"])!)\"", updatedAt: contractCreatedAt))
+let dateFixture = boardFixture["dateFormat"] as! [String: Any]
+let dateDefault = dateFixture["default"] as! String
+try require(validDateFormat(nil) ?? "dmy" == dateDefault, "date default")
+for invalid in dateFixture["invalid"] as! [Any] {
+  try require(validDateFormat(invalid) == nil, "invalid date format accepted")
+}
+try boardPersistence.saveSetting(.init(key: "dateFormat", valueJson: "\"\(validDateFormat(dateFixture["selected"])!)\"", updatedAt: contractCreatedAt))
 let rerouteFixture = boardFixture["navigationReroute"] as! [String: Any]
 let rerouteKey = rerouteFixture["key"] as! String
 let rerouteDefault = rerouteFixture["default"] as! Double
@@ -750,6 +757,11 @@ try require(reopenedClock["timeFormat"] as? String == clockFixture["selected"] a
 try boardPersistence.deleteSetting("timeFormat")
 let defaultClock = try boardPersistence.settings(defaults: ["timeFormat": clockDefault])
 try require(defaultClock["timeFormat"] as? String == clockDefault, "time format returns to 24h default")
+let reopenedDate = try boardPersistence.settings(defaults: ["dateFormat": dateDefault])
+try require(reopenedDate["dateFormat"] as? String == dateFixture["selected"] as? String, "date format survives reopen")
+try boardPersistence.deleteSetting("dateFormat")
+let defaultDate = try boardPersistence.settings(defaults: ["dateFormat": dateDefault])
+try require(defaultDate["dateFormat"] as? String == dateDefault, "date format returns to dmy default")
 let reopenedReroute = try boardPersistence.settings(defaults: [rerouteKey: rerouteDefault])
 try require(reopenedReroute[rerouteKey] as? Double == rerouteFixture["selected"] as? Double, "reroute threshold survives reopen")
 try boardPersistence.deleteSetting(rerouteKey)

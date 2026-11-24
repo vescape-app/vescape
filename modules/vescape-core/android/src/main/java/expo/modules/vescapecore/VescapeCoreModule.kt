@@ -321,15 +321,30 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onMaintenanceState") { stopObserving("onMaintenanceState") }
     OnStartObserving("onBoardProbeProgress") { startObserving("onBoardProbeProgress") }
     OnStopObserving("onBoardProbeProgress") { stopObserving("onBoardProbeProgress") }
-    OnStartObserving("onGroupRideConnection") { startObserving("onGroupRideConnection") }
+    OnStartObserving("onGroupRideConnection") {
+      startObserving("onGroupRideConnection")
+      CoreForegroundService.replayGroupRideEvent("onGroupRideConnection")
+    }
     OnStopObserving("onGroupRideConnection") { stopObserving("onGroupRideConnection") }
-    OnStartObserving("onGroupRideSignalAvailability") { startObserving("onGroupRideSignalAvailability") }
+    OnStartObserving("onGroupRideSignalAvailability") {
+      startObserving("onGroupRideSignalAvailability")
+      CoreForegroundService.replayGroupRideEvent("onGroupRideSignalAvailability")
+    }
     OnStopObserving("onGroupRideSignalAvailability") { stopObserving("onGroupRideSignalAvailability") }
-    OnStartObserving("onPublicRideStatus") { startObserving("onPublicRideStatus") }
+    OnStartObserving("onPublicRideStatus") {
+      startObserving("onPublicRideStatus")
+      CoreForegroundService.replayGroupRideEvent("onPublicRideStatus")
+    }
     OnStopObserving("onPublicRideStatus") { stopObserving("onPublicRideStatus") }
-    OnStartObserving("onPublicRiders") { startObserving("onPublicRiders") }
+    OnStartObserving("onPublicRiders") {
+      startObserving("onPublicRiders")
+      CoreForegroundService.replayGroupRideEvent("onPublicRiders")
+    }
     OnStopObserving("onPublicRiders") { stopObserving("onPublicRiders") }
-    OnStartObserving("onPublicPins") { startObserving("onPublicPins") }
+    OnStartObserving("onPublicPins") {
+      startObserving("onPublicPins")
+      CoreForegroundService.replayGroupRideEvent("onPublicPins")
+    }
     OnStopObserving("onPublicPins") { stopObserving("onPublicPins") }
     OnStartObserving("onBoardWarnings") {
       startObserving("onBoardWarnings")
@@ -432,6 +447,7 @@ class VescapeCoreModule : Module() {
       emitMaintenanceState(MaintenanceRunner.snapshot())
       emitRideNotices(RideNotices.current)
       RideNotices.expireNow()
+      CoreForegroundService.resyncGroupRide()
     }
     OnActivityEntersBackground {
       frontendActive = false
@@ -657,6 +673,10 @@ class VescapeCoreModule : Module() {
     Function("clearDeviceCredential") {
       NativeAuthCoordinator.get(context).clear()
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `requestAppleAuthorizationCode`
+    // @platform-diff Sign in with Apple token revocation is iOS-only.
+    // @parity /modules/vescape-core/src/index.ts `requestAppleAuthorizationCode`
+    AsyncFunction("requestAppleAuthorizationCode") { null as String? }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `openAppUpdate`
     // @platform-diff Android uses the stable Android download route.
     // @parity /modules/vescape-core/src/index.ts `openAppUpdate`
@@ -1649,7 +1669,7 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.startGroupRideObserve(context.applicationContext, serverUrl)
     }
     Function("stopGroupRideObserve") {
-      CoreForegroundService.stopGroupRideObserve(context.applicationContext)
+      CoreForegroundService.stopGroupRideObserve()
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `dismissRideNotice`
     Function("getRideNotices") { RideNotices.current.map { it.toMap() } }

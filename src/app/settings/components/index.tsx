@@ -1,233 +1,141 @@
-import { PageScrollView } from '@/components/base/PageScrollView'
-import { Fragment } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, type Href } from 'expo-router'
 import {
-  MegaphoneIcon,
   ChartLineUpIcon,
   ClockCounterClockwiseIcon,
-  ListIcon,
-  MapTrifoldIcon,
-  SwatchesIcon,
-  ToolboxIcon,
-  WrenchIcon,
   CloudMoonIcon,
   CubeIcon,
   CursorClickIcon,
   GearSixIcon,
   LightningIcon,
+  ListIcon,
+  MapTrifoldIcon,
   MarkdownLogoIcon,
+  MegaphoneIcon,
   RowsIcon,
+  SlidersHorizontalIcon,
   SquaresFourIcon,
   StackIcon,
+  SwatchesIcon,
   TextAaIcon,
+  ToolboxIcon,
   UsersThreeIcon,
+  WrenchIcon,
+  type Icon,
 } from 'phosphor-react-native'
 
-import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
+import { PageScrollView } from '@/components/base/PageScrollView'
+import { Text } from '@/components/base/Text'
+import { SearchInput } from '@/components/forms/SearchInput'
+import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
-import { IconHero } from '@/components/settings/IconHero'
-import { theme } from '@/constants/theme'
-import { routes } from '@/navigation/routes'
+import { theme, type ThemeColor } from '@/constants/theme'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
+import {
+  SHOWCASE_GROUPS,
+  searchShowcase,
+  type ShowcaseSectionId,
+} from '@/screens/showcase/showcaseCatalog'
 
-const groups = [
-  {
-    title: 'Foundations',
-    sections: [
-      {
-        label: 'Theme foundations',
-        hint: 'Canvas, interaction surfaces, semantic colors, and contrast',
-        route: routes.settingsComponentsTheme,
-        icon: SwatchesIcon,
-        color: theme.palette.violet.color,
-      },
-      {
-        label: 'Base',
-        hint: 'Banners, placeholders, and other everyday building blocks',
-        route: '/settings/components/base',
-        icon: CubeIcon,
-        color: theme.palette.cyan.color,
-      },
-      {
-        label: 'Buttons',
-        hint: 'Button, IconButton, and IconButtonExtension with live states',
-        route: '/settings/components/buttons',
-        icon: CursorClickIcon,
-        color: theme.palette.pink.color,
-      },
-      {
-        label: 'Typography',
-        hint: 'Raleway across every UI text role, with weight and tabular-nums parity',
-        route: '/settings/components/typography',
-        icon: TextAaIcon,
-        color: theme.neutral.textSecondary,
-      },
-      {
-        label: 'Markdown',
-        hint: 'Native rich text — nesting, links, images, and horizontally scrolling tables',
-        route: '/settings/components/markdown',
-        icon: MarkdownLogoIcon,
-        color: theme.palette.teal.color,
-      },
-    ],
-  },
-  {
-    title: 'General use',
-    sections: [
-      {
-        label: 'Charts',
-        hint: 'Sparklines and gauges for showing telemetry over time',
-        route: '/settings/components/charts',
-        icon: ChartLineUpIcon,
-        color: theme.palette.green.color,
-      },
-      {
-        label: 'Forms',
-        hint: 'Inputs, dropdowns, pickers, and steppers for entering data',
-        route: '/settings/components/forms',
-        icon: ListIcon,
-        color: theme.palette.blue.color,
-      },
-      {
-        label: 'Modals',
-        hint: 'Popups, confirmations, and sheets that float above the screen',
-        route: '/settings/components/modals',
-        icon: SquaresFourIcon,
-        color: theme.status.upgrade.color,
-      },
-      {
-        label: 'Drawers',
-        hint: 'Edge drawers and floating sheets with drag to dismiss',
-        route: '/settings/components/drawers',
-        icon: RowsIcon,
-        color: theme.status.upgrade.color,
-      },
-      {
-        label: 'Controls',
-        hint: 'Buttons and selectors for switching between options or views',
-        route: '/settings/components/controls',
-        icon: SwatchesIcon,
-        color: theme.palette.orange.color,
-      },
-      {
-        label: 'Settings',
-        hint: 'Cards and rows used to build settings screens',
-        route: '/settings/components/settings',
-        icon: GearSixIcon,
-        color: theme.neutral.textSecondary,
-      },
-    ],
-  },
-  {
-    title: 'Domain',
-    sections: [
-      {
-        label: 'Board',
-        hint: 'Device rows, badges, link timelines, and warnings tied to the board domain',
-        route: '/settings/components/board',
-        icon: LightningIcon,
-        color: theme.palette.sky.color,
-      },
-      {
-        label: 'Accessories',
-        hint: 'Accessory rows, compatibility verdicts, and capability listings',
-        route: '/settings/components/accessories',
-        icon: AccessoryIcon,
-        color: theme.palette.teal.color,
-      },
-      {
-        label: 'Widgets',
-        hint: 'Dashboard tiles for showing and editing live board data',
-        route: '/settings/components/widgets',
-        icon: StackIcon,
-        color: theme.palette.yellow.color,
-      },
-      {
-        label: 'Tune',
-        hint: 'Dials, sliders, and grids for adjusting board tuning',
-        route: '/settings/components/tune',
-        icon: ToolboxIcon,
-        color: theme.palette.amber.color,
-      },
-      {
-        label: 'History',
-        hint: 'Ride tiles, route previews, and ride rows from recorded history',
-        route: '/settings/components/history',
-        icon: ClockCounterClockwiseIcon,
-        color: theme.palette.purple.color,
-      },
-      {
-        label: 'Weather',
-        hint: 'Icons and strips for showing weather conditions and forecasts',
-        route: '/settings/components/weather',
-        icon: CloudMoonIcon,
-        color: theme.palette.blue.light,
-      },
-      {
-        label: 'Ride Notices',
-        hint: 'The ride notice card with severity, distance and Show on map',
-        route: '/settings/components/notices',
-        icon: MegaphoneIcon,
-        color: theme.status.warning.color,
-      },
-      {
-        label: 'Social',
-        hint: 'Friend and rider rows from the Social drawer',
-        route: '/settings/components/social',
-        icon: UsersThreeIcon,
-        color: theme.palette.groupRide.color,
-      },
-      {
-        label: 'Map',
-        hint: 'Map pins, routes, riders, weather radar, buildings — all layers, live controls',
-        route: '/settings/components/map',
-        icon: MapTrifoldIcon,
-        color: theme.palette.green.light,
-      },
-    ],
-  },
-  {
-    title: 'Dev',
-    sections: [
-      {
-        label: 'Dev',
-        hint: 'DevBadge and the showcase scaffolding these pages are built from',
-        route: '/settings/components/dev',
-        icon: WrenchIcon,
-        color: theme.palette.amber.color,
-      },
-    ],
-  },
-]
+const SECTION_VISUALS: Record<ShowcaseSectionId, { icon: Icon; color: ThemeColor }> = {
+  theme: { icon: SwatchesIcon, color: theme.palette.violet.color },
+  typography: { icon: TextAaIcon, color: theme.neutral.textSecondary },
+  base: { icon: CubeIcon, color: theme.palette.cyan.color },
+  markdown: { icon: MarkdownLogoIcon, color: theme.palette.teal.color },
+  buttons: { icon: CursorClickIcon, color: theme.palette.pink.color },
+  controls: { icon: SlidersHorizontalIcon, color: theme.palette.orange.color },
+  forms: { icon: ListIcon, color: theme.palette.blue.color },
+  modals: { icon: SquaresFourIcon, color: theme.status.upgrade.color },
+  drawers: { icon: RowsIcon, color: theme.status.upgrade.color },
+  charts: { icon: ChartLineUpIcon, color: theme.palette.green.color },
+  widgets: { icon: StackIcon, color: theme.palette.yellow.color },
+  settings: { icon: GearSixIcon, color: theme.neutral.textSecondary },
+  board: { icon: LightningIcon, color: theme.palette.sky.color },
+  accessories: { icon: AccessoryIcon, color: theme.palette.teal.color },
+  tune: { icon: ToolboxIcon, color: theme.palette.amber.color },
+  history: { icon: ClockCounterClockwiseIcon, color: theme.palette.purple.color },
+  map: { icon: MapTrifoldIcon, color: theme.palette.green.light },
+  weather: { icon: CloudMoonIcon, color: theme.palette.blue.light },
+  social: { icon: UsersThreeIcon, color: theme.palette.groupRide.color },
+  notices: { icon: MegaphoneIcon, color: theme.status.warning.color },
+  dev: { icon: WrenchIcon, color: theme.palette.amber.color },
+}
 
 export default function ComponentsIndex() {
+  const [query, setQuery] = useState('')
+  const searching = query.trim().length > 0
+  const results = useMemo(() => (searching ? searchShowcase(query) : []), [query, searching])
+
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      <PageScrollView contentContainerStyle={styles.content}>
+      <PageScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <IconHero
           icon={SwatchesIcon}
           description="Browse and preview all UI components with live controls."
         />
-        {groups.map((group) => (
-          <Fragment key={group.title}>
-            <SettingsSectionTitle>{group.title}</SettingsSectionTitle>
+        <SearchInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search components"
+          accessibilityLabel="Search components"
+          testID="components-search"
+          style={styles.search}
+        />
+        {searching ? (
+          results.length > 0 ? (
             <SettingsCard>
-              {group.sections.map((s) => (
-                <SettingsRow
-                  key={s.label}
-                  icon={s.icon}
-                  iconColor={s.color}
-                  label={s.label}
-                  hint={s.hint}
-                  onPress={() => router.push(s.route as Href)}
-                />
-              ))}
+              {results.map((hit) => {
+                const visual = SECTION_VISUALS[hit.section.id]
+                return (
+                  <SettingsRow
+                    key={hit.id}
+                    icon={visual.icon}
+                    iconColor={visual.color}
+                    label={hit.label}
+                    hint={hit.hint}
+                    onPress={() =>
+                      router.push(
+                        hit.focus
+                          ? ({
+                              pathname: hit.route,
+                              params: { focus: hit.focus },
+                            } as Href)
+                          : (hit.route as Href),
+                      )
+                    }
+                  />
+                )
+              })}
             </SettingsCard>
-          </Fragment>
-        ))}
+          ) : (
+            <Text style={styles.noResults}>{`No components match “${query.trim()}”.`}</Text>
+          )
+        ) : (
+          SHOWCASE_GROUPS.map((group) => (
+            <Fragment key={group.title}>
+              <SettingsSectionTitle>{group.title}</SettingsSectionTitle>
+              <SettingsCard>
+                {group.sections.map((section) => {
+                  const visual = SECTION_VISUALS[section.id]
+                  return (
+                    <SettingsRow
+                      key={section.id}
+                      icon={visual.icon}
+                      iconColor={visual.color}
+                      label={section.label}
+                      hint={section.hint}
+                      onPress={() => router.push(section.route as Href)}
+                    />
+                  )
+                })}
+              </SettingsCard>
+            </Fragment>
+          ))
+        )}
       </PageScrollView>
     </SafeAreaView>
   )
@@ -236,4 +144,15 @@ export default function ComponentsIndex() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 16, gap: 8 },
+  search: {
+    alignSelf: 'center',
+    width: '70%',
+    marginBottom: 8,
+  },
+  noResults: {
+    color: theme.neutral.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
 })

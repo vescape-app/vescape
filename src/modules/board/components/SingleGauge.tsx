@@ -40,6 +40,7 @@ interface SingleGaugeProps {
   unit: string
   decimals?: number
   displayScale?: number
+  displayOffset?: number
   label?: string
   headerRight?: ReactNode
   alerts?: DualGaugeAlert[]
@@ -69,11 +70,15 @@ function HalfArc({
   unit,
   decimals = 0,
   displayScale = 1,
+  displayOffset = 0,
   alerts = [],
   hotRange,
   showValue = true,
 }: Required<Pick<SingleGaugeProps, 'value' | 'min' | 'max' | 'color' | 'unit'>> &
-  Pick<SingleGaugeProps, 'decimals' | 'displayScale' | 'alerts' | 'hotRange' | 'showValue'>) {
+  Pick<
+    SingleGaugeProps,
+    'decimals' | 'displayScale' | 'displayOffset' | 'alerts' | 'hotRange' | 'showValue'
+  >) {
   'use no memo'
   const resolvedColor = useResolvedColor(color)
   const accents = useResolvedAccentColors()
@@ -85,7 +90,7 @@ function HalfArc({
   const valueText = useDerivedValue(() => {
     const current = value.value
     if (current == null) return DASH
-    const displayed = current * displayScale
+    const displayed = current * displayScale + displayOffset
     return decimals === 0 ? Math.round(displayed).toString() : displayed.toFixed(decimals)
   })
 
@@ -186,6 +191,7 @@ export function SingleGauge({
   unit,
   decimals,
   displayScale,
+  displayOffset,
   label,
   headerRight,
   alerts = [],
@@ -209,6 +215,7 @@ export function SingleGauge({
         unit={unit}
         decimals={decimals}
         displayScale={displayScale}
+        displayOffset={displayOffset}
         alerts={alerts}
         hotRange={hotRange}
         showValue={showValue}

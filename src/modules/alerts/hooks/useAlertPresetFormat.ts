@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   describeAlertRules,
   type AlertRulePresentation,
@@ -8,16 +8,16 @@ import {
 } from '@/modules/alerts/lib/alertPresets'
 
 export function useAlertPresetFormat() {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit, temperatureUnit } = useUserPreferences()
   const formatSummary = useCallback(
     (metric: AlertPresetMetric, rules: AlertRulePresentation[]) =>
-      formatAlertPresetSummary(metric, rules, distanceUnit),
-    [distanceUnit],
+      formatAlertPresetSummary(metric, rules, distanceUnit, temperatureUnit),
+    [distanceUnit, temperatureUnit],
   )
   const describeRules = useCallback(
     (metric: AlertPresetMetric, rules: readonly AlertRulePresentation[]) =>
-      describeAlertRules(metric, rules, distanceUnit),
-    [distanceUnit],
+      describeAlertRules(metric, rules, distanceUnit, temperatureUnit),
+    [distanceUnit, temperatureUnit],
   )
   return { formatSummary, describeRules }
 }

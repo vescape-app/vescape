@@ -1,10 +1,10 @@
 import { useCallback, useMemo } from 'react'
 import { formatLengthMeters } from '@/helpers/units'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { hillsOptions, movementOptions } from '@/modules/tune/lib/tunePreviewPresentation'
 
 export function useTunePreviewFormat() {
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const options = useMemo(
     () => ({ hills: hillsOptions(distanceUnit), movement: movementOptions(distanceUnit) }),
     [distanceUnit],

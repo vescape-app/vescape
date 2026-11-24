@@ -63,6 +63,7 @@ internal let voiceKeyValueTypes: [String: String?] = [
   "weather.wind.now": nil,
   "weather.rain": nil,
   "weather.rain.now": nil,
+  "voice.intro": nil,
 ]
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/VoicePacks.kt `voiceKey`
@@ -136,14 +137,18 @@ internal struct VoiceLine: Equatable {
   var fullStart: [String] = []
   var fullEnd: [String] = []
   var endChance = 1.0
+  var fullRare: [String] = []
+  var rareChance = 0.0
 
-  var files: [String] { start + minimal + fullStart + fullEnd }
+  var files: [String] { start + minimal + fullStart + fullEnd + fullRare }
 }
 
 internal struct VoicePhrases: Equatable {
   let start: [String]
   let end: [String]
   let endChance: Double
+  var rare: [String] = []
+  var rareChance = 0.0
 }
 
 internal struct VoicePackManifest {
@@ -158,7 +163,13 @@ internal struct VoicePackManifest {
     case .minimal: phrases = VoicePhrases(start: line.minimal.isEmpty ? line.start : line.minimal, end: [], endChance: 0)
     case .standard: phrases = VoicePhrases(start: line.start, end: [], endChance: 0)
     case .full:
-      phrases = VoicePhrases(start: line.fullStart.isEmpty ? line.start : line.fullStart, end: line.fullEnd, endChance: line.endChance)
+      phrases = VoicePhrases(
+        start: line.fullStart.isEmpty ? line.start : line.fullStart,
+        end: line.fullEnd,
+        endChance: line.endChance,
+        rare: line.fullRare,
+        rareChance: line.rareChance
+      )
     }
     return phrases.start.isEmpty ? nil : phrases
   }
@@ -182,7 +193,9 @@ internal struct VoicePackManifest {
           minimal: line["minimal"] as? [String] ?? [],
           fullStart: full["start"] as? [String] ?? [],
           fullEnd: full["end"] as? [String] ?? [],
-          endChance: full["endChance"] as? Double ?? 1
+          endChance: full["endChance"] as? Double ?? 1,
+          fullRare: full["rare"] as? [String] ?? [],
+          rareChance: full["rareChance"] as? Double ?? 0
         )
       },
       values: values.mapValues { clips in
@@ -196,10 +209,12 @@ internal struct VoicePackManifest {
 internal final class VoiceVariantPicker {
   private struct Choice {
     let start: Int
+    let isRare: Bool
     let end: Int?
 
     func fits(_ line: VoicePhrases) -> Bool {
-      start < line.start.count && (end.map { $0 < line.end.count } ?? true)
+      let headFits = isRare ? start < line.rare.count : start < line.start.count
+      return headFits && (end.map { $0 < line.end.count } ?? true)
     }
   }
 
@@ -217,7 +232,7 @@ internal final class VoiceVariantPicker {
     defer { lock.unlock() }
     let lineKey = "\(key).\(announcement.severity.rawValue).\(announcement.wording.rawValue)"
     let choice = upcoming[lineKey].flatMap { $0.fits(line) ? $0 : nil } ?? choose(line, avoid: nil)
-    upcoming[lineKey] = choose(line, avoid: choice.start)
+    upcoming[lineKey] = choose(line, avoid: choice.isRare ? nil : choice.start)
     return files(manifest, line, choice, announcement.values)
   }
 
@@ -238,14 +253,18 @@ internal final class VoiceVariantPicker {
   }
 
   private func choose(_ line: VoicePhrases, avoid: Int?) -> Choice {
+    if !line.rare.isEmpty, random(100) < Int((line.rareChance * 100).rounded()) {
+      return Choice(start: random(line.rare.count), isRare: true, end: nil)
+    }
     var start = random(line.start.count)
     if line.start.count > 1, start == avoid { start = (start + 1) % line.start.count }
     let ends = !line.end.isEmpty && random(100) < Int((line.endChance * 100).rounded())
-    return Choice(start: start, end: ends ? random(line.end.count) : nil)
+    return Choice(start: start, isRare: false, end: ends ? random(line.end.count) : nil)
   }
 
   private func files(_ manifest: VoicePackManifest, _ line: VoicePhrases, _ choice: Choice, _ values: [VoiceValue]) -> [String] {
-    var clips = [line.start[choice.start]] + values.compactMap(manifest.valueClip)
+    let head = choice.isRare ? line.rare[choice.start] : line.start[choice.start]
+    var clips = [head] + values.compactMap(manifest.valueClip)
     if let end = choice.end { clips.append(line.end[end]) }
     return clips
   }

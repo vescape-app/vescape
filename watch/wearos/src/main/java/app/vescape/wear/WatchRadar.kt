@@ -24,7 +24,7 @@ private const val RAINVIEWER_META_URL = "https://api.rainviewer.com/public/weath
 
 private const val RADAR_IMAGE_PX = 256
 
-private const val RADAR_ZOOM = 6
+private const val RADAR_ZOOM = expo.modules.vescapecore.watch.WATCH_RADAR_TILE_ZOOM
 
 private const val RADAR_COLOR_SCHEME = 2
 private const val RADAR_OPTIONS = "1_1"
@@ -40,6 +40,7 @@ private const val EQUATOR_M_PER_PX = 156_543.03392
 
 data class RadarFrame(val timeSec: Long, val path: String)
 
+// @parity /watch/watchos/RadarLoader.swift `RadarStore`
 object RadarState {
     var host by mutableStateOf<String?>(null)
         private set
@@ -54,10 +55,11 @@ object RadarState {
 
     private var fetchedAtMs = 0L
 
-    private var centre: Pair<Double, Double>? = null
+    var imageCentre by mutableStateOf<Pair<Double, Double>?>(null)
+        private set
 
     fun stale(nowMs: Long, latitude: Double, longitude: Double): Boolean =
-        centre != roundedCentre(latitude, longitude) || nowMs - fetchedAtMs > RADAR_REFRESH_MS
+        imageCentre != roundedCentre(latitude, longitude) || nowMs - fetchedAtMs > RADAR_REFRESH_MS
 
     suspend fun load(latitude: Double, longitude: Double) {
         if (loading) return
@@ -76,11 +78,13 @@ object RadarState {
                 frames = meta.frames
                 images.keys.retainAll(meta.frames.map { it.timeSec }.toSet())
             }
-            centre = roundedCentre(latitude, longitude)
+            val centre = roundedCentre(latitude, longitude)
+            if (centre != imageCentre) images.clear()
+            imageCentre = centre
             fetchedAtMs = System.currentTimeMillis()
             for (frame in meta.frames) {
                 if (images.containsKey(frame.timeSec)) continue
-                val url = RainViewer.frameUrl(meta.host, frame, latitude, longitude)
+                val url = RainViewer.frameUrl(meta.host, frame, centre.first, centre.second)
                 val image = withContext(Dispatchers.IO) { fetchImage(url) } ?: continue
                 images[frame.timeSec] = image
             }

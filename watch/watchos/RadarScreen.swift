@@ -7,6 +7,8 @@ struct RadarScreen: View {
   var onFetchFailed: () -> Void = {}
   var distanceUnit: String = "km"
   var timeFormat: String = "24h"
+  var streetMapEnabled = true
+  @ObservedObject private var mapTiles = MapTileStore.shared
   @StateObject private var radar = RadarStore()
   @State private var index = 0
 
@@ -27,8 +29,10 @@ struct RadarScreen: View {
           Spacer()
           Text(watchFormatHour(watchMinuteOfDay(epochMs: frame.timeSec * 1_000), timeFormat: timeFormat))
             .font(WatchTypography.mono(size: 12))
-            .foregroundStyle(Palette.secondaryText)
+            .fontWeight(.semibold)
+            .foregroundStyle(Palette.primaryText)
             .monospacedDigit()
+            .shadow(color: .black, radius: 2)
             .padding(.bottom, TIME_BOTTOM_INSET)
         }
       }
@@ -58,8 +62,8 @@ struct RadarScreen: View {
       let side = max(size.width, size.height)
       let centre = CGPoint(x: size.width / 2, y: size.height / 2)
       let maxFraction = RING_MAX_FRACTION * min(size.width, size.height) / side
-      let rings = forecast?.latitude.map { latitude -> [(Int, Double)] in
-        let rangeM = radarFaceRangeM(latitude: latitude)
+      let rings = radar.centre.map { location -> [(Int, Double)] in
+        let rangeM = radarFaceRangeM(latitude: location.latitude)
         return RANGE_RING_KM
           .map { ($0, Double($0) * 1_000 / rangeM) }
           .filter { $0.1 <= maxFraction }
@@ -68,6 +72,9 @@ struct RadarScreen: View {
       ZStack {
         Canvas { context, canvasSize in
           context.clip(to: Rim.path(in: canvasSize, inset: 0))
+          if streetMapEnabled, let radarCentre = radar.centre {
+            drawRadarMap(context, centre: centre, side: side, radarCentre: radarCentre)
+          }
           if let image {
             // @parity /watch/wearos/src/main/java/app/vescape/wear/RadarScreen.kt `RADAR_ALPHA`
             var imagery = context
@@ -77,14 +84,14 @@ struct RadarScreen: View {
               in: CGRect(x: centre.x - side / 2, y: centre.y - side / 2, width: side, height: side)
             )
           }
-          let ringStroke = StrokeStyle(lineWidth: 1, dash: [3, 4])
+          let ringStroke = StrokeStyle(lineWidth: 1.5, dash: [3, 3])
           for (_, fraction) in rings {
             let radius = side / 2 * fraction
             context.stroke(
               Path(ellipseIn: CGRect(
                 x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2
               )),
-              with: .color(Palette.guide),
+              with: .color(Palette.secondaryText.opacity(0.6)),
               style: ringStroke
             )
           }
@@ -99,14 +106,37 @@ struct RadarScreen: View {
         }
 
         ForEach(rings, id: \.0) { km, fraction in
-          Text(distanceUnit == "mi" ? WatchGauge.distance(Double(km) * 1000, distanceUnit: distanceUnit) : (km == rings.last?.0 ? "\(km) km" : "\(km)"))
+          Text(distanceUnit == "mi" ? WatchGauge.distance(Double(km) * 1000, distanceUnit: distanceUnit) : "\(km)km")
             .font(WatchTypography.mono(size: 8))
-            .foregroundStyle(Palette.dimText)
-            .position(x: centre.x + side / 2 * fraction - RING_LABEL_INSET, y: centre.y)
+            .foregroundStyle(Palette.primaryText)
+            .shadow(color: .black, radius: 2)
+            .position(x: centre.x + side / 2 * fraction, y: centre.y)
         }
       }
     }
     .ignoresSafeArea()
+  }
+
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/RadarScreen.kt `drawRadarMap`
+  private func drawRadarMap(_ context: GraphicsContext, centre: CGPoint, side: CGFloat, radarCentre: RadarCentre) {
+    _ = mapTiles.decodedVersion
+    let n = 1 << WatchMapTile.radarZoom
+    let position = WatchMapPosition(latitude: radarCentre.latitude, longitude: radarCentre.longitude)
+    let (x, y) = WatchMapTile.coordinates(position, n: n)
+    let placements = mapTiles.held.keys.compactMap { tile -> (WatchMapTile, CGRect)? in
+      guard tile.z == WatchMapTile.radarZoom else { return nil }
+      let dx = (Double(tile.x) - x + Double(n) * 1.5).truncatingRemainder(dividingBy: Double(n)) - Double(n) / 2
+      let dy = Double(tile.y) - y
+      guard (-1.5...0.5).contains(dx), (-1.5...0.5).contains(dy) else { return nil }
+      return (tile, CGRect(x: centre.x + dx * side, y: centre.y + dy * side, width: side, height: side))
+    }
+    let tiles = Set(mapTiles.frame(placements.map { $0.0 }).draw)
+    var basemap = context
+    basemap.opacity = BASEMAP_ALPHA
+    for (tile, rect) in placements where tiles.contains(tile) {
+      guard let image = mapTiles.image(tile) else { continue }
+      basemap.draw(Image(decorative: image, scale: 1), in: rect)
+    }
   }
 
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/RadarScreen.kt `drawTimeline`
@@ -177,9 +207,10 @@ private let FRAME_MS = 450
 
 private let LOOP_HOLD_MS = 1_600
 
+private let BASEMAP_ALPHA = 0.75
+// @parity /src/modules/weather/components/RadarRangeRings.tsx `RANGE_RING_KM`
 private let RANGE_RING_KM = [50, 100]
 private let RING_MAX_FRACTION = 0.95
-private let RING_LABEL_INSET: CGFloat = 12
 private let RIDER_DOT_RADIUS: CGFloat = 3
 private let HEADER_TOP_INSET: CGFloat = 12
 private let TIMELINE_INSET: CGFloat = 12

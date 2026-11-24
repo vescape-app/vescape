@@ -58,7 +58,6 @@ internal const val ACTION_DISCONNECT_FROM_NOTIFICATION = "expo.modules.vescapeco
 internal const val ACTION_START_GPS_MONITORING = "expo.modules.vescapecore.ACTION_START_GPS_MONITORING"
 private const val ACTION_STOP_GPS_MONITORING = "expo.modules.vescapecore.ACTION_STOP_GPS_MONITORING"
 internal const val ACTION_START_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_START_GROUP_RIDE_OBSERVE"
-private const val ACTION_STOP_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_STOP_GROUP_RIDE_OBSERVE"
 internal const val ACTION_AUTO_CONNECT_SELECTED_BOARD = "expo.modules.vescapecore.ACTION_AUTO_CONNECT_SELECTED_BOARD"
 internal const val ACTION_AUTO_CONNECT_ACCESSORIES = "expo.modules.vescapecore.ACTION_AUTO_CONNECT_ACCESSORIES"
 internal const val ACTION_COMPANION_DEVICE_APPEARED = "expo.modules.vescapecore.ACTION_COMPANION_DEVICE_APPEARED"
@@ -107,12 +106,16 @@ class CoreForegroundService : Service() {
         @Volatile var liveStateChanged: (() -> Unit)? = null
 
         private var instance: CoreForegroundService? = null
+
+        private fun onMain(block: () -> Unit) {
+            if (Looper.myLooper() == Looper.getMainLooper()) block() else Handler(Looper.getMainLooper()).post(block)
+        }
         internal var pendingStart: PendingStart? = null
         internal var pendingStop: PendingStop? = null
         internal var pendingConfigRead: PendingConfigRead? = null
         internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
-        internal var pendingGroupRideUrl: String? = null
+        @Volatile internal var pendingGroupRideUrl: String? = null
         @Volatile internal var lookAroundRequested = false
 
         /**
@@ -159,11 +162,7 @@ class CoreForegroundService : Service() {
                 onError(result.errorCode(), result.errorMessage("Board session service start skipped"))
                 return
             }
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                instance?.controller?.consumePendingStart()
-            } else {
-                Handler(Looper.getMainLooper()).post { instance?.controller?.consumePendingStart() }
-            }
+            onMain { instance?.controller?.consumePendingStart() }
         }
 
         fun stopBoardSession(context: Context, onSuccess: () -> Unit = {}) {
@@ -178,11 +177,7 @@ class CoreForegroundService : Service() {
                 action = ACTION_STOP_SESSION
             }
             context.startService(intent)
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                service.controller.consumePendingStop()
-            } else {
-                Handler(Looper.getMainLooper()).post { instance?.controller?.consumePendingStop() }
-            }
+            onMain { instance?.controller?.consumePendingStop() }
         }
 
         fun exitApp(context: Context) {
@@ -367,17 +362,20 @@ class CoreForegroundService : Service() {
                 result.logIfSkipped("Group Ride observe service start skipped")
                 return
             }
-            instance?.controller?.consumePendingGroupRideObserve()
+            onMain { instance?.controller?.consumePendingGroupRideObserve() }
         }
 
-        fun stopGroupRideObserve(context: Context) {
+        fun stopGroupRideObserve() {
             pendingGroupRideUrl = null
-            val service = instance ?: return
-            val intent = Intent(context, CoreForegroundService::class.java).apply {
-                action = ACTION_STOP_GROUP_RIDE_OBSERVE
-            }
-            context.startService(intent)
-            service.controller.stopGroupRideObserve()
+            onMain { instance?.controller?.stopGroupRideObserve() }
+        }
+
+        fun resyncGroupRide() {
+            instance?.controller?.resyncGroupRide()
+        }
+
+        fun replayGroupRideEvent(name: String) {
+            instance?.controller?.replayGroupRideEvent(name)
         }
 
         fun sendGroupRideSignal(kind: String) {
@@ -590,7 +588,6 @@ class CoreForegroundService : Service() {
             ACTION_START_GPS_MONITORING -> controller.consumePendingGpsStart()
             ACTION_STOP_GPS_MONITORING -> controller.stopGpsMonitoring()
             ACTION_START_GROUP_RIDE_OBSERVE -> controller.consumePendingGroupRideObserve()
-            ACTION_STOP_GROUP_RIDE_OBSERVE -> controller.stopGroupRideObserve()
             ACTION_AUTO_CONNECT_SELECTED_BOARD -> {
                 controller.promoteConnectedDeviceForeground()
                 controller.autoConnectSelectedBoard()

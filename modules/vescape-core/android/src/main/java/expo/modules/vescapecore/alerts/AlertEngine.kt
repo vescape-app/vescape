@@ -62,14 +62,25 @@ internal fun renderAlertMessageTemplate(
     batteryPercent: Double?,
     onDiagnostic: ((String, Map<String, Any?>) -> Unit)? = null,
     distanceUnit: String = "km",
+    temperatureUnit: String = "celsius",
 ): String {
     // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `renderAlertMessageTemplate`
     val isBattery = alert.controlId == "battery"
-    fun format(value: Double) = if (alert.controlId == "speed") UnitPresentation.formatSpokenSpeed(value, distanceUnit) else formatAlertValue(value, alert.controlId)
+    val isTemp = alert.controlId == "motor-temp" || alert.controlId == "controller-temp"
+    fun format(value: Double) = when {
+        alert.controlId == "speed" -> UnitPresentation.formatSpokenSpeed(value, distanceUnit)
+        isTemp -> "%.0f".format(UnitPresentation.temperatureFromC(value, temperatureUnit))
+        else -> formatAlertValue(value, alert.controlId)
+    }
+    val unit = when {
+        alert.controlId == "speed" -> UnitPresentation.speedUnit(distanceUnit)
+        isTemp -> if (temperatureUnit == "fahrenheit") "°F" else "°C"
+        else -> alertControlUnit(alert.controlId)
+    }
     var text = template
     text = text.replace("{value}", format(alert.value))
     text = text.replace("{threshold}", format(alert.threshold))
-    text = text.replace("{unit}", if (alert.controlId == "speed") UnitPresentation.speedUnit(distanceUnit) else alertControlUnit(alert.controlId))
+    text = text.replace("{unit}", unit)
     if (isBattery) {
         text = text.replace("{voltage}", formatAlertValue(alert.value, alert.controlId))
         if (batteryPercent != null) {
@@ -960,7 +971,8 @@ internal class AlertFeedback(
         }
         val tts = parseTtsAlertSound(spec)
         if (tts != null) {
-            val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, distanceUnit = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings().distanceUnit })
+            val settings = kotlinx.coroutines.runBlocking { AppDataRepository.get(context).getTypedSettings() }
+            val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, distanceUnit = settings.distanceUnit, temperatureUnit = settings.temperatureUnit)
             if (text.isNotEmpty()) speakAfterSeverity(tts.severity, text)
             return
         }
@@ -1179,7 +1191,7 @@ internal class AlertFeedback(
             }
             val tts = parseTtsAlertSound(spec)
             if (tts != null) {
-                val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, distanceUnit = settings.distanceUnit)
+                val text = renderAlertMessageTemplate(tts.text, ttsSampleAlert(spec), batteryPercent = 42.0, distanceUnit = settings.distanceUnit, temperatureUnit = settings.temperatureUnit)
                 if (text.isEmpty()) return
                 var ready: TextToSpeech? = null
                 var soundDone = false

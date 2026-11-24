@@ -34,6 +34,7 @@ export default function DiagnosticsSettingsScreen() {
 
         <SettingsCard>
           <SettingsRow
+            focusId="board-warnings"
             icon={EngineIcon}
             iconColor={theme.status.warning.color}
             label="Board warnings"
@@ -46,6 +47,7 @@ export default function DiagnosticsSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="vesc-fault-collection"
             icon={WarningDiamondIcon}
             iconColor={theme.status.caution.color}
             label="VESC fault collection"
@@ -58,6 +60,7 @@ export default function DiagnosticsSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="ride-markers-on-map"
             icon={MapPinIcon}
             iconColor={theme.palette.yellow.color}
             label="Ride markers on map"

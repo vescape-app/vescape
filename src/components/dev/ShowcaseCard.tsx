@@ -1,4 +1,5 @@
 import { StyleSheet, View } from 'react-native'
+import { useFocusTarget } from '@/components/base/focusScroll'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 
@@ -9,8 +10,15 @@ interface ShowcaseCardProps {
 }
 
 export function ShowcaseCard({ name, children, controls }: ShowcaseCardProps) {
+  const { targetRef, onLayout, highlighted } = useFocusTarget(name)
+
   return (
-    <View style={styles.card}>
+    <View
+      ref={targetRef}
+      onLayout={onLayout}
+      collapsable={false}
+      style={[styles.card, highlighted && styles.cardHighlighted]}
+    >
       <Text style={styles.name}>{name}</Text>
       <View style={styles.preview}>{children}</View>
       {controls ? <View style={styles.controls}>{controls}</View> : null}
@@ -25,6 +33,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.neutral.border,
     overflow: 'hidden',
+  },
+  cardHighlighted: {
+    borderColor: theme.palette.sky.color,
   },
   name: {
     color: theme.palette.sky.color,

@@ -176,7 +176,7 @@ class WatchMapTilePlanTest {
         assertTrue(planner.update(rider(courseDeg = 90.0)))
         assertFalse(planner.update(rider(courseDeg = 90.0, position = WatchMapPosition(wroclaw.latitude, wroclaw.longitude + 0.00001))))
         assertTrue(planner.update(rider(courseDeg = 90.0, spanM = 300.0)))
-        assertEquals(setOf(15, 16), planner.wanted.map { it.tile.z }.toSet())
+        assertEquals(setOf(WATCH_RADAR_TILE_ZOOM, 15, 16), planner.wanted.map { it.tile.z }.toSet())
         assertTrue(first.isNotEmpty())
         val moved = WatchMapTilePlanner()
         moved.update(rider())

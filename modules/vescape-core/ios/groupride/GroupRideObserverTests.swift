@@ -71,7 +71,8 @@ final class GroupRideObserverTests: XCTestCase {
       init(_ request: URLRequest) { self.request = request }
       func open() {}
       func close() { closed = true }
-      func ping() {}
+      var answersPing = true
+      func ping(_ completion: @escaping (Error?) -> Void) { if answersPing { completion(nil) } }
       func sendText(_ text: String, completion: @escaping (Error?) -> Void) {
         frames.append(try! JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any])
         completion(nil)
@@ -85,14 +86,20 @@ final class GroupRideObserverTests: XCTestCase {
     var token: String? = "token"
     var links: [Link] = []
     var demand: [Bool] = []
+    var events: [(String, [String: Any?])] = []
+    var newNetwork: (() -> Void)?
     lazy var observer: GroupRideObserver = GroupRideObserver(
-      emit: { _, _ in }, online: gate, scheduler: clock,
+      emit: { [unowned self] name, body in self.events.append((name, body)) }, online: gate, scheduler: clock,
       deviceCredential: { [unowned self] in
         guard let account = self.account, let token = self.token else { return nil }
         return DeviceCredential(serverUrl: "https://example.com", token: token, accountId: account)
       },
       onPublicRideDemandChanged: { [unowned self] in self.demand.append(self.observer.publicRideNeedsLink) },
       now: { [unowned self] in self.clock.currentTimeMs },
+      watchNetwork: { [unowned self] onNewNetwork in
+        self.newNetwork = onNewNetwork
+        return { [unowned self] in self.newNetwork = nil }
+      },
       makeSocket: { [unowned self] request in
         let link = Link(request)
         self.links.append(link)
@@ -103,6 +110,9 @@ final class GroupRideObserverTests: XCTestCase {
       let link = link ?? links.last!
       observer.onOpen(link)
       link.message(#"{"type":"snapshot","features":["public-ride","missed-positions"]}"#)
+    }
+    func drop() {
+      observer.onClosed(links.last!, responseCode: nil)
     }
     func offlineBuffer() {
       observer.loadPublicRide(PublicRideSwitch(on: true, until: nil), accountId: "acc")
@@ -175,4 +185,196 @@ final class GroupRideObserverTests: XCTestCase {
     h.observer.stop()
   }
 
+  func testReplayEventAndResyncEmitCurrentStateOnlyWhileActive() {
+    let h = RelayHarness()
+    h.observer.replayEvent("onGroupRideConnection")
+    h.observer.replayEvent("onPublicRideStatus")
+    h.observer.resync()
+    XCTAssertTrue(h.events.isEmpty)
+
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    h.events.removeAll()
+
+    h.observer.replayEvent("onGroupRideConnection")
+    XCTAssertEqual(h.events.map(\.0), ["onGroupRideConnection"])
+    XCTAssertEqual(h.events.first?.1["state"] as? String, "connected")
+
+    h.events.removeAll()
+    h.observer.replayEvent("onPublicRideStatus")
+    XCTAssertEqual(h.events.map(\.0), ["onPublicRideStatus"])
+    XCTAssertEqual(h.events.first?.1["supported"] as? Bool, true)
+
+    h.events.removeAll()
+    h.observer.replayEvent("onGroupRideSignalAvailability")
+    XCTAssertEqual(h.events.map(\.0), ["onGroupRideSignalAvailability"])
+
+    h.events.removeAll()
+    h.observer.replayEvent("onPublicRiders")
+    XCTAssertEqual(h.events.map(\.0), ["onPublicRiders"])
+
+    h.events.removeAll()
+    h.observer.replayEvent("onPublicPins")
+    XCTAssertEqual(h.events.map(\.0), ["onPublicPins"])
+
+    h.events.removeAll()
+    h.observer.resync()
+    XCTAssertEqual(
+      Set(h.events.map(\.0)),
+      [
+        "onGroupRideConnection",
+        "onGroupRideSignalAvailability",
+        "onPublicRideStatus",
+        "onPublicRiders",
+        "onPublicPins",
+      ]
+    )
+    XCTAssertEqual(h.events.last { $0.0 == "onPublicRideStatus" }?.1["supported"] as? Bool, true)
+
+    h.observer.stop()
+    h.events.removeAll()
+    h.observer.replayEvent("onPublicRideStatus")
+    h.observer.resync()
+    XCTAssertTrue(h.events.isEmpty)
+  }
+
+  func testAStoredSwitchLoadedAfterTheRelaySnapshotStillGoesPublic() {
+    let h = RelayHarness()
+    h.observer.setBoardConnected(true)
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    XCTAssertTrue(h.links.last!.frames.isEmpty)
+
+    h.observer.loadPublicRide(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+
+    XCTAssertEqual(h.links.last!.types, ["public-on"])
+    XCTAssertEqual(h.demand.last, true)
+    h.observer.stop()
+  }
+
+  func testStartingOnAnotherServerClosesTheOldLink() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    let old = h.links.last!
+
+    h.observer.start("wss://other.example.com/ws/group-rides")
+
+    XCTAssertTrue(old.closed)
+    XCTAssertEqual(h.links.count, 2)
+    h.observer.stop()
+  }
+
+  func testALostLinkRetriesWithinSecondsAndAtOnceOnANewNetworkOrForeground() {
+    let h = RelayHarness()
+    h.observer.loadPublicRide(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+    h.observer.setBoardConnected(true)
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    for _ in 0..<6 {
+      let count = h.links.count
+      h.drop()
+      h.clock.advance(3_000)
+      XCTAssertEqual(h.links.count, count + 1)
+    }
+
+    h.drop()
+    let waiting = h.links.count
+    h.newNetwork!()
+    XCTAssertEqual(h.links.count, waiting + 1)
+    h.clock.advance(4_000)
+    XCTAssertEqual(h.links.count, waiting + 1)
+
+    let pending = h.links.last!
+    h.newNetwork!()
+    XCTAssertTrue(pending.closed)
+    XCTAssertEqual(h.links.count, waiting + 2)
+
+    h.drop()
+    h.observer.resync()
+    XCTAssertEqual(h.links.count, waiting + 3)
+    h.observer.resync()
+    XCTAssertEqual(h.links.count, waiting + 3)
+
+    h.ready()
+    h.newNetwork!()
+    h.observer.resync()
+    XCTAssertEqual(h.links.count, waiting + 3)
+
+    h.observer.stop()
+    XCTAssertNil(h.newNetwork)
+  }
+
+  func testAnIdleObserverBacksOffWhileASharingOneKeepsRetryingFast() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    h.drop()
+    let idle = h.links.count
+    h.clock.advance(500)
+    XCTAssertEqual(h.links.count, idle)
+
+    h.observer.loadPublicRide(PublicRideSwitch(on: true, until: nil), accountId: "acc")
+    h.observer.setBoardConnected(true)
+    h.clock.advance(0)
+    XCTAssertEqual(h.links.count, idle + 1)
+    h.observer.stop()
+  }
+
+  func testAnAppStatusRefreshDuringBackoffOpensExactlyOneLink() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    h.drop()
+    let waiting = h.links.count
+
+    h.gate.changed?()
+    h.clock.advance(4_000)
+
+    XCTAssertEqual(h.links.count, waiting + 1)
+    h.observer.stop()
+  }
+
+  func testABlockedRelayIsNotRetriedByANewNetworkOrForeground() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    h.gate.onlineBlocked = true
+    h.gate.changed?()
+    let count = h.links.count
+
+    h.newNetwork!()
+    h.observer.resync()
+
+    XCTAssertEqual(h.links.count, count)
+    h.observer.stop()
+  }
+
+  func testAHandshakeThatNeverCompletesIsDroppedAndRetried() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    let hung = h.links.last!
+
+    h.clock.advance(5_000)
+    XCTAssertTrue(hung.closed)
+    h.clock.advance(1_000)
+
+    XCTAssertEqual(h.links.count, 2)
+    h.observer.stop()
+  }
+
+  func testARelayThatStopsAnsweringPingsIsDroppedAndRetried() {
+    let h = RelayHarness()
+    h.observer.start("wss://example.com/ws/group-rides")
+    h.ready()
+    h.links.last!.answersPing = false
+    let count = h.links.count
+
+    h.clock.advance(10_000)
+
+    XCTAssertTrue(h.links[count - 1].closed)
+    h.clock.advance(1_000)
+    XCTAssertEqual(h.links.count, count + 1)
+    h.observer.stop()
+  }
 }

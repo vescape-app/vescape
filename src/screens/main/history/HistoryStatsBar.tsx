@@ -28,11 +28,12 @@ import { interaction, theme, type ThemeColor } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 import {
   speedUnit as speedUnitFor,
+  temperatureFromC,
   temperatureSymbol,
   type TemperatureUnit,
   type DistanceUnit,
 } from '@/helpers/units'
-import { useDistanceUnit } from '@/hooks/useDistanceUnit'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { rideGustValue, rideTemperatureValue } from '@/modules/history/lib/rideWeather'
 import { weatherIconComponent } from '@/modules/weather/components/WeatherIcon'
@@ -207,7 +208,7 @@ function withWeather(stats: StatItem[], weather: StatItem[]): StatItem[] {
 function useSessionStats(session: HistorySession): StatItem[] {
   const { formatSpeed, speedUnit } = useFormat()
   const { formatHistoryDistance } = useRideFormat()
-  const distanceUnit = useDistanceUnit()
+  const { distanceUnit } = useUserPreferences()
   const temperatureUnit = useSettingsStore((state) => state.temperatureUnit)
   return useMemo(
     () =>
@@ -254,14 +255,14 @@ function useSessionStats(session: HistorySession): StatItem[] {
           {
             key: 'mosfetTemp',
             label: 'Ctrl Max',
-            ...formatTemp(session.maxTempMosfet),
+            ...formatTemp(session.maxTempMosfet, temperatureUnit),
             icon: ThermometerHotIcon,
             accent: theme.telemetry.controllerTemp,
           },
           {
             key: 'motorTemp',
             label: 'Motor Max',
-            ...formatTemp(session.maxTempMotor),
+            ...formatTemp(session.maxTempMotor, temperatureUnit),
             icon: ThermometerSimpleIcon,
             accent: theme.telemetry.motorTemp,
           },
@@ -310,9 +311,15 @@ function formatDuration(valueMs: number): Pick<StatItem, 'value' | 'unit'> {
     : { value: String(hours), unit: `h ${minutes}m` }
 }
 
-function formatTemp(value: number | null): Pick<StatItem, 'value' | 'unit'> {
+function formatTemp(
+  value: number | null,
+  temperatureUnit: TemperatureUnit,
+): Pick<StatItem, 'value' | 'unit'> {
   if (value == null) return { value: DASH }
-  return { value: String(Math.round(value)), unit: '°C' }
+  return {
+    value: String(Math.round(temperatureFromC(value, temperatureUnit))),
+    unit: temperatureSymbol(temperatureUnit),
+  }
 }
 
 function formatDuty(value: number): string {

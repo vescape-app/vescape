@@ -108,6 +108,24 @@ final class VoicePacksTests: XCTestCase {
     XCTAssertEqual(picker.clips(manifest, critical), ["bcf.1", "p20"])
   }
 
+  func testARareLinePlaysOnlyAtItsChance() {
+    let rareManifest = VoicePackManifest.parse(Data("""
+      {
+        "lines": {
+          "boardConnection.connected": {
+            "start": ["c.0"],
+            "full": { "start": ["cf.0"], "rare": ["cr.0"], "rareChance": 0.01 }
+          }
+        }
+      }
+      """.utf8))!
+    var picks = [0, 0, 1, 0, 99, 0]
+    let picker = VoiceVariantPicker { _ in picks.removeFirst() }
+    let connected = VoiceAnnouncement(severity: .info, key: "boardConnection.connected", wording: .full)
+    XCTAssertEqual(picker.clips(rareManifest, connected), ["cr.0"])
+    XCTAssertEqual(picker.clips(rareManifest, connected), ["cf.0"])
+  }
+
   func testNeverRepeatsTheSameStartTwiceInARow() {
     let picker = VoiceVariantPicker { _ in 0 }
     let critical = battery(.critical, .full, nil)

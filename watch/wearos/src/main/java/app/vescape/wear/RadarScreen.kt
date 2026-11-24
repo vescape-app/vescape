@@ -1,6 +1,9 @@
 package app.vescape.wear
 
 import expo.modules.vescapecore.telemetry.UnitPresentation
+import expo.modules.vescapecore.watch.WATCH_RADAR_TILE_ZOOM
+import expo.modules.vescapecore.watch.WatchMapPosition
+import expo.modules.vescapecore.watch.tileCoordinates
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
@@ -27,13 +30,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -77,15 +83,18 @@ fun RadarScreen(visible: Boolean) {
 
     val isRound = LocalConfiguration.current.isScreenRound
     val image = RadarState.images[frame.timeSec]
+    val imageCentre = RadarState.imageCentre
+    val streetMapEnabled = SettingsState.settings.value.streetMapEnabled
     val timelineColor = weatherColor("cloud-rain")
     val progress = if (loaded.size <= 1) 1f else frameIndex / (loaded.size - 1).toFloat()
-    val rings = forecast?.latitude?.let { latitude ->
+    val rings = imageCentre?.first?.let { latitude ->
         val rangeM = radarFaceRangeM(latitude)
         RANGE_RING_KM
             .map { km -> km to (km * 1_000.0 / rangeM).toFloat() }
             .filter { (_, fraction) -> fraction <= RING_MAX_FRACTION }
     }.orEmpty()
     val configuration = LocalConfiguration.current
+    val labelShadowPx = with(LocalDensity.current) { 2.dp.toPx() }
     val faceRadiusDp = minOf(configuration.screenWidthDp, configuration.screenHeightDp).dp / 2
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -96,6 +105,9 @@ fun RadarScreen(visible: Boolean) {
                 if (isRound) addOval(Rect(centre, faceRadius)) else addRect(Rect(Offset.Zero, size))
             }
             clipPath(faceClip) {
+                if (streetMapEnabled && imageCentre != null) {
+                    drawRadarMap(centre, faceRadius * 2, WatchMapPosition(imageCentre.first, imageCentre.second))
+                }
                 if (image != null) drawRadar(image, centre, faceRadius)
                 val ringStroke = Stroke(
                     width = RING_W.toPx(),
@@ -104,7 +116,7 @@ fun RadarScreen(visible: Boolean) {
                     ),
                 )
                 for ((_, fraction) in rings) {
-                    drawCircle(GuideColor, faceRadius * fraction, centre, style = ringStroke)
+                    drawCircle(SecondaryText.copy(alpha = 0.6f), faceRadius * fraction, centre, style = ringStroke)
                 }
                 drawRiderDot(centre, NavColor)
             }
@@ -112,22 +124,55 @@ fun RadarScreen(visible: Boolean) {
         }
         for ((km, fraction) in rings) {
             Text(
-                text = if (SettingsState.settings.value.distanceUnit == "mi") UnitPresentation.distance(km * 1000.0, "mi") else if (km == rings.last().first) "$km km" else "$km",
-                style = WatchTypography.mono(MaterialTheme.typography.caption3.copy(fontSize = RING_FONT_SIZE)),
-                color = DimText,
+                text = if (SettingsState.settings.value.distanceUnit == "mi") UnitPresentation.distance(km * 1000.0, "mi") else "${km}km",
+                style = WatchTypography.mono(MaterialTheme.typography.caption3.copy(
+                    fontSize = RING_FONT_SIZE,
+                    shadow = Shadow(color = Color.Black, blurRadius = labelShadowPx),
+                )),
+                color = PrimaryText,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .offset(x = faceRadiusDp * fraction - RING_LABEL_INSET),
+                    .offset(x = faceRadiusDp * fraction),
             )
         }
         RadarHeader()
         Text(
             text = formatHour(minuteOfDay(frame.timeSec * 1_000L), SettingsState.settings.value.timeFormat),
-            style = WatchTypography.mono(MaterialTheme.typography.caption2),
-            color = SecondaryText,
+            style = WatchTypography.mono(MaterialTheme.typography.caption2.copy(
+                fontWeight = FontWeight.SemiBold,
+                shadow = Shadow(color = Color.Black, blurRadius = labelShadowPx),
+            )),
+            color = PrimaryText,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = TIME_BOTTOM_PADDING),
+        )
+    }
+}
+
+// @parity /watch/watchos/RadarScreen.swift `drawRadarMap`
+private fun DrawScope.drawRadarMap(centre: Offset, side: Float, position: WatchMapPosition) {
+    MapTileState.decodedVersion.intValue
+    val n = 1 shl WATCH_RADAR_TILE_ZOOM
+    val (x, y) = tileCoordinates(position, n)
+    val placements = MapTileState.held.value.keys.mapNotNull { tile ->
+        if (tile.z != WATCH_RADAR_TILE_ZOOM) return@mapNotNull null
+        val dx = ((tile.x - x + n * 1.5) % n) - n / 2.0
+        val dy = tile.y - y
+        if (dx !in -1.5..0.5 || dy !in -1.5..0.5) return@mapNotNull null
+        tile to Offset(centre.x + (dx.toFloat() * side), centre.y + (dy.toFloat() * side))
+    }
+    val tiles = MapTileState.frame(placements.map { it.first }).draw.toSet()
+    for ((tile, origin) in placements) {
+        if (tile !in tiles) continue
+        val image = MapTileState.image(tile) ?: continue
+        val left = origin.x.roundToInt()
+        val top = origin.y.roundToInt()
+        drawImage(
+            image = image,
+            alpha = BASEMAP_ALPHA,
+            dstOffset = IntOffset(left, top),
+            dstSize = IntSize((origin.x + side).roundToInt() - left, (origin.y + side).roundToInt() - top),
         )
     }
 }
@@ -219,14 +264,15 @@ private const val LOOP_HOLD_MS = 1_600L
 
 private const val RADAR_ALPHA = 0.75f
 
+// @parity /src/modules/weather/components/RadarRangeRings.tsx `RANGE_RING_KM`
 private val RANGE_RING_KM = listOf(50, 100)
 private const val RING_MAX_FRACTION = 0.95f
-private val RING_W = 1.dp
+private const val BASEMAP_ALPHA = 0.75f
+private val RING_W = 1.5.dp
 private val RING_DASH = 3.dp
-private val RING_GAP = 4.dp
-private val RING_FONT_SIZE = 7.sp
+private val RING_GAP = 3.dp
+private val RING_FONT_SIZE = 8.sp
 
-private val RING_LABEL_INSET = 10.dp
 
 private val HEADER_TOP_PADDING = 12.dp
 private val HEADER_ICON_SIZE = 14.dp

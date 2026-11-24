@@ -53,16 +53,16 @@ export const VOICE_LEVEL_INFO: Record<
   },
   minimal: {
     description: 'As short as possible.',
-    preview: 'voice(warning):motorTemp:75',
+    preview: 'voice(info):voice.intro',
   },
   standard: {
     description: 'Clear, informative lines that also say how serious it is.',
-    preview: 'voice(warning):motorTemp:75',
+    preview: 'voice(info):voice.intro',
   },
   full: {
     description:
-      'More variety and the odd remark. Also speaks connection, ride end and Group Ride.',
-    preview: 'voice(warning):motorTemp:75',
+      'More variety and the odd remark. Also speaks connection, ride end and Public Ride.',
+    preview: 'voice(info):voice.intro',
   },
 }
 
@@ -74,8 +74,8 @@ const SLOT_LABELS: Record<PackSoundSlot, string> = {
   'cue.on': 'Connect',
   'cue.off': 'Disconnect',
   'cue.ride.end': 'Ride end',
-  'cue.groupRide.created': 'New Group Ride',
-  'cue.groupRide.joined': 'Joined Group Ride',
+  'cue.groupRide.created': 'New Public Ride',
+  'cue.groupRide.joined': 'Joined Public Ride',
 }
 
 const labeled = <T extends PackSoundSlot>(slot: T) => ({ slot, label: SLOT_LABELS[slot] })

@@ -99,8 +99,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}
+          key: gradle-ci-android-lint-v1-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts', 'package.json', 'modules/vescape-core/android/build.gradle', 'watch/wearos/build.gradle') }}
           restore-keys: |
+            gradle-ci-android-lint-v1-${{ runner.os }}-
             gradle-${{ runner.os }}-
       - uses: android-actions/setup-android@v3
         with:
@@ -115,9 +116,9 @@ jobs:
       - name: Release Gradle file handles
         if: always()
         run: cd android && ./gradlew --stop || true
-      # Saved even on failure so dependencies a flaky download did fetch survive to the rerun.
+      # Save only after tests and lint pass so an immutable key never freezes a partial download.
       - uses: actions/cache/save@v5
-        if: always() && steps.gradle-cache.outputs.cache-hit != 'true'
+        if: success() && steps.gradle-cache.outputs.cache-hit != 'true'
         with:
           path: |
             ~/.gradle/caches

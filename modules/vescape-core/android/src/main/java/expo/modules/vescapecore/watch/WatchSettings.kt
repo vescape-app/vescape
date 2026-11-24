@@ -23,6 +23,7 @@ internal const val WATCH_SETTING_STREET_MAP = "streetMapEnabled"
 internal const val WATCH_SETTING_MAP_GAUGES = "mapGaugesPercent"
 
 internal const val WATCH_SETTING_DISTANCE_UNIT = "distanceUnit"
+internal const val WATCH_SETTING_TEMPERATURE_UNIT = "temperatureUnit"
 internal const val WATCH_SETTING_TIME_FORMAT = "timeFormat"
 
 internal const val WATCH_SETTING_TILT_RATE = "tiltRatePercent"
@@ -39,6 +40,7 @@ internal val WATCH_SOURCE_SETTING_KEYS = setOf(
     "wearStreetMapEnabled",
     "wearMapGaugesPercent",
     "distanceUnit",
+    "temperatureUnit",
     "timeFormat",
     "wearTiltRatePercent",
     "wearPushRateHz",
@@ -48,6 +50,7 @@ internal data class WatchSettings(
     val boardMoveStrengthPercent: Int,
     val navArrowEnabled: Boolean,
     val distanceUnit: String = "km",
+    val temperatureUnit: String = "celsius",
     val timeFormat: String = "24h",
     val tiltRatePercent: Int = 20,
     val telemetryTrailEnabled: Boolean = true,
@@ -66,6 +69,7 @@ internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     streetMapEnabled = wearStreetMapEnabled,
     mapGaugesPercent = wearMapGaugesPercent,
     distanceUnit = distanceUnit,
+    temperatureUnit = temperatureUnit,
     timeFormat = timeFormat,
     tiltRatePercent = wearTiltRatePercent,
 )

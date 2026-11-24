@@ -3,7 +3,7 @@ import type { Favorite } from 'vescape-core'
 import { theme } from '@/constants/theme'
 import { RidePreviewCard } from '@/modules/history/components/RidePreviewCard'
 import { useRideFormat } from '@/modules/history/hooks/useRideFormat'
-import { formatFavoriteName, formatRideDate } from '@/modules/history/lib/rideFormat'
+import { formatFavoriteName } from '@/modules/history/lib/rideFormat'
 import type { RoutePoint } from '@/modules/history/lib/routePreview'
 
 interface FavoriteRideCardProps {
@@ -13,7 +13,7 @@ interface FavoriteRideCardProps {
 }
 
 export function FavoriteRideCard({ favorite, routePoints, onPress }: FavoriteRideCardProps) {
-  const { formatRideDetails } = useRideFormat()
+  const { formatRideDate, formatRideDetails } = useRideFormat()
 
   return (
     <RidePreviewCard

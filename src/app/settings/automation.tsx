@@ -169,6 +169,7 @@ export default function AutomationSettingsScreen() {
         <SettingsSectionTitle>Connection</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="auto-connect"
             icon={BluetoothConnectedIcon}
             iconColor={theme.palette.cyan.color}
             label="Auto connect"
@@ -186,6 +187,7 @@ export default function AutomationSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="auto-recording"
             icon={RecordIcon}
             iconWeight="fill"
             iconColor={theme.status.error.color}
@@ -202,6 +204,7 @@ export default function AutomationSettingsScreen() {
             <SettingsSectionTitle>Shutdown</SettingsSectionTitle>
             <SettingsCard>
               <SettingsRow
+                focusId="auto-close"
                 icon={PowerIcon}
                 iconColor={theme.palette.orange.color}
                 label="Auto close app"
@@ -215,6 +218,7 @@ export default function AutomationSettingsScreen() {
               />
               {autoCloseEnabled ? (
                 <SettingsRow
+                  focusId="auto-close-delay"
                   icon={ClockCountdownIcon}
                   iconColor={theme.palette.orange.color}
                   label="Close after"

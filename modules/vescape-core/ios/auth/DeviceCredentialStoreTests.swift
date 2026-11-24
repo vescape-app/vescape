@@ -68,4 +68,12 @@ final class DeviceCredentialStoreTests: XCTestCase {
     XCTAssertThrowsError(try store.updateExpiry("tomorrow"))
     XCTAssertEqual(storage.data, original)
   }
+
+  func testCredentialFromAnotherServerIsNotReady() throws {
+    let store = DeviceCredentialStore(storage: MemoryStorage())
+    try store.write(old)
+
+    XCTAssertEqual(store.state(credential: try store.read(), serverUrl: "https://new.example"), .unavailable)
+    XCTAssertEqual(store.state(credential: try store.read(), serverUrl: "https://old.example/"), .ready)
+  }
 }

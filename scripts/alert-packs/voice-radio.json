@@ -34,16 +34,26 @@
       "start": ["Caution. Power reserve low..."],
       "full": {
         "start": ["Caution. Power reserve low...", "Caution. Reserve dropping..."],
-        "end": ["Locate a power station."],
-        "endChance": 0.2
+        "end": [
+          "Locate a power station.",
+          "Walk-of-shame probability rising.",
+          "Manual propulsion may be required.",
+          "Reactor output dropping."
+        ],
+        "endChance": 0.35
       }
     },
     "battery.critical": {
       "start": ["Warning. Power level critical..."],
       "full": {
         "start": ["Warning. Power level critical...", "Warning. Reserve nearly depleted..."],
-        "end": ["Recharge advised.", "Seek a charging station immediately."],
-        "endChance": 0.2
+        "end": [
+          "Recharge advised.",
+          "Locate an outlet immediately.",
+          "Manual propulsion imminent.",
+          "Reactor nearing shutdown."
+        ],
+        "endChance": 0.35
       }
     },
     "motorTemp": {
@@ -57,16 +67,22 @@
       "start": ["Caution. Motor heat elevated..."],
       "full": {
         "start": ["Caution. Motor heat elevated...", "Caution. Motor running hot..."],
-        "end": ["Reduce load."],
-        "endChance": 0.2
+        "end": ["Reduce load.", "Thermal margin narrowing.", "Reactor core warming."],
+        "endChance": 0.35
       }
     },
     "motorTemp.critical": {
       "start": ["Warning. Motor overheat imminent..."],
       "full": {
         "start": ["Warning. Motor overheat imminent...", "Warning. Motor heat critical..."],
-        "end": ["Reduce load.", "Thermal shutdown is not recommended."],
-        "endChance": 0.2
+        "end": [
+          "Reduce load.",
+          "Thermal shutdown is not recommended.",
+          "Your board is not a space heater.",
+          "Reactor meltdown not covered under warranty.",
+          "Core temperature critical. Vent heat immediately."
+        ],
+        "endChance": 0.35
       }
     },
     "controllerTemp": {
@@ -80,8 +96,8 @@
       "start": ["Caution. Controller heat elevated..."],
       "full": {
         "start": ["Caution. Controller heat elevated...", "Caution. Controller running hot..."],
-        "end": ["Reduce load."],
-        "endChance": 0.2
+        "end": ["Reduce load.", "Thermal margin narrowing.", "Reactor core warming."],
+        "endChance": 0.35
       }
     },
     "controllerTemp.critical": {
@@ -91,8 +107,14 @@
           "Warning. Controller thermal limit approaching...",
           "Warning. Controller heat critical..."
         ],
-        "end": ["Reduce load.", "Thermal shutdown is not recommended."],
-        "endChance": 0.2
+        "end": [
+          "Reduce load.",
+          "Thermal shutdown is not recommended.",
+          "Your board is not a space heater.",
+          "Reactor meltdown not covered under warranty.",
+          "Core temperature critical. Vent heat immediately."
+        ],
+        "endChance": 0.35
       }
     },
     "boardConnection.connected": {
@@ -100,9 +122,15 @@
       "full": {
         "start": [
           "Board link established. All systems nominal.",
-          "Board online. Systems nominal.",
+          "All systems nominal. Gravity remains active.",
+          "Propulsion unit online. Minor lacerations... not covered.",
+          "Reactor online. All systems nominal.",
           "Welcome to the Vescape transit system."
-        ]
+        ],
+        "rare": [
+          "Board online. Black box recording enabled. In the event of a nosedive, your browser history will be deleted automatically."
+        ],
+        "rareChance": 0.01
       }
     },
     "boardConnection.lost": {
@@ -114,13 +142,17 @@
     "system.error": {
       "start": ["Warning. System fault."],
       "full": {
-        "start": ["Warning. System failure.", "Warning. System fault detected."]
+        "start": [
+          "Warning. System failure.",
+          "Warning. System fault detected.",
+          "Warning. Minor reactor anomaly detected."
+        ]
       }
     },
     "groupRide.created": {
-      "start": ["Group ride initiated."],
+      "start": ["Public ride initiated."],
       "full": {
-        "start": ["Group ride initiated. Awaiting riders.", "Squad channel open. Awaiting riders."]
+        "start": ["Public ride initiated. Awaiting riders.", "Squad channel open. Awaiting riders."]
       }
     },
     "groupRide.joined": {
@@ -228,13 +260,21 @@
     "groupRide.hazard.water": {
       "start": ["Water ahead."],
       "full": {
-        "start": ["Caution. Water ahead.", "Water on the route ahead."]
+        "start": [
+          "Caution. Water ahead.",
+          "Water on the route ahead.",
+          "Caution. Hydro hazard ahead. Waterproofing is theoretical."
+        ]
       }
     },
     "groupRide.hazard.terrain": {
       "start": ["Rough terrain ahead."],
       "full": {
-        "start": ["Caution. Rough terrain ahead.", "Rough terrain on the route ahead."]
+        "start": [
+          "Caution. Rough terrain ahead.",
+          "Rough terrain on the route ahead.",
+          "Caution. Surface integrity compromised ahead."
+        ]
       }
     },
     "groupRide.hazard.obstacle": {
@@ -246,7 +286,11 @@
     "groupRide.hazard.police": {
       "start": ["Police ahead."],
       "full": {
-        "start": ["Caution. Police ahead.", "Police on the route ahead."]
+        "start": [
+          "Caution. Police ahead.",
+          "Police on the route ahead.",
+          "Caution. Law enforcement ahead. Maintain legal velocity."
+        ]
       }
     },
     "groupRide.hazard.sent": {
@@ -270,7 +314,11 @@
       "minimal": ["Storm..."],
       "full": {
         "start": ["Warning. Electrical storm detected...", "Caution. Storm front approaching..."],
-        "end": ["Seek shelter.", "Locate cover immediately."],
+        "end": [
+          "Seek shelter.",
+          "Locate cover immediately.",
+          "High-voltage interference overhead."
+        ],
         "endChance": 0.5
       }
     },
@@ -279,7 +327,7 @@
       "minimal": ["Storm imminent."],
       "full": {
         "start": ["Warning. Storm imminent.", "Warning. Storm in progress."],
-        "end": ["Seek shelter immediately."],
+        "end": ["Seek shelter immediately.", "High-voltage interference overhead."],
         "endChance": 0.7
       }
     },
@@ -288,8 +336,8 @@
       "minimal": ["High winds..."],
       "full": {
         "start": ["Warning. High winds detected...", "Caution. Wind shear incoming..."],
-        "end": ["Reduce speed.", "Brace for gusts."],
-        "endChance": 0.3
+        "end": ["Reduce speed.", "Brace for gusts.", "Aerodynamic stability compromised."],
+        "endChance": 0.35
       }
     },
     "weather.wind.now": {
@@ -297,7 +345,7 @@
       "minimal": ["High winds imminent."],
       "full": {
         "start": ["Warning. High winds imminent.", "Warning. Wind shear in progress."],
-        "end": ["Reduce speed."],
+        "end": ["Reduce speed.", "Aerodynamic stability compromised."],
         "endChance": 0.5
       }
     },
@@ -306,8 +354,8 @@
       "minimal": ["Precipitation..."],
       "full": {
         "start": ["Warning. Precipitation detected...", "Caution. Incoming precipitation..."],
-        "end": ["Seek shelter.", "Locate cover."],
-        "endChance": 0.3
+        "end": ["Seek shelter.", "Locate cover.", "Traction degradation expected."],
+        "endChance": 0.4
       }
     },
     "weather.rain.now": {
@@ -315,8 +363,17 @@
       "minimal": ["Precipitation imminent."],
       "full": {
         "start": ["Warning. Precipitation imminent.", "Warning. Precipitation in progress."],
-        "end": ["Seek shelter."],
+        "end": ["Seek shelter.", "Traction degradation expected."],
         "endChance": 0.5
+      }
+    },
+    "voice.intro": {
+      "start": ["Radio voice online. Standard telemetry and hazard reporting active."],
+      "minimal": ["Radio. Minimal. Facts only."],
+      "full": {
+        "start": [
+          "Welcome to the Vescape voice interface. Full telemetry, squad comms, and unsolicited safety advice are now active. Have a very safe day."
+        ]
       }
     }
   }
