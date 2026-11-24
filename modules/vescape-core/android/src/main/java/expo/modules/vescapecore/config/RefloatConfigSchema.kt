@@ -432,11 +432,8 @@ internal object RefloatConfigSchemaParser {
     else -> default
   }
 
-  private fun text(parent: org.w3c.dom.Element, tag: String): String? {
-    val nodes = parent.getElementsByTagName(tag)
-    if (nodes.length == 0) return null
-    return nodes.item(0).textContent.trim()
-  }
+  private fun text(parent: org.w3c.dom.Element, tag: String): String? =
+    directChildText(parent, tag)
 
   private fun parseVescValueType(type: Int, vTx: Int, name: String): RefloatConfigValueType {
     return when (type) {

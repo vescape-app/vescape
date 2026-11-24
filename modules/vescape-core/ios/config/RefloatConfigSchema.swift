@@ -581,8 +581,7 @@ enum RefloatConfigSchemaParser {
   }
 
   private static func text(_ parent: RefloatXmlNode, _ tag: String) -> String? {
-    guard let node = parent.descendants(named: tag).first else { return nil }
-    return node.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
+    directChildText(parent, tag)
   }
 
   private static func parseVescValueType(type: Int, vTx: Int, name: String) throws -> RefloatConfigValueType {

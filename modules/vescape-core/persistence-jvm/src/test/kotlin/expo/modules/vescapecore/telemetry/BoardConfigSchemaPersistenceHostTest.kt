@@ -97,12 +97,21 @@ class BoardConfigSchemaPersistenceHostTest {
 
       val reopened = open(file.path)
       try {
-        val persistence = ConfigPersistence(reopened.vescapeDao())
+        var parseErrors = 0
+        val dao = reopened.vescapeDao()
+        val persistence = ConfigPersistence(dao, onInvalidSchemaXml = { parseErrors++ })
         val loaded = persistence.loadSchema(schema.hash)
         assertNotNull(loaded)
         assertEquals(schema.hash, loaded?.hash)
         assertEquals(schema.fields, loaded?.fields)
         assertEquals(schema.groups, loaded?.groups)
+        assertEquals(0, parseErrors)
+
+        dao.insertBoardConfigSchemaIfAbsent(
+          expo.modules.vescapecore.database.BoardConfigSchemaEntity("corrupt-hash", "<not-xml", 4000L),
+        )
+        assertNull(persistence.loadSchema("corrupt-hash"))
+        assertEquals(1, parseErrors)
       } finally {
         reopened.close()
       }

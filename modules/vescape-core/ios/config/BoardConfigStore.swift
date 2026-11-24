@@ -145,6 +145,9 @@ struct BoardConfigChangeNotice {
 struct BoardConfigStore {
   static var onNoticeChanged: ((BoardConfigChangeNotice?) -> Void)?
   static var onInvalidIgnoredFields: ((Error) -> Void)?
+  static var onInvalidSchemaXml: ((Error) -> Void)?
+  private static let schemaCacheLock = NSLock()
+  private static var parsedSchemaCache: [String: RefloatConfigSchema] = [:]
   private let resolveWriter: () -> DatabaseWriter?
 
   static let shared = BoardConfigStore { VescapeDatabase.pool }
@@ -212,9 +215,28 @@ struct BoardConfigStore {
 
   private static func loadSchema(_ db: Database, schemaHash: String?) throws -> RefloatConfigSchema? {
     guard let schemaHash, !schemaHash.isEmpty else { return nil }
+    if let cached = cachedSchema(for: schemaHash) { return cached }
     guard let record = try BoardConfigSchemaRecord.fetchOne(db, key: schemaHash) else { return nil }
-    // intentional-suppression: corrupt stored XML falls back to nil schema instead of breaking cached values read
-    return try? RefloatConfigSchemaParser.parse(Array(record.rawXml.utf8))
+    do {
+      let parsed = try RefloatConfigSchemaParser.parse(Array(record.rawXml.utf8))
+      cacheSchema(parsed, for: schemaHash)
+      return parsed
+    } catch {
+      Self.onInvalidSchemaXml?(error)
+      return nil
+    }
+  }
+
+  private static func cachedSchema(for schemaHash: String) -> RefloatConfigSchema? {
+    schemaCacheLock.lock()
+    defer { schemaCacheLock.unlock() }
+    return parsedSchemaCache[schemaHash]
+  }
+
+  private static func cacheSchema(_ schema: RefloatConfigSchema, for schemaHash: String) {
+    schemaCacheLock.lock()
+    defer { schemaCacheLock.unlock() }
+    parsedSchemaCache[schemaHash] = schema
   }
 
   private static func insertSchemaIfAbsent(_ db: Database, schema: RefloatConfigSchema?, createdAt: Int64) throws {

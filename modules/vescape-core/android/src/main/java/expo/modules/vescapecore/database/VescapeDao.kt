@@ -1220,6 +1220,15 @@ interface VescapeDao {
   @Query("SELECT COUNT(*) FROM board_config_schemas")
   suspend fun countBoardConfigSchemas(): Int
 
+  @Transaction
+  suspend fun upsertBoardConfigValuesWithSchema(
+    values: BoardConfigValuesEntity,
+    schema: BoardConfigSchemaEntity?,
+  ) {
+    if (schema != null) insertBoardConfigSchemaIfAbsent(schema)
+    upsertBoardConfigValues(values)
+  }
+
   @Query("SELECT * FROM motor_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
   suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValuesEntity?
 

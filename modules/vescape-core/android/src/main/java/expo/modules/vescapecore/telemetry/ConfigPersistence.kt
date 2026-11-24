@@ -10,10 +10,12 @@ import expo.modules.vescapecore.database.BoardConfigSchemaEntity
 import expo.modules.vescapecore.database.BoardConfigValuesEntity
 import expo.modules.vescapecore.database.MotorConfigValuesEntity
 import expo.modules.vescapecore.database.VescapeDao
+import java.util.concurrent.ConcurrentHashMap
 
 internal class ConfigPersistence(
   private val dao: VescapeDao,
   private val onInvalidIgnoredFields: (Throwable) -> Unit = {},
+  private val onInvalidSchemaXml: (Throwable) -> Unit = {},
 ) {
   suspend fun saveFreshBoard(
     boardId: String,
@@ -115,12 +117,16 @@ internal class ConfigPersistence(
    */
   suspend fun loadSchema(schemaHash: String): RefloatConfigSchema? {
     if (schemaHash.isBlank()) return null
+    parsedSchemaCache[schemaHash]?.let { return it }
     val row = dao.getBoardConfigSchema(schemaHash) ?: return null
-    return try {
+    val parsed = try {
       RefloatConfigSchemaParser.parse(row.rawXml.toByteArray(Charsets.UTF_8))
-    } catch (_: Exception) {
-      null
+    } catch (error: Throwable) {
+      onInvalidSchemaXml(error)
+      return null
     }
+    parsedSchemaCache[schemaHash] = parsed
+    return parsed
   }
 
   /**
@@ -131,6 +137,10 @@ internal class ConfigPersistence(
     dao.insertBoardConfigSchemaIfAbsent(
       BoardConfigSchemaEntity(schemaHash = schema.hash, rawXml = schema.rawXml, createdAt = createdAt),
     )
+  }
+
+  companion object {
+    private val parsedSchemaCache = ConcurrentHashMap<String, RefloatConfigSchema>()
   }
 
   private fun decodeBoardValues(json: String): Map<String, Any> = JSONObject(json).keys().asSequence().mapNotNull { key ->

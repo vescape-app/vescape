@@ -287,10 +287,14 @@ class AppDataRepository private constructor(private val context: Context) {
     val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext
     val refloatBaseVersion = values.refloatBaseVersion?.takeIf { it.isNotBlank() } ?: return@withContext
     val schema = values.schema ?: values.writeBase?.schema
-    if (schema != null) {
-      configPersistence().saveSchema(schema, values.capturedAtMs)
+    val schemaEntity = schema?.takeIf { it.hash.isNotBlank() && it.rawXml.isNotBlank() }?.let {
+      expo.modules.vescapecore.database.BoardConfigSchemaEntity(
+        schemaHash = it.hash,
+        rawXml = it.rawXml,
+        createdAt = values.capturedAtMs,
+      )
     }
-    dao.upsertBoardConfigValues(
+    dao.upsertBoardConfigValuesWithSchema(
       BoardConfigValuesEntity(
         boardId = boardId,
         refloatBaseVersion = refloatBaseVersion,
@@ -298,6 +302,7 @@ class AppDataRepository private constructor(private val context: Context) {
         capturedAt = values.capturedAtMs,
         schemaHash = (values.schemaHash ?: schema?.hash)?.takeIf { it.isNotBlank() },
       ),
+      schemaEntity,
     )
   }
 
@@ -316,9 +321,15 @@ class AppDataRepository private constructor(private val context: Context) {
     }
   }
 
-  private fun configPersistence() = ConfigPersistence(dao) { error ->
-    RecordingStorageFailure.reportRead("board_config_ignored_fields_read", error)
-  }
+  private fun configPersistence() = ConfigPersistence(
+    dao = dao,
+    onInvalidIgnoredFields = { error ->
+      RecordingStorageFailure.reportRead("board_config_ignored_fields_read", error)
+    },
+    onInvalidSchemaXml = { error ->
+      RecordingStorageFailure.reportRead("board_config_schema_parse", error)
+    },
+  )
 
   internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
     val boardId = values.boardId ?: return@withContext null

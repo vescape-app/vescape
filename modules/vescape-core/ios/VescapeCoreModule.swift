@@ -241,6 +241,9 @@ public class VescapeCoreModule: Module {
       BoardConfigStore.onInvalidIgnoredFields = { error in
         RecordingStorageFailure.reportRead(operation: "board_config_ignored_fields_read", error: error)
       }
+      BoardConfigStore.onInvalidSchemaXml = { error in
+        RecordingStorageFailure.reportRead(operation: "board_config_schema_parse", error: error)
+      }
       MaintenanceRunner.shared.onChange = { [weak self] state in self?.emitMaintenanceState(state) }
       MaintenanceRunner.shared.start()
     }

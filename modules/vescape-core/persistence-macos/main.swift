@@ -1679,6 +1679,18 @@ func runBoardConfigSchemaContract() throws {
   try require(loadedB?.schemaHash == schema.hash, "last-known values carry schema_hash after reopen")
   try require(loadedB?.schema == schema, "last-known values carry parsed schema after reopen")
   try require(try reopenedStore.loadSchema(schemaHash: schema.hash) == schema, "loadSchema returns parsed schema")
+
+  var corruptSchemaErrors = 0
+  let previousSchemaErrorHandler = BoardConfigStore.onInvalidSchemaXml
+  BoardConfigStore.onInvalidSchemaXml = { _ in corruptSchemaErrors += 1 }
+  defer { BoardConfigStore.onInvalidSchemaXml = previousSchemaErrorHandler }
+  try queue.write { db in
+    try db.execute(
+      sql: "INSERT INTO board_config_schemas (schema_hash, raw_xml, created_at) VALUES ('corrupt-hash', '<not-xml', 4000)"
+    )
+  }
+  try require(try reopenedStore.loadSchema(schemaHash: "corrupt-hash") == nil, "corrupt stored XML returns nil")
+  try require(corruptSchemaErrors == 1, "corrupt stored XML reports via onInvalidSchemaXml")
   try queue.close()
 }
 
