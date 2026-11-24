@@ -158,19 +158,24 @@ describe('boardConfigChangeset', () => {
       'disabled',
       'fault_adc1',
       'fault_adc2',
-      'fault_adc_half_erpm',
-      'fault_delay_pitch',
-      'fault_delay_roll',
-      'fault_delay_switch_half',
-      'fault_delay_switch_full',
       'inputtilt_remote_type',
+      'tiltback_hv',
+      'tiltback_lv',
       'future_spec_field',
     ]) {
       expect(isRiskyBoardConfigField(riskyId, schema)).toBe(true)
     }
 
-    expect(isRiskyBoardConfigField('hardware.leds.mode', schema)).toBe(false)
-    expect(isRiskyBoardConfigField('startup_simplestart_enabled', schema)).toBe(false)
+    for (const safeId of [
+      'hardware.leds.mode',
+      'startup_simplestart_enabled',
+      'fault_is_dual_switch',
+      'fault_reversestop_enabled',
+      'fault_delay_pitch',
+      'fault_delay_switch_full',
+    ]) {
+      expect(isRiskyBoardConfigField(safeId, schema)).toBe(false)
+    }
   })
 
   test('returns reboot notes for hardware.leds.* and leds.on on Refloat 1.2+', () => {

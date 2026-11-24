@@ -353,34 +353,24 @@
     },
     "fault_is_dual_switch": {
       "label": "Both zones as one (Posi)",
-      "risk": "risky",
       "description": "Either zone can keep the board on, so heel-lift dismount won't work. A stuck sensor can keep it running after you step off.",
-      "when": "You're doing lots of tricks and need one-zone riding. For tricky starts, try Simple start first.",
-      "riskReason": "Disables heel-lift dismount and lets a single stuck footpad zone keep the motor engaged after you step off."
+      "when": "You're doing lots of tricks and need one-zone riding. For tricky starts, try Simple start first."
     },
     "fault_delay_switch_half": {
       "label": "One zone off, cutoff after",
-      "risk": "risky",
-      "description": "How long one zone can stop sensing your foot before the board switches off. Applies at low speed, with Posi off.",
-      "riskReason": "Controls how quickly the board disengages when one footpad zone lifts at low speed. Too short can cut out unexpectedly; too long delays heel-lift dismount."
+      "description": "How long one zone can stop sensing your foot before the board switches off. Applies at low speed, with Posi off."
     },
     "fault_delay_switch_full": {
       "label": "Both zones off, cutoff after",
-      "risk": "risky",
-      "description": "How long both zones can stop sensing your foot before the board can switch off.",
-      "riskReason": "Controls how long the board stays powered after both footpad zones stop sensing your foot. Too short can cut out over bumps; too long lets the board ghost after a bail."
+      "description": "How long both zones can stop sensing your foot before the board can switch off."
     },
     "fault_delay_pitch": {
       "label": "Pitch cutoff after",
-      "risk": "risky",
-      "description": "How long the board can stay past the pitch cutoff angle before shutting off.",
-      "riskReason": "Controls how quickly power cuts when the nose or tail pitches past the safety angle. Too short can cut out on steep drops; too long keeps the wheel spinning during a crash."
+      "description": "How long the board can stay past the pitch cutoff angle before shutting off."
     },
     "fault_delay_roll": {
       "label": "Roll cutoff after",
-      "risk": "risky",
-      "description": "How long the board can stay rolled past the roll cutoff angle before shutting off.",
-      "riskReason": "Controls how quickly power cuts when the board tips sideways. Too short can cut out on hard carves; too long keeps the wheel spinning after a side bail."
+      "description": "How long the board can stay rolled past the roll cutoff angle before shutting off."
     },
     "fault_adc1": {
       "label": "Zone 1 engages at",
@@ -396,9 +386,7 @@
     },
     "fault_adc_half_erpm": {
       "label": "One zone off is a fault below",
-      "risk": "risky",
-      "description": "Speed (ERPM) below which lifting one footpad zone can disengage the board.",
-      "riskReason": "Setting this too high can let a momentary heel lift cut power at riding speed."
+      "description": "Speed (ERPM) below which lifting one footpad zone can disengage the board."
     },
     "disabled": {
       "label": "Disable Refloat",
@@ -431,27 +419,21 @@
     },
     "is_footbeep_enabled": {
       "label": "Beep on sensor fault",
-      "risk": "risky",
-      "riskReason": "Disabling removes the audible warning when a footpad sensor zone drops out."
+      "description": "Plays an audible warning when a footpad sensor zone drops out."
     },
     "is_beeper_enabled": {
       "label": "External buzzer (servo/PPM)",
-      "risk": "risky",
-      "riskReason": "Controls the external hardware beeper output on the servo/PPM pin."
+      "description": "Controls the external hardware beeper output on the servo/PPM pin."
     },
     "fault_moving_fault_disabled": {
       "label": "Moving faults disabled",
-      "risk": "risky",
       "recommended": "on",
       "when": "Your footpad sometimes stops detecting you even though you're still standing on it, especially during hard riding.",
-      "description": "Stops the footpad from switching the board off while riding forward fast enough and fairly level. It can keep going after you step off.",
-      "riskReason": "Prevents footpad sensor cutoffs while rolling forward, which can allow the board to keep going (ghost) if you step off at speed."
+      "description": "Stops the footpad from switching the board off while riding forward fast enough and fairly level. It can keep going after you step off."
     },
     "fault_darkride_enabled": {
       "label": "Darkride",
-      "risk": "risky",
-      "description": "Allows riding upside down without footpad sensors.",
-      "riskReason": "Allows the board to stay engaged upside down without footpad sensor confirmation."
+      "description": "Allows riding upside down without footpad sensors."
     },
     "enable_quickstop": {
       "label": "Quickstop",
@@ -477,10 +459,8 @@
     },
     "fault_reversestop_enabled": {
       "label": "Reverse stop",
-      "risk": "risky",
       "when": "Usually off, unless you like rolling back to stop. A footpad that stays engaged with nobody on it needs fixing.",
-      "description": "Lets you dismount by rolling back a little. The board tilts, then switches off. Makes balancing in place harder.",
-      "riskReason": "Cuts power when rolling backwards past the threshold, which can catch you off guard when balancing in place or riding switch."
+      "description": "Lets you dismount by rolling back a little. The board tilts, then switches off. Makes balancing in place harder."
     }
   }
 }

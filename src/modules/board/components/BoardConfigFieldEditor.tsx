@@ -215,15 +215,23 @@ export function BoardConfigFieldEditor({
     )
   }
 
-  const renderLabelHeader = () => (
+  const renderLabelContent = () => (
     <>
-      {isModified ? <View style={styles.modifiedDot} /> : null}
-      <Text style={styles.label}>{field.label}</Text>
-      {field.risk === 'risky' ? (
-        <WarningIcon size={14} color={theme.status.warning.color} weight="duotone" />
-      ) : canShowInfo ? (
-        <QuestionIcon size={14} color={theme.neutral.textMuted} weight="bold" />
+      <View style={styles.labelLine}>
+        {isModified ? <View style={styles.modifiedDot} /> : null}
+        <Text style={styles.label}>{field.label}</Text>
+        {field.risk === 'risky' ? (
+          <WarningIcon size={14} color={theme.status.warning.color} weight="duotone" />
+        ) : canShowInfo ? (
+          <QuestionIcon size={14} color={theme.neutral.textMuted} weight="bold" />
+        ) : null}
+      </View>
+      {showDescription && field.description ? (
+        <Text style={styles.description} numberOfLines={canShowInfo ? 2 : undefined}>
+          {field.description}
+        </Text>
       ) : null}
+      {rebootNote && isModified ? <Text style={styles.rebootNote}>{rebootNote}</Text> : null}
     </>
   )
 
@@ -238,37 +246,20 @@ export function BoardConfigFieldEditor({
       testID={`board-config-field-${field.id}`}
     >
       <View style={styles.mainRow}>
-        <View style={styles.labelBlock}>
-          {canShowInfo ? (
-            <Pressable
-              style={styles.labelLine}
-              hitSlop={8}
-              onPress={() => onInfoPress?.(field)}
-              accessibilityRole="button"
-              accessibilityLabel={`About ${field.label}`}
-              testID={`board-config-info-${field.id}`}
-            >
-              {renderLabelHeader()}
-            </Pressable>
-          ) : (
-            <View style={styles.labelLine}>{renderLabelHeader()}</View>
-          )}
-          {showDescription && field.description ? (
-            <Text style={styles.description}>
-              {field.description}
-              {field.recommended ? (
-                <Text style={styles.recommended}>{` (recommended ${field.recommended})`}</Text>
-              ) : null}
-            </Text>
-          ) : null}
-          {showDescription && field.when ? (
-            <Text style={styles.when}>
-              <Text style={styles.whenLead}>When: </Text>
-              {field.when}
-            </Text>
-          ) : null}
-          {rebootNote && isModified ? <Text style={styles.rebootNote}>{rebootNote}</Text> : null}
-        </View>
+        {canShowInfo ? (
+          <Pressable
+            style={styles.labelBlock}
+            hitSlop={6}
+            onPress={() => onInfoPress?.(field)}
+            accessibilityRole="button"
+            accessibilityLabel={`About ${field.label}`}
+            testID={`board-config-info-${field.id}`}
+          >
+            {renderLabelContent()}
+          </Pressable>
+        ) : (
+          <View style={styles.labelBlock}>{renderLabelContent()}</View>
+        )}
 
         <View style={styles.controlCluster}>
           {isModified && onReset && !disabled ? (
@@ -326,20 +317,6 @@ const styles = StyleSheet.create({
     color: theme.neutral.textMuted,
     fontSize: 12,
     lineHeight: 17,
-  },
-  recommended: {
-    color: theme.neutral.textSecondary,
-    fontWeight: '600',
-  },
-  when: {
-    color: theme.neutral.textMuted,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2,
-  },
-  whenLead: {
-    color: theme.neutral.textSecondary,
-    fontWeight: '600',
   },
   rebootNote: {
     color: theme.palette.sky.text,

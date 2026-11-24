@@ -91,8 +91,8 @@ export function isRiskyBoardConfigField(
   if (
     fieldId === 'disabled' ||
     fieldId === 'inputtilt_remote_type' ||
-    fieldId.startsWith('fault_adc') ||
-    fieldId.startsWith('fault_delay_')
+    fieldId === 'fault_adc1' ||
+    fieldId === 'fault_adc2'
   ) {
     return true
   }
@@ -436,13 +436,10 @@ export interface BoardConfigFieldInfo {
 }
 
 function defaultRiskReason(fieldId: string): string {
-  if (fieldId.startsWith('fault_adc')) {
+  if (fieldId === 'fault_adc1' || fieldId === 'fault_adc2') {
     return 'Affects footpad sensor detection. Wrong values can cause cutouts while riding or keep the board running after you step off.'
   }
-  if (fieldId.startsWith('fault_delay_')) {
-    return 'Controls how quickly the board cuts power during a fault or bail. Double-check the timing before riding.'
-  }
-  return 'Affects cutoffs, hardware specs, or board safety. Double-check the value before writing.'
+  return 'Affects hardware specs, protection limits, or board safety. Double-check the value before writing.'
 }
 
 export function buildBoardConfigFieldInfo(

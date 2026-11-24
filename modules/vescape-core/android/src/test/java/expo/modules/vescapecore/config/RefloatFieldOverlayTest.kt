@@ -11,7 +11,7 @@ class RefloatFieldOverlayTest {
   @Test
   fun bundledOverlayMarksMetaIsDefaultInternalAndAllowsSoftOutliers() {
     assertTrue(RefloatFieldOverlay.shared.isInternal("meta.is_default"))
-    assertEquals(RefloatFieldRisk.RISKY, RefloatFieldOverlay.shared.entry("fault_is_dual_switch")?.risk)
+    assertEquals(RefloatFieldRisk.RISKY, RefloatFieldOverlay.shared.entry("fault_adc1")?.risk)
     assertFalse(RefloatFieldOverlay.shared.isInternal("atr_strength_up"))
 
     val atrField = RefloatConfigSchemaField(

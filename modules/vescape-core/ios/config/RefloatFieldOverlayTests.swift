@@ -5,7 +5,7 @@ import XCTest
 final class RefloatFieldOverlayTests: XCTestCase {
   func testBundledOverlayMarksMetaIsDefaultInternalAndAllowsSoftOutliers() throws {
     XCTAssertTrue(RefloatFieldOverlay.shared.isInternal("meta.is_default"))
-    XCTAssertEqual(RefloatFieldOverlay.shared.entry("fault_is_dual_switch")?.risk, .risky)
+    XCTAssertEqual(RefloatFieldOverlay.shared.entry("fault_adc1")?.risk, .risky)
     XCTAssertFalse(RefloatFieldOverlay.shared.isInternal("atr_strength_up"))
 
     let atrField = RefloatConfigSchemaField(
