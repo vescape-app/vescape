@@ -9,25 +9,33 @@ export function createPublicRideInteraction({
   active,
   indexAt,
   onCommit,
+  onPreview,
 }: {
   preview: Cell<number>
   initial: Cell<number>
   active: Cell<boolean>
   indexAt: (x: number, y: number, continuing: boolean) => number
   onCommit: (stop: number) => void
+  onPreview?: (stop: number) => void
 }) {
+  const updatePreview = (next: number) => {
+    'worklet'
+    if (next < 0 || next === preview.get()) return
+    preview.set(next)
+    onPreview?.(next)
+  }
   const move = (x: number, y: number) => {
     'worklet'
     if (!active.get()) return
     const next = indexAt(x, y, true)
-    if (next >= 0 && next !== preview.get()) preview.set(next)
+    updatePreview(next)
   }
   return {
     begin(x: number, y: number) {
       'worklet'
       const next = indexAt(x, y, false)
       active.set(next >= 0)
-      if (next >= 0) preview.set(next)
+      updatePreview(next)
     },
     move,
     finish(success: boolean) {

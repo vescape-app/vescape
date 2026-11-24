@@ -21,7 +21,13 @@ import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
-import { PUBLIC_RIDE_DURATIONS, type PublicRideChoice } from '@/modules/group-ride/lib/publicRide'
+import {
+  PUBLIC_RIDE_ALWAYS_STOP as ALWAYS_STOP,
+  PUBLIC_RIDE_DURATIONS,
+  publicRideChoiceAt,
+  publicRideStopOf,
+  type PublicRideChoice,
+} from '@/modules/group-ride/lib/publicRide'
 import {
   PUBLIC_RIDE_ARC,
   publicRideStableIndexAt,
@@ -52,7 +58,6 @@ const RULER_EDGE_INSET =
   (Math.asin(PUBLIC_RIDE_ARC.gap / 2 / PUBLIC_RIDE_ARC.outerRadius) * 180) / Math.PI
 const RULER_START = PUBLIC_RIDE_ARC.startAngle + PUBLIC_RIDE_ARC.sectorAngle + RULER_EDGE_INSET
 const DURATION_COUNT = PUBLIC_RIDE_DURATIONS.length
-const ALWAYS_STOP = DURATION_COUNT + 1
 const RULER_STEP = (PUBLIC_RIDE_ARC.sectorAngle * 2 - RULER_EDGE_INSET * 2) / (DURATION_COUNT + 1)
 const FIRST_TICK = RULER_START + RULER_STEP
 const MAJOR_TICK_INDEX = PUBLIC_RIDE_DURATIONS.indexOf(12)
@@ -69,18 +74,6 @@ const TICK_PATH = PUBLIC_RIDE_DURATIONS.map((_, index) => {
 }).join(' ')
 const AnimatedPath = Animated.createAnimatedComponent(Path)
 const AnimatedText = Animated.createAnimatedComponent(Text)
-
-function stopOf(choice: PublicRideChoice) {
-  if (choice.mode === 'off') return 0
-  if (choice.mode === 'always') return ALWAYS_STOP
-  return Math.max(0, PUBLIC_RIDE_DURATIONS.indexOf(choice.hours)) + 1
-}
-
-function choiceAt(stop: number): PublicRideChoice {
-  if (stop === 0) return { mode: 'off' }
-  if (stop === ALWAYS_STOP) return { mode: 'always' }
-  return { mode: 'hours', hours: PUBLIC_RIDE_DURATIONS[stop - 1] }
-}
 
 function sectorOf(stop: number) {
   'worklet'
@@ -220,7 +213,7 @@ export function PublicRideSelector({
   const scale = width / PUBLIC_RIDE_ARC.width
   const indicatorHalfAngle =
     (Math.atan2(INDICATOR_WIDTH / 2, PUBLIC_RIDE_ARC.outerRadius * scale) * 180) / Math.PI
-  const stop = stopOf(value)
+  const stop = publicRideStopOf(value)
   const selected = sectorOf(stop)
   const options = [
     { title: 'Off', subtitle: HOUR_DESCRIPTIONS[0] },
@@ -277,12 +270,10 @@ export function PublicRideSelector({
   })
 
   const select = useCallback(
-    (index: number) => {
+    (index: number, feedback = true) => {
       if (index < 0) return
-      void Haptics.impactAsync(
-        index === 0 ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Soft,
-      )
-      onValueChange(choiceAt(index))
+      if (feedback) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)
+      onValueChange(publicRideChoiceAt(index))
     },
     [onValueChange],
   )
@@ -314,9 +305,13 @@ export function PublicRideSelector({
           Math.min(DURATION_COUNT, 1 + Math.round((angle - FIRST_TICK) / RULER_STEP)),
         )
       },
+      onPreview: () => {
+        'worklet'
+        scheduleOnRN(Haptics.impactAsync, Haptics.ImpactFeedbackStyle.Soft)
+      },
       onCommit: (next) => {
         'worklet'
-        scheduleOnRN(select, next)
+        scheduleOnRN(select, next, false)
       },
     })
     const pan = Gesture.Pan()

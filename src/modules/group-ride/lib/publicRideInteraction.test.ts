@@ -15,14 +15,16 @@ function harness() {
   const initial = cell(2)
   const active = cell(false)
   const commits: number[] = []
+  const previews: number[] = []
   const interaction = createPublicRideInteraction({
     preview,
     initial,
     active,
     indexAt: (x) => x,
     onCommit: (stop) => commits.push(stop),
+    onPreview: (stop) => previews.push(stop),
   })
-  return { preview, initial, active, commits, ...interaction }
+  return { preview, initial, active, commits, previews, ...interaction }
 }
 
 describe('public ride drag commit boundary', () => {
@@ -106,4 +108,20 @@ test('continuation may leave the selector, but a gesture cannot start outside it
   expect(preview.get()).toBe(8)
   drag.finish(true)
   expect(commits).toEqual([8])
+})
+
+test('detent feedback follows changes during a gesture without duplicates or cancellation feedback', () => {
+  const drag = harness()
+  drag.begin(2, 0)
+  drag.move(3, 0)
+  drag.move(3, 0)
+  drag.move(-1, 0)
+  drag.move(4, 0)
+  expect(drag.previews).toEqual([3, 4])
+  drag.finish(false)
+  expect(drag.previews).toEqual([3, 4])
+  drag.begin(7, 0)
+  drag.finish(true)
+  expect(drag.previews).toEqual([3, 4, 7])
+  expect(drag.commits).toEqual([7])
 })

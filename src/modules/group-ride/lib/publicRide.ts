@@ -4,10 +4,24 @@ import { formatClock, formatShortDate, type DateFormat, type TimeFormat } from '
 
 export const PUBLIC_RIDE_DURATIONS = [1, 2, 3, 4, 6, 8, 10, 12, 24, 48, 72, 96, 120, 144, 168]
 
+export const PUBLIC_RIDE_ALWAYS_STOP = PUBLIC_RIDE_DURATIONS.length + 1
+
 const HOUR_MS = 3_600_000
 
 export type PublicRideChoice =
   { mode: 'off' } | { mode: 'always' } | { mode: 'hours'; hours: number }
+
+export function publicRideStopOf(choice: PublicRideChoice) {
+  if (choice.mode === 'off') return 0
+  if (choice.mode === 'always') return PUBLIC_RIDE_ALWAYS_STOP
+  return Math.max(0, PUBLIC_RIDE_DURATIONS.indexOf(choice.hours)) + 1
+}
+
+export function publicRideChoiceAt(stop: number): PublicRideChoice {
+  if (stop === 0) return { mode: 'off' }
+  if (stop === PUBLIC_RIDE_ALWAYS_STOP) return { mode: 'always' }
+  return { mode: 'hours', hours: PUBLIC_RIDE_DURATIONS[stop - 1] }
+}
 
 export function publicRideDurationLabel(hours: number) {
   return hours >= 48 ? `${hours / 24} d` : `${hours} h`
