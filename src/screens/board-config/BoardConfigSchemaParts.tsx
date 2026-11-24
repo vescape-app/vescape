@@ -23,22 +23,14 @@ export function BoardConfigReadInfo({
   refloatReadTime: string | null
   motorReadTime: string | null
 }) {
-  return (
-    <View style={styles.readInfo}>
-      {refloatReadTime && refloatReadTime === motorReadTime ? (
-        <Text style={styles.readTime}>{`Config read ${refloatReadTime}`}</Text>
-      ) : (
-        <>
-          <Text style={styles.readTime}>
-            {refloatReadTime ? `Refloat read ${refloatReadTime}` : 'No Refloat config read yet'}
-          </Text>
-          <Text style={styles.readTime}>
-            {motorReadTime ? `Motor config read ${motorReadTime}` : 'No motor config read yet'}
-          </Text>
-        </>
-      )}
-    </View>
-  )
+  const summary =
+    refloatReadTime && refloatReadTime === motorReadTime
+      ? `Config read ${refloatReadTime}`
+      : [
+          refloatReadTime ? `Refloat ${refloatReadTime}` : 'No Refloat config',
+          motorReadTime ? `Motor ${motorReadTime}` : 'No motor config',
+        ].join(' · ')
+  return <Text style={styles.readTime}>{summary}</Text>
 }
 
 export function BoardConfigStatusBanners({
@@ -264,6 +256,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  readInfo: { gap: 4, alignItems: 'center' },
-  readTime: { color: theme.neutral.textSecondary, fontSize: 12, textAlign: 'center' },
+  readTime: { color: theme.neutral.textMuted, fontSize: 12, textAlign: 'center' },
 })

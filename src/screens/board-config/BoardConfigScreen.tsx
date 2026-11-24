@@ -2,13 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
-import {
-  CaretDownIcon,
-  CaretUpIcon,
-  DotsThreeIcon,
-  GearSixIcon,
-  WrenchIcon,
-} from 'phosphor-react-native'
+import { CaretDownIcon, CaretUpIcon, DotsThreeIcon, GearSixIcon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
@@ -17,7 +11,6 @@ import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { SearchInput } from '@/components/forms/SearchInput'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
-import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import { fmtTimeAgo } from '@/helpers/format'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
@@ -116,15 +109,6 @@ function resolveEmptySearchMessage(hasAnyConfig: boolean, query: string): string
   return hasAnyConfig
     ? `No config options match “${query.trim()}”.`
     : 'No saved config to search. Connect this board to read it.'
-}
-
-function hasBoardConfigStatusBanner(
-  hasRefloat: boolean,
-  canEdit: boolean,
-  xmlError: string | null,
-  xmlNotice: string | null,
-): boolean {
-  return (hasRefloat && !canEdit) || Boolean(xmlError) || Boolean(xmlNotice)
 }
 
 export default function BoardConfigScreen() {
@@ -372,13 +356,6 @@ export default function BoardConfigScreen() {
   const riskyPendingCount = reviewEntries.filter((entry) => entry.risk === 'risky').length
   const emptySearchMessage = resolveEmptySearchMessage(Boolean(refloat || motor), query)
 
-  const hasStatusBanner = hasBoardConfigStatusBanner(
-    refloat !== null,
-    canEdit,
-    xmlTransfer.xmlError,
-    xmlTransfer.xmlNotice,
-  )
-
   const renderActiveTabBody = () => {
     if (activeSchemaTab) {
       if (activeSchemaTab.kind === 'motor') {
@@ -441,27 +418,24 @@ export default function BoardConfigScreen() {
         contentContainerStyle={[styles.content, pendingCount > 0 && styles.contentWithBar]}
         keyboardShouldPersistTaps="handled"
       >
-        <IconHero
-          icon={WrenchIcon}
-          description="Your board's Refloat config and motor limits, grouped by topic."
-        >
+        <View style={styles.header}>
           <BoardConfigReadInfo refloatReadTime={refloatReadTime} motorReadTime={motorReadTime} />
-        </IconHero>
 
-        <BoardConfigStatusBanners
-          hasRefloat={refloat !== null}
-          canEdit={canEdit}
-          xmlError={xmlTransfer.xmlError}
-          xmlNotice={xmlTransfer.xmlNotice}
-        />
+          <BoardConfigStatusBanners
+            hasRefloat={refloat !== null}
+            canEdit={canEdit}
+            xmlError={xmlTransfer.xmlError}
+            xmlNotice={xmlTransfer.xmlNotice}
+          />
 
-        <SearchInput
-          value={query}
-          onChangeText={setQuery}
-          accessibilityLabel="Search board config"
-          testID="board-config-search"
-          style={[styles.search, !hasStatusBanner && styles.searchTight]}
-        />
+          <SearchInput
+            value={query}
+            onChangeText={setQuery}
+            accessibilityLabel="Search board config"
+            testID="board-config-search"
+            style={styles.search}
+          />
+        </View>
 
         {searching ? (
           <View style={styles.groups}>{renderSearchBody()}</View>
@@ -547,17 +521,11 @@ export default function BoardConfigScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
-  content: { padding: 16, gap: 24 },
+  content: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 24, gap: 14 },
   contentWithBar: { paddingBottom: 112 },
-  tabs: { backgroundColor: theme.neutral.bg, paddingVertical: 8 },
+  header: { gap: 10 },
+  tabs: { backgroundColor: theme.neutral.bg, paddingVertical: 2 },
   groups: { gap: 18 },
-  search: {
-    justifyContent: 'center',
-    alignSelf: 'center',
-    width: '70%',
-  },
-  searchTight: {
-    marginTop: -24,
-  },
+  search: { width: '100%' },
   noResults: { color: theme.neutral.textSecondary, fontSize: 14, textAlign: 'center' },
 })
