@@ -498,7 +498,11 @@ export default function BoardConfigScreen() {
           onChangeText={setQuery}
           accessibilityLabel="Search board config"
           testID="board-config-search"
-          style={styles.search}
+          style={[
+            styles.search,
+            !((refloat !== null && !canEdit) || xmlTransfer.xmlError || xmlTransfer.xmlNotice) &&
+              styles.searchTight,
+          ]}
         />
 
         {searching ? (
@@ -588,6 +592,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'center',
     width: '70%',
+  },
+  searchTight: {
     marginTop: -24,
   },
   noResults: { color: theme.neutral.textSecondary, fontSize: 14, textAlign: 'center' },
