@@ -111,13 +111,60 @@ final class RefloatConfigEncoderTests: XCTestCase {
     XCTAssertEqual(decoded["bool_false"] as? Bool, true)
   }
 
-  func testIntegersRoundHalfUp() throws {
+  func testFractionalValuesRejectedForIntegerFieldsWhileScaledFloatsRoundHalfUp() throws {
     let schema = allTypeSchema()
     let raw = buildRawConfig(schema)
-    let encoded = try RefloatConfigEncoder.encode(schema: schema, rawConfig: raw, fields: ["u8": 7.5, "i16": -2.5])
-    let decoded = decodeAllFields(schema, encoded)
-    XCTAssertEqual(decoded["u8"] as? Double, 8)
-    XCTAssertEqual(decoded["i16"] as? Double, -2)
+    for fieldId in ["u8", "i8", "u16", "i16", "u32", "i32"] {
+      assertInvalid(schema, raw, [fieldId: 7.5])
+      assertInvalid(schema, raw, [fieldId: 2.7])
+    }
+    let scaled = try RefloatConfigEncoder.encode(schema: schema, rawConfig: raw, fields: ["f16_scaled": 1.235, "f32_scaled": -2.5005])
+    let decoded = decodeAllFields(schema, scaled)
+    XCTAssertEqual(decoded["f16_scaled"] as? Double ?? 0, 1.24, accuracy: 1e-9)
+    XCTAssertEqual(decoded["f32_scaled"] as? Double ?? 0, -2.5, accuracy: 1e-9)
+  }
+
+  func testOverlappingFieldsAreRejectedWhileAdjacentFieldsSucceed() throws {
+    let overlapping = RefloatConfigSchema(
+      hash: "overlap",
+      fields: [
+        field("a", .uint16, offset: 0),
+        field("b", .uint16, offset: 1),
+      ]
+    )
+    XCTAssertThrowsError(
+      try RefloatConfigEncoder.encodeChangeset(schema: overlapping, rawConfig: [0, 0, 0, 0], changes: ["a": 10.0, "b": 20.0])
+    ) { error in
+      XCTAssertEqual((error as? RefloatConfigEncodeException)?.code, .CONFIG_ENCODE_FAILED)
+    }
+
+    let adjacent = RefloatConfigSchema(
+      hash: "adjacent",
+      fields: [
+        field("a", .uint16, offset: 0),
+        field("b", .uint16, offset: 2),
+      ]
+    )
+    let encoded = try RefloatConfigEncoder.encodeChangeset(
+      schema: adjacent,
+      rawConfig: [0, 0, 0, 0],
+      changes: ["a": Double(0x1234), "b": Double(0x5678)]
+    )
+    XCTAssertEqual(encoded.rawConfig, [0x12, 0x34, 0x56, 0x78])
+    XCTAssertEqual(encoded.changedFieldIds, ["a", "b"])
+  }
+
+  func testOffGridSchemaMaxRoundTripsWithoutFalseRangeRejection() throws {
+    let schema = RefloatConfigSchema(
+      hash: "offgrid",
+      fields: [
+        RefloatConfigSchemaField(id: "v", type: .float16Scaled, label: "v", unit: nil, min: 0.0, max: 0.3505, offset: 0, scale: 1000.0),
+      ]
+    )
+    let encoded = try RefloatConfigEncoder.encodeChangeset(schema: schema, rawConfig: [0, 0], changes: ["v": 0.3505])
+    XCTAssertEqual(encoded.changedFieldIds, ["v"])
+    XCTAssertEqual(encoded.rawConfig, [0x01, 0x5F])
+    assertInvalid(schema, [0, 0], ["v": 0.3506])
   }
 
   func testFloat32RoundTrip() throws {

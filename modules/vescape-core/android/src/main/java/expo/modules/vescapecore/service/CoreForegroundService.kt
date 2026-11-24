@@ -308,7 +308,6 @@ class CoreForegroundService : Service() {
         }
 
         fun applyBoardConfigChangeset(
-            @Suppress("UNUSED_PARAMETER") context: Context,
             boardId: String,
             changes: Map<String, Any?>,
             onSuccess: (Map<String, Any?>) -> Unit,
@@ -327,7 +326,6 @@ class CoreForegroundService : Service() {
         }
 
         fun pushProfileToBoard(
-            @Suppress("UNUSED_PARAMETER") context: Context,
             profileId: String,
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,

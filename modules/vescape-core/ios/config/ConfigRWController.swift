@@ -256,6 +256,7 @@ internal final class ConfigRWController {
         ctx,
         writeBase.schema,
         RefloatConfigBytes(confInd: 0, packageSignature: writeBase.packageSignature, config: writeBase.rawConfig),
+        capturedAtMs: startedAtMs,
         fromFreshRead: false,
         .sendingWrite,
         connection
@@ -452,7 +453,7 @@ internal final class ConfigRWController {
     let rawConfig = configBytes.config
     do {
       let schema = try RefloatConfigSchemaParser.parse(xmlBytes)
-      sendWrite(ctx, schema, configBytes, fromFreshRead: true, .readingConfig, connection)
+      sendWrite(ctx, schema, configBytes, capturedAtMs: nowMs(), fromFreshRead: true, .readingConfig, connection)
     } catch let error as RefloatConfigSchemaException {
       failWrite(code: .UNSUPPORTED_SCHEMA, message: error.message, phase: .readingConfig, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     } catch {
@@ -464,6 +465,7 @@ internal final class ConfigRWController {
     _ ctx: ConfigWriteContext,
     _ schema: RefloatConfigSchema,
     _ configBytes: RefloatConfigBytes,
+    capturedAtMs: Int64,
     fromFreshRead: Bool,
     _ failPhase: ConfigWritePhase,
     _ connection: ConfigRWConnection
@@ -478,7 +480,7 @@ internal final class ConfigRWController {
           rawConfig: rawConfig,
           boardId: ctx.appBoardId,
           canId: ctx.canId,
-          capturedAt: nowMs(),
+          capturedAt: capturedAtMs,
           fwVersion: ctx.fwVersion,
           refloatVersion: ctx.refloatVersion
         )

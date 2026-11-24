@@ -172,13 +172,59 @@ class RefloatConfigEncoderTest {
   }
 
   @Test
-  fun integersRoundHalfUp() {
+  fun fractionalValuesRejectedForIntegerFieldsWhileScaledFloatsRoundHalfUp() {
     val schema = allTypeSchema()
     val raw = buildRawConfig(schema)
-    val encoded = RefloatConfigEncoder.encode(schema, raw, mapOf("u8" to 7.5, "i16" to -2.5))
-    val decoded = RefloatConfigDecoder.decodeFieldMap(schema, encoded)
-    assertEquals(8.0, decoded["u8"])
-    assertEquals(-2.0, decoded["i16"])
+    for (fieldId in listOf("u8", "i8", "u16", "i16", "u32", "i32")) {
+      assertInvalid(schema, raw, mapOf(fieldId to 7.5))
+      assertInvalid(schema, raw, mapOf(fieldId to 2.7))
+    }
+    val scaled = RefloatConfigEncoder.encode(schema, raw, mapOf("f16_scaled" to 1.235, "f32_scaled" to -2.5005))
+    val decoded = RefloatConfigDecoder.decodeFieldMap(schema, scaled)
+    assertEquals(1.24, decoded["f16_scaled"] as Double, 1e-9)
+    assertEquals(-2.5, decoded["f32_scaled"] as Double, 1e-9)
+  }
+
+  @Test
+  fun overlappingFieldsAreRejectedWhileAdjacentFieldsSucceed() {
+    val overlapping = RefloatConfigSchema(
+      hash = "overlap",
+      fields = listOf(
+        RefloatConfigSchemaField("a", RefloatConfigValueType.UINT16, "a", null, null, null, 0),
+        RefloatConfigSchemaField("b", RefloatConfigValueType.UINT16, "b", null, null, null, 1),
+      ),
+    )
+    try {
+      RefloatConfigEncoder.encodeChangeset(overlapping, ByteArray(4), mapOf("a" to 10.0, "b" to 20.0))
+      fail("Expected CONFIG_ENCODE_FAILED for overlapping fields")
+    } catch (e: RefloatConfigEncodeException) {
+      assertEquals(RefloatConfigErrorCode.CONFIG_ENCODE_FAILED, e.code)
+    }
+
+    val adjacent = RefloatConfigSchema(
+      hash = "adjacent",
+      fields = listOf(
+        RefloatConfigSchemaField("a", RefloatConfigValueType.UINT16, "a", null, null, null, 0),
+        RefloatConfigSchemaField("b", RefloatConfigValueType.UINT16, "b", null, null, null, 2),
+      ),
+    )
+    val encoded = RefloatConfigEncoder.encodeChangeset(adjacent, ByteArray(4), mapOf("a" to 0x1234.toDouble(), "b" to 0x5678.toDouble()))
+    assertArrayEquals(byteArrayOf(0x12, 0x34, 0x56, 0x78), encoded.rawConfig)
+    assertEquals(setOf("a", "b"), encoded.changedFieldIds)
+  }
+
+  @Test
+  fun offGridSchemaMaxRoundTripsWithoutFalseRangeRejection() {
+    val schema = RefloatConfigSchema(
+      hash = "offgrid",
+      fields = listOf(
+        RefloatConfigSchemaField("v", RefloatConfigValueType.FLOAT16_SCALED, "v", null, 0.0, 0.3505, 0, 1000.0),
+      ),
+    )
+    val encoded = RefloatConfigEncoder.encodeChangeset(schema, ByteArray(2), mapOf("v" to 0.3505))
+    assertEquals(setOf("v"), encoded.changedFieldIds)
+    assertArrayEquals(byteArrayOf(0x01, 0x5F), encoded.rawConfig)
+    assertInvalid(schema, ByteArray(2), mapOf("v" to 0.3506))
   }
 
   @Test

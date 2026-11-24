@@ -1043,7 +1043,6 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/src/index.ts `applyBoardConfigChangeset`
     AsyncFunction("applyBoardConfigChangeset") { boardId: String, changes: Map<String, Any?>, promise: Promise ->
       CoreForegroundService.applyBoardConfigChangeset(
-        context.applicationContext,
         boardId,
         changes,
         onSuccess = { snapshot -> promise.resolve(snapshot) },
@@ -1055,7 +1054,6 @@ class VescapeCoreModule : Module() {
     AsyncFunction("pushProfileToBoard") { profileId: String, promise: Promise ->
       RecordingStorageFailure.requireAvailable()
       CoreForegroundService.pushProfileToBoard(
-        context.applicationContext,
         profileId,
         onSuccess = { snapshot -> promise.resolve(snapshot) },
         onError = { code, message -> promise.reject(code, message, null) },

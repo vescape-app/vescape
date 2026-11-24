@@ -56,13 +56,21 @@ internal object RefloatConfigEncoder {
       return EncodedChangeset(rawConfig = rawConfig.copyOf(), changedFieldIds = emptySet())
     }
 
-    val result = rawConfig.copyOf()
     val allowedOffsets = HashSet<Int>()
     for ((field, encodedBytes) in effectiveWrites) {
-      encodedBytes.copyInto(result, destinationOffset = field.offset)
       for (i in field.offset until field.offset + encodedBytes.size) {
-        allowedOffsets.add(i)
+        if (!allowedOffsets.add(i)) {
+          throw RefloatConfigEncodeException(
+            RefloatConfigErrorCode.CONFIG_ENCODE_FAILED,
+            "overlapping field byte range at offset $i for ${field.id}",
+          )
+        }
       }
+    }
+
+    val result = rawConfig.copyOf()
+    for ((field, encodedBytes) in effectiveWrites) {
+      encodedBytes.copyInto(result, destinationOffset = field.offset)
     }
 
     assertOnlyAllowedBytesChanged(rawConfig, result, allowedOffsets)
@@ -100,10 +108,10 @@ internal object RefloatConfigEncoder {
   }
 
   private fun encodeAndVerifyField(field: RefloatConfigSchemaField, value: Any): ByteArray {
-    val bits = wireBits(field, value)
+    val bits = validateAndEncode(field, value)
     val bytes = toBytes(field.type.byteSize, bits)
     val decoded = decodeWireBytes(field, bytes)
-    val roundTripBits = wireBits(field, decoded)
+    val roundTripBits = encodeWireBits(field, decoded)
     if (roundTripBits != bits) {
       throw invalid("${field.id} = $value failed wire round-trip")
     }
@@ -141,37 +149,55 @@ internal object RefloatConfigEncoder {
   private fun isEnumField(field: RefloatConfigSchemaField): Boolean =
     field.xmlType == 4 || (field.xmlType == null && field.enumNames.isNotEmpty())
 
-  private fun wireBits(field: RefloatConfigSchemaField, value: Any): Long {
+  private fun isIntegerType(type: RefloatConfigValueType): Boolean = when (type) {
+    RefloatConfigValueType.INT32,
+    RefloatConfigValueType.UINT32,
+    RefloatConfigValueType.INT16,
+    RefloatConfigValueType.UINT16,
+    RefloatConfigValueType.INT8,
+    RefloatConfigValueType.UINT8 -> true
+    else -> false
+  }
+
+  private fun validateAndEncode(field: RefloatConfigSchemaField, value: Any): Long {
     if (field.type == RefloatConfigValueType.BOOL) {
       return if (bool(field, value)) 1L else 0L
     }
     val n = number(field, value)
-    if (isEnumField(field)) {
-      if (floor(n) != n) throw invalid("${field.id} expects an integer enum value, got $n")
-      if (field.enumNames.isNotEmpty()) {
-        if (n < 0.0 || n >= field.enumNames.size.toDouble()) {
-          throw invalid("${field.id} = $n is outside enum range 0..${field.enumNames.size - 1}")
-        }
+    if (isIntegerType(field.type) && floor(n) != n) {
+      throw invalid("${field.id} expects an integer, got $n")
+    }
+    if (isEnumField(field) && field.enumNames.isNotEmpty()) {
+      if (n < 0.0 || n >= field.enumNames.size.toDouble()) {
+        throw invalid("${field.id} = $n is outside enum range 0..${field.enumNames.size - 1}")
       }
     }
     val range = effectiveRange(field)
     if (range != null && (n < range.min || n > range.max)) {
       throw invalid("${field.id} = $n is outside effective range ${range.min}..${range.max}")
     }
+    return encodeWireBits(field, n)
+  }
+
+  private fun encodeWireBits(field: RefloatConfigSchemaField, value: Any): Long {
+    if (field.type == RefloatConfigValueType.BOOL) {
+      return if (bool(field, value)) 1L else 0L
+    }
+    val n = number(field, value)
     return when (field.type) {
       RefloatConfigValueType.FLOAT32 ->
         floatValue(field, n).toRawBits().toLong() and 0xffffffffL
       RefloatConfigValueType.FLOAT32_AUTO -> float32AutoBits(floatValue(field, n))
       RefloatConfigValueType.FLOAT32_SCALED ->
-        integer(field, n * requireScale(field), Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+        scaledInteger(field, n * requireScale(field), Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
       RefloatConfigValueType.FLOAT16_SCALED ->
-        integer(field, n * requireScale(field), Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong())
-      RefloatConfigValueType.INT32 -> integer(field, n, Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
-      RefloatConfigValueType.UINT32 -> integer(field, n, 0, 0xffffffffL)
-      RefloatConfigValueType.INT16 -> integer(field, n, Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong())
-      RefloatConfigValueType.UINT16 -> integer(field, n, 0, 0xffff)
-      RefloatConfigValueType.INT8 -> integer(field, n, Byte.MIN_VALUE.toLong(), Byte.MAX_VALUE.toLong())
-      RefloatConfigValueType.UINT8 -> integer(field, n, 0, 0xff)
+        scaledInteger(field, n * requireScale(field), Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong())
+      RefloatConfigValueType.INT32 -> exactInteger(field, n, Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+      RefloatConfigValueType.UINT32 -> exactInteger(field, n, 0, 0xffffffffL)
+      RefloatConfigValueType.INT16 -> exactInteger(field, n, Short.MIN_VALUE.toLong(), Short.MAX_VALUE.toLong())
+      RefloatConfigValueType.UINT16 -> exactInteger(field, n, 0, 0xffff)
+      RefloatConfigValueType.INT8 -> exactInteger(field, n, Byte.MIN_VALUE.toLong(), Byte.MAX_VALUE.toLong())
+      RefloatConfigValueType.UINT8 -> exactInteger(field, n, 0, 0xff)
       RefloatConfigValueType.BOOL -> if (bool(field, value)) 1L else 0L
     }
   }
@@ -224,7 +250,14 @@ internal object RefloatConfigEncoder {
     return number.toFloat()
   }
 
-  private fun integer(field: RefloatConfigSchemaField, value: Double, min: Long, max: Long): Long {
+  private fun exactInteger(field: RefloatConfigSchemaField, value: Double, min: Long, max: Long): Long {
+    if (!value.isFinite() || floor(value) != value || value < min || value > max) {
+      throw invalid("${field.id} = $value does not fit $min..$max on the wire")
+    }
+    return value.toLong()
+  }
+
+  private fun scaledInteger(field: RefloatConfigSchemaField, value: Double, min: Long, max: Long): Long {
     val rounded = floor(value + 0.5)
     if (!rounded.isFinite() || rounded < min || rounded > max) {
       throw invalid("${field.id} = $value does not fit $min..$max on the wire")
