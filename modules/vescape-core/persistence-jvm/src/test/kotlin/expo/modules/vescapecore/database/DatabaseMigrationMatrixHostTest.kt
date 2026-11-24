@@ -201,6 +201,19 @@ class DatabaseMigrationMatrixHostTest {
       exec("INSERT INTO board_config_values VALUES ('board-era3','2.0','{\"motor_current_max\":55.5}',3300)")
     }) {
       assertEquals("{\"motor_current_max\":55.5}", text("SELECT values_json FROM board_config_values WHERE board_id='board-era3'"))
+      assertEquals("", text("SELECT IFNULL(schema_hash,'') FROM board_config_values WHERE board_id='board-era3'"))
+    }
+    Files.deleteIfExists(path)
+  }
+
+  @Test fun v56BoardConfigValuesUpgradeWithNullableSchemaHashAndSchemaTable() {
+    val path = migrateFromExport(56, seed = {
+      exec("INSERT INTO board_config_values (board_id,refloat_base_version,values_json,captured_at) VALUES ('board-v56','1.2','{\"leds.on\":1.0}',5600)")
+    }) {
+      assertEquals("{\"leds.on\":1.0}", text("SELECT values_json FROM board_config_values WHERE board_id='board-v56'"))
+      assertEquals("", text("SELECT IFNULL(schema_hash,'') FROM board_config_values WHERE board_id='board-v56'"))
+      exec("INSERT INTO board_config_schemas (schema_hash,raw_xml,created_at) VALUES ('hash-v56','<ConfigParams/>',5601)")
+      assertEquals("<ConfigParams/>", text("SELECT raw_xml FROM board_config_schemas WHERE schema_hash='hash-v56'"))
     }
     Files.deleteIfExists(path)
   }

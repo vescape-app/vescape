@@ -1049,7 +1049,7 @@ for start in migrationIdentifiers {
     }
     let hasConfig = try db.tableExists("board_config_values")
     if hasConfig {
-      try db.execute(sql: "INSERT INTO board_config_values VALUES ('matrix-board','2.0','{\"motor_current_max\":55.5}',107)")
+      try db.execute(sql: "INSERT INTO board_config_values (board_id, refloat_base_version, values_json, captured_at) VALUES ('matrix-board','2.0','{\"motor_current_max\":55.5}',107)")
     }
     return (hasTune, hasFavorite, hasConfig)
   }
@@ -1189,12 +1189,16 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     let tune = try String.fetchOne(db, sql: "SELECT name FROM tune_profiles WHERE id='cross-tune'")
     let favorite = try String.fetchOne(db, sql: "SELECT name FROM favorites WHERE id='cross-favorite'")
     let config = try String.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id='cross-board'")
+    let configSchemaHash = try String.fetchOne(db, sql: "SELECT schema_hash FROM board_config_values WHERE board_id='cross-board'")
+    let configSchemaXml = try String.fetchOne(db, sql: "SELECT raw_xml FROM board_config_schemas WHERE schema_hash='cross-schema-hash'")
     let speed = try Int.fetchOne(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames WHERE captured_at_ms=1000")
     try require(board == "Cross Board", "Android archive lost Board on iOS")
     try require(setting == "\"durable\"", "Android archive lost Board setting on iOS")
     try require(tune == "Cross Tune", "Android archive lost Tune Profile on iOS")
     try require(favorite == "Cross Favorite", "Android archive lost Favorite on iOS")
     try require(config == "{\"motor_current_max\":55.5}", "Android archive lost config on iOS")
+    try require(configSchemaHash == "cross-schema-hash", "Android archive lost board_config_values.schema_hash on iOS")
+    try require(configSchemaXml == "<ConfigParams><Params><kp><type>1</type><vTx>8</vTx><vTxDoubleScale>1000</vTxDoubleScale></kp></Params><SerOrder><ser>kp</ser></SerOrder></ConfigParams>", "Android archive lost board_config_schemas on iOS")
     try require(speed == 2468, "Android archive lost Ride Recording on iOS")
     try requireCrossChunkSpeeds(db, "Android archive")
     let track = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "cross-board")
@@ -1278,7 +1282,8 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try db.execute(sql: "INSERT INTO app_settings VALUES ('cross-setting','\"ios\"',102)")
     try db.execute(sql: "INSERT INTO tune_profiles (id,board_id,name,icon,color,fields_json,created_at,updated_at,refloat_base_version) VALUES ('cross-tune','cross-board','Cross Tune','gauge','orange','{\"kp\":2}',103,104,'2.0')")
     try db.execute(sql: "INSERT INTO favorites (id,board_id,name,start_ms,end_ms,created_at,updated_at,sample_count,gps_point_count,distance_cm,moving_duration_ms,avg_speed_centi_kmh,max_speed_centi_kmh,battery_used_wh_milli) VALUES ('cross-favorite','cross-board','Cross Favorite',900,1100,105,106,1,0,200,100,2400,2468,2)")
-    try db.execute(sql: "INSERT INTO board_config_values VALUES ('cross-board','2.0','{\"motor_current_max\":55.5}',107)")
+    try db.execute(sql: "INSERT INTO board_config_schemas (schema_hash,raw_xml,created_at) VALUES ('cross-schema-hash','<ConfigParams><Params><kp><type>1</type><vTx>8</vTx><vTxDoubleScale>1000</vTxDoubleScale></kp></Params><SerOrder><ser>kp</ser></SerOrder></ConfigParams>',106)")
+    try db.execute(sql: "INSERT INTO board_config_values (board_id,refloat_base_version,values_json,captured_at,schema_hash) VALUES ('cross-board','2.0','{\"motor_current_max\":55.5}',107,'cross-schema-hash')")
     try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'cross-board',1,1,0,2468)")
     try db.execute(sql: "INSERT INTO vesc_fault_occurrences VALUES ('cross-fault','cross-board',7,1000,1001,NULL,0)")
     try db.execute(sql: "INSERT INTO vesc_fault_captures VALUES ('cross-fault','cross-board',900,1000,1)")
@@ -1584,8 +1589,98 @@ try runMaintenanceJobsContract()
 try runRideWeatherBackfillContract()
 try runTelemetryChunkCodecContract()
 try runTelemetryChunkContract()
+try runBoardConfigSchemaContract()
 
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
+
+/// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/BoardConfigSchemaPersistenceHostTest.kt
+func runBoardConfigSchemaContract() throws {
+  let xml = """
+    <ConfigParams>
+      <Params>
+        <kp>
+          <type>1</type>
+          <vTx>7</vTx>
+          <vTxDoubleScale>10</vTxDoubleScale>
+          <longName>Angle P</longName>
+          <valDouble>20</valDouble>
+        </kp>
+        <leds.on>
+          <type>5</type>
+          <longName>LEDs On</longName>
+          <valInt>1</valInt>
+        </leds.on>
+      </Params>
+      <SerOrder>
+        <ser>kp</ser>
+        <ser>leds.on</ser>
+      </SerOrder>
+      <Grouping>
+        <group>
+          <groupName>General</groupName>
+          <subgroup>
+            <subgroupName>Tune</subgroupName>
+            <subgroupParams>
+              <param>::sep::PID</param>
+              <param>kp</param>
+              <param>leds.on</param>
+            </subgroupParams>
+          </subgroup>
+        </group>
+      </Grouping>
+    </ConfigParams>
+    """
+  let schema = try RefloatConfigSchemaParser.parse(Array(xml.utf8))
+  let url = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-schema-contract-\(UUID()).db")
+  defer { try? FileManager.default.removeItem(at: url) }
+
+  var queue = try DatabaseQueue(path: url.path)
+  try VescapeDatabase.migrator.migrate(queue)
+  let store = BoardConfigStore(dbWriter: queue)
+
+  try queue.write { db in
+    try db.execute(
+      sql: "INSERT INTO board_config_values (board_id, refloat_base_version, values_json, captured_at) VALUES ('board-a', '1.3', '{\"kp\":20.0,\"leds.on\":1.0}', 1000)"
+    )
+  }
+  let legacyLoaded = try store.loadLatest(boardId: "board-a")
+  try require(legacyLoaded?.schemaHash == nil && legacyLoaded?.schema == nil, "legacy row without schema_hash loads nil schema")
+
+  let freshA = BoardConfigValues(
+    boardId: "board-a",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 2000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "leds.on": true],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: [0, 0, 1], packageSignature: 1)
+  )
+  try store.saveFresh(freshA)
+  try require(try store.loadNotice(boardId: "board-a") == nil, "upgrade from 1.0 to true on BOOL field must not raise Change Notice")
+
+  let freshB = BoardConfigValues(
+    boardId: "board-b",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 3000,
+    freshness: .fresh,
+    values: ["kp": 22.0, "leds.on": false],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: [0, 0, 0], packageSignature: 1)
+  )
+  try store.saveFresh(freshB)
+
+  let schemaCount = try queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM board_config_schemas") }
+  let createdAt = try queue.read { db in try Int64.fetchOne(db, sql: "SELECT created_at FROM board_config_schemas WHERE schema_hash = ?", arguments: [schema.hash]) }
+  try require(schemaCount == 1, "second board with same XML reuses schema row")
+  try require(createdAt == 2000, "existing schema row keeps original created_at")
+  try queue.close()
+
+  queue = try DatabaseQueue(path: url.path)
+  let reopenedStore = BoardConfigStore(dbWriter: queue)
+  let loadedB = try reopenedStore.loadLatest(boardId: "board-b")
+  try require(loadedB?.schemaHash == schema.hash, "last-known values carry schema_hash after reopen")
+  try require(loadedB?.schema == schema, "last-known values carry parsed schema after reopen")
+  try require(try reopenedStore.loadSchema(schemaHash: schema.hash) == schema, "loadSchema returns parsed schema")
+  try queue.close()
+}
 
 private extension String {
   mutating func replace(_ target: String, with replacement: String, maxReplacements: Int) {

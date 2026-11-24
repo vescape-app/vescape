@@ -861,9 +861,20 @@ enum VescapeDatabase {
     migrator.registerMigration("v56_telemetry_chunks") { db in
       for sql in telemetryChunksV56Sql { try db.execute(sql: sql) }
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_56_57`
+    migrator.registerMigration("v57_board_config_schemas") { db in
+      try db.execute(sql: boardConfigSchemasV57Sql)
+      if try !db.columns(in: "board_config_values").contains(where: { $0.name == "schema_hash" }) {
+        try db.execute(sql: "ALTER TABLE board_config_values ADD COLUMN schema_hash TEXT")
+      }
+    }
 
     return migrator
   }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `BOARD_CONFIG_SCHEMAS_V57_SQL`
+  private static let boardConfigSchemasV57Sql =
+    "CREATE TABLE IF NOT EXISTS board_config_schemas (schema_hash TEXT NOT NULL PRIMARY KEY, raw_xml TEXT NOT NULL, created_at INTEGER NOT NULL)"
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `TELEMETRY_CHUNKS_V56_SQL`
   private static let telemetryChunksV56Sql = [

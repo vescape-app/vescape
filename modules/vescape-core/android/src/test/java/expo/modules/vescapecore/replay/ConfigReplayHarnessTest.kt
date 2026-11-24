@@ -31,7 +31,7 @@ class ConfigReplayHarnessTest {
     assertEquals(62.0, values.number("tiltback_lv")!!, 1e-9)
     assertEquals(86.0, values.number("tiltback_hv")!!, 1e-9)
     assertEquals(1.0, values.number("tiltback_duty")!!, 1e-9)
-    assertNull(values.bool("fault_moving_fault_disabled"))
+    assertEquals(true, values.bool("fault_moving_fault_disabled"))
     assertEquals(BoardConfigFreshness.FRESH, values.freshness)
     assertNotNull(values.writeBase)
     assertTrue(values.values.size > 6)

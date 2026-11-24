@@ -22,6 +22,7 @@ internal val SHARED_DATABASE_TABLES: Set<String> = setOf(
   "alerts",
   "app_settings",
   "board_config_change_notices",
+  "board_config_schemas",
   "board_config_values",
   "board_settings",
   "board_warnings",

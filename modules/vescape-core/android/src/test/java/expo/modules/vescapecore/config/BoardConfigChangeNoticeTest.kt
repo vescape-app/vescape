@@ -102,4 +102,24 @@ class BoardConfigChangeNoticeTest {
     assertEquals(emptyList<String>(), BoardConfigChangeNotice.decodeIgnoredFields("not json") { invalidCount++ })
     assertEquals(2, invalidCount)
   }
+
+  @Test
+  fun diffNormalizesLegacyNumericBoolsAgainstBoolSchemaFields() {
+    val schema = RefloatConfigSchema(
+      hash = "bool-schema",
+      fields = listOf(
+        RefloatConfigSchemaField("leds.on", RefloatConfigValueType.BOOL, "LEDs On", null, null, null, 0),
+        RefloatConfigSchemaField("leds.headlights_on", RefloatConfigValueType.BOOL, "Headlights", null, null, null, 1),
+        RefloatConfigSchemaField("startup_pushstart_enabled", RefloatConfigValueType.BOOL, "Pushstart", null, null, null, 2),
+      ),
+    )
+    val diffs = BoardConfigChangeNotice.diff(
+      old = mapOf("leds.on" to 1.0, "leds.headlights_on" to 0.0, "startup_pushstart_enabled" to 0.0),
+      new = mapOf("leds.on" to true, "leds.headlights_on" to false, "startup_pushstart_enabled" to true),
+      schema = schema,
+    )
+    assertEquals(listOf("startup_pushstart_enabled"), diffs.map { it.fieldId })
+    assertEquals(false, diffs[0].oldValue)
+    assertEquals(true, diffs[0].newValue)
+  }
 }

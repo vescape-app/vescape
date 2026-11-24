@@ -315,6 +315,30 @@
       "foreignKeys": [],
       "indexes": {}
     },
+    "board_config_schemas": {
+      "columns": {
+        "created_at": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "INTEGER"
+        },
+        "raw_xml": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 0,
+          "type": "TEXT"
+        },
+        "schema_hash": {
+          "default": null,
+          "notNull": true,
+          "primaryKey": 1,
+          "type": "TEXT"
+        }
+      },
+      "foreignKeys": [],
+      "indexes": {}
+    },
     "board_config_values": {
       "columns": {
         "board_id": {
@@ -333,6 +357,12 @@
           "default": null,
           "notNull": true,
           "primaryKey": 2,
+          "type": "TEXT"
+        },
+        "schema_hash": {
+          "default": null,
+          "notNull": false,
+          "primaryKey": 0,
           "type": "TEXT"
         },
         "values_json": {

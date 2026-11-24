@@ -1007,6 +1007,13 @@ public class VescapeCoreModule: Module {
       do { promise.resolve(try BoardConfigStore.shared.loadLatest(boardId: boardId)?.toBridgeMap()) }
       catch { RecordingStorageFailure.reportRead(operation: "board_config_latest_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read cached Board Config", cause: error) }
     }
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigSchema`
+    /// @parity /modules/vescape-core/src/index.ts `BoardConfigSchema`
+    AsyncFunction("getBoardConfigSchema") { (schemaHash: String, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      do { promise.resolve(try BoardConfigStore.shared.loadSchema(schemaHash: schemaHash)?.toBridgeMap()) }
+      catch { RecordingStorageFailure.reportRead(operation: "board_config_schema_read", error: error); promise.reject("APP_STORAGE_READ_FAILED", "Could not read cached Board Config Schema", cause: error) }
+    }
     /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
     /// @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
     AsyncFunction("getMotorConfigValues") { (promise: Promise) in

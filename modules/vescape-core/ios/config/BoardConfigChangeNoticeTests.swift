@@ -94,4 +94,23 @@ final class BoardConfigChangeNoticeTests: XCTestCase {
     XCTAssertEqual(BoardConfigChangeNotice.decodeIgnoredFields("not json") { _ in invalidCount += 1 }, [])
     XCTAssertEqual(invalidCount, 2)
   }
+
+  func testDiffNormalizesLegacyNumericBoolsAgainstBoolSchemaFields() {
+    let schema = RefloatConfigSchema(
+      hash: "bool-schema",
+      fields: [
+        RefloatConfigSchemaField(id: "leds.on", type: .bool, label: "LEDs On", unit: nil, min: nil, max: nil, offset: 0),
+        RefloatConfigSchemaField(id: "leds.headlights_on", type: .bool, label: "Headlights", unit: nil, min: nil, max: nil, offset: 1),
+        RefloatConfigSchemaField(id: "startup_pushstart_enabled", type: .bool, label: "Pushstart", unit: nil, min: nil, max: nil, offset: 2),
+      ]
+    )
+    let diffs = BoardConfigChangeNotice.diff(
+      old: ["leds.on": 1.0, "leds.headlights_on": 0.0, "startup_pushstart_enabled": 0.0],
+      new: ["leds.on": true, "leds.headlights_on": false, "startup_pushstart_enabled": true],
+      schema: schema
+    )
+    XCTAssertEqual(diffs.map(\.fieldId), ["startup_pushstart_enabled"])
+    XCTAssertEqual(diffs[0].oldValue, .bool(false))
+    XCTAssertEqual(diffs[0].newValue, .bool(true))
+  }
 }

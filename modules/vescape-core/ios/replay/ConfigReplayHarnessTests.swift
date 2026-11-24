@@ -27,7 +27,7 @@ final class ConfigReplayHarnessTests: XCTestCase {
     XCTAssertEqual(try XCTUnwrap(values.number("tiltback_lv")), 62.0, accuracy: 1e-9)
     XCTAssertEqual(try XCTUnwrap(values.number("tiltback_hv")), 86.0, accuracy: 1e-9)
     XCTAssertEqual(try XCTUnwrap(values.number("tiltback_duty")), 1.0, accuracy: 1e-9)
-    XCTAssertNil(values.bool("fault_moving_fault_disabled"))
+    XCTAssertEqual(values.bool("fault_moving_fault_disabled"), true)
     XCTAssertEqual(values.freshness, .fresh)
     XCTAssertNotNil(values.writeBase)
     XCTAssertGreaterThan(values.values.count, 6)

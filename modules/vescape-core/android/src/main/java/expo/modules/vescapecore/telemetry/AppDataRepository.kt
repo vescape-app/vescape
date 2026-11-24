@@ -7,6 +7,7 @@ import expo.modules.vescapecore.weather.WEATHER_ALERT_LEVEL_SETTINGS
 import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.config.MotorConfigValues
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
+import expo.modules.vescapecore.config.RefloatConfigSchema
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.config.RefloatConfigSnapshot
 
@@ -242,11 +243,14 @@ class AppDataRepository private constructor(private val context: Context) {
     withContext(Dispatchers.IO) {
       if (boardId.isBlank() || refloatBaseVersion.isBlank()) return@withContext null
       val row = dao.getBoardConfigValues(boardId, refloatBaseVersion) ?: return@withContext null
+      val schema = row.schemaHash?.let { configPersistence().loadSchema(it) }
       BoardConfigValues.lastKnown(
         boardId = boardId,
         refloatBaseVersion = refloatBaseVersion,
         capturedAtMs = row.capturedAt,
         valuesJson = row.valuesJson,
+        schemaHash = row.schemaHash,
+        schema = schema,
       )
     }
 
@@ -257,12 +261,23 @@ class AppDataRepository private constructor(private val context: Context) {
     withContext(Dispatchers.IO) {
       if (boardId.isBlank()) return@withContext null
       val row = dao.getLatestBoardConfigValues(boardId) ?: return@withContext null
+      val schema = row.schemaHash?.let { configPersistence().loadSchema(it) }
       BoardConfigValues.lastKnown(
         boardId = boardId,
         refloatBaseVersion = row.refloatBaseVersion,
         capturedAtMs = row.capturedAt,
         valuesJson = row.valuesJson,
+        schemaHash = row.schemaHash,
+        schema = schema,
       )
+    }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `loadSchema`
+   */
+  internal suspend fun getBoardConfigSchema(schemaHash: String): RefloatConfigSchema? =
+    withContext(Dispatchers.IO) {
+      configPersistence().loadSchema(schemaHash)
     }
 
   /**
@@ -271,12 +286,17 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveBoardConfigValues(values: BoardConfigValues): Unit = withContext(Dispatchers.IO) {
     val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext
     val refloatBaseVersion = values.refloatBaseVersion?.takeIf { it.isNotBlank() } ?: return@withContext
+    val schema = values.schema ?: values.writeBase?.schema
+    if (schema != null) {
+      configPersistence().saveSchema(schema, values.capturedAtMs)
+    }
     dao.upsertBoardConfigValues(
       BoardConfigValuesEntity(
         boardId = boardId,
         refloatBaseVersion = refloatBaseVersion,
         valuesJson = values.valuesJson(),
         capturedAt = values.capturedAtMs,
+        schemaHash = (values.schemaHash ?: schema?.hash)?.takeIf { it.isNotBlank() },
       ),
     )
   }
@@ -291,7 +311,7 @@ class AppDataRepository private constructor(private val context: Context) {
   ): Unit = withContext(Dispatchers.IO) {
     if (boardId.isBlank() || refloatBaseVersion.isBlank() || patch.isEmpty()) return@withContext
     dao.patchBoardConfigValues(boardId, refloatBaseVersion) { row ->
-      val stored = BoardConfigValues.lastKnown(boardId, refloatBaseVersion, row.capturedAt, row.valuesJson)
+      val stored = BoardConfigValues.lastKnown(boardId, refloatBaseVersion, row.capturedAt, row.valuesJson, row.schemaHash)
       row.copy(valuesJson = stored.copy(values = stored.values + patch).valuesJson())
     }
   }
@@ -303,7 +323,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
     val boardId = values.boardId ?: return@withContext null
     val base = values.refloatBaseVersion ?: return@withContext null
-    configPersistence().saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.writeBase?.schema)
+    configPersistence().saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.schema ?: values.writeBase?.schema)
   }
 
   internal suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {

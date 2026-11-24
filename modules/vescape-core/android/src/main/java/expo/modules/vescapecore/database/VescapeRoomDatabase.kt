@@ -4,7 +4,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 // @parity /modules/vescape-core/ios/database/DatabaseBackupManager.swift `VESCAPE_DATABASE_VERSION`
-internal const val VESCAPE_DATABASE_VERSION = 56
+internal const val VESCAPE_DATABASE_VERSION = 57
 
 @Database(
   entities = [
@@ -15,7 +15,8 @@ internal const val VESCAPE_DATABASE_VERSION = 56
     AppSettingEntity::class, TuneProfileEntity::class, TuneHistoryEntryEntity::class, DiagnosticEventEntity::class,
     PrivacyZoneEntity::class, BoardWarningEntity::class, VescFaultOccurrenceEntity::class,
     VescFaultCaptureEntity::class, VescFaultCaptureSampleEntity::class, FavoriteEntity::class,
-    FavoriteMediaEntity::class, BoardConfigValuesEntity::class, MotorConfigValuesEntity::class,
+    FavoriteMediaEntity::class, BoardConfigValuesEntity::class, BoardConfigSchemaEntity::class,
+    MotorConfigValuesEntity::class,
     BoardConfigChangeNoticeEntity::class, SavedAccessoryEntity::class,
     AccessoryGroundClearanceEntity::class,
     AccessoryBrakeLightEntity::class,

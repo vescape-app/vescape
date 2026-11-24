@@ -1211,6 +1211,15 @@ interface VescapeDao {
   @Query("DELETE FROM board_config_values WHERE board_id = :boardId")
   suspend fun deleteBoardConfigValues(boardId: String)
 
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertBoardConfigSchemaIfAbsent(schema: BoardConfigSchemaEntity)
+
+  @Query("SELECT * FROM board_config_schemas WHERE schema_hash = :schemaHash LIMIT 1")
+  suspend fun getBoardConfigSchema(schemaHash: String): BoardConfigSchemaEntity?
+
+  @Query("SELECT COUNT(*) FROM board_config_schemas")
+  suspend fun countBoardConfigSchemas(): Int
+
   @Query("SELECT * FROM motor_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
   suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValuesEntity?
 
@@ -1266,8 +1275,10 @@ interface VescapeDao {
   @Transaction
   suspend fun replaceBaselineAndNotice(
     values: BoardConfigValuesEntity,
+    schema: BoardConfigSchemaEntity? = null,
     buildNotice: (BoardConfigValuesEntity?, BoardConfigChangeNoticeEntity?, String?) -> BoardConfigChangeNoticeEntity?,
   ): BoardConfigChangeNoticeEntity? {
+    if (schema != null) insertBoardConfigSchemaIfAbsent(schema)
     val ignoredJson = getBoardSetting(values.boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)?.valueJson
     val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion), getBoardConfigChangeNotice(values.boardId), ignoredJson)
     if (notice != null) upsertBoardConfigChangeNotice(notice)

@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeRoomDatabase.kt `VESCAPE_DATABASE_VERSION`
-internal let VESCAPE_DATABASE_VERSION = 56
+internal let VESCAPE_DATABASE_VERSION = 57
 
 internal let supportedAndroidDatabaseVersions: Set<Int> =
   Set(3...36).union(40...VESCAPE_DATABASE_VERSION)
@@ -20,6 +20,7 @@ internal let sharedDatabaseTables: Set<String> = [
   "alerts",
   "app_settings",
   "board_config_change_notices",
+  "board_config_schemas",
   "board_config_values",
   "board_settings",
   "board_warnings",

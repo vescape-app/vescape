@@ -2,9 +2,11 @@ package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
 import expo.modules.vescapecore.config.RefloatConfigSchema
+import expo.modules.vescapecore.config.RefloatConfigSchemaParser
 import org.json.JSONArray
 import org.json.JSONObject
 import expo.modules.vescapecore.database.BoardConfigChangeNoticeEntity
+import expo.modules.vescapecore.database.BoardConfigSchemaEntity
 import expo.modules.vescapecore.database.BoardConfigValuesEntity
 import expo.modules.vescapecore.database.MotorConfigValuesEntity
 import expo.modules.vescapecore.database.VescapeDao
@@ -20,7 +22,13 @@ internal class ConfigPersistence(
     capturedAt: Long,
     schema: RefloatConfigSchema?,
   ): BoardConfigChangeNotice? {
-    val row = dao.replaceBaselineAndNotice(BoardConfigValuesEntity(boardId, base, JSONObject(values).toString(), capturedAt)) { old, existing, ignoredJson ->
+    val schemaEntity = schema?.takeIf { it.hash.isNotBlank() && it.rawXml.isNotBlank() }?.let {
+      BoardConfigSchemaEntity(schemaHash = it.hash, rawXml = it.rawXml, createdAt = capturedAt)
+    }
+    val row = dao.replaceBaselineAndNotice(
+      BoardConfigValuesEntity(boardId, base, JSONObject(values).toString(), capturedAt, schema?.hash?.takeIf { it.isNotBlank() }),
+      schemaEntity,
+    ) { old, existing, ignoredJson ->
       val oldValues = old?.let { decodeBoardValues(it.valuesJson) } ?: return@replaceBaselineAndNotice null
       val ignored = BoardConfigChangeNotice.decodeIgnoredFields(ignoredJson, onInvalidIgnoredFields).toSet()
       val incoming = BoardConfigChangeNotice.diff(oldValues, values, schema, ignored)
@@ -100,6 +108,29 @@ internal class ConfigPersistence(
   suspend fun clearIgnoredFields(boardId: String) {
     if (boardId.isBlank()) return
     dao.deleteBoardSetting(boardId, BoardConfigChangeNotice.IGNORED_FIELDS_SETTING_KEY)
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `loadSchema`
+   */
+  suspend fun loadSchema(schemaHash: String): RefloatConfigSchema? {
+    if (schemaHash.isBlank()) return null
+    val row = dao.getBoardConfigSchema(schemaHash) ?: return null
+    return try {
+      RefloatConfigSchemaParser.parse(row.rawXml.toByteArray(Charsets.UTF_8))
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `saveSchema`
+   */
+  suspend fun saveSchema(schema: RefloatConfigSchema, createdAt: Long) {
+    if (schema.hash.isBlank() || schema.rawXml.isBlank()) return
+    dao.insertBoardConfigSchemaIfAbsent(
+      BoardConfigSchemaEntity(schemaHash = schema.hash, rawXml = schema.rawXml, createdAt = createdAt),
+    )
   }
 
   private fun decodeBoardValues(json: String): Map<String, Any> = JSONObject(json).keys().asSequence().mapNotNull { key ->

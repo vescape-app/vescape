@@ -4,7 +4,7 @@ import XCTest
 
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/BoardConfigFieldsTest.kt
 final class BoardConfigFieldsTests: XCTestCase {
-  private let versions = ["1.0.0", "1.1.x", "1.2.x", "1.3.0-beta1"]
+  private let versions = ["1.0.0", "1.1.x", "1.2.x", "1.2.1", "1.3.0-beta1", "1.3.0"]
 
   private func schema(_ version: String) throws -> RefloatConfigSchema {
     let root = URL(fileURLWithPath: #filePath)

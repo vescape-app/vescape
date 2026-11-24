@@ -1971,12 +1971,93 @@ export type BoardConfigFieldValues = {
   [K in BoardConfigFieldId]?: number | boolean
 } & Record<string, number | boolean | undefined>
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigValueType`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigValueType`
+ */
+export type BoardConfigValueType =
+  | 'float32'
+  | 'float32_scaled'
+  | 'float32_auto'
+  | 'float16_scaled'
+  | 'int32'
+  | 'uint32'
+  | 'int16'
+  | 'uint16'
+  | 'int8'
+  | 'uint8'
+  | 'bool'
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchemaField`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchemaField`
+ */
+export interface BoardConfigSchemaField {
+  id: string
+  type: BoardConfigValueType
+  xmlType: number | null
+  vTx: number | null
+  label: string
+  unit: string | null
+  min: number | null
+  max: number | null
+  offset: number
+  scale: number | null
+  step: number | null
+  editorDecimals: number | null
+  editorScale: number | null
+  editAsPercentage: boolean
+  enumNames: string[]
+  defaultValue: number | boolean | string | null
+  transmittable: boolean
+  showDisplay: boolean
+  cDefine: string | null
+  description: string | null
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchemaGroupItem`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchemaGroupItem`
+ */
+export type BoardConfigSchemaGroupItem =
+  { kind: 'separator'; title: string } | { kind: 'field'; fieldId: string }
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchemaSubgroup`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchemaSubgroup`
+ */
+export interface BoardConfigSchemaSubgroup {
+  name: string
+  items: BoardConfigSchemaGroupItem[]
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchemaGroup`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchemaGroup`
+ */
+export interface BoardConfigSchemaGroup {
+  name: string
+  subgroups: BoardConfigSchemaSubgroup[]
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/RefloatConfigSchema.kt `RefloatConfigSchema`
+ * @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift `RefloatConfigSchema`
+ */
+export interface BoardConfigSchema {
+  hash: string
+  fields: BoardConfigSchemaField[]
+  groups: BoardConfigSchemaGroup[]
+}
+
 export interface BoardConfigValues {
   boardId: string | null
   refloatBaseVersion: string | null
   capturedAtMs: number
   freshness: BoardConfigFreshness
   values: BoardConfigFieldValues
+  schemaHash?: string | null
+  schema?: BoardConfigSchema | null
 }
 
 /**
@@ -2486,6 +2567,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   readVescFaultLog(boardId: string): Promise<string>
   getBoardConfigValues(): Promise<BoardConfigValues | null>
   getLastKnownBoardConfigValues(boardId: string): Promise<BoardConfigValues | null>
+  getBoardConfigSchema(schemaHash: string): Promise<BoardConfigSchema | null>
   getMotorConfigValues(): Promise<MotorConfigValues | null>
   getLastKnownMotorConfigValues(boardId: string): Promise<MotorConfigValues | null>
   getBoardConfigChangeNotice(boardId: string): Promise<BoardConfigChangeNotice | null>
@@ -3418,6 +3500,14 @@ export async function getLastKnownBoardConfigValues(
   boardId: string,
 ): Promise<BoardConfigValues | null> {
   return native.getLastKnownBoardConfigValues(boardId)
+}
+
+/**
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigSchema`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigSchema`
+ */
+export async function getBoardConfigSchema(schemaHash: string): Promise<BoardConfigSchema | null> {
+  return native.getBoardConfigSchema(schemaHash)
 }
 
 /**

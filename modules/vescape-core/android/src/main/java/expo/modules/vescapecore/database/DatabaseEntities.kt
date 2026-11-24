@@ -695,6 +695,22 @@ data class BoardConfigValuesEntity(
   val valuesJson: String,
   @ColumnInfo(name = "captured_at")
   val capturedAt: Long,
+  @ColumnInfo(name = "schema_hash")
+  val schemaHash: String? = null,
+)
+
+/**
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigSchemaRecord`
+ */
+@Entity(tableName = "board_config_schemas")
+data class BoardConfigSchemaEntity(
+  @PrimaryKey
+  @ColumnInfo(name = "schema_hash")
+  val schemaHash: String,
+  @ColumnInfo(name = "raw_xml")
+  val rawXml: String,
+  @ColumnInfo(name = "created_at")
+  val createdAt: Long,
 )
 
 /**

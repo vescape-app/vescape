@@ -1616,6 +1616,20 @@ internal object DatabaseMigrations {
      */
     internal val MIGRATION_55_56 = migration(55, 56) { db -> TELEMETRY_CHUNKS_V56_SQL.forEach(db::execSQL) }
 
+    /**
+     * @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `v57_board_config_schemas`
+     */
+    internal val MIGRATION_56_57 = migration(56, 57) { db ->
+      db.execSQL(BOARD_CONFIG_SCHEMAS_V57_SQL)
+      if (!hasColumn(db, "board_config_values", "schema_hash")) {
+        db.execSQL("ALTER TABLE board_config_values ADD COLUMN schema_hash TEXT")
+      }
+    }
+
+    /** @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `boardConfigSchemasV57Sql` */
+    private const val BOARD_CONFIG_SCHEMAS_V57_SQL =
+      "CREATE TABLE IF NOT EXISTS board_config_schemas (schema_hash TEXT NOT NULL PRIMARY KEY, raw_xml TEXT NOT NULL, created_at INTEGER NOT NULL)"
+
     /** @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `telemetryChunksV56Sql` */
     private val TELEMETRY_CHUNKS_V56_SQL = listOf(
       "CREATE TABLE IF NOT EXISTS telemetry_chunks (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, board_key INTEGER, minute_start_ms INTEGER NOT NULL, codec_version INTEGER NOT NULL, sample_count INTEGER NOT NULL, first_at_ms INTEGER NOT NULL, last_at_ms INTEGER NOT NULL, payload BLOB NOT NULL, FOREIGN KEY(board_key) REFERENCES boards(key) ON UPDATE NO ACTION ON DELETE NO ACTION)",
@@ -1861,6 +1875,7 @@ internal object DatabaseMigrations {
       MIGRATION_53_54,
       MIGRATION_54_55,
       MIGRATION_55_56,
+      MIGRATION_56_57,
     )
 
 }
