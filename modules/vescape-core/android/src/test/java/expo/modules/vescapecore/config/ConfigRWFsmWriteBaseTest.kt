@@ -336,6 +336,109 @@ class ConfigRWFsmWriteBaseTest {
         assertEquals(true, written["leds.headlights_on"])
     }
 
+    @Test
+    fun profilePushFiltersInternalFieldsWhileChangesetRejectsThem() {
+        val internalSchema = RefloatConfigSchema(
+            hash = "internal-filter",
+            fields = listOf(
+                RefloatConfigSchemaField("tuned", RefloatConfigValueType.FLOAT32, "tuned", null, null, null, 0),
+                RefloatConfigSchemaField("meta.is_default", RefloatConfigValueType.BOOL, "meta.is_default", null, null, null, 4),
+                RefloatConfigSchemaField("group_internal", RefloatConfigValueType.UINT8, "group_internal", null, 0.0, 255.0, 5),
+            ),
+            groups = listOf(
+                RefloatConfigSchemaGroup(
+                    name = "Internal",
+                    subgroups = listOf(
+                        RefloatConfigSchemaSubgroup("Flags", listOf(RefloatConfigSchemaGroupItem.Field("group_internal"))),
+                    ),
+                ),
+            ),
+        )
+        val raw = byteArrayOf(0x3F, 0x80.toByte(), 0x00, 0x00, 0x01, 0x05)
+        val base = BoardConfigWriteBase(internalSchema, raw, 0xDEADBEEF)
+
+        val (profileState, profileEffects) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(
+                base,
+                ConfigWriteIntent.Profile(
+                    "profile-1",
+                    mapOf("tuned" to 7.0, "meta.is_default" to false, "group_internal" to 99.0),
+                ),
+            ),
+        )
+        assertTrue(profileState is ConfigRWState.WriteAwaitingSetAck)
+        assertTrue(profileEffects.sends(COMM_SET_CUSTOM_CONFIG))
+
+        val (changesetState, changesetEffects) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(
+                base,
+                ConfigWriteIntent.Changeset(mapOf("tuned" to 7.0, "group_internal" to 99.0)),
+            ),
+        )
+        assertEquals(ConfigRWState.Idle, changesetState)
+        assertEquals(RefloatConfigErrorCode.CONFIG_VALUE_INVALID, changesetEffects.failureCode())
+        assertFalse(changesetEffects.sends(COMM_SET_CUSTOM_CONFIG))
+    }
+
+    @Test
+    fun expectedSchemaHashMismatchRejectsBeforeSetOnWriteBaseAndFreshRead() {
+        val (baseState, baseEffects) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(
+                writeBase(),
+                ConfigWriteIntent.Changeset(mapOf("tuned" to 7.0), expectedSchemaHash = "other-hash"),
+            ),
+        )
+        assertEquals(ConfigRWState.Idle, baseState)
+        assertEquals(RefloatConfigErrorCode.CONFIG_SCHEMA_MISMATCH, baseEffects.failureCode())
+        assertFalse(baseEffects.sends(COMM_SET_CUSTOM_CONFIG))
+        assertFalse(baseEffects.contains(ConfigRWEffect.DemoteWriteBase))
+
+        val (matchState, matchEffects) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(
+                writeBase(),
+                ConfigWriteIntent.Changeset(mapOf("tuned" to 7.0), expectedSchemaHash = schema.hash),
+            ),
+        )
+        assertTrue(matchState is ConfigRWState.WriteAwaitingSetAck)
+        assertTrue(matchEffects.sends(COMM_SET_CUSTOM_CONFIG))
+
+        val xml = """
+            <CustomConfiguration>
+              <params>
+                <param name="tuned" type="float" min="0" max="100" />
+                <param name="untouched" type="float" min="0" max="100" />
+              </params>
+            </CustomConfiguration>
+        """.trimIndent().encodeToByteArray()
+        val xmlPayload = java.nio.ByteBuffer.allocate(10 + xml.size)
+            .order(java.nio.ByteOrder.BIG_ENDIAN)
+            .put(COMM_GET_CUSTOM_CONFIG_XML.toByte())
+            .put(0.toByte())
+            .putInt(xml.size)
+            .putInt(0)
+            .put(xml)
+            .array()
+        val cfgPayload = byteArrayOf(COMM_GET_CUSTOM_CONFIG.toByte(), 0, 0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte()) + rawConfig
+
+        val (collecting, _) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(null, ConfigWriteIntent.Changeset(mapOf("tuned" to 7.0), expectedSchemaHash = "stale-hash")),
+        )
+        val (awaitingCfg, _) = ConfigRWFsm.apply(collecting, ConfigRWEvent.XmlPayloadReceived(xmlPayload))
+        val (failedFresh, freshEffects) = ConfigRWFsm.apply(
+            awaitingCfg,
+            ConfigRWEvent.ConfigBytesPayloadReceived(cfgPayload, capturedAtMs = 5_000L),
+        )
+        assertEquals(ConfigRWState.Idle, failedFresh)
+        assertEquals(RefloatConfigErrorCode.CONFIG_SCHEMA_MISMATCH, freshEffects.failureCode())
+        assertFalse(freshEffects.sends(COMM_SET_CUSTOM_CONFIG))
+        assertFalse(freshEffects.contains(ConfigRWEffect.DemoteWriteBase))
+    }
+
     private fun writeBase() = BoardConfigWriteBase(schema, rawConfig, 0xDEADBEEF)
 
     private fun List<ConfigRWEffect>.failureCode() =

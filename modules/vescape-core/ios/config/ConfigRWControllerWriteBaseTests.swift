@@ -499,6 +499,119 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertTrue(sent.frames.isEmpty)
   }
 
+  func testProfilePushFiltersInternalFieldsWhileChangesetRejectsThem() {
+    let internalSchema = RefloatConfigSchema(
+      hash: "internal-filter",
+      fields: [
+        RefloatConfigSchemaField(id: "tuned", type: .float32, label: "tuned", unit: nil, min: nil, max: nil, offset: 0, scale: nil),
+        RefloatConfigSchemaField(id: "meta.is_default", type: .bool, label: "meta.is_default", unit: nil, min: nil, max: nil, offset: 4, scale: nil),
+        RefloatConfigSchemaField(id: "group_internal", type: .uint8, label: "group_internal", unit: nil, min: 0, max: 255, offset: 5, scale: nil),
+      ],
+      groups: [
+        RefloatConfigSchemaGroup(
+          name: "Internal",
+          subgroups: [
+            RefloatConfigSchemaSubgroup(name: "Flags", items: [.field("group_internal")]),
+          ]
+        ),
+      ]
+    )
+    let raw: [UInt8] = [0x3F, 0x80, 0x00, 0x00, 0x01, 0x05]
+    let freshInternal = BoardConfigValues(
+      boardId: "board-1",
+      refloatBaseVersion: "3.0.7",
+      capturedAtMs: 1,
+      freshness: .fresh,
+      values: ["tuned": 1.0, "meta.is_default": true, "group_internal": 5.0],
+      writeBase: BoardConfigWriteBase(schema: internalSchema, rawConfig: raw, packageSignature: 0xDEAD_BEEF)
+    )
+
+    let profileSent = SentFrames()
+    ConfigRWController().consumeWrite(
+      profileId: "profile-1",
+      connection: connection(freshInternal, profileSent, loadProfile: { _ in
+        [
+          "boardId": "board-1",
+          "refloatBaseVersion": "3.0.7",
+          "fields": ["tuned": 7.0, "meta.is_default": false, "group_internal": 99.0] as [String: Any],
+        ]
+      }),
+      onSuccess: { _ in },
+      onError: { code, message in XCTFail("profile push should filter internal fields, got \(code) \(message)") }
+    )
+    XCTAssertTrue(profileSent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+
+    let changesetSent = SentFrames()
+    var errors: [String] = []
+    ConfigRWController().consumeChangeset(
+      boardId: "board-1",
+      changes: ["tuned": 7.0, "group_internal": 99.0],
+      connection: connection(freshInternal, changesetSent),
+      onSuccess: { _ in XCTFail("changeset should reject internal fields") },
+      onError: { code, _ in errors.append(code) }
+    )
+    XCTAssertEqual(errors, [RefloatConfigErrorCode.CONFIG_VALUE_INVALID.rawValue])
+    XCTAssertFalse(changesetSent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+  }
+
+  func testExpectedSchemaHashMismatchRejectsBeforeSetOnWriteBaseAndFreshRead() {
+    let sent = SentFrames()
+    var errors: [String] = []
+    var demotions = 0
+    ConfigRWController().consumeChangeset(
+      boardId: "board-1",
+      changes: ["tuned": 7.0],
+      expectedSchemaHash: "other-hash",
+      connection: connection(fresh(), sent, demoteWriteBase: { demotions += 1 }),
+      onSuccess: { _ in XCTFail("write should fail on schema mismatch") },
+      onError: { code, _ in errors.append(code) }
+    )
+    XCTAssertEqual(errors, [RefloatConfigErrorCode.CONFIG_SCHEMA_MISMATCH.rawValue])
+    XCTAssertEqual(demotions, 0)
+    XCTAssertFalse(sent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+
+    let matchingSent = SentFrames()
+    ConfigRWController().consumeChangeset(
+      boardId: "board-1",
+      changes: ["tuned": 7.0],
+      expectedSchemaHash: schema().hash,
+      connection: connection(fresh(), matchingSent),
+      onSuccess: { _ in },
+      onError: { code, message in XCTFail("matching schema hash should proceed, got \(code) \(message)") }
+    )
+    XCTAssertTrue(matchingSent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+
+    let freshSent = SentFrames()
+    var freshErrors: [String] = []
+    let controller = ConfigRWController()
+    let conn = connection(nil, freshSent)
+    controller.consumeChangeset(
+      boardId: "board-1",
+      changes: ["tuned": 7.0],
+      expectedSchemaHash: "stale-hash",
+      connection: conn,
+      onSuccess: { _ in XCTFail("fresh read write should fail on schema mismatch") },
+      onError: { code, _ in freshErrors.append(code) }
+    )
+    let xml = Array("""
+      <CustomConfiguration>
+        <params>
+          <param name="tuned" type="float" min="0" max="100" />
+          <param name="untouched" type="float" min="0" max="100" />
+        </params>
+      </CustomConfiguration>
+      """.utf8)
+    var xmlPayload: [UInt8] = [UInt8(COMM_GET_CUSTOM_CONFIG_XML), 0]
+    xmlPayload.append(contentsOf: int32Bytes(xml.count))
+    xmlPayload.append(contentsOf: int32Bytes(0))
+    xmlPayload.append(contentsOf: xml)
+    let raw: [UInt8] = [0x3F, 0x80, 0x00, 0x00, 0x42, 0x28, 0x00, 0x00]
+    XCTAssertTrue(controller.onPayload(xmlPayload, connection: conn))
+    XCTAssertTrue(controller.onPayload([UInt8(COMM_GET_CUSTOM_CONFIG), 0, 0xDE, 0xAD, 0xBE, 0xEF] + raw, connection: conn))
+    XCTAssertEqual(freshErrors, [RefloatConfigErrorCode.CONFIG_SCHEMA_MISMATCH.rawValue])
+    XCTAssertFalse(freshSent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+  }
+
   private func int32Bytes(_ value: Int) -> [UInt8] {
     [
       UInt8((value >> 24) & 0xff),

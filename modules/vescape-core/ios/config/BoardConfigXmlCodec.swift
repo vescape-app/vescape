@@ -83,7 +83,10 @@ enum BoardConfigXmlCodec {
       let name = child.name
       let text = child.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
       if name == configVersionTag {
-        configVersion = Int(text)
+        guard let parsedVersion = Int(text), parsedVersion == vescToolConfigVersion else {
+          throw invalidXml("Unsupported ConfigVersion: \(text) (expected \(vescToolConfigVersion))")
+        }
+        configVersion = parsedVersion
         continue
       }
       if parsedValues[name] == nil {
@@ -92,7 +95,7 @@ enum BoardConfigXmlCodec {
       parsedValues[name] = text
     }
 
-    let internalSchemaIds = collectInternalSchemaFieldIds(currentSchema)
+    let internalSchemaIds = RefloatConfigEncoder.collectInternalSchemaFieldIds(currentSchema)
     let currentById = Dictionary(uniqueKeysWithValues: currentSchema.fields.map { ($0.id, $0) })
 
     var changes: [String: Any] = [:]
@@ -100,7 +103,7 @@ enum BoardConfigXmlCodec {
 
     for fieldId in orderedIds {
       let rawText = parsedValues[fieldId] ?? ""
-      if isInternalField(fieldId, internalSchemaIds: internalSchemaIds, overlay: overlay) {
+      if RefloatConfigEncoder.isInternalField(fieldId, internalSchemaIds: internalSchemaIds, overlay: overlay) {
         continue
       }
 
@@ -195,12 +198,45 @@ enum BoardConfigXmlCodec {
     }
   }
 
+  private static let strictDecimalPattern = "^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?$"
+
   private static func formatDouble(_ value: Double) -> String {
     if value == 0 { return "0" }
     if value.rounded(.down) == value && abs(value) < 1e15 {
       return String(Int64(value))
     }
-    return String(value)
+    let raw = String(value)
+    if abs(value) >= 1e-12 && abs(value) < 1e15, raw.contains("e") || raw.contains("E") {
+      return expandScientificDecimal(raw)
+    }
+    return raw
+  }
+
+  private static func expandScientificDecimal(_ raw: String) -> String {
+    let lower = raw.lowercased()
+    let parts = lower.split(separator: "e", maxSplits: 1)
+    guard parts.count == 2, let exp = Int(parts[1]) else { return raw }
+    var mantissa = String(parts[0])
+    let negative = mantissa.hasPrefix("-")
+    if negative || mantissa.hasPrefix("+") { mantissa.removeFirst() }
+    let dotParts = mantissa.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+    let intPart = String(dotParts[0])
+    let fracPart = dotParts.count > 1 ? String(dotParts[1]) : ""
+    var digits = intPart + fracPart
+    let decimalPos = intPart.count + exp
+    let sign = negative ? "-" : ""
+    if decimalPos <= 0 {
+      while digits.last == "0" && digits.count > 1 { digits.removeLast() }
+      return "\(sign)0.\(String(repeating: "0", count: -decimalPos))\(digits)"
+    }
+    if decimalPos >= digits.count {
+      return "\(sign)\(digits)\(String(repeating: "0", count: decimalPos - digits.count))"
+    }
+    let splitIdx = digits.index(digits.startIndex, offsetBy: decimalPos)
+    let left = String(digits[..<splitIdx])
+    var right = String(digits[splitIdx...])
+    while right.last == "0" { right.removeLast() }
+    return right.isEmpty ? "\(sign)\(left)" : "\(sign)\(left).\(right)"
   }
 
   private static func parseCandidateValue(_ field: RefloatConfigSchemaField, _ rawText: String) -> Any? {
@@ -211,6 +247,7 @@ enum BoardConfigXmlCodec {
       default: return nil
       }
     }
+    guard rawText.range(of: strictDecimalPattern, options: .regularExpression) != nil else { return nil }
     guard let parsed = Double(rawText), parsed.isFinite else { return nil }
     return parsed == 0 ? 0.0 : parsed
   }
@@ -222,28 +259,6 @@ enum BoardConfigXmlCodec {
       .replacingOccurrences(of: ">", with: "&gt;")
       .replacingOccurrences(of: "\"", with: "&quot;")
       .replacingOccurrences(of: "'", with: "&apos;")
-  }
-
-  private static func isInternalField(
-    _ fieldId: String,
-    internalSchemaIds: Set<String>,
-    overlay: RefloatFieldOverlay
-  ) -> Bool {
-    overlay.isInternal(fieldId) || fieldId.hasPrefix("meta.") || internalSchemaIds.contains(fieldId)
-  }
-
-  private static func collectInternalSchemaFieldIds(_ schema: RefloatConfigSchema) -> Set<String> {
-    var ids = Set<String>()
-    for group in schema.groups {
-      let groupInternal = group.name.caseInsensitiveCompare("internal") == .orderedSame
-      for subgroup in group.subgroups {
-        if !groupInternal && subgroup.name.caseInsensitiveCompare("meta") != .orderedSame { continue }
-        for item in subgroup.items {
-          if case let .field(fieldId) = item { ids.insert(fieldId) }
-        }
-      }
-    }
-    return ids
   }
 
   private static func matchesBytes(_ rawConfig: [UInt8], offset: Int, encodedBytes: [UInt8]) -> Bool {

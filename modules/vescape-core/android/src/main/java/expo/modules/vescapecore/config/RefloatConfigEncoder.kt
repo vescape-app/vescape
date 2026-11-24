@@ -27,18 +27,21 @@ internal object RefloatConfigEncoder {
     rawConfig: ByteArray,
     fields: Map<String, Any?>,
     overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
-  ): ByteArray = encodeChangeset(schema, rawConfig, fields, overlay).rawConfig
+    allowInternal: Boolean = false,
+  ): ByteArray = encodeChangeset(schema, rawConfig, fields, overlay, allowInternal).rawConfig
 
   fun encodeChangeset(
     schema: RefloatConfigSchema,
     rawConfig: ByteArray,
     changes: Map<String, Any?>,
     overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
+    allowInternal: Boolean = false,
   ): EncodedChangeset {
     val byId = schema.fields.associateBy { it.id }
+    val internalSchemaIds = if (allowInternal) emptySet() else collectInternalSchemaFieldIds(schema)
     val validated = changes.map { (fieldId, value) ->
       val field = byId[fieldId] ?: throw invalid("unknown field $fieldId")
-      if (overlay.isInternal(field.id)) {
+      if (!allowInternal && isInternalField(field.id, internalSchemaIds, overlay)) {
         throw invalid("${field.id} is internal and cannot be edited")
       }
       if (value == null) throw invalid("${field.id} cannot be null")
@@ -118,12 +121,39 @@ internal object RefloatConfigEncoder {
     return FieldNumericRange(min = min, max = max)
   }
 
+  internal fun collectInternalSchemaFieldIds(schema: RefloatConfigSchema): Set<String> {
+    val ids = HashSet<String>()
+    for (group in schema.groups) {
+      val groupInternal = group.name.equals("internal", ignoreCase = true)
+      for (subgroup in group.subgroups) {
+        if (!groupInternal && !subgroup.name.equals("meta", ignoreCase = true)) continue
+        for (item in subgroup.items) {
+          if (item is RefloatConfigSchemaGroupItem.Field) ids.add(item.fieldId)
+        }
+      }
+    }
+    return ids
+  }
+
+  internal fun isInternalField(
+    fieldId: String,
+    internalSchemaIds: Set<String>,
+    overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
+  ): Boolean = overlay.isInternal(fieldId) || fieldId.startsWith("meta.") || fieldId in internalSchemaIds
+
+  internal fun isInternalField(
+    fieldId: String,
+    schema: RefloatConfigSchema,
+    overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
+  ): Boolean = isInternalField(fieldId, collectInternalSchemaFieldIds(schema), overlay)
+
   internal fun encodeFieldBytes(
     field: RefloatConfigSchemaField,
     value: Any,
     overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
+    allowInternal: Boolean = false,
   ): ByteArray {
-    if (overlay.isInternal(field.id)) {
+    if (!allowInternal && (overlay.isInternal(field.id) || field.id.startsWith("meta."))) {
       throw invalid("${field.id} is internal and cannot be edited")
     }
     return encodeAndVerifyField(field, value, overlay)
@@ -140,6 +170,22 @@ internal object RefloatConfigEncoder {
     val roundTripBits = encodeWireBits(field, decoded)
     if (roundTripBits != bits) {
       throw invalid("${field.id} = $value failed wire round-trip")
+    }
+    if (field.type == RefloatConfigValueType.FLOAT16_SCALED || field.type == RefloatConfigValueType.FLOAT32_SCALED) {
+      val scaleFloat = requireScale(field).toFloat()
+      val rawInt = if (field.type == RefloatConfigValueType.FLOAT16_SCALED) {
+        bits.toShort().toLong()
+      } else {
+        bits.toInt().toLong()
+      }
+      val firmwareFloat = rawInt.toFloat() / scaleFloat
+      val reserialized = firmwareFloat * scaleFloat
+      val inRange = reserialized.isFinite() &&
+        reserialized.toDouble() >= Int.MIN_VALUE.toDouble() &&
+        reserialized.toDouble() <= Int.MAX_VALUE.toDouble()
+      if (!inRange || reserialized.toLong() != rawInt) {
+        throw invalid("${field.id} = $value does not survive firmware float32 round-trip")
+      }
     }
     return bytes
   }
@@ -172,7 +218,7 @@ internal object RefloatConfigEncoder {
     return if (neg) -result else result
   }
 
-  private fun isEnumField(field: RefloatConfigSchemaField): Boolean =
+  internal fun isEnumField(field: RefloatConfigSchemaField): Boolean =
     field.xmlType == 4 || (field.xmlType == null && field.enumNames.isNotEmpty())
 
   private fun isIntegerType(type: RefloatConfigValueType): Boolean = when (type) {

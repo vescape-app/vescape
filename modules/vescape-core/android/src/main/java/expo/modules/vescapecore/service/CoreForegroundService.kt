@@ -124,6 +124,9 @@ class CoreForegroundService : Service() {
          */
         internal var appVisible = false
         internal val appDataScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        internal val configPersistenceDispatcher = Dispatchers.IO.limitedParallelism(1)
         private val alertRulesGeneration = AtomicLong(0)
         private val alertRulesReloadMutex = Mutex()
 
@@ -317,6 +320,7 @@ class CoreForegroundService : Service() {
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
             source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
+            expectedSchemaHash: String? = null,
         ) {
             onMain {
                 val service = instance
@@ -328,7 +332,7 @@ class CoreForegroundService : Service() {
                     return@onMain
                 }
                 service.controller.consumeConfigWrite(
-                    PendingConfigWrite.Changeset(boardId, changes, onSuccess, onError, source),
+                    PendingConfigWrite.Changeset(boardId, changes, onSuccess, onError, source, expectedSchemaHash),
                 )
             }
         }

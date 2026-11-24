@@ -175,7 +175,8 @@ final class BoardConfigRevertPlannerTests: XCTestCase {
       schema: targetSchema,
       rawConfig: [UInt8](repeating: 0, count: 8),
       fields: ["kp": 25.0, "limit_field": 120.0, "group_internal": 9.0],
-      overlay: .empty
+      overlay: .empty,
+      allowInternal: true
     )
     targetRaw[5] = 1
     targetRaw[7] = 77
@@ -184,7 +185,8 @@ final class BoardConfigRevertPlannerTests: XCTestCase {
       schema: currentSchema,
       rawConfig: [UInt8](repeating: 0, count: 8),
       fields: ["kp": 20.0, "limit_field": 30.0, "group_internal": 1.0],
-      overlay: .empty
+      overlay: .empty,
+      allowInternal: true
     )
     currentRaw[5] = 0
     currentRaw[7] = 11
@@ -207,6 +209,103 @@ final class BoardConfigRevertPlannerTests: XCTestCase {
     XCTAssertNil(plan.changes["meta.is_default"])
     XCTAssertNil(plan.changes["group_internal"])
     XCTAssertNil(plan.changes["overlay_internal"])
+  }
+
+  func testCrossSchemaRevertMapsEnumsByNameAndReportsCurrentOnlyFields() {
+    let targetSchema = RefloatConfigSchema(
+      hash: "old-schema",
+      fields: [
+        RefloatConfigSchemaField(
+          id: "mode_reordered",
+          type: .uint8,
+          label: "Reordered Mode",
+          unit: nil,
+          min: nil,
+          max: nil,
+          offset: 0,
+          scale: nil,
+          xmlType: 4,
+          enumNames: ["Off", "Cruise", "Trail"]
+        ),
+        RefloatConfigSchemaField(
+          id: "mode_removed_option",
+          type: .uint8,
+          label: "Removed Option Mode",
+          unit: nil,
+          min: nil,
+          max: nil,
+          offset: 1,
+          scale: nil,
+          xmlType: 4,
+          enumNames: ["Off", "Legacy"]
+        ),
+      ]
+    )
+    let currentSchema = RefloatConfigSchema(
+      hash: "new-schema",
+      fields: [
+        RefloatConfigSchemaField(
+          id: "mode_reordered",
+          type: .uint8,
+          label: "Reordered Mode",
+          unit: nil,
+          min: nil,
+          max: nil,
+          offset: 0,
+          scale: nil,
+          xmlType: 4,
+          enumNames: ["Off", "Custom", "Cruise", "Trail"]
+        ),
+        RefloatConfigSchemaField(
+          id: "mode_removed_option",
+          type: .uint8,
+          label: "Removed Option Mode",
+          unit: nil,
+          min: nil,
+          max: nil,
+          offset: 1,
+          scale: nil,
+          xmlType: 4,
+          enumNames: ["Off", "Modern"]
+        ),
+        RefloatConfigSchemaField(
+          id: "new_writable_field",
+          type: .uint8,
+          label: "New Writable Field",
+          unit: nil,
+          min: 0,
+          max: 100,
+          offset: 2
+        ),
+        RefloatConfigSchemaField(
+          id: "meta.is_default",
+          type: .bool,
+          label: "Is Default",
+          unit: nil,
+          min: nil,
+          max: nil,
+          offset: 3
+        ),
+      ]
+    )
+
+    let plan = BoardConfigRevertPlanner.plan(
+      boardId: "board-1",
+      currentSchema: currentSchema,
+      currentRawConfig: [0, 0, 10, 0],
+      targetRevisionId: 9,
+      targetCreatedAtMs: 2_000,
+      targetRefloatVersion: "1.2.1",
+      targetSchema: targetSchema,
+      targetRawConfig: [1, 1]
+    )
+
+    XCTAssertEqual(Set(plan.changes.keys), ["mode_reordered"])
+    XCTAssertEqual(plan.changes["mode_reordered"] as? Double ?? -1, 2.0, accuracy: 1e-6)
+    let skippedById = Dictionary(uniqueKeysWithValues: plan.skippedFields.map { ($0.fieldId, $0) })
+    XCTAssertTrue(skippedById["mode_removed_option"]?.reason.contains("Legacy") == true)
+    XCTAssertEqual(skippedById["new_writable_field"]?.reason, "Not in saved revision")
+    XCTAssertNil(skippedById["meta.is_default"])
   }
 
   func testStorePlanRevertAndSaveRevertRevision() throws {

@@ -179,7 +179,7 @@ final class RefloatConfigEncoderTests: XCTestCase {
 
   func testFloat32ScaledRoundTrip() throws {
     let schema = RefloatConfigSchema(hash: "t", fields: [field("v", .float32Scaled, offset: 0, scale: 1000.0)])
-    for rawInt in [Int32(0), 1, -1, 1500, -2500, Int32.max, Int32.min] {
+    for rawInt in [Int32(0), 1, -1, 1500, -2500, 16_777_216, Int32.min] {
       let raw = int32Bytes(rawInt)
       let decoded = decodeAllFields(schema, raw)
       let reEncoded = try RefloatConfigEncoder.encode(schema: schema, rawConfig: raw, fields: decoded)
@@ -283,6 +283,81 @@ final class RefloatConfigEncoderTests: XCTestCase {
     for i in raw.indices where !modifiedOffsets.contains(i) {
       XCTAssertEqual(raw[i], result[i], "Untouched byte at offset \(i)")
     }
+  }
+
+  func testRejectsInternalSchemaAndMetaFieldsUnlessExplicitlyAllowed() throws {
+    let schema = RefloatConfigSchema(
+      hash: "internal-test",
+      fields: [
+        RefloatConfigSchemaField(id: "kp", type: .float32, label: "Angle P", unit: nil, min: 0, max: 100, offset: 0),
+        RefloatConfigSchemaField(id: "meta.is_default", type: .bool, label: "Is Default", unit: nil, min: nil, max: nil, offset: 4),
+        RefloatConfigSchemaField(id: "group_internal", type: .uint8, label: "Group Internal", unit: nil, min: 0, max: 255, offset: 5),
+        RefloatConfigSchemaField(id: "subgroup_meta", type: .uint8, label: "Subgroup Meta", unit: nil, min: 0, max: 255, offset: 6),
+        RefloatConfigSchemaField(id: "overlay_internal", type: .uint8, label: "Overlay Internal", unit: nil, min: 0, max: 255, offset: 7),
+      ],
+      groups: [
+        RefloatConfigSchemaGroup(
+          name: "Internal",
+          subgroups: [
+            RefloatConfigSchemaSubgroup(name: "Flags", items: [.field("group_internal")]),
+          ]
+        ),
+        RefloatConfigSchemaGroup(
+          name: "General",
+          subgroups: [
+            RefloatConfigSchemaSubgroup(name: "Meta", items: [.field("subgroup_meta")]),
+          ]
+        ),
+      ]
+    )
+    let overlay = RefloatFieldOverlay(entries: [
+      "overlay_internal": RefloatFieldOverlayEntry(risk: .internal),
+    ])
+    let raw = [UInt8](repeating: 0, count: 8)
+
+    for change: [String: Any] in [
+      ["meta.is_default": false],
+      ["group_internal": 1.0],
+      ["subgroup_meta": 2.0],
+      ["overlay_internal": 3.0],
+    ] {
+      XCTAssertThrowsError(
+        try RefloatConfigEncoder.encodeChangeset(schema: schema, rawConfig: raw, changes: change, overlay: overlay)
+      ) { error in
+        XCTAssertEqual((error as? RefloatConfigEncodeException)?.code, .CONFIG_VALUE_INVALID)
+      }
+    }
+
+    let allowed = try RefloatConfigEncoder.encodeChangeset(
+      schema: schema,
+      rawConfig: raw,
+      changes: ["meta.is_default": true, "group_internal": 1.0, "subgroup_meta": 2.0],
+      overlay: overlay,
+      allowInternal: true
+    )
+    XCTAssertEqual(allowed.changedFieldIds, ["meta.is_default", "group_internal", "subgroup_meta"])
+  }
+
+  func testRejectsScaledValuesThatTruncateUnderFirmwareFloat32RoundTrip() throws {
+    let schema = RefloatConfigSchema(
+      hash: "adc-float32",
+      fields: [
+        RefloatConfigSchemaField(id: "fault_adc1", type: .float16Scaled, label: "ADC1", unit: nil, min: 0, max: 5, offset: 0, scale: 1000.0),
+        RefloatConfigSchemaField(id: "scaled32", type: .float32Scaled, label: "Scaled32", unit: nil, min: -5, max: 5, offset: 2, scale: 1000.0),
+      ]
+    )
+    let raw = [UInt8](repeating: 0, count: 6)
+
+    assertInvalid(schema, raw, ["fault_adc1": 0.251])
+    assertInvalid(schema, raw, ["scaled32": 0.251])
+    assertInvalid(schema, raw, ["scaled32": -0.251])
+
+    let stable = try RefloatConfigEncoder.encodeChangeset(
+      schema: schema,
+      rawConfig: raw,
+      changes: ["fault_adc1": 0.250, "scaled32": 0.252]
+    )
+    XCTAssertEqual(stable.changedFieldIds, ["fault_adc1", "scaled32"])
   }
 
   func testFloat32AutoIndependentByteVectors() throws {

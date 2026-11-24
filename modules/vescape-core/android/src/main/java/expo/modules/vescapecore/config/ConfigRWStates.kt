@@ -18,6 +18,7 @@ internal sealed class ConfigWriteIntent {
     data class Changeset(
         val changes: Map<String, Any?>,
         val source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
+        val expectedSchemaHash: String? = null,
     ) : ConfigWriteIntent()
 
     data class Profile(

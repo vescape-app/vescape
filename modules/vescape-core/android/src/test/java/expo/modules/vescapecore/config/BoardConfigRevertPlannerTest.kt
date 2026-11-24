@@ -187,6 +187,7 @@ class BoardConfigRevertPlannerTest {
       ByteArray(8),
       mapOf("kp" to 25.0, "limit_field" to 120.0, "group_internal" to 9.0),
       RefloatFieldOverlay.empty,
+      allowInternal = true,
     )
     targetRaw[5] = 1
     targetRaw[7] = 77
@@ -196,6 +197,7 @@ class BoardConfigRevertPlannerTest {
       ByteArray(8),
       mapOf("kp" to 20.0, "limit_field" to 30.0, "group_internal" to 1.0),
       RefloatFieldOverlay.empty,
+      allowInternal = true,
     )
     currentRaw[5] = 0
     currentRaw[7] = 11
@@ -218,5 +220,103 @@ class BoardConfigRevertPlannerTest {
     assertFalse(plan.changes.containsKey("meta.is_default"))
     assertFalse(plan.changes.containsKey("group_internal"))
     assertFalse(plan.changes.containsKey("overlay_internal"))
+  }
+
+  @Test
+  fun crossSchemaRevertMapsEnumsByNameAndReportsCurrentOnlyFields() {
+    val targetSchema = RefloatConfigSchema(
+      hash = "old-schema",
+      fields = listOf(
+        RefloatConfigSchemaField(
+          id = "mode_reordered",
+          type = RefloatConfigValueType.UINT8,
+          label = "Reordered Mode",
+          unit = null,
+          min = null,
+          max = null,
+          offset = 0,
+          xmlType = 4,
+          enumNames = listOf("Off", "Cruise", "Trail"),
+        ),
+        RefloatConfigSchemaField(
+          id = "mode_removed_option",
+          type = RefloatConfigValueType.UINT8,
+          label = "Removed Option Mode",
+          unit = null,
+          min = null,
+          max = null,
+          offset = 1,
+          xmlType = 4,
+          enumNames = listOf("Off", "Legacy"),
+        ),
+      ),
+    )
+    val currentSchema = RefloatConfigSchema(
+      hash = "new-schema",
+      fields = listOf(
+        RefloatConfigSchemaField(
+          id = "mode_reordered",
+          type = RefloatConfigValueType.UINT8,
+          label = "Reordered Mode",
+          unit = null,
+          min = null,
+          max = null,
+          offset = 0,
+          xmlType = 4,
+          enumNames = listOf("Off", "Custom", "Cruise", "Trail"),
+        ),
+        RefloatConfigSchemaField(
+          id = "mode_removed_option",
+          type = RefloatConfigValueType.UINT8,
+          label = "Removed Option Mode",
+          unit = null,
+          min = null,
+          max = null,
+          offset = 1,
+          xmlType = 4,
+          enumNames = listOf("Off", "Modern"),
+        ),
+        RefloatConfigSchemaField(
+          id = "new_writable_field",
+          type = RefloatConfigValueType.UINT8,
+          label = "New Writable Field",
+          unit = null,
+          min = 0.0,
+          max = 100.0,
+          offset = 2,
+        ),
+        RefloatConfigSchemaField(
+          id = "meta.is_default",
+          type = RefloatConfigValueType.BOOL,
+          label = "Is Default",
+          unit = null,
+          min = null,
+          max = null,
+          offset = 3,
+        ),
+      ),
+    )
+
+    val targetRaw = byteArrayOf(1, 1)
+    val currentRaw = byteArrayOf(0, 0, 10, 0)
+
+    val plan = BoardConfigRevertPlanner.plan(
+      boardId = "board-1",
+      currentSchema = currentSchema,
+      currentRawConfig = currentRaw,
+      targetRevisionId = 9L,
+      targetCreatedAtMs = 2_000L,
+      targetRefloatVersion = "1.2.1",
+      targetSchema = targetSchema,
+      targetRawConfig = targetRaw,
+    )
+
+    assertEquals(setOf("mode_reordered"), plan.changes.keys)
+    assertEquals(2.0, plan.changes["mode_reordered"] as Double, 1e-6)
+    val skippedById = plan.skippedFields.associateBy { it.fieldId }
+    assertTrue("mode_removed_option" in skippedById)
+    assertTrue(skippedById["mode_removed_option"]!!.reason.contains("Legacy"))
+    assertEquals("Not in saved revision", skippedById["new_writable_field"]?.reason)
+    assertFalse("meta.is_default" in skippedById)
   }
 }

@@ -605,6 +605,18 @@ internal object ConfigRWFsm {
         failPhase: ConfigWritePhaseTag,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
         val rawConfig = configBytes.config
+        val expectedSchemaHash = (ctx.intent as? ConfigWriteIntent.Changeset)
+            ?.expectedSchemaHash
+            ?.takeIf { it.isNotBlank() }
+        if (expectedSchemaHash != null && schema.hash != expectedSchemaHash) {
+            return writeFailure(
+                ctx,
+                RefloatConfigErrorCode.CONFIG_SCHEMA_MISMATCH,
+                "Board config schema changed (expected $expectedSchemaHash, got ${schema.hash})",
+                phase = failPhase,
+                rawConfig = rawConfig,
+            )
+        }
         return try {
             val freshValues = if (fromFreshRead) {
                 RefloatConfigDecoder.decodeBoardConfigValues(
@@ -707,7 +719,10 @@ internal object ConfigRWFsm {
             is ConfigWriteIntent.Changeset -> intent.changes
             is ConfigWriteIntent.Profile -> {
                 val schemaIds = schema.fields.mapTo(HashSet()) { it.id }
-                intent.fields.filterKeys { it in schemaIds }
+                val internalSchemaIds = RefloatConfigEncoder.collectInternalSchemaFieldIds(schema)
+                intent.fields.filterKeys { fieldId ->
+                    fieldId in schemaIds && !RefloatConfigEncoder.isInternalField(fieldId, internalSchemaIds)
+                }
             }
         }
 

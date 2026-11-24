@@ -41,6 +41,7 @@ internal sealed class PendingConfigWrite {
         override val onSuccess: (Map<String, Any?>) -> Unit,
         override val onError: (String, String) -> Unit,
         val source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
+        val expectedSchemaHash: String? = null,
     ) : PendingConfigWrite()
 }
 
@@ -66,6 +67,14 @@ internal interface ConfigRWControllerPort {
     fun diagnosticProperties(config: SessionConfig?, category: String): Map<String, Any?>
     fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray)
     fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin)
+    fun onBoardConfigValues(
+        values: BoardConfigValues,
+        origin: BoardConfigOperationOrigin,
+        onPersisted: () -> Unit,
+    ) {
+        onBoardConfigValues(values, origin)
+        onPersisted()
+    }
     fun demoteWriteBase()
 }
 
@@ -145,7 +154,7 @@ internal class ConfigRWController(
                     pending = pending,
                     connection = initial,
                     transport = initialTransport,
-                    intent = ConfigWriteIntent.Changeset(pending.changes, pending.source),
+                    intent = ConfigWriteIntent.Changeset(pending.changes, pending.source, pending.expectedSchemaHash),
                     connectedBoardId = connectedBoardId,
                     startedAtMs = initialStartedAtMs,
                 )
@@ -361,10 +370,17 @@ internal class ConfigRWController(
     private fun completeWrite(effect: ConfigRWEffect.EmitWriteComplete) {
         cancelQueuedSetFrames()
         val callbacks = writeCallbacks.also { writeCallbacks = null }; resumePolling(effect.resumePolling)
+        val map = effect.boardConfigValues.toBridgeMap()
+        if (effect.emitBoardConfigValues && effect.origin is BoardConfigOperationOrigin.VescapeWrite) {
+            port.onBoardConfigValues(effect.boardConfigValues, effect.origin) {
+                callbacks?.onSuccess?.invoke(map)
+            }
+            return
+        }
         if (effect.emitBoardConfigValues) {
             port.onBoardConfigValues(effect.boardConfigValues, effect.origin)
         }
-        callbacks?.onSuccess?.invoke(effect.boardConfigValues.toBridgeMap())
+        callbacks?.onSuccess?.invoke(map)
     }
 
     private fun failWrite(effect: ConfigRWEffect.EmitWriteFailure) {

@@ -261,6 +261,99 @@ class BoardConfigSchemaPersistenceHostTest {
         dao.clearBoardConfigState("board-rev")
         assertNull(dao.getLatestBoardConfigValues("board-rev"))
         assertEquals(4, persistence.loadRevisions("board-rev").size)
+
+        val metaXml = """
+          <ConfigParams>
+            <Params>
+              <kp>
+                <type>1</type>
+                <vTx>8</vTx>
+                <longName>Angle P</longName>
+                <valDouble>20</valDouble>
+              </kp>
+              <meta.is_default>
+                <type>5</type>
+                <longName>Is Default</longName>
+                <valInt>0</valInt>
+              </meta.is_default>
+            </Params>
+            <SerOrder>
+              <ser>kp</ser>
+              <ser>meta.is_default</ser>
+            </SerOrder>
+            <Grouping />
+          </ConfigParams>
+        """.trimIndent()
+        val metaSchema = RefloatConfigSchemaParser.parse(metaXml.encodeToByteArray())
+        fun metaBytes(kp: Float, isDefault: Boolean): ByteArray {
+          val bits = kp.toRawBits()
+          return byteArrayOf(
+            ((bits ushr 24) and 0xff).toByte(),
+            ((bits ushr 16) and 0xff).toByte(),
+            ((bits ushr 8) and 0xff).toByte(),
+            (bits and 0xff).toByte(),
+            if (isDefault) 1 else 0,
+          )
+        }
+        persistence.saveFreshBoard(
+          boardId = "board-dedup",
+          base = "1.3",
+          values = mapOf("kp" to 20.0, "meta.is_default" to true),
+          capturedAt = 1000L,
+          schema = metaSchema,
+          refloatVersion = "1.3.0",
+          rawConfig = metaBytes(20.0f, true),
+          packageSignature = 10L,
+        )
+        persistence.saveFreshBoard(
+          boardId = "board-dedup",
+          base = "1.3",
+          values = mapOf("kp" to 20.0, "meta.is_default" to false),
+          capturedAt = 2000L,
+          schema = metaSchema,
+          refloatVersion = "1.3.0",
+          rawConfig = metaBytes(20.0f, false),
+          packageSignature = 10L,
+        )
+        assertEquals("Only meta.is_default changed must deduplicate", 1, persistence.loadRevisions("board-dedup").size)
+
+        persistence.saveFreshBoard(
+          boardId = "board-dedup",
+          base = "1.3",
+          values = mapOf("kp" to 20.0, "meta.is_default" to false),
+          capturedAt = 3000L,
+          schema = metaSchema,
+          refloatVersion = "1.3.0",
+          rawConfig = metaBytes(20.0f, false),
+          packageSignature = 11L,
+        )
+        assertEquals("Package signature change must record revision", 2, persistence.loadRevisions("board-dedup").size)
+
+        val tinyFloat = java.lang.Float.intBitsToFloat(20.0f.toRawBits() + 1)
+        persistence.saveFreshBoard(
+          boardId = "board-dedup",
+          base = "1.3",
+          values = mapOf("kp" to tinyFloat.toDouble(), "meta.is_default" to false),
+          capturedAt = 4000L,
+          schema = metaSchema,
+          refloatVersion = "1.3.0",
+          rawConfig = metaBytes(tinyFloat, false),
+          packageSignature = 11L,
+        )
+        assertEquals("Sub-1e-6 wire change must record revision", 3, persistence.loadRevisions("board-dedup").size)
+
+        val metaSchemaV2 = RefloatConfigSchemaParser.parse(metaXml.replace("Angle P", "Angle P v2").encodeToByteArray())
+        persistence.saveFreshBoard(
+          boardId = "board-dedup",
+          base = "1.3",
+          values = mapOf("kp" to tinyFloat.toDouble(), "meta.is_default" to false),
+          capturedAt = 5000L,
+          schema = metaSchemaV2,
+          refloatVersion = "1.3.1",
+          rawConfig = metaBytes(tinyFloat, false),
+          packageSignature = 11L,
+        )
+        assertEquals("Schema hash change must record revision", 4, persistence.loadRevisions("board-dedup").size)
       } finally {
         room.close()
       }

@@ -101,7 +101,6 @@ internal let DIAGNOSTIC_EVENT_RETENTION_MS: Int64 = 30 * 24 * 60 * 60 * 1000
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DIAGNOSTIC_EVENT_PRUNE_BATCH`
 internal let DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DiagnosticEventPruneResult`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `BOARD_CONFIG_REVISION_RETENTION_PER_BOARD`
 internal let BOARD_CONFIG_REVISION_RETENTION_PER_BOARD = 200
 
@@ -155,6 +154,7 @@ internal func pruneBoardConfigRevisions(
   return BoardConfigRevisionPruneResult(deletedRevisions: deleted.0, deletedSchemas: deleted.1, yielded: false)
 }
 
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DiagnosticEventPruneResult`
 struct DiagnosticEventPruneResult {
   let deleted: Int
   let yielded: Bool

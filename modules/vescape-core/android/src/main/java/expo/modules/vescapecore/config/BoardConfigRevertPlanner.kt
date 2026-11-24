@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.config
 
+import kotlin.math.floor
+
 // @parity /modules/vescape-core/ios/config/BoardConfigRevertPlanner.swift `BoardConfigRevertSkippedField`
 // @parity /modules/vescape-core/src/index.ts `BoardConfigRevertSkippedField`
 internal data class BoardConfigRevertSkippedField(
@@ -54,8 +56,8 @@ internal object BoardConfigRevertPlanner {
     overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
   ): BoardConfigRevertPlan {
     val sameSchema = currentSchema.hash == targetSchema.hash
-    val internalSchemaIds = collectInternalSchemaFieldIds(currentSchema) +
-      collectInternalSchemaFieldIds(targetSchema)
+    val internalSchemaIds = RefloatConfigEncoder.collectInternalSchemaFieldIds(currentSchema) +
+      RefloatConfigEncoder.collectInternalSchemaFieldIds(targetSchema)
     val targetValues = RefloatConfigFieldDecoder.decodeFieldMap(targetSchema, targetRawConfig)
     val currentById = currentSchema.fields.associateBy { it.id }
 
@@ -63,7 +65,7 @@ internal object BoardConfigRevertPlanner {
     val skippedFields = mutableListOf<BoardConfigRevertSkippedField>()
 
     for (targetField in targetSchema.fields) {
-      if (isInternalField(targetField.id, internalSchemaIds, overlay)) continue
+      if (RefloatConfigEncoder.isInternalField(targetField.id, internalSchemaIds, overlay)) continue
 
       val currentField = currentById[targetField.id]
       if (currentField == null) {
@@ -101,7 +103,43 @@ internal object BoardConfigRevertPlanner {
         continue
       }
 
-      val candidateValue = normalizeCandidate(currentField, rawTargetValue)
+      val mappedValue = if (!sameSchema &&
+        RefloatConfigEncoder.isEnumField(targetField) &&
+        RefloatConfigEncoder.isEnumField(currentField) &&
+        targetField.enumNames.isNotEmpty() &&
+        currentField.enumNames.isNotEmpty()
+      ) {
+        val rawIndex = (rawTargetValue as? Number)?.toDouble()
+        if (rawIndex == null || !rawIndex.isFinite() || floor(rawIndex) != rawIndex ||
+          rawIndex < 0.0 || rawIndex >= targetField.enumNames.size.toDouble()
+        ) {
+          skippedFields.add(
+            BoardConfigRevertSkippedField(
+              fieldId = targetField.id,
+              label = currentField.label,
+              reason = "Enum value out of range for saved revision",
+            ),
+          )
+          continue
+        }
+        val optionName = targetField.enumNames[rawIndex.toInt()]
+        val currentIndex = currentField.enumNames.indexOf(optionName)
+        if (currentIndex < 0) {
+          skippedFields.add(
+            BoardConfigRevertSkippedField(
+              fieldId = targetField.id,
+              label = currentField.label,
+              reason = "Option '$optionName' is not in current firmware schema",
+            ),
+          )
+          continue
+        }
+        currentIndex.toDouble()
+      } else {
+        rawTargetValue
+      }
+
+      val candidateValue = normalizeCandidate(currentField, mappedValue)
       val encodedBytes = try {
         RefloatConfigEncoder.encodeFieldBytes(currentField, candidateValue, overlay)
       } catch (error: RefloatConfigEncodeException) {
@@ -120,6 +158,21 @@ internal object BoardConfigRevertPlanner {
       }
     }
 
+    if (!sameSchema) {
+      val targetIds = targetSchema.fields.mapTo(HashSet()) { it.id }
+      for (currentField in currentSchema.fields) {
+        if (currentField.id in targetIds) continue
+        if (RefloatConfigEncoder.isInternalField(currentField.id, internalSchemaIds, overlay)) continue
+        skippedFields.add(
+          BoardConfigRevertSkippedField(
+            fieldId = currentField.id,
+            label = currentField.label,
+            reason = "Not in saved revision",
+          ),
+        )
+      }
+    }
+
     return BoardConfigRevertPlan(
       boardId = boardId,
       targetRevisionId = targetRevisionId,
@@ -131,26 +184,6 @@ internal object BoardConfigRevertPlanner {
       changes = changes,
       skippedFields = skippedFields,
     )
-  }
-
-  private fun isInternalField(
-    fieldId: String,
-    internalSchemaIds: Set<String>,
-    overlay: RefloatFieldOverlay,
-  ): Boolean = overlay.isInternal(fieldId) || fieldId.startsWith("meta.") || fieldId in internalSchemaIds
-
-  private fun collectInternalSchemaFieldIds(schema: RefloatConfigSchema): Set<String> {
-    val ids = HashSet<String>()
-    for (group in schema.groups) {
-      val groupInternal = group.name.equals("internal", ignoreCase = true)
-      for (subgroup in group.subgroups) {
-        if (!groupInternal && !subgroup.name.equals("meta", ignoreCase = true)) continue
-        for (item in subgroup.items) {
-          if (item is RefloatConfigSchemaGroupItem.Field) ids.add(item.fieldId)
-        }
-      }
-    }
-    return ids
   }
 
   private fun normalizeCandidate(field: RefloatConfigSchemaField, value: Any): Any {

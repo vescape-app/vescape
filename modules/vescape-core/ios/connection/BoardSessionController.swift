@@ -500,6 +500,7 @@ internal final class BoardSessionController: VescGattListener {
     boardId: String,
     changes: [String: Any],
     source: BoardConfigRevisionSource = .app,
+    expectedSchemaHash: String? = nil,
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -514,6 +515,7 @@ internal final class BoardSessionController: VescGattListener {
       boardId: boardId,
       changes: changes,
       source: source,
+      expectedSchemaHash: expectedSchemaHash,
       connection: configConnection(config),
       onSuccess: onSuccess,
       onError: onError

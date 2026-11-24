@@ -1746,6 +1746,94 @@ func runBoardConfigSchemaContract() throws {
   try reopenedStore.clear(boardId: "board-rev")
   try require(try reopenedStore.loadLatest(boardId: "board-rev") == nil, "clear removes last-known board config")
   try require(try reopenedStore.loadRevisions(boardId: "board-rev").count == 3, "link integrity clear preserves board config revisions")
+
+  let metaXml = """
+    <ConfigParams>
+      <Params>
+        <kp>
+          <type>1</type>
+          <vTx>8</vTx>
+          <longName>Angle P</longName>
+          <valDouble>20</valDouble>
+        </kp>
+        <meta.is_default>
+          <type>5</type>
+          <longName>Is Default</longName>
+          <valInt>0</valInt>
+        </meta.is_default>
+      </Params>
+      <SerOrder>
+        <ser>kp</ser>
+        <ser>meta.is_default</ser>
+      </SerOrder>
+      <Grouping />
+    </ConfigParams>
+    """
+  let metaSchema = try RefloatConfigSchemaParser.parse(Array(metaXml.utf8))
+  func metaBytes(_ kp: Float, _ isDefault: Bool) -> [UInt8] {
+    let bits = kp.bitPattern
+    return [
+      UInt8((bits >> 24) & 0xff),
+      UInt8((bits >> 16) & 0xff),
+      UInt8((bits >> 8) & 0xff),
+      UInt8(bits & 0xff),
+      isDefault ? 1 : 0,
+    ]
+  }
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 8000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "meta.is_default": true],
+    writeBase: BoardConfigWriteBase(schema: metaSchema, rawConfig: metaBytes(20.0, true), packageSignature: 10),
+    refloatVersion: "1.3.0"
+  ))
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 9000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "meta.is_default": false],
+    writeBase: BoardConfigWriteBase(schema: metaSchema, rawConfig: metaBytes(20.0, false), packageSignature: 10),
+    refloatVersion: "1.3.0"
+  ))
+  try require(try reopenedStore.loadRevisions(boardId: "board-dedup").count == 1, "only meta.is_default changed must deduplicate")
+
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 10_000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "meta.is_default": false],
+    writeBase: BoardConfigWriteBase(schema: metaSchema, rawConfig: metaBytes(20.0, false), packageSignature: 11),
+    refloatVersion: "1.3.0"
+  ))
+  try require(try reopenedStore.loadRevisions(boardId: "board-dedup").count == 2, "package signature change must record revision")
+
+  let tinyFloat = Float(bitPattern: Float(20.0).bitPattern + 1)
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 11_000,
+    freshness: .fresh,
+    values: ["kp": Double(tinyFloat), "meta.is_default": false],
+    writeBase: BoardConfigWriteBase(schema: metaSchema, rawConfig: metaBytes(tinyFloat, false), packageSignature: 11),
+    refloatVersion: "1.3.0"
+  ))
+  try require(try reopenedStore.loadRevisions(boardId: "board-dedup").count == 3, "sub-1e-6 wire change must record revision")
+
+  let metaSchemaV2 = try RefloatConfigSchemaParser.parse(Array(metaXml.replacingOccurrences(of: "Angle P", with: "Angle P v2").utf8))
+  try reopenedStore.saveFresh(BoardConfigValues(
+    boardId: "board-dedup",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 12_000,
+    freshness: .fresh,
+    values: ["kp": Double(tinyFloat), "meta.is_default": false],
+    writeBase: BoardConfigWriteBase(schema: metaSchemaV2, rawConfig: metaBytes(tinyFloat, false), packageSignature: 11),
+    refloatVersion: "1.3.1"
+  ))
+  try require(try reopenedStore.loadRevisions(boardId: "board-dedup").count == 4, "schema hash change must record revision")
   try queue.close()
 }
 

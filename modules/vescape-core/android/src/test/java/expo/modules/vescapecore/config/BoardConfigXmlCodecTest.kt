@@ -278,4 +278,48 @@ class BoardConfigXmlCodecTest {
     }
     assertEquals(RefloatConfigErrorCode.INVALID_CONFIG_XML, doctype.code)
   }
+
+  @Test
+  fun rejectsUnsupportedConfigVersionAndEnforcesStrictDecimalFormattingAndParsing() {
+    val schema = RefloatConfigSchema(
+      hash = "xml-parity",
+      fields = listOf(
+        RefloatConfigSchemaField("ki", RefloatConfigValueType.FLOAT16_SCALED, "Angle I", null, 0.0, 0.5, 0, 100_000.0),
+        RefloatConfigSchemaField("kp", RefloatConfigValueType.FLOAT32, "Angle P", null, 0.0, 100.0, 2),
+      ),
+    )
+    val raw = RefloatConfigEncoder.encode(schema, ByteArray(6), mapOf("ki" to 0.0001, "kp" to 20.0))
+
+    val exported = BoardConfigXmlCodec.exportXml(schema, raw)
+    assertTrue("Expected plain decimal 0.0001 in XML, got:\n$exported", exported.contains("<ki>0.0001</ki>"))
+    assertFalse("Must not emit scientific notation 1.0E-4", exported.contains("1.0E-4"))
+
+    val rawTiny = RefloatConfigEncoder.encode(schema, ByteArray(6), mapOf("ki" to 0.00001, "kp" to 20.0))
+    val exportedTiny = BoardConfigXmlCodec.exportXml(schema, rawTiny)
+    assertTrue("Expected plain decimal 0.00001 in XML, got:\n$exportedTiny", exportedTiny.contains("<ki>0.00001</ki>"))
+
+    for (badVersion in listOf("3", "5", "abc", "")) {
+      val err = assertThrows(RefloatConfigEncodeException::class.java) {
+        BoardConfigXmlCodec.planImport(
+          "board-1",
+          schema,
+          raw,
+          "<CustomConfiguration><ConfigVersion>$badVersion</ConfigVersion><kp>25</kp></CustomConfiguration>",
+        )
+      }
+      assertEquals(RefloatConfigErrorCode.INVALID_CONFIG_XML, err.code)
+    }
+
+    for (badNumeric in listOf("25d", "25f", "0x10", "0x1.0p0")) {
+      val plan = BoardConfigXmlCodec.planImport(
+        "board-1",
+        schema,
+        raw,
+        "<CustomConfiguration><ConfigVersion>4</ConfigVersion><kp>$badNumeric</kp></CustomConfiguration>",
+      )
+      assertTrue("Expected $badNumeric to be rejected", plan.changes.isEmpty())
+      assertEquals(listOf("kp"), plan.skippedFields.map { it.fieldId })
+      assertEquals("Invalid numeric value: $badNumeric", plan.skippedFields[0].reason)
+    }
+  }
 }

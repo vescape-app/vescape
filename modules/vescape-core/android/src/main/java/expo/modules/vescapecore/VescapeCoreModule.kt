@@ -1049,7 +1049,7 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyBoardConfigChangeset`
     // @parity /modules/vescape-core/src/index.ts `applyBoardConfigChangeset`
-    AsyncFunction("applyBoardConfigChangeset") { boardId: String, changes: Map<String, Any?>, source: String?, promise: Promise ->
+    AsyncFunction("applyBoardConfigChangeset") { boardId: String, changes: Map<String, Any?>, source: String?, expectedSchemaHash: String?, promise: Promise ->
       val resolvedSource = when (source) {
         null -> BoardConfigRevisionSource.APP
         BoardConfigRevisionSource.APP.wire -> BoardConfigRevisionSource.APP
@@ -1066,6 +1066,7 @@ class VescapeCoreModule : Module() {
         onSuccess = { snapshot -> promise.resolve(snapshot) },
         onError = { code, message -> promise.reject(code, message, null) },
         source = resolvedSource,
+        expectedSchemaHash = expectedSchemaHash,
       )
     }.runOnQueue(Queues.MAIN)
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `pushProfileToBoard`
@@ -1178,6 +1179,14 @@ class VescapeCoreModule : Module() {
         BoardConfigXmlCodec.planImport(boardId, writeBase.schema, writeBase.rawConfig, xml).toBridgeMap()
       } catch (error: RefloatConfigEncodeException) {
         throw CodedException(error.code.name, error.message, error)
+      } catch (error: CancellationException) {
+        throw error
+      } catch (error: Throwable) {
+        throw CodedException(
+          RefloatConfigErrorCode.INVALID_CONFIG_XML.name,
+          error.message ?: "Board configuration XML could not be parsed",
+          error,
+        )
       }
     }
     AsyncFunction("copyProfileToBoard") Coroutine { profileId: String, targetBoardId: String, newName: String ->

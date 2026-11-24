@@ -265,4 +265,47 @@ final class BoardConfigXmlCodecTests: XCTestCase {
     assertInvalidXml("<MCConfiguration><kp>20</kp></MCConfiguration>")
     assertInvalidXml("<!DOCTYPE foo><CustomConfiguration><kp>20</kp></CustomConfiguration>")
   }
+
+  func testRejectsUnsupportedConfigVersionAndEnforcesStrictDecimalFormattingAndParsing() throws {
+    let schema = RefloatConfigSchema(
+      hash: "xml-parity",
+      fields: [
+        RefloatConfigSchemaField(id: "ki", type: .float16Scaled, label: "Angle I", unit: nil, min: 0, max: 0.5, offset: 0, scale: 100_000.0),
+        RefloatConfigSchemaField(id: "kp", type: .float32, label: "Angle P", unit: nil, min: 0, max: 100, offset: 2),
+      ]
+    )
+    let raw = try RefloatConfigEncoder.encode(schema: schema, rawConfig: [UInt8](repeating: 0, count: 6), fields: ["ki": 0.0001, "kp": 20.0])
+
+    let exported = BoardConfigXmlCodec.exportXml(schema: schema, rawConfig: raw)
+    XCTAssertTrue(exported.contains("<ki>0.0001</ki>"), "Expected plain decimal 0.0001 in XML, got:\n\(exported)")
+
+    let rawTiny = try RefloatConfigEncoder.encode(schema: schema, rawConfig: [UInt8](repeating: 0, count: 6), fields: ["ki": 0.00001, "kp": 20.0])
+    let exportedTiny = BoardConfigXmlCodec.exportXml(schema: schema, rawConfig: rawTiny)
+    XCTAssertTrue(exportedTiny.contains("<ki>0.00001</ki>"), "Expected plain decimal 0.00001 in XML, got:\n\(exportedTiny)")
+
+    for badVersion in ["3", "5", "abc", ""] {
+      XCTAssertThrowsError(
+        try BoardConfigXmlCodec.planImport(
+          boardId: "board-1",
+          currentSchema: schema,
+          currentRawConfig: raw,
+          xml: "<CustomConfiguration><ConfigVersion>\(badVersion)</ConfigVersion><kp>25</kp></CustomConfiguration>"
+        )
+      ) { error in
+        XCTAssertEqual((error as? RefloatConfigEncodeException)?.code, .INVALID_CONFIG_XML)
+      }
+    }
+
+    for badNumeric in ["25d", "25f", "0x10", "0x1.0p0"] {
+      let plan = try BoardConfigXmlCodec.planImport(
+        boardId: "board-1",
+        currentSchema: schema,
+        currentRawConfig: raw,
+        xml: "<CustomConfiguration><ConfigVersion>4</ConfigVersion><kp>\(badNumeric)</kp></CustomConfiguration>"
+      )
+      XCTAssertTrue(plan.changes.isEmpty, "Expected \(badNumeric) to be rejected")
+      XCTAssertEqual(plan.skippedFields.map(\.fieldId), ["kp"])
+      XCTAssertEqual(plan.skippedFields[0].reason, "Invalid numeric value: \(badNumeric)")
+    }
+  }
 }

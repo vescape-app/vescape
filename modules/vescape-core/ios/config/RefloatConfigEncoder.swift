@@ -27,21 +27,30 @@ enum RefloatConfigEncoder {
     schema: RefloatConfigSchema,
     rawConfig: [UInt8],
     fields: [String: Any],
-    overlay: RefloatFieldOverlay = .shared
+    overlay: RefloatFieldOverlay = .shared,
+    allowInternal: Bool = false
   ) throws -> [UInt8] {
-    try encodeChangeset(schema: schema, rawConfig: rawConfig, changes: fields, overlay: overlay).rawConfig
+    try encodeChangeset(
+      schema: schema,
+      rawConfig: rawConfig,
+      changes: fields,
+      overlay: overlay,
+      allowInternal: allowInternal
+    ).rawConfig
   }
 
   static func encodeChangeset(
     schema: RefloatConfigSchema,
     rawConfig: [UInt8],
     changes: [String: Any],
-    overlay: RefloatFieldOverlay = .shared
+    overlay: RefloatFieldOverlay = .shared,
+    allowInternal: Bool = false
   ) throws -> EncodedChangeset {
     let byId = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
+    let internalSchemaIds = allowInternal ? Set<String>() : collectInternalSchemaFieldIds(schema)
     let validated: [(RefloatConfigSchemaField, [UInt8])] = try changes.map { fieldId, value in
       guard let field = byId[fieldId] else { throw invalid("unknown field \(fieldId)") }
-      if overlay.isInternal(field.id) {
+      if !allowInternal && isInternalField(field.id, internalSchemaIds: internalSchemaIds, overlay: overlay) {
         throw invalid("\(field.id) is internal and cannot be edited")
       }
       if value is NSNull { throw invalid("\(field.id) cannot be null") }
@@ -140,12 +149,43 @@ enum RefloatConfigEncoder {
     return FieldNumericRange(min: minVal, max: maxVal)
   }
 
+  static func collectInternalSchemaFieldIds(_ schema: RefloatConfigSchema) -> Set<String> {
+    var ids = Set<String>()
+    for group in schema.groups {
+      let groupInternal = group.name.caseInsensitiveCompare("internal") == .orderedSame
+      for subgroup in group.subgroups {
+        if !groupInternal && subgroup.name.caseInsensitiveCompare("meta") != .orderedSame { continue }
+        for item in subgroup.items {
+          if case let .field(fieldId) = item { ids.insert(fieldId) }
+        }
+      }
+    }
+    return ids
+  }
+
+  static func isInternalField(
+    _ fieldId: String,
+    internalSchemaIds: Set<String>,
+    overlay: RefloatFieldOverlay = .shared
+  ) -> Bool {
+    overlay.isInternal(fieldId) || fieldId.hasPrefix("meta.") || internalSchemaIds.contains(fieldId)
+  }
+
+  static func isInternalField(
+    _ fieldId: String,
+    schema: RefloatConfigSchema,
+    overlay: RefloatFieldOverlay = .shared
+  ) -> Bool {
+    isInternalField(fieldId, internalSchemaIds: collectInternalSchemaFieldIds(schema), overlay: overlay)
+  }
+
   static func encodeFieldBytes(
     _ field: RefloatConfigSchemaField,
     _ value: Any,
-    overlay: RefloatFieldOverlay = .shared
+    overlay: RefloatFieldOverlay = .shared,
+    allowInternal: Bool = false
   ) throws -> [UInt8] {
-    if overlay.isInternal(field.id) {
+    if !allowInternal && (overlay.isInternal(field.id) || field.id.hasPrefix("meta.")) {
       throw invalid("\(field.id) is internal and cannot be edited")
     }
     return try encodeAndVerifyField(field, value, overlay: overlay)
@@ -162,6 +202,21 @@ enum RefloatConfigEncoder {
     let roundTripBits = try encodeWireBits(field, decoded)
     if roundTripBits != bits {
       throw invalid("\(field.id) = \(value) failed wire round-trip")
+    }
+    if field.type == .float16Scaled || field.type == .float32Scaled {
+      let scaleFloat = Float(try requireScale(field))
+      let rawInt: Int64 = field.type == .float16Scaled
+        ? Int64(Int16(bitPattern: UInt16(truncatingIfNeeded: bits)))
+        : Int64(Int32(bitPattern: UInt32(truncatingIfNeeded: bits)))
+      let firmwareFloat = Float(rawInt) / scaleFloat
+      let reserialized = firmwareFloat * scaleFloat
+      let reserializedDouble = Double(reserialized)
+      let inRange = reserialized.isFinite
+        && reserializedDouble >= Double(Int32.min)
+        && reserializedDouble <= Double(Int32.max)
+      if !inRange || Int64(reserialized) != rawInt {
+        throw invalid("\(field.id) = \(value) does not survive firmware float32 round-trip")
+      }
     }
     return bytes
   }
@@ -205,7 +260,7 @@ enum RefloatConfigEncoder {
     return neg ? -result : result
   }
 
-  private static func isEnumField(_ field: RefloatConfigSchemaField) -> Bool {
+  static func isEnumField(_ field: RefloatConfigSchemaField) -> Bool {
     field.xmlType == 4 || (field.xmlType == nil && !field.enumNames.isEmpty)
   }
 

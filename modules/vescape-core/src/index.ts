@@ -1168,6 +1168,7 @@ export type RefloatConfigErrorCode =
   | 'CONFIG_VERIFY_FAILED'
   | 'UNEXPECTED_CONFIG_RESPONSE'
   | 'UNSUPPORTED_SCHEMA'
+  | 'CONFIG_SCHEMA_MISMATCH'
   | 'CONFIG_DECODE_FAILED'
   | 'CONFIG_ENCODE_FAILED'
   | 'CONFIG_VALUE_INVALID'
@@ -2645,6 +2646,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     boardId: string,
     changes: Record<string, TuneProfileFieldValue>,
     source?: Exclude<BoardConfigRevisionSource, 'external'> | null,
+    expectedSchemaHash?: string | null,
   ): Promise<BoardConfigValues>
   pushProfileToBoard(profileId: string): Promise<BoardConfigValues>
   getProfileStatsSnapshot(options: ProfileStatsSnapshotOptions): Promise<ProfileStatsSnapshot>
@@ -3802,8 +3804,14 @@ export async function applyBoardConfigChangeset(
   boardId: string,
   changes: Record<string, TuneProfileFieldValue>,
   source?: Exclude<BoardConfigRevisionSource, 'external'>,
+  expectedSchemaHash?: string | null,
 ): Promise<BoardConfigValues> {
-  return native.applyBoardConfigChangeset(boardId, changes, source ?? null)
+  return native.applyBoardConfigChangeset(
+    boardId,
+    changes,
+    source ?? null,
+    expectedSchemaHash ?? null,
+  )
 }
 
 /**

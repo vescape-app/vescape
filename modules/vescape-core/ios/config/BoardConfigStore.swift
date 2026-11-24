@@ -451,8 +451,14 @@ struct BoardConfigStore {
       .filter(Column("board_id") == boardId)
       .order(Column("created_at").desc, Column("id").desc)
       .fetchOne(db)
+    let signature = Int64(writeBase.packageSignature)
     let changesJson: String
     if let latest {
+      if latest.schemaHash == schema.hash,
+         latest.packageSignature == signature,
+         normalizeRevisionRawBytes(schema, Array(latest.rawConfig)) == normalizeRevisionRawBytes(schema, writeBase.rawConfig) {
+        return
+      }
       let previousSchema = latest.schemaHash == schema.hash ? schema : try Self.loadSchema(db, schemaHash: latest.schemaHash)
       if let previousSchema {
         let previousValues = RefloatConfigFieldDecoder.decodeFieldMap(schema: previousSchema, rawConfig: Array(latest.rawConfig))
@@ -462,10 +468,8 @@ struct BoardConfigStore {
           schema: schema,
           ignoredFields: BoardConfigChangeNotice.volatileMotorFields
         )
-        guard !diffs.isEmpty else { return }
         changesJson = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: createdAt, diffs: diffs).diffsJson()
       } else {
-        guard latest.rawConfig != rawData else { return }
         changesJson = "[]"
       }
     } else {
@@ -476,7 +480,7 @@ struct BoardConfigStore {
       boardId: boardId,
       refloatVersion: refloatVersion,
       schemaHash: schema.hash,
-      packageSignature: Int64(writeBase.packageSignature),
+      packageSignature: signature,
       rawConfig: rawData,
       source: source.rawValue,
       changesJson: changesJson,
@@ -484,6 +488,15 @@ struct BoardConfigStore {
       createdAt: createdAt
     )
     try record.insert(db)
+  }
+
+  private static func normalizeRevisionRawBytes(_ schema: RefloatConfigSchema, _ rawConfig: [UInt8]) -> [UInt8] {
+    guard let metaField = schema.fields.first(where: { $0.id == "meta.is_default" }) else { return rawConfig }
+    let end = metaField.offset + metaField.type.byteSize
+    guard metaField.offset >= 0, rawConfig.count >= end else { return rawConfig }
+    var normalized = rawConfig
+    for i in metaField.offset..<end { normalized[i] = 0 }
+    return normalized
   }
 
   func save(_ values: BoardConfigValues) throws {

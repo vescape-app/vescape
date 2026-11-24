@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.config
 
 import java.io.ByteArrayInputStream
+import java.math.BigDecimal
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.abs
 import kotlin.math.floor
@@ -95,20 +96,24 @@ internal object BoardConfigXmlCodec {
       val name = child.nodeName
       val text = child.textContent.trim()
       if (name == CONFIG_VERSION_TAG) {
-        configVersion = text.toIntOrNull()
+        val parsedVersion = text.toIntOrNull()
+        if (parsedVersion != VESC_TOOL_CONFIG_VERSION) {
+          throw invalidXml("Unsupported ConfigVersion: $text (expected $VESC_TOOL_CONFIG_VERSION)")
+        }
+        configVersion = parsedVersion
         continue
       }
       parsedEntries[name] = text
     }
 
-    val internalSchemaIds = collectInternalSchemaFieldIds(currentSchema)
+    val internalSchemaIds = RefloatConfigEncoder.collectInternalSchemaFieldIds(currentSchema)
     val currentById = currentSchema.fields.associateBy { it.id }
 
     val changes = LinkedHashMap<String, Any>()
     val skippedFields = mutableListOf<BoardConfigRevertSkippedField>()
 
     for ((fieldId, rawText) in parsedEntries) {
-      if (isInternalField(fieldId, internalSchemaIds, overlay)) continue
+      if (RefloatConfigEncoder.isInternalField(fieldId, internalSchemaIds, overlay)) continue
 
       val currentField = currentById[fieldId]
       if (currentField == null) {
@@ -202,10 +207,15 @@ internal object BoardConfigXmlCodec {
     }
   }
 
+  private val strictDecimalRegex = Regex("^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?$")
+
   private fun formatDouble(value: Double): String {
     if (value == 0.0) return "0"
     if (floor(value) == value && abs(value) < 1e15) {
       return value.toLong().toString()
+    }
+    if (abs(value) >= 1e-12 && abs(value) < 1e15) {
+      return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
     }
     return value.toString()
   }
@@ -218,6 +228,7 @@ internal object BoardConfigXmlCodec {
         else -> null
       }
     }
+    if (!strictDecimalRegex.matches(rawText)) return null
     val parsed = rawText.toDoubleOrNull() ?: return null
     if (!parsed.isFinite()) return null
     return if (parsed == 0.0) 0.0 else parsed
@@ -229,26 +240,6 @@ internal object BoardConfigXmlCodec {
     .replace(">", "&gt;")
     .replace("\"", "&quot;")
     .replace("'", "&apos;")
-
-  private fun isInternalField(
-    fieldId: String,
-    internalSchemaIds: Set<String>,
-    overlay: RefloatFieldOverlay,
-  ): Boolean = overlay.isInternal(fieldId) || fieldId.startsWith("meta.") || fieldId in internalSchemaIds
-
-  private fun collectInternalSchemaFieldIds(schema: RefloatConfigSchema): Set<String> {
-    val ids = HashSet<String>()
-    for (group in schema.groups) {
-      val groupInternal = group.name.equals("internal", ignoreCase = true)
-      for (subgroup in group.subgroups) {
-        if (!groupInternal && !subgroup.name.equals("meta", ignoreCase = true)) continue
-        for (item in subgroup.items) {
-          if (item is RefloatConfigSchemaGroupItem.Field) ids.add(item.fieldId)
-        }
-      }
-    }
-    return ids
-  }
 
   private fun matchesBytes(rawConfig: ByteArray, offset: Int, encodedBytes: ByteArray): Boolean {
     for (i in encodedBytes.indices) {

@@ -115,6 +115,91 @@ class ConfigRWControllerRoutingTest {
     }
 
     @Test
+    fun vescapeWriteAwaitsPersistenceCommitBeforeResolvingCallback() {
+        val scheduler = TestScheduler()
+        val sent = mutableListOf<ByteArray>()
+        var pendingCommit: (() -> Unit)? = null
+        var committedOrigin: BoardConfigOperationOrigin? = null
+        val config = SessionConfig(
+            appBoardId = "board-1",
+            deviceId = "ble-1",
+            deviceName = "Board",
+            transport = BoardTransport.Direct,
+            pollIntervalMs = 1000,
+            recordingEnabled = false,
+            telemetryRecordingEnabled = false,
+            refloatBaseVersion = "3.0.7",
+            refloatVersion = "Refloat 3.0.7",
+        )
+        val schema = RefloatConfigSchemaParser.parse(schemaXml)
+        val fresh = BoardConfigValues(
+            boardId = "board-1",
+            refloatBaseVersion = "3.0.7",
+            capturedAtMs = 1L,
+            freshness = BoardConfigFreshness.FRESH,
+            values = mapOf("kp" to 12.5),
+            writeBase = BoardConfigWriteBase(schema, configBytes, 0x12345678L),
+            refloatVersion = "Refloat 3.0.7",
+        )
+        val controller = ConfigRWController(
+            scheduler = scheduler,
+            appDataScope = CoroutineScope(Dispatchers.Unconfined),
+            loadProfile = { null },
+            port = object : ConfigRWControllerPort {
+                override fun connection() = ConfigConnectionSnapshot(
+                    config = config,
+                    phase = BoardPhase.Connected,
+                    transport = BoardTransport.Direct,
+                    fwVersion = "FW 6.05",
+                    linkIntegrity = LinkIntegrity.Trusted,
+                    boardConfigValues = fresh,
+                    rideState = BoardRideState(state = 0, switchState = 0, receivedAtMs = System.currentTimeMillis()),
+                )
+
+                override fun isPollingActive() = false
+                override fun stopPolling() = Unit
+                override fun startPolling() = Unit
+                override fun sendPayload(payload: ByteArray): Boolean {
+                    sent.add(payload)
+                    return true
+                }
+                override fun captureDiagnostic(name: String, properties: Map<String, Any?>) = Unit
+                override fun diagnosticProperties(config: SessionConfig?, category: String) = emptyMap<String, Any?>()
+                override fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray) = Unit
+                override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) = Unit
+                override fun onBoardConfigValues(
+                    values: BoardConfigValues,
+                    origin: BoardConfigOperationOrigin,
+                    onPersisted: () -> Unit,
+                ) {
+                    committedOrigin = origin
+                    pendingCommit = onPersisted
+                }
+                override fun demoteWriteBase() = Unit
+            },
+        )
+
+        var resolved = false
+        controller.consumeWrite(
+            PendingConfigWrite.Changeset(
+                boardId = "board-1",
+                changes = mapOf("kp" to 33.0),
+                onSuccess = { resolved = true },
+                onError = { code, message -> error("write should not fail: $code $message") },
+            ),
+        )
+        val patched = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putFloat(33.0f).array()
+        assertTrue(controller.onPayload(byteArrayOf(COMM_SET_CUSTOM_CONFIG.toByte()), 11L))
+        assertTrue(controller.onPayload(configPayload(null, patched), 12L))
+        assertTrue(committedOrigin is BoardConfigOperationOrigin.VescapeWrite)
+        assertNotNull(pendingCommit)
+        assertFalse("JS write callback must wait for persistence commit", resolved)
+
+        pendingCommit!!.invoke()
+        assertTrue("JS write callback must resolve after persistence commit", resolved)
+    }
+
+    @Test
     fun wrappedReplyForDifferentCanIdIsNotConsumedAndUnwrappedRepliesOnCanWork() {
         val scheduler = TestScheduler()
         val sent = mutableListOf<ByteArray>()

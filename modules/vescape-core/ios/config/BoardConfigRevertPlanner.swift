@@ -58,8 +58,8 @@ enum BoardConfigRevertPlanner {
     overlay: RefloatFieldOverlay = .shared
   ) -> BoardConfigRevertPlan {
     let sameSchema = currentSchema.hash == targetSchema.hash
-    let internalSchemaIds = collectInternalSchemaFieldIds(currentSchema)
-      .union(collectInternalSchemaFieldIds(targetSchema))
+    let internalSchemaIds = RefloatConfigEncoder.collectInternalSchemaFieldIds(currentSchema)
+      .union(RefloatConfigEncoder.collectInternalSchemaFieldIds(targetSchema))
     let targetValues = RefloatConfigFieldDecoder.decodeFieldMap(schema: targetSchema, rawConfig: targetRawConfig)
     let currentById = Dictionary(uniqueKeysWithValues: currentSchema.fields.map { ($0.id, $0) })
 
@@ -67,7 +67,7 @@ enum BoardConfigRevertPlanner {
     var skippedFields: [BoardConfigRevertSkippedField] = []
 
     for targetField in targetSchema.fields {
-      if isInternalField(targetField.id, internalSchemaIds: internalSchemaIds, overlay: overlay) {
+      if RefloatConfigEncoder.isInternalField(targetField.id, internalSchemaIds: internalSchemaIds, overlay: overlay) {
         continue
       }
 
@@ -105,7 +105,43 @@ enum BoardConfigRevertPlanner {
         continue
       }
 
-      let candidateValue = normalizeCandidate(currentField, rawTargetValue)
+      let mappedValue: Any
+      if !sameSchema,
+         RefloatConfigEncoder.isEnumField(targetField),
+         RefloatConfigEncoder.isEnumField(currentField),
+         !targetField.enumNames.isEmpty,
+         !currentField.enumNames.isEmpty {
+        guard let rawIndex = rawTargetValue as? Double,
+              rawIndex.isFinite,
+              rawIndex.rounded(.down) == rawIndex,
+              rawIndex >= 0,
+              rawIndex < Double(targetField.enumNames.count) else {
+          skippedFields.append(
+            BoardConfigRevertSkippedField(
+              fieldId: targetField.id,
+              label: currentField.label,
+              reason: "Enum value out of range for saved revision"
+            )
+          )
+          continue
+        }
+        let optionName = targetField.enumNames[Int(rawIndex)]
+        guard let currentIndex = currentField.enumNames.firstIndex(of: optionName) else {
+          skippedFields.append(
+            BoardConfigRevertSkippedField(
+              fieldId: targetField.id,
+              label: currentField.label,
+              reason: "Option '\(optionName)' is not in current firmware schema"
+            )
+          )
+          continue
+        }
+        mappedValue = Double(currentIndex)
+      } else {
+        mappedValue = rawTargetValue
+      }
+
+      let candidateValue = normalizeCandidate(currentField, mappedValue)
       let encodedBytes: [UInt8]
       do {
         encodedBytes = try RefloatConfigEncoder.encodeFieldBytes(currentField, candidateValue, overlay: overlay)
@@ -134,6 +170,23 @@ enum BoardConfigRevertPlanner {
       }
     }
 
+    if !sameSchema {
+      let targetIds = Set(targetSchema.fields.map(\.id))
+      for currentField in currentSchema.fields {
+        if targetIds.contains(currentField.id) { continue }
+        if RefloatConfigEncoder.isInternalField(currentField.id, internalSchemaIds: internalSchemaIds, overlay: overlay) {
+          continue
+        }
+        skippedFields.append(
+          BoardConfigRevertSkippedField(
+            fieldId: currentField.id,
+            label: currentField.label,
+            reason: "Not in saved revision"
+          )
+        )
+      }
+    }
+
     return BoardConfigRevertPlan(
       boardId: boardId,
       targetRevisionId: targetRevisionId,
@@ -145,28 +198,6 @@ enum BoardConfigRevertPlanner {
       changes: changes,
       skippedFields: skippedFields
     )
-  }
-
-  private static func isInternalField(
-    _ fieldId: String,
-    internalSchemaIds: Set<String>,
-    overlay: RefloatFieldOverlay
-  ) -> Bool {
-    overlay.isInternal(fieldId) || fieldId.hasPrefix("meta.") || internalSchemaIds.contains(fieldId)
-  }
-
-  private static func collectInternalSchemaFieldIds(_ schema: RefloatConfigSchema) -> Set<String> {
-    var ids = Set<String>()
-    for group in schema.groups {
-      let groupInternal = group.name.caseInsensitiveCompare("internal") == .orderedSame
-      for subgroup in group.subgroups {
-        if !groupInternal && subgroup.name.caseInsensitiveCompare("meta") != .orderedSame { continue }
-        for item in subgroup.items {
-          if case let .field(fieldId) = item { ids.insert(fieldId) }
-        }
-      }
-    }
-    return ids
   }
 
   private static func normalizeCandidate(_ field: RefloatConfigSchemaField, _ value: Any) -> Any {

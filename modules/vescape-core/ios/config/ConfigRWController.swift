@@ -46,7 +46,7 @@ private struct ConfigReadContext {
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWStates.kt `ConfigWriteIntent`
 internal enum ConfigWriteIntent {
-  case changeset([String: Any], source: BoardConfigRevisionSource = .app)
+  case changeset([String: Any], source: BoardConfigRevisionSource = .app, expectedSchemaHash: String? = nil)
   case profile(id: String, fields: [String: Any])
 }
 
@@ -156,6 +156,7 @@ internal final class ConfigRWController {
     boardId: String,
     changes: [String: Any],
     source: BoardConfigRevisionSource = .app,
+    expectedSchemaHash: String? = nil,
     connection: ConfigRWConnection,
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
@@ -185,7 +186,7 @@ internal final class ConfigRWController {
       return
     }
     startWriteOperation(
-      intent: .changeset(changes, source: source),
+      intent: .changeset(changes, source: source, expectedSchemaHash: expectedSchemaHash),
       connectedBoardId: connectedBoardId,
       startedAtMs: startedAtMs,
       connection: connection,
@@ -551,6 +552,20 @@ internal final class ConfigRWController {
     _ connection: ConfigRWConnection
   ) {
     let rawConfig = configBytes.config
+    if case .changeset(_, _, let expectedSchemaHash) = ctx.intent,
+       let expectedSchemaHash,
+       !expectedSchemaHash.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+       schema.hash != expectedSchemaHash {
+      failWrite(
+        code: .CONFIG_SCHEMA_MISMATCH,
+        message: "Board config schema changed (expected \(expectedSchemaHash), got \(schema.hash))",
+        phase: failPhase,
+        rawConfig: rawConfig,
+        resumePolling: ctx.wasPolling,
+        connection: connection
+      )
+      return
+    }
     do {
       let freshValues: BoardConfigValues? = fromFreshRead
         ? try boardConfigValues(
@@ -678,11 +693,15 @@ internal final class ConfigRWController {
 
   private func resolveChanges(_ intent: ConfigWriteIntent, schema: RefloatConfigSchema) -> [String: Any] {
     switch intent {
-    case .changeset(let changes, _):
+    case .changeset(let changes, _, _):
       return changes
     case .profile(_, let fields):
       let schemaIds = Set(schema.fields.map(\.id))
-      return fields.filter { schemaIds.contains($0.key) }
+      let internalSchemaIds = RefloatConfigEncoder.collectInternalSchemaFieldIds(schema)
+      return fields.filter { fieldId, _ in
+        schemaIds.contains(fieldId)
+          && !RefloatConfigEncoder.isInternalField(fieldId, internalSchemaIds: internalSchemaIds)
+      }
     }
   }
 
@@ -722,7 +741,7 @@ internal final class ConfigRWController {
       )
       let origin: BoardConfigOperationOrigin
       switch ctx.intent {
-      case .changeset(_, let source):
+      case .changeset(_, let source, _):
         origin = .vescapeWrite(source: source, tuneProfileId: nil)
       case .profile(let profileId, _):
         origin = .vescapeWrite(source: .app, tuneProfileId: profileId)

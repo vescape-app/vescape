@@ -446,7 +446,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 override fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray) =
                     this@BoardSessionController.dumpRefloatConfigDebug(xmlBytes, configBytes)
                 override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) =
-                    this@BoardSessionController.onBoardConfigValues(values, origin)
+                    this@BoardSessionController.onBoardConfigValues(values, origin, null)
+                override fun onBoardConfigValues(
+                    values: BoardConfigValues,
+                    origin: BoardConfigOperationOrigin,
+                    onPersisted: () -> Unit,
+                ) = this@BoardSessionController.onBoardConfigValues(values, origin, onPersisted)
                 override fun demoteWriteBase() {
                     boardConfigValues = boardConfigValues?.demotedToProvisional()
                 }
@@ -1758,14 +1763,20 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /**
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onBoardConfigValues`
      */
-    private fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) {
-        if (values.boardId != boardConfig?.appBoardId) return
-        if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
+    private fun onBoardConfigValues(
+        values: BoardConfigValues,
+        origin: BoardConfigOperationOrigin,
+        onPersisted: (() -> Unit)? = null,
+    ) {
+        if (values.boardId != boardConfig?.appBoardId || lastEmittedLinkIntegrity != LinkIntegrity.Trusted) {
+            onPersisted?.invoke()
+            return
+        }
         boardConfigValues = values
         syncBoardLightsFromConfig(values)
         alertCoordinator.updateBoardConfigValues(values.values)
         val repo = AppDataRepository.get(service.applicationContext)
-        CoreForegroundService.appDataScope.launch {
+        CoreForegroundService.appDataScope.launch(CoreForegroundService.configPersistenceDispatcher) {
             try {
                 when (origin) {
                     BoardConfigOperationOrigin.FreshRead -> {
@@ -1777,6 +1788,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Throwable) { RecordingStorageFailure.report("board_config_save", "write_failed", e) }
+            finally {
+                if (onPersisted != null) {
+                    scheduler.post { onPersisted() }
+                }
+            }
         }
         evaluateConfigSafety(values)
     }
@@ -1789,7 +1805,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val refloatBaseVersion = config.refloatBaseVersion ?: return
         val repo = AppDataRepository.get(service.applicationContext)
         val session = boardSession
-        CoreForegroundService.appDataScope.launch {
+        CoreForegroundService.appDataScope.launch(CoreForegroundService.configPersistenceDispatcher) {
             val restored = try { repo.getBoardConfigValues(boardId, refloatBaseVersion) }
             catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Throwable) { RecordingStorageFailure.reportRead("board_config_restore", e); return@launch }
@@ -1839,7 +1855,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         alertCoordinator.updateBoardConfigValues(emptyMap())
         val boardId = boardConfig?.appBoardId ?: return
         val repo = AppDataRepository.get(service.applicationContext)
-        CoreForegroundService.appDataScope.launch { repo.clearBoardConfigValues(boardId) }
+        CoreForegroundService.appDataScope.launch(CoreForegroundService.configPersistenceDispatcher) {
+            repo.clearBoardConfigValues(boardId)
+        }
     }
 
     /**
@@ -2437,7 +2455,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
             it == BoardConfigFlagField.LEDS_ON.id || it == BoardConfigFlagField.HEADLIGHTS_ON.id
         }
         val repo = AppDataRepository.get(service.applicationContext)
-        CoreForegroundService.appDataScope.launch { repo.patchBoardConfigValues(boardId, baseVersion, patch) }
+        CoreForegroundService.appDataScope.launch(CoreForegroundService.configPersistenceDispatcher) {
+            repo.patchBoardConfigValues(boardId, baseVersion, patch)
+        }
     }
 
     private fun syncBoardLightsFromConfig(values: BoardConfigValues) {

@@ -1220,7 +1220,7 @@ public class VescapeCoreModule: Module {
         promise.resolve(revisions.map { $0.toBridgeMap() })
       } catch {
         RecordingStorageFailure.reportRead(operation: "board_config_revisions_read", error: error)
-        promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read Board Config Revisions", cause: error)
       }
     }
 
@@ -1329,7 +1329,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyBoardConfigChangeset`
     // @parity /modules/vescape-core/src/index.ts `applyBoardConfigChangeset`
-    AsyncFunction("applyBoardConfigChangeset") { (boardId: String, changes: [String: Any], source: String?, promise: Promise) in
+    AsyncFunction("applyBoardConfigChangeset") { (boardId: String, changes: [String: Any], source: String?, expectedSchemaHash: String?, promise: Promise) in
       let resolvedSource: BoardConfigRevisionSource
       if let source {
         switch source {
@@ -1347,6 +1347,7 @@ public class VescapeCoreModule: Module {
         boardId: boardId,
         changes: changes,
         source: resolvedSource,
+        expectedSchemaHash: expectedSchemaHash,
         onSuccess: { snapshot in promise.resolve(snapshot) },
         onError: { code, message in promise.reject(code, message) }
       )

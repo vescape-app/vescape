@@ -30,6 +30,12 @@ enum RefloatConfigWriteVerifier {
 
   private static func expectedReadBack(_ schema: RefloatConfigSchema, _ written: [UInt8]) throws -> [UInt8] {
     guard schema.fields.contains(where: { $0.id == metaIsDefault }) else { return written }
-    return try RefloatConfigEncoder.encode(schema: schema, rawConfig: written, fields: [metaIsDefault: 0], overlay: .empty)
+    return try RefloatConfigEncoder.encode(
+      schema: schema,
+      rawConfig: written,
+      fields: [metaIsDefault: 0],
+      overlay: .empty,
+      allowInternal: true
+    )
   }
 }

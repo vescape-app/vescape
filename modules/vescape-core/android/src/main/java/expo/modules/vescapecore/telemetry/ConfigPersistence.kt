@@ -234,19 +234,23 @@ internal class ConfigPersistence(
         createdAt = createdAt,
       )
     }
+    if (latest.schemaHash == validSchema.hash &&
+      latest.packageSignature == signature &&
+      normalizeRevisionRawBytes(validSchema, latest.rawConfig)
+        .contentEquals(normalizeRevisionRawBytes(validSchema, bytes))
+    ) {
+      return null
+    }
     val previousSchema = if (latest.schemaHash == validSchema.hash) validSchema else loadSchema(latest.schemaHash)
     val diffs = if (previousSchema != null) {
       val previousValues = RefloatConfigFieldDecoder.decodeFieldMap(previousSchema, latest.rawConfig)
-      val computed = BoardConfigChangeNotice.diff(
+      BoardConfigChangeNotice.diff(
         previousValues,
         values,
         validSchema,
         BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS,
       )
-      if (computed.isEmpty()) return null
-      computed
     } else {
-      if (latest.rawConfig.contentEquals(bytes)) return null
       emptyList()
     }
     val changesJson = BoardConfigChangeNotice(boardId, createdAt, diffs).diffsJson()
@@ -261,6 +265,15 @@ internal class ConfigPersistence(
       tuneProfileId = tuneProfileId,
       createdAt = createdAt,
     )
+  }
+
+  private fun normalizeRevisionRawBytes(schema: RefloatConfigSchema, rawConfig: ByteArray): ByteArray {
+    val metaField = schema.fields.firstOrNull { it.id == "meta.is_default" } ?: return rawConfig
+    val end = metaField.offset + metaField.type.byteSize
+    if (metaField.offset < 0 || rawConfig.size < end) return rawConfig
+    val normalized = rawConfig.copyOf()
+    for (i in metaField.offset until end) normalized[i] = 0
+    return normalized
   }
 
   suspend fun saveFreshMotor(
