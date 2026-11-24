@@ -385,8 +385,19 @@ export function buildBoardConfigReviewEntries({
   const schemaFieldById = new Map<string, BoardConfigSchemaField>(
     (schema?.fields ?? []).map((field) => [field.id, field]),
   )
+  const schemaOrderById = new Map<string, number>(
+    (schema?.fields ?? []).map((field, index) => [field.id, index]),
+  )
+  const orderedEntries = Object.entries(changes).sort(([a], [b]) => {
+    const orderA = schemaOrderById.get(a)
+    const orderB = schemaOrderById.get(b)
+    if (orderA !== undefined && orderB !== undefined) return orderA - orderB
+    if (orderA !== undefined) return -1
+    if (orderB !== undefined) return 1
+    return a.localeCompare(b)
+  })
 
-  return Object.entries(changes).map(([fieldId, newValue]) => {
+  return orderedEntries.map(([fieldId, newValue]) => {
     const rawOld = currentValues[fieldId]
     const oldValue = rawOld === undefined ? null : rawOld
     const schemaField = schemaFieldById.get(fieldId)

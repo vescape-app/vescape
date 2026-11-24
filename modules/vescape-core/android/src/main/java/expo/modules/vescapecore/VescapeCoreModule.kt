@@ -1118,7 +1118,10 @@ class VescapeCoreModule : Module() {
           .getBoardConfigRevisions(boardId, limit ?: ConfigPersistence.DEFAULT_REVISIONS_LIMIT)
       }
       catch (error: CancellationException) { throw error }
-      catch (error: Throwable) { RecordingStorageFailure.reportRead("board_config_revisions_read", error); throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.reportRead("board_config_revisions_read", error)
+        throw CodedException("APP_STORAGE_READ_FAILED", "Could not read Board Config Revisions", error)
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigRevert`
     // @parity /modules/vescape-core/src/index.ts `planBoardConfigRevert`
@@ -1133,7 +1136,10 @@ class VescapeCoreModule : Module() {
       }
       catch (error: CancellationException) { throw error }
       catch (error: RefloatConfigEncodeException) { throw CodedException(error.code.name, error.message, error) }
-      catch (error: Throwable) { RecordingStorageFailure.reportRead("board_config_revert_plan", error); throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.reportRead("board_config_revert_plan", error)
+        throw CodedException("APP_STORAGE_READ_FAILED", error.message ?: "Could not plan board config revert", error)
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportBoardConfigXml`
     // @parity /modules/vescape-core/src/index.ts `exportBoardConfigXml`

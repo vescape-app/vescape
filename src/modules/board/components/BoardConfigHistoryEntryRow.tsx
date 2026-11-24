@@ -11,9 +11,16 @@ import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
 import { formatDateTime, type DateFormat, type TimeFormat } from '@/helpers/time'
 import { temperatureFromC, temperatureSymbol, type TemperatureUnit } from '@/helpers/units'
-import { formatNumericDisplay } from '@/modules/board/lib/boardConfigChangeset'
+import {
+  formatBoardConfigFieldValue,
+  formatNumericDisplay,
+  isInternalBoardConfigField,
+} from '@/modules/board/lib/boardConfigChangeset'
 import type { BoardConfigTuningSessionEntry } from '@/modules/board/lib/boardConfigRevisions'
-import { getFieldLabel } from '@/modules/board/lib/refloatFieldOverlay'
+import {
+  getFieldLabel,
+  type ResolvedBoardConfigField,
+} from '@/modules/board/lib/refloatFieldOverlay'
 
 const SOURCE_LABELS: Record<BoardConfigRevisionSource, string> = {
   app: 'App',
@@ -39,11 +46,15 @@ function formatDiffValue(
   value: number | boolean | null,
   unit: string | null,
   temperatureUnit: TemperatureUnit,
+  resolvedField?: ResolvedBoardConfigField,
 ): string {
+  if (resolvedField) {
+    return formatBoardConfigFieldValue(resolvedField, value, temperatureUnit)
+  }
   if (value === null) return DASH
   if (typeof value === 'boolean') return value ? 'On' : 'Off'
   if (unit === '°C') {
-    return `${Math.round(temperatureFromC(value, temperatureUnit))} ${temperatureSymbol(temperatureUnit)}`
+    return `${formatNumericDisplay(temperatureFromC(value, temperatureUnit), 1)} ${temperatureSymbol(temperatureUnit)}`
   }
   const formatted = formatNumericDisplay(value, 3)
   return unit ? `${formatted} ${unit}` : formatted
@@ -52,20 +63,22 @@ function formatDiffValue(
 function RevisionDiffRow({
   diff,
   temperatureUnit,
+  resolvedField,
 }: {
   diff: BoardConfigChangeDiff
   temperatureUnit: TemperatureUnit
+  resolvedField?: ResolvedBoardConfigField
 }) {
-  const label = getFieldLabel(diff.fieldId, { label: diff.label })
+  const label = resolvedField?.label ?? getFieldLabel(diff.fieldId, { label: diff.label })
   return (
     <Text style={styles.diffLine} numberOfLines={2}>
       {label}{' '}
       <Text style={styles.diffOld}>
-        {formatDiffValue(diff.oldValue, diff.unit, temperatureUnit)}
+        {formatDiffValue(diff.oldValue, diff.unit, temperatureUnit, resolvedField)}
       </Text>
       {' → '}
       <Text style={styles.diffNew}>
-        {formatDiffValue(diff.newValue, diff.unit, temperatureUnit)}
+        {formatDiffValue(diff.newValue, diff.unit, temperatureUnit, resolvedField)}
       </Text>
     </Text>
   )
@@ -104,40 +117,58 @@ function RevertActionButton({
 export function RevisionRow({
   revision,
   isCurrent,
+  isOldest = false,
   canRevert,
   planningRevisionId,
   borderColor,
   timeFormat,
   dateFormat,
   temperatureUnit,
+  resolvedFieldsById,
+  profileNamesById,
   nested = false,
   onRevert,
 }: {
   revision: BoardConfigRevision
   isCurrent: boolean
+  isOldest?: boolean
   canRevert: boolean
   planningRevisionId: number | null
   borderColor: string
   timeFormat: TimeFormat
   dateFormat: DateFormat
   temperatureUnit: TemperatureUnit
+  resolvedFieldsById?: Readonly<Record<string, ResolvedBoardConfigField>>
+  profileNamesById?: Readonly<Record<string, string>>
   nested?: boolean
   onRevert: (revisionId: number) => void
 }) {
-  const badge = sourceBadgeColors(revision.source)
+  const visibleChanges = revision.changes.filter(
+    (diff) => !isInternalBoardConfigField(diff.fieldId),
+  )
+  const isBaseline = isOldest && visibleChanges.length === 0 && revision.source === 'external'
+  const badge = isBaseline ? null : sourceBadgeColors(revision.source)
+  const profileName = revision.tuneProfileId ? profileNamesById?.[revision.tuneProfileId] : null
+  const emptyDetail = isOldest ? 'Initial snapshot' : 'Config changed (no field-level diff)'
   return (
     <View style={[styles.entry, nested && styles.nestedEntry, { borderBottomColor: borderColor }]}>
       <View style={styles.entryHeader}>
         <Text style={styles.entryDate}>
           {formatDateTime(revision.createdAtMs, timeFormat, dateFormat)}
         </Text>
-        <View
-          style={[styles.sourceBadge, { backgroundColor: badge.bg, borderColor: badge.border }]}
-        >
-          <Text style={[styles.sourceText, { color: badge.text }]}>
-            {SOURCE_LABELS[revision.source]}
-          </Text>
-        </View>
+        {badge ? (
+          <View
+            style={[styles.sourceBadge, { backgroundColor: badge.bg, borderColor: badge.border }]}
+          >
+            <Text style={[styles.sourceText, { color: badge.text }]}>
+              {SOURCE_LABELS[revision.source]}
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.sourceBadge, { borderColor }]}>
+            <Text style={styles.baselineText}>Baseline</Text>
+          </View>
+        )}
         {revision.refloatVersion ? (
           <Text style={styles.version}>v{revision.refloatVersion}</Text>
         ) : null}
@@ -146,7 +177,7 @@ export function RevisionRow({
           <Text style={styles.currentLabel}>Current</Text>
         ) : (
           <RevertActionButton
-            label="Revert"
+            label="Restore"
             disabled={!canRevert || planningRevisionId !== null}
             loading={planningRevisionId === revision.id}
             onPress={() => onRevert(revision.id)}
@@ -154,14 +185,24 @@ export function RevisionRow({
           />
         )}
       </View>
-      {revision.changes.length > 0 ? (
+      {revision.tuneProfileId ? (
+        <Text style={styles.profileNote}>
+          {profileName ? `Synced from profile ${profileName}` : 'Synced from a Tune profile'}
+        </Text>
+      ) : null}
+      {visibleChanges.length > 0 ? (
         <View style={styles.diffs}>
-          {revision.changes.map((diff) => (
-            <RevisionDiffRow key={diff.fieldId} diff={diff} temperatureUnit={temperatureUnit} />
+          {visibleChanges.map((diff) => (
+            <RevisionDiffRow
+              key={diff.fieldId}
+              diff={diff}
+              temperatureUnit={temperatureUnit}
+              resolvedField={resolvedFieldsById?.[diff.fieldId]}
+            />
           ))}
         </View>
       ) : (
-        <Text style={styles.entryDetail}>Initial snapshot</Text>
+        <Text style={styles.entryDetail}>{emptyDetail}</Text>
       )}
     </View>
   )
@@ -170,6 +211,7 @@ export function RevisionRow({
 export function TuningSessionCard({
   session,
   latestRevisionId,
+  oldestRevisionId,
   expanded,
   canRevert,
   planningRevisionId,
@@ -177,11 +219,14 @@ export function TuningSessionCard({
   timeFormat,
   dateFormat,
   temperatureUnit,
+  resolvedFieldsById,
+  profileNamesById,
   onToggleExpand,
   onRevert,
 }: {
   session: BoardConfigTuningSessionEntry
   latestRevisionId: number | null
+  oldestRevisionId: number | null
   expanded: boolean
   canRevert: boolean
   planningRevisionId: number | null
@@ -189,11 +234,16 @@ export function TuningSessionCard({
   timeFormat: TimeFormat
   dateFormat: DateFormat
   temperatureUnit: TemperatureUnit
+  resolvedFieldsById?: Readonly<Record<string, ResolvedBoardConfigField>>
+  profileNamesById?: Readonly<Record<string, string>>
   onToggleExpand: () => void
   onRevert: (revisionId: number) => void
 }) {
   const badge = sourceBadgeColors('app')
   const preSessionId = session.preSessionRevisionId
+  const visibleNetChanges = session.netChanges.filter(
+    (diff) => !isInternalBoardConfigField(diff.fieldId),
+  )
   return (
     <View style={[styles.entry, { borderBottomColor: borderColor }]}>
       <View style={styles.entryHeader}>
@@ -221,7 +271,7 @@ export function TuningSessionCard({
         <View style={styles.headerSpacer} />
         {preSessionId !== null ? (
           <RevertActionButton
-            label="Revert session"
+            label="Undo session"
             disabled={!canRevert || planningRevisionId !== null}
             loading={planningRevisionId === preSessionId}
             onPress={() => onRevert(preSessionId)}
@@ -230,10 +280,15 @@ export function TuningSessionCard({
         ) : null}
       </View>
 
-      {session.netChanges.length > 0 ? (
+      {visibleNetChanges.length > 0 ? (
         <View style={styles.diffs}>
-          {session.netChanges.map((diff) => (
-            <RevisionDiffRow key={diff.fieldId} diff={diff} temperatureUnit={temperatureUnit} />
+          {visibleNetChanges.map((diff) => (
+            <RevisionDiffRow
+              key={diff.fieldId}
+              diff={diff}
+              temperatureUnit={temperatureUnit}
+              resolvedField={resolvedFieldsById?.[diff.fieldId]}
+            />
           ))}
         </View>
       ) : (
@@ -247,12 +302,15 @@ export function TuningSessionCard({
               key={revision.id}
               revision={revision}
               isCurrent={revision.id === latestRevisionId}
+              isOldest={revision.id === oldestRevisionId}
               canRevert={canRevert}
               planningRevisionId={planningRevisionId}
               borderColor={borderColor}
               timeFormat={timeFormat}
               dateFormat={dateFormat}
               temperatureUnit={temperatureUnit}
+              resolvedFieldsById={resolvedFieldsById}
+              profileNamesById={profileNamesById}
               nested
               onRevert={onRevert}
             />
@@ -300,6 +358,16 @@ const styles = StyleSheet.create({
   sourceText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  baselineText: {
+    color: theme.neutral.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  profileNote: {
+    color: theme.neutral.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
   },
   version: {
     color: theme.neutral.textMuted,

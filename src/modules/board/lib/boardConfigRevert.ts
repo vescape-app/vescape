@@ -35,13 +35,22 @@ export async function applyPlannedBoardConfigRevert(params: {
   canRevert: boolean
   connectedBoardId: string | null | undefined
   currentSchemaHash: string | null | undefined
+  plannedCapturedAtMs?: number | null
+  currentCapturedAtMs?: number | null
   applyChangeset?: typeof applyBoardConfigChangeset
 }): Promise<
   | { kind: 'noop' }
   | { kind: 'error'; message: string }
   | { kind: 'applied'; boardId: string; updated: BoardConfigValues }
 > {
-  const { plan, canRevert, connectedBoardId, currentSchemaHash } = params
+  const {
+    plan,
+    canRevert,
+    connectedBoardId,
+    currentSchemaHash,
+    plannedCapturedAtMs,
+    currentCapturedAtMs,
+  } = params
   const applyChangeset = params.applyChangeset ?? applyBoardConfigChangeset
   if (!plan || Object.keys(plan.changes).length === 0) {
     return { kind: 'noop' }
@@ -53,6 +62,16 @@ export async function applyPlannedBoardConfigRevert(params: {
     return {
       kind: 'error',
       message: 'Board firmware schema changed since this revert was planned. Plan it again.',
+    }
+  }
+  if (
+    plannedCapturedAtMs != null &&
+    currentCapturedAtMs != null &&
+    plannedCapturedAtMs !== currentCapturedAtMs
+  ) {
+    return {
+      kind: 'error',
+      message: 'Board config changed since this revert was planned. Plan it again.',
     }
   }
   try {

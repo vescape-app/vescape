@@ -1242,7 +1242,7 @@ public class VescapeCoreModule: Module {
             promise.reject(error.code.rawValue, error.message)
           } catch {
             RecordingStorageFailure.reportRead(operation: "board_config_revert_plan", error: error)
-            promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
+            promise.reject("APP_STORAGE_READ_FAILED", error.localizedDescription)
           }
         }
       }

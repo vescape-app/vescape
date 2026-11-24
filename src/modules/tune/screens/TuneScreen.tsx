@@ -87,8 +87,12 @@ export function TuneScreen() {
   }, [boardConfig, selectedBoard?.link?.refloatVersion, selectedBoardId, tuneCompatibilityIssue])
 
   const openHistory = useCallback(() => {
-    router.push(routes.tuneHistory)
-  }, [router])
+    router.push(
+      selectedBoardId
+        ? { pathname: routes.boardConfigHistory, params: { boardId: selectedBoardId } }
+        : routes.boardConfigHistory,
+    )
+  }, [router, selectedBoardId])
 
   useLayoutEffect(() => {
     navigation.setOptions({

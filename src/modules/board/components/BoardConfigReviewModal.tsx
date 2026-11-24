@@ -23,6 +23,8 @@ export interface BoardConfigReviewModalProps {
   visible: boolean
   source: BoardConfigReviewSource
   boardName?: string | null
+  contextLabel?: string | null
+  contextWarning?: string | null
   entries: BoardConfigReviewEntry[]
   skippedFields?: BoardConfigSkippedField[]
   saving?: boolean
@@ -60,6 +62,8 @@ export function BoardConfigReviewModal({
   visible,
   source,
   boardName,
+  contextLabel,
+  contextWarning,
   entries,
   skippedFields = EMPTY_SKIPPED,
   saving = false,
@@ -72,6 +76,12 @@ export function BoardConfigReviewModal({
   const meta = SOURCE_META[source]
   const riskyCount = entries.filter((entry) => entry.risk === 'risky').length
   const rebootEntries = entries.filter((entry) => entry.rebootNote != null)
+  const missingInSavedCount = skippedFields.filter(
+    (item) => item.reason === 'Not in saved revision',
+  ).length
+  const detailedSkippedFields = skippedFields.filter(
+    (item) => item.reason !== 'Not in saved revision',
+  )
 
   return (
     <FadeCardModal
@@ -110,6 +120,10 @@ export function BoardConfigReviewModal({
             ? `${entries.length} ${entries.length === 1 ? 'change' : 'changes'} for ${boardName}`
             : `${entries.length} ${entries.length === 1 ? 'change' : 'changes'} to write`}
         </Text>
+
+        {contextLabel ? <Text style={styles.contextLabel}>{contextLabel}</Text> : null}
+
+        {contextWarning ? <Banner variant="warning" message={contextWarning} /> : null}
 
         {riskyCount > 0 ? (
           <Banner
@@ -177,7 +191,15 @@ export function BoardConfigReviewModal({
         {skippedFields.length > 0 ? (
           <View style={styles.skippedSection}>
             <Text style={styles.skippedTitle}>{`Skipped (${skippedFields.length})`}</Text>
-            {skippedFields.map((skipped) => (
+            {missingInSavedCount > 0 ? (
+              <View style={[styles.skippedRow, { borderBottomColor: neutral.border }]}>
+                <Text style={styles.skippedLabel}>
+                  {`${missingInSavedCount} newer firmware ${missingInSavedCount === 1 ? 'field' : 'fields'}`}
+                </Text>
+                <Text style={styles.skippedReason}>Not in saved revision (kept as current)</Text>
+              </View>
+            ) : null}
+            {detailedSkippedFields.map((skipped) => (
               <View
                 key={skipped.fieldId}
                 style={[styles.skippedRow, { borderBottomColor: neutral.border }]}
@@ -206,6 +228,10 @@ const styles = StyleSheet.create({
     color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '600',
+  },
+  contextLabel: {
+    color: theme.neutral.textMuted,
+    fontSize: 12,
   },
   list: {
     gap: 2,

@@ -147,7 +147,14 @@ internal class ConfigPersistence(
    */
   suspend fun loadRevisions(boardId: String, limit: Int = DEFAULT_REVISIONS_LIMIT): List<BoardConfigRevision> {
     if (boardId.isBlank() || limit <= 0) return emptyList()
-    return dao.getBoardConfigRevisions(boardId, limit).map { row ->
+    return dao.getBoardConfigRevisionSummaries(boardId, limit).map { row ->
+      val changes = try {
+        BoardConfigChangeNotice.from(row.boardId, row.createdAt, row.changesJson).diffs
+      } catch (err: Throwable) {
+        // intentional-suppression: one malformed changes_json row must not hide the remaining history
+        android.util.Log.w("ConfigPersistence", "Malformed changes_json on revision ${row.id}: ${err.message}")
+        emptyList()
+      }
       BoardConfigRevision(
         id = row.id,
         boardId = row.boardId,
@@ -155,7 +162,7 @@ internal class ConfigPersistence(
         schemaHash = row.schemaHash,
         packageSignature = row.packageSignature,
         source = BoardConfigRevisionSource.fromWire(row.source),
-        changes = BoardConfigChangeNotice.from(row.boardId, row.createdAt, row.changesJson).diffs,
+        changes = changes,
         tuneProfileId = row.tuneProfileId,
         createdAtMs = row.createdAt,
       )
@@ -244,11 +251,14 @@ internal class ConfigPersistence(
     val previousSchema = if (latest.schemaHash == validSchema.hash) validSchema else loadSchema(latest.schemaHash)
     val diffs = if (previousSchema != null) {
       val previousValues = RefloatConfigFieldDecoder.decodeFieldMap(previousSchema, latest.rawConfig)
+      val ignoredFields = BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS +
+        internalFieldIds(validSchema) +
+        internalFieldIds(previousSchema)
       BoardConfigChangeNotice.diff(
         previousValues,
         values,
         validSchema,
-        BoardConfigChangeNotice.VOLATILE_MOTOR_FIELDS,
+        ignoredFields,
       )
     } else {
       emptyList()
@@ -367,8 +377,15 @@ internal class ConfigPersistence(
     )
   }
 
+  private fun internalFieldIds(schema: RefloatConfigSchema): Set<String> =
+    schema.fields
+      .asSequence()
+      .map { it.id }
+      .filter { it.startsWith("meta.") || RefloatFieldOverlay.shared.isInternal(it) }
+      .toSet()
+
   companion object {
-    const val DEFAULT_REVISIONS_LIMIT = 200
+    const val DEFAULT_REVISIONS_LIMIT = BOARD_CONFIG_REVISION_RETENTION_PER_BOARD
     private val parsedSchemaCache = ConcurrentHashMap<String, RefloatConfigSchema>()
   }
 

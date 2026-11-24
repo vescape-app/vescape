@@ -141,15 +141,17 @@ export default function BoardConfigScreen() {
   const schemaHash = refloat?.schemaHash ?? null
   const canEdit = refloat?.freshness === 'fresh'
 
+  const refloatCapturedAtMs = refloat?.capturedAtMs ?? null
+
   useEffect(() => {
     setPendingChanges({})
     setReviewOpen(false)
     setApplyError(null)
-  }, [boardId, schemaHash])
+  }, [boardId, schemaHash, refloatCapturedAtMs])
 
   const handleOpenHistory = useCallback(() => {
     setOptionsOpen(false)
-    router.push({ pathname: routes.tuneHistory, params: { boardId } })
+    router.push({ pathname: routes.boardConfigHistory, params: { boardId } })
   }, [boardId])
 
   useLayoutEffect(() => {
@@ -521,7 +523,6 @@ export default function BoardConfigScreen() {
           boardId={boardId}
           fieldLabels={fieldLabels}
           canTransferXml={xmlTransfer.canTransferXml}
-          onOpenHistory={handleOpenHistory}
           onOpenRawConfig={handleOpenRawConfig}
           onExportXml={() => void xmlTransfer.handleExportXml()}
           onImportXml={() => void xmlTransfer.handleImportXml()}

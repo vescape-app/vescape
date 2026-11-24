@@ -696,6 +696,21 @@ data class BoardConfigSchemaEntity(
 )
 
 /**
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevisionSummaryRow`
+ */
+data class BoardConfigRevisionSummaryRow(
+  val id: Long,
+  @ColumnInfo(name = "board_id") val boardId: String,
+  @ColumnInfo(name = "refloat_version") val refloatVersion: String,
+  @ColumnInfo(name = "schema_hash") val schemaHash: String,
+  @ColumnInfo(name = "package_signature") val packageSignature: Long,
+  val source: String,
+  @ColumnInfo(name = "changes_json") val changesJson: String,
+  @ColumnInfo(name = "tune_profile_id") val tuneProfileId: String?,
+  @ColumnInfo(name = "created_at") val createdAt: Long,
+)
+
+/**
  * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevisionRecord`
  */
 @Entity(

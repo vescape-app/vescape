@@ -502,7 +502,7 @@ Every verified distinct board configuration state is appended to `board_config_r
 raw bytes, schema hash, package signature, diff against the previous revision, and `source`
 (`app`, `external`, `revert`, or `import`).
 
-In the config history UI (`src/app/tune/history.tsx`), consecutive `app` revisions for the same
+In the config history UI (`src/screens/board-config/BoardConfigHistoryScreen.tsx`), consecutive `app` revisions for the same
 board that contain field changes and are separated by at most `TUNING_SESSION_GAP_MS`
 (**10 minutes**, `600_000 ms`, defined in `src/modules/board/lib/boardConfigRevisions.ts`) are
 grouped into a single **tuning session**. A session shows its net field changes, can be expanded

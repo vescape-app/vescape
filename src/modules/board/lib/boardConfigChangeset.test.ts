@@ -228,9 +228,9 @@ describe('boardConfigChangeset', () => {
 
     const entries = buildBoardConfigReviewEntries({
       changes: {
+        'leds.on': false,
         fault_adc1: 2.25,
         'hardware.leds.mode': 2,
-        'leds.on': false,
       },
       currentValues: {
         fault_adc1: 2.0,

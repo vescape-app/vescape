@@ -1181,6 +1181,17 @@ interface VescapeDao {
   @Insert
   suspend fun insertBoardConfigRevision(revision: BoardConfigRevisionEntity): Long
 
+  @Query(
+    """
+    SELECT id, board_id, refloat_version, schema_hash, package_signature, source, changes_json, tune_profile_id, created_at
+    FROM board_config_revisions
+    WHERE board_id = :boardId
+    ORDER BY created_at DESC, id DESC
+    LIMIT :limit
+    """,
+  )
+  suspend fun getBoardConfigRevisionSummaries(boardId: String, limit: Int): List<BoardConfigRevisionSummaryRow>
+
   @Query("SELECT * FROM board_config_revisions WHERE board_id = :boardId ORDER BY created_at DESC, id DESC LIMIT :limit")
   suspend fun getBoardConfigRevisions(boardId: String, limit: Int): List<BoardConfigRevisionEntity>
 

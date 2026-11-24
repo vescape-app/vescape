@@ -103,6 +103,24 @@ describe('boardConfigRevert', () => {
     expect(applyChangeset).not.toHaveBeenCalled()
   })
 
+  test('applyPlannedBoardConfigRevert refuses when board config changed since plan', async () => {
+    const applyChangeset = mock(async () => updatedSnapshot)
+    const outcome = await applyPlannedBoardConfigRevert({
+      plan: makePlan({ currentSchemaHash: 'hash-a' }),
+      canRevert: true,
+      connectedBoardId: 'board-1',
+      currentSchemaHash: 'hash-a',
+      plannedCapturedAtMs: 1_700_000_000_000,
+      currentCapturedAtMs: 1_700_000_005_000,
+      applyChangeset,
+    })
+    expect(outcome.kind).toBe('error')
+    if (outcome.kind === 'error') {
+      expect(outcome.message).toContain('Board config changed')
+    }
+    expect(applyChangeset).not.toHaveBeenCalled()
+  })
+
   test('applyPlannedBoardConfigRevert maps CONFIG_SCHEMA_MISMATCH to a clear message', async () => {
     const applyChangeset = mock(async () => {
       throw Object.assign(new Error('raw mismatch'), { code: 'CONFIG_SCHEMA_MISMATCH' })

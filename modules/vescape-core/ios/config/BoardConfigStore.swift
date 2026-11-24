@@ -23,6 +23,30 @@ struct BoardConfigSchemaRecord: Codable, FetchableRecord, PersistableRecord {
     case createdAt = "created_at"
   }
 }
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `BoardConfigRevisionSummaryRow`
+private struct BoardConfigRevisionSummaryRow: FetchableRecord, Decodable {
+  let id: Int64
+  let boardId: String
+  let refloatVersion: String
+  let schemaHash: String
+  let packageSignature: Int64
+  let source: String
+  let changesJson: String
+  let tuneProfileId: String?
+  let createdAt: Int64
+  enum CodingKeys: String, CodingKey {
+    case id
+    case boardId = "board_id"
+    case refloatVersion = "refloat_version"
+    case schemaHash = "schema_hash"
+    case packageSignature = "package_signature"
+    case source
+    case changesJson = "changes_json"
+    case tuneProfileId = "tune_profile_id"
+    case createdAt = "created_at"
+  }
+}
+
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `BoardConfigRevisionEntity`
 struct BoardConfigRevisionRecord: Codable, FetchableRecord, PersistableRecord {
   static let databaseTableName = "board_config_revisions"
@@ -318,7 +342,7 @@ struct BoardConfigStore {
     )
   }
 
-  static let defaultRevisionsLimit = 200
+  static let defaultRevisionsLimit = BOARD_CONFIG_REVISION_RETENTION_PER_BOARD
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `saveBoardWrite`
   func saveWrite(
@@ -356,19 +380,32 @@ struct BoardConfigStore {
     guard !boardId.isEmpty, limit > 0 else { return [] }
     guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
     return try writer.read { db in
-      let rows = try BoardConfigRevisionRecord
-        .filter(Column("board_id") == boardId)
-        .order(Column("created_at").desc, Column("id").desc)
-        .limit(limit)
-        .fetchAll(db)
-      return try rows.map { row in
-        let changes = try BoardConfigChangeNotice.from(
-          boardId: row.boardId,
-          detectedAtMs: row.createdAt,
-          diffsJson: row.changesJson
-        ).diffs
+      let rows = try BoardConfigRevisionSummaryRow.fetchAll(
+        db,
+        sql: """
+          SELECT id, board_id, refloat_version, schema_hash, package_signature, source, changes_json, tune_profile_id, created_at
+          FROM board_config_revisions
+          WHERE board_id = ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?
+        """,
+        arguments: [boardId, limit]
+      )
+      return rows.map { row in
+        let changes: [BoardConfigChangeDiff]
+        do {
+          changes = try BoardConfigChangeNotice.from(
+            boardId: row.boardId,
+            detectedAtMs: row.createdAt,
+            diffsJson: row.changesJson
+          ).diffs
+        } catch {
+          // intentional-suppression: one malformed changes_json row must not hide the remaining history
+          NSLog("[BoardConfigStore] Malformed changes_json on revision %lld: %@", row.id, error.localizedDescription)
+          changes = []
+        }
         return BoardConfigRevision(
-          id: row.id ?? 0,
+          id: row.id,
           boardId: row.boardId,
           refloatVersion: row.refloatVersion,
           schemaHash: row.schemaHash,
@@ -462,11 +499,14 @@ struct BoardConfigStore {
       let previousSchema = latest.schemaHash == schema.hash ? schema : try Self.loadSchema(db, schemaHash: latest.schemaHash)
       if let previousSchema {
         let previousValues = RefloatConfigFieldDecoder.decodeFieldMap(schema: previousSchema, rawConfig: Array(latest.rawConfig))
+        let ignoredFields = BoardConfigChangeNotice.volatileMotorFields
+          .union(Self.internalFieldIds(schema))
+          .union(Self.internalFieldIds(previousSchema))
         let diffs = BoardConfigChangeNotice.diff(
           old: previousValues,
           new: values,
           schema: schema,
-          ignoredFields: BoardConfigChangeNotice.volatileMotorFields
+          ignoredFields: ignoredFields
         )
         changesJson = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: createdAt, diffs: diffs).diffsJson()
       } else {
@@ -488,6 +528,10 @@ struct BoardConfigStore {
       createdAt: createdAt
     )
     try record.insert(db)
+  }
+
+  private static func internalFieldIds(_ schema: RefloatConfigSchema) -> Set<String> {
+    Set(schema.fields.map(\.id).filter { $0.hasPrefix("meta.") || RefloatFieldOverlay.shared.isInternal($0) })
   }
 
   private static func normalizeRevisionRawBytes(_ schema: RefloatConfigSchema, _ rawConfig: [UInt8]) -> [UInt8] {

@@ -3,7 +3,6 @@ import { StyleSheet, View } from 'react-native'
 import {
   ArrowCounterClockwiseIcon,
   BracketsCurlyIcon,
-  ClockCounterClockwiseIcon,
   DownloadSimpleIcon,
   EyeSlashIcon,
   UploadSimpleIcon,
@@ -24,7 +23,6 @@ interface BoardConfigOptionsSheetViewProps {
   fieldLabels: Record<string, string>
   error?: string | null
   canTransferXml?: boolean
-  onOpenHistory?: () => void
   onOpenRawConfig: () => void
   onExportXml?: () => void
   onImportXml?: () => void
@@ -37,7 +35,6 @@ export function BoardConfigOptionsSheetView({
   fieldLabels,
   error,
   canTransferXml = false,
-  onOpenHistory,
   onOpenRawConfig,
   onExportXml,
   onImportXml,
@@ -47,15 +44,6 @@ export function BoardConfigOptionsSheetView({
   return (
     <View style={styles.content}>
       <SettingsCard>
-        {onOpenHistory ? (
-          <SettingsRow
-            icon={ClockCounterClockwiseIcon}
-            iconColor={theme.palette.sky.color}
-            label="Config history"
-            hint="View past config changes, diffs, and revert"
-            onPress={onOpenHistory}
-          />
-        ) : null}
         <SettingsRow
           icon={BracketsCurlyIcon}
           iconColor={theme.palette.sky.color}
@@ -145,7 +133,6 @@ interface BoardConfigOptionsSheetProps {
   boardId: string
   fieldLabels: Record<string, string>
   canTransferXml?: boolean
-  onOpenHistory?: () => void
   onOpenRawConfig: () => void
   onExportXml?: () => void
   onImportXml?: () => void
@@ -155,7 +142,6 @@ export function BoardConfigOptionsSheet({
   boardId,
   fieldLabels,
   canTransferXml,
-  onOpenHistory,
   onOpenRawConfig,
   onExportXml,
   onImportXml,
@@ -173,7 +159,6 @@ export function BoardConfigOptionsSheet({
       fieldLabels={fieldLabels}
       error={mutationError}
       canTransferXml={canTransferXml}
-      onOpenHistory={onOpenHistory}
       onOpenRawConfig={onOpenRawConfig}
       onExportXml={onExportXml}
       onImportXml={onImportXml}

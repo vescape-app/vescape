@@ -269,10 +269,6 @@ function RootContent() {
                   options={{ title: 'Raw BMS' }}
                 />
                 <Stack.Screen name={stackScreens.tune} options={{ title: 'Tune' }} />
-                <Stack.Screen
-                  name={stackScreens.tuneHistory}
-                  options={{ title: 'Config History' }}
-                />
                 <Stack.Screen name={stackScreens.addBoardScan} options={{ title: 'Pair Board' }} />
                 <Stack.Screen name={stackScreens.addBoard} options={{ title: 'Add Board' }} />
                 <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />
@@ -282,6 +278,10 @@ function RootContent() {
                   options={{ title: 'Config Read' }}
                 />
                 <Stack.Screen name={stackScreens.boardConfig} options={{ title: 'Board Config' }} />
+                <Stack.Screen
+                  name={stackScreens.boardConfigHistory}
+                  options={{ title: 'Config History' }}
+                />
                 <Stack.Screen
                   name={stackScreens.boardConfigRaw}
                   options={{ title: 'Raw Board Config' }}
