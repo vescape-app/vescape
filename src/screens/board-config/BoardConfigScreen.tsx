@@ -305,6 +305,7 @@ export default function BoardConfigScreen() {
   const renderReadOnlyGroup = (group: BoardConfigGroup) => (
     <BoardConfigSection
       key={`${group.source}-${group.title}`}
+      variant="card"
       showFreshness={false}
       showDescriptions={searching || resolvedActiveTabId === 'quick'}
       boardId={boardId}
@@ -549,7 +550,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 24 },
   contentWithBar: { paddingBottom: 112 },
   tabs: { backgroundColor: theme.neutral.bg, paddingVertical: 8 },
-  groups: { gap: 28 },
+  groups: { gap: 18 },
   search: {
     justifyContent: 'center',
     alignSelf: 'center',

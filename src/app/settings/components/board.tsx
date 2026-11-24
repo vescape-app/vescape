@@ -429,6 +429,7 @@ const CONFIG_SECTION_VALUES = {
 
 function BoardConfigSectionShowcase() {
   const [state, setState] = useState('fresh')
+  const [variant, setVariant] = useState<'plain' | 'card'>('plain')
   const [showFreshness, setShowFreshness] = useState(true)
   const [showDescriptions, setShowDescriptions] = useState(true)
 
@@ -437,6 +438,12 @@ function BoardConfigSectionShowcase() {
       name="BoardConfigSection"
       controls={
         <>
+          <ChipRow
+            label="variant"
+            options={['plain', 'card']}
+            selected={variant}
+            onSelect={(next) => setVariant(next as 'plain' | 'card')}
+          />
           <ChipRow
             label="state"
             options={['fresh', 'last known', 'empty']}
@@ -453,6 +460,7 @@ function BoardConfigSectionShowcase() {
       }
     >
       <BoardConfigSection
+        variant={variant}
         showFreshness={showFreshness}
         title="Motor config"
         rows={MOTOR_TEMP_CONFIG_ROWS}
@@ -464,6 +472,7 @@ function BoardConfigSectionShowcase() {
         empty="No motor config read from this board yet. Connect it to read its cutoffs."
       />
       <BoardConfigSection
+        variant={variant}
         title="Footpad and dismount"
         showDescriptions={showDescriptions}
         showFreshness={false}
@@ -476,6 +485,7 @@ function BoardConfigSectionShowcase() {
         }}
       />
       <BoardConfigSection
+        variant={variant}
         title="Startup"
         showDescriptions={showDescriptions}
         showFreshness={false}
