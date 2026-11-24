@@ -1176,6 +1176,7 @@ export type RefloatConfigErrorCode =
   | 'PROFILE_BOARD_MISMATCH'
   | 'REVISION_NOT_FOUND'
   | 'SCHEMA_NOT_FOUND'
+  | 'INVALID_CONFIG_XML'
   | 'UNSUPPORTED_PLATFORM'
 
 export type TuneProfileFieldValue = number | boolean | string | null
@@ -1236,6 +1237,18 @@ export interface BoardConfigRevertPlan {
   targetSchemaHash: string
   currentSchemaHash: string
   sameSchema: boolean
+  changes: Record<string, number | boolean>
+  skippedFields: BoardConfigRevertSkippedField[]
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigXmlCodec.kt `BoardConfigXmlImportPlan`
+ * @parity /modules/vescape-core/ios/config/BoardConfigXmlCodec.swift `BoardConfigXmlImportPlan`
+ */
+export interface BoardConfigXmlImportPlan {
+  boardId: string
+  configVersion: number | null
+  currentSchemaHash: string
   changes: Record<string, number | boolean>
   skippedFields: BoardConfigRevertSkippedField[]
 }
@@ -2617,6 +2630,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteProfile(profileId: string): Promise<void>
   getBoardConfigRevisions(boardId: string, limit?: number | null): Promise<BoardConfigRevision[]>
   planBoardConfigRevert(boardId: string, revisionId: number): Promise<BoardConfigRevertPlan>
+  exportBoardConfigXml(boardId: string): Promise<string>
+  planBoardConfigXmlImport(boardId: string, xml: string): Promise<BoardConfigXmlImportPlan>
   copyProfileToBoard(
     profileId: string,
     targetBoardId: string,
@@ -3743,6 +3758,25 @@ export async function planBoardConfigRevert(
   revisionId: number,
 ): Promise<BoardConfigRevertPlan> {
   return native.planBoardConfigRevert(boardId, revisionId)
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportBoardConfigXml`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportBoardConfigXml`
+ */
+export async function exportBoardConfigXml(boardId: string): Promise<string> {
+  return native.exportBoardConfigXml(boardId)
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `planBoardConfigXmlImport`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigXmlImport`
+ */
+export async function planBoardConfigXmlImport(
+  boardId: string,
+  xml: string,
+): Promise<BoardConfigXmlImportPlan> {
+  return native.planBoardConfigXmlImport(boardId, xml)
 }
 
 export async function copyProfileToBoard(

@@ -1244,6 +1244,51 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportBoardConfigXml`
+    // @parity /modules/vescape-core/src/index.ts `exportBoardConfigXml`
+    AsyncFunction("exportBoardConfigXml") { (boardId: String, promise: Promise) in
+      guard let current = self.coordinator.currentBoardConfigValues(),
+            current.freshness == .fresh,
+            current.boardId == boardId,
+            let writeBase = current.writeBase else {
+        promise.reject(
+          RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
+          "Connect to this board to export its config"
+        )
+        return
+      }
+      let xml = BoardConfigXmlCodec.exportXml(schema: writeBase.schema, rawConfig: writeBase.rawConfig)
+      promise.resolve(xml)
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `planBoardConfigXmlImport`
+    // @parity /modules/vescape-core/src/index.ts `planBoardConfigXmlImport`
+    AsyncFunction("planBoardConfigXmlImport") { (boardId: String, xml: String, promise: Promise) in
+      guard let current = self.coordinator.currentBoardConfigValues(),
+            current.freshness == .fresh,
+            current.boardId == boardId,
+            let writeBase = current.writeBase else {
+        promise.reject(
+          RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
+          "Connect to this board to import a config"
+        )
+        return
+      }
+      do {
+        let plan = try BoardConfigXmlCodec.planImport(
+          boardId: boardId,
+          currentSchema: writeBase.schema,
+          currentRawConfig: writeBase.rawConfig,
+          xml: xml
+        )
+        promise.resolve(plan.toBridgeMap())
+      } catch let error as RefloatConfigEncodeException {
+        promise.reject(error.code.rawValue, error.message)
+      } catch {
+        promise.reject(RefloatConfigErrorCode.INVALID_CONFIG_XML.rawValue, error.localizedDescription)
+      }
+    }
+
     AsyncFunction("copyProfileToBoard") { (profileId: String, targetBoardId: String, newName: String, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {

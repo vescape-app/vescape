@@ -22,5 +22,6 @@ enum RefloatConfigErrorCode: String {
   case PROFILE_BOARD_MISMATCH
   case REVISION_NOT_FOUND
   case SCHEMA_NOT_FOUND
+  case INVALID_CONFIG_XML
   case UNSUPPORTED_PLATFORM
 }

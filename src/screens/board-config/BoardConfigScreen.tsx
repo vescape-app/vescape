@@ -54,6 +54,10 @@ import {
   BoardConfigPendingBar,
   BoardConfigSchemaSectionCard,
 } from '@/screens/board-config/BoardConfigSchemaParts'
+import {
+  resolveReviewModalState,
+  useBoardConfigXmlTransfer,
+} from '@/screens/board-config/useBoardConfigXmlTransfer'
 
 type FallbackTab = ReturnType<typeof boardConfigTabs>[number]
 
@@ -119,6 +123,29 @@ function BoardConfigReadInfo({
         </>
       )}
     </View>
+  )
+}
+
+function BoardConfigStatusBanners({
+  showOfflineBanner,
+  xmlError,
+  xmlNotice,
+}: {
+  showOfflineBanner: boolean
+  xmlError: string | null
+  xmlNotice: string | null
+}) {
+  return (
+    <>
+      {showOfflineBanner ? (
+        <Banner
+          variant="info"
+          message="Showing last known config. Connect this board to edit settings."
+        />
+      ) : null}
+      {xmlError ? <Banner variant="error" message={xmlError} /> : null}
+      {xmlNotice ? <Banner variant="info" message={xmlNotice} /> : null}
+    </>
   )
 }
 
@@ -250,8 +277,35 @@ export default function BoardConfigScreen() {
     [pendingChanges, refloat, schema, temperatureUnit],
   )
 
+  const closeOptions = useCallback(() => setOptionsOpen(false), [])
+  const resetApplyError = useCallback(() => setApplyError(null), [])
+
+  const {
+    importPlan,
+    importReviewEntries,
+    xmlNotice,
+    xmlError,
+    xmlBusy,
+    setXmlNotice,
+    clearImportPlan,
+    handleExportXml,
+    handleImportXml,
+  } = useBoardConfigXmlTransfer({
+    boardId,
+    boardName: board?.name,
+    canEdit,
+    currentValues: refloat?.values,
+    schema,
+    refloatBaseVersion: refloat?.refloatBaseVersion,
+    temperatureUnit,
+    onCloseOptions: closeOptions,
+    onResetApplyError: resetApplyError,
+  })
+
   const handleConfirmApply = useCallback(async () => {
-    if (!boardId || pendingCount === 0) return
+    const isImport = importPlan !== null
+    const targetChanges = isImport ? importPlan.changes : pendingChanges
+    if (!boardId || Object.keys(targetChanges).length === 0) return
     if (!canEdit) {
       setApplyError('Board disconnected. Reconnect to apply changes.')
       return
@@ -259,16 +313,23 @@ export default function BoardConfigScreen() {
     setSaving(true)
     setApplyError(null)
     try {
-      const updated = await applyBoardConfigChangeset(boardId, pendingChanges)
+      const updated = isImport
+        ? await applyBoardConfigChangeset(boardId, targetChanges, 'import')
+        : await applyBoardConfigChangeset(boardId, targetChanges)
       useBoardConfigValuesStore.getState().replace(updated)
       setPendingChanges({})
-      setReviewOpen(false)
+      if (isImport) {
+        clearImportPlan()
+        setXmlNotice('Config imported and written to board.')
+      } else {
+        setReviewOpen(false)
+      }
     } catch (err) {
       setApplyError(errorMessage(err, 'Board configuration could not be written.'))
     } finally {
       setSaving(false)
     }
-  }, [boardId, canEdit, pendingChanges, pendingCount])
+  }, [boardId, canEdit, clearImportPlan, importPlan, pendingChanges, setXmlNotice])
 
   const renderReadOnlyGroup = (group: BoardConfigGroup) => (
     <BoardConfigSection
@@ -314,6 +375,25 @@ export default function BoardConfigScreen() {
       </View>
     )
   }
+
+  const reviewModal = resolveReviewModalState({
+    reviewOpen,
+    hasImportPlan: importPlan !== null,
+    canEdit,
+    applyError,
+    reviewEntries,
+    importReviewEntries,
+  })
+  const handleCancelReview = useCallback(() => {
+    if (saving) return
+    if (importPlan !== null) clearImportPlan()
+    else setReviewOpen(false)
+  }, [clearImportPlan, importPlan, saving])
+
+  const handleOpenRawConfig = useCallback(() => {
+    setOptionsOpen(false)
+    router.push({ pathname: routes.boardConfigRaw, params: { boardId } })
+  }, [boardId])
 
   const activeSchemaTab = schemaTabs?.find((tab) => tab.id === resolvedActiveTabId) ?? null
   const activeFallbackTab = fallbackTabs?.find((tab) => tab.id === resolvedActiveTabId) ?? null
@@ -402,12 +482,11 @@ export default function BoardConfigScreen() {
           <BoardConfigReadInfo refloatReadTime={refloatReadTime} motorReadTime={motorReadTime} />
         </IconHero>
 
-        {schema && !canEdit ? (
-          <Banner
-            variant="info"
-            message="Showing last known config. Connect this board to edit settings."
-          />
-        ) : null}
+        <BoardConfigStatusBanners
+          showOfflineBanner={Boolean(schema && !canEdit)}
+          xmlError={xmlError}
+          xmlNotice={xmlNotice}
+        />
 
         <SearchInput
           value={query}
@@ -461,20 +540,16 @@ export default function BoardConfigScreen() {
       ) : null}
 
       <BoardConfigReviewModal
-        visible={reviewOpen}
-        source="app"
+        visible={reviewModal.visible}
+        source={reviewModal.source}
         boardName={board?.name}
-        entries={reviewEntries}
+        entries={reviewModal.entries}
+        skippedFields={importPlan?.skippedFields}
         saving={saving}
         confirmDisabled={!canEdit}
-        error={
-          applyError ??
-          (!canEdit && reviewOpen ? 'Board disconnected. Reconnect to apply changes.' : null)
-        }
+        error={reviewModal.error}
         onConfirm={handleConfirmApply}
-        onCancel={() => {
-          if (!saving) setReviewOpen(false)
-        }}
+        onCancel={handleCancelReview}
       />
 
       <EdgeDrawer
@@ -482,15 +557,15 @@ export default function BoardConfigScreen() {
         triggerRef={optionsAnchorRef}
         title="Board config"
         icon={GearSixIcon}
-        onClose={() => setOptionsOpen(false)}
+        onClose={closeOptions}
       >
         <BoardConfigOptionsSheet
           boardId={boardId}
           fieldLabels={fieldLabels}
-          onOpenRawConfig={() => {
-            setOptionsOpen(false)
-            router.push({ pathname: routes.boardConfigRaw, params: { boardId } })
-          }}
+          canTransferXml={canEdit && !xmlBusy}
+          onOpenRawConfig={handleOpenRawConfig}
+          onExportXml={() => void handleExportXml()}
+          onImportXml={() => void handleImportXml()}
         />
       </EdgeDrawer>
     </View>

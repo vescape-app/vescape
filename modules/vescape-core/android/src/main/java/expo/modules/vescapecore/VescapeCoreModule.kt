@@ -14,7 +14,9 @@ import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
+import expo.modules.vescapecore.config.BoardConfigFreshness
 import expo.modules.vescapecore.config.BoardConfigRevisionSource
+import expo.modules.vescapecore.config.BoardConfigXmlCodec
 import expo.modules.vescapecore.config.RefloatConfigEncodeException
 import expo.modules.vescapecore.config.RefloatConfigErrorCode
 import expo.modules.vescapecore.telemetry.ConfigPersistence
@@ -1129,6 +1131,36 @@ class VescapeCoreModule : Module() {
       catch (error: CancellationException) { throw error }
       catch (error: RefloatConfigEncodeException) { throw CodedException(error.code.name, error.message, error) }
       catch (error: Throwable) { RecordingStorageFailure.reportRead("board_config_revert_plan", error); throw error }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportBoardConfigXml`
+    // @parity /modules/vescape-core/src/index.ts `exportBoardConfigXml`
+    AsyncFunction("exportBoardConfigXml") Coroutine { boardId: String ->
+      val writeBase = CoreForegroundService.currentBoardConfigValues()?.takeIf {
+        it.freshness == BoardConfigFreshness.FRESH && it.boardId == boardId
+      }?.writeBase
+        ?: throw CodedException(
+          RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+          "Connect to this board to export its config",
+          null,
+        )
+      BoardConfigXmlCodec.exportXml(writeBase.schema, writeBase.rawConfig)
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigXmlImport`
+    // @parity /modules/vescape-core/src/index.ts `planBoardConfigXmlImport`
+    AsyncFunction("planBoardConfigXmlImport") Coroutine { boardId: String, xml: String ->
+      val writeBase = CoreForegroundService.currentBoardConfigValues()?.takeIf {
+        it.freshness == BoardConfigFreshness.FRESH && it.boardId == boardId
+      }?.writeBase
+        ?: throw CodedException(
+          RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+          "Connect to this board to import a config",
+          null,
+        )
+      try {
+        BoardConfigXmlCodec.planImport(boardId, writeBase.schema, writeBase.rawConfig, xml).toBridgeMap()
+      } catch (error: RefloatConfigEncodeException) {
+        throw CodedException(error.code.name, error.message, error)
+      }
     }
     AsyncFunction("copyProfileToBoard") Coroutine { profileId: String, targetBoardId: String, newName: String ->
       RecordingStorageFailure.requireAvailable()
