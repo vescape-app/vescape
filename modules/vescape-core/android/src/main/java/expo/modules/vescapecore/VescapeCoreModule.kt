@@ -14,6 +14,9 @@ import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
+import expo.modules.vescapecore.config.BoardConfigRevisionSource
+import expo.modules.vescapecore.config.RefloatConfigEncodeException
+import expo.modules.vescapecore.config.RefloatConfigErrorCode
 import expo.modules.vescapecore.telemetry.ConfigPersistence
 import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
@@ -1044,12 +1047,23 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyBoardConfigChangeset`
     // @parity /modules/vescape-core/src/index.ts `applyBoardConfigChangeset`
-    AsyncFunction("applyBoardConfigChangeset") { boardId: String, changes: Map<String, Any?>, promise: Promise ->
+    AsyncFunction("applyBoardConfigChangeset") { boardId: String, changes: Map<String, Any?>, source: String?, promise: Promise ->
+      val resolvedSource = when (source) {
+        null -> BoardConfigRevisionSource.APP
+        BoardConfigRevisionSource.APP.wire -> BoardConfigRevisionSource.APP
+        BoardConfigRevisionSource.REVERT.wire -> BoardConfigRevisionSource.REVERT
+        BoardConfigRevisionSource.IMPORT.wire -> BoardConfigRevisionSource.IMPORT
+        else -> {
+          promise.reject(RefloatConfigErrorCode.CONFIG_VALUE_INVALID.name, "Invalid revision source: $source", null)
+          return@AsyncFunction
+        }
+      }
       CoreForegroundService.applyBoardConfigChangeset(
         boardId,
         changes,
         onSuccess = { snapshot -> promise.resolve(snapshot) },
         onError = { code, message -> promise.reject(code, message, null) },
+        source = resolvedSource,
       )
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `pushProfileToBoard`
@@ -1102,6 +1116,19 @@ class VescapeCoreModule : Module() {
       }
       catch (error: CancellationException) { throw error }
       catch (error: Throwable) { RecordingStorageFailure.reportRead("board_config_revisions_read", error); throw error }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigRevert`
+    // @parity /modules/vescape-core/src/index.ts `planBoardConfigRevert`
+    AsyncFunction("planBoardConfigRevert") Coroutine { boardId: String, revisionId: Double ->
+      RecordingStorageFailure.requireAvailable()
+      val current = CoreForegroundService.currentBoardConfigValues()
+      try {
+        AppDataRepository.get(context.applicationContext)
+          .planBoardConfigRevert(boardId, current, revisionId.toLong())
+      }
+      catch (error: CancellationException) { throw error }
+      catch (error: RefloatConfigEncodeException) { throw CodedException(error.code.name, error.message, error) }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("board_config_revert_plan", error); throw error }
     }
     AsyncFunction("copyProfileToBoard") Coroutine { profileId: String, targetBoardId: String, newName: String ->
       RecordingStorageFailure.requireAvailable()

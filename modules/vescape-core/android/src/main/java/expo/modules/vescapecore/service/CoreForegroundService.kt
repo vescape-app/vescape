@@ -9,6 +9,7 @@ import expo.modules.vescapecore.replay.ReplayRecording
 import expo.modules.vescapecore.replay.SimulatedBoard
 import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.BoardConfigRevisionSource
+import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.config.PendingConfigWrite
 import expo.modules.vescapecore.config.RefloatConfigErrorCode
@@ -251,6 +252,8 @@ class CoreForegroundService : Service() {
         }
 
         fun getBoardConfigValues(): Map<String, Any?>? = instance?.controller?.boardConfigValuesMap()
+
+        internal fun currentBoardConfigValues(): BoardConfigValues? = instance?.controller?.currentBoardConfigValues()
 
         fun getMotorConfigValues(): Map<String, Any?>? = instance?.controller?.motorConfigValuesMap()
 

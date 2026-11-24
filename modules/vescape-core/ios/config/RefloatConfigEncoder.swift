@@ -140,6 +140,17 @@ enum RefloatConfigEncoder {
     return FieldNumericRange(min: minVal, max: maxVal)
   }
 
+  static func encodeFieldBytes(
+    _ field: RefloatConfigSchemaField,
+    _ value: Any,
+    overlay: RefloatFieldOverlay = .shared
+  ) throws -> [UInt8] {
+    if overlay.isInternal(field.id) {
+      throw invalid("\(field.id) is internal and cannot be edited")
+    }
+    return try encodeAndVerifyField(field, value, overlay: overlay)
+  }
+
   private static func encodeAndVerifyField(
     _ field: RefloatConfigSchemaField,
     _ value: Any,

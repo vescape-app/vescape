@@ -118,6 +118,17 @@ internal object RefloatConfigEncoder {
     return FieldNumericRange(min = min, max = max)
   }
 
+  internal fun encodeFieldBytes(
+    field: RefloatConfigSchemaField,
+    value: Any,
+    overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
+  ): ByteArray {
+    if (overlay.isInternal(field.id)) {
+      throw invalid("${field.id} is internal and cannot be edited")
+    }
+    return encodeAndVerifyField(field, value, overlay)
+  }
+
   private fun encodeAndVerifyField(
     field: RefloatConfigSchemaField,
     value: Any,

@@ -382,6 +382,58 @@ struct BoardConfigStore {
     }
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `planRevert`
+  func planRevert(
+    boardId: String,
+    current: BoardConfigValues?,
+    revisionId: Int64,
+    overlay: RefloatFieldOverlay = .shared
+  ) throws -> BoardConfigRevertPlan {
+    guard
+      let current,
+      current.freshness == .fresh,
+      current.boardId == boardId,
+      let writeBase = current.writeBase
+    else {
+      throw RefloatConfigEncodeException(
+        .BOARD_NOT_CONNECTED,
+        "Connect to this board to plan a config revert"
+      )
+    }
+    guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    return try writer.read { db in
+      guard
+        let record = try BoardConfigRevisionRecord.fetchOne(db, key: revisionId),
+        record.boardId == boardId
+      else {
+        throw RefloatConfigEncodeException(.REVISION_NOT_FOUND, "Config revision not found")
+      }
+      let targetSchema: RefloatConfigSchema
+      if record.schemaHash == writeBase.schema.hash {
+        targetSchema = writeBase.schema
+      } else {
+        guard let loaded = try Self.loadSchema(db, schemaHash: record.schemaHash) else {
+          throw RefloatConfigEncodeException(
+            .SCHEMA_NOT_FOUND,
+            "Schema for revision \(revisionId) is unavailable"
+          )
+        }
+        targetSchema = loaded
+      }
+      return BoardConfigRevertPlanner.plan(
+        boardId: boardId,
+        currentSchema: writeBase.schema,
+        currentRawConfig: writeBase.rawConfig,
+        targetRevisionId: record.id ?? revisionId,
+        targetCreatedAtMs: record.createdAt,
+        targetRefloatVersion: record.refloatVersion,
+        targetSchema: targetSchema,
+        targetRawConfig: Array(record.rawConfig),
+        overlay: overlay
+      )
+    }
+  }
+
   private static func appendRevisionIfNeeded(
     _ db: Database,
     boardId: String,

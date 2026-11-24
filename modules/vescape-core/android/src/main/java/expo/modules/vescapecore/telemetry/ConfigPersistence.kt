@@ -2,10 +2,17 @@ package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.config.BoardConfigChangeDiff
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
+import expo.modules.vescapecore.config.BoardConfigFreshness
+import expo.modules.vescapecore.config.BoardConfigRevertPlan
+import expo.modules.vescapecore.config.BoardConfigRevertPlanner
 import expo.modules.vescapecore.config.BoardConfigRevisionSource
+import expo.modules.vescapecore.config.BoardConfigValues
+import expo.modules.vescapecore.config.RefloatConfigEncodeException
+import expo.modules.vescapecore.config.RefloatConfigErrorCode
 import expo.modules.vescapecore.config.RefloatConfigFieldDecoder
 import expo.modules.vescapecore.config.RefloatConfigSchema
 import expo.modules.vescapecore.config.RefloatConfigSchemaParser
+import expo.modules.vescapecore.config.RefloatFieldOverlay
 import org.json.JSONArray
 import org.json.JSONObject
 import expo.modules.vescapecore.database.BoardConfigChangeNoticeEntity
@@ -153,6 +160,50 @@ internal class ConfigPersistence(
         createdAtMs = row.createdAt,
       )
     }
+  }
+
+  /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `planRevert`
+   */
+  suspend fun planRevert(
+    boardId: String,
+    current: BoardConfigValues?,
+    revisionId: Long,
+    overlay: RefloatFieldOverlay = RefloatFieldOverlay.shared,
+  ): BoardConfigRevertPlan {
+    val writeBase = current?.takeIf {
+      it.freshness == BoardConfigFreshness.FRESH && it.boardId == boardId
+    }?.writeBase
+      ?: throw RefloatConfigEncodeException(
+        RefloatConfigErrorCode.BOARD_NOT_CONNECTED,
+        "Connect to this board to plan a config revert",
+      )
+    val revision = dao.getBoardConfigRevision(revisionId)
+      ?.takeIf { it.boardId == boardId }
+      ?: throw RefloatConfigEncodeException(
+        RefloatConfigErrorCode.REVISION_NOT_FOUND,
+        "Config revision not found",
+      )
+    val targetSchema = if (revision.schemaHash == writeBase.schema.hash) {
+      writeBase.schema
+    } else {
+      loadSchema(revision.schemaHash)
+        ?: throw RefloatConfigEncodeException(
+          RefloatConfigErrorCode.SCHEMA_NOT_FOUND,
+          "Schema for revision $revisionId is unavailable",
+        )
+    }
+    return BoardConfigRevertPlanner.plan(
+      boardId = boardId,
+      currentSchema = writeBase.schema,
+      currentRawConfig = writeBase.rawConfig,
+      targetRevisionId = revision.id,
+      targetCreatedAtMs = revision.createdAt,
+      targetRefloatVersion = revision.refloatVersion,
+      targetSchema = targetSchema,
+      targetRawConfig = revision.rawConfig,
+      overlay = overlay,
+    )
   }
 
   private suspend fun buildRevisionEntity(

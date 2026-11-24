@@ -1224,6 +1224,26 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `planBoardConfigRevert`
+    // @parity /modules/vescape-core/src/index.ts `planBoardConfigRevert`
+    AsyncFunction("planBoardConfigRevert") { (boardId: String, revisionId: Double, promise: Promise) in
+      try RecordingStorageFailure.requireAvailable()
+      let current = self.coordinator.currentBoardConfigValues()
+      do {
+        let plan = try BoardConfigStore.shared.planRevert(
+          boardId: boardId,
+          current: current,
+          revisionId: Int64(revisionId)
+        )
+        promise.resolve(plan.toBridgeMap())
+      } catch let error as RefloatConfigEncodeException {
+        promise.reject(error.code.rawValue, error.message)
+      } catch {
+        RecordingStorageFailure.reportRead(operation: "board_config_revert_plan", error: error)
+        promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
+      }
+    }
+
     AsyncFunction("copyProfileToBoard") { (profileId: String, targetBoardId: String, newName: String, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
@@ -1252,10 +1272,24 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyBoardConfigChangeset`
     // @parity /modules/vescape-core/src/index.ts `applyBoardConfigChangeset`
-    AsyncFunction("applyBoardConfigChangeset") { (boardId: String, changes: [String: Any], promise: Promise) in
+    AsyncFunction("applyBoardConfigChangeset") { (boardId: String, changes: [String: Any], source: String?, promise: Promise) in
+      let resolvedSource: BoardConfigRevisionSource
+      if let source {
+        switch source {
+        case BoardConfigRevisionSource.app.rawValue: resolvedSource = .app
+        case BoardConfigRevisionSource.revert.rawValue: resolvedSource = .revert
+        case BoardConfigRevisionSource.import.rawValue: resolvedSource = .import
+        default:
+          promise.reject(RefloatConfigErrorCode.CONFIG_VALUE_INVALID.rawValue, "Invalid revision source: \(source)")
+          return
+        }
+      } else {
+        resolvedSource = .app
+      }
       self.coordinator.applyBoardConfigChangeset(
         boardId: boardId,
         changes: changes,
+        source: resolvedSource,
         onSuccess: { snapshot in promise.resolve(snapshot) },
         onError: { code, message in promise.reject(code, message) }
       )

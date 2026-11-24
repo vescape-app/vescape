@@ -2036,6 +2036,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
      */
     internal fun boardConfigValuesMap(): Map<String, Any?>? = boardConfigValues?.toBridgeMap()
 
+    /**
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `currentBoardConfigValues`
+     */
+    internal fun currentBoardConfigValues(): BoardConfigValues? = boardConfigValues
+
     private fun updateLinkIntegrity(next: LinkIntegrity) {
         if (next == lastEmittedLinkIntegrity) return
         lastEmittedLinkIntegrity = next

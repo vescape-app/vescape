@@ -315,6 +315,17 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `planRevert`
+   */
+  internal suspend fun planBoardConfigRevert(
+    boardId: String,
+    current: BoardConfigValues?,
+    revisionId: Long,
+  ): Map<String, Any?> = withContext(Dispatchers.IO) {
+    configPersistence().planRevert(boardId, current, revisionId).toBridgeMap()
+  }
+
+  /**
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `patch`
    */
   internal suspend fun patchBoardConfigValues(

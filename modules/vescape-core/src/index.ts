@@ -1174,6 +1174,8 @@ export type RefloatConfigErrorCode =
   | 'BOARD_NOT_IDLE'
   | 'PROFILE_NOT_FOUND'
   | 'PROFILE_BOARD_MISMATCH'
+  | 'REVISION_NOT_FOUND'
+  | 'SCHEMA_NOT_FOUND'
   | 'UNSUPPORTED_PLATFORM'
 
 export type TuneProfileFieldValue = number | boolean | string | null
@@ -1210,6 +1212,32 @@ export interface BoardConfigRevision {
   changes: BoardConfigChangeDiff[]
   tuneProfileId: string | null
   createdAtMs: number
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigRevertPlanner.kt `BoardConfigRevertSkippedField`
+ * @parity /modules/vescape-core/ios/config/BoardConfigRevertPlanner.swift `BoardConfigRevertSkippedField`
+ */
+export interface BoardConfigRevertSkippedField {
+  fieldId: string
+  label: string
+  reason: string
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigRevertPlanner.kt `BoardConfigRevertPlan`
+ * @parity /modules/vescape-core/ios/config/BoardConfigRevertPlanner.swift `BoardConfigRevertPlan`
+ */
+export interface BoardConfigRevertPlan {
+  boardId: string
+  targetRevisionId: number
+  targetCreatedAtMs: number
+  targetRefloatVersion: string
+  targetSchemaHash: string
+  currentSchemaHash: string
+  sameSchema: boolean
+  changes: Record<string, number | boolean>
+  skippedFields: BoardConfigRevertSkippedField[]
 }
 
 export interface ProfileStats {
@@ -2588,6 +2616,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   renameProfile(profileId: string, name: string, icon: string, color: string): Promise<TuneProfile>
   deleteProfile(profileId: string): Promise<void>
   getBoardConfigRevisions(boardId: string, limit?: number | null): Promise<BoardConfigRevision[]>
+  planBoardConfigRevert(boardId: string, revisionId: number): Promise<BoardConfigRevertPlan>
   copyProfileToBoard(
     profileId: string,
     targetBoardId: string,
@@ -2600,6 +2629,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   applyBoardConfigChangeset(
     boardId: string,
     changes: Record<string, TuneProfileFieldValue>,
+    source?: Exclude<BoardConfigRevisionSource, 'external'> | null,
   ): Promise<BoardConfigValues>
   pushProfileToBoard(profileId: string): Promise<BoardConfigValues>
   getProfileStatsSnapshot(options: ProfileStatsSnapshotOptions): Promise<ProfileStatsSnapshot>
@@ -3704,6 +3734,17 @@ export async function getBoardConfigRevisions(
   return native.getBoardConfigRevisions(boardId, limit ?? null)
 }
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `planBoardConfigRevert`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigRevert`
+ */
+export async function planBoardConfigRevert(
+  boardId: string,
+  revisionId: number,
+): Promise<BoardConfigRevertPlan> {
+  return native.planBoardConfigRevert(boardId, revisionId)
+}
+
 export async function copyProfileToBoard(
   profileId: string,
   targetBoardId: string,
@@ -3726,8 +3767,9 @@ export async function saveProfile(
 export async function applyBoardConfigChangeset(
   boardId: string,
   changes: Record<string, TuneProfileFieldValue>,
+  source?: Exclude<BoardConfigRevisionSource, 'external'>,
 ): Promise<BoardConfigValues> {
-  return native.applyBoardConfigChangeset(boardId, changes)
+  return native.applyBoardConfigChangeset(boardId, changes, source ?? null)
 }
 
 /**

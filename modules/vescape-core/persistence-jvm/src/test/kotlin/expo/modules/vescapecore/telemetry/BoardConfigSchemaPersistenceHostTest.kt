@@ -220,9 +220,47 @@ class BoardConfigSchemaPersistenceHostTest {
         assertEquals(true, afterExternal[0].changes[0].oldValue)
         assertEquals(false, afterExternal[0].changes[0].newValue)
 
+        val currentValues = expo.modules.vescapecore.config.BoardConfigValues(
+          boardId = "board-rev",
+          refloatBaseVersion = "1.3",
+          capturedAtMs = 3000L,
+          freshness = expo.modules.vescapecore.config.BoardConfigFreshness.FRESH,
+          values = mapOf("kp" to 25.0, "leds.on" to false),
+          writeBase = expo.modules.vescapecore.config.BoardConfigWriteBase(
+            schema = schema,
+            rawConfig = rawBytes(25.0, false),
+            packageSignature = 99L,
+          ),
+          refloatVersion = "1.3.0",
+        )
+        val initialRevId = afterExternal.last().id
+        val revertPlan = persistence.planRevert("board-rev", currentValues, initialRevId)
+        assertTrue(revertPlan.sameSchema)
+        assertEquals(setOf("kp", "leds.on"), revertPlan.changes.keys)
+        val revertedBytes = expo.modules.vescapecore.config.RefloatConfigEncoder.encodeChangeset(
+          schema,
+          rawBytes(25.0, false),
+          revertPlan.changes,
+        ).rawConfig
+        persistence.saveBoardWrite(
+          boardId = "board-rev",
+          base = "1.3",
+          values = mapOf("kp" to 20.0, "leds.on" to true),
+          capturedAt = 4000L,
+          schema = schema,
+          refloatVersion = "1.3.0",
+          rawConfig = revertedBytes,
+          packageSignature = 99L,
+          source = BoardConfigRevisionSource.REVERT,
+        )
+        val afterRevert = persistence.loadRevisions("board-rev")
+        assertEquals(4, afterRevert.size)
+        assertEquals(BoardConfigRevisionSource.REVERT, afterRevert[0].source)
+        assertEquals(setOf("kp", "leds.on"), afterRevert[0].changes.map { it.fieldId }.toSet())
+
         dao.clearBoardConfigState("board-rev")
         assertNull(dao.getLatestBoardConfigValues("board-rev"))
-        assertEquals(3, persistence.loadRevisions("board-rev").size)
+        assertEquals(4, persistence.loadRevisions("board-rev").size)
       } finally {
         room.close()
       }

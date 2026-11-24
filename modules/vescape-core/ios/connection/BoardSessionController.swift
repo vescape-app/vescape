@@ -2145,6 +2145,11 @@ internal final class BoardSessionController: VescGattListener {
   func boardConfigValuesMap() -> [String: Any?]? {
     boardConfigValues?.toBridgeMap()
   }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `currentBoardConfigValues`
+  func currentBoardConfigValues() -> BoardConfigValues? {
+    boardConfigValues
+  }
   private var vescLiveFirmware: String?
 
   private func updateLinkIntegrity(_ next: LinkIntegrity) {
