@@ -31,6 +31,7 @@ internal data class BoardConfigValues(
   val writeBase: BoardConfigWriteBase?,
   val schemaHash: String? = writeBase?.schema?.hash,
   val schema: RefloatConfigSchema? = writeBase?.schema,
+  val refloatVersion: String? = null,
 ) {
   fun number(id: String): Double? = (values[id] as? Double)?.takeIf { it.isFinite() }
 

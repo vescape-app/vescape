@@ -868,9 +868,21 @@ enum VescapeDatabase {
         try db.execute(sql: "ALTER TABLE board_config_values ADD COLUMN schema_hash TEXT")
       }
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `MIGRATION_57_58`
+    migrator.registerMigration("v58_board_config_revisions") { db in
+      for sql in boardConfigRevisionsV58Sql { try db.execute(sql: sql) }
+    }
 
     return migrator
   }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `BOARD_CONFIG_REVISIONS_V58_SQL`
+  private static let boardConfigRevisionsV58Sql = [
+    "CREATE TABLE IF NOT EXISTS board_config_revisions (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, board_id TEXT NOT NULL, refloat_version TEXT NOT NULL, schema_hash TEXT NOT NULL, package_signature INTEGER NOT NULL, raw_config BLOB NOT NULL, source TEXT NOT NULL, changes_json TEXT NOT NULL, tune_profile_id TEXT, created_at INTEGER NOT NULL, FOREIGN KEY(schema_hash) REFERENCES board_config_schemas(schema_hash) ON UPDATE NO ACTION ON DELETE NO ACTION)",
+    "CREATE INDEX IF NOT EXISTS index_board_config_revisions_board_id_created_at ON board_config_revisions(board_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS index_board_config_revisions_schema_hash ON board_config_revisions(schema_hash)",
+    "DROP TABLE IF EXISTS tune_history_entries",
+  ]
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseMigrations.kt `BOARD_CONFIG_SCHEMAS_V57_SQL`
   private static let boardConfigSchemasV57Sql =

@@ -116,12 +116,14 @@ final class DatabaseMigrationTests: XCTestCase {
     let tables = [
       "boards", "board_settings", "alerts", "app_settings", "telemetry_frames",
       "telemetry_minute_buckets", "telemetry_markers", "metric_exclusion_ranges",
-      "diagnostic_events", "tune_profiles", "tune_history_entries", "board_warnings", "favorites",
-      "favorite_media", "vesc_fault_occurrences", "vesc_fault_captures", "vesc_fault_capture_samples",
+      "diagnostic_events", "tune_profiles", "board_warnings", "favorites",
+      "favorite_media", "board_config_schemas", "board_config_revisions",
+      "vesc_fault_occurrences", "vesc_fault_captures", "vesc_fault_capture_samples",
     ]
     for table in tables {
       XCTAssertTrue(try queue.read { db in try db.tableExists(table) }, "\(table) is missing")
     }
+    XCTAssertFalse(try queue.read { db in try db.tableExists("tune_history_entries") })
   }
 
   func testAlertsAreBoardOwnedAfterEveryMigration() throws {

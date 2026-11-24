@@ -465,6 +465,7 @@ internal object ConfigRWFsm {
                 boardId = ctx.appBoardId,
                 refloatBaseVersion = ctx.refloatBaseVersion ?: RefloatConfigProtocol.normalizeBaseVersion(ctx.refloatVersion),
                 capturedAt = capturedAtMs,
+                refloatVersion = ctx.refloatVersion,
             )
             ConfigRWState.Idle to listOf(
                 ConfigRWEffect.CancelTimeout,
@@ -557,13 +558,14 @@ internal object ConfigRWFsm {
                     boardId = ctx.appBoardId,
                     refloatBaseVersion = ctx.refloatBaseVersion,
                     capturedAt = capturedAtMs,
+                    refloatVersion = ctx.refloatVersion,
                 )
                 return ConfigRWState.Idle to listOf(
                     ConfigRWEffect.CancelTimeout,
                     ConfigRWEffect.EmitWriteComplete(
                         boardConfigValues = values,
                         resumePolling = ctx.wasPolling,
-                        origin = BoardConfigOperationOrigin.FRESH_READ,
+                        origin = BoardConfigOperationOrigin.FreshRead,
                         emitBoardConfigValues = fromFreshRead,
                     ),
                 )
@@ -644,12 +646,21 @@ internal object ConfigRWFsm {
                 boardId = state.ctx.appBoardId,
                 refloatBaseVersion = state.ctx.refloatBaseVersion,
                 capturedAt = capturedAtMs,
+                refloatVersion = state.ctx.refloatVersion,
             )
+            val origin = when (val intent = state.ctx.intent) {
+                is ConfigWriteIntent.Changeset -> BoardConfigOperationOrigin.VescapeWrite(source = intent.source)
+                is ConfigWriteIntent.Profile -> BoardConfigOperationOrigin.VescapeWrite(
+                    source = BoardConfigRevisionSource.APP,
+                    tuneProfileId = intent.profileId,
+                )
+            }
             ConfigRWState.Idle to listOf(
                 ConfigRWEffect.CancelTimeout,
                 ConfigRWEffect.EmitWriteComplete(
                     boardConfigValues = values,
                     resumePolling = state.ctx.wasPolling,
+                    origin = origin,
                 ),
             )
         } catch (e: RefloatConfigDecodeException) {

@@ -14,6 +14,7 @@ import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
+import expo.modules.vescapecore.telemetry.ConfigPersistence
 import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
 import expo.modules.vescapecore.accessory.AccessoryDiscovery
@@ -1091,17 +1092,16 @@ class VescapeCoreModule : Module() {
       catch (error: CancellationException) { throw error }
       catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_delete", "write_failed", error); throw error }
     }
-    AsyncFunction("getProfileHistory") Coroutine { profileId: String ->
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigRevisions`
+    // @parity /modules/vescape-core/src/index.ts `getBoardConfigRevisions`
+    AsyncFunction("getBoardConfigRevisions") Coroutine { boardId: String, limit: Int? ->
       RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context.applicationContext).getProfileHistory(profileId) }
+      try {
+        AppDataRepository.get(context.applicationContext)
+          .getBoardConfigRevisions(boardId, limit ?: ConfigPersistence.DEFAULT_REVISIONS_LIMIT)
+      }
       catch (error: CancellationException) { throw error }
-      catch (error: Throwable) { RecordingStorageFailure.reportRead("tune_history_read", error); throw error }
-    }
-    AsyncFunction("rollbackProfile") Coroutine { profileId: String, historyEntryId: Double ->
-      RecordingStorageFailure.requireAvailable()
-      try { AppDataRepository.get(context.applicationContext).rollbackProfile(profileId, historyEntryId.toLong()) }
-      catch (error: CancellationException) { throw error }
-      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_rollback", "write_failed", error); throw error }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("board_config_revisions_read", error); throw error }
     }
     AsyncFunction("copyProfileToBoard") Coroutine { profileId: String, targetBoardId: String, newName: String ->
       RecordingStorageFailure.requireAvailable()

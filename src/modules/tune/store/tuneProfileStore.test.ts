@@ -54,8 +54,6 @@ const saveProfile = mock(async (_profileId: string, fields: TuneProfile['fields'
 const createProfile = mock(async () => profile)
 const renameProfile = mock(async () => profile)
 const deleteProfile = mock(async () => {})
-const getProfileHistory = mock(async () => [])
-const rollbackProfile = mock(async () => profile)
 const copyProfileToBoard = mock(async () => profile)
 const applyBoardConfigChangeset = mock(async () => boardSnapshot)
 const pushProfileToBoard = mock(async () => boardSnapshot)
@@ -68,8 +66,6 @@ const vescBleMock = {
   createProfile,
   renameProfile,
   deleteProfile,
-  getProfileHistory,
-  rollbackProfile,
   copyProfileToBoard,
   applyBoardConfigChangeset,
   pushProfileToBoard,

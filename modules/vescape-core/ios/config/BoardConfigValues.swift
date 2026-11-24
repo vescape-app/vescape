@@ -23,6 +23,7 @@ struct BoardConfigValues {
   let writeBase: BoardConfigWriteBase?
   let schemaHash: String?
   let schema: RefloatConfigSchema?
+  let refloatVersion: String?
 
   init(
     boardId: String?,
@@ -32,7 +33,8 @@ struct BoardConfigValues {
     values: [String: Any],
     writeBase: BoardConfigWriteBase?,
     schemaHash: String? = nil,
-    schema: RefloatConfigSchema? = nil
+    schema: RefloatConfigSchema? = nil,
+    refloatVersion: String? = nil
   ) {
     self.boardId = boardId
     self.refloatBaseVersion = refloatBaseVersion
@@ -42,6 +44,7 @@ struct BoardConfigValues {
     self.writeBase = writeBase
     self.schemaHash = schemaHash ?? writeBase?.schema.hash
     self.schema = schema ?? writeBase?.schema
+    self.refloatVersion = refloatVersion
   }
 
   func number(_ id: String) -> Double? {

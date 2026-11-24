@@ -1,9 +1,4 @@
-import type {
-  BoardConfigValues,
-  TuneHistoryEntry,
-  TuneProfile,
-  TuneProfileFieldValue,
-} from 'vescape-core'
+import type { BoardConfigValues, TuneProfile, TuneProfileFieldValue } from 'vescape-core'
 
 export interface TuneProfileBoardDiff {
   fieldId: string
@@ -44,8 +39,6 @@ export interface TuneProfileActions {
     color: string,
   ) => Promise<TuneProfile | null>
   deleteProfile: (profileId: string) => Promise<void>
-  loadHistory: (profileId: string) => Promise<TuneHistoryEntry[]>
-  rollbackToHistory: (historyEntryId: number) => Promise<TuneProfile | null>
   copyProfileToBoard: (
     profileId: string,
     targetBoardId: string,

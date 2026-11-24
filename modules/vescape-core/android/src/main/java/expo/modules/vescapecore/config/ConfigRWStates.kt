@@ -15,8 +15,15 @@ internal data class ReadContext(
 
 // @parity /modules/vescape-core/ios/config/ConfigRWController.swift `ConfigWriteIntent`
 internal sealed class ConfigWriteIntent {
-    data class Changeset(val changes: Map<String, Any?>) : ConfigWriteIntent()
-    data class Profile(val fields: Map<String, Any?>) : ConfigWriteIntent()
+    data class Changeset(
+        val changes: Map<String, Any?>,
+        val source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
+    ) : ConfigWriteIntent()
+
+    data class Profile(
+        val profileId: String,
+        val fields: Map<String, Any?>,
+    ) : ConfigWriteIntent()
 }
 
 internal data class WriteContext(

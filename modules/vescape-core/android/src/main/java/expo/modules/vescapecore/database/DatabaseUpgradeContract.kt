@@ -22,6 +22,7 @@ internal val SHARED_DATABASE_TABLES: Set<String> = setOf(
   "alerts",
   "app_settings",
   "board_config_change_notices",
+  "board_config_revisions",
   "board_config_schemas",
   "board_config_values",
   "board_settings",
@@ -38,7 +39,6 @@ internal val SHARED_DATABASE_TABLES: Set<String> = setOf(
   "telemetry_frames",
   "telemetry_markers",
   "telemetry_minute_buckets",
-  "tune_history_entries",
   "tune_profiles",
   "vesc_fault_capture_samples",
   "vesc_fault_captures",
@@ -108,8 +108,5 @@ internal fun iosSchemaReconciliationStatements(
   if (bootstrapLegacyTune) {
     add("CREATE TABLE tune_profiles (id TEXT NOT NULL PRIMARY KEY,board_id TEXT NOT NULL,name TEXT NOT NULL,fields_json TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)")
     add("CREATE INDEX index_tune_profiles_board_id ON tune_profiles(board_id)")
-    add("CREATE TABLE tune_history_entries (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,profile_id TEXT NOT NULL,fields_json TEXT NOT NULL,created_at INTEGER NOT NULL)")
-    add("CREATE INDEX index_tune_history_entries_profile_id ON tune_history_entries(profile_id)")
-    add("CREATE INDEX index_tune_history_entries_created_at ON tune_history_entries(created_at)")
   }
 }

@@ -6,6 +6,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevisionSource`
+ * @parity /modules/vescape-core/src/index.ts `BoardConfigRevisionSource`
+ */
+internal enum class BoardConfigRevisionSource(val wire: String) {
+  APP("app"),
+  EXTERNAL("external"),
+  REVERT("revert"),
+  IMPORT("import");
+
+  companion object {
+    fun fromWire(value: String): BoardConfigRevisionSource =
+      entries.firstOrNull { it.wire == value } ?: APP
+  }
+}
+
+/**
  * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigChangeDiff`
  * @parity /modules/vescape-core/src/index.ts `BoardConfigChangeDiff`
  */

@@ -946,7 +946,6 @@ let storedTuneVersions = tuneCompatibilityFixture["storedVersions"] as! [String]
 try tuneQueue!.write { db in
   for (index, version) in storedTuneVersions.enumerated() {
     try db.execute(sql: "INSERT INTO tune_profiles (id,board_id,refloat_base_version,name,fields_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?)", arguments: ["compat-\(index)", "compat-board", version, "Retained tune", "{\"kp\":27}", index, index])
-    try db.execute(sql: "INSERT INTO tune_history_entries (profile_id,fields_json,created_at) VALUES (?,?,?)", arguments: ["compat-\(index)", "{\"kp\":26}", index])
   }
 }
 _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 2])
@@ -970,13 +969,9 @@ for index in 0...2 { try tuneStore.deleteProfile(profileId: "compat-\(index)") }
 var lastCompatibleDeleteFailed = false
 do { try tuneStore.deleteProfile(profileId: "compat-3") } catch { lastCompatibleDeleteFailed = true }
 try require(lastCompatibleDeleteFailed, "last major/minor profile protected")
-let retainedTuneHistory = try tuneStore.getProfileHistory("compat-3")
-try require(retainedTuneHistory.count == 1, "retained profile history preserved")
 let reopenedTune = try tuneStore.getTuneProfile(tuneId)
-let reopenedTuneHistory = try tuneStore.getProfileHistory(tuneId)
 try require(reopenedTune?["boardId"] as? String == tuneAlertBoardId, "Tune Profile ownership/reopen")
 try require((reopenedTune?["fields"] as? [String: Any])?["kp"] as? Int == 2, "Tune Profile values/reopen")
-try require(reopenedTuneHistory.count == int(tuneAlertExpected["historyCount"]), "Tune History/reopen")
 let reopenedAlerts = try alertPersistence.rules(boardId: tuneAlertBoardId, reportPresetFailure: unexpectedPresetFailure).filter { !AlertPresetPersistence.isPresetId($0.id) }
 try require(reopenedAlerts.count == int(tuneAlertExpected["alertCount"]), "Alert count/reopen")
 try require(reopenedAlerts.first?.id == alertValues["id"] as? String, "Alert identity/reopen")
@@ -987,8 +982,6 @@ try tuneQueue!.write { db in
   try db.execute(sql: "CREATE TRIGGER fail_tune_update BEFORE UPDATE ON tune_profiles BEGIN SELECT RAISE(FAIL, 'late Tune failure'); END")
 }
 do { _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 3]); throw Failure(description: "failed Tune save reported success") } catch is DatabaseError {}
-let historyAfterFailedSave = try tuneStore.getProfileHistory(tuneId)
-try require(historyAfterFailedSave.count == int(tuneAlertExpected["historyCount"]), "failed Tune save retained history row")
 try tuneQueue!.write { db in
   try db.execute(sql: "DROP TRIGGER fail_tune_update")
   try db.execute(sql: "UPDATE tune_profiles SET fields_json = 'not-json' WHERE id = ?", arguments: [tuneId])
@@ -1191,6 +1184,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     let config = try String.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id='cross-board'")
     let configSchemaHash = try String.fetchOne(db, sql: "SELECT schema_hash FROM board_config_values WHERE board_id='cross-board'")
     let configSchemaXml = try String.fetchOne(db, sql: "SELECT raw_xml FROM board_config_schemas WHERE schema_hash='cross-schema-hash'")
+    let configRevision = try Row.fetchOne(db, sql: "SELECT refloat_version, schema_hash, package_signature, raw_config, source, tune_profile_id FROM board_config_revisions WHERE board_id='cross-board'")
     let speed = try Int.fetchOne(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames WHERE captured_at_ms=1000")
     try require(board == "Cross Board", "Android archive lost Board on iOS")
     try require(setting == "\"durable\"", "Android archive lost Board setting on iOS")
@@ -1199,6 +1193,12 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try require(config == "{\"motor_current_max\":55.5}", "Android archive lost config on iOS")
     try require(configSchemaHash == "cross-schema-hash", "Android archive lost board_config_values.schema_hash on iOS")
     try require(configSchemaXml == "<ConfigParams><Params><kp><type>1</type><vTx>8</vTx><vTxDoubleScale>1000</vTxDoubleScale></kp></Params><SerOrder><ser>kp</ser></SerOrder></ConfigParams>", "Android archive lost board_config_schemas on iOS")
+    try require(configRevision?["refloat_version"] as String? == "2.0.0", "Android archive lost board_config_revisions on iOS")
+    try require(configRevision?["schema_hash"] as String? == "cross-schema-hash", "Android archive lost revision schema_hash on iOS")
+    try require(configRevision?["package_signature"] as Int64? == 42, "Android archive lost revision signature on iOS")
+    try require(configRevision?["raw_config"] as Data? == Data([1, 2, 3]), "Android archive lost revision raw_config on iOS")
+    try require(configRevision?["source"] as String? == "app", "Android archive lost revision source on iOS")
+    try require(configRevision?["tune_profile_id"] as String? == "cross-tune", "Android archive lost revision tune_profile_id on iOS")
     try require(speed == 2468, "Android archive lost Ride Recording on iOS")
     try requireCrossChunkSpeeds(db, "Android archive")
     let track = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "cross-board")
@@ -1284,6 +1284,7 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try db.execute(sql: "INSERT INTO favorites (id,board_id,name,start_ms,end_ms,created_at,updated_at,sample_count,gps_point_count,distance_cm,moving_duration_ms,avg_speed_centi_kmh,max_speed_centi_kmh,battery_used_wh_milli) VALUES ('cross-favorite','cross-board','Cross Favorite',900,1100,105,106,1,0,200,100,2400,2468,2)")
     try db.execute(sql: "INSERT INTO board_config_schemas (schema_hash,raw_xml,created_at) VALUES ('cross-schema-hash','<ConfigParams><Params><kp><type>1</type><vTx>8</vTx><vTxDoubleScale>1000</vTxDoubleScale></kp></Params><SerOrder><ser>kp</ser></SerOrder></ConfigParams>',106)")
     try db.execute(sql: "INSERT INTO board_config_values (board_id,refloat_base_version,values_json,captured_at,schema_hash) VALUES ('cross-board','2.0','{\"motor_current_max\":55.5}',107,'cross-schema-hash')")
+    try db.execute(sql: "INSERT INTO board_config_revisions (board_id,refloat_version,schema_hash,package_signature,raw_config,source,changes_json,tune_profile_id,created_at) VALUES ('cross-board','2.0.0','cross-schema-hash',42,?,'app','[]','cross-tune',108)", arguments: [Data([1, 2, 3])])
     try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'cross-board',1,1,0,2468)")
     try db.execute(sql: "INSERT INTO vesc_fault_occurrences VALUES ('cross-fault','cross-board',7,1000,1001,NULL,0)")
     try db.execute(sql: "INSERT INTO vesc_fault_captures VALUES ('cross-fault','cross-board',900,1000,1)")
@@ -1691,6 +1692,60 @@ func runBoardConfigSchemaContract() throws {
   }
   try require(try reopenedStore.loadSchema(schemaHash: "corrupt-hash") == nil, "corrupt stored XML returns nil")
   try require(corruptSchemaErrors == 1, "corrupt stored XML reports via onInvalidSchemaXml")
+
+  func rawBytes(_ kp: Double, _ ledsOn: Bool) -> [UInt8] {
+    let scaled = Int(kp * 10.0)
+    return [UInt8((scaled >> 8) & 0xff), UInt8(scaled & 0xff), ledsOn ? 1 : 0]
+  }
+  let revSeed = BoardConfigValues(
+    boardId: "board-rev",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 5000,
+    freshness: .fresh,
+    values: ["kp": 20.0, "leds.on": true],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: rawBytes(20.0, true), packageSignature: 99),
+    refloatVersion: "1.3.0"
+  )
+  try reopenedStore.saveFresh(revSeed)
+  let afterSeed = try reopenedStore.loadRevisions(boardId: "board-rev")
+  try require(afterSeed.count == 1 && afterSeed[0].source == .external && afterSeed[0].changes.isEmpty && afterSeed[0].refloatVersion == "1.3.0", "first read seeds baseline revision")
+
+  try reopenedStore.saveFresh(revSeed)
+  try require(try reopenedStore.loadRevisions(boardId: "board-rev").count == 1, "identical read appends no revision")
+
+  let revWrite = BoardConfigValues(
+    boardId: "board-rev",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 6000,
+    freshness: .fresh,
+    values: ["kp": 25.0, "leds.on": true],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: rawBytes(25.0, true), packageSignature: 99),
+    refloatVersion: "1.3.0"
+  )
+  try reopenedStore.saveWrite(revWrite, source: .app, tuneProfileId: "profile-trail")
+  try reopenedStore.saveWrite(revWrite, source: .app, tuneProfileId: "profile-trail")
+  let afterWrite = try reopenedStore.loadRevisions(boardId: "board-rev")
+  try require(afterWrite.count == 2 && afterWrite[0].source == .app && afterWrite[0].tuneProfileId == "profile-trail", "verified write appends one app revision")
+  try require(afterWrite[0].changes.map(\.fieldId) == ["kp"], "app revision records only changed fields")
+
+  try reopenedStore.setFieldIgnored(boardId: "board-rev", fieldId: "leds.on", ignored: true)
+  let revIgnoredExternal = BoardConfigValues(
+    boardId: "board-rev",
+    refloatBaseVersion: "1.3",
+    capturedAtMs: 7000,
+    freshness: .fresh,
+    values: ["kp": 25.0, "leds.on": false],
+    writeBase: BoardConfigWriteBase(schema: schema, rawConfig: rawBytes(25.0, false), packageSignature: 99),
+    refloatVersion: "1.3.0"
+  )
+  try reopenedStore.saveFresh(revIgnoredExternal)
+  try require(try reopenedStore.loadNotice(boardId: "board-rev") == nil, "ignored field suppresses change notice")
+  let afterIgnored = try reopenedStore.loadRevisions(boardId: "board-rev")
+  try require(afterIgnored.count == 3 && afterIgnored[0].source == .external && afterIgnored[0].changes.map(\.fieldId) == ["leds.on"], "ignored field still records external revision")
+
+  try reopenedStore.clear(boardId: "board-rev")
+  try require(try reopenedStore.loadLatest(boardId: "board-rev") == nil, "clear removes last-known board config")
+  try require(try reopenedStore.loadRevisions(boardId: "board-rev").count == 3, "link integrity clear preserves board config revisions")
   try queue.close()
 }
 

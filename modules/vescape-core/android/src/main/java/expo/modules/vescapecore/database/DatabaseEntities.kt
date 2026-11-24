@@ -525,24 +525,6 @@ data class TuneProfileEntity(
   val updatedAt: Long,
 )
 
-@Entity(
-  tableName = "tune_history_entries",
-  indices = [
-    Index(value = ["profile_id"]),
-    Index(value = ["created_at"]),
-  ],
-)
-data class TuneHistoryEntryEntity(
-  @PrimaryKey(autoGenerate = true)
-  val id: Long = 0,
-  @ColumnInfo(name = "profile_id")
-  val profileId: String,
-  @ColumnInfo(name = "fields_json")
-  val fieldsJson: String,
-  @ColumnInfo(name = "created_at")
-  val createdAt: Long,
-)
-
 /**
  * @parity /modules/vescape-core/ios/warnings/BoardWarningStore.swift
  */
@@ -712,6 +694,76 @@ data class BoardConfigSchemaEntity(
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
 )
+
+/**
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevisionRecord`
+ */
+@Entity(
+  tableName = "board_config_revisions",
+  indices = [
+    Index(value = ["board_id", "created_at"]),
+    Index(value = ["schema_hash"]),
+  ],
+  foreignKeys = [
+    ForeignKey(
+      entity = BoardConfigSchemaEntity::class,
+      parentColumns = ["schema_hash"],
+      childColumns = ["schema_hash"],
+      onUpdate = ForeignKey.NO_ACTION,
+      onDelete = ForeignKey.NO_ACTION,
+    ),
+  ],
+)
+data class BoardConfigRevisionEntity(
+  @PrimaryKey(autoGenerate = true)
+  val id: Long = 0,
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
+  @ColumnInfo(name = "refloat_version")
+  val refloatVersion: String,
+  @ColumnInfo(name = "schema_hash")
+  val schemaHash: String,
+  @ColumnInfo(name = "package_signature")
+  val packageSignature: Long,
+  @ColumnInfo(name = "raw_config")
+  val rawConfig: ByteArray,
+  val source: String,
+  @ColumnInfo(name = "changes_json")
+  val changesJson: String,
+  @ColumnInfo(name = "tune_profile_id")
+  val tuneProfileId: String? = null,
+  @ColumnInfo(name = "created_at")
+  val createdAt: Long,
+) {
+  override fun equals(other: Any?): Boolean {
+    if (this === other) return true
+    if (other !is BoardConfigRevisionEntity) return false
+    return id == other.id &&
+      boardId == other.boardId &&
+      refloatVersion == other.refloatVersion &&
+      schemaHash == other.schemaHash &&
+      packageSignature == other.packageSignature &&
+      rawConfig.contentEquals(other.rawConfig) &&
+      source == other.source &&
+      changesJson == other.changesJson &&
+      tuneProfileId == other.tuneProfileId &&
+      createdAt == other.createdAt
+  }
+
+  override fun hashCode(): Int {
+    var result = id.hashCode()
+    result = 31 * result + boardId.hashCode()
+    result = 31 * result + refloatVersion.hashCode()
+    result = 31 * result + schemaHash.hashCode()
+    result = 31 * result + packageSignature.hashCode()
+    result = 31 * result + rawConfig.contentHashCode()
+    result = 31 * result + source.hashCode()
+    result = 31 * result + changesJson.hashCode()
+    result = 31 * result + (tuneProfileId?.hashCode() ?: 0)
+    result = 31 * result + createdAt.hashCode()
+    return result
+  }
+}
 
 /**
  * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift

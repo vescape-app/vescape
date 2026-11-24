@@ -8,6 +8,7 @@ import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.replay.ReplayRecording
 import expo.modules.vescapecore.replay.SimulatedBoard
 import expo.modules.vescapecore.notification.NotificationController
+import expo.modules.vescapecore.config.BoardConfigRevisionSource
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.config.PendingConfigWrite
 import expo.modules.vescapecore.config.RefloatConfigErrorCode
@@ -307,11 +308,12 @@ class CoreForegroundService : Service() {
             instance?.controller?.watchMirrorWakeLevel(level)
         }
 
-        fun applyBoardConfigChangeset(
+        internal fun applyBoardConfigChangeset(
             boardId: String,
             changes: Map<String, Any?>,
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
+            source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
         ) {
             val service = instance
             if (service == null) {
@@ -321,7 +323,7 @@ class CoreForegroundService : Service() {
                 )
                 return
             }
-            pendingConfigWrite = PendingConfigWrite.Changeset(boardId, changes, onSuccess, onError)
+            pendingConfigWrite = PendingConfigWrite.Changeset(boardId, changes, onSuccess, onError, source)
             service.controller.consumePendingConfigWrite()
         }
 

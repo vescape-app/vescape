@@ -45,8 +45,8 @@ private struct ConfigReadContext {
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWStates.kt `ConfigWriteIntent`
 internal enum ConfigWriteIntent {
-  case changeset([String: Any])
-  case profile([String: Any])
+  case changeset([String: Any], source: BoardConfigRevisionSource = .app)
+  case profile(id: String, fields: [String: Any])
 }
 
 private struct ConfigWriteContext {
@@ -134,6 +134,7 @@ internal final class ConfigRWController {
   func consumeChangeset(
     boardId: String,
     changes: [String: Any],
+    source: BoardConfigRevisionSource = .app,
     connection: ConfigRWConnection,
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
@@ -163,7 +164,7 @@ internal final class ConfigRWController {
       return
     }
     startWriteOperation(
-      intent: .changeset(changes),
+      intent: .changeset(changes, source: source),
       connectedBoardId: connectedBoardId,
       startedAtMs: startedAtMs,
       connection: connection,
@@ -220,7 +221,7 @@ internal final class ConfigRWController {
     }
     let storedFields = ((profile["fields"] ?? nil) as? [String: Any]) ?? [:]
     startWriteOperation(
-      intent: .profile(storedFields),
+      intent: .profile(id: profileId, fields: storedFields),
       connectedBoardId: connectedBoardId,
       startedAtMs: startedAtMs,
       connection: connection,
@@ -430,7 +431,8 @@ internal final class ConfigRWController {
         configBytes,
         ctx.appBoardId,
         connection,
-        refloatBaseVersion: connection.refloatBaseVersion ?? RefloatConfigProtocol.normalizeBaseVersion(ctx.refloatVersion)
+        refloatBaseVersion: connection.refloatBaseVersion ?? RefloatConfigProtocol.normalizeBaseVersion(ctx.refloatVersion),
+        refloatVersion: ctx.refloatVersion ?? connection.refloatVersion
       )
       complete(values, connection)
     } catch let error as RefloatConfigSchemaException {
@@ -473,7 +475,14 @@ internal final class ConfigRWController {
       let changes = resolveChanges(ctx.intent, schema: schema)
       let encoded = try RefloatConfigEncoder.encodeChangeset(schema: schema, rawConfig: rawConfig, changes: changes)
       if encoded.changedFieldIds.isEmpty {
-        let values = try boardConfigValues(schema, configBytes, ctx.appBoardId, connection, capturedAtMs: capturedAtMs)
+        let values = try boardConfigValues(
+          schema,
+          configBytes,
+          ctx.appBoardId,
+          connection,
+          capturedAtMs: capturedAtMs,
+          refloatVersion: ctx.refloatVersion ?? connection.refloatVersion
+        )
         completeWrite(
           values,
           origin: .freshRead,
@@ -510,9 +519,9 @@ internal final class ConfigRWController {
 
   private func resolveChanges(_ intent: ConfigWriteIntent, schema: RefloatConfigSchema) -> [String: Any] {
     switch intent {
-    case .changeset(let changes):
+    case .changeset(let changes, _):
       return changes
-    case .profile(let fields):
+    case .profile(_, let fields):
       let schemaIds = Set(schema.fields.map(\.id))
       return fields.filter { schemaIds.contains($0.key) }
     }
@@ -534,8 +543,21 @@ internal final class ConfigRWController {
       break
     }
     do {
-      let values = try boardConfigValues(schema, boardConfig, ctx.appBoardId, connection)
-      completeWrite(values, connection)
+      let values = try boardConfigValues(
+        schema,
+        boardConfig,
+        ctx.appBoardId,
+        connection,
+        refloatVersion: ctx.refloatVersion ?? connection.refloatVersion
+      )
+      let origin: BoardConfigOperationOrigin
+      switch ctx.intent {
+      case .changeset(_, let source):
+        origin = .vescapeWrite(source: source, tuneProfileId: nil)
+      case .profile(let profileId, _):
+        origin = .vescapeWrite(source: .app, tuneProfileId: profileId)
+      }
+      completeWrite(values, origin: origin, connection)
     } catch let error as RefloatConfigDecodeException {
       failWrite(code: .CONFIG_VERIFY_FAILED, message: error.message, phase: .verifying, rawConfig: original, connection: connection)
     } catch {
@@ -549,14 +571,16 @@ internal final class ConfigRWController {
     _ boardId: String?,
     _ connection: ConfigRWConnection,
     capturedAtMs: Int64? = nil,
-    refloatBaseVersion: String? = nil
+    refloatBaseVersion: String? = nil,
+    refloatVersion: String? = nil
   ) throws -> BoardConfigValues {
     try RefloatConfigDecoder.decodeBoardConfigValues(
       schema: schema,
       configBytes: configBytes,
       boardId: boardId,
       refloatBaseVersion: refloatBaseVersion ?? connection.refloatBaseVersion,
-      capturedAt: capturedAtMs ?? nowMs()
+      capturedAt: capturedAtMs ?? nowMs(),
+      refloatVersion: refloatVersion
     )
   }
 
@@ -574,7 +598,7 @@ internal final class ConfigRWController {
 
   private func completeWrite(
     _ values: BoardConfigValues,
-    origin: BoardConfigOperationOrigin = .vescapeWrite,
+    origin: BoardConfigOperationOrigin = .vescapeWrite(),
     emitBoardConfigValues: Bool = true,
     resumePolling: Bool? = nil,
     _ connection: ConfigRWConnection
@@ -817,7 +841,11 @@ internal struct ConfigRWConnection {
   let rideState: () -> BoardRideState?
 }
 
-internal enum BoardConfigOperationOrigin { case freshRead, vescapeWrite }
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt `BoardConfigOperationOrigin`
+internal enum BoardConfigOperationOrigin: Equatable {
+  case freshRead
+  case vescapeWrite(source: BoardConfigRevisionSource = .app, tuneProfileId: String? = nil)
+}
 
 private extension BoardTransport {
   var canId: Int? {

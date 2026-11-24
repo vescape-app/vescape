@@ -102,6 +102,59 @@ internal let DIAGNOSTIC_EVENT_RETENTION_MS: Int64 = 30 * 24 * 60 * 60 * 1000
 internal let DIAGNOSTIC_EVENT_PRUNE_BATCH = 5_000
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `DiagnosticEventPruneResult`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `BOARD_CONFIG_REVISION_RETENTION_PER_BOARD`
+internal let BOARD_CONFIG_REVISION_RETENTION_PER_BOARD = 200
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `BoardConfigRevisionPruneResult`
+struct BoardConfigRevisionPruneResult {
+  let deletedRevisions: Int
+  let deletedSchemas: Int
+  let yielded: Bool
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt `pruneBoardConfigRevisions`
+@discardableResult
+internal func pruneBoardConfigRevisions(
+  _ scope: MaintenanceJobScope,
+  gapMs: Int64,
+  retainPerBoard: Int = BOARD_CONFIG_REVISION_RETENTION_PER_BOARD
+) throws -> BoardConfigRevisionPruneResult {
+  let deleted: (Int, Int)? = try scope.chunk { db in
+    if try activeRideStartMs(db, nowMs: scope.nowMs(), gapMs: gapMs) != nil { return nil }
+    try db.execute(
+      sql: """
+        DELETE FROM board_config_revisions
+        WHERE id IN (
+          SELECT id FROM (
+            SELECT id, ROW_NUMBER() OVER (PARTITION BY board_id ORDER BY created_at DESC, id DESC) AS rn
+            FROM board_config_revisions
+          )
+          WHERE rn > ?
+        )
+        """,
+      arguments: [retainPerBoard]
+    )
+    let revisions = db.changesCount
+    try db.execute(
+      sql: """
+        DELETE FROM board_config_schemas
+        WHERE NOT EXISTS (
+          SELECT 1 FROM board_config_revisions r WHERE r.schema_hash = board_config_schemas.schema_hash
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM board_config_values v WHERE v.schema_hash = board_config_schemas.schema_hash
+        )
+        """
+    )
+    let schemas = db.changesCount
+    return (revisions, schemas)
+  }
+  guard let deleted else {
+    return BoardConfigRevisionPruneResult(deletedRevisions: 0, deletedSchemas: 0, yielded: true)
+  }
+  return BoardConfigRevisionPruneResult(deletedRevisions: deleted.0, deletedSchemas: deleted.1, yielded: false)
+}
+
 struct DiagnosticEventPruneResult {
   let deleted: Int
   let yielded: Bool

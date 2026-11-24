@@ -218,6 +218,20 @@ class DatabaseMigrationMatrixHostTest {
     Files.deleteIfExists(path)
   }
 
+  @Test fun v57DropsTuneHistoryAndCreatesBoardConfigRevisions() {
+    val path = migrateFromExport(57, seed = {
+      exec("INSERT INTO tune_profiles (id,board_id,refloat_base_version,name,icon,color,fields_json,created_at,updated_at) VALUES ('prof-57','board-57','1.3','Trail','sliders-horizontal','purple','{\"kp\":20}',5700,5700)")
+      exec("INSERT INTO tune_history_entries (profile_id,fields_json,created_at) VALUES ('prof-57','{\"kp\":19}',5701)")
+      exec("INSERT INTO board_config_schemas (schema_hash,raw_xml,created_at) VALUES ('hash-57','<ConfigParams/>',5702)")
+    }) {
+      assertEquals(0L, long("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tune_history_entries'"))
+      assertEquals("Trail", text("SELECT name FROM tune_profiles WHERE id='prof-57'"))
+      exec("INSERT INTO board_config_revisions (board_id,refloat_version,schema_hash,package_signature,raw_config,source,changes_json,tune_profile_id,created_at) VALUES ('board-57','1.3.0','hash-57',1234,X'0102','app','[]','prof-57',5703)")
+      assertEquals("app", text("SELECT source FROM board_config_revisions WHERE board_id='board-57'"))
+    }
+    Files.deleteIfExists(path)
+  }
+
   @Test fun v49AlertPresetSettingsFoldIntoPresetRows() {
     val path = migrateFromExport(49, seed = {
       exec("INSERT INTO boards (id,name,created_at) VALUES ('board-era3','Era Three',100)")

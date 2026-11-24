@@ -23,6 +23,8 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/warnings/BoardWarningSeverity.kt",
       "expo/modules/vescapecore/config/BoardConfigChangeNotice.kt",
       "expo/modules/vescapecore/config/RefloatConfigSchema.kt",
+      "expo/modules/vescapecore/config/RefloatConfigFieldDecoder.kt",
+      "expo/modules/vescapecore/protocol/VescNumeric.kt",
       "expo/modules/vescapecore/database/DatabaseEntities.kt",
       "expo/modules/vescapecore/weather/WeatherAlertDefaults.kt",
       "expo/modules/vescapecore/navigation/RerouteDistance.kt",

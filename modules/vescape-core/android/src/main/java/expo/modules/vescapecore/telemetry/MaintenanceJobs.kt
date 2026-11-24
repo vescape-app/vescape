@@ -183,6 +183,16 @@ private val CLEANUP_STEPS: List<suspend (MaintenanceJobScope, Long) -> Maintenan
     if (result.deleted > 0) scope.diagnostic("diagnostic_prune", mapOf("deleted" to result.deleted))
     if (result.yielded) MaintenanceJobOutcome.Deferred(scope.nowMs() + gapMs) else MaintenanceJobOutcome.Completed
   },
+  { scope, gapMs ->
+    val result = pruneBoardConfigRevisions(scope, gapMs)
+    if (result.deletedRevisions > 0 || result.deletedSchemas > 0) {
+      scope.diagnostic(
+        "board_config_revision_prune",
+        mapOf("deleted_revisions" to result.deletedRevisions, "deleted_schemas" to result.deletedSchemas),
+      )
+    }
+    if (result.yielded) MaintenanceJobOutcome.Deferred(scope.nowMs() + gapMs) else MaintenanceJobOutcome.Completed
+  },
 )
 
 /**

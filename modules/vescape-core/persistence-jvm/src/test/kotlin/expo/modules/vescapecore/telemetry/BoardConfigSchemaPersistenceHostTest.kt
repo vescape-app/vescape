@@ -2,6 +2,7 @@ package expo.modules.vescapecore.telemetry
 
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import expo.modules.vescapecore.config.BoardConfigRevisionSource
 import expo.modules.vescapecore.config.RefloatConfigSchemaParser
 import expo.modules.vescapecore.database.BoardConfigValuesEntity
 import expo.modules.vescapecore.database.VescapeRoomDatabase
@@ -10,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -114,6 +116,115 @@ class BoardConfigSchemaPersistenceHostTest {
         assertEquals(1, parseErrors)
       } finally {
         reopened.close()
+      }
+    } finally {
+      file.delete()
+    }
+  }
+
+  @Test
+  fun recordsRevisionsForReadsWritesIgnoredFieldsAndSurvivesLinkIntegrityClear(): Unit = runBlocking {
+    val file = Files.createTempFile("vescape-revision-contract", ".db").toFile()
+    try {
+      val schema = RefloatConfigSchemaParser.parse(sampleXml.encodeToByteArray())
+      fun rawBytes(kp: Double, ledsOn: Boolean): ByteArray {
+        val scaled = (kp * 10.0).toInt()
+        return byteArrayOf(
+          ((scaled ushr 8) and 0xff).toByte(),
+          (scaled and 0xff).toByte(),
+          if (ledsOn) 1 else 0,
+        )
+      }
+      val room = open(file.path)
+      try {
+        val dao = room.vescapeDao()
+        val persistence = ConfigPersistence(dao)
+
+        val firstNotice = persistence.saveFreshBoard(
+          boardId = "board-rev",
+          base = "1.3",
+          values = mapOf("kp" to 20.0, "leds.on" to true),
+          capturedAt = 1000L,
+          schema = schema,
+          refloatVersion = "1.3.0",
+          rawConfig = rawBytes(20.0, true),
+          packageSignature = 99L,
+        )
+        assertNull(firstNotice)
+        val afterSeed = persistence.loadRevisions("board-rev")
+        assertEquals(1, afterSeed.size)
+        assertEquals(BoardConfigRevisionSource.EXTERNAL, afterSeed[0].source)
+        assertTrue(afterSeed[0].changes.isEmpty())
+        assertEquals("1.3.0", afterSeed[0].refloatVersion)
+
+        persistence.saveFreshBoard(
+          boardId = "board-rev",
+          base = "1.3",
+          values = mapOf("kp" to 20.0, "leds.on" to true),
+          capturedAt = 1500L,
+          schema = schema,
+          refloatVersion = "1.3.0",
+          rawConfig = rawBytes(20.0, true),
+          packageSignature = 99L,
+        )
+        assertEquals(1, persistence.loadRevisions("board-rev").size)
+
+        persistence.saveBoardWrite(
+          boardId = "board-rev",
+          base = "1.3",
+          values = mapOf("kp" to 25.0, "leds.on" to true),
+          capturedAt = 2000L,
+          schema = schema,
+          refloatVersion = "1.3.0",
+          rawConfig = rawBytes(25.0, true),
+          packageSignature = 99L,
+          source = BoardConfigRevisionSource.APP,
+          tuneProfileId = "profile-trail",
+        )
+        persistence.saveBoardWrite(
+          boardId = "board-rev",
+          base = "1.3",
+          values = mapOf("kp" to 25.0, "leds.on" to true),
+          capturedAt = 2500L,
+          schema = schema,
+          refloatVersion = "1.3.0",
+          rawConfig = rawBytes(25.0, true),
+          packageSignature = 99L,
+          source = BoardConfigRevisionSource.APP,
+          tuneProfileId = "profile-trail",
+        )
+        val afterWrite = persistence.loadRevisions("board-rev")
+        assertEquals(2, afterWrite.size)
+        assertEquals(BoardConfigRevisionSource.APP, afterWrite[0].source)
+        assertEquals("profile-trail", afterWrite[0].tuneProfileId)
+        assertEquals(listOf("kp"), afterWrite[0].changes.map { it.fieldId })
+        assertEquals(20.0, (afterWrite[0].changes[0].oldValue as Number).toDouble(), 1e-6)
+        assertEquals(25.0, (afterWrite[0].changes[0].newValue as Number).toDouble(), 1e-6)
+
+        persistence.setFieldIgnored("board-rev", "leds.on", true, 2600L)
+        val ignoredNotice = persistence.saveFreshBoard(
+          boardId = "board-rev",
+          base = "1.3",
+          values = mapOf("kp" to 25.0, "leds.on" to false),
+          capturedAt = 3000L,
+          schema = schema,
+          refloatVersion = "1.3.0",
+          rawConfig = rawBytes(25.0, false),
+          packageSignature = 99L,
+        )
+        assertNull("Ignored field must not trigger Change Notice", ignoredNotice)
+        val afterExternal = persistence.loadRevisions("board-rev")
+        assertEquals(3, afterExternal.size)
+        assertEquals(BoardConfigRevisionSource.EXTERNAL, afterExternal[0].source)
+        assertEquals(listOf("leds.on"), afterExternal[0].changes.map { it.fieldId })
+        assertEquals(true, afterExternal[0].changes[0].oldValue)
+        assertEquals(false, afterExternal[0].changes[0].newValue)
+
+        dao.clearBoardConfigState("board-rev")
+        assertNull(dao.getLatestBoardConfigValues("board-rev"))
+        assertEquals(3, persistence.loadRevisions("board-rev").size)
+      } finally {
+        room.close()
       }
     } finally {
       file.delete()

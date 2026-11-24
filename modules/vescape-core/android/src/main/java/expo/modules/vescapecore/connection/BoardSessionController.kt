@@ -1759,9 +1759,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
         val repo = AppDataRepository.get(service.applicationContext)
         CoreForegroundService.appDataScope.launch {
             try {
-                if (origin == BoardConfigOperationOrigin.FRESH_READ) {
-                    repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
-                } else repo.saveBoardConfigValues(values)
+                when (origin) {
+                    BoardConfigOperationOrigin.FreshRead -> {
+                        repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
+                    }
+                    is BoardConfigOperationOrigin.VescapeWrite -> {
+                        repo.saveBoardConfigValues(values, origin.source, origin.tuneProfileId)
+                    }
+                }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Throwable) { RecordingStorageFailure.report("board_config_save", "write_failed", e) }
         }

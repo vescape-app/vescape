@@ -492,6 +492,7 @@ internal final class BoardSessionController: VescGattListener {
   func applyBoardConfigChangeset(
     boardId: String,
     changes: [String: Any],
+    source: BoardConfigRevisionSource = .app,
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -505,6 +506,7 @@ internal final class BoardSessionController: VescGattListener {
     configController.consumeChangeset(
       boardId: boardId,
       changes: changes,
+      source: source,
       connection: configConnection(config),
       onSuccess: onSuccess,
       onError: onError
@@ -1922,8 +1924,12 @@ internal final class BoardSessionController: VescGattListener {
     syncBoardLightsFromConfig(values)
     alertCoordinator.updateBoardConfigValues(values.values)
     do {
-      if origin == .freshRead { try BoardConfigStore.shared.saveFresh(values) }
-      else { try BoardConfigStore.shared.save(values) }
+      switch origin {
+      case .freshRead:
+        try BoardConfigStore.shared.saveFresh(values)
+      case .vescapeWrite(let source, let tuneProfileId):
+        try BoardConfigStore.shared.saveWrite(values, source: source, tuneProfileId: tuneProfileId)
+      }
     } catch { RecordingStorageFailure.report(operation: "board_config_save", category: "write_failed", error: error) }
     evaluateConfigSafety(values)
   }

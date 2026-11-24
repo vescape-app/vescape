@@ -23,10 +23,81 @@ struct BoardConfigSchemaRecord: Codable, FetchableRecord, PersistableRecord {
     case createdAt = "created_at"
   }
 }
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/DatabaseEntities.kt `BoardConfigRevisionEntity`
+struct BoardConfigRevisionRecord: Codable, FetchableRecord, PersistableRecord {
+  static let databaseTableName = "board_config_revisions"
+  var id: Int64?
+  let boardId: String
+  let refloatVersion: String
+  let schemaHash: String
+  let packageSignature: Int64
+  let rawConfig: Data
+  let source: String
+  let changesJson: String
+  let tuneProfileId: String?
+  let createdAt: Int64
+  enum CodingKeys: String, CodingKey {
+    case id
+    case boardId = "board_id"
+    case refloatVersion = "refloat_version"
+    case schemaHash = "schema_hash"
+    case packageSignature = "package_signature"
+    case rawConfig = "raw_config"
+    case source
+    case changesJson = "changes_json"
+    case tuneProfileId = "tune_profile_id"
+    case createdAt = "created_at"
+  }
+}
 struct ConfigNoticeRecord: Codable, FetchableRecord, PersistableRecord {
   static let databaseTableName = "board_config_change_notices"
   let boardId: String; let detectedAt: Int64; let diffsJson: String
   enum CodingKeys: String, CodingKey { case boardId = "board_id"; case detectedAt = "detected_at"; case diffsJson = "diffs_json" }
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `BoardConfigRevisionSource`
+/// @parity /modules/vescape-core/src/index.ts `BoardConfigRevisionSource`
+enum BoardConfigRevisionSource: String, Codable, Equatable {
+  case app
+  case external
+  case revert
+  case `import`
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `BoardConfigRevision`
+/// @parity /modules/vescape-core/src/index.ts `BoardConfigRevision`
+struct BoardConfigRevision {
+  let id: Int64
+  let boardId: String
+  let refloatVersion: String
+  let schemaHash: String
+  let packageSignature: Int64
+  let source: BoardConfigRevisionSource
+  let changes: [BoardConfigChangeDiff]
+  let tuneProfileId: String?
+  let createdAtMs: Int64
+
+  func toBridgeMap() -> [String: Any?] {
+    [
+      "id": id,
+      "boardId": boardId,
+      "refloatVersion": refloatVersion,
+      "schemaHash": schemaHash,
+      "packageSignature": packageSignature,
+      "source": source.rawValue,
+      "changes": changes.map {
+        [
+          "fieldId": $0.fieldId,
+          "label": $0.label,
+          "unit": $0.unit,
+          "oldValue": $0.oldValue?.toBridge(),
+          "newValue": $0.newValue?.toBridge(),
+        ] as [String: Any?]
+      },
+      "tuneProfileId": tuneProfileId,
+      "createdAtMs": createdAtMs,
+    ]
+  }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `BoardConfigChangeDiff`
@@ -247,6 +318,122 @@ struct BoardConfigStore {
     )
   }
 
+  static let defaultRevisionsLimit = 200
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `saveBoardWrite`
+  func saveWrite(
+    _ values: BoardConfigValues,
+    source: BoardConfigRevisionSource = .app,
+    tuneProfileId: String? = nil
+  ) throws {
+    guard
+      let boardId = values.boardId, !boardId.isEmpty,
+      let refloatBaseVersion = values.refloatBaseVersion, !refloatBaseVersion.isEmpty,
+      let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    let json = try values.valuesJson()
+    let schema = values.schema ?? values.writeBase?.schema
+    let schemaHash = (values.schemaHash ?? schema?.hash).flatMap { $0.isEmpty ? nil : $0 }
+    let refloatVersion = values.refloatVersion.flatMap { $0.isEmpty ? nil : $0 } ?? refloatBaseVersion
+    try writer.write { db in
+      try Self.insertSchemaIfAbsent(db, schema: schema, createdAt: values.capturedAtMs)
+      try BoardConfigRecord(boardId: boardId, refloatBaseVersion: refloatBaseVersion, valuesJson: json, capturedAt: values.capturedAtMs, schemaHash: schemaHash).save(db)
+      try Self.appendRevisionIfNeeded(
+        db,
+        boardId: boardId,
+        refloatVersion: refloatVersion,
+        schema: schema,
+        writeBase: values.writeBase,
+        values: values.values,
+        source: source,
+        tuneProfileId: tuneProfileId,
+        createdAt: values.capturedAtMs
+      )
+    }
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `loadRevisions`
+  func loadRevisions(boardId: String, limit: Int = defaultRevisionsLimit) throws -> [BoardConfigRevision] {
+    guard !boardId.isEmpty, limit > 0 else { return [] }
+    guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    return try writer.read { db in
+      let rows = try BoardConfigRevisionRecord
+        .filter(Column("board_id") == boardId)
+        .order(Column("created_at").desc, Column("id").desc)
+        .limit(limit)
+        .fetchAll(db)
+      return try rows.map { row in
+        let changes = try BoardConfigChangeNotice.from(
+          boardId: row.boardId,
+          detectedAtMs: row.createdAt,
+          diffsJson: row.changesJson
+        ).diffs
+        return BoardConfigRevision(
+          id: row.id ?? 0,
+          boardId: row.boardId,
+          refloatVersion: row.refloatVersion,
+          schemaHash: row.schemaHash,
+          packageSignature: row.packageSignature,
+          source: BoardConfigRevisionSource(rawValue: row.source) ?? .app,
+          changes: changes,
+          tuneProfileId: row.tuneProfileId,
+          createdAtMs: row.createdAt
+        )
+      }
+    }
+  }
+
+  private static func appendRevisionIfNeeded(
+    _ db: Database,
+    boardId: String,
+    refloatVersion: String,
+    schema: RefloatConfigSchema?,
+    writeBase: BoardConfigWriteBase?,
+    values: [String: Any],
+    source: BoardConfigRevisionSource,
+    tuneProfileId: String?,
+    createdAt: Int64
+  ) throws {
+    guard let schema, !schema.hash.isEmpty, !schema.rawXml.isEmpty, let writeBase else { return }
+    let rawData = Data(writeBase.rawConfig)
+    let latest = try BoardConfigRevisionRecord
+      .filter(Column("board_id") == boardId)
+      .order(Column("created_at").desc, Column("id").desc)
+      .fetchOne(db)
+    let changesJson: String
+    if let latest {
+      let previousSchema = latest.schemaHash == schema.hash ? schema : try Self.loadSchema(db, schemaHash: latest.schemaHash)
+      if let previousSchema {
+        let previousValues = RefloatConfigFieldDecoder.decodeFieldMap(schema: previousSchema, rawConfig: Array(latest.rawConfig))
+        let diffs = BoardConfigChangeNotice.diff(
+          old: previousValues,
+          new: values,
+          schema: schema,
+          ignoredFields: BoardConfigChangeNotice.volatileMotorFields
+        )
+        guard !diffs.isEmpty else { return }
+        changesJson = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: createdAt, diffs: diffs).diffsJson()
+      } else {
+        guard latest.rawConfig != rawData else { return }
+        changesJson = "[]"
+      }
+    } else {
+      changesJson = "[]"
+    }
+    var record = BoardConfigRevisionRecord(
+      id: nil,
+      boardId: boardId,
+      refloatVersion: refloatVersion,
+      schemaHash: schema.hash,
+      packageSignature: Int64(writeBase.packageSignature),
+      rawConfig: rawData,
+      source: source.rawValue,
+      changesJson: changesJson,
+      tuneProfileId: tuneProfileId,
+      createdAt: createdAt
+    )
+    try record.insert(db)
+  }
+
   func save(_ values: BoardConfigValues) throws {
     guard
       let boardId = values.boardId, !boardId.isEmpty,
@@ -314,6 +501,18 @@ struct BoardConfigStore {
         }
       }
       try BoardConfigRecord(boardId: boardId, refloatBaseVersion: base, valuesJson: try values.valuesJson(), capturedAt: values.capturedAtMs, schemaHash: schemaHash).save(db)
+      let refloatVersion = values.refloatVersion.flatMap { $0.isEmpty ? nil : $0 } ?? base
+      try Self.appendRevisionIfNeeded(
+        db,
+        boardId: boardId,
+        refloatVersion: refloatVersion,
+        schema: schema,
+        writeBase: values.writeBase,
+        values: values.values,
+        source: .external,
+        tuneProfileId: nil,
+        createdAt: values.capturedAtMs
+      )
       committed = true
     }
     if committed, let notice { Self.onNoticeChanged?(notice) }

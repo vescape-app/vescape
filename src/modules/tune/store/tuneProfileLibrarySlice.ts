@@ -1,11 +1,9 @@
 import type { StoreApi } from 'zustand'
 import {
   deleteProfile as nativeDeleteProfile,
-  getProfileHistory as nativeGetProfileHistory,
   getTuneProfile as nativeGetTuneProfile,
   getTuneProfiles as nativeGetTuneProfiles,
   copyProfileToBoard as nativeCopyProfileToBoard,
-  rollbackProfile as nativeRollbackProfile,
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
@@ -40,8 +38,6 @@ type TuneProfileLibrarySlice = TuneProfileState &
     | 'createProfile'
     | 'renameProfile'
     | 'deleteProfile'
-    | 'loadHistory'
-    | 'rollbackToHistory'
     | 'copyProfileToBoard'
     | 'clear'
   >
@@ -284,45 +280,6 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
       })
     } catch (error) {
       set({ error: errorMessage(error, 'Unable to delete tune profile.') })
-      throw error
-    }
-  },
-
-  async loadHistory(profileId) {
-    set({ error: null })
-    try {
-      return await nativeGetProfileHistory(profileId)
-    } catch (error) {
-      set({ error: errorMessage(error, 'Unable to load tune profile history.') })
-      throw error
-    }
-  },
-
-  async rollbackToHistory(historyEntryId) {
-    const profile = get().activeProfile
-    if (!profile) return null
-    set({ error: null })
-    try {
-      const restored = await nativeRollbackProfile(profile.id, historyEntryId)
-      set((state) => {
-        const diff = boardDiff(
-          restored,
-          state.boardFields,
-          schemaFieldMap(useBoardConfigValuesStore.getState().values?.schema),
-        )
-        return {
-          profiles: state.profiles.map((p) => (p.id === restored.id ? restored : p)),
-          activeProfile: restored,
-          draftFields: {},
-          hasDirtyFields: false,
-          boardDiff: diff,
-          hasBoardDiff: diff.length > 0,
-          error: null,
-        }
-      })
-      return restored
-    } catch (error) {
-      set({ error: errorMessage(error, 'Unable to restore tune profile.') })
       throw error
     }
   },

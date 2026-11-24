@@ -11,23 +11,11 @@ private struct TuneProfileRecord: Codable, FetchableRecord, PersistableRecord {
   }
 }
 
-private struct TuneHistoryRecord: Codable, PersistableRecord {
-  static let databaseTableName = "tune_history_entries"
-  var id: Int64?
-  let profileId: String, fieldsJson: String, createdAt: Int64
-  enum CodingKeys: String, CodingKey {
-    case id, profileId = "profile_id", fieldsJson = "fields_json", createdAt = "created_at"
-  }
-}
-
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt
 enum TuneProfileError: LocalizedError, Equatable {
   case profileNotFound(String)
   case cannotDeleteLast
-  case historyEntryNotFound(Int64)
-  case historyEntryWrongProfile
   case sourceProfileNotFound(String)
-  case disappearedDuringRollback(String)
   case disappearedDuringSave(String)
   case missingRefloatCompatibility
   case databaseUnavailable
@@ -36,10 +24,7 @@ enum TuneProfileError: LocalizedError, Equatable {
     switch self {
     case .profileNotFound(let id): return "Tune Profile not found: \(id)"
     case .cannotDeleteLast: return "Cannot delete the last profile for a board"
-    case .historyEntryNotFound(let id): return "History entry not found: \(id)"
-    case .historyEntryWrongProfile: return "History entry does not belong to this profile"
     case .sourceProfileNotFound(let id): return "Source profile not found: \(id)"
-    case .disappearedDuringRollback(let id): return "Tune Profile disappeared during rollback: \(id)"
     case .disappearedDuringSave(let id): return "Tune Profile disappeared during save: \(id)"
     case .missingRefloatCompatibility: return "Missing Refloat Tune Compatibility"
     case .databaseUnavailable: return "Tune Profile database is unavailable"
@@ -86,17 +71,6 @@ struct TuneProfileStore {
     try requireWriter().read { db in try Self.fetchProfileMap(db, id) }
   }
 
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getProfileHistory`
-  func getProfileHistory(_ profileId: String) throws -> [[String: Any?]] {
-    try requireWriter().read { db in
-      try Row.fetchAll(
-        db,
-        sql: "SELECT * FROM tune_history_entries WHERE profile_id = ? ORDER BY created_at DESC, id DESC",
-        arguments: [profileId]
-      ).map { try Self.historyMap($0) }
-    }
-  }
-
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `createProfile`
   func createProfile(
     boardId: String,
@@ -114,7 +88,6 @@ struct TuneProfileStore {
     let id = Self.newId()
     return try inWrite { db in
       try TuneProfileRecord(id: id, boardId: boardId, refloatBaseVersion: compatibility, name: name, icon: icon, color: color, fieldsJson: fieldsJson, createdAt: now, updatedAt: now).insert(db)
-      try Self.insertHistory(db, profileId: id, fieldsJson: fieldsJson, createdAt: now)
       return try Self.requireProfileMap(db, id)
     }
   }
@@ -148,35 +121,8 @@ struct TuneProfileStore {
       let count = try Row.fetchAll(db, sql: "SELECT * FROM tune_profiles WHERE board_id = ?", arguments: [boardId])
         .filter { compatibility != nil && Self.validRefloatBaseVersion($0["refloat_base_version"] as String) == compatibility }.count
       if count <= 1 { throw TuneProfileError.cannotDeleteLast }
-      try db.execute(sql: "DELETE FROM tune_history_entries WHERE profile_id = ?", arguments: [profileId])
       try db.execute(sql: "DELETE FROM tune_profiles WHERE id = ?", arguments: [profileId])
       return true
-    }
-  }
-
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/database/VescapeDao.kt `rollbackTuneProfile`
-  func rollbackProfile(profileId: String, historyEntryId: Int64) throws -> [String: Any?] {
-    let now = Self.nowMs()
-    return try inWrite { db in
-      guard let profile = try Self.fetchProfileRow(db, profileId) else {
-        throw TuneProfileError.profileNotFound(profileId)
-      }
-      guard let entry = try Row.fetchOne(
-        db,
-        sql: "SELECT * FROM tune_history_entries WHERE id = ? LIMIT 1",
-        arguments: [historyEntryId]
-      ) else {
-        throw TuneProfileError.historyEntryNotFound(historyEntryId)
-      }
-      let entryProfileId: String = entry["profile_id"]
-      if entryProfileId != profileId { throw TuneProfileError.historyEntryWrongProfile }
-
-      try Self.insertHistory(db, profileId: profileId, fieldsJson: profile["fields_json"], createdAt: now)
-      try TuneProfileRecord(id: profileId, boardId: profile["board_id"], refloatBaseVersion: profile["refloat_base_version"], name: profile["name"], icon: profile["icon"], color: profile["color"], fieldsJson: entry["fields_json"], createdAt: profile["created_at"], updatedAt: now).update(db)
-      guard let map = try Self.fetchProfileMap(db, profileId) else {
-        throw TuneProfileError.disappearedDuringRollback(profileId)
-      }
-      return map
     }
   }
 
@@ -192,7 +138,6 @@ struct TuneProfileStore {
       let icon: String = source["icon"]
       let color: String = source["color"]
       try TuneProfileRecord(id: copyId, boardId: targetBoardId, refloatBaseVersion: source["refloat_base_version"], name: newName, icon: icon, color: color, fieldsJson: fieldsJson, createdAt: now, updatedAt: now).insert(db)
-      try Self.insertHistory(db, profileId: copyId, fieldsJson: fieldsJson, createdAt: now)
       return try Self.requireProfileMap(db, copyId)
     }
   }
@@ -205,7 +150,6 @@ struct TuneProfileStore {
       guard let current = try Self.fetchProfileRow(db, profileId) else {
         throw TuneProfileError.profileNotFound(profileId)
       }
-      try Self.insertHistory(db, profileId: profileId, fieldsJson: current["fields_json"], createdAt: now)
       try TuneProfileRecord(id: profileId, boardId: current["board_id"], refloatBaseVersion: current["refloat_base_version"], name: current["name"], icon: current["icon"], color: current["color"], fieldsJson: fieldsJson, createdAt: current["created_at"], updatedAt: now).update(db)
       guard let map = try Self.fetchProfileMap(db, profileId) else {
         throw TuneProfileError.disappearedDuringSave(profileId)
@@ -221,15 +165,6 @@ struct TuneProfileStore {
   private func requireWriter() throws -> DatabaseWriter {
     guard let writer = resolveWriter() else { throw TuneProfileError.databaseUnavailable }
     return writer
-  }
-
-  private static func insertHistory(
-    _ db: Database,
-    profileId: String,
-    fieldsJson: String,
-    createdAt: Int64
-  ) throws {
-    try TuneHistoryRecord(id: nil, profileId: profileId, fieldsJson: fieldsJson, createdAt: createdAt).insert(db)
   }
 
   private static func fetchProfileRow(_ db: Database, _ id: String) throws -> Row? {
@@ -257,16 +192,6 @@ struct TuneProfileStore {
       "fields": try decodeFields(row["fields_json"]),
       "createdAt": row["created_at"] as Int64,
       "updatedAt": row["updated_at"] as Int64,
-    ]
-  }
-
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `TuneHistoryEntryEntity.toMap`
-  private static func historyMap(_ row: Row) throws -> [String: Any?] {
-    [
-      "id": row["id"] as Int64,
-      "profileId": row["profile_id"] as String,
-      "fields": try decodeFields(row["fields_json"]),
-      "createdAt": row["created_at"] as Int64,
     ]
   }
 

@@ -43,22 +43,14 @@ final class TuneProfileStoreTests: XCTestCase {
     XCTAssertEqual(profile["refloatBaseVersion"] as? String, "1.3")
     XCTAssertEqual(profile["name"] as? String, "Race")
     XCTAssertEqual(fieldsOf(profile)["speed"] as? Int, 42)
-
-    let history = try store.getProfileHistory(id)
-    XCTAssertEqual(history.count, 1)
-    XCTAssertEqual((history[0]["fields"] as? [String: Any])?["speed"] as? Int, 42)
   }
 
-  func testSaveAppendsHistoryOfPreviousFieldsThenUpdates() throws {
+  func testSaveUpdatesProfileFields() throws {
     let created = try createProfile(boardId: "board-1", name: "Race", fields: ["speed": 10])
     let id = created["id"] as! String
 
     let saved = try store.saveProfile(profileId: id, fields: ["speed": 20])
     XCTAssertEqual(fieldsOf(saved)["speed"] as? Int, 20)
-
-    let history = try store.getProfileHistory(id)
-    XCTAssertEqual(history.count, 2)
-    XCTAssertEqual((history[0]["fields"] as? [String: Any])?["speed"] as? Int, 10)
   }
 
   func testSaveOnMissingProfileThrowsNotFound() {
@@ -67,46 +59,7 @@ final class TuneProfileStoreTests: XCTestCase {
     }
   }
 
-  func testRollbackRestoresHistoryFieldsAndSnapshotsCurrent() throws {
-    let created = try createProfile(boardId: "board-1", name: "Race", fields: ["speed": 10])
-    let id = created["id"] as! String
-    _ = try store.saveProfile(profileId: id, fields: ["speed": 99])
-
-    let historyBefore = try store.getProfileHistory(id)
-    let seedEntryId = historyBefore.last!["id"] as! Int64
-
-    let restored = try store.rollbackProfile(profileId: id, historyEntryId: seedEntryId)
-    XCTAssertEqual(fieldsOf(restored)["speed"] as? Int, 10)
-
-    let historyAfter = try store.getProfileHistory(id)
-    XCTAssertEqual(historyAfter.count, historyBefore.count + 1)
-    XCTAssertEqual((historyAfter[0]["fields"] as? [String: Any])?["speed"] as? Int, 99)
-  }
-
-  func testRollbackWithMissingHistoryEntryThrows() throws {
-    let created = try createProfile(boardId: "board-1", name: "Race", fields: ["speed": 10])
-    let id = created["id"] as! String
-    XCTAssertThrowsError(try store.rollbackProfile(profileId: id, historyEntryId: 9999)) { error in
-      XCTAssertEqual((error as? TuneProfileError)?.errorDescription, "History entry not found: 9999")
-    }
-  }
-
-  func testRollbackWithHistoryFromOtherProfileThrows() throws {
-    let a = try createProfile(boardId: "board-1", name: "A", fields: ["speed": 1])
-    let b = try createProfile(boardId: "board-1", name: "B", fields: ["speed": 2])
-    let bHistoryId = try store.getProfileHistory(b["id"] as! String)[0]["id"] as! Int64
-
-    XCTAssertThrowsError(
-      try store.rollbackProfile(profileId: a["id"] as! String, historyEntryId: bHistoryId)
-    ) { error in
-      XCTAssertEqual(
-        (error as? TuneProfileError)?.errorDescription,
-        "History entry does not belong to this profile"
-      )
-    }
-  }
-
-  func testCopyToBoardClonesFieldsAndSeedsTargetHistory() throws {
+  func testCopyToBoardClonesFields() throws {
     let source = try createProfile(boardId: "board-1", name: "Race", fields: ["speed": 55, "duty": 80])
     let sourceId = source["id"] as! String
 
@@ -120,8 +73,6 @@ final class TuneProfileStoreTests: XCTestCase {
     XCTAssertEqual(fieldsOf(copy)["duty"] as? Int, 80)
 
     XCTAssertEqual(try store.getTuneProfiles("board-2", refloatBaseVersion: "1.3.0").map { $0["id"] as! String }, [copyId])
-    XCTAssertEqual(try store.getProfileHistory(copyId).count, 1)
-    XCTAssertEqual(try store.getProfileHistory(sourceId).count, 1)
   }
 
   func testListsOnlyProfilesForRequestedRefloatBaseVersion() throws {
@@ -163,7 +114,6 @@ final class TuneProfileStoreTests: XCTestCase {
     let unavailable = TuneProfileStore { nil }
     XCTAssertThrowsError(try unavailable.getTuneProfiles("board-1", refloatBaseVersion: "1.3.0"))
     XCTAssertThrowsError(try unavailable.getTuneProfile("missing"))
-    XCTAssertThrowsError(try unavailable.getProfileHistory("missing"))
   }
 
   func testMalformedStoredFieldsThrowInsteadOfBecomingEmptyTune() throws {
@@ -198,7 +148,7 @@ final class TuneProfileStoreTests: XCTestCase {
     }
   }
 
-  func testDeleteRemovesProfileAndItsHistory() throws {
+  func testDeleteRemovesProfile() throws {
     _ = try createProfile(boardId: "board-1", name: "Keep", fields: [:])
     let victim = try createProfile(boardId: "board-1", name: "Drop", fields: [:])
     let victimId = victim["id"] as! String
@@ -206,7 +156,6 @@ final class TuneProfileStoreTests: XCTestCase {
     try store.deleteProfile(profileId: victimId)
 
     XCTAssertNil(try store.getTuneProfile(victimId))
-    XCTAssertTrue(try store.getProfileHistory(victimId).isEmpty)
     XCTAssertEqual(try store.getTuneProfiles("board-1", refloatBaseVersion: "1.3.0").count, 1)
   }
 

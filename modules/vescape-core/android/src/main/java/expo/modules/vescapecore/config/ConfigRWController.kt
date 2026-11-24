@@ -40,6 +40,7 @@ internal sealed class PendingConfigWrite {
         val changes: Map<String, Any?>,
         override val onSuccess: (Map<String, Any?>) -> Unit,
         override val onError: (String, String) -> Unit,
+        val source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
     ) : PendingConfigWrite()
 }
 
@@ -132,7 +133,7 @@ internal class ConfigRWController(
                     pending = pending,
                     connection = initial,
                     transport = initialTransport,
-                    intent = ConfigWriteIntent.Changeset(pending.changes),
+                    intent = ConfigWriteIntent.Changeset(pending.changes, pending.source),
                     connectedBoardId = connectedBoardId,
                     startedAtMs = initialStartedAtMs,
                 )
@@ -177,7 +178,7 @@ internal class ConfigRWController(
                     pending = pending,
                     connection = connection,
                     transport = transport,
-                    intent = ConfigWriteIntent.Profile(storedFields),
+                    intent = ConfigWriteIntent.Profile(pending.profileId, storedFields),
                     connectedBoardId = connectedBoardId,
                     startedAtMs = startedAtMs,
                 )
@@ -295,7 +296,7 @@ internal class ConfigRWController(
     private fun completeRead(effect: ConfigRWEffect.EmitReadComplete) {
         val callbacks = readCallbacks.toList().also { readCallbacks.clear() }
         resumePolling(effect.resumePolling)
-        port.onBoardConfigValues(effect.boardConfigValues, BoardConfigOperationOrigin.FRESH_READ)
+        port.onBoardConfigValues(effect.boardConfigValues, BoardConfigOperationOrigin.FreshRead)
         val map = effect.boardConfigValues.toBridgeMap()
         for (pending in callbacks) pending.onSuccess(map)
     }
@@ -344,4 +345,14 @@ internal class ConfigRWController(
     private fun PendingConfigWrite.noCanId(operation: String) = onError(RefloatConfigErrorCode.CAN_ID_UNAVAILABLE.name, "Cannot $operation config before CAN id discovery")
 }
 
-internal enum class BoardConfigOperationOrigin { FRESH_READ, VESCAPE_WRITE }
+/**
+ * @parity /modules/vescape-core/ios/config/ConfigRWController.swift `BoardConfigOperationOrigin`
+ */
+internal sealed class BoardConfigOperationOrigin {
+    data object FreshRead : BoardConfigOperationOrigin()
+
+    data class VescapeWrite(
+        val source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
+        val tuneProfileId: String? = null,
+    ) : BoardConfigOperationOrigin()
+}

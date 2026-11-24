@@ -31,7 +31,7 @@ internal sealed class ConfigRWEffect {
     data class EmitWriteComplete(
         val boardConfigValues: BoardConfigValues,
         val resumePolling: Boolean,
-        val origin: BoardConfigOperationOrigin = BoardConfigOperationOrigin.VESCAPE_WRITE,
+        val origin: BoardConfigOperationOrigin = BoardConfigOperationOrigin.VescapeWrite(),
         val emitBoardConfigValues: Boolean = true,
     ) : ConfigRWEffect()
 

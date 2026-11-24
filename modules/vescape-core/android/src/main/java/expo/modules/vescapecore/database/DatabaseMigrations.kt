@@ -1626,6 +1626,21 @@ internal object DatabaseMigrations {
       }
     }
 
+    /**
+     * @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `v58_board_config_revisions`
+     */
+    internal val MIGRATION_57_58 = migration(57, 58) { db ->
+      BOARD_CONFIG_REVISIONS_V58_SQL.forEach(db::execSQL)
+    }
+
+    /** @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `boardConfigRevisionsV58Sql` */
+    private val BOARD_CONFIG_REVISIONS_V58_SQL = listOf(
+      "CREATE TABLE IF NOT EXISTS board_config_revisions (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, board_id TEXT NOT NULL, refloat_version TEXT NOT NULL, schema_hash TEXT NOT NULL, package_signature INTEGER NOT NULL, raw_config BLOB NOT NULL, source TEXT NOT NULL, changes_json TEXT NOT NULL, tune_profile_id TEXT, created_at INTEGER NOT NULL, FOREIGN KEY(schema_hash) REFERENCES board_config_schemas(schema_hash) ON UPDATE NO ACTION ON DELETE NO ACTION)",
+      "CREATE INDEX IF NOT EXISTS index_board_config_revisions_board_id_created_at ON board_config_revisions(board_id, created_at)",
+      "CREATE INDEX IF NOT EXISTS index_board_config_revisions_schema_hash ON board_config_revisions(schema_hash)",
+      "DROP TABLE IF EXISTS tune_history_entries",
+    )
+
     /** @parity /modules/vescape-core/ios/database/VescapeDatabase.swift `boardConfigSchemasV57Sql` */
     private const val BOARD_CONFIG_SCHEMAS_V57_SQL =
       "CREATE TABLE IF NOT EXISTS board_config_schemas (schema_hash TEXT NOT NULL PRIMARY KEY, raw_xml TEXT NOT NULL, created_at INTEGER NOT NULL)"
@@ -1876,6 +1891,7 @@ internal object DatabaseMigrations {
       MIGRATION_54_55,
       MIGRATION_55_56,
       MIGRATION_56_57,
+      MIGRATION_57_58,
     )
 
 }

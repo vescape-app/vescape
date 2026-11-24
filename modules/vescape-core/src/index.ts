@@ -1190,11 +1190,26 @@ export interface TuneProfile {
   updatedAt: number
 }
 
-export interface TuneHistoryEntry {
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `BoardConfigRevisionSource`
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevisionSource`
+ */
+export type BoardConfigRevisionSource = 'app' | 'external' | 'revert' | 'import'
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ConfigPersistence.kt `BoardConfigRevision`
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `BoardConfigRevision`
+ */
+export interface BoardConfigRevision {
   id: number
-  profileId: string
-  fields: Record<string, TuneProfileFieldValue>
-  createdAt: number
+  boardId: string
+  refloatVersion: string
+  schemaHash: string
+  packageSignature: number
+  source: BoardConfigRevisionSource
+  changes: BoardConfigChangeDiff[]
+  tuneProfileId: string | null
+  createdAtMs: number
 }
 
 export interface ProfileStats {
@@ -2572,8 +2587,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<TuneProfile>
   renameProfile(profileId: string, name: string, icon: string, color: string): Promise<TuneProfile>
   deleteProfile(profileId: string): Promise<void>
-  getProfileHistory(profileId: string): Promise<TuneHistoryEntry[]>
-  rollbackProfile(profileId: string, historyEntryId: number): Promise<TuneProfile>
+  getBoardConfigRevisions(boardId: string, limit?: number | null): Promise<BoardConfigRevision[]>
   copyProfileToBoard(
     profileId: string,
     targetBoardId: string,
@@ -3679,15 +3693,15 @@ export async function deleteProfile(profileId: string): Promise<void> {
   return native.deleteProfile(profileId)
 }
 
-export async function getProfileHistory(profileId: string): Promise<TuneHistoryEntry[]> {
-  return native.getProfileHistory(profileId)
-}
-
-export async function rollbackProfile(
-  profileId: string,
-  historyEntryId: number,
-): Promise<TuneProfile> {
-  return native.rollbackProfile(profileId, historyEntryId)
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigRevisions`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigRevisions`
+ */
+export async function getBoardConfigRevisions(
+  boardId: string,
+  limit?: number,
+): Promise<BoardConfigRevision[]> {
+  return native.getBoardConfigRevisions(boardId, limit ?? null)
 }
 
 export async function copyProfileToBoard(

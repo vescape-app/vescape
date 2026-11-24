@@ -145,7 +145,7 @@ class ConfigRWFsmWriteBaseTest {
             ConfigRWState.Idle,
             startWrite(
                 writeBase(),
-                ConfigWriteIntent.Profile(mapOf("tuned" to 7.0, "untouched" to 42.0, "absent_from_schema" to 99.0)),
+                ConfigWriteIntent.Profile("profile-1", mapOf("tuned" to 7.0, "untouched" to 42.0, "absent_from_schema" to 99.0)),
             ),
         )
         assertTrue(state is ConfigRWState.WriteAwaitingSetAck)
@@ -156,7 +156,7 @@ class ConfigRWFsmWriteBaseTest {
 
         val (sameState, sameEffects) = ConfigRWFsm.apply(
             ConfigRWState.Idle,
-            startWrite(writeBase(), ConfigWriteIntent.Profile(mapOf("tuned" to 1.0, "untouched" to 42.0))),
+            startWrite(writeBase(), ConfigWriteIntent.Profile("profile-1", mapOf("tuned" to 1.0, "untouched" to 42.0))),
         )
         assertEquals(ConfigRWState.Idle, sameState)
         assertFalse(sameEffects.sends(COMM_SET_CUSTOM_CONFIG))

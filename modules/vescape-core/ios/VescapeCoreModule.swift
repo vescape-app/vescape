@@ -1208,20 +1208,18 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    AsyncFunction("getProfileHistory") { (profileId: String, promise: Promise) in
-      try RecordingStorageFailure.requireAvailable()
-      do { promise.resolve(try TuneProfileStore.shared.getProfileHistory(profileId)) }
-      catch { RecordingStorageFailure.reportRead(operation: "tune_history_read", error: error); promise.reject(TuneProfileStore.errorCode, error.localizedDescription) }
-    }
-
-    AsyncFunction("rollbackProfile") { (profileId: String, historyEntryId: Double, promise: Promise) in
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigRevisions`
+    // @parity /modules/vescape-core/src/index.ts `getBoardConfigRevisions`
+    AsyncFunction("getBoardConfigRevisions") { (boardId: String, limit: Int?, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       do {
-        promise.resolve(
-          try TuneProfileStore.shared.rollbackProfile(profileId: profileId, historyEntryId: Int64(historyEntryId))
+        let revisions = try BoardConfigStore.shared.loadRevisions(
+          boardId: boardId,
+          limit: limit ?? BoardConfigStore.defaultRevisionsLimit
         )
+        promise.resolve(revisions.map { $0.toBridgeMap() })
       } catch {
-        reportTunePersistenceWrite(operation: "tune_profile_rollback", error: error)
+        RecordingStorageFailure.reportRead(operation: "board_config_revisions_read", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }

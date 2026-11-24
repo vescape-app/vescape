@@ -16,7 +16,6 @@
     "spec": "beep"
   },
   "expected": {
-    "historyCount": 2,
     "alertCount": 1,
     "alertEnabled": false
   },

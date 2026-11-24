@@ -232,7 +232,7 @@ An **Alert Rule** whose threshold remains a field-and-offset relationship to **B
 _Avoid_: Copied VESC threshold, synced alert value
 
 **Board Config Change Notice**:
-A one-time acknowledgement of field-level differences found when fresh **Board Config Values** disagree with the **Last Known Board Config Values** for the same **Board** and **Tune Compatibility**.
+A one-time acknowledgement of field-level differences found when fresh **Board Config Values** disagree with the **Last Known Board Config Values** for the same **Board** and **Tune Compatibility**. History is retained as **Board Config Revisions**; the notice only surfaces unacknowledged external changes.
 _Avoid_: Board Warning, config warning, config change history
 
 **Board Config Schema**:
@@ -250,6 +250,9 @@ _Avoid_: Profile push, full config write, config patch
 **Board Config Revision**:
 One distinct verified Refloat config state of a **Board** in its append-only config history, kept with its **Board Config Schema** and its source: a Vescape write, an external change, a revert or an import.
 _Avoid_: Tune History Entry, config backup, change log, config snapshot
+
+**Tune History Entry** _(superseded by **Board Config Revision**)_:
+Former per-**Tune Profile** snapshot recorded on profile saves. Removed when config history moved to per-**Board** **Board Config Revisions** (ADR 0063).
 
 **Tune Snapshot**:
 A read-only view of the board's current Refloat tuning configuration decoded from the board's schema and binary config.

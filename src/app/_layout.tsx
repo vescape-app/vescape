@@ -269,7 +269,10 @@ function RootContent() {
                   options={{ title: 'Raw BMS' }}
                 />
                 <Stack.Screen name={stackScreens.tune} options={{ title: 'Tune' }} />
-                <Stack.Screen name={stackScreens.tuneHistory} options={{ title: 'Tune History' }} />
+                <Stack.Screen
+                  name={stackScreens.tuneHistory}
+                  options={{ title: 'Config History' }}
+                />
                 <Stack.Screen name={stackScreens.addBoardScan} options={{ title: 'Pair Board' }} />
                 <Stack.Screen name={stackScreens.addBoard} options={{ title: 'Add Board' }} />
                 <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />

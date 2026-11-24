@@ -467,7 +467,7 @@ class ConfigRWFsmTest {
             canId = canId,
             transport = BoardTransport.Can(canId ?: 0),
             wasPolling = wasPolling,
-            intent = ConfigWriteIntent.Profile(profileFields),
+            intent = ConfigWriteIntent.Profile("profile-1", profileFields),
             appBoardId = "board-1",
             fwVersion = "fw-test",
             refloatBaseVersion = "3.0",
