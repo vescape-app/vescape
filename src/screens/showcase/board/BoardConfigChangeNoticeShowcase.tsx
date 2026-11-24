@@ -112,6 +112,7 @@ export function BoardConfigChangeNoticeShowcase() {
           ignoredFields={ignoredFields}
           fieldLabels={DEMO_LABELS}
           error={simulateError ? 'Ignored fields could not be updated.' : null}
+          onOpenHistory={() => setOptionsOpen(false)}
           onOpenRawConfig={() => setOptionsOpen(false)}
           onRestoreField={(fieldId) => {
             if (simulateError) return

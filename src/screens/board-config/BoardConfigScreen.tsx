@@ -2,16 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
-import {
-  CaretDownIcon,
-  CaretUpIcon,
-  DotsThreeIcon,
-  GearSixIcon,
-  WrenchIcon,
-} from 'phosphor-react-native'
+import { CaretDownIcon, CaretUpIcon, GearSixIcon, WrenchIcon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
-import { IconButton } from '@/components/base/IconButton'
 import { PageScrollView } from '@/components/base/PageScrollView'
 import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
@@ -50,6 +43,7 @@ import { routes } from '@/navigation/routes'
 import { boardConfigTabs } from '@/screens/board-config/boardConfigGroups'
 import {
   BoardConfigFieldInfoModal,
+  BoardConfigHeaderActions,
   BoardConfigPendingBar,
   BoardConfigReadInfo,
   BoardConfigSchemaSectionCard,
@@ -153,20 +147,22 @@ export default function BoardConfigScreen() {
     setApplyError(null)
   }, [boardId, schemaHash])
 
+  const handleOpenHistory = useCallback(() => {
+    setOptionsOpen(false)
+    router.push({ pathname: routes.tuneHistory, params: { boardId } })
+  }, [boardId])
+
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <View ref={optionsAnchorRef} collapsable={false}>
-          <IconButton
-            icon={DotsThreeIcon}
-            onPress={() => setOptionsOpen(true)}
-            accessibilityLabel="Board config options"
-            testID="board-config-options-button"
-          />
-        </View>
+        <BoardConfigHeaderActions
+          optionsAnchorRef={optionsAnchorRef}
+          onOpenHistory={handleOpenHistory}
+          onOpenOptions={() => setOptionsOpen(true)}
+        />
       ),
     })
-  }, [navigation])
+  }, [handleOpenHistory, navigation])
 
   const schemaTabs = useMemo(
     () =>
@@ -525,6 +521,7 @@ export default function BoardConfigScreen() {
           boardId={boardId}
           fieldLabels={fieldLabels}
           canTransferXml={xmlTransfer.canTransferXml}
+          onOpenHistory={handleOpenHistory}
           onOpenRawConfig={handleOpenRawConfig}
           onExportXml={() => void xmlTransfer.handleExportXml()}
           onImportXml={() => void xmlTransfer.handleImportXml()}

@@ -1,8 +1,10 @@
+import type { RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { InfoIcon } from 'phosphor-react-native'
+import { ClockCounterClockwiseIcon, DotsThreeIcon, InfoIcon } from 'phosphor-react-native'
 
 import { Banner } from '@/components/base/Banner'
 import { Button } from '@/components/base/Button'
+import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { InfoModal } from '@/components/modals/InfoModal'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -16,6 +18,35 @@ import type {
   BoardConfigSchemaSection,
 } from '@/modules/board/lib/boardConfigSchemaGroups'
 import type { ResolvedBoardConfigField } from '@/modules/board/lib/refloatFieldOverlay'
+
+export function BoardConfigHeaderActions({
+  optionsAnchorRef,
+  onOpenHistory,
+  onOpenOptions,
+}: {
+  optionsAnchorRef: RefObject<View | null>
+  onOpenHistory: () => void
+  onOpenOptions: () => void
+}) {
+  return (
+    <View style={styles.headerActions}>
+      <IconButton
+        icon={ClockCounterClockwiseIcon}
+        onPress={onOpenHistory}
+        accessibilityLabel="Config history"
+        testID="board-config-history-button"
+      />
+      <View ref={optionsAnchorRef} collapsable={false}>
+        <IconButton
+          icon={DotsThreeIcon}
+          onPress={onOpenOptions}
+          accessibilityLabel="Board config options"
+          testID="board-config-options-button"
+        />
+      </View>
+    </View>
+  )
+}
 
 export function BoardConfigReadInfo({
   refloatReadTime,
@@ -230,6 +261,7 @@ export function BoardConfigPendingBar({
 }
 
 const styles = StyleSheet.create({
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   schemaSections: { gap: 18 },
   schemaSection: { gap: 6 },
   pendingBar: {

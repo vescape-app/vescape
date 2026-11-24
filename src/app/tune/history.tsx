@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FlatList, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useLocalSearchParams } from 'expo-router'
 import {
   getBoardConfigRevisions,
   planBoardConfigRevert,
@@ -35,9 +36,11 @@ import {
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
 export default function BoardConfigHistoryScreen() {
+  const { boardId: paramBoardId } = useLocalSearchParams<{ boardId?: string }>()
   const neutral = useResolvedNeutralColors()
   const { timeFormat, dateFormat, temperatureUnit } = useUserPreferences()
-  const selectedBoardId = useBoardStore((s) => s.activeBoardId)
+  const activeBoardId = useBoardStore((s) => s.activeBoardId)
+  const selectedBoardId = paramBoardId || activeBoardId
   const boardConfig = useBoardConfigFields(selectedBoardId ?? undefined)
   const lastCapturedAtMs = useBoardConfigValuesStore((s) => s.values?.capturedAtMs ?? null)
 
