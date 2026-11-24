@@ -2,7 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
-import { CaretDownIcon, CaretUpIcon, DotsThreeIcon, GearSixIcon } from 'phosphor-react-native'
+import {
+  CaretDownIcon,
+  CaretUpIcon,
+  DotsThreeIcon,
+  GearSixIcon,
+  WrenchIcon,
+} from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
@@ -11,6 +17,7 @@ import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { SearchInput } from '@/components/forms/SearchInput'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
+import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import { fmtTimeAgo } from '@/helpers/format'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
@@ -418,24 +425,30 @@ export default function BoardConfigScreen() {
         contentContainerStyle={[styles.content, pendingCount > 0 && styles.contentWithBar]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <BoardConfigReadInfo refloatReadTime={refloatReadTime} motorReadTime={motorReadTime} />
-
-          <BoardConfigStatusBanners
-            hasRefloat={refloat !== null}
-            canEdit={canEdit}
-            xmlError={xmlTransfer.xmlError}
-            xmlNotice={xmlTransfer.xmlNotice}
-          />
-
-          <SearchInput
-            value={query}
-            onChangeText={setQuery}
-            accessibilityLabel="Search board config"
-            testID="board-config-search"
-            style={styles.search}
-          />
+        <View style={styles.heroWrap}>
+          <IconHero
+            icon={WrenchIcon}
+            iconSize={48}
+            description="Your board's Refloat config and motor limits, grouped by topic."
+          >
+            <BoardConfigReadInfo refloatReadTime={refloatReadTime} motorReadTime={motorReadTime} />
+          </IconHero>
         </View>
+
+        <SearchInput
+          value={query}
+          onChangeText={setQuery}
+          accessibilityLabel="Search board config"
+          testID="board-config-search"
+          style={styles.search}
+        />
+
+        <BoardConfigStatusBanners
+          hasRefloat={refloat !== null}
+          canEdit={canEdit}
+          xmlError={xmlTransfer.xmlError}
+          xmlNotice={xmlTransfer.xmlNotice}
+        />
 
         {searching ? (
           <View style={styles.groups}>{renderSearchBody()}</View>
@@ -521,11 +534,14 @@ export default function BoardConfigScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.neutral.bg },
-  content: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 24, gap: 14 },
+  content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24, gap: 12 },
   contentWithBar: { paddingBottom: 112 },
-  header: { gap: 10 },
+  heroWrap: { marginBottom: -18 },
   tabs: { backgroundColor: theme.neutral.bg, paddingVertical: 2 },
   groups: { gap: 18 },
-  search: { width: '100%' },
+  search: {
+    alignSelf: 'center',
+    width: '70%',
+  },
   noResults: { color: theme.neutral.textSecondary, fontSize: 14, textAlign: 'center' },
 })
