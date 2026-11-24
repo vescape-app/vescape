@@ -15,13 +15,18 @@ internal final class VescWriteQueue {
     }
   }
 
+  private struct NormalEntry {
+    let bytes: [UInt8]
+    let tag: String?
+  }
+
   private struct PendingRemoteInput {
     let bytes: [UInt8]
     let urgent: Bool
   }
 
   private let lock = NSLock()
-  private var normal: [[UInt8]] = []
+  private var normal: [NormalEntry] = []
   private var pendingRemoteInput: PendingRemoteInput?
   private var inFlight: Write?
   private var preferRemoteInput = false
@@ -29,6 +34,7 @@ internal final class VescWriteQueue {
   static let defaultChunkLimit = 20
 
   private var frame: Write?
+  private var frameTag: String?
   private var frameOffset = 0
   private var chunkLimit = VescWriteQueue.defaultChunkLimit
 
@@ -38,10 +44,26 @@ internal final class VescWriteQueue {
     chunkLimit = max(bytes, VescWriteQueue.defaultChunkLimit)
   }
 
-  func enqueueNormal(_ bytes: [UInt8]) {
+  func enqueueNormal(_ bytes: [UInt8], tag: String? = nil) {
     lock.lock()
     defer { lock.unlock() }
-    normal.append(bytes)
+    normal.append(NormalEntry(bytes: bytes, tag: tag))
+  }
+
+  @discardableResult
+  func dropNormal(tag: String) -> Int {
+    lock.lock()
+    defer { lock.unlock() }
+    let before = normal.count
+    normal.removeAll { $0.tag == tag }
+    var dropped = before - normal.count
+    if frameTag == tag {
+      frame = nil
+      frameTag = nil
+      frameOffset = 0
+      dropped += 1
+    }
+    return dropped
   }
 
   func replaceRemoteInput(_ bytes: [UInt8], urgent: Bool = false) {
@@ -76,11 +98,14 @@ internal final class VescWriteQueue {
     {
       pendingRemoteInput = nil
       preferRemoteInput = false
+      frameTag = nil
       next = .remoteInput(bytes: remoteInput.bytes)
     } else {
       if normal.isEmpty { return nil }
       preferRemoteInput = true
-      next = .normal(bytes: normal.removeFirst())
+      let entry = normal.removeFirst()
+      frameTag = entry.tag
+      next = .normal(bytes: entry.bytes)
     }
     frame = next
     frameOffset = 0
@@ -93,7 +118,10 @@ internal final class VescWriteQueue {
     defer { lock.unlock() }
     let completed = inFlight
     inFlight = nil
-    if failed || frameOffset >= (frame?.bytes.count ?? 0) { frame = nil }
+    if failed || frameOffset >= (frame?.bytes.count ?? 0) {
+      frame = nil
+      frameTag = nil
+    }
     return completed
   }
 
@@ -105,6 +133,7 @@ internal final class VescWriteQueue {
     inFlight = nil
     preferRemoteInput = false
     frame = nil
+    frameTag = nil
     frameOffset = 0
     chunkLimit = VescWriteQueue.defaultChunkLimit
   }

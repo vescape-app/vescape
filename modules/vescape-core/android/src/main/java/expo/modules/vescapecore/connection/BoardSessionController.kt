@@ -36,6 +36,8 @@ import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
 import expo.modules.vescapecore.config.BoardRideState
 import expo.modules.vescapecore.config.ConfigRWControllerPort
+import expo.modules.vescapecore.config.LegacyLightsConfigGate
+import expo.modules.vescapecore.config.PendingConfigWrite
 import expo.modules.vescapecore.config.BoardConfigFlagField
 import expo.modules.vescapecore.config.BoardConfigOperationOrigin
 import expo.modules.vescapecore.service.CoreForegroundService
@@ -187,6 +189,7 @@ import expo.modules.vescapecore.telemetry.TelemetryPipeline
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.toMetricSanitizerConfig
 import androidx.annotation.AnyThread
+import androidx.annotation.MainThread
 
 private const val CHANNEL_ID = "vesc_monitoring_v5"
 private const val NOTIFICATION_ID = 1001
@@ -411,6 +414,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
             telemetryPipeline,
         )
     }
+    private val legacyLightsConfigGate by lazy {
+        LegacyLightsConfigGate(scheduler, onEchoTimeout = ::onLegacyLightsEchoTimeout)
+    }
     private val configController by lazy {
         ConfigRWController(
             scheduler,
@@ -424,13 +430,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
                         currentBoardTransport(),
                         fwVersionString,
                         boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
-                        boardConfigValues,
+                        if (legacyLightsConfigGate.isEchoPending) boardConfigValues?.demotedToProvisional() else boardConfigValues,
                         telemetry?.let { BoardRideState(it.state, it.switchState, it.lastPacketAt) },
                     )
                 override fun isPollingActive() = pollingLoop.isActive
                 override fun stopPolling() = this@BoardSessionController.stopPolling()
                 override fun startPolling() = this@BoardSessionController.startPolling()
                 override fun sendPayload(payload: ByteArray) = this@BoardSessionController.sendPayload(payload)
+                override fun sendPayload(payload: ByteArray, tag: String?) = this@BoardSessionController.sendPayload(payload, tag)
+                override fun cancelQueuedPayloads(tag: String) = transport.cancelQueuedPayloads(tag)
                 override fun captureDiagnostic(name: String, properties: Map<String, Any?>) =
                     this@BoardSessionController.captureDiagnostic(name, properties)
                 override fun diagnosticProperties(config: SessionConfig?, category: String) =
@@ -575,6 +583,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             bmsSeriesRing.clear()
             telemetryPipeline.clearLiveTelemetry()
             boardConfigValues = boardConfigValues?.demotedToProvisional()
+            legacyLightsConfigGate.reset()
             boardLights = null
             publishBoardLights()
             boardConfigReadScheduled = false
@@ -962,15 +971,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
         }
     }
 
-    fun consumePendingConfigRead() {
-        val pending = CoreForegroundService.pendingConfigRead ?: return
-        CoreForegroundService.pendingConfigRead = null
+    @MainThread
+    fun consumeConfigRead(pending: PendingConfigRead) {
         configController.consumeRead(pending)
     }
 
-    fun consumePendingConfigWrite() {
-        val pending = CoreForegroundService.pendingConfigWrite ?: return
-        CoreForegroundService.pendingConfigWrite = null
+    @MainThread
+    fun consumeConfigWrite(pending: PendingConfigWrite) {
         configController.consumeWrite(pending)
     }
 
@@ -1472,7 +1479,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             configController.onPayload(payload, System.currentTimeMillis())
             return
         }
-        parseLightsControlResponse(payload)?.let { lights ->
+        parseLightsControlResponse(payload, transport = currentBoardTransport())?.let { lights ->
             onBoardLightsEcho(lights)
             return
         }
@@ -1504,6 +1511,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             markBoardReady()
             startLinkIntegrityProbe(sessionToken)
             telemetry = parsed
+            configController.onRideState(BoardRideState(parsed.state, parsed.switchState, parsed.lastPacketAt))
             val batteryPct = BatterySocEstimator.estimateBatteryPercent(
                 parsed.batteryVoltage,
                 batteryConfigCache,
@@ -1826,6 +1834,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
      */
     private fun clearBoardConfigValues() {
         boardConfigValues = null
+        legacyLightsConfigGate.reset()
         motorConfigValues = null
         alertCoordinator.updateBoardConfigValues(emptyMap())
         val boardId = boardConfig?.appBoardId ?: return
@@ -2025,6 +2034,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /**
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardConfigValues`
      */
+    @Volatile
     private var boardConfigValues: BoardConfigValues? = null
         set(value) {
             field = value
@@ -2290,9 +2300,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
         }
     }
 
-    private fun sendPayload(payload: ByteArray): Boolean {
+    private fun sendPayload(payload: ByteArray, tag: String? = null): Boolean {
         lastSentCommand = payload.getOrNull(0)?.toInt()?.and(0xff)
-        return transport.sendPayload(payload)
+        return transport.sendPayload(payload, tag)
     }
 
     private fun firmwareCommandsTrusted(): Boolean =
@@ -2380,11 +2390,24 @@ internal class BoardSessionController(private val service: CoreForegroundService
     /**
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setBoardLights`
      */
+    @MainThread
     fun setBoardLights(enabled: Boolean, headlightsEnabled: Boolean): Boolean {
         if (!firmwareCommandsTrusted()) return false
+        val baseVersion = boardConfig?.refloatBaseVersion
+        if (!legacyLightsConfigGate.canSendLights(baseVersion, configController.isWriteInFlight)) return false
         val transport = currentBoardTransport() ?: return false
-        return sendPayloadWithRetry(
+        val sent = sendPayloadWithRetry(
             buildLightsControlCommand(transport, lightsGeneration(), enabled, headlightsEnabled),
+        )
+        if (sent) legacyLightsConfigGate.onLightsCommandSent(baseVersion)
+        return sent
+    }
+
+    private fun onLegacyLightsEchoTimeout() {
+        boardConfigValues = boardConfigValues?.demotedToProvisional()
+        captureDiagnostic(
+            "board_lights_echo_timeout",
+            diagnosticProperties(boardConfig, "config_rw"),
         )
     }
 
@@ -2392,9 +2415,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
         BoardLightsGeneration.forBaseVersion(boardConfig?.refloatBaseVersion)
 
     private fun onBoardLightsEcho(lights: BoardLightsState) {
+        legacyLightsConfigGate.onLightsEchoReceived()
         boardLights = lights
         publishBoardLights()
         if (!lightsCommandChangesBoardConfig(boardConfig?.refloatBaseVersion)) return
+        if (configController.isWriteInFlight) return
         val values = boardConfigValues ?: return
         val rebased = try {
             values.withLights(lights.enabled, lights.headlightsEnabled)
@@ -2517,6 +2542,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         fwVersionString = null
         telemetry = null
         boardConfigValues = null
+        legacyLightsConfigGate.reset()
         motorConfigValues = null
         motorConfigRequested = false
         boardLights = null

@@ -44,6 +44,16 @@ enum RefloatConfigProtocol {
     ])
   }
 
+  static func buildGetAllData(transport: BoardTransport, version: Int = 2) -> [UInt8] {
+    precondition((0...255).contains(version), "version must fit uint8")
+    return transport.frame([
+      UInt8(COMM_CUSTOM_APP_DATA),
+      UInt8(REFLOAT_MAGIC),
+      UInt8(REFLOAT_GET_ALLDATA),
+      UInt8(version),
+    ])
+  }
+
   static func buildGetCustomConfigXml(
     transport: BoardTransport,
     confInd: Int,

@@ -107,6 +107,7 @@ class CoreForegroundService : Service() {
 
         @Volatile var liveStateChanged: (() -> Unit)? = null
 
+        @Volatile
         private var instance: CoreForegroundService? = null
 
         private fun onMain(block: () -> Unit) {
@@ -114,8 +115,6 @@ class CoreForegroundService : Service() {
         }
         internal var pendingStart: PendingStart? = null
         internal var pendingStop: PendingStop? = null
-        internal var pendingConfigRead: PendingConfigRead? = null
-        internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
         @Volatile internal var pendingGroupRideUrl: String? = null
         @Volatile internal var lookAroundRequested = false
@@ -239,16 +238,17 @@ class CoreForegroundService : Service() {
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
         ) {
-            val service = instance
-            if (service == null) {
-                onError(
-                    RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
-                    "Board must be connected before reading Refloat config",
-                )
-                return
+            onMain {
+                val service = instance
+                if (service == null) {
+                    onError(
+                        RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+                        "Board must be connected before reading Refloat config",
+                    )
+                    return@onMain
+                }
+                service.controller.consumeConfigRead(PendingConfigRead(onSuccess, onError))
             }
-            pendingConfigRead = PendingConfigRead(onSuccess, onError)
-            service.controller.consumePendingConfigRead()
         }
 
         fun getBoardConfigValues(): Map<String, Any?>? = instance?.controller?.boardConfigValuesMap()
@@ -318,16 +318,19 @@ class CoreForegroundService : Service() {
             onError: (String, String) -> Unit,
             source: BoardConfigRevisionSource = BoardConfigRevisionSource.APP,
         ) {
-            val service = instance
-            if (service == null) {
-                onError(
-                    RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
-                    "Board must be connected before pushing config",
+            onMain {
+                val service = instance
+                if (service == null) {
+                    onError(
+                        RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+                        "Board must be connected before pushing config",
+                    )
+                    return@onMain
+                }
+                service.controller.consumeConfigWrite(
+                    PendingConfigWrite.Changeset(boardId, changes, onSuccess, onError, source),
                 )
-                return
             }
-            pendingConfigWrite = PendingConfigWrite.Changeset(boardId, changes, onSuccess, onError, source)
-            service.controller.consumePendingConfigWrite()
         }
 
         fun pushProfileToBoard(
@@ -335,16 +338,17 @@ class CoreForegroundService : Service() {
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
         ) {
-            val service = instance
-            if (service == null) {
-                onError(
-                    RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
-                    "Board must be connected before pushing config",
-                )
-                return
+            onMain {
+                val service = instance
+                if (service == null) {
+                    onError(
+                        RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+                        "Board must be connected before pushing config",
+                    )
+                    return@onMain
+                }
+                service.controller.consumeConfigWrite(PendingConfigWrite.Profile(profileId, onSuccess, onError))
             }
-            pendingConfigWrite = PendingConfigWrite.Profile(profileId, onSuccess, onError)
-            service.controller.consumePendingConfigWrite()
         }
 
         fun setAppVisible(@Suppress("UNUSED_PARAMETER") context: Context, visible: Boolean) {

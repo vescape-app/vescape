@@ -1,21 +1,21 @@
 package expo.modules.vescapecore.config
 
-import expo.modules.vescapecore.recording.RecordingStorageFailure
-
+import androidx.annotation.MainThread
 import expo.modules.vescapecore.connection.BoardPhase
-import expo.modules.vescapecore.service.SessionConfig
-import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.isPollingCapable
+import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.diagnostics.newOperationId
 import expo.modules.vescapecore.protocol.COMM_CUSTOM_APP_DATA
 import expo.modules.vescapecore.protocol.COMM_FORWARD_CAN
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.LinkIntegrity
 import expo.modules.vescapecore.runtime.Scheduler
+import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.telemetry.tuneCompatibilityVersion
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -60,6 +60,8 @@ internal interface ConfigRWControllerPort {
     fun stopPolling()
     fun startPolling()
     fun sendPayload(payload: ByteArray): Boolean
+    fun sendPayload(payload: ByteArray, tag: String?): Boolean = sendPayload(payload)
+    fun cancelQueuedPayloads(tag: String) {}
     fun captureDiagnostic(name: String, properties: Map<String, Any?>)
     fun diagnosticProperties(config: SessionConfig?, category: String): Map<String, Any?>
     fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray)
@@ -73,18 +75,27 @@ internal class ConfigRWController(
     private val appDataScope: CoroutineScope,
     private val loadProfile: suspend (String) -> Map<String, Any?>?,
     private val port: ConfigRWControllerPort,
+    private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
     private var state: ConfigRWState = ConfigRWState.Idle
     private val readCallbacks = mutableListOf<PendingConfigRead>()
     private var writeCallbacks: PendingConfigWrite? = null
-    private var writeStartedAtMs = 0L
+    private var activeSetFrameTag: String? = null
     private var timeoutHandle: Cancellable? = null
 
     val isInFlight: Boolean get() = state !is ConfigRWState.Idle
 
+    val isWriteInFlight: Boolean
+        get() = state is ConfigRWState.WriteCollectingXml ||
+            state is ConfigRWState.WriteAwaitingConfig ||
+            state is ConfigRWState.WriteAwaitingIdle ||
+            state is ConfigRWState.WriteAwaitingSetAck ||
+            state is ConfigRWState.WriteVerifying
+
     private val isReadInFlight: Boolean
         get() = state is ConfigRWState.ReadCollectingXml || state is ConfigRWState.ReadAwaitingConfig
 
+    @MainThread
     fun consumeRead(pending: PendingConfigRead) {
         if (isInFlight) {
             if (!isReadInFlight) return pending.inFlight()
@@ -112,13 +123,14 @@ internal class ConfigRWController(
         )
     }
 
+    @MainThread
     fun consumeWrite(pending: PendingConfigWrite) {
         if (isInFlight) return pending.inFlight()
         val initial = port.connection()
         if (!initial.connected()) return pending.notConnected()
         if (!initial.trusted()) return pending.linkNotTrusted()
         val initialTransport = initial.transport ?: return pending.noCanId("push")
-        val initialStartedAtMs = System.currentTimeMillis()
+        val initialStartedAtMs = nowMs()
         idleBlockReason(initial, initialStartedAtMs)?.let { return pending.notIdle(it) }
         when (pending) {
             is PendingConfigWrite.Changeset -> {
@@ -172,7 +184,7 @@ internal class ConfigRWController(
                 if (profileRefloatBaseVersion.isNullOrBlank() || connectedRefloatBaseVersion.isNullOrBlank() || profileRefloatBaseVersion != tuneCompatibilityVersion(connectedRefloatBaseVersion)) {
                     return@post pending.onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.name, "Tune profile does not match the connected board Refloat Tune Compatibility")
                 }
-                val startedAtMs = System.currentTimeMillis()
+                val startedAtMs = nowMs()
                 idleBlockReason(connection, startedAtMs)?.let { return@post pending.notIdle(it) }
                 startWriteOperation(
                     pending = pending,
@@ -196,7 +208,6 @@ internal class ConfigRWController(
     ) {
         val wasPolling = port.isPollingActive()
         port.stopPolling()
-        writeStartedAtMs = startedAtMs
         writeCallbacks = pending
         dispatch(
             ConfigRWEvent.StartWrite(
@@ -215,7 +226,8 @@ internal class ConfigRWController(
         )
     }
 
-    fun onPayload(payload: ByteArray, capturedAtMs: Long = System.currentTimeMillis()): Boolean {
+    @MainThread
+    fun onPayload(payload: ByteArray, capturedAtMs: Long = nowMs()): Boolean {
         val transport = ConfigRWFsm.transportOf(state) ?: return false
         if (!RefloatConfigProtocol.matchesTransport(payload, transport)) return false
         val cmd = payloadCommand(payload) ?: return false
@@ -244,7 +256,18 @@ internal class ConfigRWController(
         }
     }
 
-    fun onSessionTerminated(message: String) { if (isInFlight) dispatch(ConfigRWEvent.SessionTerminated(message)) }
+    @MainThread
+    fun onRideState(rideState: BoardRideState) {
+        if (state is ConfigRWState.WriteAwaitingIdle) {
+            dispatch(ConfigRWEvent.RideStateReceived(rideState, nowMs()))
+        }
+    }
+
+    @MainThread
+    fun onSessionTerminated(message: String) {
+        cancelQueuedSetFrames()
+        if (isInFlight) dispatch(ConfigRWEvent.SessionTerminated(message))
+    }
 
     private fun payloadCommand(payload: ByteArray): Int? {
         if (payload.isEmpty()) return null
@@ -261,31 +284,58 @@ internal class ConfigRWController(
 
     private fun interpret(effect: ConfigRWEffect): Boolean {
         when (effect) {
-        is ConfigRWEffect.SendFrame -> {
-            if (effect.requiresIdleBoard) {
-                idleBlockReason(port.connection(), writeStartedAtMs)?.let {
-                    dispatch(ConfigRWEvent.SetConfigBlocked(it))
+            is ConfigRWEffect.SendFrame -> {
+                if (effect.requiresIdleBoard) {
+                    val connection = port.connection()
+                    if (!connection.connected()) {
+                        dispatch(
+                            ConfigRWEvent.SetConfigBlocked(
+                                "Board must be connected before pushing config",
+                                RefloatConfigErrorCode.BOARD_NOT_CONNECTED,
+                            ),
+                        )
+                        return false
+                    }
+                    if (!connection.trusted()) {
+                        dispatch(
+                            ConfigRWEvent.SetConfigBlocked(
+                                "Trusted board link required before pushing config",
+                                RefloatConfigErrorCode.LINK_NOT_TRUSTED,
+                            ),
+                        )
+                        return false
+                    }
+                    idleBlockReason(connection, nowMs(), effect.minRideStateAtMs)?.let {
+                        dispatch(ConfigRWEvent.SetConfigBlocked(it, RefloatConfigErrorCode.BOARD_NOT_IDLE))
+                        return false
+                    }
+                }
+                if (effect.frameTag != null) activeSetFrameTag = effect.frameTag
+                if (!port.sendPayload(effect.payload, effect.frameTag)) {
+                    dispatch(ConfigRWEvent.GattWriteFailed("Board GATT is not writable"))
                     return false
                 }
             }
-            if (!port.sendPayload(effect.payload)) {
-                dispatch(ConfigRWEvent.GattWriteFailed("Board GATT is not writable"))
-                return false
+            is ConfigRWEffect.ScheduleTimeout -> {
+                timeoutHandle?.cancel()
+                timeoutHandle = scheduler.postDelayed(effect.timeoutMs) { timeoutHandle = null; dispatch(ConfigRWEvent.Timeout(effect.code)) }
             }
-        }
-        is ConfigRWEffect.ScheduleTimeout -> {
-            timeoutHandle?.cancel()
-            timeoutHandle = scheduler.postDelayed(effect.timeoutMs) { timeoutHandle = null; dispatch(ConfigRWEvent.Timeout(effect.code)) }
-        }
-        ConfigRWEffect.CancelTimeout -> { timeoutHandle?.cancel(); timeoutHandle = null }
-        is ConfigRWEffect.EmitReadComplete -> completeRead(effect)
-        is ConfigRWEffect.EmitReadFailure -> failRead(effect)
-        is ConfigRWEffect.EmitWriteComplete -> completeWrite(effect)
-        is ConfigRWEffect.EmitWriteFailure -> failWrite(effect)
-        is ConfigRWEffect.DumpDebugBytes -> port.dumpDebugBytes(effect.xmlBytes, effect.configBytes)
-        ConfigRWEffect.DemoteWriteBase -> port.demoteWriteBase()
+            ConfigRWEffect.CancelTimeout -> { timeoutHandle?.cancel(); timeoutHandle = null }
+            is ConfigRWEffect.EmitBoardConfigValues -> port.onBoardConfigValues(effect.boardConfigValues, effect.origin)
+            is ConfigRWEffect.EmitReadComplete -> completeRead(effect)
+            is ConfigRWEffect.EmitReadFailure -> failRead(effect)
+            is ConfigRWEffect.EmitWriteComplete -> completeWrite(effect)
+            is ConfigRWEffect.EmitWriteFailure -> failWrite(effect)
+            is ConfigRWEffect.DumpDebugBytes -> port.dumpDebugBytes(effect.xmlBytes, effect.configBytes)
+            ConfigRWEffect.DemoteWriteBase -> port.demoteWriteBase()
         }
         return true
+    }
+
+    private fun cancelQueuedSetFrames() {
+        val tag = activeSetFrameTag ?: return
+        activeSetFrameTag = null
+        port.cancelQueuedPayloads(tag)
     }
 
     private fun resumePolling(resume: Boolean) {
@@ -300,20 +350,25 @@ internal class ConfigRWController(
         val map = effect.boardConfigValues.toBridgeMap()
         for (pending in callbacks) pending.onSuccess(map)
     }
+
     private fun failRead(effect: ConfigRWEffect.EmitReadFailure) {
         val callbacks = readCallbacks.toList().also { readCallbacks.clear() }; resumePolling(effect.resumePolling)
         val name = if (effect.code == RefloatConfigErrorCode.CONFIG_DECODE_FAILED || effect.code == RefloatConfigErrorCode.UNSUPPORTED_SCHEMA) "config_decode_failed" else "config_read_failed"
         port.captureDiagnostic(name, port.diagnosticProperties(port.connection().config, "config_read") + mapOf("operation_id" to effect.opId, "message" to effect.message, "error_code" to effect.code.name, "firmware" to port.connection().fwVersion) + DiagnosticReporter.configBlobProperties(effect.rawConfig))
         for (pending in callbacks) pending.onError(effect.code.name, effect.message)
     }
+
     private fun completeWrite(effect: ConfigRWEffect.EmitWriteComplete) {
+        cancelQueuedSetFrames()
         val callbacks = writeCallbacks.also { writeCallbacks = null }; resumePolling(effect.resumePolling)
         if (effect.emitBoardConfigValues) {
             port.onBoardConfigValues(effect.boardConfigValues, effect.origin)
         }
         callbacks?.onSuccess?.invoke(effect.boardConfigValues.toBridgeMap())
     }
+
     private fun failWrite(effect: ConfigRWEffect.EmitWriteFailure) {
+        cancelQueuedSetFrames()
         val callbacks = writeCallbacks.also { writeCallbacks = null }; resumePolling(effect.resumePolling)
         val baseProperties = port.diagnosticProperties(port.connection().config, "profile_push") + mapOf(
             "operation_id" to effect.opId,
@@ -328,8 +383,16 @@ internal class ConfigRWController(
         port.captureDiagnostic("profile_push_failed", baseProperties + DiagnosticReporter.configBlobProperties(effect.rawConfig))
         callbacks?.onError?.invoke(effect.code.name, effect.message)
     }
-    private fun idleBlockReason(connection: ConfigConnectionSnapshot, referenceMs: Long) =
-        BoardIdleGate.blockReason(connection.rideState, BoardIdleGate.freshSinceMs(referenceMs))
+
+    private fun idleBlockReason(
+        connection: ConfigConnectionSnapshot,
+        referenceMs: Long,
+        minRideStateAtMs: Long? = null,
+    ): String? {
+        val freshSinceMs = maxOf(minRideStateAtMs ?: Long.MIN_VALUE, BoardIdleGate.freshSinceMs(referenceMs))
+        return BoardIdleGate.blockReason(connection.rideState, freshSinceMs)
+    }
+
     private fun PendingConfigWrite.notIdle(reason: String) = onError(RefloatConfigErrorCode.BOARD_NOT_IDLE.name, reason)
     private fun ConfigConnectionSnapshot.canIdOrNull() = (transport as? BoardTransport.Can)?.canId
 

@@ -319,6 +319,195 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertEqual(written["leds.headlights_on"] as? Bool, true)
   }
 
+  func testVerifyPackageSignatureMismatchRejectsAndDemotesWriteBase() {
+    let sent = SentFrames()
+    let controller = ConfigRWController()
+    var demotions = 0
+    var errors: [String] = []
+    var emittedOrigins: [BoardConfigOperationOrigin] = []
+    let conn = connection(
+      fresh(),
+      sent,
+      onBoardConfigValues: { _, origin in emittedOrigins.append(origin) },
+      demoteWriteBase: { demotions += 1 }
+    )
+
+    controller.consumeChangeset(
+      boardId: "board-1",
+      changes: ["tuned": 7.0],
+      connection: conn,
+      onSuccess: { _ in XCTFail("write should not succeed") },
+      onError: { code, _ in errors.append(code) }
+    )
+    let setFrame = sent.frames.first { command($0) == COMM_SET_CUSTOM_CONFIG }!
+    let patched = Array(setFrame.suffix(8))
+    _ = controller.onPayload([UInt8(COMM_SET_CUSTOM_CONFIG), 0], connection: conn)
+    _ = controller.onPayload([UInt8(COMM_GET_CUSTOM_CONFIG), 0, 0x11, 0x22, 0x33, 0x44] + patched, connection: conn)
+
+    XCTAssertEqual(errors, [RefloatConfigErrorCode.CONFIG_VERIFY_FAILED.rawValue])
+    XCTAssertEqual(demotions, 1)
+    XCTAssertTrue(emittedOrigins.isEmpty)
+  }
+
+  func testFreshReadWriteRequiresPostReadIdleSampleAndEmitsFreshReadBeforeVescapeWrite() {
+    let scheduler = TestScheduler()
+    var now: Int64 = 10_000
+    let sent = SentFrames()
+    var rideState = BoardRideState(state: 0, switchState: 0, receivedAtMs: now)
+    var origins: [BoardConfigOperationOrigin] = []
+    var errors: [String] = []
+    var succeeded = false
+    let controller = ConfigRWController(scheduler: scheduler, nowMs: { now })
+    let conn = connection(
+      nil,
+      sent,
+      onBoardConfigValues: { _, origin in origins.append(origin) },
+      rideState: { rideState }
+    )
+
+    controller.consumeChangeset(
+      boardId: "board-1",
+      changes: ["tuned": 7.0],
+      connection: conn,
+      onSuccess: { _ in succeeded = true },
+      onError: { code, _ in errors.append(code) }
+    )
+
+    let xml = Array("""
+      <CustomConfiguration>
+        <params>
+          <param name="tuned" type="float" min="0" max="100" />
+          <param name="untouched" type="float" min="0" max="100" />
+        </params>
+      </CustomConfiguration>
+      """.utf8)
+    var xmlPayload: [UInt8] = [UInt8(COMM_GET_CUSTOM_CONFIG_XML), 0]
+    xmlPayload.append(contentsOf: int32Bytes(xml.count))
+    xmlPayload.append(contentsOf: int32Bytes(0))
+    xmlPayload.append(contentsOf: xml)
+    let raw: [UInt8] = [0x3F, 0x80, 0x00, 0x00, 0x42, 0x28, 0x00, 0x00]
+
+    now = 15_000
+    XCTAssertTrue(controller.onPayload(xmlPayload, connection: conn))
+    XCTAssertTrue(controller.onPayload([UInt8(COMM_GET_CUSTOM_CONFIG), 0, 0xDE, 0xAD, 0xBE, 0xEF] + raw, connection: conn))
+
+    XCTAssertEqual(origins, [.freshRead])
+    XCTAssertFalse(sent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+
+    controller.onRideState(BoardRideState(state: 0, switchState: 0, receivedAtMs: 14_999), connection: conn)
+    XCTAssertFalse(sent.frames.contains { command($0) == COMM_SET_CUSTOM_CONFIG })
+
+    now = 15_050
+    rideState = BoardRideState(state: 0, switchState: 0, receivedAtMs: 15_050)
+    controller.onRideState(rideState, connection: conn)
+    guard let setFrame = sent.frames.first(where: { command($0) == COMM_SET_CUSTOM_CONFIG }) else {
+      return XCTFail("expected SET frame after post-read idle sample")
+    }
+    let patched = Array(setFrame.suffix(raw.count))
+    XCTAssertTrue(controller.onPayload([UInt8(COMM_SET_CUSTOM_CONFIG), 0], connection: conn))
+    XCTAssertTrue(controller.onPayload([UInt8(COMM_GET_CUSTOM_CONFIG), 0, 0xDE, 0xAD, 0xBE, 0xEF] + patched, connection: conn))
+
+    XCTAssertTrue(succeeded)
+    XCTAssertTrue(errors.isEmpty)
+    XCTAssertEqual(origins, [.freshRead, .vescapeWrite(source: .app, tuneProfileId: nil)])
+  }
+
+  func testPreSetRecheckBlocksUntrustedLinkAndExpiresQueuedSetFramesOnTimeout() {
+    let scheduler = TestScheduler()
+    var now: Int64 = 10_000
+    var link: LinkIntegrity = .trusted
+    var checks = 0
+    let sent = SentFrames()
+    var sentTags: [String?] = []
+    var cancelledTags: [String] = []
+    var errors: [String] = []
+    let controller = ConfigRWController(scheduler: scheduler, nowMs: { now })
+    let conn = connection(
+      fresh(),
+      sent,
+      liveLinkIntegrity: {
+        checks += 1
+        return checks >= 2 ? link : .trusted
+      },
+      sendTaggedPayload: { payload, tag in
+        sent.frames.append(payload)
+        sentTags.append(tag)
+        return true
+      },
+      cancelQueuedPayloads: { tag in cancelledTags.append(tag) },
+      rideState: { BoardRideState(state: 0, switchState: 0, receivedAtMs: now) }
+    )
+
+    link = .mismatched
+    controller.consumeChangeset(
+      boardId: "board-1",
+      changes: ["tuned": 7.0],
+      connection: conn,
+      onSuccess: { _ in XCTFail("write should not succeed") },
+      onError: { code, _ in errors.append(code) }
+    )
+    XCTAssertEqual(errors, [RefloatConfigErrorCode.LINK_NOT_TRUSTED.rawValue])
+    XCTAssertTrue(sentTags.isEmpty)
+
+    checks = 0
+    link = .trusted
+    errors.removeAll()
+    controller.consumeChangeset(
+      boardId: "board-1",
+      changes: ["tuned": 7.0],
+      connection: conn,
+      onSuccess: { _ in XCTFail("write should not succeed") },
+      onError: { code, _ in errors.append(code) }
+    )
+    XCTAssertEqual(sentTags.count, 1)
+    let setTag = sentTags[0]!
+    scheduler.advance(10_000)
+    XCTAssertEqual(errors, [RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT.rawValue])
+    XCTAssertEqual(cancelledTags, [setTag])
+  }
+
+  func testAsyncProfileLoadRevalidatesSessionBeforeStartingWrite() {
+    var pendingIo: (() -> Void)?
+    var pendingMain: (() -> Void)?
+    var active = true
+    let sent = SentFrames()
+    var errors: [String] = []
+    let controller = ConfigRWController(
+      profileExecutor: { block in pendingIo = block },
+      completeOnSession: { block in pendingMain = block }
+    )
+    let conn = connection(
+      fresh(),
+      sent,
+      isSessionActive: { active }
+    )
+
+    controller.consumeWrite(
+      profileId: "profile-1",
+      connection: conn,
+      onSuccess: { _ in XCTFail("write should not succeed after disconnect") },
+      onError: { code, _ in errors.append(code) }
+    )
+    XCTAssertNotNil(pendingIo)
+    XCTAssertTrue(sent.frames.isEmpty)
+
+    pendingIo?()
+    active = false
+    pendingMain?()
+
+    XCTAssertEqual(errors, [RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue])
+    XCTAssertTrue(sent.frames.isEmpty)
+  }
+
+  private func int32Bytes(_ value: Int) -> [UInt8] {
+    [
+      UInt8((value >> 24) & 0xff),
+      UInt8((value >> 16) & 0xff),
+      UInt8((value >> 8) & 0xff),
+      UInt8(value & 0xff),
+    ]
+  }
+
   private func schema() -> RefloatConfigSchema {
     RefloatConfigSchema(
       hash: "test",
@@ -352,8 +541,13 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     _ sent: SentFrames,
     linkIntegrity: LinkIntegrity = .trusted,
     loadProfile: ((String) throws -> [String: Any?]?)? = nil,
+    onBoardConfigValues: @escaping (BoardConfigValues, BoardConfigOperationOrigin) -> Void = { _, _ in },
     demoteWriteBase: @escaping () -> Void = {},
     captureDiagnostic: @escaping (String, [String: Any?]) -> Void = { _, _ in },
+    isSessionActive: (() -> Bool)? = nil,
+    liveLinkIntegrity: (() -> LinkIntegrity)? = nil,
+    sendTaggedPayload: (([UInt8], String?) -> Bool)? = nil,
+    cancelQueuedPayloads: @escaping (String) -> Void = { _ in },
     rideState: @escaping () -> BoardRideState? = { BoardRideState(state: 0, switchState: 0, receivedAtMs: wallNowMs()) }
   ) -> ConfigRWConnection {
     ConfigRWConnection(
@@ -373,9 +567,13 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
       loadProfile: loadProfile ?? { _ in
         ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": ["tuned": 7.0] as [String: Any]]
       },
-      onBoardConfigValues: { _, _ in },
+      onBoardConfigValues: onBoardConfigValues,
       demoteWriteBase: demoteWriteBase,
-      rideState: rideState
+      rideState: rideState,
+      isSessionActive: isSessionActive,
+      liveLinkIntegrity: liveLinkIntegrity,
+      sendTaggedPayload: sendTaggedPayload,
+      cancelQueuedPayloads: cancelQueuedPayloads
     )
   }
 }

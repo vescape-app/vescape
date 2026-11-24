@@ -187,4 +187,26 @@ final class VescWriteQueueTests: XCTestCase {
 
     XCTAssertNil(queue.startNext())
   }
+
+  func testDropNormalRemovesQueuedAndRemainingChunksForMatchingTagOnly() {
+    let queue = VescWriteQueue()
+    let poll: [UInt8] = [1, 2, 3]
+    let setFrame = frame(50)
+    let after: [UInt8] = [9, 9]
+
+    queue.enqueueNormal(poll)
+    queue.enqueueNormal(setFrame, tag: "config-set:op-1")
+    queue.enqueueNormal(after, tag: "config-set:op-2")
+
+    XCTAssertEqual(queue.dropNormal(tag: "config-set:op-1"), 1)
+    XCTAssertEqual(drain(queue), [poll, after])
+
+    queue.enqueueNormal(setFrame, tag: "config-set:op-3")
+    queue.enqueueNormal(poll)
+    let firstChunk = queue.startNext()
+    XCTAssertEqual(firstChunk?.bytes.count, 20)
+    XCTAssertEqual(queue.dropNormal(tag: "config-set:op-3"), 1)
+    queue.completeInFlight()
+    XCTAssertEqual(drain(queue), [poll])
+  }
 }

@@ -28,8 +28,9 @@ private enum ConfigRWState {
   case readAwaitingConfig(ConfigReadContext, [UInt8])
   case writeCollectingXml(ConfigWriteContext, [UInt8], Int?)
   case writeAwaitingConfig(ConfigWriteContext, [UInt8])
-  case writeAwaitingSetAck(ConfigWriteContext, RefloatConfigSchema, [UInt8], [UInt8])
-  case writeVerifying(ConfigWriteContext, RefloatConfigSchema, [UInt8], [UInt8])
+  case writeAwaitingIdle(ConfigWriteContext, RefloatConfigSchema, [UInt8], [UInt8], UInt32, Int64)
+  case writeAwaitingSetAck(ConfigWriteContext, RefloatConfigSchema, [UInt8], [UInt8], UInt32)
+  case writeVerifying(ConfigWriteContext, RefloatConfigSchema, [UInt8], [UInt8], UInt32)
 }
 
 private struct ConfigReadContext {
@@ -64,19 +65,39 @@ private struct ConfigWriteContext {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt
 internal final class ConfigRWController {
   private let scheduler: Scheduler
+  private let profileExecutor: (@escaping () -> Void) -> Void
+  private let completeOnSession: (@escaping () -> Void) -> Void
+  private let nowMs: () -> Int64
   private var state: ConfigRWState = .idle
   private var readCallbacks: [PendingConfigRead] = []
   private var writeCallbacks: PendingConfigWrite?
-  private var writeStartedAtMs: Int64 = 0
+  private var activeSetFrameTag: String?
   private var timeoutGeneration: Int64 = 0
 
-  init(scheduler: Scheduler = MainQueueScheduler()) {
+  init(
+    scheduler: Scheduler = MainQueueScheduler(),
+    profileExecutor: @escaping (@escaping () -> Void) -> Void = { $0() },
+    completeOnSession: @escaping (@escaping () -> Void) -> Void = { $0() },
+    nowMs: @escaping () -> Int64 = wallNowMs
+  ) {
     self.scheduler = scheduler
+    self.profileExecutor = profileExecutor
+    self.completeOnSession = completeOnSession
+    self.nowMs = nowMs
   }
 
   var isInFlight: Bool {
     if case .idle = state { return false }
     return true
+  }
+
+  var isWriteInFlight: Bool {
+    switch state {
+    case .writeCollectingXml, .writeAwaitingConfig, .writeAwaitingIdle, .writeAwaitingSetAck, .writeVerifying:
+      return true
+    default:
+      return false
+    }
   }
 
   private var isReadInFlight: Bool {
@@ -99,14 +120,14 @@ internal final class ConfigRWController {
       readCallbacks.append(PendingConfigRead(onSuccess: onSuccess, onError: onError))
       return
     }
-    guard connection.phase == .connected, connection.appBoardId != nil else {
+    guard connection.liveConnected else {
       onError(
         RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
         "Board must be connected before reading Refloat config"
       )
       return
     }
-    guard connection.linkIntegrity == .trusted else {
+    guard connection.currentLinkIntegrity == .trusted else {
       onError(
         RefloatConfigErrorCode.LINK_NOT_TRUSTED.rawValue,
         "Trusted board link required before reading Refloat config"
@@ -143,11 +164,11 @@ internal final class ConfigRWController {
       onError(RefloatConfigErrorCode.CONFIG_REQUEST_IN_FLIGHT.rawValue, "Config operation already in flight")
       return
     }
-    guard connection.phase == .connected, let connectedBoardId = connection.appBoardId, !connectedBoardId.isEmpty else {
+    guard connection.liveConnected, let connectedBoardId = connection.appBoardId, !connectedBoardId.isEmpty else {
       onError(RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue, "Board must be connected before pushing config")
       return
     }
-    guard connection.linkIntegrity == .trusted else {
+    guard connection.currentLinkIntegrity == .trusted else {
       onError(
         RefloatConfigErrorCode.LINK_NOT_TRUSTED.rawValue,
         "Trusted board link required before pushing config"
@@ -183,51 +204,79 @@ internal final class ConfigRWController {
       onError(RefloatConfigErrorCode.CONFIG_REQUEST_IN_FLIGHT.rawValue, "Config operation already in flight")
       return
     }
-    guard connection.phase == .connected, let connectedBoardId = connection.appBoardId, !connectedBoardId.isEmpty else {
+    guard connection.liveConnected, let initialBoardId = connection.appBoardId, !initialBoardId.isEmpty else {
       onError(RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue, "Board must be connected before pushing config")
       return
     }
-    guard connection.linkIntegrity == .trusted else {
+    guard connection.currentLinkIntegrity == .trusted else {
       onError(
         RefloatConfigErrorCode.LINK_NOT_TRUSTED.rawValue,
         "Trusted board link required before pushing config"
       )
       return
     }
-    let startedAtMs = nowMs()
-    if let reason = idleBlockReason(connection, startedAtMs) {
+    let initialStartedAtMs = nowMs()
+    if let reason = idleBlockReason(connection, initialStartedAtMs) {
       onError(RefloatConfigErrorCode.BOARD_NOT_IDLE.rawValue, reason)
       return
     }
-    let loadedProfile: [String: Any?]?
-    do { loadedProfile = try connection.loadProfile(profileId) }
-    catch {
-      onError(RefloatConfigErrorCode.CONFIG_READ_FAILED.rawValue, "Tune profile could not be loaded")
-      return
+    profileExecutor { [weak self] in
+      let loadedProfile: [String: Any?]?
+      do {
+        loadedProfile = try connection.loadProfile(profileId)
+      } catch {
+        self?.completeOnSession {
+          onError(RefloatConfigErrorCode.CONFIG_READ_FAILED.rawValue, "Tune profile could not be loaded")
+        }
+        return
+      }
+      self?.completeOnSession { [weak self] in
+        guard let self else { return }
+        guard let profile = loadedProfile else {
+          onError(RefloatConfigErrorCode.PROFILE_NOT_FOUND.rawValue, "Tune profile not found: \(profileId)")
+          return
+        }
+        if self.isInFlight {
+          onError(RefloatConfigErrorCode.CONFIG_REQUEST_IN_FLIGHT.rawValue, "Config operation already in flight")
+          return
+        }
+        guard connection.liveConnected, let connectedBoardId = connection.appBoardId, !connectedBoardId.isEmpty else {
+          onError(RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue, "Board must be connected before pushing config")
+          return
+        }
+        guard connection.currentLinkIntegrity == .trusted else {
+          onError(
+            RefloatConfigErrorCode.LINK_NOT_TRUSTED.rawValue,
+            "Trusted board link required before pushing config"
+          )
+          return
+        }
+        let profileBoardId = (profile["boardId"] ?? nil) as? String
+        if profileBoardId == nil || profileBoardId!.isEmpty || profileBoardId != connectedBoardId {
+          onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not belong to the connected board")
+          return
+        }
+        let profileRefloatBaseVersion = TuneProfileStore.validRefloatBaseVersion((profile["refloatBaseVersion"] ?? nil) as? String)
+        if profileRefloatBaseVersion == nil || profileRefloatBaseVersion!.isEmpty || profileRefloatBaseVersion != TuneProfileStore.validRefloatBaseVersion(connection.refloatBaseVersion) {
+          onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not match the connected board Refloat Tune Compatibility")
+          return
+        }
+        let startedAtMs = self.nowMs()
+        if let reason = self.idleBlockReason(connection, startedAtMs) {
+          onError(RefloatConfigErrorCode.BOARD_NOT_IDLE.rawValue, reason)
+          return
+        }
+        let storedFields = ((profile["fields"] ?? nil) as? [String: Any]) ?? [:]
+        self.startWriteOperation(
+          intent: .profile(id: profileId, fields: storedFields),
+          connectedBoardId: connectedBoardId,
+          startedAtMs: startedAtMs,
+          connection: connection,
+          onSuccess: onSuccess,
+          onError: onError
+        )
+      }
     }
-    guard let profile = loadedProfile else {
-      onError(RefloatConfigErrorCode.PROFILE_NOT_FOUND.rawValue, "Tune profile not found: \(profileId)")
-      return
-    }
-    let profileBoardId = (profile["boardId"] ?? nil) as? String
-    if profileBoardId == nil || profileBoardId!.isEmpty || profileBoardId != connectedBoardId {
-      onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not belong to the connected board")
-      return
-    }
-    let profileRefloatBaseVersion = TuneProfileStore.validRefloatBaseVersion((profile["refloatBaseVersion"] ?? nil) as? String)
-    if profileRefloatBaseVersion == nil || profileRefloatBaseVersion!.isEmpty || profileRefloatBaseVersion != TuneProfileStore.validRefloatBaseVersion(connection.refloatBaseVersion) {
-      onError(RefloatConfigErrorCode.PROFILE_BOARD_MISMATCH.rawValue, "Tune profile does not match the connected board Refloat Tune Compatibility")
-      return
-    }
-    let storedFields = ((profile["fields"] ?? nil) as? [String: Any]) ?? [:]
-    startWriteOperation(
-      intent: .profile(id: profileId, fields: storedFields),
-      connectedBoardId: connectedBoardId,
-      startedAtMs: startedAtMs,
-      connection: connection,
-      onSuccess: onSuccess,
-      onError: onError
-    )
   }
 
   private func startWriteOperation(
@@ -240,7 +289,6 @@ internal final class ConfigRWController {
   ) {
     let wasPolling = connection.isPollingActive()
     connection.stopPolling()
-    writeStartedAtMs = startedAtMs
     writeCallbacks = PendingConfigWrite(onSuccess: onSuccess, onError: onError)
     let ctx = ConfigWriteContext(
       opId: UUID().uuidString.lowercased(),
@@ -252,7 +300,7 @@ internal final class ConfigRWController {
       fwVersion: connection.fwVersion,
       refloatVersion: connection.refloatVersion
     )
-    if let writeBase = connection.boardConfigValues?.writeBase {
+    if let writeBase = connection.currentBoardConfigValues?.writeBase {
       sendWrite(
         ctx,
         writeBase.schema,
@@ -292,7 +340,36 @@ internal final class ConfigRWController {
     return false
   }
 
+  func onRideState(_ rideState: BoardRideState, connection: ConfigRWConnection) {
+    guard case .writeAwaitingIdle(let ctx, let schema, let original, let patched, let expectedSignature, let minRideStateAtMs) = state else {
+      return
+    }
+    guard rideState.receivedAtMs >= minRideStateAtMs else { return }
+    let freshSinceMs = max(minRideStateAtMs, BoardIdleGate.freshSinceMs(nowMs()))
+    if let reason = BoardIdleGate.blockReason(rideState, freshSinceMs: freshSinceMs) {
+      failWrite(
+        code: .BOARD_NOT_IDLE,
+        message: reason,
+        phase: .sendingWrite,
+        rawConfig: original,
+        resumePolling: ctx.wasPolling,
+        connection: connection
+      )
+      return
+    }
+    transmitSetConfig(
+      ctx,
+      schema: schema,
+      original: original,
+      patched: patched,
+      expectedSignature: expectedSignature,
+      minRideStateAtMs: minRideStateAtMs,
+      connection: connection
+    )
+  }
+
   func onSessionTerminated(_ message: String, connection: ConfigRWConnection) {
+    cancelQueuedSetFrames(connection)
     guard isInFlight else { return }
     abort(code: .BOARD_NOT_CONNECTED, message: message, resumePolling: false, connection: connection)
   }
@@ -316,12 +393,15 @@ internal final class ConfigRWController {
     case .writeAwaitingConfig(var ctx, let xmlBytes):
       ctx.refloatVersion = version
       state = .writeAwaitingConfig(ctx, xmlBytes)
-    case .writeAwaitingSetAck(var ctx, let schema, let original, let patched):
+    case .writeAwaitingIdle(var ctx, let schema, let original, let patched, let sig, let minAtMs):
       ctx.refloatVersion = version
-      state = .writeAwaitingSetAck(ctx, schema, original, patched)
-    case .writeVerifying(var ctx, let schema, let original, let patched):
+      state = .writeAwaitingIdle(ctx, schema, original, patched, sig, minAtMs)
+    case .writeAwaitingSetAck(var ctx, let schema, let original, let patched, let sig):
       ctx.refloatVersion = version
-      state = .writeVerifying(ctx, schema, original, patched)
+      state = .writeAwaitingSetAck(ctx, schema, original, patched, sig)
+    case .writeVerifying(var ctx, let schema, let original, let patched, let sig):
+      ctx.refloatVersion = version
+      state = .writeVerifying(ctx, schema, original, patched, sig)
     case .idle:
       return false
     }
@@ -393,12 +473,12 @@ internal final class ConfigRWController {
       case .success(let configBytes):
         encodeAndSendWrite(ctx, xmlBytes, configBytes, connection)
       }
-    case .writeVerifying(let ctx, let schema, let original, let patched):
+    case .writeVerifying(let ctx, let schema, let original, let patched, let expectedSignature):
       switch RefloatConfigProtocol.parseCustomConfigResponse(payload, transport: transport) {
       case .failure(let message):
         failWrite(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, phase: .verifying, rawConfig: original, connection: connection)
       case .success(let configBytes):
-        verifyAndCompleteWrite(ctx, schema, original, patched, configBytes, connection)
+        verifyAndCompleteWrite(ctx, schema, original, patched, expectedSignature, configBytes, connection)
       }
     default:
       break
@@ -406,12 +486,12 @@ internal final class ConfigRWController {
   }
 
   private func applySetAck(_ payload: [UInt8], transport: BoardTransport, connection: ConfigRWConnection) {
-    guard case .writeAwaitingSetAck(let ctx, let schema, let original, let patched) = state else { return }
+    guard case .writeAwaitingSetAck(let ctx, let schema, let original, let patched, let expectedSignature) = state else { return }
     switch RefloatConfigProtocol.parseSetCustomConfigResponse(payload, transport: transport) {
     case .failure(let message):
       failWrite(code: .CONFIG_WRITE_FAILED, message: message, phase: .sendingWrite, rawConfig: original, connection: connection)
     case .success:
-      state = .writeVerifying(ctx, schema, original, patched)
+      state = .writeVerifying(ctx, schema, original, patched, expectedSignature)
       cancelTimeout()
       scheduleTimeout(.CONFIG_READ_TIMEOUT, CONFIG_READ_TIMEOUT_MS, connection)
       _ = send(connection, RefloatConfigProtocol.buildGetCustomConfig(transport: ctx.transport, confInd: 0))
@@ -472,10 +552,20 @@ internal final class ConfigRWController {
   ) {
     let rawConfig = configBytes.config
     do {
+      let freshValues: BoardConfigValues? = fromFreshRead
+        ? try boardConfigValues(
+            schema,
+            configBytes,
+            ctx.appBoardId,
+            connection,
+            capturedAtMs: capturedAtMs,
+            refloatVersion: ctx.refloatVersion ?? connection.refloatVersion
+          )
+        : nil
       let changes = resolveChanges(ctx.intent, schema: schema)
       let encoded = try RefloatConfigEncoder.encodeChangeset(schema: schema, rawConfig: rawConfig, changes: changes)
       if encoded.changedFieldIds.isEmpty {
-        let values = try boardConfigValues(
+        let values = try freshValues ?? boardConfigValues(
           schema,
           configBytes,
           ctx.appBoardId,
@@ -492,21 +582,31 @@ internal final class ConfigRWController {
         )
         return
       }
-      if let reason = idleBlockReason(connection, writeStartedAtMs) {
-        failWrite(code: .BOARD_NOT_IDLE, message: reason, phase: .sendingWrite, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
+      if fromFreshRead {
+        if let freshValues {
+          connection.onBoardConfigValues(freshValues, .freshRead)
+        }
+        state = .writeAwaitingIdle(
+          ctx,
+          schema,
+          rawConfig,
+          encoded.rawConfig,
+          configBytes.packageSignature,
+          capturedAtMs
+        )
+        cancelTimeout()
+        scheduleTimeout(.BOARD_NOT_IDLE, CONFIG_READ_TIMEOUT_MS, connection)
+        _ = send(connection, RefloatConfigProtocol.buildGetAllData(transport: ctx.transport))
         return
       }
-      state = .writeAwaitingSetAck(ctx, schema, rawConfig, encoded.rawConfig)
-      cancelTimeout()
-      scheduleTimeout(.CONFIG_WRITE_TIMEOUT, CONFIG_WRITE_TIMEOUT_MS, connection)
-      _ = send(
-        connection,
-        RefloatConfigProtocol.buildSetCustomConfig(
-          transport: ctx.transport,
-          confInd: 0,
-          packageSignature: configBytes.packageSignature,
-          configBytes: encoded.rawConfig
-        )
+      transmitSetConfig(
+        ctx,
+        schema: schema,
+        original: rawConfig,
+        patched: encoded.rawConfig,
+        expectedSignature: configBytes.packageSignature,
+        minRideStateAtMs: nil,
+        connection: connection
       )
     } catch let error as RefloatConfigEncodeException {
       failWrite(code: error.code, message: error.message, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
@@ -515,6 +615,65 @@ internal final class ConfigRWController {
     } catch {
       failWrite(code: .CONFIG_WRITE_FAILED, message: error.localizedDescription, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     }
+  }
+
+  private func transmitSetConfig(
+    _ ctx: ConfigWriteContext,
+    schema: RefloatConfigSchema,
+    original: [UInt8],
+    patched: [UInt8],
+    expectedSignature: UInt32,
+    minRideStateAtMs: Int64?,
+    connection: ConfigRWConnection
+  ) {
+    guard connection.liveConnected else {
+      failWrite(
+        code: .BOARD_NOT_CONNECTED,
+        message: "Board must be connected before pushing config",
+        phase: .sendingWrite,
+        rawConfig: original,
+        resumePolling: ctx.wasPolling,
+        connection: connection
+      )
+      return
+    }
+    guard connection.currentLinkIntegrity == .trusted else {
+      failWrite(
+        code: .LINK_NOT_TRUSTED,
+        message: "Trusted board link required before pushing config",
+        phase: .sendingWrite,
+        rawConfig: original,
+        resumePolling: ctx.wasPolling,
+        connection: connection
+      )
+      return
+    }
+    if let reason = idleBlockReason(connection, nowMs(), minRideStateAtMs: minRideStateAtMs) {
+      failWrite(
+        code: .BOARD_NOT_IDLE,
+        message: reason,
+        phase: .sendingWrite,
+        rawConfig: original,
+        resumePolling: ctx.wasPolling,
+        connection: connection
+      )
+      return
+    }
+    state = .writeAwaitingSetAck(ctx, schema, original, patched, expectedSignature)
+    cancelTimeout()
+    scheduleTimeout(.CONFIG_WRITE_TIMEOUT, CONFIG_WRITE_TIMEOUT_MS, connection)
+    let tag = setFrameTag(ctx.opId)
+    activeSetFrameTag = tag
+    _ = send(
+      connection,
+      RefloatConfigProtocol.buildSetCustomConfig(
+        transport: ctx.transport,
+        confInd: 0,
+        packageSignature: expectedSignature,
+        configBytes: patched
+      ),
+      tag: tag
+    )
   }
 
   private func resolveChanges(_ intent: ConfigWriteIntent, schema: RefloatConfigSchema) -> [String: Any] {
@@ -532,9 +691,20 @@ internal final class ConfigRWController {
     _ schema: RefloatConfigSchema,
     _ original: [UInt8],
     _ patched: [UInt8],
+    _ expectedSignature: UInt32,
     _ boardConfig: RefloatConfigBytes,
     _ connection: ConfigRWConnection
   ) {
+    guard boardConfig.packageSignature == expectedSignature else {
+      failWrite(
+        code: .CONFIG_VERIFY_FAILED,
+        message: "Verification failed: package signature mismatch (expected \(expectedSignature), got \(boardConfig.packageSignature))",
+        phase: .verifying,
+        rawConfig: original,
+        connection: connection
+      )
+      return
+    }
     switch RefloatConfigWriteVerifier.verify(schema: schema, written: patched, readBack: boardConfig.config) {
     case .failure(let message):
       failWrite(code: .CONFIG_VERIFY_FAILED, message: message, phase: .verifying, rawConfig: original, connection: connection)
@@ -603,6 +773,7 @@ internal final class ConfigRWController {
     resumePolling: Bool? = nil,
     _ connection: ConfigRWConnection
   ) {
+    cancelQueuedSetFrames(connection)
     let pending = writeCallbacks
     writeCallbacks = nil
     let resume = resumePolling ?? currentResumePolling
@@ -648,6 +819,7 @@ internal final class ConfigRWController {
     resumePolling: Bool? = nil,
     connection: ConfigRWConnection
   ) {
+    cancelQueuedSetFrames(connection)
     let pending = writeCallbacks
     writeCallbacks = nil
     let resume = resumePolling ?? currentResumePolling
@@ -688,15 +860,30 @@ internal final class ConfigRWController {
       failWrite(code: code, message: message, phase: .readingSchema, rawConfig: nil, resumePolling: resumePolling, connection: connection)
     case .writeAwaitingConfig:
       failWrite(code: code, message: message, phase: .readingConfig, rawConfig: nil, resumePolling: resumePolling, connection: connection)
-    case .writeAwaitingSetAck(_, _, let original, _):
+    case .writeAwaitingIdle(_, _, let original, _, _, _):
       failWrite(code: code, message: message, phase: .sendingWrite, rawConfig: original, resumePolling: resumePolling, connection: connection)
-    case .writeVerifying(_, _, let original, _):
+    case .writeAwaitingSetAck(_, _, let original, _, _):
+      failWrite(code: code, message: message, phase: .sendingWrite, rawConfig: original, resumePolling: resumePolling, connection: connection)
+    case .writeVerifying(_, _, let original, _, _):
       failWrite(code: code, message: message, phase: .verifying, rawConfig: original, resumePolling: resumePolling, connection: connection)
     }
   }
 
-  private func idleBlockReason(_ connection: ConfigRWConnection, _ referenceMs: Int64) -> String? {
-    BoardIdleGate.blockReason(connection.rideState(), freshSinceMs: BoardIdleGate.freshSinceMs(referenceMs))
+  private func cancelQueuedSetFrames(_ connection: ConfigRWConnection) {
+    guard let tag = activeSetFrameTag else { return }
+    activeSetFrameTag = nil
+    connection.cancelQueuedPayloads(tag)
+  }
+
+  private func setFrameTag(_ opId: String) -> String { "config-set:\(opId)" }
+
+  private func idleBlockReason(
+    _ connection: ConfigRWConnection,
+    _ referenceMs: Int64,
+    minRideStateAtMs: Int64? = nil
+  ) -> String? {
+    let freshSinceMs = max(minRideStateAtMs ?? Int64.min, BoardIdleGate.freshSinceMs(referenceMs))
+    return BoardIdleGate.blockReason(connection.rideState(), freshSinceMs: freshSinceMs)
   }
 
   private var setConfigSent: Bool {
@@ -712,7 +899,9 @@ internal final class ConfigRWController {
       return ctx.wasPolling
     case .writeCollectingXml(let ctx, _, _), .writeAwaitingConfig(let ctx, _):
       return ctx.wasPolling
-    case .writeAwaitingSetAck(let ctx, _, _, _), .writeVerifying(let ctx, _, _, _):
+    case .writeAwaitingIdle(let ctx, _, _, _, _, _),
+      .writeAwaitingSetAck(let ctx, _, _, _, _),
+      .writeVerifying(let ctx, _, _, _, _):
       return ctx.wasPolling
     case .idle:
       return false
@@ -725,7 +914,9 @@ internal final class ConfigRWController {
       return ctx.opId
     case .writeCollectingXml(let ctx, _, _), .writeAwaitingConfig(let ctx, _):
       return ctx.opId
-    case .writeAwaitingSetAck(let ctx, _, _, _), .writeVerifying(let ctx, _, _, _):
+    case .writeAwaitingIdle(let ctx, _, _, _, _, _),
+      .writeAwaitingSetAck(let ctx, _, _, _, _),
+      .writeVerifying(let ctx, _, _, _, _):
       return ctx.opId
     case .idle:
       return nil
@@ -738,15 +929,18 @@ internal final class ConfigRWController {
       return ctx.transport
     case .writeCollectingXml(let ctx, _, _), .writeAwaitingConfig(let ctx, _):
       return ctx.transport
-    case .writeAwaitingSetAck(let ctx, _, _, _), .writeVerifying(let ctx, _, _, _):
+    case .writeAwaitingIdle(let ctx, _, _, _, _, _),
+      .writeAwaitingSetAck(let ctx, _, _, _, _),
+      .writeVerifying(let ctx, _, _, _, _):
       return ctx.transport
     case .idle:
       return nil
     }
   }
 
-  private func send(_ connection: ConfigRWConnection, _ payload: [UInt8]) -> Bool {
-    if !connection.sendPayload(payload) {
+  private func send(_ connection: ConfigRWConnection, _ payload: [UInt8], tag: String? = nil) -> Bool {
+    let ok = connection.sendTaggedPayload?(payload, tag) ?? connection.sendPayload(payload)
+    if !ok {
       abort(code: .GATT_NOT_WRITABLE, message: "Board GATT is not writable", resumePolling: nil, connection: connection)
       return false
     }
@@ -794,6 +988,15 @@ internal final class ConfigRWController {
         )
         return
       }
+      if case .writeAwaitingIdle = self.state {
+        self.abort(
+          code: .BOARD_NOT_IDLE,
+          message: "No fresh telemetry shows the board idle",
+          resumePolling: nil,
+          connection: connection
+        )
+        return
+      }
       self.abort(code: code, message: "Timed out reading Refloat config", resumePolling: nil, connection: connection)
     }
   }
@@ -819,7 +1022,7 @@ internal final class ConfigRWController {
   }
 }
 
-private func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
+private func wallNowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
 internal struct ConfigRWConnection {
   let phase: BoardPhase
@@ -839,6 +1042,72 @@ internal struct ConfigRWConnection {
   let onBoardConfigValues: (BoardConfigValues, BoardConfigOperationOrigin) -> Void
   let demoteWriteBase: () -> Void
   let rideState: () -> BoardRideState?
+  let isSessionActive: (() -> Bool)?
+  let liveLinkIntegrity: (() -> LinkIntegrity)?
+  let liveBoardConfigValues: (() -> BoardConfigValues?)?
+  let sendTaggedPayload: (([UInt8], String?) -> Bool)?
+  let cancelQueuedPayloads: (String) -> Void
+
+  init(
+    phase: BoardPhase,
+    appBoardId: String?,
+    transport: BoardTransport,
+    fwVersion: String?,
+    refloatVersion: String?,
+    refloatBaseVersion: String?,
+    linkIntegrity: LinkIntegrity,
+    boardConfigValues: BoardConfigValues?,
+    isPollingActive: @escaping () -> Bool,
+    stopPolling: @escaping () -> Void,
+    startPolling: @escaping () -> Void,
+    sendPayload: @escaping ([UInt8]) -> Bool,
+    captureDiagnostic: @escaping (String, [String: Any?]) -> Void,
+    loadProfile: @escaping (String) throws -> [String: Any?]?,
+    onBoardConfigValues: @escaping (BoardConfigValues, BoardConfigOperationOrigin) -> Void,
+    demoteWriteBase: @escaping () -> Void,
+    rideState: @escaping () -> BoardRideState?,
+    isSessionActive: (() -> Bool)? = nil,
+    liveLinkIntegrity: (() -> LinkIntegrity)? = nil,
+    liveBoardConfigValues: (() -> BoardConfigValues?)? = nil,
+    sendTaggedPayload: (([UInt8], String?) -> Bool)? = nil,
+    cancelQueuedPayloads: @escaping (String) -> Void = { _ in }
+  ) {
+    self.phase = phase
+    self.appBoardId = appBoardId
+    self.transport = transport
+    self.fwVersion = fwVersion
+    self.refloatVersion = refloatVersion
+    self.refloatBaseVersion = refloatBaseVersion
+    self.linkIntegrity = linkIntegrity
+    self.boardConfigValues = boardConfigValues
+    self.isPollingActive = isPollingActive
+    self.stopPolling = stopPolling
+    self.startPolling = startPolling
+    self.sendPayload = sendPayload
+    self.captureDiagnostic = captureDiagnostic
+    self.loadProfile = loadProfile
+    self.onBoardConfigValues = onBoardConfigValues
+    self.demoteWriteBase = demoteWriteBase
+    self.rideState = rideState
+    self.isSessionActive = isSessionActive
+    self.liveLinkIntegrity = liveLinkIntegrity
+    self.liveBoardConfigValues = liveBoardConfigValues
+    self.sendTaggedPayload = sendTaggedPayload
+    self.cancelQueuedPayloads = cancelQueuedPayloads
+  }
+
+  var liveConnected: Bool {
+    if let isSessionActive { return isSessionActive() }
+    return phase == .connected && appBoardId != nil && !appBoardId!.isEmpty
+  }
+
+  var currentLinkIntegrity: LinkIntegrity {
+    liveLinkIntegrity?() ?? linkIntegrity
+  }
+
+  var currentBoardConfigValues: BoardConfigValues? {
+    liveBoardConfigValues?() ?? boardConfigValues
+  }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt `BoardConfigOperationOrigin`

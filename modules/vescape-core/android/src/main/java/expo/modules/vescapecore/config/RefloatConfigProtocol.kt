@@ -6,6 +6,7 @@ import expo.modules.vescapecore.protocol.COMM_FORWARD_CAN
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
+import expo.modules.vescapecore.protocol.REFLOAT_GET_ALLDATA
 import expo.modules.vescapecore.protocol.REFLOAT_GET_INFO
 import expo.modules.vescapecore.protocol.REFLOAT_MAGIC
 
@@ -153,6 +154,18 @@ internal object RefloatConfigProtocol {
         COMM_CUSTOM_APP_DATA.toByte(),
         REFLOAT_MAGIC.toByte(),
         REFLOAT_GET_INFO.toByte(),
+        version.toByte(),
+      ),
+    )
+  }
+
+  fun buildGetAllData(transport: BoardTransport, version: Int = 2): ByteArray {
+    require(version in 0..255) { "version must fit uint8" }
+    return transport.frame(
+      byteArrayOf(
+        COMM_CUSTOM_APP_DATA.toByte(),
+        REFLOAT_MAGIC.toByte(),
+        REFLOAT_GET_ALLDATA.toByte(),
         version.toByte(),
       ),
     )

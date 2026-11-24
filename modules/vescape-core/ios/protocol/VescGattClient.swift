@@ -25,9 +25,21 @@ internal protocol SessionTransport: AnyObject {
   func stopReconnectScan()
   @discardableResult
   func sendPayload(_ payload: [UInt8]) -> Bool
+  @discardableResult
+  func sendPayload(_ payload: [UInt8], tag: String?) -> Bool
+  func cancelQueuedPayloads(tag: String)
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `sendRemoteInput`
   @discardableResult
   func sendRemoteInput(_ payload: [UInt8], urgent: Bool) -> Bool
+}
+
+extension SessionTransport {
+  @discardableResult
+  func sendPayload(_ payload: [UInt8], tag: String?) -> Bool {
+    sendPayload(payload)
+  }
+
+  func cancelQueuedPayloads(tag: String) {}
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt
@@ -215,10 +227,18 @@ internal final class VescGattClient: NSObject, SessionTransport {
   }
 
   func sendPayload(_ payload: [UInt8]) -> Bool {
+    sendPayload(payload, tag: nil)
+  }
+
+  func sendPayload(_ payload: [UInt8], tag: String?) -> Bool {
     guard linkUp, peripheral != nil, txChar != nil else { return false }
-    writeQueue.enqueueNormal(VescPacketCodec.encode(payload))
+    writeQueue.enqueueNormal(VescPacketCodec.encode(payload), tag: tag)
     drainWriteQueue()
     return true
+  }
+
+  func cancelQueuedPayloads(tag: String) {
+    writeQueue.dropNormal(tag: tag)
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `sendRemoteInput`

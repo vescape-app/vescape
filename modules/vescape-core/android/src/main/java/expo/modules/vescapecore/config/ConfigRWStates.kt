@@ -67,11 +67,21 @@ internal sealed class ConfigRWState {
         val xmlBytes: ByteArray,
     ) : ConfigRWState()
 
+    data class WriteAwaitingIdle(
+        val ctx: WriteContext,
+        val schema: RefloatConfigSchema,
+        val originalConfig: ByteArray,
+        val patchedConfig: ByteArray,
+        val expectedPackageSignature: Long,
+        val minRideStateAtMs: Long,
+    ) : ConfigRWState()
+
     data class WriteAwaitingSetAck(
         val ctx: WriteContext,
         val schema: RefloatConfigSchema,
         val originalConfig: ByteArray,
         val patchedConfig: ByteArray,
+        val expectedPackageSignature: Long,
     ) : ConfigRWState()
 
     data class WriteVerifying(
@@ -79,6 +89,7 @@ internal sealed class ConfigRWState {
         val schema: RefloatConfigSchema,
         val originalConfig: ByteArray,
         val patchedConfig: ByteArray,
+        val expectedPackageSignature: Long,
     ) : ConfigRWState()
 }
 
@@ -92,6 +103,7 @@ internal enum class ConfigWritePhaseTag {
         fun of(state: ConfigRWState): ConfigWritePhaseTag = when (state) {
             is ConfigRWState.WriteCollectingXml -> READING_SCHEMA
             is ConfigRWState.WriteAwaitingConfig -> READING_CONFIG
+            is ConfigRWState.WriteAwaitingIdle -> SENDING_WRITE
             is ConfigRWState.WriteAwaitingSetAck -> SENDING_WRITE
             is ConfigRWState.WriteVerifying -> VERIFYING
             else -> READING_SCHEMA

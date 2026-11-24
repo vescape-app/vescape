@@ -1002,7 +1002,7 @@ public class VescapeCoreModule: Module {
     /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
     AsyncFunction("getBoardConfigValues") { (promise: Promise) in
       promise.resolve(self.coordinator.boardConfigValuesMap())
-    }
+    }.runOnQueue(.main)
     /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownBoardConfigValues`
     /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
     AsyncFunction("getLastKnownBoardConfigValues") { (boardId: String, promise: Promise) in
@@ -1127,7 +1127,7 @@ public class VescapeCoreModule: Module {
         onSuccess: { values in promise.resolve(values) },
         onError: { code, message in promise.reject(code, message) }
       )
-    }
+    }.runOnQueue(.main)
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setRemoteTilt`
     // @parity /modules/vescape-core/src/index.ts `setRemoteTilt`
@@ -1155,7 +1155,7 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("setBoardLights") { (enabled: Bool, headlightsEnabled: Bool) -> Bool in
       self.coordinator.setBoardLights(enabled: enabled, headlightsEnabled: headlightsEnabled)
-    }
+    }.runOnQueue(.main)
 
     AsyncFunction("startBoardMove") { (input: Int) -> Bool in
       self.coordinator.startBoardMove(input: input)
@@ -1228,64 +1228,76 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/src/index.ts `planBoardConfigRevert`
     AsyncFunction("planBoardConfigRevert") { (boardId: String, revisionId: Double, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
-      let current = self.coordinator.currentBoardConfigValues()
-      do {
-        let plan = try BoardConfigStore.shared.planRevert(
-          boardId: boardId,
-          current: current,
-          revisionId: Int64(revisionId)
-        )
-        promise.resolve(plan.toBridgeMap())
-      } catch let error as RefloatConfigEncodeException {
-        promise.reject(error.code.rawValue, error.message)
-      } catch {
-        RecordingStorageFailure.reportRead(operation: "board_config_revert_plan", error: error)
-        promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
+      DispatchQueue.main.async {
+        let current = self.coordinator.currentBoardConfigValues()
+        DispatchQueue.global(qos: .userInitiated).async {
+          do {
+            let plan = try BoardConfigStore.shared.planRevert(
+              boardId: boardId,
+              current: current,
+              revisionId: Int64(revisionId)
+            )
+            promise.resolve(plan.toBridgeMap())
+          } catch let error as RefloatConfigEncodeException {
+            promise.reject(error.code.rawValue, error.message)
+          } catch {
+            RecordingStorageFailure.reportRead(operation: "board_config_revert_plan", error: error)
+            promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
+          }
+        }
       }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exportBoardConfigXml`
     // @parity /modules/vescape-core/src/index.ts `exportBoardConfigXml`
     AsyncFunction("exportBoardConfigXml") { (boardId: String, promise: Promise) in
-      guard let current = self.coordinator.currentBoardConfigValues(),
-            current.freshness == .fresh,
-            current.boardId == boardId,
-            let writeBase = current.writeBase else {
-        promise.reject(
-          RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
-          "Connect to this board to export its config"
-        )
-        return
+      DispatchQueue.main.async {
+        guard let current = self.coordinator.currentBoardConfigValues(),
+              current.freshness == .fresh,
+              current.boardId == boardId,
+              let writeBase = current.writeBase else {
+          promise.reject(
+            RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
+            "Connect to this board to export its config"
+          )
+          return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+          let xml = BoardConfigXmlCodec.exportXml(schema: writeBase.schema, rawConfig: writeBase.rawConfig)
+          promise.resolve(xml)
+        }
       }
-      let xml = BoardConfigXmlCodec.exportXml(schema: writeBase.schema, rawConfig: writeBase.rawConfig)
-      promise.resolve(xml)
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `planBoardConfigXmlImport`
     // @parity /modules/vescape-core/src/index.ts `planBoardConfigXmlImport`
     AsyncFunction("planBoardConfigXmlImport") { (boardId: String, xml: String, promise: Promise) in
-      guard let current = self.coordinator.currentBoardConfigValues(),
-            current.freshness == .fresh,
-            current.boardId == boardId,
-            let writeBase = current.writeBase else {
-        promise.reject(
-          RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
-          "Connect to this board to import a config"
-        )
-        return
-      }
-      do {
-        let plan = try BoardConfigXmlCodec.planImport(
-          boardId: boardId,
-          currentSchema: writeBase.schema,
-          currentRawConfig: writeBase.rawConfig,
-          xml: xml
-        )
-        promise.resolve(plan.toBridgeMap())
-      } catch let error as RefloatConfigEncodeException {
-        promise.reject(error.code.rawValue, error.message)
-      } catch {
-        promise.reject(RefloatConfigErrorCode.INVALID_CONFIG_XML.rawValue, error.localizedDescription)
+      DispatchQueue.main.async {
+        guard let current = self.coordinator.currentBoardConfigValues(),
+              current.freshness == .fresh,
+              current.boardId == boardId,
+              let writeBase = current.writeBase else {
+          promise.reject(
+            RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
+            "Connect to this board to import a config"
+          )
+          return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+          do {
+            let plan = try BoardConfigXmlCodec.planImport(
+              boardId: boardId,
+              currentSchema: writeBase.schema,
+              currentRawConfig: writeBase.rawConfig,
+              xml: xml
+            )
+            promise.resolve(plan.toBridgeMap())
+          } catch let error as RefloatConfigEncodeException {
+            promise.reject(error.code.rawValue, error.message)
+          } catch {
+            promise.reject(RefloatConfigErrorCode.INVALID_CONFIG_XML.rawValue, error.localizedDescription)
+          }
+        }
       }
     }
 
@@ -1338,7 +1350,7 @@ public class VescapeCoreModule: Module {
         onSuccess: { snapshot in promise.resolve(snapshot) },
         onError: { code, message in promise.reject(code, message) }
       )
-    }
+    }.runOnQueue(.main)
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
     // @parity /modules/vescape-core/src/index.ts `pushProfileToBoard`
@@ -1349,7 +1361,7 @@ public class VescapeCoreModule: Module {
         onSuccess: { snapshot in promise.resolve(snapshot) },
         onError: { code, message in promise.reject(code, message) }
       )
-    }
+    }.runOnQueue(.main)
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getProfileStatsSnapshot`
     AsyncFunction("getProfileStatsSnapshot") { (options: [String: Any], promise: Promise) in

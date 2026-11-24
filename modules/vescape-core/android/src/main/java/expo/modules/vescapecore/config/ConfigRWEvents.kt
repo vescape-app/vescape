@@ -36,13 +36,21 @@ internal sealed class ConfigRWEvent {
         val capturedAtMs: Long,
     ) : ConfigRWEvent()
 
+    data class RideStateReceived(
+        val rideState: BoardRideState,
+        val nowMs: Long,
+    ) : ConfigRWEvent()
+
     data class SetConfigResponseReceived(val payload: ByteArray) : ConfigRWEvent()
 
     data class Timeout(val code: RefloatConfigErrorCode) : ConfigRWEvent()
 
     data class GattWriteFailed(val message: String) : ConfigRWEvent()
 
-    data class SetConfigBlocked(val message: String) : ConfigRWEvent()
+    data class SetConfigBlocked(
+        val message: String,
+        val code: RefloatConfigErrorCode = RefloatConfigErrorCode.BOARD_NOT_IDLE,
+    ) : ConfigRWEvent()
 
     data class SessionTerminated(val reason: String) : ConfigRWEvent()
 }

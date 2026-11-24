@@ -113,8 +113,17 @@ class ConfigRWFsmTest {
                 capturedAtMs = 1L,
             ),
         )
-        assertTrue(afterConfig is ConfigRWState.WriteAwaitingSetAck)
-        val sentFrame = configEffects.filterIsInstance<ConfigRWEffect.SendFrame>().single()
+        assertTrue(afterConfig is ConfigRWState.WriteAwaitingIdle)
+        val freshEmit = configEffects.filterIsInstance<ConfigRWEffect.EmitBoardConfigValues>().single()
+        assertEquals(BoardConfigOperationOrigin.FreshRead, freshEmit.origin)
+        assertEquals(12.5, freshEmit.boardConfigValues.number("kp"))
+
+        val (afterIdle, idleEffects) = ConfigRWFsm.apply(
+            afterConfig,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 10L), nowMs = 10L),
+        )
+        assertTrue(afterIdle is ConfigRWState.WriteAwaitingSetAck)
+        val sentFrame = idleEffects.filterIsInstance<ConfigRWEffect.SendFrame>().single()
         assertTrue(
             "set custom config frame expected",
             sentFrame.payload.size >= 4 &&
@@ -124,12 +133,12 @@ class ConfigRWFsmTest {
         assertEquals(0x34, sentFrame.payload[5].toInt() and 0xff)
         assertEquals(0x56, sentFrame.payload[6].toInt() and 0xff)
         assertEquals(0x78, sentFrame.payload[7].toInt() and 0xff)
-        val patchedConfig = (afterConfig as ConfigRWState.WriteAwaitingSetAck).patchedConfig
+        val patchedConfig = (afterIdle as ConfigRWState.WriteAwaitingSetAck).patchedConfig
         val patchedKp = ByteBuffer.wrap(patchedConfig).order(ByteOrder.BIG_ENDIAN).float
         assertEquals(33.0f, patchedKp, 0.001f)
 
         val (afterAck, ackEffects) = ConfigRWFsm.apply(
-            afterConfig,
+            afterIdle,
             ConfigRWEvent.SetConfigResponseReceived(buildSetAckPayload()),
         )
         assertTrue(afterAck is ConfigRWState.WriteVerifying)
@@ -211,6 +220,10 @@ class ConfigRWFsmTest {
             state,
             ConfigRWEvent.ConfigBytesPayloadReceived(buildConfigBytesPayload(configBytes), 0L),
         ).first
+        state = ConfigRWFsm.apply(
+            state,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 1L), nowMs = 1L),
+        ).first
         val (next, effects) = ConfigRWFsm.apply(
             state,
             ConfigRWEvent.Timeout(RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT),
@@ -233,6 +246,10 @@ class ConfigRWFsmTest {
         state = ConfigRWFsm.apply(
             state,
             ConfigRWEvent.ConfigBytesPayloadReceived(buildConfigBytesPayload(configBytes), 0L),
+        ).first
+        state = ConfigRWFsm.apply(
+            state,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 1L), nowMs = 1L),
         ).first
 
         val bogus = byteArrayOf(
@@ -343,6 +360,10 @@ class ConfigRWFsmTest {
         state = ConfigRWFsm.apply(
             state,
             ConfigRWEvent.ConfigBytesPayloadReceived(buildConfigBytesPayload(configBytes), 0L),
+        ).first
+        state = ConfigRWFsm.apply(
+            state,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 1L), nowMs = 1L),
         ).first
         state = ConfigRWFsm.apply(state, ConfigRWEvent.SetConfigResponseReceived(buildSetAckPayload())).first
 

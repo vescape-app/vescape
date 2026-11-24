@@ -221,4 +221,30 @@ class VescWriteQueueTest {
 
         assertNull(queue.startNext())
     }
+
+    @Test
+    fun dropNormalRemovesQueuedAndRemainingChunksForMatchingTagOnly() {
+        val queue = VescWriteQueue()
+        val poll = byteArrayOf(1, 2, 3)
+        val setFrame = frame(50)
+        val after = byteArrayOf(9, 9)
+
+        queue.enqueueNormal(poll)
+        queue.enqueueNormal(setFrame, tag = "config-set:op-1")
+        queue.enqueueNormal(after, tag = "config-set:op-2")
+
+        assertEquals(1, queue.dropNormal("config-set:op-1"))
+        val drained = drain(queue)
+        assertEquals(2, drained.size)
+        assertArrayEquals(poll, drained[0])
+        assertArrayEquals(after, drained[1])
+
+        queue.enqueueNormal(setFrame, tag = "config-set:op-3")
+        queue.enqueueNormal(poll)
+        val firstChunk = queue.startNext()
+        assertEquals(20, firstChunk?.bytes?.size)
+        assertEquals(1, queue.dropNormal("config-set:op-3"))
+        queue.completeInFlight()
+        assertArrayEquals(poll, drain(queue).single())
+    }
 }

@@ -75,6 +75,7 @@ final class ConfigRWControllerRoutingTests: XCTestCase {
 
     XCTAssertTrue(controller.onPayload(xmlChunkPayload(canId: nil, totalLength: schemaXml.count, offset: 0, chunk: schemaXml), connection: conn))
     XCTAssertTrue(controller.onPayload(configPayload(canId: nil, bytes: configBytes), connection: conn))
+    controller.onRideState(BoardRideState(state: 0, switchState: 0, receivedAtMs: Int64(Date().timeIntervalSince1970 * 1000)), connection: conn)
     XCTAssertTrue(controller.onPayload([UInt8(COMM_SET_CUSTOM_CONFIG)], connection: conn))
     XCTAssertTrue(controller.onPayload(configPayload(canId: nil, bytes: patchedBytes), connection: conn))
     XCTAssertTrue(writeDone)
@@ -146,6 +147,7 @@ final class ConfigRWControllerRoutingTests: XCTestCase {
 
     XCTAssertTrue(controller.onPayload(secondChunk, connection: conn))
     XCTAssertTrue(controller.onPayload(configPayload(canId: nil, bytes: configBytes), connection: conn))
+    controller.onRideState(BoardRideState(state: 0, switchState: 0, receivedAtMs: Int64(Date().timeIntervalSince1970 * 1000)), connection: conn)
     XCTAssertTrue(controller.onPayload([UInt8(COMM_SET_CUSTOM_CONFIG)], connection: conn))
     XCTAssertTrue(controller.onPayload(configPayload(canId: nil, bytes: patchedBytes), connection: conn))
     XCTAssertTrue(writeDone)

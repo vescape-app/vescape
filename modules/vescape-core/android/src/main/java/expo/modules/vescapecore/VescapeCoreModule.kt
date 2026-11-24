@@ -1017,7 +1017,7 @@ class VescapeCoreModule : Module() {
         onSuccess = { values -> promise.resolve(values) },
         onError = { code, message -> promise.reject(code, message, null) },
       )
-    }
+    }.runOnQueue(Queues.MAIN)
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setRemoteTilt`
     // @parity /modules/vescape-core/src/index.ts `setRemoteTilt`
     AsyncFunction("setRemoteTilt") { value: Int ->
@@ -1040,7 +1040,7 @@ class VescapeCoreModule : Module() {
     }.runOnQueue(Queues.MAIN)
     AsyncFunction("setBoardLights") { enabled: Boolean, headlightsEnabled: Boolean ->
       CoreForegroundService.setBoardLights(enabled, headlightsEnabled)
-    }
+    }.runOnQueue(Queues.MAIN)
     AsyncFunction("startBoardMove") { input: Int ->
       CoreForegroundService.startBoardMove(input)
     }
@@ -1067,7 +1067,7 @@ class VescapeCoreModule : Module() {
         onError = { code, message -> promise.reject(code, message, null) },
         source = resolvedSource,
       )
-    }
+    }.runOnQueue(Queues.MAIN)
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `pushProfileToBoard`
     // @parity /modules/vescape-core/src/index.ts `pushProfileToBoard`
     AsyncFunction("pushProfileToBoard") { profileId: String, promise: Promise ->
@@ -1077,7 +1077,7 @@ class VescapeCoreModule : Module() {
         onSuccess = { snapshot -> promise.resolve(snapshot) },
         onError = { code, message -> promise.reject(code, message, null) },
       )
-    }
+    }.runOnQueue(Queues.MAIN)
     AsyncFunction("getTuneProfiles") Coroutine { boardId: String, refloatBaseVersion: String? ->
       RecordingStorageFailure.requireAvailable()
       try { AppDataRepository.get(context.applicationContext).getTuneProfiles(boardId, refloatBaseVersion) }
@@ -1123,7 +1123,9 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/src/index.ts `planBoardConfigRevert`
     AsyncFunction("planBoardConfigRevert") Coroutine { boardId: String, revisionId: Double ->
       RecordingStorageFailure.requireAvailable()
-      val current = CoreForegroundService.currentBoardConfigValues()
+      val current = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+        CoreForegroundService.currentBoardConfigValues()
+      }
       try {
         AppDataRepository.get(context.applicationContext)
           .planBoardConfigRevert(boardId, current, revisionId.toLong())
@@ -1135,7 +1137,10 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `exportBoardConfigXml`
     // @parity /modules/vescape-core/src/index.ts `exportBoardConfigXml`
     AsyncFunction("exportBoardConfigXml") Coroutine { boardId: String ->
-      val writeBase = CoreForegroundService.currentBoardConfigValues()?.takeIf {
+      val current = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+        CoreForegroundService.currentBoardConfigValues()
+      }
+      val writeBase = current?.takeIf {
         it.freshness == BoardConfigFreshness.FRESH && it.boardId == boardId
       }?.writeBase
         ?: throw CodedException(
@@ -1158,7 +1163,10 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `planBoardConfigXmlImport`
     // @parity /modules/vescape-core/src/index.ts `planBoardConfigXmlImport`
     AsyncFunction("planBoardConfigXmlImport") Coroutine { boardId: String, xml: String ->
-      val writeBase = CoreForegroundService.currentBoardConfigValues()?.takeIf {
+      val current = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+        CoreForegroundService.currentBoardConfigValues()
+      }
+      val writeBase = current?.takeIf {
         it.freshness == BoardConfigFreshness.FRESH && it.boardId == boardId
       }?.writeBase
         ?: throw CodedException(
@@ -1557,7 +1565,7 @@ class VescapeCoreModule : Module() {
      */
     AsyncFunction("getBoardConfigValues") {
       CoreForegroundService.getBoardConfigValues()
-    }
+    }.runOnQueue(Queues.MAIN)
     /**
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
      * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`

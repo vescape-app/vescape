@@ -228,6 +228,86 @@ class ConfigRWFsmWriteBaseTest {
     }
 
     @Test
+    fun verifyPackageSignatureMismatchRejectsAndDemotesWriteBase() {
+        val (awaitingAck, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(writeBase()))
+        val patched = (awaitingAck as ConfigRWState.WriteAwaitingSetAck).patchedConfig
+        val (verifying, _) = ConfigRWFsm.apply(
+            awaitingAck,
+            ConfigRWEvent.SetConfigResponseReceived(byteArrayOf(COMM_SET_CUSTOM_CONFIG.toByte(), 0)),
+        )
+        val wrongSigReadBack = byteArrayOf(COMM_GET_CUSTOM_CONFIG.toByte(), 0, 0x11, 0x22, 0x33, 0x44) + patched
+        val (state, effects) = ConfigRWFsm.apply(verifying, ConfigRWEvent.ConfigBytesPayloadReceived(wrongSigReadBack, 2))
+
+        assertEquals(ConfigRWState.Idle, state)
+        assertEquals(RefloatConfigErrorCode.CONFIG_VERIFY_FAILED, effects.failureCode())
+        assertTrue(effects.contains(ConfigRWEffect.DemoteWriteBase))
+        assertFalse(effects.any { it is ConfigRWEffect.EmitWriteComplete })
+    }
+
+    @Test
+    fun freshReadWriteRequiresPostReadIdleSampleAndEmitsFreshReadFirst() {
+        val xml = """
+            <CustomConfiguration>
+              <params>
+                <param name="tuned" type="float" min="0" max="100" />
+                <param name="untouched" type="float" min="0" max="100" />
+              </params>
+            </CustomConfiguration>
+        """.trimIndent().encodeToByteArray()
+        val xmlPayload = java.nio.ByteBuffer.allocate(10 + xml.size)
+            .order(java.nio.ByteOrder.BIG_ENDIAN)
+            .put(COMM_GET_CUSTOM_CONFIG_XML.toByte())
+            .put(0.toByte())
+            .putInt(xml.size)
+            .putInt(0)
+            .put(xml)
+            .array()
+        val cfgPayload = byteArrayOf(COMM_GET_CUSTOM_CONFIG.toByte(), 0, 0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte()) + rawConfig
+
+        val (collecting, _) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(null))
+        val (awaitingCfg, _) = ConfigRWFsm.apply(collecting, ConfigRWEvent.XmlPayloadReceived(xmlPayload))
+        val (awaitingIdle, cfgEffects) = ConfigRWFsm.apply(awaitingCfg, ConfigRWEvent.ConfigBytesPayloadReceived(cfgPayload, capturedAtMs = 5_000L))
+
+        assertTrue(awaitingIdle is ConfigRWState.WriteAwaitingIdle)
+        val freshEmit = cfgEffects.filterIsInstance<ConfigRWEffect.EmitBoardConfigValues>().single()
+        assertEquals(BoardConfigOperationOrigin.FreshRead, freshEmit.origin)
+        assertFalse(cfgEffects.sends(COMM_SET_CUSTOM_CONFIG))
+
+        val (stillWaiting, preReadEffects) = ConfigRWFsm.apply(
+            awaitingIdle,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 4_999L), nowMs = 5_010L),
+        )
+        assertEquals(awaitingIdle, stillWaiting)
+        assertTrue(preReadEffects.isEmpty())
+
+        val (blockedState, blockedEffects) = ConfigRWFsm.apply(
+            awaitingIdle,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 1, switchState = 0, receivedAtMs = 5_020L), nowMs = 5_020L),
+        )
+        assertEquals(ConfigRWState.Idle, blockedState)
+        assertEquals(RefloatConfigErrorCode.BOARD_NOT_IDLE, blockedEffects.failureCode())
+        assertFalse(blockedEffects.contains(ConfigRWEffect.DemoteWriteBase))
+
+        val (timedOutState, timedOutEffects) = ConfigRWFsm.apply(
+            awaitingIdle,
+            ConfigRWEvent.Timeout(RefloatConfigErrorCode.BOARD_NOT_IDLE),
+        )
+        assertEquals(ConfigRWState.Idle, timedOutState)
+        assertEquals(RefloatConfigErrorCode.BOARD_NOT_IDLE, timedOutEffects.failureCode())
+        assertFalse(timedOutEffects.contains(ConfigRWEffect.DemoteWriteBase))
+
+        val (awaitingAck, setEffects) = ConfigRWFsm.apply(
+            awaitingIdle,
+            ConfigRWEvent.RideStateReceived(BoardRideState(state = 0, switchState = 0, receivedAtMs = 5_050L), nowMs = 5_050L),
+        )
+        assertTrue(awaitingAck is ConfigRWState.WriteAwaitingSetAck)
+        val setFrame = setEffects.filterIsInstance<ConfigRWEffect.SendFrame>().single()
+        assertTrue(setFrame.requiresIdleBoard)
+        assertEquals(5_000L, setFrame.minRideStateAtMs)
+        assertEquals(ConfigRWFsm.setFrameTag("op-1"), setFrame.frameTag)
+    }
+
+    @Test
     fun profileWriteAfterALightsEchoKeepsTheNewLightBits() {
         val lightsSchema = RefloatConfigSchema(
             hash = "test",

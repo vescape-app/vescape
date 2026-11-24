@@ -4,6 +4,8 @@ internal sealed class ConfigRWEffect {
     data class SendFrame(
         val payload: ByteArray,
         val requiresIdleBoard: Boolean = false,
+        val minRideStateAtMs: Long? = null,
+        val frameTag: String? = null,
     ) : ConfigRWEffect()
 
     data class ScheduleTimeout(
@@ -14,6 +16,11 @@ internal sealed class ConfigRWEffect {
     object CancelTimeout : ConfigRWEffect()
 
     object DemoteWriteBase : ConfigRWEffect()
+
+    data class EmitBoardConfigValues(
+        val boardConfigValues: BoardConfigValues,
+        val origin: BoardConfigOperationOrigin,
+    ) : ConfigRWEffect()
 
     data class EmitReadComplete(
         val boardConfigValues: BoardConfigValues,
