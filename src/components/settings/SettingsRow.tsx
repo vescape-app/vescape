@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
+import { useFocusTarget } from '@/components/base/focusScroll'
 import { Text } from '@/components/base/Text'
 import { CaretRightIcon } from 'phosphor-react-native'
 import type { Icon, IconWeight } from 'phosphor-react-native'
@@ -13,6 +14,7 @@ export interface SettingsRowProps {
   iconWeight?: IconWeight
   label: string
   hint?: string
+  focusId?: string
   onPress?: () => void
   right?: ReactNode
   children?: ReactNode
@@ -24,6 +26,7 @@ export function SettingsRow({
   iconWeight = 'duotone',
   label,
   hint,
+  focusId,
   onPress,
   right,
   children,
@@ -31,6 +34,8 @@ export function SettingsRow({
   const showChevron = onPress && !right
   const neutral = useResolvedNeutralColors()
   const resolvedIconColor = iconColor ?? neutral.textSecondary
+  const { targetRef, onLayout, highlighted } = useFocusTarget(focusId)
+  const highlightBg = highlighted ? { backgroundColor: neutral.surface } : null
 
   const content = (
     <View style={styles.row}>
@@ -52,18 +57,29 @@ export function SettingsRow({
 
   if (onPress) {
     return (
-      <Pressable
-        style={({ pressed }) => [styles.container, pressed && { backgroundColor: neutral.surface }]}
-        onPress={onPress}
-      >
-        {content}
-        {children}
-      </Pressable>
+      <View ref={targetRef} onLayout={onLayout} collapsable={false}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.container,
+            highlightBg,
+            pressed && { backgroundColor: neutral.surface },
+          ]}
+          onPress={onPress}
+        >
+          {content}
+          {children}
+        </Pressable>
+      </View>
     )
   }
 
   return (
-    <View style={styles.container}>
+    <View
+      ref={targetRef}
+      onLayout={onLayout}
+      collapsable={false}
+      style={[styles.container, highlightBg]}
+    >
       {content}
       {children}
     </View>

@@ -1,9 +1,10 @@
-import { useLayoutEffect } from 'react'
+import { useCallback, useLayoutEffect, useRef, type Ref } from 'react'
 import { ScrollView, StyleSheet, View, type ScrollViewProps } from 'react-native'
 import { useNavigation } from 'expo-router'
 import { useHeaderHeight } from 'expo-router/build/react-navigation/elements'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { FocusScrollProvider } from '@/components/base/focusScroll'
 import { theme } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
@@ -22,11 +23,30 @@ function PageHeaderBackground() {
   )
 }
 
-export function PageScrollView({ contentContainerStyle, ...props }: ScrollViewProps) {
+interface PageScrollViewProps extends ScrollViewProps {
+  ref?: Ref<ScrollView>
+}
+
+export function PageScrollView({
+  contentContainerStyle,
+  children,
+  ref,
+  ...props
+}: PageScrollViewProps) {
   const navigation = useNavigation()
   const headerHeight = useHeaderHeight()
   const insets = useSafeAreaInsets()
   const content = StyleSheet.flatten(contentContainerStyle) ?? {}
+  const scrollRef = useRef<ScrollView>(null)
+
+  const setRef = useCallback(
+    (node: ScrollView | null) => {
+      scrollRef.current = node
+      if (typeof ref === 'function') ref(node)
+      else if (ref) ref.current = node
+    },
+    [ref],
+  )
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -38,6 +58,7 @@ export function PageScrollView({ contentContainerStyle, ...props }: ScrollViewPr
   return (
     <ScrollView
       {...props}
+      ref={setRef}
       contentInsetAdjustmentBehavior="never"
       scrollIndicatorInsets={{ top: headerHeight, bottom: insets.bottom }}
       contentContainerStyle={[
@@ -52,6 +73,10 @@ export function PageScrollView({ contentContainerStyle, ...props }: ScrollViewPr
             16,
         },
       ]}
-    />
+    >
+      <FocusScrollProvider scrollRef={scrollRef} headerHeight={headerHeight}>
+        {children}
+      </FocusScrollProvider>
+    </ScrollView>
   )
 }
