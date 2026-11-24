@@ -54,7 +54,7 @@ final class RefloatFieldOverlay {
     }
     struct RawEntry: Decodable {
       let hardLimit: RawRange?
-      let risk: RefloatFieldRisk?
+      let risk: String?
     }
     let fields: [String: RawEntry]?
   }
@@ -83,11 +83,12 @@ final class RefloatFieldOverlay {
     for (fieldId, entry) in fields {
       let hardMin = entry.hardLimit?.min.flatMap { $0.isFinite ? $0 : nil }
       let hardMax = entry.hardLimit?.max.flatMap { $0.isFinite ? $0 : nil }
-      if hardMin != nil || hardMax != nil || entry.risk != nil {
+      let risk = entry.risk.flatMap(RefloatFieldRisk.init(rawValue:))
+      if hardMin != nil || hardMax != nil || risk != nil {
         result[fieldId] = RefloatFieldOverlayEntry(
           hardMin: hardMin,
           hardMax: hardMax,
-          risk: entry.risk
+          risk: risk
         )
       }
     }

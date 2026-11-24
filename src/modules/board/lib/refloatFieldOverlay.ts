@@ -184,13 +184,23 @@ function isDisplayableValue(value: unknown): value is number | boolean | string 
   )
 }
 
+function finiteOrNull(value: number | null | undefined): number | null {
+  return value != null && Number.isFinite(value) ? value : null
+}
+
 function resolveSoftBounds(
   schemaField: BoardConfigSchemaField,
   entry: RefloatFieldOverlayEntry | undefined,
   hard: { min: number; max: number } | null,
 ): { min: number | null; max: number | null } {
-  let min = entry?.softRange?.min ?? hard?.min ?? schemaField.min ?? null
-  let max = entry?.softRange?.max ?? hard?.max ?? schemaField.max ?? null
+  let min =
+    finiteOrNull(entry?.softRange?.min) ??
+    finiteOrNull(schemaField.min) ??
+    finiteOrNull(entry?.hardLimit?.min)
+  let max =
+    finiteOrNull(entry?.softRange?.max) ??
+    finiteOrNull(schemaField.max) ??
+    finiteOrNull(entry?.hardLimit?.max)
   if (hard != null) {
     if (min != null) min = Math.max(min, hard.min)
     if (max != null) max = Math.min(max, hard.max)

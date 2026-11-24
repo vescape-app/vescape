@@ -102,4 +102,23 @@ final class RefloatFieldOverlayTests: XCTestCase {
       XCTAssertEqual((error as? RefloatConfigEncodeException)?.code, .CONFIG_VALUE_INVALID)
     }
   }
+
+  func testParseIgnoresUnknownRiskStrings() throws {
+    let json = """
+    {
+      "fields": {
+        "only_unknown_risk": { "risk": "experimental" },
+        "unknown_risk_with_limit": { "risk": "future_level", "hardLimit": { "min": 1.0, "max": 5.0 } },
+        "known_risk": { "risk": "risky" }
+      }
+    }
+    """
+    let overlay = try RefloatFieldOverlay.parse(Data(json.utf8))
+    XCTAssertNil(overlay.entry("only_unknown_risk"))
+    XCTAssertEqual(
+      overlay.entry("unknown_risk_with_limit"),
+      RefloatFieldOverlayEntry(hardMin: 1.0, hardMax: 5.0, risk: nil)
+    )
+    XCTAssertEqual(overlay.entry("known_risk")?.risk, .risky)
+  }
 }

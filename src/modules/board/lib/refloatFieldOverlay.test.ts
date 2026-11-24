@@ -244,4 +244,34 @@ describe('refloatFieldOverlay', () => {
       risk: 'internal',
     })
   })
+
+  test('field without softRange and XML min/max keeps soft bounds null instead of wire extremes', () => {
+    const unboundedFloat: BoardConfigSchemaField = {
+      id: 'custom.unbounded_float',
+      type: 'float32',
+      xmlType: 1,
+      vTx: 0,
+      label: 'Unbounded Float',
+      unit: null,
+      min: null,
+      max: null,
+      offset: 0,
+      scale: null,
+      step: null,
+      editorDecimals: null,
+      editorScale: null,
+      editAsPercentage: false,
+      enumNames: [],
+      defaultValue: 1.5,
+      transmittable: true,
+      showDisplay: false,
+      cDefine: null,
+      description: null,
+    }
+    const resolved = resolveBoardConfigField(unboundedFloat, 1.5)
+    expect(resolved.min).toBeNull()
+    expect(resolved.max).toBeNull()
+    expect(resolved.hardMin).toBeLessThan(-1e38)
+    expect(resolved.hardMax).toBeGreaterThan(1e38)
+  })
 })
