@@ -13,6 +13,7 @@ export function BoardConfigSchemaSectionCard({
   section,
   pendingChanges,
   refloatBaseVersion,
+  disabled = false,
   showDescription,
   onFieldChange,
   onResetField,
@@ -20,6 +21,7 @@ export function BoardConfigSchemaSectionCard({
   section: BoardConfigSchemaSection
   pendingChanges: Record<string, number | boolean>
   refloatBaseVersion?: string | null
+  disabled?: boolean
   showDescription: boolean
   onFieldChange: (fieldId: string, nextValue: number | boolean) => void
   onResetField: (fieldId: string) => void
@@ -37,6 +39,7 @@ export function BoardConfigSchemaSectionCard({
               field={field}
               value={effectiveValue}
               isModified={isModified}
+              disabled={disabled}
               refloatBaseVersion={refloatBaseVersion}
               showDescription={showDescription}
               onChange={onFieldChange}
@@ -53,6 +56,7 @@ export function BoardConfigPendingBar({
   pendingCount,
   riskyPendingCount,
   saving,
+  reviewDisabled = false,
   bottomInset,
   onDiscard,
   onReview,
@@ -60,6 +64,7 @@ export function BoardConfigPendingBar({
   pendingCount: number
   riskyPendingCount: number
   saving: boolean
+  reviewDisabled?: boolean
   bottomInset: number
   onDiscard: () => void
   onReview: () => void
@@ -96,7 +101,7 @@ export function BoardConfigPendingBar({
         <Button
           label="Review"
           variant="primary"
-          disabled={saving}
+          disabled={saving || reviewDisabled}
           onPress={onReview}
           testID="board-config-review"
         />

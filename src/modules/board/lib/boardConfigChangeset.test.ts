@@ -160,12 +160,12 @@ describe('boardConfigChangeset', () => {
       'fault_delay_switch_half',
       'fault_delay_switch_full',
       'inputtilt_remote_type',
-      'hardware.leds.mode',
       'future_spec_field',
     ]) {
       expect(isRiskyBoardConfigField(riskyId, schema)).toBe(true)
     }
 
+    expect(isRiskyBoardConfigField('hardware.leds.mode', schema)).toBe(false)
     expect(isRiskyBoardConfigField('startup_simplestart_enabled', schema)).toBe(false)
   })
 
@@ -244,7 +244,7 @@ describe('boardConfigChangeset', () => {
       fieldId: 'hardware.leds.mode',
       oldFormatted: 'Internal',
       newFormatted: 'External',
-      risk: 'risky',
+      risk: null,
     })
     expect(entries[1]!.rebootNote).toBeTruthy()
     expect(entries[2]).toMatchObject({

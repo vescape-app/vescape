@@ -81,13 +81,13 @@ export function isRiskyBoardConfigField(
   overlayMap: Readonly<Record<string, RefloatFieldOverlayEntry>> = REFLOAT_FIELD_OVERLAY,
 ): boolean {
   if (isInternalBoardConfigField(fieldId, schema, overlayMap)) return false
+  if (fieldId.startsWith('hardware.leds.')) return false
   if (overlayMap[fieldId]?.risk === 'risky') return true
   if (
     fieldId === 'disabled' ||
     fieldId === 'inputtilt_remote_type' ||
     fieldId.startsWith('fault_adc') ||
-    fieldId.startsWith('fault_delay_') ||
-    fieldId.startsWith('hardware.leds.')
+    fieldId.startsWith('fault_delay_')
   ) {
     return true
   }

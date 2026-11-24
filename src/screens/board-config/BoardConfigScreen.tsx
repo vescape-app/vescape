@@ -147,6 +147,7 @@ export default function BoardConfigScreen() {
   const refloatReadTime = refloat ? fmtTimeAgo(refloat.capturedAtMs, now) : null
   const motorReadTime = motor ? fmtTimeAgo(motor.capturedAtMs, now) : null
   const schema = refloat?.schema ?? null
+  const canEdit = refloat?.freshness === 'fresh'
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -210,6 +211,7 @@ export default function BoardConfigScreen() {
 
   const handleFieldChange = useCallback(
     (fieldId: string, nextValue: number | boolean) => {
+      if (!canEdit) return
       const currentValue = refloat?.values[fieldId]
       setApplyError(null)
       setPendingChanges((prev) => {
@@ -219,7 +221,7 @@ export default function BoardConfigScreen() {
         return { ...prev, [fieldId]: nextValue }
       })
     },
-    [refloat],
+    [canEdit, refloat],
   )
 
   const handleResetField = useCallback((fieldId: string) => {
@@ -250,6 +252,10 @@ export default function BoardConfigScreen() {
 
   const handleConfirmApply = useCallback(async () => {
     if (!boardId || pendingCount === 0) return
+    if (!canEdit) {
+      setApplyError('Board disconnected. Reconnect to apply changes.')
+      return
+    }
     setSaving(true)
     setApplyError(null)
     try {
@@ -262,7 +268,7 @@ export default function BoardConfigScreen() {
     } finally {
       setSaving(false)
     }
-  }, [boardId, pendingChanges, pendingCount])
+  }, [boardId, canEdit, pendingChanges, pendingCount])
 
   const renderReadOnlyGroup = (group: BoardConfigGroup) => (
     <BoardConfigSection
@@ -336,6 +342,7 @@ export default function BoardConfigScreen() {
               section={section}
               pendingChanges={pendingChanges}
               refloatBaseVersion={refloat?.refloatBaseVersion}
+              disabled={!canEdit}
               showDescription={false}
               onFieldChange={handleFieldChange}
               onResetField={handleResetField}
@@ -362,6 +369,7 @@ export default function BoardConfigScreen() {
             section={{ id: result.key, title: result.title, fields: result.fields }}
             pendingChanges={pendingChanges}
             refloatBaseVersion={refloat?.refloatBaseVersion}
+            disabled={!canEdit}
             showDescription
             onFieldChange={handleFieldChange}
             onResetField={handleResetField}
@@ -394,10 +402,10 @@ export default function BoardConfigScreen() {
           <BoardConfigReadInfo refloatReadTime={refloatReadTime} motorReadTime={motorReadTime} />
         </IconHero>
 
-        {schema && refloat?.freshness === 'last-known' ? (
+        {schema && !canEdit ? (
           <Banner
             variant="info"
-            message="Showing last known config. Connect this board before applying changes."
+            message="Showing last known config. Connect this board to edit settings."
           />
         ) : null}
 
@@ -442,6 +450,7 @@ export default function BoardConfigScreen() {
           pendingCount={pendingCount}
           riskyPendingCount={riskyPendingCount}
           saving={saving}
+          reviewDisabled={!canEdit}
           bottomInset={insets.bottom}
           onDiscard={handleDiscardAll}
           onReview={() => {
@@ -457,7 +466,11 @@ export default function BoardConfigScreen() {
         boardName={board?.name}
         entries={reviewEntries}
         saving={saving}
-        error={applyError}
+        confirmDisabled={!canEdit}
+        error={
+          applyError ??
+          (!canEdit && reviewOpen ? 'Board disconnected. Reconnect to apply changes.' : null)
+        }
         onConfirm={handleConfirmApply}
         onCancel={() => {
           if (!saving) setReviewOpen(false)

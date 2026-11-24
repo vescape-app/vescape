@@ -26,6 +26,7 @@ export interface BoardConfigReviewModalProps {
   entries: BoardConfigReviewEntry[]
   skippedFields?: BoardConfigSkippedField[]
   saving?: boolean
+  confirmDisabled?: boolean
   error?: string | null
   onConfirm: () => void | Promise<void>
   onCancel: () => void
@@ -62,6 +63,7 @@ export function BoardConfigReviewModal({
   entries,
   skippedFields = EMPTY_SKIPPED,
   saving = false,
+  confirmDisabled = false,
   error,
   onConfirm,
   onCancel,
@@ -94,7 +96,7 @@ export function BoardConfigReviewModal({
           <Button
             label={saving ? 'Writing…' : error ? meta.retryLabel : meta.confirmLabel}
             variant={riskyCount > 0 ? 'destructive' : 'primary'}
-            disabled={saving || entries.length === 0}
+            disabled={saving || confirmDisabled || entries.length === 0}
             onPress={() => void onConfirm()}
             style={styles.footerButton}
             testID="board-config-review-confirm"

@@ -216,7 +216,7 @@ describe('boardConfigSchemaGroups', () => {
         const specsFields = specsTab.sections.flatMap((section) => section.fields)
         expect(specsFields.length).toBeGreaterThan(15)
         for (const field of specsFields) {
-          expect(field.risk).toBe('risky')
+          expect(field.risk).toBe(field.id.startsWith('hardware.leds.') ? null : 'risky')
           expect(field.editable).toBe(true)
         }
       }

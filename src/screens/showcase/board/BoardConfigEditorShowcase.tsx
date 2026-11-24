@@ -117,7 +117,7 @@ const DEMO_FIELDS: ResolvedBoardConfigField[] = [
     description: 'Hardware LED driver mode.',
     placement: 'primary',
     hidden: false,
-    risk: 'risky',
+    risk: null,
     editable: true,
   },
   {

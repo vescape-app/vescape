@@ -96,10 +96,12 @@ export function BoardConfigFieldEditor({
   const canIncrement = field.hardMax == null || numericValue < field.hardMax
 
   const renderControl = () => {
-    if (editorKind === 'readonly') {
+    if (isReadOnly) {
       return (
         <View style={styles.readonlyWrap}>
-          <LockSimpleIcon size={13} color={theme.neutral.textMuted} weight="duotone" />
+          {editorKind === 'readonly' ? (
+            <LockSimpleIcon size={13} color={theme.neutral.textMuted} weight="duotone" />
+          ) : null}
           <Text style={styles.readonlyValue}>
             {formatBoardConfigFieldValue(field, value, temperatureUnit)}
           </Text>
