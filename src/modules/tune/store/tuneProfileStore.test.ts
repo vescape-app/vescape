@@ -74,6 +74,7 @@ const deleteProfile = mock(async () => {})
 const getProfileHistory = mock(async () => [])
 const rollbackProfile = mock(async () => profile)
 const copyProfileToBoard = mock(async () => profile)
+const applyBoardConfigChangeset = mock(async () => boardSnapshot)
 const pushProfileToBoard = mock(async () => boardSnapshot)
 
 const vescBleMock = {
@@ -87,6 +88,7 @@ const vescBleMock = {
   getProfileHistory,
   rollbackProfile,
   copyProfileToBoard,
+  applyBoardConfigChangeset,
   pushProfileToBoard,
 }
 
@@ -102,6 +104,8 @@ beforeEach(async () => {
   createProfile.mockImplementation(async () => profile)
   renameProfile.mockClear()
   renameProfile.mockImplementation(async () => profile)
+  applyBoardConfigChangeset.mockClear()
+  applyBoardConfigChangeset.mockImplementation(async () => boardSnapshot)
   pushProfileToBoard.mockClear()
   pushProfileToBoard.mockImplementation(async () => boardSnapshot)
   const { useBleStore } = await import('@/modules/board/store/bleStore')
@@ -532,7 +536,7 @@ test('ignores stale profile loads when board selection changes', async () => {
   expect(useTuneProfileStore.getState().profiles).toEqual([otherBoardProfile])
 })
 
-test('syncToBoard pushes only the profile fields that differ from the board', async () => {
+test('syncToBoard pushes the profile natively when fields differ from the board', async () => {
   const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
   const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
 
@@ -540,7 +544,7 @@ test('syncToBoard pushes only the profile fields that differ from the board', as
   useTuneProfileStore.getState().setBoardSnapshot(boardSnapshot)
   await useTuneProfileStore.getState().syncToBoard()
 
-  expect(pushProfileToBoard).toHaveBeenCalledWith('profile-1', ['kp'])
+  expect(pushProfileToBoard).toHaveBeenCalledWith('profile-1')
   expect(useTuneSnapshotStore.getState().status).toBe('ready')
   expect(useTuneSnapshotStore.getState().snapshot).toEqual(boardSnapshot)
   expect(useTuneProfileStore.getState().boardDiff).toEqual([
@@ -557,7 +561,7 @@ test('syncToBoard skips the native push when the board already matches', async (
   expect(pushProfileToBoard).not.toHaveBeenCalled()
 })
 
-test('Save & sync writes only the fields edited in this save, not board drift', async () => {
+test('Save & sync applies only the dirty fields as a changeset, not board drift', async () => {
   const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
 
   await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
@@ -566,7 +570,19 @@ test('Save & sync writes only the fields edited in this save, not board drift', 
   await useTuneProfileStore.getState().saveAndSyncActiveProfile()
 
   expect(saveProfile).toHaveBeenCalledWith('profile-1', { kp: 20, atr_strength_up: 1.5 })
-  expect(pushProfileToBoard).toHaveBeenCalledWith('profile-1', ['atr_strength_up'])
+  expect(applyBoardConfigChangeset).toHaveBeenCalledWith('board-1', { atr_strength_up: 1.5 })
+  expect(pushProfileToBoard).not.toHaveBeenCalled()
+})
+
+test('wire-precision comparison distinguishes ki below 3 decimals and collapses sub-LSB kp drift', async () => {
+  const { sameFieldValue } = await import('@/modules/tune/store/tuneProfileHelpers')
+
+  expect(sameFieldValue('ki', 0.0001, 0.0002)).toBe(false)
+  expect(sameFieldValue('ki', 0.0001, 0.000104)).toBe(true)
+  expect(sameFieldValue('kp', 20.0, 20.04)).toBe(true)
+  expect(sameFieldValue('kp', 20.0, 20.1)).toBe(false)
+  expect(sameFieldValue('turntilt_start_erpm', 1000, 1000.4)).toBe(true)
+  expect(sameFieldValue('turntilt_start_erpm', 1000, 1001)).toBe(false)
 })
 
 test('falls back to legacy native profile calls when the dev client has the old bridge', async () => {

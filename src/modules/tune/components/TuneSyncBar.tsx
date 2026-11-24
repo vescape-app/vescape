@@ -12,7 +12,7 @@ import {
   WarningCircleIcon,
 } from 'phosphor-react-native'
 
-import type { SyncBarState } from '@/modules/tune/lib/syncBarState'
+import { formatDriftSummary, type SyncBarState } from '@/modules/tune/lib/syncBarState'
 import { theme } from '@/constants/theme'
 
 interface TuneSyncBarProps {
@@ -232,7 +232,7 @@ export function TuneSyncBar({
           accentColor: theme.palette.sky.color,
           accentTextColor: theme.neutral.surfaceDeep,
           text: `${s.diffCount} field${s.diffCount === 1 ? '' : 's'} differ from board`,
-          detail: null,
+          detail: formatDriftSummary(s.diffLabels),
           icon: <ArrowsClockwiseIcon size={16} color={theme.palette.sky.color} weight="bold" />,
           actions: [
             {

@@ -9,6 +9,7 @@ import {
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
+import { useBoardConfigValuesStore } from '@/modules/board/store/boardConfigValuesStore'
 import {
   DEFAULT_TUNE_PROFILE_COLOR,
   DEFAULT_TUNE_PROFILE_ICON,
@@ -18,6 +19,7 @@ import {
   createNativeProfileWithMetadata,
   isCompatibleProfile,
   renameNativeProfileWithMetadata,
+  schemaFieldMap,
   withDefaultMetadata,
 } from '@/modules/tune/store/tuneProfileHelpers'
 import {
@@ -92,7 +94,11 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
         currentActive && isCompatibleProfile(currentActive, boardId, refloatBaseVersion)
           ? (profiles.find((profile) => profile.id === currentActive.id) ?? profiles[0] ?? null)
           : (profiles[0] ?? null)
-      const diff = boardDiff(activeProfile, get().boardFields)
+      const diff = boardDiff(
+        activeProfile,
+        get().boardFields,
+        schemaFieldMap(useBoardConfigValuesStore.getState().values?.schema),
+      )
       set({
         profiles,
         activeProfile,
@@ -133,7 +139,11 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
       }
       const normalizedProfile = profile ? withDefaultMetadata(profile) : null
       set((state) => {
-        const diff = boardDiff(normalizedProfile, state.boardFields)
+        const diff = boardDiff(
+          normalizedProfile,
+          state.boardFields,
+          schemaFieldMap(useBoardConfigValuesStore.getState().values?.schema),
+        )
         return {
           profiles:
             normalizedProfile == null
@@ -169,7 +179,11 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
             isCompatibleProfile(p, state.activeBoardId, state.refloatBaseVersion),
         ) ?? null
       if (!profile) return state
-      const diff = boardDiff(profile, state.boardFields)
+      const diff = boardDiff(
+        profile,
+        state.boardFields,
+        schemaFieldMap(useBoardConfigValuesStore.getState().values?.schema),
+      )
       return {
         activeProfile: profile,
         draftFields: {},
@@ -201,7 +215,11 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
         state.refloatBaseVersion,
       )
       set((prevState) => {
-        const diff = boardDiff(profile, prevState.boardFields)
+        const diff = boardDiff(
+          profile,
+          prevState.boardFields,
+          schemaFieldMap(useBoardConfigValuesStore.getState().values?.schema),
+        )
         return {
           profiles: [...prevState.profiles, profile],
           activeProfile: profile,
@@ -248,7 +266,11 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
         const remaining = state.profiles.filter((p) => p.id !== profileId)
         const needSwitch = state.activeProfile?.id === profileId
         const nextActive = needSwitch ? (remaining[0] ?? null) : state.activeProfile
-        const diff = boardDiff(nextActive, state.boardFields)
+        const diff = boardDiff(
+          nextActive,
+          state.boardFields,
+          schemaFieldMap(useBoardConfigValuesStore.getState().values?.schema),
+        )
         return {
           profiles: remaining,
           activeProfile: nextActive,
@@ -282,7 +304,11 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
     try {
       const restored = await nativeRollbackProfile(profile.id, historyEntryId)
       set((state) => {
-        const diff = boardDiff(restored, state.boardFields)
+        const diff = boardDiff(
+          restored,
+          state.boardFields,
+          schemaFieldMap(useBoardConfigValuesStore.getState().values?.schema),
+        )
         return {
           profiles: state.profiles.map((p) => (p.id === restored.id ? restored : p)),
           activeProfile: restored,

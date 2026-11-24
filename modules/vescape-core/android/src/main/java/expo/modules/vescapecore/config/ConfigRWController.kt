@@ -25,12 +25,23 @@ internal data class PendingConfigRead(
     val onError: (String, String) -> Unit,
 )
 
-internal data class PendingConfigWrite(
-    val profileId: String,
-    val fieldIds: List<String>,
-    val onSuccess: (Map<String, Any?>) -> Unit,
-    val onError: (String, String) -> Unit,
-)
+internal sealed class PendingConfigWrite {
+    abstract val onSuccess: (Map<String, Any?>) -> Unit
+    abstract val onError: (String, String) -> Unit
+
+    data class Profile(
+        val profileId: String,
+        override val onSuccess: (Map<String, Any?>) -> Unit,
+        override val onError: (String, String) -> Unit,
+    ) : PendingConfigWrite()
+
+    data class Changeset(
+        val boardId: String,
+        val changes: Map<String, Any?>,
+        override val onSuccess: (Map<String, Any?>) -> Unit,
+        override val onError: (String, String) -> Unit,
+    ) : PendingConfigWrite()
+}
 
 internal data class ConfigConnectionSnapshot(
     val config: SessionConfig?,
@@ -105,8 +116,32 @@ internal class ConfigRWController(
         val initial = port.connection()
         if (!initial.connected()) return pending.notConnected()
         if (!initial.trusted()) return pending.linkNotTrusted()
-        if (initial.transport == null) return pending.noCanId("push")
-        idleBlockReason(initial, System.currentTimeMillis())?.let { return pending.notIdle(it) }
+        val initialTransport = initial.transport ?: return pending.noCanId("push")
+        val initialStartedAtMs = System.currentTimeMillis()
+        idleBlockReason(initial, initialStartedAtMs)?.let { return pending.notIdle(it) }
+        when (pending) {
+            is PendingConfigWrite.Changeset -> {
+                val connectedBoardId = initial.config?.appBoardId
+                if (connectedBoardId.isNullOrBlank() || connectedBoardId != pending.boardId) {
+                    return pending.onError(
+                        RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+                        "Requested board is not the connected board",
+                    )
+                }
+                startWriteOperation(
+                    pending = pending,
+                    connection = initial,
+                    transport = initialTransport,
+                    intent = ConfigWriteIntent.Changeset(pending.changes),
+                    connectedBoardId = connectedBoardId,
+                    startedAtMs = initialStartedAtMs,
+                )
+            }
+            is PendingConfigWrite.Profile -> consumeProfileWrite(pending)
+        }
+    }
+
+    private fun consumeProfileWrite(pending: PendingConfigWrite.Profile) {
         appDataScope.launch {
             val profile = try { loadProfile(pending.profileId) } catch (error: Exception) {
                 RecordingStorageFailure.reportRead("board_tune_profile_read", error)
@@ -119,14 +154,7 @@ internal class ConfigRWController(
                 }
                 return@launch
             }
-            @Suppress("UNCHECKED_CAST") val storedFields = (profile["fields"] as? Map<String, Any>) ?: emptyMap()
-            val fields = selectProfileFields(storedFields, pending.fieldIds)
-            if (fields == null) {
-                scheduler.post {
-                    pending.onError(RefloatConfigErrorCode.CONFIG_VALUE_INVALID.name, "Push must name fields stored in the tune profile")
-                }
-                return@launch
-            }
+            @Suppress("UNCHECKED_CAST") val storedFields = (profile["fields"] as? Map<String, Any?>) ?: emptyMap()
             scheduler.post {
                 if (isInFlight) return@post pending.inFlight()
                 val connection = port.connection()
@@ -145,26 +173,45 @@ internal class ConfigRWController(
                 }
                 val startedAtMs = System.currentTimeMillis()
                 idleBlockReason(connection, startedAtMs)?.let { return@post pending.notIdle(it) }
-                val wasPolling = port.isPollingActive()
-                port.stopPolling()
-                writeStartedAtMs = startedAtMs
-                writeCallbacks = pending
-                dispatch(
-                    ConfigRWEvent.StartWrite(
-                        newOperationId(),
-                        connection.canIdOrNull(),
-                        transport,
-                        wasPolling,
-                        fields,
-                        connectedBoardId,
-                        connection.fwVersion,
-                        connectedRefloatBaseVersion,
-                        connection.config?.refloatVersion,
-                        connection.boardConfigValues?.writeBase,
-                    ),
+                startWriteOperation(
+                    pending = pending,
+                    connection = connection,
+                    transport = transport,
+                    intent = ConfigWriteIntent.Profile(storedFields),
+                    connectedBoardId = connectedBoardId,
+                    startedAtMs = startedAtMs,
                 )
             }
         }
+    }
+
+    private fun startWriteOperation(
+        pending: PendingConfigWrite,
+        connection: ConfigConnectionSnapshot,
+        transport: BoardTransport,
+        intent: ConfigWriteIntent,
+        connectedBoardId: String,
+        startedAtMs: Long,
+    ) {
+        val wasPolling = port.isPollingActive()
+        port.stopPolling()
+        writeStartedAtMs = startedAtMs
+        writeCallbacks = pending
+        dispatch(
+            ConfigRWEvent.StartWrite(
+                opId = newOperationId(),
+                canId = connection.canIdOrNull(),
+                transport = transport,
+                wasPolling = wasPolling,
+                intent = intent,
+                appBoardId = connectedBoardId,
+                fwVersion = connection.fwVersion,
+                refloatBaseVersion = connection.config?.refloatBaseVersion,
+                refloatVersion = connection.config?.refloatVersion,
+                writeBase = connection.boardConfigValues?.writeBase,
+                startedAtMs = startedAtMs,
+            ),
+        )
     }
 
     fun onPayload(payload: ByteArray, capturedAtMs: Long = System.currentTimeMillis()): Boolean {
@@ -260,12 +307,22 @@ internal class ConfigRWController(
     }
     private fun completeWrite(effect: ConfigRWEffect.EmitWriteComplete) {
         val callbacks = writeCallbacks.also { writeCallbacks = null }; resumePolling(effect.resumePolling)
-        effect.boardConfigValues?.let { port.onBoardConfigValues(it, BoardConfigOperationOrigin.VESCAPE_WRITE) }
+        effect.boardConfigValues?.let { port.onBoardConfigValues(it, effect.origin) }
         callbacks?.onSuccess?.invoke(effect.snapshot.toMap())
     }
     private fun failWrite(effect: ConfigRWEffect.EmitWriteFailure) {
         val callbacks = writeCallbacks.also { writeCallbacks = null }; resumePolling(effect.resumePolling)
-        port.captureDiagnostic("profile_push_failed", port.diagnosticProperties(port.connection().config, "profile_push") + mapOf("operation_id" to effect.opId, "message" to effect.message, "error_code" to effect.code.name, "phase" to effect.phase.name, "firmware" to port.connection().fwVersion) + DiagnosticReporter.configBlobProperties(effect.rawConfig))
+        val baseProperties = port.diagnosticProperties(port.connection().config, "profile_push") + mapOf(
+            "operation_id" to effect.opId,
+            "message" to effect.message,
+            "error_code" to effect.code.name,
+            "phase" to effect.phase.name,
+            "firmware" to port.connection().fwVersion,
+        )
+        if (effect.demotedWriteBase) {
+            port.captureDiagnostic("board_config_write_base_demoted", baseProperties)
+        }
+        port.captureDiagnostic("profile_push_failed", baseProperties + DiagnosticReporter.configBlobProperties(effect.rawConfig))
         callbacks?.onError?.invoke(effect.code.name, effect.message)
     }
     private fun idleBlockReason(connection: ConfigConnectionSnapshot, referenceMs: Long) =
@@ -286,9 +343,3 @@ internal class ConfigRWController(
 }
 
 internal enum class BoardConfigOperationOrigin { FRESH_READ, VESCAPE_WRITE }
-
-// @parity /modules/vescape-core/ios/config/ConfigRWController.swift `selectProfileFields`
-internal fun selectProfileFields(storedFields: Map<String, Any>, fieldIds: List<String>): Map<String, Any>? {
-    if (fieldIds.isEmpty()) return null
-    return fieldIds.associateWith { storedFields[it] ?: return null }
-}

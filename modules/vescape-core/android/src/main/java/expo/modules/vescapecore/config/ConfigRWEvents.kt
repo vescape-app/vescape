@@ -18,12 +18,13 @@ internal sealed class ConfigRWEvent {
         val canId: Int?,
         val transport: BoardTransport,
         val wasPolling: Boolean,
-        val profileFields: Map<String, Any>,
+        val intent: ConfigWriteIntent,
         val appBoardId: String?,
         val fwVersion: String?,
         val refloatBaseVersion: String?,
         val refloatVersion: String?,
         val writeBase: BoardConfigWriteBase?,
+        val startedAtMs: Long = System.currentTimeMillis(),
     ) : ConfigRWEvent()
 
     data class XmlPayloadReceived(val payload: ByteArray) : ConfigRWEvent()

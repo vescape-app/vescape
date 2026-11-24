@@ -488,10 +488,32 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/service/CoreForegroundService.kt `applyBoardConfigChangeset`
+  func applyBoardConfigChangeset(
+    boardId: String,
+    changes: [String: Any],
+    onSuccess: @escaping ([String: Any?]) -> Void,
+    onError: @escaping (String, String) -> Void
+  ) {
+    guard let config else {
+      onError(
+        RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue,
+        "Board must be connected before pushing config"
+      )
+      return
+    }
+    configController.consumeChangeset(
+      boardId: boardId,
+      changes: changes,
+      connection: configConnection(config),
+      onSuccess: onSuccess,
+      onError: onError
+    )
+  }
+
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt `consumeWrite`
   func pushProfileToBoard(
     profileId: String,
-    fieldIds: [String],
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -504,7 +526,6 @@ internal final class BoardSessionController: VescGattListener {
     }
     configController.consumeWrite(
       profileId: profileId,
-      fieldIds: fieldIds,
       connection: configConnection(config),
       onSuccess: onSuccess,
       onError: onError

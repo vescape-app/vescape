@@ -13,7 +13,14 @@ export interface SyncBarState {
   variant: SyncBarVariant
   dirtyCount: number
   diffCount: number
+  diffLabels: string[]
   configError: string | null
+}
+
+export function formatDriftSummary(labels: string[], maxVisible = 3): string | null {
+  if (labels.length === 0) return null
+  if (labels.length <= maxVisible) return labels.join(', ')
+  return `${labels.slice(0, maxVisible).join(', ')} +${labels.length - maxVisible} more`
 }
 
 export function getSyncBarState(params: {
@@ -23,6 +30,7 @@ export function getSyncBarState(params: {
   hasBoardDiff: boolean
   dirtyCount: number
   diffCount: number
+  diffLabels?: string[]
   loadingConfig: boolean
   configError: string | null
   boardSnapshotReady: boolean
@@ -36,6 +44,7 @@ export function getSyncBarState(params: {
     hasBoardDiff,
     dirtyCount,
     diffCount,
+    diffLabels = [],
     loadingConfig,
     configError,
     boardSnapshotReady,
@@ -43,20 +52,29 @@ export function getSyncBarState(params: {
     syncing,
   } = params
   if (!hasProfile) return null
-  if (saving) return { variant: 'saving', dirtyCount, diffCount, configError: null }
-  if (syncing) return { variant: 'syncing', dirtyCount, diffCount, configError: null }
+  if (saving) return { variant: 'saving', dirtyCount, diffCount, diffLabels, configError: null }
+  if (syncing) return { variant: 'syncing', dirtyCount, diffCount, diffLabels, configError: null }
   const connected = bleStatus === 'connected'
   if (hasDirtyFields && connected && boardSnapshotReady) {
-    return { variant: 'save_and_sync', dirtyCount, diffCount, configError: null }
+    return { variant: 'save_and_sync', dirtyCount, diffCount, diffLabels, configError: null }
   }
-  if (hasDirtyFields) return { variant: 'save_later', dirtyCount, diffCount, configError }
-  if (loadingConfig) return { variant: 'loading_config', dirtyCount, diffCount, configError: null }
-  if (configError) return { variant: 'config_error', dirtyCount, diffCount, configError }
+  if (hasDirtyFields) {
+    return { variant: 'save_later', dirtyCount, diffCount, diffLabels, configError }
+  }
+  if (loadingConfig) {
+    return { variant: 'loading_config', dirtyCount, diffCount, diffLabels, configError: null }
+  }
+  if (configError) {
+    return { variant: 'config_error', dirtyCount, diffCount, diffLabels, configError }
+  }
   if (hasBoardDiff && connected && boardSnapshotReady) {
-    return { variant: 'sync_with_board', dirtyCount, diffCount, configError: null }
+    return { variant: 'sync_with_board', dirtyCount, diffCount, diffLabels, configError: null }
   }
-  if (!connected) return { variant: 'connect_to_sync', dirtyCount, diffCount, configError: null }
-  if (!boardSnapshotReady)
-    return { variant: 'loading_config', dirtyCount, diffCount, configError: null }
-  return { variant: 'up_to_date', dirtyCount, diffCount, configError: null }
+  if (!connected) {
+    return { variant: 'connect_to_sync', dirtyCount, diffCount, diffLabels, configError: null }
+  }
+  if (!boardSnapshotReady) {
+    return { variant: 'loading_config', dirtyCount, diffCount, diffLabels, configError: null }
+  }
+  return { variant: 'up_to_date', dirtyCount, diffCount, diffLabels, configError: null }
 }

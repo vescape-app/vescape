@@ -92,9 +92,8 @@ class ConfigRWControllerLinkIntegrityTest {
 
     private fun writeFailsClosed(integrity: LinkIntegrity) {
         linkIntegrity = integrity
-        controller().consumeWrite(PendingConfigWrite(
+        controller().consumeWrite(PendingConfigWrite.Profile(
             profileId = "profile-1",
-            fieldIds = listOf("kp"),
             onSuccess = { error("write should not succeed") },
             onError = { code, message -> errors.add(code to message) },
         ))
@@ -116,9 +115,8 @@ class ConfigRWControllerLinkIntegrityTest {
         for (sample in blocked) {
             errors.clear()
             rideState = sample
-            controller().consumeWrite(PendingConfigWrite(
+            controller().consumeWrite(PendingConfigWrite.Profile(
                 profileId = "profile-1",
-                fieldIds = listOf("kp"),
                 onSuccess = { error("write should not succeed") },
                 onError = { code, message -> errors.add(code to message) },
             ))
@@ -127,5 +125,32 @@ class ConfigRWControllerLinkIntegrityTest {
             assertFalse(stoppedPolling)
             assertFalse(sentPayload)
         }
+    }
+
+    @Test
+    fun changesetRejectsMismatchedBoardIdAndNotIdle() {
+        val now = System.currentTimeMillis()
+        rideState = BoardRideState(state = 0, switchState = 0, receivedAtMs = now)
+        controller().consumeWrite(PendingConfigWrite.Changeset(
+            boardId = "other-board",
+            changes = mapOf("kp" to 20.0),
+            onSuccess = { error("write should not succeed") },
+            onError = { code, message -> errors.add(code to message) },
+        ))
+        assertEquals(listOf(RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name), errors.map { it.first })
+        assertFalse(stoppedPolling)
+        assertFalse(sentPayload)
+
+        errors.clear()
+        rideState = BoardRideState(state = 1, switchState = 0, receivedAtMs = now)
+        controller().consumeWrite(PendingConfigWrite.Changeset(
+            boardId = "board-1",
+            changes = mapOf("kp" to 20.0),
+            onSuccess = { error("write should not succeed") },
+            onError = { code, message -> errors.add(code to message) },
+        ))
+        assertEquals(listOf(RefloatConfigErrorCode.BOARD_NOT_IDLE.name), errors.map { it.first })
+        assertFalse(stoppedPolling)
+        assertFalse(sentPayload)
     }
 }

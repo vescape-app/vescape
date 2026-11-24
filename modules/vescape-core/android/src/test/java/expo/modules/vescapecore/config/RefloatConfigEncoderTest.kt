@@ -331,7 +331,135 @@ class RefloatConfigEncoderTest {
     }
   }
 
-  private fun assertInvalid(schema: RefloatConfigSchema, raw: ByteArray, fields: Map<String, Any>) {
+  @Test
+  fun float32AutoIndependentByteVectors() {
+    val schema = RefloatConfigSchema("t", listOf(
+      RefloatConfigSchemaField("v", RefloatConfigValueType.FLOAT32_AUTO, "v", null, null, null, 0),
+    ))
+    val vectors = listOf(
+      0.0 to byteArrayOf(0x00, 0x00, 0x00, 0x00),
+      1e-40 to byteArrayOf(0x00, 0x00, 0x00, 0x00),
+      0.25 to byteArrayOf(0x3E, 0x80.toByte(), 0x00, 0x00),
+      0.5 to byteArrayOf(0x3F, 0x00, 0x00, 0x00),
+      1.0 to byteArrayOf(0x3F, 0x80.toByte(), 0x00, 0x00),
+      -1.0 to byteArrayOf(0xBF.toByte(), 0x80.toByte(), 0x00, 0x00),
+      3.0 to byteArrayOf(0x40, 0x40, 0x00, 0x00),
+      -2.5 to byteArrayOf(0xC0.toByte(), 0x20, 0x00, 0x00),
+      30.0 to byteArrayOf(0x41, 0xF0.toByte(), 0x00, 0x00),
+      100.0 to byteArrayOf(0x42, 0xC8.toByte(), 0x00, 0x00),
+    )
+    for ((value, expected) in vectors) {
+      val encoded = RefloatConfigEncoder.encode(schema, ByteArray(4), mapOf("v" to value))
+      assertArrayEquals("FLOAT32_AUTO vector for $value", expected, encoded)
+    }
+  }
+
+  @Test
+  fun float16ScaledIndependentEdgeByteVectors() {
+    val scale100 = RefloatConfigSchema("t", listOf(
+      RefloatConfigSchemaField("v", RefloatConfigValueType.FLOAT16_SCALED, "v", null, null, null, 0, 100.0),
+    ))
+    val scale100Vectors = listOf(
+      0.0 to byteArrayOf(0x00, 0x00),
+      1.23 to byteArrayOf(0x00, 0x7B),
+      -0.01 to byteArrayOf(0xFF.toByte(), 0xFF.toByte()),
+      327.67 to byteArrayOf(0x7F, 0xFF.toByte()),
+      -327.68 to byteArrayOf(0x80.toByte(), 0x00),
+    )
+    for ((value, expected) in scale100Vectors) {
+      assertArrayEquals(
+        "FLOAT16_SCALED(100) vector for $value",
+        expected,
+        RefloatConfigEncoder.encode(scale100, ByteArray(2), mapOf("v" to value)),
+      )
+    }
+
+    val kiSchema = RefloatConfigSchema("t", listOf(
+      RefloatConfigSchemaField("ki", RefloatConfigValueType.FLOAT16_SCALED, "ki", null, 0.0, 0.5, 0, 100_000.0),
+    ))
+    val kiVectors = listOf(
+      0.0 to byteArrayOf(0x00, 0x00),
+      0.001 to byteArrayOf(0x00, 0x64),
+      0.32767 to byteArrayOf(0x7F, 0xFF.toByte()),
+    )
+    for ((value, expected) in kiVectors) {
+      assertArrayEquals(
+        "FLOAT16_SCALED(100000) vector for $value",
+        expected,
+        RefloatConfigEncoder.encode(kiSchema, ByteArray(2), mapOf("ki" to value)),
+      )
+    }
+  }
+
+  @Test
+  fun effectiveRangeRejectsSchemaAndWireOverflows() {
+    val schema = RefloatConfigSchema(
+      hash = "refloat-edges",
+      fields = listOf(
+        RefloatConfigSchemaField("ki", RefloatConfigValueType.FLOAT16_SCALED, "Angle I", null, 0.0, 0.5, 0, 100_000.0),
+        RefloatConfigSchemaField("turntilt_start_erpm", RefloatConfigValueType.UINT16, "ERPM Threshold", null, 100.0, 100_000.0, 2),
+        RefloatConfigSchemaField("turntilt_yaw_aggregate", RefloatConfigValueType.UINT8, "Turn Aggregate Target", null, 50.0, 360.0, 4),
+        RefloatConfigSchemaField(
+          id = "inputtilt_remote_type",
+          type = RefloatConfigValueType.UINT8,
+          label = "Remote Type",
+          unit = null,
+          min = null,
+          max = null,
+          offset = 5,
+          xmlType = 4,
+          enumNames = listOf("None", "UART", "PPM"),
+        ),
+      ),
+    )
+    val raw = ByteArray(6)
+
+    assertInvalid(schema, raw, mapOf("ki" to 0.35))
+    assertInvalid(schema, raw, mapOf("ki" to -0.001))
+    assertInvalid(schema, raw, mapOf("turntilt_start_erpm" to 100_000.0))
+    assertInvalid(schema, raw, mapOf("turntilt_start_erpm" to 99.0))
+    assertInvalid(schema, raw, mapOf("turntilt_yaw_aggregate" to 360.0))
+    assertInvalid(schema, raw, mapOf("turntilt_yaw_aggregate" to 49.0))
+    assertInvalid(schema, raw, mapOf("inputtilt_remote_type" to -1.0))
+    assertInvalid(schema, raw, mapOf("inputtilt_remote_type" to 3.0))
+    assertInvalid(schema, raw, mapOf("inputtilt_remote_type" to 1.5))
+    assertInvalid(schema, raw, mapOf("ki" to null))
+
+    val valid = RefloatConfigEncoder.encodeChangeset(
+      schema,
+      raw,
+      mapOf(
+        "ki" to 0.32767,
+        "turntilt_start_erpm" to 65_535.0,
+        "turntilt_yaw_aggregate" to 255.0,
+        "inputtilt_remote_type" to 2.0,
+      ),
+    )
+    assertEquals(setOf("ki", "turntilt_start_erpm", "turntilt_yaw_aggregate", "inputtilt_remote_type"), valid.changedFieldIds)
+  }
+
+  @Test
+  fun encodeChangesetDropsWirePrecisionNoOps() {
+    val schema = RefloatConfigSchema(
+      hash = "noop",
+      fields = listOf(
+        RefloatConfigSchemaField("kp", RefloatConfigValueType.FLOAT16_SCALED, "kp", null, 0.0, 50.0, 0, 10.0),
+        RefloatConfigSchemaField("ki", RefloatConfigValueType.FLOAT16_SCALED, "ki", null, 0.0, 0.5, 2, 100_000.0),
+      ),
+    )
+    val raw = byteArrayOf(0x00, 0xC8.toByte(), 0x00, 0x64)
+
+    val noOp = RefloatConfigEncoder.encodeChangeset(schema, raw, mapOf("kp" to 20.04, "ki" to 0.001))
+    assertTrue(noOp.changedFieldIds.isEmpty())
+    assertArrayEquals(raw, noOp.rawConfig)
+
+    val partial = RefloatConfigEncoder.encodeChangeset(schema, raw, mapOf("kp" to 20.0, "ki" to 0.002))
+    assertEquals(setOf("ki"), partial.changedFieldIds)
+    assertArrayEquals(raw.copyOfRange(0, 2), partial.rawConfig.copyOfRange(0, 2))
+    assertArrayEquals(byteArrayOf(0x00, 0xC8.toByte()), partial.rawConfig.copyOfRange(2, 4))
+  }
+
+  private fun assertInvalid(schema: RefloatConfigSchema, raw: ByteArray, fields: Map<String, Any?>) {
     try {
       RefloatConfigEncoder.encode(schema, raw, fields)
       fail("Expected CONFIG_VALUE_INVALID for $fields")

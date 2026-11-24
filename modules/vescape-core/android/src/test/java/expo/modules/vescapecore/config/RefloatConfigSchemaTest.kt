@@ -228,9 +228,9 @@ class RefloatConfigSchemaTest {
     val encoded = RefloatConfigEncoder.encode(
       schema,
       byteArrayOf(0, 0, 0),
-      mapOf("mode" to 200.0, "enabled" to true, "flags" to 255.0),
+      mapOf("mode" to 2.0, "enabled" to true, "flags" to 255.0),
     )
-    assertEquals(listOf(200.toByte(), 1.toByte(), 255.toByte()), encoded.toList())
+    assertEquals(listOf(2.toByte(), 1.toByte(), 255.toByte()), encoded.toList())
 
     val items = schema.groups.single().subgroups.single().items
     assertEquals(

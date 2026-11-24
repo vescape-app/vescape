@@ -33,6 +33,7 @@ internal sealed class ConfigRWEffect {
         val snapshot: RefloatConfigSnapshot,
         val resumePolling: Boolean,
         val boardConfigValues: BoardConfigValues?,
+        val origin: BoardConfigOperationOrigin = BoardConfigOperationOrigin.VESCAPE_WRITE,
     ) : ConfigRWEffect()
 
     data class EmitWriteFailure(
@@ -42,6 +43,7 @@ internal sealed class ConfigRWEffect {
         val resumePolling: Boolean,
         val phase: ConfigWritePhaseTag,
         val rawConfig: ByteArray?,
+        val demotedWriteBase: Boolean = false,
     ) : ConfigRWEffect()
 
     data class DumpDebugBytes(

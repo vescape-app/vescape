@@ -238,6 +238,121 @@ final class RefloatConfigEncoderTests: XCTestCase {
     }
   }
 
+  func testFloat32AutoIndependentByteVectors() throws {
+    let schema = RefloatConfigSchema(hash: "t", fields: [field("v", .float32Auto, offset: 0)])
+    let vectors: [(Double, [UInt8])] = [
+      (0.0, [0x00, 0x00, 0x00, 0x00]),
+      (1e-40, [0x00, 0x00, 0x00, 0x00]),
+      (0.25, [0x3E, 0x80, 0x00, 0x00]),
+      (0.5, [0x3F, 0x00, 0x00, 0x00]),
+      (1.0, [0x3F, 0x80, 0x00, 0x00]),
+      (-1.0, [0xBF, 0x80, 0x00, 0x00]),
+      (3.0, [0x40, 0x40, 0x00, 0x00]),
+      (-2.5, [0xC0, 0x20, 0x00, 0x00]),
+      (30.0, [0x41, 0xF0, 0x00, 0x00]),
+      (100.0, [0x42, 0xC8, 0x00, 0x00]),
+    ]
+    for (value, expected) in vectors {
+      let encoded = try RefloatConfigEncoder.encode(schema: schema, rawConfig: [0, 0, 0, 0], fields: ["v": value])
+      XCTAssertEqual(expected, encoded, "FLOAT32_AUTO vector for \(value)")
+    }
+  }
+
+  func testFloat16ScaledIndependentEdgeByteVectors() throws {
+    let scale100 = RefloatConfigSchema(hash: "t", fields: [field("v", .float16Scaled, offset: 0, scale: 100.0)])
+    let scale100Vectors: [(Double, [UInt8])] = [
+      (0.0, [0x00, 0x00]),
+      (1.23, [0x00, 0x7B]),
+      (-0.01, [0xFF, 0xFF]),
+      (327.67, [0x7F, 0xFF]),
+      (-327.68, [0x80, 0x00]),
+    ]
+    for (value, expected) in scale100Vectors {
+      let encoded = try RefloatConfigEncoder.encode(schema: scale100, rawConfig: [0, 0], fields: ["v": value])
+      XCTAssertEqual(expected, encoded, "FLOAT16_SCALED(100) vector for \(value)")
+    }
+
+    let kiSchema = RefloatConfigSchema(hash: "t", fields: [
+      RefloatConfigSchemaField(id: "ki", type: .float16Scaled, label: "ki", unit: nil, min: 0.0, max: 0.5, offset: 0, scale: 100_000.0),
+    ])
+    let kiVectors: [(Double, [UInt8])] = [
+      (0.0, [0x00, 0x00]),
+      (0.001, [0x00, 0x64]),
+      (0.32767, [0x7F, 0xFF]),
+    ]
+    for (value, expected) in kiVectors {
+      let encoded = try RefloatConfigEncoder.encode(schema: kiSchema, rawConfig: [0, 0], fields: ["ki": value])
+      XCTAssertEqual(expected, encoded, "FLOAT16_SCALED(100000) vector for \(value)")
+    }
+  }
+
+  func testEffectiveRangeRejectsSchemaAndWireOverflows() throws {
+    let schema = RefloatConfigSchema(
+      hash: "refloat-edges",
+      fields: [
+        RefloatConfigSchemaField(id: "ki", type: .float16Scaled, label: "Angle I", unit: nil, min: 0.0, max: 0.5, offset: 0, scale: 100_000.0),
+        RefloatConfigSchemaField(id: "turntilt_start_erpm", type: .uint16, label: "ERPM Threshold", unit: nil, min: 100.0, max: 100_000.0, offset: 2, scale: nil),
+        RefloatConfigSchemaField(id: "turntilt_yaw_aggregate", type: .uint8, label: "Turn Aggregate Target", unit: nil, min: 50.0, max: 360.0, offset: 4, scale: nil),
+        RefloatConfigSchemaField(
+          id: "inputtilt_remote_type",
+          type: .uint8,
+          label: "Remote Type",
+          unit: nil,
+          min: nil,
+          max: nil,
+          offset: 5,
+          scale: nil,
+          xmlType: 4,
+          enumNames: ["None", "UART", "PPM"]
+        ),
+      ]
+    )
+    let raw: [UInt8] = [0, 0, 0, 0, 0, 0]
+
+    assertInvalid(schema, raw, ["ki": 0.35])
+    assertInvalid(schema, raw, ["ki": -0.001])
+    assertInvalid(schema, raw, ["turntilt_start_erpm": 100_000.0])
+    assertInvalid(schema, raw, ["turntilt_start_erpm": 99.0])
+    assertInvalid(schema, raw, ["turntilt_yaw_aggregate": 360.0])
+    assertInvalid(schema, raw, ["turntilt_yaw_aggregate": 49.0])
+    assertInvalid(schema, raw, ["inputtilt_remote_type": -1.0])
+    assertInvalid(schema, raw, ["inputtilt_remote_type": 3.0])
+    assertInvalid(schema, raw, ["inputtilt_remote_type": 1.5])
+    assertInvalid(schema, raw, ["ki": NSNull()])
+
+    let valid = try RefloatConfigEncoder.encodeChangeset(
+      schema: schema,
+      rawConfig: raw,
+      changes: [
+        "ki": 0.32767,
+        "turntilt_start_erpm": 65_535.0,
+        "turntilt_yaw_aggregate": 255.0,
+        "inputtilt_remote_type": 2.0,
+      ]
+    )
+    XCTAssertEqual(valid.changedFieldIds, ["ki", "turntilt_start_erpm", "turntilt_yaw_aggregate", "inputtilt_remote_type"])
+  }
+
+  func testEncodeChangesetDropsWirePrecisionNoOps() throws {
+    let schema = RefloatConfigSchema(
+      hash: "noop",
+      fields: [
+        RefloatConfigSchemaField(id: "kp", type: .float16Scaled, label: "kp", unit: nil, min: 0.0, max: 50.0, offset: 0, scale: 10.0),
+        RefloatConfigSchemaField(id: "ki", type: .float16Scaled, label: "ki", unit: nil, min: 0.0, max: 0.5, offset: 2, scale: 100_000.0),
+      ]
+    )
+    let raw: [UInt8] = [0x00, 0xC8, 0x00, 0x64]
+
+    let noOp = try RefloatConfigEncoder.encodeChangeset(schema: schema, rawConfig: raw, changes: ["kp": 20.04, "ki": 0.001])
+    XCTAssertTrue(noOp.changedFieldIds.isEmpty)
+    XCTAssertEqual(raw, noOp.rawConfig)
+
+    let partial = try RefloatConfigEncoder.encodeChangeset(schema: schema, rawConfig: raw, changes: ["kp": 20.0, "ki": 0.002])
+    XCTAssertEqual(partial.changedFieldIds, ["ki"])
+    XCTAssertEqual(Array(raw[0..<2]), Array(partial.rawConfig[0..<2]))
+    XCTAssertEqual([0x00, 0xC8], Array(partial.rawConfig[2..<4]))
+  }
+
   private func field(_ id: String, _ type: RefloatConfigValueType, offset: Int, scale: Double? = nil) -> RefloatConfigSchemaField {
     RefloatConfigSchemaField(id: id, type: type, label: id, unit: nil, min: nil, max: nil, offset: offset, scale: scale)
   }

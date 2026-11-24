@@ -2612,7 +2612,11 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     profileId: string,
     fields: Record<string, TuneProfileFieldValue>,
   ): Promise<TuneProfile>
-  pushProfileToBoard(profileId: string, fieldIds: string[]): Promise<RefloatConfigSnapshot>
+  applyBoardConfigChangeset(
+    boardId: string,
+    changes: Record<string, TuneProfileFieldValue>,
+  ): Promise<RefloatConfigSnapshot>
+  pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
   getProfileStatsSnapshot(options: ProfileStatsSnapshotOptions): Promise<ProfileStatsSnapshot>
   getDayStats(day: RideDay): Promise<ProfileStats>
   getRecentRideStats(sinceMs: number): Promise<ProfileStats>
@@ -3729,14 +3733,22 @@ export async function saveProfile(
 }
 
 /**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyBoardConfigChangeset`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyBoardConfigChangeset`
+ */
+export async function applyBoardConfigChangeset(
+  boardId: string,
+  changes: Record<string, TuneProfileFieldValue>,
+): Promise<RefloatConfigSnapshot> {
+  return native.applyBoardConfigChangeset(boardId, changes)
+}
+
+/**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `pushProfileToBoard`
  */
-export async function pushProfileToBoard(
-  profileId: string,
-  fieldIds: string[],
-): Promise<RefloatConfigSnapshot> {
-  return native.pushProfileToBoard(profileId, fieldIds)
+export async function pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot> {
+  return native.pushProfileToBoard(profileId)
 }
 
 export async function getProfileStatsSnapshot(

@@ -1250,12 +1250,23 @@ public class VescapeCoreModule: Module {
       }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `applyBoardConfigChangeset`
+    // @parity /modules/vescape-core/src/index.ts `applyBoardConfigChangeset`
+    AsyncFunction("applyBoardConfigChangeset") { (boardId: String, changes: [String: Any], promise: Promise) in
+      self.coordinator.applyBoardConfigChangeset(
+        boardId: boardId,
+        changes: changes,
+        onSuccess: { snapshot in promise.resolve(snapshot) },
+        onError: { code, message in promise.reject(code, message) }
+      )
+    }
+
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `pushProfileToBoard`
-    AsyncFunction("pushProfileToBoard") { (profileId: String, fieldIds: [String], promise: Promise) in
+    // @parity /modules/vescape-core/src/index.ts `pushProfileToBoard`
+    AsyncFunction("pushProfileToBoard") { (profileId: String, promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
       self.coordinator.pushProfileToBoard(
         profileId: profileId,
-        fieldIds: fieldIds,
         onSuccess: { snapshot in promise.resolve(snapshot) },
         onError: { code, message in promise.reject(code, message) }
       )

@@ -307,10 +307,10 @@ class CoreForegroundService : Service() {
             instance?.controller?.watchMirrorWakeLevel(level)
         }
 
-        fun pushProfileToBoard(
-            context: Context,
-            profileId: String,
-            fieldIds: List<String>,
+        fun applyBoardConfigChangeset(
+            @Suppress("UNUSED_PARAMETER") context: Context,
+            boardId: String,
+            changes: Map<String, Any?>,
             onSuccess: (Map<String, Any?>) -> Unit,
             onError: (String, String) -> Unit,
         ) {
@@ -322,7 +322,25 @@ class CoreForegroundService : Service() {
                 )
                 return
             }
-            pendingConfigWrite = PendingConfigWrite(profileId, fieldIds, onSuccess, onError)
+            pendingConfigWrite = PendingConfigWrite.Changeset(boardId, changes, onSuccess, onError)
+            service.controller.consumePendingConfigWrite()
+        }
+
+        fun pushProfileToBoard(
+            @Suppress("UNUSED_PARAMETER") context: Context,
+            profileId: String,
+            onSuccess: (Map<String, Any?>) -> Unit,
+            onError: (String, String) -> Unit,
+        ) {
+            val service = instance
+            if (service == null) {
+                onError(
+                    RefloatConfigErrorCode.BOARD_NOT_CONNECTED.name,
+                    "Board must be connected before pushing config",
+                )
+                return
+            }
+            pendingConfigWrite = PendingConfigWrite.Profile(profileId, onSuccess, onError)
             service.controller.consumePendingConfigWrite()
         }
 

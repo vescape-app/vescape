@@ -43,12 +43,18 @@ private struct ConfigReadContext {
   var xmlRetried = false
 }
 
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWStates.kt `ConfigWriteIntent`
+internal enum ConfigWriteIntent {
+  case changeset([String: Any])
+  case profile([String: Any])
+}
+
 private struct ConfigWriteContext {
   let opId: String
   let canId: Int?
   let transport: BoardTransport
   let wasPolling: Bool
-  let profileFields: [String: Any]
+  let intent: ConfigWriteIntent
   let appBoardId: String?
   let fwVersion: String?
   var refloatVersion: String?
@@ -125,9 +131,49 @@ internal final class ConfigRWController {
     _ = send(connection, buildXmlRequest(ctx.transport, expected: nil, nextOffset: 0))
   }
 
+  func consumeChangeset(
+    boardId: String,
+    changes: [String: Any],
+    connection: ConfigRWConnection,
+    onSuccess: @escaping ([String: Any?]) -> Void,
+    onError: @escaping (String, String) -> Void
+  ) {
+    if isInFlight {
+      onError(RefloatConfigErrorCode.CONFIG_REQUEST_IN_FLIGHT.rawValue, "Config operation already in flight")
+      return
+    }
+    guard connection.phase == .connected, let connectedBoardId = connection.appBoardId, !connectedBoardId.isEmpty else {
+      onError(RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue, "Board must be connected before pushing config")
+      return
+    }
+    guard connection.linkIntegrity == .trusted else {
+      onError(
+        RefloatConfigErrorCode.LINK_NOT_TRUSTED.rawValue,
+        "Trusted board link required before pushing config"
+      )
+      return
+    }
+    let startedAtMs = nowMs()
+    if let reason = idleBlockReason(connection, startedAtMs) {
+      onError(RefloatConfigErrorCode.BOARD_NOT_IDLE.rawValue, reason)
+      return
+    }
+    guard connectedBoardId == boardId else {
+      onError(RefloatConfigErrorCode.BOARD_NOT_CONNECTED.rawValue, "Requested board is not the connected board")
+      return
+    }
+    startWriteOperation(
+      intent: .changeset(changes),
+      connectedBoardId: connectedBoardId,
+      startedAtMs: startedAtMs,
+      connection: connection,
+      onSuccess: onSuccess,
+      onError: onError
+    )
+  }
+
   func consumeWrite(
     profileId: String,
-    fieldIds: [String],
     connection: ConfigRWConnection,
     onSuccess: @escaping ([String: Any?]) -> Void,
     onError: @escaping (String, String) -> Void
@@ -173,10 +219,24 @@ internal final class ConfigRWController {
       return
     }
     let storedFields = ((profile["fields"] ?? nil) as? [String: Any]) ?? [:]
-    guard let fields = selectProfileFields(storedFields, fieldIds) else {
-      onError(RefloatConfigErrorCode.CONFIG_VALUE_INVALID.rawValue, "Push must name fields stored in the tune profile")
-      return
-    }
+    startWriteOperation(
+      intent: .profile(storedFields),
+      connectedBoardId: connectedBoardId,
+      startedAtMs: startedAtMs,
+      connection: connection,
+      onSuccess: onSuccess,
+      onError: onError
+    )
+  }
+
+  private func startWriteOperation(
+    intent: ConfigWriteIntent,
+    connectedBoardId: String,
+    startedAtMs: Int64,
+    connection: ConfigRWConnection,
+    onSuccess: @escaping ([String: Any?]) -> Void,
+    onError: @escaping (String, String) -> Void
+  ) {
     let wasPolling = connection.isPollingActive()
     connection.stopPolling()
     writeStartedAtMs = startedAtMs
@@ -186,13 +246,20 @@ internal final class ConfigRWController {
       canId: connection.transport.canId,
       transport: connection.transport,
       wasPolling: wasPolling,
-      profileFields: fields,
+      intent: intent,
       appBoardId: connectedBoardId,
       fwVersion: connection.fwVersion,
       refloatVersion: connection.refloatVersion
     )
     if let writeBase = connection.boardConfigValues?.writeBase {
-      sendWrite(ctx, writeBase.schema, writeBase.rawConfig, writeBase.packageSignature, .sendingWrite, connection)
+      sendWrite(
+        ctx,
+        writeBase.schema,
+        RefloatConfigBytes(confInd: 0, packageSignature: writeBase.packageSignature, config: writeBase.rawConfig),
+        fromFreshRead: false,
+        .sendingWrite,
+        connection
+      )
       return
     }
     state = .writeCollectingXml(ctx, [], nil)
@@ -385,7 +452,7 @@ internal final class ConfigRWController {
     let rawConfig = configBytes.config
     do {
       let schema = try RefloatConfigSchemaParser.parse(xmlBytes)
-      sendWrite(ctx, schema, rawConfig, configBytes.packageSignature, .readingConfig, connection)
+      sendWrite(ctx, schema, configBytes, fromFreshRead: true, .readingConfig, connection)
     } catch let error as RefloatConfigSchemaException {
       failWrite(code: .UNSUPPORTED_SCHEMA, message: error.message, phase: .readingConfig, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     } catch {
@@ -396,18 +463,34 @@ internal final class ConfigRWController {
   private func sendWrite(
     _ ctx: ConfigWriteContext,
     _ schema: RefloatConfigSchema,
-    _ rawConfig: [UInt8],
-    _ packageSignature: UInt32,
+    _ configBytes: RefloatConfigBytes,
+    fromFreshRead: Bool,
     _ failPhase: ConfigWritePhase,
     _ connection: ConfigRWConnection
   ) {
+    let rawConfig = configBytes.config
     do {
-      let patched = try RefloatConfigEncoder.encode(schema: schema, rawConfig: rawConfig, fields: ctx.profileFields)
+      let changes = resolveChanges(ctx.intent, schema: schema)
+      let encoded = try RefloatConfigEncoder.encodeChangeset(schema: schema, rawConfig: rawConfig, changes: changes)
+      if encoded.changedFieldIds.isEmpty {
+        let snapshot = try RefloatConfigDecoder.decode(
+          schema: schema,
+          rawConfig: rawConfig,
+          boardId: ctx.appBoardId,
+          canId: ctx.canId,
+          capturedAt: nowMs(),
+          fwVersion: ctx.fwVersion,
+          refloatVersion: ctx.refloatVersion
+        )
+        let freshValues = fromFreshRead ? boardConfigValues(schema, configBytes, ctx.appBoardId, connection) : nil
+        completeWrite(snapshot, freshValues, origin: .freshRead, resumePolling: ctx.wasPolling, connection)
+        return
+      }
       if let reason = idleBlockReason(connection, writeStartedAtMs) {
         failWrite(code: .BOARD_NOT_IDLE, message: reason, phase: .sendingWrite, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
         return
       }
-      state = .writeAwaitingSetAck(ctx, schema, rawConfig, patched)
+      state = .writeAwaitingSetAck(ctx, schema, rawConfig, encoded.rawConfig)
       cancelTimeout()
       scheduleTimeout(.CONFIG_WRITE_TIMEOUT, CONFIG_WRITE_TIMEOUT_MS, connection)
       _ = send(
@@ -415,14 +498,26 @@ internal final class ConfigRWController {
         RefloatConfigProtocol.buildSetCustomConfig(
           transport: ctx.transport,
           confInd: 0,
-          packageSignature: packageSignature,
-          configBytes: patched
+          packageSignature: configBytes.packageSignature,
+          configBytes: encoded.rawConfig
         )
       )
     } catch let error as RefloatConfigEncodeException {
       failWrite(code: error.code, message: error.message, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
+    } catch let error as RefloatConfigDecodeException {
+      failWrite(code: .CONFIG_DECODE_FAILED, message: error.message, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     } catch {
       failWrite(code: .CONFIG_WRITE_FAILED, message: error.localizedDescription, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
+    }
+  }
+
+  private func resolveChanges(_ intent: ConfigWriteIntent, schema: RefloatConfigSchema) -> [String: Any] {
+    switch intent {
+    case .changeset(let changes):
+      return changes
+    case .profile(let fields):
+      let schemaIds = Set(schema.fields.map(\.id))
+      return fields.filter { schemaIds.contains($0.key) }
     }
   }
 
@@ -486,14 +581,20 @@ internal final class ConfigRWController {
     for callbacks in pending { callbacks.onSuccess(map) }
   }
 
-  private func completeWrite(_ snapshot: RefloatConfigSnapshot, _ values: BoardConfigValues, _ connection: ConfigRWConnection) {
+  private func completeWrite(
+    _ snapshot: RefloatConfigSnapshot,
+    _ values: BoardConfigValues?,
+    origin: BoardConfigOperationOrigin = .vescapeWrite,
+    resumePolling: Bool? = nil,
+    _ connection: ConfigRWConnection
+  ) {
     let pending = writeCallbacks
     writeCallbacks = nil
-    let resume = currentResumePolling
+    let resume = resumePolling ?? currentResumePolling
     state = .idle
     cancelTimeout()
     if resume { connection.startPolling() }
-    connection.onBoardConfigValues(values, .vescapeWrite)
+    if let values { connection.onBoardConfigValues(values, origin) }
     pending?.onSuccess(snapshot.toMap())
   }
 
@@ -536,21 +637,24 @@ internal final class ConfigRWController {
     writeCallbacks = nil
     let resume = resumePolling ?? currentResumePolling
     let opId = currentOpId
-    if setConfigSent { connection.demoteWriteBase() }
+    let demoted = setConfigSent
+    if demoted { connection.demoteWriteBase() }
     state = .idle
     cancelTimeout()
     if resume { connection.startPolling() }
-    connection.captureDiagnostic(
-      "profile_push_failed",
-      [
-        "operation_id": opId,
-        "message": message,
-        "error_code": code.rawValue,
-        "phase": phase.rawValue,
-        "firmware": connection.fwVersion,
-        "raw_config_length": rawConfig?.count,
-      ]
-    )
+    let baseProperties: [String: Any?] = [
+      "operation_id": opId,
+      "message": message,
+      "error_code": code.rawValue,
+      "phase": phase.rawValue,
+      "firmware": connection.fwVersion,
+    ]
+    if demoted {
+      connection.captureDiagnostic("board_config_write_base_demoted", baseProperties)
+    }
+    var failureProperties = baseProperties
+    failureProperties["raw_config_length"] = rawConfig?.count
+    connection.captureDiagnostic("profile_push_failed", failureProperties)
     pending?.onError(code.rawValue, message)
   }
 
@@ -731,15 +835,4 @@ private extension BoardTransport {
     case .can(let canId): return canId
     }
   }
-}
-
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt `selectProfileFields`
-func selectProfileFields(_ storedFields: [String: Any], _ fieldIds: [String]) -> [String: Any]? {
-  if fieldIds.isEmpty { return nil }
-  var selected: [String: Any] = [:]
-  for fieldId in fieldIds {
-    guard let value = storedFields[fieldId], !(value is NSNull) else { return nil }
-    selected[fieldId] = value
-  }
-  return selected
 }

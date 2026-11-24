@@ -2,13 +2,15 @@ import { tuneCompatibilityVersion } from '@/modules/tune/lib/tuneCompatibility'
 import {
   createProfile as nativeCreateProfile,
   renameProfile as nativeRenameProfile,
+  type BoardConfigSchema,
+  type BoardConfigSchemaField,
   type RefloatConfigSnapshot,
   type TuneProfile,
   type TuneProfileFieldValue,
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
-import { formatTuneValue } from '@/modules/tune/lib/fields'
+import { APP_TUNE_FIELD_BY_ID } from '@/modules/tune/lib/fields'
 import {
   DEFAULT_TUNE_PROFILE_COLOR,
   DEFAULT_TUNE_PROFILE_ICON,
@@ -16,25 +18,90 @@ import {
 import type { TuneProfileBoardDiff } from '@/modules/tune/store/tuneProfileStoreTypes'
 import { omitKey } from '@/helpers/records'
 
+function asBool(value: TuneProfileFieldValue | undefined): boolean | null {
+  if (typeof value === 'boolean') return value
+  if (value === 0) return false
+  if (value === 1) return true
+  return null
+}
+
+function quantizeFloat32Auto(value: number): number {
+  const f = Math.fround(value)
+  return Math.abs(f) < 1.5e-38 ? 0 : f
+}
+
+export function schemaFieldMap(
+  schema: BoardConfigSchema | null | undefined,
+): ReadonlyMap<string, BoardConfigSchemaField> | undefined {
+  if (!schema || schema.fields.length === 0) return undefined
+  return new Map(schema.fields.map((field) => [field.id, field]))
+}
+
+function sameSchemaNumber(field: BoardConfigSchemaField, a: number, b: number): boolean {
+  switch (field.type) {
+    case 'int8':
+    case 'uint8':
+    case 'int16':
+    case 'uint16':
+    case 'int32':
+    case 'uint32':
+      return Math.floor(a + 0.5) === Math.floor(b + 0.5)
+    case 'float16_scaled':
+    case 'float32_scaled': {
+      const scale = field.scale
+      if (scale == null || !Number.isFinite(scale) || scale <= 0) {
+        return Math.fround(a) === Math.fround(b)
+      }
+      return Math.floor(a * scale + 0.5) === Math.floor(b * scale + 0.5)
+    }
+    case 'float32_auto':
+      return quantizeFloat32Auto(a) === quantizeFloat32Auto(b)
+    case 'float32':
+      return Math.fround(a) === Math.fround(b)
+    case 'bool':
+      return false
+  }
+}
+
 export function sameFieldValue(
+  fieldId: string,
   a: TuneProfileFieldValue | undefined,
   b: TuneProfileFieldValue | undefined,
+  schemaFields?: ReadonlyMap<string, BoardConfigSchemaField>,
 ): boolean {
   if (a === b) return true
-  if (typeof a === 'number' && typeof b === 'number') {
-    return formatTuneValue(a) === formatTuneValue(b)
+  const schemaField = schemaFields?.get(fieldId)
+  if (schemaField?.type === 'bool') {
+    const ba = asBool(a)
+    const bb = asBool(b)
+    return ba !== null && bb !== null && ba === bb
   }
-  return false
+  if (
+    typeof a !== 'number' ||
+    typeof b !== 'number' ||
+    !Number.isFinite(a) ||
+    !Number.isFinite(b)
+  ) {
+    return false
+  }
+  if (schemaField) return sameSchemaNumber(schemaField, a, b)
+  const wire = APP_TUNE_FIELD_BY_ID.get(fieldId)?.wire
+  if (!wire) return Math.fround(a) === Math.fround(b)
+  if (wire.kind === 'float16') {
+    return Math.floor(a * wire.scale + 0.5) === Math.floor(b * wire.scale + 0.5)
+  }
+  return Math.floor(a + 0.5) === Math.floor(b + 0.5)
 }
 
 export function dirtyFields(
   profile: TuneProfile | null,
   draftFields: Record<string, TuneProfileFieldValue>,
+  schemaFields?: ReadonlyMap<string, BoardConfigSchemaField>,
 ): Record<string, TuneProfileFieldValue> {
   if (!profile) return {}
   return Object.fromEntries(
     Object.entries(draftFields).filter(
-      ([fieldId, value]) => !sameFieldValue(value, profile.fields[fieldId]),
+      ([fieldId, value]) => !sameFieldValue(fieldId, value, profile.fields[fieldId], schemaFields),
     ),
   )
 }
@@ -53,6 +120,7 @@ export function fieldsFromSnapshot(
 export function boardDiff(
   profile: TuneProfile | null,
   boardFields: Record<string, TuneProfileFieldValue>,
+  schemaFields?: ReadonlyMap<string, BoardConfigSchemaField>,
 ): TuneProfileBoardDiff[] {
   if (!profile) return []
   return Object.entries(boardFields)
@@ -61,7 +129,7 @@ export function boardDiff(
         boardValue !== null && Object.prototype.hasOwnProperty.call(profile.fields, fieldId),
     )
     .flatMap(([fieldId, boardValue]) =>
-      sameFieldValue(profile.fields[fieldId], boardValue)
+      sameFieldValue(fieldId, profile.fields[fieldId], boardValue, schemaFields)
         ? []
         : [{ fieldId, profileValue: profile.fields[fieldId], boardValue }],
     )
@@ -72,9 +140,10 @@ export function nextDraftWithField(
   draftFields: Record<string, TuneProfileFieldValue>,
   fieldId: string,
   value: TuneProfileFieldValue,
+  schemaFields?: ReadonlyMap<string, BoardConfigSchemaField>,
 ): Record<string, TuneProfileFieldValue> {
   const savedValue = profile.fields[fieldId]
-  if (sameFieldValue(value, savedValue)) return omitKey(draftFields, fieldId)
+  if (sameFieldValue(fieldId, value, savedValue, schemaFields)) return omitKey(draftFields, fieldId)
   return { ...draftFields, [fieldId]: value }
 }
 

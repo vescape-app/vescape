@@ -113,6 +113,74 @@ class ConfigRWFsmWriteBaseTest {
         assertEquals(ConfigRWState.Idle, state)
         assertEquals(RefloatConfigErrorCode.CONFIG_VERIFY_FAILED, effects.failureCode())
         assertTrue(effects.contains(ConfigRWEffect.DemoteWriteBase))
+        assertTrue(effects.filterIsInstance<ConfigRWEffect.EmitWriteFailure>().single().demotedWriteBase)
+
+        val (nextState, nextEffects) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(null))
+        assertTrue(nextState is ConfigRWState.WriteCollectingXml)
+        assertTrue(nextEffects.sends(COMM_GET_CUSTOM_CONFIG_XML))
+    }
+
+    @Test
+    fun emptyOrNoOpChangesetFinishesWithoutSendingSet() {
+        val (emptyState, emptyEffects) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(writeBase(), ConfigWriteIntent.Changeset(emptyMap())),
+        )
+        assertEquals(ConfigRWState.Idle, emptyState)
+        assertFalse(emptyEffects.sends(COMM_SET_CUSTOM_CONFIG))
+        assertTrue(emptyEffects.any { it is ConfigRWEffect.EmitWriteComplete })
+
+        val (noOpState, noOpEffects) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(writeBase(), ConfigWriteIntent.Changeset(mapOf("tuned" to 1.0))),
+        )
+        assertEquals(ConfigRWState.Idle, noOpState)
+        assertFalse(noOpEffects.sends(COMM_SET_CUSTOM_CONFIG))
+        assertTrue(noOpEffects.any { it is ConfigRWEffect.EmitWriteComplete })
+    }
+
+    @Test
+    fun profileIntentDiffsAgainstBoardAtWirePrecisionAndSkipsMatchingFields() {
+        val (state, effects) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(
+                writeBase(),
+                ConfigWriteIntent.Profile(mapOf("tuned" to 7.0, "untouched" to 42.0, "absent_from_schema" to 99.0)),
+            ),
+        )
+        assertTrue(state is ConfigRWState.WriteAwaitingSetAck)
+        val frame = effects.frame(COMM_SET_CUSTOM_CONFIG)!!
+        val payload = frame.copyOfRange(frame.size - rawConfig.size, frame.size)
+        assertArrayEquals(rawConfig.copyOfRange(4, 8), payload.copyOfRange(4, 8))
+        assertFalse(rawConfig.copyOfRange(0, 4).contentEquals(payload.copyOfRange(0, 4)))
+
+        val (sameState, sameEffects) = ConfigRWFsm.apply(
+            ConfigRWState.Idle,
+            startWrite(writeBase(), ConfigWriteIntent.Profile(mapOf("tuned" to 1.0, "untouched" to 42.0))),
+        )
+        assertEquals(ConfigRWState.Idle, sameState)
+        assertFalse(sameEffects.sends(COMM_SET_CUSTOM_CONFIG))
+        assertTrue(sameEffects.any { it is ConfigRWEffect.EmitWriteComplete })
+    }
+
+    @Test
+    fun changesetRejectsWholeWriteOnAnyInvalidField() {
+        val invalidCases = listOf<Map<String, Any?>>(
+            mapOf("tuned" to 7.0, "unknown_id" to 1.0),
+            mapOf("tuned" to "not-a-number"),
+            mapOf("tuned" to Double.POSITIVE_INFINITY),
+            mapOf("tuned" to null),
+        )
+        for (changes in invalidCases) {
+            val (state, effects) = ConfigRWFsm.apply(
+                ConfigRWState.Idle,
+                startWrite(writeBase(), ConfigWriteIntent.Changeset(changes)),
+            )
+            assertEquals(ConfigRWState.Idle, state)
+            assertEquals(RefloatConfigErrorCode.CONFIG_VALUE_INVALID, effects.failureCode())
+            assertFalse(effects.sends(COMM_SET_CUSTOM_CONFIG))
+            assertFalse(effects.contains(ConfigRWEffect.DemoteWriteBase))
+        }
     }
 
     @Test
@@ -195,13 +263,18 @@ class ConfigRWFsmWriteBaseTest {
 
     private fun startWrite(
         writeBase: BoardConfigWriteBase?,
-        profileFields: Map<String, Any> = mapOf("tuned" to 7.0),
+        profileFields: Map<String, Any?> = mapOf("tuned" to 7.0),
+    ) = startWrite(writeBase, ConfigWriteIntent.Changeset(profileFields))
+
+    private fun startWrite(
+        writeBase: BoardConfigWriteBase?,
+        intent: ConfigWriteIntent,
     ) = ConfigRWEvent.StartWrite(
         opId = "op-1",
         canId = null,
         transport = BoardTransport.Direct,
         wasPolling = false,
-        profileFields = profileFields,
+        intent = intent,
         appBoardId = "board-1",
         fwVersion = "FW 6.05",
         refloatBaseVersion = "3.0.7",

@@ -93,9 +93,8 @@ class ConfigRWControllerRoutingTest {
 
         var writeDone = false
         controller.consumeWrite(
-            PendingConfigWrite(
+            PendingConfigWrite.Profile(
                 profileId = "profile-1",
-                fieldIds = listOf("kp"),
                 onSuccess = { writeDone = true },
                 onError = { code, message -> error("write should not fail: $code $message") },
             ),
@@ -163,9 +162,8 @@ class ConfigRWControllerRoutingTest {
 
         var writeDone = false
         controller.consumeWrite(
-            PendingConfigWrite(
+            PendingConfigWrite.Profile(
                 profileId = "profile-1",
-                fieldIds = listOf("kp"),
                 onSuccess = { writeDone = true },
                 onError = { code, message -> error("write should not fail: $code $message") },
             ),

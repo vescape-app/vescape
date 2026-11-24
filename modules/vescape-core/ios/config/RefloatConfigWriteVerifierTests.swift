@@ -36,4 +36,22 @@ final class RefloatConfigWriteVerifierTests: XCTestCase {
     }
     XCTAssertEqual("Verification failed: first byte mismatch at offset 2", message)
   }
+
+  func testDisabledStaysStrictlyVerified() {
+    let withDisabled = RefloatConfigSchema(
+      hash: "disabled",
+      fields: [
+        RefloatConfigSchemaField(id: "disabled", type: .bool, label: "Disabled", unit: nil, min: nil, max: nil, offset: 0, scale: nil),
+        RefloatConfigSchemaField(id: "meta.is_default", type: .bool, label: "Default", unit: nil, min: nil, max: nil, offset: 1, scale: nil),
+      ]
+    )
+    let written: [UInt8] = [1, 1]
+    guard case .success = RefloatConfigWriteVerifier.verify(schema: withDisabled, written: written, readBack: [1, 0]) else {
+      return XCTFail("disabled matching with cleared meta.is_default must verify")
+    }
+    guard case .failure(let message) = RefloatConfigWriteVerifier.verify(schema: withDisabled, written: written, readBack: [0, 0]) else {
+      return XCTFail("disabled mismatch must fail verification")
+    }
+    XCTAssertEqual("Verification failed: first byte mismatch at offset 0", message)
+  }
 }

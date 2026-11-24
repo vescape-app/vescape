@@ -64,7 +64,6 @@ final class ConfigRWControllerRoutingTests: XCTestCase {
     var writeDone = false
     controller.consumeWrite(
       profileId: "profile-1",
-      fieldIds: ["kp"],
       connection: conn,
       onSuccess: { _ in writeDone = true },
       onError: { code, message in XCTFail("write should not fail: \(code) \(message)") }
@@ -127,7 +126,6 @@ final class ConfigRWControllerRoutingTests: XCTestCase {
     var writeDone = false
     controller.consumeWrite(
       profileId: "profile-1",
-      fieldIds: ["kp"],
       connection: conn,
       onSuccess: { _ in writeDone = true },
       onError: { code, message in XCTFail("write should not fail: \(code) \(message)") }
@@ -162,7 +160,6 @@ final class ConfigRWControllerRoutingTests: XCTestCase {
     var errors: [String] = []
     controller.consumeWrite(
       profileId: "profile-1",
-      fieldIds: ["kp"],
       connection: conn,
       onSuccess: { _ in XCTFail("write should not succeed") },
       onError: { code, _ in errors.append(code) }

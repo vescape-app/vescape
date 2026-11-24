@@ -194,9 +194,9 @@ final class RefloatConfigSchemaTests: XCTestCase {
     let encoded = try RefloatConfigEncoder.encode(
       schema: schema,
       rawConfig: [0, 0, 0],
-      fields: ["mode": 200.0, "enabled": true, "flags": 255.0]
+      fields: ["mode": 2.0, "enabled": true, "flags": 255.0]
     )
-    XCTAssertEqual(encoded, [200, 1, 255])
+    XCTAssertEqual(encoded, [2, 1, 255])
 
     let items = schema.groups.first?.subgroups.first?.items
     XCTAssertEqual(items, [.separator("Controls"), .field("mode"), .field("enabled"), .field("flags")])

@@ -1039,12 +1039,24 @@ class VescapeCoreModule : Module() {
     AsyncFunction("stopBoardMove") {
       CoreForegroundService.stopBoardMove()
     }
-    AsyncFunction("pushProfileToBoard") { profileId: String, fieldIds: List<String>, promise: Promise ->
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `applyBoardConfigChangeset`
+    // @parity /modules/vescape-core/src/index.ts `applyBoardConfigChangeset`
+    AsyncFunction("applyBoardConfigChangeset") { boardId: String, changes: Map<String, Any?>, promise: Promise ->
+      CoreForegroundService.applyBoardConfigChangeset(
+        context.applicationContext,
+        boardId,
+        changes,
+        onSuccess = { snapshot -> promise.resolve(snapshot) },
+        onError = { code, message -> promise.reject(code, message, null) },
+      )
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `pushProfileToBoard`
+    // @parity /modules/vescape-core/src/index.ts `pushProfileToBoard`
+    AsyncFunction("pushProfileToBoard") { profileId: String, promise: Promise ->
       RecordingStorageFailure.requireAvailable()
       CoreForegroundService.pushProfileToBoard(
         context.applicationContext,
         profileId,
-        fieldIds,
         onSuccess = { snapshot -> promise.resolve(snapshot) },
         onError = { code, message -> promise.reject(code, message, null) },
       )

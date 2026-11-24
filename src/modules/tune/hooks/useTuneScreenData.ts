@@ -259,38 +259,40 @@ export function useTuneScreenData() {
   )
 
   const boardSnapshotReady = firmwareCommandsTrusted && boardSnapshotStatus === 'ready'
-  const syncBarState = useMemo(
-    () =>
-      getSyncBarState({
-        hasProfile: activeProfile != null,
-        bleStatus,
-        hasDirtyFields,
-        hasBoardDiff,
-        dirtyCount: Object.keys(dirtyFields).length,
-        diffCount: boardDiff.filter(({ fieldId }) => !(fieldId in dirtyFields)).length,
-        loadingConfig: firmwareCommandsTrusted && boardSnapshotStatus === 'loading',
-        configError:
-          firmwareCommandBlockReason ?? (firmwareCommandsTrusted ? boardSnapshotError : null),
-        boardSnapshotReady,
-        saving: savingProfile,
-        syncing: syncingProfile,
-      }),
-    [
-      activeProfile,
+  const syncBarState = useMemo(() => {
+    const driftingDiffs = boardDiff.filter(({ fieldId }) => !(fieldId in dirtyFields))
+    return getSyncBarState({
+      hasProfile: activeProfile != null,
       bleStatus,
-      firmwareCommandsTrusted,
-      firmwareCommandBlockReason,
-      boardSnapshotError,
-      boardSnapshotReady,
-      boardSnapshotStatus,
       hasDirtyFields,
       hasBoardDiff,
-      dirtyFields,
-      boardDiff,
-      savingProfile,
-      syncingProfile,
-    ],
-  )
+      dirtyCount: Object.keys(dirtyFields).length,
+      diffCount: driftingDiffs.length,
+      diffLabels: driftingDiffs.map(
+        ({ fieldId }) => APP_TUNE_FIELD_BY_ID.get(fieldId)?.label ?? fieldId,
+      ),
+      loadingConfig: firmwareCommandsTrusted && boardSnapshotStatus === 'loading',
+      configError:
+        firmwareCommandBlockReason ?? (firmwareCommandsTrusted ? boardSnapshotError : null),
+      boardSnapshotReady,
+      saving: savingProfile,
+      syncing: syncingProfile,
+    })
+  }, [
+    activeProfile,
+    bleStatus,
+    firmwareCommandsTrusted,
+    firmwareCommandBlockReason,
+    boardSnapshotError,
+    boardSnapshotReady,
+    boardSnapshotStatus,
+    hasDirtyFields,
+    hasBoardDiff,
+    dirtyFields,
+    boardDiff,
+    savingProfile,
+    syncingProfile,
+  ])
 
   return {
     activeProfile,
