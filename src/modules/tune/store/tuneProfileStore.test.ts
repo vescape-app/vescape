@@ -450,6 +450,64 @@ test('Save & sync applies only the dirty fields as a changeset, not board drift'
   expect(saveProfile).toHaveBeenCalledWith('profile-1', { kp: 20, atr_strength_up: 1.5 })
   expect(applyBoardConfigChangeset).toHaveBeenCalledWith('board-1', { atr_strength_up: 1.5 })
   expect(pushProfileToBoard).not.toHaveBeenCalled()
+  expect(useTuneProfileStore.getState().pendingBoardChangeset).toBeNull()
+})
+
+test('failed Save & sync preserves exact pending changeset for retry without pushing board drift', async () => {
+  const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
+
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setBoardConfig(boardSnapshot)
+  useTuneProfileStore.getState().setDraftField('atr_strength_up', 1.5)
+
+  applyBoardConfigChangeset.mockImplementationOnce(async () => {
+    throw Object.assign(new Error('not idle'), { code: 'BOARD_NOT_IDLE' })
+  })
+
+  await expect(useTuneProfileStore.getState().saveAndSyncActiveProfile()).rejects.toThrow(
+    'not idle',
+  )
+
+  expect(useTuneProfileStore.getState().hasDirtyFields).toBe(false)
+  expect(useTuneProfileStore.getState().pendingBoardChangeset).toEqual({
+    profileId: 'profile-1',
+    boardId: 'board-1',
+    changes: { atr_strength_up: 1.5 },
+  })
+
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  expect(useTuneProfileStore.getState().pendingBoardChangeset).toEqual({
+    profileId: 'profile-1',
+    boardId: 'board-1',
+    changes: { atr_strength_up: 1.5 },
+  })
+
+  applyBoardConfigChangeset.mockClear()
+  await useTuneProfileStore.getState().retryPendingBoardSync()
+
+  expect(applyBoardConfigChangeset).toHaveBeenCalledWith('board-1', { atr_strength_up: 1.5 })
+  expect(pushProfileToBoard).not.toHaveBeenCalled()
+  expect(useTuneProfileStore.getState().pendingBoardChangeset).toBeNull()
+})
+
+test('discardPendingBoardSync clears preserved changeset and error', async () => {
+  const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
+
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  useTuneProfileStore.getState().setBoardConfig(boardSnapshot)
+  useTuneProfileStore.getState().setDraftField('atr_strength_up', 1.5)
+  applyBoardConfigChangeset.mockImplementationOnce(async () => {
+    throw Object.assign(new Error('disconnected'), { code: 'BOARD_NOT_CONNECTED' })
+  })
+
+  await expect(useTuneProfileStore.getState().saveAndSyncActiveProfile()).rejects.toThrow(
+    'disconnected',
+  )
+  expect(useTuneProfileStore.getState().pendingBoardChangeset).not.toBeNull()
+
+  useTuneProfileStore.getState().discardPendingBoardSync()
+  expect(useTuneProfileStore.getState().pendingBoardChangeset).toBeNull()
+  expect(useTuneProfileStore.getState().error).toBeNull()
 })
 
 test('wire-precision comparison distinguishes ki below 3 decimals and collapses sub-LSB kp drift', async () => {

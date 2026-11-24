@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
@@ -100,6 +100,20 @@ function collectFieldLabels(
   return labels
 }
 
+function resolveActiveTabId(
+  activeTab: string | null,
+  pillTabs: ReadonlyArray<{ id: string }>,
+): string {
+  if (activeTab && pillTabs.some((tab) => tab.id === activeTab)) return activeTab
+  return pillTabs[0]?.id ?? 'quick'
+}
+
+function resolveEmptySearchMessage(hasAnyConfig: boolean, query: string): string {
+  return hasAnyConfig
+    ? `No config options match “${query.trim()}”.`
+    : 'No saved config to search. Connect this board to read it.'
+}
+
 function BoardConfigReadInfo({
   refloatReadTime,
   motorReadTime,
@@ -126,19 +140,19 @@ function BoardConfigReadInfo({
 }
 
 function BoardConfigStatusBanners({
-  hasSchema,
+  hasRefloat,
   canEdit,
   xmlError,
   xmlNotice,
 }: {
-  hasSchema: boolean
+  hasRefloat: boolean
   canEdit: boolean
   xmlError: string | null
   xmlNotice: string | null
 }) {
   return (
     <>
-      {hasSchema && !canEdit ? (
+      {hasRefloat && !canEdit ? (
         <Banner
           variant="info"
           message="Showing last known config. Connect this board to edit settings."
@@ -175,7 +189,14 @@ export default function BoardConfigScreen() {
   const refloatReadTime = refloat ? fmtTimeAgo(refloat.capturedAtMs, now) : null
   const motorReadTime = motor ? fmtTimeAgo(motor.capturedAtMs, now) : null
   const schema = refloat?.schema ?? null
+  const schemaHash = refloat?.schemaHash ?? null
   const canEdit = refloat?.freshness === 'fresh'
+
+  useEffect(() => {
+    setPendingChanges({})
+    setReviewOpen(false)
+    setApplyError(null)
+  }, [boardId, schemaHash])
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -206,10 +227,7 @@ export default function BoardConfigScreen() {
   )
 
   const pillTabs = schemaTabs ?? fallbackTabs ?? []
-  const resolvedActiveTabId =
-    activeTab && pillTabs.some((tab) => tab.id === activeTab)
-      ? activeTab
-      : (pillTabs[0]?.id ?? 'quick')
+  const resolvedActiveTabId = resolveActiveTabId(activeTab, pillTabs)
 
   const fieldLabels = useMemo(
     () => collectFieldLabels(schemaTabs, fallbackTabs),
@@ -287,6 +305,7 @@ export default function BoardConfigScreen() {
     canEdit,
     currentValues: refloat?.values,
     schema,
+    schemaHash,
     refloatBaseVersion: refloat?.refloatBaseVersion,
     temperatureUnit,
     onCloseOptions: closeOptions,
@@ -386,10 +405,7 @@ export default function BoardConfigScreen() {
   const activeSchemaTab = schemaTabs?.find((tab) => tab.id === resolvedActiveTabId) ?? null
   const activeFallbackTab = fallbackTabs?.find((tab) => tab.id === resolvedActiveTabId) ?? null
   const riskyPendingCount = reviewEntries.filter((entry) => entry.risk === 'risky').length
-  const emptySearchMessage =
-    refloat || motor
-      ? `No config options match “${query.trim()}”.`
-      : 'No saved config to search. Connect this board to read it.'
+  const emptySearchMessage = resolveEmptySearchMessage(Boolean(refloat || motor), query)
 
   const renderActiveTabBody = () => {
     if (activeSchemaTab) {
@@ -471,7 +487,7 @@ export default function BoardConfigScreen() {
         </IconHero>
 
         <BoardConfigStatusBanners
-          hasSchema={schema !== null}
+          hasRefloat={refloat !== null}
           canEdit={canEdit}
           xmlError={xmlTransfer.xmlError}
           xmlNotice={xmlTransfer.xmlNotice}

@@ -62,6 +62,8 @@ export function TuneScreen() {
   const discardAllEdits = useTuneProfileStore((s) => s.discardAllEdits)
   const saveActiveProfile = useTuneProfileStore((s) => s.saveActiveProfile)
   const saveAndSyncActiveProfile = useTuneProfileStore((s) => s.saveAndSyncActiveProfile)
+  const retryPendingBoardSync = useTuneProfileStore((s) => s.retryPendingBoardSync)
+  const discardPendingBoardSync = useTuneProfileStore((s) => s.discardPendingBoardSync)
   const syncToBoard = useTuneProfileStore((s) => s.syncToBoard)
 
   const modals = useTuneModals(
@@ -128,6 +130,12 @@ export function TuneScreen() {
     if (!firmwareCommandsTrusted) return
     // intentional-suppression: Tune store error is rendered by the active screen or modal
     void saveAndSyncActiveProfile().catch(() => undefined)
+  }
+
+  const handleRetryPendingSync = () => {
+    if (!firmwareCommandsTrusted) return
+    // intentional-suppression: Tune store error is rendered by the active screen or modal
+    void retryPendingBoardSync().catch(() => undefined)
   }
 
   const handleSync = () => {
@@ -274,6 +282,8 @@ export function TuneScreen() {
           state={syncBarState}
           onSave={handleSave}
           onSaveAndSync={handleSaveAndSync}
+          onRetryPendingSync={handleRetryPendingSync}
+          onDiscardPendingSync={discardPendingBoardSync}
           onSync={handleSync}
           onUpdateTune={acceptAllBoardValues}
           onDiscard={discardAllEdits}

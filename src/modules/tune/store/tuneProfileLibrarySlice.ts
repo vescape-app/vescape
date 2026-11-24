@@ -67,6 +67,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
             activeProfile: null,
             draftFields: {},
             hasDirtyFields: false,
+            pendingBoardChangeset: null,
             boardDiff: [],
             hasBoardDiff: false,
           }
@@ -96,16 +97,22 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
         get().boardFields,
         schemaFieldMap(storeValues.values?.schema ?? storeValues.lastKnown?.schema),
       )
-      set({
+      set((prevState) => ({
         profiles,
         activeProfile,
         draftFields: {},
         hasDirtyFields: false,
+        pendingBoardChangeset:
+          !compatibilityChanged &&
+          activeProfile != null &&
+          prevState.pendingBoardChangeset?.profileId === activeProfile.id
+            ? prevState.pendingBoardChangeset
+            : null,
         boardDiff: diff,
         hasBoardDiff: diff.length > 0,
         loading: false,
         error: null,
-      })
+      }))
       return profiles
     } catch (error) {
       if (
@@ -154,6 +161,11 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
           activeBoardId: normalizedProfile?.boardId ?? state.activeBoardId,
           draftFields: {},
           hasDirtyFields: false,
+          pendingBoardChangeset:
+            normalizedProfile != null &&
+            state.pendingBoardChangeset?.profileId === normalizedProfile.id
+              ? state.pendingBoardChangeset
+              : null,
           boardDiff: diff,
           hasBoardDiff: diff.length > 0,
           loading: false,
@@ -185,6 +197,10 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
         activeProfile: profile,
         draftFields: {},
         hasDirtyFields: false,
+        pendingBoardChangeset:
+          state.pendingBoardChangeset?.profileId === profile.id
+            ? state.pendingBoardChangeset
+            : null,
         boardDiff: diff,
         hasBoardDiff: diff.length > 0,
       }
@@ -222,6 +238,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
           activeProfile: profile,
           draftFields: {},
           hasDirtyFields: false,
+          pendingBoardChangeset: null,
           boardDiff: diff,
           hasBoardDiff: diff.length > 0,
           error: null,
@@ -273,6 +290,10 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
           activeProfile: nextActive,
           draftFields: needSwitch ? {} : state.draftFields,
           hasDirtyFields: needSwitch ? false : state.hasDirtyFields,
+          pendingBoardChangeset:
+            needSwitch || state.pendingBoardChangeset?.profileId === profileId
+              ? null
+              : state.pendingBoardChangeset,
           boardDiff: diff,
           hasBoardDiff: diff.length > 0,
           error: null,
@@ -305,6 +326,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
       refloatBaseVersion: null,
       draftFields: {},
       hasDirtyFields: false,
+      pendingBoardChangeset: null,
       boardFields: {},
       boardDiff: [],
       hasBoardDiff: false,

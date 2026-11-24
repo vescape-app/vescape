@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FlatList, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
-  applyBoardConfigChangeset,
   getBoardConfigRevisions,
   planBoardConfigRevert,
   type BoardConfigRevertPlan,
@@ -22,6 +21,10 @@ import {
 import { BoardConfigReviewModal } from '@/modules/board/components/BoardConfigReviewModal'
 import { buildBoardConfigReviewEntries } from '@/modules/board/lib/boardConfigChangeset'
 import {
+  applyPlannedBoardConfigRevert,
+  resolveRevertReviewState,
+} from '@/modules/board/lib/boardConfigRevert'
+import {
   groupBoardConfigRevisions,
   type BoardConfigHistoryEntry,
 } from '@/modules/board/lib/boardConfigRevisions'
@@ -35,7 +38,6 @@ export default function BoardConfigHistoryScreen() {
   const neutral = useResolvedNeutralColors()
   const { timeFormat, dateFormat, temperatureUnit } = useUserPreferences()
   const selectedBoardId = useBoardStore((s) => s.activeBoardId)
-  const board = useBoardStore((s) => s.boards.find((item) => item.id === selectedBoardId))
   const boardConfig = useBoardConfigFields(selectedBoardId ?? undefined)
   const lastCapturedAtMs = useBoardConfigValuesStore((s) => s.values?.capturedAtMs ?? null)
 
@@ -49,10 +51,19 @@ export default function BoardConfigHistoryScreen() {
   const [saving, setSaving] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
 
+  const reviewBoardId = pendingPlan?.boardId ?? selectedBoardId
+  const board = useBoardStore((s) => s.boards.find((item) => item.id === reviewBoardId))
+  const schemaHash = boardConfig?.schemaHash ?? null
+
   const canRevert =
     Boolean(selectedBoardId) &&
     boardConfig?.freshness === 'fresh' &&
     boardConfig.boardId === selectedBoardId
+
+  useEffect(() => {
+    setPendingPlan(null)
+    setApplyError(null)
+  }, [selectedBoardId, schemaHash])
 
   const load = useCallback(async (boardId: string) => {
     setLoading(true)
@@ -131,24 +142,32 @@ export default function BoardConfigHistoryScreen() {
   )
 
   const handleConfirmRevert = useCallback(async () => {
-    if (!selectedBoardId || !pendingPlan || !canRevert) return
     setSaving(true)
     setApplyError(null)
-    try {
-      const updated = await applyBoardConfigChangeset(
-        selectedBoardId,
-        pendingPlan.changes,
-        'revert',
-      )
-      useBoardConfigValuesStore.getState().replace(updated)
-      setPendingPlan(null)
-      await load(selectedBoardId)
-    } catch (err) {
-      setApplyError(errorMessage(err, 'Unable to revert board config.'))
-    } finally {
-      setSaving(false)
+    const outcome = await applyPlannedBoardConfigRevert({
+      plan: pendingPlan,
+      canRevert,
+      connectedBoardId: boardConfig?.boardId,
+      currentSchemaHash: schemaHash,
+    })
+    setSaving(false)
+    if (outcome.kind === 'error') {
+      setApplyError(outcome.message)
+      return
     }
-  }, [canRevert, load, pendingPlan, selectedBoardId])
+    if (outcome.kind !== 'applied') return
+    useBoardConfigValuesStore.getState().replace(outcome.updated)
+    setPendingPlan(null)
+    await load(outcome.boardId)
+  }, [boardConfig?.boardId, canRevert, load, pendingPlan, schemaHash])
+
+  const revertModal = resolveRevertReviewState({
+    plan: pendingPlan,
+    selectedBoardId,
+    connectedBoardId: boardConfig?.boardId,
+    canRevert,
+    applyError,
+  })
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -205,19 +224,14 @@ export default function BoardConfigHistoryScreen() {
       )}
 
       <BoardConfigReviewModal
-        visible={pendingPlan !== null}
+        visible={revertModal.visible}
         source="revert"
         boardName={board?.name}
         entries={reviewEntries}
         skippedFields={pendingPlan?.skippedFields}
         saving={saving}
-        confirmDisabled={!canRevert}
-        error={
-          applyError ??
-          (!canRevert && pendingPlan !== null
-            ? 'Board disconnected. Reconnect to apply revert.'
-            : null)
-        }
+        confirmDisabled={revertModal.confirmDisabled}
+        error={revertModal.error}
         onConfirm={handleConfirmRevert}
         onCancel={() => {
           if (!saving) {

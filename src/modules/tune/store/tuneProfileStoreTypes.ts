@@ -6,6 +6,12 @@ export interface TuneProfileBoardDiff {
   boardValue: TuneProfileFieldValue
 }
 
+export interface PendingTuneBoardChangeset {
+  profileId: string
+  boardId: string
+  changes: Record<string, TuneProfileFieldValue>
+}
+
 export interface TuneProfileState {
   profiles: TuneProfile[]
   activeProfile: TuneProfile | null
@@ -13,6 +19,7 @@ export interface TuneProfileState {
   refloatBaseVersion: string | null
   draftFields: Record<string, TuneProfileFieldValue>
   hasDirtyFields: boolean
+  pendingBoardChangeset: PendingTuneBoardChangeset | null
   boardFields: Record<string, TuneProfileFieldValue>
   boardDiff: TuneProfileBoardDiff[]
   hasBoardDiff: boolean
@@ -54,6 +61,8 @@ export interface TuneProfileActions {
   discardAllEdits: () => void
   saveActiveProfile: () => Promise<TuneProfile | null>
   saveAndSyncActiveProfile: () => Promise<void>
+  retryPendingBoardSync: () => Promise<void>
+  discardPendingBoardSync: () => void
   syncToBoard: () => Promise<void>
   clear: () => void
 }
@@ -67,6 +76,7 @@ export const INITIAL_TUNE_PROFILE_STATE: TuneProfileState = {
   refloatBaseVersion: null,
   draftFields: {},
   hasDirtyFields: false,
+  pendingBoardChangeset: null,
   boardFields: {},
   boardDiff: [],
   hasBoardDiff: false,

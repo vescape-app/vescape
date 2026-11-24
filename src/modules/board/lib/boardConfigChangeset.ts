@@ -1,7 +1,12 @@
 import type { BoardConfigSchema, BoardConfigSchemaField, BoardConfigValueType } from 'vescape-core'
 
 import { DASH } from '@/helpers/format'
-import { temperatureFromC, temperatureSymbol, type TemperatureUnit } from '@/helpers/units'
+import {
+  temperatureFromC,
+  temperatureSymbol,
+  temperatureToC,
+  type TemperatureUnit,
+} from '@/helpers/units'
 import {
   getFieldOverlay,
   REFLOAT_FIELD_OVERLAY,
@@ -181,6 +186,7 @@ export function formatBoardConfigFieldValue(
   >,
   value: number | boolean | string | null | undefined,
   temperatureUnit: TemperatureUnit = 'celsius',
+  decimalsOverride?: number,
 ): string {
   if (value === null || value === undefined) return DASH
   if (typeof value === 'string') return value
@@ -192,17 +198,79 @@ export function formatBoardConfigFieldValue(
     const index = Math.round(value)
     return field.enumNames[index] ?? `Unknown (${index})`
   }
+  const decimals = decimalsOverride ?? decimalsForField(field)
   if (field.unit === '°C') {
     const converted = temperatureFromC(value, temperatureUnit)
-    const decimals = decimalsForField(field)
     return `${formatNumericDisplay(converted, decimals)} ${temperatureSymbol(temperatureUnit)}`
   }
   const scaled = value * field.displayScale
-  const decimals = decimalsForField(field)
   const formatted = formatNumericDisplay(scaled, decimals)
   if (!field.unit) return formatted
   const separator = field.unit === '%' || field.unit === '°' ? '' : ' '
   return `${formatted}${separator}${field.unit}`
+}
+
+export function isTemperatureBoardConfigField(
+  field: Pick<ResolvedBoardConfigField, 'unit'>,
+): boolean {
+  return field.unit === '°C'
+}
+
+export function toBoardConfigDisplayValue(
+  field: Pick<ResolvedBoardConfigField, 'unit' | 'displayScale'>,
+  rawValue: number,
+  temperatureUnit: TemperatureUnit = 'celsius',
+): number {
+  if (isTemperatureBoardConfigField(field)) {
+    return temperatureFromC(rawValue, temperatureUnit)
+  }
+  return rawValue * field.displayScale
+}
+
+export function boardConfigDisplayUnit(
+  field: Pick<ResolvedBoardConfigField, 'unit'>,
+  editorKind: BoardConfigEditorKind,
+  temperatureUnit: TemperatureUnit = 'celsius',
+): string | null {
+  if (editorKind === 'percentage') return '%'
+  if (isTemperatureBoardConfigField(field)) return temperatureSymbol(temperatureUnit)
+  return field.unit
+}
+
+export function parseBoardConfigDraftInput(
+  field: Pick<ResolvedBoardConfigField, 'type' | 'unit' | 'displayScale' | 'hardMin' | 'hardMax'>,
+  draftText: string,
+  temperatureUnit: TemperatureUnit = 'celsius',
+): number | null {
+  const trimmed = draftText.replace(',', '.').trim()
+  if (trimmed === '') return null
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed)) return null
+  const rawNext = isTemperatureBoardConfigField(field)
+    ? Number(temperatureToC(parsed, temperatureUnit).toFixed(6))
+    : field.displayScale > 0
+      ? parsed / field.displayScale
+      : parsed
+  return clampBoardConfigFieldValue(field, rawNext)
+}
+
+export function stepBoardConfigNumericValue(
+  field: Pick<
+    ResolvedBoardConfigField,
+    'type' | 'unit' | 'step' | 'displayScale' | 'hardMin' | 'hardMax'
+  >,
+  currentRawValue: number,
+  direction: 1 | -1,
+  temperatureUnit: TemperatureUnit = 'celsius',
+): number {
+  const rawStep = stepForBoardConfigField(field)
+  if (isTemperatureBoardConfigField(field) && temperatureUnit === 'fahrenheit') {
+    const nextDisplay = temperatureFromC(currentRawValue, temperatureUnit) + direction * rawStep
+    const nextRaw = Number(temperatureToC(nextDisplay, temperatureUnit).toFixed(6))
+    return clampBoardConfigFieldValue(field, nextRaw)
+  }
+  const nextRaw = Number((currentRawValue + direction * rawStep).toFixed(6))
+  return clampBoardConfigFieldValue(field, nextRaw)
 }
 
 export function clampBoardConfigFieldValue(
@@ -237,6 +305,66 @@ export function hasPendingBoardConfigChange(
     return currentBool !== nextBool
   }
   return Math.abs(currentValue - nextValue) > FLOAT_TOLERANCE
+}
+
+function wireMaxDecimals(
+  field: Pick<
+    ResolvedBoardConfigField,
+    'type' | 'unit' | 'displayScale' | 'manualDecimals' | 'step'
+  >,
+  schemaField: BoardConfigSchemaField | undefined,
+  temperatureUnit: TemperatureUnit,
+): number {
+  const baseDecimals = decimalsForField(field)
+  if (isIntegerFieldType(field.type)) {
+    return isTemperatureBoardConfigField(field) && temperatureUnit === 'fahrenheit'
+      ? Math.max(baseDecimals, 1)
+      : baseDecimals
+  }
+  if (schemaField?.scale != null && Number.isFinite(schemaField.scale) && schemaField.scale > 0) {
+    const effectiveScale = schemaField.scale / Math.max(1, field.displayScale)
+    const wireDecimals = effectiveScale > 1 ? Math.ceil(Math.log10(effectiveScale)) : 0
+    const withTemp =
+      isTemperatureBoardConfigField(field) && temperatureUnit === 'fahrenheit'
+        ? wireDecimals + 1
+        : wireDecimals
+    return Math.min(6, Math.max(baseDecimals, withTemp))
+  }
+  return Math.max(baseDecimals, 6)
+}
+
+function formatReviewValuePair(
+  field: Pick<
+    ResolvedBoardConfigField,
+    'type' | 'enumNames' | 'unit' | 'displayScale' | 'manualDecimals' | 'step'
+  >,
+  schemaField: BoardConfigSchemaField | undefined,
+  oldValue: number | boolean | null,
+  newValue: number | boolean,
+  temperatureUnit: TemperatureUnit,
+): { oldFormatted: string; newFormatted: string } {
+  const oldFormatted = formatBoardConfigFieldValue(field, oldValue, temperatureUnit)
+  const newFormatted = formatBoardConfigFieldValue(field, newValue, temperatureUnit)
+  if (
+    typeof oldValue !== 'number' ||
+    typeof newValue !== 'number' ||
+    Math.abs(oldValue - newValue) <= FLOAT_TOLERANCE ||
+    oldFormatted !== newFormatted ||
+    field.enumNames.length > 0 ||
+    field.type === 'bool'
+  ) {
+    return { oldFormatted, newFormatted }
+  }
+  const baseDecimals = decimalsForField(field)
+  const maxDecimals = wireMaxDecimals(field, schemaField, temperatureUnit)
+  for (let decimals = baseDecimals + 1; decimals <= maxDecimals; decimals += 1) {
+    const nextOld = formatBoardConfigFieldValue(field, oldValue, temperatureUnit, decimals)
+    const nextNew = formatBoardConfigFieldValue(field, newValue, temperatureUnit, decimals)
+    if (nextOld !== nextNew) {
+      return { oldFormatted: nextOld, newFormatted: nextNew }
+    }
+  }
+  return { oldFormatted, newFormatted }
 }
 
 export function buildBoardConfigReviewEntries({
@@ -280,13 +408,21 @@ export function buildBoardConfigReviewEntries({
           step: entry?.step ?? null,
         }
 
+    const { oldFormatted, newFormatted } = formatReviewValuePair(
+      resolvedField,
+      schemaField,
+      oldValue,
+      newValue,
+      temperatureUnit,
+    )
+
     return {
       fieldId,
       label: resolvedField.label,
       oldValue,
       newValue,
-      oldFormatted: formatBoardConfigFieldValue(resolvedField, oldValue, temperatureUnit),
-      newFormatted: formatBoardConfigFieldValue(resolvedField, newValue, temperatureUnit),
+      oldFormatted,
+      newFormatted,
       risk,
       rebootNote: getBoardConfigRebootNote(fieldId, refloatBaseVersion),
     }

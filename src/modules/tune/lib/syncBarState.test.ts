@@ -174,3 +174,30 @@ test('lists drifting field labels when offering sync with board', () => {
   )
   expect(formatDriftSummary([])).toBeNull()
 })
+
+test('offers retry_sync when a failed Save & sync changeset is preserved', () => {
+  expect(
+    getSyncBarState({
+      hasProfile: true,
+      bleStatus: 'connected',
+      hasDirtyFields: false,
+      hasBoardDiff: true,
+      dirtyCount: 0,
+      diffCount: 2,
+      diffLabels: ['Angle P', 'ATR Strength Up'],
+      pendingSyncCount: 1,
+      loadingConfig: false,
+      configError: null,
+      boardSnapshotReady: true,
+      saving: false,
+      syncing: false,
+    }),
+  ).toEqual({
+    variant: 'retry_sync',
+    dirtyCount: 0,
+    diffCount: 2,
+    diffLabels: ['Angle P', 'ATR Strength Up'],
+    pendingSyncCount: 1,
+    configError: null,
+  })
+})

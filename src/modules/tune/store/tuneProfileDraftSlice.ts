@@ -41,6 +41,8 @@ type TuneProfileDraftSlice = Pick<
   | 'discardAllEdits'
   | 'saveActiveProfile'
   | 'saveAndSyncActiveProfile'
+  | 'retryPendingBoardSync'
+  | 'discardPendingBoardSync'
   | 'syncToBoard'
 >
 
@@ -57,11 +59,11 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => {
     return schemaFieldMap(schema)
   }
 
-  async function runBoardWrite(write: () => Promise<BoardConfigValues>) {
+  async function runBoardWrite(write: () => Promise<BoardConfigValues>): Promise<boolean> {
     const linkIntegrity = useBleStore.getState().linkIntegrity
     if (!canRunFirmwareCommand(linkIntegrity)) {
       set({ syncing: false, error: firmwareCommandBlockedMessage(linkIntegrity) })
-      return
+      return false
     }
     set({ syncing: true, error: null })
     try {
@@ -70,6 +72,7 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => {
       useTuneSnapshotStore.getState().setBoardConfig(boardConfig)
       get().setBoardConfig(boardConfig)
       set({ syncing: false })
+      return true
     } catch (error) {
       set({ syncing: false, error: tuneWriteErrorMessage(error) })
       throw error
@@ -184,7 +187,7 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => {
     },
 
     discardAllEdits() {
-      set({ draftFields: {}, hasDirtyFields: false })
+      set({ draftFields: {}, hasDirtyFields: false, pendingBoardChangeset: null })
     },
 
     async saveActiveProfile() {
@@ -224,16 +227,65 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => {
     },
 
     async saveAndSyncActiveProfile() {
+      const profile = get().activeProfile
+      if (!profile) return
       const dirty = get().getDirtyFields()
-      const saved = await get().saveActiveProfile()
-      if (!saved || Object.keys(dirty).length === 0) return
-      await runBoardWrite(() => nativeApplyBoardConfigChangeset(saved.boardId, dirty))
+      const existingPending =
+        get().pendingBoardChangeset?.profileId === profile.id
+          ? get().pendingBoardChangeset!.changes
+          : {}
+      const changeset = { ...existingPending, ...dirty }
+      const saved = Object.keys(dirty).length > 0 ? await get().saveActiveProfile() : profile
+      if (!saved || Object.keys(changeset).length === 0) return
+      set({
+        pendingBoardChangeset: {
+          profileId: saved.id,
+          boardId: saved.boardId,
+          changes: changeset,
+        },
+      })
+      const synced = await runBoardWrite(() =>
+        nativeApplyBoardConfigChangeset(saved.boardId, changeset),
+      )
+      if (synced) {
+        set((state) =>
+          state.pendingBoardChangeset?.profileId === saved.id
+            ? { pendingBoardChangeset: null }
+            : state,
+        )
+      }
+    },
+
+    async retryPendingBoardSync() {
+      const pending = get().pendingBoardChangeset
+      if (!pending) return
+      const synced = await runBoardWrite(() =>
+        nativeApplyBoardConfigChangeset(pending.boardId, pending.changes),
+      )
+      if (synced) {
+        set((state) =>
+          state.pendingBoardChangeset?.profileId === pending.profileId
+            ? { pendingBoardChangeset: null }
+            : state,
+        )
+      }
+    },
+
+    discardPendingBoardSync() {
+      set({ pendingBoardChangeset: null, error: null })
     },
 
     async syncToBoard() {
       const profile = get().activeProfile
       if (!profile || get().boardDiff.length === 0) return
-      await runBoardWrite(() => nativePushProfileToBoard(profile.id))
+      const synced = await runBoardWrite(() => nativePushProfileToBoard(profile.id))
+      if (synced) {
+        set((state) =>
+          state.pendingBoardChangeset?.profileId === profile.id
+            ? { pendingBoardChangeset: null }
+            : state,
+        )
+      }
     },
   }
 }

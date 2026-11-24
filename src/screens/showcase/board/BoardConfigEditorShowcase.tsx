@@ -167,6 +167,7 @@ export function BoardConfigEditorShowcase() {
     'hardware.leds.mode': 2,
   })
   const [showDescriptions, setShowDescriptions] = useState(true)
+  const [disabled, setDisabled] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [source, setSource] = useState<BoardConfigReviewSource>('app')
   const [simulateError, setSimulateError] = useState(false)
@@ -202,11 +203,14 @@ export function BoardConfigEditorShowcase() {
       <ShowcaseCard
         name="BoardConfigFieldEditor"
         controls={
-          <ToggleRow
-            label="show descriptions"
-            value={showDescriptions}
-            onToggle={setShowDescriptions}
-          />
+          <>
+            <ToggleRow
+              label="show descriptions"
+              value={showDescriptions}
+              onToggle={setShowDescriptions}
+            />
+            <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
+          </>
         }
       >
         <SettingsCard separatorInset={14}>
@@ -216,6 +220,7 @@ export function BoardConfigEditorShowcase() {
               field={field}
               value={values[field.id] ?? field.value}
               isModified={field.editable && values[field.id] !== BASE_VALUES[field.id]}
+              disabled={disabled}
               refloatBaseVersion="1.3.0"
               showDescription={showDescriptions}
               onChange={(fieldId, nextValue) =>

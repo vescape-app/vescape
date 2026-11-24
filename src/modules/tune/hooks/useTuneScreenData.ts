@@ -130,6 +130,7 @@ export function useTuneScreenData() {
   const profileBoardId = useTuneProfileStore((s) => s.activeBoardId)
   const draftFields = useTuneProfileStore((s) => s.draftFields)
   const hasDirtyFields = useTuneProfileStore((s) => s.hasDirtyFields)
+  const pendingBoardChangeset = useTuneProfileStore((s) => s.pendingBoardChangeset)
   const profileLoading = useTuneProfileStore((s) => s.loading)
   const savingProfile = useTuneProfileStore((s) => s.saving)
   const syncingProfile = useTuneProfileStore((s) => s.syncing)
@@ -286,6 +287,10 @@ export function useTuneScreenData() {
   const boardSnapshotReady = firmwareCommandsTrusted && boardSnapshotStatus === 'ready'
   const syncBarState = useMemo(() => {
     const driftingDiffs = boardDiff.filter(({ fieldId }) => !(fieldId in dirtyFields))
+    const pendingSyncCount =
+      pendingBoardChangeset && pendingBoardChangeset.profileId === activeProfile?.id
+        ? Object.keys(pendingBoardChangeset.changes).length
+        : 0
     const schemaById = new Map(
       (activeBoardConfig?.schema?.fields ?? []).map((field) => [field.id, field]),
     )
@@ -299,6 +304,7 @@ export function useTuneScreenData() {
       diffLabels: driftingDiffs.map(({ fieldId }) =>
         getFieldLabel(fieldId, schemaById.get(fieldId)),
       ),
+      pendingSyncCount,
       loadingConfig: firmwareCommandsTrusted && boardSnapshotStatus === 'loading',
       configError:
         firmwareCommandBlockReason ?? (firmwareCommandsTrusted ? boardSnapshotError : null),
@@ -319,6 +325,7 @@ export function useTuneScreenData() {
     hasBoardDiff,
     dirtyFields,
     boardDiff,
+    pendingBoardChangeset,
     savingProfile,
     syncingProfile,
   ])

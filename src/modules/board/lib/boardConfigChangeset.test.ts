@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { BoardConfigSchema, BoardConfigSchemaField } from 'vescape-core'
 
 import {
+  boardConfigDisplayUnit,
   buildBoardConfigReviewEntries,
   clampBoardConfigFieldValue,
   formatBoardConfigFieldValue,
@@ -9,7 +10,10 @@ import {
   hasPendingBoardConfigChange,
   isInternalBoardConfigField,
   isRiskyBoardConfigField,
+  parseBoardConfigDraftInput,
   resolveBoardConfigEditorKind,
+  stepBoardConfigNumericValue,
+  toBoardConfigDisplayValue,
 } from '@/modules/board/lib/boardConfigChangeset'
 import { resolveBoardConfigField } from '@/modules/board/lib/refloatFieldOverlay'
 
@@ -253,5 +257,89 @@ describe('boardConfigChangeset', () => {
       newFormatted: 'Off',
     })
     expect(entries[2]!.rebootNote).toBeTruthy()
+  })
+
+  test('parseBoardConfigDraftInput cancels blank edits instead of staging 0', () => {
+    const numField = resolveBoardConfigField(makeField({ min: 0, max: 100, editorDecimals: 1 }), 20)
+    expect(parseBoardConfigDraftInput(numField, '')).toBeNull()
+    expect(parseBoardConfigDraftInput(numField, '   ')).toBeNull()
+    expect(parseBoardConfigDraftInput(numField, 'abc')).toBeNull()
+    expect(parseBoardConfigDraftInput(numField, '0')).toBe(0)
+    expect(parseBoardConfigDraftInput(numField, '24,5')).toBe(24.5)
+  })
+
+  test('converts temperature fields consistently for Fahrenheit editing and stepping', () => {
+    const tempField = resolveBoardConfigField(
+      makeField({
+        id: 'bms.cell_ht_threshold',
+        type: 'float32',
+        unit: '°C',
+        min: 0,
+        max: 120,
+        step: 1,
+        editorDecimals: 0,
+      }),
+      60,
+    )
+
+    expect(toBoardConfigDisplayValue(tempField, 60, 'fahrenheit')).toBe(140)
+    expect(boardConfigDisplayUnit(tempField, 'number', 'fahrenheit')).toBe('°F')
+    expect(boardConfigDisplayUnit(tempField, 'number', 'celsius')).toBe('°C')
+    expect(parseBoardConfigDraftInput(tempField, '149', 'fahrenheit')).toBe(65)
+
+    const steppedUp = stepBoardConfigNumericValue(tempField, 60, 1, 'fahrenheit')
+    expect(toBoardConfigDisplayValue(tempField, steppedUp, 'fahrenheit')).toBeCloseTo(141, 4)
+
+    const steppedDown = stepBoardConfigNumericValue(tempField, 60, -1, 'fahrenheit')
+    expect(toBoardConfigDisplayValue(tempField, steppedDown, 'fahrenheit')).toBeCloseTo(139, 4)
+  })
+
+  test('increases review decimal precision up to wire precision when differing numbers format identically', () => {
+    const schema: BoardConfigSchema = {
+      hash: 'test',
+      fields: [
+        makeField({
+          id: 'ki',
+          type: 'float16_scaled',
+          scale: 100000,
+          editorDecimals: 2,
+          step: 0.01,
+        }),
+        makeField({
+          id: 'tiltback_duty',
+          type: 'float16_scaled',
+          scale: 1000,
+          editAsPercentage: true,
+          editorScale: 1,
+          unit: null,
+          step: 0.01,
+          editorDecimals: 2,
+        }),
+      ],
+      groups: [],
+    }
+
+    const entries = buildBoardConfigReviewEntries({
+      changes: {
+        ki: 0.0002,
+        tiltback_duty: 0.804,
+      },
+      currentValues: {
+        ki: 0.0001,
+        tiltback_duty: 0.801,
+      },
+      schema,
+    })
+
+    expect(entries[0]).toMatchObject({
+      fieldId: 'ki',
+      oldFormatted: '0.0001',
+      newFormatted: '0.0002',
+    })
+    expect(entries[1]).toMatchObject({
+      fieldId: 'tiltback_duty',
+      oldFormatted: '80.1%',
+      newFormatted: '80.4%',
+    })
   })
 })

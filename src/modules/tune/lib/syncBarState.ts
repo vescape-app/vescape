@@ -5,6 +5,7 @@ type SyncBarVariant =
   | 'connect_to_sync'
   | 'save_later'
   | 'save_and_sync'
+  | 'retry_sync'
   | 'sync_with_board'
   | 'saving'
   | 'syncing'
@@ -14,6 +15,7 @@ export interface SyncBarState {
   dirtyCount: number
   diffCount: number
   diffLabels: string[]
+  pendingSyncCount?: number
   configError: string | null
 }
 
@@ -31,6 +33,7 @@ export function getSyncBarState(params: {
   dirtyCount: number
   diffCount: number
   diffLabels?: string[]
+  pendingSyncCount?: number
   loadingConfig: boolean
   configError: string | null
   boardSnapshotReady: boolean
@@ -45,6 +48,7 @@ export function getSyncBarState(params: {
     dirtyCount,
     diffCount,
     diffLabels = [],
+    pendingSyncCount = 0,
     loadingConfig,
     configError,
     boardSnapshotReady,
@@ -60,6 +64,16 @@ export function getSyncBarState(params: {
   }
   if (hasDirtyFields) {
     return { variant: 'save_later', dirtyCount, diffCount, diffLabels, configError }
+  }
+  if (pendingSyncCount > 0 && connected && boardSnapshotReady) {
+    return {
+      variant: 'retry_sync',
+      dirtyCount,
+      diffCount,
+      diffLabels,
+      pendingSyncCount,
+      configError: null,
+    }
   }
   if (loadingConfig) {
     return { variant: 'loading_config', dirtyCount, diffCount, diffLabels, configError: null }

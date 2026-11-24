@@ -1,62 +1,23 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import { File, Paths } from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 import {
-  applyBoardConfigChangeset,
   exportBoardConfigXml,
   planBoardConfigXmlImport,
   type BoardConfigSchema,
-  type BoardConfigValues,
   type BoardConfigXmlImportPlan,
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
 import type { TemperatureUnit } from '@/helpers/units'
 import { buildBoardConfigReviewEntries } from '@/modules/board/lib/boardConfigChangeset'
-import {
-  buildExportXmlFilename,
-  validateBoardConfigImportSchema,
+import { buildExportXmlFilename } from '@/screens/board-config/boardConfigXmlHelpers'
+
+export {
+  applyReviewedBoardConfigChangeset,
+  resolveReviewModalState,
 } from '@/screens/board-config/boardConfigXmlHelpers'
-
-export { resolveReviewModalState } from '@/screens/board-config/boardConfigXmlHelpers'
-
-export async function applyReviewedBoardConfigChangeset(params: {
-  boardId: string | undefined
-  canEdit: boolean
-  importPlan: BoardConfigXmlImportPlan | null
-  pendingChanges: Record<string, number | boolean>
-  currentSchemaHash: string | null | undefined
-}): Promise<
-  | { kind: 'noop' }
-  | { kind: 'error'; message: string }
-  | { kind: 'applied'; isImport: boolean; updated: BoardConfigValues }
-> {
-  const { importPlan } = params
-  const targetChanges = importPlan !== null ? importPlan.changes : params.pendingChanges
-  if (!params.boardId || Object.keys(targetChanges).length === 0) {
-    return { kind: 'noop' }
-  }
-  if (!params.canEdit) {
-    return { kind: 'error', message: 'Board disconnected. Reconnect to apply changes.' }
-  }
-  if (importPlan !== null) {
-    const schemaError = validateBoardConfigImportSchema(importPlan, params.currentSchemaHash)
-    if (schemaError) return { kind: 'error', message: schemaError }
-  }
-  try {
-    const updated =
-      importPlan !== null
-        ? await applyBoardConfigChangeset(params.boardId, targetChanges, 'import')
-        : await applyBoardConfigChangeset(params.boardId, targetChanges)
-    return { kind: 'applied', isImport: importPlan !== null, updated }
-  } catch (err) {
-    return {
-      kind: 'error',
-      message: errorMessage(err, 'Board configuration could not be written.'),
-    }
-  }
-}
 
 interface UseBoardConfigXmlTransferOptions {
   boardId: string | undefined
@@ -64,6 +25,7 @@ interface UseBoardConfigXmlTransferOptions {
   canEdit: boolean
   currentValues: Readonly<Record<string, number | boolean | undefined>> | undefined
   schema: BoardConfigSchema | null
+  schemaHash: string | null | undefined
   refloatBaseVersion: string | null | undefined
   temperatureUnit: TemperatureUnit
   onCloseOptions: () => void
@@ -76,6 +38,7 @@ export function useBoardConfigXmlTransfer({
   canEdit,
   currentValues,
   schema,
+  schemaHash,
   refloatBaseVersion,
   temperatureUnit,
   onCloseOptions,
@@ -85,6 +48,10 @@ export function useBoardConfigXmlTransfer({
   const [xmlNotice, setXmlNotice] = useState<string | null>(null)
   const [xmlError, setXmlError] = useState<string | null>(null)
   const [xmlBusy, setXmlBusy] = useState(false)
+
+  useEffect(() => {
+    setImportPlan(null)
+  }, [boardId, schemaHash])
 
   const importReviewEntries = useMemo(
     () =>

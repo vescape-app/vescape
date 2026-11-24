@@ -17,13 +17,15 @@ import { theme } from '@/constants/theme'
 import { useResolvedControlColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
-  clampBoardConfigFieldValue,
+  boardConfigDisplayUnit,
   decimalsForField,
   formatBoardConfigFieldValue,
   formatNumericDisplay,
   getBoardConfigRebootNote,
+  parseBoardConfigDraftInput,
   resolveBoardConfigEditorKind,
-  stepForBoardConfigField,
+  stepBoardConfigNumericValue,
+  toBoardConfigDisplayValue,
 } from '@/modules/board/lib/boardConfigChangeset'
 import type { ResolvedBoardConfigField } from '@/modules/board/lib/refloatFieldOverlay'
 
@@ -52,56 +54,54 @@ export function BoardConfigFieldEditor({
   const control = useResolvedControlColors()
   const { temperatureUnit } = useUserPreferences()
   const editorKind = resolveBoardConfigEditorKind(field)
-  const isReadOnly = editorKind === 'readonly' || disabled
+  const isReadOnlyField = editorKind === 'readonly'
+  const isNonInteractive = isReadOnlyField || disabled
   const rebootNote = getBoardConfigRebootNote(field.id, refloatBaseVersion)
   const decimals = decimalsForField(field)
-  const rawStep = stepForBoardConfigField(field)
   const numericValue = typeof value === 'number' && Number.isFinite(value) ? value : 0
-  const displayValue = numericValue * field.displayScale
+  const displayValue = toBoardConfigDisplayValue(field, numericValue, temperatureUnit)
+  const formattedDisplayValue = formatNumericDisplay(displayValue, decimals)
 
   const [editingText, setEditingText] = useState(false)
   const [draftText, setDraftText] = useState('')
 
   useEffect(() => {
+    if (disabled && editingText) {
+      setEditingText(false)
+      return
+    }
     if (!editingText) return
-    setDraftText(formatNumericDisplay(displayValue, decimals))
-  }, [editingText, displayValue, decimals])
+    setDraftText(formattedDisplayValue)
+  }, [disabled, editingText, formattedDisplayValue])
 
   const enumOptions = useMemo<SelectOption<string>[]>(
     () => field.enumNames.map((name, index) => ({ label: name, value: String(index) })),
     [field.enumNames],
   )
 
-  const commitNumericRaw = (rawNext: number) => {
-    if (!onChange || isReadOnly) return
-    const clamped = clampBoardConfigFieldValue(field, rawNext)
-    onChange(field.id, clamped)
-  }
-
   const commitDraftText = () => {
     setEditingText(false)
-    const parsed = Number(draftText.replace(',', '.').trim())
-    if (!Number.isFinite(parsed)) return
-    const rawNext = field.displayScale > 0 ? parsed / field.displayScale : parsed
-    commitNumericRaw(rawNext)
+    if (!onChange || isNonInteractive) return
+    if (draftText.replace(',', '.').trim() === formattedDisplayValue) return
+    const nextRaw = parseBoardConfigDraftInput(field, draftText, temperatureUnit)
+    if (nextRaw === null) return
+    onChange(field.id, nextRaw)
   }
 
   const stepBy = (direction: 1 | -1) => {
-    const nextRaw = numericValue + direction * rawStep
-    const rounded = Number(nextRaw.toFixed(6))
-    commitNumericRaw(rounded)
+    if (!onChange || isNonInteractive) return
+    const nextRaw = stepBoardConfigNumericValue(field, numericValue, direction, temperatureUnit)
+    onChange(field.id, nextRaw)
   }
 
   const canDecrement = field.hardMin == null || numericValue > field.hardMin
   const canIncrement = field.hardMax == null || numericValue < field.hardMax
 
   const renderControl = () => {
-    if (isReadOnly) {
+    if (isReadOnlyField) {
       return (
         <View style={styles.readonlyWrap}>
-          {editorKind === 'readonly' ? (
-            <LockSimpleIcon size={13} color={theme.neutral.textMuted} weight="duotone" />
-          ) : null}
+          <LockSimpleIcon size={13} color={theme.neutral.textMuted} weight="duotone" />
           <Text style={styles.readonlyValue}>
             {formatBoardConfigFieldValue(field, value, temperatureUnit)}
           </Text>
@@ -114,7 +114,7 @@ export function BoardConfigFieldEditor({
       return (
         <Switch
           value={boolValue}
-          disabled={isReadOnly}
+          disabled={disabled}
           accessibilityLabel={field.label}
           testID={`board-config-switch-${field.id}`}
           onValueChange={(next) => onChange?.(field.id, next)}
@@ -128,9 +128,11 @@ export function BoardConfigFieldEditor({
         <Select
           options={enumOptions}
           value={selected}
+          disabled={disabled}
           style={styles.enumSelect}
           testID={`board-config-enum-${field.id}`}
           onChange={(next) => {
+            if (disabled) return
             const parsed = Number(next)
             if (Number.isFinite(parsed)) onChange?.(field.id, parsed)
           }}
@@ -138,19 +140,19 @@ export function BoardConfigFieldEditor({
       )
     }
 
-    const displayUnit = editorKind === 'percentage' ? '%' : field.unit
+    const displayUnit = boardConfigDisplayUnit(field, editorKind, temperatureUnit)
 
     return (
       <View
         style={[
           styles.stepper,
           { backgroundColor: control.background, borderColor: control.border },
-          isReadOnly && styles.disabledControl,
+          disabled && styles.disabledControl,
         ]}
       >
         <Pressable
-          style={[styles.stepperButton, (!canDecrement || isReadOnly) && styles.buttonDisabled]}
-          disabled={!canDecrement || isReadOnly}
+          style={[styles.stepperButton, (!canDecrement || disabled) && styles.buttonDisabled]}
+          disabled={!canDecrement || disabled}
           onPress={() => stepBy(-1)}
           accessibilityRole="button"
           accessibilityLabel={`Decrease ${field.label}`}
@@ -159,7 +161,7 @@ export function BoardConfigFieldEditor({
           <MinusIcon size={14} color={control.icon} weight="bold" />
         </Pressable>
 
-        {editingText ? (
+        {editingText && !disabled ? (
           <View style={styles.inlineInputWrap}>
             <Input
               value={draftText}
@@ -176,9 +178,9 @@ export function BoardConfigFieldEditor({
         ) : (
           <Pressable
             style={styles.valueWrap}
-            disabled={isReadOnly}
+            disabled={disabled}
             onPress={() => {
-              setDraftText(formatNumericDisplay(displayValue, decimals))
+              setDraftText(formattedDisplayValue)
               setEditingText(true)
             }}
             accessibilityRole="button"
@@ -186,7 +188,7 @@ export function BoardConfigFieldEditor({
             testID={`board-config-value-${field.id}`}
           >
             <Text style={[styles.stepperValue, { color: control.text }]}>
-              {formatNumericDisplay(displayValue, decimals)}
+              {formattedDisplayValue}
             </Text>
             {displayUnit ? (
               <Text style={[styles.stepperUnit, { color: control.textMuted }]}>{displayUnit}</Text>
@@ -195,8 +197,8 @@ export function BoardConfigFieldEditor({
         )}
 
         <Pressable
-          style={[styles.stepperButton, (!canIncrement || isReadOnly) && styles.buttonDisabled]}
-          disabled={!canIncrement || isReadOnly}
+          style={[styles.stepperButton, (!canIncrement || disabled) && styles.buttonDisabled]}
+          disabled={!canIncrement || disabled}
           onPress={() => stepBy(1)}
           accessibilityRole="button"
           accessibilityLabel={`Increase ${field.label}`}
@@ -234,7 +236,7 @@ export function BoardConfigFieldEditor({
         </View>
 
         <View style={styles.controlCluster}>
-          {isModified && onReset ? (
+          {isModified && onReset && !disabled ? (
             <IconButton
               icon={ArrowCounterClockwiseIcon}
               size="sm"
