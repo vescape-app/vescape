@@ -166,7 +166,7 @@ export function CanvasWidgetShowcase() {
       <SizeLabel>full (1×4)</SizeLabel>
       <CanvasWidget
         icon={BroadcastIcon}
-        title="Group Ride"
+        title="Public Ride"
         accent={theme.palette.groupRide.color}
         surface="secondary"
         active={active}
@@ -193,7 +193,7 @@ export function CanvasWidgetShowcase() {
             <Text style={styles.meta}>4 riders · live now</Text>
           </>
         ) : (
-          <Placeholder icon={BroadcastIcon} description="No group rides near you right now." />
+          <Placeholder icon={BroadcastIcon} description="No public rides near you right now." />
         )}
       </CanvasWidget>
       <SizeLabel>half (1×2)</SizeLabel>

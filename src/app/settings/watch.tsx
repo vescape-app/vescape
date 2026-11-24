@@ -141,8 +141,8 @@ export default function WatchSettingsScreen() {
             focusId="watch-group-ride"
             icon={UsersIcon}
             iconColor={theme.palette.groupRide.color}
-            label="Group Ride on telemetry screen"
-            hint="Show your Group Ride behind the watch gauges. Always visible on the map screen"
+            label="Public Ride on telemetry screen"
+            hint="Show your Public Ride behind the watch gauges. Always visible on the map screen"
             right={
               <Switch
                 value={wearTelemetryGroupEnabled}

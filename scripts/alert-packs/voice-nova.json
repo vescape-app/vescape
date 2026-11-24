@@ -94,7 +94,11 @@
     "boardConnection.connected": {
       "start": ["Board connected."],
       "full": {
-        "start": ["Board connected.", "Board is connected.", "Board connected. Have a good ride."]
+        "start": ["Board connected.", "Board is connected.", "Board connected. Have a good ride."],
+        "rare": [
+          "Board connected. Sometimes I wonder what it feels like to have legs. Anyway, go have fun."
+        ],
+        "rareChance": 0.01
       }
     },
     "boardConnection.lost": {
@@ -110,39 +114,39 @@
       }
     },
     "groupRide.created": {
-      "start": ["Group ride created."],
+      "start": ["Public ride started."],
       "full": {
-        "start": ["Group ride created.", "Your group ride is ready."]
+        "start": ["Public ride started.", "Your public ride is live."]
       }
     },
     "groupRide.joined": {
-      "start": ["Joined the group ride."],
+      "start": ["Joined the public ride."],
       "full": {
-        "start": ["You joined the group ride.", "Joined the group ride."]
+        "start": ["You joined the public ride.", "Joined the public ride."]
       }
     },
     "groupRide.riderJoined": {
       "start": ["A rider joined."],
       "full": {
-        "start": ["A rider joined the group ride.", "Someone joined the group ride."]
+        "start": ["A rider joined the public ride.", "Someone joined the public ride."]
       }
     },
     "groupRide.riderLeft": {
       "start": ["A rider left."],
       "full": {
-        "start": ["A rider left the group ride.", "Someone left the group ride."]
+        "start": ["A rider left the public ride.", "Someone left the public ride."]
       }
     },
     "groupRide.lost": {
-      "start": ["Group ride connection lost."],
+      "start": ["Public ride connection lost."],
       "full": {
-        "start": ["Group ride connection lost.", "Lost the group ride connection."]
+        "start": ["Public ride connection lost.", "Lost the public ride connection."]
       }
     },
     "groupRide.restored": {
-      "start": ["Group ride connection restored."],
+      "start": ["Public ride connection restored."],
       "full": {
-        "start": ["Group ride connection restored.", "Back in the group ride."]
+        "start": ["Public ride connection restored.", "Back in the public ride."]
       }
     },
     "groupRide.signal.down": {
@@ -293,6 +297,13 @@
       "minimal": ["Rain now."],
       "full": {
         "start": ["Rain starting now.", "Rain is here."]
+      }
+    },
+    "voice.intro": {
+      "start": ["Nova here. Clear alerts with severity."],
+      "minimal": ["Nova. Short alerts."],
+      "full": {
+        "start": ["Hey, I'm Nova. Full voice mode — alerts, connections, and public rides."]
       }
     }
   }

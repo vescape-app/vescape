@@ -26,7 +26,7 @@ export default function AboutScreen() {
             icon={ShieldCheckIcon}
             iconColor={theme.palette.cyan.color}
             label="Privacy policy"
-            hint="Data, Group Ride sharing, and contact"
+            hint="Data, Public Ride sharing, and contact"
             onPress={() => openExternalUrl(PRIVACY_POLICY_URL, 'privacy_policy_link')}
           />
         </SettingsCard>

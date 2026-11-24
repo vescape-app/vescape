@@ -83,6 +83,7 @@ internal val VOICE_KEY_VALUE_TYPES: Map<String, String?> = mapOf(
     "weather.wind.now" to null,
     "weather.rain" to null,
     "weather.rain.now" to null,
+    "voice.intro" to null,
 )
 
 /**
@@ -160,11 +161,19 @@ internal data class VoiceLine(
     val fullStart: List<String> = emptyList(),
     val fullEnd: List<String> = emptyList(),
     val endChance: Double = 1.0,
+    val fullRare: List<String> = emptyList(),
+    val rareChance: Double = 0.0,
 ) {
-    val files: List<String> get() = start + minimal + fullStart + fullEnd
+    val files: List<String> get() = start + minimal + fullStart + fullEnd + fullRare
 }
 
-internal data class VoicePhrases(val start: List<String>, val end: List<String>, val endChance: Double)
+internal data class VoicePhrases(
+    val start: List<String>,
+    val end: List<String>,
+    val endChance: Double,
+    val rare: List<String> = emptyList(),
+    val rareChance: Double = 0.0,
+)
 
 internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: Map<String, Map<Int, String>>) {
     fun phrases(key: String, severity: AlertSeverity, wording: VoiceWording): VoicePhrases? {
@@ -173,7 +182,13 @@ internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: 
         return when (wording) {
             VoiceWording.MINIMAL -> VoicePhrases(line.minimal.ifEmpty { line.start }, emptyList(), 0.0)
             VoiceWording.STANDARD -> VoicePhrases(line.start, emptyList(), 0.0)
-            VoiceWording.FULL -> VoicePhrases(line.fullStart.ifEmpty { line.start }, line.fullEnd, line.endChance)
+            VoiceWording.FULL -> VoicePhrases(
+                line.fullStart.ifEmpty { line.start },
+                line.fullEnd,
+                line.endChance,
+                line.fullRare,
+                line.rareChance,
+            )
         }.takeIf { it.start.isNotEmpty() }
     }
 
@@ -194,6 +209,8 @@ internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: 
                             fullStart = list(full, "start"),
                             fullEnd = list(full, "end"),
                             endChance = full.optDouble("endChance", 1.0),
+                            fullRare = list(full, "rare"),
+                            rareChance = full.optDouble("rareChance", 0.0),
                         )
                     }
                 },
@@ -210,8 +227,11 @@ internal class VoicePackManifest(val lines: Map<String, VoiceLine>, val values: 
  * @parity /modules/vescape-core/ios/alerts/VoicePacks.swift `VoiceVariantPicker`
  */
 internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.random.Random.nextInt(it) }) {
-    private data class Choice(val start: Int, val end: Int?) {
-        fun fits(line: VoicePhrases) = start < line.start.size && (end?.let { it < line.end.size } ?: true)
+    private data class Choice(val start: Int, val isRare: Boolean, val end: Int?) {
+        fun fits(line: VoicePhrases): Boolean {
+            val headFits = if (isRare) start < line.rare.size else start < line.start.size
+            return headFits && (end?.let { it < line.end.size } ?: true)
+        }
     }
 
     private val upcoming = HashMap<String, Choice>()
@@ -222,7 +242,7 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
         val lineKey = "$key.${announcement.severity.id}.${announcement.wording}"
         val choice = upcoming[lineKey]?.takeIf { it.fits(line) }
             ?: choose(line, avoid = null)
-        upcoming[lineKey] = choose(line, avoid = choice.start)
+        upcoming[lineKey] = choose(line, avoid = if (choice.isRare) null else choice.start)
         return files(manifest, line, choice, announcement.values)
     }
 
@@ -239,14 +259,19 @@ internal class VoiceVariantPicker(private val random: (Int) -> Int = { kotlin.ra
     }
 
     private fun choose(line: VoicePhrases, avoid: Int?): Choice {
+        if (line.rare.isNotEmpty() && random(100) < (line.rareChance * 100).roundToInt()) {
+            return Choice(random(line.rare.size), isRare = true, end = null)
+        }
         var start = random(line.start.size)
         if (line.start.size > 1 && start == avoid) start = (start + 1) % line.start.size
         val ends = line.end.isNotEmpty() && random(100) < (line.endChance * 100).roundToInt()
-        return Choice(start, if (ends) random(line.end.size) else null)
+        return Choice(start, isRare = false, end = if (ends) random(line.end.size) else null)
     }
 
-    private fun files(manifest: VoicePackManifest, line: VoicePhrases, choice: Choice, values: List<VoiceValue>) =
-        listOf(line.start[choice.start]) + values.mapNotNull(manifest::valueClip) + listOfNotNull(choice.end?.let { line.end[it] })
+    private fun files(manifest: VoicePackManifest, line: VoicePhrases, choice: Choice, values: List<VoiceValue>): List<String> {
+        val head = if (choice.isRare) line.rare[choice.start] else line.start[choice.start]
+        return listOf(head) + values.mapNotNull(manifest::valueClip) + listOfNotNull(choice.end?.let { line.end[it] })
+    }
 }
 
 /**

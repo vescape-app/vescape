@@ -114,7 +114,9 @@
           "lines/boardConnection.connected.full.start.0.m4a",
           "lines/boardConnection.connected.full.start.1.m4a",
           "lines/boardConnection.connected.full.start.2.m4a"
-        ]
+        ],
+        "rare": ["lines/boardConnection.connected.full.rare.0.m4a"],
+        "rareChance": 0.01
       }
     },
     "boardConnection.lost": {
@@ -395,6 +397,13 @@
           "lines/weather.rain.now.full.start.0.m4a",
           "lines/weather.rain.now.full.start.1.m4a"
         ]
+      }
+    },
+    "voice.intro": {
+      "start": ["lines/voice.intro.start.0.m4a"],
+      "minimal": ["lines/voice.intro.minimal.0.m4a"],
+      "full": {
+        "start": ["lines/voice.intro.full.start.0.m4a"]
       }
     }
   },
@@ -997,6 +1006,7 @@
     "lines/boardConnection.connected.full.start.0.m4a": "3e9f35e7ee2ee290",
     "lines/boardConnection.connected.full.start.1.m4a": "3314959fc463a128",
     "lines/boardConnection.connected.full.start.2.m4a": "909e8b2cde88b68d",
+    "lines/boardConnection.connected.full.rare.0.m4a": "f6b3caaff187014c",
     "lines/boardConnection.connected.start.0.m4a": "3e9f35e7ee2ee290",
     "lines/boardConnection.lost.full.start.0.m4a": "e3e5386ad4f7ecba",
     "lines/boardConnection.lost.full.start.1.m4a": "06da1086e83c4b84",
@@ -1004,24 +1014,24 @@
     "lines/system.error.full.start.0.m4a": "1e61d513f2dc2c13",
     "lines/system.error.full.start.1.m4a": "aa0a28a34c0db094",
     "lines/system.error.start.0.m4a": "1e61d513f2dc2c13",
-    "lines/groupRide.created.full.start.0.m4a": "79f4936ec9fc5856",
-    "lines/groupRide.created.full.start.1.m4a": "9a7e949e8f2bca69",
-    "lines/groupRide.created.start.0.m4a": "79f4936ec9fc5856",
-    "lines/groupRide.joined.full.start.0.m4a": "4c40c3bf1c83c734",
-    "lines/groupRide.joined.full.start.1.m4a": "fa0fc4010da1260e",
-    "lines/groupRide.joined.start.0.m4a": "fa0fc4010da1260e",
-    "lines/groupRide.riderJoined.full.start.0.m4a": "e9e9348e14b8c2f1",
-    "lines/groupRide.riderJoined.full.start.1.m4a": "a8d4487bd68229ad",
+    "lines/groupRide.created.full.start.0.m4a": "dc3486ce24dc546c",
+    "lines/groupRide.created.full.start.1.m4a": "bc4d90c87f33b434",
+    "lines/groupRide.created.start.0.m4a": "dc3486ce24dc546c",
+    "lines/groupRide.joined.full.start.0.m4a": "6b29aca4f3f2ffe0",
+    "lines/groupRide.joined.full.start.1.m4a": "21af2fc72fb669cd",
+    "lines/groupRide.joined.start.0.m4a": "21af2fc72fb669cd",
+    "lines/groupRide.riderJoined.full.start.0.m4a": "35733de2ce12ca8a",
+    "lines/groupRide.riderJoined.full.start.1.m4a": "7e6bb30291d7f179",
     "lines/groupRide.riderJoined.start.0.m4a": "5b42b2e93ef9066b",
-    "lines/groupRide.riderLeft.full.start.0.m4a": "1afa115eec69eccc",
-    "lines/groupRide.riderLeft.full.start.1.m4a": "d09fd3682bc82d82",
+    "lines/groupRide.riderLeft.full.start.0.m4a": "98a1d6b7f35663a5",
+    "lines/groupRide.riderLeft.full.start.1.m4a": "7f5036c29316b48d",
     "lines/groupRide.riderLeft.start.0.m4a": "06ca608b4b1be0c5",
-    "lines/groupRide.lost.full.start.0.m4a": "9a5ef45f54e332be",
-    "lines/groupRide.lost.full.start.1.m4a": "9aaa50b8a6f6cdcc",
-    "lines/groupRide.lost.start.0.m4a": "9a5ef45f54e332be",
-    "lines/groupRide.restored.full.start.0.m4a": "679a56e82f0962fb",
-    "lines/groupRide.restored.full.start.1.m4a": "60f31dcce28d7abc",
-    "lines/groupRide.restored.start.0.m4a": "679a56e82f0962fb",
+    "lines/groupRide.lost.full.start.0.m4a": "eaac99f4a59b19a6",
+    "lines/groupRide.lost.full.start.1.m4a": "aadd5d70f75ae6a5",
+    "lines/groupRide.lost.start.0.m4a": "eaac99f4a59b19a6",
+    "lines/groupRide.restored.full.start.0.m4a": "889e9ef92418df00",
+    "lines/groupRide.restored.full.start.1.m4a": "d0bd91f697d66a80",
+    "lines/groupRide.restored.start.0.m4a": "889e9ef92418df00",
     "lines/groupRide.signal.down.full.start.0.m4a": "d87e08b52c33d3e2",
     "lines/groupRide.signal.down.full.start.1.m4a": "a549b63166165cbe",
     "lines/groupRide.signal.down.start.0.m4a": "59fa341685b783c4",
@@ -1101,6 +1111,9 @@
     "lines/weather.rain.now.full.start.1.m4a": "e67bf953a18c10d7",
     "lines/weather.rain.now.start.0.m4a": "eb674de00777db75",
     "lines/weather.rain.now.minimal.0.m4a": "91436a059be94f64",
+    "lines/voice.intro.full.start.0.m4a": "559a947dfefa5f48",
+    "lines/voice.intro.start.0.m4a": "0417edb949e74ee8",
+    "lines/voice.intro.minimal.0.m4a": "4df82d1bda0369e1",
     "values/percent/0.m4a": "2c4fc1d32d796f86",
     "values/percent/1.m4a": "ba874bcd94ba26e1",
     "values/percent/2.m4a": "5203c0e78eb1884b",

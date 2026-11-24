@@ -26,17 +26,17 @@ Every effects pack fills four required sound slots, `severity.positive|info|warn
 and `tts(…)` stay info/warning/critical. App cues with an optional slot of their own fall back to a
 required slot when the pack leaves theirs out:
 
-| App cue           | Slot                    | Missing ⇒ |
-| ----------------- | ----------------------- | --------- |
-| Connect           | `cue.on`                | positive  |
-| Disconnect        | `cue.off`               | warning   |
-| Ride end          | `cue.ride.end`          | info      |
-| New Group Ride    | `cue.groupRide.created` | positive  |
-| Joined Group Ride | `cue.groupRide.joined`  | positive  |
+| App cue            | Slot                    | Missing ⇒ |
+| ------------------ | ----------------------- | --------- |
+| Connect            | `cue.on`                | positive  |
+| Disconnect         | `cue.off`               | warning   |
+| Ride end           | `cue.ride.end`          | info      |
+| New Public Ride    | `cue.groupRide.created` | positive  |
+| Joined Public Ride | `cue.groupRide.joined`  | positive  |
 
 The other app cues have no slot and always play a fixed severity sound: Error ⇒ critical, Rider
-joined ⇒ info, Rider left ⇒ warning, Group Ride lost ⇒ warning, Group Ride restored ⇒ positive.
-Their voice lines are unchanged and still speak at Voice level Full. The app never plays Ride end:
+joined ⇒ info, Rider left ⇒ warning, Public Ride lost ⇒ warning, Public Ride restored ⇒ positive.
+Their voice lines are unchanged and still speak at Voice detail Full. The app never plays Ride end:
 the ride dropout grace expiring is not a reliable ride end (a failed connect or a parked board
 losing its link expires it too), so its sound and voice lines stay in the packs unused.
 
@@ -85,12 +85,12 @@ Speech comes from a second app-wide choice next to Sound effects:
   per message key plus value clips. Unset (`matching`) plays the voice the effects pack's `pack.json`
   names (HEV → Radio; Arc, Pulse → Nova); Settings shows that voice as selected, with no
   separate Matching option. Picking an effects pack resets Voice to `matching`, so it always
-  switches to that pack's voice. Picking a voice level previews it.
-- **Voice level** (`voiceLevel`: `off`, `minimal`, `standard`, `full`; default `standard`) sets what
+  switches to that pack's voice. Picking a voice or voice detail previews it.
+- **Voice detail** (`voiceLevel`: `off`, `minimal`, `standard`, `full`; default `standard`) sets what
   speaks and how much. Off plays effects only for presets. Minimal and Standard speak preset alerts:
   Minimal the shortest wording ("Motor… 95 degrees"), Standard with severity ("Motor overheating…
   95 degrees"). Full speaks Standard's lines with more variety and an occasional ending, and also
-  speaks app cues and Group Ride events:
+  speaks app cues and Public Ride events:
   the cue's effect, then its voice line (`on` → `boardConnection.connected`, `off` → `boardConnection.lost`, `error` →
   `system.error`, `ride.end`, and each `groupRide.*` cue under its own key). Off, Minimal and
   Standard play their effect only, except safety cues (Rider Signal `groupRide.signal.*` and Ride
@@ -98,7 +98,7 @@ Speech comes from a second app-wide choice next to Sound effects:
   what. Settings previews of a
   pack's cues never speak. Custom rules
   speak whatever the level, with its wording (Off reads as Standard).
-- **Group Ride cues**, all native from `GroupRideObserver`: `groupRide.created` (a new ride the
+- **Public Ride cues**, all native from `GroupRideObserver`: `groupRide.created` (a new ride the
   rider created, or one within the 40 km nearby radius of the latest GPS position), `groupRide.joined` (the rider joined),
   `groupRide.riderJoined` (a Rider id not seen before in the joined ride), `groupRide.riderLeft`
   (another Rider who was live in the previous roster left it: a manual leave, or an Android Exit),
@@ -159,8 +159,9 @@ stay cached.
   clip (or once on interrupt).
 - **Line**: Minimal reads the generic `<key>` only; Standard and Full read `<key>.<severity>`, else
   `<key>`; no line plays the severity sound only (never silence). The level then picks the phrases:
-  Minimal `minimal` (else `start`), Standard `start`, Full `full.start` (else `start`) and then one
-  of `full.end` at `full.endChance` (default 1). Only Full ever adds an ending. Variants are picked
+  Minimal `minimal` (else `start`), Standard `start`, Full `full.rare` at `full.rareChance` (if set,
+  skipping `full.end`), else `full.start` (else `start`) and then one
+  of `full.end` at `full.endChance` (default 1). Only Full ever adds an ending or plays rare lines. Variants are picked
   at random; the same `start` never repeats twice in a row for a key, severity and level. The pick for the next announcement of a line is made and joined in the
   background right after each one plays, so variety adds no latency.
 
@@ -172,7 +173,7 @@ the rest `warning`, and a one-point ladder is `critical`.
 on the Message tab. Its **TTS** switch turns on the text template (`tts(<severity>):<text>`).
 Other metrics have no voice lines: TTS is forced on and the switch is hidden. Preview plays the
 severity sound and the voice line with the threshold as value, or the TTS text. Custom rules use
-the Voice pack and the Voice level's wording.
+the Voice pack and the Voice detail's wording.
 
 Presets play the app-wide effects and voice packs; there is no per-preset pack choice.
 
@@ -182,8 +183,8 @@ The voice picker offers Nova, Radio, and Nicole. Nicole uses Kokoro `af_nicole` 
 playful Full-level lines, including occasional battery and temperature remarks. She is
 selected manually; no effects pack selects her through Matching, and defaults stay unchanged.
 Her Standard lines use factual wording; interjections and personal remarks belong to Full.
-The Sounds settings voice preview uses a motor-temperature warning at 75 degrees, whose Nicole
-Full starts demonstrate the playful wording without waiting for a random ending.
+The Sounds settings voice and detail previews play each voice's `voice.intro` line at the active
+detail level (Off plays an alert sound only).
 
 Packs are committed under `shared/alerts/packs/`: effects packs are made by hand in a DAW (slots,
 format, `pack.json`, adding a pack, and the HEV/Pulse sox recipes are in
@@ -437,7 +438,7 @@ Forecast-driven voice lines about weather coming at the rider within 3 h. Native
   runs while the fetch is out. A failed fetch is silent; the next Fix past the gate retries. State survives Bluetooth dropouts and is cleared when the dropout grace ends the ride.
 - **Voice:** `weather.<kind>` + `duration` and `weather.<kind>.now` for `storm`, `wind`, `rain`;
   storm and rain add `percent` (the slot's precipitation probability, nearest 10, 10–100) on lines
-  above 1 h; nearer lines read `minutely_15`, which has no probability, and `.now` lines never do. At `warning` severity through `speakAdvisory`. Silent at Voice level Off. Radio
+  above 1 h; nearer lines read `minutely_15`, which has no probability, and `.now` lines never do. At `warning` severity through `speakAdvisory`. Silent at Voice detail Off. Radio
   adds endings at Full ("seek shelter", "reduce speed"); Nova has none. Nicole adds
   playful Full variants and occasional endings while keeping the weather kind and lead time explicit.
 

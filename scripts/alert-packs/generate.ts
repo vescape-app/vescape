@@ -89,6 +89,8 @@ function generateVoice(manifest: VoiceManifest, dir: string, tmp: string) {
       start: part('full.start', line.full.start),
       end: part('full.end', line.full.end),
       endChance: line.full.endChance,
+      rare: part('full.rare', line.full.rare),
+      rareChance: line.full.rareChance,
     }
     lines[key] = {
       start: part('start', line.start) ?? [],

@@ -38,7 +38,8 @@
     "weather.wind": null,
     "weather.wind.now": null,
     "weather.rain": null,
-    "weather.rain.now": null
+    "weather.rain.now": null,
+    "voice.intro": null
   },
   "values": {
     "percent": {

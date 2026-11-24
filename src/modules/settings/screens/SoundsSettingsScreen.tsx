@@ -265,7 +265,7 @@ export default function SoundsSettingsScreen() {
             focusId="voice-level"
             icon={WaveformIcon}
             iconColor={theme.settingsIcon.sounds}
-            label="Voice level"
+            label="Voice detail"
           >
             <View style={styles.voiceLevel}>
               <SegmentedToggle

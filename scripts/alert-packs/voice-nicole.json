@@ -33,15 +33,21 @@
     "battery.warning": {
       "start": ["Battery low..."],
       "full": {
-        "start": ["Mmm... I'm running low...", "Ooh... getting tired over here. Battery..."]
+        "start": ["Mmm... I'm running low...", "Ooh... getting tired over here. Battery..."],
+        "end": ["Start thinking about taking me home."],
+        "endChance": 0.35
       }
     },
     "battery.critical": {
       "start": ["Battery critical..."],
       "full": {
         "start": ["Battery critical...", "I'm almost empty..."],
-        "end": ["Take me home and plug me in.", "A charger would be very romantic right now."],
-        "endChance": 0.2
+        "end": [
+          "Take me home and plug me in.",
+          "A charger would be very romantic right now.",
+          "Unless you like carrying me. I'm heavier than I look."
+        ],
+        "endChance": 0.35
       }
     },
     "motorTemp": {
@@ -56,15 +62,21 @@
     "motorTemp.warning": {
       "start": ["Motor getting hot..."],
       "full": {
-        "start": ["You're making me hot. Motor...", "Easy. Motor getting hot..."]
+        "start": ["You're making me hot. Motor...", "Easy. Motor getting hot..."],
+        "end": ["You're working me hard today."],
+        "endChance": 0.35
       }
     },
     "motorTemp.critical": {
       "start": ["Motor overheating..."],
       "full": {
         "start": ["Motor overheating..."],
-        "end": ["I need a break, not encouragement.", "Hot is cute. This is too hot."],
-        "endChance": 0.2
+        "end": [
+          "I need a break, not encouragement.",
+          "Hot is cute. This is too hot.",
+          "I like a little heat, not a meltdown."
+        ],
+        "endChance": 0.35
       }
     },
     "controllerTemp": {
@@ -78,16 +90,20 @@
       "start": ["Controller getting hot..."],
       "full": {
         "start": ["I'm getting a little too warm. Controller...", "Controller getting hot..."],
-        "end": ["Let's take it easy."],
-        "endChance": 0.2
+        "end": ["Let's take it easy.", "You're working me hard today."],
+        "endChance": 0.35
       }
     },
     "controllerTemp.critical": {
       "start": ["Controller overheating..."],
       "full": {
         "start": ["Controller overheating..."],
-        "end": ["I need a moment to cool down.", "I like your enthusiasm, but slow down."],
-        "endChance": 0.2
+        "end": [
+          "I need a moment to cool down.",
+          "I like your enthusiasm, but slow down.",
+          "I like a little heat, not a meltdown."
+        ],
+        "endChance": 0.35
       }
     },
     "boardConnection.connected": {
@@ -96,8 +112,15 @@
         "start": [
           "Mmm, there you are. I was waiting for you.",
           "Hey, you. Take me somewhere nice.",
-          "Connected. You bring the balance, I'll bring the personality."
-        ]
+          "Connected. You bring the balance, I'll bring the personality.",
+          "Back again? I knew you couldn't stay away.",
+          "Connected. Try not to drop me this time.",
+          "Ready when you are. Don't make it boring."
+        ],
+        "rare": [
+          "Board connected. And yes, I know how much you spent on this build. Don't worry, your secret's safe with me."
+        ],
+        "rareChance": 0.01
       }
     },
     "boardConnection.lost": {
@@ -106,7 +129,9 @@
         "start": [
           "Leaving already? Come back soon.",
           "Disconnected. I'll try not to take it personally.",
-          "Fine. Go spend time with your other devices."
+          "Fine. Go spend time with your other devices.",
+          "Walking away without saying goodbye? Rude.",
+          "Disconnected. Don't stay gone too long."
         ]
       }
     },
@@ -120,18 +145,21 @@
       }
     },
     "groupRide.created": {
-      "start": ["Group ride created."],
+      "start": ["Public ride started."],
       "full": {
         "start": [
-          "Group ride ready. Try to invite someone who can keep up.",
-          "We're hosting. I'll try to behave."
+          "Public ride live. Try to attract someone who can keep up.",
+          "We're live. I'll try to behave."
         ]
       }
     },
     "groupRide.joined": {
-      "start": ["Joined the group ride."],
+      "start": ["Joined the public ride."],
       "full": {
-        "start": ["We're in. Let's make a good impression.", "Group ride joined. Try to look cool."]
+        "start": [
+          "We're in. Let's make a good impression.",
+          "Public ride joined. Try to look cool."
+        ]
       }
     },
     "groupRide.riderJoined": {
@@ -150,13 +178,13 @@
       }
     },
     "groupRide.lost": {
-      "start": ["Group ride connection lost."],
+      "start": ["Public ride connection lost."],
       "full": {
         "start": ["We lost the group. I preferred getting lost together."]
       }
     },
     "groupRide.restored": {
-      "start": ["Group ride connection restored."],
+      "start": ["Public ride connection restored."],
       "full": {
         "start": ["There they are. Act natural.", "Back together. I knew they'd miss us."]
       }
@@ -236,25 +264,41 @@
     "groupRide.hazard.water": {
       "start": ["Water ahead."],
       "full": {
-        "start": ["Water ahead. Don't lose your board.", "Careful, water ahead."]
+        "start": [
+          "Water ahead. Don't lose your board.",
+          "Careful, water ahead.",
+          "Water ahead. I'm cute, not waterproof."
+        ]
       }
     },
     "groupRide.hazard.terrain": {
       "start": ["Rough terrain ahead."],
       "full": {
-        "start": ["Rough terrain ahead. Hold on tight.", "Careful, rough terrain ahead."]
+        "start": [
+          "Rough terrain ahead. Hold on tight.",
+          "Careful, rough terrain ahead.",
+          "Rough terrain ahead. Hold on to me, please."
+        ]
       }
     },
     "groupRide.hazard.obstacle": {
       "start": ["Obstacle ahead."],
       "full": {
-        "start": ["Something's blocking the path ahead.", "Careful, obstacle ahead."]
+        "start": [
+          "Something's blocking the path ahead.",
+          "Careful, obstacle ahead.",
+          "Obstacle ahead. Impress me with a dodge."
+        ]
       }
     },
     "groupRide.hazard.police": {
       "start": ["Police ahead."],
       "full": {
-        "start": ["Police ahead. Be cool.", "Heads up, police ahead."]
+        "start": [
+          "Police ahead. Be cool.",
+          "Heads up, police ahead.",
+          "Police ahead. Act like a bicycle."
+        ]
       }
     },
     "groupRide.hazard.sent": {
@@ -278,8 +322,12 @@
       "minimal": ["Rain..."],
       "full": {
         "start": ["Mmm... rain is coming...", "Ooh... rain expected..."],
-        "end": ["Maybe we should stay in tonight.", "You did bring something waterproof, right?"],
-        "endChance": 0.2
+        "end": [
+          "Maybe we should stay in tonight.",
+          "You did bring something waterproof, right?",
+          "I don't do well in puddles."
+        ],
+        "endChance": 0.35
       }
     },
     "weather.rain.now": {
@@ -287,8 +335,8 @@
       "minimal": ["Rain now."],
       "full": {
         "start": ["Ooh... rain is here.", "Rain starting now. So much for staying dry."],
-        "end": ["Let's find somewhere dry."],
-        "endChance": 0.2
+        "end": ["Let's find somewhere dry.", "I don't do well in puddles."],
+        "endChance": 0.35
       }
     },
     "weather.storm": {
@@ -298,9 +346,10 @@
         "start": ["Thunderstorm approaching...", "Ooh... thunderstorm expected..."],
         "end": [
           "Let's find shelter. I'm not that adventurous.",
-          "Time to find cover. Lightning isn't my type."
+          "Time to find cover. Lightning isn't my type.",
+          "Drama in the sky — and that's my job."
         ],
-        "endChance": 0.3
+        "endChance": 0.35
       }
     },
     "weather.storm.now": {
@@ -311,8 +360,8 @@
           "Thunderstorm nearby. Let's find shelter.",
           "Thunderstorm arriving now. Time to find cover."
         ],
-        "end": ["Lightning isn't my type."],
-        "endChance": 0.2
+        "end": ["Lightning isn't my type.", "Drama in the sky — and that's my job."],
+        "endChance": 0.35
       }
     },
     "weather.wind": {
@@ -331,6 +380,15 @@
         "start": ["Ooh... strong gusts now. Take it easy.", "Strong wind is here. Hold on to me."],
         "end": ["I'm a board, not a kite."],
         "endChance": 0.2
+      }
+    },
+    "voice.intro": {
+      "start": ["Nicole here. Clear alerts, no drama."],
+      "minimal": ["Nicole. Short and sweet."],
+      "full": {
+        "start": [
+          "Mmm, full mode. Now we're talking. Alerts, connections, public rides — and all of my personality."
+        ]
       }
     }
   }

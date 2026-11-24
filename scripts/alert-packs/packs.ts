@@ -18,7 +18,13 @@ export interface Catalog {
 export interface Line {
   start: string[]
   minimal?: string[]
-  full?: { start?: string[]; end?: string[]; endChance?: number }
+  full?: {
+    start?: string[]
+    end?: string[]
+    endChance?: number
+    rare?: string[]
+    rareChance?: number
+  }
 }
 
 export interface VoiceManifest {
@@ -68,6 +74,7 @@ export const lineTexts = (line: Line) => [
   ...(line.minimal ?? []),
   ...(line.full?.start ?? []),
   ...(line.full?.end ?? []),
+  ...(line.full?.rare ?? []),
 ]
 
 export function validateManifest(catalog: Catalog, manifest: VoiceManifest) {
@@ -83,6 +90,9 @@ export function validateManifest(catalog: Catalog, manifest: VoiceManifest) {
     const chance = line.full?.endChance
     if (chance != null && !(chance > 0 && chance <= 1))
       errors.push(`endChance out of (0, 1] in ${key}`)
+    const rareChance = line.full?.rareChance
+    if (rareChance != null && !(rareChance > 0 && rareChance <= 1))
+      errors.push(`rareChance out of (0, 1] in ${key}`)
   }
   return errors.map((error) => `${manifest.kind}-${manifest.id}: ${error}`)
 }

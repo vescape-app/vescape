@@ -280,9 +280,9 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
           ),
           item(
             'voice-level',
-            'Voice level',
+            'Voice detail',
             'How much detail spoken alerts read out',
-            'verbosity, speech, tts, chattiness, spoken',
+            'verbosity, speech, tts, chattiness, spoken, voice level',
           ),
           item(
             'my-sounds',
@@ -324,9 +324,9 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
           ),
           item(
             'watch-group-ride',
-            'Group Ride on telemetry screen',
-            'Show your Group Ride behind the watch gauges',
-            'riders, friends, social, gauges',
+            'Public Ride on telemetry screen',
+            'Show your Public Ride behind the watch gauges',
+            'riders, friends, social, gauges, group ride',
           ),
           item(
             'watch-route-line',
@@ -525,7 +525,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
           item(
             'privacy-policy',
             'Privacy policy',
-            'Data, Group Ride sharing, and contact',
+            'Data, Public Ride sharing, and contact',
             'legal, gdpr, terms, data, contact',
           ),
         ],

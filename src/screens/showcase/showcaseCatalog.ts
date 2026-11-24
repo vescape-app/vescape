@@ -326,15 +326,15 @@ export const SHOWCASE_GROUPS: readonly ShowcaseGroup[] = [
       {
         id: 'social',
         label: 'Social',
-        hint: 'Friend rows, public rides, and group ride rosters',
+        hint: 'Friend rows, public rides, and rider rosters',
         route: '/settings/components/social',
-        keywords: ['group ride', 'friends', 'riders'],
+        keywords: ['public ride', 'friends', 'riders'],
         items: [
           item('RiderLiveRide', ['live', 'rider']),
           item('Demo riders', ['roster', 'avatars']),
           item('FriendRow', ['friend', 'contact']),
           item('PublicRideRow', ['public ride', 'join']),
-          item('RosterList', ['group ride', 'members']),
+          item('RosterList', ['public ride', 'members']),
           item('PublicRideSelector', ['public ride', 'picker']),
         ],
       },
