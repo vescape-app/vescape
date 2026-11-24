@@ -47,6 +47,7 @@ export default function HistorySettingsScreen() {
 
         <SettingsCard>
           <SettingsRow
+            focusId="split-rides-after"
             icon={PathIcon}
             label="Split rides after"
             hint={`A stop longer than this starts a new ride. Disconnects and app restarts in between do not.\nDefault: ${DEFAULT_RIDE_SPLIT_GAP_MINUTES} min.`}
@@ -77,6 +78,7 @@ export default function HistorySettingsScreen() {
 
         <SettingsCard>
           <SettingsRow
+            focusId="moving-speed-threshold"
             icon={GaugeIcon}
             label="Moving speed threshold"
             hint={`Speeds below this are ignored for avg speed.\nDefault: ${formatSpeedWithUnit(3, distanceUnit === 'mi' ? 1 : 0)}.`}
@@ -104,6 +106,7 @@ export default function HistorySettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="battery-smoothing"
             icon={WaveformIcon}
             label="Battery smoothing"
             hint="Median window steadies battery % for display and alerts. 0 = off"

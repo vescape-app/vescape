@@ -1,4 +1,7 @@
+import type { ReactNode } from 'react'
 import { PageScrollView } from '@/components/base/PageScrollView'
+import { useFocusTarget } from '@/components/base/focusScroll'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import {
   speedFromKmh,
@@ -43,6 +46,21 @@ const HOT_RANGE_METRICS: {
   { key: 'batteryCurrent', label: 'Battery current', unit: 'A', min: 0, max: 200 },
 ]
 
+function HotRangeRow({ focusId, children }: { focusId: string; children: ReactNode }) {
+  const neutral = useResolvedNeutralColors()
+  const { targetRef, onLayout, highlighted } = useFocusTarget(focusId)
+  return (
+    <View
+      ref={targetRef}
+      onLayout={onLayout}
+      collapsable={false}
+      style={[styles.hotRangeRow, highlighted && { backgroundColor: neutral.surface }]}
+    >
+      {children}
+    </View>
+  )
+}
+
 export default function GraphsSettingsScreen() {
   const { distanceUnit, temperatureUnit } = useUserPreferences()
   const { historyMetricGradientsEnabled, historyMetricHotRanges, set } = useSettingsStore(
@@ -76,6 +94,7 @@ export default function GraphsSettingsScreen() {
         />
         <SettingsCard>
           <SettingsRow
+            focusId="graph-hot-gradients"
             icon={GaugeIcon}
             iconColor={theme.status.warning.color}
             label="Graph hot gradients"
@@ -113,7 +132,7 @@ export default function GraphsSettingsScreen() {
                   : Math.min(metric.max, Math.max(metric.min, nextValue))
 
             return (
-              <View key={metric.key} style={styles.hotRangeRow}>
+              <HotRangeRow key={metric.key} focusId={`hot-range-${metric.key}`}>
                 <View style={styles.hotRangeBody}>
                   <Text style={styles.hotRangeName}>{metric.label}</Text>
                   <Text style={styles.hotRangeHint}>
@@ -155,7 +174,7 @@ export default function GraphsSettingsScreen() {
                     }}
                   />
                 </View>
-              </View>
+              </HotRangeRow>
             )
           })}
         </SettingsCard>

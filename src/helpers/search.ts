@@ -178,18 +178,14 @@ export function searchItems<T>(
   return hits
 }
 
-export function searchCatalog<
-  TRoute,
-  TItem extends SearchableItem,
-  TSection extends SearchableSection<TRoute, TItem>,
->(
+export function searchCatalog<TRoute, TSection extends SearchableSection<TRoute, SearchableItem>>(
   groups: readonly SearchableGroup<TRoute, TSection>[],
   query: string,
-): CatalogSearchHit<TRoute, TSection, TItem>[] {
+): CatalogSearchHit<TRoute, TSection, TSection['items'][number]>[] {
   const queryTokens = tokenizeSearchQuery(query)
   if (queryTokens.length === 0) return []
   const queryText = queryTokens.join(' ')
-  const hits: CatalogSearchHit<TRoute, TSection, TItem>[] = []
+  const hits: CatalogSearchHit<TRoute, TSection, TSection['items'][number]>[] = []
 
   for (const group of groups) {
     for (const section of group.sections) {

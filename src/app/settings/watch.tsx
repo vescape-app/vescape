@@ -81,6 +81,7 @@ export default function WatchSettingsScreen() {
         <SettingsSectionTitle>Connection</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="watch-open-on-connect"
             icon={WatchIcon}
             iconColor={theme.settingsIcon.watch}
             label="Open on connect"
@@ -98,6 +99,7 @@ export default function WatchSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="watch-update-rate"
             icon={ClockCountdownIcon}
             iconColor={theme.settingsIcon.watch}
             label="Update rate"
@@ -123,6 +125,7 @@ export default function WatchSettingsScreen() {
         <SettingsSectionTitle>Telemetry screen</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="watch-trail"
             icon={PathIcon}
             iconColor={theme.palette.violet.color}
             label="Trail on telemetry screen"
@@ -135,6 +138,7 @@ export default function WatchSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="watch-group-ride"
             icon={UsersIcon}
             iconColor={theme.palette.groupRide.color}
             label="Group Ride on telemetry screen"
@@ -147,6 +151,7 @@ export default function WatchSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="watch-route-line"
             icon={SignpostIcon}
             iconColor={theme.palette.blue.color}
             label="Route line on telemetry screen"
@@ -163,6 +168,7 @@ export default function WatchSettingsScreen() {
         <SettingsSectionTitle>Map</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="watch-street-map"
             icon={MapTrifoldIcon}
             iconColor={theme.settingsIcon.map}
             label="Street map"
@@ -176,6 +182,7 @@ export default function WatchSettingsScreen() {
           />
           {wearStreetMapEnabled ? (
             <SettingsRow
+              focusId="watch-map-behind-gauges"
               icon={StackIcon}
               iconColor={theme.settingsIcon.map}
               label="Map behind gauges"
@@ -194,6 +201,7 @@ export default function WatchSettingsScreen() {
             />
           ) : null}
           <SettingsRow
+            focusId="watch-nav-arrow"
             icon={NavigationArrowIcon}
             iconColor={theme.palette.blue.color}
             label="Navigation arrow"
@@ -210,6 +218,7 @@ export default function WatchSettingsScreen() {
         <SettingsSectionTitle>Controls</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="watch-tilt-speed"
             icon={AngleIcon}
             iconColor={theme.palette.sky.color}
             label="Tilt speed"

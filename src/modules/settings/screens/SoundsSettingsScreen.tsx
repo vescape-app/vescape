@@ -1,4 +1,5 @@
 import { PageScrollView } from '@/components/base/PageScrollView'
+import { useFocusTarget } from '@/components/base/focusScroll'
 import { useState } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
@@ -73,6 +74,8 @@ export default function SoundsSettingsScreen() {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const soundEffectsFocus = useFocusTarget('sound-effects')
+  const mySoundsFocus = useFocusTarget('my-sounds')
   const run = async (action: () => Promise<MySoundsState | null>) => {
     setBusy(true)
     try {
@@ -126,6 +129,7 @@ export default function SoundsSettingsScreen() {
         <SettingsSectionTitle>Playback</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="app-sounds"
             icon={VibrateIcon}
             iconColor={theme.settingsIcon.sounds}
             label="App sounds"
@@ -138,6 +142,7 @@ export default function SoundsSettingsScreen() {
           />
           {Platform.OS === 'android' && (
             <SettingsRow
+              focusId="audio-output"
               icon={SpeakerSimpleHighIcon}
               iconColor={theme.settingsIcon.sounds}
               label="Audio output"
@@ -162,7 +167,13 @@ export default function SoundsSettingsScreen() {
           )}
         </SettingsCard>
 
-        <SettingsSectionTitle>Sound effects</SettingsSectionTitle>
+        <View
+          ref={soundEffectsFocus.targetRef}
+          onLayout={soundEffectsFocus.onLayout}
+          collapsable={false}
+        >
+          <SettingsSectionTitle>Sound effects</SettingsSectionTitle>
+        </View>
         <View
           style={[styles.packList, !enabled && styles.disabledPacks]}
           pointerEvents={enabled ? 'auto' : 'none'}
@@ -232,6 +243,7 @@ export default function SoundsSettingsScreen() {
         <SettingsSectionTitle>Voice</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="voice"
             icon={ChatTextIcon}
             iconColor={theme.settingsIcon.sounds}
             label="Voice"
@@ -250,6 +262,7 @@ export default function SoundsSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="voice-level"
             icon={WaveformIcon}
             iconColor={theme.settingsIcon.sounds}
             label="Voice level"
@@ -275,7 +288,12 @@ export default function SoundsSettingsScreen() {
 
         <SettingsSectionTitle>My sounds</SettingsSectionTitle>
         {loadError && <Text>My sounds could not be loaded. Try opening this screen again.</Text>}
-        <View style={styles.pack}>
+        <View
+          ref={mySoundsFocus.targetRef}
+          onLayout={mySoundsFocus.onLayout}
+          collapsable={false}
+          style={[styles.pack, mySoundsFocus.highlighted && styles.activePack]}
+        >
           {library.sounds.map((sound) => {
             const editingName = editingId === sound.id
             return (

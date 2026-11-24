@@ -22,6 +22,7 @@ export default function AboutScreen() {
         />
         <SettingsCard>
           <SettingsRow
+            focusId="privacy-policy"
             icon={ShieldCheckIcon}
             iconColor={theme.palette.cyan.color}
             label="Privacy policy"

@@ -60,6 +60,7 @@ export default function MapSettingsScreen() {
         <SettingsSectionTitle>General</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="hide-telemetry-map-details"
             icon={MapPinIcon}
             iconColor={theme.palette.sky.color}
             label="Hide telemetry map details"
@@ -76,6 +77,7 @@ export default function MapSettingsScreen() {
         <SettingsSectionTitle>Navigation</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="recalculate-beyond"
             icon={MapTrifoldIcon}
             label="Recalculate beyond"
             hint="Distance from the path before finding a new way to your Direction Point"
@@ -105,6 +107,7 @@ export default function MapSettingsScreen() {
         <SettingsSectionTitle>Satellite view</SettingsSectionTitle>
         <SettingsCard>
           <SettingsRow
+            focusId="satellite-overlay"
             icon={ImageSquareIcon}
             iconColor={theme.palette.sky.color}
             label="Satellite overlay"
@@ -119,6 +122,7 @@ export default function MapSettingsScreen() {
           {satelliteOverlayEnabled ? (
             <>
               <SettingsRow
+                focusId="home-image-opacity"
                 icon={SlidersHorizontalIcon}
                 iconColor={theme.palette.cyan.color}
                 label="Home image opacity"
@@ -138,6 +142,7 @@ export default function MapSettingsScreen() {
                 }
               />
               <SettingsRow
+                focusId="explore-image-opacity"
                 icon={MapTrifoldIcon}
                 iconColor={theme.palette.violet.color}
                 label="Explore image opacity"
@@ -157,6 +162,7 @@ export default function MapSettingsScreen() {
                 }
               />
               <SettingsRow
+                focusId="satellite-desaturation"
                 icon={PaletteIcon}
                 iconColor={theme.palette.purple.color}
                 label="Satellite desaturation"

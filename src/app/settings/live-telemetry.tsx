@@ -29,6 +29,7 @@ export default function LiveTelemetrySettingsScreen() {
         />
         <SettingsCard>
           <SettingsRow
+            focusId="live-history-limit"
             icon={ClockCountdownIcon}
             iconColor={theme.palette.sky.color}
             label="Live telemetry length"
@@ -51,6 +52,7 @@ export default function LiveTelemetrySettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="telemetry-poll-rate"
             icon={GaugeIcon}
             iconColor={theme.palette.green.color}
             label="Telemetry rate limit"

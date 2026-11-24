@@ -23,10 +23,14 @@ const HIGHLIGHT_DURATION_MS = 1400
 export function FocusScrollProvider({
   scrollRef,
   headerHeight,
+  bottomInset = 0,
+  viewportHeight,
   children,
 }: {
   scrollRef: RefObject<ScrollView | null>
   headerHeight: number
+  bottomInset?: number
+  viewportHeight: number
   children: ReactNode
 }) {
   const { focus } = useLocalSearchParams<{ focus?: string | string[] }>()
@@ -46,14 +50,20 @@ export function FocusScrollProvider({
       requestAnimationFrame(() => {
         target.measureLayout(
           scrollNode as unknown as View,
-          (_x, y) => {
-            scrollNode.scrollTo({ y: Math.max(0, y - headerHeight - 16), animated: true })
+          (_x, y, _w, height) => {
+            const visibleHeight = Math.max(0, viewportHeight - headerHeight - bottomInset)
+            const centeredY = y - headerHeight - (visibleHeight - height) / 2
+            const topAlignedY = y - headerHeight - 16
+            scrollNode.scrollTo({
+              y: Math.max(0, Math.min(centeredY, topAlignedY)),
+              animated: true,
+            })
           },
           () => {},
         )
       })
     },
-    [focusId, headerHeight, scrollRef],
+    [bottomInset, focusId, headerHeight, scrollRef, viewportHeight],
   )
 
   return (

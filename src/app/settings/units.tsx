@@ -35,6 +35,7 @@ export default function UnitsSettingsScreen() {
         />
         <SettingsCard>
           <SettingsRow
+            focusId="speed-distance"
             icon={GaugeIcon}
             iconColor={theme.palette.amber.color}
             label="Speed & distance"
@@ -52,6 +53,7 @@ export default function UnitsSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="temperature"
             icon={ThermometerIcon}
             iconColor={theme.palette.red.color}
             label="Temperature"
@@ -69,6 +71,7 @@ export default function UnitsSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="time-format"
             icon={ClockIcon}
             iconColor={theme.palette.sky.color}
             label="Time format"
@@ -86,6 +89,7 @@ export default function UnitsSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="date-format"
             icon={CalendarBlankIcon}
             iconColor={theme.palette.purple.color}
             label="Date format"

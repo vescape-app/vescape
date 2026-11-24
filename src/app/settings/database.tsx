@@ -1,4 +1,5 @@
 import { PageScrollView } from '@/components/base/PageScrollView'
+import { useFocusTarget } from '@/components/base/focusScroll'
 import { View, StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -29,6 +30,7 @@ export default function DatabaseSettingsScreen() {
   const db = useSettingsDatabaseOps()
   const maintenance = useMaintenanceStore((s) => s.state)
   const progress = maintenanceProgress(maintenance)
+  const maintenanceFocus = useFocusTarget('database-maintenance')
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
@@ -40,6 +42,7 @@ export default function DatabaseSettingsScreen() {
         {db.dbSizeError ? <Text style={styles.error}>{db.dbSizeError}</Text> : null}
         <SettingsCard>
           <SettingsRow
+            focusId="backup-database"
             icon={DownloadSimpleIcon}
             iconColor={theme.palette.green.color}
             label="Back up database"
@@ -56,6 +59,7 @@ export default function DatabaseSettingsScreen() {
             }
           />
           <SettingsRow
+            focusId="restore-database"
             icon={UploadSimpleIcon}
             iconColor={theme.status.warning.color}
             label="Restore database"
@@ -72,7 +76,13 @@ export default function DatabaseSettingsScreen() {
             }
           />
         </SettingsCard>
-        <SettingsSectionTitle>Maintenance</SettingsSectionTitle>
+        <View
+          ref={maintenanceFocus.targetRef}
+          onLayout={maintenanceFocus.onLayout}
+          collapsable={false}
+        >
+          <SettingsSectionTitle>Maintenance</SettingsSectionTitle>
+        </View>
         <Text style={styles.sectionHint}>
           Runs automatically in the background to keep your data up to date with new versions and
           clear out junk. Nothing to do here, until it breaks.
